@@ -4,8 +4,12 @@ A fonte (app Qlik "DRE Centro de Custo") não tem `origem_lancamento` nem chave
 única de lançamento, e o fato só existe a partir de jan/2025 — ver
 docs/diagnostico-fonte-spec01.md. Por decisão registrada, a base é materializada
 no grão **par × mês** (conta_contabil × centro_custo × ano_mes), suficiente para
-as Camadas 1 e 2. A origem RATEIO é inferida por proxy estrutural: contas sob
-o nível `9 RESULTADO RATEIO GERAL`.
+as Camadas 1 e 2.
+
+O escopo é N1 ∈ {3 CONTAS DE RESULTADO, 4 CUSTOS DE PRODUCAO} com centro de
+custo atribuído. A árvore 9 (RESULTADO RATEIO GERAL) é o rateio automático —
+~1,6 milhão de micro-lançamentos/mês cujo CC é consequência de regra, não de
+decisão humana — e fica FORA do motor (CLAUDE.md §2.6).
 
 Saídas (em `data/`, fora do git):
 - lancamentos_par_mes.parquet   — fato agregado
@@ -49,7 +53,11 @@ SEM_PARTICIPACAO_SOCIETARIA = 0
 DIMENSAO_CC_VALIDO = f"=If([{CAMPO_CC}]>0, [{CAMPO_CC}])"
 
 # Medidas do fato agregado. Zeramento (encerramento de exercício) é separado do
-# movimento normal para não contaminar a estatística das specs 02/05.
+# movimento normal para não contaminar a estatística das specs 02/05 — em
+# dez/2025 o zeramento é ~6x o movimento normal.
+# O campo de valor é [Valor Lançamento]: no modelo do app, as linhas de
+# [Valor Lançamento Centro Custo] NÃO se associam a N1 nem aos flags D/C
+# (fato multi-grão) — ver docs/diagnostico-fonte-spec01.md.
 # Valores saem crus (sem Round): arredondar no nível do par acumularia deriva
 # contra o total mensal; a quantização em 2 casas acontece só na materialização.
 MEDIDAS_FATO = [
@@ -58,22 +66,19 @@ MEDIDAS_FATO = [
     {
         "rotulo": "valor_debito",
         "expressao": "Sum({<FlagHistoricoZeramento={0}, FlagLancamentoDebito={1}>}"
-        " [Valor Lançamento Centro Custo])",
+        " [Valor Lançamento])",
     },
     {
         "rotulo": "valor_credito",
         "expressao": "Sum({<FlagHistoricoZeramento={0}, FlagLancamentoCredito={1}>}"
-        " [Valor Lançamento Centro Custo])",
+        " [Valor Lançamento])",
     },
     {"rotulo": "qtd_zeramento", "expressao": "Sum(FlagHistoricoZeramento)"},
     {
         "rotulo": "valor_zeramento",
-        "expressao": "Sum({<FlagHistoricoZeramento={1}>} [Valor Lançamento Centro Custo])",
+        "expressao": "Sum({<FlagHistoricoZeramento={1}>} [Valor Lançamento])",
     },
 ]
-
-ORIGEM_RATEIO = "RATEIO"
-ORIGEM_NAO_CLASSIFICADA = "NAO_CLASSIFICADO"
 
 DOIS_DECIMAIS = Decimal("0.01")
 
@@ -178,7 +183,7 @@ def extrair_totais_conferencia(cliente: ClienteEngineQlik, parametros: Parametro
         },
         {
             "rotulo": "valor_total",
-            "expressao": f"Sum({{<[{CAMPO_CC}]-={{0}}>}} [Valor Lançamento Centro Custo])",
+            "expressao": f"Sum({{<[{CAMPO_CC}]-={{0}}>}} [Valor Lançamento])",
         },
     ]
     return _cubo_para_dataframe(
@@ -208,11 +213,9 @@ def transformar(bruto: pd.DataFrame, parametros: Parametros) -> pd.DataFrame:
 
     df["conta_contabil"] = df["conta_contabil"].astype(str)
     df["centro_custo"] = df["centro_custo"].astype(str)
-    df["origem_proxy"] = ORIGEM_NAO_CLASSIFICADA
-    df.loc[
-        df["conta_contabil"].str.startswith(parametros.extracao.prefixo_conta_rateio),
-        "origem_proxy",
-    ] = ORIGEM_RATEIO
+    # Salvaguarda contra rateio automático: nenhuma conta da árvore 9 pode
+    # vazar para o fato (CLAUDE.md §2.6) — o escopo por N1 já as exclui.
+    df = df[~df["conta_contabil"].str.startswith(parametros.extracao.prefixo_conta_rateio)]
     df["dado_suspeito"] = df["ano_mes"].isin(parametros.exclusoes.meses_suspeitos)
 
     for coluna in ("qtd_debito", "qtd_credito", "qtd_zeramento"):
@@ -233,7 +236,6 @@ def transformar(bruto: pd.DataFrame, parametros: Parametros) -> pd.DataFrame:
         "valor_credito",
         "qtd_zeramento",
         "valor_zeramento",
-        "origem_proxy",
         "dado_suspeito",
     ]
     return df[colunas].sort_values(["ano_mes", "conta_contabil", "centro_custo"]).reset_index(drop=True)
@@ -266,7 +268,6 @@ ESQUEMA_FATO = pa.schema(
         ("valor_credito", pa.decimal128(18, 2)),
         ("qtd_zeramento", pa.int64()),
         ("valor_zeramento", pa.decimal128(18, 2)),
-        ("origem_proxy", pa.string()),
         ("dado_suspeito", pa.bool_()),
     ]
 )
@@ -332,12 +333,6 @@ def relatorio_completude(fato: pd.DataFrame, dimensoes: dict[str, pd.DataFrame])
         f"- Centros de custo distintos: **{fato['centro_custo'].nunique()}**",
         f"- Contas distintas: **{fato['conta_contabil'].nunique()}**",
         "",
-        "## Origem (proxy estrutural — fonte não tem origem_lancamento)",
-    ]
-    for origem, qtd in fato["origem_proxy"].value_counts().items():
-        linhas.append(f"- {origem}: {qtd} linhas")
-    linhas += [
-        "",
         f"- Linhas com dado_suspeito=True (meses com falha de carga conhecida): "
         f"{int(fato['dado_suspeito'].sum())}",
         "",
@@ -354,6 +349,7 @@ def relatorio_completude(fato: pd.DataFrame, dimensoes: dict[str, pd.DataFrame])
         "> Limitações herdadas da fonte (ver docs/diagnostico-fonte-spec01.md):",
         "> sem origem_lancamento nativa, sem id de lançamento, sem documento/usuário;",
         "> grão materializado é par × mês, não lançamento a lançamento.",
+        "> Rateio automático (árvore 9) excluído estruturalmente do fato (CLAUDE.md §2.6).",
         "",
     ]
     return "\n".join(linhas)

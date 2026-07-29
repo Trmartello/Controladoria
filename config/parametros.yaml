@@ -51,7 +51,8 @@ extracao:
   grupos_conta:                                   # níveis N1 no escopo da validação de CC
     - 3 CONTAS DE RESULTADO
     - 4 CUSTOS DE PRODUCAO
-    - 9 RESULTADO RATEIO GERAL
-  prefixo_conta_rateio: "9."                      # proxy de origem RATEIO (N1 = 9)
+  # A árvore 9 (RESULTADO RATEIO GERAL) é rateio automático — fica FORA do
+  # motor (CLAUDE.md §2.6). O prefixo abaixo é salvaguarda contra vazamento.
+  prefixo_conta_rateio: "9."
   pagina_celulas: 9000                            # células por página do hypercube (limite do engine: 10000)
   tolerancia_conferencia: 0.01                    # divergência máxima (R$) na conferência com o Qlik

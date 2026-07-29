@@ -66,6 +66,44 @@ precisa ser carregado de outra fonte (QVD antigo / ERP H&S).
   ordem de dezenas de milhares de linhas), suficiente para a Camada 2, mas
   não para a Camada 3 (que precisa do texto do histórico por lançamento).
 
+## Campo de valor — fato multi-grão (descoberto no piloto via MCP, 29/07/2026)
+
+O modelo do app tem mais de um grão na tabela de fatos:
+
+- **`Valor Lançamento`** acompanha os flags `FlagLancamentoDebito`/`FlagLancamentoCredito`
+  e se associa ao plano de contas (`N1`…`N8`). Débitos e créditos fecham espelhados
+  (±R$ 4,15 bi em jan/2025). **É o campo correto para a base par × mês.**
+- **`Valor Lançamento Centro Custo`** vive em linhas que NÃO se associam a `N1`
+  nem aos flags D/C — qualquer seleção nesses campos zera a soma. É visão de
+  rateio/gerencial, não serve para o fato da validação.
+- `Valor Lançamento DRE Centro Custo` é a visão líquida gerencial (não usar como fato).
+- Em set analysis, `Mês` só casa por texto (`Mês={"jan"}`); `Mês={1}` retorna 0
+  silenciosamente.
+- Zeramento de exercício: em dez/2025, débitos de zeramento (R$ 1,59 bi, 750
+  lançamentos no escopo) são ~6x o movimento normal (R$ 260 mi) — mantidos em
+  colunas separadas no parquet.
+
+## Árvore 9 (RESULTADO RATEIO GERAL) = rateio automático → FORA do motor
+
+Constatado no piloto (jan/2025, sem zeramento, sem part. societária, sem
+negócios 18/20):
+
+| N1 | Lançamentos com CC | Débitos com CC | Contas |
+|---|---|---|---|
+| 3 CONTAS DE RESULTADO | ~156 mil | R$ 23,1 mi | 188 |
+| 4 CUSTOS DE PRODUCAO | ~14 mil | R$ 75,7 mi | 40 |
+| 9 RESULTADO RATEIO GERAL | **~1,65 milhão** | R$ 35,5 mi | 207 |
+
+A árvore 9 espelha/reestrutura a DRE pós-rateio e concentra os micro-lançamentos
+de rateio (ex.: "VLR RATEIO SOCIOS/NAO SOCIOS") — o CC ali é consequência de
+regra, não decisão humana. Pelo CLAUDE.md §2.6, rateio automático não é
+pontuado: **o escopo do fato é N1 ∈ {3, 4} com CC ≠ 0** (~1.516 pares/mês,
+~171 mil lançamentos/mês). Somar 3+4+9 duplicaria valores (contas 3.x e 9.x
+espelhadas com totais idênticos).
+
+Limitação registrada: dentro de 3.x/4.x ainda podem existir rateios internos
+não identificáveis sem o campo de origem do ERP — validar com a contabilidade.
+
 ## Observações de qualidade
 
 - `Count` de lançamentos = `FlagLancamentoDebito` + `FlagLancamentoCredito` em

@@ -8,8 +8,6 @@ import pytest
 from svl.config import carregar_parametros
 from svl.extracao_base_historica import (
     ErroConferencia,
-    ORIGEM_NAO_CLASSIFICADA,
-    ORIGEM_RATEIO,
     _para_decimal,
     conferir,
     materializar,
@@ -24,19 +22,19 @@ def parametros():
 
 
 def _bruto_minimo() -> pd.DataFrame:
-    """Duas linhas válidas + uma de CC nulo + uma de negócio excluído + uma fora da janela."""
+    """Linhas válidas + CC nulo + negócio excluído + conta de rateio + fora da janela."""
     return pd.DataFrame(
         {
-            "ano_mes": ["2025-01", "2025-02", "2025-02", "2025-02", "2024-12"],
-            "conta_contabil": ["3.01.01", "9.07.01", "3.01.01", "3.01.01", "3.01.01"],
-            "centro_custo": ["5100", "5171", None, "5100", "5100"],
-            "negocio": ["1", "9", "1", "18", "1"],
-            "qtd_debito": [2, 1, 3, 4, 5],
-            "qtd_credito": [0, 0, 0, 0, 0],
-            "valor_debito": [100.505, 33.334, 9.9, 7.7, 5.5],
-            "valor_credito": [0.0, None, 0.0, 0.0, 0.0],
-            "qtd_zeramento": [0, 0, 0, 0, 0],
-            "valor_zeramento": [None, None, None, None, None],
+            "ano_mes": ["2025-01", "2025-02", "2025-02", "2025-02", "2025-02", "2024-12"],
+            "conta_contabil": ["3.01.01", "4.01.01", "9.07.01", "3.01.01", "3.01.01", "3.01.01"],
+            "centro_custo": ["5100", "5171", "5171", None, "5100", "5100"],
+            "negocio": ["1", "9", "9", "1", "18", "1"],
+            "qtd_debito": [2, 1, 1, 3, 4, 5],
+            "qtd_credito": [0, 0, 0, 0, 0, 0],
+            "valor_debito": [100.505, 33.334, 11.11, 9.9, 7.7, 5.5],
+            "valor_credito": [0.0, None, 0.0, 0.0, 0.0, 0.0],
+            "qtd_zeramento": [0, 0, 0, 0, 0, 0],
+            "valor_zeramento": [None, None, None, None, None, None],
         }
     )
 
@@ -44,15 +42,13 @@ def _bruto_minimo() -> pd.DataFrame:
 def test_transformar_aplica_regras(parametros):
     fato = transformar(_bruto_minimo(), parametros)
 
-    # CC nulo, negócio 18 e mês fora da janela caem fora.
+    # CC nulo, negócio 18, conta de rateio (árvore 9) e mês fora da janela caem fora.
     assert len(fato) == 2
-    assert set(fato["centro_custo"]) == {"5100", "5171"}
+    assert set(fato["conta_contabil"]) == {"3.01.01", "4.01.01"}
     assert 18 not in set(fato["negocio"])
 
-    # Proxy de origem: conta sob N1=9 é RATEIO; o resto fica não classificado.
-    por_conta = fato.set_index("conta_contabil")["origem_proxy"]
-    assert por_conta["9.07.01"] == ORIGEM_RATEIO
-    assert por_conta["3.01.01"] == ORIGEM_NAO_CLASSIFICADA
+    # Rateio automático nunca entra no fato (CLAUDE.md §2.6).
+    assert not fato["conta_contabil"].str.startswith("9.").any()
 
     # jan/2025 é mês suspeito conhecido (falha de carga) — flag obrigatória.
     suspeito = fato.set_index("ano_mes")["dado_suspeito"]
@@ -100,3 +96,4 @@ def test_relatorio_cita_limitacoes_da_fonte(parametros):
     relatorio = relatorio_completude(fato, {"dim_conta": pd.DataFrame({"c": [1]})})
     assert "origem_lancamento" in relatorio
     assert "par × mês" in relatorio
+    assert "árvore 9" in relatorio
