@@ -1,0 +1,40 @@
+# Todos os limiares do SVL. Versionado. Nenhum número mágico no código.
+modo: SHADOW            # SHADOW | PREVENTIVO
+
+janela_historica_meses: 36
+min_ocorrencias_faixa_valor: 6
+min_ciclos_sazonalidade: 2
+meses_carencia_cc_novo: 6
+
+mad:
+  k: 3
+  fator_consistencia: 1.4826
+  fallback_pct_mediana: 0.10
+
+carga_matriz:
+  meses_para_permitido: 24
+  min_ocorrencias_justificar: 3
+
+pesos_ial:
+  elegibilidade: 40
+  frequencia: 25
+  valor: 20
+  sazonalidade: 15
+
+tetos_ial:
+  justificar: 60
+  cc_em_carencia: 80
+
+semaforo:
+  verde_min: 75
+  amarelo_min: 40
+
+alarmes:
+  falso_positivo_max: 0.30
+  lead_time_horas_max: 48
+  cobertura_minima_preventivo: 0.90
+
+exclusoes:
+  negocios: [18, 20]
+  filiais_apenas_silo: [80, 99, 116, 122]
+  meses_suspeitos: ["2025-01"]
