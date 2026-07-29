@@ -41,10 +41,21 @@ def test_exclusoes_da_coperdia(parametros):
 
 
 def test_parametros_estatisticos_minimos(parametros):
-    assert parametros.janela_historica_meses == 36
+    # 18 meses: a fonte só tem fato desde jan/2025 (docs/diagnostico-fonte-spec01.md).
+    assert parametros.janela_historica_meses == 18
     assert parametros.min_ocorrencias_faixa_valor >= 1
     assert parametros.min_ciclos_sazonalidade >= 2
     assert parametros.mad.fator_consistencia == pytest.approx(1.4826)
+
+
+def test_extracao_configurada(parametros):
+    extracao = parametros.extracao
+    assert extracao.app_id
+    assert extracao.mes_inicio <= extracao.mes_fim
+    assert extracao.prefixo_conta_rateio == "9."
+    assert extracao.tolerancia_conferencia > 0
+    # A chave de API nunca vive no YAML — apenas o nome da variável de ambiente.
+    assert extracao.variavel_api_key == "QLIK_API_KEY"
 
 
 def test_modo_invalido_e_rejeitado(tmp_path):

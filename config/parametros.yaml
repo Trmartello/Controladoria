@@ -1,7 +1,9 @@
 # Todos os limiares do SVL. Versionado. Nenhum número mágico no código.
 modo: SHADOW            # SHADOW | PREVENTIVO
 
-janela_historica_meses: 36
+# 18 meses: a fonte (app DRE Centro de Custo) só tem fato a partir de jan/2025.
+# Decisão registrada em docs/diagnostico-fonte-spec01.md (29/07/2026).
+janela_historica_meses: 18
 min_ocorrencias_faixa_valor: 6
 min_ciclos_sazonalidade: 2
 meses_carencia_cc_novo: 6
@@ -38,3 +40,18 @@ exclusoes:
   negocios: [18, 20]
   filiais_apenas_silo: [80, 99, 116, 122]
   meses_suspeitos: ["2025-01"]
+
+# Spec 01 — extração da base histórica (agregado par × mês via Qlik Engine).
+extracao:
+  tenant: coperdia.br.qlikcloud.com
+  app_id: 052e19f8-892d-48a3-a408-da3ebb1ea53a   # DRE Centro de Custo (espaço Filiais)
+  variavel_api_key: QLIK_API_KEY                  # a chave NUNCA vai para o git
+  mes_inicio: "2025-01"                           # primeiro mês com fato na fonte
+  mes_fim: "2026-06"                              # último mês fechado
+  grupos_conta:                                   # níveis N1 no escopo da validação de CC
+    - 3 CONTAS DE RESULTADO
+    - 4 CUSTOS DE PRODUCAO
+    - 9 RESULTADO RATEIO GERAL
+  prefixo_conta_rateio: "9."                      # proxy de origem RATEIO (N1 = 9)
+  pagina_celulas: 9000                            # células por página do hypercube (limite do engine: 10000)
+  tolerancia_conferencia: 0.01                    # divergência máxima (R$) na conferência com o Qlik

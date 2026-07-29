@@ -66,6 +66,21 @@ class Exclusoes:
 
 
 @dataclass(frozen=True)
+class ParametrosExtracao:
+    """Parâmetros da spec 01 — extração agregada par × mês do app DRE Centro de Custo."""
+
+    tenant: str
+    app_id: str
+    variavel_api_key: str
+    mes_inicio: str
+    mes_fim: str
+    grupos_conta: list[str]
+    prefixo_conta_rateio: str
+    pagina_celulas: int
+    tolerancia_conferencia: float
+
+
+@dataclass(frozen=True)
 class Parametros:
     modo: str
     janela_historica_meses: int
@@ -79,6 +94,7 @@ class Parametros:
     semaforo: Semaforo
     alarmes: Alarmes
     exclusoes: Exclusoes
+    extracao: ParametrosExtracao
 
     @property
     def modo_preventivo_ativo(self) -> bool:
@@ -104,6 +120,7 @@ def carregar_parametros(caminho: Path | str = CAMINHO_PARAMETROS_PADRAO) -> Para
         semaforo=Semaforo(**bruto["semaforo"]),
         alarmes=Alarmes(**bruto["alarmes"]),
         exclusoes=Exclusoes(**bruto["exclusoes"]),
+        extracao=ParametrosExtracao(**bruto["extracao"]),
     )
 
     if parametros.modo not in MODOS_VALIDOS:
@@ -112,5 +129,9 @@ def carregar_parametros(caminho: Path | str = CAMINHO_PARAMETROS_PADRAO) -> Para
         raise ValueError(f"pesos_ial devem somar 100, somam {parametros.pesos_ial.total()}")
     if parametros.semaforo.verde_min <= parametros.semaforo.amarelo_min:
         raise ValueError("semaforo.verde_min deve ser maior que semaforo.amarelo_min")
+    if parametros.extracao.mes_inicio > parametros.extracao.mes_fim:
+        raise ValueError("extracao.mes_inicio deve ser anterior ou igual a extracao.mes_fim")
+    if not parametros.extracao.grupos_conta:
+        raise ValueError("extracao.grupos_conta não pode ser vazio")
 
     return parametros
