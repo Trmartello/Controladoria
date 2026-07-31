@@ -51,16 +51,17 @@ const Diag = {
     return { el, plan, ano: this.ano() };
   },
 
+  // Botões compactos abaixo do texto — em colunas estreitas o lado a lado estoura o cartão
   botoesFator(f, planId, comPromocao) {
     if (!App.podeEditar()) return '';
     const promover = comPromocao && !Number(f.promovido)
       ? `<button class="btn btn-sm btn-outline-success" data-promover="${f.id}" title="Promover para a SWOT">→ SWOT</button>` : '';
     const promovido = comPromocao && Number(f.promovido)
-      ? '<span class="badge text-bg-success" title="Já promovido para a SWOT">na SWOT</span>' : '';
-    return `<div class="d-flex gap-1 flex-shrink-0">
-      ${promover}${promovido}
-      <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}">Editar</button>
-      <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}">×</button>
+      ? '<span class="badge text-bg-success" title="Já promovido para a SWOT">SWOT ✓</span>' : '';
+    return `<div class="botoes-fator d-flex gap-1 mt-2 align-items-center justify-content-end flex-wrap">
+      ${promovido}${promover}
+      <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
+      <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}" title="Excluir" aria-label="Excluir">×</button>
     </div>`;
   },
 
@@ -74,11 +75,11 @@ const Diag = {
     const colunas = categorias.map(([cat, rotulo, cor]) => {
       const itens = fatores.filter((f) => f.categoria === cat);
       const cartoes = itens.map((f) => `
-        <div class="card mb-2"><div class="card-body py-2 px-3 d-flex justify-content-between gap-2">
+        <div class="card mb-2"><div class="card-body py-2 px-2">
           <div class="small">${Modal.esc(f.descricao)}</div>
           ${this.botoesFator(f, plan.id, comPromocao)}
         </div></div>`).join('');
-      return `<div class="col-md-4 col-lg-2 coluna-categoria">
+      return `<div class="col-6 col-md-4 col-xl-2 coluna-categoria">
         <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${rotulo}
           <span class="badge text-bg-light">${itens.length}</span></div>
         ${cartoes || '<div class="text-muted small">—</div>'}
@@ -149,11 +150,11 @@ const SecaoCenario = {
     const bloco = (tipo, titulo) => {
       const lista = itens.filter((i) => i.tipo === tipo);
       const linhas = lista.map((i, idx) => `
-        <div class="card mb-2"><div class="card-body py-2 px-3 d-flex justify-content-between gap-2">
+        <div class="card mb-2"><div class="card-body py-2 px-3">
           <div class="small"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
-          ${App.podeEditar() ? `<div class="d-flex gap-1 flex-shrink-0">
-            <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}">Editar</button>
-            <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}">×</button>
+          ${App.podeEditar() ? `<div class="botoes-fator d-flex gap-1 mt-2 justify-content-end">
+            <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
+            <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
           </div>` : ''}
         </div></div>`).join('');
       return `<div class="col-md-6">
@@ -254,14 +255,14 @@ const SecaoSwot = {
           ? `<span class="badge text-bg-light border" title="Promovido do ${f.origem_etapa}">${f.origem_etapa}</span>` : '';
         const gut = f.score ? `<span class="badge text-bg-warning" title="Score GUT">GUT ${f.score}</span>` : '';
         return `<div class="card mb-2"><div class="card-body py-2 px-3">
-          <div class="d-flex justify-content-between gap-2">
-            <div class="small">${Modal.esc(f.descricao)}</div>
-            ${App.podeEditar() ? `<div class="d-flex gap-1 flex-shrink-0">
-              <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}">Editar</button>
-              <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}">×</button>
-            </div>` : ''}
+          <div class="small">${Modal.esc(f.descricao)}</div>
+          <div class="botoes-fator d-flex gap-1 mt-2 align-items-center flex-wrap">
+            ${origem}${gut}
+            ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
+              <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
+              <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}" title="Excluir" aria-label="Excluir">×</button>
+            </span>` : ''}
           </div>
-          <div class="d-flex gap-1 mt-1">${origem}${gut}</div>
         </div></div>`;
       }).join('');
       return `<div class="col-md-6">

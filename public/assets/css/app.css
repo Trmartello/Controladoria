@@ -117,6 +117,17 @@ table.tabela-cadastro td { vertical-align: middle; }
 .tabela-painel td, .tabela-painel th { white-space: nowrap; }
 .mini-progresso { height: 12px; min-width: 90px; }
 
+/* Diagnóstico — botões compactos nos cartões de fatores/cenário */
+.botoes-fator .btn {
+  --bs-btn-padding-y: .05rem;
+  --bs-btn-padding-x: .4rem;
+  --bs-btn-font-size: .75rem;
+}
+.botoes-fator .badge { font-size: .65rem; }
+.coluna-categoria { min-width: 0; }
+.coluna-categoria .card { overflow: hidden; }
+.coluna-categoria .small { overflow-wrap: anywhere; }
+
 /* Microfone de ditado por voz — pulsa enquanto grava */
 .btn-ditar.gravando {
   color: #fff;
