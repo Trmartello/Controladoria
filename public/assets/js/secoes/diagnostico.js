@@ -51,17 +51,26 @@ const Diag = {
     return { el, plan, ano: this.ano() };
   },
 
-  // Botões compactos abaixo do texto — em colunas estreitas o lado a lado estoura o cartão
+  QUADRANTES: { FORCA: 'Força', FRAQUEZA: 'Fraqueza', OPORTUNIDADE: 'Oportunidade', AMEACA: 'Ameaça' },
+  CORES_QUADRANTE: { FORCA: '#007a45', FRAQUEZA: '#b08d4f', OPORTUNIDADE: '#2c7fb8', AMEACA: '#8f3b3b' },
+
+  // Botões compactos abaixo do texto: SWOT à esquerda, editar/excluir à direita.
+  // Depois de promovido, o botão mostra a categoria atribuída e reabre a edição.
   botoesFator(f, planId, comPromocao) {
     if (!App.podeEditar()) return '';
-    const promover = comPromocao && !Number(f.promovido)
-      ? `<button class="btn btn-sm btn-outline-success" data-promover="${f.id}" title="Promover para a SWOT">→ SWOT</button>` : '';
-    const promovido = comPromocao && Number(f.promovido)
-      ? '<span class="badge text-bg-success" title="Já promovido para a SWOT">SWOT ✓</span>' : '';
-    return `<div class="botoes-fator d-flex gap-1 mt-2 align-items-center justify-content-end flex-wrap">
-      ${promovido}${promover}
-      <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
-      <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}" title="Excluir" aria-label="Excluir">×</button>
+    let swot = '';
+    if (comPromocao) {
+      swot = Number(f.promovido)
+        ? `<button class="btn btn-sm btn-swot-cat" style="--cor-cat:${this.CORES_QUADRANTE[f.promovido_categoria] || '#007a45'}"
+             data-editar-swot="${f.id}" title="Alterar a categoria na SWOT">${this.QUADRANTES[f.promovido_categoria] || 'SWOT'}</button>`
+        : `<button class="btn btn-sm btn-outline-success" data-promover="${f.id}" title="Promover para a SWOT">→ SWOT</button>`;
+    }
+    return `<div class="botoes-fator d-flex gap-1 mt-2 align-items-center flex-wrap">
+      ${swot}
+      <span class="ms-auto d-flex gap-1">
+        <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
+        <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}" title="Excluir" aria-label="Excluir">×</button>
+      </span>
     </div>`;
   },
 
@@ -137,6 +146,28 @@ const Diag = {
           ]},
         ],
       })));
+
+    // Fator já promovido: o botão da categoria reabre a edição na SWOT
+    el.querySelectorAll('[data-editar-swot]').forEach((b) => b.addEventListener('click', () => {
+      const f = fatores.find((x) => x.id == b.dataset.editarSwot);
+      Modal.abrir({
+        titulo: 'Fator na SWOT — alterar categoria',
+        url: `/api/fatores/${f.promovido_id}`,
+        valores: {
+          planejamento_id: plan.id,
+          etapa: 'SWOT',
+          categoria: f.promovido_categoria,
+          descricao: f.promovido_descricao,
+        },
+        campos: [
+          { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+          { nome: 'etapa', rotulo: '', tipo: 'hidden' },
+          { nome: 'categoria', rotulo: 'Categoria na SWOT', tipo: 'select', opcoes:
+            Object.entries(this.QUADRANTES).map(([valor, rotulo]) => ({ valor, rotulo })) },
+          { nome: 'descricao', rotulo: 'Descrição (como aparece na SWOT)', tipo: 'textarea' },
+        ],
+      });
+    }));
   },
 };
 

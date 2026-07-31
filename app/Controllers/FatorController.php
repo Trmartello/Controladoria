@@ -30,10 +30,13 @@ class FatorController
         Json::ok(Database::todos(
             "SELECT f.*, g.gravidade, g.urgencia, g.tendencia, g.score,
                     o.etapa AS origem_etapa, o.categoria AS origem_categoria,
-                    (SELECT COUNT(*) FROM fator p WHERE p.promovido_de_id = f.id) AS promovido
+                    (pr.id IS NOT NULL) AS promovido,
+                    pr.id AS promovido_id, pr.categoria AS promovido_categoria,
+                    pr.descricao AS promovido_descricao
              FROM fator f
              LEFT JOIN gut g ON g.fator_id = f.id
              LEFT JOIN fator o ON o.id = f.promovido_de_id
+             LEFT JOIN fator pr ON pr.promovido_de_id = f.id
              WHERE f.planejamento_id = ? AND f.etapa = ?{$filtroAno}
              ORDER BY f.categoria, f.id",
             $params

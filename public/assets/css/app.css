@@ -124,6 +124,17 @@ table.tabela-cadastro td { vertical-align: middle; }
   --bs-btn-font-size: .75rem;
 }
 .botoes-fator .badge { font-size: .65rem; }
+/* Botão do fator promovido: mostra a categoria na cor do quadrante */
+.btn-swot-cat {
+  color: var(--cor-cat, #007a45);
+  border: 1px solid var(--cor-cat, #007a45);
+  background: #fff;
+}
+.btn-swot-cat:hover {
+  color: #fff;
+  background: var(--cor-cat, #007a45);
+  border-color: var(--cor-cat, #007a45);
+}
 .coluna-categoria { min-width: 0; }
 .coluna-categoria .card { overflow: hidden; }
 .coluna-categoria .small { overflow-wrap: anywhere; }
