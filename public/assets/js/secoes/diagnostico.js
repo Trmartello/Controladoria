@@ -119,6 +119,28 @@ const Diag = {
     OPORTUNIDADE: 'Externo · ajuda', AMEACA: 'Externo · atrapalha',
   },
 
+  // Navegação entre etapas: leva à seção de destino e destaca o card do fator
+  destaque: null,
+
+  irParaFator(secao, fatorId, chaveFiltro = null, categoria = null) {
+    this.destaque = { secao, fatorId: String(fatorId) };
+    // Garante que o card não fique escondido pelo filtro de categoria do celular
+    if (chaveFiltro && categoria) this.filtroMovel[chaveFiltro] = categoria;
+    App.mostrarSecao(secao);
+  },
+
+  aplicarDestaque(el, secao) {
+    if (this.destaque?.secao !== secao) return;
+    const { fatorId } = this.destaque;
+    this.destaque = null;
+    const alvos = [...el.querySelectorAll(`[data-card-fator="${fatorId}"]`)];
+    const card = alvos.find((c) => c.offsetParent) || alvos[0];
+    if (!card) return;
+    card.classList.add('card-destacado');
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => card.classList.remove('card-destacado'), 2600);
+  },
+
   // Campo de modal com a matriz 2×2 (usado no cadastro de fator da SWOT)
   campoQuadrante(nome = 'categoria', rotulo = 'Quadrante da SWOT') {
     return {
@@ -178,7 +200,7 @@ const Diag = {
     const colunas = categorias.map(([cat, rotulo, cor]) => {
       const itens = fatores.filter((f) => f.categoria === cat);
       const cartoes = itens.map((f) => `
-        <div class="card mb-2"><div class="card-body py-2 px-2">
+        <div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-2">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
           ${this.botoesFator(f, plan.id, comPromocao)}
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
@@ -211,6 +233,7 @@ const Diag = {
     this.ligarSeletorAno(el);
     this.ligarSeletorCategoriaMovel(el, etapa);
     this.ligarVerMais(el);
+    this.aplicarDestaque(el, idSecao.replace('secao-', ''));
     if (!App.podeEditar()) return;
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
@@ -413,10 +436,15 @@ const SecaoSwot = {
     const quadrante = (cat, rotulo, cor) => {
       const itens = fatores.filter((f) => f.categoria === cat);
       const cartoes = itens.map((f) => {
+        // Selos levam à etapa de origem e à Matriz GUT, já no card correspondente
         const origem = f.origem_etapa
-          ? `<span class="badge text-bg-light border" title="Promovido do ${f.origem_etapa}">${f.origem_etapa}</span>` : '';
-        const gut = f.score ? `<span class="badge text-bg-warning" title="Score GUT">GUT ${f.score}</span>` : '';
-        return `<div class="card mb-2"><div class="card-body py-2 px-3">
+          ? `<button type="button" class="badge selo-link text-bg-light border" data-ir-origem="${f.promovido_de_id}"
+               data-etapa-origem="${f.origem_etapa}" data-cat-origem="${f.origem_categoria}"
+               title="Ver este fator no ${f.origem_etapa}">${f.origem_etapa}</button>` : '';
+        const gut = f.score
+          ? `<button type="button" class="badge selo-link text-bg-warning" data-ir-gut="${f.id}"
+               title="Ver na Matriz GUT">GUT ${f.score}</button>` : '';
+        return `<div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
           <div class="botoes-fator d-flex gap-1 mt-2 align-items-center flex-wrap">
             ${origem}${gut}
@@ -467,6 +495,15 @@ const SecaoSwot = {
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'SWOT');
     Diag.ligarVerMais(el);
+    Diag.aplicarDestaque(el, 'swot');
+
+    el.querySelectorAll('[data-ir-origem]').forEach((b) => b.addEventListener('click', () => {
+      const etapa = b.dataset.etapaOrigem;
+      Diag.irParaFator(etapa.toLowerCase(), b.dataset.irOrigem, etapa, b.dataset.catOrigem);
+    }));
+    el.querySelectorAll('[data-ir-gut]').forEach((b) => b.addEventListener('click', () =>
+      Diag.irParaFator('gut', b.dataset.irGut)));
+
     if (!App.podeEditar()) return;
     const modalFator = (f = null, categoria = null) => Modal.abrir({
       titulo: f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,
@@ -521,7 +558,7 @@ const SecaoGut = {
           <div class="gut-nota ${avaliado ? '' : 'text-black-50'}">${v ?? '—'}</div>
         </div>`).join('');
       return `<div class="card gut-card mb-2 ${avaliado ? '' : 'sem-nota'}" style="--cor-quad:${cor}"
-        ${editar ? `data-avaliar="${f.id}" role="button" tabindex="0"` : ''}>
+        data-card-fator="${f.id}" ${editar ? `data-avaliar="${f.id}" role="button" tabindex="0"` : ''}>
         <div class="card-body py-2 px-3">
           <div class="d-flex align-items-center gap-2 mb-1">
             <span class="gut-rank ${avaliado ? '' : 'text-black-50'}">${avaliado ? `${idx + 1}º` : '—'}</span>
@@ -542,7 +579,7 @@ const SecaoGut = {
 
     const linhas = ordenados.map((f, idx) => {
       const cor = Diag.CORES_QUADRANTE[f.categoria] || '#007a45';
-      return `<tr>
+      return `<tr data-card-fator="${f.id}">
         <td>${f.score ? `<strong>${idx + 1}º</strong>` : '—'}</td>
         <td><span class="badge gut-tag" style="color:${cor};background:${cor}1f">${Diag.QUADRANTES[f.categoria]}</span></td>
         <td class="small">${Modal.esc(f.descricao)}</td>
@@ -585,6 +622,7 @@ const SecaoGut = {
 
     Diag.ligarSeletorAno(el);
     Diag.ligarVerMais(el);
+    Diag.aplicarDestaque(el, 'gut');
     if (!editar) return;
     const escala = [1, 2, 3, 4, 5].map((n) => ({ valor: n, rotulo: String(n) }));
     const abrirAvaliacao = (f) => Modal.abrir({

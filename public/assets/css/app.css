@@ -254,6 +254,20 @@ table.tabela-cadastro td { vertical-align: middle; }
   border-radius: 50%;
 }
 
+/* Selos que navegam para a etapa de origem / Matriz GUT */
+.selo-link { cursor: pointer; }
+.selo-link:hover { filter: brightness(.94); }
+
+/* Card alcançado pela navegação entre etapas: pisca e some o realce */
+.card-destacado {
+  box-shadow: 0 0 0 3px rgba(0, 122, 69, .55);
+  animation: pulso-destaque 1.1s ease-in-out 2;
+}
+tr.card-destacado > td { background: #e8f5ee; }
+@keyframes pulso-destaque {
+  50% { box-shadow: 0 0 0 6px rgba(0, 122, 69, .18); }
+}
+
 /* Matriz 2×2 da SWOT: escolha do quadrante por toque, no card ou no modal */
 .painel-quadrantes {
   margin-top: .5rem;
