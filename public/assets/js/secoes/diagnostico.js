@@ -523,9 +523,9 @@ const SecaoGut = {
         },
         campos: [
           { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-          { nome: 'gravidade', rotulo: 'Gravidade (1 = leve · 5 = gravíssimo)', tipo: 'select', opcoes: escala },
-          { nome: 'urgencia', rotulo: 'Urgência (1 = pode esperar · 5 = agir já)', tipo: 'select', opcoes: escala },
-          { nome: 'tendencia', rotulo: 'Tendência (1 = estável · 5 = piora rápido)', tipo: 'select', opcoes: escala },
+          { nome: 'gravidade', rotulo: 'Gravidade (1 = leve · 5 = gravíssimo)', tipo: 'botoes', opcoes: escala },
+          { nome: 'urgencia', rotulo: 'Urgência (1 = pode esperar · 5 = agir já)', tipo: 'botoes', opcoes: escala },
+          { nome: 'tendencia', rotulo: 'Tendência (1 = estável · 5 = piora rápido)', tipo: 'botoes', opcoes: escala },
         ],
       });
     }));

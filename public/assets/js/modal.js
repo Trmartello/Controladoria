@@ -68,6 +68,16 @@ const Modal = {
         controle = `<select class="form-select" id="${id}" multiple size="${Math.min(8, (c.opcoes || []).length || 3)}">${opcoes}</select>`;
         break;
       }
+      case 'botoes': {
+        // Grupo de botões exclusivos (option buttons): um clique escolhe o valor
+        const botoes = (c.opcoes || []).map((o) => `
+          <input type="radio" class="btn-check" name="${id}" id="${id}-${this.esc(o.valor)}"
+            value="${this.esc(o.valor)}" ${String(o.valor) === String(v) ? 'checked' : ''}>
+          <label class="btn btn-opcao" for="${id}-${this.esc(o.valor)}">${this.esc(o.rotulo)}</label>`).join('');
+        controle = `<div class="btn-group w-100 grupo-botoes" role="group" id="${id}"
+          aria-label="${this.esc(c.rotulo)}">${botoes}</div>`;
+        break;
+      }
       case 'hidden':
         // Sem rótulo nem espaçamento — o campo não aparece na tela
         return `<input type="hidden" id="${id}" value="${this.esc(v)}">`;
@@ -177,6 +187,10 @@ const Modal = {
       const el = document.getElementById(`campo-${c.nome}`);
       if (!el) continue;
       if (c.tipo === 'checkbox') dados[c.nome] = el.checked;
+      else if (c.tipo === 'botoes') {
+        const marcado = el.querySelector('input:checked');
+        dados[c.nome] = marcado ? (marcado.value === '' || isNaN(marcado.value) ? marcado.value : Number(marcado.value)) : null;
+      }
       else if (c.tipo === 'multiselect') dados[c.nome] = Array.from(el.selectedOptions).map((o) => o.value);
       else if (c.tipo === 'number') dados[c.nome] = el.value === '' ? null : Number(el.value);
       else dados[c.nome] = el.value;

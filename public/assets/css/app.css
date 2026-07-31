@@ -171,6 +171,22 @@ table.tabela-cadastro td { vertical-align: middle; }
 .ver-mais:hover { text-decoration: underline; }
 .contador-cards { color: #fff; font-size: .7rem; vertical-align: middle; }
 
+/* Grupo de botões exclusivos (option buttons) nos modais — ex.: notas GUT */
+.grupo-botoes .btn-opcao {
+  color: var(--verde-coperdia);
+  border: 1px solid var(--verde-coperdia);
+  background: #fff;
+  font-weight: 600;
+}
+.grupo-botoes .btn-check:checked + .btn-opcao {
+  color: #fff;
+  background: var(--verde-coperdia);
+  border-color: var(--verde-coperdia);
+}
+.grupo-botoes .btn-check:focus-visible + .btn-opcao {
+  box-shadow: 0 0 0 .25rem rgba(0, 122, 69, .25);
+}
+
 /* Botão "+" no título da categoria: novo card já naquela categoria */
 .btn-add-cat {
   --bs-btn-padding-y: 0;
