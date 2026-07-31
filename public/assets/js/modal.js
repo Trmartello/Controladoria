@@ -33,7 +33,7 @@ const Modal = {
     btnExtra.onclick = extra ? () => this.executarExtra() : null;
 
     const form = document.getElementById('modal-campos');
-    form.innerHTML = campos.map((c) => this.renderCampo(c, valores[c.nome])).join('');
+    form.innerHTML = campos.map((c) => this.renderCampo(c, valores[c.nome], valores)).join('');
     this.ligarBotoesSenha(form);
     this.ligarBotoesDitado(form);
 
@@ -49,13 +49,25 @@ const Modal = {
     this.bsModal.show();
   },
 
-  renderCampo(c, valor) {
+  renderCampo(c, valor, valores = {}) {
     const v = valor ?? c.padrao ?? '';
     const id = `campo-${c.nome}`;
+    const exemplo = c.exemplo ? ` placeholder="${this.esc(c.exemplo)}"` : '';
     let controle;
     switch (c.tipo) {
+      case 'periodo': {
+        // Duas datas lado a lado (início e fim), cada uma com seu calendário
+        const colunas = (c.campos || []).map((s) => `
+          <div>
+            <span class="sub-rotulo">${this.esc(s.rotulo)}</span>
+            <input type="date" class="form-control" id="campo-${s.nome}"
+              value="${this.esc(valores[s.nome] ?? '')}">
+          </div>`).join('');
+        controle = `<div class="grade-datas">${colunas}</div>`;
+        break;
+      }
       case 'textarea': {
-        const area = `<textarea class="form-control" id="${id}" rows="${c.linhas || 3}">${this.esc(v)}</textarea>`;
+        const area = `<textarea class="form-control" id="${id}" rows="${c.linhas || 3}"${exemplo}>${this.esc(v)}</textarea>`;
         controle = this.suporteVoz ? `<div class="campo-voz">${area}${this.botaoDitar(id)}</div>` : area;
         break;
       }
@@ -131,14 +143,18 @@ const Modal = {
         </div>`;
         break;
       default: {
-        const input = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}">`;
+        const input = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}"${exemplo}>`;
         controle = (c.tipo || 'text') === 'text' && this.suporteVoz
           ? `<div class="campo-voz">${input}${this.botaoDitar(id)}</div>`
           : input;
       }
     }
     const ajuda = c.ajuda ? `<div class="form-text">${this.esc(c.ajuda)}</div>` : '';
-    return `<div class="mb-3"><label class="form-label" for="${id}">${this.esc(c.rotulo)}</label>${controle}${ajuda}</div>`;
+    const nota = c.nota ? `<div class="nota-campo">${this.esc(c.nota)}</div>` : '';
+    const obrigatorio = c.obrigatorio ? ' <span class="obrigatorio" title="Campo obrigatório">*</span>' : '';
+    // Grupos (como o período) não apontam para um único campo
+    const alvo = c.tipo === 'periodo' ? '' : ` for="${id}"`;
+    return `<div class="mb-3"><label class="form-label"${alvo}>${this.esc(c.rotulo)}${obrigatorio}</label>${controle}${ajuda}${nota}</div>`;
   },
 
   botaoDitar(id) {
@@ -221,6 +237,12 @@ const Modal = {
   coletar() {
     const dados = {};
     for (const c of this.config.campos) {
+      if (c.tipo === 'periodo') {
+        for (const s of c.campos || []) {
+          dados[s.nome] = document.getElementById(`campo-${s.nome}`)?.value ?? '';
+        }
+        continue;
+      }
       const el = document.getElementById(`campo-${c.nome}`);
       if (!el) continue;
       if (c.tipo === 'checkbox') dados[c.nome] = el.checked;

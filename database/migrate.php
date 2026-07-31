@@ -58,6 +58,17 @@ garantirColuna($pdo, 'cenario_item', 'ano',
     'ALTER TABLE cenario_item ADD COLUMN ano SMALLINT NULL AFTER planejamento_id');
 garantirColuna($pdo, 'fator', 'ano',
     'ALTER TABLE fator ADD COLUMN ano SMALLINT NULL AFTER planejamento_id');
+
+// Prazos por calendário: início e fim em projetos e ações planejadas
+// (os campos de texto prazo/quando_ permanecem para os registros antigos)
+garantirColuna($pdo, 'projeto', 'data_inicio',
+    'ALTER TABLE projeto ADD COLUMN data_inicio DATE NULL AFTER prazo');
+garantirColuna($pdo, 'projeto', 'data_fim',
+    'ALTER TABLE projeto ADD COLUMN data_fim DATE NULL AFTER data_inicio');
+garantirColuna($pdo, 'desdobramento', 'data_inicio',
+    'ALTER TABLE desdobramento ADD COLUMN data_inicio DATE NULL AFTER quando_');
+garantirColuna($pdo, 'desdobramento', 'data_fim',
+    'ALTER TABLE desdobramento ADD COLUMN data_fim DATE NULL AFTER data_inicio');
 // Análises antigas sem ano pertencem ao ano-base do ciclo
 $pdo->exec(
     'UPDATE cenario_item ci

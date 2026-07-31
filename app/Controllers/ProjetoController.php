@@ -72,10 +72,13 @@ class ProjetoController
             Json::erro('Escolha da cascata não pertence a este planejamento.');
         }
 
+        [$inicio, $fim] = $this->periodo($d);
+
         $params = [
             $tipo, $titulo,
             mb_substr(trim($d['responsavel'] ?? ''), 0, 255),
             mb_substr(trim($d['prazo'] ?? ''), 0, 60),
+            $inicio, $fim,
             $horizonteId, $cascataId, $impacto ?: null, $classificacao, $status,
             (int)($d['ordem'] ?? 0),
         ];
@@ -83,6 +86,7 @@ class ProjetoController
             $this->exigirProjeto($id, $planId);
             Database::executar(
                 'UPDATE projeto SET tipo = ?, titulo = ?, responsavel = ?, prazo = ?,
+                   data_inicio = ?, data_fim = ?,
                    horizonte_id = ?, cascata_id = ?, impacto = ?, classificacao = ?,
                    status = ?, ordem = ? WHERE id = ?',
                 [...$params, $id]
@@ -90,8 +94,9 @@ class ProjetoController
         } else {
             $id = (int)Database::executar(
                 'INSERT INTO projeto (planejamento_id, tipo, titulo, responsavel, prazo,
+                   data_inicio, data_fim,
                    horizonte_id, cascata_id, impacto, classificacao, status, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [$planId, ...$params]
             );
         }
@@ -129,10 +134,13 @@ class ProjetoController
         $progresso = max(0, min(100, (int)($d['progresso'] ?? 0)));
         $quanto = ($d['quanto'] ?? '') !== '' && $d['quanto'] !== null ? (float)$d['quanto'] : null;
 
+        [$inicio, $fim] = $this->periodo($d);
+
         $params = [
             $projetoId, $oQue, trim($d['por_que'] ?? ''),
             mb_substr(trim($d['quem'] ?? ''), 0, 255),
             mb_substr(trim($d['quando_'] ?? ''), 0, 60),
+            $inicio, $fim,
             mb_substr(trim($d['onde'] ?? ''), 0, 120),
             trim($d['como'] ?? ''),
             $quanto, $status, $progresso, (int)($d['ordem'] ?? 0),
@@ -141,15 +149,16 @@ class ProjetoController
             $this->exigirDesdobramento($id, $planId);
             Database::executar(
                 'UPDATE desdobramento SET projeto_id = ?, o_que = ?, por_que = ?, quem = ?,
-                   quando_ = ?, onde = ?, como = ?, quanto = ?, status = ?, progresso = ?, ordem = ?
+                   quando_ = ?, data_inicio = ?, data_fim = ?, onde = ?, como = ?,
+                   quanto = ?, status = ?, progresso = ?, ordem = ?
                  WHERE id = ?',
                 [...$params, $id]
             );
         } else {
             $id = (int)Database::executar(
-                'INSERT INTO desdobramento (projeto_id, o_que, por_que, quem, quando_, onde,
-                   como, quanto, status, progresso, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO desdobramento (projeto_id, o_que, por_que, quem, quando_,
+                   data_inicio, data_fim, onde, como, quanto, status, progresso, ordem)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 $params
             );
         }
@@ -164,6 +173,31 @@ class ProjetoController
         $this->exigirDesdobramento($id, $planId);
         Database::executar('DELETE FROM desdobramento WHERE id = ?', [$id]);
         Json::ok();
+    }
+
+    /**
+     * Valida o período informado no calendário e devolve [inicio, fim].
+     * Datas em branco viram NULL; o fim nunca pode anteceder o início.
+     */
+    private function periodo(array $d): array
+    {
+        $ler = static function (?string $valor): ?string {
+            $valor = trim((string)$valor);
+            if ($valor === '') {
+                return null;
+            }
+            $data = \DateTimeImmutable::createFromFormat('!Y-m-d', $valor);
+            if (!$data || $data->format('Y-m-d') !== $valor) {
+                Json::erro('Data inválida — use o calendário para escolher.');
+            }
+            return $valor;
+        };
+        $inicio = $ler($d['data_inicio'] ?? null);
+        $fim = $ler($d['data_fim'] ?? null);
+        if ($inicio !== null && $fim !== null && $fim < $inicio) {
+            Json::erro('A data de fim não pode ser anterior à de início.');
+        }
+        return [$inicio, $fim];
     }
 
     private function exigirProjeto(int $id, int $planId): void

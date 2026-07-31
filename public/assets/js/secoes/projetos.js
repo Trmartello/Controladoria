@@ -16,6 +16,17 @@ const SecaoProjetos = {
   filtroTipo: 'ESTRATEGICO',
   diarioAberto: null, // { refTipo, refId }
 
+  // Período escolhido no calendário; textos antigos (prazo/quando_) seguem valendo
+  periodo(inicio, fim, legado) {
+    const br = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : null);
+    const de = br(inicio);
+    const ate = br(fim);
+    if (de && ate) return `${de} a ${ate}`;
+    if (de) return `a partir de ${de}`;
+    if (ate) return `até ${ate}`;
+    return legado || null;
+  },
+
   async carregar() {
     const el = document.getElementById('secao-projetos');
     const params = App.contextoParams();
@@ -39,7 +50,8 @@ const SecaoProjetos = {
     const cartoes = doTipo.map((p) => {
       const detalhes = [
         p.responsavel && `<strong>Responsável:</strong> ${Modal.esc(p.responsavel)}`,
-        p.prazo && `<strong>Prazo:</strong> ${Modal.esc(p.prazo)}`,
+        this.periodo(p.data_inicio, p.data_fim, p.prazo)
+          && `<strong>Prazo:</strong> ${Modal.esc(this.periodo(p.data_inicio, p.data_fim, p.prazo))}`,
         p.horizonte_nome && `<strong>Horizonte:</strong> ${Modal.esc(p.horizonte_nome)}`,
         p.impacto && `<strong>Impacto:</strong> ${p.impacto}`,
       ].filter(Boolean).join(' · ');
@@ -52,7 +64,9 @@ const SecaoProjetos = {
       const linhas = p.desdobramentos.map((dd) => {
         const cincoW = [
           dd.por_que && `Por quê: ${dd.por_que}`, dd.quem && `Quem: ${dd.quem}`,
-          dd.quando_ && `Quando: ${dd.quando_}`, dd.onde && `Onde: ${dd.onde}`,
+          this.periodo(dd.data_inicio, dd.data_fim, dd.quando_)
+            && `Quando: ${this.periodo(dd.data_inicio, dd.data_fim, dd.quando_)}`,
+          dd.onde && `Onde: ${dd.onde}`,
           dd.como && `Como: ${dd.como}`,
           dd.quanto !== null && dd.quanto !== undefined && `Quanto: R$ ${Number(dd.quanto).toLocaleString('pt-BR')}`,
         ].filter(Boolean).map(Modal.esc).join(' · ');
@@ -172,22 +186,35 @@ const SecaoProjetos = {
         valor: e.id,
         rotulo: `${nomeDriver(e.driver_id)}: ${e.escolha.slice(0, 60)}`,
       })));
+    // Projeto novo já nasce no primeiro horizonte do ciclo (o mais próximo)
+    const horizontePadrao = this.cascata.horizontes[0];
     Modal.abrir({
       titulo: p ? 'Editar projeto' : 'Novo projeto',
       url: p ? `/api/projetos/${p.id}` : '/api/projetos',
       valores: p
         ? { ...p, horizonte_id: p.horizonte_id ?? '', cascata_id: p.cascata_id ?? '', impacto: p.impacto ?? '', planejamento_id: this.plan.id }
-        : { planejamento_id: this.plan.id, tipo: this.filtroTipo },
+        : { planejamento_id: this.plan.id, tipo: this.filtroTipo, horizonte_id: horizontePadrao?.id ?? '' },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: [
           { valor: 'ESTRATEGICO', rotulo: 'Estratégico (plurianual)' },
           { valor: 'OPERACIONAL', rotulo: 'Operacional (ano)' },
         ]},
-        { nome: 'titulo', rotulo: 'Projeto / ação planejada', tipo: 'textarea', linhas: 2 },
-        { nome: 'responsavel', rotulo: 'Responsável' },
-        { nome: 'prazo', rotulo: 'Prazo', ajuda: 'Ex.: A partir de fev/2027' },
-        { nome: 'horizonte_id', rotulo: 'Horizonte', tipo: 'select', opcoes: opcoesHorizonte },
+        { nome: 'titulo', rotulo: 'Projeto / ação planejada', obrigatorio: true,
+          exemplo: 'Ex.: 1ª onda de silos — unidade Capinzal' },
+        { nome: 'responsavel', rotulo: 'Responsável', exemplo: 'Ex.: Jarles Thuns' },
+        // Preserva o prazo em texto dos projetos criados antes do calendário
+        { nome: 'prazo', rotulo: '', tipo: 'hidden' },
+        { nome: 'prazo_periodo', rotulo: 'Prazo da ação', tipo: 'periodo',
+          campos: [
+            { nome: 'data_inicio', rotulo: 'Início' },
+            { nome: 'data_fim', rotulo: 'Fim previsto' },
+          ],
+          ajuda: 'Toque no campo para abrir o calendário. Em projetos plurianuais, use o mês de referência.' },
+        { nome: 'horizonte_id', rotulo: 'Horizonte', tipo: 'select', opcoes: opcoesHorizonte,
+          nota: horizontePadrao
+            ? `Padrão: ${horizontePadrao.nome} (${horizontePadrao.ano_inicio}–${horizontePadrao.ano_fim}), o primeiro horizonte do ciclo. Troque se o projeto pertencer a outro.`
+            : null },
         { nome: 'cascata_id', rotulo: 'Escolha da cascata que originou', tipo: 'select', opcoes: opcoesCascata },
         { nome: 'impacto', rotulo: 'Impacto', tipo: 'select', opcoes: [
           { valor: '', rotulo: '(não definido)' },
@@ -216,10 +243,17 @@ const SecaoProjetos = {
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'projeto_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'o_que', rotulo: 'O quê? (What)', tipo: 'textarea', linhas: 2 },
+        { nome: 'o_que', rotulo: 'O quê? (What)', obrigatorio: true, tipo: 'textarea', linhas: 2,
+          exemplo: 'Ex.: Contratar projeto executivo dos silos' },
         { nome: 'por_que', rotulo: 'Por quê? (Why)' },
-        { nome: 'quem', rotulo: 'Quem? (Who)' },
-        { nome: 'quando_', rotulo: 'Quando? (When)' },
+        { nome: 'quem', rotulo: 'Quem? (Who)', exemplo: 'Responsável pela ação' },
+        { nome: 'quando_', rotulo: '', tipo: 'hidden' },
+        { nome: 'quando_periodo', rotulo: 'Quando? (When)', tipo: 'periodo',
+          campos: [
+            { nome: 'data_inicio', rotulo: 'Início' },
+            { nome: 'data_fim', rotulo: 'Fim previsto' },
+          ],
+          ajuda: 'Toque no campo para abrir o calendário.' },
         { nome: 'onde', rotulo: 'Onde? (Where)' },
         { nome: 'como', rotulo: 'Como? (How)' },
         { nome: 'quanto', rotulo: 'Quanto custa? R$ (How much)', tipo: 'number' },

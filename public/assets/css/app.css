@@ -171,6 +171,41 @@ table.tabela-cadastro td { vertical-align: middle; }
 .ver-mais:hover { text-decoration: underline; }
 .contador-cards { color: #fff; font-size: .7rem; vertical-align: middle; }
 
+/* Formulários dos modais: campos espaçados, rótulos fortes e caixas confortáveis */
+#modal-campos > div { margin-bottom: 1.35rem; }
+#modal-campos > div:last-child { margin-bottom: .5rem; }
+#modal-campos > div > .form-label {
+  font-weight: 700;
+  font-size: .95rem;
+  margin-bottom: .45rem;
+}
+#modal-campos .form-control,
+#modal-campos .form-select {
+  padding: .7rem .85rem;
+  border-radius: .625rem;
+  background-color: #fcfdfc;
+}
+#modal-campos .form-text { font-size: .78rem; margin-top: .4rem; }
+.obrigatorio { color: var(--verde-coperdia); font-weight: 800; }
+.grade-datas { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+.sub-rotulo {
+  display: block;
+  font-size: .75rem;
+  font-weight: 600;
+  color: #6a6a6a;
+  margin-bottom: .3rem;
+}
+.nota-campo {
+  background: #eff6f2;
+  border-left: 3px solid var(--verde-coperdia);
+  border-radius: 0 .5rem .5rem 0;
+  padding: .55rem .75rem;
+  margin-top: .55rem;
+  font-size: .78rem;
+  line-height: 1.45;
+  color: #2a4a3c;
+}
+
 /* Bloco informativo no modal (ex.: fator avaliado na GUT): ~10 linhas e rolagem */
 .card-info-modal {
   background: #f8faf9;
@@ -361,16 +396,23 @@ tr.card-destacado > td { background: #e8f5ee; }
   flex: 1 1 auto;
   min-height: 0;
 }
+/* Com #modal-campos em coluna flex, os campos encolheriam e se sobreporiam
+   quando o formulário é mais alto que o modal — aqui cada um mantém a
+   própria altura e o corpo do modal rola */
+#modal-form #modal-campos > div { flex: 0 0 auto; }
 #modal-form #modal-campos > div:has(textarea) {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  /* sem min-height: 0 — encolher abaixo do conteúdo faria o campo
+     transbordar por cima do rótulo seguinte */
 }
+/* O campo de texto cresce, mas nunca abaixo de ~3 linhas: senão, em
+   formulários longos, ele colapsaria por cima do rótulo seguinte */
 #modal-form #modal-campos > div:has(textarea) > .campo-voz,
 #modal-form #modal-campos > div:has(textarea) > textarea.form-control {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 5rem;
 }
 #modal-form #modal-campos > div:has(textarea) > .campo-voz > textarea.form-control {
   flex: 1 1 auto;
