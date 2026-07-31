@@ -139,6 +139,40 @@ table.tabela-cadastro td { vertical-align: middle; }
 .coluna-categoria .card { overflow: hidden; }
 .coluna-categoria .small { overflow-wrap: anywhere; }
 
+/* Modais de digitação: quando há campo de texto (textarea), o modal ocupa a
+   altura toda da tela e o campo cresce para preencher o espaço restante */
+#modal-form .modal-dialog:has(textarea) {
+  height: calc(100dvh - 3.5rem);
+  max-height: none;
+}
+#modal-form .modal-dialog:has(textarea) .modal-content { height: 100%; }
+#modal-form .modal-dialog:has(textarea) .modal-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#modal-form .modal-dialog:has(textarea) #modal-campos {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#modal-form #modal-campos > div:has(textarea) {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#modal-form #modal-campos > div:has(textarea) > .input-group,
+#modal-form #modal-campos > div:has(textarea) > textarea.form-control {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#modal-form #modal-campos textarea.form-control { min-height: 5rem; }
+@media (max-width: 991.98px) {
+  #modal-form .modal-dialog:has(textarea) { height: calc(100dvh - 1rem); }
+}
+
 /* Microfone de ditado por voz — pulsa enquanto grava */
 .btn-ditar.gravando {
   color: #fff;
