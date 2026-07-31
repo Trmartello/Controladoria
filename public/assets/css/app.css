@@ -1,0 +1,47 @@
+:root {
+  --verde-coperdia: #007a45;
+  --verde-escuro: #06432a;
+  --dourado: #b08d4f;
+}
+
+body { background: #f4f6f5; }
+
+.marca {
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #fff;
+  background: var(--verde-coperdia);
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 4px;
+}
+
+.login-body { background: var(--verde-escuro); }
+.login-card { width: 100%; max-width: 380px; }
+.login-card .marca { background: var(--verde-coperdia); }
+
+.menu-lateral {
+  width: 280px;
+  min-height: 100vh;
+  background: var(--verde-escuro);
+  position: sticky;
+  top: 0;
+}
+.menu-lateral .nav-link { color: #d3e5dc; padding: 6px 10px; }
+.menu-lateral .nav-link.active { background: var(--verde-coperdia); color: #fff; }
+.menu-lateral .nav-link.disabled { color: #6d8a7c; }
+
+.btn-verde {
+  background: var(--verde-coperdia);
+  color: #fff;
+}
+.btn-verde:hover { background: #056038; color: #fff; }
+
+.conteudo h1 { font-size: 1.4rem; font-weight: 700; }
+
+.cartao-etapa { border-left: 4px solid var(--verde-coperdia); }
+.cartao-etapa.pendente { border-left-color: #d0d7d3; }
+
+.badge-horizonte { background: var(--dourado); }
+
+table.tabela-cadastro td { vertical-align: middle; }
