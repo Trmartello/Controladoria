@@ -50,7 +50,7 @@ const Modal = {
     switch (c.tipo) {
       case 'textarea': {
         const area = `<textarea class="form-control" id="${id}" rows="${c.linhas || 3}">${this.esc(v)}</textarea>`;
-        controle = this.suporteVoz ? `<div class="input-group">${area}${this.botaoDitar(id)}</div>` : area;
+        controle = this.suporteVoz ? `<div class="campo-voz">${area}${this.botaoDitar(id)}</div>` : area;
         break;
       }
       case 'select': {
@@ -68,6 +68,9 @@ const Modal = {
         controle = `<select class="form-select" id="${id}" multiple size="${Math.min(8, (c.opcoes || []).length || 3)}">${opcoes}</select>`;
         break;
       }
+      case 'hidden':
+        // Sem rótulo nem espaçamento — o campo não aparece na tela
+        return `<input type="hidden" id="${id}" value="${this.esc(v)}">`;
       case 'checkbox':
         return `<div class="form-check mb-3">
           <input class="form-check-input" type="checkbox" id="${id}" ${v ? 'checked' : ''}>
@@ -83,7 +86,7 @@ const Modal = {
       default: {
         const input = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}">`;
         controle = (c.tipo || 'text') === 'text' && this.suporteVoz
-          ? `<div class="input-group">${input}${this.botaoDitar(id)}</div>`
+          ? `<div class="campo-voz">${input}${this.botaoDitar(id)}</div>`
           : input;
       }
     }
@@ -92,7 +95,7 @@ const Modal = {
   },
 
   botaoDitar(id) {
-    return `<button class="btn btn-outline-secondary btn-ditar" type="button" data-alvo="${id}"
+    return `<button class="btn btn-ditar" type="button" data-alvo="${id}"
       title="Ditar por voz" aria-label="Ditar por voz">${this.iconeMic}</button>`;
   },
 

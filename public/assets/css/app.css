@@ -163,8 +163,12 @@ table.tabela-cadastro td { vertical-align: middle; }
   flex-direction: column;
   min-height: 0;
 }
-#modal-form #modal-campos > div:has(textarea) > .input-group,
+#modal-form #modal-campos > div:has(textarea) > .campo-voz,
 #modal-form #modal-campos > div:has(textarea) > textarea.form-control {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#modal-form #modal-campos > div:has(textarea) > .campo-voz > textarea.form-control {
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -173,8 +177,30 @@ table.tabela-cadastro td { vertical-align: middle; }
   #modal-form .modal-dialog:has(textarea) { height: calc(100dvh - 1rem); }
 }
 
-/* Microfone de ditado por voz — pulsa enquanto grava */
-.btn-ditar.gravando {
+/* Microfone de ditado por voz — ícone discreto flutuando no canto inferior
+   direito do campo; pulsa em vermelho enquanto grava */
+.campo-voz { position: relative; display: flex; flex-direction: column; }
+.campo-voz > .form-control { flex: 1 1 auto; padding-right: 2.4rem; }
+.campo-voz > textarea.form-control { resize: none; }
+.campo-voz > .btn-ditar {
+  position: absolute;
+  right: .35rem;
+  bottom: .35rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  color: #8a939b;
+  background: transparent;
+  z-index: 4;
+}
+.campo-voz > .btn-ditar:hover { color: #343a40; background: #e9ecef; }
+.btn-ditar.gravando,
+.campo-voz > .btn-ditar.gravando {
   color: #fff;
   background: #dc3545;
   border-color: #dc3545;
