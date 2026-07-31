@@ -182,7 +182,9 @@ const Diag = {
       ],
     });
 
-    document.getElementById('btn-novo-fator').addEventListener('click', () => modalFator());
+    // el.querySelector, não getElementById: PESTEL e Porter usam o mesmo id e
+    // a seção anterior continua no DOM (oculta) — o global pegaria o botão errado
+    el.querySelector('#btn-novo-fator').addEventListener('click', () => modalFator());
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       modalFator(fatores.find((f) => f.id == b.dataset.editar))));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
