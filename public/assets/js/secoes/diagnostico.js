@@ -75,9 +75,33 @@ const Diag = {
         col.classList.toggle('d-none', ocultar);
         col.classList.toggle('d-md-block', ocultar); // no computador nunca some
       });
+      this.ligarVerMais(el); // colunas recém-exibidas ganham o "ver mais"
     };
     sel.addEventListener('change', aplicar);
     aplicar();
+  },
+
+  // Cartões com altura média: texto longo é cortado em ~6 linhas e ganha um
+  // "ver mais" para expandir/recolher, dando noção de quantos cards existem
+  ligarVerMais(el) {
+    el.querySelectorAll('.texto-fator').forEach((t) => {
+      if (t.nextElementSibling?.classList.contains('ver-mais')) return;
+      if (t.scrollHeight <= t.clientHeight + 1) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-link btn-sm p-0 ver-mais';
+      btn.textContent = 'ver mais';
+      btn.addEventListener('click', () => {
+        const expandido = t.classList.toggle('expandido');
+        btn.textContent = expandido ? 'ver menos' : 'ver mais';
+      });
+      t.after(btn);
+    });
+  },
+
+  contadorCards(qtd, cor) {
+    return `<span class="badge rounded-pill contador-cards" style="background:${cor}"
+      title="${qtd} card(s) nesta categoria">${qtd}</span>`;
   },
 
   QUADRANTES: { FORCA: 'Força', FRAQUEZA: 'Fraqueza', OPORTUNIDADE: 'Oportunidade', AMEACA: 'Ameaça' },
@@ -114,12 +138,12 @@ const Diag = {
       const itens = fatores.filter((f) => f.categoria === cat);
       const cartoes = itens.map((f) => `
         <div class="card mb-2"><div class="card-body py-2 px-2">
-          <div class="small">${Modal.esc(f.descricao)}</div>
+          <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
           ${this.botoesFator(f, plan.id, comPromocao)}
         </div></div>`).join('');
       return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
         <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${rotulo}
-          <span class="badge text-bg-light">${itens.length}</span></div>
+          ${this.contadorCards(itens.length, cor)}</div>
         ${cartoes || '<div class="text-muted small">—</div>'}
       </div>`;
     }).join('');
@@ -141,6 +165,7 @@ const Diag = {
 
     this.ligarSeletorAno(el);
     this.ligarSeletorCategoriaMovel(el, etapa);
+    this.ligarVerMais(el);
     if (!App.podeEditar()) return;
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
@@ -216,14 +241,14 @@ const SecaoCenario = {
       const lista = itens.filter((i) => i.tipo === tipo);
       const linhas = lista.map((i, idx) => `
         <div class="card mb-2"><div class="card-body py-2 px-3">
-          <div class="small"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
+          <div class="small texto-fator"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
           ${App.podeEditar() ? `<div class="botoes-fator d-flex gap-1 mt-2 justify-content-end">
             <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
             <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
           </div>` : ''}
         </div></div>`).join('');
       return `<div class="col-md-6" data-coluna-categoria="${tipo}">
-        <h2 class="h6 text-uppercase text-muted">${titulo} <span class="badge text-bg-light">${lista.length}</span></h2>
+        <h2 class="h6 text-uppercase text-muted">${titulo} ${Diag.contadorCards(lista.length, 'var(--verde-coperdia)')}</h2>
         ${linhas || '<div class="text-muted small">Nenhum item.</div>'}
       </div>`;
     };
@@ -253,6 +278,7 @@ const SecaoCenario = {
 
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
+    Diag.ligarVerMais(el);
     if (!App.podeEditar()) return;
     const modalItem = (i = null) => Modal.abrir({
       titulo: i ? `Editar item do cenário (${i.ano || ano})` : `Novo item do cenário · ${ano}`,
@@ -329,7 +355,7 @@ const SecaoSwot = {
           ? `<span class="badge text-bg-light border" title="Promovido do ${f.origem_etapa}">${f.origem_etapa}</span>` : '';
         const gut = f.score ? `<span class="badge text-bg-warning" title="Score GUT">GUT ${f.score}</span>` : '';
         return `<div class="card mb-2"><div class="card-body py-2 px-3">
-          <div class="small">${Modal.esc(f.descricao)}</div>
+          <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
           <div class="botoes-fator d-flex gap-1 mt-2 align-items-center flex-wrap">
             ${origem}${gut}
             ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
@@ -342,7 +368,7 @@ const SecaoSwot = {
       return `<div class="col-md-6" data-coluna-categoria="${cat}">
         <div class="p-2 rounded" style="background:${cor}18; border-top: 3px solid ${cor}">
           <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${rotulo}
-            <span class="badge text-bg-light">${itens.length}</span></div>
+            ${Diag.contadorCards(itens.length, cor)}</div>
           ${cartoes || '<div class="text-muted small">Nenhum fator.</div>'}
         </div>
       </div>`;
@@ -375,6 +401,7 @@ const SecaoSwot = {
 
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'SWOT');
+    Diag.ligarVerMais(el);
     if (!App.podeEditar()) return;
     const modalFator = (f = null) => Modal.abrir({
       titulo: f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,

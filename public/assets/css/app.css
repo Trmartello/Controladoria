@@ -149,6 +149,28 @@ table.tabela-cadastro td { vertical-align: middle; }
 }
 .sel-categoria-movel option { background: #fff; color: #212529; }
 
+/* Cartões com altura média: o texto é cortado em ~6 linhas; "ver mais" expande */
+.texto-fator {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.texto-fator.expandido {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+.ver-mais {
+  font-size: .75rem;
+  color: var(--verde-coperdia);
+  text-decoration: none;
+}
+.ver-mais:hover { text-decoration: underline; }
+.contador-cards { color: #fff; font-size: .7rem; vertical-align: middle; }
+
 .coluna-categoria { min-width: 0; }
 .coluna-categoria .card { overflow: hidden; }
 .coluna-categoria .small { overflow-wrap: anywhere; }
