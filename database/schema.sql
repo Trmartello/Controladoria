@@ -183,9 +183,21 @@ CREATE TABLE IF NOT EXISTS projeto (
   CONSTRAINT fk_proj_cascata FOREIGN KEY (cascata_id) REFERENCES cascata_escolha(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Frentes de trabalho dentro de um projeto (projeto → iniciativa → ação)
+CREATE TABLE IF NOT EXISTS iniciativa (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  projeto_id  INT NOT NULL,
+  titulo      TEXT NOT NULL,
+  descricao   TEXT,
+  status      ENUM('ABERTA','EM_ANDAMENTO','CONCLUIDA') NOT NULL DEFAULT 'ABERTA',
+  ordem       SMALLINT NOT NULL DEFAULT 0,
+  CONSTRAINT fk_ini_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS desdobramento (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   projeto_id   INT NOT NULL,
+  iniciativa_id INT NULL,
   o_que        TEXT NOT NULL,
   por_que      TEXT,
   quem         VARCHAR(255),
@@ -195,10 +207,13 @@ CREATE TABLE IF NOT EXISTS desdobramento (
   onde         VARCHAR(120),
   como         TEXT,
   quanto       DECIMAL(15,2) NULL,
-  status       ENUM('NAO_INICIADO','EM_ANDAMENTO','CONCLUIDO','ATRASADO','CANCELADO') NOT NULL DEFAULT 'NAO_INICIADO',
+  status       ENUM('NAO_INICIADO','EM_ANDAMENTO','CONCLUIDO','ATRASADO','CANCELADO','PAUSADO','AGUARDANDO_VALIDACAO') NOT NULL DEFAULT 'NAO_INICIADO',
+  prioridade   ENUM('ALTA','MEDIA','BAIXA') NOT NULL DEFAULT 'MEDIA',
   progresso    TINYINT NOT NULL DEFAULT 0,
+  concluido_em DATETIME NULL,
   ordem        SMALLINT NOT NULL DEFAULT 0,
-  CONSTRAINT fk_desd_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id) ON DELETE CASCADE
+  CONSTRAINT fk_desd_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id) ON DELETE CASCADE,
+  CONSTRAINT fk_desd_iniciativa FOREIGN KEY (iniciativa_id) REFERENCES iniciativa(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS envelope_capital (

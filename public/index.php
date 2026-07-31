@@ -186,6 +186,11 @@ try {
             (new ProjetoController())->excluir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/projetos/(\d+)$#', $rota, $m):
             (new ProjetoController())->salvar((int)$m[1]); break;
+        case $rota === 'POST /api/iniciativas':     (new ProjetoController())->salvarIniciativa(); break;
+        case (bool)preg_match('#^POST /api/iniciativas/(\d+)/excluir$#', $rota, $m):
+            (new ProjetoController())->excluirIniciativa((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/iniciativas/(\d+)$#', $rota, $m):
+            (new ProjetoController())->salvarIniciativa((int)$m[1]); break;
         case $rota === 'POST /api/desdobramentos':  (new ProjetoController())->salvarDesdobramento(); break;
         case (bool)preg_match('#^POST /api/desdobramentos/(\d+)/excluir$#', $rota, $m):
             (new ProjetoController())->excluirDesdobramento((int)$m[1]); break;

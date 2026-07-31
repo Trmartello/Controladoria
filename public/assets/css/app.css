@@ -294,6 +294,22 @@ table.tabela-cadastro td { vertical-align: middle; }
   border-radius: 50%;
 }
 
+/* Plano de ação em três níveis: projeto → iniciativa → ação */
+.iniciativa {
+  border-left: 3px solid var(--verde-coperdia);
+  padding-left: .6rem;
+}
+.iniciativa-cabeca { cursor: pointer; padding: .15rem 0; }
+.seta-iniciativa { color: var(--verde-coperdia); font-size: .8rem; }
+.acoes-iniciativa { padding-top: .5rem; }
+.acao-card { border-left: 4px solid var(--cor-prio, #b08d4f); }
+.selo-prioridade {
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 /* Selos que navegam para a etapa de origem / Matriz GUT */
 .selo-link { cursor: pointer; }
 .selo-link:hover { filter: brightness(.94); }

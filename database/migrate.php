@@ -69,6 +69,45 @@ garantirColuna($pdo, 'desdobramento', 'data_inicio',
     'ALTER TABLE desdobramento ADD COLUMN data_inicio DATE NULL AFTER quando_');
 garantirColuna($pdo, 'desdobramento', 'data_fim',
     'ALTER TABLE desdobramento ADD COLUMN data_fim DATE NULL AFTER data_inicio');
+
+// Plano de ação em três níveis: projeto → iniciativa → ação
+garantirColuna($pdo, 'desdobramento', 'iniciativa_id',
+    'ALTER TABLE desdobramento ADD COLUMN iniciativa_id INT NULL AFTER projeto_id,
+     ADD CONSTRAINT fk_desd_iniciativa FOREIGN KEY (iniciativa_id)
+         REFERENCES iniciativa(id) ON DELETE CASCADE');
+garantirColuna($pdo, 'desdobramento', 'prioridade',
+    "ALTER TABLE desdobramento ADD COLUMN prioridade
+     ENUM('ALTA','MEDIA','BAIXA') NOT NULL DEFAULT 'MEDIA' AFTER status");
+garantirColuna($pdo, 'desdobramento', 'concluido_em',
+    'ALTER TABLE desdobramento ADD COLUMN concluido_em DATETIME NULL AFTER progresso');
+
+// Status manuais novos (pausada e aguardando validação) nas ações já existentes
+$tipoStatus = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'desdobramento' AND COLUMN_NAME = 'status'"
+)->fetchColumn();
+if ($tipoStatus && !str_contains((string)$tipoStatus, 'PAUSADO')) {
+    $pdo->exec(
+        "ALTER TABLE desdobramento MODIFY COLUMN status
+         ENUM('NAO_INICIADO','EM_ANDAMENTO','CONCLUIDO','ATRASADO','CANCELADO','PAUSADO','AGUARDANDO_VALIDACAO')
+         NOT NULL DEFAULT 'NAO_INICIADO'"
+    );
+    echo "migrate: status da ação ampliado (PAUSADO, AGUARDANDO_VALIDACAO).\n";
+}
+
+// Ações criadas antes das iniciativas são agrupadas numa frente padrão
+$pdo->exec(
+    "INSERT INTO iniciativa (projeto_id, titulo, ordem)
+     SELECT DISTINCT d.projeto_id, 'Ações do projeto', 0
+     FROM desdobramento d
+     WHERE d.iniciativa_id IS NULL"
+);
+$pdo->exec(
+    "UPDATE desdobramento d
+     JOIN iniciativa i ON i.projeto_id = d.projeto_id AND i.titulo = 'Ações do projeto'
+     SET d.iniciativa_id = i.id
+     WHERE d.iniciativa_id IS NULL"
+);
 // Análises antigas sem ano pertencem ao ano-base do ciclo
 $pdo->exec(
     'UPDATE cenario_item ci

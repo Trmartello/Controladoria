@@ -8,12 +8,20 @@ use App\Core\Json;
 
 class ProjetoController
 {
-    private const STATUS = ['NAO_INICIADO', 'EM_ANDAMENTO', 'CONCLUIDO', 'ATRASADO', 'CANCELADO'];
+    /** Status da ação: os dois primeiros são automáticos (regidos pela data-limite). */
+    private const STATUS = [
+        'NAO_INICIADO', 'ATRASADO',
+        'EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO', 'PAUSADO', 'AGUARDANDO_VALIDACAO',
+    ];
+    private const STATUS_PROJETO = ['NAO_INICIADO', 'EM_ANDAMENTO', 'CONCLUIDO', 'ATRASADO', 'CANCELADO'];
+    private const STATUS_INICIATIVA = ['ABERTA', 'EM_ANDAMENTO', 'CONCLUIDA'];
+    private const PRIORIDADES = ['ALTA', 'MEDIA', 'BAIXA'];
 
     public function listar(): void
     {
         $planId = (int)($_GET['planejamento_id'] ?? 0);
         Auth::exigirAcessoPlanejamento($planId);
+        $this->sincronizarAtrasos($planId);
         $projetos = Database::todos(
             'SELECT p.*, h.nome AS horizonte_nome, ce.escolha AS escolha_origem
              FROM projeto p
@@ -24,12 +32,108 @@ class ProjetoController
             [$planId]
         );
         foreach ($projetos as &$p) {
+            $p['iniciativas'] = Database::todos(
+                'SELECT * FROM iniciativa WHERE projeto_id = ? ORDER BY ordem, id',
+                [$p['id']]
+            );
             $p['desdobramentos'] = Database::todos(
                 'SELECT * FROM desdobramento WHERE projeto_id = ? ORDER BY ordem, id',
                 [$p['id']]
             );
+            foreach ($p['iniciativas'] as &$i) {
+                $i['acoes'] = array_values(array_filter(
+                    $p['desdobramentos'],
+                    fn($d) => (int)$d['iniciativa_id'] === (int)$i['id']
+                ));
+            }
+            unset($i);
         }
         Json::ok($projetos);
+    }
+
+    /**
+     * "No prazo" e "Atrasada" nunca são escolhidos pelo usuário: são derivados
+     * da data-limite da ação. Os demais status são manuais e não se mexe neles.
+     * A reconciliação acontece na leitura (sem agendador).
+     */
+    private function sincronizarAtrasos(int $planId): void
+    {
+        Database::executar(
+            "UPDATE desdobramento d JOIN projeto p ON p.id = d.projeto_id
+             SET d.status = 'ATRASADO'
+             WHERE p.planejamento_id = ? AND d.status IN ('NAO_INICIADO', 'EM_ANDAMENTO')
+               AND d.data_fim IS NOT NULL AND d.data_fim < CURDATE()",
+            [$planId]
+        );
+        Database::executar(
+            "UPDATE desdobramento d JOIN projeto p ON p.id = d.projeto_id
+             SET d.status = 'NAO_INICIADO'
+             WHERE p.planejamento_id = ? AND d.status = 'ATRASADO'
+               AND (d.data_fim IS NULL OR d.data_fim >= CURDATE())",
+            [$planId]
+        );
+    }
+
+    /** Resolve o status de uma ação na gravação, respeitando os manuais. */
+    private function resolverStatus(string $status, ?string $dataFim): string
+    {
+        $atrasada = $dataFim !== null && $dataFim < date('Y-m-d');
+        if (in_array($status, ['NAO_INICIADO', 'EM_ANDAMENTO'], true) && $atrasada) {
+            return 'ATRASADO';
+        }
+        if ($status === 'ATRASADO' && !$atrasada) {
+            return 'NAO_INICIADO';
+        }
+        return $status;
+    }
+
+    public function salvarIniciativa(?int $id = null): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $projetoId = (int)($d['projeto_id'] ?? 0);
+        $this->exigirProjeto($projetoId, $planId);
+
+        $titulo = trim($d['titulo'] ?? '');
+        if ($titulo === '') {
+            Json::erro('Informe o título da iniciativa.');
+        }
+        $status = $d['status'] ?? 'ABERTA';
+        if (!in_array($status, self::STATUS_INICIATIVA, true)) {
+            Json::erro('Status da iniciativa inválido.');
+        }
+        $descricao = trim($d['descricao'] ?? '');
+
+        if ($id) {
+            $this->exigirIniciativa($id, $planId);
+            Database::executar(
+                'UPDATE iniciativa SET titulo = ?, descricao = ?, status = ?, ordem = ? WHERE id = ?',
+                [$titulo, $descricao, $status, (int)($d['ordem'] ?? 0), $id]
+            );
+        } else {
+            // ordem = quantidade atual, como no plano de ação de referência
+            $ordem = (int)(Database::um(
+                'SELECT COUNT(*) AS n FROM iniciativa WHERE projeto_id = ?',
+                [$projetoId]
+            )['n'] ?? 0);
+            $id = (int)Database::executar(
+                'INSERT INTO iniciativa (projeto_id, titulo, descricao, status, ordem) VALUES (?, ?, ?, ?, ?)',
+                [$projetoId, $titulo, $descricao, $status, $ordem]
+            );
+        }
+        Json::ok(['id' => $id]);
+    }
+
+    public function excluirIniciativa(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $this->exigirIniciativa($id, $planId);
+        // As ações da iniciativa saem junto (FK ON DELETE CASCADE)
+        Database::executar('DELETE FROM iniciativa WHERE id = ?', [$id]);
+        Json::ok();
     }
 
     public function salvar(?int $id = null): void
@@ -44,7 +148,7 @@ class ProjetoController
             Json::erro('Informe o tipo e o título do projeto.');
         }
         $status = $d['status'] ?? 'NAO_INICIADO';
-        if (!in_array($status, self::STATUS, true)) {
+        if (!in_array($status, self::STATUS_PROJETO, true)) {
             Json::erro('Status inválido.');
         }
         $impacto = $d['impacto'] ?? null;
@@ -122,6 +226,11 @@ class ProjetoController
         Auth::exigirEdicaoPlanejamento($planId);
         $projetoId = (int)($d['projeto_id'] ?? 0);
         $this->exigirProjeto($projetoId, $planId);
+        $iniciativaId = (int)($d['iniciativa_id'] ?? 0);
+        $iniciativa = $this->exigirIniciativa($iniciativaId, $planId);
+        if ((int)$iniciativa['projeto_id'] !== $projetoId) {
+            Json::erro('A iniciativa não pertence a este projeto.');
+        }
 
         $oQue = trim($d['o_que'] ?? '');
         if ($oQue === '') {
@@ -131,34 +240,44 @@ class ProjetoController
         if (!in_array($status, self::STATUS, true)) {
             Json::erro('Status inválido.');
         }
+        $prioridade = $d['prioridade'] ?? 'MEDIA';
+        if (!in_array($prioridade, self::PRIORIDADES, true)) {
+            Json::erro('Prioridade inválida.');
+        }
         $progresso = max(0, min(100, (int)($d['progresso'] ?? 0)));
         $quanto = ($d['quanto'] ?? '') !== '' && $d['quanto'] !== null ? (float)$d['quanto'] : null;
 
         [$inicio, $fim] = $this->periodo($d);
+        $status = $this->resolverStatus($status, $fim);
+        // Marca (ou limpa) a conclusão conforme o status final
+        $anterior = $id ? Database::um('SELECT status, concluido_em FROM desdobramento WHERE id = ?', [$id]) : null;
+        $concluidoEm = $status === 'CONCLUIDO'
+            ? ($anterior['concluido_em'] ?? null) ?: date('Y-m-d H:i:s')
+            : null;
 
         $params = [
-            $projetoId, $oQue, trim($d['por_que'] ?? ''),
+            $projetoId, $iniciativaId, $oQue, trim($d['por_que'] ?? ''),
             mb_substr(trim($d['quem'] ?? ''), 0, 255),
             mb_substr(trim($d['quando_'] ?? ''), 0, 60),
             $inicio, $fim,
             mb_substr(trim($d['onde'] ?? ''), 0, 120),
             trim($d['como'] ?? ''),
-            $quanto, $status, $progresso, (int)($d['ordem'] ?? 0),
+            $quanto, $status, $prioridade, $progresso, $concluidoEm, (int)($d['ordem'] ?? 0),
         ];
         if ($id) {
             $this->exigirDesdobramento($id, $planId);
             Database::executar(
-                'UPDATE desdobramento SET projeto_id = ?, o_que = ?, por_que = ?, quem = ?,
+                'UPDATE desdobramento SET projeto_id = ?, iniciativa_id = ?, o_que = ?, por_que = ?, quem = ?,
                    quando_ = ?, data_inicio = ?, data_fim = ?, onde = ?, como = ?,
-                   quanto = ?, status = ?, progresso = ?, ordem = ?
+                   quanto = ?, status = ?, prioridade = ?, progresso = ?, concluido_em = ?, ordem = ?
                  WHERE id = ?',
                 [...$params, $id]
             );
         } else {
             $id = (int)Database::executar(
-                'INSERT INTO desdobramento (projeto_id, o_que, por_que, quem, quando_,
-                   data_inicio, data_fim, onde, como, quanto, status, progresso, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO desdobramento (projeto_id, iniciativa_id, o_que, por_que, quem, quando_,
+                   data_inicio, data_fim, onde, como, quanto, status, prioridade, progresso, concluido_em, ordem)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 $params
             );
         }
@@ -208,6 +327,19 @@ class ProjetoController
         )) {
             Json::erro('Projeto não encontrado neste planejamento.', 404);
         }
+    }
+
+    private function exigirIniciativa(int $id, int $planId): array
+    {
+        $iniciativa = Database::um(
+            'SELECT i.* FROM iniciativa i JOIN projeto p ON p.id = i.projeto_id
+             WHERE i.id = ? AND p.planejamento_id = ?',
+            [$id, $planId]
+        );
+        if (!$iniciativa) {
+            Json::erro('Iniciativa não encontrada neste planejamento.', 404);
+        }
+        return $iniciativa;
     }
 
     private function exigirDesdobramento(int $id, int $planId): void
