@@ -171,6 +171,14 @@ table.tabela-cadastro td { vertical-align: middle; }
 .ver-mais:hover { text-decoration: underline; }
 .contador-cards { color: #fff; font-size: .7rem; vertical-align: middle; }
 
+/* Bloco informativo no modal (ex.: fator avaliado na GUT): ~10 linhas e rolagem */
+.card-info-modal { background: #f8faf9; }
+.card-info-modal .card-body {
+  max-height: 15em; /* ~10 linhas de texto small */
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
 /* Grupo de botões exclusivos (option buttons) nos modais — ex.: notas GUT */
 .grupo-botoes .btn-opcao {
   color: var(--verde-coperdia);

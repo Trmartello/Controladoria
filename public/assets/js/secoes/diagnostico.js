@@ -522,6 +522,8 @@ const SecaoGut = {
           gravidade: f.gravidade || 3, urgencia: f.urgencia || 3, tendencia: f.tendencia || 3,
         },
         campos: [
+          { nome: 'fator_info', rotulo: 'Fator avaliado', tipo: 'info',
+            texto: `${nomeQuadrante[f.categoria]} — ${f.descricao}` },
           { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
           { nome: 'gravidade', rotulo: 'Gravidade (1 = leve · 5 = gravíssimo)', tipo: 'botoes', opcoes: escala },
           { nome: 'urgencia', rotulo: 'Urgência (1 = pode esperar · 5 = agir já)', tipo: 'botoes', opcoes: escala },

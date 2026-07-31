@@ -78,6 +78,13 @@ const Modal = {
           aria-label="${this.esc(c.rotulo)}">${botoes}</div>`;
         break;
       }
+      case 'info':
+        // Bloco somente-leitura no topo do modal: mostra o conteúdo em até
+        // ~10 linhas, com barra de rolagem para ler o restante
+        return `<div class="mb-3">
+          ${c.rotulo ? `<label class="form-label">${this.esc(c.rotulo)}</label>` : ''}
+          <div class="card card-info-modal"><div class="card-body py-2 px-3 small">${this.esc(c.texto ?? v)}</div></div>
+        </div>`;
       case 'hidden':
         // Sem rótulo nem espaçamento — o campo não aparece na tela
         return `<input type="hidden" id="${id}" value="${this.esc(v)}">`;
