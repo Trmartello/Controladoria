@@ -119,7 +119,7 @@ const App = {
     const secoes = {
       painel: SecaoPainel, hub: SecaoHub, cadastros: SecaoCadastros,
       cenario: SecaoCenario, pestel: SecaoPestel, porter: SecaoPorter,
-      swot: SecaoSwot, gut: SecaoGut,
+      swot: SecaoSwot, gut: SecaoGut, cascata: SecaoCascata,
     };
     const secao = secoes[this.secaoAtiva];
     if (secao) secao.carregar().catch((e) => {

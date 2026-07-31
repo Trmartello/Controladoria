@@ -45,3 +45,19 @@ body { background: #f4f6f5; }
 .badge-horizonte { background: var(--dourado); }
 
 table.tabela-cadastro td { vertical-align: middle; }
+
+/* Cascata de escolhas */
+.tabela-cascata th.celula-driver {
+  background: #e8f1ec;
+  width: 170px;
+  font-size: .8rem;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.tabela-cascata th.celula-horizonte {
+  background: var(--verde-escuro);
+  color: #fff;
+}
+.tabela-cascata td.celula-cascata { cursor: pointer; min-width: 220px; }
+.tabela-cascata td.celula-cascata:hover { background: #eef6f1; }
+.tabela-cascata td.celula-cascata.ativa { outline: 2px solid var(--verde-coperdia); background: #eef6f1; }

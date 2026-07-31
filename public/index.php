@@ -51,6 +51,7 @@ if ($metodo !== 'GET' && $caminho !== '/api/login') {
 }
 
 use App\Controllers\AuthController;
+use App\Controllers\CascataController;
 use App\Controllers\CenarioController;
 use App\Controllers\CicloController;
 use App\Controllers\DriverEixoController;
@@ -112,6 +113,11 @@ try {
             (new FatorController())->avaliarGut((int)$m[1]);
         case (bool)preg_match('#^POST /api/fatores/(\d+)$#', $rota, $m):
             (new FatorController())->salvar((int)$m[1]);
+
+        case $rota === 'GET /api/cascata':          (new CascataController())->listar();
+        case $rota === 'POST /api/cascata':         (new CascataController())->salvar();
+        case (bool)preg_match('#^POST /api/cascata/(\d+)/excluir$#', $rota, $m):
+            (new CascataController())->excluir((int)$m[1]);
 
         default:
             Json::erro('Rota não encontrada.', 404);
