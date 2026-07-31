@@ -254,6 +254,39 @@ table.tabela-cadastro td { vertical-align: middle; }
   border-radius: 50%;
 }
 
+/* Matriz 2×2 da SWOT: escolha do quadrante por toque, no card ou no modal */
+.painel-quadrantes {
+  margin-top: .5rem;
+  padding-top: .5rem;
+  border-top: 1px dashed #dee2e6;
+}
+.grade-quadrantes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .4rem;
+}
+.quadrante-opcao {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .1rem;
+  padding: .45rem .5rem;
+  border: 2px solid var(--cor-quad, #007a45);
+  border-radius: .5rem;
+  color: var(--cor-quad, #007a45);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.btn-check:checked + .quadrante-opcao,
+.quadrante-opcao.selecionado {
+  color: #fff;
+  background: var(--cor-quad, #007a45);
+}
+.quadrante-opcao:disabled { opacity: .6; }
+.quadrante-nome { font-weight: 700; font-size: .8rem; line-height: 1.2; }
+.quadrante-dica { font-size: .62rem; opacity: .85; }
+
 /* Grupo de botões exclusivos (option buttons) nos modais — ex.: notas GUT */
 .grupo-botoes .btn-opcao {
   color: var(--verde-coperdia);

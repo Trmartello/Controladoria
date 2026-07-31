@@ -21,8 +21,8 @@ const Modal = {
     + '<path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/>'
     + '<path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12-.708.708z"/></svg>',
 
-  abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null, enviar = null, extra = null }) {
-    this.config = { campos, url, aoSalvar, transformar, enviar, extra };
+  abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null, extra = null }) {
+    this.config = { campos, url, aoSalvar, transformar, extra };
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-erro').classList.add('d-none');
 
@@ -72,6 +72,21 @@ const Modal = {
           .map((o) => `<option value="${this.esc(o.valor)}" ${selecionados.includes(String(o.valor)) ? 'selected' : ''}>${this.esc(o.rotulo)}</option>`)
           .join('');
         controle = `<select class="form-select" id="${id}" multiple size="${Math.min(8, (c.opcoes || []).length || 3)}">${opcoes}</select>`;
+        break;
+      }
+      case 'quadrantes': {
+        // Matriz 2×2 clicável: a escolha é feita tocando no próprio quadrante
+        const celulas = (c.opcoes || []).map((o) => {
+          const cor = /^#[0-9a-f]{6}$/i.test(o.cor || '') ? o.cor : '#007a45';
+          return `<input type="radio" class="btn-check" name="${id}" id="${id}-${this.esc(o.valor)}"
+              value="${this.esc(o.valor)}" ${String(o.valor) === String(v) ? 'checked' : ''}>
+            <label class="quadrante-opcao" for="${id}-${this.esc(o.valor)}" style="--cor-quad:${cor}">
+              <span class="quadrante-nome">${this.esc(o.rotulo)}</span>
+              ${o.dica ? `<span class="quadrante-dica">${this.esc(o.dica)}</span>` : ''}
+            </label>`;
+        }).join('');
+        controle = `<div class="grade-quadrantes" id="${id}" role="radiogroup"
+          aria-label="${this.esc(c.rotulo)}">${celulas}</div>`;
         break;
       }
       case 'botoes': {
@@ -209,7 +224,7 @@ const Modal = {
       const el = document.getElementById(`campo-${c.nome}`);
       if (!el) continue;
       if (c.tipo === 'checkbox') dados[c.nome] = el.checked;
-      else if (c.tipo === 'botoes') {
+      else if (c.tipo === 'botoes' || c.tipo === 'quadrantes') {
         const marcado = el.querySelector('input:checked');
         dados[c.nome] = marcado ? (marcado.value === '' || isNaN(marcado.value) ? marcado.value : Number(marcado.value)) : null;
       }
@@ -245,10 +260,7 @@ const Modal = {
     botao.disabled = true; // evita duplo clique criando registros duplicados
     try {
       const dados = this.coletar();
-      const corpo = this.config.transformar ? this.config.transformar(dados) : dados;
-      // `enviar` permite fluxos com mais de um destino (ex.: desmarcar da SWOT)
-      if (this.config.enviar) await this.config.enviar(corpo);
-      else await App.api(this.config.url, corpo);
+      await App.api(this.config.url, this.config.transformar ? this.config.transformar(dados) : dados);
       this.bsModal.hide();
       if (this.config.aoSalvar) this.config.aoSalvar();
       else App.recarregarSecaoAtiva();

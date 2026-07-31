@@ -113,6 +113,40 @@ const Diag = {
 
   QUADRANTES: { FORCA: 'Força', FRAQUEZA: 'Fraqueza', OPORTUNIDADE: 'Oportunidade', AMEACA: 'Ameaça' },
   CORES_QUADRANTE: { FORCA: '#007a45', FRAQUEZA: '#b08d4f', OPORTUNIDADE: '#2c7fb8', AMEACA: '#8f3b3b' },
+  // Eixos da matriz SWOT: origem (interno/externo) × efeito (ajuda/atrapalha)
+  DICAS_QUADRANTE: {
+    FORCA: 'Interno · ajuda', FRAQUEZA: 'Interno · atrapalha',
+    OPORTUNIDADE: 'Externo · ajuda', AMEACA: 'Externo · atrapalha',
+  },
+
+  // Campo de modal com a matriz 2×2 (usado no cadastro de fator da SWOT)
+  campoQuadrante(nome = 'categoria', rotulo = 'Quadrante da SWOT') {
+    return {
+      nome,
+      rotulo,
+      tipo: 'quadrantes',
+      opcoes: Object.entries(this.QUADRANTES).map(([valor, rot]) => ({
+        valor, rotulo: rot, cor: this.CORES_QUADRANTE[valor], dica: this.DICAS_QUADRANTE[valor],
+      })),
+    };
+  },
+
+  // Matriz 2×2 que abre embaixo do próprio card, sem modal: um toque no
+  // quadrante promove (ou reclassifica) o fator na SWOT
+  painelQuadrantes(f) {
+    const promovido = Number(f.promovido);
+    const celulas = Object.entries(this.QUADRANTES).map(([cat, rotulo]) => `
+      <button type="button" class="quadrante-opcao ${promovido && f.promovido_categoria === cat ? 'selecionado' : ''}"
+        style="--cor-quad:${this.CORES_QUADRANTE[cat]}" data-escolher-quadrante="${cat}" data-fator="${f.id}">
+        <span class="quadrante-nome">${rotulo}</span>
+        <span class="quadrante-dica">${this.DICAS_QUADRANTE[cat]}</span>
+      </button>`).join('');
+    return `<div class="painel-quadrantes d-none" data-painel="${f.id}">
+      <div class="grade-quadrantes">${celulas}</div>
+      ${promovido ? `<button type="button" class="btn btn-sm btn-link text-danger p-0 mt-2 small"
+        data-desvincular="${f.id}">Desvincular da SWOT</button>` : ''}
+    </div>`;
+  },
 
   // Botões compactos abaixo do texto: SWOT à esquerda, editar/excluir à direita.
   // Depois de promovido, o botão mostra a categoria atribuída e reabre a edição.
@@ -147,6 +181,7 @@ const Diag = {
         <div class="card mb-2"><div class="card-body py-2 px-2">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
           ${this.botoesFator(f, plan.id, comPromocao)}
+          ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
         </div></div>`).join('');
       return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
         <div class="d-flex align-items-center mb-2">
@@ -206,48 +241,46 @@ const Diag = {
       await App.api(`/api/fatores/${b.dataset.excluir}/excluir`, { planejamento_id: plan.id });
       App.recarregarSecaoAtiva();
     }));
-    el.querySelectorAll('[data-promover]').forEach((b) => b.addEventListener('click', () =>
-      Modal.abrir({
-        titulo: 'Promover fator para a SWOT',
-        url: `/api/fatores/${b.dataset.promover}/promover`,
-        valores: { planejamento_id: plan.id },
-        campos: [
-          { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-          { nome: 'quadrante', rotulo: 'Quadrante de destino', tipo: 'select', opcoes: [
-            { valor: 'OPORTUNIDADE', rotulo: 'Oportunidade' },
-            { valor: 'AMEACA', rotulo: 'Ameaça' },
-            { valor: 'FORCA', rotulo: 'Força' },
-            { valor: 'FRAQUEZA', rotulo: 'Fraqueza' },
-          ]},
-        ],
-      })));
+    // Botão da SWOT (promover ou trocar categoria): abre a matriz 2×2 embaixo
+    // do próprio card, sem modal — um toque no quadrante já aplica a escolha
+    const alternarPainel = (id) => {
+      const alvo = el.querySelector(`[data-painel="${id}"]`);
+      const abrindo = alvo.classList.contains('d-none');
+      el.querySelectorAll('[data-painel]').forEach((p) => p.classList.add('d-none'));
+      alvo.classList.toggle('d-none', !abrindo);
+    };
+    el.querySelectorAll('[data-promover], [data-editar-swot]').forEach((b) =>
+      b.addEventListener('click', () => alternarPainel(b.dataset.promover || b.dataset.editarSwot)));
 
-    // Fator já promovido: o botão da categoria reabre a edição na SWOT
-    el.querySelectorAll('[data-editar-swot]').forEach((b) => b.addEventListener('click', () => {
-      const f = fatores.find((x) => x.id == b.dataset.editarSwot);
-      Modal.abrir({
-        titulo: 'Fator na SWOT — alterar ou desmarcar',
-        url: `/api/fatores/${f.promovido_id}`,
-        valores: {
-          planejamento_id: plan.id,
-          etapa: 'SWOT',
-          categoria: f.promovido_categoria,
-          descricao: f.promovido_descricao,
-        },
-        campos: [
-          { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-          { nome: 'etapa', rotulo: '', tipo: 'hidden' },
-          { nome: 'categoria', rotulo: 'Categoria na SWOT', tipo: 'select', opcoes:
-            Object.entries(this.QUADRANTES).map(([valor, rotulo]) => ({ valor, rotulo })) },
-          { nome: 'descricao', rotulo: 'Descrição (como aparece na SWOT)', tipo: 'textarea' },
-          { nome: 'remover', rotulo: 'Desmarcar da SWOT — remove este fator da análise SWOT', tipo: 'checkbox' },
-        ],
-        // Desmarcar exclui o fator correspondente na SWOT; o original permanece
-        enviar: async ({ remover, ...resto }) => {
-          if (remover) await App.api(`/api/fatores/${f.promovido_id}/excluir`, { planejamento_id: plan.id });
-          else await App.api(`/api/fatores/${f.promovido_id}`, resto);
-        },
-      });
+    el.querySelectorAll('[data-escolher-quadrante]').forEach((b) => b.addEventListener('click', async () => {
+      const f = fatores.find((x) => x.id == b.dataset.fator);
+      const quadrante = b.dataset.escolherQuadrante;
+      if (Number(f.promovido) && f.promovido_categoria === quadrante) { alternarPainel(f.id); return; }
+      b.disabled = true;
+      try {
+        if (Number(f.promovido)) {
+          await App.api(`/api/fatores/${f.promovido_id}`, {
+            planejamento_id: plan.id, etapa: 'SWOT', categoria: quadrante, descricao: f.promovido_descricao,
+          });
+        } else {
+          await App.api(`/api/fatores/${f.id}/promover`, { planejamento_id: plan.id, quadrante });
+        }
+        App.recarregarSecaoAtiva();
+      } catch (e) {
+        b.disabled = false;
+        alert(e.message);
+      }
+    }));
+
+    el.querySelectorAll('[data-desvincular]').forEach((b) => b.addEventListener('click', async () => {
+      const f = fatores.find((x) => x.id == b.dataset.desvincular);
+      if (!confirm('Remover este fator da análise SWOT?')) return;
+      try {
+        await App.api(`/api/fatores/${f.promovido_id}/excluir`, { planejamento_id: plan.id });
+        App.recarregarSecaoAtiva();
+      } catch (e) {
+        alert(e.message);
+      }
     }));
   },
 };
@@ -445,12 +478,7 @@ const SecaoSwot = {
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'etapa', rotulo: '', tipo: 'hidden', padrao: 'SWOT' },
         { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
-        { nome: 'categoria', rotulo: 'Quadrante', tipo: 'select', opcoes: [
-          { valor: 'FORCA', rotulo: 'Força' },
-          { valor: 'FRAQUEZA', rotulo: 'Fraqueza' },
-          { valor: 'OPORTUNIDADE', rotulo: 'Oportunidade' },
-          { valor: 'AMEACA', rotulo: 'Ameaça' },
-        ]},
+        Diag.campoQuadrante('categoria', 'Quadrante'),
         { nome: 'descricao', rotulo: 'Descrição do fator', tipo: 'textarea' },
       ],
     });
