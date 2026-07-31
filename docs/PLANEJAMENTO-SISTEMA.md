@@ -6,6 +6,17 @@ Sistema de gestão do planejamento estratégico e de investimentos da Copérdia,
 seguindo o modelo **"Planejamento por drivers e horizontes"** (ciclo 2027–2035),
 substituindo as planilhas de reunião com gerentes de negócio.
 
+**Premissas de produto:**
+
+- **Um planejamento por negócio + um corporativo**: cada negócio conduz sua
+  cascata completa, e a Corporação tem um planejamento próprio (mesmo método),
+  que consolida e dá as diretrizes gerais dos negócios.
+- **Interface one-page**: uma única página com navegação por seções; **todos os
+  cadastros abrem em formulário modal** (nunca troca de página).
+- **Autenticação por usuário × negócio**: o gestor enxerga e edita apenas os
+  negócios vinculados a ele; **Controladoria e Direção veem tudo** (incluindo o
+  planejamento corporativo).
+
 ---
 
 ## 1. O método (espinha dorsal do sistema)
@@ -104,9 +115,15 @@ CREATE TABLE usuario (
   nome          VARCHAR(120) NOT NULL,
   email         VARCHAR(120) NOT NULL UNIQUE,
   senha_hash    VARCHAR(255) NOT NULL,
-  perfil        ENUM('ADMIN','CONTROLADORIA','GESTOR','LEITURA') NOT NULL DEFAULT 'LEITURA',
+  perfil        ENUM('ADMIN','CONTROLADORIA','DIRECAO','GESTOR','LEITURA') NOT NULL DEFAULT 'LEITURA',
   ativo         TINYINT(1) NOT NULL DEFAULT 1,
   criado_em     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE usuario_negocio (                     -- vínculo usuário × negócio
+  usuario_id INT NOT NULL REFERENCES usuario(id),  -- (GESTOR/LEITURA enxergam apenas
+  negocio_id INT NOT NULL REFERENCES negocio(id),  --  os negócios vinculados;
+  PRIMARY KEY (usuario_id, negocio_id)             --  ADMIN/CONTROLADORIA/DIRECAO veem tudo)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE negocio (
@@ -154,12 +171,16 @@ CREATE TABLE eixo (                                -- aberturas de cada linha ba
   ativo  TINYINT(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE planejamento (                        -- 1 negócio × 1 ciclo
+CREATE TABLE planejamento (        -- 1 por negócio × ciclo + 1 corporativo por ciclo
   id          INT AUTO_INCREMENT PRIMARY KEY,
-  negocio_id  INT NOT NULL REFERENCES negocio(id),
   ciclo_id    INT NOT NULL REFERENCES ciclo(id),
-  UNIQUE KEY uk_neg_ciclo (negocio_id, ciclo_id)
+  escopo      ENUM('NEGOCIO','CORPORATIVO') NOT NULL DEFAULT 'NEGOCIO',
+  negocio_id  INT NULL REFERENCES negocio(id),     -- NULL quando CORPORATIVO
+  UNIQUE KEY uk_ciclo_neg (ciclo_id, escopo, (COALESCE(negocio_id, 0)))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- O planejamento CORPORATIVO usa o mesmo método (cenário → ... → cascata →
+-- investimentos) e seus painéis consolidam os planejamentos dos negócios.
+-- Edição do corporativo: apenas ADMIN, CONTROLADORIA e DIRECAO.
 
 -- ===== Diagnóstico =====
 CREATE TABLE cenario_item (
@@ -312,77 +333,130 @@ negócios com códigos (ex.: `8 - Agropecuária`).
 
 ---
 
-## 5. Estrutura da aplicação PHP (sem framework)
+## 5. Estrutura da aplicação PHP (sem framework, one-page)
+
+A aplicação é uma **SPA leve**: uma única página (shell) com menu lateral de
+seções; o conteúdo é carregado via `fetch` de endpoints JSON e **todo cadastro
+abre em modal** (Bootstrap 5) — nunca há troca de página. JavaScript vanilla,
+sem build step.
 
 ```
 /planejamento
 ├── public/
-│   ├── index.php            # front controller (router próprio)
-│   └── assets/              # css, js (Bootstrap 5), logos Copérdia
+│   ├── index.php            # front controller: serve o shell + roteia /api/*
+│   └── assets/
+│       ├── css/             # Bootstrap 5 + identidade Copérdia (verde)
+│       └── js/
+│           ├── app.js       # navegação por seções, estado (negócio×ciclo ativo)
+│           ├── modal.js     # fábrica de modais de cadastro (form → POST JSON)
+│           └── secoes/      # 1 módulo js por seção (cascata.js, gut.js, ...)
 ├── app/
-│   ├── Core/                # Router, Database (PDO), Auth, View, Csrf
-│   ├── Controllers/
+│   ├── Core/                # Router, Database (PDO), Auth, Json, Csrf
+│   ├── Controllers/         # endpoints /api/... — respondem JSON
+│   │   ├── AuthController.php         # login, sessão, escopo de negócios do usuário
 │   │   ├── NegocioController.php      # cód + nome, seleção "8 - Agropecuária", sync Qlik
 │   │   ├── CicloController.php        # ciclo, ano_base, horizontes e objetivos
-│   │   ├── DriverEixoController.php   # cadastro de drivers e eixos
-│   │   ├── PlanejamentoController.php # hub do método (checklist)
+│   │   ├── DriverEixoController.php
+│   │   ├── PlanejamentoController.php # hub/checklist; negócio ou corporativo
 │   │   ├── CenarioController.php
 │   │   ├── PestelController.php
 │   │   ├── PorterController.php
 │   │   ├── SwotController.php
 │   │   ├── GutController.php
 │   │   ├── CascataController.php      # matriz drivers × horizontes + 6 aberturas/eixo
-│   │   ├── MetasController.php        # indicadores, métricas-âncora, metas plurianuais
-│   │   ├── ProjetoController.php      # iniciativas + desdobramentos 5W2H
+│   │   ├── MetasController.php
+│   │   ├── ProjetoController.php
 │   │   ├── InvestimentoController.php # envelope, papel, ranking, decisão, auditoria
 │   │   ├── DiarioController.php
 │   │   └── RelatorioController.php    # painéis + relatório de status (PDF/XLSX)
 │   ├── Models/
 │   └── Services/QlikSync.php
 ├── views/
+│   ├── shell.php            # a página única (layout, menu, containers das seções)
+│   └── login.php            # única outra página do sistema
 ├── database/ (schema.sql, seeds.sql)
 ├── config/config.php        # credenciais via variáveis de ambiente
 └── composer.json            # autoload PSR-4 + PhpSpreadsheet/Dompdf apenas
 ```
 
-**Segurança:** sessões + `password_hash()`, CSRF token, prepared statements em
-todas as queries; GESTOR edita apenas seus negócios, CONTROLADORIA/ADMIN tudo,
-LEITURA vê painéis e relatórios.
+**Autenticação e autorização (usuário × negócio):**
+
+- Login por e-mail/senha (`password_hash()`), sessão PHP, CSRF token em todo POST.
+- O escopo do usuário é resolvido no login: **ADMIN, CONTROLADORIA e DIRECAO
+  enxergam todos os negócios + o planejamento corporativo**; GESTOR e LEITURA
+  enxergam apenas os negócios da tabela `usuario_negocio` (o seletor de negócio
+  já vem filtrado).
+- Autorização reforçada **no servidor**: todo endpoint `/api/*` valida se o
+  `planejamento_id` da requisição pertence ao escopo do usuário — nunca apenas
+  na interface.
+- GESTOR edita seus negócios; LEITURA só visualiza; o corporativo é editável
+  apenas por ADMIN/CONTROLADORIA/DIRECAO.
+- Prepared statements em 100% das queries.
 
 ---
 
-## 6. Telas (mapa de navegação)
+## 6. Seções da página única (one-page)
 
-| # | Tela | Conteúdo |
-|---|------|----------|
-| 0 | Login | autenticação e perfil |
-| 1 | Painel Consolidado | todos os negócios: avanço da cascata, atrasos, envelope × comprometido por horizonte |
-| 2 | Cadastros | negócios (cód + nome, sync Qlik), ciclos com ano do planejamento, horizontes e objetivos, drivers, eixos |
-| 3 | Planejamento (hub) | seleção "8 - Agropecuária" × ciclo; checklist das etapas |
-| 4 | Análise de Cenário | situação atual + tendências |
-| 5 | PESTEL | 6 categorias; "promover para SWOT" |
-| 6 | Porter | 5 forças; "promover para SWOT" |
-| 7 | SWOT | 4 quadrantes com badge de origem |
-| 8 | Matriz GUT | notas G/U/T, ranking, "usar na cascata" |
-| 9 | **Cascata de Escolhas** | matriz drivers × horizontes (como o slide); clique na célula abre a síntese + 6 aberturas por eixo, cada uma com escolha e renúncia; contador 108/108 |
-| 10 | Metas | métricas-âncora por horizonte + tabela plurianual meta/real |
-| 11 | Projetos | iniciativas vinculadas a horizonte/escolha; desdobramentos 5W2H |
-| 12 | **Governança de Investimentos** | funil: envelope → papel → ranking por taxa de retorno → decisão (critério registrado) → auditoria +12M |
-| 13 | Diário de Bordo | timeline por projeto/desdobramento/investimento |
-| 14 | Relatório de Status | documento da reunião por período/negócio (tela, PDF, XLSX) |
+Fora o **login**, o sistema é uma única página. No topo, o **seletor de
+contexto**: ciclo + negócio (`8 - Agropecuária`, `Corporativo`, ... — filtrado
+pelo escopo do usuário). O menu lateral navega entre as seções abaixo; **todo
+botão de "+ novo" / "editar" abre um formulário modal** que grava via
+`POST /api/...` e atualiza a seção sem recarregar a página.
+
+| # | Seção | Conteúdo | Modais |
+|---|-------|----------|--------|
+| 1 | Painel | consolidado (controladoria/direção: todos os negócios + corporativo; gestor: os seus): avanço da cascata, atrasos, envelope × comprometido | — |
+| 2 | Cadastros | negócios (sync Qlik), ciclos + ano do planejamento, horizontes e objetivos, drivers, eixos, usuários e vínculos usuário×negócio | negócio, ciclo, horizonte, driver, eixo, usuário |
+| 3 | Hub do Planejamento | checklist das etapas do método para o contexto selecionado | — |
+| 4 | Análise de Cenário | situação atual + tendências | item de cenário |
+| 5 | PESTEL | 6 categorias; "promover para SWOT" | fator PESTEL |
+| 6 | Porter | 5 forças; "promover para SWOT" | fator Porter |
+| 7 | SWOT | 4 quadrantes com badge de origem | fator SWOT |
+| 8 | Matriz GUT | notas G/U/T, ranking, "usar na cascata" | notas GUT |
+| 9 | **Cascata de Escolhas** | matriz drivers × horizontes (como o slide); clique na célula abre modal com síntese + 6 aberturas por eixo (escolha + renúncia); contador 108/108 | célula da cascata |
+| 10 | Metas | métricas-âncora por horizonte + tabela plurianual meta/real | indicador, valores |
+| 11 | Projetos | iniciativas vinculadas a horizonte/escolha; desdobramentos 5W2H | projeto, desdobramento |
+| 12 | **Governança de Investimentos** | funil: envelope → papel → ranking por taxa de retorno → decisão (critério registrado) → auditoria +12M | envelope, investimento, decisão, auditoria |
+| 13 | Diário de Bordo | timeline por projeto/desdobramento/investimento | registro de bordo |
+| 14 | Relatório de Status | documento da reunião por período/negócio (tela, PDF, XLSX) | — |
 
 ---
 
-## 7. Roadmap de implementação
+## 7. Publicação para validação — Railway
+
+Ambiente de homologação no **Railway** para validar com as equipes envolvidas
+antes da produção:
+
+- **Serviços**: 1 serviço web (deploy automático a cada push na branch do
+  GitHub) + 1 banco **MySQL** provisionado no próprio Railway.
+- **Build**: `Dockerfile` na raiz (`php:8.3-apache`, docroot em `public/`,
+  extensões `pdo_mysql`, `composer install`). O Railway detecta e constrói
+  sozinho.
+- **Configuração**: `config.php` lê tudo de variáveis de ambiente
+  (`MYSQLHOST`, `MYSQLPORT`, `MYSQLDATABASE`, `MYSQLUSER`, `MYSQLPASSWORD`,
+  `APP_KEY`, `QLIK_API_KEY`) — o Railway injeta as do MySQL automaticamente
+  por referência entre serviços; nenhuma credencial vai para o git.
+- **Primeira carga**: script `database/migrate.php` (roda no start do container)
+  aplica `schema.sql` + `seeds.sql` se o banco estiver vazio — incluindo os 6
+  drivers, 6 eixos, horizontes H1–H3, usuário admin inicial e o planejamento do
+  Supermercado importado da planilha 2026 como massa de validação realista.
+- **Acesso**: URL `*.up.railway.app` (HTTPS nativo) distribuída aos gestores,
+  controladoria e direção, cada um com seu usuário/perfil — a própria validação
+  já exercita a autorização por negócio.
+- **Papel do ambiente**: homologação/validação. A produção será definida depois
+  (servidor da cooperativa ou plano pago do Railway com domínio próprio);
+  como tudo é Docker + env vars, a migração é só apontar outro host.
+
+## 8. Roadmap de implementação
 
 | Fase | Entrega | Conteúdo |
 |------|---------|----------|
-| 1 | Fundação | MVC, login/perfis, cadastros (negócio + sync Qlik, ciclo/ano_base, horizontes, drivers, eixos), hub |
+| 1 | Fundação | shell one-page, login, autorização usuário×negócio, cadastros em modal (negócio + sync Qlik, ciclo/ano_base, horizontes, drivers, eixos, usuários), hub; **deploy no Railway já no fim desta fase** |
 | 2 | Diagnóstico | cenário, PESTEL, Porter, SWOT, GUT |
 | 3 | Cascata | matriz de escolhas com aberturas por eixo e renúncias, vínculo com fatores GUT |
 | 4 | Execução | projetos/desdobramentos 5W2H, diário de bordo |
 | 5 | Capital | envelope, papel, ranking, decisão, auditoria +12M |
-| 6 | Gestão | métricas-âncora, metas plurianuais, painéis, relatório de status, importação das planilhas 2026 |
+| 6 | Gestão | métricas-âncora, metas plurianuais, painéis (negócio, corporativo e consolidado), relatório de status, importação das planilhas 2026 |
 
 ---
 
