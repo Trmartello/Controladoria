@@ -44,7 +44,7 @@ const Diag = {
     const el = document.getElementById(idSecao);
     const params = App.contextoParams();
     if (!params) {
-      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu.</div>';
+      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu ☰.</div>';
       return null;
     }
     const plan = await App.planejamento();

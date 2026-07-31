@@ -54,14 +54,17 @@ const App = {
       });
     });
 
-    this.iniciarMenuMovel();
+    this.iniciarMenu();
     this.mostrarSecao('painel');
   },
 
-  // Menu móvel: expande pelo ☰ e recolhe sozinho ao navegar, ao tocar fora
-  // ou quando a tela volta ao tamanho de desktop.
-  iniciarMenuMovel() {
+  // Menu automático (todas as telas): expande pelo ☰ ou ao encostar o mouse
+  // na borda esquerda; recolhe sozinho ao navegar, ao trocar o contexto, ao
+  // sair o mouse (desktop), ao tocar fora (mobile) ou com Esc.
+  iniciarMenu() {
     const botao = document.getElementById('btn-menu');
+    const menu = document.getElementById('menu-lateral');
+    const desktop = window.matchMedia('(min-width: 992px)');
     const alternar = (aberto) => {
       document.body.classList.toggle('menu-aberto', aberto);
       botao.setAttribute('aria-expanded', String(aberto));
@@ -69,13 +72,29 @@ const App = {
     botao.addEventListener('click', () =>
       alternar(!document.body.classList.contains('menu-aberto')));
     document.getElementById('backdrop-menu').addEventListener('click', () => alternar(false));
-    document.getElementById('menu-lateral').addEventListener('click', (ev) => {
+    menu.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-secao]')) alternar(false);
     });
     ['sel-ciclo', 'sel-negocio'].forEach((id) =>
       document.getElementById(id).addEventListener('change', () => alternar(false)));
-    window.matchMedia('(min-width: 992px)').addEventListener('change', (mq) => {
-      if (mq.matches) alternar(false);
+
+    // Desktop: expande ao encostar na borda esquerda e recolhe quando o
+    // mouse se afasta do menu (o menu tem 280px; folga de 20px)
+    document.addEventListener('mousemove', (ev) => {
+      if (!desktop.matches) return;
+      const aberto = document.body.classList.contains('menu-aberto');
+      if (!aberto && ev.clientX <= 8) alternar(true);
+      else if (aberto && ev.clientX > 300) alternar(false);
+    });
+    // Clique fora do menu recolhe (qualquer tamanho de tela)
+    document.addEventListener('click', (ev) => {
+      if (document.body.classList.contains('menu-aberto')
+        && !ev.target.closest('#menu-lateral') && !ev.target.closest('#btn-menu')) {
+        alternar(false);
+      }
+    });
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') alternar(false);
     });
   },
 
@@ -97,6 +116,7 @@ const App = {
       this.contexto.cicloId = parseInt(selCiclo.value, 10) || null;
       this.contexto.corporativo = selNegocio.value === 'CORP';
       this.contexto.negocioId = this.contexto.corporativo ? null : parseInt(selNegocio.value, 10) || null;
+      this.atualizarTopbar();
       this.recarregarSecaoAtiva();
     };
     selCiclo.addEventListener('change', atualizar);
@@ -104,6 +124,13 @@ const App = {
     this.contexto.cicloId = parseInt(selCiclo.value, 10) || null;
     this.contexto.corporativo = selNegocio.value === 'CORP';
     this.contexto.negocioId = this.contexto.corporativo ? null : parseInt(selNegocio.value, 10) || null;
+    this.atualizarTopbar();
+  },
+
+  // Com o menu recolhido, a barra superior mostra o contexto selecionado
+  atualizarTopbar() {
+    const alvo = document.getElementById('topbar-contexto');
+    if (alvo) alvo.textContent = this.rotuloContexto();
   },
 
   secaoAtiva: null,

@@ -18,7 +18,7 @@ const SecaoPainel = {
     const el = document.getElementById('secao-painel');
     const ctx = App.contexto;
     if (!ctx.cicloId) {
-      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo no menu.</div>';
+      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo no menu ☰.</div>';
       return;
     }
     const dados = await App.api(`/api/painel?ciclo_id=${ctx.cicloId}`);

@@ -5,7 +5,7 @@ const SecaoHub = {
     const el = document.getElementById('secao-hub');
     const ctx = App.contexto;
     if (!ctx.cicloId || (!ctx.negocioId && !ctx.corporativo)) {
-      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu lateral.</div>';
+      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu ☰.</div>';
       return;
     }
     const params = ctx.corporativo

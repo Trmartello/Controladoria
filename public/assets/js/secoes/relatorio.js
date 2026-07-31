@@ -26,7 +26,7 @@ const SecaoRelatorio = {
   async carregar() {
     const el = document.getElementById('secao-relatorio');
     if (!App.contextoParams()) {
-      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu.</div>';
+      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu ☰.</div>';
       return;
     }
     this.plan = await App.planejamento();

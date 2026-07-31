@@ -8,6 +8,14 @@ const Modal = {
   iconeOlho: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
     + '<path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>'
     + '<path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg>',
+  // Ditado por voz (Web Speech API) — o microfone só aparece se o navegador suportar
+  suporteVoz: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
+  reconhecimento: null,
+  botaoGravando: null,
+  iconeMic: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
+    + '<path d="M5 3a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V3z"/>'
+    + '<path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z"/></svg>',
+
   iconeOlhoRiscado: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
     + '<path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/>'
     + '<path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/>'
@@ -21,6 +29,7 @@ const Modal = {
     const form = document.getElementById('modal-campos');
     form.innerHTML = campos.map((c) => this.renderCampo(c, valores[c.nome])).join('');
     this.ligarBotoesSenha(form);
+    this.ligarBotoesDitado(form);
 
     if (!this.bsModal) {
       this.bsModal = new bootstrap.Modal(document.getElementById('modal-form'));
@@ -29,6 +38,7 @@ const Modal = {
         ev.preventDefault();
         this.salvar();
       });
+      document.getElementById('modal-form').addEventListener('hidden.bs.modal', () => this.pararDitado());
     }
     this.bsModal.show();
   },
@@ -38,9 +48,11 @@ const Modal = {
     const id = `campo-${c.nome}`;
     let controle;
     switch (c.tipo) {
-      case 'textarea':
-        controle = `<textarea class="form-control" id="${id}" rows="${c.linhas || 3}">${this.esc(v)}</textarea>`;
+      case 'textarea': {
+        const area = `<textarea class="form-control" id="${id}" rows="${c.linhas || 3}">${this.esc(v)}</textarea>`;
+        controle = this.suporteVoz ? `<div class="input-group">${area}${this.botaoDitar(id)}</div>` : area;
         break;
+      }
       case 'select': {
         const opcoes = (c.opcoes || [])
           .map((o) => `<option value="${this.esc(o.valor)}" ${String(o.valor) === String(v) ? 'selected' : ''}>${this.esc(o.rotulo)}</option>`)
@@ -68,11 +80,80 @@ const Modal = {
             aria-label="Mostrar senha" title="Mostrar senha">${this.iconeOlho}</button>
         </div>`;
         break;
-      default:
-        controle = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}">`;
+      default: {
+        const input = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}">`;
+        controle = (c.tipo || 'text') === 'text' && this.suporteVoz
+          ? `<div class="input-group">${input}${this.botaoDitar(id)}</div>`
+          : input;
+      }
     }
     const ajuda = c.ajuda ? `<div class="form-text">${this.esc(c.ajuda)}</div>` : '';
     return `<div class="mb-3"><label class="form-label" for="${id}">${this.esc(c.rotulo)}</label>${controle}${ajuda}</div>`;
+  },
+
+  botaoDitar(id) {
+    return `<button class="btn btn-outline-secondary btn-ditar" type="button" data-alvo="${id}"
+      title="Ditar por voz" aria-label="Ditar por voz">${this.iconeMic}</button>`;
+  },
+
+  ligarBotoesDitado(raiz) {
+    raiz.querySelectorAll('.btn-ditar').forEach((b) =>
+      b.addEventListener('click', () => this.alternarDitado(b)));
+  },
+
+  // Toque para gravar (botão pulsa em vermelho), fale, toque para parar —
+  // o texto reconhecido é acrescentado ao campo, como no ditado do iPhone.
+  alternarDitado(botao) {
+    if (this.botaoGravando === botao) {
+      this.pararDitado();
+      return;
+    }
+    this.pararDitado();
+    const campo = document.getElementById(botao.dataset.alvo);
+    const Reconhecedor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new Reconhecedor();
+    rec.lang = 'pt-BR';
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.onresult = (ev) => {
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) {
+          const texto = ev.results[i][0].transcript.trim();
+          if (texto) campo.value = campo.value ? `${campo.value.replace(/\s+$/, '')} ${texto}` : texto;
+        }
+      }
+    };
+    rec.onend = () => this.pararDitado();
+    rec.onerror = (ev) => {
+      this.pararDitado();
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+        alert('Permita o acesso ao microfone no navegador para ditar por voz.');
+      }
+    };
+    this.reconhecimento = rec;
+    this.botaoGravando = botao;
+    botao.classList.add('gravando');
+    botao.title = 'Parar ditado';
+    botao.setAttribute('aria-label', 'Parar ditado');
+    try {
+      rec.start();
+    } catch {
+      this.pararDitado();
+    }
+  },
+
+  pararDitado() {
+    if (this.reconhecimento) {
+      this.reconhecimento.onend = null;
+      try { this.reconhecimento.stop(); } catch { /* já parado */ }
+    }
+    if (this.botaoGravando) {
+      this.botaoGravando.classList.remove('gravando');
+      this.botaoGravando.title = 'Ditar por voz';
+      this.botaoGravando.setAttribute('aria-label', 'Ditar por voz');
+    }
+    this.reconhecimento = null;
+    this.botaoGravando = null;
   },
 
   // Olho de conferir senha: alterna visível/oculto no campo alvo

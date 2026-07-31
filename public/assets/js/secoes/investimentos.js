@@ -23,7 +23,7 @@ const SecaoInvestimentos = {
     const el = document.getElementById('secao-investimentos');
     const params = App.contextoParams();
     if (!params) {
-      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu lateral.</div>';
+      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu ☰.</div>';
       return;
     }
     this.plan = await App.planejamento();

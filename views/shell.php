@@ -9,12 +9,13 @@
   <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body>
-  <!-- Barra superior (mobile): abre/fecha o menu -->
-  <header class="topbar d-lg-none d-flex align-items-center gap-2 px-3">
+  <!-- Barra superior: o menu recolhe e expande automaticamente (☰ ou borda esquerda) -->
+  <header class="topbar d-flex align-items-center gap-2 px-3">
     <button class="btn btn-outline-light btn-sm" id="btn-menu" aria-label="Abrir menu"
       aria-controls="menu-lateral" aria-expanded="false">☰</button>
     <span class="marca">COPÉRDIA</span>
-    <span class="text-white-50 small">Planejamento</span>
+    <span class="text-white-50 small">Planejamento Estratégico</span>
+    <span class="text-white-50 small ms-auto d-none d-md-inline" id="topbar-contexto"></span>
   </header>
   <div class="backdrop-menu" id="backdrop-menu"></div>
 
