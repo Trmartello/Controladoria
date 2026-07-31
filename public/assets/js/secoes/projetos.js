@@ -13,6 +13,7 @@ const OPCOES_STATUS = Object.entries(STATUS_ROTULOS)
 const SecaoProjetos = {
   plan: null,
   cascata: null,
+  responsaveis: [],
   filtroTipo: 'ESTRATEGICO',
   diarioAberto: null, // { refTipo, refId }
 
@@ -35,11 +36,13 @@ const SecaoProjetos = {
       return;
     }
     this.plan = await App.planejamento();
-    const [projetos, cascata] = await Promise.all([
+    const [projetos, cascata, responsaveis] = await Promise.all([
       App.api(`/api/projetos?planejamento_id=${this.plan.id}`),
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
+      App.api(`/api/responsaveis?planejamento_id=${this.plan.id}`),
     ]);
     this.cascata = cascata;
+    this.responsaveis = responsaveis;
     const doTipo = projetos.filter((p) => p.tipo === this.filtroTipo);
 
     const badge = (status) => {
@@ -202,7 +205,9 @@ const SecaoProjetos = {
         ]},
         { nome: 'titulo', rotulo: 'Projeto / ação planejada', obrigatorio: true,
           exemplo: 'Ex.: 1ª onda de silos — unidade Capinzal' },
-        { nome: 'responsavel', rotulo: 'Responsável', exemplo: 'Ex.: Jarles Thuns' },
+        { nome: 'responsavel', rotulo: 'Responsável', sugestoes: this.responsaveis,
+          exemplo: 'Escolha um usuário ou digite outro nome',
+          ajuda: 'A lista traz os usuários cadastrados; você também pode digitar qualquer outro nome.' },
         // Preserva o prazo em texto dos projetos criados antes do calendário
         { nome: 'prazo', rotulo: '', tipo: 'hidden' },
         { nome: 'prazo_periodo', rotulo: 'Prazo da ação', tipo: 'periodo',
@@ -246,7 +251,8 @@ const SecaoProjetos = {
         { nome: 'o_que', rotulo: 'O quê? (What)', obrigatorio: true, tipo: 'textarea', linhas: 2,
           exemplo: 'Ex.: Contratar projeto executivo dos silos' },
         { nome: 'por_que', rotulo: 'Por quê? (Why)' },
-        { nome: 'quem', rotulo: 'Quem? (Who)', exemplo: 'Responsável pela ação' },
+        { nome: 'quem', rotulo: 'Quem? (Who)', sugestoes: this.responsaveis,
+          exemplo: 'Escolha um usuário ou digite outro nome' },
         { nome: 'quando_', rotulo: '', tipo: 'hidden' },
         { nome: 'quando_periodo', rotulo: 'Quando? (When)', tipo: 'periodo',
           campos: [

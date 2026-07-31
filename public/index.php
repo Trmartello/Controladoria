@@ -148,6 +148,7 @@ try {
             (new DriverEixoController())->salvar($m[1], (int)$m[2]); break;
 
         case $rota === 'GET /api/usuarios':        (new UsuarioController())->listar(); break;
+        case $rota === 'GET /api/responsaveis':    (new UsuarioController())->responsaveis(); break;
         case $rota === 'POST /api/usuarios':       (new UsuarioController())->salvar(); break;
         case (bool)preg_match('#^POST /api/usuarios/(\d+)$#', $rota, $m):
             (new UsuarioController())->salvar((int)$m[1]); break;

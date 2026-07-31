@@ -25,6 +25,28 @@ class UsuarioController
         Json::ok($usuarios);
     }
 
+    /**
+     * Nomes sugeridos como responsável por projetos e ações do planejamento:
+     * quem enxerga tudo mais os usuários ligados ao negócio. Só devolve nomes
+     * (sem e-mail nem perfil) e exige acesso ao planejamento.
+     */
+    public function responsaveis(): void
+    {
+        $planId = (int)($_GET['planejamento_id'] ?? 0);
+        $plan = Auth::exigirAcessoPlanejamento($planId);
+        $negocioId = $plan['negocio_id'] !== null ? (int)$plan['negocio_id'] : 0;
+        $nomes = Database::todos(
+            "SELECT DISTINCT u.nome
+             FROM usuario u
+             LEFT JOIN usuario_negocio un ON un.usuario_id = u.id
+             WHERE u.ativo = 1
+               AND (u.perfil IN ('ADMIN', 'CONTROLADORIA', 'DIRECAO') OR un.negocio_id = ?)
+             ORDER BY u.nome",
+            [$negocioId]
+        );
+        Json::ok(array_map(fn($l) => $l['nome'], $nomes));
+    }
+
     public function salvar(?int $id = null): void
     {
         Auth::exigirAdministrador();

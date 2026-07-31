@@ -143,7 +143,13 @@ const Modal = {
         </div>`;
         break;
       default: {
-        const input = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}"${exemplo}>`;
+        // Com `sugestoes`, o campo vira lista de escolha que aceita digitar
+        // um nome fora da lista (ex.: responsável que não é usuário do sistema)
+        const lista = (c.sugestoes || []).length ? ` list="${id}-lista"` : '';
+        const datalist = lista
+          ? `<datalist id="${id}-lista">${c.sugestoes.map((s) => `<option value="${this.esc(s)}"></option>`).join('')}</datalist>`
+          : '';
+        const input = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}"${exemplo}${lista}>${datalist}`;
         controle = (c.tipo || 'text') === 'text' && this.suporteVoz
           ? `<div class="campo-voz">${input}${this.botaoDitar(id)}</div>`
           : input;
