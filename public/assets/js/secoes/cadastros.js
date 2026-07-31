@@ -89,6 +89,8 @@ const SecaoCadastros = {
     document.getElementById('btn-sync-negocio').addEventListener('click', async () => {
       const r = await App.api('/api/negocios/sync', {});
       alert(`Sincronização concluída: ${r.inseridos} inserido(s), ${r.atualizados} atualizado(s).` +
+        (r.desativados ? ` ${r.desativados} fora da fonte desativado(s).` : '') +
+        (r.conflitos ? ` ${r.conflitos} código(s) em conflito com cadastro manual — confira na lista.` : '') +
         (r.conectividade ? ` Conectividade Qlik: ${r.conectividade}.` : ''));
       this.carregar();
     });
