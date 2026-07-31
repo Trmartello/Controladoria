@@ -51,8 +51,10 @@ if ($metodo !== 'GET' && $caminho !== '/api/login') {
 }
 
 use App\Controllers\AuthController;
+use App\Controllers\CenarioController;
 use App\Controllers\CicloController;
 use App\Controllers\DriverEixoController;
+use App\Controllers\FatorController;
 use App\Controllers\NegocioController;
 use App\Controllers\PlanejamentoController;
 use App\Controllers\UsuarioController;
@@ -92,6 +94,24 @@ try {
             (new UsuarioController())->salvar((int)$m[1]);
 
         case $rota === 'GET /api/contexto':        (new PlanejamentoController())->contexto();
+
+        case $rota === 'GET /api/cenario':         (new CenarioController())->listar();
+        case $rota === 'POST /api/cenario':        (new CenarioController())->salvar();
+        case (bool)preg_match('#^POST /api/cenario/(\d+)/excluir$#', $rota, $m):
+            (new CenarioController())->excluir((int)$m[1]);
+        case (bool)preg_match('#^POST /api/cenario/(\d+)$#', $rota, $m):
+            (new CenarioController())->salvar((int)$m[1]);
+
+        case $rota === 'GET /api/fatores':         (new FatorController())->listar();
+        case $rota === 'POST /api/fatores':        (new FatorController())->salvar();
+        case (bool)preg_match('#^POST /api/fatores/(\d+)/excluir$#', $rota, $m):
+            (new FatorController())->excluir((int)$m[1]);
+        case (bool)preg_match('#^POST /api/fatores/(\d+)/promover$#', $rota, $m):
+            (new FatorController())->promover((int)$m[1]);
+        case (bool)preg_match('#^POST /api/fatores/(\d+)/gut$#', $rota, $m):
+            (new FatorController())->avaliarGut((int)$m[1]);
+        case (bool)preg_match('#^POST /api/fatores/(\d+)$#', $rota, $m):
+            (new FatorController())->salvar((int)$m[1]);
 
         default:
             Json::erro('Rota não encontrada.', 404);

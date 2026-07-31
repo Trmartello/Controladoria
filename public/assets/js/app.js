@@ -89,8 +89,38 @@ const App = {
     this.recarregarSecaoAtiva();
   },
 
+  // Contexto selecionado como querystring; null se incompleto
+  contextoParams() {
+    const ctx = this.contexto;
+    if (!ctx.cicloId || (!ctx.negocioId && !ctx.corporativo)) return null;
+    return ctx.corporativo
+      ? `ciclo_id=${ctx.cicloId}&escopo=CORPORATIVO`
+      : `ciclo_id=${ctx.cicloId}&negocio_id=${ctx.negocioId}`;
+  },
+
+  // Resolve (e cria se preciso) o planejamento do contexto atual
+  async planejamento() {
+    const params = this.contextoParams();
+    if (!params) return null;
+    return (await this.api(`/api/contexto?${params}`)).planejamento;
+  },
+
+  rotuloContexto() {
+    return this.contexto.corporativo
+      ? 'Corporativo'
+      : this.sessao.negocios.find((n) => n.id === this.contexto.negocioId)?.rotulo || '';
+  },
+
+  podeEditar() {
+    return this.sessao.usuario.perfil !== 'LEITURA';
+  },
+
   recarregarSecaoAtiva() {
-    const secoes = { painel: SecaoPainel, hub: SecaoHub, cadastros: SecaoCadastros };
+    const secoes = {
+      painel: SecaoPainel, hub: SecaoHub, cadastros: SecaoCadastros,
+      cenario: SecaoCenario, pestel: SecaoPestel, porter: SecaoPorter,
+      swot: SecaoSwot, gut: SecaoGut,
+    };
     const secao = secoes[this.secaoAtiva];
     if (secao) secao.carregar().catch((e) => {
       document.getElementById(`secao-${this.secaoAtiva}`).innerHTML =

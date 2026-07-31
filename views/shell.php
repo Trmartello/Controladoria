@@ -26,8 +26,13 @@
         <li><a class="nav-link" href="#painel" data-secao="painel">Painel</a></li>
         <li><a class="nav-link" href="#hub" data-secao="hub">Hub do Planejamento</a></li>
         <li><a class="nav-link" href="#cadastros" data-secao="cadastros">Cadastros</a></li>
+        <li class="nav-item mt-2 text-white-50 small">Diagnóstico</li>
+        <li><a class="nav-link" href="#cenario" data-secao="cenario">Análise de Cenário</a></li>
+        <li><a class="nav-link" href="#pestel" data-secao="pestel">PESTEL</a></li>
+        <li><a class="nav-link" href="#porter" data-secao="porter">Porter — 5 Forças</a></li>
+        <li><a class="nav-link" href="#swot" data-secao="swot">SWOT</a></li>
+        <li><a class="nav-link" href="#gut" data-secao="gut">Matriz GUT</a></li>
         <li class="nav-item mt-2 text-white-50 small">Próximas fases:</li>
-        <li><a class="nav-link disabled" href="#">Diagnóstico (PESTEL · Porter · SWOT · GUT)</a></li>
         <li><a class="nav-link disabled" href="#">Cascata de Escolhas</a></li>
         <li><a class="nav-link disabled" href="#">Projetos · Investimentos</a></li>
       </ul>
@@ -47,6 +52,11 @@
       <section id="secao-painel" class="secao d-none"></section>
       <section id="secao-hub" class="secao d-none"></section>
       <section id="secao-cadastros" class="secao d-none"></section>
+      <section id="secao-cenario" class="secao d-none"></section>
+      <section id="secao-pestel" class="secao d-none"></section>
+      <section id="secao-porter" class="secao d-none"></section>
+      <section id="secao-swot" class="secao d-none"></section>
+      <section id="secao-gut" class="secao d-none"></section>
     </main>
   </div>
 
@@ -75,6 +85,7 @@
   <script src="/assets/js/secoes/painel.js"></script>
   <script src="/assets/js/secoes/hub.js"></script>
   <script src="/assets/js/secoes/cadastros.js"></script>
+  <script src="/assets/js/secoes/diagnostico.js"></script>
   <script src="/assets/js/app.js"></script>
 </body>
 </html>
