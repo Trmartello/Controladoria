@@ -1,5 +1,17 @@
 // Login — script externo (a CSP bloqueia scripts inline).
 
+// Olho de conferir a senha antes de entrar
+document.getElementById('btn-ver-senha').addEventListener('click', () => {
+  const campo = document.getElementById('senha');
+  const botao = document.getElementById('btn-ver-senha');
+  const mostrar = campo.type === 'password';
+  campo.type = mostrar ? 'text' : 'password';
+  botao.title = mostrar ? 'Ocultar senha' : 'Mostrar senha';
+  botao.setAttribute('aria-label', botao.title);
+  botao.classList.toggle('active', mostrar);
+  campo.focus();
+});
+
 document.getElementById('form-login').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const resp = await fetch('/api/login', {
