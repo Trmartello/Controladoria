@@ -28,7 +28,7 @@ class ProjetoController
              LEFT JOIN horizonte h ON h.id = p.horizonte_id
              LEFT JOIN cascata_escolha ce ON ce.id = p.cascata_id
              WHERE p.planejamento_id = ?
-             ORDER BY p.tipo, p.ordem, p.id',
+             ORDER BY p.ano, p.ordem, p.id',
             [$planId]
         );
         foreach ($projetos as &$p) {
@@ -142,10 +142,19 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         $plan = Auth::exigirEdicaoPlanejamento($planId);
 
-        $tipo = $d['tipo'] ?? '';
+        // O tipo virou legado (a divisão plurianual/anual saiu da interface);
+        // o que classifica o projeto agora é o ano do planejamento
+        $tipo = $d['tipo'] ?? 'ESTRATEGICO';
+        if (!in_array($tipo, ['ESTRATEGICO', 'OPERACIONAL'], true)) {
+            $tipo = 'ESTRATEGICO';
+        }
         $titulo = trim($d['titulo'] ?? '');
-        if (!in_array($tipo, ['ESTRATEGICO', 'OPERACIONAL'], true) || $titulo === '') {
-            Json::erro('Informe o tipo e o título do projeto.');
+        if ($titulo === '') {
+            Json::erro('Informe o título do projeto.');
+        }
+        $ano = (int)($d['ano'] ?? 0);
+        if ($ano < 2000 || $ano > 2100) {
+            Json::erro('Informe o ano do planejamento do projeto.');
         }
         $status = $d['status'] ?? 'NAO_INICIADO';
         if (!in_array($status, self::STATUS_PROJETO, true)) {
@@ -161,13 +170,17 @@ class ProjetoController
             Json::erro('Classificação inválida.');
         }
 
-        $horizonteId = !empty($d['horizonte_id']) ? (int)$d['horizonte_id'] : null;
-        if ($horizonteId !== null && !Database::um(
-            'SELECT id FROM horizonte WHERE id = ? AND ciclo_id = ?',
-            [$horizonteId, (int)$plan['ciclo_id']]
-        )) {
-            Json::erro('Horizonte não pertence ao ciclo deste planejamento.');
+        // O horizonte não é escolhido: é o que contempla o ano informado
+        // (ex.: H1 2027–2030 → ações de 2027 caem obrigatoriamente no H1)
+        $horizonte = Database::um(
+            'SELECT id FROM horizonte WHERE ciclo_id = ? AND ? BETWEEN ano_inicio AND ano_fim
+             ORDER BY ordem, id',
+            [(int)$plan['ciclo_id'], $ano]
+        );
+        if (!$horizonte) {
+            Json::erro("Nenhum horizonte do ciclo contempla o ano {$ano}. Ajuste os anos dos horizontes em Cadastros.");
         }
+        $horizonteId = (int)$horizonte['id'];
         $cascataId = !empty($d['cascata_id']) ? (int)$d['cascata_id'] : null;
         if ($cascataId !== null && !Database::um(
             'SELECT id FROM cascata_escolha WHERE id = ? AND planejamento_id = ?',
@@ -179,7 +192,7 @@ class ProjetoController
         [$inicio, $fim] = $this->periodo($d);
 
         $params = [
-            $tipo, $titulo,
+            $tipo, $ano, $titulo,
             mb_substr(trim($d['responsavel'] ?? ''), 0, 255),
             mb_substr(trim($d['prazo'] ?? ''), 0, 60),
             $inicio, $fim,
@@ -189,7 +202,7 @@ class ProjetoController
         if ($id) {
             $this->exigirProjeto($id, $planId);
             Database::executar(
-                'UPDATE projeto SET tipo = ?, titulo = ?, responsavel = ?, prazo = ?,
+                'UPDATE projeto SET tipo = ?, ano = ?, titulo = ?, responsavel = ?, prazo = ?,
                    data_inicio = ?, data_fim = ?,
                    horizonte_id = ?, cascata_id = ?, impacto = ?, classificacao = ?,
                    status = ?, ordem = ? WHERE id = ?',
@@ -197,10 +210,10 @@ class ProjetoController
             );
         } else {
             $id = (int)Database::executar(
-                'INSERT INTO projeto (planejamento_id, tipo, titulo, responsavel, prazo,
+                'INSERT INTO projeto (planejamento_id, tipo, ano, titulo, responsavel, prazo,
                    data_inicio, data_fim,
                    horizonte_id, cascata_id, impacto, classificacao, status, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [$planId, ...$params]
             );
         }

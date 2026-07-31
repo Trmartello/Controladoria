@@ -73,6 +73,19 @@ class CicloController
         if (!$cicloId || $nome === '' || !$anoInicio || !$anoFim || $tema === '' || $objetivo === '') {
             Json::erro('Preencha todos os campos do horizonte (nome, período, tema e objetivo).');
         }
+        if ($anoFim < $anoInicio) {
+            Json::erro('Ano final do horizonte não pode ser menor que o inicial.');
+        }
+        // Os anos definem a qual horizonte cada projeto pertence — não podem
+        // se sobrepor entre horizontes do mesmo ciclo
+        $conflito = Database::um(
+            'SELECT nome FROM horizonte
+             WHERE ciclo_id = ? AND id <> ? AND ano_inicio <= ? AND ano_fim >= ?',
+            [$cicloId, $id ?? 0, $anoFim, $anoInicio]
+        );
+        if ($conflito) {
+            Json::erro("O período {$anoInicio}–{$anoFim} conflita com o horizonte {$conflito['nome']} deste ciclo.");
+        }
 
         if ($id) {
             Database::executar(

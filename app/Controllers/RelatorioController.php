@@ -150,10 +150,10 @@ class RelatorioController
         }
         $html .= '</table>';
 
-        $html .= '<h3>Projetos</h3><table border="1"><tr><th>Projeto</th><th>Tipo</th><th>Responsável</th>
+        $html .= '<h3>Projetos</h3><table border="1"><tr><th>Projeto</th><th>Ano</th><th>Responsável</th>
             <th>Prazo</th><th>Status</th><th>Progresso médio (%)</th></tr>';
         foreach ($r['projetos'] as $p) {
-            $html .= '<tr><td>' . $esc($p['titulo']) . '</td><td>' . $esc($p['tipo']) . '</td><td>'
+            $html .= '<tr><td>' . $esc($p['titulo']) . '</td><td>' . $esc($p['ano']) . '</td><td>'
                 . $esc($p['responsavel']) . '</td><td>' . $esc($p['prazo']) . '</td><td>'
                 . $esc($p['status']) . '</td><td>' . $esc($p['progresso']) . '</td></tr>';
         }
@@ -233,7 +233,7 @@ class RelatorioController
         unset($ind);
 
         $projetos = Database::todos(
-            "SELECT p.id, p.titulo, p.tipo, p.responsavel, p.prazo, p.status, p.classificacao,
+            "SELECT p.id, p.titulo, p.ano, p.responsavel, p.prazo, p.status, p.classificacao,
                     h.nome AS horizonte_nome,
                     COALESCE(ROUND(AVG(d.progresso)), 0) AS progresso,
                     SUM(d.status = 'ATRASADO') AS desdobramentos_atrasados

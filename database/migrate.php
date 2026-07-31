@@ -95,6 +95,18 @@ if ($tipoStatus && !str_contains((string)$tipoStatus, 'PAUSADO')) {
     echo "migrate: status da ação ampliado (PAUSADO, AGUARDANDO_VALIDACAO).\n";
 }
 
+// O projeto pertence a um ano do planejamento; o horizonte deriva do ano
+garantirColuna($pdo, 'projeto', 'ano',
+    'ALTER TABLE projeto ADD COLUMN ano SMALLINT NULL AFTER tipo');
+$pdo->exec(
+    'UPDATE projeto p
+     JOIN planejamento pl ON pl.id = p.planejamento_id
+     JOIN ciclo c ON c.id = pl.ciclo_id
+     LEFT JOIN horizonte h ON h.id = p.horizonte_id
+     SET p.ano = COALESCE(YEAR(p.data_inicio), h.ano_inicio, c.ano_base)
+     WHERE p.ano IS NULL'
+);
+
 // Ações criadas antes das iniciativas são agrupadas numa frente padrão
 $pdo->exec(
     "INSERT INTO iniciativa (projeto_id, titulo, ordem)

@@ -36,6 +36,7 @@ const Modal = {
     form.innerHTML = campos.map((c) => this.renderCampo(c, valores[c.nome], valores)).join('');
     this.ligarBotoesSenha(form);
     this.ligarBotoesDitado(form);
+    this.ligarSelecaoLivre(form);
 
     if (!this.bsModal) {
       this.bsModal = new bootstrap.Modal(document.getElementById('modal-form'));
@@ -84,6 +85,21 @@ const Modal = {
           .map((o) => `<option value="${this.esc(o.valor)}" ${selecionados.includes(String(o.valor)) ? 'selected' : ''}>${this.esc(o.rotulo)}</option>`)
           .join('');
         controle = `<select class="form-select" id="${id}" multiple size="${Math.min(8, (c.opcoes || []).length || 3)}">${opcoes}</select>`;
+        break;
+      }
+      case 'selecao_livre': {
+        // Lista de opções cadastradas + "Outro": só ao escolher "Outro" o campo
+        // de digitação aparece (sem ditado — a escolha normal é pela lista)
+        const opcoes = (c.opcoes || []).map(String);
+        const valorStr = String(v ?? '');
+        const escolhido = valorStr === '' ? '' : (opcoes.includes(valorStr) ? valorStr : '__OUTRO__');
+        const ops = [`<option value="">${this.esc(c.vazio || '(não definido)')}</option>`]
+          .concat(opcoes.map((o) => `<option value="${this.esc(o)}" ${o === escolhido ? 'selected' : ''}>${this.esc(o)}</option>`))
+          .concat([`<option value="__OUTRO__" ${escolhido === '__OUTRO__' ? 'selected' : ''}>+ Outro — informar um nome não cadastrado</option>`])
+          .join('');
+        controle = `<select class="form-select selecao-livre" id="${id}">${ops}</select>
+          <input type="text" class="form-control mt-2 ${escolhido === '__OUTRO__' ? '' : 'd-none'}" id="${id}-outro"
+            value="${escolhido === '__OUTRO__' ? this.esc(valorStr) : ''}" placeholder="Digite o nome">`;
         break;
       }
       case 'quadrantes': {
@@ -166,6 +182,16 @@ const Modal = {
   botaoDitar(id) {
     return `<button class="btn btn-ditar" type="button" data-alvo="${id}"
       title="Ditar por voz" aria-label="Ditar por voz">${this.iconeMic}</button>`;
+  },
+
+  // "Outro" na seleção livre revela o campo de digitação
+  ligarSelecaoLivre(raiz) {
+    raiz.querySelectorAll('select.selecao-livre').forEach((s) => s.addEventListener('change', () => {
+      const outro = document.getElementById(`${s.id}-outro`);
+      const ativo = s.value === '__OUTRO__';
+      outro.classList.toggle('d-none', !ativo);
+      if (ativo) outro.focus();
+    }));
   },
 
   ligarBotoesDitado(raiz) {
@@ -252,6 +278,11 @@ const Modal = {
       const el = document.getElementById(`campo-${c.nome}`);
       if (!el) continue;
       if (c.tipo === 'checkbox') dados[c.nome] = el.checked;
+      else if (c.tipo === 'selecao_livre') {
+        dados[c.nome] = el.value === '__OUTRO__'
+          ? document.getElementById(`campo-${c.nome}-outro`).value.trim()
+          : el.value;
+      }
       else if (c.tipo === 'botoes' || c.tipo === 'quadrantes') {
         const marcado = el.querySelector('input:checked');
         dados[c.nome] = marcado ? (marcado.value === '' || isNaN(marcado.value) ? marcado.value : Number(marcado.value)) : null;

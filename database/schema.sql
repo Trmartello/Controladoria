@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS projeto (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,
   tipo             ENUM('ESTRATEGICO','OPERACIONAL') NOT NULL,
+  ano              SMALLINT NULL,
   titulo           TEXT NOT NULL,
   responsavel      VARCHAR(255),
   prazo            VARCHAR(60),

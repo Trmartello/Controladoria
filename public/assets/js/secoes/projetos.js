@@ -34,7 +34,6 @@ const SecaoProjetos = {
   plan: null,
   cascata: null,
   responsaveis: [],
-  filtroTipo: 'ESTRATEGICO',
   diarioAberto: null, // { refTipo, refId }
   iniciativasFechadas: new Set(), // por padrão as frentes abrem expandidas
 
@@ -132,15 +131,15 @@ const SecaoProjetos = {
     ]);
     this.cascata = cascata;
     this.responsaveis = responsaveis;
-    const doTipo = projetos.filter((p) => p.tipo === this.filtroTipo);
 
     const badge = (status) => {
       const [rotulo, classe] = STATUS_ROTULOS[status] || [status, 'text-bg-light'];
       return `<span class="badge ${classe}">${rotulo}</span>`;
     };
 
-    const cartoes = doTipo.map((p) => {
+    const cartoes = projetos.map((p) => {
       const detalhes = [
+        p.ano && `<strong>Ano:</strong> ${p.ano}`,
         p.responsavel && `<strong>Responsável:</strong> ${Modal.esc(p.responsavel)}`,
         this.periodo(p.data_inicio, p.data_fim, p.prazo)
           && `<strong>Prazo:</strong> ${Modal.esc(this.periodo(p.data_inicio, p.data_fim, p.prazo))}`,
@@ -190,18 +189,9 @@ const SecaoProjetos = {
         <h1>Projetos — ${Modal.esc(App.rotuloContexto())}</h1>
         ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-proj">+ Novo projeto</button>' : ''}
       </div>
-      <ul class="nav nav-tabs mt-2">
-        <li class="nav-item"><a class="nav-link ${this.filtroTipo === 'ESTRATEGICO' ? 'active' : ''}" href="#" data-tipo="ESTRATEGICO">Estratégicos (plurianuais)</a></li>
-        <li class="nav-item"><a class="nav-link ${this.filtroTipo === 'OPERACIONAL' ? 'active' : ''}" href="#" data-tipo="OPERACIONAL">Plano Operacional (ano)</a></li>
-      </ul>
-      <div class="pt-3">${cartoes || '<div class="text-muted">Nenhum projeto neste grupo.</div>'}</div>`;
-
-    el.querySelectorAll('[data-tipo]').forEach((a) => a.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      this.filtroTipo = a.dataset.tipo;
-      this.diarioAberto = null;
-      this.carregar();
-    }));
+      <p class="text-muted">O projeto pertence a um ano do planejamento; o horizonte é atribuído
+      automaticamente pelos anos que cada horizonte contempla.</p>
+      <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>`;
 
     el.querySelectorAll('[data-diario]').forEach((b) => b.addEventListener('click', () => {
       const [refTipo, refId] = b.dataset.diario.split(':');
@@ -268,34 +258,47 @@ const SecaoProjetos = {
     }));
   },
 
+  // Anos de execução do ciclo vigente para o seletor "Ano do planejamento"
+  anosDoCiclo() {
+    const c = App.sessao.ciclos.find((x) => x.id === App.contexto.cicloId);
+    if (!c) return [];
+    const anos = [];
+    const inicio = Number(c.ano_inicio || c.ano_base);
+    for (let a = inicio; a <= Number(c.ano_fim); a++) anos.push(a);
+    return anos;
+  },
+
   modalProjeto(p, projetos) {
-    const opcoesHorizonte = [{ valor: '', rotulo: '(sem horizonte)' }].concat(
-      this.cascata.horizontes.map((h) => ({ valor: h.id, rotulo: `${h.nome} · ${h.ano_inicio}–${h.ano_fim} · ${h.tema}` })));
     const nomeDriver = (id) => this.cascata.drivers.find((d) => d.id == id)?.nome || '';
     const opcoesCascata = [{ valor: '', rotulo: '(sem vínculo com a cascata)' }].concat(
       this.cascata.escolhas.map((e) => ({
         valor: e.id,
         rotulo: `${nomeDriver(e.driver_id)}: ${e.escolha.slice(0, 60)}`,
       })));
-    // Projeto novo já nasce no primeiro horizonte do ciclo (o mais próximo)
-    const horizontePadrao = this.cascata.horizontes[0];
+    const anos = this.anosDoCiclo();
+    const anoPadrao = Math.min(Math.max(new Date().getFullYear(), anos[0] || 0), anos[anos.length - 1] || 9999);
+    const mapaHorizontes = this.cascata.horizontes
+      .map((h) => `${h.nome} ${h.ano_inicio}–${h.ano_fim}`).join(' · ');
     Modal.abrir({
       titulo: p ? 'Editar projeto' : 'Novo projeto',
       url: p ? `/api/projetos/${p.id}` : '/api/projetos',
       valores: p
-        ? { ...p, horizonte_id: p.horizonte_id ?? '', cascata_id: p.cascata_id ?? '', impacto: p.impacto ?? '', planejamento_id: this.plan.id }
-        : { planejamento_id: this.plan.id, tipo: this.filtroTipo, horizonte_id: horizontePadrao?.id ?? '' },
+        ? { ...p, cascata_id: p.cascata_id ?? '', impacto: p.impacto ?? '', planejamento_id: this.plan.id }
+        : { planejamento_id: this.plan.id, ano: anoPadrao },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: [
-          { valor: 'ESTRATEGICO', rotulo: 'Estratégico (plurianual)' },
-          { valor: 'OPERACIONAL', rotulo: 'Operacional (ano)' },
-        ]},
+        // Tipo é legado — mantém o valor dos projetos antigos sem exibi-lo
+        { nome: 'tipo', rotulo: '', tipo: 'hidden' },
+        { nome: 'ano', rotulo: 'Ano do planejamento', obrigatorio: true, tipo: 'select',
+          opcoes: anos.map((a) => ({ valor: a, rotulo: String(a) })),
+          nota: mapaHorizontes
+            ? `O horizonte é definido pelo ano: ${mapaHorizontes}.`
+            : 'Cadastre os horizontes do ciclo em Cadastros para o ano ser aceito.' },
         { nome: 'titulo', rotulo: 'Projeto / ação planejada', obrigatorio: true,
           exemplo: 'Ex.: 1ª onda de silos — unidade Capinzal' },
-        { nome: 'responsavel', rotulo: 'Responsável', sugestoes: this.responsaveis,
-          exemplo: 'Escolha um usuário ou digite outro nome',
-          ajuda: 'A lista traz os usuários cadastrados; você também pode digitar qualquer outro nome.' },
+        { nome: 'responsavel', rotulo: 'Responsável', tipo: 'selecao_livre', opcoes: this.responsaveis,
+          vazio: '(sem responsável definido)',
+          ajuda: 'Escolha um usuário cadastrado ou use "Outro" para informar um nome de fora do sistema.' },
         // Preserva o prazo em texto dos projetos criados antes do calendário
         { nome: 'prazo', rotulo: '', tipo: 'hidden' },
         { nome: 'prazo_periodo', rotulo: 'Prazo da ação', tipo: 'periodo',
@@ -303,11 +306,7 @@ const SecaoProjetos = {
             { nome: 'data_inicio', rotulo: 'Início' },
             { nome: 'data_fim', rotulo: 'Fim previsto' },
           ],
-          ajuda: 'Toque no campo para abrir o calendário. Em projetos plurianuais, use o mês de referência.' },
-        { nome: 'horizonte_id', rotulo: 'Horizonte', tipo: 'select', opcoes: opcoesHorizonte,
-          nota: horizontePadrao
-            ? `Padrão: ${horizontePadrao.nome} (${horizontePadrao.ano_inicio}–${horizontePadrao.ano_fim}), o primeiro horizonte do ciclo. Troque se o projeto pertencer a outro.`
-            : null },
+          ajuda: 'Toque no campo para abrir o calendário.' },
         { nome: 'cascata_id', rotulo: 'Escolha da cascata que originou', tipo: 'select', opcoes: opcoesCascata },
         { nome: 'impacto', rotulo: 'Impacto', tipo: 'select', opcoes: [
           { valor: '', rotulo: '(não definido)' },
@@ -373,8 +372,9 @@ const SecaoProjetos = {
         { nome: 'o_que', rotulo: 'O quê? (What)', obrigatorio: true, tipo: 'textarea', linhas: 2,
           exemplo: 'Ex.: Contratar projeto executivo dos silos' },
         { nome: 'por_que', rotulo: 'Por quê? (Why)' },
-        { nome: 'quem', rotulo: 'Quem? (Who)', sugestoes: this.responsaveis,
-          exemplo: 'Escolha um usuário ou digite outro nome' },
+        { nome: 'quem', rotulo: 'Quem? (Who)', tipo: 'selecao_livre', opcoes: this.responsaveis,
+          vazio: '(sem responsável definido)',
+          ajuda: 'Escolha um usuário cadastrado ou use "Outro" para informar um nome de fora do sistema.' },
         { nome: 'quando_', rotulo: '', tipo: 'hidden' },
         { nome: 'quando_periodo', rotulo: 'Quando? (When)', tipo: 'periodo',
           campos: [
