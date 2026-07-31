@@ -468,68 +468,133 @@ const SecaoSwot = {
 };
 
 const SecaoGut = {
+  // Severidade do score (1–125) colore o selo: alta, média ou baixa prioridade
+  corScore(score) {
+    if (score >= 64) return '#8f3b3b';
+    if (score >= 27) return '#b08d4f';
+    return '#007a45';
+  },
+
   async carregar() {
     const base = await Diag.preparar('secao-gut');
     if (!base) return;
     const { el, plan, ano } = base;
     const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT&ano=${ano}`);
     const ordenados = [...fatores].sort((a, b) => (b.score || 0) - (a.score || 0));
+    const editar = App.podeEditar();
 
-    const nomeQuadrante = {
-      FORCA: 'Força', FRAQUEZA: 'Fraqueza', OPORTUNIDADE: 'Oportunidade', AMEACA: 'Ameaça',
-    };
+    // Celular: cartões tocáveis. Computador: a tabela de ranking de sempre.
+    const cartoes = ordenados.map((f, idx) => {
+      const cor = Diag.CORES_QUADRANTE[f.categoria] || '#007a45';
+      const avaliado = !!f.score;
+      const notas = [['G', f.gravidade], ['U', f.urgencia], ['T', f.tendencia]].map(([k, v]) => `
+        <div class="text-center">
+          <div class="gut-chave">${k}</div>
+          <div class="gut-nota ${avaliado ? '' : 'text-black-50'}">${v ?? '—'}</div>
+        </div>`).join('');
+      return `<div class="card gut-card mb-2 ${avaliado ? '' : 'sem-nota'}" style="--cor-quad:${cor}"
+        ${editar ? `data-avaliar="${f.id}" role="button" tabindex="0"` : ''}>
+        <div class="card-body py-2 px-3">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="gut-rank ${avaliado ? '' : 'text-black-50'}">${avaliado ? `${idx + 1}º` : '—'}</span>
+            <span class="badge gut-tag" style="color:${cor};background:${cor}1f">${Diag.QUADRANTES[f.categoria]}</span>
+            ${editar ? '<span class="ms-auto gut-acao">avaliar ✎</span>' : ''}
+          </div>
+          <div class="small texto-fator mb-2">${Modal.esc(f.descricao)}</div>
+          <div class="d-flex align-items-end">
+            <div class="d-flex gap-3">${notas}</div>
+            <div class="ms-auto text-end">
+              <div class="gut-chave">SCORE</div>
+              <span class="badge gut-score" style="background:${avaliado ? this.corScore(f.score) : '#d8deda'}">${avaliado ? f.score : '—'}</span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
 
-    const linhas = ordenados.map((f, idx) => `
-      <tr>
+    const linhas = ordenados.map((f, idx) => {
+      const cor = Diag.CORES_QUADRANTE[f.categoria] || '#007a45';
+      return `<tr>
         <td>${f.score ? `<strong>${idx + 1}º</strong>` : '—'}</td>
-        <td><span class="badge text-bg-secondary">${nomeQuadrante[f.categoria]}</span></td>
+        <td><span class="badge gut-tag" style="color:${cor};background:${cor}1f">${Diag.QUADRANTES[f.categoria]}</span></td>
         <td class="small">${Modal.esc(f.descricao)}</td>
         <td class="text-center">${f.gravidade ?? '—'}</td>
         <td class="text-center">${f.urgencia ?? '—'}</td>
         <td class="text-center">${f.tendencia ?? '—'}</td>
-        <td class="text-center">${f.score ? `<span class="badge text-bg-warning fs-6">${f.score}</span>` : '—'}</td>
-        <td>${App.podeEditar() ? `<button class="btn btn-sm btn-outline-secondary" data-avaliar="${f.id}">Avaliar</button>` : ''}</td>
-      </tr>`).join('');
+        <td class="text-center">${f.score
+          ? `<span class="badge gut-score" style="background:${this.corScore(f.score)}">${f.score}</span>` : '—'}</td>
+        <td>${editar ? `<button class="btn btn-sm btn-outline-secondary" data-avaliar="${f.id}">Avaliar</button>` : ''}</td>
+      </tr>`;
+    }).join('');
 
+    const vazio = 'Cadastre fatores na SWOT para avaliá-los aqui.';
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>Matriz GUT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
         ${Diag.seletorAno()}
       </div>
       <p class="text-muted">Priorize os fatores da SWOT de ${ano}: Gravidade × Urgência × Tendência (1–5).
-      O ranking orienta as escolhas da cascata.</p>
-      <div class="table-responsive">
+      O ranking orienta as escolhas da cascata.${editar ? ' <strong>Toque em um fator para avaliar.</strong>' : ''}</p>
+
+      <div class="d-md-none">
+        ${cartoes || `<div class="text-muted small">${vazio}</div>`}
+        ${ordenados.length ? `<div class="legenda-quadrantes">
+          ${Object.entries(Diag.QUADRANTES).map(([cat, rotulo]) =>
+            `<span><i style="background:${Diag.CORES_QUADRANTE[cat]}"></i>${rotulo}</span>`).join('')}
+        </div>` : ''}
+      </div>
+
+      <div class="table-responsive d-none d-md-block">
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Ranking</th><th>Quadrante</th><th>Fator</th>
             <th class="text-center">G</th><th class="text-center">U</th><th class="text-center">T</th>
             <th class="text-center">Score</th><th></th>
           </tr></thead>
-          <tbody>${linhas || '<tr><td colspan="8" class="text-muted">Cadastre fatores na SWOT para avaliá-los aqui.</td></tr>'}</tbody>
+          <tbody>${linhas || `<tr><td colspan="8" class="text-muted">${vazio}</td></tr>`}</tbody>
         </table>
       </div>`;
 
     Diag.ligarSeletorAno(el);
-    if (!App.podeEditar()) return;
+    Diag.ligarVerMais(el);
+    if (!editar) return;
     const escala = [1, 2, 3, 4, 5].map((n) => ({ valor: n, rotulo: String(n) }));
-    el.querySelectorAll('[data-avaliar]').forEach((b) => b.addEventListener('click', () => {
-      const f = fatores.find((x) => x.id == b.dataset.avaliar);
-      Modal.abrir({
-        titulo: 'Avaliação GUT',
-        url: `/api/fatores/${f.id}/gut`,
-        valores: {
-          planejamento_id: plan.id,
-          gravidade: f.gravidade || 3, urgencia: f.urgencia || 3, tendencia: f.tendencia || 3,
-        },
-        campos: [
-          { nome: 'fator_info', rotulo: 'Fator avaliado', tipo: 'info',
-            texto: `${nomeQuadrante[f.categoria]} — ${f.descricao}` },
-          { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-          { nome: 'gravidade', rotulo: 'Gravidade (1 = leve · 5 = gravíssimo)', tipo: 'botoes', opcoes: escala },
-          { nome: 'urgencia', rotulo: 'Urgência (1 = pode esperar · 5 = agir já)', tipo: 'botoes', opcoes: escala },
-          { nome: 'tendencia', rotulo: 'Tendência (1 = estável · 5 = piora rápido)', tipo: 'botoes', opcoes: escala },
-        ],
-      });
-    }));
+    const abrirAvaliacao = (f) => Modal.abrir({
+      titulo: 'Avaliação GUT',
+      url: `/api/fatores/${f.id}/gut`,
+      valores: {
+        planejamento_id: plan.id,
+        gravidade: f.gravidade || 3, urgencia: f.urgencia || 3, tendencia: f.tendencia || 3,
+      },
+      campos: [
+        { nome: 'fator_info', rotulo: 'Fator avaliado', tipo: 'info', texto: f.descricao,
+          barra: {
+            titulo: Diag.QUADRANTES[f.categoria] || 'SWOT',
+            cor: Diag.CORES_QUADRANTE[f.categoria] || '#007a45',
+            origem: `Análise SWOT · ${f.ano || ano}`,
+          } },
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'gravidade', rotulo: 'Gravidade (1 = leve · 5 = gravíssimo)', tipo: 'botoes', opcoes: escala },
+        { nome: 'urgencia', rotulo: 'Urgência (1 = pode esperar · 5 = agir já)', tipo: 'botoes', opcoes: escala },
+        { nome: 'tendencia', rotulo: 'Tendência (1 = estável · 5 = piora rápido)', tipo: 'botoes', opcoes: escala },
+      ],
+      // Só há o que redefinir se o fator já tiver notas registradas
+      extra: f.score ? {
+        rotulo: 'Redefinir',
+        confirmar: 'Apagar a avaliação GUT deste fator para refazê-la?',
+        aoClicar: () => App.api(`/api/fatores/${f.id}/gut/limpar`, { planejamento_id: plan.id }),
+      } : null,
+    });
+
+    el.querySelectorAll('[data-avaliar]').forEach((b) => {
+      const abrir = () => abrirAvaliacao(fatores.find((x) => x.id == b.dataset.avaliar));
+      b.addEventListener('click', abrir);
+      // Cartão inteiro é tocável: teclado também abre a avaliação
+      if (b.getAttribute('role') === 'button') {
+        b.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(); }
+        });
+      }
+    });
   },
 };

@@ -146,6 +146,17 @@ class FatorController
         Json::ok(['score' => $g * $u * $t]);
     }
 
+    /** Apaga as notas GUT de um fator para que a avaliação seja refeita do zero. */
+    public function limparGut(int $fatorId): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $this->exigirFator($fatorId, $planId);
+        Database::executar('DELETE FROM gut WHERE fator_id = ?', [$fatorId]);
+        Json::ok();
+    }
+
     private function exigirFator(int $id, int $planId): array
     {
         $fator = Database::um(

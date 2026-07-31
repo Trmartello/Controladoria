@@ -21,10 +21,16 @@ const Modal = {
     + '<path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/>'
     + '<path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12-.708.708z"/></svg>',
 
-  abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null, enviar = null }) {
-    this.config = { campos, url, aoSalvar, transformar, enviar };
+  abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null, enviar = null, extra = null }) {
+    this.config = { campos, url, aoSalvar, transformar, enviar, extra };
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-erro').classList.add('d-none');
+
+    // Botão opcional à esquerda do rodapé (ex.: redefinir a avaliação)
+    const btnExtra = document.getElementById('modal-extra');
+    btnExtra.classList.toggle('d-none', !extra);
+    btnExtra.textContent = extra ? extra.rotulo : '';
+    btnExtra.onclick = extra ? () => this.executarExtra() : null;
 
     const form = document.getElementById('modal-campos');
     form.innerHTML = campos.map((c) => this.renderCampo(c, valores[c.nome])).join('');
@@ -78,13 +84,22 @@ const Modal = {
           aria-label="${this.esc(c.rotulo)}">${botoes}</div>`;
         break;
       }
-      case 'info':
+      case 'info': {
         // Bloco somente-leitura no topo do modal: mostra o conteúdo em até
-        // ~10 linhas, com barra de rolagem para ler o restante
+        // ~10 linhas, com barra de rolagem para ler o restante. Com `barra`,
+        // ganha um cabeçalho colorido identificando a origem (ex.: quadrante).
+        const cor = /^#[0-9a-f]{6}$/i.test(c.barra?.cor || '') ? c.barra.cor : '#007a45';
+        const barra = c.barra
+          ? `<div class="info-barra" style="color:${cor};background:${cor}1f">
+               <span>${this.esc(c.barra.titulo)}</span>
+               ${c.barra.origem ? `<span class="info-barra-origem">${this.esc(c.barra.origem)}</span>` : ''}
+             </div>`
+          : '';
         return `<div class="mb-3">
-          ${c.rotulo ? `<label class="form-label">${this.esc(c.rotulo)}</label>` : ''}
-          <div class="card card-info-modal"><div class="card-body py-2 px-3 small">${this.esc(c.texto ?? v)}</div></div>
+          ${c.rotulo ? `<label class="form-label rotulo-info">${this.esc(c.rotulo)}</label>` : ''}
+          <div class="card card-info-modal">${barra}<div class="card-body py-2 px-3 small">${this.esc(c.texto ?? v)}</div></div>
         </div>`;
+      }
       case 'hidden':
         // Sem rótulo nem espaçamento — o campo não aparece na tela
         return `<input type="hidden" id="${id}" value="${this.esc(v)}">`;
@@ -203,6 +218,26 @@ const Modal = {
       else dados[c.nome] = el.value;
     }
     return dados;
+  },
+
+  // Ação do botão extra (ex.: apagar a avaliação para refazê-la)
+  async executarExtra() {
+    const { extra } = this.config;
+    if (extra.confirmar && !confirm(extra.confirmar)) return;
+    const botao = document.getElementById('modal-extra');
+    botao.disabled = true;
+    try {
+      await extra.aoClicar();
+      this.bsModal.hide();
+      if (this.config.aoSalvar) this.config.aoSalvar();
+      else App.recarregarSecaoAtiva();
+    } catch (e) {
+      const erro = document.getElementById('modal-erro');
+      erro.textContent = e.message;
+      erro.classList.remove('d-none');
+    } finally {
+      botao.disabled = false;
+    }
   },
 
   async salvar() {

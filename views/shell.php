@@ -94,6 +94,7 @@
           <div id="modal-erro" class="alert alert-danger d-none py-2 mt-2"></div>
         </div>
         <div class="modal-footer">
+          <button class="btn btn-outline-danger btn-sm me-auto d-none" id="modal-extra"></button>
           <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
           <button class="btn btn-verde btn-sm" id="modal-salvar">Salvar</button>
         </div>

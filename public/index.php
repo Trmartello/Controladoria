@@ -169,6 +169,8 @@ try {
             (new FatorController())->promover((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/gut$#', $rota, $m):
             (new FatorController())->avaliarGut((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/fatores/(\d+)/gut/limpar$#', $rota, $m):
+            (new FatorController())->limparGut((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)$#', $rota, $m):
             (new FatorController())->salvar((int)$m[1]); break;
 

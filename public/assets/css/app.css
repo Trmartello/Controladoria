@@ -172,11 +172,86 @@ table.tabela-cadastro td { vertical-align: middle; }
 .contador-cards { color: #fff; font-size: .7rem; vertical-align: middle; }
 
 /* Bloco informativo no modal (ex.: fator avaliado na GUT): ~10 linhas e rolagem */
-.card-info-modal { background: #f8faf9; }
+.card-info-modal { background: #f8faf9; overflow: hidden; }
 .card-info-modal .card-body {
   max-height: 15em; /* ~10 linhas de texto small */
   overflow-y: auto;
   overflow-wrap: anywhere;
+}
+.rotulo-info {
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--verde-coperdia);
+}
+.info-barra {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .4rem .75rem;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.info-barra-origem {
+  margin-left: auto;
+  font-size: .65rem;
+  text-transform: none;
+  opacity: .8;
+}
+
+/* Matriz GUT no celular: cartões tocáveis com ranking, notas e score */
+.gut-card {
+  border-left: 5px solid var(--cor-quad, #007a45);
+  cursor: pointer;
+}
+.gut-card.sem-nota { opacity: .78; }
+.gut-card:active { transform: scale(.99); }
+.gut-rank { font-size: 1.15rem; font-weight: 800; min-width: 2rem; }
+.gut-tag {
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  border-radius: 20px;
+}
+.gut-acao { margin-left: auto; font-size: .7rem; font-weight: 600; color: #adb5bd; }
+.gut-chave {
+  font-size: .6rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: #6c757d;
+}
+.gut-nota { font-size: 1rem; font-weight: 800; color: var(--verde-escuro); }
+.gut-score {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #fff;
+  min-width: 2.75rem;
+}
+.legenda-quadrantes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  justify-content: center;
+  margin-top: 1rem;
+  padding-top: .75rem;
+  border-top: 1px solid #e4e9e6;
+}
+.legenda-quadrantes span {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .7rem;
+  font-weight: 600;
+  color: #6c757d;
+}
+.legenda-quadrantes i {
+  width: .7rem;
+  height: .7rem;
+  border-radius: 50%;
 }
 
 /* Grupo de botões exclusivos (option buttons) nos modais — ex.: notas GUT */
