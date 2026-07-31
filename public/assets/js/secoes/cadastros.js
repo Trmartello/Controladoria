@@ -61,10 +61,12 @@ const SecaoCadastros = {
         <button class="btn btn-verde btn-sm" id="btn-novo-negocio">+ Novo negócio</button>
         <button class="btn btn-outline-success btn-sm" id="btn-sync-negocio">Sincronizar Comercial Global</button>
       </div>` : ''}
-      <table class="table table-sm tabela-cadastro">
-        <thead><tr><th>Cód.</th><th>Negócio</th><th>Gestor</th><th>Origem</th><th>Situação</th><th></th></tr></thead>
-        <tbody>${linhas || '<tr><td colspan="6" class="text-muted">Nenhum negócio cadastrado. Use a sincronização ou o cadastro manual.</td></tr>'}</tbody>
-      </table>`;
+      <div class="table-responsive">
+        <table class="table table-sm tabela-cadastro">
+          <thead><tr><th>Cód.</th><th>Negócio</th><th>Gestor</th><th>Origem</th><th>Situação</th><th></th></tr></thead>
+          <tbody>${linhas || '<tr><td colspan="6" class="text-muted">Nenhum negócio cadastrado. Use a sincronização ou o cadastro manual.</td></tr>'}</tbody>
+        </table>
+      </div>`;
 
     if (!administra) return;
     const usuarios = await App.api('/api/usuarios').catch(() => []);
@@ -120,10 +122,12 @@ const SecaoCadastros = {
             <button class="btn btn-sm btn-verde" data-novo-h="${c.id}">+ Horizonte</button>` : ''}
           </div>
         </div>
-        <table class="table table-sm mt-2 mb-0">
-          <thead><tr><th>Horizonte</th><th>Período</th><th>Tema</th><th>Objetivo</th><th></th></tr></thead>
-          <tbody>${horizontes || '<tr><td colspan="5" class="text-muted">Nenhum horizonte.</td></tr>'}</tbody>
-        </table>
+        <div class="table-responsive">
+          <table class="table table-sm mt-2 mb-0">
+            <thead><tr><th>Horizonte</th><th>Período</th><th>Tema</th><th>Objetivo</th><th></th></tr></thead>
+            <tbody>${horizontes || '<tr><td colspan="5" class="text-muted">Nenhum horizonte.</td></tr>'}</tbody>
+          </table>
+        </div>
       </div></div>`;
     }).join('');
 
@@ -186,16 +190,18 @@ const SecaoCadastros = {
     const alvo = document.getElementById('conteudo-aba');
     alvo.innerHTML = `
       ${administra ? `<button class="btn btn-verde btn-sm mb-2" id="btn-novo-item">+ Novo</button>` : ''}
-      <table class="table table-sm tabela-cadastro">
-        <thead><tr><th>Ordem</th><th>${rotulo}</th><th>Situação</th><th></th></tr></thead>
-        <tbody>${lista.map((i) => `
-          <tr class="${i.ativo == 1 ? '' : 'table-secondary'}">
-            <td>${i.ordem}</td>
-            <td>${Modal.esc(i.nome)}</td>
-            <td>${i.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
-            <td>${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}">Editar</button>` : ''}</td>
-          </tr>`).join('')}</tbody>
-      </table>`;
+      <div class="table-responsive">
+        <table class="table table-sm tabela-cadastro">
+          <thead><tr><th>Ordem</th><th>${rotulo}</th><th>Situação</th><th></th></tr></thead>
+          <tbody>${lista.map((i) => `
+            <tr class="${i.ativo == 1 ? '' : 'table-secondary'}">
+              <td>${i.ordem}</td>
+              <td>${Modal.esc(i.nome)}</td>
+              <td>${i.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
+              <td>${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}">Editar</button>` : ''}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
 
     if (!administra) return;
     const abrirModal = (i = null) => Modal.abrir({
@@ -225,20 +231,22 @@ const SecaoCadastros = {
 
     alvo.innerHTML = `
       <button class="btn btn-verde btn-sm mb-2" id="btn-novo-usuario">+ Novo usuário</button>
-      <table class="table table-sm tabela-cadastro">
-        <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Negócios vinculados</th><th>Situação</th><th></th></tr></thead>
-        <tbody>${lista.map((u) => `
-          <tr class="${u.ativo == 1 ? '' : 'table-secondary'}">
-            <td>${Modal.esc(u.nome)}</td>
-            <td>${Modal.esc(u.email)}</td>
-            <td>${u.perfil}</td>
-            <td class="small">${['ADMIN', 'CONTROLADORIA', 'DIRECAO'].includes(u.perfil)
-              ? '<em>todos</em>'
-              : (u.negocios.map(nomeNegocio).map(Modal.esc).join(', ') || '—')}</td>
-            <td>${u.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
-            <td><button class="btn btn-sm btn-outline-secondary" data-editar="${u.id}">Editar</button></td>
-          </tr>`).join('')}</tbody>
-      </table>`;
+      <div class="table-responsive">
+        <table class="table table-sm tabela-cadastro">
+          <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Negócios vinculados</th><th>Situação</th><th></th></tr></thead>
+          <tbody>${lista.map((u) => `
+            <tr class="${u.ativo == 1 ? '' : 'table-secondary'}">
+              <td>${Modal.esc(u.nome)}</td>
+              <td>${Modal.esc(u.email)}</td>
+              <td>${u.perfil}</td>
+              <td class="small">${['ADMIN', 'CONTROLADORIA', 'DIRECAO'].includes(u.perfil)
+                ? '<em>todos</em>'
+                : (u.negocios.map(nomeNegocio).map(Modal.esc).join(', ') || '—')}</td>
+              <td>${u.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
+              <td><button class="btn btn-sm btn-outline-secondary" data-editar="${u.id}">Editar</button></td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
 
     const abrirModal = (u = null) => Modal.abrir({
       titulo: u ? `Editar usuário ${u.nome}` : 'Novo usuário',

@@ -294,14 +294,16 @@ const SecaoGut = {
       <h1>Matriz GUT — ${Modal.esc(App.rotuloContexto())}</h1>
       <p class="text-muted">Priorize os fatores da SWOT: Gravidade × Urgência × Tendência (1–5).
       O ranking orienta as escolhas da cascata (Fase 3).</p>
-      <table class="table table-sm align-middle">
-        <thead><tr>
-          <th>Ranking</th><th>Quadrante</th><th>Fator</th>
-          <th class="text-center">G</th><th class="text-center">U</th><th class="text-center">T</th>
-          <th class="text-center">Score</th><th></th>
-        </tr></thead>
-        <tbody>${linhas || '<tr><td colspan="8" class="text-muted">Cadastre fatores na SWOT para avaliá-los aqui.</td></tr>'}</tbody>
-      </table>`;
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead><tr>
+            <th>Ranking</th><th>Quadrante</th><th>Fator</th>
+            <th class="text-center">G</th><th class="text-center">U</th><th class="text-center">T</th>
+            <th class="text-center">Score</th><th></th>
+          </tr></thead>
+          <tbody>${linhas || '<tr><td colspan="8" class="text-muted">Cadastre fatores na SWOT para avaliá-los aqui.</td></tr>'}</tbody>
+        </table>
+      </div>`;
 
     if (!App.podeEditar()) return;
     const escala = [1, 2, 3, 4, 5].map((n) => ({ valor: n, rotulo: String(n) }));

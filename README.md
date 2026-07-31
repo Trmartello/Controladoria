@@ -4,19 +4,23 @@ Sistema one-page em **PHP 8.2+ / MySQL 8** para gestão do planejamento
 estratégico por **drivers e horizontes** (ciclo 2027–2035). Arquitetura completa
 em [`docs/PLANEJAMENTO-SISTEMA.md`](docs/PLANEJAMENTO-SISTEMA.md).
 
-## Estado atual — Fase 1 (Fundação)
+## Estado atual — Fases 1 a 6 entregues
 
-- Login com sessão, CSRF e perfis (Admin, Controladoria, Direção, Gestor, Leitura)
-- Autorização por **usuário × negócio** — Controladoria e Direção veem tudo
-- Cadastros em **formulário modal**: negócios (cód. + nome, seleção
-  "8 - Agropecuária", sincronização com o Comercial Global/Qlik), ciclos com ano
-  do planejamento, horizontes com tema e objetivo, drivers, eixos e usuários
-- Planejamento por **negócio** e **corporativo** (criado automaticamente por ciclo)
-- Hub do Planejamento com checklist das etapas do método
-- Deploy pronto para **Railway** (Dockerfile + migração automática com seeds)
-
-Próximas fases: diagnóstico (PESTEL, Porter, SWOT, GUT), cascata de escolhas,
-projetos 5W2H, governança de investimentos, painéis e relatório de status.
+- **Fase 1 — Fundação**: login com sessão, CSRF e perfis (Admin, Controladoria,
+  Direção, Gestor, Leitura); autorização por **usuário × negócio**; cadastros em
+  formulário modal (negócios com sincronização Qlik, ciclos, horizontes,
+  drivers, eixos, usuários); Hub do Planejamento; deploy no Railway
+- **Fase 2 — Diagnóstico**: análise de cenário, PESTEL, Porter, SWOT e Matriz GUT
+- **Fase 3 — Cascata de Escolhas**: matriz drivers × horizontes com aberturas
+  por eixo, renúncias e vínculo com os fatores da GUT
+- **Fase 4 — Execução**: projetos, desdobramentos 5W2H e diário de bordo
+- **Fase 5 — Capital**: envelope → papel → ranking por taxa de retorno →
+  decisão com critério registrado → auditoria +12M
+- **Fase 6 — Gestão**: métricas-âncora e metas plurianuais (meta × real com
+  versões de revisão), painel consolidado (negócio, corporativo e geral),
+  relatório de status da reunião (tela, impressão/PDF e Excel)
+- Interface **responsiva para mobile**: menu recolhe e expande automaticamente
+  (off-canvas com ☰ em telas pequenas) e tabelas rolam no próprio contêiner
 
 ## Rodar localmente
 

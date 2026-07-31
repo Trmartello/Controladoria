@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf" content="<?= htmlspecialchars($csrf) ?>">
   <title>Entrar — <?= htmlspecialchars($app['nome']) ?></title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/assets/vendor/bootstrap.min.css">
   <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body class="login-body d-flex align-items-center justify-content-center vh-100">

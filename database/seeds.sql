@@ -51,3 +51,90 @@ INSERT INTO planejamento (ciclo_id, escopo, negocio_id)
   SELECT c.id, 'CORPORATIVO', NULL FROM ciclo c WHERE c.nome = '2027–2035'
     AND NOT EXISTS (SELECT 1 FROM planejamento p
                     WHERE p.ciclo_id = c.id AND p.escopo = 'CORPORATIVO');
+
+-- ===== Fase 6: indicadores do planejamento corporativo (massa de validação
+-- da planilha 2026 — metas ilustrativas a revisar com a controladoria) =====
+
+INSERT INTO indicador (planejamento_id, nome, unidade, sentido, metrica_ancora, horizonte_id)
+  SELECT p.id, 'Margem bruta antes de investimentos', '%', 'MAIOR_MELHOR', 1, h.id
+  FROM planejamento p
+  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
+  JOIN horizonte h ON h.ciclo_id = c.id AND h.nome = 'H1'
+  WHERE p.escopo = 'CORPORATIVO'
+    AND NOT EXISTS (SELECT 1 FROM indicador i WHERE i.planejamento_id = p.id
+                    AND i.nome = 'Margem bruta antes de investimentos');
+
+INSERT INTO indicador (planejamento_id, nome, unidade, sentido, metrica_ancora, horizonte_id)
+  SELECT p.id, 'Market share por cooperado', '%', 'MAIOR_MELHOR', 1, h.id
+  FROM planejamento p
+  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
+  JOIN horizonte h ON h.ciclo_id = c.id AND h.nome = 'H2'
+  WHERE p.escopo = 'CORPORATIVO'
+    AND NOT EXISTS (SELECT 1 FROM indicador i WHERE i.planejamento_id = p.id
+                    AND i.nome = 'Market share por cooperado');
+
+INSERT INTO indicador (planejamento_id, nome, unidade, sentido, metrica_ancora, horizonte_id)
+  SELECT p.id, 'Armazenagem própria', '%', 'MAIOR_MELHOR', 1, h.id
+  FROM planejamento p
+  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
+  JOIN horizonte h ON h.ciclo_id = c.id AND h.nome = 'H3'
+  WHERE p.escopo = 'CORPORATIVO'
+    AND NOT EXISTS (SELECT 1 FROM indicador i WHERE i.planejamento_id = p.id
+                    AND i.nome = 'Armazenagem própria');
+
+INSERT INTO indicador (planejamento_id, nome, unidade, sentido, metrica_ancora, horizonte_id)
+  SELECT p.id, 'Cobertura de juros', 'x', 'MAIOR_MELHOR', 0, NULL
+  FROM planejamento p
+  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
+  WHERE p.escopo = 'CORPORATIVO'
+    AND NOT EXISTS (SELECT 1 FROM indicador i WHERE i.planejamento_id = p.id
+                    AND i.nome = 'Cobertura de juros');
+
+-- Metas plurianuais (versão 1) dos indicadores acima
+INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
+  SELECT i.id, v.ano, 'META', 1, v.valor
+  FROM indicador i
+  JOIN planejamento p ON p.id = i.planejamento_id AND p.escopo = 'CORPORATIVO'
+  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
+  JOIN (SELECT 2027 ano, 18.0 valor UNION ALL SELECT 2028, 19.0 UNION ALL SELECT 2029, 20.0
+        UNION ALL SELECT 2030, 20.5 UNION ALL SELECT 2031, 21.0 UNION ALL SELECT 2032, 21.5
+        UNION ALL SELECT 2033, 22.0 UNION ALL SELECT 2034, 22.5 UNION ALL SELECT 2035, 23.0) v
+  WHERE i.nome = 'Margem bruta antes de investimentos'
+    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id
+                    AND iv.ano = v.ano AND iv.tipo = 'META' AND iv.versao_meta = 1);
+
+INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
+  SELECT i.id, v.ano, 'META', 1, v.valor
+  FROM indicador i
+  JOIN planejamento p ON p.id = i.planejamento_id AND p.escopo = 'CORPORATIVO'
+  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
+  JOIN (SELECT 2027 ano, 52.0 valor UNION ALL SELECT 2028, 54.0 UNION ALL SELECT 2029, 56.0
+        UNION ALL SELECT 2030, 59.0 UNION ALL SELECT 2031, 62.0 UNION ALL SELECT 2032, 65.0
+        UNION ALL SELECT 2033, 66.0 UNION ALL SELECT 2034, 68.0 UNION ALL SELECT 2035, 70.0) v
+  WHERE i.nome = 'Market share por cooperado'
+    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id
+                    AND iv.ano = v.ano AND iv.tipo = 'META' AND iv.versao_meta = 1);
+
+INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
+  SELECT i.id, v.ano, 'META', 1, v.valor
+  FROM indicador i
+  JOIN planejamento p ON p.id = i.planejamento_id AND p.escopo = 'CORPORATIVO'
+  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
+  JOIN (SELECT 2027 ano, 40.0 valor UNION ALL SELECT 2028, 44.0 UNION ALL SELECT 2029, 48.0
+        UNION ALL SELECT 2030, 52.0 UNION ALL SELECT 2031, 56.0 UNION ALL SELECT 2032, 60.0
+        UNION ALL SELECT 2033, 64.0 UNION ALL SELECT 2034, 67.0 UNION ALL SELECT 2035, 70.0) v
+  WHERE i.nome = 'Armazenagem própria'
+    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id
+                    AND iv.ano = v.ano AND iv.tipo = 'META' AND iv.versao_meta = 1);
+
+INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
+  SELECT i.id, v.ano, 'META', 1, v.valor
+  FROM indicador i
+  JOIN planejamento p ON p.id = i.planejamento_id AND p.escopo = 'CORPORATIVO'
+  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
+  JOIN (SELECT 2027 ano, 1.5 valor UNION ALL SELECT 2028, 1.8 UNION ALL SELECT 2029, 2.0
+        UNION ALL SELECT 2030, 2.2 UNION ALL SELECT 2031, 2.4 UNION ALL SELECT 2032, 2.6
+        UNION ALL SELECT 2033, 2.8 UNION ALL SELECT 2034, 2.9 UNION ALL SELECT 2035, 3.0) v
+  WHERE i.nome = 'Cobertura de juros'
+    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id
+                    AND iv.ano = v.ano AND iv.tipo = 'META' AND iv.versao_meta = 1);

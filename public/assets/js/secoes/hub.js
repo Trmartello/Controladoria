@@ -35,7 +35,7 @@ const SecaoHub = {
     el.innerHTML = `
       <h1>Hub do Planejamento — ${Modal.esc(rotulo)}</h1>
       <p class="text-muted">O método segue as etapas abaixo. Cada cartão mostra a quantidade de
-      itens registrados; as telas de cada etapa serão habilitadas nas fases 2–6.</p>
+      itens registrados; navegue pelo menu para trabalhar em cada etapa.</p>
       <div class="row g-2">${cartoes}</div>`;
   },
 };

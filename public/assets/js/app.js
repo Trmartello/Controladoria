@@ -48,7 +48,29 @@ const App = {
       });
     });
 
+    this.iniciarMenuMovel();
     this.mostrarSecao('painel');
+  },
+
+  // Menu móvel: expande pelo ☰ e recolhe sozinho ao navegar, ao tocar fora
+  // ou quando a tela volta ao tamanho de desktop.
+  iniciarMenuMovel() {
+    const botao = document.getElementById('btn-menu');
+    const alternar = (aberto) => {
+      document.body.classList.toggle('menu-aberto', aberto);
+      botao.setAttribute('aria-expanded', String(aberto));
+    };
+    botao.addEventListener('click', () =>
+      alternar(!document.body.classList.contains('menu-aberto')));
+    document.getElementById('backdrop-menu').addEventListener('click', () => alternar(false));
+    document.getElementById('menu-lateral').addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-secao]')) alternar(false);
+    });
+    ['sel-ciclo', 'sel-negocio'].forEach((id) =>
+      document.getElementById(id).addEventListener('change', () => alternar(false)));
+    window.matchMedia('(min-width: 992px)').addEventListener('change', (mq) => {
+      if (mq.matches) alternar(false);
+    });
   },
 
   montarSeletores() {
@@ -121,6 +143,7 @@ const App = {
       cenario: SecaoCenario, pestel: SecaoPestel, porter: SecaoPorter,
       swot: SecaoSwot, gut: SecaoGut, cascata: SecaoCascata,
       projetos: SecaoProjetos, investimentos: SecaoInvestimentos,
+      metas: SecaoMetas, relatorio: SecaoRelatorio,
     };
     const secao = secoes[this.secaoAtiva];
     if (secao) secao.carregar().catch((e) => {

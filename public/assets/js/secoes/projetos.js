@@ -99,10 +99,12 @@ const SecaoProjetos = {
             </div>
           </div>
           ${p.desdobramentos.length ? `
-          <table class="table table-sm mt-2 mb-0 align-middle">
-            <thead><tr><th>Desdobramento (5W2H)</th><th>Status</th><th>Progresso</th><th></th><th></th></tr></thead>
-            <tbody>${linhas}</tbody>
-          </table>` : '<div class="text-muted small mt-2">Nenhum desdobramento cadastrado.</div>'}
+          <div class="table-responsive">
+            <table class="table table-sm mt-2 mb-0 align-middle">
+              <thead><tr><th>Desdobramento (5W2H)</th><th>Status</th><th>Progresso</th><th></th><th></th></tr></thead>
+              <tbody>${linhas}</tbody>
+            </table>
+          </div>` : '<div class="text-muted small mt-2">Nenhum desdobramento cadastrado.</div>'}
           ${timelineProjeto}
         </div>
       </div>`;

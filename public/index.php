@@ -65,10 +65,12 @@ use App\Controllers\CicloController;
 use App\Controllers\DiarioController;
 use App\Controllers\DriverEixoController;
 use App\Controllers\FatorController;
+use App\Controllers\IndicadorController;
 use App\Controllers\InvestimentoController;
 use App\Controllers\NegocioController;
 use App\Controllers\PlanejamentoController;
 use App\Controllers\ProjetoController;
+use App\Controllers\RelatorioController;
 use App\Controllers\UsuarioController;
 
 try {
@@ -158,6 +160,19 @@ try {
         case $rota === 'POST /api/envelopes':       (new InvestimentoController())->salvarEnvelope();
         case (bool)preg_match('#^POST /api/envelopes/(\d+)$#', $rota, $m):
             (new InvestimentoController())->salvarEnvelope((int)$m[1]);
+
+        case $rota === 'GET /api/indicadores':      (new IndicadorController())->listar();
+        case $rota === 'POST /api/indicadores':     (new IndicadorController())->salvar();
+        case (bool)preg_match('#^POST /api/indicadores/(\d+)/excluir$#', $rota, $m):
+            (new IndicadorController())->excluir((int)$m[1]);
+        case (bool)preg_match('#^POST /api/indicadores/(\d+)/valores$#', $rota, $m):
+            (new IndicadorController())->salvarValores((int)$m[1]);
+        case (bool)preg_match('#^POST /api/indicadores/(\d+)$#', $rota, $m):
+            (new IndicadorController())->salvar((int)$m[1]);
+
+        case $rota === 'GET /api/painel':           (new RelatorioController())->painel();
+        case $rota === 'GET /api/relatorio':        (new RelatorioController())->relatorio();
+        case $rota === 'GET /api/relatorio/exportar': (new RelatorioController())->exportar();
 
         default:
             Json::erro('Rota não encontrada.', 404);

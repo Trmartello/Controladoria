@@ -5,10 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf" content="<?= htmlspecialchars($csrf) ?>">
   <title><?= htmlspecialchars($app['nome']) ?></title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/assets/vendor/bootstrap.min.css">
   <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body>
+  <!-- Barra superior (mobile): abre/fecha o menu -->
+  <header class="topbar d-lg-none d-flex align-items-center gap-2 px-3">
+    <button class="btn btn-outline-light btn-sm" id="btn-menu" aria-label="Abrir menu"
+      aria-controls="menu-lateral" aria-expanded="false">☰</button>
+    <span class="marca">COPÉRDIA</span>
+    <span class="text-white-50 small">Planejamento</span>
+  </header>
+  <div class="backdrop-menu" id="backdrop-menu"></div>
+
   <div class="d-flex">
     <!-- Menu lateral -->
     <nav id="menu-lateral" class="menu-lateral d-flex flex-column p-3">
@@ -38,8 +47,9 @@
         <li><a class="nav-link" href="#projetos" data-secao="projetos">Projetos · 5W2H</a></li>
         <li class="nav-item mt-2 text-white-50 small">Capital</li>
         <li><a class="nav-link" href="#investimentos" data-secao="investimentos">Investimentos</a></li>
-        <li class="nav-item mt-2 text-white-50 small">Próximas fases:</li>
-        <li><a class="nav-link disabled" href="#">Metas · Relatórios</a></li>
+        <li class="nav-item mt-2 text-white-50 small">Gestão</li>
+        <li><a class="nav-link" href="#metas" data-secao="metas">Metas · Indicadores</a></li>
+        <li><a class="nav-link" href="#relatorio" data-secao="relatorio">Relatório de Status</a></li>
       </ul>
 
       <div class="mt-auto pt-3 border-top border-secondary">
@@ -65,6 +75,8 @@
       <section id="secao-cascata" class="secao d-none"></section>
       <section id="secao-projetos" class="secao d-none"></section>
       <section id="secao-investimentos" class="secao d-none"></section>
+      <section id="secao-metas" class="secao d-none"></section>
+      <section id="secao-relatorio" class="secao d-none"></section>
     </main>
   </div>
 
@@ -88,7 +100,7 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/assets/vendor/bootstrap.bundle.min.js"></script>
   <script src="/assets/js/modal.js"></script>
   <script src="/assets/js/secoes/painel.js"></script>
   <script src="/assets/js/secoes/hub.js"></script>
@@ -97,6 +109,8 @@
   <script src="/assets/js/secoes/cascata.js"></script>
   <script src="/assets/js/secoes/projetos.js"></script>
   <script src="/assets/js/secoes/investimentos.js"></script>
+  <script src="/assets/js/secoes/metas.js"></script>
+  <script src="/assets/js/secoes/relatorio.js"></script>
   <script src="/assets/js/app.js"></script>
 </body>
 </html>

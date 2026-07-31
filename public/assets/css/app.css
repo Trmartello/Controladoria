@@ -27,6 +27,49 @@ body { background: #f4f6f5; }
   position: sticky;
   top: 0;
 }
+
+/* ===== Responsividade =====
+   ≥ lg: menu fixo expandido. < lg: barra superior + menu off-canvas que
+   recolhe sozinho ao navegar e expande pelo botão ☰. */
+.topbar {
+  background: var(--verde-escuro);
+  height: 52px;
+  position: sticky;
+  top: 0;
+  z-index: 1035;
+}
+.backdrop-menu {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .45);
+  z-index: 1040;
+}
+@media (max-width: 991.98px) {
+  .menu-lateral {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    height: 100dvh;
+    z-index: 1045;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    width: min(300px, 85vw);
+  }
+  body.menu-aberto .menu-lateral { transform: translateX(0); }
+  body.menu-aberto .backdrop-menu { display: block; }
+  .conteudo { padding: 1rem !important; min-width: 0; }
+  .conteudo h1 { font-size: 1.15rem; }
+  .modal-dialog { margin: .5rem; }
+}
+@media (max-width: 575.98px) {
+  .btn { --bs-btn-font-size: .8rem; }
+}
+/* Tabelas largas nunca estouram a página — rolam no próprio contêiner */
+.secao .table-responsive { -webkit-overflow-scrolling: touch; }
+.secao { min-width: 0; }
 .menu-lateral .nav-link { color: #d3e5dc; padding: 6px 10px; }
 .menu-lateral .nav-link.active { background: var(--verde-coperdia); color: #fff; }
 .menu-lateral .nav-link.disabled { color: #6d8a7c; }
@@ -61,3 +104,26 @@ table.tabela-cadastro td { vertical-align: middle; }
 .tabela-cascata td.celula-cascata { cursor: pointer; min-width: 220px; }
 .tabela-cascata td.celula-cascata:hover { background: #eef6f1; }
 .tabela-cascata td.celula-cascata.ativa { outline: 2px solid var(--verde-coperdia); background: #eef6f1; }
+@media (max-width: 991.98px) {
+  .tabela-cascata td.celula-cascata { min-width: 180px; }
+  .tabela-cascata th.celula-driver { width: 120px; }
+}
+
+/* Metas — tabela plurianual */
+.tabela-metas th.col-ano { min-width: 84px; text-align: center; }
+.tabela-metas td.valor { text-align: right; white-space: nowrap; }
+.tabela-metas tr.linha-real td { color: #555; background: #fafcfb; }
+.badge-ancora { background: var(--dourado); }
+
+/* Painel consolidado */
+.tabela-painel td, .tabela-painel th { white-space: nowrap; }
+.mini-progresso { height: 12px; min-width: 90px; }
+
+/* Relatório de status — impressão vira o PDF da reunião */
+@media print {
+  .menu-lateral, .topbar, .backdrop-menu, .nao-imprimir { display: none !important; }
+  .conteudo { padding: 0 !important; }
+  body { background: #fff; }
+  .card { border: 1px solid #ccc; break-inside: avoid; }
+  a[href]::after { content: ''; }
+}

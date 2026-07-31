@@ -4,8 +4,8 @@ const Modal = {
   bsModal: null,
   config: null,
 
-  abrir({ titulo, campos, valores = {}, url, aoSalvar = null }) {
-    this.config = { campos, url, aoSalvar };
+  abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null }) {
+    this.config = { campos, url, aoSalvar, transformar };
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-erro').classList.add('d-none');
 
@@ -73,7 +73,8 @@ const Modal = {
 
   async salvar() {
     try {
-      await App.api(this.config.url, this.coletar());
+      const dados = this.coletar();
+      await App.api(this.config.url, this.config.transformar ? this.config.transformar(dados) : dados);
       this.bsModal.hide();
       if (this.config.aoSalvar) this.config.aoSalvar();
       else App.recarregarSecaoAtiva();
