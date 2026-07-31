@@ -143,7 +143,8 @@ const SecaoCadastros = {
       valores: c || {},
       campos: [
         { nome: 'nome', rotulo: 'Nome do ciclo', ajuda: 'Ex.: 2027–2035' },
-        { nome: 'ano_base', rotulo: 'Ano do planejamento (elaboração)', tipo: 'number' },
+        { nome: 'ano_base', rotulo: 'Ano do planejamento (elaboração)', tipo: 'number',
+          ajuda: 'Ano em que o plano é elaborado — primeiro ano disponível nas análises anuais e na tabela de metas' },
         { nome: 'ano_inicio', rotulo: 'Ano inicial do ciclo', tipo: 'number' },
         { nome: 'ano_fim', rotulo: 'Ano final do ciclo', tipo: 'number' },
         { nome: 'status', rotulo: 'Status', tipo: 'select', opcoes: [

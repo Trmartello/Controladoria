@@ -23,6 +23,10 @@ class FatorController
         if (!isset(self::CATEGORIAS[$etapa])) {
             Json::erro('Etapa inválida.');
         }
+        // A análise é anual: com ?ano=YYYY retorna só aquele ano
+        $ano = (int)($_GET['ano'] ?? 0);
+        $filtroAno = $ano ? ' AND f.ano = ?' : '';
+        $params = $ano ? [$planId, $etapa, $ano] : [$planId, $etapa];
         Json::ok(Database::todos(
             "SELECT f.*, g.gravidade, g.urgencia, g.tendencia, g.score,
                     o.etapa AS origem_etapa, o.categoria AS origem_categoria,
@@ -30,9 +34,9 @@ class FatorController
              FROM fator f
              LEFT JOIN gut g ON g.fator_id = f.id
              LEFT JOIN fator o ON o.id = f.promovido_de_id
-             WHERE f.planejamento_id = ? AND f.etapa = ?
+             WHERE f.planejamento_id = ? AND f.etapa = ?{$filtroAno}
              ORDER BY f.categoria, f.id",
-            [$planId, $etapa]
+            $params
         ));
     }
 
@@ -59,9 +63,13 @@ class FatorController
                 [$categoria, $descricao, $id]
             );
         } else {
+            $ano = (int)($d['ano'] ?? 0);
+            if ($ano < 2000 || $ano > 2100) {
+                Json::erro('Informe o ano da análise.');
+            }
             $id = (int)Database::executar(
-                'INSERT INTO fator (planejamento_id, etapa, categoria, descricao) VALUES (?, ?, ?, ?)',
-                [$planId, $etapa, $categoria, $descricao]
+                'INSERT INTO fator (planejamento_id, ano, etapa, categoria, descricao) VALUES (?, ?, ?, ?, ?)',
+                [$planId, $ano, $etapa, $categoria, $descricao]
             );
         }
         Json::ok(['id' => $id]);
@@ -100,9 +108,9 @@ class FatorController
         }
 
         $novoId = (int)Database::executar(
-            'INSERT INTO fator (planejamento_id, etapa, categoria, descricao, promovido_de_id)
-             VALUES (?, \'SWOT\', ?, ?, ?)',
-            [$planId, $quadrante, $fator['descricao'], $id]
+            'INSERT INTO fator (planejamento_id, ano, etapa, categoria, descricao, promovido_de_id)
+             VALUES (?, ?, \'SWOT\', ?, ?, ?)',
+            [$planId, $fator['ano'], $quadrante, $fator['descricao'], $id]
         );
         Json::ok(['id' => $novoId]);
     }

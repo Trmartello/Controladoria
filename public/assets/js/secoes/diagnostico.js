@@ -1,16 +1,54 @@
 // Seções de diagnóstico: Análise de Cenário, PESTEL, Porter, SWOT e Matriz GUT.
+// As análises são ANUAIS (refeitas a cada ano do ciclo); os horizontes e a
+// cascata seguem plurianuais.
 
 const Diag = {
+  // Ano da análise selecionado (compartilhado pelas 5 seções do diagnóstico)
+  anoSelecionado: null,
+
+  cicloAtual() {
+    return App.sessao.ciclos.find((c) => c.id === App.contexto.cicloId);
+  },
+
+  // Ano vigente da análise, sempre dentro de [ano_base, ano_fim] do ciclo
+  ano() {
+    const c = this.cicloAtual();
+    if (!c) return new Date().getFullYear();
+    const a = this.anoSelecionado ?? new Date().getFullYear();
+    return Math.min(Number(c.ano_fim), Math.max(Number(c.ano_base), a));
+  },
+
+  seletorAno() {
+    const c = this.cicloAtual();
+    if (!c) return '';
+    const atual = this.ano();
+    const anos = [];
+    for (let a = Number(c.ano_base); a <= Number(c.ano_fim); a++) anos.push(a);
+    return `<div class="d-flex align-items-center gap-2">
+      <label class="small text-muted text-nowrap" for="sel-ano-analise">Ano da análise</label>
+      <select id="sel-ano-analise" class="form-select form-select-sm" style="width:auto">
+        ${anos.map((a) => `<option value="${a}" ${a === atual ? 'selected' : ''}>${a}</option>`).join('')}
+      </select>
+    </div>`;
+  },
+
+  ligarSeletorAno(el) {
+    el.querySelector('#sel-ano-analise')?.addEventListener('change', (ev) => {
+      this.anoSelecionado = parseInt(ev.target.value, 10);
+      App.recarregarSecaoAtiva();
+    });
+  },
+
   // Base comum: resolve o planejamento do contexto ou instrui a seleção
   async preparar(idSecao) {
     const el = document.getElementById(idSecao);
     const params = App.contextoParams();
     if (!params) {
-      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu lateral.</div>';
+      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu.</div>';
       return null;
     }
     const plan = await App.planejamento();
-    return { el, plan };
+    return { el, plan, ano: this.ano() };
   },
 
   botoesFator(f, planId, comPromocao) {
@@ -30,8 +68,8 @@ const Diag = {
   async etapaFatores({ idSecao, etapa, titulo, descricao, categorias, comPromocao }) {
     const base = await this.preparar(idSecao);
     if (!base) return;
-    const { el, plan } = base;
-    const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=${etapa}`);
+    const { el, plan, ano } = base;
+    const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=${etapa}&ano=${ano}`);
 
     const colunas = categorias.map(([cat, rotulo, cor]) => {
       const itens = fatores.filter((f) => f.categoria === cat);
@@ -48,23 +86,28 @@ const Diag = {
     }).join('');
 
     el.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center">
-        <h1>${titulo} — ${Modal.esc(App.rotuloContexto())}</h1>
-        ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" id="btn-novo-fator">+ Novo fator</button>` : ''}
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h1>${titulo} — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          ${this.seletorAno()}
+          ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" id="btn-novo-fator">+ Novo fator</button>` : ''}
+        </div>
       </div>
-      <p class="text-muted">${descricao}</p>
+      <p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>
       <div class="row g-3">${colunas}</div>`;
 
+    this.ligarSeletorAno(el);
     if (!App.podeEditar()) return;
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
     const modalFator = (f = null) => Modal.abrir({
-      titulo: f ? 'Editar fator' : `Novo fator — ${titulo}`,
+      titulo: f ? `Editar fator (${f.ano || ano})` : `Novo fator — ${titulo} · ${ano}`,
       url: f ? `/api/fatores/${f.id}` : '/api/fatores',
-      valores: f ? { ...f, planejamento_id: plan.id } : { planejamento_id: plan.id, etapa },
+      valores: f ? { ...f, planejamento_id: plan.id } : { planejamento_id: plan.id, etapa, ano },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'etapa', rotulo: '', tipo: 'hidden', padrao: etapa },
+        { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
         { nome: 'categoria', rotulo: 'Categoria', tipo: 'select', opcoes: opcoesCat },
         { nome: 'descricao', rotulo: 'Descrição do fator', tipo: 'textarea' },
       ],
@@ -100,8 +143,8 @@ const SecaoCenario = {
   async carregar() {
     const base = await Diag.preparar('secao-cenario');
     if (!base) return;
-    const { el, plan } = base;
-    const itens = await App.api(`/api/cenario?planejamento_id=${plan.id}`);
+    const { el, plan, ano } = base;
+    const itens = await App.api(`/api/cenario?planejamento_id=${plan.id}&ano=${ano}`);
 
     const bloco = (tipo, titulo) => {
       const lista = itens.filter((i) => i.tipo === tipo);
@@ -120,23 +163,29 @@ const SecaoCenario = {
     };
 
     el.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center">
-        <h1>Análise de Cenário — ${Modal.esc(App.rotuloContexto())}</h1>
-        ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h1>Análise de Cenário — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          ${Diag.seletorAno()}
+          ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
+        </div>
       </div>
-      <p class="text-muted">Onde estamos (situação atual do negócio) e para onde o ambiente aponta (tendências).</p>
+      <p class="text-muted">Onde estamos (situação atual do negócio) e para onde o ambiente aponta (tendências).
+      <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>
       <div class="row g-4">
         ${bloco('SITUACAO_ATUAL', 'Situação Atual')}
         ${bloco('TENDENCIA', 'Tendências')}
       </div>`;
 
+    Diag.ligarSeletorAno(el);
     if (!App.podeEditar()) return;
     const modalItem = (i = null) => Modal.abrir({
-      titulo: i ? 'Editar item do cenário' : 'Novo item do cenário',
+      titulo: i ? `Editar item do cenário (${i.ano || ano})` : `Novo item do cenário · ${ano}`,
       url: i ? `/api/cenario/${i.id}` : '/api/cenario',
-      valores: i ? { ...i, planejamento_id: plan.id } : { planejamento_id: plan.id },
+      valores: i ? { ...i, planejamento_id: plan.id } : { planejamento_id: plan.id, ano },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
         { nome: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: [
           { valor: 'SITUACAO_ATUAL', rotulo: 'Situação atual' },
           { valor: 'TENDENCIA', rotulo: 'Tendência' },
@@ -195,8 +244,8 @@ const SecaoSwot = {
   async carregar() {
     const base = await Diag.preparar('secao-swot');
     if (!base) return;
-    const { el, plan } = base;
-    const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT`);
+    const { el, plan, ano } = base;
+    const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT&ano=${ano}`);
 
     const quadrante = (cat, rotulo, cor) => {
       const itens = fatores.filter((f) => f.categoria === cat);
@@ -225,12 +274,16 @@ const SecaoSwot = {
     };
 
     el.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center">
-        <h1>SWOT — ${Modal.esc(App.rotuloContexto())}</h1>
-        ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h1>SWOT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          ${Diag.seletorAno()}
+          ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
+        </div>
       </div>
       <p class="text-muted">Ambiente interno (forças e fraquezas) e externo (oportunidades e ameaças).
-      Fatores promovidos do PESTEL/Porter chegam com o selo de origem; priorize-os na Matriz GUT.</p>
+      Fatores promovidos do PESTEL/Porter chegam com o selo de origem; priorize-os na Matriz GUT.
+      <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>
       <div class="row g-3">
         ${quadrante('FORCA', 'Forças', '#007a45')}
         ${quadrante('FRAQUEZA', 'Fraquezas', '#b08d4f')}
@@ -238,14 +291,16 @@ const SecaoSwot = {
         ${quadrante('AMEACA', 'Ameaças', '#8f3b3b')}
       </div>`;
 
+    Diag.ligarSeletorAno(el);
     if (!App.podeEditar()) return;
     const modalFator = (f = null) => Modal.abrir({
-      titulo: f ? 'Editar fator da SWOT' : 'Novo fator da SWOT',
+      titulo: f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,
       url: f ? `/api/fatores/${f.id}` : '/api/fatores',
-      valores: f ? { ...f, planejamento_id: plan.id } : { planejamento_id: plan.id, etapa: 'SWOT' },
+      valores: f ? { ...f, planejamento_id: plan.id } : { planejamento_id: plan.id, etapa: 'SWOT', ano },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'etapa', rotulo: '', tipo: 'hidden', padrao: 'SWOT' },
+        { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
         { nome: 'categoria', rotulo: 'Quadrante', tipo: 'select', opcoes: [
           { valor: 'FORCA', rotulo: 'Força' },
           { valor: 'FRAQUEZA', rotulo: 'Fraqueza' },
@@ -270,8 +325,8 @@ const SecaoGut = {
   async carregar() {
     const base = await Diag.preparar('secao-gut');
     if (!base) return;
-    const { el, plan } = base;
-    const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT`);
+    const { el, plan, ano } = base;
+    const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT&ano=${ano}`);
     const ordenados = [...fatores].sort((a, b) => (b.score || 0) - (a.score || 0));
 
     const nomeQuadrante = {
@@ -291,9 +346,12 @@ const SecaoGut = {
       </tr>`).join('');
 
     el.innerHTML = `
-      <h1>Matriz GUT — ${Modal.esc(App.rotuloContexto())}</h1>
-      <p class="text-muted">Priorize os fatores da SWOT: Gravidade × Urgência × Tendência (1–5).
-      O ranking orienta as escolhas da cascata (Fase 3).</p>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h1>Matriz GUT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+        ${Diag.seletorAno()}
+      </div>
+      <p class="text-muted">Priorize os fatores da SWOT de ${ano}: Gravidade × Urgência × Tendência (1–5).
+      O ranking orienta as escolhas da cascata.</p>
       <div class="table-responsive">
         <table class="table table-sm align-middle">
           <thead><tr>
@@ -305,6 +363,7 @@ const SecaoGut = {
         </table>
       </div>`;
 
+    Diag.ligarSeletorAno(el);
     if (!App.podeEditar()) return;
     const escala = [1, 2, 3, 4, 5].map((n) => ({ valor: n, rotulo: String(n) }));
     el.querySelectorAll('[data-avaliar]').forEach((b) => b.addEventListener('click', () => {

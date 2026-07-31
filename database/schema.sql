@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS planejamento (
 CREATE TABLE IF NOT EXISTS cenario_item (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,
+  ano              SMALLINT NULL,  -- análise anual; horizontes seguem plurianuais
   tipo             ENUM('SITUACAO_ATUAL','TENDENCIA') NOT NULL,
   ordem            SMALLINT NOT NULL DEFAULT 0,
   descricao        TEXT NOT NULL,
@@ -88,6 +89,7 @@ CREATE TABLE IF NOT EXISTS cenario_item (
 CREATE TABLE IF NOT EXISTS fator (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,
+  ano              SMALLINT NULL,  -- análise anual; horizontes seguem plurianuais
   etapa            ENUM('PESTEL','PORTER','SWOT') NOT NULL,
   categoria        VARCHAR(40) NOT NULL,
   descricao        TEXT NOT NULL,

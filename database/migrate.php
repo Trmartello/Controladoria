@@ -37,7 +37,41 @@ function executarArquivoSql(PDO $pdo, string $caminho): void
     }
 }
 
+/** Alterações em tabelas já existentes (CREATE IF NOT EXISTS não as cobre). */
+function garantirColuna(PDO $pdo, string $tabela, string $coluna, string $ddl): void
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+    );
+    $stmt->execute([$tabela, $coluna]);
+    if ((int)$stmt->fetchColumn() === 0) {
+        $pdo->exec($ddl);
+        echo "migrate: coluna {$tabela}.{$coluna} criada.\n";
+    }
+}
+
 executarArquivoSql($pdo, __DIR__ . '/schema.sql');
+
+// Análises do diagnóstico são anuais (horizontes seguem plurianuais)
+garantirColuna($pdo, 'cenario_item', 'ano',
+    'ALTER TABLE cenario_item ADD COLUMN ano SMALLINT NULL AFTER planejamento_id');
+garantirColuna($pdo, 'fator', 'ano',
+    'ALTER TABLE fator ADD COLUMN ano SMALLINT NULL AFTER planejamento_id');
+// Análises antigas sem ano pertencem ao ano-base do ciclo
+$pdo->exec(
+    'UPDATE cenario_item ci
+     JOIN planejamento p ON p.id = ci.planejamento_id
+     JOIN ciclo c ON c.id = p.ciclo_id
+     SET ci.ano = c.ano_base WHERE ci.ano IS NULL'
+);
+$pdo->exec(
+    'UPDATE fator f
+     JOIN planejamento p ON p.id = f.planejamento_id
+     JOIN ciclo c ON c.id = p.ciclo_id
+     SET f.ano = c.ano_base WHERE f.ano IS NULL'
+);
+
 executarArquivoSql($pdo, __DIR__ . '/seeds.sql');
 
 // Usuário admin inicial (senha via env ADMIN_SENHA; sem a variável, gera uma
