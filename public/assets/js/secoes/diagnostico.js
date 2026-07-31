@@ -51,6 +51,35 @@ const Diag = {
     return { el, plan, ano: this.ano() };
   },
 
+  // Filtro de categoria no celular: combo em forma de botão que mostra uma
+  // categoria por vez (no computador todas as colunas seguem visíveis)
+  filtroMovel: {},
+
+  seletorCategoriaMovel(chave, opcoes, contagens) {
+    const atual = this.filtroMovel[chave] || 'TODAS';
+    const ops = [['TODAS', 'Todas as categorias'], ...opcoes]
+      .map(([v, r]) => `<option value="${v}" ${v === atual ? 'selected' : ''}>${r}${v === 'TODAS' ? '' : ` (${contagens[v] || 0})`}</option>`)
+      .join('');
+    return `<div class="d-md-none mb-3">
+      <select id="sel-cat-movel" class="form-select sel-categoria-movel" aria-label="Categoria exibida">${ops}</select>
+    </div>`;
+  },
+
+  ligarSeletorCategoriaMovel(el, chave) {
+    const sel = el.querySelector('#sel-cat-movel');
+    if (!sel) return;
+    const aplicar = () => {
+      this.filtroMovel[chave] = sel.value;
+      el.querySelectorAll('[data-coluna-categoria]').forEach((col) => {
+        const ocultar = sel.value !== 'TODAS' && col.dataset.colunaCategoria !== sel.value;
+        col.classList.toggle('d-none', ocultar);
+        col.classList.toggle('d-md-block', ocultar); // no computador nunca some
+      });
+    };
+    sel.addEventListener('change', aplicar);
+    aplicar();
+  },
+
   QUADRANTES: { FORCA: 'Força', FRAQUEZA: 'Fraqueza', OPORTUNIDADE: 'Oportunidade', AMEACA: 'Ameaça' },
   CORES_QUADRANTE: { FORCA: '#007a45', FRAQUEZA: '#b08d4f', OPORTUNIDADE: '#2c7fb8', AMEACA: '#8f3b3b' },
 
@@ -88,12 +117,15 @@ const Diag = {
           <div class="small">${Modal.esc(f.descricao)}</div>
           ${this.botoesFator(f, plan.id, comPromocao)}
         </div></div>`).join('');
-      return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria">
+      return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
         <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${rotulo}
           <span class="badge text-bg-light">${itens.length}</span></div>
         ${cartoes || '<div class="text-muted small">—</div>'}
       </div>`;
     }).join('');
+
+    const contagens = Object.fromEntries(
+      categorias.map(([cat]) => [cat, fatores.filter((f) => f.categoria === cat).length]));
 
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -104,9 +136,11 @@ const Diag = {
         </div>
       </div>
       <p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>
+      ${this.seletorCategoriaMovel(etapa, categorias.map(([cat, rotulo]) => [cat, rotulo]), contagens)}
       <div class="row g-3">${colunas}</div>`;
 
     this.ligarSeletorAno(el);
+    this.ligarSeletorCategoriaMovel(el, etapa);
     if (!App.podeEditar()) return;
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
@@ -188,10 +222,15 @@ const SecaoCenario = {
             <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
           </div>` : ''}
         </div></div>`).join('');
-      return `<div class="col-md-6">
+      return `<div class="col-md-6" data-coluna-categoria="${tipo}">
         <h2 class="h6 text-uppercase text-muted">${titulo} <span class="badge text-bg-light">${lista.length}</span></h2>
         ${linhas || '<div class="text-muted small">Nenhum item.</div>'}
       </div>`;
+    };
+
+    const contagensCen = {
+      SITUACAO_ATUAL: itens.filter((i) => i.tipo === 'SITUACAO_ATUAL').length,
+      TENDENCIA: itens.filter((i) => i.tipo === 'TENDENCIA').length,
     };
 
     el.innerHTML = `
@@ -204,12 +243,16 @@ const SecaoCenario = {
       </div>
       <p class="text-muted">Onde estamos (situação atual do negócio) e para onde o ambiente aponta (tendências).
       <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>
+      ${Diag.seletorCategoriaMovel('CENARIO', [
+        ['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências'],
+      ], contagensCen)}
       <div class="row g-4">
         ${bloco('SITUACAO_ATUAL', 'Situação Atual')}
         ${bloco('TENDENCIA', 'Tendências')}
       </div>`;
 
     Diag.ligarSeletorAno(el);
+    Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
     if (!App.podeEditar()) return;
     const modalItem = (i = null) => Modal.abrir({
       titulo: i ? `Editar item do cenário (${i.ano || ano})` : `Novo item do cenário · ${ano}`,
@@ -296,7 +339,7 @@ const SecaoSwot = {
           </div>
         </div></div>`;
       }).join('');
-      return `<div class="col-md-6">
+      return `<div class="col-md-6" data-coluna-categoria="${cat}">
         <div class="p-2 rounded" style="background:${cor}18; border-top: 3px solid ${cor}">
           <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${rotulo}
             <span class="badge text-bg-light">${itens.length}</span></div>
@@ -304,6 +347,9 @@ const SecaoSwot = {
         </div>
       </div>`;
     };
+
+    const contagensSwot = Object.fromEntries(Object.keys(Diag.QUADRANTES)
+      .map((cat) => [cat, fatores.filter((f) => f.categoria === cat).length]));
 
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -316,6 +362,10 @@ const SecaoSwot = {
       <p class="text-muted">Ambiente interno (forças e fraquezas) e externo (oportunidades e ameaças).
       Fatores promovidos do PESTEL/Porter chegam com o selo de origem; priorize-os na Matriz GUT.
       <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>
+      ${Diag.seletorCategoriaMovel('SWOT', [
+        ['FORCA', 'Forças'], ['FRAQUEZA', 'Fraquezas'],
+        ['OPORTUNIDADE', 'Oportunidades'], ['AMEACA', 'Ameaças'],
+      ], contagensSwot)}
       <div class="row g-3">
         ${quadrante('FORCA', 'Forças', '#007a45')}
         ${quadrante('FRAQUEZA', 'Fraquezas', '#b08d4f')}
@@ -324,6 +374,7 @@ const SecaoSwot = {
       </div>`;
 
     Diag.ligarSeletorAno(el);
+    Diag.ligarSeletorCategoriaMovel(el, 'SWOT');
     if (!App.podeEditar()) return;
     const modalFator = (f = null) => Modal.abrir({
       titulo: f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,

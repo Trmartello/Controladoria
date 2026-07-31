@@ -135,6 +135,20 @@ table.tabela-cadastro td { vertical-align: middle; }
   background: var(--cor-cat, #007a45);
   border-color: var(--cor-cat, #007a45);
 }
+/* Combo em forma de botão (só no celular): escolhe a categoria exibida */
+.sel-categoria-movel {
+  background-color: var(--verde-coperdia);
+  border-color: var(--verde-coperdia);
+  color: #fff;
+  font-weight: 600;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+}
+.sel-categoria-movel:focus {
+  border-color: var(--verde-escuro);
+  box-shadow: 0 0 0 .25rem rgba(0, 122, 69, .25);
+}
+.sel-categoria-movel option { background: #fff; color: #212529; }
+
 .coluna-categoria { min-width: 0; }
 .coluna-categoria .card { overflow: hidden; }
 .coluna-categoria .small { overflow-wrap: anywhere; }
