@@ -79,7 +79,7 @@ const Diag = {
           <div class="small">${Modal.esc(f.descricao)}</div>
           ${this.botoesFator(f, plan.id, comPromocao)}
         </div></div>`).join('');
-      return `<div class="col-6 col-md-4 col-xl-2 coluna-categoria">
+      return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria">
         <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${rotulo}
           <span class="badge text-bg-light">${itens.length}</span></div>
         ${cartoes || '<div class="text-muted small">—</div>'}
