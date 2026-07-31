@@ -172,7 +172,12 @@ table.tabela-cadastro td { vertical-align: middle; }
 .contador-cards { color: #fff; font-size: .7rem; vertical-align: middle; }
 
 /* Bloco informativo no modal (ex.: fator avaliado na GUT): ~10 linhas e rolagem */
-.card-info-modal { background: #f8faf9; overflow: hidden; }
+.card-info-modal {
+  background: #f8faf9;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .card-info-modal .card-body {
   max-height: 15em; /* ~10 linhas de texto small */
   overflow-y: auto;
@@ -372,8 +377,43 @@ tr.card-destacado > td { background: #e8f5ee; }
   min-height: 0;
 }
 #modal-form #modal-campos textarea.form-control { min-height: 5rem; }
+
+/* No celular todo modal ocupa a tela inteira; o campo de texto ou o bloco
+   informativo cresce para preencher o espaço que sobrar */
 @media (max-width: 991.98px) {
-  #modal-form .modal-dialog:has(textarea) { height: calc(100dvh - 1rem); }
+  #modal-form .modal-dialog {
+    height: calc(100dvh - 1rem);
+    max-height: none;
+    margin: .5rem;
+  }
+  #modal-form .modal-content { height: 100%; }
+  #modal-form .modal-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #modal-form #modal-campos {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  /* O bloco informativo ocupa só o que o texto pede; se o texto for longo,
+     estica até o limite da tela e rola por dentro */
+  #modal-form #modal-campos > div:has(.card-info-modal) {
+    flex: 0 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #modal-form #modal-campos > div:has(.card-info-modal) .card-info-modal {
+    flex: 0 1 auto;
+    min-height: 4rem;
+  }
+  #modal-form #modal-campos > div:has(.card-info-modal) .card-info-modal .card-body {
+    max-height: none;
+    flex: 1 1 auto;
+  }
 }
 
 /* Microfone de ditado por voz — ícone discreto flutuando no canto inferior
