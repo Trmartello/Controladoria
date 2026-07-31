@@ -21,8 +21,8 @@ const Modal = {
     + '<path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/>'
     + '<path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12-.708.708z"/></svg>',
 
-  abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null }) {
-    this.config = { campos, url, aoSalvar, transformar };
+  abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null, enviar = null }) {
+    this.config = { campos, url, aoSalvar, transformar, enviar };
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-erro').classList.add('d-none');
 
@@ -189,7 +189,10 @@ const Modal = {
     botao.disabled = true; // evita duplo clique criando registros duplicados
     try {
       const dados = this.coletar();
-      await App.api(this.config.url, this.config.transformar ? this.config.transformar(dados) : dados);
+      const corpo = this.config.transformar ? this.config.transformar(dados) : dados;
+      // `enviar` permite fluxos com mais de um destino (ex.: desmarcar da SWOT)
+      if (this.config.enviar) await this.config.enviar(corpo);
+      else await App.api(this.config.url, corpo);
       this.bsModal.hide();
       if (this.config.aoSalvar) this.config.aoSalvar();
       else App.recarregarSecaoAtiva();

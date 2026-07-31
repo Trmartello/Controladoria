@@ -210,7 +210,7 @@ const Diag = {
     el.querySelectorAll('[data-editar-swot]').forEach((b) => b.addEventListener('click', () => {
       const f = fatores.find((x) => x.id == b.dataset.editarSwot);
       Modal.abrir({
-        titulo: 'Fator na SWOT — alterar categoria',
+        titulo: 'Fator na SWOT — alterar ou desmarcar',
         url: `/api/fatores/${f.promovido_id}`,
         valores: {
           planejamento_id: plan.id,
@@ -224,7 +224,13 @@ const Diag = {
           { nome: 'categoria', rotulo: 'Categoria na SWOT', tipo: 'select', opcoes:
             Object.entries(this.QUADRANTES).map(([valor, rotulo]) => ({ valor, rotulo })) },
           { nome: 'descricao', rotulo: 'Descrição (como aparece na SWOT)', tipo: 'textarea' },
+          { nome: 'remover', rotulo: 'Desmarcar da SWOT — remove este fator da análise SWOT', tipo: 'checkbox' },
         ],
+        // Desmarcar exclui o fator correspondente na SWOT; o original permanece
+        enviar: async ({ remover, ...resto }) => {
+          if (remover) await App.api(`/api/fatores/${f.promovido_id}/excluir`, { planejamento_id: plan.id });
+          else await App.api(`/api/fatores/${f.promovido_id}`, resto);
+        },
       });
     }));
   },
