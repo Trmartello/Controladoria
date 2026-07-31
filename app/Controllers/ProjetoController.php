@@ -73,7 +73,9 @@ class ProjetoController
         }
 
         $params = [
-            $tipo, $titulo, trim($d['responsavel'] ?? ''), trim($d['prazo'] ?? ''),
+            $tipo, $titulo,
+            mb_substr(trim($d['responsavel'] ?? ''), 0, 255),
+            mb_substr(trim($d['prazo'] ?? ''), 0, 60),
             $horizonteId, $cascataId, $impacto ?: null, $classificacao, $status,
             (int)($d['ordem'] ?? 0),
         ];
@@ -102,6 +104,8 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirProjeto($id, $planId);
+        // Investimentos vinculados perdem o vínculo (a FK não tem ON DELETE)
+        Database::executar('UPDATE investimento SET projeto_id = NULL WHERE projeto_id = ?', [$id]);
         Database::executar('DELETE FROM projeto WHERE id = ?', [$id]);
         Json::ok();
     }
@@ -126,8 +130,11 @@ class ProjetoController
         $quanto = ($d['quanto'] ?? '') !== '' && $d['quanto'] !== null ? (float)$d['quanto'] : null;
 
         $params = [
-            $projetoId, $oQue, trim($d['por_que'] ?? ''), trim($d['quem'] ?? ''),
-            trim($d['quando_'] ?? ''), trim($d['onde'] ?? ''), trim($d['como'] ?? ''),
+            $projetoId, $oQue, trim($d['por_que'] ?? ''),
+            mb_substr(trim($d['quem'] ?? ''), 0, 255),
+            mb_substr(trim($d['quando_'] ?? ''), 0, 60),
+            mb_substr(trim($d['onde'] ?? ''), 0, 120),
+            trim($d['como'] ?? ''),
             $quanto, $status, $progresso, (int)($d['ordem'] ?? 0),
         ];
         if ($id) {

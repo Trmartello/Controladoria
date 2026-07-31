@@ -39,13 +39,22 @@ class PlanejamentoController
             $corporativo ? [$cicloId] : [$cicloId, $negocioId]
         );
         if (!$plan) {
-            $id = (int)Database::executar(
+            try {
+                Database::executar(
+                    $corporativo
+                        ? "INSERT INTO planejamento (ciclo_id, escopo, negocio_id) VALUES (?, 'CORPORATIVO', NULL)"
+                        : "INSERT INTO planejamento (ciclo_id, escopo, negocio_id) VALUES (?, 'NEGOCIO', ?)",
+                    $corporativo ? [$cicloId] : [$cicloId, $negocioId]
+                );
+            } catch (\PDOException $e) {
+                // Corrida na chave única: outra requisição criou primeiro — segue
+            }
+            $plan = Database::um(
                 $corporativo
-                    ? "INSERT INTO planejamento (ciclo_id, escopo, negocio_id) VALUES (?, 'CORPORATIVO', NULL)"
-                    : "INSERT INTO planejamento (ciclo_id, escopo, negocio_id) VALUES (?, 'NEGOCIO', ?)",
+                    ? "SELECT * FROM planejamento WHERE ciclo_id = ? AND escopo = 'CORPORATIVO'"
+                    : "SELECT * FROM planejamento WHERE ciclo_id = ? AND negocio_id = ?",
                 $corporativo ? [$cicloId] : [$cicloId, $negocioId]
             );
-            $plan = Database::um('SELECT * FROM planejamento WHERE id = ?', [$id]);
         }
 
         Json::ok([

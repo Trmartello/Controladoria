@@ -273,6 +273,7 @@ class RelatorioController
                       WHEN 'PROJETO' THEN CONCAT('Projeto: ', COALESCE(p.titulo, '?'))
                       WHEN 'DESDOBRAMENTO' THEN CONCAT('5W2H: ', COALESCE(dd.o_que, '?'))
                       WHEN 'INVESTIMENTO' THEN CONCAT('Investimento: ', COALESCE(i.descricao, '?'))
+                      WHEN 'CASCATA' THEN CONCAT('Cascata: ', COALESCE(LEFT(ce.escolha, 80), '?'))
                       ELSE db.ref_tipo
                     END AS referencia
              FROM diario_bordo db
@@ -281,14 +282,16 @@ class RelatorioController
              LEFT JOIN desdobramento dd ON db.ref_tipo = 'DESDOBRAMENTO' AND dd.id = db.ref_id
              LEFT JOIN projeto pd ON pd.id = dd.projeto_id
              LEFT JOIN investimento i ON db.ref_tipo = 'INVESTIMENTO' AND i.id = db.ref_id
+             LEFT JOIN cascata_escolha ce ON db.ref_tipo = 'CASCATA' AND ce.id = db.ref_id
              WHERE db.data_reg BETWEEN ? AND ?
                AND (
                  (db.ref_tipo = 'PROJETO' AND p.planejamento_id = ?)
                  OR (db.ref_tipo = 'DESDOBRAMENTO' AND pd.planejamento_id = ?)
                  OR (db.ref_tipo = 'INVESTIMENTO' AND i.planejamento_id = ?)
+                 OR (db.ref_tipo = 'CASCATA' AND ce.planejamento_id = ?)
                )
              ORDER BY db.data_reg DESC, db.id DESC",
-            [$de, $ate, $planId, $planId, $planId]
+            [$de, $ate, $planId, $planId, $planId, $planId]
         );
 
         return [

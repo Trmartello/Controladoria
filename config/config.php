@@ -19,9 +19,11 @@ return [
     ],
     'app' => [
         'nome'        => 'Planejamento Estratégico Copérdia',
-        // Senha inicial do admin criado na primeira migração (trocar após o 1º login)
+        // Senha inicial do admin criado na primeira migração. Sem ADMIN_SENHA
+        // no ambiente, a migração gera uma senha aleatória e a mostra no log
+        // uma única vez — nunca uma senha fixa publicada no repositório.
         'admin_email' => env('ADMIN_EMAIL', 'admin@coperdia.com.br'),
-        'admin_senha' => env('ADMIN_SENHA', 'trocar123'),
+        'admin_senha' => env('ADMIN_SENHA'),
     ],
     'qlik' => [
         'tenant'  => env('QLIK_TENANT', 'coperdia.br.qlikcloud.com'),

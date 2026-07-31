@@ -83,6 +83,12 @@ const SecaoCascata = {
     const { driverId, horizonteId } = this.celulaAberta;
     const driver = drivers.find((d) => d.id == driverId);
     const horizonte = horizontes.find((h) => h.id == horizonteId);
+    if (!driver || !horizonte) {
+      // Célula aberta de um ciclo anterior — o contexto mudou; fecha o detalhe
+      this.celulaAberta = null;
+      alvo.innerHTML = '';
+      return;
+    }
     const daCelula = (eixoId) => escolhas.find((e) =>
       e.driver_id == driverId && e.horizonte_id == horizonteId &&
       (eixoId ? e.eixo_id == eixoId : !e.eixo_id));
@@ -166,7 +172,11 @@ const SecaoCascata = {
 
     alvo.querySelectorAll('[data-excluir-celula]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Excluir esta escolha?')) return;
-      await App.api(`/api/cascata/${b.dataset.excluirCelula}/excluir`, { planejamento_id: this.plan.id });
+      try {
+        await App.api(`/api/cascata/${b.dataset.excluirCelula}/excluir`, { planejamento_id: this.plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
       App.recarregarSecaoAtiva();
     }));
   },

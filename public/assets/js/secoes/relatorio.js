@@ -30,8 +30,8 @@ const SecaoRelatorio = {
       return;
     }
     this.plan = await App.planejamento();
-    this.ate = this.ate || new Date().toISOString().slice(0, 10);
-    this.de = this.de || new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+    this.ate = this.ate || App.hoje();
+    this.de = this.de || App.hoje(30);
 
     const r = await App.api(
       `/api/relatorio?planejamento_id=${this.plan.id}&de=${this.de}&ate=${this.ate}`);
@@ -110,7 +110,7 @@ const SecaoRelatorio = {
       <div class="card mb-3"><div class="card-body py-2 px-3">
         <strong>${Modal.esc(r.rotulo)}</strong> · Ciclo ${Modal.esc(r.ciclo.nome)}
         <div class="small text-muted">Período da reunião: ${this.data(r.periodo.de)} a ${this.data(r.periodo.ate)}
-          · Gerado em ${this.data(new Date().toISOString().slice(0, 10))}</div>
+          · Gerado em ${this.data(App.hoje())}</div>
       </div></div>
 
       <h2 class="h6 mt-3">1. Métricas-âncora</h2>

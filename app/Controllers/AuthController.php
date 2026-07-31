@@ -16,6 +16,7 @@ class AuthController
 
         $u = Database::um('SELECT * FROM usuario WHERE email = ? AND ativo = 1', [$email]);
         if (!$u || !password_verify($senha, $u['senha_hash'])) {
+            usleep(random_int(300000, 600000)); // encarece força bruta online
             Json::erro('E-mail ou senha inválidos.', 401);
         }
 
@@ -31,6 +32,11 @@ class AuthController
 
     public function logout(): void
     {
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $p = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+        }
         session_destroy();
         Json::ok();
     }

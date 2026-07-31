@@ -128,6 +128,8 @@ class CascataController
         if (!$celula) {
             Json::erro('Escolha não encontrada neste planejamento.', 404);
         }
+        // Projetos originados desta escolha perdem o vínculo (a FK não tem ON DELETE)
+        Database::executar('UPDATE projeto SET cascata_id = NULL WHERE cascata_id = ?', [$id]);
         Database::executar('DELETE FROM cascata_escolha WHERE id = ?', [$id]);
         Json::ok();
     }

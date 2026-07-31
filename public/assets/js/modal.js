@@ -72,6 +72,8 @@ const Modal = {
   },
 
   async salvar() {
+    const botao = document.getElementById('modal-salvar');
+    botao.disabled = true; // evita duplo clique criando registros duplicados
     try {
       const dados = this.coletar();
       await App.api(this.config.url, this.config.transformar ? this.config.transformar(dados) : dados);
@@ -82,6 +84,8 @@ const Modal = {
       const erro = document.getElementById('modal-erro');
       erro.textContent = e.message;
       erro.classList.remove('d-none');
+    } finally {
+      botao.disabled = false;
     }
   },
 

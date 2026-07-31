@@ -64,7 +64,8 @@ const SecaoInvestimentos = {
       .map((papel) => {
         const doGrupo = investimentos
           .filter((i) => (papel === null ? !i.papel : i.papel === papel))
-          .sort((a, b) => (Number(b.taxa_retorno) || -1) - (Number(a.taxa_retorno) || -1));
+          .sort((a, b) => (b.taxa_retorno === null ? -1 : Number(b.taxa_retorno))
+            - (a.taxa_retorno === null ? -1 : Number(a.taxa_retorno)));
         if (!doGrupo.length) return '';
         const linhas = doGrupo.map((i, idx) => {
           const [rotulo, classe] = SITUACAO_ROTULOS[i.situacao] || [i.situacao, 'text-bg-light'];
@@ -129,7 +130,7 @@ const SecaoInvestimentos = {
     el.querySelectorAll('[data-decidir]').forEach((b) => b.addEventListener('click', () => Modal.abrir({
       titulo: 'Decisão sobre o investimento',
       url: `/api/investimentos/${b.dataset.decidir}/decidir`,
-      valores: { planejamento_id: this.plan.id, decisao_data: new Date().toISOString().slice(0, 10) },
+      valores: { planejamento_id: this.plan.id, decisao_data: App.hoje() },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'situacao', rotulo: 'Decisão', tipo: 'select', opcoes: [
@@ -200,11 +201,19 @@ const SecaoInvestimentos = {
         { nome: 'taxa_retorno', rotulo: 'Taxa de retorno estimada (%)', tipo: 'number',
           ajuda: 'Base do ranking — retorno por real investido' },
         { nome: 'horizonte_id', rotulo: 'Horizonte', tipo: 'select', opcoes: opcoesHorizonte },
-        ...(inv ? [{ nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [
-          { valor: 'PROPOSTO', rotulo: 'Proposto' },
-          { valor: 'RANQUEADO', rotulo: 'Ranqueado' },
-          { valor: 'EXECUTADO', rotulo: 'Executado' },
-        ]}] : []),
+        // Situação só é editável antes da decisão; APROVADO pode avançar para
+        // EXECUTADO. REPROVADO/AUDITADO não mudam por edição.
+        ...(inv && ['PROPOSTO', 'RANQUEADO', 'EXECUTADO'].includes(inv.situacao) ? [{
+          nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [
+            { valor: 'PROPOSTO', rotulo: 'Proposto' },
+            { valor: 'RANQUEADO', rotulo: 'Ranqueado' },
+            { valor: 'EXECUTADO', rotulo: 'Executado' },
+          ]}] : []),
+        ...(inv && inv.situacao === 'APROVADO' ? [{
+          nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [
+            { valor: 'APROVADO', rotulo: 'Aprovado' },
+            { valor: 'EXECUTADO', rotulo: 'Executado' },
+          ]}] : []),
       ],
     });
   },

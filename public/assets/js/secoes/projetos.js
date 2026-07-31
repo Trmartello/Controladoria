@@ -143,7 +143,11 @@ const SecaoProjetos = {
       this.modalProjeto(projetos.find((p) => p.id == b.dataset.editarProj), projetos)));
     el.querySelectorAll('[data-excluir-proj]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Excluir o projeto e todos os seus desdobramentos?')) return;
-      await App.api(`/api/projetos/${b.dataset.excluirProj}/excluir`, { planejamento_id: this.plan.id });
+      try {
+        await App.api(`/api/projetos/${b.dataset.excluirProj}/excluir`, { planejamento_id: this.plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
       this.carregar();
     }));
     el.querySelectorAll('[data-novo-desd]').forEach((b) => b.addEventListener('click', () =>
@@ -257,7 +261,7 @@ const SecaoProjetos = {
       url: '/api/diario',
       valores: {
         planejamento_id: this.plan.id, ref_tipo: refTipo, ref_id: refId,
-        data_reg: new Date().toISOString().slice(0, 10),
+        data_reg: App.hoje(),
       },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },

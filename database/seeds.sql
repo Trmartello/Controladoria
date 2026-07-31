@@ -1,50 +1,46 @@
--- Seeds iniciais (idempotentes) — o usuário admin é criado pelo migrate.php
+-- Seeds iniciais (idempotentes) — o usuário admin é criado pelo migrate.php.
+-- Cada bloco só insere quando o contexto está VAZIO (e não por nome), para um
+-- registro renomeado pela interface não ser recriado no deploy seguinte.
+-- Regra do parser (migrate.php): um statement por bloco, terminado em ';' no
+-- fim de linha; nunca usar ';' em fim de linha nem '--' em início de linha
+-- dentro de strings.
 
-INSERT INTO driver (nome, ordem) SELECT 'Aonde Jogar', 1
-  WHERE NOT EXISTS (SELECT 1 FROM driver WHERE nome = 'Aonde Jogar');
-INSERT INTO driver (nome, ordem) SELECT 'Como Vencer', 2
-  WHERE NOT EXISTS (SELECT 1 FROM driver WHERE nome = 'Como Vencer');
-INSERT INTO driver (nome, ordem) SELECT 'Envelope', 3
-  WHERE NOT EXISTS (SELECT 1 FROM driver WHERE nome = 'Envelope');
-INSERT INTO driver (nome, ordem) SELECT 'Capacidades e Recursos', 4
-  WHERE NOT EXISTS (SELECT 1 FROM driver WHERE nome = 'Capacidades e Recursos');
-INSERT INTO driver (nome, ordem) SELECT 'Iniciativas Estruturantes', 5
-  WHERE NOT EXISTS (SELECT 1 FROM driver WHERE nome = 'Iniciativas Estruturantes');
-INSERT INTO driver (nome, ordem) SELECT 'Métrica-Âncora', 6
-  WHERE NOT EXISTS (SELECT 1 FROM driver WHERE nome = 'Métrica-Âncora');
+INSERT INTO driver (nome, ordem)
+  SELECT v.nome, v.ordem FROM (
+    SELECT 'Aonde Jogar' AS nome, 1 AS ordem
+    UNION ALL SELECT 'Como Vencer', 2
+    UNION ALL SELECT 'Envelope', 3
+    UNION ALL SELECT 'Capacidades e Recursos', 4
+    UNION ALL SELECT 'Iniciativas Estruturantes', 5
+    UNION ALL SELECT 'Métrica-Âncora', 6) v
+  WHERE NOT EXISTS (SELECT 1 FROM driver);
 
-INSERT INTO eixo (nome, ordem) SELECT 'Mercado', 1
-  WHERE NOT EXISTS (SELECT 1 FROM eixo WHERE nome = 'Mercado');
-INSERT INTO eixo (nome, ordem) SELECT 'Portfólio', 2
-  WHERE NOT EXISTS (SELECT 1 FROM eixo WHERE nome = 'Portfólio');
-INSERT INTO eixo (nome, ordem) SELECT 'Marca', 3
-  WHERE NOT EXISTS (SELECT 1 FROM eixo WHERE nome = 'Marca');
-INSERT INTO eixo (nome, ordem) SELECT 'Pessoas', 4
-  WHERE NOT EXISTS (SELECT 1 FROM eixo WHERE nome = 'Pessoas');
-INSERT INTO eixo (nome, ordem) SELECT 'Eficiência', 5
-  WHERE NOT EXISTS (SELECT 1 FROM eixo WHERE nome = 'Eficiência');
-INSERT INTO eixo (nome, ordem) SELECT 'Financeiro', 6
-  WHERE NOT EXISTS (SELECT 1 FROM eixo WHERE nome = 'Financeiro');
+INSERT INTO eixo (nome, ordem)
+  SELECT v.nome, v.ordem FROM (
+    SELECT 'Mercado' AS nome, 1 AS ordem
+    UNION ALL SELECT 'Portfólio', 2
+    UNION ALL SELECT 'Marca', 3
+    UNION ALL SELECT 'Pessoas', 4
+    UNION ALL SELECT 'Eficiência', 5
+    UNION ALL SELECT 'Financeiro', 6) v
+  WHERE NOT EXISTS (SELECT 1 FROM eixo);
 
 INSERT INTO ciclo (nome, ano_base, ano_inicio, ano_fim, status)
   SELECT '2027–2035', 2026, 2027, 2035, 'EM_ELABORACAO'
-  WHERE NOT EXISTS (SELECT 1 FROM ciclo WHERE nome = '2027–2035');
+  WHERE NOT EXISTS (SELECT 1 FROM ciclo);
 
 INSERT INTO horizonte (ciclo_id, nome, ano_inicio, ano_fim, tema, objetivo, ordem)
-  SELECT c.id, 'H1', 2027, 2029, 'Recuperação',
-    'Margem bruta antes de investimentos: recuperação da margem da rede, eficiência, armazenagem priorizada, desalavancagem.', 1
-  FROM ciclo c WHERE c.nome = '2027–2035'
-    AND NOT EXISTS (SELECT 1 FROM horizonte h WHERE h.ciclo_id = c.id AND h.nome = 'H1');
-INSERT INTO horizonte (ciclo_id, nome, ano_inicio, ano_fim, tema, objetivo, ordem)
-  SELECT c.id, 'H2', 2030, 2032, 'Crescimento Seletivo',
-    'Densidade: crescimento de market share — mais share por cooperado, não mais bandeiras.', 2
-  FROM ciclo c WHERE c.nome = '2027–2035'
-    AND NOT EXISTS (SELECT 1 FROM horizonte h WHERE h.ciclo_id = c.id AND h.nome = 'H2');
-INSERT INTO horizonte (ciclo_id, nome, ano_inicio, ano_fim, tema, objetivo, ordem)
-  SELECT c.id, 'H3', 2033, 2035, 'Consolidação',
-    'Referência Regional: Copérdia mais rentável, armazenagem própria >= 70%, autonomia financeira.', 3
-  FROM ciclo c WHERE c.nome = '2027–2035'
-    AND NOT EXISTS (SELECT 1 FROM horizonte h WHERE h.ciclo_id = c.id AND h.nome = 'H3');
+  SELECT c.id, v.nome, v.ano_inicio, v.ano_fim, v.tema, v.objetivo, v.ordem
+  FROM ciclo c
+  CROSS JOIN (
+    SELECT 'H1' AS nome, 2027 AS ano_inicio, 2029 AS ano_fim, 'Recuperação' AS tema,
+      'Margem bruta antes de investimentos: recuperação da margem da rede, eficiência, armazenagem priorizada, desalavancagem.' AS objetivo, 1 AS ordem
+    UNION ALL SELECT 'H2', 2030, 2032, 'Crescimento Seletivo',
+      'Densidade: crescimento de market share — mais share por cooperado, não mais bandeiras.', 2
+    UNION ALL SELECT 'H3', 2033, 2035, 'Consolidação',
+      'Referência Regional: Copérdia mais rentável, armazenagem própria >= 70%, autonomia financeira.', 3) v
+  WHERE c.nome = '2027–2035'
+    AND NOT EXISTS (SELECT 1 FROM horizonte h WHERE h.ciclo_id = c.id);
 
 -- Planejamento corporativo do ciclo
 INSERT INTO planejamento (ciclo_id, escopo, negocio_id)
@@ -53,42 +49,21 @@ INSERT INTO planejamento (ciclo_id, escopo, negocio_id)
                     WHERE p.ciclo_id = c.id AND p.escopo = 'CORPORATIVO');
 
 -- ===== Fase 6: indicadores do planejamento corporativo (massa de validação
--- da planilha 2026 — metas ilustrativas a revisar com a controladoria) =====
+-- da planilha 2026 — metas ilustrativas a revisar com a controladoria).
+-- Só insere quando o planejamento corporativo ainda não tem indicador algum. =====
 
 INSERT INTO indicador (planejamento_id, nome, unidade, sentido, metrica_ancora, horizonte_id)
-  SELECT p.id, 'Margem bruta antes de investimentos', '%', 'MAIOR_MELHOR', 1, h.id
+  SELECT p.id, v.nome, v.unidade, 'MAIOR_MELHOR', v.ancora, h.id
   FROM planejamento p
   JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
-  JOIN horizonte h ON h.ciclo_id = c.id AND h.nome = 'H1'
+  CROSS JOIN (
+    SELECT 'Margem bruta antes de investimentos' AS nome, '%' AS unidade, 1 AS ancora, 'H1' AS horizonte
+    UNION ALL SELECT 'Market share por cooperado', '%', 1, 'H2'
+    UNION ALL SELECT 'Armazenagem própria', '%', 1, 'H3'
+    UNION ALL SELECT 'Cobertura de juros', 'x', 0, NULL) v
+  LEFT JOIN horizonte h ON h.ciclo_id = c.id AND h.nome = v.horizonte
   WHERE p.escopo = 'CORPORATIVO'
-    AND NOT EXISTS (SELECT 1 FROM indicador i WHERE i.planejamento_id = p.id
-                    AND i.nome = 'Margem bruta antes de investimentos');
-
-INSERT INTO indicador (planejamento_id, nome, unidade, sentido, metrica_ancora, horizonte_id)
-  SELECT p.id, 'Market share por cooperado', '%', 'MAIOR_MELHOR', 1, h.id
-  FROM planejamento p
-  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
-  JOIN horizonte h ON h.ciclo_id = c.id AND h.nome = 'H2'
-  WHERE p.escopo = 'CORPORATIVO'
-    AND NOT EXISTS (SELECT 1 FROM indicador i WHERE i.planejamento_id = p.id
-                    AND i.nome = 'Market share por cooperado');
-
-INSERT INTO indicador (planejamento_id, nome, unidade, sentido, metrica_ancora, horizonte_id)
-  SELECT p.id, 'Armazenagem própria', '%', 'MAIOR_MELHOR', 1, h.id
-  FROM planejamento p
-  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
-  JOIN horizonte h ON h.ciclo_id = c.id AND h.nome = 'H3'
-  WHERE p.escopo = 'CORPORATIVO'
-    AND NOT EXISTS (SELECT 1 FROM indicador i WHERE i.planejamento_id = p.id
-                    AND i.nome = 'Armazenagem própria');
-
-INSERT INTO indicador (planejamento_id, nome, unidade, sentido, metrica_ancora, horizonte_id)
-  SELECT p.id, 'Cobertura de juros', 'x', 'MAIOR_MELHOR', 0, NULL
-  FROM planejamento p
-  JOIN ciclo c ON c.id = p.ciclo_id AND c.nome = '2027–2035'
-  WHERE p.escopo = 'CORPORATIVO'
-    AND NOT EXISTS (SELECT 1 FROM indicador i WHERE i.planejamento_id = p.id
-                    AND i.nome = 'Cobertura de juros');
+    AND NOT EXISTS (SELECT 1 FROM indicador i WHERE i.planejamento_id = p.id);
 
 -- Metas plurianuais (versão 1) dos indicadores acima
 INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)

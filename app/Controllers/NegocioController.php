@@ -11,12 +11,18 @@ class NegocioController
 {
     public function listar(): void
     {
-        Auth::exigirLogin();
-        Json::ok(Database::todos(
-            "SELECT n.*, CONCAT(n.cod_negocio, ' - ', n.nome) AS rotulo, u.nome AS gestor
-             FROM negocio n LEFT JOIN usuario u ON u.id = n.gestor_id
-             ORDER BY CAST(n.cod_negocio AS UNSIGNED), n.nome"
-        ));
+        $u = Auth::exigirLogin();
+        $sql = "SELECT n.*, CONCAT(n.cod_negocio, ' - ', n.nome) AS rotulo, u.nome AS gestor
+                FROM negocio n LEFT JOIN usuario u ON u.id = n.gestor_id";
+        $escopo = Auth::escopoNegocios($u);
+        if ($escopo !== null) {
+            if (!$escopo) {
+                Json::ok([]);
+            }
+            $sql .= ' WHERE n.id IN (' . implode(',', array_fill(0, count($escopo), '?')) . ')';
+        }
+        $sql .= ' ORDER BY CAST(n.cod_negocio AS UNSIGNED), n.nome';
+        Json::ok(Database::todos($sql, $escopo ?? []));
     }
 
     public function salvar(?int $id = null): void

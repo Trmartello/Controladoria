@@ -73,7 +73,12 @@ class InvestimentoController
             'SELECT id FROM envelope_capital WHERE planejamento_id = ? AND horizonte_id = ?',
             [$planId, $horizonteId]
         );
-        if ($existente && (!$id || (int)$existente['id'] !== $id)) {
+        if ($existente) {
+            if ($id && (int)$existente['id'] !== $id) {
+                // Editar o envelope A movendo-o para o horizonte do envelope B
+                // sobrescreveria B em silêncio — bloqueia.
+                Json::erro('Este horizonte já tem envelope definido. Edite o envelope do próprio horizonte.');
+            }
             $id = (int)$existente['id']; // um envelope por horizonte: atualiza o existente
         }
 
@@ -129,10 +134,18 @@ class InvestimentoController
 
         if ($id) {
             $inv = $this->exigirInvestimento($id, $planId);
-            // Situação básica editável; decisão e auditoria têm ações próprias
-            $situacao = $d['situacao'] ?? $inv['situacao'];
-            if (!in_array($situacao, self::SITUACOES_BASICAS, true)) {
-                $situacao = $inv['situacao'];
+            // Situação básica editável; decisão e auditoria têm ações próprias.
+            // Um investimento decidido nunca volta a PROPOSTO por edição:
+            // APROVADO só avança para EXECUTADO; REPROVADO/AUDITADO ficam como estão.
+            $situacao = $inv['situacao'];
+            $nova = $d['situacao'] ?? '';
+            if ($nova !== '' && $nova !== $situacao) {
+                $permitidas = in_array($situacao, self::SITUACOES_BASICAS, true)
+                    ? self::SITUACOES_BASICAS
+                    : ($situacao === 'APROVADO' ? ['EXECUTADO'] : []);
+                if (in_array($nova, $permitidas, true)) {
+                    $situacao = $nova;
+                }
             }
             Database::executar(
                 'UPDATE investimento SET descricao = ?, papel = ?, ano = ?, valor = ?,

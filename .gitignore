@@ -161,3 +161,7 @@ cython_debug/
 
 # Banco de dados local do app
 planejamento.db
+
+# PHP
+.env
+vendor/

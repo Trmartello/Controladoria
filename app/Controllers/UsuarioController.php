@@ -8,6 +8,8 @@ use App\Core\Json;
 
 class UsuarioController
 {
+    private const SENHA_MINIMA = 8;
+
     public function listar(): void
     {
         Auth::exigirAdministrador();
@@ -43,6 +45,10 @@ class UsuarioController
         $duplicado = Database::um('SELECT id FROM usuario WHERE email = ? AND id <> ?', [$email, $id ?? 0]);
         if ($duplicado) {
             Json::erro('Já existe usuário com este e-mail.');
+        }
+
+        if ($senha !== '' && strlen($senha) < self::SENHA_MINIMA) {
+            Json::erro('A senha deve ter ao menos ' . self::SENHA_MINIMA . ' caracteres.');
         }
 
         if ($id) {
@@ -83,8 +89,8 @@ class UsuarioController
         $d = Json::corpo();
         $atual = $d['senha_atual'] ?? '';
         $nova  = $d['senha_nova'] ?? '';
-        if (strlen($nova) < 6) {
-            Json::erro('A nova senha deve ter ao menos 6 caracteres.');
+        if (strlen($nova) < self::SENHA_MINIMA) {
+            Json::erro('A nova senha deve ter ao menos ' . self::SENHA_MINIMA . ' caracteres.');
         }
         $linha = Database::um('SELECT senha_hash FROM usuario WHERE id = ?', [$u['id']]);
         if (!$linha || !password_verify($atual, $linha['senha_hash'])) {

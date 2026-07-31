@@ -62,11 +62,11 @@ class IndicadorController
         $planId = (int)($d['planejamento_id'] ?? 0);
         $plan = Auth::exigirEdicaoPlanejamento($planId);
 
-        $nome = trim($d['nome'] ?? '');
+        $nome = mb_substr(trim($d['nome'] ?? ''), 0, 120);
         if ($nome === '') {
             Json::erro('Informe o nome do indicador.');
         }
-        $unidade = trim($d['unidade'] ?? '') ?: 'R$ mil';
+        $unidade = mb_substr(trim($d['unidade'] ?? ''), 0, 20) ?: 'R$ mil';
         $sentido = ($d['sentido'] ?? '') === 'MENOR_MELHOR' ? 'MENOR_MELHOR' : 'MAIOR_MELHOR';
         $ancora = !empty($d['metrica_ancora']) ? 1 : 0;
 
@@ -128,10 +128,11 @@ class IndicadorController
                 continue;
             }
             if ($valor === null || $valor === '') {
-                // Limpa o ano apenas na versão corrente (revisões anteriores ficam)
+                // Limpar o ano remove todas as versões daquele ano — senão a
+                // versão antiga voltaria a aparecer (a leitura usa a mais recente)
                 Database::executar(
-                    'DELETE FROM indicador_valor WHERE indicador_id = ? AND ano = ? AND tipo = ? AND versao_meta = ?',
-                    [$id, $ano, $tipo, $versao]
+                    'DELETE FROM indicador_valor WHERE indicador_id = ? AND ano = ? AND tipo = ?',
+                    [$id, $ano, $tipo]
                 );
                 continue;
             }

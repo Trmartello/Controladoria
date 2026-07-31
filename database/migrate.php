@@ -5,6 +5,7 @@
 $config = require __DIR__ . '/../config/config.php';
 $db = $config['db'];
 $dsn = "mysql:host={$db['host']};port={$db['port']};dbname={$db['name']};charset={$db['charset']}";
+echo "migrate: conectando em {$db['host']}:{$db['port']}/{$db['name']} (usuário {$db['user']}).\n";
 
 $pdo = null;
 for ($tentativa = 1; $tentativa <= 30; $tentativa++) {
@@ -39,18 +40,28 @@ function executarArquivoSql(PDO $pdo, string $caminho): void
 executarArquivoSql($pdo, __DIR__ . '/schema.sql');
 executarArquivoSql($pdo, __DIR__ . '/seeds.sql');
 
-// Usuário admin inicial (senha via env ADMIN_SENHA; trocar após o 1º login)
+// Usuário admin inicial (senha via env ADMIN_SENHA; sem a variável, gera uma
+// senha aleatória e a mostra no log uma única vez — trocar após o 1º login)
 $existe = $pdo->query("SELECT COUNT(*) FROM usuario WHERE perfil = 'ADMIN'")->fetchColumn();
 if ((int)$existe === 0) {
+    $senha = $config['app']['admin_senha'];
+    $gerada = false;
+    if (!$senha) {
+        $senha = bin2hex(random_bytes(9));
+        $gerada = true;
+    }
     $stmt = $pdo->prepare(
         "INSERT INTO usuario (nome, email, senha_hash, perfil) VALUES (?, ?, ?, 'ADMIN')"
     );
     $stmt->execute([
         'Administrador',
         $config['app']['admin_email'],
-        password_hash($config['app']['admin_senha'], PASSWORD_DEFAULT),
+        password_hash($senha, PASSWORD_DEFAULT),
     ]);
     echo "migrate: usuário admin criado ({$config['app']['admin_email']}).\n";
+    if ($gerada) {
+        echo "migrate: ADMIN_SENHA não definida — senha inicial gerada: {$senha} (troque no primeiro acesso).\n";
+    }
 }
 
 echo "migrate: ok.\n";

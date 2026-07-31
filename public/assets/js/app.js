@@ -5,6 +5,12 @@ const App = {
   contexto: { cicloId: null, negocioId: null, corporativo: false },
   csrf: document.querySelector('meta[name="csrf"]').content,
 
+  // Data local (YYYY-MM-DD) — toISOString usaria UTC e viraria o dia após ~21h
+  hoje(diasAtras = 0) {
+    const d = new Date(Date.now() - diasAtras * 864e5);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
   async api(url, corpo = null) {
     const opts = corpo
       ? {
@@ -35,7 +41,7 @@ const App = {
         titulo: 'Trocar senha',
         campos: [
           { nome: 'senha_atual', rotulo: 'Senha atual', tipo: 'password' },
-          { nome: 'senha_nova', rotulo: 'Nova senha (mín. 6 caracteres)', tipo: 'password' },
+          { nome: 'senha_nova', rotulo: 'Nova senha (mín. 8 caracteres)', tipo: 'password' },
         ],
         url: '/api/senha',
       });
@@ -76,14 +82,14 @@ const App = {
   montarSeletores() {
     const selCiclo = document.getElementById('sel-ciclo');
     selCiclo.innerHTML = this.sessao.ciclos
-      .map((c) => `<option value="${c.id}">${c.nome} (base ${c.ano_base})</option>`)
+      .map((c) => `<option value="${c.id}">${Modal.esc(c.nome)} (base ${c.ano_base})</option>`)
       .join('');
 
     const selNegocio = document.getElementById('sel-negocio');
     const opcoes = [];
     if (this.sessao.veTudo) opcoes.push('<option value="CORP">Corporativo</option>');
     for (const n of this.sessao.negocios) {
-      opcoes.push(`<option value="${n.id}">${n.rotulo}</option>`);
+      opcoes.push(`<option value="${n.id}">${Modal.esc(n.rotulo)}</option>`);
     }
     selNegocio.innerHTML = opcoes.join('') || '<option value="">(nenhum negócio vinculado)</option>';
 

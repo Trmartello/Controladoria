@@ -67,5 +67,12 @@ A migração é idempotente — os dados existentes são preservados.
 - **App no ar mas erro de banco**: confira as 5 referências `MYSQL*` na aba
   *Variables* e veja os *Deploy Logs* (a migração loga "aguardando banco" /
   "migrate: ok").
-- **502 logo após o deploy**: aguarde ~30s; o container espera o MySQL
-  responder (até 30 tentativas) antes de subir o Apache.
+- **502 logo após o deploy**: aguarde ~60s; a migração espera o MySQL
+  responder (até 30 tentativas) e, se o banco não vier, o container **aborta o
+  start** — o Railway reinicia/mantém o deploy anterior. Veja nos *Deploy
+  Logs* a linha "migrate: conectando em ..." para conferir o endpoint usado.
+
+> **Nota de operação**: o serviço roda no servidor embutido do PHP
+> (`php -S`, com `PHP_CLI_SERVER_WORKERS=8`) — adequado para
+> homologação/validação com poucas dezenas de usuários. Para produção
+> definitiva, migrar para php-fpm + nginx (ou Apache) é o próximo passo.

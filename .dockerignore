@@ -3,3 +3,6 @@
 docs
 *.md
 planejamento.db
+__pycache__/
+*.py[cod]
+.env

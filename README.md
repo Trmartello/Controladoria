@@ -35,8 +35,9 @@ php -S localhost:8080 -t public   # servidor de desenvolvimento
 ```
 
 Acesse `http://localhost:8080` — login inicial `admin@coperdia.com.br` com a
-senha da variável `ADMIN_SENHA` (padrão `trocar123`; **troque no primeiro
-acesso**, botão "Trocar senha" no menu).
+senha da variável `ADMIN_SENHA`. Se a variável não estiver definida, a migração
+**gera uma senha aleatória e a mostra no log** uma única vez — anote-a e
+**troque no primeiro acesso** (botão "Trocar senha" no menu).
 
 ## Deploy no Railway (validação)
 
@@ -57,5 +58,5 @@ app/             # Core (Router/PDO/Auth/Json), Controllers (API JSON), Services
 views/           # shell.php (página única) e login.php
 database/        # schema.sql, seeds.sql, migrate.php
 config/          # config.php — tudo via variáveis de ambiente
-Dockerfile       # php:8.3-apache para o Railway
+Dockerfile       # php:8.3-cli + servidor embutido (homologação no Railway)
 ```
