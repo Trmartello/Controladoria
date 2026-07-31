@@ -57,6 +57,7 @@ use App\Controllers\CicloController;
 use App\Controllers\DiarioController;
 use App\Controllers\DriverEixoController;
 use App\Controllers\FatorController;
+use App\Controllers\InvestimentoController;
 use App\Controllers\NegocioController;
 use App\Controllers\PlanejamentoController;
 use App\Controllers\ProjetoController;
@@ -135,6 +136,20 @@ try {
 
         case $rota === 'GET /api/diario':           (new DiarioController())->listar();
         case $rota === 'POST /api/diario':          (new DiarioController())->criar();
+
+        case $rota === 'GET /api/investimentos':    (new InvestimentoController())->listar();
+        case $rota === 'POST /api/investimentos':   (new InvestimentoController())->salvar();
+        case (bool)preg_match('#^POST /api/investimentos/(\d+)/excluir$#', $rota, $m):
+            (new InvestimentoController())->excluir((int)$m[1]);
+        case (bool)preg_match('#^POST /api/investimentos/(\d+)/decidir$#', $rota, $m):
+            (new InvestimentoController())->decidir((int)$m[1]);
+        case (bool)preg_match('#^POST /api/investimentos/(\d+)/auditar$#', $rota, $m):
+            (new InvestimentoController())->auditar((int)$m[1]);
+        case (bool)preg_match('#^POST /api/investimentos/(\d+)$#', $rota, $m):
+            (new InvestimentoController())->salvar((int)$m[1]);
+        case $rota === 'POST /api/envelopes':       (new InvestimentoController())->salvarEnvelope();
+        case (bool)preg_match('#^POST /api/envelopes/(\d+)$#', $rota, $m):
+            (new InvestimentoController())->salvarEnvelope((int)$m[1]);
 
         default:
             Json::erro('Rota não encontrada.', 404);
