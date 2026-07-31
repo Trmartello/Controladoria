@@ -120,6 +120,7 @@ const App = {
       painel: SecaoPainel, hub: SecaoHub, cadastros: SecaoCadastros,
       cenario: SecaoCenario, pestel: SecaoPestel, porter: SecaoPorter,
       swot: SecaoSwot, gut: SecaoGut, cascata: SecaoCascata,
+      projetos: SecaoProjetos,
     };
     const secao = secoes[this.secaoAtiva];
     if (secao) secao.carregar().catch((e) => {

@@ -54,10 +54,12 @@ use App\Controllers\AuthController;
 use App\Controllers\CascataController;
 use App\Controllers\CenarioController;
 use App\Controllers\CicloController;
+use App\Controllers\DiarioController;
 use App\Controllers\DriverEixoController;
 use App\Controllers\FatorController;
 use App\Controllers\NegocioController;
 use App\Controllers\PlanejamentoController;
+use App\Controllers\ProjetoController;
 use App\Controllers\UsuarioController;
 
 try {
@@ -118,6 +120,21 @@ try {
         case $rota === 'POST /api/cascata':         (new CascataController())->salvar();
         case (bool)preg_match('#^POST /api/cascata/(\d+)/excluir$#', $rota, $m):
             (new CascataController())->excluir((int)$m[1]);
+
+        case $rota === 'GET /api/projetos':         (new ProjetoController())->listar();
+        case $rota === 'POST /api/projetos':        (new ProjetoController())->salvar();
+        case (bool)preg_match('#^POST /api/projetos/(\d+)/excluir$#', $rota, $m):
+            (new ProjetoController())->excluir((int)$m[1]);
+        case (bool)preg_match('#^POST /api/projetos/(\d+)$#', $rota, $m):
+            (new ProjetoController())->salvar((int)$m[1]);
+        case $rota === 'POST /api/desdobramentos':  (new ProjetoController())->salvarDesdobramento();
+        case (bool)preg_match('#^POST /api/desdobramentos/(\d+)/excluir$#', $rota, $m):
+            (new ProjetoController())->excluirDesdobramento((int)$m[1]);
+        case (bool)preg_match('#^POST /api/desdobramentos/(\d+)$#', $rota, $m):
+            (new ProjetoController())->salvarDesdobramento((int)$m[1]);
+
+        case $rota === 'GET /api/diario':           (new DiarioController())->listar();
+        case $rota === 'POST /api/diario':          (new DiarioController())->criar();
 
         default:
             Json::erro('Rota não encontrada.', 404);
