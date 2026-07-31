@@ -104,6 +104,13 @@ const Diag = {
       title="${qtd} card(s) nesta categoria">${qtd}</span>`;
   },
 
+  // Botão "+" à direita do título: adiciona um card já naquela categoria
+  botaoAddCategoria(cat, rotulo, cor) {
+    if (!App.podeEditar()) return '';
+    return `<button class="btn btn-sm btn-add-cat ms-auto" style="--cor-cat:${cor}"
+      data-add-categoria="${cat}" title="Adicionar em ${rotulo}" aria-label="Adicionar em ${rotulo}">+</button>`;
+  },
+
   QUADRANTES: { FORCA: 'Força', FRAQUEZA: 'Fraqueza', OPORTUNIDADE: 'Oportunidade', AMEACA: 'Ameaça' },
   CORES_QUADRANTE: { FORCA: '#007a45', FRAQUEZA: '#b08d4f', OPORTUNIDADE: '#2c7fb8', AMEACA: '#8f3b3b' },
 
@@ -142,8 +149,11 @@ const Diag = {
           ${this.botoesFator(f, plan.id, comPromocao)}
         </div></div>`).join('');
       return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
-        <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${rotulo}
-          ${this.contadorCards(itens.length, cor)}</div>
+        <div class="d-flex align-items-center mb-2">
+          <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
+            ${this.contadorCards(itens.length, cor)}</span>
+          ${this.botaoAddCategoria(cat, rotulo, cor)}
+        </div>
         ${cartoes || '<div class="text-muted small">—</div>'}
       </div>`;
     }).join('');
@@ -169,10 +179,12 @@ const Diag = {
     if (!App.podeEditar()) return;
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
-    const modalFator = (f = null) => Modal.abrir({
+    const modalFator = (f = null, categoria = null) => Modal.abrir({
       titulo: f ? `Editar fator (${f.ano || ano})` : `Novo fator — ${titulo} · ${ano}`,
       url: f ? `/api/fatores/${f.id}` : '/api/fatores',
-      valores: f ? { ...f, planejamento_id: plan.id } : { planejamento_id: plan.id, etapa, ano },
+      valores: f
+        ? { ...f, planejamento_id: plan.id }
+        : { planejamento_id: plan.id, etapa, ano, ...(categoria ? { categoria } : {}) },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'etapa', rotulo: '', tipo: 'hidden', padrao: etapa },
@@ -185,6 +197,8 @@ const Diag = {
     // el.querySelector, não getElementById: PESTEL e Porter usam o mesmo id e
     // a seção anterior continua no DOM (oculta) — o global pegaria o botão errado
     el.querySelector('#btn-novo-fator').addEventListener('click', () => modalFator());
+    el.querySelectorAll('[data-add-categoria]').forEach((b) => b.addEventListener('click', () =>
+      modalFator(null, b.dataset.addCategoria)));
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       modalFator(fatores.find((f) => f.id == b.dataset.editar))));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
@@ -256,7 +270,10 @@ const SecaoCenario = {
           </div>` : ''}
         </div></div>`).join('');
       return `<div class="col-md-6" data-coluna-categoria="${tipo}">
-        <h2 class="h6 text-uppercase text-muted">${titulo} ${Diag.contadorCards(lista.length, 'var(--verde-coperdia)')}</h2>
+        <div class="d-flex align-items-center">
+          <h2 class="h6 text-uppercase text-muted mb-0">${titulo} ${Diag.contadorCards(lista.length, 'var(--verde-coperdia)')}</h2>
+          ${Diag.botaoAddCategoria(tipo, titulo, 'var(--verde-coperdia)')}
+        </div>
         ${linhas || '<div class="text-muted small">Nenhum item.</div>'}
       </div>`;
     };
@@ -288,10 +305,12 @@ const SecaoCenario = {
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
     Diag.ligarVerMais(el);
     if (!App.podeEditar()) return;
-    const modalItem = (i = null) => Modal.abrir({
+    const modalItem = (i = null, tipoNovo = null) => Modal.abrir({
       titulo: i ? `Editar item do cenário (${i.ano || ano})` : `Novo item do cenário · ${ano}`,
       url: i ? `/api/cenario/${i.id}` : '/api/cenario',
-      valores: i ? { ...i, planejamento_id: plan.id } : { planejamento_id: plan.id, ano },
+      valores: i
+        ? { ...i, planejamento_id: plan.id }
+        : { planejamento_id: plan.id, ano, ...(tipoNovo ? { tipo: tipoNovo } : {}) },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
@@ -304,6 +323,8 @@ const SecaoCenario = {
       ],
     });
     document.getElementById('btn-novo-cenario').addEventListener('click', () => modalItem());
+    el.querySelectorAll('[data-add-categoria]').forEach((b) => b.addEventListener('click', () =>
+      modalItem(null, b.dataset.addCategoria)));
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       modalItem(itens.find((i) => i.id == b.dataset.editar))));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
@@ -375,8 +396,11 @@ const SecaoSwot = {
       }).join('');
       return `<div class="col-md-6" data-coluna-categoria="${cat}">
         <div class="p-2 rounded" style="background:${cor}18; border-top: 3px solid ${cor}">
-          <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${rotulo}
-            ${Diag.contadorCards(itens.length, cor)}</div>
+          <div class="d-flex align-items-center mb-2">
+            <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
+              ${Diag.contadorCards(itens.length, cor)}</span>
+            ${Diag.botaoAddCategoria(cat, rotulo, cor)}
+          </div>
           ${cartoes || '<div class="text-muted small">Nenhum fator.</div>'}
         </div>
       </div>`;
@@ -411,10 +435,12 @@ const SecaoSwot = {
     Diag.ligarSeletorCategoriaMovel(el, 'SWOT');
     Diag.ligarVerMais(el);
     if (!App.podeEditar()) return;
-    const modalFator = (f = null) => Modal.abrir({
+    const modalFator = (f = null, categoria = null) => Modal.abrir({
       titulo: f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,
       url: f ? `/api/fatores/${f.id}` : '/api/fatores',
-      valores: f ? { ...f, planejamento_id: plan.id } : { planejamento_id: plan.id, etapa: 'SWOT', ano },
+      valores: f
+        ? { ...f, planejamento_id: plan.id }
+        : { planejamento_id: plan.id, etapa: 'SWOT', ano, ...(categoria ? { categoria } : {}) },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'etapa', rotulo: '', tipo: 'hidden', padrao: 'SWOT' },
@@ -429,6 +455,8 @@ const SecaoSwot = {
       ],
     });
     document.getElementById('btn-novo-swot').addEventListener('click', () => modalFator());
+    el.querySelectorAll('[data-add-categoria]').forEach((b) => b.addEventListener('click', () =>
+      modalFator(null, b.dataset.addCategoria)));
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       modalFator(fatores.find((f) => f.id == b.dataset.editar))));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
