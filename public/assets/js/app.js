@@ -86,6 +86,10 @@ const App = {
       if (!aberto && ev.clientX <= 8) alternar(true);
       else if (aberto && ev.clientX > 300) alternar(false);
     });
+    // Sair do menu por qualquer lado (inclusive para fora da janela) recolhe
+    menu.addEventListener('mouseleave', () => {
+      if (desktop.matches) alternar(false);
+    });
     // Clique fora do menu recolhe (qualquer tamanho de tela)
     document.addEventListener('click', (ev) => {
       if (document.body.classList.contains('menu-aberto')

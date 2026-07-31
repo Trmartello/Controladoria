@@ -1,0 +1,52 @@
+<?php
+
+namespace App\Core;
+
+/**
+ * Sessões persistidas no MySQL: o container do Railway é efêmero e as sessões
+ * em arquivo morrem a cada deploy — no banco, o login sobrevive a deploys e
+ * reinícios. A expiração usa session.gc_maxlifetime (30 dias no index.php).
+ */
+class SessaoBanco implements \SessionHandlerInterface
+{
+    public function open(string $path, string $name): bool
+    {
+        return true;
+    }
+
+    public function close(): bool
+    {
+        return true;
+    }
+
+    public function read(string $id): string
+    {
+        $linha = Database::um('SELECT dados FROM sessao WHERE id = ?', [$id]);
+        return $linha ? (string)$linha['dados'] : '';
+    }
+
+    public function write(string $id, string $dados): bool
+    {
+        Database::executar(
+            'INSERT INTO sessao (id, dados) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE dados = VALUES(dados), atualizado_em = NOW()',
+            [$id, $dados]
+        );
+        return true;
+    }
+
+    public function destroy(string $id): bool
+    {
+        Database::executar('DELETE FROM sessao WHERE id = ?', [$id]);
+        return true;
+    }
+
+    public function gc(int $max_lifetime): int|false
+    {
+        Database::executar(
+            'DELETE FROM sessao WHERE atualizado_em < DATE_SUB(NOW(), INTERVAL ? SECOND)',
+            [$max_lifetime]
+        );
+        return 0;
+    }
+}

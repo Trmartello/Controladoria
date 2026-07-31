@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf" content="<?= htmlspecialchars($csrf) ?>">
   <title><?= htmlspecialchars($app['nome']) ?></title>
-  <link rel="stylesheet" href="/assets/vendor/bootstrap.min.css">
-  <link rel="stylesheet" href="/assets/css/app.css">
+  <link rel="stylesheet" href="<?= versao_asset('/assets/vendor/bootstrap.min.css') ?>">
+  <link rel="stylesheet" href="<?= versao_asset('/assets/css/app.css') ?>">
 </head>
 <body>
   <!-- Barra superior: o menu recolhe e expande automaticamente (☰ ou borda esquerda) -->
@@ -101,17 +101,17 @@
     </div>
   </div>
 
-  <script src="/assets/vendor/bootstrap.bundle.min.js"></script>
-  <script src="/assets/js/modal.js"></script>
-  <script src="/assets/js/secoes/painel.js"></script>
-  <script src="/assets/js/secoes/hub.js"></script>
-  <script src="/assets/js/secoes/cadastros.js"></script>
-  <script src="/assets/js/secoes/diagnostico.js"></script>
-  <script src="/assets/js/secoes/cascata.js"></script>
-  <script src="/assets/js/secoes/projetos.js"></script>
-  <script src="/assets/js/secoes/investimentos.js"></script>
-  <script src="/assets/js/secoes/metas.js"></script>
-  <script src="/assets/js/secoes/relatorio.js"></script>
-  <script src="/assets/js/app.js"></script>
+  <script src="<?= versao_asset('/assets/vendor/bootstrap.bundle.min.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/modal.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/painel.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/cadastros.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/diagnostico.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/cascata.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/projetos.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/investimentos.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/metas.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/relatorio.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/app.js') ?>"></script>
 </body>
 </html>

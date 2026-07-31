@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf" content="<?= htmlspecialchars($csrf) ?>">
   <title>Entrar — <?= htmlspecialchars($app['nome']) ?></title>
-  <link rel="stylesheet" href="/assets/vendor/bootstrap.min.css">
-  <link rel="stylesheet" href="/assets/css/app.css">
+  <link rel="stylesheet" href="<?= versao_asset('/assets/vendor/bootstrap.min.css') ?>">
+  <link rel="stylesheet" href="<?= versao_asset('/assets/css/app.css') ?>">
 </head>
 <body class="login-body d-flex align-items-center justify-content-center vh-100">
   <div class="card shadow login-card">
@@ -38,6 +38,6 @@
       </form>
     </div>
   </div>
-  <script src="/assets/js/login.js"></script>
+  <script src="<?= versao_asset('/assets/js/login.js') ?>"></script>
 </body>
 </html>

@@ -40,8 +40,24 @@ $GLOBALS['config'] = require __DIR__ . '/../config/config.php';
 // Atrás do proxy do Railway o TLS termina na borda; X-Forwarded-Proto indica HTTPS
 $https = ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' || !empty($_SERVER['HTTPS']);
 
-session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'secure' => $https]);
+// Sessão no banco (sobrevive a deploys) com validade de 30 dias
+const SESSAO_DIAS = 30;
+ini_set('session.gc_maxlifetime', (string)(SESSAO_DIAS * 86400));
+session_set_save_handler(new \App\Core\SessaoBanco(), true);
+session_set_cookie_params([
+    'lifetime' => SESSAO_DIAS * 86400,
+    'httponly' => true,
+    'samesite' => 'Lax',
+    'secure'   => $https,
+]);
 session_start();
+
+/** URL do asset com a versão do arquivo — atualizações furam o cache do navegador. */
+function versao_asset(string $caminho): string
+{
+    $arquivo = __DIR__ . $caminho;
+    return $caminho . '?v=' . (is_file($arquivo) ? filemtime($arquivo) : 1);
+}
 
 header_remove('X-Powered-By');
 header('X-Content-Type-Options: nosniff');

@@ -1,5 +1,13 @@
 -- Sistema de Planejamento Estratégico Copérdia — schema MySQL 8
 
+-- Sessões no banco: o login sobrevive a deploys (container efêmero no Railway)
+CREATE TABLE IF NOT EXISTS sessao (
+  id            VARCHAR(128) PRIMARY KEY,
+  dados         MEDIUMBLOB,
+  atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_sessao_atualizado (atualizado_em)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS usuario (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   nome          VARCHAR(120) NOT NULL,
