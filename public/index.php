@@ -1,6 +1,14 @@
 <?php
 declare(strict_types=1);
 
+// Servidor embutido do PHP: arquivos estáticos (assets) são servidos direto
+if (PHP_SAPI === 'cli-server') {
+    $arquivo = __DIR__ . parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    if (is_file($arquivo)) {
+        return false;
+    }
+}
+
 // Autoloader App\ → app/
 spl_autoload_register(function (string $classe): void {
     if (str_starts_with($classe, 'App\\')) {
