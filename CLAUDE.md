@@ -94,6 +94,10 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   Fluxo da condução: agrupar → descrever (`texto_tratado`) → matriz
   (impacto × esforço) → destino, ou rejeitar, ou `adiado = 1` (caixa
   "tratar depois"). O painel do QR recolhe depois que a sala entrou.
+  Na nuvem, ideia sozinha é uma ficha; grupo vira uma **caixa** (`.grupo-caixa`)
+  com todas as palavras juntadas à vista (`fichaOuCaixa()`). Tocar na caixa ou
+  em qualquer palavra dela leva o grupo à bancada. A caixa arrasta e é alvo de
+  arraste como a ficha (`touch-action: none` nela e nos filhos).
 - **Coleta de Ideias** é o passo 0 do diagnóstico: ideia crua → triagem item a
   item → item de cenário ou fator (ou descarte com motivo, visível ao autor).
   O registro criado herda o `ano` da **ideia**, nunca o do seletor da tela.

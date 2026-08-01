@@ -471,6 +471,52 @@ input[type=range].faixa-verde:focus-visible {
 }
 .ficha-nuvem.adiada { border-style: dashed; color: #6c757d; }
 .caixa-depois { border-left: 4px solid #8a94a6; }
+
+/* Grupo de ideias juntadas: uma caixa mostrando todas as palavras reunidas.
+   Arrasta e é alvo de arraste igual à ficha, e toca para ir à bancada. */
+.grupo-caixa {
+  border: 1px solid var(--verde-coperdia);
+  border-radius: .6rem;
+  background: #f2f8f5;
+  padding: .5rem .6rem;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  max-width: 24rem;
+}
+/* Um toque começando numa palavra da caixa também arrasta (não rola a página) */
+.grupo-caixa * { touch-action: none; }
+.grupo-caixa.selecionada {
+  border-width: 2px;
+  background: #e3f1ea;
+  box-shadow: 0 0 0 2px rgba(0, 122, 69, .25);
+}
+.grupo-caixa.arrastando { opacity: .5; }
+.grupo-caixa.alvo-juntar {
+  border-color: var(--dourado);
+  border-width: 2px;
+  background: #fbf5e9;
+  transform: scale(1.03);
+}
+.grupo-caixa.adiada { border-style: dashed; border-color: #8a94a6; background: #fff; }
+.grupo-descricao {
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--verde-escuro);
+  margin-bottom: .35rem;
+  overflow-wrap: anywhere;
+}
+.grupo-palavras { display: flex; flex-wrap: wrap; gap: .3rem; }
+.palavra-grupo {
+  background: #fff;
+  border: 1px solid #cfe2d8;
+  border-radius: 999px;
+  padding: .12rem .55rem;
+  font-size: .78rem;
+  overflow-wrap: anywhere;
+}
+.grupo-caixa.adiada .palavra-grupo { border-color: #d5d9e0; }
+.grupo-rodape { font-size: .68rem; color: #6c757d; margin-top: .35rem; }
 .ficha-nuvem.selecionada {
   background: var(--verde-coperdia);
   border-color: var(--verde-coperdia);

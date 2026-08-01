@@ -247,6 +247,42 @@ const SecaoColeta = {
     </div></div>`;
   },
 
+  /**
+   * Uma ideia sozinha vira uma ficha; um grupo vira uma CAIXA com todas as
+   * palavras juntadas à vista, para o condutor ver o que foi reunido. Tocar na
+   * caixa — ou em qualquer palavra dela — leva o grupo à bancada, onde está o
+   * quadrante de prioridade.
+   */
+  fichaOuCaixa(g, { adiada = false } = {}) {
+    const i = g.representante;
+    const multi = g.itens.length > 1;
+    const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
+    const selo = `${multi ? `×${g.itens.length}` : ''}${g.votos ? ` ★${g.votos}` : ''}`.trim();
+    // Adiada volta com um toque (data-retomar); ativa seleciona e arrasta
+    const acao = adiada
+      ? `data-retomar="${i.id}"`
+      : `data-selecionar="${i.id}" data-arrastavel="${i.id}"`;
+
+    if (!multi) {
+      const rotulo = i.texto_tratado || i.texto;
+      const dica = adiada ? 'Trazer de volta para a tempestade'
+        : `${Modal.esc(i.autor)} — toque para tratar, arraste sobre outra para juntar`;
+      return `<button type="button" class="ficha-nuvem ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
+        style="--peso:1" ${acao} title="${dica}">${Modal.esc(rotulo)}${
+        selo ? ` <span class="repetida">${selo}</span>` : ''}</button>`;
+    }
+    const dica = adiada ? 'Trazer de volta para a tempestade'
+      : `Grupo de ${g.itens.length} ideias — toque para tratar, arraste para juntar`;
+    return `<div class="grupo-caixa ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
+      role="button" tabindex="0" ${acao} title="${dica}">
+      ${i.texto_tratado ? `<div class="grupo-descricao">${Modal.esc(i.texto_tratado)}</div>` : ''}
+      <div class="grupo-palavras">
+        ${g.itens.map((w) => `<span class="palavra-grupo">${Modal.esc(w.texto)}</span>`).join('')}
+      </div>
+      <div class="grupo-rodape">${g.itens.length} ideias juntas${g.votos ? ` · ★ ${g.votos}` : ''}</div>
+    </div>`;
+  },
+
   // ---- Tela de condução: nuvem à esquerda, bancada à direita ----
   telaConducao() {
     const grupos = this.nuvem();
@@ -257,17 +293,7 @@ const SecaoColeta = {
     const item = grupoSel
       ? (grupoSel.itens.find((i) => i.id === this.selecionado) || grupoSel.representante)
       : null;
-    const fichas = grupos.map((g) => {
-      const i = g.representante;
-      const peso = Math.min(g.itens.length, 5);
-      const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
-      const rotulo = i.texto_tratado || i.texto;
-      return `<button type="button" class="ficha-nuvem ${desteGrupo ? 'selecionada' : ''}"
-        style="--peso:${peso}" data-selecionar="${i.id}" data-arrastavel="${i.id}"
-        title="${Modal.esc(i.autor)} — arraste sobre outra para juntar">${Modal.esc(rotulo)}${
-        g.itens.length > 1 ? `<span class="repetida">×${g.itens.length}</span>` : ''}${
-        g.votos ? `<span class="repetida">★${g.votos}</span>` : ''}</button>`;
-    }).join('');
+    const fichas = grupos.map((g) => this.fichaOuCaixa(g)).join('');
 
     const adiadas = this.nuvem(true);
 
@@ -289,11 +315,7 @@ const SecaoColeta = {
     ${adiadas.length ? `<div class="card mb-3 caixa-depois"><div class="card-body py-2 px-3">
       <div class="rotulo-secao">Tratar depois (${adiadas.length})</div>
       <div class="nuvem">
-        ${adiadas.map((g) => `<button type="button" class="ficha-nuvem adiada"
-          data-retomar="${g.representante.id}"
-          title="Trazer de volta para a tempestade">${Modal.esc(
-          g.representante.texto_tratado || g.representante.texto)}${
-          g.itens.length > 1 ? `<span class="repetida">×${g.itens.length}</span>` : ''}</button>`).join('')}
+        ${adiadas.map((g) => this.fichaOuCaixa(g, { adiada: true })).join('')}
       </div>
     </div></div>` : ''}`;
   },
@@ -442,16 +464,25 @@ const SecaoColeta = {
       }
     }));
 
-    el.querySelectorAll('[data-selecionar]').forEach((b) => b.addEventListener('click', () => {
-      // Um arraste que terminou em cima de outra ficha não é um toque
-      if (b.dataset.arrastou === '1') {
-        delete b.dataset.arrastou;
-        return;
+    el.querySelectorAll('[data-selecionar]').forEach((b) => {
+      const escolher = () => {
+        // Um arraste que terminou em cima de outra ficha não é um toque
+        if (b.dataset.arrastou === '1') {
+          delete b.dataset.arrastou;
+          return;
+        }
+        const id = Number(b.dataset.selecionar);
+        this.selecionado = this.selecionado === id ? null : id;
+        this.carregar();
+      };
+      b.addEventListener('click', escolher);
+      // A caixa de grupo é um <div role="button">: precisa do teclado na mão
+      if (b.getAttribute('role') === 'button') {
+        b.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); escolher(); }
+        });
       }
-      const id = Number(b.dataset.selecionar);
-      this.selecionado = this.selecionado === id ? null : id;
-      this.carregar();
-    }));
+    });
 
     el.querySelectorAll('[data-retomar]').forEach((b) => b.addEventListener('click', async () => {
       try {
