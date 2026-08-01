@@ -48,23 +48,19 @@ const SecaoCadastros = {
     const alvo = document.getElementById('conteudo-aba');
     const linhas = lista.map((n) => `
       <tr class="${n.ativo == 1 ? '' : 'table-secondary'}">
-        <td>${Modal.esc(n.cod_negocio)}</td>
-        <td>${Modal.esc(n.nome)}</td>
+        <td><strong>${Modal.esc(n.cod_negocio)}</strong> — ${Modal.esc(n.nome)}</td>
         <td>${Modal.esc(n.gestor || '—')}</td>
-        <td><span class="badge ${n.origem === 'QLIK' ? 'text-bg-success' : 'text-bg-secondary'}">${n.origem}</span></td>
         <td>${n.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
-        <td>${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar="${n.id}">Editar</button>` : ''}</td>
+        <td>${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar="${n.id}"
+          title="Editar" aria-label="Editar">✎</button>` : ''}</td>
       </tr>`).join('');
 
     alvo.innerHTML = `
-      ${administra ? `<div class="mb-2 d-flex gap-2">
-        <button class="btn btn-verde btn-sm" id="btn-novo-negocio">+ Novo negócio</button>
-        <button class="btn btn-outline-success btn-sm" id="btn-sync-negocio">Sincronizar Comercial Global</button>
-      </div>` : ''}
+      ${administra ? `<button class="btn btn-verde btn-sm mb-2" id="btn-novo-negocio">+ Novo negócio</button>` : ''}
       <div class="table-responsive">
         <table class="table table-sm tabela-cadastro">
-          <thead><tr><th>Cód.</th><th>Negócio</th><th>Gestor</th><th>Origem</th><th>Situação</th><th></th></tr></thead>
-          <tbody>${linhas || '<tr><td colspan="6" class="text-muted">Nenhum negócio cadastrado. Use a sincronização ou o cadastro manual.</td></tr>'}</tbody>
+          <thead><tr><th>Negócio</th><th>Gestor</th><th>Situação</th><th></th></tr></thead>
+          <tbody>${linhas || '<tr><td colspan="4" class="text-muted">Nenhum negócio cadastrado.</td></tr>'}</tbody>
         </table>
       </div>`;
 
@@ -86,14 +82,6 @@ const SecaoCadastros = {
     });
 
     document.getElementById('btn-novo-negocio').addEventListener('click', () => abrirModal());
-    document.getElementById('btn-sync-negocio').addEventListener('click', async () => {
-      const r = await App.api('/api/negocios/sync', {});
-      alert(`Sincronização concluída: ${r.inseridos} inserido(s), ${r.atualizados} atualizado(s).` +
-        (r.desativados ? ` ${r.desativados} fora da fonte desativado(s).` : '') +
-        (r.conflitos ? ` ${r.conflitos} código(s) em conflito com cadastro manual — confira na lista.` : '') +
-        (r.conectividade ? ` Conectividade Qlik: ${r.conectividade}.` : ''));
-      this.carregar();
-    });
     alvo.querySelectorAll('[data-editar]').forEach((b) => {
       b.addEventListener('click', () => abrirModal(lista.find((n) => n.id == b.dataset.editar)));
     });
@@ -285,11 +273,13 @@ const SecaoCadastros = {
 
     alvo.innerHTML = `
       <button class="btn btn-verde btn-sm mb-2" id="btn-novo-usuario">+ Novo usuário</button>
+      ${lista.length > 5 ? `<input type="search" id="busca-usuario" class="form-control mb-2"
+        placeholder="Pesquisar usuário por nome ou e-mail..." autocomplete="off">` : ''}
       <div class="table-responsive">
         <table class="table table-sm tabela-cadastro">
           <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Negócios vinculados</th><th>Situação</th><th></th></tr></thead>
-          <tbody>${lista.map((u) => `
-            <tr class="${u.ativo == 1 ? '' : 'table-secondary'}">
+          <tbody id="linhas-usuarios">${lista.map((u) => `
+            <tr class="${u.ativo == 1 ? '' : 'table-secondary'}" data-busca="${Modal.esc(`${u.nome} ${u.email}`.toLowerCase())}">
               <td>${Modal.esc(u.nome)}</td>
               <td>${Modal.esc(u.email)}</td>
               <td>${u.perfil}</td>
@@ -327,6 +317,16 @@ const SecaoCadastros = {
     document.getElementById('btn-novo-usuario').addEventListener('click', () => abrirModal());
     alvo.querySelectorAll('[data-editar]').forEach((b) => {
       b.addEventListener('click', () => abrirModal(lista.find((u) => u.id == b.dataset.editar)));
+    });
+
+    // Pesquisa (aparece com mais de 5 usuários): filtra por nome/e-mail ao digitar
+    const busca = document.getElementById('busca-usuario');
+    busca?.addEventListener('input', () => {
+      const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const q = norm(busca.value.trim());
+      document.querySelectorAll('#linhas-usuarios tr').forEach((tr) => {
+        tr.classList.toggle('d-none', q !== '' && !norm(tr.dataset.busca).includes(q));
+      });
     });
   },
 };

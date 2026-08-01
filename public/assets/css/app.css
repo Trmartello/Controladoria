@@ -64,6 +64,9 @@ body.menu-aberto .menu-lateral {
 }
 @media (max-width: 575.98px) {
   .btn { --bs-btn-font-size: .8rem; }
+  /* Tabelas de cadastro compactas: sem rolagem horizontal no celular */
+  .tabela-cadastro { font-size: .85rem; }
+  .tabela-cadastro td, .tabela-cadastro th { padding: .3rem; }
 }
 /* Tabelas largas nunca estouram a página — rolam no próprio contêiner */
 .secao .table-responsive { -webkit-overflow-scrolling: touch; }
