@@ -39,6 +39,7 @@ const Modal = {
     this.ligarBotoesDitado(form);
     this.ligarSelecaoLivre(form);
     this.ligarDatasBr(form);
+    this.ligarFaixas(form, campos);
 
     if (!this.bsModal) {
       this.bsModal = new bootstrap.Modal(document.getElementById('modal-form'));
@@ -126,6 +127,21 @@ const Modal = {
           aria-label="${this.esc(c.rotulo)}">${celulas}</div>`;
         break;
       }
+      case 'faixa': {
+        // Controle deslizante com o valor atual à direita do rótulo
+        const min = c.min ?? 0;
+        const max = c.max ?? 100;
+        const atual = v === '' || v === null || v === undefined ? min : Number(v);
+        controle = `<div class="campo-faixa">
+          <input type="range" class="form-range" id="${id}" min="${min}" max="${max}"
+            step="${c.passo ?? 1}" value="${atual}">
+          <div class="d-flex justify-content-between faixa-limites">
+            <span>${min}${this.esc(c.sufixo || '')}</span>
+            <span>${max}${this.esc(c.sufixo || '')}</span>
+          </div>
+        </div>`;
+        break;
+      }
       case 'botoes': {
         // Grupo de botões exclusivos (option buttons): um clique escolhe o valor
         const botoes = (c.opcoes || []).map((o) => `
@@ -185,7 +201,11 @@ const Modal = {
     const obrigatorio = c.obrigatorio ? ' <span class="obrigatorio" title="Campo obrigatório">*</span>' : '';
     // Grupos (como o período) não apontam para um único campo
     const alvo = c.tipo === 'periodo' ? '' : ` for="${id}"`;
-    return `<div class="mb-3"><label class="form-label"${alvo}>${this.esc(c.rotulo)}${obrigatorio}</label>${controle}${ajuda}${nota}</div>`;
+    // A faixa mostra o valor escolhido ao lado do rótulo
+    const valorFaixa = c.tipo === 'faixa'
+      ? `<span class="valor-faixa" id="${id}-valor">${v === '' || v === null || v === undefined ? (c.min ?? 0) : this.esc(v)}${this.esc(c.sufixo || '')}</span>`
+      : '';
+    return `<div class="mb-3"><label class="form-label"${alvo}>${this.esc(c.rotulo)}${obrigatorio}${valorFaixa}</label>${controle}${ajuda}${nota}</div>`;
   },
 
   botaoDitar(id) {
@@ -268,6 +288,17 @@ const Modal = {
       });
       document.addEventListener('click', (ev) => {
         if (!painel.classList.contains('d-none') && !ev.target.closest('.combo-busca')) fechar();
+      });
+    });
+  },
+
+  // O valor da faixa acompanha o arraste do controle
+  ligarFaixas(raiz, campos) {
+    raiz.querySelectorAll('input[type=range]').forEach((r) => {
+      const sufixo = campos.find((c) => `campo-${c.nome}` === r.id)?.sufixo || '';
+      const alvo = document.getElementById(`${r.id}-valor`);
+      r.addEventListener('input', () => {
+        if (alvo) alvo.textContent = `${r.value}${sufixo}`;
       });
     });
   },
@@ -385,7 +416,7 @@ const Modal = {
         dados[c.nome] = marcado ? (marcado.value === '' || isNaN(marcado.value) ? marcado.value : Number(marcado.value)) : null;
       }
       else if (c.tipo === 'multiselect') dados[c.nome] = Array.from(el.selectedOptions).map((o) => o.value);
-      else if (c.tipo === 'number') dados[c.nome] = el.value === '' ? null : Number(el.value);
+      else if (c.tipo === 'number' || c.tipo === 'faixa') dados[c.nome] = el.value === '' ? null : Number(el.value);
       else dados[c.nome] = el.value;
     }
     return dados;

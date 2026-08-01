@@ -201,6 +201,17 @@ table.tabela-cadastro td { vertical-align: middle; }
 }
 #modal-campos .form-text { font-size: .78rem; margin-top: .4rem; }
 .obrigatorio { color: var(--verde-coperdia); font-weight: 800; }
+
+/* Controle deslizante (ex.: progresso da ação) com o valor ao lado do rótulo */
+.valor-faixa {
+  float: right;
+  font-weight: 800;
+  color: var(--verde-coperdia);
+}
+.campo-faixa .form-range { padding: 0; }
+.campo-faixa .form-range::-webkit-slider-thumb { background: var(--verde-coperdia); }
+.campo-faixa .form-range::-moz-range-thumb { background: var(--verde-coperdia); }
+.faixa-limites { font-size: .7rem; color: #8a939b; }
 .grade-datas { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .sub-rotulo {
   display: block;
@@ -527,10 +538,13 @@ tr.card-destacado > td { background: #e8f5ee; }
 /* No celular todo modal ocupa a tela inteira; o campo de texto ou o bloco
    informativo cresce para preencher o espaço que sobrar */
 @media (max-width: 991.98px) {
-  #modal-form .modal-dialog {
-    height: calc(100dvh - 1rem);
+  /* O seletor com :has(textarea) tem mais especificidade que .modal-dialog e
+     venceria aqui — por isso os dois aparecem juntos nesta regra */
+  #modal-form .modal-dialog,
+  #modal-form .modal-dialog:has(textarea) {
+    height: calc(100dvh - .5rem);
     max-height: none;
-    margin: .5rem;
+    margin: .25rem;
   }
   #modal-form .modal-content { height: 100%; }
   #modal-form .modal-body {
