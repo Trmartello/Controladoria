@@ -68,6 +68,7 @@ const SecaoColeta = {
   rodadaAberta: null,
   selecionado: null,   // id da ideia na bancada
   relogio: null,       // consulta periódica enquanto a rodada está aberta
+  painelOculto: false, // o QR some depois que a sala entrou
 
   /** Sem acento e sem caixa, para agrupar quem disse a mesma coisa. */
   norm(s) {
@@ -79,7 +80,7 @@ const SecaoColeta = {
    * Agrupa as ideias ainda não tratadas por texto equivalente. O peso é
    * quantas pessoas disseram o mesmo — é o que faz a ficha crescer na nuvem.
    */
-  nuvem() {
+  nuvem(adiadas = false) {
     const grupos = new Map();
     const rodadaId = this.rodadaAberta ? Number(this.rodadaAberta.id) : null;
     for (const i of this.itens) {
@@ -87,7 +88,11 @@ const SecaoColeta = {
       // A nuvem é da rodada em curso: misturar respostas de rodadas anteriores
       // e ideias avulsas do ano tiraria o sentido do "toque para tratar"
       if (rodadaId !== null && Number(i.rodada_id) !== rodadaId) continue;
-      const chave = this.norm(i.texto);
+      if (!adiadas && Number(i.adiado)) continue;
+      if (adiadas && !Number(i.adiado)) continue;
+      // O grupo é o que o condutor montou arrastando (ou o automático de texto
+      // igual, que o servidor já resolve gravando o mesmo líder)
+      const chave = String(i.agrupado_em_id || i.id);
       if (!grupos.has(chave)) grupos.set(chave, { representante: i, itens: [], votos: 0 });
       const g = grupos.get(chave);
       g.itens.push(i);
@@ -202,6 +207,22 @@ const SecaoColeta = {
       </div></div>`;
     }
     const url = `${location.origin}/entrar/${r.pin}`;
+    // Depois que a sala entrou, o QR só ocupa espaço — some com um toque
+    if (this.painelOculto) {
+      return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge text-bg-light border">PIN ${Modal.esc(r.pin)}</span>
+          <span class="badge text-bg-light border">${r.participantes} participante(s)</span>
+          <span class="badge text-bg-light border">${r.ideias} ideia(s)</span>
+          ${r.votacao === 'ABERTA' ? '<span class="badge text-bg-warning">votação aberta</span>' : ''}
+          <span class="small text-muted flex-grow-1 text-truncate">${Modal.esc(r.tema)}</span>
+          <button class="btn btn-sm btn-outline-secondary" id="btn-mostrar-painel">Mostrar QR</button>
+          <button class="btn btn-sm btn-outline-secondary" id="btn-votacao">
+            ${r.votacao === 'ABERTA' ? 'Fechar votação' : 'Abrir votação'}</button>
+          <button class="btn btn-sm btn-outline-danger" id="btn-encerrar-rodada">Encerrar</button>
+        </div>
+      </div></div>`;
+    }
     return `<div class="card mb-3 painel-rodada"><div class="card-body py-3 px-3">
       <div class="d-flex flex-wrap gap-3 align-items-start">
         <div class="caixa-qr" id="qr-rodada" aria-hidden="true"></div>
@@ -216,6 +237,7 @@ const SecaoColeta = {
           </div>
         </div>
         <div class="d-flex flex-column gap-1">
+          <button class="btn btn-sm btn-outline-secondary" id="btn-ocultar-painel">Ocultar QR</button>
           <button class="btn btn-sm btn-outline-secondary" data-copiar-link="${Modal.esc(url)}">Copiar link</button>
           <button class="btn btn-sm btn-outline-secondary" id="btn-votacao">
             ${r.votacao === 'ABERTA' ? 'Fechar votação' : 'Abrir votação'}</button>
@@ -239,17 +261,21 @@ const SecaoColeta = {
       const i = g.representante;
       const peso = Math.min(g.itens.length, 5);
       const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
+      const rotulo = i.texto_tratado || i.texto;
       return `<button type="button" class="ficha-nuvem ${desteGrupo ? 'selecionada' : ''}"
-        style="--peso:${peso}" data-selecionar="${i.id}"
-        title="${Modal.esc(i.autor)}">${Modal.esc(i.texto)}${
+        style="--peso:${peso}" data-selecionar="${i.id}" data-arrastavel="${i.id}"
+        title="${Modal.esc(i.autor)} — arraste sobre outra para juntar">${Modal.esc(rotulo)}${
         g.itens.length > 1 ? `<span class="repetida">×${g.itens.length}</span>` : ''}${
         g.votos ? `<span class="repetida">★${g.votos}</span>` : ''}</button>`;
     }).join('');
 
+    const adiadas = this.nuvem(true);
+
     return `<div class="row g-3 mb-3">
       <div class="col-lg-7">
         <div class="card h-100"><div class="card-body py-2 px-3">
-          <div class="rotulo-secao">Tempestade — toque para levar à bancada</div>
+          <div class="rotulo-secao">Tempestade — toque para levar à bancada,
+            arraste uma sobre a outra para juntar</div>
           <div class="nuvem">${fichas || '<span class="text-muted small">Aguardando as primeiras ideias...</span>'}</div>
         </div></div>
       </div>
@@ -259,7 +285,17 @@ const SecaoColeta = {
           ${item ? this.bancada(item, grupoSel) : '<p class="text-muted small mb-0">Escolha uma ideia da tempestade para discutir com o grupo.</p>'}
         </div></div>
       </div>
-    </div>`;
+    </div>
+    ${adiadas.length ? `<div class="card mb-3 caixa-depois"><div class="card-body py-2 px-3">
+      <div class="rotulo-secao">Tratar depois (${adiadas.length})</div>
+      <div class="nuvem">
+        ${adiadas.map((g) => `<button type="button" class="ficha-nuvem adiada"
+          data-retomar="${g.representante.id}"
+          title="Trazer de volta para a tempestade">${Modal.esc(
+          g.representante.texto_tratado || g.representante.texto)}${
+          g.itens.length > 1 ? `<span class="repetida">×${g.itens.length}</span>` : ''}</button>`).join('')}
+      </div>
+    </div></div>` : ''}`;
   },
 
   bancada(item, grupo) {
@@ -267,7 +303,7 @@ const SecaoColeta = {
       ['ALTO', 'BAIXO', 'Fazer agora', 'muito impacto, pouco esforço', '#007a45'],
       ['ALTO', 'ALTO', 'Planejar', 'muito impacto, muito esforço', '#2c7fb8'],
       ['BAIXO', 'BAIXO', 'Encaixar', 'pouco impacto, pouco esforço', '#b08d4f'],
-      ['BAIXO', 'ALTO', 'Esquecer', 'pouco impacto, muito esforço', '#8f3b3b'],
+      ['BAIXO', 'ALTO', 'Descartar', 'pouco impacto, muito esforço', '#8f3b3b'],
     ].map(([imp, esf, titulo, eixos, cor]) => `
       <button type="button" class="quadrante-prio ${item.impacto === imp && item.esforco === esf ? 'escolhido' : ''}"
         style="--cor-quad:${cor}" data-quadrante="${imp}:${esf}" data-item="${item.id}">
@@ -289,6 +325,9 @@ const SecaoColeta = {
       <div class="d-flex gap-1 flex-wrap mt-2">
         <button class="btn btn-sm btn-outline-secondary" data-complementar="${item.id}">Salvar texto</button>
         <button class="btn btn-sm btn-outline-secondary" data-dividir="${item.id}">Dividir</button>
+        ${ids.length > 1 ? `<button class="btn btn-sm btn-outline-secondary"
+          data-desagrupar="${item.id}" title="Separar as ideias deste grupo">Desagrupar</button>` : ''}
+        <button class="btn btn-sm btn-outline-secondary" data-adiar="${item.id}">Tratar depois</button>
       </div>
 
       <div class="rotulo-secao mt-3">Prioridade</div>
@@ -299,8 +338,66 @@ const SecaoColeta = {
         ${DESTINOS_TRIAGEM.map((d) => `
           <button class="btn btn-sm btn-destino" style="--cor-destino:${d.cor}"
             data-encaminhar="${item.id}" data-destino="${d.valor}">${d.rotulo}</button>`).join('')}
-        <button class="btn btn-sm btn-outline-danger" data-descartar="${item.id}">Esquecer</button>
+        <button class="btn btn-sm btn-outline-danger" data-descartar="${item.id}">Rejeitar</button>
       </div>`;
+  },
+
+  /**
+   * Arrastar uma ficha sobre a outra junta as duas num grupo.
+   *
+   * Com eventos de ponteiro (e não a API de arrastar do HTML, que não existe
+   * no toque), e ouvindo no `document`: a ficha se move no DOM durante o
+   * arraste e listeners presos a ela morreriam no meio do gesto.
+   */
+  ligarArraste(el) {
+    if (!App.podeEditar()) return;
+    el.querySelectorAll('[data-arrastavel]').forEach((ficha) => {
+      ficha.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== undefined && ev.button !== 0) return;
+        const origem = { x: ev.clientX, y: ev.clientY };
+        let arrastando = false;
+        let alvoAtual = null;
+
+        const mover = (e) => {
+          const dist = Math.hypot(e.clientX - origem.x, e.clientY - origem.y);
+          // Abaixo de 8px ainda é toque, não arraste
+          if (!arrastando && dist < 8) return;
+          if (!arrastando) {
+            arrastando = true;
+            ficha.classList.add('arrastando');
+          }
+          e.preventDefault();
+          const sob = document.elementFromPoint(e.clientX, e.clientY);
+          const alvo = sob?.closest('[data-arrastavel]');
+          if (alvoAtual && alvoAtual !== alvo) alvoAtual.classList.remove('alvo-juntar');
+          alvoAtual = alvo && alvo !== ficha ? alvo : null;
+          if (alvoAtual) alvoAtual.classList.add('alvo-juntar');
+        };
+
+        const soltar = async (e) => {
+          document.removeEventListener('pointermove', mover);
+          document.removeEventListener('pointerup', soltar);
+          document.removeEventListener('pointercancel', soltar);
+          ficha.classList.remove('arrastando');
+          alvoAtual?.classList.remove('alvo-juntar');
+          if (!arrastando || !alvoAtual) return;
+          ficha.dataset.arrastou = '1';
+          const alvo = Number(alvoAtual.dataset.arrastavel);
+          try {
+            await App.api(`/api/coleta/${ficha.dataset.arrastavel}/agrupar`,
+              { planejamento_id: this.plan.id, alvo });
+            this.selecionado = alvo;
+          } catch (erro) {
+            alert(erro.message);
+          }
+          this.carregar();
+        };
+
+        document.addEventListener('pointermove', mover);
+        document.addEventListener('pointerup', soltar);
+        document.addEventListener('pointercancel', soltar);
+      });
+    });
   },
 
   /** Ids que a nuvem agrupou por texto equivalente, para tratar de uma vez. */
@@ -325,6 +422,15 @@ const SecaoColeta = {
       caixa.remove();
     }
 
+    document.getElementById('btn-ocultar-painel')?.addEventListener('click', () => {
+      this.painelOculto = true;
+      this.carregar();
+    });
+    document.getElementById('btn-mostrar-painel')?.addEventListener('click', () => {
+      this.painelOculto = false;
+      this.carregar();
+    });
+
     el.querySelectorAll('[data-copiar-link]').forEach((b) => b.addEventListener('click', async () => {
       const url = b.dataset.copiarLink;
       try {
@@ -337,10 +443,27 @@ const SecaoColeta = {
     }));
 
     el.querySelectorAll('[data-selecionar]').forEach((b) => b.addEventListener('click', () => {
+      // Um arraste que terminou em cima de outra ficha não é um toque
+      if (b.dataset.arrastou === '1') {
+        delete b.dataset.arrastou;
+        return;
+      }
       const id = Number(b.dataset.selecionar);
       this.selecionado = this.selecionado === id ? null : id;
       this.carregar();
     }));
+
+    el.querySelectorAll('[data-retomar]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await App.api(`/api/coleta/${b.dataset.retomar}/adiar`,
+          { planejamento_id: this.plan.id, adiado: false });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.carregar();
+    }));
+
+    this.ligarArraste(el);
 
     if (!App.podeEditar()) return;
 
@@ -424,6 +547,26 @@ const SecaoColeta = {
 
     el.querySelectorAll('[data-dividir]').forEach((b) => b.addEventListener('click', () =>
       this.modalDividir(this.itens.find((i) => i.id == b.dataset.dividir))));
+
+    el.querySelectorAll('[data-desagrupar]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await App.api(`/api/coleta/${b.dataset.desagrupar}/desagrupar`, { planejamento_id: this.plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.carregar();
+    }));
+
+    el.querySelectorAll('[data-adiar]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await App.api(`/api/coleta/${b.dataset.adiar}/adiar`,
+          { planejamento_id: this.plan.id, adiado: true });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.selecionado = null;
+      this.carregar();
+    }));
   },
 
   /** Quebra um despejo em várias ideias, guardando o vínculo com a original. */
@@ -590,8 +733,7 @@ const SecaoColeta = {
         titulo: 'Descartar ideia',
         url: `/api/coleta/${item.id}/descartar`,
         valores: { planejamento_id: this.plan.id },
-        transformar: (d) => ({ ...d, grupo: this.grupoAtual(item) }),
-        campos: [
+          campos: [
           { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
           { nome: 'ideia', rotulo: 'Ideia', tipo: 'info', texto: item.texto,
             barra: { cor: '#8f3b3b', titulo: item.autor, origem: this.data(item.criado_em) } },
@@ -638,7 +780,6 @@ const SecaoColeta = {
         texto_tratado: item.texto_tratado || item.texto,
       },
       campos,
-      transformar: (d) => ({ ...d, grupo: this.grupoAtual(item) }),
       aoSalvar: () => {
         this.selecionado = null;
         this.carregar();

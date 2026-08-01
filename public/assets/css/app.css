@@ -460,6 +460,17 @@ input[type=range].faixa-verde:focus-visible {
   text-align: left;
 }
 .ficha-nuvem:hover { background: #eef6f1; border-color: var(--verde-coperdia); }
+/* Arrastar uma ficha sobre a outra junta as duas */
+.ficha-nuvem { touch-action: none; user-select: none; }
+.ficha-nuvem.arrastando { opacity: .5; }
+.ficha-nuvem.alvo-juntar {
+  border-color: var(--dourado);
+  border-width: 2px;
+  background: #fbf5e9;
+  transform: scale(1.05);
+}
+.ficha-nuvem.adiada { border-style: dashed; color: #6c757d; }
+.caixa-depois { border-left: 4px solid #8a94a6; }
 .ficha-nuvem.selecionada {
   background: var(--verde-coperdia);
   border-color: var(--verde-coperdia);

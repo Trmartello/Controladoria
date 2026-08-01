@@ -83,6 +83,17 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   Vozes iguais são agrupadas na nuvem e tratadas **em grupo**: N ideias
   apontam para UM destino. Por isso `FatorController`/`CenarioController`
   fazem o JOIN pelo `MIN(id)` — juntar direto multiplicaria o card.
+  O grupo é `coleta_item.agrupado_em_id` (o líder), e serve tanto ao
+  automático — texto equivalente já chega apontando para o líder, via
+  `PublicoController::normalizar()`, que usa tabela e **não** `Normalizer`
+  (a extensão `intl` não está na imagem) — quanto ao manual, arrastando uma
+  ficha sobre a outra. O arraste usa eventos de ponteiro (a API de arrastar do
+  HTML não existe no toque) com os listeners no `document`, porque a ficha se
+  move no DOM durante o gesto. Expandir o grupo é sempre server-side: a lista
+  nunca vem do cliente.
+  Fluxo da condução: agrupar → descrever (`texto_tratado`) → matriz
+  (impacto × esforço) → destino, ou rejeitar, ou `adiado = 1` (caixa
+  "tratar depois"). O painel do QR recolhe depois que a sala entrou.
 - **Coleta de Ideias** é o passo 0 do diagnóstico: ideia crua → triagem item a
   item → item de cenário ou fator (ou descarte com motivo, visível ao autor).
   O registro criado herda o `ano` da **ideia**, nunca o do seletor da tela.

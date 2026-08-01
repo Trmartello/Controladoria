@@ -37,7 +37,7 @@ class ColetaController
 
         $itens = Database::todos(
             "SELECT ci.id, ci.planejamento_id, ci.rodada_id, ci.ano, ci.autor_id,
-                    ci.dividido_de_id, ci.texto, ci.texto_tratado, ci.destino_sugerido,
+                    ci.dividido_de_id, ci.agrupado_em_id, ci.adiado, ci.texto, ci.texto_tratado, ci.destino_sugerido,
                     ci.situacao, ci.impacto, ci.esforco, ci.votos, ci.destino_tipo,
                     ci.destino_id, ci.motivo, ci.triado_em, ci.criado_em,
                     COALESCE(a.nome, ci.autor_nome, 'Participante') AS autor, t.nome AS triador
@@ -176,7 +176,7 @@ class ColetaController
         // Quando três pessoas disseram o mesmo, a nuvem mostra "×3": tratar o
         // representante e deixar as outras para trás faria o condutor
         // encaminhar de novo e criar fatores duplicados
-        $grupo = $this->grupo($id, $planId, $d['grupo'] ?? null);
+        $grupo = $this->grupo($id, $planId);
         $reservados = [];
         foreach ($grupo as $gid) {
             if ($this->reservar($gid, $planId, (int)$u['id'])) {
@@ -232,7 +232,7 @@ class ColetaController
         if ($motivo === '') {
             Json::erro('Explique por que a ideia não entra — o autor vê este motivo.');
         }
-        $grupo = $this->grupo($id, $planId, $d['grupo'] ?? null);
+        $grupo = $this->grupo($id, $planId);
         $marcas = implode(',', array_fill(0, count($grupo), '?'));
         $linhas = Database::afetadas(
             "UPDATE coleta_item SET situacao = 'DESCARTADO', motivo = ?, triado_por = ?, triado_em = NOW()
@@ -268,9 +268,13 @@ class ColetaController
             Json::erro('Escolha um quadrante da matriz.');
         }
         // Posicionar já é dizer "esta vai ser tratada"
+        // Posicionar tira da caixa de "tratar depois" e vale para o grupo todo
+        $grupo = $this->grupo($id, $planId);
+        $marcas = implode(',', array_fill(0, count($grupo), '?'));
         Database::executar(
-            "UPDATE coleta_item SET impacto = ?, esforco = ?, situacao = 'SELECIONADO' WHERE id = ?",
-            [$impacto, $esforco, $id]
+            "UPDATE coleta_item SET impacto = ?, esforco = ?, situacao = 'SELECIONADO', adiado = 0
+             WHERE id IN ({$marcas})",
+            [$impacto, $esforco, ...$grupo]
         );
         Json::ok(['impacto' => $impacto, 'esforco' => $esforco]);
     }
@@ -289,7 +293,12 @@ class ColetaController
         if ($texto === '') {
             Json::erro('O texto não pode ficar vazio.');
         }
-        Database::executar('UPDATE coleta_item SET texto_tratado = ? WHERE id = ?', [$texto, $id]);
+        $grupo = $this->grupo($id, $planId);
+        $marcas = implode(',', array_fill(0, count($grupo), '?'));
+        Database::executar(
+            "UPDATE coleta_item SET texto_tratado = ? WHERE id IN ({$marcas})",
+            [$texto, ...$grupo]
+        );
         Json::ok();
     }
 
@@ -339,27 +348,78 @@ class ColetaController
     }
 
     /**
-     * Ids que serão tratados junto: o item pedido mais os que a tela agrupou
-     * por texto equivalente. Cada um é validado contra o planejamento — a
-     * lista vem do cliente e não pode alcançar outro plano.
+     * Ids tratados junto: o líder do grupo e tudo que foi arrastado para ele.
+     * Vem do banco, e não do cliente — assim nenhuma lista forjada alcança
+     * ideias de outro planejamento.
      */
-    private function grupo(int $id, int $planId, mixed $bruto): array
+    private function grupo(int $id, int $planId): array
     {
-        $ids = [$id];
-        foreach (is_array($bruto) ? $bruto : [] as $g) {
-            $g = (int)$g;
-            if ($g > 0 && $g !== $id) {
-                $ids[] = $g;
-            }
-        }
-        $ids = array_values(array_unique($ids));
-        $marcas = implode(',', array_fill(0, count($ids), '?'));
-        $validos = Database::todos(
+        $lider = (int)($this->exigirItem($id, $planId)['agrupado_em_id'] ?? 0) ?: $id;
+        $linhas = Database::todos(
             "SELECT id FROM coleta_item
-             WHERE id IN ({$marcas}) AND planejamento_id = ? AND situacao IN ('NOVO','SELECIONADO')",
-            [...$ids, $planId]
+             WHERE planejamento_id = ? AND (id = ? OR agrupado_em_id = ?)
+               AND situacao IN ('NOVO','SELECIONADO')",
+            [$planId, $lider, $lider]
         );
-        return array_map(fn($l) => (int)$l['id'], $validos) ?: [$id];
+        return array_map(fn($l) => (int)$l['id'], $linhas) ?: [$id];
+    }
+
+    /**
+     * Junta duas ideias de mesmo sentido: a arrastada passa a apontar para a
+     * que ficou (e leva junto quem já apontava para ela).
+     */
+    public function agrupar(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirTriagemColeta($planId);
+        $alvo = (int)($d['alvo'] ?? 0);
+        if ($alvo === $id) {
+            Json::erro('Arraste sobre outra ideia.');
+        }
+        $this->exigirItem($id, $planId);
+        $itemAlvo = $this->exigirItem($alvo, $planId);
+        // O alvo pode ele mesmo estar agrupado: o líder é sempre o topo
+        $lider = (int)($itemAlvo['agrupado_em_id'] ?? 0) ?: $alvo;
+        if ($lider === $id) {
+            Json::erro('Essas ideias já estão no mesmo grupo.');
+        }
+        Database::executar(
+            'UPDATE coleta_item SET agrupado_em_id = ? WHERE planejamento_id = ? AND (id = ? OR agrupado_em_id = ?)',
+            [$lider, $planId, $id, $id]
+        );
+        Json::ok(['lider' => $lider]);
+    }
+
+    /** Desfaz o agrupamento de uma ideia (ou do grupo inteiro, pelo líder). */
+    public function desagrupar(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirTriagemColeta($planId);
+        $this->exigirItem($id, $planId);
+        Database::executar(
+            'UPDATE coleta_item SET agrupado_em_id = NULL
+             WHERE planejamento_id = ? AND (id = ? OR agrupado_em_id = ?)',
+            [$planId, $id, $id]
+        );
+        Json::ok();
+    }
+
+    /** Manda o grupo para a caixa "tratar depois" — ou o traz de volta. */
+    public function adiar(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirTriagemColeta($planId);
+        $adiado = !empty($d['adiado']) ? 1 : 0;
+        $grupo = $this->grupo($id, $planId);
+        $marcas = implode(',', array_fill(0, count($grupo), '?'));
+        Database::executar(
+            "UPDATE coleta_item SET adiado = ? WHERE id IN ({$marcas})",
+            [$adiado, ...$grupo]
+        );
+        Json::ok(['adiado' => (bool)$adiado]);
     }
 
     /** Reserva a ideia para quem chegou primeiro (ver encaminhar). */

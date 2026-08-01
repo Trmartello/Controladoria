@@ -209,6 +209,12 @@ garantirColuna($pdo, 'coleta_item', 'participante_token',
     'ALTER TABLE coleta_item ADD COLUMN participante_token CHAR(32) NULL AFTER autor_nome');
 garantirColuna($pdo, 'coleta_item', 'dividido_de_id',
     'ALTER TABLE coleta_item ADD COLUMN dividido_de_id INT NULL AFTER participante_token');
+// Agrupamento manual: o condutor arrasta uma ideia sobre a outra quando têm
+// o mesmo sentido, e a ideia arrastada aponta para a que ficou como líder
+garantirColuna($pdo, 'coleta_item', 'agrupado_em_id',
+    'ALTER TABLE coleta_item ADD COLUMN agrupado_em_id INT NULL AFTER dividido_de_id');
+garantirColuna($pdo, 'coleta_item', 'adiado',
+    'ALTER TABLE coleta_item ADD COLUMN adiado TINYINT(1) NOT NULL DEFAULT 0 AFTER agrupado_em_id');
 garantirColuna($pdo, 'coleta_item', 'impacto',
     "ALTER TABLE coleta_item ADD COLUMN impacto ENUM('ALTO','BAIXO') NULL AFTER situacao");
 garantirColuna($pdo, 'coleta_item', 'esforco',

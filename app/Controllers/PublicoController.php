@@ -91,18 +91,21 @@ class PublicoController
         }
         $destino = in_array($d['destino_sugerido'] ?? '', ['CENARIO', 'PESTEL', 'PORTER', 'SWOT'], true)
             ? $d['destino_sugerido'] : 'NAO_SEI';
+        // Texto igual já entra no mesmo grupo: assim o agrupamento automático e
+        // o manual (arrastar uma sobre a outra) são o mesmo mecanismo
+        $lider = $this->liderEquivalente((int)$r['id'], $texto);
 
         // O teto vai dentro do próprio INSERT: dois envios ao mesmo tempo não
         // conseguem furar a contagem, como fariam com COUNT + INSERT separados
         $gravadas = Database::afetadas(
             'INSERT INTO coleta_item (planejamento_id, rodada_id, ano, autor_id, autor_nome,
-               participante_token, texto, destino_sugerido)
-             SELECT ?, ?, ?, NULL, ?, ?, ?, ?
+               participante_token, texto, destino_sugerido, agrupado_em_id)
+             SELECT ?, ?, ?, NULL, ?, ?, ?, ?, ?
              FROM DUAL WHERE (SELECT COUNT(*) FROM coleta_item x
                               WHERE x.rodada_id = ? AND x.participante_token = ?) < ?',
             [
                 (int)$r['planejamento_id'], (int)$r['id'], (int)$r['ano'],
-                $p['nome'], $p['token'], $texto, $destino,
+                $p['nome'], $p['token'], $texto, $destino, $lider,
                 (int)$r['id'], $p['token'], (int)$r['max_ideias'],
             ]
         );
@@ -194,6 +197,44 @@ class PublicoController
         }
         $this->recontar($id);
         Json::ok(['votou' => true]);
+    }
+
+    /**
+     * Minúsculas, sem acento e sem espaço sobrando — a mesma regra do `norm()`
+     * de `coleta.js`. Feita com tabela em vez de `Normalizer`: a extensão
+     * `intl` não está na imagem (o Dockerfile só instala `pdo_mysql`).
+     */
+    public static function normalizar(string $t): string
+    {
+        $de = 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ';
+        $para = 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC';
+        $mapa = [];
+        $letrasDe = preg_split('//u', $de, -1, PREG_SPLIT_NO_EMPTY);
+        $letrasPara = preg_split('//u', $para, -1, PREG_SPLIT_NO_EMPTY);
+        foreach ($letrasDe as $k => $letra) {
+            $mapa[$letra] = $letrasPara[$k];
+        }
+        return preg_replace('/\s+/u', ' ', trim(mb_strtolower(strtr($t, $mapa))));
+    }
+
+    /**
+     * Líder de um grupo cujo texto é equivalente (sem acento, sem caixa) ao
+     * que está chegando. A comparação é em PHP: numa oficina são dezenas de
+     * itens, e assim a regra é a mesma do agrupamento manual.
+     */
+    private function liderEquivalente(int $rodadaId, string $texto): ?int
+    {
+        $alvo = self::normalizar($texto);
+        foreach (Database::todos(
+            "SELECT id, agrupado_em_id, texto FROM coleta_item
+             WHERE rodada_id = ? AND situacao IN ('NOVO','SELECIONADO') ORDER BY id",
+            [$rodadaId]
+        ) as $i) {
+            if (self::normalizar($i['texto']) === $alvo) {
+                return (int)($i['agrupado_em_id'] ?? 0) ?: (int)$i['id'];
+            }
+        }
+        return null;
     }
 
     /** O contador do item sai sempre da tabela de votos, nunca de +1/-1. */

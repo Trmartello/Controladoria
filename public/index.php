@@ -219,6 +219,12 @@ try {
             (new ColetaController())->descartar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/rodada/(\d+)/limpar$#', $rota, $m):
             (new ColetaController())->limparRodada((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/agrupar$#', $rota, $m):
+            (new ColetaController())->agrupar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/desagrupar$#', $rota, $m):
+            (new ColetaController())->desagrupar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/adiar$#', $rota, $m):
+            (new ColetaController())->adiar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/priorizar$#', $rota, $m):
             (new ColetaController())->priorizar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/complementar$#', $rota, $m):
