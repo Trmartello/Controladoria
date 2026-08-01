@@ -10,6 +10,7 @@ const Participante = {
   minhas: [],
   votacao: null,
   relogio: null,
+  ultimaAssinatura: null,
 
   get tela() {
     return document.getElementById('tela');
@@ -92,6 +93,27 @@ const Participante = {
     this.relogio = setInterval(() => this.atualizar(true), 4000);
   },
 
+  /**
+   * Está escrevendo? Redesenhar destrói o campo e, no celular, isso fecha o
+   * teclado no meio da frase — o participante não consegue nem digitar.
+   */
+  digitando() {
+    const ativo = document.activeElement;
+    if (ativo && (ativo.tagName === 'TEXTAREA' || ativo.tagName === 'INPUT')) return true;
+    const campo = document.getElementById('campo-ideia');
+    return !!(campo && campo.value.trim() !== '');
+  },
+
+  /** Só redesenha quando algo mudou de verdade. */
+  assinatura() {
+    return JSON.stringify([
+      this.rodada?.situacao, this.rodada?.tema, this.votacao?.votacao,
+      this.minhas.map((i) => i.id),
+      (this.votacao?.itens || []).map((i) => [i.id, i.votei]),
+      this.votacao?.meus_votos,
+    ]);
+  },
+
   async atualizar(silencioso = false) {
     try {
       this.rodada = await this.api(`/api/publico/rodada/${this.pin}`);
@@ -108,12 +130,17 @@ const Participante = {
       if (!silencioso) this.telaEntrada(e.message);
       return;
     }
+    // A consulta periódica nunca interrompe quem está escrevendo, e só toca na
+    // tela quando há novidade
+    if (silencioso && (this.digitando() || this.assinatura() === this.ultimaAssinatura)) return;
+    this.ultimaAssinatura = this.assinatura();
     this.render();
   },
 
   // ---- Sala ----
   render() {
     const r = this.rodada;
+    const rascunho = document.getElementById('campo-ideia')?.value ?? '';
     const encerrada = r.situacao !== 'ABERTA';
     const votando = this.votacao?.votacao === 'ABERTA';
     const restam = r.max_ideias - this.minhas.length;
@@ -137,7 +164,12 @@ const Participante = {
           </div>` : ''}
       </div>`;
 
-    if (!encerrada && !votando) this.ligarEnvio();
+    if (!encerrada && !votando) {
+      // Nada do que foi digitado se perde num redesenho inevitável
+      const campo = document.getElementById('campo-ideia');
+      if (campo && rascunho) campo.value = rascunho;
+      this.ligarEnvio();
+    }
     if (votando) this.ligarVotacao();
   },
 
@@ -172,9 +204,13 @@ const Participante = {
         // assinar a ideia com o nome de outra pessoa
         await this.api('/api/publico/ideia', { pin: this.pin, token: this.token, texto });
         campo.value = '';
-        aviso.className = 'small mt-2 text-success';
-        aviso.textContent = 'Ideia enviada.';
+        // A confirmação vai depois do redesenho, senão ele a apaga na hora
         await this.atualizar(true);
+        const novo = document.getElementById('aviso-envio');
+        if (novo) {
+          novo.className = 'small mt-2 text-success';
+          novo.textContent = 'Ideia enviada.';
+        }
       } catch (e) {
         aviso.className = 'small mt-2 text-danger';
         aviso.textContent = e.message;

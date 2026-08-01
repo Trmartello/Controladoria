@@ -37,6 +37,10 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   dentro (`crescerTextarea`). Medida que depende de layout (o que transborda,
   quanto o texto ocupa) vai em `Modal.aoAparecer`, disparada no
   `shown.bs.modal` — com o modal escondido toda altura vale zero.
+- Bibliotecas vendoradas do front ficam em `public/assets/vendor/` e **vão
+  para o repositório**. O `.gitignore` usa `/vendor/` (só a raiz, do Composer);
+  um `vendor/` solto engoliria essa pasta e o `git add -A` deixaria o arquivo
+  para trás em silêncio — o deploy serviria 404.
 - **Cache busting**: todo asset é referenciado nas views com
   `versao_asset('/assets/...')` (acrescenta `?v=filemtime`). Assets novos em
   views devem usar esse helper, senão o cache de 24h serve versão velha.
@@ -72,8 +76,10 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `/api/publico/*` **não iniciam sessão**. A isenção de CSRF é lista
   explícita, nunca prefixo.
   A tela ao vivo usa **consulta periódica**, nunca SSE: `php -S` é
-  single-threaded e uma conexão presa trava a oficina inteira. O polling não
-  redesenha se há campo em foco ou texto sujo na bancada.
+  single-threaded e uma conexão presa trava a oficina inteira. O polling
+  **nunca redesenha com um campo em foco ou com texto digitado** — nas duas
+  telas. Redesenhar tira o foco e, no celular, isso **fecha o teclado no meio
+  da frase**: o participante não consegue escrever.
   Vozes iguais são agrupadas na nuvem e tratadas **em grupo**: N ideias
   apontam para UM destino. Por isso `FatorController`/`CenarioController`
   fazem o JOIN pelo `MIN(id)` — juntar direto multiplicaria o card.

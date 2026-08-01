@@ -228,12 +228,18 @@ const SecaoColeta = {
   // ---- Tela de condução: nuvem à esquerda, bancada à direita ----
   telaConducao() {
     const grupos = this.nuvem();
-    const grupoSel = grupos.find((g) => g.representante.id === this.selecionado);
-    const item = grupoSel ? grupoSel.representante : null;
+    // Busca por conteúdo, e não pelo representante: posicionar na matriz muda
+    // a situação da ideia e, com ela, quem representa o grupo — a bancada
+    // sumiria no meio da discussão
+    const grupoSel = grupos.find((g) => g.itens.some((i) => i.id === this.selecionado));
+    const item = grupoSel
+      ? (grupoSel.itens.find((i) => i.id === this.selecionado) || grupoSel.representante)
+      : null;
     const fichas = grupos.map((g) => {
       const i = g.representante;
       const peso = Math.min(g.itens.length, 5);
-      return `<button type="button" class="ficha-nuvem ${i.id === this.selecionado ? 'selecionada' : ''}"
+      const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
+      return `<button type="button" class="ficha-nuvem ${desteGrupo ? 'selecionada' : ''}"
         style="--peso:${peso}" data-selecionar="${i.id}"
         title="${Modal.esc(i.autor)}">${Modal.esc(i.texto)}${
         g.itens.length > 1 ? `<span class="repetida">×${g.itens.length}</span>` : ''}${
@@ -299,7 +305,7 @@ const SecaoColeta = {
 
   /** Ids que a nuvem agrupou por texto equivalente, para tratar de uma vez. */
   grupoAtual(item) {
-    const g = this.nuvem().find((x) => x.representante.id === item.id);
+    const g = this.nuvem().find((x) => x.itens.some((i) => i.id === item.id));
     return (g?.itens || [item]).map((i) => i.id);
   },
 

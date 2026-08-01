@@ -164,4 +164,7 @@ planejamento.db
 
 # PHP
 .env
-vendor/
+# Só o vendor da raiz (Composer). `vendor/` solto também pegava
+# public/assets/vendor/, onde ficam as bibliotecas vendoradas do front —
+# elas precisam ir para o repositório, senão o deploy serve 404.
+/vendor/
