@@ -372,6 +372,9 @@ table.tabela-cadastro td { vertical-align: middle; }
   text-transform: uppercase;
 }
 
+/* Gestores listados sob o nome do negócio, um por linha */
+.gestor-negocio::before { content: '👤 '; font-size: .7rem; }
+
 /* Cards dos horizontes no cadastro de ciclos */
 .cartao-horizonte { border-top: 3px solid var(--dourado); }
 

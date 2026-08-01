@@ -48,8 +48,11 @@ const SecaoCadastros = {
     const alvo = document.getElementById('conteudo-aba');
     const linhas = lista.map((n) => `
       <tr class="${n.ativo == 1 ? '' : 'table-secondary'}">
-        <td><strong>${Modal.esc(n.cod_negocio)}</strong> — ${Modal.esc(n.nome)}</td>
-        <td>${Modal.esc(n.gestor || '—')}</td>
+        <td>
+          <strong>${Modal.esc(n.cod_negocio)}</strong> — ${Modal.esc(n.nome)}
+          ${(n.gestores || []).map((g) =>
+            `<div class="small text-muted gestor-negocio">${Modal.esc(g)}</div>`).join('')}
+        </td>
         <td>${n.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
         <td>${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar="${n.id}"
           title="Editar" aria-label="Editar">✎</button>` : ''}</td>
@@ -59,8 +62,8 @@ const SecaoCadastros = {
       ${administra ? `<button class="btn btn-verde btn-sm mb-2" id="btn-novo-negocio">+ Novo negócio</button>` : ''}
       <div class="table-responsive">
         <table class="table table-sm tabela-cadastro">
-          <thead><tr><th>Negócio</th><th>Gestor</th><th>Situação</th><th></th></tr></thead>
-          <tbody>${linhas || '<tr><td colspan="4" class="text-muted">Nenhum negócio cadastrado.</td></tr>'}</tbody>
+          <thead><tr><th>Negócio · gestores</th><th>Situação</th><th></th></tr></thead>
+          <tbody>${linhas || '<tr><td colspan="3" class="text-muted">Nenhum negócio cadastrado.</td></tr>'}</tbody>
         </table>
       </div>`;
 

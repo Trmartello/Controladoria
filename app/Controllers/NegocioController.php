@@ -12,7 +12,12 @@ class NegocioController
     public function listar(): void
     {
         $u = Auth::exigirLogin();
-        $sql = "SELECT n.*, CONCAT(n.cod_negocio, ' - ', n.nome) AS rotulo, u.nome AS gestor
+        $sql = "SELECT n.*, CONCAT(n.cod_negocio, ' - ', n.nome) AS rotulo, u.nome AS gestor,
+                       (SELECT GROUP_CONCAT(DISTINCT ug.nome ORDER BY ug.nome SEPARATOR '\n')
+                        FROM usuario_negocio un
+                        JOIN usuario ug ON ug.id = un.usuario_id
+                        WHERE un.negocio_id = n.id AND ug.ativo = 1 AND ug.perfil = 'GESTOR')
+                       AS gestores_vinculados
                 FROM negocio n LEFT JOIN usuario u ON u.id = n.gestor_id";
         $escopo = Auth::escopoNegocios($u);
         if ($escopo !== null) {
@@ -22,7 +27,20 @@ class NegocioController
             $sql .= ' WHERE n.id IN (' . implode(',', array_fill(0, count($escopo), '?')) . ')';
         }
         $sql .= ' ORDER BY CAST(n.cod_negocio AS UNSIGNED), n.nome';
-        Json::ok(Database::todos($sql, $escopo ?? []));
+        $negocios = Database::todos($sql, $escopo ?? []);
+        // Gestores do negócio: o responsável principal + os usuários de perfil
+        // GESTOR vinculados, sem duplicar
+        foreach ($negocios as &$n) {
+            $gestores = $n['gestor'] !== null ? [$n['gestor']] : [];
+            foreach (explode("\n", (string)$n['gestores_vinculados']) as $nome) {
+                if ($nome !== '' && !in_array($nome, $gestores, true)) {
+                    $gestores[] = $nome;
+                }
+            }
+            $n['gestores'] = $gestores;
+            unset($n['gestores_vinculados']);
+        }
+        Json::ok($negocios);
     }
 
     public function salvar(?int $id = null): void
