@@ -95,7 +95,10 @@ if ($tipoStatus && !str_contains((string)$tipoStatus, 'PAUSADO')) {
     echo "migrate: status da ação ampliado (PAUSADO, AGUARDANDO_VALIDACAO).\n";
 }
 
-// O projeto pertence a um ano do planejamento; o horizonte deriva do ano
+// O projeto pertence a um ano do planejamento; o horizonte deriva do ano.
+// Backfill: o horizonte escolhido explicitamente vence a data de início, e o
+// último recurso é o primeiro ano de execução (ano_base é o ano de elaboração,
+// que nenhum horizonte contempla)
 garantirColuna($pdo, 'projeto', 'ano',
     'ALTER TABLE projeto ADD COLUMN ano SMALLINT NULL AFTER tipo');
 $pdo->exec(
@@ -103,8 +106,24 @@ $pdo->exec(
      JOIN planejamento pl ON pl.id = p.planejamento_id
      JOIN ciclo c ON c.id = pl.ciclo_id
      LEFT JOIN horizonte h ON h.id = p.horizonte_id
-     SET p.ano = COALESCE(YEAR(p.data_inicio), h.ano_inicio, c.ano_base)
+     SET p.ano = COALESCE(h.ano_inicio, YEAR(p.data_inicio), c.ano_inicio)
      WHERE p.ano IS NULL'
+);
+// Reparo dos backfills antigos (idempotente): ano desalinhado do horizonte
+// escolhido volta para o primeiro ano dele; projeto sem horizonte com ano
+// anterior à execução vai para o primeiro ano de execução do ciclo
+$pdo->exec(
+    'UPDATE projeto p
+     JOIN horizonte h ON h.id = p.horizonte_id
+     SET p.ano = h.ano_inicio
+     WHERE p.ano NOT BETWEEN h.ano_inicio AND h.ano_fim'
+);
+$pdo->exec(
+    'UPDATE projeto p
+     JOIN planejamento pl ON pl.id = p.planejamento_id
+     JOIN ciclo c ON c.id = pl.ciclo_id
+     SET p.ano = c.ano_inicio
+     WHERE p.horizonte_id IS NULL AND (p.ano IS NULL OR p.ano < c.ano_inicio)'
 );
 
 // Ações criadas antes das iniciativas são agrupadas numa frente padrão

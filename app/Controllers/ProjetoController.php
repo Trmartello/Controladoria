@@ -156,6 +156,10 @@ class ProjetoController
         if ($ano < 2000 || $ano > 2100) {
             Json::erro('Informe o ano do planejamento do projeto.');
         }
+        $responsavel = mb_substr(trim($d['responsavel'] ?? ''), 0, 255);
+        if ($responsavel === '') {
+            Json::erro('Informe o responsável pelo projeto.');
+        }
         $status = $d['status'] ?? 'NAO_INICIADO';
         if (!in_array($status, self::STATUS_PROJETO, true)) {
             Json::erro('Status inválido.');
@@ -193,7 +197,7 @@ class ProjetoController
 
         $params = [
             $tipo, $ano, $titulo,
-            mb_substr(trim($d['responsavel'] ?? ''), 0, 255),
+            $responsavel,
             mb_substr(trim($d['prazo'] ?? ''), 0, 60),
             $inicio, $fim,
             $horizonteId, $cascataId, $impacto ?: null, $classificacao, $status,
@@ -249,6 +253,10 @@ class ProjetoController
         if ($oQue === '') {
             Json::erro('Descreva a ação (O quê?).');
         }
+        $quem = mb_substr(trim($d['quem'] ?? ''), 0, 255);
+        if ($quem === '') {
+            Json::erro('Informe o responsável pela ação (Quem?).');
+        }
         $status = $d['status'] ?? 'NAO_INICIADO';
         if (!in_array($status, self::STATUS, true)) {
             Json::erro('Status inválido.');
@@ -270,7 +278,7 @@ class ProjetoController
 
         $params = [
             $projetoId, $iniciativaId, $oQue, trim($d['por_que'] ?? ''),
-            mb_substr(trim($d['quem'] ?? ''), 0, 255),
+            $quem,
             mb_substr(trim($d['quando_'] ?? ''), 0, 60),
             $inicio, $fim,
             mb_substr(trim($d['onde'] ?? ''), 0, 120),

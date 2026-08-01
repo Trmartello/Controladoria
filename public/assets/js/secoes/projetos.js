@@ -279,6 +279,12 @@ const SecaoProjetos = {
     const anoPadrao = Math.min(Math.max(new Date().getFullYear(), anos[0] || 0), anos[anos.length - 1] || 9999);
     const mapaHorizontes = this.cascata.horizontes
       .map((h) => `${h.nome} ${h.ano_inicio}–${h.ano_fim}`).join(' · ');
+    const opcoesAno = anos.map((a) => ({ valor: a, rotulo: String(a) }));
+    // Projeto legado com ano fora da lista: mantém o valor à mostra em vez de
+    // pular calado para o primeiro ano — o servidor pedirá um ano válido
+    if (p?.ano && !anos.includes(Number(p.ano))) {
+      opcoesAno.unshift({ valor: p.ano, rotulo: `${p.ano} (fora dos horizontes — escolha outro)` });
+    }
     Modal.abrir({
       titulo: p ? 'Editar projeto' : 'Novo projeto',
       url: p ? `/api/projetos/${p.id}` : '/api/projetos',
@@ -290,15 +296,15 @@ const SecaoProjetos = {
         // Tipo é legado — mantém o valor dos projetos antigos sem exibi-lo
         { nome: 'tipo', rotulo: '', tipo: 'hidden' },
         { nome: 'ano', rotulo: 'Ano do planejamento', obrigatorio: true, tipo: 'select',
-          opcoes: anos.map((a) => ({ valor: a, rotulo: String(a) })),
+          opcoes: opcoesAno,
           nota: mapaHorizontes
             ? `O horizonte é definido pelo ano: ${mapaHorizontes}.`
             : 'Cadastre os horizontes do ciclo em Cadastros para o ano ser aceito.' },
         { nome: 'titulo', rotulo: 'Projeto / ação planejada', obrigatorio: true,
           exemplo: 'Ex.: 1ª onda de silos — unidade Capinzal' },
         { nome: 'responsavel', rotulo: 'Responsável', tipo: 'selecao_livre', opcoes: this.responsaveis,
-          vazio: '(sem responsável definido)',
-          ajuda: 'Escolha um usuário cadastrado ou use "Outro" para informar um nome de fora do sistema.' },
+          obrigatorio: true, vazio: '(selecione o responsável)',
+          ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
         // Preserva o prazo em texto dos projetos criados antes do calendário
         { nome: 'prazo', rotulo: '', tipo: 'hidden' },
         { nome: 'prazo_periodo', rotulo: 'Prazo da ação', tipo: 'periodo',
@@ -375,8 +381,8 @@ const SecaoProjetos = {
           exemplo: 'Ex.: Contratar projeto executivo dos silos' },
         { nome: 'por_que', rotulo: 'Por quê? (Why)' },
         { nome: 'quem', rotulo: 'Quem? (Who)', tipo: 'selecao_livre', opcoes: this.responsaveis,
-          vazio: '(sem responsável definido)',
-          ajuda: 'Escolha um usuário cadastrado ou use "Outro" para informar um nome de fora do sistema.' },
+          obrigatorio: true, vazio: '(selecione o responsável)',
+          ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
         { nome: 'quando_', rotulo: '', tipo: 'hidden' },
         { nome: 'quando_periodo', rotulo: 'Quando? (When)', tipo: 'periodo',
           campos: [

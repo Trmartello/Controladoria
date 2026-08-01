@@ -96,7 +96,7 @@ const Modal = {
         const opcoes = [...new Set((c.opcoes || []).map(String).filter((s) => s.trim() !== ''))]
           .sort((a, b) => a.localeCompare(b, 'pt-BR'));
         const valorStr = String(v ?? '');
-        this.combos[id] = { opcoes, vazio: c.vazio || '(não definido)' };
+        this.combos[id] = { opcoes, vazio: c.vazio || '(não definido)', obrigatorio: !!c.obrigatorio };
         controle = `<div class="combo-busca">
           <input type="hidden" id="${id}" value="${this.esc(valorStr)}">
           <button type="button" class="form-select text-start combo-alvo" id="${id}-alvo"
@@ -203,7 +203,8 @@ const Modal = {
       const painel = caixa.querySelector('.combo-painel');
       const pesquisa = caixa.querySelector('.combo-pesquisa');
       const lista = caixa.querySelector('.combo-lista');
-      const { opcoes, vazio } = this.combos[oculto.id] || { opcoes: [], vazio: '(não definido)' };
+      const { opcoes, vazio, obrigatorio } = this.combos[oculto.id]
+        || { opcoes: [], vazio: '(não definido)', obrigatorio: false };
 
       const norm = (s) => s.toLocaleLowerCase('pt-BR')
         .normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -220,7 +221,8 @@ const Modal = {
         const q = pesquisa.value.trim();
         const achados = q === '' ? opcoes : opcoes.filter((o) => norm(o).includes(norm(q)));
         const itens = [];
-        if (q === '') {
+        // Campo obrigatório não oferece a opção de deixar em branco
+        if (q === '' && !obrigatorio) {
           itens.push(`<button type="button" class="combo-item text-muted" data-valor="">${this.esc(vazio)}</button>`);
         }
         itens.push(...achados.map((o) =>
