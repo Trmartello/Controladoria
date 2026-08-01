@@ -39,8 +39,11 @@ class Avisos
         $resumo = ['enviados' => 0, 'sem_itens' => 0, 'falhas' => 0, 'ja_enviados' => 0, 'detalhes' => []];
 
         foreach (self::responsaveis() as $u) {
+            // Só conta como enviado o que saiu sem erro: uma falha de SMTP
+            // não pode bloquear o aviso do dia (ou da semana) para sempre
             $ja = Database::um(
-                'SELECT id FROM envio_email WHERE tipo = ? AND referencia = ? AND usuario_id = ?',
+                'SELECT id FROM envio_email
+                 WHERE tipo = ? AND referencia = ? AND usuario_id = ? AND erro IS NULL',
                 [$tipo, $referencia, (int)$u['id']]
             );
             if ($ja) {

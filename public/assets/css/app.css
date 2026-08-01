@@ -154,7 +154,8 @@ input[type=range].faixa-verde {
   background: linear-gradient(to right,
     var(--verde-coperdia) 0 var(--pct, 0%), #e9ecef var(--pct, 0%) 100%);
   cursor: pointer;
-  touch-action: none; /* o dedo arrasta o valor, não rola a página */
+  /* Arrastar na horizontal muda o valor; na vertical a página continua rolando */
+  touch-action: pan-y;
 }
 input[type=range].faixa-verde::-webkit-slider-thumb {
   -webkit-appearance: none;

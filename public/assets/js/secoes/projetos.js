@@ -144,7 +144,7 @@ const SecaoProjetos = {
         </div>
         <div class="d-flex align-items-center gap-2 mt-2">
           ${App.podeEditar() ? `
-          <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="5"
+          <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="1"
             style="--pct:${a.progresso}%" value="${a.progresso}"
             data-progresso="${a.id}" data-proj="${p.id}"
             title="Arraste para ajustar o progresso" aria-label="Progresso da ação">
@@ -358,7 +358,11 @@ const SecaoProjetos = {
     el.querySelectorAll('[data-editar-desd]').forEach((b) => b.addEventListener('click', () => {
       const proj = projetos.find((p) => p.id == b.dataset.proj);
       const acao = proj.desdobramentos.find((dd) => dd.id == b.dataset.editarDesd);
-      this.modalDesdobramento(proj.id, acao, acao.iniciativa_id);
+      // A barra do cartão pode ter mudado o progresso depois da carga da lista;
+      // vale o que está na tela, senão o modal regravaria o valor antigo
+      const barra = el.querySelector(`[data-progresso="${acao.id}"]`);
+      const atual = barra ? { ...acao, progresso: Number(barra.value) } : acao;
+      this.modalDesdobramento(proj.id, atual, acao.iniciativa_id);
     }));
     // Acordeão das iniciativas (clicar no cabeçalho abre/fecha)
     el.querySelectorAll('[data-abrir-ini]').forEach((c) => c.addEventListener('click', (ev) => {
@@ -561,7 +565,8 @@ const SecaoProjetos = {
         { nome: 'status', rotulo: 'Status', tipo: 'select',
           opcoes: this.opcoesStatusAcao(dd?.status),
           ajuda: '“No prazo” e “Atrasada” são definidos pela data de fim — escolha um status manual só quando quiser fixá-lo.' },
-        { nome: 'progresso', rotulo: 'Progresso', tipo: 'faixa', min: 0, max: 100, passo: 5, sufixo: '%' },
+        // Passo de 1 para o modal nunca arredondar o que a barra do cartão gravou
+        { nome: 'progresso', rotulo: 'Progresso', tipo: 'faixa', min: 0, max: 100, passo: 1, sufixo: '%' },
       ],
     });
   },

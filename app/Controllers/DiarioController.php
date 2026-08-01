@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Recorrencia;
 
 /**
  * Diário de bordo: registros datados de acompanhamento (nunca sobrescritos).
@@ -67,15 +68,53 @@ class DiarioController
         if ($refTipo === 'PROJETO' && $status !== null) {
             Database::executar('UPDATE projeto SET status = ? WHERE id = ?', [$status, $refId]);
         }
+        $reagendou = null;
         if ($refTipo === 'DESDOBRAMENTO' && ($status !== null || $progresso !== null)) {
-            if ($status !== null) {
-                Database::executar('UPDATE desdobramento SET status = ? WHERE id = ?', [$status, $refId]);
-            }
-            if ($progresso !== null) {
-                Database::executar('UPDATE desdobramento SET progresso = ? WHERE id = ?', [$progresso, $refId]);
-            }
+            $reagendou = $this->aplicarNaAcao($refId, $status, $progresso);
         }
-        Json::ok(['id' => $id]);
+        Json::ok(['id' => $id, 'reagendada_para' => $reagendou]);
+    }
+
+    /**
+     * Reflete o registro do diário na ação. Concluir uma ação que se repete
+     * não a encerra: ela reabre na próxima data prevista, como acontece no
+     * cadastro da ação. Devolve a nova data de fim quando houve reagendamento.
+     */
+    private function aplicarNaAcao(int $refId, ?string $status, ?int $progresso): ?string
+    {
+        $acao = Database::um('SELECT * FROM desdobramento WHERE id = ?', [$refId]);
+        $reagendou = null;
+        if ($acao && $status === 'CONCLUIDO' && $acao['status'] !== 'CONCLUIDO'
+            && ($acao['recorrencia'] ?? 'NENHUMA') !== 'NENHUMA') {
+            $reagendou = Recorrencia::reagendar(
+                $acao['data_inicio'],
+                $acao['recorrencia'],
+                $acao['recorrencia_dia'] !== null ? (int)$acao['recorrencia_dia'] : null,
+                $acao['recorrencia_ate'],
+                $acao['data_fim']
+            );
+        }
+        if ($reagendou !== null) {
+            Database::executar(
+                "UPDATE desdobramento SET status = 'NAO_INICIADO', progresso = 0, concluido_em = NULL,
+                   data_inicio = ?, data_fim = ? WHERE id = ?",
+                [$reagendou['data_inicio'], $reagendou['data_fim'], $refId]
+            );
+            return $reagendou['data_fim'];
+        }
+        if ($status !== null) {
+            $concluidoEm = $status === 'CONCLUIDO'
+                ? (($acao['concluido_em'] ?? null) ?: date('Y-m-d H:i:s'))
+                : null;
+            Database::executar(
+                'UPDATE desdobramento SET status = ?, concluido_em = ? WHERE id = ?',
+                [$status, $concluidoEm, $refId]
+            );
+        }
+        if ($progresso !== null) {
+            Database::executar('UPDATE desdobramento SET progresso = ? WHERE id = ?', [$progresso, $refId]);
+        }
+        return null;
     }
 
     /** Garante que a referência pertence ao planejamento informado. */

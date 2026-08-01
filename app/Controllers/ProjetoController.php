@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Recorrencia;
 
 class ProjetoController
 {
@@ -16,7 +17,7 @@ class ProjetoController
     private const STATUS_PROJETO = ['NAO_INICIADO', 'EM_ANDAMENTO', 'CONCLUIDO', 'ATRASADO', 'CANCELADO'];
     private const STATUS_INICIATIVA = ['ABERTA', 'EM_ANDAMENTO', 'CONCLUIDA'];
     private const PRIORIDADES = ['ALTA', 'MEDIA', 'BAIXA'];
-    private const RECORRENCIAS = ['NENHUMA', 'SEMANAL', 'MENSAL'];
+    private const RECORRENCIAS = Recorrencia::TIPOS;
 
     public function listar(): void
     {
@@ -105,58 +106,6 @@ class ProjetoController
              WHERE p.planejamento_id = ? AND p.status <> 'CANCELADO'",
             [$planId]
         );
-    }
-
-    /**
-     * Próxima data de uma ação recorrente a partir de uma data-base.
-     * SEMANAL: próximo dia da semana escolhido (1=segunda … 7=domingo).
-     * MENSAL: mesmo dia no mês seguinte, ajustado quando o mês é mais curto
-     * (dia 31 em abril vira 30).
-     */
-    private function proximaOcorrencia(string $base, string $recorrencia, int $dia): ?string
-    {
-        $d = \DateTimeImmutable::createFromFormat('!Y-m-d', $base);
-        if (!$d) {
-            return null;
-        }
-        if ($recorrencia === 'SEMANAL') {
-            $alvo = max(1, min(7, $dia));
-            $atual = (int)$d->format('N');
-            $somar = ($alvo - $atual + 7) % 7;
-            return $d->modify('+' . ($somar === 0 ? 7 : $somar) . ' days')->format('Y-m-d');
-        }
-        if ($recorrencia === 'MENSAL') {
-            $alvo = max(1, min(31, $dia));
-            $mes = $d->modify('first day of next month');
-            $ultimo = (int)$mes->format('t');
-            return $mes->setDate((int)$mes->format('Y'), (int)$mes->format('n'), min($alvo, $ultimo))
-                ->format('Y-m-d');
-        }
-        return null;
-    }
-
-    /**
-     * Ação recorrente concluída não encerra: registra a conclusão no diário e
-     * reabre na próxima data prevista. Devolve os campos já ajustados, ou null
-     * quando não há recorrência (ou o limite foi atingido).
-     */
-    private function reagendarRecorrente(array $acao, string $recorrencia, ?int $dia, ?string $ate, ?string $fim): ?array
-    {
-        if ($recorrencia === 'NENHUMA' || !$dia) {
-            return null;
-        }
-        $base = $fim ?: date('Y-m-d');
-        $proxima = $this->proximaOcorrencia($base, $recorrencia, $dia);
-        if (!$proxima || ($ate !== null && $proxima > $ate)) {
-            return null; // passou do limite: a ação encerra de vez
-        }
-        // Mantém a mesma janela entre início e fim na próxima ocorrência
-        $novoInicio = null;
-        if (!empty($acao['data_inicio']) && $fim) {
-            $dias = (int)((new \DateTimeImmutable($fim))->diff(new \DateTimeImmutable($acao['data_inicio']))->days);
-            $novoInicio = (new \DateTimeImmutable($proxima))->modify("-{$dias} days")->format('Y-m-d');
-        }
-        return ['data_inicio' => $novoInicio, 'data_fim' => $proxima];
     }
 
     /** Resolve o status de uma ação na gravação, respeitando os manuais. */
@@ -359,13 +308,7 @@ class ProjetoController
         $reagendou = null;
         if ($status === 'CONCLUIDO' && $recorrencia !== 'NENHUMA'
             && ($anterior === null || $anterior['status'] !== 'CONCLUIDO')) {
-            $reagendou = $this->reagendarRecorrente(
-                ['data_inicio' => $inicio],
-                $recorrencia,
-                $recDia,
-                $recAte,
-                $fim
-            );
+            $reagendou = Recorrencia::reagendar($inicio, $recorrencia, $recDia, $recAte, $fim);
             if ($reagendou !== null) {
                 $inicio = $reagendou['data_inicio'];
                 $fim = $reagendou['data_fim'];
