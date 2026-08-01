@@ -381,57 +381,54 @@ acrescenta a sessão ao vivo, a separação das ideias e a matriz de priorizaç�
 Ou seja: os passos 3 e 5 estão prontos e testados. O trabalho novo é 1, 2 e 4 —
 e o passo 1 é o que carrega quase todo o risco.
 
-### Decisões que precisam ser tomadas antes de escrever código
+### Decisões — fechadas pelo cliente
 
-**A. Quem pode responder ao quiz?** É a decisão que define a arquitetura.
+**A. Quem responde: qualquer pessoa, sem cadastro.** Entra pelo QR ou por um
+link, "assim como já fizemos no Quiz Copérdia". Adotado o modelo daquele
+projeto: **PIN de 6 dígitos + QR + link**, nome digitado, sem senha e sem
+conta.
 
-- **A1 — só usuário cadastrado.** O QR abre a rodada; quem não estiver logado
-  faz login e volta. Zero mudança no modelo de autorização. Custo: todo mundo
-  na sala precisa de conta, o que atrapalha uma oficina com convidados.
-- **A2 — código da rodada + nome digitado**, sem senha (modelo Mentimeter).
-  É a experiência que o cliente descreveu. Custo real: seria **a primeira rota
-  de escrita sem autenticação em todo o sistema**. Exige, no mínimo, rodada com
-  abertura e encerramento explícitos, código curto e descartável, limite de
-  envios por origem, e escrita restrita a `coleta_item` de uma rodada aberta.
-  O "autor" passa a ser texto digitado, não usuário — e o motivo do descarte
-  deixa de ter um destinatário garantido.
-- **A3 — anônimo.** Quebra a premissa que sustenta a tratativa: sem autor, o
-  descarte com motivo visível vira veto sem destinatário. **Não recomendado.**
+Consequências que precisam ser tratadas, não contornadas:
 
-**Recomendação: A2**, com a ressalva de que ela abre um caminho de escrita não
-autenticado e por isso merece revisão de segurança própria antes de subir.
-Nada impede começar por A1 e migrar: o que muda é o portão, não o resto.
+- é a **primeira rota de escrita sem autenticação** do sistema. Ela só pode
+  gravar `coleta_item` de uma rodada **aberta**, e nada mais;
+- `coleta_item.autor_id` (hoje `NOT NULL`, com FK para `usuario`) precisa
+  aceitar nulo, com `autor_nome` ao lado para quem entrou pelo PIN;
+- o "motivo do descarte visível ao autor", que dava legitimidade à tratativa,
+  **muda de natureza**: sem conta não há a quem notificar depois. No modelo ao
+  vivo isso não se perde — a discussão acontece na sala, em voz alta, e o
+  motivo passa a ser registro do que foi decidido, não recado. É uma troca
+  aceitável **porque** o formato é presencial;
+- limites obrigatórios: teto de ideias por participante (o Quiz usa
+  `maxAnswers`), tamanho máximo do texto, limite por origem, e rodada que
+  encerra explicitamente.
 
-**B. O que exatamente é "separar as palavras"?** Duas leituras, e elas levam a
-telas diferentes:
+**B. "Separar as palavras" é a tela ao vivo, não uma ação em separado.** O
+cliente descreveu: as respostas chegam e formam uma **tempestade de palavras**
+na mesma tela; o administrador vai **selecionando uma por uma**, discutindo com
+o grupo, **complementando o texto** e jogando na matriz de priorização.
 
-- **B1 — dividir a ideia.** O participante despeja um parágrafo; o
-  administrador quebra em N ideias separadas, cada uma seguindo seu caminho.
-  É o que combina com "complementar o texto" logo depois.
-- **B2 — nuvem de termos.** Extrair as palavras recorrentes para ver
-  convergência ("cinco pessoas falaram em *frete*"). É visual de oficina, não
-  altera o dado.
+Ou seja, não são duas telas (coletar e depois tratar): é **uma tela de
+condução**, projetada, com a nuvem de um lado e a bancada de trabalho do outro.
+A ação "dividir uma ideia em várias" continua útil quando alguém despeja um
+parágrafo, mas é secundária — o principal é selecionar da nuvem.
 
-**Recomendação: B1 como funcionalidade** (uma ação `dividir` que cria itens
-filhos apontando para o pai) **e B2 como leitura opcional depois**, se sobrar
-fôlego. B2 sozinho não resolve nada do fluxo.
+**C. A matriz decide o encaminhamento.** Confirmado pelo cliente: a matriz de
+priorização é o que direciona os tópicos para PESTEL, SWOT e Porter. O que fica
+de fora dela é o que será **esquecido**.
 
-**C. A matriz de priorização daqui conflita com a Matriz GUT?** É o risco
-conceitual do tema. O backlog já rejeitou, no tema 1, "uma segunda priorização
-sem score e sem rastro". A saída que mantém coerência:
+A fronteira com a Matriz GUT continua valendo, e agora é decisão registrada:
 
-> A matriz da Coleta é **instrumento de oficina**: serve para decidir, na hora,
-> o que vale tratar primeiro. Ela vive **dentro da Coleta** e morre quando a
-> ideia vira fator — daí em diante quem prioriza é a GUT, com score e rastro.
-> O impacto e o esforço **não** são copiados para o `fator`.
-
-Se essa fronteira não for respeitada, o sistema passa a ter duas priorizações
-concorrentes e a GUT perde sentido.
+> A matriz da Coleta prioriza **ideias cruas, na oficina**. A GUT prioriza
+> **fatores já na SWOT**, com score e rastro. `impacto` e `esforco` **não** são
+> copiados para o `fator` — ao virar fator, quem prioriza é a GUT. Sem essa
+> linha o sistema passa a ter duas priorizações concorrentes.
 
 **D. A rodada volta ao escopo.** `rodada_coleta` foi **cortada** na revisão do
-tema 2 — o QR a traz de volta, porque um código para escanear é, por definição,
-o identificador de uma sessão com início e fim. O que **continua cortado** é o
-roteiro de perguntas, o CRUD de perguntas e os participantes convidados.
+tema 2 — o PIN a traz de volta, porque um código para escanear é, por
+definição, o identificador de uma sessão com início e fim. Continua cortado o
+roteiro de perguntas e o CRUD de perguntas: **uma rodada = um tema**, e a
+oficina abre rodadas em sequência se quiser mais de uma pergunta.
 
 ### Modelo de dados — só o delta
 
@@ -480,37 +477,108 @@ E um estado novo em `situacao`: **`SELECIONADO`**, entre `NOVO` e `ACEITO` —
 5. **Direcionar**: a fila que já existe, agora alimentada pelo quadrante — as
    fichas de "fazer agora" aparecem primeiro.
 
-### Risco técnico já medido: o QR
+### O que o Quiz Copérdia já resolve — e o que não serve
 
-Foi feita uma tentativa de escrever o gerador de QR em JavaScript puro (o
-ambiente bloqueia CDN e o projeto não usa Composer nem npm). Resultado da
-verificação contra uma implementação de referência:
+O repositório `Trmartello/Quiz_Coperdia` (Node, sem dependências) roda
+exatamente este formato: PIN de 6 dígitos, QR no telão, participante entra pelo
+celular só com o nome, e tem os tipos de pergunta **"nuvem de palavras"** e
+**"brainstorm"**. Vale copiar o que está resolvido e **não** copiar o que não
+cabe no deploy do Controladoria.
 
-- **codificação de dados e Reed-Solomon: corretos** — os 26 codewords de um
-  caso de teste batem byte a byte com a referência;
-- **seleção de versão: correta** — os cinco casos escolheram a mesma versão;
-- **montagem da matriz: com defeito** — nenhuma das 8 máscaras reproduz a
-  referência, e o defeito não foi isolado numa primeira investida. O rascunho
-  ficou fora do repositório de propósito.
+**Copiar — o gerador de QR.** `js/vendor/qrcode.js` (Kazuhiko Arase, licença
+MIT) já está vendorado lá e funcionando. Vendorar o mesmo arquivo aqui, em
+`public/assets/vendor/qrcode.js`.
 
-Orçar o QR como **tarefa de risco médio**, não como detalhe. Alternativas se
-ele custar caro: mostrar só o código curto e a URL para digitar; ou gerar o QR
-uma vez, fora do sistema, e colar como imagem na tela da rodada.
+> Isso **elimina o risco técnico** que este plano registrava. Uma tentativa de
+> escrever o gerador à mão foi feita e verificada contra uma implementação de
+> referência: dados e Reed-Solomon saíram corretos byte a byte, seleção de
+> versão correta, mas a montagem da matriz não reproduzia a referência em
+> nenhuma das 8 máscaras. Trabalho descartado — havia uma biblioteca MIT
+> pronta e testada em produção na casa. O QR deixa de ser risco médio e passa
+> a ser "copiar um arquivo".
+
+**Copiar — o modelo de sala.** PIN numérico de 6 dígitos gerado na abertura,
+tela de projeção com PIN grande + QR + link para copiar, e teto de respostas
+por participante.
+
+**Não copiar — Server-Sent Events.** O Quiz entrega tempo real com
+`text/event-stream` e `EventSource`, o que funciona porque o servidor é Node.
+O Controladoria roda no **servidor embutido do PHP** (`php -S` no
+`entrypoint.sh`), que é single-threaded: **cada conexão SSE aberta prenderia o
+único worker e travaria o sistema inteiro** para todo mundo. Não é ajuste de
+configuração — `PHP_CLI_SERVER_WORKERS` exigiria um worker por participante
+conectado.
+
+> **Aqui a tela ao vivo tem de usar *polling*:** um `GET` leve a cada 2–3
+> segundos devolvendo só o que chegou depois do último id conhecido. É mais
+> simples de escrever e não tem custo perceptível numa oficina de 15 pessoas.
+> É, também, mais um argumento para php-fpm + nginx em produção, como
+> `docs/DEPLOY-RAILWAY.md` já recomenda.
+
+**Avaliar depois — a votação do brainstorm.** No Quiz, o brainstorm tem uma
+segunda fase em que os participantes votam nas ideias e o telão ranqueia. O
+cliente não pediu isso (quer selecionar uma a uma, discutindo com o grupo), mas
+é um mecanismo de convergência que a casa já conhece. Fica como opção, não como
+escopo.
+
+**Melhorar — agrupamento de repetidas.** O Quiz agrupa por `toLowerCase()`. Em
+português isso deixa "logística" e "logistica" como termos diferentes.
+Normalizar sem acento (o `norm()` que `modal.js` já usa nos comboboxes).
+
+### Modelo de dados — o delta do acesso público
+
+Além de `coleta_rodada` (acima), em `coleta_item`:
+
+- `autor_id` passa a aceitar **nulo** — é um `ALTER TABLE ... MODIFY`, e não um
+  `garantirColuna()`; a migração precisa checar `IS_NULLABLE` em
+  `information_schema` antes de aplicar, para seguir idempotente;
+- `autor_nome VARCHAR(120) NULL` — o nome digitado por quem entrou pelo PIN;
+- `participante_token CHAR(32) NULL` — identifica quem enviou sem conta, para
+  aplicar o teto de ideias e permitir que a pessoa corrija a própria ideia.
+
+### Rotas públicas (sem sessão)
+
+| Rota | O que faz | Guarda |
+|---|---|---|
+| `GET /entrar/{pin}` | página do participante, fora do shell do app | rodada aberta |
+| `POST /api/publico/entrar` | nome → devolve `participante_token` | rodada aberta |
+| `POST /api/publico/ideia` | grava a ideia | token válido + teto + tamanho |
+| `GET /api/publico/rodada/{pin}` | tema e situação da rodada | — |
+
+Sem sessão não há CSRF a validar: **o token do participante é a única guarda**,
+e por isso precisa ser aleatório, ligado à rodada e inútil depois do
+encerramento. A página do participante não pode carregar o shell do app nem
+qualquer JS de seção — só o necessário para escrever.
+
+### A tela de condução (o coração do tema)
+
+Uma tela só, projetada, dividida em duas zonas:
+
+- **Tempestade** (esquerda/topo): as ideias chegando como fichas, tamanho
+  proporcional a quantas pessoas disseram o mesmo, atualizando por polling.
+  Tocar numa ficha a leva para a bancada.
+- **Bancada** (direita/baixo): a ideia selecionada, o texto editável
+  (*complementar*), a matriz 2×2 impacto × esforço para posicionar, e os botões
+  de destino — Cenário, PESTEL, Porter, SWOT, ou **Esquecer**.
+
+O que já está no ar (`texto_tratado`, `encaminhar`, `descartar` com motivo)
+vira o motor da bancada; a novidade é a nuvem, o posicionamento e o fato de
+tudo acontecer numa tela só.
 
 ### Fatiamento sugerido
 
 | Fatia | Conteúdo | Esforço | Entrega valor sozinha? |
 |---|---|---|---|
-| 1 | Rodada + tela de quiz + entrada por código digitado (sem QR) | P | Sim — já dá para rodar a oficina |
-| 2 | Separar ideia (`dividir`) + estado `SELECIONADO` | P | Sim — organiza o despejo bruto |
-| 3 | Matriz de priorização 2×2 | P | Sim — é a decisão da oficina |
-| 4 | QR na tela da rodada | P–M | Só conveniência sobre a fatia 1 |
-| 5 | Entrada sem login (decisão A2) | M | Depende de revisão de segurança |
-| 6 | Nuvem de termos (B2) | P | Opcional |
+| 1 | `coleta_rodada` + PIN + tela do participante + rotas públicas | M | Sim — já dá para coletar na oficina |
+| 2 | Tela de condução: nuvem por polling + bancada | M | Sim — é o fluxo que o cliente descreveu |
+| 3 | Matriz 2×2 no item + destino a partir do quadrante | P | Sim — fecha a decisão |
+| 4 | QR (vendorar `qrcode.js`) e link para copiar | P | Conveniência sobre a fatia 1 |
+| 5 | Dividir ideia em várias | P | Opcional |
+| 6 | Votação dos participantes nas ideias | P–M | Opcional, se quiserem convergência |
 
-Fatias 1 a 3 entregam o fluxo inteiro que o cliente descreveu, com o código
-digitado no lugar do escaneado. A 4 e a 5 são o que transforma em experiência
-de oficina — e são, também, onde mora todo o risco.
+As fatias 1 a 3 entregam o fluxo inteiro. A 4 é barata e faz a diferença na
+sala. Antes de subir a fatia 1 para produção, **rodar a revisão de segurança**
+— é rota de escrita sem autenticação, o único caso do sistema.
 
 ---
 
@@ -1055,7 +1123,7 @@ discutir a dependência, não o quadrante.
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 4 |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 5 |
 | 2 | Coleta & Triagem (tratativa item a item) | **Entregue** | M | 6 ✔ (antecipada) |
-| 2.1 | Tempestade: quiz por QR, separação e matriz de priorização | **A planejar** | M | a definir |
+| 2.1 | Tempestade: quiz por PIN/QR, condução ao vivo e matriz | **Planejado** | M | a definir |
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
 | 4b | Contingência dentro de cada projeto | **Não construir agora** (deriva de 4) | P | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |
@@ -1087,12 +1155,11 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
 7. **Existe (ou existirá) real com granularidade mensal vindo do Qlik?** Se sim,
    destrava a contingência ancorada em indicador (o `OFF_TRACK` do BSC) e muda a
    pauta do ritual. Se não, meta × real continua sendo assunto anual.
-8. **Quem responde ao quiz da tempestade (tema 2.1)?** Só usuário cadastrado,
-   ou qualquer pessoa com o código da rodada? A segunda opção é a experiência
-   que o cliente descreveu e seria a primeira rota de escrita sem autenticação
-   do sistema — precisa de decisão explícita e de revisão de segurança própria.
-9. **"Separar as palavras" é dividir a ideia em várias, ou nuvem de termos?**
-   As duas leituras levam a telas diferentes (ver tema 2.1, decisão B).
+8. ~~Quem responde ao quiz da tempestade?~~ **Respondido:** qualquer pessoa,
+   por QR ou link, sem cadastro — modelo do Quiz Copérdia. Continua valendo a
+   exigência de revisão de segurança antes de subir (tema 2.1, decisão A).
+9. ~~"Separar as palavras" é dividir ou nuvem?~~ **Respondido:** é a tela de
+   condução ao vivo, com nuvem de um lado e bancada do outro (decisão B).
 10. **Quem é o dono da Matriz de Impacto:** a controladoria preenche a grade inteira,
    ou cada gestor preenche a coluna dele? A versão proposta assume a primeira
    (gestor só lê) — é o mais simples e o mais defensável, mas é decisão de processo.
