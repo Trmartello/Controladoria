@@ -454,9 +454,9 @@ const Modal = {
     const botao = document.getElementById('modal-extra');
     botao.disabled = true;
     try {
-      await extra.aoClicar();
+      const resposta = await extra.aoClicar();
       this.bsModal.hide();
-      if (this.config.aoSalvar) this.config.aoSalvar();
+      if (this.config.aoSalvar) this.config.aoSalvar(resposta);
       else App.recarregarSecaoAtiva();
     } catch (e) {
       const erro = document.getElementById('modal-erro');
@@ -472,9 +472,12 @@ const Modal = {
     botao.disabled = true; // evita duplo clique criando registros duplicados
     try {
       const dados = this.coletar();
-      await App.api(this.config.url, this.config.transformar ? this.config.transformar(dados) : dados);
+      // A resposta chega ao aoSalvar: alguns formulários precisam dela (uma
+      // ação que se repete devolve a data em que vai reabrir, por exemplo)
+      const resposta = await App.api(
+        this.config.url, this.config.transformar ? this.config.transformar(dados) : dados);
       this.bsModal.hide();
-      if (this.config.aoSalvar) this.config.aoSalvar();
+      if (this.config.aoSalvar) this.config.aoSalvar(resposta);
       else App.recarregarSecaoAtiva();
     } catch (e) {
       const erro = document.getElementById('modal-erro');

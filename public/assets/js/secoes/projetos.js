@@ -568,7 +568,23 @@ const SecaoProjetos = {
         // Passo de 1 para o modal nunca arredondar o que a barra do cartão gravou
         { nome: 'progresso', rotulo: 'Progresso', tipo: 'faixa', min: 0, max: 100, passo: 1, sufixo: '%' },
       ],
+      aoSalvar: (r) => {
+        this.avisarReagendamento(r);
+        App.recarregarSecaoAtiva();
+      },
     });
+  },
+
+  /**
+   * Concluir uma ação que se repete não a encerra: ela volta na próxima data.
+   * Sem este aviso o usuário marca "Concluída" e a vê reaparecer em aberto,
+   * com outra data e 0%, sem entender o porquê.
+   */
+  avisarReagendamento(resposta) {
+    const data = resposta?.reagendada_para;
+    if (!data) return;
+    alert(`Ocorrência concluída. Como esta ação se repete, ela volta em `
+      + `${String(data).split('-').reverse().join('/')}.`);
   },
 
   async renderDiario() {
@@ -619,6 +635,10 @@ const SecaoProjetos = {
           { nome: 'progresso', rotulo: 'Atualizar progresso % (opcional)', tipo: 'number' },
         ] : []),
       ],
+      aoSalvar: (r) => {
+        this.avisarReagendamento(r);
+        App.recarregarSecaoAtiva();
+      },
     }));
   },
 };

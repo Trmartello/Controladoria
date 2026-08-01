@@ -80,9 +80,18 @@ class Email
             self::comando($conexao, "RCPT TO:<{$para}>", 250);
             self::comando($conexao, 'DATA', 354);
             self::escrever($conexao, self::mensagem($para, $assunto, $html) . "\r\n.");
-            self::ler($conexao, 250);
-            // Daqui em diante a mensagem já foi aceita: um tropeço na despedida
-            // não pode virar "falhou", senão o aviso sairia de novo amanhã
+            // A mensagem já saiu; o que vem daqui em diante decide se ela foi
+            // aceita. Uma recusa explícita (4xx/5xx) é falha de verdade e pode
+            // ser tentada de novo. Já ficar sem resposta legível — servidor que
+            // desliga ou demora além do tempo limite — é ambíguo: a entrega
+            // provavelmente aconteceu, e insistir mandaria o aviso duplicado.
+            try {
+                self::ler($conexao, 250);
+            } catch (\Throwable $e) {
+                if ($e->getCode() !== 0) {
+                    throw $e;
+                }
+            }
             try {
                 self::comando($conexao, 'QUIT', 221);
             } catch (\Throwable $e) {
@@ -139,7 +148,12 @@ class Email
         }
         $codigo = (int)substr($resposta, 0, 3);
         if ($codigo !== $esperado) {
-            throw new \RuntimeException("SMTP respondeu {$codigo} (esperado {$esperado}): " . trim($resposta));
+            // O código vai junto na exceção: 0 significa "o servidor não
+            // respondeu nada", o que quem chama precisa saber distinguir
+            throw new \RuntimeException(
+                "SMTP respondeu {$codigo} (esperado {$esperado}): " . trim($resposta),
+                $codigo
+            );
         }
         return $resposta;
     }

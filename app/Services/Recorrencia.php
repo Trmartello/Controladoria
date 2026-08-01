@@ -28,6 +28,12 @@ class Recorrencia
         }
         if ($recorrencia === 'MENSAL') {
             $alvo = max(1, min(31, $dia));
+            // O dia escolhido ainda pode estar à frente no próprio mês da base;
+            // só quando já passou é que a ocorrência cai no mês seguinte
+            $noMes = $d->setDate((int)$d->format('Y'), (int)$d->format('n'), min($alvo, (int)$d->format('t')));
+            if ($noMes > $d) {
+                return $noMes->format('Y-m-d');
+            }
             $mes = $d->modify('first day of next month');
             $ultimo = (int)$mes->format('t');
             return $mes->setDate((int)$mes->format('Y'), (int)$mes->format('n'), min($alvo, $ultimo))
@@ -56,19 +62,12 @@ class Recorrencia
         }
         $hoje = date('Y-m-d');
         $base = $fim ?: $hoje;
-        $proxima = null;
-        // Limite de segurança: 400 saltos cobrem mais de 7 anos de semanas
-        for ($i = 0; $i < 400; $i++) {
-            $candidata = self::proxima($proxima ?? $base, $recorrencia, $dia);
-            if ($candidata === null) {
-                return null;
-            }
-            $proxima = $candidata;
-            if ($proxima > $hoje) {
-                break;
-            }
-        }
-        if ($proxima === null || $proxima <= $hoje || ($ate !== null && $proxima > $ate)) {
+        // As ocorrências formam uma grade fixa (dia da semana ou dia do mês),
+        // então a primeira que ainda não passou sai de uma conta só: basta
+        // ancorar na data mais recente entre o fim da ocorrência atual e hoje.
+        // Uma ação parada há anos reabre já na próxima data válida.
+        $proxima = self::proxima(max($base, $hoje), $recorrencia, $dia);
+        if ($proxima === null || ($ate !== null && $proxima > $ate)) {
             return null;
         }
         // Mantém a mesma janela entre início e fim na próxima ocorrência
