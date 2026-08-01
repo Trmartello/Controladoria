@@ -40,7 +40,10 @@ const SecaoProjetos = {
   cascata: null,
   responsaveis: [],
   diarioAberto: null, // { refTipo, refId }
-  iniciativasFechadas: new Set(), // por padrão as frentes abrem expandidas
+  // Recolhidos guardam quem está fechado; projeto e iniciativa começam
+  // abertos e a escolha do usuário sobrevive aos recarregamentos da seção
+  iniciativasFechadas: new Set(),
+  projetosFechados: new Set(),
 
   // Período escolhido no calendário; textos antigos (prazo/quando_) seguem valendo
   periodo(inicio, fim, legado) {
@@ -178,20 +181,35 @@ const SecaoProjetos = {
       const timelineProjeto = this.diarioAberto?.refTipo === 'PROJETO' && this.diarioAberto?.refId === p.id
         ? `<div id="diario-PROJETO-${p.id}" class="mt-2"></div>` : '';
 
-      return `<div class="card mb-3">
+      // Panorama do projeto: some no cabeçalho o que está dentro dele
+      const acoes = p.desdobramentos || [];
+      const concluidas = acoes.filter((a) => a.status === 'CONCLUIDO').length;
+      const atrasadas = acoes.filter((a) => a.status === 'ATRASADO').length;
+      const aberto = !this.projetosFechados.has(p.id);
+
+      return `<div class="card mb-3" data-projeto="${p.id}">
         <div class="card-body">
           <div class="d-flex justify-content-between gap-2 flex-wrap">
-            <div>
+            <div class="projeto-cabeca flex-grow-1" data-abrir-proj="${p.id}" role="button" tabindex="0">
+              <span class="seta-projeto">${aberto ? '▾' : '▸'}</span>
               <strong>${Modal.esc(p.titulo)}</strong>
               ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning ms-1">Prioritário</span>' : ''}
               ${badge(p.status)}
+              <div class="d-flex align-items-center gap-2 mt-1 panorama-projeto">
+                <div class="progress flex-grow-1" style="height:8px;max-width:180px"
+                  title="Progresso médio das ações">
+                  <div class="progress-bar bg-success" data-barra-projeto style="width:${media}%"></div>
+                </div>
+                <span class="badge text-bg-light border" data-media-projeto>${media}%</span>
+                <span class="small text-muted">${(p.iniciativas || []).length} iniciativa(s) ·
+                  ${concluidas}/${acoes.length} ações</span>
+                ${atrasadas ? `<span class="badge text-bg-danger">${atrasadas} atrasada(s)</span>` : ''}
+              </div>
               ${descricao}
               ${detalhes ? `<div class="small text-muted mt-1">${detalhes}</div>` : ''}
               ${origem}
             </div>
             <div class="d-flex gap-1 align-items-start flex-shrink-0 flex-wrap justify-content-end">
-              <span class="badge text-bg-light border" data-media-projeto
-                title="Progresso médio das ações">${media}%</span>
               <button class="btn btn-sm btn-outline-success" data-diario="PROJETO:${p.id}">Diário</button>
               ${App.podeEditar() ? `
                 <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
@@ -199,7 +217,7 @@ const SecaoProjetos = {
                 <button class="btn btn-sm btn-outline-danger" data-excluir-proj="${p.id}">×</button>` : ''}
             </div>
           </div>
-          <div class="mt-3">
+          <div class="mt-3 iniciativas-projeto ${aberto ? '' : 'd-none'}">
             ${iniciativas || '<div class="text-muted small">Nenhuma iniciativa cadastrada. Crie uma frente de trabalho para organizar as ações.</div>'}
           </div>
           ${timelineProjeto}
@@ -207,14 +225,52 @@ const SecaoProjetos = {
       </div>`;
     }).join('');
 
+    // Tudo recolhido = panorama; expandido = trabalho no detalhe
+    const tudoFechado = projetos.length > 0 && projetos.every((p) => this.projetosFechados.has(p.id));
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>Projetos — ${Modal.esc(App.rotuloContexto())}</h1>
-        ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-proj">+ Novo projeto</button>' : ''}
+        <div class="d-flex gap-2">
+          ${projetos.length ? `<button class="btn btn-outline-secondary btn-sm" id="btn-alternar-tudo">
+            ${tudoFechado ? 'Expandir tudo' : 'Recolher tudo'}</button>` : ''}
+          ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-proj">+ Novo projeto</button>' : ''}
+        </div>
       </div>
-      <p class="text-muted">O projeto pertence a um ano do planejamento; o horizonte é atribuído
-      automaticamente pelos anos que cada horizonte contempla.</p>
+      <p class="text-muted">Toque no título do projeto ou da iniciativa para recolher e expandir.</p>
       <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>`;
+
+    document.getElementById('btn-alternar-tudo')?.addEventListener('click', () => {
+      if (tudoFechado) {
+        this.projetosFechados.clear();
+        this.iniciativasFechadas.clear();
+      } else {
+        projetos.forEach((p) => {
+          this.projetosFechados.add(p.id);
+          (p.iniciativas || []).forEach((i) => this.iniciativasFechadas.add(i.id));
+        });
+      }
+      this.carregar();
+    });
+
+    // Acordeão do projeto (clicar no cabeçalho abre/fecha as iniciativas)
+    el.querySelectorAll('[data-abrir-proj]').forEach((c) => {
+      const alternar = () => {
+        const id = parseInt(c.dataset.abrirProj, 10);
+        if (this.projetosFechados.has(id)) this.projetosFechados.delete(id);
+        else this.projetosFechados.add(id);
+        const cartao = el.querySelector(`[data-projeto="${id}"]`);
+        const fechado = this.projetosFechados.has(id);
+        cartao.querySelector('.iniciativas-projeto').classList.toggle('d-none', fechado);
+        cartao.querySelector('.seta-projeto').textContent = fechado ? '▸' : '▾';
+      };
+      c.addEventListener('click', (ev) => {
+        if (ev.target.closest('button, a, input')) return;
+        alternar();
+      });
+      c.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar(); }
+      });
+    });
 
     el.querySelectorAll('[data-diario]').forEach((b) => b.addEventListener('click', () => {
       const [refTipo, refId] = b.dataset.diario.split(':');
@@ -311,11 +367,14 @@ const SecaoProjetos = {
 
   /** Recalcula na tela o percentual médio do projeto após ajustar uma ação. */
   atualizarMediaProjeto(el, projetoId) {
-    const cartao = el.querySelector(`[data-nova-ini="${projetoId}"]`)?.closest('.card');
+    const cartao = el.querySelector(`[data-projeto="${projetoId}"]`);
     const medias = [...(cartao?.querySelectorAll('[data-progresso]') || [])].map((x) => Number(x.value));
     const alvo = cartao?.querySelector('[data-media-projeto]');
     if (!alvo || !medias.length) return;
-    alvo.textContent = `${Math.round(medias.reduce((s, v) => s + v, 0) / medias.length)}%`;
+    const media = Math.round(medias.reduce((s, v) => s + v, 0) / medias.length);
+    alvo.textContent = `${media}%`;
+    const barra = cartao.querySelector('[data-barra-projeto]');
+    if (barra) barra.style.width = `${media}%`;
   },
 
   // Anos de execução do ciclo vigente para o seletor "Ano do planejamento"
