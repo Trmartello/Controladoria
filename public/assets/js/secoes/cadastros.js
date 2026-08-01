@@ -200,7 +200,7 @@ const SecaoCadastros = {
         <p class="text-muted small mb-2">Arraste pelo ⠿ para reordenar a prioridade — a nova ordem é salva na hora.</p>` : ''}
       <div class="table-responsive">
         <table class="table table-sm tabela-cadastro">
-          <thead><tr>${administra ? '<th></th>' : ''}<th>Ordem</th><th>${rotulo}</th><th>Situação</th><th></th></tr></thead>
+          <thead><tr>${administra ? '<th></th>' : ''}<th title="Ordem">Nº</th><th>${rotulo}</th><th>Situação</th><th></th></tr></thead>
           <tbody id="linhas-ordenaveis">${lista.map((i) => `
             <tr data-id="${i.id}" class="${i.ativo == 1 ? '' : 'table-secondary'}">
               ${administra ? `<td class="celula-alca"><button type="button" class="alca-arrastar"
@@ -208,7 +208,8 @@ const SecaoCadastros = {
               <td class="celula-ordem">${i.ordem}</td>
               <td>${Modal.esc(i.nome)}</td>
               <td>${i.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
-              <td>${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}">Editar</button>` : ''}</td>
+              <td>${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}"
+                title="Editar" aria-label="Editar">✎</button>` : ''}</td>
             </tr>`).join('')}</tbody>
         </table>
       </div>`;
