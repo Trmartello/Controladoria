@@ -438,6 +438,20 @@ input[type=range].faixa-verde:focus-visible {
 .acoes-iniciativa { padding-top: .5rem; }
 .acao-card { border-left: 4px solid var(--cor-prio, #b08d4f); }
 
+/* "mostrar mais": o detalhe fica escondido até o usuário pedir */
+.btn-mais {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--verde-coperdia);
+  font-size: .72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: underline;
+}
+.btn-mais:hover { color: #005c34; }
+.detalhe-item { border-top: 1px dashed #dee2e6; margin-top: .4rem; padding-top: .4rem; }
+
 .selo-prioridade {
   font-size: .65rem;
   font-weight: 800;

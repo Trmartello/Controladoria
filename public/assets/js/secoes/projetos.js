@@ -44,6 +44,26 @@ const SecaoProjetos = {
   // abertos e a escolha do usuário sobrevive aos recarregamentos da seção
   iniciativasFechadas: new Set(),
   projetosFechados: new Set(),
+  detalhesAbertos: new Set(), // quem está com o "mostrar mais" aberto
+
+  /** Alternador de detalhe de um item (projeto, iniciativa ou ação). */
+  botaoMais(chave, aberto) {
+    return `<button type="button" class="btn-mais" data-mais="${chave}">
+      ${aberto ? 'mostrar menos' : 'mostrar mais'}</button>`;
+  },
+
+  ligarBotoesMais(el) {
+    el.querySelectorAll('[data-mais]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const chave = b.dataset.mais;
+      const alvo = el.querySelector(`[data-detalhe="${chave}"]`);
+      const abrir = this.detalhesAbertos.has(chave);
+      if (abrir) this.detalhesAbertos.delete(chave);
+      else this.detalhesAbertos.add(chave);
+      alvo.classList.toggle('d-none', abrir);
+      b.textContent = abrir ? 'mostrar mais' : 'mostrar menos';
+    }));
+  },
 
   // Período escolhido no calendário; textos antigos (prazo/quando_) seguem valendo
   periodo(inicio, fim, legado) {
@@ -63,22 +83,29 @@ const SecaoProjetos = {
     const [rotIni, classeIni] = STATUS_INICIATIVA[ini.status] || [ini.status, 'text-bg-light'];
     const aberta = !this.iniciativasFechadas.has(ini.id);
     const cartoes = acoes.map((a) => this.cartaoAcao(p, ini, a)).join('');
+    // Recolhida mostra só título e situação; o resto vai no "mostrar mais"
+    const chave = `ini-${ini.id}`;
+    const detalhado = this.detalhesAbertos.has(chave);
     return `<div class="iniciativa mb-2" data-iniciativa="${ini.id}">
       <div class="d-flex align-items-center gap-2 flex-wrap iniciativa-cabeca" data-abrir-ini="${ini.id}">
         <span class="seta-iniciativa">${aberta ? '▾' : '▸'}</span>
-        <strong class="small">${Modal.esc(ini.titulo)}</strong>
+        <strong class="small flex-grow-1">${Modal.esc(ini.titulo)}</strong>
         <span class="badge ${classeIni}">${rotIni}</span>
-        <span class="badge text-bg-light border" title="Ações concluídas">${feitas}/${acoes.length} ações</span>
-        ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
-          <button class="btn btn-sm btn-verde" data-nova-acao="${ini.id}" data-proj="${p.id}">+ Ação</button>
-          <button class="btn btn-sm btn-outline-secondary" data-editar-ini="${ini.id}" data-proj="${p.id}"
-            title="Editar iniciativa" aria-label="Editar iniciativa">✎</button>
-          <button class="btn btn-sm btn-outline-danger" data-excluir-ini="${ini.id}"
-            title="Excluir iniciativa" aria-label="Excluir iniciativa">×</button>
-        </span>` : ''}
+        ${this.botaoMais(chave, detalhado)}
+      </div>
+      <div class="detalhe-item ${detalhado ? '' : 'd-none'}" data-detalhe="${chave}">
+        ${ini.descricao ? `<div class="small text-muted mt-1">${Modal.esc(ini.descricao)}</div>` : ''}
+        <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
+          <span class="badge text-bg-light border" title="Ações concluídas">${feitas}/${acoes.length} ações</span>
+          ${App.podeEditar() ? `
+            <button class="btn btn-sm btn-verde" data-nova-acao="${ini.id}" data-proj="${p.id}">+ Ação</button>
+            <button class="btn btn-sm btn-outline-secondary" data-editar-ini="${ini.id}" data-proj="${p.id}"
+              title="Editar iniciativa" aria-label="Editar iniciativa">✎</button>
+            <button class="btn btn-sm btn-outline-danger" data-excluir-ini="${ini.id}"
+              title="Excluir iniciativa" aria-label="Excluir iniciativa">×</button>` : ''}
+        </div>
       </div>
       <div class="acoes-iniciativa ${aberta ? '' : 'd-none'}">
-        ${ini.descricao ? `<div class="small text-muted mb-2">${Modal.esc(ini.descricao)}</div>` : ''}
         ${cartoes || '<div class="text-muted small">Nenhuma ação nesta iniciativa.</div>'}
       </div>
     </div>`;
@@ -100,16 +127,21 @@ const SecaoProjetos = {
     const repeticao = a.recorrencia === 'SEMANAL'
       ? `toda ${(DIAS_SEMANA.find(([v]) => v == a.recorrencia_dia) || [, ''])[1].toLowerCase()}`
       : a.recorrencia === 'MENSAL' ? `todo dia ${a.recorrencia_dia}` : '';
+    // Visível: o que é, como está e o progresso. O resto fica no "mostrar mais".
+    const chave = `acao-${a.id}`;
+    const detalhado = this.detalhesAbertos.has(chave);
+    const extras = [
+      prazo && `<strong>Prazo:</strong> ${Modal.esc(prazo)}`,
+      `<strong>Prioridade:</strong> ${rotPrio}`,
+      repeticao && `<strong>Repete:</strong> ${repeticao}`,
+      detalhes,
+    ].filter(Boolean).join(' · ');
     return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}">
       <div class="card-body py-2 px-2">
-        <div class="d-flex align-items-center gap-1 flex-wrap mb-1">
-          <span class="badge selo-prioridade" style="color:${corPrio};background:${corPrio}1f">${rotPrio}</span>
+        <div class="d-flex align-items-center gap-1 flex-wrap">
           <span class="badge ${classe}">${rotulo}</span>
-          ${repeticao ? `<span class="badge text-bg-light border" title="Ação recorrente">↻ ${repeticao}</span>` : ''}
-          ${prazo ? `<span class="small text-muted ms-auto">${Modal.esc(prazo)}</span>` : ''}
+          <span class="small flex-grow-1">${Modal.esc(a.o_que)}</span>
         </div>
-        <div class="small">${Modal.esc(a.o_que)}</div>
-        ${detalhes ? `<div class="small text-muted">${detalhes}</div>` : ''}
         <div class="d-flex align-items-center gap-2 mt-2">
           ${App.podeEditar() ? `
           <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="5"
@@ -121,7 +153,11 @@ const SecaoProjetos = {
             <span style="width:${a.progresso}%"></span>
           </div>
           <span class="valor-progresso">${a.progresso}%</span>`}
-          <span class="d-flex gap-1 flex-shrink-0">
+          ${this.botaoMais(chave, detalhado)}
+        </div>
+        <div class="detalhe-item ${detalhado ? '' : 'd-none'}" data-detalhe="${chave}">
+          ${extras ? `<div class="small text-muted mt-2">${extras}</div>` : ''}
+          <span class="d-flex gap-1 flex-wrap mt-2">
             <button class="btn btn-sm btn-outline-success" data-diario="DESDOBRAMENTO:${a.id}">Diário</button>
             ${App.podeEditar() ? `
               <button class="btn btn-sm btn-outline-secondary" data-editar-desd="${a.id}" data-proj="${p.id}"
@@ -160,7 +196,6 @@ const SecaoProjetos = {
       // O prazo é consequência das ações: menor início e maior fim entre elas
       const detalhes = [
         p.ano && `<strong>Ano:</strong> ${p.ano}`,
-        p.horizonte_nome && `<strong>Horizonte:</strong> ${Modal.esc(p.horizonte_nome)}`,
         p.responsavel && `<strong>Responsável:</strong> ${Modal.esc(p.responsavel)}`,
         this.periodo(p.data_inicio, p.data_fim, p.prazo)
           && `<strong>Prazo (das ações):</strong> ${Modal.esc(this.periodo(p.data_inicio, p.data_fim, p.prazo))}`,
@@ -184,29 +219,35 @@ const SecaoProjetos = {
       const atrasadas = acoes.filter((a) => a.status === 'ATRASADO').length;
       const aberto = !this.projetosFechados.has(p.id);
 
+      // Recolhido mostra só título, situação e a barra; o resto no "mostrar mais"
+      const chave = `proj-${p.id}`;
+      const detalhado = this.detalhesAbertos.has(chave);
       return `<div class="card mb-3" data-projeto="${p.id}">
         <div class="card-body">
-          <div class="d-flex justify-content-between gap-2 flex-wrap">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
             <div class="projeto-cabeca flex-grow-1" data-abrir-proj="${p.id}" role="button" tabindex="0">
               <span class="seta-projeto">${aberto ? '▾' : '▸'}</span>
               <strong>${Modal.esc(p.titulo)}</strong>
               ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning ms-1">Prioritário</span>' : ''}
               ${badge(p.status)}
-              <div class="d-flex align-items-center gap-2 mt-1 panorama-projeto">
-                <div class="faixa-progresso flex-grow-1" style="max-width:180px"
-                  title="Progresso médio das ações">
-                  <span data-barra-projeto style="width:${media}%"></span>
-                </div>
-                <span class="valor-progresso" data-media-projeto>${media}%</span>
-                <span class="small text-muted">${(p.iniciativas || []).length} iniciativa(s) ·
-                  ${concluidas}/${acoes.length} ações</span>
-                ${atrasadas ? `<span class="badge text-bg-danger">${atrasadas} atrasada(s)</span>` : ''}
-              </div>
-              ${descricao}
-              ${detalhes ? `<div class="small text-muted mt-1">${detalhes}</div>` : ''}
-              ${origem}
             </div>
-            <div class="d-flex gap-1 align-items-start flex-shrink-0 flex-wrap justify-content-end">
+            ${this.botaoMais(chave, detalhado)}
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-1 panorama-projeto">
+            <div class="faixa-progresso flex-grow-1" style="max-width:180px"
+              title="Progresso médio das ações">
+              <span data-barra-projeto style="width:${media}%"></span>
+            </div>
+            <span class="valor-progresso" data-media-projeto>${media}%</span>
+            ${atrasadas ? `<span class="badge text-bg-danger">${atrasadas} atrasada(s)</span>` : ''}
+          </div>
+          <div class="detalhe-item ${detalhado ? '' : 'd-none'}" data-detalhe="${chave}">
+            ${descricao}
+            ${detalhes ? `<div class="small text-muted mt-1">${detalhes}</div>` : ''}
+            <div class="small text-muted mt-1">${(p.iniciativas || []).length} iniciativa(s) ·
+              ${concluidas}/${acoes.length} ações concluídas</div>
+            ${origem}
+            <div class="d-flex gap-1 flex-wrap mt-2">
               <button class="btn btn-sm btn-outline-success" data-diario="PROJETO:${p.id}">Diário</button>
               ${App.podeEditar() ? `
                 <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
@@ -233,7 +274,7 @@ const SecaoProjetos = {
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-proj">+ Novo projeto</button>' : ''}
         </div>
       </div>
-      <p class="text-muted">Toque no título do projeto ou da iniciativa para recolher e expandir.</p>
+      <p class="text-muted">Toque no título para recolher e expandir; use “mostrar mais” para ver o detalhe.</p>
       <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>`;
 
     document.getElementById('btn-alternar-tudo')?.addEventListener('click', () => {
@@ -268,6 +309,8 @@ const SecaoProjetos = {
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar(); }
       });
     });
+
+    this.ligarBotoesMais(el);
 
     el.querySelectorAll('[data-diario]').forEach((b) => b.addEventListener('click', () => {
       const [refTipo, refId] = b.dataset.diario.split(':');
