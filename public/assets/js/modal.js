@@ -38,6 +38,7 @@ const Modal = {
     this.ligarBotoesSenha(form);
     this.ligarBotoesDitado(form);
     this.ligarSelecaoLivre(form);
+    this.ligarListasMarcaveis(form);
     this.ligarDatasBr(form);
     this.ligarFaixas(form, campos);
     this.ligarCondicionais(form, campos);
@@ -89,6 +90,40 @@ const Modal = {
           .map((o) => `<option value="${this.esc(o.valor)}" ${selecionados.includes(String(o.valor)) ? 'selected' : ''}>${this.esc(o.rotulo)}</option>`)
           .join('');
         controle = `<select class="form-select" id="${id}" multiple size="${Math.min(8, (c.opcoes || []).length || 3)}">${opcoes}</select>`;
+        break;
+      }
+      case 'lista_marcavel': {
+        // Lista de itens marcáveis com o texto inteiro à vista — para escolhas
+        // em que saber exatamente o que se está amarrando importa mais que
+        // caber em uma linha. Com muitos itens, ganha campo de pesquisa.
+        const opcoes = c.opcoes || [];
+        const marcados = (Array.isArray(v) ? v : []).map(String);
+        const itens = opcoes.map((o) => {
+          const cor = /^#[0-9a-f]{6}$/i.test(o.cor || '') ? o.cor : '#007a45';
+          const selos = [
+            o.selo && `<span class="badge" style="color:${cor};background:${cor}1f">${this.esc(o.selo)}</span>`,
+            o.selo2 && `<span class="badge text-bg-light border">${this.esc(o.selo2)}</span>`,
+          ].filter(Boolean).join(' ');
+          const busca = this.esc(`${o.selo || ''} ${o.selo2 || ''} ${o.texto || o.rotulo || ''}`);
+          return `<label class="marcavel-item" data-busca="${busca}">
+            <input class="form-check-input" type="checkbox" value="${this.esc(o.valor)}"
+              ${marcados.includes(String(o.valor)) ? 'checked' : ''}>
+            <span class="marcavel-corpo">
+              ${selos ? `<span class="marcavel-selos">${selos}</span>` : ''}
+              <span class="marcavel-texto">${this.esc(o.texto || o.rotulo || '')}</span>
+            </span>
+          </label>`;
+        }).join('');
+        const pesquisa = opcoes.length > 5
+          ? `<input type="search" class="form-control form-control-sm marcavel-busca"
+               placeholder="Pesquisar na lista..." aria-label="Pesquisar na lista">`
+          : '';
+        controle = `<div class="lista-marcavel" id="${id}">
+          ${pesquisa}
+          <div class="marcavel-lista">${itens
+            || '<div class="text-muted small p-2">Nenhum item disponível.</div>'}</div>
+          <div class="marcavel-contador"></div>
+        </div>`;
         break;
       }
       case 'selecao_livre': {
@@ -217,6 +252,38 @@ const Modal = {
 
   // Estado dos comboboxes pesquisáveis do formulário aberto (id → opções)
   combos: {},
+
+  /** Pesquisa e contador das listas marcáveis. */
+  ligarListasMarcaveis(raiz) {
+    const norm = (s) => s.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[̀-ͯ]/g, '');
+    raiz.querySelectorAll('.lista-marcavel').forEach((caixa) => {
+      const itens = [...caixa.querySelectorAll('.marcavel-item')];
+      const contador = caixa.querySelector('.marcavel-contador');
+      const busca = caixa.querySelector('.marcavel-busca');
+
+      const contar = () => {
+        const n = itens.filter((i) => i.querySelector('input').checked).length;
+        const ocultos = itens.filter((i) => i.classList.contains('d-none')).length;
+        contador.textContent = [
+          n === 0 ? 'Nenhum item marcado' : `${n} marcado${n > 1 ? 's' : ''}`,
+          ocultos ? `${ocultos} fora da pesquisa` : '',
+        ].filter(Boolean).join(' · ');
+      };
+
+      caixa.querySelectorAll('input[type=checkbox]').forEach((ch) =>
+        ch.addEventListener('change', contar));
+      busca?.addEventListener('input', () => {
+        const q = norm(busca.value.trim());
+        // Um item marcado nunca some da lista: some sumiria da conta também
+        itens.forEach((i) => i.classList.toggle(
+          'd-none',
+          q !== '' && !i.querySelector('input').checked && !norm(i.dataset.busca || '').includes(q)
+        ));
+        contar();
+      });
+      contar();
+    });
+  },
 
   ligarSelecaoLivre(raiz) {
     raiz.querySelectorAll('.combo-busca').forEach((caixa) => {
@@ -441,6 +508,9 @@ const Modal = {
         dados[c.nome] = marcado ? (marcado.value === '' || isNaN(marcado.value) ? marcado.value : Number(marcado.value)) : null;
       }
       else if (c.tipo === 'multiselect') dados[c.nome] = Array.from(el.selectedOptions).map((o) => o.value);
+      else if (c.tipo === 'lista_marcavel') {
+        dados[c.nome] = [...el.querySelectorAll('input[type=checkbox]:checked')].map((ch) => ch.value);
+      }
       else if (c.tipo === 'number' || c.tipo === 'faixa') dados[c.nome] = el.value === '' ? null : Number(el.value);
       else dados[c.nome] = el.value;
     }

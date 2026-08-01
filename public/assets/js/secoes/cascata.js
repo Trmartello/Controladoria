@@ -95,8 +95,13 @@ const SecaoCascata = {
 
     const sintese = daCelula(null);
     const cartaoEscolha = (rotulo, registro, eixoId) => {
-      const fatores = (registro?.fatores || []).map((f) =>
-        `<span class="badge text-bg-light border" title="${Modal.esc(f.descricao)}">${f.categoria}${f.score ? ` · GUT ${f.score}` : ''}</span>`).join(' ');
+      // Selo na cor do quadrante, igual ao da SWOT — o texto do fator no title
+      const fatores = (registro?.fatores || []).map((f) => {
+        const cor = Diag.CORES_QUADRANTE[f.categoria] || '#007a45';
+        return `<span class="badge" style="color:${cor};background:${cor}1f"
+          title="${Modal.esc(f.descricao)}">${Diag.QUADRANTES[f.categoria] || f.categoria}${
+          f.score ? ` · GUT ${f.score}` : ''}</span>`;
+      }).join(' ');
       return `<div class="card mb-2"><div class="card-body py-2 px-3">
         <div class="d-flex justify-content-between gap-2">
           <div>
@@ -133,13 +138,18 @@ const SecaoCascata = {
     alvo.querySelectorAll('[data-editar-celula]').forEach((b) => b.addEventListener('click', async () => {
       const eixoId = b.dataset.editarCelula ? parseInt(b.dataset.editarCelula, 10) : null;
       const registro = daCelula(eixoId);
-      // Fatores da SWOT ordenados por score GUT para o vínculo
+      // Fatores da SWOT ordenados por score GUT para o vínculo. A descrição vai
+      // inteira: quem amarra a evidência à decisão precisa ler o fator todo,
+      // não um resumo cortado no meio.
       const swot = await App.api(`/api/fatores?planejamento_id=${this.plan.id}&etapa=SWOT`);
       const opcoesFatores = swot
         .sort((a, c) => (c.score || 0) - (a.score || 0))
         .map((f) => ({
           valor: f.id,
-          rotulo: `${f.score ? `[GUT ${f.score}] ` : ''}${f.categoria}: ${f.descricao.slice(0, 70)}`,
+          texto: f.descricao,
+          selo: Diag.QUADRANTES[f.categoria] || f.categoria,
+          selo2: f.score ? `GUT ${f.score}` : null,
+          cor: Diag.CORES_QUADRANTE[f.categoria] || '#007a45',
         }));
       const eixoNome = eixoId ? this.dados.eixos.find((x) => x.id == eixoId).nome : null;
       Modal.abrir({
@@ -163,8 +173,9 @@ const SecaoCascata = {
           { nome: 'renuncia', rotulo: 'Renúncia (do que abrimos mão)', tipo: 'textarea', linhas: 2 },
           ...(opcoesFatores.length ? [{
             nome: 'fatores', rotulo: 'Fatores que fundamentam (SWOT/GUT)',
-            tipo: 'multiselect', opcoes: opcoesFatores,
-            ajuda: 'Segure Ctrl para selecionar mais de um',
+            tipo: 'lista_marcavel', opcoes: opcoesFatores,
+            ajuda: 'Marque as evidências do diagnóstico que sustentam esta decisão. '
+              + 'A lista vem ordenada pelo score da matriz GUT, do mais crítico ao menos.',
           }] : []),
         ],
       });

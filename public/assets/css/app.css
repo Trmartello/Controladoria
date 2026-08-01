@@ -290,6 +290,61 @@ input[type=range].faixa-verde:focus-visible {
   color: #2a4a3c;
 }
 
+/* ===== Lista de itens marcáveis =====
+   Para escolhas em que é preciso ler o item inteiro antes de marcar (os
+   fatores da SWOT/GUT que fundamentam uma célula da cascata). Nada de
+   reticências: o texto quebra em quantas linhas precisar e a lista rola. */
+.lista-marcavel {
+  border: 1px solid #ced4da;
+  border-radius: .375rem;
+  background: #fff;
+  padding: .35rem;
+}
+.marcavel-busca { margin-bottom: .35rem; }
+.marcavel-lista {
+  max-height: 15rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.marcavel-item {
+  display: flex;
+  gap: .5rem;
+  align-items: flex-start;
+  padding: .45rem .4rem;
+  border-radius: .3rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f2f1;
+}
+.marcavel-item:last-child { border-bottom: 0; }
+.marcavel-item:hover { background: #f2f8f5; }
+.marcavel-item:has(input:checked) { background: #e8f4ee; }
+.marcavel-item input {
+  margin-top: .15rem;
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+}
+.marcavel-corpo { min-width: 0; }
+.marcavel-selos {
+  display: flex;
+  gap: .25rem;
+  flex-wrap: wrap;
+  margin-bottom: .15rem;
+}
+.marcavel-selos .badge { font-size: .65rem; }
+.marcavel-texto {
+  display: block;
+  font-size: .82rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.marcavel-contador {
+  font-size: .72rem;
+  color: #6c757d;
+  padding: .3rem .4rem 0;
+  border-top: 1px solid #f0f2f1;
+}
+
 /* Combobox pesquisável (responsável): busca no topo, lista alfabética abaixo */
 .combo-busca { position: relative; }
 .combo-painel {

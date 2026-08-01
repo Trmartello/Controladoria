@@ -26,7 +26,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `checkbox`, `password`, `number`, `date`, `hidden`, `periodo` (duas datas),
   `info` (bloco só de leitura, com barra colorida opcional), `botoes` (option
   buttons), `quadrantes` (matriz SWOT 2×2), `selecao_livre` (combobox com
-  busca que aceita nome novo) e `faixa` (slider). Opções auxiliares:
+  busca que aceita nome novo), `faixa` (slider) e `lista_marcavel` (itens
+  marcáveis com o **texto inteiro** à vista, selos coloridos, pesquisa acima
+  de 5 itens e contador — usar sempre que o usuário precise ler o item antes
+  de marcar; `multiselect` só serve para listas curtas e não funciona no
+  celular, onde não existe tecla Ctrl). Opções auxiliares:
   `obrigatorio`, `visivelSe: {campo, valores}`, `exemplo`, `ajuda`, `nota`,
   `sufixo`, `passo`. Datas aparecem sempre como dd/mm/aaaa (`ligarDatasBr`).
 - **Cache busting**: todo asset é referenciado nas views com

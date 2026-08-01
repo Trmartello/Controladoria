@@ -328,9 +328,9 @@ const SecaoCadastros = {
           { valor: 'GESTOR', rotulo: 'Gestor de negócio' },
           { valor: 'LEITURA', rotulo: 'Somente leitura' },
         ]},
-        { nome: 'negocios', rotulo: 'Negócios vinculados (Gestor/Leitura)', tipo: 'multiselect',
-          opcoes: negocios.map((n) => ({ valor: n.id, rotulo: n.rotulo })),
-          ajuda: 'Segure Ctrl para selecionar mais de um' },
+        { nome: 'negocios', rotulo: 'Negócios vinculados (Gestor/Leitura)', tipo: 'lista_marcavel',
+          opcoes: negocios.map((n) => ({ valor: n.id, texto: n.rotulo })),
+          ajuda: 'Marque os negócios que este usuário enxerga.' },
         { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' },
       ],
     });
