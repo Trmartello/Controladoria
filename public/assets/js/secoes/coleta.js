@@ -69,6 +69,7 @@ const SecaoColeta = {
   selecionado: null,   // id da ideia na bancada
   relogio: null,       // consulta periódica enquanto a rodada está aberta
   painelOculto: false, // o QR some depois que a sala entrou
+  arrastando: false,   // arraste em curso: o polling não redesenha por cima
 
   /** Sem acento e sem caixa, para agrupar quem disse a mesma coisa. */
   norm(s) {
@@ -124,6 +125,9 @@ const SecaoColeta = {
       if (foco && (foco.tagName === 'TEXTAREA' || foco.tagName === 'INPUT')) return;
       const bancada = document.getElementById('texto-bancada');
       if (bancada && bancada.value !== bancada.defaultValue) return;
+      // Arraste em curso: redesenhar arrancaria a ficha/caixa de baixo do dedo
+      // (no toque o gesto leva 1-2s e passaria por cima de um ciclo do polling)
+      if (this.arrastando) return;
       try {
         const antes = JSON.stringify(this.itens.map((i) => [i.id, i.situacao, i.votos]));
         this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
@@ -393,6 +397,7 @@ const SecaoColeta = {
           if (!arrastando && dist < 8) return;
           if (!arrastando) {
             arrastando = true;
+            this.arrastando = true;
             ficha.classList.add('arrastando');
           }
           e.preventDefault();
@@ -407,6 +412,7 @@ const SecaoColeta = {
           document.removeEventListener('pointermove', mover);
           document.removeEventListener('pointerup', soltar);
           document.removeEventListener('pointercancel', soltar);
+          this.arrastando = false;
           ficha.classList.remove('arrastando');
           alvoAtual?.classList.remove('alvo-juntar');
           if (!arrastando || !alvoAtual) return;
@@ -433,6 +439,21 @@ const SecaoColeta = {
   grupoAtual(item) {
     const g = this.nuvem().find((x) => x.itens.some((i) => i.id === item.id));
     return (g?.itens || [item]).map((i) => i.id);
+  },
+
+  /**
+   * Liga o clique e — quando o elemento é a caixa de grupo (`<div
+   * role="button">`) — também o teclado (Enter/Espaço). Botão nativo já
+   * responde ao teclado sozinho; só a caixa precisa disso na mão, e tanto
+   * para selecionar quanto para retomar da caixa "Tratar depois".
+   */
+  ativarBotao(b, acao) {
+    b.addEventListener('click', acao);
+    if (b.getAttribute('role') === 'button') {
+      b.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); acao(ev); }
+      });
+    }
   },
 
   ligarTempestade(el, ano) {
@@ -471,27 +492,18 @@ const SecaoColeta = {
       }
     }));
 
-    el.querySelectorAll('[data-selecionar]').forEach((b) => {
-      const escolher = () => {
-        // Um arraste que terminou em cima de outra ficha não é um toque
-        if (b.dataset.arrastou === '1') {
-          delete b.dataset.arrastou;
-          return;
-        }
-        const id = Number(b.dataset.selecionar);
-        this.selecionado = this.selecionado === id ? null : id;
-        this.carregar();
-      };
-      b.addEventListener('click', escolher);
-      // A caixa de grupo é um <div role="button">: precisa do teclado na mão
-      if (b.getAttribute('role') === 'button') {
-        b.addEventListener('keydown', (ev) => {
-          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); escolher(); }
-        });
+    el.querySelectorAll('[data-selecionar]').forEach((b) => this.ativarBotao(b, () => {
+      // Um arraste que terminou em cima de outra ficha não é um toque
+      if (b.dataset.arrastou === '1') {
+        delete b.dataset.arrastou;
+        return;
       }
-    });
+      const id = Number(b.dataset.selecionar);
+      this.selecionado = this.selecionado === id ? null : id;
+      this.carregar();
+    }));
 
-    el.querySelectorAll('[data-retomar]').forEach((b) => b.addEventListener('click', async () => {
+    el.querySelectorAll('[data-retomar]').forEach((b) => this.ativarBotao(b, async () => {
       try {
         await App.api(`/api/coleta/${b.dataset.retomar}/adiar`,
           { planejamento_id: this.plan.id, adiado: false });

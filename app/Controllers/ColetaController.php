@@ -377,16 +377,20 @@ class ColetaController
         if ($alvo === $id) {
             Json::erro('Arraste sobre outra ideia.');
         }
-        $this->exigirItem($id, $planId);
+        $origem = $this->exigirItem($id, $planId);
         $itemAlvo = $this->exigirItem($alvo, $planId);
-        // O alvo pode ele mesmo estar agrupado: o líder é sempre o topo
+        // Tanto a arrastada quanto o alvo podem já estar num grupo: o líder é
+        // sempre o topo. A ficha arrastada costuma ser o REPRESENTANTE da caixa
+        // (o item mais antigo), que nem sempre é o líder; resolver o líder de
+        // origem garante que o grupo INTEIRO migra, sem deixar ideias órfãs.
+        $liderOrigem = (int)($origem['agrupado_em_id'] ?? 0) ?: $id;
         $lider = (int)($itemAlvo['agrupado_em_id'] ?? 0) ?: $alvo;
-        if ($lider === $id) {
+        if ($lider === $liderOrigem) {
             Json::erro('Essas ideias já estão no mesmo grupo.');
         }
         Database::executar(
             'UPDATE coleta_item SET agrupado_em_id = ? WHERE planejamento_id = ? AND (id = ? OR agrupado_em_id = ?)',
-            [$lider, $planId, $id, $id]
+            [$lider, $planId, $liderOrigem, $liderOrigem]
         );
         Json::ok(['lider' => $lider]);
     }
