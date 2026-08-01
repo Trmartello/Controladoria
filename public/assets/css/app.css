@@ -369,6 +369,24 @@ table.tabela-cadastro td { vertical-align: middle; }
   text-transform: uppercase;
 }
 
+/* Cards dos horizontes no cadastro de ciclos */
+.cartao-horizonte { border-top: 3px solid var(--dourado); }
+
+/* Reordenação por arrastar-e-soltar (drivers e eixos) */
+.celula-alca { width: 2.2rem; }
+.alca-arrastar {
+  border: 0;
+  background: none;
+  color: #8a939b;
+  font-size: 1.15rem;
+  padding: 0 .4rem;
+  cursor: grab;
+  touch-action: none; /* o dedo arrasta a linha, não a página */
+}
+.alca-arrastar:active { cursor: grabbing; color: var(--verde-coperdia); }
+tr.linha-arrastando td { background: #eef6f1 !important; }
+tr.linha-arrastando { opacity: .85; }
+
 /* Selos que navegam para a etapa de origem / Matriz GUT */
 .selo-link { cursor: pointer; }
 .selo-link:hover { filter: brightness(.94); }

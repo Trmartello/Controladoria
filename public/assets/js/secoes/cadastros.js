@@ -105,16 +105,22 @@ const SecaoCadastros = {
     const alvo = document.getElementById('conteudo-aba');
 
     const blocos = lista.map((c) => {
+      // Cada horizonte é um card: período e tema em destaque, objetivo abaixo
       const horizontes = c.horizontes.map((h) => `
-        <tr>
-          <td><span class="badge badge-horizonte">${Modal.esc(h.nome)}</span></td>
-          <td>${h.ano_inicio}–${h.ano_fim}</td>
-          <td>${Modal.esc(h.tema)}</td>
-          <td class="small">${Modal.esc(h.objetivo)}</td>
-          <td>${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar-h="${h.id}" data-ciclo="${c.id}">Editar</button>` : ''}</td>
-        </tr>`).join('');
+        <div class="col-12 col-md-4">
+          <div class="card cartao-horizonte h-100"><div class="card-body py-2 px-3">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <span class="badge badge-horizonte">${Modal.esc(h.nome)}</span>
+              <strong class="small">${h.ano_inicio}–${h.ano_fim}</strong>
+              ${administra ? `<button class="btn btn-sm btn-outline-secondary ms-auto" data-editar-h="${h.id}"
+                data-ciclo="${c.id}" title="Editar horizonte" aria-label="Editar horizonte">✎</button>` : ''}
+            </div>
+            <div class="fw-bold small text-uppercase">${Modal.esc(h.tema)}</div>
+            <div class="small text-muted texto-fator mt-1">${Modal.esc(h.objetivo)}</div>
+          </div></div>
+        </div>`).join('');
       return `<div class="card mb-3"><div class="card-body">
-        <div class="d-flex justify-content-between align-items-center">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <div>
             <strong>${Modal.esc(c.nome)}</strong>
             <span class="text-muted small">· ano do planejamento: ${c.ano_base} · ${c.status}</span>
@@ -124,11 +130,8 @@ const SecaoCadastros = {
             <button class="btn btn-sm btn-verde" data-novo-h="${c.id}">+ Horizonte</button>` : ''}
           </div>
         </div>
-        <div class="table-responsive">
-          <table class="table table-sm mt-2 mb-0">
-            <thead><tr><th>Horizonte</th><th>Período</th><th>Tema</th><th>Objetivo</th><th></th></tr></thead>
-            <tbody>${horizontes || '<tr><td colspan="5" class="text-muted">Nenhum horizonte.</td></tr>'}</tbody>
-          </table>
+        <div class="row g-2 mt-1">
+          ${horizontes || '<div class="text-muted small">Nenhum horizonte.</div>'}
         </div>
       </div></div>`;
     }).join('');
@@ -137,6 +140,7 @@ const SecaoCadastros = {
       ${administra ? '<button class="btn btn-verde btn-sm mb-2" id="btn-novo-ciclo">+ Novo ciclo</button>' : ''}
       ${blocos || '<div class="text-muted">Nenhum ciclo cadastrado.</div>'}`;
 
+    Diag.ligarVerMais(alvo);
     if (!administra) return;
 
     const modalCiclo = (c = null) => Modal.abrir({
@@ -192,13 +196,16 @@ const SecaoCadastros = {
     const lista = await App.api(`/api/${tipo}`);
     const alvo = document.getElementById('conteudo-aba');
     alvo.innerHTML = `
-      ${administra ? `<button class="btn btn-verde btn-sm mb-2" id="btn-novo-item">+ Novo</button>` : ''}
+      ${administra ? `<button class="btn btn-verde btn-sm mb-2" id="btn-novo-item">+ Novo</button>
+        <p class="text-muted small mb-2">Arraste pelo ⠿ para reordenar a prioridade — a nova ordem é salva na hora.</p>` : ''}
       <div class="table-responsive">
         <table class="table table-sm tabela-cadastro">
-          <thead><tr><th>Ordem</th><th>${rotulo}</th><th>Situação</th><th></th></tr></thead>
-          <tbody>${lista.map((i) => `
-            <tr class="${i.ativo == 1 ? '' : 'table-secondary'}">
-              <td>${i.ordem}</td>
+          <thead><tr>${administra ? '<th></th>' : ''}<th>Ordem</th><th>${rotulo}</th><th>Situação</th><th></th></tr></thead>
+          <tbody id="linhas-ordenaveis">${lista.map((i) => `
+            <tr data-id="${i.id}" class="${i.ativo == 1 ? '' : 'table-secondary'}">
+              ${administra ? `<td class="celula-alca"><button type="button" class="alca-arrastar"
+                title="Arrastar para reordenar" aria-label="Arrastar para reordenar">⠿</button></td>` : ''}
+              <td class="celula-ordem">${i.ordem}</td>
               <td>${Modal.esc(i.nome)}</td>
               <td>${i.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
               <td>${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}">Editar</button>` : ''}</td>
@@ -207,19 +214,62 @@ const SecaoCadastros = {
       </div>`;
 
     if (!administra) return;
+    this.ligarArrastar(document.getElementById('linhas-ordenaveis'), async (ids) => {
+      await App.api(`/api/${tipo}/reordenar`, { ids });
+    });
+
     const abrirModal = (i = null) => Modal.abrir({
       titulo: i ? `Editar ${rotulo.toLowerCase()}` : `Novo ${rotulo.toLowerCase()}`,
       url: i ? `/api/${tipo}/${i.id}` : `/api/${tipo}`,
       valores: i ? { ...i, ativo: i.ativo == 1 } : { ativo: true },
       campos: [
         { nome: 'nome', rotulo },
-        { nome: 'ordem', rotulo: 'Ordem', tipo: 'number', padrao: 0 },
         { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox' },
       ],
     });
     document.getElementById('btn-novo-item').addEventListener('click', () => abrirModal());
     alvo.querySelectorAll('[data-editar]').forEach((b) => {
       b.addEventListener('click', () => abrirModal(lista.find((i) => i.id == b.dataset.editar)));
+    });
+  },
+
+  // Arrastar-e-soltar das linhas (mouse e toque): segure a alça ⠿ e mova; ao
+  // soltar, a ordem das linhas vira a prioridade e é gravada via aoSoltar
+  ligarArrastar(tbody, aoSoltar) {
+    tbody.querySelectorAll('.alca-arrastar').forEach((alca) => {
+      alca.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault();
+        const linha = alca.closest('tr');
+        linha.classList.add('linha-arrastando');
+        // Listeners no document: mover a linha no DOM cancelaria a captura de
+        // ponteiro da alça e o arrasto morreria no primeiro reposicionamento
+        const mover = (e) => {
+          const sob = document.elementFromPoint(e.clientX, e.clientY)?.closest('tr');
+          if (!sob || sob === linha || sob.parentElement !== tbody) return;
+          const r = sob.getBoundingClientRect();
+          if (e.clientY < r.top + r.height / 2) tbody.insertBefore(linha, sob);
+          else tbody.insertBefore(linha, sob.nextSibling);
+        };
+        const soltar = async () => {
+          document.removeEventListener('pointermove', mover);
+          document.removeEventListener('pointerup', soltar);
+          document.removeEventListener('pointercancel', soltar);
+          linha.classList.remove('linha-arrastando');
+          const linhas = [...tbody.querySelectorAll('tr[data-id]')];
+          try {
+            await aoSoltar(linhas.map((t) => Number(t.dataset.id)));
+            linhas.forEach((t, i) => {
+              const cel = t.querySelector('.celula-ordem');
+              if (cel) cel.textContent = i + 1;
+            });
+          } catch (e) {
+            alert(e.message);
+          }
+        };
+        document.addEventListener('pointermove', mover);
+        document.addEventListener('pointerup', soltar);
+        document.addEventListener('pointercancel', soltar);
+      });
     });
   },
 

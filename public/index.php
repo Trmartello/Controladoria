@@ -144,6 +144,8 @@ try {
             (new DriverEixoController())->listar($m[1]); break;
         case (bool)preg_match('#^POST /api/(drivers|eixos)$#', $rota, $m):
             (new DriverEixoController())->salvar($m[1]); break;
+        case (bool)preg_match('#^POST /api/(drivers|eixos)/reordenar$#', $rota, $m):
+            (new DriverEixoController())->reordenar($m[1]); break;
         case (bool)preg_match('#^POST /api/(drivers|eixos)/(\d+)$#', $rota, $m):
             (new DriverEixoController())->salvar($m[1], (int)$m[2]); break;
 
