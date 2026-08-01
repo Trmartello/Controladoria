@@ -133,9 +133,10 @@ const Modal = {
         const min = c.min ?? 0;
         const max = c.max ?? 100;
         const atual = v === '' || v === null || v === undefined ? min : Number(v);
+        const pct = max > min ? Math.round(((atual - min) / (max - min)) * 100) : 0;
         controle = `<div class="campo-faixa">
-          <input type="range" class="form-range" id="${id}" min="${min}" max="${max}"
-            step="${c.passo ?? 1}" value="${atual}">
+          <input type="range" class="faixa-verde" id="${id}" min="${min}" max="${max}"
+            step="${c.passo ?? 1}" value="${atual}" style="--pct:${pct}%">
           <div class="d-flex justify-content-between faixa-limites">
             <span>${min}${this.esc(c.sufixo || '')}</span>
             <span>${max}${this.esc(c.sufixo || '')}</span>
@@ -316,8 +317,13 @@ const Modal = {
     raiz.querySelectorAll('input[type=range]').forEach((r) => {
       const sufixo = campos.find((c) => `campo-${c.nome}` === r.id)?.sufixo || '';
       const alvo = document.getElementById(`${r.id}-valor`);
+      const min = Number(r.min || 0);
+      const max = Number(r.max || 100);
       r.addEventListener('input', () => {
         if (alvo) alvo.textContent = `${r.value}${sufixo}`;
+        // Pinta o trilho até a posição do pino
+        const pct = max > min ? Math.round(((Number(r.value) - min) / (max - min)) * 100) : 0;
+        r.style.setProperty('--pct', `${pct}%`);
       });
     });
   },

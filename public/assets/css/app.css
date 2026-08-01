@@ -118,6 +118,67 @@ table.tabela-cadastro td { vertical-align: middle; }
 
 /* Painel consolidado */
 .tabela-painel td, .tabela-painel th { white-space: nowrap; }
+/* ===== Barras de progresso — um desenho só em todo o sistema =====
+   Trilho fino arredondado; quando é editável, vira um controle deslizante
+   com a mesma aparência e um pino redondo verde. */
+.faixa-progresso {
+  height: 8px;
+  border-radius: 999px;
+  background: #e9ecef;
+  overflow: hidden;
+  min-width: 60px;
+}
+.faixa-progresso > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--verde-coperdia);
+  transition: width .15s linear;
+}
+.faixa-progresso.cheia > span { background: var(--dourado); }
+.faixa-progresso.alerta > span { background: #8f3b3b; }
+.valor-progresso {
+  font-weight: 700;
+  font-size: .78rem;
+  color: var(--verde-coperdia);
+  min-width: 2.6rem;
+  text-align: right;
+}
+
+input[type=range].faixa-verde {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    var(--verde-coperdia) 0 var(--pct, 0%), #e9ecef var(--pct, 0%) 100%);
+  cursor: pointer;
+  touch-action: none; /* o dedo arrasta o valor, não rola a página */
+}
+input[type=range].faixa-verde::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--verde-coperdia);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+input[type=range].faixa-verde::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--verde-coperdia);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+input[type=range].faixa-verde:focus-visible {
+  outline: 2px solid var(--verde-escuro);
+  outline-offset: 2px;
+}
+
 .mini-progresso { height: 12px; min-width: 90px; }
 
 /* Diagnóstico — botões compactos nos cartões de fatores/cenário */
@@ -208,9 +269,6 @@ table.tabela-cadastro td { vertical-align: middle; }
   font-weight: 800;
   color: var(--verde-coperdia);
 }
-.campo-faixa .form-range { padding: 0; }
-.campo-faixa .form-range::-webkit-slider-thumb { background: var(--verde-coperdia); }
-.campo-faixa .form-range::-moz-range-thumb { background: var(--verde-coperdia); }
 .faixa-limites { font-size: .7rem; color: #8a939b; }
 .grade-datas { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .sub-rotulo {
@@ -380,30 +438,6 @@ table.tabela-cadastro td { vertical-align: middle; }
 .acoes-iniciativa { padding-top: .5rem; }
 .acao-card { border-left: 4px solid var(--cor-prio, #b08d4f); }
 
-/* Barra de progresso ajustável no próprio cartão: o range fica invisível por
-   cima da barra, então o dedo arrasta direto sobre ela */
-.barra-progresso { position: relative; }
-.barra-progresso .ajuste-progresso {
-  position: absolute;
-  inset: -6px 0;
-  width: 100%;
-  height: calc(100% + 12px);
-  margin: 0;
-  opacity: 0;
-  cursor: ew-resize;
-  touch-action: none;
-}
-.barra-progresso .rotulo-progresso {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: .7rem;
-  font-weight: 700;
-  color: #1a1a1a;
-  pointer-events: none;
-}
 .selo-prioridade {
   font-size: .65rem;
   font-weight: 800;

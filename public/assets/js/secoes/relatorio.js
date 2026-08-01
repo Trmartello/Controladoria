@@ -60,8 +60,8 @@ const SecaoRelatorio = {
         <td>${Modal.esc(p.prazo || '—')}</td>
         <td><span class="badge ${classe}">${rotulo}</span>
           ${Number(p.desdobramentos_atrasados) ? `<span class="badge text-bg-danger ms-1">${p.desdobramentos_atrasados} 5W2H atrasado(s)</span>` : ''}</td>
-        <td style="min-width:110px"><div class="progress mini-progresso">
-          <div class="progress-bar bg-success" style="width:${p.progresso}%"></div>
+        <td style="min-width:110px"><div class="faixa-progresso mini-progresso">
+          <span style="width:${p.progresso}%"></span>
         </div><span class="small text-muted">${p.progresso}%</span></td>
       </tr>`;
     }).join('');

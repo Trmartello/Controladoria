@@ -48,8 +48,12 @@ const SecaoInvestimentos = {
             ${env ? `
               <div class="small mt-1">Envelope: <strong>R$ ${moeda(limite)}</strong>
                 ${Number(env.flex_percentual) ? `<span class="badge badge-horizonte">±${Number(env.flex_percentual)}%</span>` : ''}</div>
-              <div class="progress mt-1" style="height:14px" title="Comprometido R$ ${moeda(comprometido)}">
-                <div class="progress-bar ${pct >= 100 ? 'bg-danger' : 'bg-success'}" style="width:${pct}%">${pct}%</div>
+              <div class="d-flex align-items-center gap-2 mt-1">
+                <div class="faixa-progresso flex-grow-1 ${pct >= 100 ? 'alerta' : ''}"
+                  title="Comprometido R$ ${moeda(comprometido)}">
+                  <span style="width:${Math.min(100, pct)}%"></span>
+                </div>
+                <span class="valor-progresso ${pct >= 100 ? 'text-danger' : ''}">${pct}%</span>
               </div>
               <div class="small text-muted mt-1">Comprometido: R$ ${moeda(comprometido)} · Disponível: R$ ${moeda(Math.max(0, limite - comprometido))}</div>
               ${env.regras ? `<div class="small text-muted mt-1"><strong>Guard-rails:</strong> ${Modal.esc(env.regras)}</div>` : ''}

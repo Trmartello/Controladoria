@@ -112,18 +112,15 @@ const SecaoProjetos = {
         ${detalhes ? `<div class="small text-muted">${detalhes}</div>` : ''}
         <div class="d-flex align-items-center gap-2 mt-2">
           ${App.podeEditar() ? `
-          <div class="barra-progresso flex-grow-1" title="Arraste para ajustar o progresso">
-            <div class="progress" style="height:14px">
-              <div class="progress-bar bg-success" data-barra="${a.id}" style="width:${a.progresso}%"></div>
-            </div>
-            <input type="range" class="ajuste-progresso" min="0" max="100" step="5"
-              value="${a.progresso}" data-progresso="${a.id}" data-proj="${p.id}"
-              aria-label="Progresso da ação">
-            <span class="rotulo-progresso" data-rotulo="${a.id}">${a.progresso}%</span>
-          </div>` : `
-          <div class="progress flex-grow-1" style="height:14px" title="${a.progresso}%">
-            <div class="progress-bar bg-success" style="width:${a.progresso}%">${a.progresso}%</div>
-          </div>`}
+          <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="5"
+            style="--pct:${a.progresso}%" value="${a.progresso}"
+            data-progresso="${a.id}" data-proj="${p.id}"
+            title="Arraste para ajustar o progresso" aria-label="Progresso da ação">
+          <span class="valor-progresso" data-rotulo="${a.id}">${a.progresso}%</span>` : `
+          <div class="faixa-progresso flex-grow-1" title="${a.progresso}%">
+            <span style="width:${a.progresso}%"></span>
+          </div>
+          <span class="valor-progresso">${a.progresso}%</span>`}
           <span class="d-flex gap-1 flex-shrink-0">
             <button class="btn btn-sm btn-outline-success" data-diario="DESDOBRAMENTO:${a.id}">Diário</button>
             ${App.podeEditar() ? `
@@ -196,11 +193,11 @@ const SecaoProjetos = {
               ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning ms-1">Prioritário</span>' : ''}
               ${badge(p.status)}
               <div class="d-flex align-items-center gap-2 mt-1 panorama-projeto">
-                <div class="progress flex-grow-1" style="height:8px;max-width:180px"
+                <div class="faixa-progresso flex-grow-1" style="max-width:180px"
                   title="Progresso médio das ações">
-                  <div class="progress-bar bg-success" data-barra-projeto style="width:${media}%"></div>
+                  <span data-barra-projeto style="width:${media}%"></span>
                 </div>
-                <span class="badge text-bg-light border" data-media-projeto>${media}%</span>
+                <span class="valor-progresso" data-media-projeto>${media}%</span>
                 <span class="small text-muted">${(p.iniciativas || []).length} iniciativa(s) ·
                   ${concluidas}/${acoes.length} ações</span>
                 ${atrasadas ? `<span class="badge text-bg-danger">${atrasadas} atrasada(s)</span>` : ''}
@@ -340,12 +337,12 @@ const SecaoProjetos = {
     // rótulo acompanham o dedo e a gravação sai só ao soltar
     el.querySelectorAll('[data-progresso]').forEach((r) => {
       const id = r.dataset.progresso;
-      const barra = el.querySelector(`[data-barra="${id}"]`);
       const rotulo = el.querySelector(`[data-rotulo="${id}"]`);
-      r.addEventListener('input', () => {
-        barra.style.width = `${r.value}%`;
-        rotulo.textContent = `${r.value}%`;
-      });
+      const pintar = (v) => {
+        r.style.setProperty('--pct', `${v}%`);
+        rotulo.textContent = `${v}%`;
+      };
+      r.addEventListener('input', () => pintar(r.value));
       r.addEventListener('change', async () => {
         const anterior = r.dataset.salvo ?? r.defaultValue;
         try {
@@ -357,8 +354,7 @@ const SecaoProjetos = {
         } catch (e) {
           // Falhou: devolve a barra ao valor que está no servidor
           r.value = anterior;
-          barra.style.width = `${anterior}%`;
-          rotulo.textContent = `${anterior}%`;
+          pintar(anterior);
           alert(e.message);
         }
       });
@@ -486,11 +482,16 @@ const SecaoProjetos = {
         // antigos seguem preservados nos campos ocultos
         { nome: 'por_que', rotulo: '', tipo: 'hidden' },
         { nome: 'onde', rotulo: '', tipo: 'hidden' },
+        // Ordem pedida: o quê, quem, como, prioridade, quando, repetição,
+        // quanto custa, status e progresso
         { nome: 'o_que', rotulo: 'O quê?', obrigatorio: true, tipo: 'textarea', linhas: 2,
           exemplo: 'Ex.: Contratar projeto executivo dos silos' },
         { nome: 'quem', rotulo: 'Quem?', tipo: 'selecao_livre', opcoes: this.responsaveis,
           obrigatorio: true, vazio: '(selecione o responsável)',
           ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
+        { nome: 'como', rotulo: 'Como?' },
+        { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes:
+          Object.entries(PRIORIDADES).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
         { nome: 'quando_', rotulo: '', tipo: 'hidden' },
         { nome: 'quando_periodo', rotulo: 'Quando?', tipo: 'periodo',
           campos: [
@@ -498,8 +499,6 @@ const SecaoProjetos = {
             { nome: 'data_fim', rotulo: 'Fim previsto' },
           ],
           ajuda: 'Toque no campo para abrir o calendário.' },
-        { nome: 'como', rotulo: 'Como?' },
-        { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number' },
         { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', opcoes: [
           { valor: 'NENHUMA', rotulo: 'Não se repete' },
           { valor: 'SEMANAL', rotulo: 'Toda semana' },
@@ -515,8 +514,7 @@ const SecaoProjetos = {
         { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date',
           visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
           ajuda: 'Opcional — depois dessa data a ação encerra de vez.' },
-        { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes:
-          Object.entries(PRIORIDADES).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
+        { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number' },
         { nome: 'status', rotulo: 'Status', tipo: 'select',
           opcoes: this.opcoesStatusAcao(dd?.status),
           ajuda: '“No prazo” e “Atrasada” são definidos pela data de fim — escolha um status manual só quando quiser fixá-lo.' },

@@ -9,8 +9,8 @@ const SecaoPainel = {
 
   barra(feito, total, titulo = '') {
     const pct = total ? Math.round(100 * feito / total) : 0;
-    return `<div class="progress mini-progresso" title="${Modal.esc(titulo)}">
-      <div class="progress-bar ${pct >= 100 ? 'bg-success' : 'bg-info'}" style="width:${pct}%"></div>
+    return `<div class="faixa-progresso mini-progresso" title="${Modal.esc(titulo)}">
+      <span style="width:${pct}%"></span>
     </div><span class="small text-muted">${feito}/${total}</span>`;
   },
 
