@@ -16,6 +16,7 @@ class ProjetoController
     private const STATUS_PROJETO = ['NAO_INICIADO', 'EM_ANDAMENTO', 'CONCLUIDO', 'ATRASADO', 'CANCELADO'];
     private const STATUS_INICIATIVA = ['ABERTA', 'EM_ANDAMENTO', 'CONCLUIDA'];
     private const PRIORIDADES = ['ALTA', 'MEDIA', 'BAIXA'];
+    private const RECORRENCIAS = ['NENHUMA', 'SEMANAL', 'MENSAL'];
 
     public function listar(): void
     {
@@ -104,6 +105,58 @@ class ProjetoController
              WHERE p.planejamento_id = ? AND p.status <> 'CANCELADO'",
             [$planId]
         );
+    }
+
+    /**
+     * Próxima data de uma ação recorrente a partir de uma data-base.
+     * SEMANAL: próximo dia da semana escolhido (1=segunda … 7=domingo).
+     * MENSAL: mesmo dia no mês seguinte, ajustado quando o mês é mais curto
+     * (dia 31 em abril vira 30).
+     */
+    private function proximaOcorrencia(string $base, string $recorrencia, int $dia): ?string
+    {
+        $d = \DateTimeImmutable::createFromFormat('!Y-m-d', $base);
+        if (!$d) {
+            return null;
+        }
+        if ($recorrencia === 'SEMANAL') {
+            $alvo = max(1, min(7, $dia));
+            $atual = (int)$d->format('N');
+            $somar = ($alvo - $atual + 7) % 7;
+            return $d->modify('+' . ($somar === 0 ? 7 : $somar) . ' days')->format('Y-m-d');
+        }
+        if ($recorrencia === 'MENSAL') {
+            $alvo = max(1, min(31, $dia));
+            $mes = $d->modify('first day of next month');
+            $ultimo = (int)$mes->format('t');
+            return $mes->setDate((int)$mes->format('Y'), (int)$mes->format('n'), min($alvo, $ultimo))
+                ->format('Y-m-d');
+        }
+        return null;
+    }
+
+    /**
+     * Ação recorrente concluída não encerra: registra a conclusão no diário e
+     * reabre na próxima data prevista. Devolve os campos já ajustados, ou null
+     * quando não há recorrência (ou o limite foi atingido).
+     */
+    private function reagendarRecorrente(array $acao, string $recorrencia, ?int $dia, ?string $ate, ?string $fim): ?array
+    {
+        if ($recorrencia === 'NENHUMA' || !$dia) {
+            return null;
+        }
+        $base = $fim ?: date('Y-m-d');
+        $proxima = $this->proximaOcorrencia($base, $recorrencia, $dia);
+        if (!$proxima || ($ate !== null && $proxima > $ate)) {
+            return null; // passou do limite: a ação encerra de vez
+        }
+        // Mantém a mesma janela entre início e fim na próxima ocorrência
+        $novoInicio = null;
+        if (!empty($acao['data_inicio']) && $fim) {
+            $dias = (int)((new \DateTimeImmutable($fim))->diff(new \DateTimeImmutable($acao['data_inicio']))->days);
+            $novoInicio = (new \DateTimeImmutable($proxima))->modify("-{$dias} days")->format('Y-m-d');
+        }
+        return ['data_inicio' => $novoInicio, 'data_fim' => $proxima];
     }
 
     /** Resolve o status de uma ação na gravação, respeitando os manuais. */
@@ -273,15 +326,59 @@ class ProjetoController
 
         [$inicio, $fim] = $this->periodo($d);
         $status = $this->resolverStatus($status, $fim);
+
+        // Repetição da ação (ex.: toda segunda-feira, ou todo dia 5)
+        $recorrencia = $d['recorrencia'] ?? 'NENHUMA';
+        if (!in_array($recorrencia, self::RECORRENCIAS, true)) {
+            Json::erro('Repetição inválida.');
+        }
+        $recDia = $recorrencia === 'NENHUMA' ? null : (int)($d['recorrencia_dia'] ?? 0);
+        if ($recorrencia !== 'NENHUMA') {
+            $limite = $recorrencia === 'SEMANAL' ? 7 : 31;
+            if ($recDia < 1 || $recDia > $limite) {
+                Json::erro($recorrencia === 'SEMANAL'
+                    ? 'Escolha o dia da semana da repetição.'
+                    : 'Escolha o dia do mês da repetição.');
+            }
+            if ($fim === null) {
+                Json::erro('Ação que se repete precisa de uma data de fim — é dela que sai a próxima data.');
+            }
+        }
+        $recAte = null;
+        if ($recorrencia !== 'NENHUMA' && trim((string)($d['recorrencia_ate'] ?? '')) !== '') {
+            [$recAte] = $this->periodo(['data_inicio' => $d['recorrencia_ate']]);
+        }
+
         // Marca (ou limpa) a conclusão conforme o status final
-        $anterior = $id ? Database::um('SELECT status, concluido_em FROM desdobramento WHERE id = ?', [$id]) : null;
+        $anterior = $id ? Database::um('SELECT * FROM desdobramento WHERE id = ?', [$id]) : null;
         $concluidoEm = $status === 'CONCLUIDO'
             ? ($anterior['concluido_em'] ?? null) ?: date('Y-m-d H:i:s')
             : null;
 
+        // Concluir uma ação recorrente reabre na próxima data prevista
+        $reagendou = null;
+        if ($status === 'CONCLUIDO' && $recorrencia !== 'NENHUMA'
+            && ($anterior === null || $anterior['status'] !== 'CONCLUIDO')) {
+            $reagendou = $this->reagendarRecorrente(
+                ['data_inicio' => $inicio],
+                $recorrencia,
+                $recDia,
+                $recAte,
+                $fim
+            );
+            if ($reagendou !== null) {
+                $inicio = $reagendou['data_inicio'];
+                $fim = $reagendou['data_fim'];
+                $status = $this->resolverStatus('NAO_INICIADO', $fim);
+                $progresso = 0;
+                $concluidoEm = null;
+            }
+        }
+
         $params = [
             $projetoId, $iniciativaId, $oQue, trim($d['por_que'] ?? ''),
-            $quem,
+            $quem, $this->usuarioPorNome($quem),
+            $recorrencia, $recDia, $recAte,
             mb_substr(trim($d['quando_'] ?? ''), 0, 60),
             $inicio, $fim,
             mb_substr(trim($d['onde'] ?? ''), 0, 120),
@@ -292,6 +389,7 @@ class ProjetoController
             $this->exigirDesdobramento($id, $planId);
             Database::executar(
                 'UPDATE desdobramento SET projeto_id = ?, iniciativa_id = ?, o_que = ?, por_que = ?, quem = ?,
+                   quem_usuario_id = ?, recorrencia = ?, recorrencia_dia = ?, recorrencia_ate = ?,
                    quando_ = ?, data_inicio = ?, data_fim = ?, onde = ?, como = ?,
                    quanto = ?, status = ?, prioridade = ?, progresso = ?, concluido_em = ?, ordem = ?
                  WHERE id = ?',
@@ -299,13 +397,38 @@ class ProjetoController
             );
         } else {
             $id = (int)Database::executar(
-                'INSERT INTO desdobramento (projeto_id, iniciativa_id, o_que, por_que, quem, quando_,
+                'INSERT INTO desdobramento (projeto_id, iniciativa_id, o_que, por_que, quem, quem_usuario_id,
+                   recorrencia, recorrencia_dia, recorrencia_ate, quando_,
                    data_inicio, data_fim, onde, como, quanto, status, prioridade, progresso, concluido_em, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 $params
             );
         }
-        Json::ok(['id' => $id]);
+
+        // A conclusão de uma ocorrência fica registrada no diário de bordo
+        if ($reagendou !== null) {
+            Database::executar(
+                "INSERT INTO diario_bordo (ref_tipo, ref_id, data_reg, autor_id, texto, status_atual, progresso)
+                 VALUES ('DESDOBRAMENTO', ?, CURDATE(), ?, ?, 'CONCLUIDO', 100)",
+                [
+                    $id,
+                    (int)Auth::usuario()['id'],
+                    'Ocorrência concluída; próxima prevista para '
+                        . date('d/m/Y', strtotime($reagendou['data_fim'])) . '.',
+                ]
+            );
+        }
+        Json::ok(['id' => $id, 'reagendada_para' => $reagendou['data_fim'] ?? null]);
+    }
+
+    /** Casa o nome digitado em "Quem?" com um usuário ativo de mesmo nome. */
+    private function usuarioPorNome(string $nome): ?int
+    {
+        if ($nome === '') {
+            return null;
+        }
+        $u = Database::um('SELECT id FROM usuario WHERE ativo = 1 AND nome = ?', [$nome]);
+        return $u ? (int)$u['id'] : null;
     }
 
     public function excluirDesdobramento(int $id): void

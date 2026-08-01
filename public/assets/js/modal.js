@@ -40,6 +40,7 @@ const Modal = {
     this.ligarSelecaoLivre(form);
     this.ligarDatasBr(form);
     this.ligarFaixas(form, campos);
+    this.ligarCondicionais(form, campos);
 
     if (!this.bsModal) {
       this.bsModal = new bootstrap.Modal(document.getElementById('modal-form'));
@@ -290,6 +291,24 @@ const Modal = {
         if (!painel.classList.contains('d-none') && !ev.target.closest('.combo-busca')) fechar();
       });
     });
+  },
+
+  // Campos que só aparecem conforme o valor de outro (visivelSe: {campo, valores})
+  ligarCondicionais(raiz, campos) {
+    const condicionais = campos.filter((c) => c.visivelSe);
+    if (!condicionais.length) return;
+    const aplicar = () => {
+      for (const c of condicionais) {
+        const gatilho = document.getElementById(`campo-${c.visivelSe.campo}`);
+        const bloco = document.getElementById(`campo-${c.nome}`)?.closest('.mb-3');
+        if (!gatilho || !bloco) continue;
+        bloco.classList.toggle('d-none', !c.visivelSe.valores.includes(gatilho.value));
+      }
+    };
+    new Set(condicionais.map((c) => c.visivelSe.campo)).forEach((nome) => {
+      document.getElementById(`campo-${nome}`)?.addEventListener('change', aplicar);
+    });
+    aplicar();
   },
 
   // O valor da faixa acompanha o arraste do controle

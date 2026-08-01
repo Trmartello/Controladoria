@@ -24,6 +24,11 @@ const STATUS_MANUAIS = ['EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO', 'PAUSADO', 'AG
 const PRIORIDADES = {
   ALTA: ['Alta', '#b3261e'], MEDIA: ['Média', '#b08d4f'], BAIXA: ['Baixa', '#2c7fb8'],
 };
+// 1 = segunda … 7 = domingo (mesma numeração do PHP: date('N'))
+const DIAS_SEMANA = [
+  [1, 'Segunda-feira'], [2, 'Terça-feira'], [3, 'Quarta-feira'], [4, 'Quinta-feira'],
+  [5, 'Sexta-feira'], [6, 'Sábado'], [7, 'Domingo'],
+];
 const STATUS_INICIATIVA = {
   ABERTA: ['Aberta', 'text-bg-light border'],
   EM_ANDAMENTO: ['Em andamento', 'text-bg-primary'],
@@ -89,11 +94,15 @@ const SecaoProjetos = {
     ].filter(Boolean).map(Modal.esc).join(' · ');
     const timeline = this.diarioAberto?.refTipo === 'DESDOBRAMENTO' && this.diarioAberto?.refId === a.id
       ? `<div id="diario-DESDOBRAMENTO-${a.id}" class="mt-2"></div>` : '';
+    const repeticao = a.recorrencia === 'SEMANAL'
+      ? `toda ${(DIAS_SEMANA.find(([v]) => v == a.recorrencia_dia) || [, ''])[1].toLowerCase()}`
+      : a.recorrencia === 'MENSAL' ? `todo dia ${a.recorrencia_dia}` : '';
     return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}">
       <div class="card-body py-2 px-2">
         <div class="d-flex align-items-center gap-1 flex-wrap mb-1">
           <span class="badge selo-prioridade" style="color:${corPrio};background:${corPrio}1f">${rotPrio}</span>
           <span class="badge ${classe}">${rotulo}</span>
+          ${repeticao ? `<span class="badge text-bg-light border" title="Ação recorrente">↻ ${repeticao}</span>` : ''}
           ${prazo ? `<span class="small text-muted ms-auto">${Modal.esc(prazo)}</span>` : ''}
         </div>
         <div class="small">${Modal.esc(a.o_que)}</div>
@@ -345,9 +354,23 @@ const SecaoProjetos = {
       url: dd ? `/api/desdobramentos/${dd.id}` : '/api/desdobramentos',
       valores: dd
         ? { ...dd, quanto: dd.quanto ?? '', planejamento_id: this.plan.id, projeto_id: projetoId,
-            iniciativa_id: dd.iniciativa_id ?? iniciativaId }
+            iniciativa_id: dd.iniciativa_id ?? iniciativaId,
+            recorrencia: dd.recorrencia || 'NENHUMA',
+            recorrencia_ate: dd.recorrencia_ate ?? '',
+            recorrencia_dia_semana: dd.recorrencia === 'SEMANAL' ? dd.recorrencia_dia : 1,
+            recorrencia_dia_mes: dd.recorrencia === 'MENSAL' ? dd.recorrencia_dia : 1 }
         : { planejamento_id: this.plan.id, projeto_id: projetoId, iniciativa_id: iniciativaId,
-            progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO' },
+            progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO', recorrencia: 'NENHUMA',
+            recorrencia_dia_semana: 1, recorrencia_dia_mes: 1 },
+      // O dia enviado depende do tipo de repetição escolhido
+      transformar: (dados) => {
+        const { recorrencia_dia_semana: sem, recorrencia_dia_mes: mes, ...resto } = dados;
+        return {
+          ...resto,
+          recorrencia_dia: resto.recorrencia === 'SEMANAL' ? Number(sem)
+            : resto.recorrencia === 'MENSAL' ? Number(mes) : null,
+        };
+      },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'projeto_id', rotulo: '', tipo: 'hidden' },
@@ -370,6 +393,21 @@ const SecaoProjetos = {
           ajuda: 'Toque no campo para abrir o calendário.' },
         { nome: 'como', rotulo: 'Como?' },
         { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number' },
+        { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', opcoes: [
+          { valor: 'NENHUMA', rotulo: 'Não se repete' },
+          { valor: 'SEMANAL', rotulo: 'Toda semana' },
+          { valor: 'MENSAL', rotulo: 'Todo mês' },
+        ], ajuda: 'Ao concluir uma ação que se repete, ela reabre na próxima data prevista.' },
+        { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select',
+          visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
+          opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo })) },
+        { nome: 'recorrencia_dia_mes', rotulo: 'Repete todo dia', tipo: 'select',
+          visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
+          opcoes: Array.from({ length: 31 }, (_, i) => ({ valor: i + 1, rotulo: String(i + 1) })),
+          ajuda: 'Em meses mais curtos, cai no último dia do mês.' },
+        { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date',
+          visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
+          ajuda: 'Opcional — depois dessa data a ação encerra de vez.' },
         { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes:
           Object.entries(PRIORIDADES).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
         { nome: 'status', rotulo: 'Status', tipo: 'select',

@@ -128,6 +128,25 @@ $pdo->exec(
      WHERE p.horizonte_id IS NULL AND (p.ano IS NULL OR p.ano < c.ano_inicio)'
 );
 
+// Ações recorrentes (semanal/mensal) e vínculo do responsável com o usuário,
+// para o disparo dos avisos por e-mail
+garantirColuna($pdo, 'desdobramento', 'quem_usuario_id',
+    'ALTER TABLE desdobramento ADD COLUMN quem_usuario_id INT NULL AFTER quem');
+garantirColuna($pdo, 'desdobramento', 'recorrencia',
+    "ALTER TABLE desdobramento ADD COLUMN recorrencia
+     ENUM('NENHUMA','SEMANAL','MENSAL') NOT NULL DEFAULT 'NENHUMA' AFTER quem_usuario_id");
+garantirColuna($pdo, 'desdobramento', 'recorrencia_dia',
+    'ALTER TABLE desdobramento ADD COLUMN recorrencia_dia TINYINT NULL AFTER recorrencia');
+garantirColuna($pdo, 'desdobramento', 'recorrencia_ate',
+    'ALTER TABLE desdobramento ADD COLUMN recorrencia_ate DATE NULL AFTER recorrencia_dia');
+// Casa o nome digitado em "Quem?" com o usuário cadastrado de mesmo nome
+$pdo->exec(
+    'UPDATE desdobramento d
+     JOIN usuario u ON u.ativo = 1 AND u.nome = d.quem
+     SET d.quem_usuario_id = u.id
+     WHERE d.quem_usuario_id IS NULL AND d.quem IS NOT NULL AND d.quem <> \'\''
+);
+
 // Ações criadas antes das iniciativas são agrupadas numa frente padrão
 $pdo->exec(
     "INSERT INTO iniciativa (projeto_id, titulo, ordem)

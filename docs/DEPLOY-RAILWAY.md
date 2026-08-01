@@ -38,7 +38,25 @@ E estas variáveis simples (valores seus):
 |---|---|---|
 | `ADMIN_EMAIL` | `trm.martello@gmail.com` | login inicial (opcional; padrão `admin@coperdia.com.br`) |
 | `ADMIN_SENHA` | *(senha forte)* | senha inicial do admin — troque no 1º acesso |
+| `APP_URL` | `https://<nome>.up.railway.app` | usada no botão dos e-mails de aviso |
 | `QLIK_API_KEY` | *(opcional)* | só quando formos ativar a conectividade Qlik |
+
+### Avisos por e-mail (opcional)
+
+Sem estas variáveis o sistema funciona normalmente, apenas não envia e-mail.
+
+| Variável | Exemplo | Observação |
+|---|---|---|
+| `SMTP_HOST` | `smtp.office365.com` | servidor de saída |
+| `SMTP_PORTA` | `587` | 587 com `tls`, 465 com `ssl` |
+| `SMTP_SEGURANCA` | `tls` | `tls`, `ssl` ou `nenhuma` |
+| `SMTP_USUARIO` | `planejamento@coperdia.com.br` | deixe vazio se o servidor não pede autenticação |
+| `SMTP_SENHA` | *(senha do e-mail)* | |
+| `SMTP_REMETENTE` | `planejamento@coperdia.com.br` | endereço que aparece como remetente |
+| `SMTP_NOME_REMETENTE` | `Planejamento Estratégico Copérdia` | opcional |
+
+Depois de configurar, teste pelo próprio sistema: **Relatório de Status →
+Enviar avisos por e-mail** (botão visível para o perfil Admin).
 
 ## 4. Gerar a URL pública
 
@@ -56,7 +74,29 @@ URL `https://<nome>.up.railway.app`.
 5. Em **Cadastros → Usuários**, crie os gestores (perfil GESTOR + vínculo ao
    negócio) e os perfis de Controladoria/Direção.
 
-## 6. Iterando
+## 6. Agendar os avisos por e-mail
+
+Os avisos saem de um comando de linha; o Railway precisa executá-lo uma vez
+por dia. No projeto: **+ Create → Empty Service**, aponte para o mesmo
+repositório e, em **Settings**:
+
+- **Cron Schedule**: `0 11 * * *` (o Railway usa UTC — 11h UTC = 8h de Brasília);
+- **Custom Start Command**: `php cli/notificar.php`;
+- em **Variables**, replique as referências `MYSQL*` e as variáveis `SMTP_*`.
+
+O comando decide sozinho o que enviar: na **segunda-feira** manda o relatório
+da semana e, **todo dia**, as pendências do dia. Rodar duas vezes no mesmo dia
+não duplica nada — cada envio fica registrado na tabela `envio_email`.
+
+Para forçar manualmente (ou testar):
+
+```bash
+php cli/notificar.php            # decide pelo dia
+php cli/notificar.php semanal    # só o relatório da semana
+php cli/notificar.php diario     # só as pendências do dia
+```
+
+## 7. Iterando
 
 Cada `git push` na branch configurada dispara um novo deploy automaticamente.
 A migração é idempotente — os dados existentes são preservados.

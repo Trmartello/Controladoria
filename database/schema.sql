@@ -209,6 +209,10 @@ CREATE TABLE IF NOT EXISTS desdobramento (
   onde         VARCHAR(120),
   como         TEXT,
   quanto       DECIMAL(15,2) NULL,
+  quem_usuario_id INT NULL,
+  recorrencia     ENUM('NENHUMA','SEMANAL','MENSAL') NOT NULL DEFAULT 'NENHUMA',
+  recorrencia_dia TINYINT NULL,
+  recorrencia_ate DATE NULL,
   status       ENUM('NAO_INICIADO','EM_ANDAMENTO','CONCLUIDO','ATRASADO','CANCELADO','PAUSADO','AGUARDANDO_VALIDACAO') NOT NULL DEFAULT 'NAO_INICIADO',
   prioridade   ENUM('ALTA','MEDIA','BAIXA') NOT NULL DEFAULT 'MEDIA',
   progresso    TINYINT NOT NULL DEFAULT 0,
@@ -247,6 +251,20 @@ CREATE TABLE IF NOT EXISTS investimento (
   CONSTRAINT fk_inv_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_inv_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id),
   CONSTRAINT fk_inv_horiz FOREIGN KEY (horizonte_id) REFERENCES horizonte(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Registro dos avisos por e-mail já enviados (evita repetir no mesmo dia)
+CREATE TABLE IF NOT EXISTS envio_email (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  tipo        ENUM('SEMANAL','DIARIO') NOT NULL,
+  referencia  DATE NOT NULL,
+  usuario_id  INT NOT NULL,
+  destinatario VARCHAR(255) NOT NULL,
+  itens       SMALLINT NOT NULL DEFAULT 0,
+  erro        TEXT NULL,
+  enviado_em  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_envio (tipo, referencia, usuario_id),
+  CONSTRAINT fk_envio_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS diario_bordo (

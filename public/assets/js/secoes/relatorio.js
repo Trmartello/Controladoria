@@ -104,6 +104,8 @@ const SecaoRelatorio = {
           <button class="btn btn-sm btn-outline-secondary" id="rel-atualizar">Atualizar</button>
           <button class="btn btn-sm btn-verde" id="rel-imprimir">Imprimir / PDF</button>
           <a class="btn btn-sm btn-outline-success" href="${urlExport}">Exportar Excel</a>
+          ${App.sessao.usuario.perfil === 'ADMIN'
+            ? '<button class="btn btn-sm btn-outline-secondary" id="rel-avisos">Enviar avisos por e-mail</button>' : ''}
         </div>
       </div>
 
@@ -149,5 +151,24 @@ const SecaoRelatorio = {
       this.carregar();
     });
     document.getElementById('rel-imprimir').addEventListener('click', () => window.print());
+    // Dispara na hora o mesmo pacote do agendamento (sem repetir o que já saiu)
+    document.getElementById('rel-avisos')?.addEventListener('click', async (ev) => {
+      const b = ev.currentTarget;
+      b.disabled = true;
+      const antes = b.textContent;
+      b.textContent = 'Enviando...';
+      try {
+        const r = await App.api('/api/avisos/despachar', {});
+        const resumo = Object.entries(r)
+          .map(([q, x]) => `${q}: ${x.enviados} enviado(s), ${x.falhas} falha(s), ${x.ja_enviados} já enviado(s)`)
+          .join('\n');
+        alert(resumo || 'Nada previsto para hoje.');
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        b.disabled = false;
+        b.textContent = antes;
+      }
+    });
   },
 };

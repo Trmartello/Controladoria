@@ -2,10 +2,14 @@
 // Toda configuração vem de variáveis de ambiente (Railway injeta as do MySQL).
 // Nenhuma credencial neste repositório.
 
-function env(string $chave, ?string $padrao = null): ?string
-{
-    $v = getenv($chave);
-    return ($v === false || $v === '') ? $padrao : $v;
+// Guardado porque este arquivo pode ser carregado mais de uma vez no mesmo
+// processo (front controller, CLI de avisos, migração)
+if (!function_exists('env')) {
+    function env(string $chave, ?string $padrao = null): ?string
+    {
+        $v = getenv($chave);
+        return ($v === false || $v === '') ? $padrao : $v;
+    }
 }
 
 return [
@@ -25,6 +29,20 @@ return [
         'admin_email' => env('ADMIN_EMAIL', 'admin@coperdia.com.br'),
         'admin_senha' => env('ADMIN_SENHA'),
     ],
+    // Avisos por e-mail (relatório da semana e pendências do dia). Sem
+    // SMTP_HOST/SMTP_REMETENTE o envio fica desligado e o resto segue igual.
+    'smtp' => [
+        'host'           => env('SMTP_HOST'),
+        'porta'          => env('SMTP_PORTA', '587'),
+        'seguranca'      => strtolower(env('SMTP_SEGURANCA', 'tls')), // tls | ssl | nenhuma
+        'usuario'        => env('SMTP_USUARIO'),
+        'senha'          => env('SMTP_SENHA'),
+        'remetente'      => env('SMTP_REMETENTE'),
+        'nome_remetente' => env('SMTP_NOME_REMETENTE', 'Planejamento Estratégico Copérdia'),
+        'dominio'        => env('SMTP_DOMINIO', 'coperdia.com.br'),
+    ],
+    'app_url' => rtrim(env('APP_URL', ''), '/'),
+
     'qlik' => [
         'tenant'  => env('QLIK_TENANT', 'coperdia.br.qlikcloud.com'),
         'api_key' => env('QLIK_API_KEY'),

@@ -4,7 +4,9 @@ namespace App\Controllers;
 
 use App\Core\Auth;
 use App\Core\Database;
+use App\Core\Email;
 use App\Core\Json;
+use App\Services\Avisos;
 
 /**
  * Fase 6 — painéis (negócio, corporativo e consolidado) e relatório de
@@ -312,5 +314,23 @@ class RelatorioController
             'decisoes'     => $decisoes,
             'diario'       => $diario,
         ];
+    }
+
+    /**
+     * Dispara na hora os avisos por e-mail (o mesmo que o agendamento diário
+     * faria). Útil para conferir a configuração de SMTP e para o caso de o
+     * agendamento ainda não estar ligado. Nada é reenviado no mesmo dia.
+     */
+    public function despacharAvisos(): void
+    {
+        Auth::exigirAdministrador();
+        if (!Email::configurado()) {
+            Json::erro('Envio de e-mail não configurado — defina SMTP_HOST e SMTP_REMETENTE no ambiente.');
+        }
+        try {
+            Json::ok(Avisos::despachar('auto'));
+        } catch (\Throwable $e) {
+            Json::erro('Falha ao enviar: ' . $e->getMessage());
+        }
     }
 }

@@ -149,6 +149,9 @@ try {
         case (bool)preg_match('#^POST /api/(drivers|eixos)/(\d+)$#', $rota, $m):
             (new DriverEixoController())->salvar($m[1], (int)$m[2]); break;
 
+        case $rota === 'POST /api/avisos/despachar':
+            (new RelatorioController())->despacharAvisos(); break;
+
         case $rota === 'GET /api/usuarios':        (new UsuarioController())->listar(); break;
         case $rota === 'GET /api/responsaveis':    (new UsuarioController())->responsaveis(); break;
         case $rota === 'POST /api/usuarios':       (new UsuarioController())->salvar(); break;
