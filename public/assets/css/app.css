@@ -440,6 +440,19 @@ input[type=range].faixa-verde:focus-visible {
 }
 .caixa-qr { background: #fff; padding: .4rem; border-radius: .4rem; line-height: 0; }
 .caixa-qr svg { width: 150px; height: 150px; }
+.pin-mini { font-variant-numeric: tabular-nums; letter-spacing: .08em; }
+/* Caixa de expansão do QR: o triângulo nativo já indica aberto/fechado */
+.painel-qr > summary {
+  cursor: pointer;
+  width: fit-content;
+  font-size: .72rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--verde-coperdia);
+  user-select: none;
+}
+.painel-qr > summary:hover { text-decoration: underline; }
 .nuvem {
   display: flex;
   flex-wrap: wrap;

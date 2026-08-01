@@ -68,7 +68,7 @@ const SecaoColeta = {
   rodadaAberta: null,
   selecionado: null,   // id da ideia na bancada
   relogio: null,       // consulta periódica enquanto a rodada está aberta
-  painelOculto: false, // o QR some depois que a sala entrou
+  qrAberto: false,     // QR na caixa de expansão: fechada até o condutor projetar
   arrastando: false,   // arraste em curso: o polling não redesenha por cima
 
   /** Sem acento e sem caixa, para agrupar quem disse a mesma coisa. */
@@ -211,43 +211,33 @@ const SecaoColeta = {
       </div></div>`;
     }
     const url = `${location.origin}/entrar/${r.pin}`;
-    // Depois que a sala entrou, o QR só ocupa espaço — some com um toque
-    if (this.painelOculto) {
-      return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-          <span class="badge text-bg-light border">PIN ${Modal.esc(r.pin)}</span>
-          <span class="badge text-bg-light border">${r.participantes} participante(s)</span>
-          <span class="badge text-bg-light border">${r.ideias} ideia(s)</span>
-          ${r.votacao === 'ABERTA' ? '<span class="badge text-bg-warning">votação aberta</span>' : ''}
-          <span class="small text-muted flex-grow-1 text-truncate">${Modal.esc(r.tema)}</span>
-          <button class="btn btn-sm btn-outline-secondary" id="btn-mostrar-painel">Mostrar QR</button>
-          <button class="btn btn-sm btn-outline-secondary" id="btn-votacao">
-            ${r.votacao === 'ABERTA' ? 'Fechar votação' : 'Abrir votação'}</button>
-          <button class="btn btn-sm btn-outline-danger" id="btn-encerrar-rodada">Encerrar</button>
-        </div>
-      </div></div>`;
-    }
-    return `<div class="card mb-3 painel-rodada"><div class="card-body py-3 px-3">
-      <div class="d-flex flex-wrap gap-3 align-items-start">
-        <div class="caixa-qr" id="qr-rodada" aria-hidden="true"></div>
-        <div class="flex-grow-1" style="min-width:12rem">
-          <div class="rotulo-secao">Entre em ${Modal.esc(location.host)}/entrar</div>
-          <div class="pin-grande">${Modal.esc(r.pin)}</div>
-          <div class="small text-muted mt-1">${Modal.esc(r.tema)}</div>
-          <div class="d-flex gap-2 flex-wrap mt-2">
-            <span class="badge text-bg-light border">${r.participantes} participante(s)</span>
-            <span class="badge text-bg-light border">${r.ideias} ideia(s)</span>
-            ${r.votacao === 'ABERTA' ? '<span class="badge text-bg-warning">votação aberta</span>' : ''}
+    // Painel compacto: PIN, contadores e ações numa linha só; o QR grande fica
+    // numa caixa de expansão (details), aberta quando o condutor vai projetar
+    return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="badge text-bg-light border">PIN <strong class="pin-mini">${Modal.esc(r.pin)}</strong></span>
+        <span class="badge text-bg-light border">${r.participantes} participante(s)</span>
+        <span class="badge text-bg-light border">${r.ideias} ideia(s)</span>
+        ${r.votacao === 'ABERTA' ? '<span class="badge text-bg-warning">votação aberta</span>' : ''}
+        <span class="small text-muted flex-grow-1 text-truncate">${Modal.esc(r.tema)}</span>
+      </div>
+      <div class="d-flex gap-2 flex-wrap mt-2">
+        <button class="btn btn-sm btn-outline-secondary" data-copiar-link="${Modal.esc(url)}">Copiar link</button>
+        <button class="btn btn-sm btn-outline-secondary" id="btn-votacao">
+          ${r.votacao === 'ABERTA' ? 'Fechar votação' : 'Abrir votação'}</button>
+        <button class="btn btn-sm btn-outline-danger" id="btn-encerrar-rodada">Encerrar</button>
+      </div>
+      <details class="painel-qr mt-2" id="det-qr"${this.qrAberto ? ' open' : ''}>
+        <summary>QR code para projetar</summary>
+        <div class="d-flex flex-wrap gap-3 align-items-start mt-2">
+          <div class="caixa-qr" id="qr-rodada" aria-hidden="true"></div>
+          <div class="flex-grow-1" style="min-width:12rem">
+            <div class="rotulo-secao">Entre em ${Modal.esc(location.host)}/entrar</div>
+            <div class="pin-grande">${Modal.esc(r.pin)}</div>
+            <div class="small text-muted mt-1">${Modal.esc(r.tema)}</div>
           </div>
         </div>
-        <div class="d-flex flex-column gap-1">
-          <button class="btn btn-sm btn-outline-secondary" id="btn-ocultar-painel">Ocultar QR</button>
-          <button class="btn btn-sm btn-outline-secondary" data-copiar-link="${Modal.esc(url)}">Copiar link</button>
-          <button class="btn btn-sm btn-outline-secondary" id="btn-votacao">
-            ${r.votacao === 'ABERTA' ? 'Fechar votação' : 'Abrir votação'}</button>
-          <button class="btn btn-sm btn-outline-danger" id="btn-encerrar-rodada">Encerrar</button>
-        </div>
-      </div>
+      </details>
     </div></div>`;
   },
 
@@ -472,13 +462,10 @@ const SecaoColeta = {
       caixa.remove();
     }
 
-    document.getElementById('btn-ocultar-painel')?.addEventListener('click', () => {
-      this.painelOculto = true;
-      this.carregar();
-    });
-    document.getElementById('btn-mostrar-painel')?.addEventListener('click', () => {
-      this.painelOculto = false;
-      this.carregar();
+    // O QR mora numa caixa de expansão; guardamos o estado para o polling não
+    // fechar a caixa a cada redesenho. Não recarrega: o próprio <details> abre.
+    el.querySelector('#det-qr')?.addEventListener('toggle', (ev) => {
+      this.qrAberto = ev.target.open;
     });
 
     el.querySelectorAll('[data-copiar-link]').forEach((b) => b.addEventListener('click', async () => {
