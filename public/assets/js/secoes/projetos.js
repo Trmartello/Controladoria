@@ -138,14 +138,16 @@ const SecaoProjetos = {
     };
 
     const cartoes = projetos.map((p) => {
+      // O prazo é consequência das ações: menor início e maior fim entre elas
       const detalhes = [
         p.ano && `<strong>Ano:</strong> ${p.ano}`,
+        p.horizonte_nome && `<strong>Horizonte:</strong> ${Modal.esc(p.horizonte_nome)}`,
         p.responsavel && `<strong>Responsável:</strong> ${Modal.esc(p.responsavel)}`,
         this.periodo(p.data_inicio, p.data_fim, p.prazo)
-          && `<strong>Prazo:</strong> ${Modal.esc(this.periodo(p.data_inicio, p.data_fim, p.prazo))}`,
-        p.horizonte_nome && `<strong>Horizonte:</strong> ${Modal.esc(p.horizonte_nome)}`,
-        p.impacto && `<strong>Impacto:</strong> ${p.impacto}`,
+          && `<strong>Prazo (das ações):</strong> ${Modal.esc(this.periodo(p.data_inicio, p.data_fim, p.prazo))}`,
       ].filter(Boolean).join(' · ');
+      const descricao = p.descricao
+        ? `<div class="small text-muted texto-fator mt-1">${Modal.esc(p.descricao)}</div>` : '';
       const origem = p.escolha_origem
         ? `<div class="small text-muted mt-1">↳ Escolha da cascata: “${Modal.esc(p.escolha_origem.slice(0, 90))}”</div>` : '';
       const media = p.desdobramentos.length
@@ -164,6 +166,7 @@ const SecaoProjetos = {
               <strong>${Modal.esc(p.titulo)}</strong>
               ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning ms-1">Prioritário</span>' : ''}
               ${badge(p.status)}
+              ${descricao}
               ${detalhes ? `<div class="small text-muted mt-1">${detalhes}</div>` : ''}
               ${origem}
             </div>
@@ -269,12 +272,6 @@ const SecaoProjetos = {
   },
 
   modalProjeto(p, projetos) {
-    const nomeDriver = (id) => this.cascata.drivers.find((d) => d.id == id)?.nome || '';
-    const opcoesCascata = [{ valor: '', rotulo: '(sem vínculo com a cascata)' }].concat(
-      this.cascata.escolhas.map((e) => ({
-        valor: e.id,
-        rotulo: `${nomeDriver(e.driver_id)}: ${e.escolha.slice(0, 60)}`,
-      })));
     const anos = this.anosDoCiclo();
     const anoPadrao = Math.min(Math.max(new Date().getFullYear(), anos[0] || 0), anos[anos.length - 1] || 9999);
     const mapaHorizontes = this.cascata.horizontes
@@ -300,35 +297,13 @@ const SecaoProjetos = {
           nota: mapaHorizontes
             ? `O horizonte é definido pelo ano: ${mapaHorizontes}.`
             : 'Cadastre os horizontes do ciclo em Cadastros para o ano ser aceito.' },
-        { nome: 'titulo', rotulo: 'Projeto / ação planejada', obrigatorio: true,
+        { nome: 'titulo', rotulo: 'Nome do projeto', obrigatorio: true,
           exemplo: 'Ex.: 1ª onda de silos — unidade Capinzal' },
+        { nome: 'descricao', rotulo: 'Descrição — para que serve o projeto', tipo: 'textarea', linhas: 3,
+          exemplo: 'O que o projeto entrega e por quê.' },
         { nome: 'responsavel', rotulo: 'Responsável', tipo: 'selecao_livre', opcoes: this.responsaveis,
           obrigatorio: true, vazio: '(selecione o responsável)',
           ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
-        // Preserva o prazo em texto dos projetos criados antes do calendário
-        { nome: 'prazo', rotulo: '', tipo: 'hidden' },
-        { nome: 'prazo_periodo', rotulo: 'Prazo da ação', tipo: 'periodo',
-          campos: [
-            { nome: 'data_inicio', rotulo: 'Início' },
-            { nome: 'data_fim', rotulo: 'Fim previsto' },
-          ],
-          ajuda: 'Toque no campo para abrir o calendário.' },
-        { nome: 'cascata_id', rotulo: 'Escolha da cascata que originou', tipo: 'select', opcoes: opcoesCascata,
-          ajuda: 'Liga o projeto à decisão estratégica (Cascata de Escolhas) que o motivou — mostra de onde ele veio e aparece no relatório. Deixe sem vínculo se não nasceu de uma escolha da cascata.' },
-        { nome: 'impacto', rotulo: 'Impacto', tipo: 'select', opcoes: [
-          { valor: '', rotulo: '(não definido)' },
-          { valor: 'RENTABILIDADE', rotulo: 'Rentabilidade' },
-          { valor: 'FATURAMENTO', rotulo: 'Faturamento' },
-          { valor: 'SUSTENTABILIDADE', rotulo: 'Sustentabilidade' },
-          { valor: 'PESSOAS', rotulo: 'Pessoas' },
-        ]},
-        { nome: 'classificacao', rotulo: 'Classificação', tipo: 'select', opcoes: [
-          { valor: 'NORMAL', rotulo: 'Normal' },
-          { valor: 'PRIORITARIO', rotulo: 'Prioritário' },
-        ]},
-        { nome: 'status', rotulo: 'Status', tipo: 'select', opcoes: OPCOES_STATUS },
-        { nome: 'ordem', rotulo: 'Ordem de exibição', tipo: 'number', padrao: (projetos?.length || 0) + 1,
-          ajuda: 'Posição do projeto na lista e no relatório dentro do mesmo ano (menor número aparece primeiro). Não afeta prazos nem status.' },
       ],
     });
   },

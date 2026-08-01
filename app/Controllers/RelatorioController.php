@@ -233,7 +233,13 @@ class RelatorioController
         unset($ind);
 
         $projetos = Database::todos(
-            "SELECT p.id, p.titulo, p.ano, p.responsavel, p.prazo, p.status, p.classificacao,
+            "SELECT p.id, p.titulo, p.ano, p.responsavel, p.status, p.classificacao,
+                    COALESCE(
+                      CONCAT(DATE_FORMAT(p.data_inicio, '%d/%m/%Y'), ' a ', DATE_FORMAT(p.data_fim, '%d/%m/%Y')),
+                      CONCAT('a partir de ', DATE_FORMAT(p.data_inicio, '%d/%m/%Y')),
+                      CONCAT('até ', DATE_FORMAT(p.data_fim, '%d/%m/%Y')),
+                      p.prazo, ''
+                    ) AS prazo,
                     h.nome AS horizonte_nome,
                     COALESCE(ROUND(AVG(d.progresso)), 0) AS progresso,
                     SUM(d.status = 'ATRASADO') AS desdobramentos_atrasados
@@ -242,7 +248,7 @@ class RelatorioController
              LEFT JOIN desdobramento d ON d.projeto_id = p.id
              WHERE p.planejamento_id = ? AND p.status <> 'CANCELADO'
              GROUP BY p.id
-             ORDER BY p.classificacao = 'PRIORITARIO' DESC, p.ordem, p.id",
+             ORDER BY p.ano, p.id",
             [$planId]
         );
 

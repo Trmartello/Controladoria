@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS projeto (
   tipo             ENUM('ESTRATEGICO','OPERACIONAL') NOT NULL,
   ano              SMALLINT NULL,
   titulo           TEXT NOT NULL,
+  descricao        TEXT NULL,
   responsavel      VARCHAR(255),
   prazo            VARCHAR(60),
   data_inicio      DATE NULL,

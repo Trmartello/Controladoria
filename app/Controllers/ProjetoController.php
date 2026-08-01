@@ -22,13 +22,14 @@ class ProjetoController
         $planId = (int)($_GET['planejamento_id'] ?? 0);
         Auth::exigirAcessoPlanejamento($planId);
         $this->sincronizarAtrasos($planId);
+        $this->consolidarProjetos($planId);
         $projetos = Database::todos(
             'SELECT p.*, h.nome AS horizonte_nome, ce.escolha AS escolha_origem
              FROM projeto p
              LEFT JOIN horizonte h ON h.id = p.horizonte_id
              LEFT JOIN cascata_escolha ce ON ce.id = p.cascata_id
              WHERE p.planejamento_id = ?
-             ORDER BY p.ano, p.ordem, p.id',
+             ORDER BY p.ano, p.id',
             [$planId]
         );
         foreach ($projetos as &$p) {
@@ -70,6 +71,37 @@ class ProjetoController
              SET d.status = 'NAO_INICIADO'
              WHERE p.planejamento_id = ? AND d.status = 'ATRASADO'
                AND (d.data_fim IS NULL OR d.data_fim >= CURDATE())",
+            [$planId]
+        );
+    }
+
+    /**
+     * O período e o status do projeto são consequência das ações: início =
+     * menor data de início, fim = maior data de fim; o status agrega os das
+     * ações. Recalculado na leitura, cobre também mudanças vindas do diário.
+     * Projetos sem ações e os cancelados não são tocados.
+     */
+    private function consolidarProjetos(int $planId): void
+    {
+        Database::executar(
+            "UPDATE projeto p
+             JOIN (
+               SELECT projeto_id,
+                      MIN(data_inicio) AS di, MAX(data_fim) AS df,
+                      COUNT(*) AS n,
+                      SUM(status = 'CONCLUIDO') AS concluidas,
+                      SUM(status = 'ATRASADO') AS atrasadas,
+                      SUM(status IN ('EM_ANDAMENTO', 'PAUSADO', 'AGUARDANDO_VALIDACAO')) AS ativas
+               FROM desdobramento GROUP BY projeto_id
+             ) x ON x.projeto_id = p.id
+             SET p.data_inicio = COALESCE(x.di, p.data_inicio),
+                 p.data_fim = COALESCE(x.df, p.data_fim),
+                 p.status = CASE
+                   WHEN x.atrasadas > 0 THEN 'ATRASADO'
+                   WHEN x.concluidas = x.n THEN 'CONCLUIDO'
+                   WHEN x.ativas > 0 OR x.concluidas > 0 THEN 'EM_ANDAMENTO'
+                   ELSE 'NAO_INICIADO' END
+             WHERE p.planejamento_id = ? AND p.status <> 'CANCELADO'",
             [$planId]
         );
     }
@@ -160,19 +192,7 @@ class ProjetoController
         if ($responsavel === '') {
             Json::erro('Informe o responsável pelo projeto.');
         }
-        $status = $d['status'] ?? 'NAO_INICIADO';
-        if (!in_array($status, self::STATUS_PROJETO, true)) {
-            Json::erro('Status inválido.');
-        }
-        $impacto = $d['impacto'] ?? null;
-        if ($impacto !== null && $impacto !== ''
-            && !in_array($impacto, ['RENTABILIDADE', 'FATURAMENTO', 'SUSTENTABILIDADE', 'PESSOAS'], true)) {
-            Json::erro('Impacto inválido.');
-        }
-        $classificacao = $d['classificacao'] ?? 'NORMAL';
-        if (!in_array($classificacao, ['PRIORITARIO', 'NORMAL'], true)) {
-            Json::erro('Classificação inválida.');
-        }
+        $descricao = trim($d['descricao'] ?? '');
 
         // O horizonte não é escolhido: é o que contempla o ano informado
         // (ex.: H1 2027–2030 → ações de 2027 caem obrigatoriamente no H1)
@@ -185,40 +205,23 @@ class ProjetoController
             Json::erro("Nenhum horizonte do ciclo contempla o ano {$ano}. Ajuste os anos dos horizontes em Cadastros.");
         }
         $horizonteId = (int)$horizonte['id'];
-        $cascataId = !empty($d['cascata_id']) ? (int)$d['cascata_id'] : null;
-        if ($cascataId !== null && !Database::um(
-            'SELECT id FROM cascata_escolha WHERE id = ? AND planejamento_id = ?',
-            [$cascataId, $planId]
-        )) {
-            Json::erro('Escolha da cascata não pertence a este planejamento.');
-        }
 
-        [$inicio, $fim] = $this->periodo($d);
-
-        $params = [
-            $tipo, $ano, $titulo,
-            $responsavel,
-            mb_substr(trim($d['prazo'] ?? ''), 0, 60),
-            $inicio, $fim,
-            $horizonteId, $cascataId, $impacto ?: null, $classificacao, $status,
-            (int)($d['ordem'] ?? 0),
-        ];
+        // O cadastro pede só ano, título, descrição e responsável; datas e
+        // status vêm das ações (consolidarProjetos) e o restante é legado,
+        // preservado como está nos projetos antigos
         if ($id) {
             $this->exigirProjeto($id, $planId);
             Database::executar(
-                'UPDATE projeto SET tipo = ?, ano = ?, titulo = ?, responsavel = ?, prazo = ?,
-                   data_inicio = ?, data_fim = ?,
-                   horizonte_id = ?, cascata_id = ?, impacto = ?, classificacao = ?,
-                   status = ?, ordem = ? WHERE id = ?',
-                [...$params, $id]
+                'UPDATE projeto SET tipo = ?, ano = ?, titulo = ?, descricao = ?,
+                   responsavel = ?, horizonte_id = ? WHERE id = ?',
+                [$tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId, $id]
             );
         } else {
             $id = (int)Database::executar(
-                'INSERT INTO projeto (planejamento_id, tipo, ano, titulo, responsavel, prazo,
-                   data_inicio, data_fim,
-                   horizonte_id, cascata_id, impacto, classificacao, status, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [$planId, ...$params]
+                'INSERT INTO projeto (planejamento_id, tipo, ano, titulo, descricao,
+                   responsavel, horizonte_id, classificacao, status, ordem)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, \'NORMAL\', \'NAO_INICIADO\', 0)',
+                [$planId, $tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId]
             );
         }
         Json::ok(['id' => $id]);
@@ -340,14 +343,16 @@ class ProjetoController
         return [$inicio, $fim];
     }
 
-    private function exigirProjeto(int $id, int $planId): void
+    private function exigirProjeto(int $id, int $planId): array
     {
-        if (!Database::um(
-            'SELECT id FROM projeto WHERE id = ? AND planejamento_id = ?',
+        $projeto = Database::um(
+            'SELECT * FROM projeto WHERE id = ? AND planejamento_id = ?',
             [$id, $planId]
-        )) {
+        );
+        if (!$projeto) {
             Json::erro('Projeto não encontrado neste planejamento.', 404);
         }
+        return $projeto;
     }
 
     private function exigirIniciativa(int $id, int $planId): array
