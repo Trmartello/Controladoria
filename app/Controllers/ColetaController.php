@@ -36,9 +36,9 @@ class ColetaController
         $params = $ano ? [$planId, $ano] : [$planId];
 
         $itens = Database::todos(
-            "SELECT ci.*, a.nome AS autor, t.nome AS triador
+            "SELECT ci.*, COALESCE(a.nome, ci.autor_nome, 'Participante') AS autor, t.nome AS triador
              FROM coleta_item ci
-             JOIN usuario a ON a.id = ci.autor_id
+             LEFT JOIN usuario a ON a.id = ci.autor_id
              LEFT JOIN usuario t ON t.id = ci.triado_por
              WHERE ci.planejamento_id = ?{$filtroAno}
              ORDER BY ci.situacao = 'NOVO' DESC, ci.criado_em, ci.id",
@@ -188,7 +188,7 @@ class ColetaController
         }
         $linhas = Database::afetadas(
             "UPDATE coleta_item SET situacao = 'DESCARTADO', motivo = ?, triado_por = ?, triado_em = NOW()
-             WHERE id = ? AND planejamento_id = ? AND situacao = 'NOVO'",
+             WHERE id = ? AND planejamento_id = ? AND situacao IN ('NOVO','SELECIONADO')",
             [$motivo, (int)$u['id'], $id, $planId]
         );
         if (!$linhas) {
@@ -197,12 +197,104 @@ class ColetaController
         Json::ok();
     }
 
+    /**
+     * Posiciona a ideia na matriz de priorização da oficina.
+     *
+     * `impacto` e `esforco` vivem só aqui: ao virar fator, quem prioriza é a
+     * Matriz GUT, com score e rastro. Copiar estes valores para o `fator`
+     * criaria duas priorizações concorrentes (decisão registrada no backlog).
+     */
+    public function priorizar(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirTriagemColeta($planId);
+        $item = $this->exigirItem($id, $planId);
+        if (in_array($item['situacao'], ['ACEITO', 'DESCARTADO'], true)) {
+            Json::erro('Esta ideia já foi tratada.');
+        }
+
+        $impacto = $d['impacto'] ?? null;
+        $esforco = $d['esforco'] ?? null;
+        if (!in_array($impacto, ['ALTO', 'BAIXO'], true) || !in_array($esforco, ['BAIXO', 'ALTO'], true)) {
+            Json::erro('Escolha um quadrante da matriz.');
+        }
+        // Posicionar já é dizer "esta vai ser tratada"
+        Database::executar(
+            "UPDATE coleta_item SET impacto = ?, esforco = ?, situacao = 'SELECIONADO' WHERE id = ?",
+            [$impacto, $esforco, $id]
+        );
+        Json::ok(['impacto' => $impacto, 'esforco' => $esforco]);
+    }
+
+    /** Texto complementado durante a discussão, antes de escolher o destino. */
+    public function complementar(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirTriagemColeta($planId);
+        $item = $this->exigirItem($id, $planId);
+        if (in_array($item['situacao'], ['ACEITO', 'DESCARTADO'], true)) {
+            Json::erro('Esta ideia já foi tratada.');
+        }
+        $texto = trim($d['texto_tratado'] ?? '');
+        if ($texto === '') {
+            Json::erro('O texto não pode ficar vazio.');
+        }
+        Database::executar('UPDATE coleta_item SET texto_tratado = ? WHERE id = ?', [$texto, $id]);
+        Json::ok();
+    }
+
+    /**
+     * Quebra um despejo em várias ideias. A original é marcada como tratada
+     * (dividida) e cada parte nasce como ideia nova apontando para o pai, para
+     * a rastreabilidade não se perder no meio do caminho.
+     */
+    public function dividir(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        $u = Auth::exigirTriagemColeta($planId);
+        $item = $this->exigirItem($id, $planId);
+        if ($item['situacao'] !== 'NOVO') {
+            Json::erro('Só uma ideia ainda não tratada pode ser dividida.');
+        }
+        $partes = array_values(array_filter(array_map(
+            fn($t) => mb_substr(trim((string)$t), 0, 400),
+            is_array($d['partes'] ?? null) ? $d['partes'] : []
+        ), fn($t) => $t !== ''));
+        if (count($partes) < 2) {
+            Json::erro('Escreva pelo menos duas partes para dividir.');
+        }
+
+        $criados = [];
+        foreach ($partes as $texto) {
+            $criados[] = (int)Database::executar(
+                'INSERT INTO coleta_item (planejamento_id, rodada_id, ano, autor_id, autor_nome,
+                   dividido_de_id, texto, destino_sugerido)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                    $planId, $item['rodada_id'] !== null ? (int)$item['rodada_id'] : null,
+                    (int)$item['ano'], $item['autor_id'] !== null ? (int)$item['autor_id'] : null,
+                    $item['autor_nome'], $id, $texto, $item['destino_sugerido'],
+                ]
+            );
+        }
+        Database::executar(
+            "UPDATE coleta_item SET situacao = 'DESCARTADO', motivo = ?, triado_por = ?, triado_em = NOW()
+             WHERE id = ?",
+            ['Dividida em ' . count($partes) . ' ideias.', (int)$u['id'], $id]
+        );
+        Json::ok(['criados' => $criados]);
+    }
+
     /** Reserva a ideia para quem chegou primeiro (ver encaminhar). */
     private function reservar(int $id, int $planId, int $usuarioId): bool
     {
         return Database::afetadas(
             "UPDATE coleta_item SET situacao = 'ACEITO', triado_por = ?, triado_em = NOW()
-             WHERE id = ? AND planejamento_id = ? AND situacao = 'NOVO' AND destino_id IS NULL",
+             WHERE id = ? AND planejamento_id = ? AND situacao IN ('NOVO','SELECIONADO')
+               AND destino_id IS NULL",
             [$usuarioId, $id, $planId]
         ) === 1;
     }

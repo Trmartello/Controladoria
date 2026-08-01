@@ -61,12 +61,73 @@ const SecaoColeta = {
     return iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '';
   },
 
+  // ---- Tempestade ao vivo ----
+  rodadas: [],
+  rodadaAberta: null,
+  selecionado: null,   // id da ideia na bancada
+  relogio: null,       // consulta periódica enquanto a rodada está aberta
+
+  /** Sem acento e sem caixa, para agrupar quem disse a mesma coisa. */
+  norm(s) {
+    return String(s || '').toLocaleLowerCase('pt-BR').normalize('NFD')
+      .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  },
+
+  /**
+   * Agrupa as ideias ainda não tratadas por texto equivalente. O peso é
+   * quantas pessoas disseram o mesmo — é o que faz a ficha crescer na nuvem.
+   */
+  nuvem() {
+    const grupos = new Map();
+    for (const i of this.itens) {
+      if (i.situacao !== 'NOVO' && i.situacao !== 'SELECIONADO') continue;
+      const chave = this.norm(i.texto);
+      if (!grupos.has(chave)) grupos.set(chave, { representante: i, itens: [], votos: 0 });
+      const g = grupos.get(chave);
+      g.itens.push(i);
+      g.votos += Number(i.votos || 0);
+    }
+    // Mais repetidas e mais votadas primeiro: é a leitura que interessa na sala
+    return [...grupos.values()].sort((a, b) =>
+      (b.itens.length - a.itens.length) || (b.votos - a.votos) || (a.representante.id - b.representante.id));
+  },
+
+  pararRelogio() {
+    clearInterval(this.relogio);
+    this.relogio = null;
+  },
+
+  /**
+   * Enquanto a rodada está aberta, busca o que chegou. Sem SSE: o servidor
+   * embutido do PHP é single-threaded e uma conexão presa travaria todo mundo.
+   */
+  ligarRelogio(ano) {
+    this.pararRelogio();
+    this.relogio = setInterval(async () => {
+      const secao = document.getElementById('secao-coleta');
+      if (!secao || secao.classList.contains('d-none')) return this.pararRelogio();
+      // O modal aberto significa que alguém está digitando: não redesenhar
+      if (document.querySelector('#modal-form.show')) return;
+      try {
+        const antes = JSON.stringify(this.itens.map((i) => [i.id, i.situacao, i.votos]));
+        this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
+        this.rodadas = await App.api(`/api/rodadas?planejamento_id=${this.plan.id}&ano=${ano}`);
+        const depois = JSON.stringify(this.itens.map((i) => [i.id, i.situacao, i.votos]));
+        if (antes !== depois) this.carregar();
+      } catch (e) { /* rede instável na oficina: tenta de novo no próximo ciclo */ }
+    }, 3000);
+  },
+
   async carregar() {
     const base = await Diag.preparar('secao-coleta');
     if (!base) return;
     const { el, plan, ano } = base;
     this.plan = plan;
-    this.itens = await App.api(`/api/coleta?planejamento_id=${plan.id}&ano=${ano}`);
+    [this.itens, this.rodadas] = await Promise.all([
+      App.api(`/api/coleta?planejamento_id=${plan.id}&ano=${ano}`),
+      App.api(`/api/rodadas?planejamento_id=${plan.id}&ano=${ano}`).catch(() => []),
+    ]);
+    this.rodadaAberta = this.rodadas.find((r) => r.situacao === 'ABERTA') || null;
 
     const conta = (s) => this.itens.filter((i) => i.situacao === s).length;
     const naFila = conta('NOVO');
@@ -85,7 +146,10 @@ const SecaoColeta = {
       Cada ideia é tratada uma a uma e vira item de cenário ou fator — ou é descartada com motivo.
       <em>A coleta é anual, como o resto do diagnóstico.</em></p>
 
-      ${podeTriar && naFila ? `<div class="card mb-3 fila-coleta"><div class="card-body py-2 px-3">
+      ${podeTriar ? this.painelTempestade(ano) : ''}
+      ${this.rodadaAberta ? this.telaConducao() : ''}
+
+      ${podeTriar && naFila && !this.rodadaAberta ? `<div class="card mb-3 fila-coleta"><div class="card-body py-2 px-3">
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <strong class="small text-uppercase">Fila de tratativa</strong>
           <span class="badge text-bg-warning">${naFila} a tratar</span>
@@ -109,6 +173,240 @@ const SecaoColeta = {
     Diag.ligarVerMais(el);
     this.destacarVindoDoDiagnostico(el);
     this.ligarEventos(el, ano);
+    this.ligarTempestade(el, ano);
+    if (this.rodadaAberta) this.ligarRelogio(ano); else this.pararRelogio();
+  },
+
+  // ---- Painel da rodada: PIN, QR e link para projetar ----
+  painelTempestade(ano) {
+    const r = this.rodadaAberta;
+    if (!r) {
+      return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <strong class="small text-uppercase">Tempestade de ideias</strong>
+          <span class="small text-muted flex-grow-1">Abra uma rodada e projete o PIN:
+            os participantes entram pelo celular, sem cadastro.</span>
+          <button class="btn btn-sm btn-verde" id="btn-abrir-rodada">Abrir tempestade</button>
+        </div>
+      </div></div>`;
+    }
+    const url = `${location.origin}/entrar/${r.pin}`;
+    return `<div class="card mb-3 painel-rodada"><div class="card-body py-3 px-3">
+      <div class="d-flex flex-wrap gap-3 align-items-start">
+        <div class="caixa-qr" id="qr-rodada" aria-hidden="true"></div>
+        <div class="flex-grow-1" style="min-width:12rem">
+          <div class="rotulo-secao">Entre em ${Modal.esc(location.host)}/entrar</div>
+          <div class="pin-grande">${Modal.esc(r.pin)}</div>
+          <div class="small text-muted mt-1">${Modal.esc(r.tema)}</div>
+          <div class="d-flex gap-2 flex-wrap mt-2">
+            <span class="badge text-bg-light border">${r.participantes} participante(s)</span>
+            <span class="badge text-bg-light border">${r.ideias} ideia(s)</span>
+            ${r.votacao === 'ABERTA' ? '<span class="badge text-bg-warning">votação aberta</span>' : ''}
+          </div>
+        </div>
+        <div class="d-flex flex-column gap-1">
+          <button class="btn btn-sm btn-outline-secondary" data-copiar-link="${Modal.esc(url)}">Copiar link</button>
+          <button class="btn btn-sm btn-outline-secondary" id="btn-votacao">
+            ${r.votacao === 'ABERTA' ? 'Fechar votação' : 'Abrir votação'}</button>
+          <button class="btn btn-sm btn-outline-danger" id="btn-encerrar-rodada">Encerrar</button>
+        </div>
+      </div>
+    </div></div>`;
+  },
+
+  // ---- Tela de condução: nuvem à esquerda, bancada à direita ----
+  telaConducao() {
+    const grupos = this.nuvem();
+    const item = this.selecionado ? this.itens.find((i) => i.id === this.selecionado) : null;
+    const fichas = grupos.map((g) => {
+      const i = g.representante;
+      const peso = Math.min(g.itens.length, 5);
+      return `<button type="button" class="ficha-nuvem ${i.id === this.selecionado ? 'selecionada' : ''}"
+        style="--peso:${peso}" data-selecionar="${i.id}"
+        title="${Modal.esc(i.autor)}">${Modal.esc(i.texto)}${
+        g.itens.length > 1 ? `<span class="repetida">×${g.itens.length}</span>` : ''}${
+        g.votos ? `<span class="repetida">★${g.votos}</span>` : ''}</button>`;
+    }).join('');
+
+    return `<div class="row g-3 mb-3">
+      <div class="col-lg-7">
+        <div class="card h-100"><div class="card-body py-2 px-3">
+          <div class="rotulo-secao">Tempestade — toque para levar à bancada</div>
+          <div class="nuvem">${fichas || '<span class="text-muted small">Aguardando as primeiras ideias...</span>'}</div>
+        </div></div>
+      </div>
+      <div class="col-lg-5">
+        <div class="card h-100 bancada"><div class="card-body py-2 px-3">
+          <div class="rotulo-secao">Bancada</div>
+          ${item ? this.bancada(item) : '<p class="text-muted small mb-0">Escolha uma ideia da tempestade para discutir com o grupo.</p>'}
+        </div></div>
+      </div>
+    </div>`;
+  },
+
+  bancada(item) {
+    const quadrantes = [
+      ['ALTO', 'BAIXO', 'Fazer agora', 'muito impacto, pouco esforço', '#007a45'],
+      ['ALTO', 'ALTO', 'Planejar', 'muito impacto, muito esforço', '#2c7fb8'],
+      ['BAIXO', 'BAIXO', 'Encaixar', 'pouco impacto, pouco esforço', '#b08d4f'],
+      ['BAIXO', 'ALTO', 'Esquecer', 'pouco impacto, muito esforço', '#8f3b3b'],
+    ].map(([imp, esf, titulo, eixos, cor]) => `
+      <button type="button" class="quadrante-prio ${item.impacto === imp && item.esforco === esf ? 'escolhido' : ''}"
+        style="--cor-quad:${cor}" data-quadrante="${imp}:${esf}" data-item="${item.id}">
+        <span class="q-titulo">${titulo}</span>
+        <span class="q-eixos">${eixos}</span>
+      </button>`).join('');
+
+    return `
+      <div class="small text-muted">${Modal.esc(item.autor)}${
+        item.votos ? ` · ★ ${item.votos} voto(s)` : ''}</div>
+      <textarea class="form-control mt-1" rows="3" id="texto-bancada" maxlength="400"
+        aria-label="Texto complementado">${Modal.esc(item.texto_tratado || item.texto)}</textarea>
+      <div class="d-flex gap-1 flex-wrap mt-2">
+        <button class="btn btn-sm btn-outline-secondary" data-complementar="${item.id}">Salvar texto</button>
+        <button class="btn btn-sm btn-outline-secondary" data-dividir="${item.id}">Dividir</button>
+      </div>
+
+      <div class="rotulo-secao mt-3">Prioridade</div>
+      <div class="grade-matriz">${quadrantes}</div>
+
+      <div class="rotulo-secao mt-3">Destino</div>
+      <div class="d-flex gap-1 flex-wrap">
+        ${DESTINOS_TRIAGEM.map((d) => `
+          <button class="btn btn-sm btn-destino" style="--cor-destino:${d.cor}"
+            data-encaminhar="${item.id}" data-destino="${d.valor}">${d.rotulo}</button>`).join('')}
+        <button class="btn btn-sm btn-outline-danger" data-descartar="${item.id}">Esquecer</button>
+      </div>`;
+  },
+
+  ligarTempestade(el, ano) {
+    // O QR é desenhado por biblioteca vendorada (MIT); sem ela, o PIN basta
+    const caixa = el.querySelector('#qr-rodada');
+    if (caixa && this.rodadaAberta && typeof qrcode === 'function') {
+      try {
+        const q = qrcode(0, 'M');
+        q.addData(`${location.origin}/entrar/${this.rodadaAberta.pin}`);
+        q.make();
+        caixa.innerHTML = q.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
+      } catch (e) {
+        caixa.remove();
+      }
+    } else if (caixa) {
+      caixa.remove();
+    }
+
+    el.querySelectorAll('[data-copiar-link]').forEach((b) => b.addEventListener('click', async () => {
+      const url = b.dataset.copiarLink;
+      try {
+        await navigator.clipboard.writeText(url);
+        b.textContent = 'Link copiado';
+        setTimeout(() => { b.textContent = 'Copiar link'; }, 1800);
+      } catch (e) {
+        prompt('Copie o link da rodada:', url);
+      }
+    }));
+
+    el.querySelectorAll('[data-selecionar]').forEach((b) => b.addEventListener('click', () => {
+      const id = Number(b.dataset.selecionar);
+      this.selecionado = this.selecionado === id ? null : id;
+      this.carregar();
+    }));
+
+    if (!App.podeEditar()) return;
+
+    document.getElementById('btn-abrir-rodada')?.addEventListener('click', () => Modal.abrir({
+      titulo: 'Abrir tempestade de ideias',
+      url: '/api/rodadas',
+      valores: { planejamento_id: this.plan.id, ano, max_ideias: 5, max_votos: 3 },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
+        { nome: 'tema', rotulo: 'A pergunta que abre a tempestade', tipo: 'text', obrigatorio: true,
+          exemplo: 'O que pode atrapalhar o nosso resultado nos próximos três anos?' },
+        { nome: 'max_ideias', rotulo: 'Ideias por participante', tipo: 'number', padrao: 5,
+          ajuda: 'Um teto evita que uma pessoa domine a tempestade.' },
+        { nome: 'max_votos', rotulo: 'Votos por participante', tipo: 'number', padrao: 3,
+          ajuda: 'Só vale se você abrir a fase de votação depois.' },
+      ],
+      aoSalvar: () => this.carregar(),
+    }));
+
+    document.getElementById('btn-encerrar-rodada')?.addEventListener('click', async () => {
+      if (!confirm('Encerrar a rodada? Os participantes não conseguem mais enviar ideias.')) return;
+      try {
+        await App.api(`/api/rodadas/${this.rodadaAberta.id}/encerrar`, { planejamento_id: this.plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.carregar();
+    });
+
+    document.getElementById('btn-votacao')?.addEventListener('click', async () => {
+      try {
+        await App.api(`/api/rodadas/${this.rodadaAberta.id}/votacao`, {
+          planejamento_id: this.plan.id, abrir: this.rodadaAberta.votacao !== 'ABERTA',
+        });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.carregar();
+    });
+
+    el.querySelectorAll('[data-quadrante]').forEach((b) => b.addEventListener('click', async () => {
+      const [impacto, esforco] = b.dataset.quadrante.split(':');
+      try {
+        await App.api(`/api/coleta/${b.dataset.item}/priorizar`, {
+          planejamento_id: this.plan.id, impacto, esforco,
+        });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.carregar();
+    }));
+
+    el.querySelectorAll('[data-complementar]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await App.api(`/api/coleta/${b.dataset.complementar}/complementar`, {
+          planejamento_id: this.plan.id,
+          texto_tratado: el.querySelector('#texto-bancada').value,
+        });
+        b.textContent = 'Texto salvo';
+        setTimeout(() => { b.textContent = 'Salvar texto'; }, 1500);
+        this.itens.find((i) => i.id == b.dataset.complementar).texto_tratado =
+          el.querySelector('#texto-bancada').value;
+      } catch (e) {
+        alert(e.message);
+      }
+    }));
+
+    el.querySelectorAll('[data-dividir]').forEach((b) => b.addEventListener('click', () =>
+      this.modalDividir(this.itens.find((i) => i.id == b.dataset.dividir))));
+  },
+
+  /** Quebra um despejo em várias ideias, guardando o vínculo com a original. */
+  modalDividir(item) {
+    Modal.abrir({
+      titulo: 'Dividir em várias ideias',
+      url: `/api/coleta/${item.id}/dividir`,
+      valores: { planejamento_id: this.plan.id, p1: item.texto, p2: '', p3: '', p4: '' },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'original', rotulo: 'Ideia original', tipo: 'info', texto: item.texto,
+          barra: { cor: '#b08d4f', texto: `${item.autor}` } },
+        { nome: 'p1', rotulo: 'Parte 1', tipo: 'textarea', linhas: 2 },
+        { nome: 'p2', rotulo: 'Parte 2', tipo: 'textarea', linhas: 2 },
+        { nome: 'p3', rotulo: 'Parte 3 (opcional)', tipo: 'textarea', linhas: 2 },
+        { nome: 'p4', rotulo: 'Parte 4 (opcional)', tipo: 'textarea', linhas: 2 },
+      ],
+      transformar: (d) => ({
+        planejamento_id: d.planejamento_id,
+        partes: [d.p1, d.p2, d.p3, d.p4].filter((t) => String(t || '').trim() !== ''),
+      }),
+      aoSalvar: () => {
+        this.selecionado = null;
+        this.carregar();
+      },
+    });
   },
 
   // Cartão grande da fila: a ideia crua e os botões de destino

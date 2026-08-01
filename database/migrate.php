@@ -200,4 +200,43 @@ if ((int)$existe === 0) {
     }
 }
 
+// ---- Tempestade de ideias: rodada ao vivo com entrada por PIN ----
+garantirColuna($pdo, 'coleta_item', 'rodada_id',
+    'ALTER TABLE coleta_item ADD COLUMN rodada_id INT NULL AFTER planejamento_id');
+garantirColuna($pdo, 'coleta_item', 'autor_nome',
+    'ALTER TABLE coleta_item ADD COLUMN autor_nome VARCHAR(120) NULL AFTER autor_id');
+garantirColuna($pdo, 'coleta_item', 'participante_token',
+    'ALTER TABLE coleta_item ADD COLUMN participante_token CHAR(32) NULL AFTER autor_nome');
+garantirColuna($pdo, 'coleta_item', 'dividido_de_id',
+    'ALTER TABLE coleta_item ADD COLUMN dividido_de_id INT NULL AFTER participante_token');
+garantirColuna($pdo, 'coleta_item', 'impacto',
+    "ALTER TABLE coleta_item ADD COLUMN impacto ENUM('ALTO','BAIXO') NULL AFTER situacao");
+garantirColuna($pdo, 'coleta_item', 'esforco',
+    "ALTER TABLE coleta_item ADD COLUMN esforco ENUM('BAIXO','ALTO') NULL AFTER impacto");
+garantirColuna($pdo, 'coleta_item', 'votos',
+    'ALTER TABLE coleta_item ADD COLUMN votos SMALLINT NOT NULL DEFAULT 0 AFTER esforco');
+
+// Quem entra pela tempestade não tem conta: o autor passa a ser opcional
+$autorNulo = $pdo->query(
+    "SELECT IS_NULLABLE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'autor_id'"
+)->fetchColumn();
+if ($autorNulo === 'NO') {
+    $pdo->exec('ALTER TABLE coleta_item MODIFY COLUMN autor_id INT NULL');
+    echo "migrate: coleta_item.autor_id passou a aceitar nulo (entrada sem cadastro).\n";
+}
+
+// Estado intermediário: escolhida para tratar, ainda sem destino
+$tipoSituacaoColeta = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'situacao'"
+)->fetchColumn();
+if ($tipoSituacaoColeta && !str_contains((string)$tipoSituacaoColeta, 'SELECIONADO')) {
+    $pdo->exec(
+        "ALTER TABLE coleta_item MODIFY COLUMN situacao
+         ENUM('NOVO','SELECIONADO','ACEITO','DESCARTADO') NOT NULL DEFAULT 'NOVO'"
+    );
+    echo "migrate: situacao da ideia ampliada (SELECIONADO).\n";
+}
+
 echo "migrate: ok.\n";

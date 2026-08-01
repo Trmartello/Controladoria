@@ -319,3 +319,36 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   CONSTRAINT fk_ci_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_ci_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Rodada de tempestade de ideias: sessão ao vivo com PIN para entrar
+CREATE TABLE IF NOT EXISTS coleta_rodada (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  planejamento_id INT NOT NULL,
+  ano             SMALLINT NOT NULL,
+  tema            VARCHAR(180) NOT NULL,
+  pin             CHAR(6) NOT NULL,
+  situacao        ENUM('ABERTA','ENCERRADA') NOT NULL DEFAULT 'ABERTA',
+  votacao         ENUM('FECHADA','ABERTA') NOT NULL DEFAULT 'FECHADA',
+  max_ideias      TINYINT NOT NULL DEFAULT 5,
+  max_votos       TINYINT NOT NULL DEFAULT 3,
+  criado_por      INT NOT NULL,
+  criado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  encerrada_em    DATETIME NULL,
+  UNIQUE KEY uk_rodada_pin (pin),
+  KEY idx_rodada_plan (planejamento_id, ano, situacao),
+  CONSTRAINT fk_rod_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
+  CONSTRAINT fk_rod_autor FOREIGN KEY (criado_por) REFERENCES usuario(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Voto de participante numa ideia da rodada (convergência opcional)
+CREATE TABLE IF NOT EXISTS coleta_voto (
+  id                  INT AUTO_INCREMENT PRIMARY KEY,
+  item_id             INT NOT NULL,
+  rodada_id           INT NOT NULL,
+  participante_token  CHAR(32) NOT NULL,
+  criado_em           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_voto (item_id, participante_token),
+  KEY idx_voto_rodada (rodada_id, participante_token),
+  CONSTRAINT fk_voto_item FOREIGN KEY (item_id) REFERENCES coleta_item(id) ON DELETE CASCADE,
+  CONSTRAINT fk_voto_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

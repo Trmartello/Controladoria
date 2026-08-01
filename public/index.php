@@ -91,6 +91,13 @@ if ($metodo === 'GET' && ($caminho === '/' || $caminho === '/login')) {
     exit;
 }
 
+// ---- Tela do participante da tempestade (sem login, entra pelo PIN) ----
+if ($metodo === 'GET' && preg_match('#^/entrar(?:/(\\d{6}))?$#', $caminho, $mp)) {
+    $pin = $mp[1] ?? '';
+    require __DIR__ . '/../views/participante.php';
+    exit;
+}
+
 // ---- API JSON ----
 if (!str_starts_with($caminho, '/api/')) {
     http_response_code(404);
@@ -98,8 +105,11 @@ if (!str_starts_with($caminho, '/api/')) {
     exit;
 }
 
-// CSRF em toda escrita (o token chega no header X-CSRF-Token)
-if ($metodo !== 'GET' && $caminho !== '/api/login') {
+// CSRF em toda escrita (o token chega no header X-CSRF-Token).
+// /api/publico/* fica de fora porque não tem sessão: sem autoridade ambiente
+// não há o que um site de terceiro sequestrar. A guarda dessas rotas é o
+// token do participante + a rodada aberta (ver PublicoController).
+if ($metodo !== 'GET' && $caminho !== '/api/login' && !str_starts_with($caminho, '/api/publico/')) {
     Auth::validarCsrf();
 }
 
@@ -116,6 +126,8 @@ use App\Controllers\InvestimentoController;
 use App\Controllers\NegocioController;
 use App\Controllers\PlanejamentoController;
 use App\Controllers\ProjetoController;
+use App\Controllers\PublicoController;
+use App\Controllers\RodadaController;
 use App\Controllers\RelatorioController;
 use App\Controllers\UsuarioController;
 
@@ -161,6 +173,23 @@ try {
 
         case $rota === 'GET /api/contexto':        (new PlanejamentoController())->contexto(); break;
 
+        // Rotas públicas da tempestade: sem sessão, guardadas pelo token
+        case (bool)preg_match('#^GET /api/publico/rodada/(\\d{6})$#', $rota, $m):
+            (new PublicoController())->rodada($m[1]); break;
+        case $rota === 'GET /api/publico/minhas':  (new PublicoController())->minhas(); break;
+        case $rota === 'GET /api/publico/votar':   (new PublicoController())->paraVotar(); break;
+        case $rota === 'POST /api/publico/entrar': (new PublicoController())->entrar(); break;
+        case $rota === 'POST /api/publico/ideia':  (new PublicoController())->ideia(); break;
+        case (bool)preg_match('#^POST /api/publico/votar/(\\d+)$#', $rota, $m):
+            (new PublicoController())->votar((int)$m[1]); break;
+
+        case $rota === 'GET /api/rodadas':         (new RodadaController())->listar(); break;
+        case $rota === 'POST /api/rodadas':        (new RodadaController())->abrir(); break;
+        case (bool)preg_match('#^POST /api/rodadas/(\\d+)/encerrar$#', $rota, $m):
+            (new RodadaController())->encerrar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/rodadas/(\\d+)/votacao$#', $rota, $m):
+            (new RodadaController())->votacao((int)$m[1]); break;
+
         case $rota === 'GET /api/coleta':          (new ColetaController())->listar(); break;
         case $rota === 'POST /api/coleta':         (new ColetaController())->salvar(); break;
         // As específicas antes da genérica, senão /api/coleta/7/descartar cairia nela
@@ -168,6 +197,12 @@ try {
             (new ColetaController())->encaminhar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/descartar$#', $rota, $m):
             (new ColetaController())->descartar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/priorizar$#', $rota, $m):
+            (new ColetaController())->priorizar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/complementar$#', $rota, $m):
+            (new ColetaController())->complementar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/dividir$#', $rota, $m):
+            (new ColetaController())->dividir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/excluir$#', $rota, $m):
             (new ColetaController())->excluir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)$#', $rota, $m):

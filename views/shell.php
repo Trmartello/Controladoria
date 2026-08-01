@@ -37,7 +37,7 @@
         <li><a class="nav-link" href="#hub" data-secao="hub">Hub do Planejamento</a></li>
         <li><a class="nav-link" href="#cadastros" data-secao="cadastros">Cadastros</a></li>
         <li class="nav-item mt-2 text-white-50 small">Diagnóstico</li>
-        <li><a class="nav-link" href="#coleta" data-secao="coleta">Coleta de Ideias</a></li>
+        <li><a class="nav-link" href="#coleta" data-secao="coleta">Coleta e Tempestade</a></li>
         <li><a class="nav-link" href="#cenario" data-secao="cenario">Análise de Cenário</a></li>
         <li><a class="nav-link" href="#pestel" data-secao="pestel">PESTEL</a></li>
         <li><a class="nav-link" href="#porter" data-secao="porter">Porter — 5 Forças</a></li>
@@ -105,6 +105,7 @@
   </div>
 
   <script src="<?= versao_asset('/assets/vendor/bootstrap.bundle.min.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/vendor/qrcode.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/modal.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/painel.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
