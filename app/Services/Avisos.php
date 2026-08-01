@@ -100,37 +100,40 @@ class Avisos
     /** Semana corrente (segunda a domingo) mais o que ficou atrasado antes. */
     private static function acoesDaSemana(int $usuarioId, string $hoje): array
     {
-        $segunda = date('Y-m-d', strtotime('monday this week', strtotime($hoje)));
         $domingo = date('Y-m-d', strtotime('sunday this week', strtotime($hoje)));
-        return Database::todos(
-            'SELECT ' . self::CAMPOS . '
-             FROM desdobramento d
-             JOIN projeto p ON p.id = d.projeto_id
-             LEFT JOIN iniciativa i ON i.id = d.iniciativa_id
-             WHERE d.quem_usuario_id = ? AND d.status IN ' . self::STATUS_ABERTOS . '
-               AND d.data_fim IS NOT NULL AND d.data_fim <= ?
-             ORDER BY d.data_fim, d.prioridade = \'ALTA\' DESC',
-            [$usuarioId, $domingo]
-        );
+        return Database::todos(self::CONSULTA, [$usuarioId, $domingo]);
     }
 
     /** Só o que vence hoje ou já venceu. */
     private static function pendenciasDoDia(int $usuarioId, string $hoje): array
     {
-        return Database::todos(
-            'SELECT ' . self::CAMPOS . '
-             FROM desdobramento d
-             JOIN projeto p ON p.id = d.projeto_id
-             LEFT JOIN iniciativa i ON i.id = d.iniciativa_id
-             WHERE d.quem_usuario_id = ? AND d.status IN ' . self::STATUS_ABERTOS . '
-               AND d.data_fim IS NOT NULL AND d.data_fim <= ?
-             ORDER BY d.data_fim, d.prioridade = \'ALTA\' DESC',
-            [$usuarioId, $hoje]
-        );
+        return Database::todos(self::CONSULTA, [$usuarioId, $hoje]);
     }
 
     private const CAMPOS = "d.id, d.o_que, d.data_fim, d.status, d.prioridade, d.progresso,
                             p.titulo AS projeto, i.titulo AS iniciativa";
+
+    /**
+     * Ações de um responsável com prazo até a data informada.
+     *
+     * O `AND` do escopo repete a regra de Auth::exigirAcessoPlanejamento: quem
+     * não enxerga o planejamento também não pode receber por e-mail o título
+     * do projeto, da iniciativa e da ação. Sem ele, um nome digitado à mão no
+     * campo "Quem?" vazaria o plano de um negócio para alguém de outro.
+     */
+    private const CONSULTA = 'SELECT ' . self::CAMPOS . '
+         FROM desdobramento d
+         JOIN projeto p ON p.id = d.projeto_id
+         JOIN planejamento pl ON pl.id = p.planejamento_id
+         JOIN usuario u ON u.id = d.quem_usuario_id
+         LEFT JOIN iniciativa i ON i.id = d.iniciativa_id
+         WHERE d.quem_usuario_id = ? AND d.status IN ' . self::STATUS_ABERTOS . "
+           AND d.data_fim IS NOT NULL AND d.data_fim <= ?
+           AND (u.perfil IN ('ADMIN', 'CONTROLADORIA', 'DIRECAO')
+                OR (pl.escopo <> 'CORPORATIVO' AND EXISTS (
+                      SELECT 1 FROM usuario_negocio un
+                      WHERE un.usuario_id = u.id AND un.negocio_id = pl.negocio_id)))
+         ORDER BY d.data_fim, d.prioridade = 'ALTA' DESC";
 
     private static function corpo(string $tipo, string $nome, array $acoes, string $hoje): string
     {

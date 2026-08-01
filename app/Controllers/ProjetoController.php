@@ -245,7 +245,7 @@ class ProjetoController
     {
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
-        Auth::exigirEdicaoPlanejamento($planId);
+        $plan = Auth::exigirEdicaoPlanejamento($planId);
         $projetoId = (int)($d['projeto_id'] ?? 0);
         $this->exigirProjeto($projetoId, $planId);
         $iniciativaId = (int)($d['iniciativa_id'] ?? 0);
@@ -320,7 +320,7 @@ class ProjetoController
 
         $params = [
             $projetoId, $iniciativaId, $oQue, trim($d['por_que'] ?? ''),
-            $quem, $this->usuarioPorNome($quem),
+            $quem, $this->usuarioPorNome($quem, $plan),
             $recorrencia, $recDia, $recAte,
             mb_substr(trim($d['quando_'] ?? ''), 0, 60),
             $inicio, $fim,
@@ -364,13 +364,28 @@ class ProjetoController
         Json::ok(['id' => $id, 'reagendada_para' => $reagendou['data_fim'] ?? null]);
     }
 
-    /** Casa o nome digitado em "Quem?" com um usuário ativo de mesmo nome. */
-    private function usuarioPorNome(string $nome): ?int
+    /**
+     * Casa o nome digitado em "Quem?" com um usuário ativo de mesmo nome.
+     * Só vale para quem enxerga o planejamento (mesma regra da lista sugerida
+     * em UsuarioController::responsaveis) — senão um nome digitado à mão
+     * amarraria a ação a alguém de outro negócio, que passaria a recebê-la
+     * nos avisos por e-mail sem ter acesso ao planejamento. Fora do escopo,
+     * o nome fica apenas como texto livre em `quem`.
+     */
+    private function usuarioPorNome(string $nome, array $plan): ?int
     {
         if ($nome === '') {
             return null;
         }
-        $u = Database::um('SELECT id FROM usuario WHERE ativo = 1 AND nome = ?', [$nome]);
+        $negocioId = $plan['negocio_id'] !== null ? (int)$plan['negocio_id'] : 0;
+        $u = Database::um(
+            "SELECT u.id FROM usuario u
+             LEFT JOIN usuario_negocio un ON un.usuario_id = u.id
+             WHERE u.ativo = 1 AND u.nome = ?
+               AND (u.perfil IN ('ADMIN', 'CONTROLADORIA', 'DIRECAO') OR un.negocio_id = ?)
+             LIMIT 1",
+            [$nome, $negocioId]
+        );
         return $u ? (int)$u['id'] : null;
     }
 

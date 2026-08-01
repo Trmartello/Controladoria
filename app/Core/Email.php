@@ -81,7 +81,13 @@ class Email
             self::comando($conexao, 'DATA', 354);
             self::escrever($conexao, self::mensagem($para, $assunto, $html) . "\r\n.");
             self::ler($conexao, 250);
-            self::comando($conexao, 'QUIT', 221);
+            // Daqui em diante a mensagem já foi aceita: um tropeço na despedida
+            // não pode virar "falhou", senão o aviso sairia de novo amanhã
+            try {
+                self::comando($conexao, 'QUIT', 221);
+            } catch (\Throwable $e) {
+                // servidor encerrou a conversa do seu jeito; a entrega está feita
+            }
         } finally {
             fclose($conexao);
         }
