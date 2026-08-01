@@ -135,6 +135,17 @@ table.tabela-cadastro td { vertical-align: middle; }
   background: var(--cor-cat, #007a45);
   border-color: var(--cor-cat, #007a45);
 }
+/* Atalho "Ver na SWOT": navega até o fator na análise SWOT */
+.btn-ver-swot {
+  color: var(--verde-coperdia);
+  border: 1px dashed var(--verde-coperdia);
+  background: #fff;
+}
+.btn-ver-swot:hover {
+  color: #fff;
+  background: var(--verde-coperdia);
+  border-color: var(--verde-coperdia);
+}
 /* Combo em forma de botão (só no celular): escolhe a categoria exibida */
 .sel-categoria-movel {
   background-color: var(--verde-coperdia);

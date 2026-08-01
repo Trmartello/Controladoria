@@ -176,9 +176,13 @@ const Diag = {
     if (!App.podeEditar()) return '';
     let swot = '';
     if (comPromocao) {
+      // Promovido: à esquerda o botão da categoria (reclassificar/desvincular)
+      // e, no meio, o atalho que abre o fator na análise SWOT
       swot = Number(f.promovido)
         ? `<button class="btn btn-sm btn-swot-cat" style="--cor-cat:${this.CORES_QUADRANTE[f.promovido_categoria] || '#007a45'}"
-             data-editar-swot="${f.id}" title="Alterar a categoria na SWOT">${this.QUADRANTES[f.promovido_categoria] || 'SWOT'}</button>`
+             data-editar-swot="${f.id}" title="Alterar a categoria na SWOT">${this.QUADRANTES[f.promovido_categoria] || 'SWOT'}</button>
+           <button class="btn btn-sm btn-ver-swot" data-ir-swot="${f.promovido_id}"
+             data-cat-swot="${f.promovido_categoria}" title="Abrir este fator na análise SWOT">Ver na SWOT ↗</button>`
         : `<button class="btn btn-sm btn-outline-success" data-promover="${f.id}" title="Promover para a SWOT">→ SWOT</button>`;
     }
     return `<div class="botoes-fator d-flex gap-1 mt-2 align-items-center flex-wrap">
@@ -264,6 +268,11 @@ const Diag = {
       await App.api(`/api/fatores/${b.dataset.excluir}/excluir`, { planejamento_id: plan.id });
       App.recarregarSecaoAtiva();
     }));
+    // "Ver na SWOT": abre a análise SWOT já rolando até o fator, com o filtro
+    // de categoria do celular ajustado para o quadrante dele
+    el.querySelectorAll('[data-ir-swot]').forEach((b) => b.addEventListener('click', () =>
+      this.irParaFator('swot', b.dataset.irSwot, 'SWOT', b.dataset.catSwot)));
+
     // Botão da SWOT (promover ou trocar categoria): abre a matriz 2×2 embaixo
     // do próprio card, sem modal — um toque no quadrante já aplica a escolha
     const alternarPainel = (id) => {
