@@ -32,11 +32,14 @@ class FatorController
                     o.etapa AS origem_etapa, o.categoria AS origem_categoria,
                     (pr.id IS NOT NULL) AS promovido,
                     pr.id AS promovido_id, pr.categoria AS promovido_categoria,
-                    pr.descricao AS promovido_descricao
+                    pr.descricao AS promovido_descricao,
+                    ci.id AS coleta_item_id, ca.nome AS coleta_autor
              FROM fator f
              LEFT JOIN gut g ON g.fator_id = f.id
              LEFT JOIN fator o ON o.id = f.promovido_de_id
              LEFT JOIN fator pr ON pr.promovido_de_id = f.id
+             LEFT JOIN coleta_item ci ON ci.destino_tipo = 'FATOR' AND ci.destino_id = f.id
+             LEFT JOIN usuario ca ON ca.id = ci.autor_id
              WHERE f.planejamento_id = ? AND f.etapa = ?{$filtroAno}
              ORDER BY f.categoria, f.id",
             $params
@@ -84,6 +87,15 @@ class FatorController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirFator($id, $planId);
+        // Solta o vínculo da Coleta (deste fator e do promovido) antes de
+        // apagar: sem isso a ideia apontaria para um id morto e o rastreio
+        // exibiria link quebrado
+        Database::executar(
+            "UPDATE coleta_item SET destino_tipo = NULL, destino_id = NULL
+             WHERE destino_tipo = 'FATOR' AND destino_id IN
+               (SELECT x.id FROM (SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?) x)",
+            [$id, $id]
+        );
         // Excluir o fator de origem leva junto o que foi promovido dele para a
         // SWOT e, com ele, a avaliação na Matriz GUT (FK gut ON DELETE CASCADE)
         Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$id]);

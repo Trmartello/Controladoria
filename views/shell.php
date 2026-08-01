@@ -37,6 +37,7 @@
         <li><a class="nav-link" href="#hub" data-secao="hub">Hub do Planejamento</a></li>
         <li><a class="nav-link" href="#cadastros" data-secao="cadastros">Cadastros</a></li>
         <li class="nav-item mt-2 text-white-50 small">Diagnóstico</li>
+        <li><a class="nav-link" href="#coleta" data-secao="coleta">Coleta de Ideias</a></li>
         <li><a class="nav-link" href="#cenario" data-secao="cenario">Análise de Cenário</a></li>
         <li><a class="nav-link" href="#pestel" data-secao="pestel">PESTEL</a></li>
         <li><a class="nav-link" href="#porter" data-secao="porter">Porter — 5 Forças</a></li>
@@ -68,6 +69,7 @@
       <section id="secao-painel" class="secao d-none"></section>
       <section id="secao-hub" class="secao d-none"></section>
       <section id="secao-cadastros" class="secao d-none"></section>
+      <section id="secao-coleta" class="secao d-none"></section>
       <section id="secao-cenario" class="secao d-none"></section>
       <section id="secao-pestel" class="secao d-none"></section>
       <section id="secao-porter" class="secao d-none"></section>
@@ -108,6 +110,7 @@
   <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cadastros.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/diagnostico.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/coleta.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cascata.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/projetos.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/investimentos.js') ?>"></script>

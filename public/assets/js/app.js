@@ -177,6 +177,7 @@ const App = {
   recarregarSecaoAtiva() {
     const secoes = {
       painel: SecaoPainel, hub: SecaoHub, cadastros: SecaoCadastros,
+      coleta: SecaoColeta,
       cenario: SecaoCenario, pestel: SecaoPestel, porter: SecaoPorter,
       swot: SecaoSwot, gut: SecaoGut, cascata: SecaoCascata,
       projetos: SecaoProjetos, investimentos: SecaoInvestimentos,

@@ -297,3 +297,25 @@ CREATE TABLE IF NOT EXISTS reuniao (
   CONSTRAINT fk_reu_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_reu_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Coleta de ideias (brainstorm): item cru até virar cenário ou fator
+CREATE TABLE IF NOT EXISTS coleta_item (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  planejamento_id  INT NOT NULL,
+  ano              SMALLINT NOT NULL,
+  autor_id         INT NOT NULL,
+  texto            TEXT NOT NULL,
+  texto_tratado    TEXT NULL,
+  destino_sugerido ENUM('CENARIO','PESTEL','PORTER','SWOT','NAO_SEI') NOT NULL DEFAULT 'NAO_SEI',
+  situacao         ENUM('NOVO','ACEITO','DESCARTADO') NOT NULL DEFAULT 'NOVO',
+  destino_tipo     ENUM('CENARIO','FATOR') NULL,
+  destino_id       INT NULL,
+  motivo           TEXT NULL,
+  triado_por       INT NULL,
+  triado_em        DATETIME NULL,
+  criado_em        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ci_plan (planejamento_id, ano, situacao),
+  KEY idx_ci_destino (destino_tipo, destino_id),
+  CONSTRAINT fk_ci_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ci_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

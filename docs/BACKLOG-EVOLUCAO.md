@@ -183,7 +183,13 @@ Validar em 1500×800 e 390×844, como manda o `CLAUDE.md`.
 
 ## 2. Quiz / brainstorm com tratativa item a item
 
-### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço M)
+### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço M) — **ENTREGUE**
+
+Entregue como especificado abaixo, antecipando a posição 6 da fila a pedido do
+cliente. Uma ressalva registrada: a **decisão em aberto nº 2** (perfil LEITURA
+pode gravar ideia?) continua sem resposta, então `Auth::exigirRespostaColeta()`
+existe com nome próprio mas repete a regra de `exigirEdicaoPlanejamento` —
+liberar LEITURA depois é trocar uma linha, sem afrouxar a regra geral.
 
 A **coleta** tem substituto barato (Google Forms, planilha, a própria oficina) —
 o que não tem substituto é a **tratativa**: hoje alguém pega a lista crua e
@@ -297,10 +303,12 @@ Uma seção, **sem abas**:
 
 Mobile-first: a triagem acontece em reunião, muitas vezes no celular.
 
-### Entrega mínima
+### Entrega mínima — feita
 
 1 tabela + `ColetaController` (listar/salvar/encaminhar/descartar) + 4 rotas +
 `coleta.js` + item de menu + os 2 selos de origem + a linha no hub.
+O pré-requisito do destaque no Cenário (`data-card-fator` + `aplicarDestaque`)
+foi feito junto, e `Database::afetadas()` entrou para a reserva atômica.
 
 **Pré-requisito de 2 linhas, obrigatório:** hoje `SecaoCenario` não emite
 `data-card-fator` nos cards nem chama `Diag.aplicarDestaque` — só PESTEL/Porter,
@@ -852,6 +860,28 @@ que atravessa eixos ou que não nasce de nenhuma escolha da cascata.
 
 ---
 
+## Leitura impacto × esforço
+
+Cruzamento dos dez temas, para quem quiser conferir a fila por outro ângulo.
+O esforço e o veredito vêm da tabela abaixo; **a posição no eixo de impacto é
+leitura derivada dos argumentos de cada seção** — este documento não atribui
+nota de impacto, e não convém passar a atribuir.
+
+| | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
+|---|---|---|
+| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 5 registro de reunião · 3b vínculo com a Cascata · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 4 Plano de Contingência · 2 Coleta & Triagem |
+| **Impacto baixo** | **Encaixar** — 4b contingência dentro do projeto *(não construir agora)* | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
+
+**O que essa leitura mostra — e o que ela não decide.** Cinco dos dez temas
+caem no mesmo quadrante. Não é falha da leitura: é o retrato de um backlog já
+podado, em que o trabalho caro e duvidoso foi cortado antes de entrar na lista.
+O que sobrou é quase tudo barato e valioso.
+
+Por isso a coluna "Ordem" da tabela-resumo **não** sai desse cruzamento — ele
+empataria cinco itens. Ela sai da **dependência**: o que precisa existir antes
+para o item seguinte valer alguma coisa. Quem quiser reordenar a fila deve
+discutir a dependência, não o quadrante.
+
 ## Tabela-resumo
 
 | # | Tema | Veredito | Esforço | Ordem |
@@ -862,7 +892,7 @@ que atravessa eixos ou que não nasce de nenhuma escolha da cascata.
 | 4 | Plano de Contingência (ancorado na ameaça GUT) | Construir simplificado | M | 3 |
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 4 |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 5 |
-| 2 | Coleta & Triagem (quiz/brainstorm com tratativa) | Construir simplificado | M | 6 (ou 1, se a oficina for próxima) |
+| 2 | Coleta & Triagem (quiz/brainstorm com tratativa) | **Entregue** | M | 6 ✔ (antecipada) |
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
 | 4b | Contingência dentro de cada projeto | **Não construir agora** (deriva de 4) | P | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |

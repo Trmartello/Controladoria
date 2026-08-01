@@ -68,6 +68,12 @@ class PlanejamentoController
     {
         $conta = fn(string $sql, array $p) => (int)(Database::um($sql, $p)['n'] ?? 0);
 
+        // Da coleta interessa o que ainda não foi triado — sem denominador: o
+        // checklist não filtra por ano e somaria as rodadas de todos os anos
+        $coleta  = $conta(
+            "SELECT COUNT(*) n FROM coleta_item WHERE planejamento_id = ? AND situacao = 'NOVO'",
+            [$planId]
+        );
         $cenario = $conta('SELECT COUNT(*) n FROM cenario_item WHERE planejamento_id = ?', [$planId]);
         $pestel  = $conta("SELECT COUNT(*) n FROM fator WHERE planejamento_id = ? AND etapa = 'PESTEL'", [$planId]);
         $porter  = $conta("SELECT COUNT(*) n FROM fator WHERE planejamento_id = ? AND etapa = 'PORTER'", [$planId]);
@@ -89,6 +95,7 @@ class PlanejamentoController
 
         // 'secao' liga cada cartão do hub à seção correspondente do menu
         return [
+            ['etapa' => 'Coleta de Ideias',    'secao' => 'coleta',        'itens' => $coleta,        'meta' => null],
             ['etapa' => 'Análise de Cenário',  'secao' => 'cenario',       'itens' => $cenario,       'meta' => null],
             ['etapa' => 'PESTEL',              'secao' => 'pestel',        'itens' => $pestel,        'meta' => null],
             ['etapa' => 'Porter (5 Forças)',   'secao' => 'porter',        'itens' => $porter,        'meta' => null],

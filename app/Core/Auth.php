@@ -84,6 +84,28 @@ class Auth
         return self::exigirAcessoPlanejamento($planejamentoId);
     }
 
+    /**
+     * Escrever a própria ideia na Coleta. Existe como método com nome próprio
+     * porque é o único ponto do sistema em que a regra de escrita pode vir a
+     * diferir de `exigirEdicaoPlanejamento` — o brainstorm quer ser amplo sem
+     * inflar perfis de escrita.
+     *
+     * Enquanto a diretoria não decidir se o perfil LEITURA pode registrar
+     * ideia, a regra é a mesma da edição. Liberar depois é trocar a linha
+     * abaixo, sem afrouxar `exigirEdicaoPlanejamento` — que continua barrando
+     * LEITURA em todas as outras rotas de escrita.
+     */
+    public static function exigirRespostaColeta(int $planejamentoId): array
+    {
+        return self::exigirEdicaoPlanejamento($planejamentoId);
+    }
+
+    /** Triagem da Coleta: encaminhar ou descartar ideia é ato de curadoria. */
+    public static function exigirTriagemColeta(int $planejamentoId): array
+    {
+        return self::exigirEdicaoPlanejamento($planejamentoId);
+    }
+
     public static function tokenCsrf(): string
     {
         if (empty($_SESSION['csrf'])) {

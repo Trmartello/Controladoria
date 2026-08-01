@@ -60,6 +60,18 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   sobrescritas pela sincronização.
 - Excluir um fator de PESTEL/Porter/SWOT remove também o promovido para a SWOT
   e a linha correspondente na matriz GUT (`FatorController::excluir`).
+- **Coleta de Ideias** é o passo 0 do diagnóstico: ideia crua → triagem item a
+  item → item de cenário ou fator (ou descarte com motivo, visível ao autor).
+  O registro criado herda o `ano` da **ideia**, nunca o do seletor da tela.
+  O vínculo vale nos dois sentidos (selo “Coleta · Fulano” no card do
+  diagnóstico, “Virou fator ↗” na ideia); apagar o destino limpa
+  `destino_tipo`/`destino_id` em vez de deixar link quebrado.
+  O encaminhamento usa **reserva atômica** (`Database::afetadas()` num UPDATE
+  com a condição no WHERE) em vez de transação — o repositório não usa
+  `beginTransaction` e `Json::erro()` encerra a execução.
+  Escrita passa por `Auth::exigirRespostaColeta()` / `exigirTriagemColeta()`,
+  que hoje repetem `exigirEdicaoPlanejamento`: existem para a regra do
+  brainstorm poder mudar sem afrouxar a autorização geral.
 
 ### Plano de ação (três níveis)
 

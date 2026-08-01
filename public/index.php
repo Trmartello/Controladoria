@@ -106,6 +106,7 @@ if ($metodo !== 'GET' && $caminho !== '/api/login') {
 use App\Controllers\AuthController;
 use App\Controllers\CascataController;
 use App\Controllers\CenarioController;
+use App\Controllers\ColetaController;
 use App\Controllers\CicloController;
 use App\Controllers\DiarioController;
 use App\Controllers\DriverEixoController;
@@ -159,6 +160,18 @@ try {
             (new UsuarioController())->salvar((int)$m[1]); break;
 
         case $rota === 'GET /api/contexto':        (new PlanejamentoController())->contexto(); break;
+
+        case $rota === 'GET /api/coleta':          (new ColetaController())->listar(); break;
+        case $rota === 'POST /api/coleta':         (new ColetaController())->salvar(); break;
+        // As específicas antes da genérica, senão /api/coleta/7/descartar cairia nela
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/encaminhar$#', $rota, $m):
+            (new ColetaController())->encaminhar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/descartar$#', $rota, $m):
+            (new ColetaController())->descartar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/excluir$#', $rota, $m):
+            (new ColetaController())->excluir((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)$#', $rota, $m):
+            (new ColetaController())->salvar((int)$m[1]); break;
 
         case $rota === 'GET /api/cenario':         (new CenarioController())->listar(); break;
         case $rota === 'POST /api/cenario':        (new CenarioController())->salvar(); break;

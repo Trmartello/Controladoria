@@ -129,6 +129,27 @@ const Diag = {
     App.mostrarSecao(secao);
   },
 
+  /**
+   * Selo de origem: mostra que este registro nasceu de uma ideia da Coleta e
+   * de quem foi. É o vínculo que se perdia quando alguém redigitava a lista
+   * crua à mão dentro do diagnóstico.
+   */
+  seloColeta(registro) {
+    if (!registro.coleta_item_id) return '';
+    return `<div class="mt-1"><button type="button" class="btn btn-sm selo-link"
+      data-ir-coleta="${registro.coleta_item_id}"
+      title="Ver a ideia original na Coleta">Coleta · ${Modal.esc(registro.coleta_autor || '—')}</button></div>`;
+  },
+
+  ligarSeloColeta(el) {
+    el.querySelectorAll('[data-ir-coleta]').forEach((b) => b.addEventListener('click', () => {
+      this.destaqueColeta = b.dataset.irColeta;
+      App.mostrarSecao('coleta');
+    }));
+  },
+
+  destaqueColeta: null,
+
   aplicarDestaque(el, secao) {
     if (this.destaque?.secao !== secao) return;
     const { fatorId } = this.destaque;
@@ -206,6 +227,7 @@ const Diag = {
       const cartoes = itens.map((f) => `
         <div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-2">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
+          ${this.seloColeta(f)}
           ${this.botoesFator(f, plan.id, comPromocao)}
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
         </div></div>`).join('');
@@ -238,6 +260,7 @@ const Diag = {
     this.ligarSeletorCategoriaMovel(el, etapa);
     this.ligarVerMais(el);
     this.aplicarDestaque(el, idSecao.replace('secao-', ''));
+    this.ligarSeloColeta(el);
     if (!App.podeEditar()) return;
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
@@ -330,9 +353,11 @@ const SecaoCenario = {
 
     const bloco = (tipo, titulo) => {
       const lista = itens.filter((i) => i.tipo === tipo);
+      // data-card-fator é o que permite chegar aqui vindo da Coleta
       const linhas = lista.map((i, idx) => `
-        <div class="card mb-2"><div class="card-body py-2 px-3">
+        <div class="card mb-2" data-card-fator="${i.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
+          ${Diag.seloColeta(i)}
           ${App.podeEditar() ? `<div class="botoes-fator d-flex gap-1 mt-2 justify-content-end">
             <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
             <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
@@ -373,6 +398,8 @@ const SecaoCenario = {
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
     Diag.ligarVerMais(el);
+    Diag.aplicarDestaque(el, 'cenario');
+    Diag.ligarSeloColeta(el);
     if (!App.podeEditar()) return;
     const modalItem = (i = null, tipoNovo = null) => Modal.abrir({
       titulo: i ? `Editar item do cenário (${i.ano || ano})` : `Novo item do cenário · ${ano}`,
@@ -509,6 +536,7 @@ const SecaoSwot = {
     Diag.ligarSeletorCategoriaMovel(el, 'SWOT');
     Diag.ligarVerMais(el);
     Diag.aplicarDestaque(el, 'swot');
+    Diag.ligarSeloColeta(el);
 
     el.querySelectorAll('[data-ir-origem]').forEach((b) => b.addEventListener('click', () => {
       const etapa = b.dataset.etapaOrigem;

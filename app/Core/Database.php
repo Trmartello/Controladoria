@@ -46,4 +46,16 @@ class Database
         $stmt->execute($params);
         return self::conn()->lastInsertId();
     }
+
+    /**
+     * UPDATE/DELETE devolvendo quantas linhas mudaram. Serve para reserva
+     * atômica: um UPDATE com a condição no WHERE só afeta uma linha na
+     * primeira vez, então o segundo clique não repete o efeito.
+     */
+    public static function afetadas(string $sql, array $params = []): int
+    {
+        $stmt = self::conn()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->rowCount();
+    }
 }
