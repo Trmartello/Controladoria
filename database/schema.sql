@@ -280,3 +280,20 @@ CREATE TABLE IF NOT EXISTS diario_bordo (
   KEY idx_ref (ref_tipo, ref_id, data_reg),
   CONSTRAINT fk_db_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Ata leve das reuniões de acompanhamento do planejamento
+CREATE TABLE IF NOT EXISTS reuniao (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  planejamento_id INT NOT NULL,
+  data_reuniao    DATE NOT NULL,
+  periodo_de      DATE NOT NULL,
+  periodo_ate     DATE NOT NULL,
+  participantes   TEXT NULL,
+  decisoes        TEXT NULL,
+  proximos_passos TEXT NULL,
+  autor_id        INT NOT NULL,
+  criado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_reu_plan (planejamento_id, data_reuniao),
+  CONSTRAINT fk_reu_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
+  CONSTRAINT fk_reu_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -2,8 +2,8 @@
 
 Consolidação das propostas de evolução discutidas depois das fases 1–6
 (`docs/PLANEJAMENTO-SISTEMA.md`), já com os cortes de escopo aplicados após a
-revisão adversarial de cada uma. Nada aqui foi implementado — este documento é
-backlog, não registro de entrega.
+revisão adversarial de cada uma. Salvo onde marcado **ENTREGUE**, nada aqui foi
+implementado — este documento é backlog, não registro de entrega.
 
 **Como ler.** Cada tema traz: veredito, onde encaixa (sistema + menu), modelo de
 dados concreto, telas e fluxo, entrega mínima, esforço, dependências/riscos e —
@@ -739,7 +739,11 @@ isso que o item 7 cobra.
 ligar o cron diário do Railway, e rodar `POST /api/avisos/despachar` uma vez para
 conferir. Isso liga um módulo inteiro que já está pronto e não roda.
 
-**Fatia 1 (P) — "Registro de reunião" (ata leve):** uma tabela e um botão.
+**Fatia 1 (P) — "Registro de reunião" (ata leve): ENTREGUE.** Uma tabela e um
+botão. Implementado como descrito abaixo, com edição e exclusão; as rotas são
+`GET/POST /api/reunioes`, `POST /api/reunioes/{id}` e
+`POST /api/reunioes/{id}/excluir` (`RelatorioController`), e o bloco "6. Últimas
+reuniões de acompanhamento" fecha o Relatório de Status.
 
 ```sql
 CREATE TABLE IF NOT EXISTS reuniao (
@@ -853,7 +857,7 @@ que atravessa eixos ou que não nasce de nenhuma escolha da cascata.
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
-| 5 | Ritual de acompanhamento (registro de reunião) | Construir simplificado | P | 1 |
+| 5 | Ritual de acompanhamento (registro de reunião) | **Entregue** | P | 1 ✔ |
 | 3b | Reanimar `projeto.cascata_id` | Construir | P (micro) | 2 |
 | 4 | Plano de Contingência (ancorado na ameaça GUT) | Construir simplificado | M | 3 |
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 4 |

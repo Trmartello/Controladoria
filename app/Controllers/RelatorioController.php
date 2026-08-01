@@ -333,4 +333,88 @@ class RelatorioController
             Json::erro('Falha ao enviar: ' . $e->getMessage());
         }
     }
+
+    /** Últimas reuniões registradas, da mais recente para a mais antiga. */
+    public function listarReunioes(): void
+    {
+        $planId = (int)($_GET['planejamento_id'] ?? 0);
+        Auth::exigirAcessoPlanejamento($planId);
+        Json::ok(Database::todos(
+            'SELECT r.*, u.nome AS autor
+             FROM reuniao r JOIN usuario u ON u.id = r.autor_id
+             WHERE r.planejamento_id = ?
+             ORDER BY r.data_reuniao DESC, r.id DESC
+             LIMIT 20',
+            [$planId]
+        ));
+    }
+
+    /**
+     * Ata leve da reunião de acompanhamento: quando foi, quem estava, o que se
+     * decidiu e o que ficou combinado. O período é o mesmo do relatório que
+     * serviu de pauta, para a ata poder ser relida junto com os números.
+     */
+    public function salvarReuniao(?int $id = null): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        $u = Auth::exigirLogin();
+        Auth::exigirEdicaoPlanejamento($planId);
+
+        $data = $this->dataValida($d['data_reuniao'] ?? '', 'Informe a data da reunião.');
+        $de = $this->dataValida($d['periodo_de'] ?? '', 'Informe o início do período discutido.');
+        $ate = $this->dataValida($d['periodo_ate'] ?? '', 'Informe o fim do período discutido.');
+        if ($ate < $de) {
+            Json::erro('O fim do período não pode ser anterior ao início.');
+        }
+        $decisoes = trim($d['decisoes'] ?? '');
+        if ($decisoes === '') {
+            Json::erro('Registre o que foi decidido na reunião.');
+        }
+        $params = [
+            $data, $de, $ate,
+            trim($d['participantes'] ?? ''),
+            $decisoes,
+            trim($d['proximos_passos'] ?? ''),
+        ];
+        if ($id) {
+            if (!Database::um('SELECT id FROM reuniao WHERE id = ? AND planejamento_id = ?', [$id, $planId])) {
+                Json::erro('Reunião não encontrada neste planejamento.', 404);
+            }
+            Database::executar(
+                'UPDATE reuniao SET data_reuniao = ?, periodo_de = ?, periodo_ate = ?,
+                   participantes = ?, decisoes = ?, proximos_passos = ? WHERE id = ?',
+                [...$params, $id]
+            );
+        } else {
+            $id = (int)Database::executar(
+                'INSERT INTO reuniao (data_reuniao, periodo_de, periodo_ate, participantes,
+                   decisoes, proximos_passos, planejamento_id, autor_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [...$params, $planId, (int)$u['id']]
+            );
+        }
+        Json::ok(['id' => $id]);
+    }
+
+    public function excluirReuniao(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        if (!Database::um('SELECT id FROM reuniao WHERE id = ? AND planejamento_id = ?', [$id, $planId])) {
+            Json::erro('Reunião não encontrada neste planejamento.', 404);
+        }
+        Database::executar('DELETE FROM reuniao WHERE id = ?', [$id]);
+        Json::ok();
+    }
+
+    private function dataValida(string $valor, string $mensagem): string
+    {
+        $valor = trim($valor);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)) {
+            Json::erro($mensagem);
+        }
+        return $valor;
+    }
 }

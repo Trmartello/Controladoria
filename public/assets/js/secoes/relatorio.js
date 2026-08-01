@@ -11,6 +11,7 @@ const STATUS_PROJETO = {
 
 const SecaoRelatorio = {
   plan: null,
+  reunioes: [],
   de: null,
   ate: null,
 
@@ -23,6 +24,34 @@ const SecaoRelatorio = {
     return iso ? iso.split('-').reverse().join('/') : '';
   },
 
+  /**
+   * Ata da reunião de acompanhamento. O período vem pré-preenchido com o que
+   * está na tela — é o relatório que serviu de pauta.
+   */
+  modalReuniao(m) {
+    Modal.abrir({
+      titulo: m ? 'Editar registro da reunião' : 'Registrar reunião',
+      url: m ? `/api/reunioes/${m.id}` : '/api/reunioes',
+      valores: m
+        ? { ...m, planejamento_id: this.plan.id }
+        : {
+            planejamento_id: this.plan.id, data_reuniao: App.hoje(),
+            periodo_de: this.de, periodo_ate: this.ate,
+          },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'data_reuniao', rotulo: 'Data da reunião', tipo: 'date', obrigatorio: true },
+        { nome: 'periodo_de', rotulo: 'Período discutido — de', tipo: 'date', obrigatorio: true },
+        { nome: 'periodo_ate', rotulo: 'Período discutido — até', tipo: 'date', obrigatorio: true },
+        { nome: 'participantes', rotulo: 'Quem participou', tipo: 'textarea', linhas: 2,
+          exemplo: 'Direção, controladoria e gestores dos negócios' },
+        { nome: 'decisoes', rotulo: 'O que foi decidido', tipo: 'textarea', linhas: 4, obrigatorio: true },
+        { nome: 'proximos_passos', rotulo: 'Próximos passos', tipo: 'textarea', linhas: 3,
+          ajuda: 'O que ficou combinado até a próxima reunião.' },
+      ],
+    });
+  },
+
   async carregar() {
     const el = document.getElementById('secao-relatorio');
     if (!App.contextoParams()) {
@@ -33,8 +62,11 @@ const SecaoRelatorio = {
     this.ate = this.ate || App.hoje();
     this.de = this.de || App.hoje(30);
 
-    const r = await App.api(
-      `/api/relatorio?planejamento_id=${this.plan.id}&de=${this.de}&ate=${this.ate}`);
+    const [r, reunioes] = await Promise.all([
+      App.api(`/api/relatorio?planejamento_id=${this.plan.id}&de=${this.de}&ate=${this.ate}`),
+      App.api(`/api/reunioes?planejamento_id=${this.plan.id}`),
+    ]);
+    this.reunioes = reunioes;
 
     const ancoras = r.indicadores.filter((i) => Number(i.metrica_ancora));
     const linhasIndicadores = (lista) => lista.map((i) => {
@@ -93,6 +125,25 @@ const SecaoRelatorio = {
 
     const urlExport = `/api/relatorio/exportar?planejamento_id=${this.plan.id}&de=${this.de}&ate=${this.ate}`;
 
+    // A ata responde "quando foi a última, quem estava, o que se decidiu" —
+    // hoje isso ou não existe ou está espalhado no diário de cada projeto
+    const cartoesReuniao = reunioes.slice(0, 5).map((m) => `
+      <div class="card mb-2"><div class="card-body py-2 px-3">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <strong class="small">${this.data(m.data_reuniao)}</strong>
+          <span class="badge text-bg-light border">período ${this.data(m.periodo_de)} a ${this.data(m.periodo_ate)}</span>
+          <span class="small text-muted flex-grow-1">registrada por ${Modal.esc(m.autor)}</span>
+          ${App.podeEditar() ? `
+            <button class="btn btn-sm btn-outline-secondary" data-editar-reuniao="${m.id}"
+              title="Editar reunião" aria-label="Editar reunião">✎</button>
+            <button class="btn btn-sm btn-outline-danger" data-excluir-reuniao="${m.id}"
+              title="Excluir reunião" aria-label="Excluir reunião">×</button>` : ''}
+        </div>
+        ${m.participantes ? `<div class="small mt-1"><strong>Participantes:</strong> ${Modal.esc(m.participantes)}</div>` : ''}
+        <div class="small mt-1"><strong>Decisões:</strong> ${Modal.esc(m.decisoes)}</div>
+        ${m.proximos_passos ? `<div class="small mt-1"><strong>Próximos passos:</strong> ${Modal.esc(m.proximos_passos)}</div>` : ''}
+      </div></div>`).join('');
+
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 nao-imprimir">
         <h1>Relatório de Status</h1>
@@ -104,6 +155,8 @@ const SecaoRelatorio = {
           <button class="btn btn-sm btn-outline-secondary" id="rel-atualizar">Atualizar</button>
           <button class="btn btn-sm btn-verde" id="rel-imprimir">Imprimir / PDF</button>
           <a class="btn btn-sm btn-outline-success" href="${urlExport}">Exportar Excel</a>
+          ${App.podeEditar()
+            ? '<button class="btn btn-sm btn-verde" id="rel-nova-reuniao">Registrar reunião</button>' : ''}
           ${App.sessao.usuario.perfil === 'ADMIN'
             ? '<button class="btn btn-sm btn-outline-secondary" id="rel-avisos">Enviar avisos por e-mail</button>' : ''}
         </div>
@@ -143,7 +196,15 @@ const SecaoRelatorio = {
       ${r.diario.length ? `<div class="table-responsive"><table class="table table-sm align-middle">
         <thead><tr><th>Data</th><th>Referência</th><th>Registro</th><th>Autor</th></tr></thead>
         <tbody>${linhasDiario}</tbody></table></div>`
-        : '<p class="text-muted small">Nenhum registro no período.</p>'}`;
+        : '<p class="text-muted small">Nenhum registro no período.</p>'}
+
+      <h2 class="h6 mt-3">6. Últimas reuniões de acompanhamento</h2>
+      ${cartoesReuniao || `<p class="text-muted small">Nenhuma reunião registrada.
+        ${App.podeEditar() ? 'Use “Registrar reunião” depois do encontro para guardar decisões e próximos passos.' : ''}</p>`}`;
+
+    // Os dois únicos campos de data fora de um modal no sistema; sem isto o
+    // navegador desenha 02/07 como "07/02" e a tela contradiz o resto
+    Modal.ligarDatasBr(el);
 
     document.getElementById('rel-atualizar').addEventListener('click', () => {
       this.de = document.getElementById('rel-de').value || this.de;
@@ -151,6 +212,19 @@ const SecaoRelatorio = {
       this.carregar();
     });
     document.getElementById('rel-imprimir').addEventListener('click', () => window.print());
+
+    document.getElementById('rel-nova-reuniao')?.addEventListener('click', () => this.modalReuniao(null));
+    el.querySelectorAll('[data-editar-reuniao]').forEach((b) => b.addEventListener('click', () =>
+      this.modalReuniao(this.reunioes.find((m) => m.id == b.dataset.editarReuniao))));
+    el.querySelectorAll('[data-excluir-reuniao]').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Excluir o registro desta reunião?')) return;
+      try {
+        await App.api(`/api/reunioes/${b.dataset.excluirReuniao}/excluir`, { planejamento_id: this.plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.carregar();
+    }));
     // Dispara na hora o mesmo pacote do agendamento (sem repetir o que já saiu)
     document.getElementById('rel-avisos')?.addEventListener('click', async (ev) => {
       const b = ev.currentTarget;

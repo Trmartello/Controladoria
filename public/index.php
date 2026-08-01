@@ -234,6 +234,13 @@ try {
         case $rota === 'GET /api/relatorio':        (new RelatorioController())->relatorio(); break;
         case $rota === 'GET /api/relatorio/exportar': (new RelatorioController())->exportar(); break;
 
+        case $rota === 'GET /api/reunioes':         (new RelatorioController())->listarReunioes(); break;
+        case $rota === 'POST /api/reunioes':        (new RelatorioController())->salvarReuniao(); break;
+        case (bool)preg_match('#^POST /api/reunioes/(\d+)$#', $rota, $m):
+            (new RelatorioController())->salvarReuniao((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/reunioes/(\d+)/excluir$#', $rota, $m):
+            (new RelatorioController())->excluirReuniao((int)$m[1]); break;
+
         default:
             Json::erro('Rota não encontrada.', 404);
     }
