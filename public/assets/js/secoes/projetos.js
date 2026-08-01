@@ -108,9 +108,19 @@ const SecaoProjetos = {
         <div class="small">${Modal.esc(a.o_que)}</div>
         ${detalhes ? `<div class="small text-muted">${detalhes}</div>` : ''}
         <div class="d-flex align-items-center gap-2 mt-2">
+          ${App.podeEditar() ? `
+          <div class="barra-progresso flex-grow-1" title="Arraste para ajustar o progresso">
+            <div class="progress" style="height:14px">
+              <div class="progress-bar bg-success" data-barra="${a.id}" style="width:${a.progresso}%"></div>
+            </div>
+            <input type="range" class="ajuste-progresso" min="0" max="100" step="5"
+              value="${a.progresso}" data-progresso="${a.id}" data-proj="${p.id}"
+              aria-label="Progresso da ação">
+            <span class="rotulo-progresso" data-rotulo="${a.id}">${a.progresso}%</span>
+          </div>` : `
           <div class="progress flex-grow-1" style="height:14px" title="${a.progresso}%">
             <div class="progress-bar bg-success" style="width:${a.progresso}%">${a.progresso}%</div>
-          </div>
+          </div>`}
           <span class="d-flex gap-1 flex-shrink-0">
             <button class="btn btn-sm btn-outline-success" data-diario="DESDOBRAMENTO:${a.id}">Diário</button>
             ${App.podeEditar() ? `
@@ -180,7 +190,8 @@ const SecaoProjetos = {
               ${origem}
             </div>
             <div class="d-flex gap-1 align-items-start flex-shrink-0 flex-wrap justify-content-end">
-              <span class="badge text-bg-light border" title="Progresso médio das ações">${media}%</span>
+              <span class="badge text-bg-light border" data-media-projeto
+                title="Progresso médio das ações">${media}%</span>
               <button class="btn btn-sm btn-outline-success" data-diario="PROJETO:${p.id}">Diário</button>
               ${App.podeEditar() ? `
                 <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
@@ -268,6 +279,43 @@ const SecaoProjetos = {
       await App.api(`/api/desdobramentos/${b.dataset.excluirDesd}/excluir`, { planejamento_id: this.plan.id });
       this.carregar();
     }));
+
+    // Progresso ajustado arrastando a própria barra do cartão: a barra e o
+    // rótulo acompanham o dedo e a gravação sai só ao soltar
+    el.querySelectorAll('[data-progresso]').forEach((r) => {
+      const id = r.dataset.progresso;
+      const barra = el.querySelector(`[data-barra="${id}"]`);
+      const rotulo = el.querySelector(`[data-rotulo="${id}"]`);
+      r.addEventListener('input', () => {
+        barra.style.width = `${r.value}%`;
+        rotulo.textContent = `${r.value}%`;
+      });
+      r.addEventListener('change', async () => {
+        const anterior = r.dataset.salvo ?? r.defaultValue;
+        try {
+          await App.api(`/api/desdobramentos/${id}/progresso`, {
+            planejamento_id: this.plan.id, progresso: Number(r.value),
+          });
+          r.dataset.salvo = r.value;
+          this.atualizarMediaProjeto(el, r.dataset.proj);
+        } catch (e) {
+          // Falhou: devolve a barra ao valor que está no servidor
+          r.value = anterior;
+          barra.style.width = `${anterior}%`;
+          rotulo.textContent = `${anterior}%`;
+          alert(e.message);
+        }
+      });
+    });
+  },
+
+  /** Recalcula na tela o percentual médio do projeto após ajustar uma ação. */
+  atualizarMediaProjeto(el, projetoId) {
+    const cartao = el.querySelector(`[data-nova-ini="${projetoId}"]`)?.closest('.card');
+    const medias = [...(cartao?.querySelectorAll('[data-progresso]') || [])].map((x) => Number(x.value));
+    const alvo = cartao?.querySelector('[data-media-projeto]');
+    if (!alvo || !medias.length) return;
+    alvo.textContent = `${Math.round(medias.reduce((s, v) => s + v, 0) / medias.length)}%`;
   },
 
   // Anos de execução do ciclo vigente para o seletor "Ano do planejamento"

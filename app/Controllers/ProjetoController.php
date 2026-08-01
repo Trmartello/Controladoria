@@ -431,6 +431,25 @@ class ProjetoController
         return $u ? (int)$u['id'] : null;
     }
 
+    /**
+     * Ajuste rápido do progresso pela barra do próprio cartão, sem abrir o
+     * formulário. Mexe só no percentual — status, prazo e recorrência seguem
+     * como estão (concluir continua sendo uma decisão explícita no formulário).
+     */
+    public function atualizarProgresso(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $this->exigirDesdobramento($id, $planId);
+        if (!array_key_exists('progresso', $d) || !is_numeric($d['progresso'])) {
+            Json::erro('Informe o progresso.');
+        }
+        $progresso = max(0, min(100, (int)$d['progresso']));
+        Database::executar('UPDATE desdobramento SET progresso = ? WHERE id = ?', [$progresso, $id]);
+        Json::ok(['progresso' => $progresso]);
+    }
+
     public function excluirDesdobramento(int $id): void
     {
         $d = Json::corpo();

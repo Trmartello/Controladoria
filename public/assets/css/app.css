@@ -376,6 +376,31 @@ table.tabela-cadastro td { vertical-align: middle; }
 .seta-iniciativa { color: var(--verde-coperdia); font-size: .8rem; }
 .acoes-iniciativa { padding-top: .5rem; }
 .acao-card { border-left: 4px solid var(--cor-prio, #b08d4f); }
+
+/* Barra de progresso ajustável no próprio cartão: o range fica invisível por
+   cima da barra, então o dedo arrasta direto sobre ela */
+.barra-progresso { position: relative; }
+.barra-progresso .ajuste-progresso {
+  position: absolute;
+  inset: -6px 0;
+  width: 100%;
+  height: calc(100% + 12px);
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.barra-progresso .rotulo-progresso {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .7rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  pointer-events: none;
+}
 .selo-prioridade {
   font-size: .65rem;
   font-weight: 800;

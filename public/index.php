@@ -199,6 +199,8 @@ try {
         case $rota === 'POST /api/desdobramentos':  (new ProjetoController())->salvarDesdobramento(); break;
         case (bool)preg_match('#^POST /api/desdobramentos/(\d+)/excluir$#', $rota, $m):
             (new ProjetoController())->excluirDesdobramento((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/desdobramentos/(\d+)/progresso$#', $rota, $m):
+            (new ProjetoController())->atualizarProgresso((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/desdobramentos/(\d+)$#', $rota, $m):
             (new ProjetoController())->salvarDesdobramento((int)$m[1]); break;
 
