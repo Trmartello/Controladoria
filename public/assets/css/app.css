@@ -206,6 +206,54 @@ table.tabela-cadastro td { vertical-align: middle; }
   color: #2a4a3c;
 }
 
+/* Combobox pesquisável (responsável): busca no topo, lista alfabética abaixo */
+.combo-busca { position: relative; }
+.combo-painel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + .25rem);
+  z-index: 20;
+  background: #fff;
+  border: 1px solid #d8deda;
+  border-radius: .625rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+  padding: .5rem;
+}
+.combo-lista {
+  max-height: 12rem;
+  overflow-y: auto;
+  margin-top: .4rem;
+}
+.combo-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: .4rem .5rem;
+  border-radius: .375rem;
+  font-size: .9rem;
+}
+.combo-item:hover { background: #eef6f1; }
+.combo-item.ativo { background: var(--verde-coperdia); color: #fff; }
+.combo-item.combo-novo { color: var(--verde-coperdia); font-weight: 600; }
+
+/* Datas sempre em dd/mm/aaaa: esconde o texto nativo e sobrepõe o formatado */
+.campo-data { position: relative; }
+.campo-data input[type=date] { color: transparent; }
+.campo-data input[type=date]::-webkit-datetime-edit { color: transparent; }
+.campo-data .data-rotulo {
+  position: absolute;
+  left: .85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: .95rem;
+  color: #1a1a1a;
+}
+.campo-data .data-rotulo.text-muted { color: #8a939b !important; }
+
 /* Bloco informativo no modal (ex.: fator avaliado na GUT): ~10 linhas e rolagem */
 .card-info-modal {
   background: #f8faf9;

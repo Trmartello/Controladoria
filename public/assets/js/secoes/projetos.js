@@ -307,7 +307,8 @@ const SecaoProjetos = {
             { nome: 'data_fim', rotulo: 'Fim previsto' },
           ],
           ajuda: 'Toque no campo para abrir o calendário.' },
-        { nome: 'cascata_id', rotulo: 'Escolha da cascata que originou', tipo: 'select', opcoes: opcoesCascata },
+        { nome: 'cascata_id', rotulo: 'Escolha da cascata que originou', tipo: 'select', opcoes: opcoesCascata,
+          ajuda: 'Liga o projeto à decisão estratégica (Cascata de Escolhas) que o motivou — mostra de onde ele veio e aparece no relatório. Deixe sem vínculo se não nasceu de uma escolha da cascata.' },
         { nome: 'impacto', rotulo: 'Impacto', tipo: 'select', opcoes: [
           { valor: '', rotulo: '(não definido)' },
           { valor: 'RENTABILIDADE', rotulo: 'Rentabilidade' },
@@ -320,7 +321,8 @@ const SecaoProjetos = {
           { valor: 'PRIORITARIO', rotulo: 'Prioritário' },
         ]},
         { nome: 'status', rotulo: 'Status', tipo: 'select', opcoes: OPCOES_STATUS },
-        { nome: 'ordem', rotulo: 'Ordem', tipo: 'number', padrao: (projetos?.length || 0) + 1 },
+        { nome: 'ordem', rotulo: 'Ordem de exibição', tipo: 'number', padrao: (projetos?.length || 0) + 1,
+          ajuda: 'Posição do projeto na lista e no relatório dentro do mesmo ano (menor número aparece primeiro). Não afeta prazos nem status.' },
       ],
     });
   },

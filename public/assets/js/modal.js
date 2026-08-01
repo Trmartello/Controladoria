@@ -33,10 +33,12 @@ const Modal = {
     btnExtra.onclick = extra ? () => this.executarExtra() : null;
 
     const form = document.getElementById('modal-campos');
+    this.combos = {};
     form.innerHTML = campos.map((c) => this.renderCampo(c, valores[c.nome], valores)).join('');
     this.ligarBotoesSenha(form);
     this.ligarBotoesDitado(form);
     this.ligarSelecaoLivre(form);
+    this.ligarDatasBr(form);
 
     if (!this.bsModal) {
       this.bsModal = new bootstrap.Modal(document.getElementById('modal-form'));
@@ -88,18 +90,25 @@ const Modal = {
         break;
       }
       case 'selecao_livre': {
-        // Lista de opções cadastradas + "Outro": só ao escolher "Outro" o campo
-        // de digitação aparece (sem ditado — a escolha normal é pela lista)
-        const opcoes = (c.opcoes || []).map(String);
+        // Combobox pesquisável: o toque abre um painel com busca no topo e a
+        // lista de nomes em ordem alfabética; digitar filtra as sugestões e,
+        // sem correspondência, o nome digitado é aceito como novo
+        const opcoes = [...new Set((c.opcoes || []).map(String).filter((s) => s.trim() !== ''))]
+          .sort((a, b) => a.localeCompare(b, 'pt-BR'));
         const valorStr = String(v ?? '');
-        const escolhido = valorStr === '' ? '' : (opcoes.includes(valorStr) ? valorStr : '__OUTRO__');
-        const ops = [`<option value="">${this.esc(c.vazio || '(não definido)')}</option>`]
-          .concat(opcoes.map((o) => `<option value="${this.esc(o)}" ${o === escolhido ? 'selected' : ''}>${this.esc(o)}</option>`))
-          .concat([`<option value="__OUTRO__" ${escolhido === '__OUTRO__' ? 'selected' : ''}>+ Outro — informar um nome não cadastrado</option>`])
-          .join('');
-        controle = `<select class="form-select selecao-livre" id="${id}">${ops}</select>
-          <input type="text" class="form-control mt-2 ${escolhido === '__OUTRO__' ? '' : 'd-none'}" id="${id}-outro"
-            value="${escolhido === '__OUTRO__' ? this.esc(valorStr) : ''}" placeholder="Digite o nome">`;
+        this.combos[id] = { opcoes, vazio: c.vazio || '(não definido)' };
+        controle = `<div class="combo-busca">
+          <input type="hidden" id="${id}" value="${this.esc(valorStr)}">
+          <button type="button" class="form-select text-start combo-alvo" id="${id}-alvo"
+            aria-haspopup="listbox" aria-expanded="false">
+            ${valorStr ? this.esc(valorStr) : `<span class="text-muted">${this.esc(c.vazio || '(não definido)')}</span>`}
+          </button>
+          <div class="combo-painel d-none">
+            <input type="text" class="form-control combo-pesquisa" autocomplete="off"
+              placeholder="Pesquisar ou digitar o nome...">
+            <div class="combo-lista" role="listbox"></div>
+          </div>
+        </div>`;
         break;
       }
       case 'quadrantes': {
@@ -184,14 +193,104 @@ const Modal = {
       title="Ditar por voz" aria-label="Ditar por voz">${this.iconeMic}</button>`;
   },
 
-  // "Outro" na seleção livre revela o campo de digitação
+  // Estado dos comboboxes pesquisáveis do formulário aberto (id → opções)
+  combos: {},
+
   ligarSelecaoLivre(raiz) {
-    raiz.querySelectorAll('select.selecao-livre').forEach((s) => s.addEventListener('change', () => {
-      const outro = document.getElementById(`${s.id}-outro`);
-      const ativo = s.value === '__OUTRO__';
-      outro.classList.toggle('d-none', !ativo);
-      if (ativo) outro.focus();
-    }));
+    raiz.querySelectorAll('.combo-busca').forEach((caixa) => {
+      const oculto = caixa.querySelector('input[type=hidden]');
+      const alvo = caixa.querySelector('.combo-alvo');
+      const painel = caixa.querySelector('.combo-painel');
+      const pesquisa = caixa.querySelector('.combo-pesquisa');
+      const lista = caixa.querySelector('.combo-lista');
+      const { opcoes, vazio } = this.combos[oculto.id] || { opcoes: [], vazio: '(não definido)' };
+
+      const norm = (s) => s.toLocaleLowerCase('pt-BR')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+      const escolher = (valor) => {
+        oculto.value = valor;
+        alvo.innerHTML = valor
+          ? this.esc(valor)
+          : `<span class="text-muted">${this.esc(vazio)}</span>`;
+        fechar();
+      };
+
+      const montarLista = () => {
+        const q = pesquisa.value.trim();
+        const achados = q === '' ? opcoes : opcoes.filter((o) => norm(o).includes(norm(q)));
+        const itens = [];
+        if (q === '') {
+          itens.push(`<button type="button" class="combo-item text-muted" data-valor="">${this.esc(vazio)}</button>`);
+        }
+        itens.push(...achados.map((o) =>
+          `<button type="button" class="combo-item ${o === oculto.value ? 'ativo' : ''}"
+             data-valor="${this.esc(o)}">${this.esc(o)}</button>`));
+        // Sem correspondência exata: oferece usar o nome digitado
+        if (q !== '' && !achados.some((o) => norm(o) === norm(q))) {
+          itens.push(`<button type="button" class="combo-item combo-novo" data-valor="${this.esc(q)}">
+            + Usar “${this.esc(q)}”</button>`);
+        }
+        lista.innerHTML = itens.join('')
+          || `<div class="text-muted small px-2 py-1">Nenhum nome encontrado.</div>`;
+        lista.querySelectorAll('.combo-item').forEach((b) =>
+          b.addEventListener('click', () => escolher(b.dataset.valor)));
+      };
+
+      const abrir = () => {
+        painel.classList.remove('d-none');
+        alvo.setAttribute('aria-expanded', 'true');
+        pesquisa.value = '';
+        montarLista();
+        pesquisa.focus();
+      };
+      const fechar = () => {
+        painel.classList.add('d-none');
+        alvo.setAttribute('aria-expanded', 'false');
+      };
+
+      alvo.addEventListener('click', () =>
+        painel.classList.contains('d-none') ? abrir() : fechar());
+      pesquisa.addEventListener('input', montarLista);
+      pesquisa.addEventListener('keydown', (ev) => {
+        // Enter escolhe o primeiro item (ou o nome digitado); Esc fecha só o painel
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          lista.querySelector('.combo-item:not(.text-muted)')?.click()
+            || escolher(pesquisa.value.trim());
+        } else if (ev.key === 'Escape') {
+          ev.stopPropagation();
+          fechar();
+          alvo.focus();
+        }
+      });
+      document.addEventListener('click', (ev) => {
+        if (!painel.classList.contains('d-none') && !ev.target.closest('.combo-busca')) fechar();
+      });
+    });
+  },
+
+  // Campos de data sempre exibem dd/mm/aaaa: o texto nativo (que no iPhone
+  // sai por extenso) fica transparente e um rótulo formatado é sobreposto;
+  // o toque continua abrindo o calendário nativo
+  ligarDatasBr(raiz) {
+    raiz.querySelectorAll('input[type=date]').forEach((inp) => {
+      if (inp.closest('.campo-data')) return;
+      const caixa = document.createElement('div');
+      caixa.className = 'campo-data';
+      inp.parentNode.insertBefore(caixa, inp);
+      caixa.appendChild(inp);
+      const rotulo = document.createElement('span');
+      rotulo.className = 'data-rotulo';
+      caixa.appendChild(rotulo);
+      const atualizar = () => {
+        rotulo.textContent = inp.value ? inp.value.split('-').reverse().join('/') : 'dd/mm/aaaa';
+        rotulo.classList.toggle('text-muted', !inp.value);
+      };
+      inp.addEventListener('input', atualizar);
+      inp.addEventListener('change', atualizar);
+      atualizar();
+    });
   },
 
   ligarBotoesDitado(raiz) {
@@ -278,11 +377,7 @@ const Modal = {
       const el = document.getElementById(`campo-${c.nome}`);
       if (!el) continue;
       if (c.tipo === 'checkbox') dados[c.nome] = el.checked;
-      else if (c.tipo === 'selecao_livre') {
-        dados[c.nome] = el.value === '__OUTRO__'
-          ? document.getElementById(`campo-${c.nome}-outro`).value.trim()
-          : el.value;
-      }
+      else if (c.tipo === 'selecao_livre') dados[c.nome] = el.value.trim();
       else if (c.tipo === 'botoes' || c.tipo === 'quadrantes') {
         const marcado = el.querySelector('input:checked');
         dados[c.nome] = marcado ? (marcado.value === '' || isNaN(marcado.value) ? marcado.value : Number(marcado.value)) : null;
