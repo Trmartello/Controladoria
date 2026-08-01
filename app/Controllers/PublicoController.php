@@ -10,25 +10,43 @@ use App\Core\Json;
  * sem autenticação do sistema.
  *
  * Não há sessão, logo não há CSRF a validar: um token só faz sentido contra
- * autoridade ambiente, e aqui não existe nenhuma. A guarda é outra e precisa
- * ser levada a sério:
+ * autoridade ambiente, e aqui não existe nenhuma. As guardas são outras:
  *
- *  - só grava em `coleta_item`, e só de uma rodada com situacao = 'ABERTA';
- *  - o participante recebe um token aleatório amarrado à rodada; sem ele, ou
- *    com ele de outra rodada, nada é aceito;
- *  - teto de ideias por participante (definido na rodada) e tamanho máximo de
- *    texto, para uma aba aberta não virar canal de despejo;
- *  - encerrada a rodada, o token deixa de valer para qualquer coisa.
+ *  - o participante é **registrado** ao entrar (`coleta_participante`); o token
+ *    só vale se existir naquela rodada. Sem isso ele seria auto-emitido —
+ *    qualquer string hex passaria — e o teto de ideias não valeria nada;
+ *  - o nome vem do registro, nunca do corpo do envio, senão daria para assinar
+ *    uma ideia com o nome de um colega;
+ *  - os tetos de ideias e de votos são aplicados no próprio INSERT, para dois
+ *    envios simultâneos não furarem a contagem;
+ *  - encerrada a rodada, o tema deixa de ser legível e nada mais é aceito;
+ *  - PIN errado é contado por origem e trava a enumeração por força bruta;
+ *  - exige Content-Type JSON, o que obriga o navegador a fazer preflight e
+ *    impede que um site de terceiro faça os visitantes dele escreverem aqui.
  */
 class PublicoController
 {
     private const MAX_TEXTO = 400;
     private const MAX_NOME = 60;
+    /**
+     * Tentativas de PIN inválido toleradas por origem dentro da janela.
+     * Generoso de propósito: a sala inteira costuma sair por um IP só (NAT do
+     * wi-fi), e errar o PIN digitando é comum. Ainda assim, 40 por 5 minutos
+     * deixa uma varredura do espaço de 6 dígitos em escala de anos.
+     */
+    private const MAX_TENTATIVAS = 40;
+    private const JANELA_MIN = 5;
 
-    /** Dados públicos da rodada — o mínimo para a tela do participante. */
+    /**
+     * Dados públicos da rodada. Encerrada, só devolve que encerrou: o tema é a
+     * pergunta estratégica da oficina e não fica legível depois.
+     */
     public function rodada(string $pin): void
     {
         $r = $this->rodadaPorPin($pin);
+        if ($r['situacao'] !== 'ABERTA') {
+            Json::ok(['situacao' => 'ENCERRADA']);
+        }
         Json::ok([
             'tema' => $r['tema'],
             'situacao' => $r['situacao'],
@@ -38,17 +56,22 @@ class PublicoController
         ]);
     }
 
-    /** Entra na rodada com um nome; devolve o token que identifica a pessoa. */
+    /** Entra na rodada com um nome; registra e devolve o token da pessoa. */
     public function entrar(): void
     {
-        $d = Json::corpo();
+        $d = $this->corpo();
         $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
-        $nome = mb_substr(trim($d['nome'] ?? ''), 0, self::MAX_NOME);
+        $nome = mb_substr(trim(is_string($d['nome'] ?? null) ? $d['nome'] : ''), 0, self::MAX_NOME);
         if ($nome === '') {
             Json::erro('Digite seu nome para entrar.');
         }
+        $token = bin2hex(random_bytes(16));
+        Database::executar(
+            'INSERT INTO coleta_participante (rodada_id, token, nome) VALUES (?, ?, ?)',
+            [(int)$r['id'], $token, $nome]
+        );
         Json::ok([
-            'token' => bin2hex(random_bytes(16)),
+            'token' => $token,
             'nome' => $nome,
             'tema' => $r['tema'],
             'max_ideias' => (int)$r['max_ideias'],
@@ -58,47 +81,46 @@ class PublicoController
 
     public function ideia(): void
     {
-        $d = Json::corpo();
+        $d = $this->corpo();
         $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
-        $token = $this->token($d);
-        $nome = mb_substr(trim($d['nome'] ?? ''), 0, self::MAX_NOME) ?: 'Participante';
+        $p = $this->participante($r, $d);
 
-        $texto = mb_substr(trim($d['texto'] ?? ''), 0, self::MAX_TEXTO);
+        $texto = mb_substr(trim(is_string($d['texto'] ?? null) ? $d['texto'] : ''), 0, self::MAX_TEXTO);
         if ($texto === '') {
             Json::erro('Escreva a ideia antes de enviar.');
         }
-        $jaEnviou = (int)(Database::um(
-            'SELECT COUNT(*) AS n FROM coleta_item WHERE rodada_id = ? AND participante_token = ?',
-            [(int)$r['id'], $token]
-        )['n'] ?? 0);
-        if ($jaEnviou >= (int)$r['max_ideias']) {
-            Json::erro("Você já enviou {$r['max_ideias']} ideia(s) nesta rodada.");
-        }
+        $destino = in_array($d['destino_sugerido'] ?? '', ['CENARIO', 'PESTEL', 'PORTER', 'SWOT'], true)
+            ? $d['destino_sugerido'] : 'NAO_SEI';
 
-        $id = (int)Database::executar(
+        // O teto vai dentro do próprio INSERT: dois envios ao mesmo tempo não
+        // conseguem furar a contagem, como fariam com COUNT + INSERT separados
+        $gravadas = Database::afetadas(
             'INSERT INTO coleta_item (planejamento_id, rodada_id, ano, autor_id, autor_nome,
                participante_token, texto, destino_sugerido)
-             VALUES (?, ?, ?, NULL, ?, ?, ?, ?)',
+             SELECT ?, ?, ?, NULL, ?, ?, ?, ?
+             FROM DUAL WHERE (SELECT COUNT(*) FROM coleta_item x
+                              WHERE x.rodada_id = ? AND x.participante_token = ?) < ?',
             [
                 (int)$r['planejamento_id'], (int)$r['id'], (int)$r['ano'],
-                $nome, $token, $texto,
-                in_array($d['destino_sugerido'] ?? '', ['CENARIO', 'PESTEL', 'PORTER', 'SWOT'], true)
-                    ? $d['destino_sugerido'] : 'NAO_SEI',
+                $p['nome'], $p['token'], $texto, $destino,
+                (int)$r['id'], $p['token'], (int)$r['max_ideias'],
             ]
         );
-        Json::ok(['id' => $id, 'enviadas' => $jaEnviou + 1]);
+        if (!$gravadas) {
+            Json::erro("Você já enviou {$r['max_ideias']} ideia(s) nesta rodada.");
+        }
+        Json::ok(['ok' => true]);
     }
 
-    /** As próprias ideias, para o participante conferir e corrigir. */
+    /** As próprias ideias, para o participante conferir. */
     public function minhas(): void
     {
-        $pin = (string)($_GET['pin'] ?? '');
-        $r = $this->rodadaPorPin($pin);
-        $token = $this->token($_GET);
+        $r = $this->rodadaPorPin((string)($_GET['pin'] ?? ''));
+        $p = $this->participante($r, $_GET);
         Json::ok(Database::todos(
             'SELECT id, texto, votos FROM coleta_item
              WHERE rodada_id = ? AND participante_token = ? ORDER BY id',
-            [(int)$r['id'], $token]
+            [(int)$r['id'], $p['token']]
         ));
     }
 
@@ -106,8 +128,8 @@ class PublicoController
     public function paraVotar(): void
     {
         $r = $this->rodadaPorPin((string)($_GET['pin'] ?? ''));
-        $token = $this->token($_GET);
-        if ($r['votacao'] !== 'ABERTA') {
+        $p = $this->participante($r, $_GET);
+        if ($r['situacao'] !== 'ABERTA' || $r['votacao'] !== 'ABERTA') {
             Json::ok(['votacao' => 'FECHADA', 'itens' => [], 'meus_votos' => 0]);
         }
         $itens = Database::todos(
@@ -116,11 +138,16 @@ class PublicoController
              LEFT JOIN coleta_voto v ON v.item_id = i.id AND v.participante_token = ?
              WHERE i.rodada_id = ? AND i.situacao = 'NOVO'
              ORDER BY i.id",
-            [$token, (int)$r['id']]
+            [$p['token'], (int)$r['id']]
         );
+        // Só contam os votos em ideias ainda na lista: tratada uma ideia, o
+        // voto dela sairia da tela mas continuaria consumindo o teto, e não
+        // haveria como devolvê-lo (desvotar exige tocar no item)
         $meus = (int)(Database::um(
-            'SELECT COUNT(*) AS n FROM coleta_voto WHERE rodada_id = ? AND participante_token = ?',
-            [(int)$r['id'], $token]
+            "SELECT COUNT(*) AS n FROM coleta_voto v
+             JOIN coleta_item i ON i.id = v.item_id AND i.situacao = 'NOVO'
+             WHERE v.rodada_id = ? AND v.participante_token = ?",
+            [(int)$r['id'], $p['token']]
         )['n'] ?? 0);
         Json::ok(['votacao' => 'ABERTA', 'itens' => $itens, 'meus_votos' => $meus,
                   'max_votos' => (int)$r['max_votos']]);
@@ -129,70 +156,118 @@ class PublicoController
     /** Alterna o voto do participante numa ideia, respeitando o teto. */
     public function votar(int $id): void
     {
-        $d = Json::corpo();
+        $d = $this->corpo();
         $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
-        $token = $this->token($d);
+        $p = $this->participante($r, $d);
         if ($r['votacao'] !== 'ABERTA') {
             Json::erro('A votação não está aberta.');
         }
-        $item = Database::um(
-            'SELECT id FROM coleta_item WHERE id = ? AND rodada_id = ?',
+        // Ideia já tratada não recebe voto: seria gastar um voto em algo que o
+        // participante nunca mais vê na lista
+        if (!Database::um(
+            "SELECT id FROM coleta_item WHERE id = ? AND rodada_id = ? AND situacao = 'NOVO'",
             [$id, (int)$r['id']]
-        );
-        if (!$item) {
-            Json::erro('Ideia não encontrada nesta rodada.', 404);
+        )) {
+            Json::erro('Esta ideia não está mais em votação.', 404);
         }
 
-        $removidos = Database::afetadas(
+        if (Database::afetadas(
             'DELETE FROM coleta_voto WHERE item_id = ? AND participante_token = ?',
-            [$id, $token]
-        );
-        if ($removidos) {
-            Database::executar('UPDATE coleta_item SET votos = GREATEST(votos - 1, 0) WHERE id = ?', [$id]);
+            [$id, $p['token']]
+        )) {
+            $this->recontar($id);
             Json::ok(['votou' => false]);
         }
 
-        $meus = (int)(Database::um(
-            'SELECT COUNT(*) AS n FROM coleta_voto WHERE rodada_id = ? AND participante_token = ?',
-            [(int)$r['id'], $token]
-        )['n'] ?? 0);
-        if ($meus >= (int)$r['max_votos']) {
-            Json::erro("Você já usou seus {$r['max_votos']} voto(s). Toque de novo num que já votou para trocar.");
-        }
-        Database::executar(
-            'INSERT INTO coleta_voto (item_id, rodada_id, participante_token) VALUES (?, ?, ?)',
-            [$id, (int)$r['id'], $token]
+        // Teto dentro do INSERT, e IGNORE para o toque duplo no mesmo item não
+        // virar erro 500 pela chave única
+        $gravou = Database::afetadas(
+            'INSERT IGNORE INTO coleta_voto (item_id, rodada_id, participante_token)
+             SELECT ?, ?, ?
+             FROM DUAL WHERE (SELECT COUNT(*) FROM coleta_voto v
+                              JOIN coleta_item i ON i.id = v.item_id AND i.situacao = \'NOVO\'
+                              WHERE v.rodada_id = ? AND v.participante_token = ?) < ?',
+            [$id, (int)$r['id'], $p['token'], (int)$r['id'], $p['token'], (int)$r['max_votos']]
         );
-        Database::executar('UPDATE coleta_item SET votos = votos + 1 WHERE id = ?', [$id]);
+        if (!$gravou) {
+            Json::erro("Você já usou seus {$r['max_votos']} voto(s). Toque num que já votou para trocar.");
+        }
+        $this->recontar($id);
         Json::ok(['votou' => true]);
     }
 
-    private function token(array $origem): string
+    /** O contador do item sai sempre da tabela de votos, nunca de +1/-1. */
+    private function recontar(int $id): void
+    {
+        Database::executar(
+            'UPDATE coleta_item SET votos = (SELECT COUNT(*) FROM coleta_voto WHERE item_id = ?) WHERE id = ?',
+            [$id, $id]
+        );
+    }
+
+    /** Corpo JSON, exigindo o Content-Type que obriga preflight no navegador. */
+    private function corpo(): array
+    {
+        $tipo = strtolower($_SERVER['CONTENT_TYPE'] ?? '');
+        if (!str_starts_with($tipo, 'application/json')) {
+            Json::erro('Envie os dados como application/json.', 415);
+        }
+        return Json::corpo();
+    }
+
+    /** O token só vale se a pessoa entrou nesta rodada. */
+    private function participante(array $rodada, array $origem): array
     {
         $token = (string)($origem['token'] ?? '');
         if (!preg_match('/^[0-9a-f]{32}$/', $token)) {
             Json::erro('Entre na rodada antes de participar.', 403);
         }
-        return $token;
+        $p = Database::um(
+            'SELECT token, nome FROM coleta_participante WHERE rodada_id = ? AND token = ?',
+            [(int)$rodada['id'], $token]
+        );
+        if (!$p) {
+            Json::erro('Entre na rodada antes de participar.', 403);
+        }
+        return $p;
     }
 
-    private function rodadaPorPin(string $pin): array
-    {
-        if (!preg_match('/^\d{6}$/', $pin)) {
-            Json::erro('PIN inválido.', 404);
-        }
-        $r = Database::um('SELECT * FROM coleta_rodada WHERE pin = ?', [$pin]);
-        if (!$r) {
-            Json::erro('Rodada não encontrada. Confira o PIN.', 404);
-        }
-        return $r;
-    }
-
+    /** Escrita só em rodada aberta. */
     private function rodadaAberta(string $pin): array
     {
         $r = $this->rodadaPorPin($pin);
         if ($r['situacao'] !== 'ABERTA') {
             Json::erro('Esta rodada já foi encerrada.');
+        }
+        return $r;
+    }
+
+    /**
+     * Resolve o PIN. Cada PIN que não existe conta contra a origem, o que
+     * inviabiliza varrer o espaço de 6 dígitos dentro da janela da oficina.
+     */
+    private function rodadaPorPin(string $pin): array
+    {
+        $origem = mb_substr((string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), 0, 45);
+        $recentes = (int)(Database::um(
+            'SELECT COUNT(*) AS n FROM coleta_tentativa
+             WHERE origem = ? AND criado_em > (NOW() - INTERVAL ? MINUTE)',
+            [$origem, self::JANELA_MIN]
+        )['n'] ?? 0);
+        if ($recentes >= self::MAX_TENTATIVAS) {
+            Json::erro('Muitas tentativas. Espere alguns minutos e confira o PIN no telão.', 429);
+        }
+
+        $r = preg_match('/^\d{6}$/', $pin)
+            ? Database::um('SELECT * FROM coleta_rodada WHERE pin = ?', [$pin])
+            : null;
+        if (!$r) {
+            Database::executar('INSERT INTO coleta_tentativa (origem) VALUES (?)', [$origem]);
+            // Limpeza oportunista: a tabela não pode crescer sem fim
+            Database::executar(
+                'DELETE FROM coleta_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY) LIMIT 500'
+            );
+            Json::erro('Rodada não encontrada. Confira o PIN.', 404);
         }
         return $r;
     }

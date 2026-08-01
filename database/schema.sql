@@ -307,7 +307,7 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   texto            TEXT NOT NULL,
   texto_tratado    TEXT NULL,
   destino_sugerido ENUM('CENARIO','PESTEL','PORTER','SWOT','NAO_SEI') NOT NULL DEFAULT 'NAO_SEI',
-  situacao         ENUM('NOVO','ACEITO','DESCARTADO') NOT NULL DEFAULT 'NOVO',
+  situacao         ENUM('NOVO','SELECIONADO','ACEITO','DESCARTADO','DIVIDIDO') NOT NULL DEFAULT 'NOVO',
   destino_tipo     ENUM('CENARIO','FATOR') NULL,
   destino_id       INT NULL,
   motivo           TEXT NULL,
@@ -351,4 +351,24 @@ CREATE TABLE IF NOT EXISTS coleta_voto (
   KEY idx_voto_rodada (rodada_id, participante_token),
   CONSTRAINT fk_voto_item FOREIGN KEY (item_id) REFERENCES coleta_item(id) ON DELETE CASCADE,
   CONSTRAINT fk_voto_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Quem entrou na rodada pelo PIN. Sem esta tabela o token do participante
+-- seria auto-emitido: qualquer string hex passaria na validação de formato.
+CREATE TABLE IF NOT EXISTS coleta_participante (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  rodada_id  INT NOT NULL,
+  token      CHAR(32) NOT NULL,
+  nome       VARCHAR(120) NOT NULL,
+  criado_em  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_part (rodada_id, token),
+  CONSTRAINT fk_part_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tentativas de resolver um PIN, para travar enumeração por força bruta
+CREATE TABLE IF NOT EXISTS coleta_tentativa (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  origem    VARCHAR(45) NOT NULL,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_tentativa (origem, criado_em)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

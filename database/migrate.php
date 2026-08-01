@@ -231,12 +231,18 @@ $tipoSituacaoColeta = $pdo->query(
     "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'situacao'"
 )->fetchColumn();
-if ($tipoSituacaoColeta && !str_contains((string)$tipoSituacaoColeta, 'SELECIONADO')) {
+if ($tipoSituacaoColeta && !str_contains((string)$tipoSituacaoColeta, 'DIVIDIDO')) {
     $pdo->exec(
         "ALTER TABLE coleta_item MODIFY COLUMN situacao
-         ENUM('NOVO','SELECIONADO','ACEITO','DESCARTADO') NOT NULL DEFAULT 'NOVO'"
+         ENUM('NOVO','SELECIONADO','ACEITO','DESCARTADO','DIVIDIDO') NOT NULL DEFAULT 'NOVO'"
     );
-    echo "migrate: situacao da ideia ampliada (SELECIONADO).\n";
+    // Quem já foi dividido estava marcado como descartado: o rótulo dizia
+    // "não entrou" para uma ideia que entrou em pedaços
+    $pdo->exec(
+        "UPDATE coleta_item SET situacao = 'DIVIDIDO'
+         WHERE situacao = 'DESCARTADO' AND motivo LIKE 'Dividida em %'"
+    );
+    echo "migrate: situacao da ideia ampliada (SELECIONADO, DIVIDIDO).\n";
 }
 
 echo "migrate: ok.\n";

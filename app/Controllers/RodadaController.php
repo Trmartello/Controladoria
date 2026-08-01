@@ -45,13 +45,23 @@ class RodadaController
         $planId = (int)($d['planejamento_id'] ?? 0);
         $u = Auth::exigirEdicaoPlanejamento($planId);
 
-        $tema = mb_substr(trim($d['tema'] ?? ''), 0, 180);
+        $tema = mb_substr(trim(is_string($d['tema'] ?? null) ? $d['tema'] : ''), 0, 180);
         if ($tema === '') {
             Json::erro('Escreva a pergunta que abre a tempestade.');
         }
         $ano = (int)($d['ano'] ?? 0);
         if ($ano < 2000 || $ano > 2100) {
             Json::erro('Informe o ano da coleta.');
+        }
+        // Duas rodadas abertas no mesmo plano deixariam uma delas invisível no
+        // painel — e ela seguiria aceitando ideias pelo PIN antigo
+        $jaAberta = Database::um(
+            "SELECT id, ano FROM coleta_rodada WHERE planejamento_id = ? AND situacao = 'ABERTA'",
+            [$planId]
+        );
+        if ($jaAberta) {
+            Json::erro("Já existe uma rodada aberta neste planejamento (ano {$jaAberta['ano']}). "
+                . 'Encerre-a antes de abrir outra.');
         }
         $maxIdeias = max(1, min(self::MAX_IDEIAS, (int)($d['max_ideias'] ?? 5)));
         $maxVotos = max(1, min(self::MAX_VOTOS, (int)($d['max_votos'] ?? 3)));

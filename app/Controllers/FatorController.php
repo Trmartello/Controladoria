@@ -33,12 +33,19 @@ class FatorController
                     (pr.id IS NOT NULL) AS promovido,
                     pr.id AS promovido_id, pr.categoria AS promovido_categoria,
                     pr.descricao AS promovido_descricao,
-                    ci.id AS coleta_item_id, ca.nome AS coleta_autor
+                    ci.id AS coleta_item_id, ca.nome AS coleta_autor, co.n AS coleta_vozes
              FROM fator f
              LEFT JOIN gut g ON g.fator_id = f.id
              LEFT JOIN fator o ON o.id = f.promovido_de_id
              LEFT JOIN fator pr ON pr.promovido_de_id = f.id
-             LEFT JOIN coleta_item ci ON ci.destino_tipo = 'FATOR' AND ci.destino_id = f.id
+             -- Uma ideia só por fator: quando a oficina agrupa vozes iguais,
+             -- várias ideias apontam para o mesmo fator e o JOIN duplicaria o card
+             LEFT JOIN coleta_item ci ON ci.id = (
+               SELECT MIN(x.id) FROM coleta_item x
+               WHERE x.destino_tipo = 'FATOR' AND x.destino_id = f.id)
+             LEFT JOIN (
+               SELECT destino_id, COUNT(*) AS n FROM coleta_item
+               WHERE destino_tipo = 'FATOR' GROUP BY destino_id) co ON co.destino_id = f.id
              LEFT JOIN usuario ca ON ca.id = ci.autor_id
              WHERE f.planejamento_id = ? AND f.etapa = ?{$filtroAno}
              ORDER BY f.categoria, f.id",

@@ -60,6 +60,23 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   sobrescritas pela sincronização.
 - Excluir um fator de PESTEL/Porter/SWOT remove também o promovido para a SWOT
   e a linha correspondente na matriz GUT (`FatorController::excluir`).
+- **Tempestade de ideias**: rodada com PIN de 6 dígitos (`coleta_rodada`), tela
+  do participante em `/entrar/{pin}` — **as únicas rotas de escrita sem
+  autenticação do sistema**. Regras que não podem ser afrouxadas: o token do
+  participante é registrado em `coleta_participante` (sem isso seria
+  auto-emitido); o nome vem do registro, nunca do corpo; tetos de ideias e
+  votos vão **dentro do INSERT** (`INSERT ... SELECT ... WHERE (SELECT COUNT
+  ...) < max`), senão dois envios simultâneos furam a contagem; PIN errado
+  conta contra a origem em `coleta_tentativa`; exige `Content-Type` JSON, o
+  que obriga preflight e impede escrita cross-site; `/entrar` e
+  `/api/publico/*` **não iniciam sessão**. A isenção de CSRF é lista
+  explícita, nunca prefixo.
+  A tela ao vivo usa **consulta periódica**, nunca SSE: `php -S` é
+  single-threaded e uma conexão presa trava a oficina inteira. O polling não
+  redesenha se há campo em foco ou texto sujo na bancada.
+  Vozes iguais são agrupadas na nuvem e tratadas **em grupo**: N ideias
+  apontam para UM destino. Por isso `FatorController`/`CenarioController`
+  fazem o JOIN pelo `MIN(id)` — juntar direto multiplicaria o card.
 - **Coleta de Ideias** é o passo 0 do diagnóstico: ideia crua → triagem item a
   item → item de cenário ou fator (ou descarte com motivo, visível ao autor).
   O registro criado herda o `ano` da **ideia**, nunca o do seletor da tela.

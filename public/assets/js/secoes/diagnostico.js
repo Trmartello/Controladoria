@@ -138,7 +138,8 @@ const Diag = {
     if (!registro.coleta_item_id) return '';
     return `<div class="mt-1"><button type="button" class="btn btn-sm selo-link"
       data-ir-coleta="${registro.coleta_item_id}"
-      title="Ver a ideia original na Coleta">Coleta · ${Modal.esc(registro.coleta_autor || '—')}</button></div>`;
+      title="Ver a ideia original na Coleta">Coleta · ${Modal.esc(registro.coleta_autor || '—')}${
+      Number(registro.coleta_vozes) > 1 ? ` +${Number(registro.coleta_vozes) - 1}` : ''}</button></div>`;
   },
 
   ligarSeloColeta(el) {

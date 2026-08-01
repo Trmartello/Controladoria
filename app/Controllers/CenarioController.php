@@ -15,9 +15,16 @@ class CenarioController
         // A análise é anual: com ?ano=YYYY retorna só aquele ano
         $ano = (int)($_GET['ano'] ?? 0);
         // O LEFT JOIN traz a origem na Coleta, quando o item nasceu de uma ideia
-        $sql = "SELECT c.*, ci.id AS coleta_item_id, ca.nome AS coleta_autor
+        $sql = "SELECT c.*, ci.id AS coleta_item_id, ca.nome AS coleta_autor, co.n AS coleta_vozes
                 FROM cenario_item c
-                LEFT JOIN coleta_item ci ON ci.destino_tipo = 'CENARIO' AND ci.destino_id = c.id
+                -- Uma ideia só por item: com vozes agrupadas na oficina, várias
+                -- ideias apontam para o mesmo registro e o JOIN duplicaria a linha
+                LEFT JOIN coleta_item ci ON ci.id = (
+                  SELECT MIN(x.id) FROM coleta_item x
+                  WHERE x.destino_tipo = 'CENARIO' AND x.destino_id = c.id)
+                LEFT JOIN (
+                  SELECT destino_id, COUNT(*) AS n FROM coleta_item
+                  WHERE destino_tipo = 'CENARIO' GROUP BY destino_id) co ON co.destino_id = c.id
                 LEFT JOIN usuario ca ON ca.id = ci.autor_id
                 WHERE c.planejamento_id = ?";
         $params = [$planId];

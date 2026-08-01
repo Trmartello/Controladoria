@@ -33,8 +33,10 @@ const CATEGORIAS_DESTINO = {
 
 const SITUACOES = {
   NOVO: ['A tratar', 'text-bg-warning'],
+  SELECIONADO: ['Na matriz', 'text-bg-info'],
   ACEITO: ['Aceita', 'text-bg-success'],
   DESCARTADO: ['Descartada', 'text-bg-secondary'],
+  DIVIDIDO: ['Dividida', 'text-bg-light border'],
 };
 
 const SecaoColeta = {
@@ -79,8 +81,12 @@ const SecaoColeta = {
    */
   nuvem() {
     const grupos = new Map();
+    const rodadaId = this.rodadaAberta ? Number(this.rodadaAberta.id) : null;
     for (const i of this.itens) {
       if (i.situacao !== 'NOVO' && i.situacao !== 'SELECIONADO') continue;
+      // A nuvem é da rodada em curso: misturar respostas de rodadas anteriores
+      // e ideias avulsas do ano tiraria o sentido do "toque para tratar"
+      if (rodadaId !== null && Number(i.rodada_id) !== rodadaId) continue;
       const chave = this.norm(i.texto);
       if (!grupos.has(chave)) grupos.set(chave, { representante: i, itens: [], votos: 0 });
       const g = grupos.get(chave);
@@ -106,8 +112,13 @@ const SecaoColeta = {
     this.relogio = setInterval(async () => {
       const secao = document.getElementById('secao-coleta');
       if (!secao || secao.classList.contains('d-none')) return this.pararRelogio();
-      // O modal aberto significa que alguém está digitando: não redesenhar
+      // Redesenhar destrói o que está sendo digitado: o modal e a bancada
+      // são campos vivos, e a oficina inteira digita neles
       if (document.querySelector('#modal-form.show')) return;
+      const foco = document.activeElement;
+      if (foco && (foco.tagName === 'TEXTAREA' || foco.tagName === 'INPUT')) return;
+      const bancada = document.getElementById('texto-bancada');
+      if (bancada && bancada.value !== bancada.defaultValue) return;
       try {
         const antes = JSON.stringify(this.itens.map((i) => [i.id, i.situacao, i.votos]));
         this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
@@ -217,7 +228,8 @@ const SecaoColeta = {
   // ---- Tela de condução: nuvem à esquerda, bancada à direita ----
   telaConducao() {
     const grupos = this.nuvem();
-    const item = this.selecionado ? this.itens.find((i) => i.id === this.selecionado) : null;
+    const grupoSel = grupos.find((g) => g.representante.id === this.selecionado);
+    const item = grupoSel ? grupoSel.representante : null;
     const fichas = grupos.map((g) => {
       const i = g.representante;
       const peso = Math.min(g.itens.length, 5);
@@ -238,13 +250,13 @@ const SecaoColeta = {
       <div class="col-lg-5">
         <div class="card h-100 bancada"><div class="card-body py-2 px-3">
           <div class="rotulo-secao">Bancada</div>
-          ${item ? this.bancada(item) : '<p class="text-muted small mb-0">Escolha uma ideia da tempestade para discutir com o grupo.</p>'}
+          ${item ? this.bancada(item, grupoSel) : '<p class="text-muted small mb-0">Escolha uma ideia da tempestade para discutir com o grupo.</p>'}
         </div></div>
       </div>
     </div>`;
   },
 
-  bancada(item) {
+  bancada(item, grupo) {
     const quadrantes = [
       ['ALTO', 'BAIXO', 'Fazer agora', 'muito impacto, pouco esforço', '#007a45'],
       ['ALTO', 'ALTO', 'Planejar', 'muito impacto, muito esforço', '#2c7fb8'],
@@ -257,9 +269,15 @@ const SecaoColeta = {
         <span class="q-eixos">${eixos}</span>
       </button>`).join('');
 
+    // Quando a nuvem agrupou, a bancada trata o grupo inteiro de uma vez
+    const ids = (grupo?.itens || [item]).map((i) => i.id);
     return `
       <div class="small text-muted">${Modal.esc(item.autor)}${
-        item.votos ? ` · ★ ${item.votos} voto(s)` : ''}</div>
+        ids.length > 1 ? ` e mais ${ids.length - 1}` : ''}${
+        grupo?.votos ? ` · ★ ${grupo.votos} voto(s)` : ''}</div>
+      ${ids.length > 1 ? `<div class="small text-muted">Tratar aqui resolve as
+        ${ids.length} ideias iguais de uma vez.</div>` : ''}
+      <input type="hidden" id="grupo-bancada" value="${ids.join(',')}">
       <textarea class="form-control mt-1" rows="3" id="texto-bancada" maxlength="400"
         aria-label="Texto complementado">${Modal.esc(item.texto_tratado || item.texto)}</textarea>
       <div class="d-flex gap-1 flex-wrap mt-2">
@@ -277,6 +295,12 @@ const SecaoColeta = {
             data-encaminhar="${item.id}" data-destino="${d.valor}">${d.rotulo}</button>`).join('')}
         <button class="btn btn-sm btn-outline-danger" data-descartar="${item.id}">Esquecer</button>
       </div>`;
+  },
+
+  /** Ids que a nuvem agrupou por texto equivalente, para tratar de uma vez. */
+  grupoAtual(item) {
+    const g = this.nuvem().find((x) => x.representante.id === item.id);
+    return (g?.itens || [item]).map((i) => i.id);
   },
 
   ligarTempestade(el, ano) {
@@ -341,6 +365,19 @@ const SecaoColeta = {
       this.carregar();
     });
 
+    document.getElementById('btn-limpar-rodada')?.addEventListener('click', async () => {
+      if (!confirm('Apagar as ideias desta rodada que ainda não foram tratadas?')) return;
+      try {
+        const r = await App.api(`/api/coleta/rodada/${this.rodadaAberta.id}/limpar`,
+          { planejamento_id: this.plan.id });
+        alert(`${r.removidas} ideia(s) removida(s).`);
+      } catch (e) {
+        alert(e.message);
+      }
+      this.selecionado = null;
+      this.carregar();
+    });
+
     document.getElementById('btn-votacao')?.addEventListener('click', async () => {
       try {
         await App.api(`/api/rodadas/${this.rodadaAberta.id}/votacao`, {
@@ -392,7 +429,7 @@ const SecaoColeta = {
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'original', rotulo: 'Ideia original', tipo: 'info', texto: item.texto,
-          barra: { cor: '#b08d4f', texto: `${item.autor}` } },
+          barra: { cor: '#b08d4f', titulo: item.autor } },
         { nome: 'p1', rotulo: 'Parte 1', tipo: 'textarea', linhas: 2 },
         { nome: 'p2', rotulo: 'Parte 2', tipo: 'textarea', linhas: 2 },
         { nome: 'p3', rotulo: 'Parte 3 (opcional)', tipo: 'textarea', linhas: 2 },
@@ -547,14 +584,18 @@ const SecaoColeta = {
         titulo: 'Descartar ideia',
         url: `/api/coleta/${item.id}/descartar`,
         valores: { planejamento_id: this.plan.id },
+        transformar: (d) => ({ ...d, grupo: this.grupoAtual(item) }),
         campos: [
           { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
           { nome: 'ideia', rotulo: 'Ideia', tipo: 'info', texto: item.texto,
-            barra: { cor: '#8f3b3b', texto: `${item.autor} · ${this.data(item.criado_em)}` } },
+            barra: { cor: '#8f3b3b', titulo: item.autor, origem: this.data(item.criado_em) } },
           { nome: 'motivo', rotulo: 'Por que não entra?', tipo: 'textarea', linhas: 3, obrigatorio: true,
             ajuda: 'O autor vê este motivo. É o que transforma um veto silencioso em aprendizado.' },
         ],
-        aoSalvar: () => this.carregar(),
+        aoSalvar: () => {
+          this.selecionado = null;
+          this.carregar();
+        },
       });
     }));
   },
@@ -566,7 +607,7 @@ const SecaoColeta = {
       { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
       { nome: 'destino', rotulo: '', tipo: 'hidden', padrao: destino },
       { nome: 'ideia', rotulo: 'Ideia original', tipo: 'info', texto: item.texto,
-        barra: { cor: '#007a45', texto: `${item.autor} · ${this.data(item.criado_em)}` } },
+        barra: { cor: '#007a45', titulo: item.autor, origem: this.data(item.criado_em) } },
     ];
     if (destino === 'CENARIO') {
       campos.push({ nome: 'tipo', rotulo: 'Tipo', tipo: 'botoes', opcoes: [
@@ -586,9 +627,16 @@ const SecaoColeta = {
     Modal.abrir({
       titulo: `Encaminhar para ${rotuloDestino}`,
       url: `/api/coleta/${item.id}/encaminhar`,
-      valores: { planejamento_id: this.plan.id, destino, texto_tratado: item.texto },
+      valores: {
+        planejamento_id: this.plan.id, destino,
+        texto_tratado: item.texto_tratado || item.texto,
+      },
       campos,
-      aoSalvar: () => this.carregar(),
+      transformar: (d) => ({ ...d, grupo: this.grupoAtual(item) }),
+      aoSalvar: () => {
+        this.selecionado = null;
+        this.carregar();
+      },
     });
   },
 };

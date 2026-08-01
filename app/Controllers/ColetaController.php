@@ -36,7 +36,11 @@ class ColetaController
         $params = $ano ? [$planId, $ano] : [$planId];
 
         $itens = Database::todos(
-            "SELECT ci.*, COALESCE(a.nome, ci.autor_nome, 'Participante') AS autor, t.nome AS triador
+            "SELECT ci.id, ci.planejamento_id, ci.rodada_id, ci.ano, ci.autor_id,
+                    ci.dividido_de_id, ci.texto, ci.texto_tratado, ci.destino_sugerido,
+                    ci.situacao, ci.impacto, ci.esforco, ci.votos, ci.destino_tipo,
+                    ci.destino_id, ci.motivo, ci.triado_em, ci.criado_em,
+                    COALESCE(a.nome, ci.autor_nome, 'Participante') AS autor, t.nome AS triador
              FROM coleta_item ci
              LEFT JOIN usuario a ON a.id = ci.autor_id
              LEFT JOIN usuario t ON t.id = ci.triado_por
@@ -57,7 +61,7 @@ class ColetaController
         $planId = (int)($d['planejamento_id'] ?? 0);
         $u = Auth::exigirRespostaColeta($planId);
 
-        $texto = trim($d['texto'] ?? '');
+        $texto = trim(is_string($d['texto'] ?? null) ? $d['texto'] : '');
         if ($texto === '') {
             Json::erro('Escreva a ideia.');
         }
@@ -99,14 +103,37 @@ class ColetaController
         $planId = (int)($d['planejamento_id'] ?? 0);
         $u = Auth::exigirRespostaColeta($planId);
         $item = $this->exigirItem($id, $planId);
-        if ((int)$item['autor_id'] !== (int)$u['id']) {
+        // Ideia vinda da tempestade não tem autor cadastrado: quem tria é quem
+        // pode apagar, senão um despejo de participante ficaria para sempre
+        $doParticipante = $item['autor_id'] === null;
+        if (!$doParticipante && (int)$item['autor_id'] !== (int)$u['id']) {
             Json::erro('Só o autor pode excluir a própria ideia.', 403);
+        }
+        if ($doParticipante) {
+            Auth::exigirTriagemColeta($planId);
         }
         if ($item['situacao'] !== 'NOVO') {
             Json::erro('Esta ideia já foi triada e não pode mais ser excluída.');
         }
         Database::executar('DELETE FROM coleta_item WHERE id = ?', [$id]);
         Json::ok();
+    }
+
+    /** Limpa de uma vez as ideias ainda não tratadas de uma rodada. */
+    public function limparRodada(int $rodadaId): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirTriagemColeta($planId);
+        if (!Database::um('SELECT id FROM coleta_rodada WHERE id = ? AND planejamento_id = ?',
+            [$rodadaId, $planId])) {
+            Json::erro('Rodada não encontrada neste planejamento.', 404);
+        }
+        $n = Database::afetadas(
+            "DELETE FROM coleta_item WHERE rodada_id = ? AND situacao = 'NOVO' AND autor_id IS NULL",
+            [$rodadaId]
+        );
+        Json::ok(['removidas' => $n]);
     }
 
     /**
@@ -126,7 +153,10 @@ class ColetaController
         $u = Auth::exigirTriagemColeta($planId);
         $item = $this->exigirItem($id, $planId);
 
-        $texto = trim($d['texto_tratado'] ?? '') ?: $item['texto'];
+        // O texto complementado na bancada é a razão de ela existir: só cai
+        // no texto cru se não houver complemento nenhum
+        $texto = trim(is_string($d['texto_tratado'] ?? null) ? $d['texto_tratado'] : '')
+            ?: ($item['texto_tratado'] ?: $item['texto']);
         $destino = $d['destino'] ?? '';
 
         if ($destino === 'CENARIO') {
@@ -143,7 +173,17 @@ class ColetaController
             Json::erro('Destino inválido.');
         }
 
-        if (!$this->reservar($id, $planId, (int)$u['id'])) {
+        // Quando três pessoas disseram o mesmo, a nuvem mostra "×3": tratar o
+        // representante e deixar as outras para trás faria o condutor
+        // encaminhar de novo e criar fatores duplicados
+        $grupo = $this->grupo($id, $planId, $d['grupo'] ?? null);
+        $reservados = [];
+        foreach ($grupo as $gid) {
+            if ($this->reservar($gid, $planId, (int)$u['id'])) {
+                $reservados[] = $gid;
+            }
+        }
+        if (!$reservados) {
             Json::erro('Esta ideia já foi tratada por outra pessoa.');
         }
 
@@ -163,11 +203,17 @@ class ColetaController
             );
             $destinoTipo = 'FATOR';
         }
+        // Todas as ideias do grupo apontam para o mesmo registro criado
+        $marcas = implode(',', array_fill(0, count($reservados), '?'));
         Database::executar(
-            'UPDATE coleta_item SET texto_tratado = ?, destino_tipo = ?, destino_id = ? WHERE id = ?',
-            [$texto, $destinoTipo, $destinoId, $id]
+            "UPDATE coleta_item SET texto_tratado = ?, destino_tipo = ?, destino_id = ?
+             WHERE id IN ({$marcas})",
+            [$texto, $destinoTipo, $destinoId, ...$reservados]
         );
-        Json::ok(['destino_tipo' => $destinoTipo, 'destino_id' => $destinoId, 'secao' => $this->secao($destino)]);
+        Json::ok([
+            'destino_tipo' => $destinoTipo, 'destino_id' => $destinoId,
+            'secao' => $this->secao($destino), 'agrupadas' => count($reservados),
+        ]);
     }
 
     /**
@@ -182,19 +228,21 @@ class ColetaController
         $u = Auth::exigirTriagemColeta($planId);
         $this->exigirItem($id, $planId);
 
-        $motivo = trim($d['motivo'] ?? '');
+        $motivo = trim(is_string($d['motivo'] ?? null) ? $d['motivo'] : '');
         if ($motivo === '') {
             Json::erro('Explique por que a ideia não entra — o autor vê este motivo.');
         }
+        $grupo = $this->grupo($id, $planId, $d['grupo'] ?? null);
+        $marcas = implode(',', array_fill(0, count($grupo), '?'));
         $linhas = Database::afetadas(
             "UPDATE coleta_item SET situacao = 'DESCARTADO', motivo = ?, triado_por = ?, triado_em = NOW()
-             WHERE id = ? AND planejamento_id = ? AND situacao IN ('NOVO','SELECIONADO')",
-            [$motivo, (int)$u['id'], $id, $planId]
+             WHERE id IN ({$marcas}) AND planejamento_id = ? AND situacao IN ('NOVO','SELECIONADO')",
+            [$motivo, (int)$u['id'], ...$grupo, $planId]
         );
         if (!$linhas) {
             Json::erro('Esta ideia já foi tratada por outra pessoa.');
         }
-        Json::ok();
+        Json::ok(['agrupadas' => $linhas]);
     }
 
     /**
@@ -237,7 +285,7 @@ class ColetaController
         if (in_array($item['situacao'], ['ACEITO', 'DESCARTADO'], true)) {
             Json::erro('Esta ideia já foi tratada.');
         }
-        $texto = trim($d['texto_tratado'] ?? '');
+        $texto = trim(is_string($d['texto_tratado'] ?? null) ? $d['texto_tratado'] : '');
         if ($texto === '') {
             Json::erro('O texto não pode ficar vazio.');
         }
@@ -256,11 +304,11 @@ class ColetaController
         $planId = (int)($d['planejamento_id'] ?? 0);
         $u = Auth::exigirTriagemColeta($planId);
         $item = $this->exigirItem($id, $planId);
-        if ($item['situacao'] !== 'NOVO') {
+        if (!in_array($item['situacao'], ['NOVO', 'SELECIONADO'], true)) {
             Json::erro('Só uma ideia ainda não tratada pode ser dividida.');
         }
         $partes = array_values(array_filter(array_map(
-            fn($t) => mb_substr(trim((string)$t), 0, 400),
+            fn($t) => is_string($t) ? mb_substr(trim($t), 0, 400) : '',
             is_array($d['partes'] ?? null) ? $d['partes'] : []
         ), fn($t) => $t !== ''));
         if (count($partes) < 2) {
@@ -280,12 +328,38 @@ class ColetaController
                 ]
             );
         }
+        // DIVIDIDO e não DESCARTADO: a ideia entrou, em pedaços — marcá-la
+        // como descartada mostraria "não entrou" ao autor e inflaria o contador
         Database::executar(
-            "UPDATE coleta_item SET situacao = 'DESCARTADO', motivo = ?, triado_por = ?, triado_em = NOW()
+            "UPDATE coleta_item SET situacao = 'DIVIDIDO', motivo = ?, triado_por = ?, triado_em = NOW()
              WHERE id = ?",
             ['Dividida em ' . count($partes) . ' ideias.', (int)$u['id'], $id]
         );
         Json::ok(['criados' => $criados]);
+    }
+
+    /**
+     * Ids que serão tratados junto: o item pedido mais os que a tela agrupou
+     * por texto equivalente. Cada um é validado contra o planejamento — a
+     * lista vem do cliente e não pode alcançar outro plano.
+     */
+    private function grupo(int $id, int $planId, mixed $bruto): array
+    {
+        $ids = [$id];
+        foreach (is_array($bruto) ? $bruto : [] as $g) {
+            $g = (int)$g;
+            if ($g > 0 && $g !== $id) {
+                $ids[] = $g;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        $validos = Database::todos(
+            "SELECT id FROM coleta_item
+             WHERE id IN ({$marcas}) AND planejamento_id = ? AND situacao IN ('NOVO','SELECIONADO')",
+            [...$ids, $planId]
+        );
+        return array_map(fn($l) => (int)$l['id'], $validos) ?: [$id];
     }
 
     /** Reserva a ideia para quem chegou primeiro (ver encaminhar). */

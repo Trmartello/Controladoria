@@ -71,7 +71,8 @@ class PlanejamentoController
         // Da coleta interessa o que ainda não foi triado — sem denominador: o
         // checklist não filtra por ano e somaria as rodadas de todos os anos
         $coleta  = $conta(
-            "SELECT COUNT(*) n FROM coleta_item WHERE planejamento_id = ? AND situacao = 'NOVO'",
+            "SELECT COUNT(*) n FROM coleta_item
+             WHERE planejamento_id = ? AND situacao IN ('NOVO', 'SELECIONADO')",
             [$planId]
         );
         $cenario = $conta('SELECT COUNT(*) n FROM cenario_item WHERE planejamento_id = ?', [$planId]);

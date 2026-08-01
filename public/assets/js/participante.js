@@ -80,6 +80,11 @@ const Participante = {
     });
   },
 
+  pararRelogio() {
+    clearInterval(this.relogio);
+    this.relogio = null;
+  },
+
   async entrarNaSala() {
     await this.atualizar();
     // A rodada pode encerrar ou abrir a votação a qualquer momento
@@ -90,6 +95,13 @@ const Participante = {
   async atualizar(silencioso = false) {
     try {
       this.rodada = await this.api(`/api/publico/rodada/${this.pin}`);
+      if (this.rodada.situacao !== 'ABERTA') {
+        this.minhas = [];
+        this.votacao = null;
+        this.pararRelogio();
+        this.render();
+        return;
+      }
       this.minhas = await this.api(`/api/publico/minhas?pin=${this.pin}&token=${this.token}`);
       this.votacao = await this.api(`/api/publico/votar?pin=${this.pin}&token=${this.token}`);
     } catch (e) {
@@ -112,7 +124,7 @@ const Participante = {
           <span class="badge text-bg-light border">PIN ${this.esc(this.pin)}</span>
           <span class="small text-muted flex-grow-1">${this.esc(this.nome)}</span>
         </div>
-        <h1 class="h5 tema-rodada">${this.esc(r.tema)}</h1>
+        <h1 class="h5 tema-rodada">${this.esc(r.tema || 'Tempestade de ideias')}</h1>
 
         ${encerrada
           ? '<div class="alert alert-secondary py-2 small mt-3">Esta rodada foi encerrada. Obrigado por participar!</div>'
@@ -156,9 +168,9 @@ const Participante = {
       if (!texto) return;
       btn.disabled = true;
       try {
-        await this.api('/api/publico/ideia', {
-          pin: this.pin, token: this.token, nome: this.nome, texto,
-        });
+        // O nome vem do registro no servidor, não daqui: enviá-lo permitiria
+        // assinar a ideia com o nome de outra pessoa
+        await this.api('/api/publico/ideia', { pin: this.pin, token: this.token, texto });
         campo.value = '';
         aviso.className = 'small mt-2 text-success';
         aviso.textContent = 'Ideia enviada.';

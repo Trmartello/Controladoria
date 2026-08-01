@@ -40,17 +40,28 @@ $GLOBALS['config'] = require __DIR__ . '/../config/config.php';
 // Atrás do proxy do Railway o TLS termina na borda; X-Forwarded-Proto indica HTTPS
 $https = ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' || !empty($_SERVER['HTTPS']);
 
+$metodo = $_SERVER['REQUEST_METHOD'];
+$caminho = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
+
+// A tempestade é aberta ao público: iniciar sessão ali criaria uma linha em
+// `sessao` por visitante anônimo, retida por 30 dias — crescimento sem fim
+// para quem só escaneou o QR
+$rotaPublica = $caminho === '/entrar' || str_starts_with($caminho, '/entrar/')
+    || str_starts_with($caminho, '/api/publico/');
+
 // Sessão no banco (sobrevive a deploys) com validade de 30 dias
 const SESSAO_DIAS = 30;
-ini_set('session.gc_maxlifetime', (string)(SESSAO_DIAS * 86400));
-session_set_save_handler(new \App\Core\SessaoBanco(), true);
-session_set_cookie_params([
-    'lifetime' => SESSAO_DIAS * 86400,
-    'httponly' => true,
-    'samesite' => 'Lax',
-    'secure'   => $https,
-]);
-session_start();
+if (!$rotaPublica) {
+    ini_set('session.gc_maxlifetime', (string)(SESSAO_DIAS * 86400));
+    session_set_save_handler(new \App\Core\SessaoBanco(), true);
+    session_set_cookie_params([
+        'lifetime' => SESSAO_DIAS * 86400,
+        'httponly' => true,
+        'samesite' => 'Lax',
+        'secure'   => $https,
+    ]);
+    session_start();
+}
 
 /** URL do asset com a versão do arquivo — atualizações furam o cache do navegador. */
 function versao_asset(string $caminho): string
@@ -72,8 +83,11 @@ if ($https) {
 use App\Core\Auth;
 use App\Core\Json;
 
-$metodo = $_SERVER['REQUEST_METHOD'];
-$caminho = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
+// Corpo grande só faz sentido em rota autenticada; na pública o texto é curto
+if ($rotaPublica && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 65536) {
+    http_response_code(413);
+    exit;
+}
 
 // ---- Páginas (as duas únicas do sistema) ----
 if ($metodo === 'GET' && ($caminho === '/' || $caminho === '/login')) {
@@ -106,10 +120,16 @@ if (!str_starts_with($caminho, '/api/')) {
 }
 
 // CSRF em toda escrita (o token chega no header X-CSRF-Token).
-// /api/publico/* fica de fora porque não tem sessão: sem autoridade ambiente
-// não há o que um site de terceiro sequestrar. A guarda dessas rotas é o
-// token do participante + a rodada aberta (ver PublicoController).
-if ($metodo !== 'GET' && $caminho !== '/api/login' && !str_starts_with($caminho, '/api/publico/')) {
+// A tempestade fica de fora porque não tem sessão: sem autoridade ambiente não
+// há o que um site de terceiro sequestrar. A guarda dessas rotas é o token do
+// participante + rodada aberta + Content-Type JSON (ver PublicoController).
+// A lista é explícita de propósito: com um prefixo, uma rota nova criada sob
+// /api/publico/ perderia a proteção em silêncio.
+$semCsrf = $caminho === '/api/login'
+    || $caminho === '/api/publico/entrar'
+    || $caminho === '/api/publico/ideia'
+    || (bool)preg_match('#^/api/publico/votar/\\d+$#', $caminho);
+if ($metodo !== 'GET' && !$semCsrf) {
     Auth::validarCsrf();
 }
 
@@ -197,6 +217,8 @@ try {
             (new ColetaController())->encaminhar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/descartar$#', $rota, $m):
             (new ColetaController())->descartar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/rodada/(\d+)/limpar$#', $rota, $m):
+            (new ColetaController())->limparRodada((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/priorizar$#', $rota, $m):
             (new ColetaController())->priorizar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/complementar$#', $rota, $m):
