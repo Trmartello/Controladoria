@@ -87,16 +87,17 @@ class PlanejamentoController
         $investimentos = $conta('SELECT COUNT(*) n FROM investimento WHERE planejamento_id = ?', [$planId]);
         $indicadores   = $conta('SELECT COUNT(*) n FROM indicador WHERE planejamento_id = ?', [$planId]);
 
+        // 'secao' liga cada cartão do hub à seção correspondente do menu
         return [
-            ['etapa' => 'Análise de Cenário',  'itens' => $cenario,       'meta' => null],
-            ['etapa' => 'PESTEL',              'itens' => $pestel,        'meta' => null],
-            ['etapa' => 'Porter (5 Forças)',   'itens' => $porter,        'meta' => null],
-            ['etapa' => 'SWOT',                'itens' => $swot,          'meta' => null],
-            ['etapa' => 'Matriz GUT',          'itens' => $gut,           'meta' => $swot ?: null],
-            ['etapa' => 'Cascata de Escolhas', 'itens' => $cascata,       'meta' => $celulasTotal ?: null],
-            ['etapa' => 'Metas e Indicadores', 'itens' => $indicadores,   'meta' => null],
-            ['etapa' => 'Projetos',            'itens' => $projetos,      'meta' => null],
-            ['etapa' => 'Investimentos',       'itens' => $investimentos, 'meta' => null],
+            ['etapa' => 'Análise de Cenário',  'secao' => 'cenario',       'itens' => $cenario,       'meta' => null],
+            ['etapa' => 'PESTEL',              'secao' => 'pestel',        'itens' => $pestel,        'meta' => null],
+            ['etapa' => 'Porter (5 Forças)',   'secao' => 'porter',        'itens' => $porter,        'meta' => null],
+            ['etapa' => 'SWOT',                'secao' => 'swot',          'itens' => $swot,          'meta' => null],
+            ['etapa' => 'Matriz GUT',          'secao' => 'gut',           'itens' => $gut,           'meta' => $swot ?: null],
+            ['etapa' => 'Cascata de Escolhas', 'secao' => 'cascata',       'itens' => $cascata,       'meta' => $celulasTotal ?: null],
+            ['etapa' => 'Metas e Indicadores', 'secao' => 'metas',         'itens' => $indicadores,   'meta' => null],
+            ['etapa' => 'Projetos',            'secao' => 'projetos',      'itens' => $projetos,      'meta' => null],
+            ['etapa' => 'Investimentos',       'secao' => 'investimentos', 'itens' => $investimentos, 'meta' => null],
         ];
     }
 }

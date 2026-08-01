@@ -264,7 +264,11 @@ const Diag = {
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       modalFator(fatores.find((f) => f.id == b.dataset.editar))));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Excluir este fator?')) return;
+      const f = fatores.find((x) => x.id == b.dataset.excluir);
+      const aviso = Number(f?.promovido)
+        ? 'Excluir este fator? Ele também sai da SWOT e da Matriz GUT.'
+        : 'Excluir este fator?';
+      if (!confirm(aviso)) return;
       await App.api(`/api/fatores/${b.dataset.excluir}/excluir`, { planejamento_id: plan.id });
       App.recarregarSecaoAtiva();
     }));
@@ -534,7 +538,11 @@ const SecaoSwot = {
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       modalFator(fatores.find((f) => f.id == b.dataset.editar))));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Excluir este fator?')) return;
+      const f = fatores.find((x) => x.id == b.dataset.excluir);
+      const aviso = f?.score
+        ? 'Excluir este fator da SWOT? A avaliação dele na Matriz GUT também será apagada.'
+        : 'Excluir este fator da SWOT?';
+      if (!confirm(aviso)) return;
       await App.api(`/api/fatores/${b.dataset.excluir}/excluir`, { planejamento_id: plan.id });
       App.recarregarSecaoAtiva();
     }));

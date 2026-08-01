@@ -372,6 +372,11 @@ table.tabela-cadastro td { vertical-align: middle; }
   text-transform: uppercase;
 }
 
+/* Cards de usuário no cadastro */
+.cartao-usuario { border-left: 4px solid var(--verde-coperdia); }
+.cartao-usuario.cartao-inativo { opacity: .7; border-left-color: #adb5bd; }
+.cartao-usuario .badge { font-size: .65rem; }
+
 /* Gestores listados sob o nome do negócio, um por linha */
 .gestor-negocio::before { content: '👤 '; font-size: .7rem; }
 

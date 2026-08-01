@@ -20,10 +20,13 @@ const SecaoHub = {
     const cartoes = dados.checklist.map((etapa) => {
       const feito = etapa.itens > 0;
       const meta = etapa.meta ? ` / ${etapa.meta}` : '';
+      // O cartão inteiro é um atalho para a etapa correspondente
       return `<div class="col-md-4">
-        <div class="card cartao-etapa ${feito ? '' : 'pendente'}">
+        <div class="card cartao-etapa ${feito ? '' : 'pendente'}"
+          data-ir-secao="${etapa.secao}" role="button" tabindex="0"
+          title="Abrir ${Modal.esc(etapa.etapa)}">
           <div class="card-body py-2">
-            <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex justify-content-between align-items-center gap-2">
               <span>${Modal.esc(etapa.etapa)}</span>
               <span class="badge ${feito ? 'text-bg-success' : 'text-bg-light'}">${etapa.itens}${meta}</span>
             </div>
@@ -35,7 +38,15 @@ const SecaoHub = {
     el.innerHTML = `
       <h1>Hub do Planejamento — ${Modal.esc(rotulo)}</h1>
       <p class="text-muted">O método segue as etapas abaixo. Cada cartão mostra a quantidade de
-      itens registrados; navegue pelo menu para trabalhar em cada etapa.</p>
+      itens registrados; toque no cartão para abrir a etapa.</p>
       <div class="row g-2">${cartoes}</div>`;
+
+    el.querySelectorAll('[data-ir-secao]').forEach((c) => {
+      const abrir = () => App.mostrarSecao(c.dataset.irSecao);
+      c.addEventListener('click', abrir);
+      c.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(); }
+      });
+    });
   },
 };

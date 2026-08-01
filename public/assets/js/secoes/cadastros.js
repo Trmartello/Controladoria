@@ -274,25 +274,43 @@ const SecaoCadastros = {
     const alvo = document.getElementById('conteudo-aba');
     const nomeNegocio = (id) => negocios.find((n) => n.id == id)?.rotulo || id;
 
+    const PERFIS = {
+      ADMIN: ['Admin', '#06432a'],
+      CONTROLADORIA: ['Controladoria', '#007a45'],
+      DIRECAO: ['Direção', '#b08d4f'],
+      GESTOR: ['Gestor', '#2c7fb8'],
+      LEITURA: ['Leitura', '#6c757d'],
+    };
+    const cartoes = lista.map((u) => {
+      const [rotuloPerfil, cor] = PERFIS[u.perfil] || [u.perfil, '#6c757d'];
+      const negociosTxt = ['ADMIN', 'CONTROLADORIA', 'DIRECAO'].includes(u.perfil)
+        ? '<em>todos os negócios</em>'
+        : (u.negocios.map(nomeNegocio).map(Modal.esc).join(', ') || '—');
+      return `<div class="col-12 col-md-6 col-xl-4" data-busca="${Modal.esc(`${u.nome} ${u.email}`.toLowerCase())}">
+        <div class="card h-100 cartao-usuario ${u.ativo == 1 ? '' : 'cartao-inativo'}">
+          <div class="card-body py-2 px-3">
+            <div class="d-flex align-items-center gap-2">
+              <strong class="small">${Modal.esc(u.nome)}</strong>
+              ${u.ativo == 1 ? '' : '<span class="badge text-bg-secondary">Inativo</span>'}
+              <button class="btn btn-sm btn-outline-secondary ms-auto" data-editar="${u.id}"
+                title="Editar" aria-label="Editar">✎</button>
+            </div>
+            <div class="small text-muted">${Modal.esc(u.email)}</div>
+            <div class="d-flex align-items-center gap-2 mt-1">
+              <span class="badge" style="background:${cor}">${rotuloPerfil}</span>
+              <span class="small text-muted">${negociosTxt}</span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
     alvo.innerHTML = `
       <button class="btn btn-verde btn-sm mb-2" id="btn-novo-usuario">+ Novo usuário</button>
       ${lista.length > 5 ? `<input type="search" id="busca-usuario" class="form-control mb-2"
         placeholder="Pesquisar usuário por nome ou e-mail..." autocomplete="off">` : ''}
-      <div class="table-responsive">
-        <table class="table table-sm tabela-cadastro">
-          <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Negócios vinculados</th><th>Situação</th><th></th></tr></thead>
-          <tbody id="linhas-usuarios">${lista.map((u) => `
-            <tr class="${u.ativo == 1 ? '' : 'table-secondary'}" data-busca="${Modal.esc(`${u.nome} ${u.email}`.toLowerCase())}">
-              <td>${Modal.esc(u.nome)}</td>
-              <td>${Modal.esc(u.email)}</td>
-              <td>${u.perfil}</td>
-              <td class="small">${['ADMIN', 'CONTROLADORIA', 'DIRECAO'].includes(u.perfil)
-                ? '<em>todos</em>'
-                : (u.negocios.map(nomeNegocio).map(Modal.esc).join(', ') || '—')}</td>
-              <td>${u.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
-              <td><button class="btn btn-sm btn-outline-secondary" data-editar="${u.id}">Editar</button></td>
-            </tr>`).join('')}</tbody>
-        </table>
+      <div class="row g-2" id="lista-usuarios">
+        ${cartoes || '<div class="text-muted">Nenhum usuário cadastrado.</div>'}
       </div>`;
 
     const abrirModal = (u = null) => Modal.abrir({
@@ -327,8 +345,8 @@ const SecaoCadastros = {
     busca?.addEventListener('input', () => {
       const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
       const q = norm(busca.value.trim());
-      document.querySelectorAll('#linhas-usuarios tr').forEach((tr) => {
-        tr.classList.toggle('d-none', q !== '' && !norm(tr.dataset.busca).includes(q));
+      document.querySelectorAll('#lista-usuarios [data-busca]').forEach((col) => {
+        col.classList.toggle('d-none', q !== '' && !norm(col.dataset.busca).includes(q));
       });
     });
   },

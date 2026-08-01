@@ -84,8 +84,9 @@ class FatorController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirFator($id, $planId);
-        // Itens promovidos a partir deste perdem o vínculo, mas permanecem na SWOT
-        Database::executar('UPDATE fator SET promovido_de_id = NULL WHERE promovido_de_id = ?', [$id]);
+        // Excluir o fator de origem leva junto o que foi promovido dele para a
+        // SWOT e, com ele, a avaliação na Matriz GUT (FK gut ON DELETE CASCADE)
+        Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$id]);
         Database::executar('DELETE FROM fator WHERE id = ?', [$id]);
         Json::ok();
     }
