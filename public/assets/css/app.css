@@ -688,9 +688,16 @@ tr.card-destacado > td { background: #e8f5ee; }
   #modal-form .modal-dialog:has(textarea) {
     height: calc(100dvh - .5rem);
     max-height: none;
-    margin: .25rem;
+    /* Largura cheia: no celular cada milímetro conta, e a folga lateral só
+       encurtava o texto dos campos. max-width vence o limite do Bootstrap */
+    width: auto;
+    max-width: none;
+    margin: .25rem 0;
   }
-  #modal-form .modal-content { height: 100%; }
+  #modal-form .modal-content {
+    height: 100%;
+    border-radius: .5rem;
+  }
   #modal-form .modal-body {
     display: flex;
     flex-direction: column;
