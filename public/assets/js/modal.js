@@ -42,6 +42,7 @@ const Modal = {
     this.ligarDatasBr(form);
     this.ligarFaixas(form, campos);
     this.ligarCondicionais(form, campos);
+    this.ligarTextareasElasticas(form);
 
     if (!this.bsModal) {
       this.bsModal = new bootstrap.Modal(document.getElementById('modal-form'));
@@ -51,6 +52,9 @@ const Modal = {
         this.salvar();
       });
       document.getElementById('modal-form').addEventListener('hidden.bs.modal', () => this.pararDitado());
+      // Só com o modal na tela dá para medir o que transborda
+      document.getElementById('modal-form').addEventListener('shown.bs.modal', () =>
+        this.aoAparecer(document.getElementById('modal-campos')));
     }
     this.bsModal.show();
   },
@@ -111,6 +115,7 @@ const Modal = {
             <span class="marcavel-corpo">
               ${selos ? `<span class="marcavel-selos">${selos}</span>` : ''}
               <span class="marcavel-texto">${this.esc(o.texto || o.rotulo || '')}</span>
+              <span class="marcavel-rodape"></span>
             </span>
           </label>`;
         }).join('');
@@ -252,6 +257,57 @@ const Modal = {
 
   // Estado dos comboboxes pesquisáveis do formulário aberto (id → opções)
   combos: {},
+
+  /**
+   * Medidas que só fazem sentido com o modal já na tela: enquanto ele está
+   * escondido toda altura vale zero, e nada transborda.
+   */
+  aoAparecer(raiz) {
+    this.aplicarVerMais(raiz);
+    raiz.querySelectorAll('textarea').forEach((t) => this.crescerTextarea(t));
+  },
+
+  /**
+   * Descrição longa fica cortada em 3 linhas: um item extenso não pode engolir
+   * a lista inteira. Só ganha "ver mais" quem realmente transborda.
+   */
+  aplicarVerMais(raiz) {
+    raiz.querySelectorAll('.marcavel-item').forEach((item) => {
+      const texto = item.querySelector('.marcavel-texto');
+      const rodape = item.querySelector('.marcavel-rodape');
+      if (!texto || !rodape || rodape.firstChild) return;
+      if (texto.scrollHeight <= texto.clientHeight + 1) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-link btn-sm p-0 ver-mais';
+      btn.textContent = 'ver mais';
+      btn.addEventListener('click', (ev) => {
+        // O botão vive dentro do <label>: sem isto o clique marcaria o item
+        ev.preventDefault();
+        ev.stopPropagation();
+        const aberto = texto.classList.toggle('expandido');
+        btn.textContent = aberto ? 'ver menos' : 'ver mais';
+      });
+      rodape.appendChild(btn);
+    });
+  },
+
+  /**
+   * O campo de texto acompanha o que está sendo escrito: cresce conforme o
+   * texto, até o teto de 60% da altura da tela. Passando disso, ele para de
+   * crescer e rola por dentro — senão o botão Salvar sairia do alcance.
+   */
+  crescerTextarea(t) {
+    const teto = Math.round(window.innerHeight * 0.6);
+    if (t.scrollHeight <= t.clientHeight + 1) return;
+    const alvo = Math.min(t.scrollHeight + 2, teto);
+    if (alvo > t.clientHeight) t.style.minHeight = `${alvo}px`;
+  },
+
+  ligarTextareasElasticas(raiz) {
+    raiz.querySelectorAll('textarea').forEach((t) =>
+      t.addEventListener('input', () => this.crescerTextarea(t)));
+  },
 
   /** Pesquisa e contador das listas marcáveis. */
   ligarListasMarcaveis(raiz) {

@@ -332,12 +332,24 @@ input[type=range].faixa-verde:focus-visible {
   margin-bottom: .15rem;
 }
 .marcavel-selos .badge { font-size: .65rem; }
+/* Corte em 3 linhas; o "ver mais" só aparece em quem transborda */
 .marcavel-texto {
-  display: block;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   font-size: .82rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
+.marcavel-texto.expandido {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+.marcavel-rodape:empty { display: none; }
+.marcavel-rodape .ver-mais { font-size: .72rem; }
 .marcavel-contador {
   font-size: .72rem;
   color: #6c757d;

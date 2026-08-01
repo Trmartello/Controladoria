@@ -27,12 +27,16 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `info` (bloco só de leitura, com barra colorida opcional), `botoes` (option
   buttons), `quadrantes` (matriz SWOT 2×2), `selecao_livre` (combobox com
   busca que aceita nome novo), `faixa` (slider) e `lista_marcavel` (itens
-  marcáveis com o **texto inteiro** à vista, selos coloridos, pesquisa acima
-  de 5 itens e contador — usar sempre que o usuário precise ler o item antes
-  de marcar; `multiselect` só serve para listas curtas e não funciona no
-  celular, onde não existe tecla Ctrl). Opções auxiliares:
+  marcáveis com selos coloridos, descrição cortada em 3 linhas com “ver mais”,
+  pesquisa acima de 5 itens e contador — usar sempre que o usuário precise ler
+  o item antes de marcar; `multiselect` só serve para listas curtas e não
+  funciona no celular, onde não existe tecla Ctrl). Opções auxiliares:
   `obrigatorio`, `visivelSe: {campo, valores}`, `exemplo`, `ajuda`, `nota`,
   `sufixo`, `passo`. Datas aparecem sempre como dd/mm/aaaa (`ligarDatasBr`).
+  Textareas crescem com o texto até 60% da altura da tela e depois rolam por
+  dentro (`crescerTextarea`). Medida que depende de layout (o que transborda,
+  quanto o texto ocupa) vai em `Modal.aoAparecer`, disparada no
+  `shown.bs.modal` — com o modal escondido toda altura vale zero.
 - **Cache busting**: todo asset é referenciado nas views com
   `versao_asset('/assets/...')` (acrescenta `?v=filemtime`). Assets novos em
   views devem usar esse helper, senão o cache de 24h serve versão velha.
