@@ -352,6 +352,168 @@ seção e não rola até nada, quebrando a promessa central do módulo.
 
 ---
 
+## 2.1 Tempestade de ideias: quiz por QR, separação e priorização
+
+### Situação: **A PLANEJAR** — não implementado
+
+Revisão do tema 2 pedida pelo cliente **depois** da entrega da Coleta. Não
+substitui o que está no ar: reaproveita o modelo de dados e a tratativa, e
+acrescenta a sessão ao vivo, a separação das ideias e a matriz de priorização.
+
+> **Como o cliente descreveu.** "Fazer via quiz, onde os usuários escaneiam o
+> código e vão dando as ideias, numa tempestade de ideias. E aí o administrador
+> vai selecionando as palavras e destinando, se será tratado, sim ou não,
+> colocando dentro da matriz de priorização." E depois: "separar as palavras,
+> complementar o texto, classificar conforme priorização, e decidir se os
+> assuntos serão esquecidos ou direcionados para uma análise PESTEL, SWOT,
+> Porter."
+
+### O fluxo em cinco passos, e o que já existe
+
+| # | Passo | Situação hoje |
+|---|-------|---------------|
+| 1 | **Tempestade** — participantes escaneiam o QR e disparam ideias | **falta tudo**: rodada, código, QR, tela de quiz |
+| 2 | **Separar as palavras** — quebrar o despejo bruto em ideias distintas | **falta**: ação "dividir ideia" (1 bruta → N itens) |
+| 3 | **Complementar o texto** — redigir o enunciado que vai ao diagnóstico | **existe**: `coleta_item.texto_tratado`, no modal de encaminhamento |
+| 4 | **Classificar por priorização** — posicionar na matriz | **falta**: impacto × esforço no próprio item |
+| 5 | **Decidir** — esquecer ou direcionar a PESTEL/SWOT/Porter/Cenário | **existe**: `encaminhar` / `descartar` com motivo |
+
+Ou seja: os passos 3 e 5 estão prontos e testados. O trabalho novo é 1, 2 e 4 —
+e o passo 1 é o que carrega quase todo o risco.
+
+### Decisões que precisam ser tomadas antes de escrever código
+
+**A. Quem pode responder ao quiz?** É a decisão que define a arquitetura.
+
+- **A1 — só usuário cadastrado.** O QR abre a rodada; quem não estiver logado
+  faz login e volta. Zero mudança no modelo de autorização. Custo: todo mundo
+  na sala precisa de conta, o que atrapalha uma oficina com convidados.
+- **A2 — código da rodada + nome digitado**, sem senha (modelo Mentimeter).
+  É a experiência que o cliente descreveu. Custo real: seria **a primeira rota
+  de escrita sem autenticação em todo o sistema**. Exige, no mínimo, rodada com
+  abertura e encerramento explícitos, código curto e descartável, limite de
+  envios por origem, e escrita restrita a `coleta_item` de uma rodada aberta.
+  O "autor" passa a ser texto digitado, não usuário — e o motivo do descarte
+  deixa de ter um destinatário garantido.
+- **A3 — anônimo.** Quebra a premissa que sustenta a tratativa: sem autor, o
+  descarte com motivo visível vira veto sem destinatário. **Não recomendado.**
+
+**Recomendação: A2**, com a ressalva de que ela abre um caminho de escrita não
+autenticado e por isso merece revisão de segurança própria antes de subir.
+Nada impede começar por A1 e migrar: o que muda é o portão, não o resto.
+
+**B. O que exatamente é "separar as palavras"?** Duas leituras, e elas levam a
+telas diferentes:
+
+- **B1 — dividir a ideia.** O participante despeja um parágrafo; o
+  administrador quebra em N ideias separadas, cada uma seguindo seu caminho.
+  É o que combina com "complementar o texto" logo depois.
+- **B2 — nuvem de termos.** Extrair as palavras recorrentes para ver
+  convergência ("cinco pessoas falaram em *frete*"). É visual de oficina, não
+  altera o dado.
+
+**Recomendação: B1 como funcionalidade** (uma ação `dividir` que cria itens
+filhos apontando para o pai) **e B2 como leitura opcional depois**, se sobrar
+fôlego. B2 sozinho não resolve nada do fluxo.
+
+**C. A matriz de priorização daqui conflita com a Matriz GUT?** É o risco
+conceitual do tema. O backlog já rejeitou, no tema 1, "uma segunda priorização
+sem score e sem rastro". A saída que mantém coerência:
+
+> A matriz da Coleta é **instrumento de oficina**: serve para decidir, na hora,
+> o que vale tratar primeiro. Ela vive **dentro da Coleta** e morre quando a
+> ideia vira fator — daí em diante quem prioriza é a GUT, com score e rastro.
+> O impacto e o esforço **não** são copiados para o `fator`.
+
+Se essa fronteira não for respeitada, o sistema passa a ter duas priorizações
+concorrentes e a GUT perde sentido.
+
+**D. A rodada volta ao escopo.** `rodada_coleta` foi **cortada** na revisão do
+tema 2 — o QR a traz de volta, porque um código para escanear é, por definição,
+o identificador de uma sessão com início e fim. O que **continua cortado** é o
+roteiro de perguntas, o CRUD de perguntas e os participantes convidados.
+
+### Modelo de dados — só o delta
+
+```sql
+CREATE TABLE IF NOT EXISTS coleta_rodada (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  planejamento_id INT NOT NULL,
+  ano             SMALLINT NOT NULL,
+  tema            VARCHAR(180) NOT NULL,     -- a pergunta que abre a tempestade
+  codigo          VARCHAR(12) NOT NULL,      -- o que vai no QR
+  situacao        ENUM('ABERTA','ENCERRADA') NOT NULL DEFAULT 'ABERTA',
+  criado_por      INT NOT NULL,
+  criado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  encerrada_em    DATETIME NULL,
+  UNIQUE KEY uk_rodada_codigo (codigo),
+  KEY idx_rodada_plan (planejamento_id, ano, situacao),
+  CONSTRAINT fk_rod_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+Em `coleta_item`, quatro colunas via `garantirColuna()`:
+
+- `rodada_id INT NULL` — nulo mantém funcionando tudo que já foi coletado;
+- `dividido_de_id INT NULL` — o pai, quando a ideia nasceu de uma separação;
+- `impacto ENUM('ALTO','BAIXO') NULL` e `esforco ENUM('BAIXO','ALTO') NULL`.
+
+E um estado novo em `situacao`: **`SELECIONADO`**, entre `NOVO` e `ACEITO` —
+"vai ser tratada, ainda não tem destino". É o que o cliente chamou de decidir
+"sim ou não" antes de escolher para onde vai. `NÃO` continua sendo
+`DESCARTADO`, com o motivo obrigatório que já existe.
+
+### Telas
+
+1. **Abrir rodada** (controladoria): tema, e pronto. A tela mostra o QR grande,
+   o código por extenso (para quem não conseguir escanear) e o contador ao
+   vivo. Botão "Encerrar" fecha a entrada.
+2. **Quiz** (participante, celular): o tema no topo, uma caixa de texto, botão
+   enviar, e abaixo só as próprias ideias, para poder corrigir. Sem lista dos
+   outros durante a tempestade — ver o que os outros escreveram ancora o grupo
+   e reduz a diversidade, que é justamente o que a tempestade busca.
+3. **Separar e complementar** (controladoria): a ideia bruta, botão "dividir"
+   que abre N campos, e o texto tratado de cada uma.
+4. **Matriz de priorização**: 2×2 impacto × esforço com as ideias selecionadas
+   como fichas; um toque move de quadrante. É a mesma leitura já registrada na
+   seção "Leitura impacto × esforço" deste documento.
+5. **Direcionar**: a fila que já existe, agora alimentada pelo quadrante — as
+   fichas de "fazer agora" aparecem primeiro.
+
+### Risco técnico já medido: o QR
+
+Foi feita uma tentativa de escrever o gerador de QR em JavaScript puro (o
+ambiente bloqueia CDN e o projeto não usa Composer nem npm). Resultado da
+verificação contra uma implementação de referência:
+
+- **codificação de dados e Reed-Solomon: corretos** — os 26 codewords de um
+  caso de teste batem byte a byte com a referência;
+- **seleção de versão: correta** — os cinco casos escolheram a mesma versão;
+- **montagem da matriz: com defeito** — nenhuma das 8 máscaras reproduz a
+  referência, e o defeito não foi isolado numa primeira investida. O rascunho
+  ficou fora do repositório de propósito.
+
+Orçar o QR como **tarefa de risco médio**, não como detalhe. Alternativas se
+ele custar caro: mostrar só o código curto e a URL para digitar; ou gerar o QR
+uma vez, fora do sistema, e colar como imagem na tela da rodada.
+
+### Fatiamento sugerido
+
+| Fatia | Conteúdo | Esforço | Entrega valor sozinha? |
+|---|---|---|---|
+| 1 | Rodada + tela de quiz + entrada por código digitado (sem QR) | P | Sim — já dá para rodar a oficina |
+| 2 | Separar ideia (`dividir`) + estado `SELECIONADO` | P | Sim — organiza o despejo bruto |
+| 3 | Matriz de priorização 2×2 | P | Sim — é a decisão da oficina |
+| 4 | QR na tela da rodada | P–M | Só conveniência sobre a fatia 1 |
+| 5 | Entrada sem login (decisão A2) | M | Depende de revisão de segurança |
+| 6 | Nuvem de termos (B2) | P | Opcional |
+
+Fatias 1 a 3 entregam o fluxo inteiro que o cliente descreveu, com o código
+digitado no lugar do escaneado. A 4 e a 5 são o que transforma em experiência
+de oficina — e são, também, onde mora todo o risco.
+
+---
+
 ## 3. Mapa Estratégico BSC e as 4 perspectivas
 
 ### Veredito: **NÃO CONSTRUIR o mapa** / **CONSTRUIR SIMPLIFICADO a Matriz de Execução** (esforço P)
@@ -892,7 +1054,8 @@ discutir a dependência, não o quadrante.
 | 4 | Plano de Contingência (ancorado na ameaça GUT) | Construir simplificado | M | 3 |
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 4 |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 5 |
-| 2 | Coleta & Triagem (quiz/brainstorm com tratativa) | **Entregue** | M | 6 ✔ (antecipada) |
+| 2 | Coleta & Triagem (tratativa item a item) | **Entregue** | M | 6 ✔ (antecipada) |
+| 2.1 | Tempestade: quiz por QR, separação e matriz de priorização | **A planejar** | M | a definir |
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
 | 4b | Contingência dentro de cada projeto | **Não construir agora** (deriva de 4) | P | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |
@@ -924,7 +1087,13 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
 7. **Existe (ou existirá) real com granularidade mensal vindo do Qlik?** Se sim,
    destrava a contingência ancorada em indicador (o `OFF_TRACK` do BSC) e muda a
    pauta do ritual. Se não, meta × real continua sendo assunto anual.
-8. **Quem é o dono da Matriz de Impacto:** a controladoria preenche a grade inteira,
+8. **Quem responde ao quiz da tempestade (tema 2.1)?** Só usuário cadastrado,
+   ou qualquer pessoa com o código da rodada? A segunda opção é a experiência
+   que o cliente descreveu e seria a primeira rota de escrita sem autenticação
+   do sistema — precisa de decisão explícita e de revisão de segurança própria.
+9. **"Separar as palavras" é dividir a ideia em várias, ou nuvem de termos?**
+   As duas leituras levam a telas diferentes (ver tema 2.1, decisão B).
+10. **Quem é o dono da Matriz de Impacto:** a controladoria preenche a grade inteira,
    ou cada gestor preenche a coluna dele? A versão proposta assume a primeira
    (gestor só lê) — é o mais simples e o mais defensável, mas é decisão de processo.
 9. **SMTP e cron já estão configurados em produção?** Se não estiverem, o passo 0
