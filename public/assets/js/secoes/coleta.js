@@ -273,11 +273,16 @@ const SecaoColeta = {
     }
     const dica = adiada ? 'Trazer de volta para a tempestade'
       : `Grupo de ${g.itens.length} ideias — toque para tratar, arraste para juntar`;
+    // Um ✕ em cada palavra tira só ela do grupo (juntou por engano), sem
+    // desfazer o resto. Só na caixa ativa e para quem pode triar.
+    const podeTirar = !adiada && App.podeEditar();
     return `<div class="grupo-caixa ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
       role="button" tabindex="0" ${acao} title="${dica}">
       ${i.texto_tratado ? `<div class="grupo-descricao">${Modal.esc(i.texto_tratado)}</div>` : ''}
       <div class="grupo-palavras">
-        ${g.itens.map((w) => `<span class="palavra-grupo">${Modal.esc(w.texto)}</span>`).join('')}
+        ${g.itens.map((w) => `<span class="palavra-grupo">${Modal.esc(w.texto)}${
+          podeTirar ? `<button type="button" class="palavra-x" data-remover-palavra="${w.id}"
+            title="Tirar do grupo" aria-label="Tirar esta ideia do grupo">×</button>` : ''}</span>`).join('')}
       </div>
       <div class="grupo-rodape">${g.itens.length} ideias juntas${g.votos ? ` · ★ ${g.votos}` : ''}</div>
     </div>`;
@@ -376,6 +381,8 @@ const SecaoColeta = {
     el.querySelectorAll('[data-arrastavel]').forEach((ficha) => {
       ficha.addEventListener('pointerdown', (ev) => {
         if (ev.button !== undefined && ev.button !== 0) return;
+        // O ✕ de tirar uma palavra não inicia arraste
+        if (ev.target.closest('[data-remover-palavra]')) return;
         const origem = { x: ev.clientX, y: ev.clientY };
         let arrastando = false;
         let alvoAtual = null;
@@ -488,6 +495,20 @@ const SecaoColeta = {
       try {
         await App.api(`/api/coleta/${b.dataset.retomar}/adiar`,
           { planejamento_id: this.plan.id, adiado: false });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.carregar();
+    }));
+
+    // Tirar uma palavra do grupo (o clique não pode selecionar nem arrastar a caixa)
+    el.querySelectorAll('[data-remover-palavra]').forEach((b) => b.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      try {
+        const r = await App.api(`/api/coleta/${b.dataset.removerPalavra}/remover-grupo`,
+          { planejamento_id: this.plan.id });
+        // Mantém o foco no grupo que sobrou (o líder restante)
+        this.selecionado = r.lider || null;
       } catch (e) {
         alert(e.message);
       }

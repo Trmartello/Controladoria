@@ -508,14 +508,29 @@ input[type=range].faixa-verde:focus-visible {
 }
 .grupo-palavras { display: flex; flex-wrap: wrap; gap: .3rem; }
 .palavra-grupo {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
   background: #fff;
   border: 1px solid #cfe2d8;
   border-radius: 999px;
-  padding: .12rem .55rem;
+  padding: .12rem .3rem .12rem .55rem;
   font-size: .78rem;
   overflow-wrap: anywhere;
 }
 .grupo-caixa.adiada .palavra-grupo { border-color: #d5d9e0; }
+/* ✕ para tirar uma palavra do grupo */
+.palavra-x {
+  border: 0;
+  background: none;
+  color: #9aa7a0;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 .1rem;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.palavra-x:hover { color: #8f3b3b; background: #f4dede; }
 .grupo-rodape { font-size: .68rem; color: #6c757d; margin-top: .35rem; }
 .ficha-nuvem.selecionada {
   background: var(--verde-coperdia);

@@ -406,6 +406,54 @@ class ColetaController
         Json::ok();
     }
 
+    /**
+     * Tira UMA palavra do grupo, sem desfazer o resto — para quando uma ideia
+     * foi juntada por engano. Devolve o líder do grupo que sobrou, para a tela
+     * manter o foco nele.
+     *
+     * Se quem sai é o líder, os demais precisam de um novo topo, senão
+     * ficariam órfãos apontando para um líder que virou item solto.
+     */
+    public function removerDoGrupo(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirTriagemColeta($planId);
+        $item = $this->exigirItem($id, $planId);
+        $lider = (int)($item['agrupado_em_id'] ?? 0) ?: (int)$item['id'];
+        if ((int)$item['id'] === $lider && (int)($item['agrupado_em_id'] ?? 0) === 0
+            && !Database::um('SELECT id FROM coleta_item WHERE agrupado_em_id = ?', [$lider])) {
+            Json::erro('Esta ideia não está em nenhum grupo.');
+        }
+
+        $restante = $lider;
+        if ((int)$item['id'] === $lider) {
+            // Sai o líder: promove o próximo membro e reaponta os demais para ele
+            $novo = Database::um(
+                'SELECT id FROM coleta_item
+                 WHERE planejamento_id = ? AND agrupado_em_id = ? AND id <> ? ORDER BY id LIMIT 1',
+                [$planId, $lider, $lider]
+            );
+            $restante = $novo ? (int)$novo['id'] : null;
+            if ($restante !== null) {
+                Database::executar(
+                    'UPDATE coleta_item SET agrupado_em_id = ?
+                     WHERE planejamento_id = ? AND agrupado_em_id = ? AND id <> ?',
+                    [$restante, $planId, $lider, $restante]
+                );
+                Database::executar('UPDATE coleta_item SET agrupado_em_id = NULL WHERE id = ?', [$restante]);
+            }
+            Database::executar('UPDATE coleta_item SET agrupado_em_id = NULL WHERE id = ?', [$lider]);
+        } else {
+            // Membro comum: só ele sai do grupo
+            Database::executar(
+                'UPDATE coleta_item SET agrupado_em_id = NULL WHERE id = ? AND planejamento_id = ?',
+                [$id, $planId]
+            );
+        }
+        Json::ok(['lider' => $restante]);
+    }
+
     /** Manda o grupo para a caixa "tratar depois" — ou o traz de volta. */
     public function adiar(int $id): void
     {

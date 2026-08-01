@@ -223,6 +223,8 @@ try {
             (new ColetaController())->agrupar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/desagrupar$#', $rota, $m):
             (new ColetaController())->desagrupar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/remover-grupo$#', $rota, $m):
+            (new ColetaController())->removerDoGrupo((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/adiar$#', $rota, $m):
             (new ColetaController())->adiar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/priorizar$#', $rota, $m):

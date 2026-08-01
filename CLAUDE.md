@@ -97,7 +97,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   Na nuvem, ideia sozinha é uma ficha; grupo vira uma **caixa** (`.grupo-caixa`)
   com todas as palavras juntadas à vista (`fichaOuCaixa()`). Tocar na caixa ou
   em qualquer palavra dela leva o grupo à bancada. A caixa arrasta e é alvo de
-  arraste como a ficha (`touch-action: none` nela e nos filhos).
+  arraste como a ficha (`touch-action: none` nela e nos filhos). Cada palavra
+  tem um ✕ que a tira só dela do grupo (`removerDoGrupo`, rota
+  `/api/coleta/{id}/remover-grupo`) — juntou por engano, tira uma sem desfazer
+  o resto; se sai o líder, o próximo membro é promovido. O ✕ para propagação
+  (não seleciona nem arrasta a caixa).
 - **Coleta de Ideias** é o passo 0 do diagnóstico: ideia crua → triagem item a
   item → item de cenário ou fator (ou descarte com motivo, visível ao autor).
   O registro criado herda o `ano` da **ideia**, nunca o do seletor da tela.
