@@ -35,24 +35,24 @@ refutação adversarial). Resultado: **entregue**, com duas ressalvas.
 |---|---|---|---|
 | 1 | `coleta_rodada` + PIN + rotas públicas | ✅ | `RodadaController.php`, `PublicoController.php`, `public/index.php` (`/entrar/{pin}`, `/api/publico/*`); `database/schema.sql` (`coleta_rodada`, `pin CHAR(6)`) |
 | 2 | Tela de condução: nuvem por *polling* + bancada | ✅ | `coleta.js` (polling 3 s sem SSE; bancada; agrupamento por *pointer events*) |
-| 3 | Matriz 2×2 + destino pelo quadrante | ⚠️ parcial | `coleta.js` `priorizar` e `encaminhar` são handlers **independentes** (Decisão C não literal) |
+| 3 | Matriz 2×2 + destino pelo quadrante | ✅ | quadrante "Descartar" aciona o esquecer (`priorizar` devolve `descartar`, front abre o descarte); fila ordenada por prioridade; destino de diagnóstico segue manual (ortogonal) |
 | 4 | QR (`qrcode.js` vendorado) + link | ✅ | `public/assets/vendor/qrcode.js`; `views/shell.php`; QR recolhido em `<details>` |
 | 5 | Dividir ideia em várias | ✅ | `ColetaController::dividir` + rota `POST /api/coleta/{id}/dividir` |
 | 6 | Votação dos participantes | ✅ | `coleta_voto`; `PublicoController::votar` (teto no `INSERT`); `RodadaController::votacao` |
 
-### Ressalva registrada
+### Sem ressalvas em aberto
 
-1. **Fatia 3 parcial** — a bancada tem a matriz 2×2 e os botões de destino, mas
-   são ações separadas: o quadrante grava só `impacto`/`esforco`; o
-   encaminhamento é escolha manual. A **Decisão C** ("a matriz decide o
-   encaminhamento") **não** foi implementada literalmente.
+O tema 2.1 está **completo**. As três pendências que existiam foram fechadas:
 
-A página do participante está **completa**: a **edição da própria ideia** (botão
-"editar", editor inline, rota `POST /api/publico/ideia/{id}` restrita a ideia
-`NOVO` da rodada aberta, autoria provada pelo token) e o **ditado por voz** (Web
-Speech API na caixa de ideia e no editor, com degradação graciosa sem suporte)
-foram entregues. Não sobra ressalva na página do participante — resta apenas a
-fatia 3 acima.
+1. **Edição da própria ideia** — botão "editar", editor inline, rota
+   `POST /api/publico/ideia/{id}` restrita a ideia `NOVO` da rodada aberta, com
+   a autoria provada pelo token.
+2. **Ditado por voz** — Web Speech API na caixa de ideia e no editor, com
+   degradação graciosa onde o navegador não suporta.
+3. **Fatia 3 (Decisão C)** — o quadrante "Descartar" decide esquecer (abre o
+   descarte com motivo sugerido) e a fila ordena por prioridade; a escolha do
+   destino de diagnóstico segue manual, por ser ortogonal ao impacto×esforço.
+   Corrigida também a inconsistência de "Descartar" marcar `SELECIONADO`.
 
 ### Extras entregues além do escopo do backlog 2.1
 

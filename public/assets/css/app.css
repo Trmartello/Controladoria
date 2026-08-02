@@ -556,6 +556,18 @@ input[type=range].faixa-verde:focus-visible {
   opacity: .75;
   margin-left: .25rem;
 }
+/* Faixa de prioridade da matriz (Fazer agora / Planejar / Encaixar) na nuvem */
+.selo-prio {
+  display: inline-block;
+  padding: 0 .35rem;
+  border-radius: .7rem;
+  font-size: .6rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #fff;
+  background: var(--cor-prio, #6c757d);
+  vertical-align: middle;
+}
 .bancada { border-left: 4px solid var(--dourado); }
 /* Matriz de prioridade = gráfico de quatro quadrantes (impacto × esforço) */
 .matriz-quad {

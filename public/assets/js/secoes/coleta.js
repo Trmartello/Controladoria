@@ -21,6 +21,16 @@ const DESTINOS_TRIAGEM = [
   { valor: 'ACAO', rotulo: 'Plano de ação', cor: '#5a3e2b' },
 ];
 
+// Quadrantes da matriz impacto×esforço — fonte única de rótulo, cor e a ordem
+// de prioridade da fila. "Descartar" (baixo impacto, alto esforço) é a posição
+// que a matriz usa para decidir esquecer a ideia.
+const QUADRANTES = {
+  'ALTO:BAIXO': { titulo: 'Fazer agora', cor: '#007a45', rank: 0 },
+  'ALTO:ALTO': { titulo: 'Planejar', cor: '#2c7fb8', rank: 1 },
+  'BAIXO:BAIXO': { titulo: 'Encaixar', cor: '#b08d4f', rank: 2 },
+  'BAIXO:ALTO': { titulo: 'Descartar', cor: '#8f3b3b', rank: 3 },
+};
+
 const CATEGORIAS_DESTINO = {
   PESTEL: [
     ['POLITICO', 'Político'], ['ECONOMICO', 'Econômico'], ['SOCIAL', 'Social'],
@@ -103,9 +113,19 @@ const SecaoColeta = {
       g.itens.push(i);
       g.votos += Number(i.votos || 0);
     }
-    // Mais repetidas e mais votadas primeiro: é a leitura que interessa na sala
+    // Prioridade primeiro (Fazer agora → Planejar → Encaixar → não posicionadas)
+    // e, dentro de cada faixa, mais repetidas e mais votadas primeiro. Durante a
+    // tempestade tudo é NOVO (mesma faixa), então a leitura da sala não muda — a
+    // ordem por prioridade só aparece depois que o condutor posiciona na matriz.
     return [...grupos.values()].sort((a, b) =>
-      (b.itens.length - a.itens.length) || (b.votos - a.votos) || (a.representante.id - b.representante.id));
+      (this.prioridadeRank(a.representante) - this.prioridadeRank(b.representante))
+      || (b.itens.length - a.itens.length) || (b.votos - a.votos) || (a.representante.id - b.representante.id));
+  },
+
+  /** Faixa de prioridade da ideia posicionada; não posicionadas vão por último. */
+  prioridadeRank(i) {
+    const q = QUADRANTES[`${i.impacto}:${i.esforco}`];
+    return q && i.situacao === 'SELECIONADO' ? q.rank : 9;
   },
 
   pararRelogio() {
@@ -255,6 +275,10 @@ const SecaoColeta = {
     const multi = g.itens.length > 1;
     const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
     const selo = `${multi ? `×${g.itens.length}` : ''}${g.votos ? ` ★${g.votos}` : ''}`.trim();
+    // Faixa de prioridade da matriz, para quem já foi posicionada: mostra por que
+    // a ficha subiu na fila e qual quadrante o condutor escolheu.
+    const q = i.situacao === 'SELECIONADO' ? QUADRANTES[`${i.impacto}:${i.esforco}`] : null;
+    const seloPrio = q ? ` <span class="selo-prio" style="--cor-prio:${q.cor}">${q.titulo}</span>` : '';
     // Adiada volta com um toque (data-retomar); ativa seleciona e arrasta
     const acao = adiada
       ? `data-retomar="${i.id}"`
@@ -266,7 +290,7 @@ const SecaoColeta = {
         : `${Modal.esc(i.autor)} — toque para tratar, arraste sobre outra para juntar`;
       return `<button type="button" class="ficha-nuvem ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
         style="--peso:1" ${acao} title="${dica}">${Modal.esc(rotulo)}${
-        selo ? ` <span class="repetida">${selo}</span>` : ''}</button>`;
+        selo ? ` <span class="repetida">${selo}</span>` : ''}${seloPrio}</button>`;
     }
     const dica = adiada ? 'Trazer de volta para a tempestade'
       : `Grupo de ${g.itens.length} ideias — toque para tratar, arraste para juntar`;
@@ -281,7 +305,7 @@ const SecaoColeta = {
           podeTirar ? `<button type="button" class="palavra-x" data-remover-palavra="${w.id}"
             title="Tirar do grupo" aria-label="Tirar esta ideia do grupo">×</button>` : ''}</span>`).join('')}
       </div>
-      <div class="grupo-rodape">${g.itens.length} ideias juntas${g.votos ? ` · ★ ${g.votos}` : ''}</div>
+      <div class="grupo-rodape">${g.itens.length} ideias juntas${g.votos ? ` · ★ ${g.votos}` : ''}${seloPrio}</div>
     </div>`;
   },
 
@@ -366,6 +390,8 @@ const SecaoColeta = {
         <div class="mq-rotulos"><span>Pouco</span><span>Muito</span></div>
         <div class="grade-matriz">${quadrantes}</div>
       </div>
+      <div class="small text-muted mt-1">Pôr em <strong>Descartar</strong> esquece a ideia
+        (pede o motivo); os outros três a mantêm e a sobem na fila.</div>
 
       <div class="rotulo-secao mt-3">Destino</div>
       <div class="d-flex gap-1 flex-wrap">
@@ -607,14 +633,20 @@ const SecaoColeta = {
 
     el.querySelectorAll('[data-quadrante]').forEach((b) => b.addEventListener('click', async () => {
       const [impacto, esforco] = b.dataset.quadrante.split(':');
+      const item = this.itens.find((i) => i.id == b.dataset.item);
       try {
-        await App.api(`/api/coleta/${b.dataset.item}/priorizar`, {
+        const r = await App.api(`/api/coleta/${b.dataset.item}/priorizar`, {
           planejamento_id: this.plan.id, impacto, esforco,
         });
+        this.carregar();
+        // Quadrante "Descartar": a matriz decide esquecer — abre o descarte já
+        // com o motivo da própria posição.
+        if (r.descartar && item) {
+          this.abrirDescarte(item, 'Baixo impacto e alto esforço — fora da matriz de priorização.');
+        }
       } catch (e) {
         alert(e.message);
       }
-      this.carregar();
     }));
 
     el.querySelectorAll('[data-complementar]').forEach((b) => b.addEventListener('click', async () => {
@@ -862,25 +894,33 @@ const SecaoColeta = {
     el.querySelectorAll('[data-encaminhar]').forEach((b) => b.addEventListener('click', () =>
       this.modalEncaminhar(this.itens.find((i) => i.id == b.dataset.encaminhar), b.dataset.destino)));
 
-    el.querySelectorAll('[data-descartar]').forEach((b) => b.addEventListener('click', () => {
-      const item = this.itens.find((i) => i.id == b.dataset.descartar);
-      Modal.abrir({
-        titulo: 'Descartar ideia',
-        url: `/api/coleta/${item.id}/descartar`,
-        valores: { planejamento_id: this.plan.id },
-          campos: [
-          { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-          { nome: 'ideia', rotulo: 'Ideia', tipo: 'info', texto: item.texto,
-            barra: { cor: '#8f3b3b', titulo: item.autor, origem: this.data(item.criado_em) } },
-          { nome: 'motivo', rotulo: 'Por que não entra?', tipo: 'textarea', linhas: 3, obrigatorio: true,
-            ajuda: 'O autor vê este motivo. É o que transforma um veto silencioso em aprendizado.' },
-        ],
-        aoSalvar: () => {
-          this.selecionado = null;
-          this.carregar();
-        },
-      });
-    }));
+    el.querySelectorAll('[data-descartar]').forEach((b) => b.addEventListener('click', () =>
+      this.abrirDescarte(this.itens.find((i) => i.id == b.dataset.descartar))));
+  },
+
+  /**
+   * Abre o descarte (esquecer) com motivo obrigatório. `motivoSugerido` chega
+   * preenchido quando o descarte vem do quadrante "Descartar" da matriz — o
+   * condutor confirma ou ajusta; se cancelar, a posição fica registrada e a
+   * ideia continua em "A tratar".
+   */
+  abrirDescarte(item, motivoSugerido = '') {
+    Modal.abrir({
+      titulo: 'Descartar ideia',
+      url: `/api/coleta/${item.id}/descartar`,
+      valores: { planejamento_id: this.plan.id, motivo: motivoSugerido },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'ideia', rotulo: 'Ideia', tipo: 'info', texto: item.texto,
+          barra: { cor: '#8f3b3b', titulo: item.autor, origem: this.data(item.criado_em) } },
+        { nome: 'motivo', rotulo: 'Por que não entra?', tipo: 'textarea', linhas: 3, obrigatorio: true,
+          ajuda: 'O autor vê este motivo. É o que transforma um veto silencioso em aprendizado.' },
+      ],
+      aoSalvar: () => {
+        this.selecionado = null;
+        this.carregar();
+      },
+    });
   },
 
   // Cada destino pede os campos daquele destino; o texto vem editável

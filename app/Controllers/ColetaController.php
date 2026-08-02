@@ -309,16 +309,22 @@ class ColetaController
         if (!in_array($impacto, ['ALTO', 'BAIXO'], true) || !in_array($esforco, ['BAIXO', 'ALTO'], true)) {
             Json::erro('Escolha um quadrante da matriz.');
         }
-        // Posicionar já é dizer "esta vai ser tratada"
-        // Posicionar tira da caixa de "tratar depois" e vale para o grupo todo
+        // Posicionar tira da caixa de "tratar depois" e vale para o grupo todo.
+        // O quadrante "Descartar" (baixo impacto, alto esforço) é a exceção que
+        // dá sentido à matriz "decidir o encaminhamento": ali a matriz decide
+        // ESQUECER. Registra a posição mas NÃO marca como selecionada — o front
+        // abre o descarte com o motivo. Os outros três quadrantes são "esta vai
+        // ser tratada" (SELECIONADO), e a fila passa a ordenar por eles.
+        $descartar = $impacto === 'BAIXO' && $esforco === 'ALTO';
+        $situacao = $descartar ? 'NOVO' : 'SELECIONADO';
         $grupo = $this->grupo($id, $planId);
         $marcas = implode(',', array_fill(0, count($grupo), '?'));
         Database::executar(
-            "UPDATE coleta_item SET impacto = ?, esforco = ?, situacao = 'SELECIONADO', adiado = 0
+            "UPDATE coleta_item SET impacto = ?, esforco = ?, situacao = ?, adiado = 0
              WHERE id IN ({$marcas})",
-            [$impacto, $esforco, ...$grupo]
+            [$impacto, $esforco, $situacao, ...$grupo]
         );
-        Json::ok(['impacto' => $impacto, 'esforco' => $esforco]);
+        Json::ok(['impacto' => $impacto, 'esforco' => $esforco, 'descartar' => $descartar]);
     }
 
     /** Texto complementado durante a discussão, antes de escolher o destino. */

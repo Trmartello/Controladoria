@@ -354,7 +354,7 @@ seção e não rola até nada, quebrando a promessa central do módulo.
 
 ## 2.1 Tempestade de ideias: quiz por QR, separação e priorização
 
-### Situação: **ENTREGUE** — com ressalvas registradas
+### Situação: **ENTREGUE** — completo
 
 Revisão do tema 2 pedida pelo cliente **depois** da entrega da Coleta. Não
 substitui o que está no ar: reaproveita o modelo de dados e a tratativa, e
@@ -382,9 +382,10 @@ acrescenta a sessão ao vivo, a separação das ideias e a matriz de priorizaç�
 >   arrastando fichas (`agrupado_em_id`), caixa "tratar depois" (`adiado`),
 >   reclassificação não-destrutiva (`reabrir`), estado `DIVIDIDO`, e o destino
 >   **Plano de ação** (`ACAO`) na triagem;
-> - **uma ressalva** — a matriz não roteia o destino automático (a edição da
->   própria ideia pelo participante, antes pendente, já foi entregue) — está
->   detalhada na tabela de fatiamento, adiante.
+> - **sem ressalvas em aberto** — as duas que existiam já foram fechadas: a
+>   edição da própria ideia pelo participante e o acoplamento da matriz ao
+>   encaminhamento (o quadrante "Descartar" agora decide esquecer e a fila
+>   ordena por prioridade). Detalhes na tabela de fatiamento, adiante.
 
 > **Como o cliente descreveu.** "Fazer via quiz, onde os usuários escaneiam o
 > código e vão dando as ideias, numa tempestade de ideias. E aí o administrador
@@ -597,7 +598,7 @@ tudo acontecer numa tela só.
 |---|---|---|---|---|
 | 1 | `coleta_rodada` + PIN + tela do participante + rotas públicas | M | Sim — já dá para coletar na oficina | ✅ entregue |
 | 2 | Tela de condução: nuvem por polling + bancada | M | Sim — é o fluxo que o cliente descreveu | ✅ entregue |
-| 3 | Matriz 2×2 no item + destino a partir do quadrante | P | Sim — fecha a decisão | ⚠️ parcial |
+| 3 | Matriz 2×2 no item + destino a partir do quadrante | P | Sim — fecha a decisão | ✅ entregue |
 | 4 | QR (vendorar `qrcode.js`) e link para copiar | P | Conveniência sobre a fatia 1 | ✅ entregue |
 | 5 | Dividir ideia em várias | P | Opcional | ✅ entregue |
 | 6 | Votação dos participantes nas ideias | P–M | Opcional, se quiserem convergência | ✅ entregue |
@@ -607,13 +608,18 @@ sala. A revisão de segurança exigida (rota de escrita sem autenticação, o ú
 caso do sistema) **foi executada antes de subir** — commit `22e6f31`, com 9
 achados de segurança e 11 de corretude corrigidos.
 
-**Ressalva da fatia 3 (parcial).** A bancada tem a matriz 2×2 e os botões de
-destino, mas são **ações independentes**: clicar num quadrante grava só
-`impacto`/`esforco` (rota `priorizar`); o encaminhamento continua sendo uma
-escolha manual de destino (rota `encaminhar`). Ou seja, a **decisão C** ("a
-matriz decide o encaminhamento") **não foi implementada literalmente** — o
-condutor prioriza e depois escolhe o destino à mão. Funcionalmente atende, mas
-o acoplamento automático não existe.
+**Fatia 3 — matriz decide o encaminhamento — ENTREGUE.** A **decisão C** foi
+implementada de forma fiel, sem o mapeamento arbitrário que a crítica temia
+(impacto×esforço não indica o tipo de diagnóstico). O ponto onde a matriz
+**realmente decide** é o quadrante **"Descartar"** (baixo impacto, alto
+esforço): posicionar ali abre o descarte já com o motivo sugerido — a matriz
+decide **esquecer**. Os outros três quadrantes mantêm a ideia (`SELECIONADO`) e
+a **fila passa a ordenar por prioridade** (Fazer agora → Planejar → Encaixar →
+não posicionadas), com um selo do quadrante na nuvem. De quebra, corrigiu-se uma
+inconsistência real: antes, posicionar em **qualquer** quadrante — inclusive
+"Descartar" — marcava a ideia como `SELECIONADO`, o oposto de esquecer. A
+escolha do destino de diagnóstico (Cenário/PESTEL/Porter/SWOT) segue manual,
+por ser genuinamente ortogonal ao eixo impacto×esforço.
 
 **Edição da própria ideia — ENTREGUE.** O participante agora corrige o texto da
 própria ideia enquanto a rodada está aberta e a ideia ainda está `NOVO`: botão
@@ -1171,7 +1177,7 @@ discutir a dependência, não o quadrante.
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 4 |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 5 |
 | 2 | Coleta & Triagem (tratativa item a item) | **Entregue** | M | 6 ✔ (antecipada) |
-| 2.1 | Tempestade: quiz por PIN/QR, condução ao vivo e matriz | **Entregue** | M | ✔ (com ressalvas) |
+| 2.1 | Tempestade: quiz por PIN/QR, condução ao vivo e matriz | **Entregue** | M | ✔ |
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
 | 4b | Contingência dentro de cada projeto | **Não construir agora** (deriva de 4) | P | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |
