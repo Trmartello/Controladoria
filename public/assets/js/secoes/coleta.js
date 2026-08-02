@@ -178,6 +178,7 @@ const SecaoColeta = {
         ${this.cartaoFila(this.proximaDaFila())}
       </div></div>` : ''}
 
+      ${this.rodadaAberta ? '' : `
       <div class="btn-group btn-group-sm mb-3 filtro-coleta" role="group" aria-label="Situação">
         ${Object.entries(SITUACOES).map(([s, [rotulo]]) => `
           <button type="button" class="btn ${s === this.filtro ? 'btn-verde' : 'btn-outline-secondary'}"
@@ -187,7 +188,7 @@ const SecaoColeta = {
       <div class="lista-ideias">
         ${visiveis.map((i) => this.cartaoIdeia(i)).join('')
           || '<div class="text-muted small">Nenhuma ideia nesta situação.</div>'}
-      </div>`;
+      </div>`}`;
 
     Diag.ligarSeletorAno(el);
     Diag.ligarVerMais(el);
@@ -320,16 +321,18 @@ const SecaoColeta = {
   },
 
   bancada(item, grupo) {
+    // Grelha na ordem do gráfico: colunas = impacto (pouco→muito), linhas =
+    // esforço (pouco→muito). Sequência: sup-esq, sup-dir, inf-esq, inf-dir.
     const quadrantes = [
-      ['ALTO', 'BAIXO', 'Fazer agora', 'muito impacto, pouco esforço', '#007a45'],
-      ['ALTO', 'ALTO', 'Planejar', 'muito impacto, muito esforço', '#2c7fb8'],
       ['BAIXO', 'BAIXO', 'Encaixar', 'pouco impacto, pouco esforço', '#b08d4f'],
+      ['ALTO', 'BAIXO', 'Fazer agora', 'muito impacto, pouco esforço', '#007a45'],
       ['BAIXO', 'ALTO', 'Descartar', 'pouco impacto, muito esforço', '#8f3b3b'],
+      ['ALTO', 'ALTO', 'Planejar', 'muito impacto, muito esforço', '#2c7fb8'],
     ].map(([imp, esf, titulo, eixos, cor]) => `
       <button type="button" class="quadrante-prio ${item.impacto === imp && item.esforco === esf ? 'escolhido' : ''}"
-        style="--cor-quad:${cor}" data-quadrante="${imp}:${esf}" data-item="${item.id}">
+        style="--cor-quad:${cor}" data-quadrante="${imp}:${esf}" data-item="${item.id}"
+        title="${titulo} — ${eixos}" aria-label="${titulo}: ${eixos}">
         <span class="q-titulo">${titulo}</span>
-        <span class="q-eixos">${eixos}</span>
       </button>`).join('');
 
     // Quando a nuvem agrupou, a bancada trata o grupo inteiro de uma vez
@@ -352,7 +355,15 @@ const SecaoColeta = {
       </div>
 
       <div class="rotulo-secao mt-3">Prioridade</div>
-      <div class="grade-matriz">${quadrantes}</div>
+      <div class="matriz-quad">
+        <div class="mq-topo">
+          <div class="mq-eixox">Impacto</div>
+          <div class="mq-cols"><span>Pouco</span><span>Muito</span></div>
+        </div>
+        <div class="mq-eixoy">Esforço</div>
+        <div class="mq-rotulos"><span>Pouco</span><span>Muito</span></div>
+        <div class="grade-matriz">${quadrantes}</div>
+      </div>
 
       <div class="rotulo-secao mt-3">Destino</div>
       <div class="d-flex gap-1 flex-wrap">
