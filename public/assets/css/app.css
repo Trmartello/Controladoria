@@ -628,6 +628,13 @@ input[type=range].faixa-verde:focus-visible {
   color: #495057;
   overflow-wrap: anywhere;
 }
+/* Eixo do quadrante SWOT no título (ex.: Forças (Interno · Ajuda)) */
+.ambiente-quadrante {
+  text-transform: none;
+  font-weight: 500;
+  opacity: .75;
+  white-space: nowrap;
+}
 
 /* Ideias da coleta aguardando virar ação num plano de ação */
 .card-ideias-acao { border-left: 4px solid #5a3e2b; }

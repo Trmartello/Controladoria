@@ -115,8 +115,8 @@ const Diag = {
   CORES_QUADRANTE: { FORCA: '#007a45', FRAQUEZA: '#b08d4f', OPORTUNIDADE: '#2c7fb8', AMEACA: '#8f3b3b' },
   // Eixos da matriz SWOT: origem (interno/externo) × efeito (ajuda/atrapalha)
   DICAS_QUADRANTE: {
-    FORCA: 'Interno · ajuda', FRAQUEZA: 'Interno · atrapalha',
-    OPORTUNIDADE: 'Externo · ajuda', AMEACA: 'Externo · atrapalha',
+    FORCA: 'Interno · Ajuda', FRAQUEZA: 'Interno · Atrapalha',
+    OPORTUNIDADE: 'Externo · Ajuda', AMEACA: 'Externo · Atrapalha',
   },
 
   // O que considerar em cada tópico do macroambiente (PESTEL). O ícone ⓘ no
@@ -138,6 +138,36 @@ const Diag = {
     SUBSTITUTOS: 'Existem alternativas que resolvem a mesma dor do cliente de forma diferente?',
     PODER_FORNECEDORES: 'A empresa depende de poucos fornecedores críticos que ditam preço e prazo?',
     PODER_CLIENTES: 'Quão exigentes ou sensíveis a preço os clientes são, e quanto poder têm na negociação?',
+    // SWOT — o que costuma entrar em cada quadrante
+    FORCA: 'Diferenciais competitivos, processos bem consolidados, equipe qualificada, '
+      + 'boa margem de lucro, tecnologia própria.',
+    FRAQUEZA: 'Falta de padronização, dependência de pessoas-chave, sistemas defasados, '
+      + 'alto custo operacional, comunicação ruidosa.',
+    OPORTUNIDADE: 'Nichos de mercado não atendidos, novas tecnologias disponíveis, '
+      + 'mudanças regulatórias favoráveis, expansão de demanda.',
+    AMEACA: 'Entrada de concorrentes agressivos em preço, instabilidade econômica, '
+      + 'escassez de matéria-prima, mudanças bruscas no comportamento do consumidor.',
+  },
+
+  // Ícone ⓘ e o painel de orientação de um tópico (só onde há texto definido).
+  // Compartilhados entre PESTEL/Porter (etapaFatores) e a SWOT.
+  iconeOrientacao(cat, cor, rotulo) {
+    if (!this.ORIENTACOES_CATEGORIA[cat]) return '';
+    return `<button type="button" class="btn-orientacao me-1" data-orientacao="${cat}"
+      style="--cor-cat:${cor}" aria-expanded="false"
+      title="O que considerar" aria-label="O que considerar em ${rotulo}">ⓘ</button>`;
+  },
+  painelOrientacao(cat, cor) {
+    const o = this.ORIENTACOES_CATEGORIA[cat];
+    return o ? `<div class="orientacao-categoria small d-none mb-2" data-orientacao-alvo="${cat}"
+      style="--cor-cat:${cor}">${Modal.esc(o)}</div>` : '';
+  },
+  ligarOrientacoes(el) {
+    el.querySelectorAll('[data-orientacao]').forEach((b) => b.addEventListener('click', () => {
+      const alvo = el.querySelector(`[data-orientacao-alvo="${b.dataset.orientacao}"]`);
+      const oculto = alvo.classList.toggle('d-none');
+      b.setAttribute('aria-expanded', oculto ? 'false' : 'true');
+    }));
   },
 
   // Navegação entre etapas: leva à seção de destino e destaca o card do fator
@@ -284,18 +314,14 @@ const Diag = {
           ${this.botoesFator(f, plan.id, comPromocao)}
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
         </div></div>`).join('');
-      const orientacao = this.ORIENTACOES_CATEGORIA[cat];
       return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
         <div class="d-flex align-items-center mb-2">
-          ${orientacao ? `<button type="button" class="btn-orientacao me-1" data-orientacao="${cat}"
-            style="--cor-cat:${cor}" aria-expanded="false"
-            title="O que considerar" aria-label="O que considerar em ${rotulo}">ⓘ</button>` : ''}
+          ${this.iconeOrientacao(cat, cor, rotulo)}
           <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
             ${this.contadorCards(itens.length, cor)}</span>
           ${this.botaoAddCategoria(cat, rotulo, cor)}
         </div>
-        ${orientacao ? `<div class="orientacao-categoria small d-none mb-2" data-orientacao-alvo="${cat}"
-          style="--cor-cat:${cor}">${Modal.esc(orientacao)}</div>` : ''}
+        ${this.painelOrientacao(cat, cor)}
         ${cartoes || '<div class="text-muted small">—</div>'}
       </div>`;
     }).join('');
@@ -320,12 +346,7 @@ const Diag = {
     this.ligarVerMais(el);
     this.aplicarDestaque(el, idSecao.replace('secao-', ''));
     this.ligarSeloColeta(el);
-    // Orientação de cada tópico: ⓘ abre; um segundo clique recolhe
-    el.querySelectorAll('[data-orientacao]').forEach((b) => b.addEventListener('click', () => {
-      const alvo = el.querySelector(`[data-orientacao-alvo="${b.dataset.orientacao}"]`);
-      const oculto = alvo.classList.toggle('d-none');
-      b.setAttribute('aria-expanded', oculto ? 'false' : 'true');
-    }));
+    this.ligarOrientacoes(el);
     if (!App.podeEditar()) return;
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
@@ -563,10 +584,13 @@ const SecaoSwot = {
       return `<div class="col-md-6" data-coluna-categoria="${cat}">
         <div class="p-2 rounded" style="background:${cor}18; border-top: 3px solid ${cor}">
           <div class="d-flex align-items-center mb-2">
+            ${Diag.iconeOrientacao(cat, cor, rotulo)}
             <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
+              <span class="ambiente-quadrante">(${Diag.DICAS_QUADRANTE[cat]})</span>
               ${Diag.contadorCards(itens.length, cor)}</span>
             ${Diag.botaoAddCategoria(cat, rotulo, cor)}
           </div>
+          ${Diag.painelOrientacao(cat, cor)}
           ${cartoes || '<div class="text-muted small">Nenhum fator.</div>'}
         </div>
       </div>`;
@@ -583,9 +607,6 @@ const SecaoSwot = {
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
         </div>
       </div>
-      <p class="text-muted">Ambiente interno (forças e fraquezas) e externo (oportunidades e ameaças).
-      Fatores promovidos do PESTEL/Porter chegam com o selo de origem; priorize-os na Matriz GUT.
-      <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>
       ${Diag.seletorCategoriaMovel('SWOT', [
         ['FORCA', 'Forças'], ['FRAQUEZA', 'Fraquezas'],
         ['OPORTUNIDADE', 'Oportunidades'], ['AMEACA', 'Ameaças'],
@@ -602,6 +623,7 @@ const SecaoSwot = {
     Diag.ligarVerMais(el);
     Diag.aplicarDestaque(el, 'swot');
     Diag.ligarSeloColeta(el);
+    Diag.ligarOrientacoes(el);
 
     el.querySelectorAll('[data-ir-origem]').forEach((b) => b.addEventListener('click', () => {
       const etapa = b.dataset.etapaOrigem;
