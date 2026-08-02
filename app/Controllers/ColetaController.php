@@ -493,11 +493,16 @@ class ColetaController
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirTriagemColeta($planId);
-        $this->exigirItem($id, $planId);
+        $item = $this->exigirItem($id, $planId);
+        // Dissolvida a caixa, cada FILHA volta ao próprio texto — o texto
+        // tratado que carregam é só a cópia do título da caixa-mãe. O título
+        // fica com o líder, que era a caixa.
+        $lider = (int)($item['agrupado_em_id'] ?? 0) ?: $id;
         Database::executar(
-            'UPDATE coleta_item SET agrupado_em_id = NULL
+            'UPDATE coleta_item SET agrupado_em_id = NULL,
+               texto_tratado = IF(id = ?, texto_tratado, NULL)
              WHERE planejamento_id = ? AND (id = ? OR agrupado_em_id = ?)',
-            [$planId, $id, $id]
+            [$lider, $planId, $lider, $lider]
         );
         Json::ok();
     }
@@ -541,9 +546,13 @@ class ColetaController
             }
             Database::executar('UPDATE coleta_item SET agrupado_em_id = NULL WHERE id = ?', [$lider]);
         } else {
-            // Membro comum: só ele sai do grupo
+            // Membro comum: só ele sai do grupo. O texto tratado é o TÍTULO da
+            // caixa-mãe (o complementar copia para o grupo inteiro): quem sai
+            // volta ao próprio texto, senão a ficha solta nasceria com o nome
+            // da mãe.
             Database::executar(
-                'UPDATE coleta_item SET agrupado_em_id = NULL WHERE id = ? AND planejamento_id = ?',
+                'UPDATE coleta_item SET agrupado_em_id = NULL, texto_tratado = NULL
+                 WHERE id = ? AND planejamento_id = ?',
                 [$id, $planId]
             );
         }
