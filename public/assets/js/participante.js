@@ -11,6 +11,7 @@ const Participante = {
   votacao: null,
   relogio: null,
   ultimaAssinatura: null,
+  editando: null,
 
   get tela() {
     return document.getElementById('tela');
@@ -98,6 +99,8 @@ const Participante = {
    * teclado no meio da frase — o participante não consegue nem digitar.
    */
   digitando() {
+    // Editando uma ideia? O redesenho fecharia o editor no meio da correção.
+    if (this.editando !== null) return true;
     const ativo = document.activeElement;
     if (ativo && (ativo.tagName === 'TEXTAREA' || ativo.tagName === 'INPUT')) return true;
     const campo = document.getElementById('campo-ideia');
@@ -108,7 +111,7 @@ const Participante = {
   assinatura() {
     return JSON.stringify([
       this.rodada?.situacao, this.rodada?.tema, this.votacao?.votacao,
-      this.minhas.map((i) => i.id),
+      this.minhas.map((i) => [i.id, i.texto, i.situacao]),
       (this.votacao?.itens || []).map((i) => [i.id, i.votei]),
       this.votacao?.meus_votos,
     ]);
@@ -160,7 +163,14 @@ const Participante = {
         ${this.minhas.length && !votando ? `
           <div class="mt-4">
             <div class="rotulo-secao">Suas ideias</div>
-            ${this.minhas.map((i) => `<div class="ideia-minha">${this.esc(i.texto)}</div>`).join('')}
+            ${this.minhas.map((i) => this.editando === i.id
+              ? this.editorIdeia(i)
+              : `<div class="ideia-minha d-flex align-items-start gap-2">
+                   <span class="flex-grow-1">${this.esc(i.texto)}</span>
+                   ${i.situacao === 'NOVO' ? `
+                     <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none flex-shrink-0"
+                       data-editar="${i.id}" aria-label="Editar ideia">✎ editar</button>` : ''}
+                 </div>`).join('')}
           </div>` : ''}
       </div>`;
 
@@ -170,6 +180,7 @@ const Participante = {
       if (campo && rascunho) campo.value = rascunho;
       this.ligarEnvio();
     }
+    if (this.minhas.length && !votando) this.ligarEdicaoIdeias();
     if (votando) this.ligarVotacao();
   },
 
@@ -218,6 +229,54 @@ const Participante = {
         btn.disabled = false;
       }
     });
+  },
+
+  // ---- Corrigir a própria ideia ----
+  editorIdeia(i) {
+    return `
+      <div class="ideia-minha">
+        <textarea class="form-control" rows="3" maxlength="400"
+          data-editar-campo="${i.id}">${this.esc(i.texto)}</textarea>
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <button class="btn btn-verde btn-sm" data-salvar-edicao="${i.id}">Salvar</button>
+          <button class="btn btn-outline-secondary btn-sm" data-cancelar-edicao="${i.id}">Cancelar</button>
+          <span class="small text-danger flex-grow-1" data-erro-edicao="${i.id}"></span>
+        </div>
+      </div>`;
+  },
+
+  ligarEdicaoIdeias() {
+    this.tela.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () => {
+      this.editando = Number(b.dataset.editar);
+      this.render();
+    }));
+    this.tela.querySelectorAll('[data-cancelar-edicao]').forEach((b) => b.addEventListener('click', () => {
+      this.editando = null;
+      this.render();
+    }));
+    this.tela.querySelectorAll('[data-salvar-edicao]').forEach((b) => b.addEventListener('click', async () => {
+      const id = Number(b.dataset.salvarEdicao);
+      const campo = this.tela.querySelector(`[data-editar-campo="${id}"]`);
+      const erro = this.tela.querySelector(`[data-erro-edicao="${id}"]`);
+      const texto = campo.value.trim();
+      if (!texto) { erro.textContent = 'Escreva a ideia.'; return; }
+      b.disabled = true;
+      try {
+        await this.api(`/api/publico/ideia/${id}`, { pin: this.pin, token: this.token, texto });
+        const it = this.minhas.find((x) => x.id === id);
+        if (it) it.texto = texto;
+        this.editando = null;
+        this.render();
+      } catch (e) {
+        erro.textContent = e.message;
+        b.disabled = false;
+      }
+    }));
+    // Ao abrir o editor, foca e leva o cursor ao fim do texto.
+    if (this.editando !== null) {
+      const c = this.tela.querySelector(`[data-editar-campo="${this.editando}"]`);
+      if (c) { c.focus(); c.setSelectionRange(c.value.length, c.value.length); }
+    }
   },
 
   // ---- Votação (fase opcional) ----

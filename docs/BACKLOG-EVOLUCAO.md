@@ -382,9 +382,9 @@ acrescenta a sessão ao vivo, a separação das ideias e a matriz de priorizaç�
 >   arrastando fichas (`agrupado_em_id`), caixa "tratar depois" (`adiado`),
 >   reclassificação não-destrutiva (`reabrir`), estado `DIVIDIDO`, e o destino
 >   **Plano de ação** (`ACAO`) na triagem;
-> - **duas ressalvas** — a matriz não roteia o destino automático e a página do
->   participante não deixa editar a própria ideia — estão detalhadas na tabela
->   de fatiamento, adiante.
+> - **uma ressalva** — a matriz não roteia o destino automático (a edição da
+>   própria ideia pelo participante, antes pendente, já foi entregue) — está
+>   detalhada na tabela de fatiamento, adiante.
 
 > **Como o cliente descreveu.** "Fazer via quiz, onde os usuários escaneiam o
 > código e vão dando as ideias, numa tempestade de ideias. E aí o administrador
@@ -615,11 +615,16 @@ matriz decide o encaminhamento") **não foi implementada literalmente** — o
 condutor prioriza e depois escolhe o destino à mão. Funcionalmente atende, mas
 o acoplamento automático não existe.
 
-**Duas peças previstas não entraram**, ambas na página do participante e sem
-bloquear a oficina: o **ditado por voz** (o `por_voz` já era corte reconhecido
-no tema 2) e a **edição da própria ideia** — a seção "Suas ideias" é somente
-leitura, embora o `participante_token` exista justamente para permitir a
-correção. Ficam como polimento de v2.
+**Edição da própria ideia — ENTREGUE.** O participante agora corrige o texto da
+própria ideia enquanto a rodada está aberta e a ideia ainda está `NOVO`: botão
+"editar" na lista "Suas ideias", editor inline, rota pública
+`POST /api/publico/ideia/{id}` (guardada pelo token + escopo do `UPDATE`, no
+mesmo padrão das outras rotas públicas). Editar reavalia o agrupamento por
+texto sem dissolver grupos de outras pessoas.
+
+**Uma peça prevista não entrou**, na página do participante e sem bloquear a
+oficina: o **ditado por voz** (o `por_voz` já era corte reconhecido no tema 2).
+Fica como polimento de v2.
 
 ---
 

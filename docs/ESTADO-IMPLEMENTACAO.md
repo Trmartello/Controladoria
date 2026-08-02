@@ -40,16 +40,18 @@ refutação adversarial). Resultado: **entregue**, com duas ressalvas.
 | 5 | Dividir ideia em várias | ✅ | `ColetaController::dividir` + rota `POST /api/coleta/{id}/dividir` |
 | 6 | Votação dos participantes | ✅ | `coleta_voto`; `PublicoController::votar` (teto no `INSERT`); `RodadaController::votacao` |
 
-### Duas ressalvas registradas
+### Ressalva registrada
 
 1. **Fatia 3 parcial** — a bancada tem a matriz 2×2 e os botões de destino, mas
    são ações separadas: o quadrante grava só `impacto`/`esforco`; o
    encaminhamento é escolha manual. A **Decisão C** ("a matriz decide o
    encaminhamento") **não** foi implementada literalmente.
-2. **Página do participante** — faltam **ditado por voz** (`por_voz` já era corte
-   reconhecido no tema 2) e **edição da própria ideia** (a seção "Suas ideias" é
-   somente leitura, apesar de o `participante_token` existir para permitir a
-   correção).
+
+Na página do participante, a **edição da própria ideia** (antes pendente) **foi
+entregue** — botão "editar" na lista "Suas ideias", editor inline e rota pública
+`POST /api/publico/ideia/{id}`, restrita a ideia `NOVO` da rodada aberta, com a
+autoria provada pelo token. Continua fora só o **ditado por voz** (`por_voz` já
+era corte reconhecido no tema 2).
 
 ### Extras entregues além do escopo do backlog 2.1
 

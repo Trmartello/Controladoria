@@ -115,13 +115,57 @@ class PublicoController
         Json::ok(['ok' => true]);
     }
 
-    /** As próprias ideias, para o participante conferir. */
+    /**
+     * Corrige o texto da própria ideia, enquanto a rodada está aberta e a ideia
+     * ainda está `NOVO` (não foi triada). Sem sessão, a autoria é provada pelo
+     * token: o escopo do UPDATE (id + rodada + token + NOVO) é a guarda.
+     */
+    public function editarIdeia(int $id): void
+    {
+        $d = $this->corpo();
+        $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
+        $p = $this->participante($r, $d);
+
+        $texto = mb_substr(trim(is_string($d['texto'] ?? null) ? $d['texto'] : ''), 0, self::MAX_TEXTO);
+        if ($texto === '') {
+            Json::erro('Escreva a ideia antes de salvar.');
+        }
+
+        $editadas = Database::afetadas(
+            "UPDATE coleta_item SET texto = ?
+             WHERE id = ? AND rodada_id = ? AND participante_token = ? AND situacao = 'NOVO'",
+            [$texto, $id, (int)$r['id'], $p['token']]
+        );
+        if (!$editadas) {
+            // Não é dela, já foi triada, ou a rodada virou: nada a corrigir.
+            Json::erro('Não dá mais para editar esta ideia.', 409);
+        }
+
+        // O agrupamento automático é por texto; mudando o texto, o vínculo pode
+        // ter ficado velho. Reavalia só quando esta ideia NÃO lidera um grupo,
+        // para não dissolver, sem querer, um grupo que já reuniu ideias de
+        // outras pessoas.
+        $lidera = (int)(Database::um(
+            'SELECT COUNT(*) AS n FROM coleta_item WHERE agrupado_em_id = ?',
+            [$id]
+        )['n'] ?? 0);
+        if (!$lidera) {
+            Database::executar(
+                'UPDATE coleta_item SET agrupado_em_id = ? WHERE id = ?',
+                [$this->liderEquivalente((int)$r['id'], $texto, $id), $id]
+            );
+        }
+
+        Json::ok(['ok' => true]);
+    }
+
+    /** As próprias ideias, para o participante conferir e corrigir. */
     public function minhas(): void
     {
         $r = $this->rodadaPorPin((string)($_GET['pin'] ?? ''));
         $p = $this->participante($r, $_GET);
         Json::ok(Database::todos(
-            'SELECT id, texto, votos FROM coleta_item
+            'SELECT id, texto, votos, situacao FROM coleta_item
              WHERE rodada_id = ? AND participante_token = ? ORDER BY id',
             [(int)$r['id'], $p['token']]
         ));
@@ -222,7 +266,7 @@ class PublicoController
      * que está chegando. A comparação é em PHP: numa oficina são dezenas de
      * itens, e assim a regra é a mesma do agrupamento manual.
      */
-    private function liderEquivalente(int $rodadaId, string $texto): ?int
+    private function liderEquivalente(int $rodadaId, string $texto, ?int $excetoId = null): ?int
     {
         $alvo = self::normalizar($texto);
         foreach (Database::todos(
@@ -230,6 +274,10 @@ class PublicoController
              WHERE rodada_id = ? AND situacao IN ('NOVO','SELECIONADO') ORDER BY id",
             [$rodadaId]
         ) as $i) {
+            // Ao reagrupar uma ideia editada, ela não pode ser líder de si mesma.
+            if ((int)$i['id'] === $excetoId) {
+                continue;
+            }
             if (self::normalizar($i['texto']) === $alvo) {
                 return (int)($i['agrupado_em_id'] ?? 0) ?: (int)$i['id'];
             }

@@ -128,6 +128,7 @@ if (!str_starts_with($caminho, '/api/')) {
 $semCsrf = $caminho === '/api/login'
     || $caminho === '/api/publico/entrar'
     || $caminho === '/api/publico/ideia'
+    || (bool)preg_match('#^/api/publico/ideia/\\d+$#', $caminho)
     || (bool)preg_match('#^/api/publico/votar/\\d+$#', $caminho);
 if ($metodo !== 'GET' && !$semCsrf) {
     Auth::validarCsrf();
@@ -200,6 +201,8 @@ try {
         case $rota === 'GET /api/publico/votar':   (new PublicoController())->paraVotar(); break;
         case $rota === 'POST /api/publico/entrar': (new PublicoController())->entrar(); break;
         case $rota === 'POST /api/publico/ideia':  (new PublicoController())->ideia(); break;
+        case (bool)preg_match('#^POST /api/publico/ideia/(\\d+)$#', $rota, $m):
+            (new PublicoController())->editarIdeia((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/publico/votar/(\\d+)$#', $rota, $m):
             (new PublicoController())->votar((int)$m[1]); break;
 
