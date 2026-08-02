@@ -250,11 +250,11 @@ const Diag = {
       const orientacao = this.ORIENTACOES_CATEGORIA[cat];
       return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
         <div class="d-flex align-items-center mb-2">
-          <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
-            ${this.contadorCards(itens.length, cor)}</span>
-          ${orientacao ? `<button type="button" class="btn-orientacao ms-1" data-orientacao="${cat}"
+          ${orientacao ? `<button type="button" class="btn-orientacao me-1" data-orientacao="${cat}"
             style="--cor-cat:${cor}" aria-expanded="false"
             title="O que considerar" aria-label="O que considerar em ${rotulo}">ⓘ</button>` : ''}
+          <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
+            ${this.contadorCards(itens.length, cor)}</span>
           ${this.botaoAddCategoria(cat, rotulo, cor)}
         </div>
         ${orientacao ? `<div class="orientacao-categoria small d-none mb-2" data-orientacao-alvo="${cat}"
