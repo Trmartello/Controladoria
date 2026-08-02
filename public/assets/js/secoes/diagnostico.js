@@ -772,9 +772,12 @@ const SecaoGut = {
             origem: `Análise SWOT · ${f.ano || ano}`,
           } },
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'gravidade', rotulo: 'Gravidade (1 = leve · 5 = gravíssimo)', tipo: 'botoes', opcoes: escala },
-        { nome: 'urgencia', rotulo: 'Urgência (1 = pode esperar · 5 = agir já)', tipo: 'botoes', opcoes: escala },
-        { nome: 'tendencia', rotulo: 'Tendência (1 = estável · 5 = piora rápido)', tipo: 'botoes', opcoes: escala },
+        { nome: 'gravidade', rotulo: 'Gravidade — "Qual é o tamanho do estrago?"', tipo: 'botoes', opcoes: escala,
+          ajuda: '1 = leve · 5 = gravíssimo. Se não for resolvido, qual a intensidade do prejuízo — financeiro, operacional, legal ou de reputação?' },
+        { nome: 'urgencia', rotulo: 'Urgência — "O que acontece se eu esperar?"', tipo: 'botoes', opcoes: escala,
+          ajuda: '1 = pode esperar · 5 = agir já. Qual o prazo para agir e o quanto adiar pressiona o cronograma ou gera perdas imediatas?' },
+        { nome: 'tendencia', rotulo: 'Tendência — "Se nada for feito, isso vira uma bola de neve?"', tipo: 'botoes', opcoes: escala,
+          ajuda: '1 = estável · 5 = piora rápido. O problema tende a continuar do mesmo tamanho ou piorar rapidamente? (velocidade de deterioração)' },
       ],
       // Só há o que redefinir se o fator já tiver notas registradas
       extra: f.score ? {
