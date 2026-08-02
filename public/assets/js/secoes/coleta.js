@@ -82,6 +82,10 @@ const SecaoColeta = {
   relogio: null,       // consulta periódica enquanto a rodada está aberta
   qrAberto: false,     // QR na caixa de expansão: fechada até o condutor projetar
   arrastando: false,   // arraste em curso: o polling não redesenha por cima
+  // Caixa-mãe com as palavras à mostra ("ver mais"). Uma por vez, para a nuvem
+  // projetada não voltar a inchar. Mora aqui, e não no DOM, porque o relógio de
+  // 3 s reescreve o HTML inteiro e fecharia a caixa no meio da oficina.
+  caixaAberta: null,
   reclassificando: null, // id da ideia reaberta do diagnóstico, à espera do novo destino
   reclassificarRotulo: '', // de onde a ideia saiu (ex.: "Porter"), só para exibir
 
@@ -108,7 +112,9 @@ const SecaoColeta = {
       // O grupo é o que o condutor montou arrastando (ou o automático de texto
       // igual, que o servidor já resolve gravando o mesmo líder)
       const chave = String(i.agrupado_em_id || i.id);
-      if (!grupos.has(chave)) grupos.set(chave, { representante: i, itens: [], votos: 0 });
+      // A chave do agrupamento é a única estável: o representante muda quando a
+      // situação muda, e é ela que identifica a caixa aberta entre redesenhos
+      if (!grupos.has(chave)) grupos.set(chave, { chave, representante: i, itens: [], votos: 0 });
       const g = grupos.get(chave);
       g.itens.push(i);
       g.votos += Number(i.votos || 0);
@@ -304,15 +310,28 @@ const SecaoColeta = {
     // desfazer o resto; o título (líder) não tem ✕ — para desfazer a caixa há o
     // Desagrupar na bancada. Só na caixa ativa e para quem pode triar.
     const podeTirar = !adiada && App.podeEditar();
-    return `<div class="grupo-caixa ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
+    // A caixa nasce COMPACTA: como todas as palavras tratam da mesma coisa, o
+    // que a sala precisa ver é o título. A contagem do rodapé é o próprio botão
+    // que revela as palavras — assim não gasta largura nova na projeção nem
+    // repete "N ideias juntas" duas vezes. O prefixo distingue a mesma caixa nas
+    // duas nuvens (ativa e "tratar depois"), senão sairiam dois id iguais.
+    const chave = `${adiada ? 'ad' : 'at'}-${g.chave}`;
+    const aberta = this.caixaAberta === chave;
+    return `<div class="grupo-caixa ${aberta ? '' : 'compacta'} ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
       role="button" tabindex="0" ${acao} title="${dica}">
       <div class="grupo-titulo">${Modal.esc(titulo)}</div>
-      <div class="grupo-palavras">
+      <div class="grupo-rodape">
+        <button type="button" class="btn-ver-palavras" data-ver-palavras="${chave}"
+          aria-expanded="${aberta}" aria-controls="palavras-${chave}"
+          title="${aberta ? 'Recolher' : 'Mostrar'} as ideias reunidas nesta caixa">${
+          g.itens.length} ideias juntas · ${aberta ? 'ver menos' : 'ver mais'}</button>${
+        g.votos ? `<span class="grupo-votos">★ ${g.votos}</span>` : ''}${seloPrio}
+      </div>
+      <div class="grupo-palavras ${aberta ? '' : 'recolhida'}" id="palavras-${chave}">
         ${filhas.map((w) => `<span class="palavra-grupo">${Modal.esc(w.texto)}${
           podeTirar ? `<button type="button" class="palavra-x" data-remover-palavra="${w.id}"
             title="Tirar da caixa" aria-label="Tirar esta ideia da caixa">×</button>` : ''}</span>`).join('')}
       </div>
-      <div class="grupo-rodape">${g.itens.length} ideias juntas${g.votos ? ` · ★ ${g.votos}` : ''}${seloPrio}</div>
     </div>`;
   },
 
@@ -333,12 +352,21 @@ const SecaoColeta = {
 
     const adiadas = this.nuvem(true);
 
+    // "Tratar depois" fica anexado à própria tempestade, logo abaixo dela e
+    // separado só por uma linha pontilhada: é a mesma nuvem, guardada para o
+    // fim da oficina — como card solto embaixo da bancada, parecia outra coisa.
     return `<div class="row g-3 mb-3">
       <div class="col-lg-7">
         <div class="card h-100"><div class="card-body py-2 px-3">
           <div class="rotulo-secao">Tempestade — toque para levar à bancada,
             arraste uma sobre a outra para juntar</div>
           <div class="nuvem">${fichas || '<span class="text-muted small">Aguardando as primeiras ideias...</span>'}</div>
+          ${adiadas.length ? `<div class="caixa-depois">
+            <div class="rotulo-secao">Tratar depois (${adiadas.length})</div>
+            <div class="nuvem">
+              ${adiadas.map((g) => this.fichaOuCaixa(g, { adiada: true })).join('')}
+            </div>
+          </div>` : ''}
         </div></div>
       </div>
       <div class="col-lg-5">
@@ -347,13 +375,7 @@ const SecaoColeta = {
           ${item ? this.bancada(item, grupoSel) : '<p class="text-muted small mb-0">Escolha uma ideia da tempestade para discutir com o grupo.</p>'}
         </div></div>
       </div>
-    </div>
-    ${adiadas.length ? `<div class="card mb-3 caixa-depois"><div class="card-body py-2 px-3">
-      <div class="rotulo-secao">Tratar depois (${adiadas.length})</div>
-      <div class="nuvem">
-        ${adiadas.map((g) => this.fichaOuCaixa(g, { adiada: true })).join('')}
-      </div>
-    </div></div>` : ''}`;
+    </div>`;
   },
 
   bancada(item, grupo) {
@@ -424,8 +446,11 @@ const SecaoColeta = {
     el.querySelectorAll('[data-arrastavel]').forEach((ficha) => {
       ficha.addEventListener('pointerdown', (ev) => {
         if (ev.button !== undefined && ev.button !== 0) return;
-        // O ✕ de tirar uma palavra não inicia arraste
-        if (ev.target.closest('[data-remover-palavra]')) return;
+        // Nenhum botão de dentro da caixa (o ✕, o "ver mais") inicia arraste —
+        // um dedo trêmulo ali agruparia duas caixas ao vivo. A ficha simples é
+        // ela própria um <button>, e essa continua arrastável.
+        const botao = ev.target.closest('button');
+        if (botao && botao !== ficha) return;
         const origem = { x: ev.clientX, y: ev.clientY };
         let arrastando = false;
         let alvoAtual = null;
@@ -463,6 +488,9 @@ const SecaoColeta = {
             // O alvo do arraste é quem manda: ele (ou o líder do grupo dele)
             // vira a caixa-mãe, e a bancada abre já nela
             this.selecionado = Number(r.lider) || alvo;
+            // A caixa que acabou de receber abre: é o instante em que se percebe
+            // um agrupamento errado, e os ✕ ficam à mão para desfazer na hora
+            this.caixaAberta = `at-${this.selecionado}`;
           } catch (erro) {
             alert(erro.message);
           }
@@ -492,6 +520,9 @@ const SecaoColeta = {
     b.addEventListener('click', acao);
     if (b.getAttribute('role') === 'button') {
       b.addEventListener('keydown', (ev) => {
+        // Só quando o foco está na própria caixa: senão Enter no "ver mais" (ou
+        // no ✕) dispararia também a ação da caixa inteira
+        if (ev.target !== b) return;
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); acao(ev); }
       });
     }
@@ -559,10 +590,34 @@ const SecaoColeta = {
           { planejamento_id: this.plan.id });
         // Mantém o foco no grupo que sobrou (o líder restante)
         this.selecionado = r.lider || null;
+        // …e a caixa segue aberta, para tirar a segunda palavra sem reabrir
+        this.caixaAberta = r.lider ? `at-${r.lider}` : null;
       } catch (e) {
         alert(e.message);
       }
       this.carregar();
+    }));
+
+    // "ver mais / ver menos": revela as palavras da caixa. Não seleciona, não
+    // retoma da caixa "tratar depois" e não recarrega — a troca é local e
+    // instantânea. Fica antes da trava de edição: quem só lê também abre.
+    el.querySelectorAll('[data-ver-palavras]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const chave = b.dataset.verPalavras;
+      const abrir = this.caixaAberta !== chave;
+      this.caixaAberta = abrir ? chave : null;
+      // Uma aberta por vez: a que estava aberta recolhe junto
+      el.querySelectorAll('[data-ver-palavras]').forEach((outro) => {
+        const desta = outro === b && abrir;
+        const caixa = outro.closest('.grupo-caixa');
+        const palavras = caixa?.querySelector('.grupo-palavras');
+        const quantas = outro.textContent.split('·')[0].trim();
+        outro.textContent = `${quantas} · ${desta ? 'ver menos' : 'ver mais'}`;
+        outro.setAttribute('aria-expanded', String(desta));
+        outro.title = `${desta ? 'Recolher' : 'Mostrar'} as ideias reunidas nesta caixa`;
+        palavras?.classList.toggle('recolhida', !desta);
+        caixa?.classList.toggle('compacta', !desta);
+      });
     }));
 
     this.ligarArraste(el);
