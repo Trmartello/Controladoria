@@ -55,6 +55,20 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `diagnostico.js` (`Diag`), limitado a [ano_base, ano_fim] do ciclo.
 - Promoção PESTEL/Porter → SWOT copia o `ano`; o botão do fator promovido
   mostra a categoria SWOT na cor do quadrante e reabre a edição.
+- **Orientações do diagnóstico**: cada categoria (PESTEL, Porter, SWOT, Cenário)
+  tem uma dica curta num ícone **ⓘ** ao lado do título, não em texto de topo —
+  `Diag.ORIENTACOES_CATEGORIA` (mapa por código) + `iconeOrientacao` /
+  `painelOrientacao` / `ligarOrientacoes`. Os títulos da SWOT trazem o eixo entre
+  parênteses (“Forças (Interno · Ajuda)”). Não reintroduzir parágrafos de
+  introdução acima das listas — a orientação mora no ⓘ.
+- **Matriz de prioridade** (condução da tempestade): gráfico de **quatro
+  quadrantes**, Impacto no eixo horizontal e Esforço no vertical (rótulos
+  “pouco/muito” na vertical). Não há filtro de situação nessa tela.
+- **Matriz GUT** (`Gravidade × Urgência × Tendência`, 1–125): cada dimensão tem
+  **pergunta-guia** no modal de avaliação; score ≥64 vermelho (Alta), ≥27 dourado
+  (Média), senão verde (Baixa), com a legenda distribuída na barra da matriz
+  (`.gut-legenda-barra`). O botão **Redefinir** (`extra.manterAberto`) zera os
+  valores **sem fechar** o modal, para continuar editando.
 - Metas plurianuais versionadas: `indicador_valor` única por
   (indicador, ano, tipo, versão); leitura usa a MAIOR versão de cada ano.
 - Investimentos decididos nunca voltam a PROPOSTO; APROVADO só avança para
@@ -103,8 +117,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   o resto; se sai o líder, o próximo membro é promovido. O ✕ para propagação
   (não seleciona nem arrasta a caixa).
 - **Coleta de Ideias** é o passo 0 do diagnóstico: ideia crua → triagem item a
-  item → item de cenário ou fator (ou descarte com motivo, visível ao autor).
-  O registro criado herda o `ano` da **ideia**, nunca o do seletor da tela.
+  item → item de cenário, fator **ou plano de ação** (ou descarte com motivo,
+  visível ao autor). `coleta_item.destino_tipo` é ENUM
+  `CENARIO`/`FATOR`/`ACAO`; a triagem (`DESTINOS_TRIAGEM` em `coleta.js`) oferece
+  os três destinos. O registro criado herda o `ano` da **ideia**, nunca o do
+  seletor da tela.
   O vínculo vale nos dois sentidos (selo “Coleta · Fulano” no card do
   diagnóstico, “Virou fator ↗” na ideia); apagar o destino limpa
   `destino_tipo`/`destino_id` em vez de deixar link quebrado.
@@ -114,6 +131,23 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   Escrita passa por `Auth::exigirRespostaColeta()` / `exigirTriagemColeta()`,
   que hoje repetem `exigirEdicaoPlanejamento`: existem para a regra do
   brainstorm poder mudar sem afrouxar a autorização geral.
+  - **Destino “Plano de ação” (`ACAO`)**: a ideia não vira fator nem cenário; o
+    `encaminhar()` grava `destino_tipo='ACAO'` com `destino_id` NULL e a ideia
+    fica **aguardando alocação**. `GET /api/coleta/aguardando-acao` lista as
+    ideias `destino_tipo='ACAO' AND destino_id IS NULL AND situacao='ACEITO'`,
+    exibidas num card na seção **Projetos** (“Ideias aguardando plano de ação”).
+    Converter (`ProjetoController::salvarDesdobramento`) exige um destino de três
+    níveis — **projeto → iniciativa → ação** — e pode **criar projeto e/ou
+    iniciativa na hora** (`criarProjetoRapido`/`criarIniciativaRapida`); ao criar
+    a ação o `destino_id` recebe o id e a ideia sai da fila.
+  - **Reclassificar** (duplo clique num item já triado, na análise de origem):
+    `Diag.reclassificar()` **não** apaga nada — só navega de volta à tempestade,
+    que abre um **painel próprio** (`painelReclassificar`, independente da
+    rodada) com a ideia e a classificação de origem. Só ao escolher o **novo**
+    destino é que `POST /api/coleta/{id}/reabrir` desfaz o registro anterior
+    (apaga o fator — com `promovido_de_id` e cascata GUT — ou o `cenario_item`,
+    volta a ideia a `SELECIONADO`) e o novo encaminhamento é gravado. Não-
+    destrutivo: desistir da reclassificação deixa o destino original intacto.
 
 ### Plano de ação (três níveis)
 
