@@ -216,6 +216,8 @@ try {
         // As específicas antes da genérica, senão /api/coleta/7/descartar cairia nela
         case (bool)preg_match('#^POST /api/coleta/(\d+)/encaminhar$#', $rota, $m):
             (new ColetaController())->encaminhar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/coleta/(\d+)/reabrir$#', $rota, $m):
+            (new ColetaController())->reabrir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/(\d+)/descartar$#', $rota, $m):
             (new ColetaController())->descartar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/coleta/rodada/(\d+)/limpar$#', $rota, $m):

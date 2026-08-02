@@ -423,6 +423,40 @@ class ColetaController
         Json::ok(['lider' => $lider]);
     }
 
+    /**
+     * Reabre uma ideia já encaminhada para reclassificar ("reabrir e mover"):
+     * remove o registro que ela virou no diagnóstico (item de cenário ou fator)
+     * e devolve a ideia à bancada como SELECIONADO, preservando texto e
+     * prioridade. Ao escolher o novo destino, um registro novo é criado.
+     */
+    public function reabrir(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirTriagemColeta($planId);
+        $item = $this->exigirItem($id, $planId);
+        $tipo = $item['destino_tipo'] ?? null;
+        $destinoId = (int)($item['destino_id'] ?? 0);
+        if (!in_array($tipo, ['CENARIO', 'FATOR'], true) || !$destinoId) {
+            Json::erro('Esta ideia não está numa análise para reclassificar.');
+        }
+        if ($tipo === 'CENARIO') {
+            Database::executar('DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
+        } else {
+            // Fatores promovidos apontam para o de origem (sem cascade): saem antes.
+            // O restante (GUT, vínculo com cascata) cai por ON DELETE CASCADE.
+            Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$destinoId]);
+            Database::executar('DELETE FROM fator WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
+        }
+        Database::executar(
+            "UPDATE coleta_item SET situacao = 'SELECIONADO', destino_tipo = NULL, destino_id = NULL,
+               triado_por = NULL, triado_em = NULL
+             WHERE id = ? AND planejamento_id = ?",
+            [$id, $planId]
+        );
+        Json::ok(['id' => $id, 'ano' => (int)$item['ano']]);
+    }
+
     /** Desfaz o agrupamento de uma ideia (ou do grupo inteiro, pelo líder). */
     public function desagrupar(int $id): void
     {

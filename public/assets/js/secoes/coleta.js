@@ -150,6 +150,7 @@ const SecaoColeta = {
       App.api(`/api/rodadas?planejamento_id=${plan.id}&ano=${ano}`).catch(() => []),
     ]);
     this.rodadaAberta = this.rodadas.find((r) => r.situacao === 'ABERTA') || null;
+    this.prepararReclassificacao();
 
     const conta = (s) => this.itens.filter((i) => i.situacao === s).length;
     const naFila = conta('NOVO');
@@ -708,6 +709,23 @@ const SecaoColeta = {
         <div class="small mt-1 motivo-descarte"><strong>Não entrou:</strong> ${Modal.esc(i.motivo || '')}
           ${i.triador ? `<span class="text-muted">· ${Modal.esc(i.triador)}</span>` : ''}</div>` : ''}
     </div></div>`;
+  },
+
+  /**
+   * Voltou do diagnóstico para reclassificar: a ideia foi reaberta (SELECIONADO)
+   * e é carregada na bancada quando a rodada dela está aberta; senão, cai na
+   * lista, destacada na situação atual.
+   */
+  prepararReclassificacao() {
+    if (!Diag.reclassificarColeta) return;
+    const alvo = this.itens.find((i) => String(i.id) === String(Diag.reclassificarColeta));
+    Diag.reclassificarColeta = null;
+    if (!alvo) return;
+    if (this.rodadaAberta && Number(alvo.rodada_id) === Number(this.rodadaAberta.id)) {
+      this.selecionado = alvo.id;
+    } else {
+      Diag.destaqueColeta = alvo.id;
+    }
   },
 
   // Chegou aqui clicando no selo "Coleta · Fulano" de um card do diagnóstico

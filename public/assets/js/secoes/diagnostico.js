@@ -158,13 +158,42 @@ const Diag = {
   },
 
   ligarSeloColeta(el) {
-    el.querySelectorAll('[data-ir-coleta]').forEach((b) => b.addEventListener('click', () => {
-      this.destaqueColeta = b.dataset.irColeta;
-      App.mostrarSecao('coleta');
-    }));
+    el.querySelectorAll('[data-ir-coleta]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.destaqueColeta = b.dataset.irColeta;
+        App.mostrarSecao('coleta');
+      });
+      // Duplo clique no card reabre a ideia na tempestade para reclassificar
+      const card = b.closest('[data-card-fator]');
+      if (card && App.podeEditar()) {
+        card.addEventListener('dblclick', (ev) => {
+          if (ev.target.closest('button, a, input, textarea, select')) return;
+          this.reclassificar(Number(b.dataset.irColeta));
+        });
+      }
+    });
   },
 
   destaqueColeta: null,
+  // id da ideia que a coleta deve carregar na bancada ao voltar da análise
+  reclassificarColeta: null,
+
+  /**
+   * "Reabrir e mover": remove o item da análise e leva a ideia de volta à
+   * tempestade, carregada na bancada, para reclassificar.
+   */
+  async reclassificar(coletaItemId) {
+    if (!confirm('Reabrir esta ideia na tempestade para reclassificar? O item atual sai desta análise.')) return;
+    try {
+      const plan = await App.planejamento();
+      await App.api(`/api/coleta/${coletaItemId}/reabrir`, { planejamento_id: plan.id });
+    } catch (e) {
+      alert(e.message);
+      return;
+    }
+    this.reclassificarColeta = coletaItemId;
+    App.mostrarSecao('coleta');
+  },
 
   aplicarDestaque(el, secao) {
     if (this.destaque?.secao !== secao) return;
