@@ -354,11 +354,37 @@ seção e não rola até nada, quebrando a promessa central do módulo.
 
 ## 2.1 Tempestade de ideias: quiz por QR, separação e priorização
 
-### Situação: **A PLANEJAR** — não implementado
+### Situação: **ENTREGUE** — com ressalvas registradas
 
 Revisão do tema 2 pedida pelo cliente **depois** da entrega da Coleta. Não
 substitui o que está no ar: reaproveita o modelo de dados e a tratativa, e
 acrescenta a sessão ao vivo, a separação das ideias e a matriz de priorização.
+
+> **Entregue e verificado.** A tempestade por QR/PIN está no ar e passou pela
+> revisão de segurança exigida (commit `22e6f31` — "Correções das revisões da
+> tempestade: 9 de segurança e 11 de corretude"). No ar: `RodadaController`
+> (abrir com PIN de 6 dígitos, listar, encerrar, votação), `PublicoController`
+> e as rotas públicas **sem sessão** (`GET /entrar/{pin}`, `/api/publico/*`), a
+> página isolada do participante (`views/participante.php` + `participante.js`)
+> e a tela de condução ao vivo (`coleta.js`: nuvem por *polling*, bancada,
+> matriz impacto × esforço, agrupamento por arraste, destinos). As travas da
+> decisão A estão todas presentes (CSRF por lista explícita, teto de
+> ideias/votos dentro do `INSERT`, nome vindo do registro, PIN errado contado
+> em `coleta_tentativa`, `Content-Type` JSON obrigatório) e o `CLAUDE.md`
+> documenta a regra final.
+>
+> O texto abaixo é o **plano original, mantido como registro**. Três notas para
+> a leitura:
+>
+> - a coluna do QR virou `pin CHAR(6)` / `uk_rodada_pin`, **não**
+>   `codigo VARCHAR(12)` como o delta SQL adiante especifica;
+> - vieram **extras** fora do escopo: votação com teto, agrupamento manual
+>   arrastando fichas (`agrupado_em_id`), caixa "tratar depois" (`adiado`),
+>   reclassificação não-destrutiva (`reabrir`), estado `DIVIDIDO`, e o destino
+>   **Plano de ação** (`ACAO`) na triagem;
+> - **duas ressalvas** — a matriz não roteia o destino automático e a página do
+>   participante não deixa editar a própria ideia — estão detalhadas na tabela
+>   de fatiamento, adiante.
 
 > **Como o cliente descreveu.** "Fazer via quiz, onde os usuários escaneiam o
 > código e vão dando as ideias, numa tempestade de ideias. E aí o administrador
@@ -567,18 +593,33 @@ tudo acontecer numa tela só.
 
 ### Fatiamento sugerido
 
-| Fatia | Conteúdo | Esforço | Entrega valor sozinha? |
-|---|---|---|---|
-| 1 | `coleta_rodada` + PIN + tela do participante + rotas públicas | M | Sim — já dá para coletar na oficina |
-| 2 | Tela de condução: nuvem por polling + bancada | M | Sim — é o fluxo que o cliente descreveu |
-| 3 | Matriz 2×2 no item + destino a partir do quadrante | P | Sim — fecha a decisão |
-| 4 | QR (vendorar `qrcode.js`) e link para copiar | P | Conveniência sobre a fatia 1 |
-| 5 | Dividir ideia em várias | P | Opcional |
-| 6 | Votação dos participantes nas ideias | P–M | Opcional, se quiserem convergência |
+| Fatia | Conteúdo | Esforço | Entrega valor sozinha? | Situação |
+|---|---|---|---|---|
+| 1 | `coleta_rodada` + PIN + tela do participante + rotas públicas | M | Sim — já dá para coletar na oficina | ✅ entregue |
+| 2 | Tela de condução: nuvem por polling + bancada | M | Sim — é o fluxo que o cliente descreveu | ✅ entregue |
+| 3 | Matriz 2×2 no item + destino a partir do quadrante | P | Sim — fecha a decisão | ⚠️ parcial |
+| 4 | QR (vendorar `qrcode.js`) e link para copiar | P | Conveniência sobre a fatia 1 | ✅ entregue |
+| 5 | Dividir ideia em várias | P | Opcional | ✅ entregue |
+| 6 | Votação dos participantes nas ideias | P–M | Opcional, se quiserem convergência | ✅ entregue |
 
 As fatias 1 a 3 entregam o fluxo inteiro. A 4 é barata e faz a diferença na
-sala. Antes de subir a fatia 1 para produção, **rodar a revisão de segurança**
-— é rota de escrita sem autenticação, o único caso do sistema.
+sala. A revisão de segurança exigida (rota de escrita sem autenticação, o único
+caso do sistema) **foi executada antes de subir** — commit `22e6f31`, com 9
+achados de segurança e 11 de corretude corrigidos.
+
+**Ressalva da fatia 3 (parcial).** A bancada tem a matriz 2×2 e os botões de
+destino, mas são **ações independentes**: clicar num quadrante grava só
+`impacto`/`esforco` (rota `priorizar`); o encaminhamento continua sendo uma
+escolha manual de destino (rota `encaminhar`). Ou seja, a **decisão C** ("a
+matriz decide o encaminhamento") **não foi implementada literalmente** — o
+condutor prioriza e depois escolhe o destino à mão. Funcionalmente atende, mas
+o acoplamento automático não existe.
+
+**Duas peças previstas não entraram**, ambas na página do participante e sem
+bloquear a oficina: o **ditado por voz** (o `por_voz` já era corte reconhecido
+no tema 2) e a **edição da própria ideia** — a seção "Suas ideias" é somente
+leitura, embora o `participante_token` exista justamente para permitir a
+correção. Ficam como polimento de v2.
 
 ---
 
@@ -1123,7 +1164,7 @@ discutir a dependência, não o quadrante.
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 4 |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 5 |
 | 2 | Coleta & Triagem (tratativa item a item) | **Entregue** | M | 6 ✔ (antecipada) |
-| 2.1 | Tempestade: quiz por PIN/QR, condução ao vivo e matriz | **Planejado** | M | a definir |
+| 2.1 | Tempestade: quiz por PIN/QR, condução ao vivo e matriz | **Entregue** | M | ✔ (com ressalvas) |
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
 | 4b | Contingência dentro de cada projeto | **Não construir agora** (deriva de 4) | P | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |
@@ -1155,9 +1196,10 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
 7. **Existe (ou existirá) real com granularidade mensal vindo do Qlik?** Se sim,
    destrava a contingência ancorada em indicador (o `OFF_TRACK` do BSC) e muda a
    pauta do ritual. Se não, meta × real continua sendo assunto anual.
-8. ~~Quem responde ao quiz da tempestade?~~ **Respondido:** qualquer pessoa,
-   por QR ou link, sem cadastro — modelo do Quiz Copérdia. Continua valendo a
-   exigência de revisão de segurança antes de subir (tema 2.1, decisão A).
+8. ~~Quem responde ao quiz da tempestade?~~ **Respondido e entregue:** qualquer
+   pessoa, por QR ou link, sem cadastro — modelo do Quiz Copérdia. A revisão de
+   segurança exigida (tema 2.1, decisão A) **foi executada** antes de subir
+   (commit `22e6f31`).
 9. ~~"Separar as palavras" é dividir ou nuvem?~~ **Respondido:** é a tela de
    condução ao vivo, com nuvem de um lado e bancada do outro (decisão B).
 10. **Quem é o dono da Matriz de Impacto:** a controladoria preenche a grade inteira,
