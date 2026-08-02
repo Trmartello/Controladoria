@@ -211,6 +211,7 @@ try {
             (new RodadaController())->votacao((int)$m[1]); break;
 
         case $rota === 'GET /api/coleta':          (new ColetaController())->listar(); break;
+        case $rota === 'GET /api/coleta/aguardando-acao': (new ColetaController())->aguardandoAcao(); break;
         case $rota === 'POST /api/coleta':         (new ColetaController())->salvar(); break;
         // As específicas antes da genérica, senão /api/coleta/7/descartar cairia nela
         case (bool)preg_match('#^POST /api/coleta/(\d+)/encaminhar$#', $rota, $m):

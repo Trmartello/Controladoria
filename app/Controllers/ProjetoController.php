@@ -346,6 +346,17 @@ class ProjetoController
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 $params
             );
+            // Ação criada a partir de uma ideia da coleta ("Plano de ação"):
+            // fecha o vínculo para a ideia deixar de ficar pendente e apontar
+            // para o desdobramento que nasceu dela
+            $coletaId = (int)($d['coleta_item_id'] ?? 0);
+            if ($coletaId) {
+                Database::executar(
+                    "UPDATE coleta_item SET destino_id = ?
+                     WHERE id = ? AND planejamento_id = ? AND destino_tipo = 'ACAO' AND destino_id IS NULL",
+                    [$id, $coletaId, $planId]
+                );
+            }
         }
 
         // A conclusão de uma ocorrência fica registrada no diário de bordo

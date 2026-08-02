@@ -95,6 +95,17 @@ if ($tipoStatus && !str_contains((string)$tipoStatus, 'PAUSADO')) {
     echo "migrate: status da ação ampliado (PAUSADO, AGUARDANDO_VALIDACAO).\n";
 }
 
+// A ideia da coleta pode ir para um plano de ação (vira desdobramento depois),
+// além de Cenário/fator do diagnóstico
+$tipoDestinoCi = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'destino_tipo'"
+)->fetchColumn();
+if ($tipoDestinoCi && !str_contains((string)$tipoDestinoCi, 'ACAO')) {
+    $pdo->exec("ALTER TABLE coleta_item MODIFY COLUMN destino_tipo ENUM('CENARIO','FATOR','ACAO') NULL");
+    echo "migrate: coleta_item.destino_tipo agora aceita ACAO (plano de ação).\n";
+}
+
 // O projeto pertence a um ano do planejamento; o horizonte deriva do ano.
 // Backfill: o horizonte escolhido explicitamente vence a data de início, e o
 // último recurso é o primeiro ano de execução (ano_base é o ano de elaboração,

@@ -308,7 +308,7 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   texto_tratado    TEXT NULL,
   destino_sugerido ENUM('CENARIO','PESTEL','PORTER','SWOT','NAO_SEI') NOT NULL DEFAULT 'NAO_SEI',
   situacao         ENUM('NOVO','SELECIONADO','ACEITO','DESCARTADO','DIVIDIDO') NOT NULL DEFAULT 'NOVO',
-  destino_tipo     ENUM('CENARIO','FATOR') NULL,
+  destino_tipo     ENUM('CENARIO','FATOR','ACAO') NULL,
   destino_id       INT NULL,
   motivo           TEXT NULL,
   triado_por       INT NULL,

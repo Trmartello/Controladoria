@@ -179,13 +179,15 @@ const SecaoProjetos = {
       return;
     }
     this.plan = await App.planejamento();
-    const [projetos, cascata, responsaveis] = await Promise.all([
+    const [projetos, cascata, responsaveis, ideiasAcao] = await Promise.all([
       App.api(`/api/projetos?planejamento_id=${this.plan.id}`),
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
       App.api(`/api/responsaveis?planejamento_id=${this.plan.id}`),
+      App.api(`/api/coleta/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
     ]);
     this.cascata = cascata;
     this.responsaveis = responsaveis;
+    this.projetos = projetos;   // guardado para o seletor de iniciativa ao converter ideias
 
     const badge = (status) => {
       const [rotulo, classe] = STATUS_ROTULOS[status] || [status, 'text-bg-light'];
@@ -275,7 +277,11 @@ const SecaoProjetos = {
         </div>
       </div>
       <p class="text-muted">Toque no título para recolher e expandir; use “mostrar mais” para ver o detalhe.</p>
+      ${this.cartaoIdeiasAcao(ideiasAcao)}
       <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>`;
+
+    el.querySelectorAll('[data-virar-acao]').forEach((b) => b.addEventListener('click', () =>
+      this.modalConverterAcao(ideiasAcao.find((i) => i.id == b.dataset.virarAcao))));
 
     document.getElementById('btn-alternar-tudo')?.addEventListener('click', () => {
       if (tudoFechado) {
@@ -496,6 +502,68 @@ const SecaoProjetos = {
     }];
     for (const v of STATUS_MANUAIS) opcoes.push({ valor: v, rotulo: STATUS_ACAO[v][0] });
     return opcoes;
+  },
+
+  // Ideias que vieram da coleta com destino "Plano de ação" e ainda não viraram
+  // uma ação: ficam listadas aqui para o condutor atribuí-las a uma iniciativa.
+  cartaoIdeiasAcao(ideias) {
+    if (!ideias || !ideias.length) return '';
+    const podeConverter = App.podeEditar();
+    const linhas = ideias.map((i) => `
+      <div class="d-flex align-items-center gap-2 flex-wrap ideia-acao" data-ideia-acao="${i.id}">
+        <span class="small flex-grow-1">${Modal.esc(i.texto_tratado || i.texto)}
+          <span class="text-muted">· ${Modal.esc(i.autor)}${i.votos ? ` · ★ ${i.votos}` : ''}</span></span>
+        ${podeConverter ? `<button class="btn btn-sm btn-verde flex-shrink-0"
+          data-virar-acao="${i.id}">Transformar em ação</button>` : ''}
+      </div>`).join('');
+    return `<div class="card mb-3 card-ideias-acao"><div class="card-body py-2 px-3">
+      <div class="rotulo-secao">Ideias aguardando plano de ação (${ideias.length})</div>
+      <div class="small text-muted mb-2">Vindas da coleta — atribua cada uma a uma iniciativa para virar ação.</div>
+      ${linhas}
+    </div></div>`;
+  },
+
+  // Transforma uma ideia pendente numa ação (desdobramento) de uma iniciativa
+  // existente, guardando o vínculo com a ideia da coleta.
+  modalConverterAcao(ideia) {
+    if (!ideia) return;
+    const opcoes = [];
+    (this.projetos || []).forEach((p) => (p.iniciativas || []).forEach((ini) =>
+      opcoes.push({ valor: `${p.id}:${ini.id}`, rotulo: `${p.titulo} › ${ini.titulo}` })));
+    if (!opcoes.length) {
+      alert('Crie um projeto com pelo menos uma iniciativa antes de atribuir a ideia a um plano de ação.');
+      return;
+    }
+    Modal.abrir({
+      titulo: 'Transformar ideia em ação',
+      url: '/api/desdobramentos',
+      valores: {
+        planejamento_id: this.plan.id, coleta_item_id: ideia.id,
+        o_que: ideia.texto_tratado || ideia.texto, prioridade: 'MEDIA',
+      },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'coleta_item_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'ideia', rotulo: 'Ideia da coleta', tipo: 'info', texto: ideia.texto,
+          barra: { cor: '#5a3e2b', titulo: ideia.autor } },
+        { nome: 'destino_ini', rotulo: 'Em qual iniciativa entra?', tipo: 'select', opcoes },
+        { nome: 'o_que', rotulo: 'O quê? (a ação)', obrigatorio: true, tipo: 'textarea', linhas: 2 },
+        { nome: 'quem', rotulo: 'Quem?', obrigatorio: true, tipo: 'selecao_livre', opcoes: this.responsaveis,
+          ajuda: 'Responsável pela ação.' },
+        { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes: [
+          { valor: 'ALTA', rotulo: 'Alta' }, { valor: 'MEDIA', rotulo: 'Média' }, { valor: 'BAIXA', rotulo: 'Baixa' },
+        ]},
+      ],
+      transformar: (d) => {
+        const [projetoId, iniciativaId] = String(d.destino_ini || '').split(':');
+        return {
+          planejamento_id: d.planejamento_id, coleta_item_id: d.coleta_item_id,
+          projeto_id: Number(projetoId), iniciativa_id: Number(iniciativaId),
+          o_que: d.o_que, quem: d.quem, prioridade: d.prioridade,
+        };
+      },
+      aoSalvar: () => this.carregar(),
+    });
   },
 
   modalDesdobramento(projetoId, dd, iniciativaId = null) {

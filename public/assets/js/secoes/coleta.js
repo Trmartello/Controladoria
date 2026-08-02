@@ -17,6 +17,8 @@ const DESTINOS_TRIAGEM = [
   { valor: 'PESTEL', rotulo: 'PESTEL', cor: '#2c7fb8' },
   { valor: 'PORTER', rotulo: 'Porter', cor: '#b08d4f' },
   { valor: 'SWOT', rotulo: 'SWOT', cor: '#6b4c9a' },
+  // Não é análise de diagnóstico: a ideia fica pendente para virar ação num plano
+  { valor: 'ACAO', rotulo: 'Plano de ação', cor: '#5a3e2b' },
 ];
 
 const CATEGORIAS_DESTINO = {
@@ -696,12 +698,16 @@ const SecaoColeta = {
           </span>` : ''}
       </div>
       <div class="small texto-fator mt-1">${Modal.esc(i.texto)}</div>
-      ${i.situacao === 'ACEITO' && i.destino_id ? `
+      ${i.situacao === 'ACEITO' && i.destino_tipo === 'ACAO' ? `
+        <div class="mt-1">${i.destino_id
+          ? '<span class="badge text-bg-success">Virou ação no plano</span>'
+          : '<span class="badge text-bg-secondary">Aguardando plano de ação</span>'}</div>`
+        : i.situacao === 'ACEITO' && i.destino_id ? `
         <div class="mt-1"><button type="button" class="btn btn-sm selo-link"
           data-ir-destino="${i.destino_id}" data-tipo-destino="${i.destino_tipo}"
-          title="Abrir o registro criado">Virou ${i.destino_tipo === 'CENARIO' ? 'item de cenário' : 'fator'} ↗</button></div>` : ''}
-      ${i.situacao === 'ACEITO' && !i.destino_id
-        ? '<div class="small text-muted mt-1">Destino removido do diagnóstico.</div>' : ''}
+          title="Abrir o registro criado">Virou ${i.destino_tipo === 'CENARIO' ? 'item de cenário' : 'fator'} ↗</button></div>`
+        : i.situacao === 'ACEITO' && !i.destino_id
+          ? '<div class="small text-muted mt-1">Destino removido do diagnóstico.</div>' : ''}
       ${i.situacao === 'DESCARTADO' ? `
         <div class="small mt-1 motivo-descarte"><strong>Não entrou:</strong> ${Modal.esc(i.motivo || '')}
           ${i.triador ? `<span class="text-muted">· ${Modal.esc(i.triador)}</span>` : ''}</div>` : ''}
@@ -819,6 +825,7 @@ const SecaoColeta = {
       { nome: 'ideia', rotulo: 'Ideia original', tipo: 'info', texto: item.texto,
         barra: { cor: '#007a45', titulo: item.autor, origem: this.data(item.criado_em) } },
     ];
+    const paraAcao = destino === 'ACAO';
     if (destino === 'CENARIO') {
       campos.push({ nome: 'tipo', rotulo: 'Tipo', tipo: 'botoes', opcoes: [
         { valor: 'SITUACAO_ATUAL', rotulo: 'Situação atual' },
@@ -826,13 +833,16 @@ const SecaoColeta = {
       ]});
     } else if (destino === 'SWOT') {
       campos.push(Diag.campoQuadrante());
-    } else {
+    } else if (!paraAcao) {
       campos.push({ nome: 'categoria', rotulo: 'Categoria', tipo: 'select',
         opcoes: CATEGORIAS_DESTINO[destino].map(([valor, rotulo]) => ({ valor, rotulo })) });
     }
-    campos.push({ nome: 'texto_tratado', rotulo: 'Texto que vai para o diagnóstico',
+    campos.push({ nome: 'texto_tratado',
+      rotulo: paraAcao ? 'Texto que vai para o plano de ação' : 'Texto que vai para o diagnóstico',
       tipo: 'textarea', linhas: 4,
-      ajuda: 'Ajuste a redação se precisar; a ideia original fica guardada como foi dita.' });
+      ajuda: paraAcao
+        ? 'A ideia fica pendente e aparece em Projetos para virar uma ação de uma iniciativa.'
+        : 'Ajuste a redação se precisar; a ideia original fica guardada como foi dita.' });
 
     Modal.abrir({
       titulo: `Encaminhar para ${rotuloDestino}`,

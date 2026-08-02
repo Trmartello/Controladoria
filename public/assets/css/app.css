@@ -608,6 +608,10 @@ input[type=range].faixa-verde:focus-visible {
 }
 .quadrante-prio .q-titulo { font-weight: 700; font-size: .84rem; color: var(--cor-quad, #007a45); }
 
+/* Ideias da coleta aguardando virar ação num plano de ação */
+.card-ideias-acao { border-left: 4px solid #5a3e2b; }
+.ideia-acao + .ideia-acao { border-top: 1px solid #eef1ef; padding-top: .4rem; margin-top: .4rem; }
+
 /* Combobox pesquisável (responsável): busca no topo, lista alfabética abaixo */
 .combo-busca { position: relative; }
 .combo-painel {

@@ -55,6 +55,27 @@ class ColetaController
         Json::ok($itens);
     }
 
+    /**
+     * Ideias aceitas na triagem com destino "Plano de ação" que ainda não
+     * viraram uma ação (desdobramento): a lista que o módulo Projetos mostra
+     * para o condutor atribuí-las a uma iniciativa.
+     */
+    public function aguardandoAcao(): void
+    {
+        $planId = (int)($_GET['planejamento_id'] ?? 0);
+        Auth::exigirAcessoPlanejamento($planId);
+        $itens = Database::todos(
+            "SELECT ci.id, ci.ano, ci.texto, ci.texto_tratado, ci.votos, ci.criado_em,
+                    u.nome AS autor
+             FROM coleta_item ci JOIN usuario u ON u.id = ci.autor_id
+             WHERE ci.planejamento_id = ? AND ci.destino_tipo = 'ACAO'
+               AND ci.destino_id IS NULL AND ci.situacao = 'ACEITO'
+             ORDER BY ci.criado_em, ci.id",
+            [$planId]
+        );
+        Json::ok($itens);
+    }
+
     public function salvar(?int $id = null): void
     {
         $d = Json::corpo();
@@ -164,6 +185,9 @@ class ColetaController
             if (!in_array($tipo, self::TIPOS_CENARIO, true)) {
                 Json::erro('Escolha se é situação atual ou tendência.');
             }
+        } elseif ($destino === 'ACAO') {
+            // Plano de ação: a ideia fica aceita e pendente; vira desdobramento
+            // depois, no módulo Projetos. Nada a validar aqui.
         } elseif (isset(self::CATEGORIAS[$destino])) {
             $categoria = $d['categoria'] ?? '';
             if (!in_array($categoria, self::CATEGORIAS[$destino], true)) {
@@ -196,6 +220,10 @@ class ColetaController
                 [$planId, $ano, $d['tipo'], $texto]
             );
             $destinoTipo = 'CENARIO';
+        } elseif ($destino === 'ACAO') {
+            // Sem registro ainda: fica pendente até virar ação no plano (Projetos)
+            $destinoId = null;
+            $destinoTipo = 'ACAO';
         } else {
             $destinoId = (int)Database::executar(
                 'INSERT INTO fator (planejamento_id, ano, etapa, categoria, descricao) VALUES (?, ?, ?, ?, ?)',
@@ -492,6 +520,7 @@ class ColetaController
             'CENARIO' => 'cenario',
             'PESTEL'  => 'pestel',
             'PORTER'  => 'porter',
+            'ACAO'    => 'projetos',
             default   => 'swot',
         };
     }
