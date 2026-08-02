@@ -816,15 +816,20 @@ const SecaoColeta = {
 
     if (!App.podeEditar()) return;
 
+    // Com uma rodada aberta, a ideia manual entra NA tempestade (leva o
+    // rodada_id): senão ela nasce fora da rodada e a nuvem — que só mostra a
+    // rodada em curso — a esconderia, dando a impressão de que não salvou.
+    const rodadaAtual = this.rodadaAberta ? this.rodadaAberta.id : '';
     const modalIdeia = (i = null) => Modal.abrir({
-      titulo: i ? 'Editar ideia' : `Nova ideia · ${ano}`,
+      titulo: i ? 'Editar ideia' : (rodadaAtual ? 'Nova ideia na tempestade' : `Nova ideia · ${ano}`),
       url: i ? `/api/coleta/${i.id}` : '/api/coleta',
       valores: i
         ? { ...i, planejamento_id: this.plan.id }
-        : { planejamento_id: this.plan.id, ano, destino_sugerido: 'NAO_SEI' },
+        : { planejamento_id: this.plan.id, ano, destino_sugerido: 'NAO_SEI', rodada_id: rodadaAtual },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
+        { nome: 'rodada_id', rotulo: '', tipo: 'hidden' },
         { nome: 'texto', rotulo: 'A ideia, como você diria em voz alta', tipo: 'textarea', linhas: 4,
           obrigatorio: true,
           exemplo: 'Ex.: o custo do frete até o litoral está inviabilizando a venda de farelo' },

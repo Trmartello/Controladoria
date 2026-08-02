@@ -64,10 +64,14 @@ class ColetaController
     {
         $planId = (int)($_GET['planejamento_id'] ?? 0);
         Auth::exigirAcessoPlanejamento($planId);
+        // LEFT JOIN + COALESCE como em listar(): a ideia vinda da tempestade é
+        // anônima (autor_id NULL, nome em autor_nome). Um INNER JOIN aqui
+        // sumiria justamente com as ideias do brainstorm mandadas ao plano.
         $itens = Database::todos(
             "SELECT ci.id, ci.ano, ci.texto, ci.texto_tratado, ci.votos, ci.criado_em,
-                    u.nome AS autor
-             FROM coleta_item ci JOIN usuario u ON u.id = ci.autor_id
+                    COALESCE(u.nome, ci.autor_nome, 'Participante') AS autor
+             FROM coleta_item ci
+             LEFT JOIN usuario u ON u.id = ci.autor_id
              WHERE ci.planejamento_id = ? AND ci.destino_tipo = 'ACAO'
                AND ci.destino_id IS NULL AND ci.situacao = 'ACEITO'
              ORDER BY ci.criado_em, ci.id",
@@ -109,10 +113,20 @@ class ColetaController
             if ($ano < 2000 || $ano > 2100) {
                 Json::erro('Informe o ano da coleta.');
             }
+            // Ideia cadastrada à mão durante uma tempestade entra NA rodada
+            // aberta, para aparecer na nuvem. Só aceita rodada aberta deste
+            // planejamento; qualquer outro valor cai para avulsa (NULL).
+            $rodadaId = isset($d['rodada_id']) && $d['rodada_id'] !== '' ? (int)$d['rodada_id'] : null;
+            if ($rodadaId !== null && !Database::um(
+                "SELECT id FROM coleta_rodada WHERE id = ? AND planejamento_id = ? AND situacao = 'ABERTA'",
+                [$rodadaId, $planId]
+            )) {
+                $rodadaId = null;
+            }
             $id = (int)Database::executar(
-                'INSERT INTO coleta_item (planejamento_id, ano, autor_id, texto, destino_sugerido)
-                 VALUES (?, ?, ?, ?, ?)',
-                [$planId, $ano, (int)$u['id'], $texto, $destino]
+                'INSERT INTO coleta_item (planejamento_id, rodada_id, ano, autor_id, texto, destino_sugerido)
+                 VALUES (?, ?, ?, ?, ?, ?)',
+                [$planId, $rodadaId, $ano, (int)$u['id'], $texto, $destino]
             );
         }
         Json::ok(['id' => $id]);
