@@ -91,19 +91,27 @@ class Auth
      * inflar perfis de escrita.
      *
      * Enquanto a diretoria não decidir se o perfil LEITURA pode registrar
-     * ideia, a regra é a mesma da edição. Liberar depois é trocar a linha
+     * ideia, a regra é a mesma da edição. Liberar depois é trocar a chamada
      * abaixo, sem afrouxar `exigirEdicaoPlanejamento` — que continua barrando
      * LEITURA em todas as outras rotas de escrita.
+     *
+     * Devolve o USUÁRIO (autor da ideia), não o planejamento: quem chama grava
+     * `autor_id`/`triado_por` com esse id. `exigirEdicaoPlanejamento` retorna a
+     * linha do planejamento; usá-la como usuário gravava o id do planejamento em
+     * `autor_id` e estourava a FK para `usuario` (coincidia só quando os ids
+     * batiam por acaso).
      */
     public static function exigirRespostaColeta(int $planejamentoId): array
     {
-        return self::exigirEdicaoPlanejamento($planejamentoId);
+        self::exigirEdicaoPlanejamento($planejamentoId); // autoriza (perfil + escopo)
+        return self::exigirLogin();                      // devolve quem escreve
     }
 
     /** Triagem da Coleta: encaminhar ou descartar ideia é ato de curadoria. */
     public static function exigirTriagemColeta(int $planejamentoId): array
     {
-        return self::exigirEdicaoPlanejamento($planejamentoId);
+        self::exigirEdicaoPlanejamento($planejamentoId);
+        return self::exigirLogin();
     }
 
     public static function tokenCsrf(): string

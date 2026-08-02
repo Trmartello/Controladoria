@@ -43,7 +43,10 @@ class RodadaController
     {
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
-        $u = Auth::exigirEdicaoPlanejamento($planId);
+        // exigirEdicaoPlanejamento devolve o PLANEJAMENTO; criado_por precisa do
+        // usuário, senão gravaria o id do plano e estouraria a FK fk_rod_autor
+        Auth::exigirEdicaoPlanejamento($planId);
+        $u = Auth::exigirLogin();
 
         $tema = mb_substr(trim(is_string($d['tema'] ?? null) ? $d['tema'] : ''), 0, 180);
         if ($tema === '') {
