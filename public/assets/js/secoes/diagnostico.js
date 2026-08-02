@@ -119,6 +119,21 @@ const Diag = {
     OPORTUNIDADE: 'Externo · ajuda', AMEACA: 'Externo · atrapalha',
   },
 
+  // O que considerar em cada tópico do macroambiente (PESTEL). O ícone ⓘ no
+  // título abre e fecha esta orientação. Só aparece onde há texto definido.
+  ORIENTACOES_CATEGORIA: {
+    POLITICO: 'Mudanças na legislação, tributação e políticas setoriais; estabilidade política, '
+      + 'incentivos e regulação do governo que afetam o setor.',
+    ECONOMICO: 'Taxa de juros, inflação, poder de compra do consumidor, taxa de câmbio, crédito e '
+      + 'crescimento — as forças econômicas que movem o mercado.',
+    SOCIAL: 'Mudanças de comportamento, hábitos de consumo, demografia e valores culturais do público.',
+    TECNOLOGICO: 'Automação, novas ferramentas, inteligência artificial e transformação digital que '
+      + 'mudam como o setor opera.',
+    ECOLOGICO: 'Clima, sustentabilidade, uso de recursos naturais, exigências ambientais e agenda ESG.',
+    LEGAL: 'Leis trabalhistas, tributárias e setoriais, normas regulatórias, contratos e compliance '
+      + 'que a empresa precisa cumprir.',
+  },
+
   // Navegação entre etapas: leva à seção de destino e destaca o card do fator
   destaque: null,
 
@@ -232,12 +247,18 @@ const Diag = {
           ${this.botoesFator(f, plan.id, comPromocao)}
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
         </div></div>`).join('');
+      const orientacao = this.ORIENTACOES_CATEGORIA[cat];
       return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
         <div class="d-flex align-items-center mb-2">
           <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
             ${this.contadorCards(itens.length, cor)}</span>
+          ${orientacao ? `<button type="button" class="btn-orientacao ms-1" data-orientacao="${cat}"
+            style="--cor-cat:${cor}" aria-expanded="false"
+            title="O que considerar" aria-label="O que considerar em ${rotulo}">ⓘ</button>` : ''}
           ${this.botaoAddCategoria(cat, rotulo, cor)}
         </div>
+        ${orientacao ? `<div class="orientacao-categoria small d-none mb-2" data-orientacao-alvo="${cat}"
+          style="--cor-cat:${cor}">${Modal.esc(orientacao)}</div>` : ''}
         ${cartoes || '<div class="text-muted small">—</div>'}
       </div>`;
     }).join('');
@@ -253,7 +274,7 @@ const Diag = {
           ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" id="btn-novo-fator">+ Novo fator</button>` : ''}
         </div>
       </div>
-      <p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>
+      ${descricao ? `<p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>` : ''}
       ${this.seletorCategoriaMovel(etapa, categorias.map(([cat, rotulo]) => [cat, rotulo]), contagens)}
       <div class="row g-3">${colunas}</div>`;
 
@@ -262,6 +283,12 @@ const Diag = {
     this.ligarVerMais(el);
     this.aplicarDestaque(el, idSecao.replace('secao-', ''));
     this.ligarSeloColeta(el);
+    // Orientação de cada tópico: ⓘ abre; um segundo clique recolhe
+    el.querySelectorAll('[data-orientacao]').forEach((b) => b.addEventListener('click', () => {
+      const alvo = el.querySelector(`[data-orientacao-alvo="${b.dataset.orientacao}"]`);
+      const oculto = alvo.classList.toggle('d-none');
+      b.setAttribute('aria-expanded', oculto ? 'false' : 'true');
+    }));
     if (!App.podeEditar()) return;
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
@@ -437,7 +464,7 @@ const SecaoPestel = {
     idSecao: 'secao-pestel',
     etapa: 'PESTEL',
     titulo: 'PESTEL',
-    descricao: 'Fatores do macroambiente. Promova os relevantes para a SWOT — o vínculo de origem é mantido.',
+    descricao: '',
     comPromocao: true,
     categorias: [
       ['POLITICO', 'Político', '#7a3b8f'],

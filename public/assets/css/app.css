@@ -608,6 +608,26 @@ input[type=range].faixa-verde:focus-visible {
 }
 .quadrante-prio .q-titulo { font-weight: 700; font-size: .84rem; color: var(--cor-quad, #007a45); }
 
+/* Orientação por tópico do PESTEL: ícone ⓘ no título e o texto que ele abre */
+.btn-orientacao {
+  border: none;
+  background: none;
+  padding: 0;
+  line-height: 1;
+  font-size: .95rem;
+  color: var(--cor-cat, #007a45);
+  cursor: pointer;
+}
+.btn-orientacao:hover { filter: brightness(.85); }
+.orientacao-categoria {
+  background: #f6f8f7;
+  border-left: 3px solid var(--cor-cat, #007a45);
+  border-radius: .25rem;
+  padding: .4rem .55rem;
+  color: #495057;
+  overflow-wrap: anywhere;
+}
+
 /* Ideias da coleta aguardando virar ação num plano de ação */
 .card-ideias-acao { border-left: 4px solid #5a3e2b; }
 .ideia-acao + .ideia-acao { border-top: 1px solid #eef1ef; padding-top: .4rem; margin-top: .4rem; }
