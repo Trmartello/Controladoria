@@ -237,7 +237,6 @@ const SecaoColeta = {
           <div class="flex-grow-1" style="min-width:12rem">
             <div class="rotulo-secao">Entre em ${Modal.esc(location.host)}/entrar</div>
             <div class="pin-grande">${Modal.esc(r.pin)}</div>
-            <div class="small text-muted mt-1">${Modal.esc(r.tema)}</div>
           </div>
         </div>
       </details>
