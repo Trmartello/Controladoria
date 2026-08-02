@@ -125,6 +125,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   O vínculo vale nos dois sentidos (selo “Coleta · Fulano” no card do
   diagnóstico, “Virou fator ↗” na ideia); apagar o destino limpa
   `destino_tipo`/`destino_id` em vez de deixar link quebrado.
+  Ideia cadastrada **manualmente** enquanto uma tempestade está aberta herda o
+  `rodada_id` da rodada aberta (validado no back-end) e cai na nuvem, em vez de
+  sumir. Listagens que juntam ideias da tempestade (autor_id NULL) usam
+  `LEFT JOIN`/`COALESCE`, nunca `INNER JOIN` — senão o card some (ex.:
+  `aguardandoAcao()`).
   O encaminhamento usa **reserva atômica** (`Database::afetadas()` num UPDATE
   com a condição no WHERE) em vez de transação — o repositório não usa
   `beginTransaction` e `Json::erro()` encerra a execução.
@@ -145,7 +150,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
     Converter (`ProjetoController::salvarDesdobramento`) exige um destino de três
     níveis — **projeto → iniciativa → ação** — e pode **criar projeto e/ou
     iniciativa na hora** (`criarProjetoRapido`/`criarIniciativaRapida`); ao criar
-    a ação o `destino_id` recebe o id e a ideia sai da fila.
+    a ação o `destino_id` recebe o id e a ideia sai da fila. **Validar a ação
+    primeiro**: sem transação (e com `Json::erro()` encerrando a execução), criar
+    projeto/iniciativa antes de validar os campos da ação deixa os dois órfãos a
+    cada tentativa inválida — toda a validação/cálculo da ação roda antes de
+    qualquer INSERT de projeto ou iniciativa.
   - **Reclassificar** (duplo clique num item já triado, na análise de origem):
     `Diag.reclassificar()` **não** apaga nada — só navega de volta à tempestade,
     que abre um **painel próprio** (`painelReclassificar`, independente da
