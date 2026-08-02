@@ -572,8 +572,10 @@ input[type=range].faixa-verde:focus-visible {
 .matriz-quad .mq-rotulos {
   grid-column: 2; grid-row: 2;
   display: flex; flex-direction: column;
-  justify-content: space-around; align-items: flex-end;
+  justify-content: space-around; align-items: center;
 }
+/* Pouco/Muito do eixo de esforço na vertical: gutter estreito, layout limpo */
+.mq-rotulos span { writing-mode: vertical-rl; transform: rotate(180deg); }
 .matriz-quad .grade-matriz { grid-column: 3; grid-row: 2; margin: 0; }
 .mq-cols { display: grid; grid-template-columns: 1fr 1fr; gap: .45rem; text-align: center; }
 .mq-eixox { text-align: center; }
