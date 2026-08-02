@@ -581,9 +581,16 @@ const Modal = {
     botao.disabled = true;
     try {
       const resposta = await extra.aoClicar();
-      this.bsModal.hide();
-      if (this.config.aoSalvar) this.config.aoSalvar(resposta);
-      else App.recarregarSecaoAtiva();
+      if (extra.manterAberto) {
+        // Redefinir sem sair da tela: atualiza a lista por baixo e some com o
+        // botão (nada mais a redefinir); o usuário continua editando no modal
+        botao.classList.add('d-none');
+        App.recarregarSecaoAtiva();
+      } else {
+        this.bsModal.hide();
+        if (this.config.aoSalvar) this.config.aoSalvar(resposta);
+        else App.recarregarSecaoAtiva();
+      }
     } catch (e) {
       const erro = document.getElementById('modal-erro');
       erro.textContent = e.message;

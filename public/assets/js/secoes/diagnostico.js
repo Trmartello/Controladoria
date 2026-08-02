@@ -731,13 +731,13 @@ const SecaoGut = {
         <h1>Matriz GUT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
         ${Diag.seletorAno()}
       </div>
-      <p class="text-muted">Priorize os fatores da SWOT de ${ano}: Gravidade × Urgência × Tendência (1–5).
-      O ranking orienta as escolhas da cascata.${editar ? ' <strong>Toque em um fator para avaliar.</strong>' : ''}</p>
-      <div class="legenda-quadrantes gut-legenda">
-        <span class="small text-muted">Score = G × U × T (1–125):</span>
-        <span><i style="background:${this.corScore(64)}"></i>Alta prioridade (≥ 64) — tratar agora</span>
-        <span><i style="background:${this.corScore(27)}"></i>Média (27–63)</span>
-        <span><i style="background:${this.corScore(1)}"></i>Baixa (&lt; 27)</span>
+      <div class="gut-legenda-barra small mb-3">
+        <span class="gl-titulo">Prioridade = Gravidade × Urgência × Tendência (1–125)</span>
+        <span class="gl-faixas">
+          <span><i style="background:${this.corScore(64)}"></i>Alta (≥ 64) — tratar agora</span>
+          <span><i style="background:${this.corScore(27)}"></i>Média (27–63)</span>
+          <span><i style="background:${this.corScore(1)}"></i>Baixa (&lt; 27)</span>
+        </span>
       </div>
 
       <div class="d-md-none">
@@ -786,11 +786,20 @@ const SecaoGut = {
         { nome: 'tendencia', rotulo: 'Tendência — "Se nada for feito, isso vira uma bola de neve?"', tipo: 'botoes', opcoes: escala,
           ajuda: '1 = estável · 5 = piora rápido. O problema tende a continuar do mesmo tamanho ou piorar rapidamente? (velocidade de deterioração)' },
       ],
-      // Só há o que redefinir se o fator já tiver notas registradas
+      // Só há o que redefinir se o fator já tiver notas registradas. Redefinir
+      // zera a avaliação e volta os botões ao padrão SEM fechar o modal, para
+      // seguir editando (manterAberto).
       extra: f.score ? {
         rotulo: 'Redefinir',
-        confirmar: 'Apagar a avaliação GUT deste fator para refazê-la?',
-        aoClicar: () => App.api(`/api/fatores/${f.id}/gut/limpar`, { planejamento_id: plan.id }),
+        confirmar: 'Zerar as notas GUT deste fator para refazer a avaliação?',
+        manterAberto: true,
+        aoClicar: async () => {
+          await App.api(`/api/fatores/${f.id}/gut/limpar`, { planejamento_id: plan.id });
+          ['gravidade', 'urgencia', 'tendencia'].forEach((nome) => {
+            const alvo = document.querySelector(`#campo-${nome} input[value="3"]`);
+            if (alvo) alvo.checked = true;
+          });
+        },
       } : null,
     });
 

@@ -636,6 +636,24 @@ input[type=range].faixa-verde:focus-visible {
   white-space: nowrap;
 }
 
+/* Legenda de prioridade da Matriz GUT: barra clara com as faixas espalhadas */
+.gut-legenda-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .4rem 1rem;
+  background: #f6f8f7;
+  border: 1px solid #e5eae7;
+  border-radius: .45rem;
+  padding: .5rem .75rem;
+  color: #495057;
+}
+.gut-legenda-barra .gl-titulo { font-weight: 600; }
+.gut-legenda-barra .gl-faixas { display: flex; flex-wrap: wrap; gap: .35rem 1rem; }
+.gut-legenda-barra .gl-faixas > span { display: inline-flex; align-items: center; gap: .35rem; }
+.gut-legenda-barra i { width: .8rem; height: .8rem; border-radius: .2rem; display: inline-block; flex-shrink: 0; }
+
 /* Ideias da coleta aguardando virar ação num plano de ação */
 .card-ideias-acao { border-left: 4px solid #5a3e2b; }
 .ideia-acao + .ideia-acao { border-top: 1px solid #eef1ef; padding-top: .4rem; margin-top: .4rem; }
