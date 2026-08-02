@@ -132,6 +132,12 @@ const Diag = {
     ECOLOGICO: 'Clima, sustentabilidade, uso de recursos naturais, exigências ambientais e agenda ESG.',
     LEGAL: 'Leis trabalhistas, tributárias e setoriais, normas regulatórias, contratos e compliance '
       + 'que a empresa precisa cumprir.',
+    // Porter — as 5 forças que medem a atratividade e a competitividade do setor
+    RIVALIDADE: 'Quem são os concorrentes diretos e como disputam o mercado (preço, qualidade, marca)?',
+    NOVOS_ENTRANTES: 'É fácil ou difícil surgirem novos concorrentes? Que barreiras protegem o setor?',
+    SUBSTITUTOS: 'Existem alternativas que resolvem a mesma dor do cliente de forma diferente?',
+    PODER_FORNECEDORES: 'A empresa depende de poucos fornecedores críticos que ditam preço e prazo?',
+    PODER_CLIENTES: 'Quão exigentes ou sensíveis a preço os clientes são, e quanto poder têm na negociação?',
   },
 
   // Navegação entre etapas: leva à seção de destino e destaca o card do fator
@@ -511,7 +517,7 @@ const SecaoPorter = {
     idSecao: 'secao-porter',
     etapa: 'PORTER',
     titulo: 'Porter — 5 Forças',
-    descricao: 'Forças competitivas do setor. Promova as relevantes para a SWOT.',
+    descricao: '',
     comPromocao: true,
     categorias: [
       ['RIVALIDADE', 'Rivalidade', '#8f3b3b'],
