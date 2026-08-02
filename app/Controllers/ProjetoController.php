@@ -246,22 +246,11 @@ class ProjetoController
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
         $plan = Auth::exigirEdicaoPlanejamento($planId);
-        $projetoId = (int)($d['projeto_id'] ?? 0);
-        // Criação na hora — usada ao transformar uma ideia da coleta em ação,
-        // quando o projeto e/ou a iniciativa ainda não existem
-        if (!$projetoId && trim((string)($d['projeto_novo'] ?? '')) !== '') {
-            $projetoId = $this->criarProjetoRapido($plan, $planId, $d);
-        }
-        $this->exigirProjeto($projetoId, $planId);
-        $iniciativaId = (int)($d['iniciativa_id'] ?? 0);
-        if (!$iniciativaId && trim((string)($d['iniciativa_nova'] ?? '')) !== '') {
-            $iniciativaId = $this->criarIniciativaRapida($projetoId, (string)$d['iniciativa_nova']);
-        }
-        $iniciativa = $this->exigirIniciativa($iniciativaId, $planId);
-        if ((int)$iniciativa['projeto_id'] !== $projetoId) {
-            Json::erro('A iniciativa não pertence a este projeto.');
-        }
-
+        // Valida e calcula TUDO que não depende de projeto/iniciativa antes de
+        // criar qualquer linha. Criar o projeto/iniciativa na hora e só então
+        // esbarrar numa validação da ação deixava projeto e iniciativa órfãos —
+        // sem transação no repositório, eles ficavam para trás a cada erro,
+        // acumulando projetos vazios a cada tentativa mal-sucedida.
         $oQue = trim($d['o_que'] ?? '');
         if ($oQue === '') {
             Json::erro('Descreva a ação (O quê?).');
@@ -324,6 +313,23 @@ class ProjetoController
                 $progresso = 0;
                 $concluidoEm = null;
             }
+        }
+
+        // Só agora — com a ação inteira validada — resolve projeto e iniciativa,
+        // criando na hora quando a ação vem de uma ideia da coleta ("Plano de
+        // ação"). Os helpers validam os próprios campos antes de inserir.
+        $projetoId = (int)($d['projeto_id'] ?? 0);
+        if (!$projetoId && trim((string)($d['projeto_novo'] ?? '')) !== '') {
+            $projetoId = $this->criarProjetoRapido($plan, $planId, $d);
+        }
+        $this->exigirProjeto($projetoId, $planId);
+        $iniciativaId = (int)($d['iniciativa_id'] ?? 0);
+        if (!$iniciativaId && trim((string)($d['iniciativa_nova'] ?? '')) !== '') {
+            $iniciativaId = $this->criarIniciativaRapida($projetoId, (string)$d['iniciativa_nova']);
+        }
+        $iniciativa = $this->exigirIniciativa($iniciativaId, $planId);
+        if ((int)$iniciativa['projeto_id'] !== $projetoId) {
+            Json::erro('A iniciativa não pertence a este projeto.');
         }
 
         $params = [
