@@ -164,9 +164,6 @@ const SecaoColeta = {
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-nova-ideia">+ Nova ideia</button>' : ''}
         </div>
       </div>
-      <p class="text-muted">Registre o que veio da oficina antes de organizar no diagnóstico.
-      Cada ideia é tratada uma a uma e vira item de cenário ou fator — ou é descartada com motivo.
-      <em>A coleta é anual, como o resto do diagnóstico.</em></p>
 
       ${podeTriar ? this.painelTempestade(ano) : ''}
       ${this.rodadaAberta ? this.telaConducao() : ''}
