@@ -491,6 +491,23 @@ input[type=range].faixa-verde:focus-visible {
   margin-top: .6rem;
   padding-top: .5rem;
 }
+/* O rótulo é o próprio botão de expandir/recolher — nasce recolhido */
+.btn-depois {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  touch-action: manipulation;
+}
+.btn-depois .alterna-depois {
+  color: var(--verde-coperdia);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.btn-depois:hover .alterna-depois { text-decoration: underline; text-underline-offset: 2px; }
 
 /* Grupo de ideias juntadas: uma caixa mostrando todas as palavras reunidas.
    Arrasta e é alvo de arraste igual à ficha, e toca para ir à bancada. */

@@ -86,6 +86,9 @@ const SecaoColeta = {
   // projetada não voltar a inchar. Mora aqui, e não no DOM, porque o relógio de
   // 3 s reescreve o HTML inteiro e fecharia a caixa no meio da oficina.
   caixaAberta: null,
+  // "Tratar depois" nasce recolhido: o que importa na projeção é a tempestade;
+  // a contagem no rótulo já diz quanta coisa está guardada ali
+  depoisAberto: false,
   reclassificando: null, // id da ideia reaberta do diagnóstico, à espera do novo destino
   reclassificarRotulo: '', // de onde a ideia saiu (ex.: "Porter"), só para exibir
 
@@ -362,8 +365,11 @@ const SecaoColeta = {
             arraste uma sobre a outra para juntar</div>
           <div class="nuvem">${fichas || '<span class="text-muted small">Aguardando as primeiras ideias...</span>'}</div>
           ${adiadas.length ? `<div class="caixa-depois">
-            <div class="rotulo-secao">Tratar depois (${adiadas.length})</div>
-            <div class="nuvem">
+            <button type="button" class="rotulo-secao btn-depois" data-ver-depois
+              aria-expanded="${this.depoisAberto}" aria-controls="nuvem-depois">Tratar depois
+              (${adiadas.length}) <span class="alterna-depois">· ${
+                this.depoisAberto ? 'ver menos' : 'ver mais'}</span></button>
+            <div class="nuvem ${this.depoisAberto ? '' : 'd-none'}" id="nuvem-depois">
               ${adiadas.map((g) => this.fichaOuCaixa(g, { adiada: true })).join('')}
             </div>
           </div>` : ''}
@@ -596,6 +602,16 @@ const SecaoColeta = {
         alert(e.message);
       }
       this.carregar();
+    }));
+
+    // "Tratar depois" recolhido/expandido — mesmo alternador do "ver mais" das
+    // caixas. Troca local, sem recarregar; quem só lê também abre.
+    el.querySelectorAll('[data-ver-depois]').forEach((b) => b.addEventListener('click', () => {
+      this.depoisAberto = !this.depoisAberto;
+      el.querySelector('#nuvem-depois')?.classList.toggle('d-none', !this.depoisAberto);
+      b.setAttribute('aria-expanded', String(this.depoisAberto));
+      const alterna = b.querySelector('.alterna-depois');
+      if (alterna) alterna.textContent = `· ${this.depoisAberto ? 'ver menos' : 'ver mais'}`;
     }));
 
     // "ver mais / ver menos": revela as palavras da caixa. Não seleciona, não
