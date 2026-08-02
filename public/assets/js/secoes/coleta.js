@@ -72,6 +72,8 @@ const SecaoColeta = {
   relogio: null,       // consulta periódica enquanto a rodada está aberta
   qrAberto: false,     // QR na caixa de expansão: fechada até o condutor projetar
   arrastando: false,   // arraste em curso: o polling não redesenha por cima
+  reclassificando: null, // id da ideia reaberta do diagnóstico, à espera do novo destino
+  reclassificarRotulo: '', // de onde a ideia saiu (ex.: "Porter"), só para exibir
 
   /** Sem acento e sem caixa, para agrupar quem disse a mesma coisa. */
   norm(s) {
@@ -166,6 +168,7 @@ const SecaoColeta = {
         </div>
       </div>
 
+      ${podeTriar ? this.painelReclassificar() : ''}
       ${podeTriar ? this.painelTempestade(ano) : ''}
       ${this.rodadaAberta ? this.telaConducao() : ''}
 
@@ -528,6 +531,20 @@ const SecaoColeta = {
 
     if (!App.podeEditar()) return;
 
+    // Painel de reclassificação: escolher o novo destino abre o modal de
+    // encaminhar (a ideia já está SELECIONADA depois do reabrir)
+    el.querySelectorAll('[data-reclassificar]').forEach((b) => b.addEventListener('click', () => {
+      const item = this.itens.find((i) => i.id == b.dataset.reclassificar);
+      this.reclassificando = null;
+      this.reclassificarRotulo = '';
+      if (item) this.modalEncaminhar(item, b.dataset.destino);
+    }));
+    el.querySelector('[data-cancelar-reclassificar]')?.addEventListener('click', () => {
+      this.reclassificando = null;
+      this.reclassificarRotulo = '';
+      this.carregar();
+    });
+
     document.getElementById('btn-abrir-rodada')?.addEventListener('click', () => Modal.abrir({
       titulo: 'Abrir tempestade de ideias',
       url: '/api/rodadas',
@@ -718,14 +735,36 @@ const SecaoColeta = {
    */
   prepararReclassificacao() {
     if (!Diag.reclassificarColeta) return;
-    const alvo = this.itens.find((i) => String(i.id) === String(Diag.reclassificarColeta));
+    const ref = Diag.reclassificarColeta;
     Diag.reclassificarColeta = null;
-    if (!alvo) return;
-    if (this.rodadaAberta && Number(alvo.rodada_id) === Number(this.rodadaAberta.id)) {
-      this.selecionado = alvo.id;
-    } else {
-      Diag.destaqueColeta = alvo.id;
-    }
+    const alvo = this.itens.find((i) => String(i.id) === String(ref.id));
+    if (!alvo) { this.reclassificando = null; return; }
+    // Painel próprio (independe de rodada aberta): a ideia pode ser de outra
+    // rodada e não apareceria na nuvem da rodada atual
+    this.reclassificando = alvo.id;
+    this.reclassificarRotulo = ref.rotulo || '';
+  },
+
+  /**
+   * Ideia reaberta do diagnóstico: mostra o texto e de onde saiu, com os
+   * botões de destino para reclassificar. Some quando não há reclassificação.
+   */
+  painelReclassificar() {
+    if (!this.reclassificando) return '';
+    const item = this.itens.find((i) => i.id === this.reclassificando);
+    if (!item) { this.reclassificando = null; return ''; }
+    return `<div class="card mb-3 painel-reclassificar"><div class="card-body py-2 px-3">
+      <div class="rotulo-secao">Reclassificar ideia</div>
+      <div class="small mb-1">${Modal.esc(item.texto_tratado || item.texto)}</div>
+      <div class="small text-muted mb-2">${this.reclassificarRotulo
+        ? `Saiu de <strong>${Modal.esc(this.reclassificarRotulo)}</strong>. Escolha o novo destino:`
+        : 'Escolha o novo destino:'}</div>
+      <div class="d-flex gap-1 flex-wrap">
+        ${DESTINOS_TRIAGEM.map((d) => `<button class="btn btn-sm btn-destino" style="--cor-destino:${d.cor}"
+          data-reclassificar="${item.id}" data-destino="${d.valor}">${d.rotulo}</button>`).join('')}
+        <button class="btn btn-sm btn-outline-secondary" data-cancelar-reclassificar>Cancelar</button>
+      </div>
+    </div></div>`;
   },
 
   // Chegou aqui clicando no selo "Coleta · Fulano" de um card do diagnóstico

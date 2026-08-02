@@ -440,6 +440,16 @@ class ColetaController
         if (!in_array($tipo, ['CENARIO', 'FATOR'], true) || !$destinoId) {
             Json::erro('Esta ideia não está numa análise para reclassificar.');
         }
+        // Rótulo da classificação atual, capturado antes de apagar o registro,
+        // para a tela de reclassificação mostrar de onde a ideia está saindo
+        $rotulo = $tipo === 'CENARIO' ? 'Análise de Cenário' : (match (
+            (string)(Database::um('SELECT etapa FROM fator WHERE id = ?', [$destinoId])['etapa'] ?? '')
+        ) {
+            'PESTEL' => 'PESTEL',
+            'PORTER' => 'Porter',
+            'SWOT'   => 'SWOT',
+            default  => 'diagnóstico',
+        });
         if ($tipo === 'CENARIO') {
             Database::executar('DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
         } else {
@@ -454,7 +464,7 @@ class ColetaController
              WHERE id = ? AND planejamento_id = ?",
             [$id, $planId]
         );
-        Json::ok(['id' => $id, 'ano' => (int)$item['ano']]);
+        Json::ok(['id' => $id, 'ano' => (int)$item['ano'], 'rotulo' => $rotulo]);
     }
 
     /** Desfaz o agrupamento de uma ideia (ou do grupo inteiro, pelo líder). */

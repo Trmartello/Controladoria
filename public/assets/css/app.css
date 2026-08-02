@@ -431,6 +431,7 @@ input[type=range].faixa-verde:focus-visible {
 
 /* ===== Tempestade — tela de condução (projetada) ===== */
 .painel-rodada { border-left: 4px solid var(--verde-coperdia); }
+.painel-reclassificar { border-left: 4px solid var(--dourado); }
 .pin-grande {
   font-size: clamp(1.8rem, 6vw, 3rem);
   font-weight: 800;

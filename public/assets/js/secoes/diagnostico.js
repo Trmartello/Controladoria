@@ -190,14 +190,16 @@ const Diag = {
    */
   async reclassificar(coletaItemId) {
     if (!confirm('Reabrir esta ideia na tempestade para reclassificar? O item atual sai desta análise.')) return;
+    let rotulo = '';
     try {
       const plan = await App.planejamento();
-      await App.api(`/api/coleta/${coletaItemId}/reabrir`, { planejamento_id: plan.id });
+      const r = await App.api(`/api/coleta/${coletaItemId}/reabrir`, { planejamento_id: plan.id });
+      rotulo = (r && r.rotulo) || '';
     } catch (e) {
       alert(e.message);
       return;
     }
-    this.reclassificarColeta = coletaItemId;
+    this.reclassificarColeta = { id: coletaItemId, rotulo };
     App.mostrarSecao('coleta');
   },
 
