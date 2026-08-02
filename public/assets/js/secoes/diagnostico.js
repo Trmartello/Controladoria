@@ -147,6 +147,11 @@ const Diag = {
       + 'mudanças regulatórias favoráveis, expansão de demanda.',
     AMEACA: 'Entrada de concorrentes agressivos em preço, instabilidade econômica, '
       + 'escassez de matéria-prima, mudanças bruscas no comportamento do consumidor.',
+    // Análise de Cenário
+    SITUACAO_ATUAL: 'Onde o negócio está hoje: os fatos e números que descrevem a realidade atual '
+      + '— mercado, resultado, capacidade e posição competitiva.',
+    TENDENCIA: 'Para onde o ambiente aponta: movimentos que já se desenham e devem se intensificar '
+      + '— mercado, tecnologia, comportamento do cliente e regulação.',
   },
 
   // Ícone ⓘ e o painel de orientação de um tópico (só onde há texto definido).
@@ -193,18 +198,19 @@ const Diag = {
       Number(registro.coleta_vozes) > 1 ? ` +${Number(registro.coleta_vozes) - 1}` : ''}</button></div>`;
   },
 
-  ligarSeloColeta(el) {
+  ligarSeloColeta(el, rotuloAnalise = '') {
     el.querySelectorAll('[data-ir-coleta]').forEach((b) => {
       b.addEventListener('click', () => {
         this.destaqueColeta = b.dataset.irColeta;
         App.mostrarSecao('coleta');
       });
-      // Duplo clique no card reabre a ideia na tempestade para reclassificar
+      // Duplo clique no card leva a ideia à tempestade para reclassificar.
+      // Não remove nada aqui: o item só sai da análise ao escolher o novo destino.
       const card = b.closest('[data-card-fator]');
       if (card && App.podeEditar()) {
         card.addEventListener('dblclick', (ev) => {
           if (ev.target.closest('button, a, input, textarea, select')) return;
-          this.reclassificar(Number(b.dataset.irColeta));
+          this.reclassificar(Number(b.dataset.irColeta), rotuloAnalise);
         });
       }
     });
@@ -218,17 +224,10 @@ const Diag = {
    * "Reabrir e mover": remove o item da análise e leva a ideia de volta à
    * tempestade, carregada na bancada, para reclassificar.
    */
-  async reclassificar(coletaItemId) {
-    if (!confirm('Reabrir esta ideia na tempestade para reclassificar? O item atual sai desta análise.')) return;
-    let rotulo = '';
-    try {
-      const plan = await App.planejamento();
-      const r = await App.api(`/api/coleta/${coletaItemId}/reabrir`, { planejamento_id: plan.id });
-      rotulo = (r && r.rotulo) || '';
-    } catch (e) {
-      alert(e.message);
-      return;
-    }
+  // Não-destrutivo: apenas leva a ideia à tempestade. O item continua na
+  // análise até o condutor escolher o novo destino (aí sim é reaberto e movido).
+  reclassificar(coletaItemId, rotulo = '') {
+    if (!confirm('Levar esta ideia para a tempestade e reclassificar? Você escolhe o novo destino lá; se cancelar, ela continua nesta análise.')) return;
     this.reclassificarColeta = { id: coletaItemId, rotulo };
     App.mostrarSecao('coleta');
   },
@@ -345,7 +344,7 @@ const Diag = {
     this.ligarSeletorCategoriaMovel(el, etapa);
     this.ligarVerMais(el);
     this.aplicarDestaque(el, idSecao.replace('secao-', ''));
-    this.ligarSeloColeta(el);
+    this.ligarSeloColeta(el, ({ PESTEL: 'PESTEL', PORTER: 'Porter', SWOT: 'SWOT' })[etapa] || etapa);
     this.ligarOrientacoes(el);
     if (!App.podeEditar()) return;
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
@@ -449,11 +448,14 @@ const SecaoCenario = {
             <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
           </div>` : ''}
         </div></div>`).join('');
+      const cor = 'var(--verde-coperdia)';
       return `<div class="col-md-6" data-coluna-categoria="${tipo}">
         <div class="d-flex align-items-center">
-          <h2 class="h6 text-uppercase text-muted mb-0">${titulo} ${Diag.contadorCards(lista.length, 'var(--verde-coperdia)')}</h2>
-          ${Diag.botaoAddCategoria(tipo, titulo, 'var(--verde-coperdia)')}
+          ${Diag.iconeOrientacao(tipo, cor, titulo)}
+          <h2 class="h6 text-uppercase text-muted mb-0">${titulo} ${Diag.contadorCards(lista.length, cor)}</h2>
+          ${Diag.botaoAddCategoria(tipo, titulo, cor)}
         </div>
+        ${Diag.painelOrientacao(tipo, cor)}
         ${linhas || '<div class="text-muted small">Nenhum item.</div>'}
       </div>`;
     };
@@ -471,8 +473,6 @@ const SecaoCenario = {
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
         </div>
       </div>
-      <p class="text-muted">Onde estamos (situação atual do negócio) e para onde o ambiente aponta (tendências).
-      <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>
       ${Diag.seletorCategoriaMovel('CENARIO', [
         ['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências'],
       ], contagensCen)}
@@ -485,7 +485,8 @@ const SecaoCenario = {
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
     Diag.ligarVerMais(el);
     Diag.aplicarDestaque(el, 'cenario');
-    Diag.ligarSeloColeta(el);
+    Diag.ligarSeloColeta(el, 'Análise de Cenário');
+    Diag.ligarOrientacoes(el);
     if (!App.podeEditar()) return;
     const modalItem = (i = null, tipoNovo = null) => Modal.abrir({
       titulo: i ? `Editar item do cenário (${i.ano || ano})` : `Novo item do cenário · ${ano}`,
@@ -622,7 +623,7 @@ const SecaoSwot = {
     Diag.ligarSeletorCategoriaMovel(el, 'SWOT');
     Diag.ligarVerMais(el);
     Diag.aplicarDestaque(el, 'swot');
-    Diag.ligarSeloColeta(el);
+    Diag.ligarSeloColeta(el, 'SWOT');
     Diag.ligarOrientacoes(el);
 
     el.querySelectorAll('[data-ir-origem]').forEach((b) => b.addEventListener('click', () => {
@@ -732,6 +733,12 @@ const SecaoGut = {
       </div>
       <p class="text-muted">Priorize os fatores da SWOT de ${ano}: Gravidade × Urgência × Tendência (1–5).
       O ranking orienta as escolhas da cascata.${editar ? ' <strong>Toque em um fator para avaliar.</strong>' : ''}</p>
+      <div class="legenda-quadrantes gut-legenda">
+        <span class="small text-muted">Score = G × U × T (1–125):</span>
+        <span><i style="background:${this.corScore(64)}"></i>Alta prioridade (≥ 64) — tratar agora</span>
+        <span><i style="background:${this.corScore(27)}"></i>Média (27–63)</span>
+        <span><i style="background:${this.corScore(1)}"></i>Baixa (&lt; 27)</span>
+      </div>
 
       <div class="d-md-none">
         ${cartoes || `<div class="text-muted small">${vazio}</div>`}

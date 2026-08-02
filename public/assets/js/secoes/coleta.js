@@ -533,11 +533,20 @@ const SecaoColeta = {
 
     // Painel de reclassificação: escolher o novo destino abre o modal de
     // encaminhar (a ideia já está SELECIONADA depois do reabrir)
-    el.querySelectorAll('[data-reclassificar]').forEach((b) => b.addEventListener('click', () => {
+    el.querySelectorAll('[data-reclassificar]').forEach((b) => b.addEventListener('click', async () => {
       const item = this.itens.find((i) => i.id == b.dataset.reclassificar);
+      if (!item) return;
+      // Só agora a ideia sai da análise: reabre (remove o registro atual) e
+      // então abre o encaminhar para o novo destino
+      try {
+        await App.api(`/api/coleta/${item.id}/reabrir`, { planejamento_id: this.plan.id });
+      } catch (e) {
+        alert(e.message);
+        return;
+      }
       this.reclassificando = null;
       this.reclassificarRotulo = '';
-      if (item) this.modalEncaminhar(item, b.dataset.destino);
+      this.modalEncaminhar(item, b.dataset.destino);
     }));
     el.querySelector('[data-cancelar-reclassificar]')?.addEventListener('click', () => {
       this.reclassificando = null;
