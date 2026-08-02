@@ -128,9 +128,15 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   O encaminhamento usa **reserva atômica** (`Database::afetadas()` num UPDATE
   com a condição no WHERE) em vez de transação — o repositório não usa
   `beginTransaction` e `Json::erro()` encerra a execução.
-  Escrita passa por `Auth::exigirRespostaColeta()` / `exigirTriagemColeta()`,
-  que hoje repetem `exigirEdicaoPlanejamento`: existem para a regra do
-  brainstorm poder mudar sem afrouxar a autorização geral.
+  Escrita passa por `Auth::exigirRespostaColeta()` / `exigirTriagemColeta()`:
+  existem para a regra do brainstorm poder mudar sem afrouxar a autorização
+  geral. Eles **autorizam** (via `exigirEdicaoPlanejamento`) e **devolvem o
+  usuário logado** — o controller grava `autor_id`/`triado_por` com esse id.
+  Cuidado: `exigirEdicaoPlanejamento`/`exigirAcessoPlanejamento` retornam a
+  linha do **planejamento**, não o usuário; usar esse retorno como `$u` gravava
+  o id do plano em `autor_id` e estourava a FK para `usuario` (coincidia só
+  quando os ids batiam). Quem precisa do usuário chama `Auth::exigirLogin()`
+  além da autorização (como `DiarioController`/`RelatorioController`).
   - **Destino “Plano de ação” (`ACAO`)**: a ideia não vira fator nem cenário; o
     `encaminhar()` grava `destino_tipo='ACAO'` com `destino_id` NULL e a ideia
     fica **aguardando alocação**. `GET /api/coleta/aguardando-acao` lista as
