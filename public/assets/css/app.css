@@ -513,11 +513,15 @@ input[type=range].faixa-verde:focus-visible {
   transform: scale(1.03);
 }
 .grupo-caixa.adiada { border-style: dashed; border-color: #8a94a6; background: #fff; }
-.grupo-descricao {
-  font-size: .82rem;
-  font-weight: 600;
+/* Título da caixa-mãe: o texto da ideia que recebeu o arraste (ou o texto
+   tratado, quando o condutor o editou na bancada) */
+.grupo-titulo {
+  font-size: .88rem;
+  font-weight: 700;
   color: var(--verde-escuro);
-  margin-bottom: .35rem;
+  border-bottom: 1px solid #cfe2d8;
+  padding-bottom: .3rem;
+  margin-bottom: .4rem;
   overflow-wrap: anywhere;
 }
 .grupo-palavras { display: flex; flex-wrap: wrap; gap: .3rem; }

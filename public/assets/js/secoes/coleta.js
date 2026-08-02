@@ -265,24 +265,28 @@ const SecaoColeta = {
   },
 
   /**
-   * Uma ideia sozinha vira uma ficha; um grupo vira uma CAIXA com todas as
-   * palavras juntadas à vista, para o condutor ver o que foi reunido. Tocar na
-   * caixa — ou em qualquer palavra dela — leva o grupo à bancada, onde está o
-   * quadrante de prioridade.
+   * Uma ideia sozinha vira uma ficha; um grupo vira uma CAIXA-MÃE: a ideia que
+   * RECEBEU o arraste é o líder e dá o TÍTULO da caixa (editável na bancada,
+   * via texto tratado); as arrastadas ficam dentro, como conteúdo. Tocar na
+   * caixa — ou em qualquer palavra dela — leva o grupo INTEIRO à bancada: a
+   * tratativa é sempre da caixa como um todo, nunca das filhas em separado.
    */
   fichaOuCaixa(g, { adiada = false } = {}) {
     const i = g.representante;
     const multi = g.itens.length > 1;
+    // O líder é quem não aponta para ninguém (as filhas apontam para ele)
+    const lider = g.itens.find((x) => !x.agrupado_em_id) || i;
     const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
     const selo = `${multi ? `×${g.itens.length}` : ''}${g.votos ? ` ★${g.votos}` : ''}`.trim();
     // Faixa de prioridade da matriz, para quem já foi posicionada: mostra por que
     // a ficha subiu na fila e qual quadrante o condutor escolheu.
-    const q = i.situacao === 'SELECIONADO' ? QUADRANTES[`${i.impacto}:${i.esforco}`] : null;
+    const q = lider.situacao === 'SELECIONADO' ? QUADRANTES[`${lider.impacto}:${lider.esforco}`] : null;
     const seloPrio = q ? ` <span class="selo-prio" style="--cor-prio:${q.cor}">${q.titulo}</span>` : '';
-    // Adiada volta com um toque (data-retomar); ativa seleciona e arrasta
+    // Adiada volta com um toque (data-retomar); ativa seleciona e arrasta.
+    // No grupo, o id é o do líder: selecionar e arrastar valem para a caixa toda.
     const acao = adiada
-      ? `data-retomar="${i.id}"`
-      : `data-selecionar="${i.id}" data-arrastavel="${i.id}"`;
+      ? `data-retomar="${lider.id}"`
+      : `data-selecionar="${lider.id}" data-arrastavel="${lider.id}"`;
 
     if (!multi) {
       const rotulo = i.texto_tratado || i.texto;
@@ -292,18 +296,21 @@ const SecaoColeta = {
         style="--peso:1" ${acao} title="${dica}">${Modal.esc(rotulo)}${
         selo ? ` <span class="repetida">${selo}</span>` : ''}${seloPrio}</button>`;
     }
+    const titulo = lider.texto_tratado || lider.texto;
+    const filhas = g.itens.filter((x) => x !== lider);
     const dica = adiada ? 'Trazer de volta para a tempestade'
-      : `Grupo de ${g.itens.length} ideias — toque para tratar, arraste para juntar`;
-    // Um ✕ em cada palavra tira só ela do grupo (juntou por engano), sem
-    // desfazer o resto. Só na caixa ativa e para quem pode triar.
+      : `Caixa com ${g.itens.length} ideias — toque para tratar tudo junto, arraste para juntar a outra`;
+    // Um ✕ em cada palavra FILHA tira só ela do grupo (juntou por engano), sem
+    // desfazer o resto; o título (líder) não tem ✕ — para desfazer a caixa há o
+    // Desagrupar na bancada. Só na caixa ativa e para quem pode triar.
     const podeTirar = !adiada && App.podeEditar();
     return `<div class="grupo-caixa ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
       role="button" tabindex="0" ${acao} title="${dica}">
-      ${i.texto_tratado ? `<div class="grupo-descricao">${Modal.esc(i.texto_tratado)}</div>` : ''}
+      <div class="grupo-titulo">${Modal.esc(titulo)}</div>
       <div class="grupo-palavras">
-        ${g.itens.map((w) => `<span class="palavra-grupo">${Modal.esc(w.texto)}${
+        ${filhas.map((w) => `<span class="palavra-grupo">${Modal.esc(w.texto)}${
           podeTirar ? `<button type="button" class="palavra-x" data-remover-palavra="${w.id}"
-            title="Tirar do grupo" aria-label="Tirar esta ideia do grupo">×</button>` : ''}</span>`).join('')}
+            title="Tirar da caixa" aria-label="Tirar esta ideia da caixa">×</button>` : ''}</span>`).join('')}
       </div>
       <div class="grupo-rodape">${g.itens.length} ideias juntas${g.votos ? ` · ★ ${g.votos}` : ''}${seloPrio}</div>
     </div>`;
@@ -316,8 +323,11 @@ const SecaoColeta = {
     // a situação da ideia e, com ela, quem representa o grupo — a bancada
     // sumiria no meio da discussão
     const grupoSel = grupos.find((g) => g.itens.some((i) => i.id === this.selecionado));
+    // Num grupo, a bancada é SEMPRE da caixa-mãe: o líder dá o título e toda
+    // tratativa (texto, prioridade, destino) vale para a caixa como um todo —
+    // não existe mais tratativa individual das filhas
     const item = grupoSel
-      ? (grupoSel.itens.find((i) => i.id === this.selecionado) || grupoSel.representante)
+      ? (grupoSel.itens.find((i) => !i.agrupado_em_id) || grupoSel.representante)
       : null;
     const fichas = grupos.map((g) => this.fichaOuCaixa(g)).join('');
 
@@ -367,8 +377,8 @@ const SecaoColeta = {
       <div class="small text-muted">${Modal.esc(item.autor)}${
         ids.length > 1 ? ` e mais ${ids.length - 1}` : ''}${
         grupo?.votos ? ` · ★ ${grupo.votos} voto(s)` : ''}</div>
-      ${ids.length > 1 ? `<div class="small text-muted">Tratar aqui resolve as
-        ${ids.length} ideias iguais de uma vez.</div>` : ''}
+      ${ids.length > 1 ? `<div class="small text-muted">Este texto é o <strong>título
+        da caixa</strong>; tratar aqui resolve as ${ids.length} ideias de uma vez.</div>` : ''}
       <input type="hidden" id="grupo-bancada" value="${ids.join(',')}">
       <textarea class="form-control mt-1" rows="3" id="texto-bancada" maxlength="400"
         aria-label="Texto complementado">${Modal.esc(item.texto_tratado || item.texto)}</textarea>
@@ -448,9 +458,11 @@ const SecaoColeta = {
           ficha.dataset.arrastou = '1';
           const alvo = Number(alvoAtual.dataset.arrastavel);
           try {
-            await App.api(`/api/coleta/${ficha.dataset.arrastavel}/agrupar`,
+            const r = await App.api(`/api/coleta/${ficha.dataset.arrastavel}/agrupar`,
               { planejamento_id: this.plan.id, alvo });
-            this.selecionado = alvo;
+            // O alvo do arraste é quem manda: ele (ou o líder do grupo dele)
+            // vira a caixa-mãe, e a bancada abre já nela
+            this.selecionado = Number(r.lider) || alvo;
           } catch (erro) {
             alert(erro.message);
           }
@@ -657,8 +669,14 @@ const SecaoColeta = {
         });
         b.textContent = 'Texto salvo';
         setTimeout(() => { b.textContent = 'Salvar texto'; }, 1500);
-        this.itens.find((i) => i.id == b.dataset.complementar).texto_tratado =
-          el.querySelector('#texto-bancada').value;
+        const campo = el.querySelector('#texto-bancada');
+        this.itens.find((i) => i.id == b.dataset.complementar).texto_tratado = campo.value;
+        // O texto salvo é o TÍTULO da caixa-mãe: atualiza na nuvem sem
+        // redesenhar (o aviso "Texto salvo" fica visível) e libera a trava do
+        // relógio, que segura o redesenho enquanto o textarea está editado
+        campo.defaultValue = campo.value;
+        const titulo = el.querySelector(`[data-selecionar="${b.dataset.complementar}"] .grupo-titulo`);
+        if (titulo) titulo.textContent = campo.value;
       } catch (e) {
         alert(e.message);
       }
