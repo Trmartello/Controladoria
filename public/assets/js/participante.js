@@ -13,6 +13,17 @@ const Participante = {
   ultimaAssinatura: null,
   editando: null,
 
+  // Ditado por voz (Web Speech API) — o microfone só aparece se o navegador
+  // suportar. A lógica é replicada do modal.js porque esta página é autônoma
+  // (não carrega o resto do JS do app); as classes .campo-voz/.btn-ditar vêm
+  // do app.css, que a página já carrega.
+  suporteVoz: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
+  reconhecimento: null,
+  botaoGravando: null,
+  iconeMic: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
+    + '<path d="M5 3a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V3z"/>'
+    + '<path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z"/></svg>',
+
   get tela() {
     return document.getElementById('tela');
   },
@@ -99,8 +110,8 @@ const Participante = {
    * teclado no meio da frase — o participante não consegue nem digitar.
    */
   digitando() {
-    // Editando uma ideia? O redesenho fecharia o editor no meio da correção.
-    if (this.editando !== null) return true;
+    // Ditando ou editando? O redesenho mataria o ditado / fecharia o editor.
+    if (this.botaoGravando || this.editando !== null) return true;
     const ativo = document.activeElement;
     if (ativo && (ativo.tagName === 'TEXTAREA' || ativo.tagName === 'INPUT')) return true;
     const campo = document.getElementById('campo-ideia');
@@ -142,6 +153,8 @@ const Participante = {
 
   // ---- Sala ----
   render() {
+    // Um redesenho invalida o botão do mic; encerra qualquer ditado em curso.
+    this.pararDitado();
     const r = this.rodada;
     const rascunho = document.getElementById('campo-ideia')?.value ?? '';
     const encerrada = r.situacao !== 'ABERTA';
@@ -182,6 +195,7 @@ const Participante = {
     }
     if (this.minhas.length && !votando) this.ligarEdicaoIdeias();
     if (votando) this.ligarVotacao();
+    this.ligarDitado();
   },
 
   blocoEnvio(restam) {
@@ -189,11 +203,12 @@ const Participante = {
       return `<div class="alert alert-success py-2 small mt-3">
         Você enviou todas as suas ideias. Aguarde a condução.</div>`;
     }
+    const area = `<textarea id="campo-ideia" class="form-control" rows="4" maxlength="400"
+          placeholder="Escreva ou dite como você diria em voz alta"></textarea>`;
     return `
       <div class="mt-3">
         <label class="form-label small" for="campo-ideia">Sua ideia</label>
-        <textarea id="campo-ideia" class="form-control" rows="4" maxlength="400"
-          placeholder="Escreva como você diria em voz alta"></textarea>
+        ${this.comVoz(area, 'campo-ideia')}
         <div class="d-flex align-items-center gap-2 mt-2">
           <span class="small text-muted flex-grow-1">Pode enviar mais ${restam}.</span>
           <button class="btn btn-verde" id="btn-enviar">Enviar</button>
@@ -207,6 +222,7 @@ const Participante = {
     const campo = document.getElementById('campo-ideia');
     const aviso = document.getElementById('aviso-envio');
     btn.addEventListener('click', async () => {
+      this.pararDitado();
       const texto = campo.value.trim();
       if (!texto) return;
       btn.disabled = true;
@@ -233,10 +249,11 @@ const Participante = {
 
   // ---- Corrigir a própria ideia ----
   editorIdeia(i) {
+    const area = `<textarea id="campo-editar-${i.id}" class="form-control" rows="3" maxlength="400"
+          data-editar-campo="${i.id}">${this.esc(i.texto)}</textarea>`;
     return `
       <div class="ideia-minha">
-        <textarea class="form-control" rows="3" maxlength="400"
-          data-editar-campo="${i.id}">${this.esc(i.texto)}</textarea>
+        ${this.comVoz(area, `campo-editar-${i.id}`)}
         <div class="d-flex align-items-center gap-2 mt-2">
           <button class="btn btn-verde btn-sm" data-salvar-edicao="${i.id}">Salvar</button>
           <button class="btn btn-outline-secondary btn-sm" data-cancelar-edicao="${i.id}">Cancelar</button>
@@ -277,6 +294,75 @@ const Participante = {
       const c = this.tela.querySelector(`[data-editar-campo="${this.editando}"]`);
       if (c) { c.focus(); c.setSelectionRange(c.value.length, c.value.length); }
     }
+  },
+
+  // ---- Ditado por voz ----
+  /** Embrulha um campo no controle de voz, com o botão do microfone. */
+  comVoz(html, alvoId) {
+    if (!this.suporteVoz) return html;
+    return `<div class="campo-voz">${html}<button class="btn-ditar" type="button" data-alvo="${alvoId}"
+      title="Ditar por voz" aria-label="Ditar por voz">${this.iconeMic}</button></div>`;
+  },
+
+  ligarDitado() {
+    this.tela.querySelectorAll('.btn-ditar').forEach((b) =>
+      b.addEventListener('click', () => this.alternarDitado(b)));
+  },
+
+  // Toque para gravar (o botão pulsa em vermelho), fale, toque para parar — o
+  // texto reconhecido é acrescentado ao campo, como no ditado do celular.
+  alternarDitado(botao) {
+    if (this.botaoGravando === botao) {
+      this.pararDitado();
+      return;
+    }
+    this.pararDitado();
+    const campo = document.getElementById(botao.dataset.alvo);
+    if (!campo) return;
+    const Reconhecedor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new Reconhecedor();
+    rec.lang = 'pt-BR';
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.onresult = (ev) => {
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) {
+          const texto = ev.results[i][0].transcript.trim();
+          if (texto) campo.value = campo.value ? `${campo.value.replace(/\s+$/, '')} ${texto}` : texto;
+        }
+      }
+    };
+    rec.onend = () => this.pararDitado();
+    rec.onerror = (ev) => {
+      this.pararDitado();
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+        alert('Permita o acesso ao microfone no navegador para ditar por voz.');
+      }
+    };
+    this.reconhecimento = rec;
+    this.botaoGravando = botao;
+    botao.classList.add('gravando');
+    botao.title = 'Parar ditado';
+    botao.setAttribute('aria-label', 'Parar ditado');
+    try {
+      rec.start();
+    } catch {
+      this.pararDitado();
+    }
+  },
+
+  pararDitado() {
+    if (this.reconhecimento) {
+      this.reconhecimento.onend = null;
+      try { this.reconhecimento.stop(); } catch { /* já parado */ }
+    }
+    if (this.botaoGravando) {
+      this.botaoGravando.classList.remove('gravando');
+      this.botaoGravando.title = 'Ditar por voz';
+      this.botaoGravando.setAttribute('aria-label', 'Ditar por voz');
+    }
+    this.reconhecimento = null;
+    this.botaoGravando = null;
   },
 
   // ---- Votação (fase opcional) ----

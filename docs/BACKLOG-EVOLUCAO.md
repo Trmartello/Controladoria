@@ -622,9 +622,11 @@ própria ideia enquanto a rodada está aberta e a ideia ainda está `NOVO`: bot�
 mesmo padrão das outras rotas públicas). Editar reavalia o agrupamento por
 texto sem dissolver grupos de outras pessoas.
 
-**Uma peça prevista não entrou**, na página do participante e sem bloquear a
-oficina: o **ditado por voz** (o `por_voz` já era corte reconhecido no tema 2).
-Fica como polimento de v2.
+**Ditado por voz — ENTREGUE.** A caixa de ideia (e o editor de correção) da
+página do participante ganharam o microfone da Web Speech API, no mesmo padrão
+do `modal.js` e reusando as classes `.campo-voz`/`.btn-ditar` do `app.css`. O
+botão só aparece onde o navegador suporta; sem suporte, a caixa segue como
+texto simples. Fecha a página do participante — não sobra ressalva ali.
 
 ---
 

@@ -47,11 +47,12 @@ refutação adversarial). Resultado: **entregue**, com duas ressalvas.
    encaminhamento é escolha manual. A **Decisão C** ("a matriz decide o
    encaminhamento") **não** foi implementada literalmente.
 
-Na página do participante, a **edição da própria ideia** (antes pendente) **foi
-entregue** — botão "editar" na lista "Suas ideias", editor inline e rota pública
-`POST /api/publico/ideia/{id}`, restrita a ideia `NOVO` da rodada aberta, com a
-autoria provada pelo token. Continua fora só o **ditado por voz** (`por_voz` já
-era corte reconhecido no tema 2).
+A página do participante está **completa**: a **edição da própria ideia** (botão
+"editar", editor inline, rota `POST /api/publico/ideia/{id}` restrita a ideia
+`NOVO` da rodada aberta, autoria provada pelo token) e o **ditado por voz** (Web
+Speech API na caixa de ideia e no editor, com degradação graciosa sem suporte)
+foram entregues. Não sobra ressalva na página do participante — resta apenas a
+fatia 3 acima.
 
 ### Extras entregues além do escopo do backlog 2.1
 
