@@ -527,39 +527,57 @@ const SecaoProjetos = {
   // existente, guardando o vínculo com a ideia da coleta.
   modalConverterAcao(ideia) {
     if (!ideia) return;
+    // Onde a ideia entra: iniciativa existente, nova iniciativa num projeto, ou
+    // um projeto novo (a própria ideia). Tudo pode ser criado na hora.
     const opcoes = [];
-    (this.projetos || []).forEach((p) => (p.iniciativas || []).forEach((ini) =>
-      opcoes.push({ valor: `${p.id}:${ini.id}`, rotulo: `${p.titulo} › ${ini.titulo}` })));
-    if (!opcoes.length) {
-      alert('Crie um projeto com pelo menos uma iniciativa antes de atribuir a ideia a um plano de ação.');
-      return;
-    }
+    (this.projetos || []).forEach((p) => {
+      (p.iniciativas || []).forEach((ini) =>
+        opcoes.push({ valor: `e:${p.id}:${ini.id}`, rotulo: `${p.titulo} › ${ini.titulo}` }));
+      opcoes.push({ valor: `ni:${p.id}`, rotulo: `${p.titulo} › ➕ nova iniciativa` });
+    });
+    opcoes.push({ valor: 'np', rotulo: '➕ Novo projeto (com nova iniciativa)' });
+
+    const nomeIdeia = ideia.texto_tratado || ideia.texto;
     Modal.abrir({
       titulo: 'Transformar ideia em ação',
       url: '/api/desdobramentos',
       valores: {
         planejamento_id: this.plan.id, coleta_item_id: ideia.id,
-        o_que: ideia.texto_tratado || ideia.texto, prioridade: 'MEDIA',
+        onde: opcoes[0].valor, nome: nomeIdeia, o_que: nomeIdeia, prioridade: 'MEDIA',
       },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'coleta_item_id', rotulo: '', tipo: 'hidden' },
         { nome: 'ideia', rotulo: 'Ideia da coleta', tipo: 'info', texto: ideia.texto,
           barra: { cor: '#5a3e2b', titulo: ideia.autor } },
-        { nome: 'destino_ini', rotulo: 'Em qual iniciativa entra?', tipo: 'select', opcoes },
+        { nome: 'onde', rotulo: 'Onde entra?', tipo: 'select', opcoes },
+        { nome: 'nome', rotulo: 'Nome do novo projeto/iniciativa',
+          ajuda: 'Usado só quando você cria um projeto ou iniciativa novos acima.' },
         { nome: 'o_que', rotulo: 'O quê? (a ação)', obrigatorio: true, tipo: 'textarea', linhas: 2 },
         { nome: 'quem', rotulo: 'Quem?', obrigatorio: true, tipo: 'selecao_livre', opcoes: this.responsaveis,
-          ajuda: 'Responsável pela ação.' },
+          ajuda: 'Responsável pela ação (e pelo projeto, se for novo).' },
         { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes: [
           { valor: 'ALTA', rotulo: 'Alta' }, { valor: 'MEDIA', rotulo: 'Média' }, { valor: 'BAIXA', rotulo: 'Baixa' },
         ]},
       ],
       transformar: (d) => {
-        const [projetoId, iniciativaId] = String(d.destino_ini || '').split(':');
-        return {
+        const base = {
           planejamento_id: d.planejamento_id, coleta_item_id: d.coleta_item_id,
-          projeto_id: Number(projetoId), iniciativa_id: Number(iniciativaId),
           o_que: d.o_que, quem: d.quem, prioridade: d.prioridade,
+        };
+        const v = String(d.onde || '');
+        if (v.startsWith('e:')) {
+          const [, pid, iid] = v.split(':');
+          return { ...base, projeto_id: Number(pid), iniciativa_id: Number(iid) };
+        }
+        if (v.startsWith('ni:')) {
+          const [, pid] = v.split(':');
+          return { ...base, projeto_id: Number(pid), iniciativa_nova: d.nome };
+        }
+        // np — a ideia vira um projeto novo, com uma iniciativa "Ações"
+        return {
+          ...base, projeto_novo: d.nome, projeto_ano: Number(ideia.ano) || undefined,
+          projeto_responsavel: d.quem, iniciativa_nova: 'Ações',
         };
       },
       aoSalvar: () => this.carregar(),

@@ -247,8 +247,16 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         $plan = Auth::exigirEdicaoPlanejamento($planId);
         $projetoId = (int)($d['projeto_id'] ?? 0);
+        // Criação na hora — usada ao transformar uma ideia da coleta em ação,
+        // quando o projeto e/ou a iniciativa ainda não existem
+        if (!$projetoId && trim((string)($d['projeto_novo'] ?? '')) !== '') {
+            $projetoId = $this->criarProjetoRapido($plan, $planId, $d);
+        }
         $this->exigirProjeto($projetoId, $planId);
         $iniciativaId = (int)($d['iniciativa_id'] ?? 0);
+        if (!$iniciativaId && trim((string)($d['iniciativa_nova'] ?? '')) !== '') {
+            $iniciativaId = $this->criarIniciativaRapida($projetoId, (string)$d['iniciativa_nova']);
+        }
         $iniciativa = $this->exigirIniciativa($iniciativaId, $planId);
         if ((int)$iniciativa['projeto_id'] !== $projetoId) {
             Json::erro('A iniciativa não pertence a este projeto.');
@@ -452,6 +460,51 @@ class ProjetoController
             Json::erro('A data de fim não pode ser anterior à de início.');
         }
         return [$inicio, $fim];
+    }
+
+    /**
+     * Cria um projeto na hora (ideia da coleta que não cabe em nenhum
+     * existente). Mesmas regras do cadastro: ano precisa de um horizonte do
+     * ciclo, e responsável obrigatório (herda o "Quem?" da ação se não vier).
+     */
+    private function criarProjetoRapido(array $plan, int $planId, array $d): int
+    {
+        $titulo = mb_substr(trim((string)$d['projeto_novo']), 0, 255);
+        $ano = (int)($d['projeto_ano'] ?? 0);
+        if ($ano < 2000 || $ano > 2100) {
+            Json::erro('Informe o ano do novo projeto.');
+        }
+        $responsavel = mb_substr(trim((string)($d['projeto_responsavel'] ?? $d['quem'] ?? '')), 0, 255);
+        if ($responsavel === '') {
+            Json::erro('Informe o responsável do novo projeto.');
+        }
+        $horizonte = Database::um(
+            'SELECT id FROM horizonte WHERE ciclo_id = ? AND ? BETWEEN ano_inicio AND ano_fim ORDER BY ordem, id',
+            [(int)$plan['ciclo_id'], $ano]
+        );
+        if (!$horizonte) {
+            Json::erro("Nenhum horizonte do ciclo contempla o ano {$ano}. Ajuste os horizontes em Cadastros.");
+        }
+        return (int)Database::executar(
+            "INSERT INTO projeto (planejamento_id, tipo, ano, titulo, descricao, responsavel,
+               horizonte_id, classificacao, status, ordem)
+             VALUES (?, 'ESTRATEGICO', ?, ?, '', ?, ?, 'NORMAL', 'NAO_INICIADO', 0)",
+            [$planId, $ano, $titulo, $responsavel, (int)$horizonte['id']]
+        );
+    }
+
+    /** Cria uma iniciativa na hora sob o projeto informado (mesma ordem do cadastro). */
+    private function criarIniciativaRapida(int $projetoId, string $titulo): int
+    {
+        $titulo = mb_substr(trim($titulo), 0, 255);
+        if ($titulo === '') {
+            Json::erro('Informe o nome da nova iniciativa.');
+        }
+        $ordem = (int)(Database::um('SELECT COUNT(*) AS n FROM iniciativa WHERE projeto_id = ?', [$projetoId])['n'] ?? 0);
+        return (int)Database::executar(
+            "INSERT INTO iniciativa (projeto_id, titulo, descricao, status, ordem) VALUES (?, ?, '', 'ABERTA', ?)",
+            [$projetoId, $titulo, $ordem]
+        );
     }
 
     private function exigirProjeto(int $id, int $planId): array
