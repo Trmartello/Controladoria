@@ -449,6 +449,21 @@ const SecaoProjetos = {
     if (p?.ano && !anos.includes(Number(p.ano))) {
       opcoesAno.unshift({ valor: p.ano, rotulo: `${p.ano} (fora dos horizontes — escolha outro)` });
     }
+
+    // De qual escolha da Cascata este projeto nasce. A coluna existia e o
+    // cartão já mostrava "↳ Escolha da cascata", mas não havia como preencher:
+    // nem campo no formulário, nem gravação no servidor.
+    const nomeH = (id) => this.cascata.horizontes.find((h) => h.id == id)?.nome || '?';
+    const nomeD = (id) => this.cascata.drivers.find((d) => d.id == id)?.nome || '?';
+    const nomeE = (id) => (id ? this.cascata.eixos.find((e) => e.id == id)?.nome : 'Síntese') || 'Síntese';
+    const opcoesCascata = [{ valor: '', rotulo: '(não vinculado a uma escolha)' }].concat(
+      (this.cascata.escolhas || [])
+        .map((e) => ({
+          valor: e.id,
+          rotulo: `${nomeH(e.horizonte_id)} · ${nomeD(e.driver_id)} · ${nomeE(e.eixo_id)} — `
+            + `${String(e.escolha).replace(/\s+/g, ' ').slice(0, 70)}`,
+        }))
+        .sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR')));
     Modal.abrir({
       titulo: p ? 'Editar projeto' : 'Novo projeto',
       url: p ? `/api/projetos/${p.id}` : '/api/projetos',
@@ -471,6 +486,11 @@ const SecaoProjetos = {
         { nome: 'responsavel', rotulo: 'Responsável', tipo: 'selecao_livre', opcoes: this.responsaveis,
           obrigatorio: true, vazio: '(selecione o responsável)',
           ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
+        { nome: 'cascata_id', rotulo: 'Escolha da Cascata que este projeto executa',
+          tipo: 'select', opcoes: opcoesCascata,
+          ajuda: opcoesCascata.length > 1
+            ? 'Liga o projeto à decisão que o originou — é o que permite ler, na Cascata, o que cada escolha virou.'
+            : 'Nenhuma escolha cadastrada ainda: preencha a Cascata para poder vincular.' },
       ],
     });
   },

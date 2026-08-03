@@ -154,6 +154,19 @@ class ProjetoController
         }
         $horizonteId = (int)$horizonte['id'];
 
+        // Vínculo com a escolha da Cascata que originou o projeto. A coluna e o
+        // JOIN da listagem já existiam ("↳ Escolha da cascata" no cartão), mas
+        // nada gravava o valor — o campo era inalcançável pela interface.
+        // A escolha precisa ser DESTE planejamento, senão um id de outro negócio
+        // entraria pelo corpo da requisição.
+        $cascataId = !empty($d['cascata_id']) ? (int)$d['cascata_id'] : null;
+        if ($cascataId !== null && !Database::um(
+            'SELECT id FROM cascata_escolha WHERE id = ? AND planejamento_id = ?',
+            [$cascataId, $planId]
+        )) {
+            Json::erro('A escolha da cascata não pertence a este planejamento.');
+        }
+
         // O cadastro pede só ano, título, descrição e responsável; datas e
         // status vêm das ações (Consolidacao) e o restante é legado,
         // preservado como está nos projetos antigos
@@ -161,15 +174,15 @@ class ProjetoController
             $this->exigirProjeto($id, $planId);
             Database::executar(
                 'UPDATE projeto SET tipo = ?, ano = ?, titulo = ?, descricao = ?,
-                   responsavel = ?, horizonte_id = ? WHERE id = ?',
-                [$tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId, $id]
+                   responsavel = ?, horizonte_id = ?, cascata_id = ? WHERE id = ?',
+                [$tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId, $cascataId, $id]
             );
         } else {
             $id = (int)Database::executar(
                 'INSERT INTO projeto (planejamento_id, tipo, ano, titulo, descricao,
-                   responsavel, horizonte_id, classificacao, status, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, \'NORMAL\', \'NAO_INICIADO\', 0)',
-                [$planId, $tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId]
+                   responsavel, horizonte_id, cascata_id, classificacao, status, ordem)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, \'NORMAL\', \'NAO_INICIADO\', 0)',
+                [$planId, $tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId, $cascataId]
             );
         }
         Json::ok(['id' => $id]);
