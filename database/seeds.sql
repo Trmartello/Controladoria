@@ -25,19 +25,26 @@ INSERT INTO eixo (nome, ordem)
     UNION ALL SELECT 'Financeiro', 6) v
   WHERE NOT EXISTS (SELECT 1 FROM eixo);
 
--- Negócios do campo FlagFilialNegocio do Comercial Global (códigos oficiais)
+-- Negócios do campo FlagFilialNegocio do Comercial Global (códigos oficiais,
+-- lista de 03/08/2026). Espelha App\Services\QlikSync::NEGOCIOS_FONTE, que é a
+-- fonte da verdade; os códigos 10, 14, 15 e 16 não existem na fonte.
+-- Instalação que já tem negócios cadastrados não passa por aqui: quem aplica a
+-- lista nela é o passo "negócios oficiais" do migrate.php.
 INSERT INTO negocio (cod_negocio, nome, origem)
   SELECT v.cod, v.nome, 'QLIK' FROM (
-    SELECT '1' AS cod, 'NEGOCIO CEREAIS' AS nome
-    UNION ALL SELECT '2', 'NEGOCIO PECUARIA'
-    UNION ALL SELECT '4', 'NEGOCIO LEITE'
-    UNION ALL SELECT '6', 'NEGOCIO FABRICA DE RACOES'
-    UNION ALL SELECT '7', 'NEGOCIO UTM'
-    UNION ALL SELECT '8', 'NEGOCIO LOJAS AGROPECUARIAS'
-    UNION ALL SELECT '9', 'NEGOCIO SUPERMERCADOS'
-    UNION ALL SELECT '11', 'NEGOCIO POSTO COMBUSTIVEIS'
-    UNION ALL SELECT '12', 'POSTO RESFRIAMENTO DE LEITE'
-    UNION ALL SELECT '13', 'UBS UNID.BENEF.SEMENTES') v
+    SELECT '1' AS cod, 'CEREAIS' AS nome
+    UNION ALL SELECT '2', 'PECUARIA'
+    UNION ALL SELECT '3', 'FRUTICULTURA'
+    UNION ALL SELECT '4', 'LEITE'
+    UNION ALL SELECT '5', 'JUROS S. COTA CAPITAL'
+    UNION ALL SELECT '6', 'F. DE RACOES'
+    UNION ALL SELECT '7', 'UTM'
+    UNION ALL SELECT '8', 'AGROPECUARIAS'
+    UNION ALL SELECT '9', 'SUPERMERCADOS'
+    UNION ALL SELECT '11', 'P. COMBUSTIVEIS'
+    UNION ALL SELECT '12', 'P. RESF. LEITE'
+    UNION ALL SELECT '13', 'UBS'
+    UNION ALL SELECT '17', 'USINA FOTOVOLTAICA') v
   WHERE NOT EXISTS (SELECT 1 FROM negocio);
 
 INSERT INTO ciclo (nome, ano_base, ano_inicio, ano_fim, status)

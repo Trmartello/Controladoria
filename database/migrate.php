@@ -241,6 +241,59 @@ $pdo->exec(
 
 executarArquivoSql($pdo, __DIR__ . '/seeds.sql');
 
+// ---- Negócios oficiais: aplica a lista da fonte a quem já tem cadastro ----
+// O seeds.sql só age com a tabela vazia, então uma revisão da fonte (a de
+// 03/08/2026 acrescentou 3, 5 e 17 e trocou os rótulos longos pelos curtos)
+// nunca chegaria a uma instalação em uso — dependeria de alguém lembrar de
+// clicar em "Sincronizar" no Cadastro de Negócios.
+//
+// A lista vem por reflexão de QlikSync::NEGOCIOS_FONTE (a fonte da verdade),
+// para o migrate não virar uma terceira cópia dos códigos que envelhece à
+// parte. O arquivo só declara a classe: incluí-lo não executa nada nem exige
+// o autoload da aplicação.
+require_once __DIR__ . '/../app/Services/QlikSync.php';
+$oficiais = (new ReflectionClass(App\Services\QlikSync::class))->getConstant('NEGOCIOS_FONTE');
+$renomeados = 0;
+$novos = 0;
+foreach ($oficiais as $cod => $nome) {
+    $cod = (string)$cod;
+    // Renomeia pelo CÓDIGO, que é a identidade do negócio no ERP. Só linha da
+    // sincronização: cadastro manual nunca é sobrescrito.
+    $atual = $pdo->prepare("SELECT id, nome FROM negocio WHERE cod_negocio = ? AND origem = 'QLIK'");
+    $atual->execute([$cod]);
+    $linha = $atual->fetch(PDO::FETCH_ASSOC);
+
+    // O nome oficial já pertencer a OUTRA linha impediria distinguir as duas no
+    // seletor — nesse caso o rename fica para a sincronização resolver, que
+    // sabe contar o conflito.
+    $dono = $pdo->prepare('SELECT id FROM negocio WHERE nome = ? AND id <> ?');
+    $dono->execute([$nome, (int)($linha['id'] ?? 0)]);
+    $nomeOcupado = (bool)$dono->fetchColumn();
+
+    if ($linha) {
+        if ($linha['nome'] !== $nome && !$nomeOcupado) {
+            $pdo->prepare('UPDATE negocio SET nome = ? WHERE id = ?')
+                ->execute([$nome, (int)$linha['id']]);
+            $renomeados++;
+        }
+        continue;
+    }
+    // Código que ainda não existe entra como QLIK. Sem código nem nome livres
+    // não há inserção: duplicar qualquer um dos dois é pior que faltar a linha,
+    // e a tela de sincronização mostra o conflito.
+    $ocupa = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ?');
+    $ocupa->execute([$cod]);
+    if ($ocupa->fetchColumn() || $nomeOcupado) {
+        continue;
+    }
+    $pdo->prepare("INSERT INTO negocio (cod_negocio, nome, origem) VALUES (?, ?, 'QLIK')")
+        ->execute([$cod, $nome]);
+    $novos++;
+}
+if ($renomeados || $novos) {
+    echo "migrate: negócios oficiais — {$renomeados} renomeado(s), {$novos} novo(s).\n";
+}
+
 // Usuário admin inicial (senha via env ADMIN_SENHA; sem a variável, gera uma
 // senha aleatória e a mostra no log uma única vez — trocar após o 1º login)
 $existe = $pdo->query("SELECT COUNT(*) FROM usuario WHERE perfil = 'ADMIN'")->fetchColumn();

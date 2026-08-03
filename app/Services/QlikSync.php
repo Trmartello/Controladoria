@@ -15,18 +15,31 @@ use App\Core\Database;
  */
 class QlikSync
 {
-    /** Valores de `FlagFilialNegocio` no Comercial Global (verificado em 31/07/2026). */
+    /**
+     * Valores de `FlagFilialNegocio` no Comercial Global (conferido com a lista
+     * do cliente em 03/08/2026). Esta é a fonte da verdade dos códigos: o
+     * `seeds.sql` (instalação nova) e o passo do `migrate.php` (instalação que
+     * já existe) aplicam exatamente esta lista.
+     *
+     * A revisão de 03/08/2026 trouxe três códigos que faltavam (3, 5 e 17) e
+     * trocou os rótulos longos da carga anterior pelos oficiais, mais curtos
+     * ("NEGOCIO FABRICA DE RACOES" → "F. DE RACOES"). Os códigos 10, 14, 15 e
+     * 16 não existem na fonte — o intervalo é descontínuo de propósito.
+     */
     private const NEGOCIOS_FONTE = [
-        '1'  => 'NEGOCIO CEREAIS',
-        '2'  => 'NEGOCIO PECUARIA',
-        '4'  => 'NEGOCIO LEITE',
-        '6'  => 'NEGOCIO FABRICA DE RACOES',
-        '7'  => 'NEGOCIO UTM',
-        '8'  => 'NEGOCIO LOJAS AGROPECUARIAS',
-        '9'  => 'NEGOCIO SUPERMERCADOS',
-        '11' => 'NEGOCIO POSTO COMBUSTIVEIS',
-        '12' => 'POSTO RESFRIAMENTO DE LEITE',
-        '13' => 'UBS UNID.BENEF.SEMENTES',
+        '1'  => 'CEREAIS',
+        '2'  => 'PECUARIA',
+        '3'  => 'FRUTICULTURA',
+        '4'  => 'LEITE',
+        '5'  => 'JUROS S. COTA CAPITAL',
+        '6'  => 'F. DE RACOES',
+        '7'  => 'UTM',
+        '8'  => 'AGROPECUARIAS',
+        '9'  => 'SUPERMERCADOS',
+        '11' => 'P. COMBUSTIVEIS',
+        '12' => 'P. RESF. LEITE',
+        '13' => 'UBS',
+        '17' => 'USINA FOTOVOLTAICA',
     ];
 
     public static function sincronizarNegocios(): array
@@ -37,14 +50,26 @@ class QlikSync
             $conectividade = self::verificarApp($qlik) ? 'ok' : 'falha';
         }
 
+        $resolvidas = self::resolverLinhas();
+
         // Negócios de cargas QLIK antigas que saíram da fonte (ex.: NEGOCIO
         // REFLORESTAMENTO) são desativados e liberam o código que ocupavam —
         // os planejamentos vinculados a eles permanecem intactos. Cadastros
         // manuais nunca são desativados.
-        $marcadores = implode(',', array_fill(0, count(self::NEGOCIOS_FONTE), '?'));
+        // O critério é a LINHA que nenhum código da fonte reconheceu, não o
+        // nome: com o critério antigo, renomear na fonte (a revisão de
+        // 03/08/2026 renomeou os dez) desativava a linha em uso e criava outra
+        // do zero — o negócio sumia do seletor e o planejamento dele ficava
+        // pendurado numa linha inativa.
+        // array_values: `$resolvidas` é indexado pelo código, e array_map
+        // preserva a chave — a lista chegaria ao PDO com chaves de texto e o
+        // execute() posicional morreria com "Invalid parameter number".
+        $ids = array_values(array_map(static fn ($l) => (int)$l['id'], $resolvidas));
+        $marcadores = $ids ? implode(',', array_fill(0, count($ids), '?')) : '';
         $foraDaFonte = Database::todos(
-            "SELECT id FROM negocio WHERE origem = 'QLIK' AND ativo = 1 AND nome NOT IN ($marcadores)",
-            array_values(self::NEGOCIOS_FONTE)
+            "SELECT id FROM negocio WHERE origem = 'QLIK' AND ativo = 1"
+            . ($ids ? " AND id NOT IN ($marcadores)" : ''),
+            $ids
         );
         foreach ($foraDaFonte as $f) {
             Database::executar(
@@ -54,18 +79,14 @@ class QlikSync
         }
         $desativados = count($foraDaFonte);
 
-        // 1ª passada: linhas casadas pelo nome com código divergente do oficial
-        // recebem um código temporário, liberando os oficiais para a 2ª passada
-        // (cargas antigas usavam códigos provisórios sequenciais que colidem).
-        foreach (self::NEGOCIOS_FONTE as $cod => $nome) {
-            $linha = Database::um(
-                "SELECT id, cod_negocio FROM negocio WHERE nome = ? AND origem = 'QLIK'",
-                [$nome]
-            );
-            if ($linha && $linha['cod_negocio'] !== (string)$cod) {
+        // 1ª passada: linha reconhecida cujo código difere do oficial recebe um
+        // código temporário, liberando os oficiais para a 2ª passada (cargas
+        // antigas usavam códigos provisórios sequenciais que colidem).
+        foreach ($resolvidas as $cod => $linha) {
+            if ((string)$linha['cod_negocio'] !== (string)$cod) {
                 Database::executar(
                     'UPDATE negocio SET cod_negocio = ? WHERE id = ?',
-                    ['T' . $linha['id'], $linha['id']]
+                    ['T' . $linha['id'], (int)$linha['id']]
                 );
             }
         }
@@ -75,44 +96,44 @@ class QlikSync
         $conflitos = 0;
         foreach (self::NEGOCIOS_FONTE as $cod => $nome) {
             $cod = (string)$cod;
-            // Só linhas já da sincronização casam por nome. Sem o filtro de
-            // origem, um negócio cadastrado À MÃO com um dos nomes oficiais era
-            // adotado pela carga — virava origem QLIK, tinha o código reescrito
-            // e passava a ser desativável por ela, contra a regra de que linha
-            // manual nunca é sobrescrita.
-            $linha = Database::um(
-                "SELECT id FROM negocio WHERE nome = ? AND origem = 'QLIK'",
+            $linha = $resolvidas[$cod] ?? null;
+            // Nome oficial ocupado por cadastro MANUAL: linha manual nunca é
+            // sobrescrita, e duplicar o nome dela confundiria o seletor. Com
+            // linha própria reconhecida, o código oficial ainda é aplicado e só
+            // o nome fica como está; sem linha, não há o que inserir.
+            $manualComONome = Database::um(
+                "SELECT id FROM negocio WHERE nome = ? AND origem = 'MANUAL'",
                 [$nome]
             );
-            // Nome oficial ocupado por cadastro manual: registra como conflito
-            // e segue, sem tocar na linha de ninguém
-            if (!$linha && Database::um('SELECT id FROM negocio WHERE nome = ?', [$nome])) {
+            if ($manualComONome) {
                 $conflitos++;
-                continue;
+                if (!$linha) {
+                    continue;
+                }
             }
             $ocupante = Database::um(
                 'SELECT id FROM negocio WHERE cod_negocio = ? AND id <> ?',
                 [$cod, $linha ? (int)$linha['id'] : 0]
             );
+            // Cód. oficial só entra se não colidir com um cadastro manual
+            $novoCod = $ocupante ? self::proximoCodigoLivre((int)$cod) : $cod;
+            if ($ocupante) {
+                $conflitos++;
+            }
 
             if ($linha) {
-                // Cód. oficial só entra se não colidir com um cadastro manual
-                $novoCod = $ocupante ? self::proximoCodigoLivre((int)$cod) : $cod;
-                if ($ocupante) {
-                    $conflitos++;
-                }
+                // `ativo = 1` porque estar na fonte É estar ativo: linha
+                // desativada por uma carga anterior e listada de novo precisa
+                // voltar ao seletor, senão fica reconhecida e invisível.
                 Database::executar(
-                    "UPDATE negocio SET cod_negocio = ?, origem = 'QLIK', sincronizado_em = NOW() WHERE id = ?",
-                    [$novoCod, (int)$linha['id']]
+                    "UPDATE negocio SET cod_negocio = ?, nome = ?, origem = 'QLIK',
+                            ativo = 1, sincronizado_em = NOW() WHERE id = ?",
+                    [$novoCod, $manualComONome ? $linha['nome'] : $nome, (int)$linha['id']]
                 );
                 $atualizados++;
                 continue;
             }
 
-            $novoCod = $ocupante ? self::proximoCodigoLivre((int)$cod) : $cod;
-            if ($ocupante) {
-                $conflitos++;
-            }
             Database::executar(
                 "INSERT INTO negocio (cod_negocio, nome, origem, sincronizado_em)
                  VALUES (?, ?, 'QLIK', NOW())",
@@ -128,6 +149,47 @@ class QlikSync
             'desativados'   => $desativados,
             'conectividade' => $conectividade,
         ];
+    }
+
+    /**
+     * Qual linha do banco é cada código da fonte, na ordem: pelo CÓDIGO e, se
+     * ele não achar ninguém, pelo NOME.
+     *
+     * O código é a identidade — é o oficial do ERP e não muda; o nome muda (a
+     * fonte renomeou os dez negócios em 03/08/2026). Casar por nome primeiro
+     * fazia de toda renomeação uma troca de linha, com o efeito descrito no
+     * `sincronizarNegocios()`. O nome segue valendo como segunda chance, para
+     * a linha de carga antiga que ficou com código provisório (`T<id>`).
+     *
+     * Só linhas de origem QLIK entram: sem esse filtro, um negócio cadastrado
+     * À MÃO com um dos nomes oficiais era adotado pela carga — virava origem
+     * QLIK, tinha o código reescrito e passava a ser desativável por ela,
+     * contra a regra de que linha manual nunca é sobrescrita.
+     *
+     * @return array<string, array{id: int, cod_negocio: string, nome: string}>
+     */
+    private static function resolverLinhas(): array
+    {
+        $resolvidas = [];
+        $usadas = [];
+        foreach (self::NEGOCIOS_FONTE as $cod => $nome) {
+            $linha = Database::um(
+                "SELECT id, cod_negocio, nome FROM negocio WHERE cod_negocio = ? AND origem = 'QLIK'",
+                [(string)$cod]
+            ) ?: Database::um(
+                "SELECT id, cod_negocio, nome FROM negocio WHERE nome = ? AND origem = 'QLIK'",
+                [$nome]
+            );
+            // Uma linha responde por um código só: sem esta trava, um nome que
+            // casasse com a linha de outro código faria os dois escreverem na
+            // mesma linha e um negócio inteiro sumiria do cadastro.
+            if (!$linha || isset($usadas[(int)$linha['id']])) {
+                continue;
+            }
+            $usadas[(int)$linha['id']] = true;
+            $resolvidas[(string)$cod] = $linha;
+        }
+        return $resolvidas;
     }
 
     private static function proximoCodigoLivre(int $sugestao): string

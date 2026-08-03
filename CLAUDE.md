@@ -95,8 +95,18 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 - Investimentos decididos nunca voltam a PROPOSTO; APROVADO só avança para
   EXECUTADO.
 - Negócios vêm do Qlik (`FlagFilialNegocio`, códigos oficiais em
-  `App\Services\QlikSync::NEGOCIOS_FONTE`); linhas manuais nunca são
-  sobrescritas pela sincronização.
+  `App\Services\QlikSync::NEGOCIOS_FONTE` — a fonte da verdade, que o
+  `seeds.sql` e o passo "negócios oficiais" do `migrate.php` espelham); linhas
+  manuais nunca são sobrescritas pela sincronização. O **Corporativo** não é
+  linha de `negocio`: é opção própria do seletor (`app.js`, valor `CORP`) e
+  vira `planejamento.escopo = 'CORPORATIVO'` com `negocio_id` NULL.
+  A identidade do negócio é o **código**, não o nome: `QlikSync` casa por
+  `cod_negocio` e só depois por nome. Casar por nome primeiro fazia de toda
+  renomeação na fonte uma troca de linha — a antiga era desativada e uma nova
+  inserida, o negócio sumia do seletor e o planejamento dele ficava pendurado
+  numa linha inativa. Como o `seeds.sql` só age com a tabela vazia e a rota
+  `POST /api/negocios/sync` **não tem botão na interface**, quem aplica uma
+  revisão da lista a uma instalação em uso é o migrate.
 - Excluir um fator de PESTEL/Porter/SWOT remove também o promovido para a SWOT
   e a linha correspondente na matriz GUT (`FatorController::excluir`).
 - **Tempestade de ideias**: rodada com PIN de 6 dígitos (`coleta_rodada`), tela
@@ -264,7 +274,10 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 - `ALTER TABLE` novo: usar `garantirColuna()` (checa information_schema).
 - Seeds (`database/seeds.sql`) só inserem quando a tabela/contexto está vazio
   (`WHERE NOT EXISTS (SELECT 1 FROM tabela)`) — renomear algo pela UI não pode
-  recriar linhas.
+  recriar linhas. Consequência: revisão de lista oficial (os negócios) não chega
+  a quem já tem cadastro pelo seeds; vai num passo próprio do migrate, que lê a
+  lista de `QlikSync::NEGOCIOS_FONTE` por reflexão para não virar terceira cópia
+  dos códigos.
 - Compatibilidade MySQL 8 **e** MariaDB (por isso `ON DUPLICATE KEY UPDATE
   VALUES()` e nada de sintaxe exclusiva do MySQL 8). Toda tabela declara
   `COLLATE=utf8mb4_unicode_ci`: sem isso cada motor escolhe a sua (MariaDB
