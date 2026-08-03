@@ -27,7 +27,9 @@ INSERT INTO eixo (nome, ordem)
 
 -- Negócios do campo FlagFilialNegocio do Comercial Global (códigos oficiais,
 -- lista de 03/08/2026). Espelha App\Services\QlikSync::NEGOCIOS_FONTE, que é a
--- fonte da verdade; os códigos 10, 14, 15 e 16 não existem na fonte.
+-- fonte da verdade; os códigos 10, 14, 15 e 16 não existem na fonte, e o 5
+-- (JUROS S. COTA CAPITAL) fica de fora por ser resultado financeiro, não
+-- unidade que planeja.
 -- Instalação que já tem negócios cadastrados não passa por aqui: quem aplica a
 -- lista nela é o passo "negócios oficiais" do migrate.php.
 INSERT INTO negocio (cod_negocio, nome, origem)
@@ -36,7 +38,6 @@ INSERT INTO negocio (cod_negocio, nome, origem)
     UNION ALL SELECT '2', 'PECUARIA'
     UNION ALL SELECT '3', 'FRUTICULTURA'
     UNION ALL SELECT '4', 'LEITE'
-    UNION ALL SELECT '5', 'JUROS S. COTA CAPITAL'
     UNION ALL SELECT '6', 'F. DE RACOES'
     UNION ALL SELECT '7', 'UTM'
     UNION ALL SELECT '8', 'AGROPECUARIAS'

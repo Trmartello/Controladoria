@@ -197,6 +197,9 @@ try {
         case $rota === 'GET /api/negocios':        (new NegocioController())->listar(); break;
         case $rota === 'POST /api/negocios':       (new NegocioController())->salvar(); break;
         case $rota === 'POST /api/negocios/sync':  (new NegocioController())->sincronizar(); break;
+        // A específica antes da genérica: /api/negocios/7/excluir cairia nela
+        case (bool)preg_match('#^POST /api/negocios/(\d+)/excluir$#', $rota, $m):
+            (new NegocioController())->excluir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/negocios/(\d+)$#', $rota, $m):
             (new NegocioController())->salvar((int)$m[1]); break;
 

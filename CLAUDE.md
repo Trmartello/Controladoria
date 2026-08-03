@@ -100,6 +100,8 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   manuais nunca são sobrescritas pela sincronização. O **Corporativo** não é
   linha de `negocio`: é opção própria do seletor (`app.js`, valor `CORP`) e
   vira `planejamento.escopo = 'CORPORATIVO'` com `negocio_id` NULL.
+  O código **5 (JUROS S. COTA CAPITAL) existe no ERP e fica fora da lista** de
+  propósito: é resultado financeiro, não unidade que planeja.
   A identidade do negócio é o **código**, não o nome: `QlikSync` casa por
   `cod_negocio` e só depois por nome. Casar por nome primeiro fazia de toda
   renomeação na fonte uma troca de linha — a antiga era desativada e uma nova
@@ -107,6 +109,15 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   numa linha inativa. Como o `seeds.sql` só age com a tabela vazia e a rota
   `POST /api/negocios/sync` **não tem botão na interface**, quem aplica uma
   revisão da lista a uma instalação em uso é o migrate.
+  **Desativar ≠ excluir.** Desativar tira das seleções e preserva tudo; excluir
+  (`POST /api/negocios/{id}/excluir`, ✕ que só aparece em linha **inativa**)
+  tira do cadastro. O servidor recusa duas vezes, e as duas recusas existem
+  para não iludir quem clica: negócio **com planejamento** (a FK é RESTRICT — o
+  DELETE morreria, e junto iria o diagnóstico do negócio) e **código da lista
+  oficial** (a sincronização recriaria a linha no deploy seguinte). O migrate
+  faz a faxina dos inativos que sobraram de carga antiga, com as mesmas guardas
+  mais "sem vínculo de usuário" — quem ainda é escopo de alguém sai só pela
+  tela, com confirmação.
 - Excluir um fator de PESTEL/Porter/SWOT remove também o promovido para a SWOT
   e a linha correspondente na matriz GUT (`FatorController::excluir`).
 - **Tempestade de ideias**: rodada com PIN de 6 dígitos (`coleta_rodada`), tela

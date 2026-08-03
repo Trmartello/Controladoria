@@ -78,6 +78,45 @@ class NegocioController
         Json::ok(['id' => $id]);
     }
 
+    /**
+     * Tira o negócio do cadastro de vez. Desativar esconde do seletor mas deixa
+     * a linha na lista de Cadastros; excluir é para o resto de carga antiga que
+     * não representa nada.
+     *
+     * Duas recusas, ambas para não iludir quem clica:
+     * - **planejamento vinculado**: a FK é RESTRICT, então o DELETE morreria com
+     *   erro do banco. Some junto o diagnóstico, a cascata, os projetos e as
+     *   metas daquele negócio — quem quiser mesmo apaga o planejamento antes.
+     * - **código da lista oficial**: a sincronização (e o passo do migrate)
+     *   recriaria a linha no deploy seguinte. Excluir ali é trabalho perdido, e
+     *   o certo é desativar — ou tirar o código de `QlikSync::NEGOCIOS_FONTE`.
+     *
+     * Os vínculos de escopo (`usuario_negocio`) vão junto por CASCADE: sem o
+     * negócio, eles não significam mais nada.
+     */
+    public function excluir(int $id): void
+    {
+        Auth::exigirAdministrador();
+        $negocio = Database::um('SELECT id, cod_negocio, nome FROM negocio WHERE id = ?', [$id]);
+        if (!$negocio) {
+            Json::erro('Negócio não encontrado.', 404);
+        }
+        $planos = (int)Database::um(
+            'SELECT COUNT(*) AS n FROM planejamento WHERE negocio_id = ?',
+            [$id]
+        )['n'];
+        if ($planos > 0) {
+            Json::erro("«{$negocio['nome']}» tem {$planos} planejamento(s) e não pode ser excluído. "
+                . 'Desative o negócio para tirá-lo das seleções sem perder o que já foi planejado.');
+        }
+        if (QlikSync::estaNaFonte((string)$negocio['cod_negocio'])) {
+            Json::erro("O código {$negocio['cod_negocio']} está na lista oficial do Comercial Global: "
+                . 'a sincronização recriaria o negócio. Desative-o em vez de excluir.');
+        }
+        Database::executar('DELETE FROM negocio WHERE id = ?', [$id]);
+        Json::ok(['excluido' => $id]);
+    }
+
     /** Importa os negócios do app Comercial Global (Qlik). */
     public function sincronizar(): void
     {

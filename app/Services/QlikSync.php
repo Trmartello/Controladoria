@@ -21,17 +21,23 @@ class QlikSync
      * `seeds.sql` (instalação nova) e o passo do `migrate.php` (instalação que
      * já existe) aplicam exatamente esta lista.
      *
-     * A revisão de 03/08/2026 trouxe três códigos que faltavam (3, 5 e 17) e
-     * trocou os rótulos longos da carga anterior pelos oficiais, mais curtos
+     * A revisão de 03/08/2026 trouxe os códigos 3 e 17, que faltavam, e trocou
+     * os rótulos longos da carga anterior pelos oficiais, mais curtos
      * ("NEGOCIO FABRICA DE RACOES" → "F. DE RACOES"). Os códigos 10, 14, 15 e
      * 16 não existem na fonte — o intervalo é descontínuo de propósito.
+     *
+     * O código **5 (JUROS S. COTA CAPITAL) existe no ERP mas não entra aqui**:
+     * é linha de resultado financeiro, não unidade de negócio que planeja. Ficou
+     * de fora a pedido do cliente, depois de entrar e ser desativado no
+     * cadastro. Enquanto estiver fora desta lista, o negócio pode ser excluído
+     * pela tela; devolvê-lo é acrescentar a linha de volta — a sincronização o
+     * recria com o código oficial.
      */
     private const NEGOCIOS_FONTE = [
         '1'  => 'CEREAIS',
         '2'  => 'PECUARIA',
         '3'  => 'FRUTICULTURA',
         '4'  => 'LEITE',
-        '5'  => 'JUROS S. COTA CAPITAL',
         '6'  => 'F. DE RACOES',
         '7'  => 'UTM',
         '8'  => 'AGROPECUARIAS',
@@ -41,6 +47,12 @@ class QlikSync
         '13' => 'UBS',
         '17' => 'USINA FOTOVOLTAICA',
     ];
+
+    /** O código está na lista oficial? (a sincronização recria quem está.) */
+    public static function estaNaFonte(string $cod): bool
+    {
+        return array_key_exists($cod, self::NEGOCIOS_FONTE);
+    }
 
     public static function sincronizarNegocios(): array
     {

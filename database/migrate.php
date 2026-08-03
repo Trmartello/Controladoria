@@ -294,6 +294,37 @@ if ($renomeados || $novos) {
     echo "migrate: negócios oficiais — {$renomeados} renomeado(s), {$novos} novo(s).\n";
 }
 
+// ---- Faxina dos negócios inativos que não representam nada ----
+// Sobra de carga antiga: linha com o nome longo de antes da revisão (ex.: "99 —
+// NEGOCIO UTM" ao lado do "7 — UTM" oficial) que ficou desativada ocupando
+// espaço no Cadastro. Some no deploy, sem ninguém precisar clicar.
+//
+// Três guardas, e nenhuma delas é decorativa:
+// - fora da lista oficial: apagar quem está nela seria trabalho perdido, porque
+//   o passo acima recria a linha na mesma execução;
+// - sem planejamento: a FK é RESTRICT e o DELETE morreria — e junto iria todo o
+//   diagnóstico daquele negócio, que é exatamente o que ninguém quer perder;
+// - sem vínculo de usuário: `usuario_negocio` cai por CASCADE, então uma linha
+//   que ainda é escopo de alguém sai só pela tela, com confirmação.
+$sobras = $pdo->query(
+    "SELECT n.id, n.cod_negocio, n.nome FROM negocio n
+      WHERE n.ativo = 0
+        AND NOT EXISTS (SELECT 1 FROM planejamento p WHERE p.negocio_id = n.id)
+        AND NOT EXISTS (SELECT 1 FROM usuario_negocio un WHERE un.negocio_id = n.id)"
+)->fetchAll(PDO::FETCH_ASSOC);
+$apagados = 0;
+foreach ($sobras as $s) {
+    if (array_key_exists((string)$s['cod_negocio'], $oficiais)) {
+        continue;
+    }
+    $pdo->prepare('DELETE FROM negocio WHERE id = ?')->execute([(int)$s['id']]);
+    echo "migrate: negócio inativo removido — {$s['cod_negocio']} — {$s['nome']}.\n";
+    $apagados++;
+}
+if ($apagados) {
+    echo "migrate: {$apagados} negócio(s) inativo(s) removido(s) do cadastro.\n";
+}
+
 // Usuário admin inicial (senha via env ADMIN_SENHA; sem a variável, gera uma
 // senha aleatória e a mostra no log uma única vez — trocar após o 1º login)
 $existe = $pdo->query("SELECT COUNT(*) FROM usuario WHERE perfil = 'ADMIN'")->fetchColumn();
