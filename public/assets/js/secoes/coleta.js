@@ -500,6 +500,16 @@ const SecaoColeta = {
       const r = await App.api(`/api/coleta/${itemId}/priorizar`, limpar
         ? { planejamento_id: this.plan.id, limpar: true }
         : { planejamento_id: this.plan.id, impacto, esforco });
+      // Posicionar é uma OPERAÇÃO COMPLETA: a interface volta ao neutro, sem
+      // seleção e sem menu. Aqui vale para os dois caminhos — o arraste e o
+      // toque no quadrante —, que passam ambos por este método.
+      // Sem isso, o cartão seguia selecionado depois de posicionado e os
+      // quadrantes continuavam armados: o toque seguinte em outro quadrante
+      // movia a ideia de novo, sem que ninguém tivesse pedido.
+      // Quem quiser reposicionar toca na pílula outra vez — o que também
+      // reabre o menu de destinos dela.
+      this.selecionado = null;
+      this.menuDestino = null;
       // Aguarda o redesenho ANTES do modal de descarte, senão a tela troca
       // por baixo do modal recém-aberto
       await this.carregar();
@@ -773,13 +783,11 @@ const SecaoColeta = {
             // toca no quadrante já escolhido. Nada mudou, então a seleção e o
             // menu continuam como estavam — é uma tentativa, não uma operação.
             if (arrastado && arrastado.impacto === impacto && arrastado.esforco === esforco) return;
-            // Movimento concluído = operação encerrada: a interface volta ao
-            // neutro. Sem isso o cartão seguia selecionado e o dedo continuava
-            // arrastando o mesmo item sem querer. Arrastar de novo continua
+            // Movimento concluído = operação encerrada. Quem limpa a seleção e
+            // o menu é o próprio aplicarQuadrante, ponto comum do arraste e do
+            // toque — a regra mora num lugar só. Arrastar de novo continua
             // valendo sem reselecionar (data-solta-quadrante é permanente);
-            // classificar por TOQUE é que volta a exigir escolher o cartão.
-            this.selecionado = null;
-            this.menuDestino = null;
+            // classificar por TOQUE volta a exigir escolher o cartão.
             await this.aplicarQuadrante(id, impacto, esforco);
             return;
           }
@@ -872,10 +880,11 @@ const SecaoColeta = {
         return;
       }
       const id = Number(b.dataset.selecionar);
-      // Na fila, tocar de novo desmarca. Na matriz, NÃO: a pílula já vem
-      // selecionada depois de classificar, e desmarcá-la deixaria a bancada
-      // vazia e travaria a reclassificação (não haveria como escolher outro
-      // quadrante para ela).
+      // Na fila, tocar de novo desmarca. Na matriz, NÃO: lá o toque é o que
+      // ARMA a reclassificação (seleciona a pílula e acende os quadrantes), e
+      // desmarcar por engano deixaria a bancada vazia sem nada em troca. Como
+      // posicionar agora encerra a operação e desmarca sozinho, é este toque
+      // que devolve o controle à pessoa quando ela quiser mover de novo.
       const naMatriz = !!b.closest('.cp-fichas');
       this.selecionado = (!naMatriz && this.selecionado === id) ? null : id;
       // Na matriz, o toque também abre o menu (destinos + remover do
