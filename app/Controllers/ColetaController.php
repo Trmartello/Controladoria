@@ -407,7 +407,7 @@ class ColetaController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirTriagemColeta($planId);
         $item = $this->exigirItem($id, $planId);
-        if (in_array($item['situacao'], ['ACEITO', 'DESCARTADO'], true)) {
+        if (in_array($item['situacao'], ['DESCARTADO', 'DIVIDIDO'], true)) {
             Json::erro('Esta ideia já foi tratada.');
         }
         $texto = trim(is_string($d['texto_tratado'] ?? null) ? $d['texto_tratado'] : '');
@@ -416,6 +416,29 @@ class ColetaController
         }
         $grupo = $this->grupo($id, $planId);
         $marcas = implode(',', array_fill(0, count($grupo), '?'));
+
+        // A ideia encaminhada continua editável — ela não sai mais de vista ao
+        // ganhar destino. Corrigir a redação aqui tem de corrigir TAMBÉM o
+        // registro que ela virou no diagnóstico, senão os dois divergem e a
+        // SWOT fica com o texto velho para sempre.
+        foreach (Database::todos(
+            "SELECT DISTINCT destino_tipo, destino_id FROM coleta_item
+             WHERE id IN ({$marcas}) AND destino_id IS NOT NULL",
+            $grupo
+        ) as $dst) {
+            if ($dst['destino_tipo'] === 'CENARIO') {
+                Database::executar(
+                    'UPDATE cenario_item SET descricao = ? WHERE id = ? AND planejamento_id = ?',
+                    [$texto, (int)$dst['destino_id'], $planId]
+                );
+            } elseif ($dst['destino_tipo'] === 'FATOR') {
+                Database::executar(
+                    'UPDATE fator SET descricao = ? WHERE id = ? AND planejamento_id = ?',
+                    [$texto, (int)$dst['destino_id'], $planId]
+                );
+            }
+        }
+
         Database::executar(
             "UPDATE coleta_item SET texto_tratado = ? WHERE id IN ({$marcas})",
             [$texto, ...$grupo]

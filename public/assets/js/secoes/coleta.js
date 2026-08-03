@@ -396,7 +396,9 @@ const SecaoColeta = {
           aria-expanded="${aberta}" aria-controls="palavras-${chave}"
           title="${aberta ? 'Recolher' : 'Mostrar'} as ideias reunidas nesta caixa">${
           g.itens.length} ideias juntas · ${aberta ? 'ver menos' : 'ver mais'}</button>${
-        g.votos ? `<span class="grupo-votos">★ ${g.votos}</span>` : ''}
+        g.votos ? `<span class="grupo-votos">★ ${g.votos}</span>` : ''}${
+        this.rotuloDestino(lider) ? ` <span class="fp-tag">${
+          Modal.esc(this.rotuloDestino(lider))}</span>` : ''}
       </div>
       <div class="grupo-palavras ${aberta ? '' : 'recolhida'}" id="palavras-${chave}">
         ${filhas.map((w) => `<span class="palavra-grupo">${Modal.esc(w.texto)}${
@@ -612,6 +614,9 @@ const SecaoColeta = {
         grupo?.votos ? ` · ★ ${grupo.votos} voto(s)` : ''}</div>
       ${ids.length > 1 ? `<div class="small text-muted">Este texto é o <strong>título
         da caixa</strong>; tratar aqui resolve as ${ids.length} ideias de uma vez.</div>` : ''}
+      ${this.rotuloDestino(item) ? `<div class="small text-muted">Já encaminhada para
+        <strong>${Modal.esc(this.rotuloDestino(item))}</strong> — salvar o texto aqui corrige
+        lá também.</div>` : ''}
       <input type="hidden" id="grupo-bancada" value="${ids.join(',')}">
       <textarea class="form-control mt-1" rows="3" id="texto-bancada" maxlength="400"
         aria-label="Texto complementado">${Modal.esc(item.texto_tratado || item.texto)}</textarea>
