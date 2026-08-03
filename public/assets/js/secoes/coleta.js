@@ -107,7 +107,9 @@ const SecaoColeta = {
     const grupos = new Map();
     const rodadaId = this.rodadaAberta ? Number(this.rodadaAberta.id) : null;
     for (const i of this.itens) {
-      if (i.situacao !== 'NOVO' && i.situacao !== 'SELECIONADO') continue;
+      // ACEITO entra: a ideia encaminhada CONTINUA na matriz, com a tag do
+      // destino — sair de vista ao encaminhar apagava o retrato da sala
+      if (!['NOVO', 'SELECIONADO', 'ACEITO'].includes(i.situacao)) continue;
       // A nuvem é da rodada em curso: misturar respostas de rodadas anteriores
       // e ideias avulsas do ano tiraria o sentido do "toque para tratar"
       if (rodadaId !== null && Number(i.rodada_id) !== rodadaId) continue;
@@ -126,6 +128,31 @@ const SecaoColeta = {
     return [...grupos.values()];
   },
 
+  /** O líder do grupo — quem não aponta para ninguém. */
+  liderDe(g) {
+    return g.itens.find((x) => !x.agrupado_em_id) || g.representante;
+  },
+
+  /** Já encaminhada para o diagnóstico/plano de ação? */
+  encaminhado(g) {
+    return this.liderDe(g).situacao === 'ACEITO';
+  },
+
+  /**
+   * Rótulo do destino, para a tag na pílula. `destino_tipo` só diz FATOR —
+   * quem sabe se virou PESTEL, Porter ou SWOT é a etapa, que o listar()
+   * traz por JOIN.
+   */
+  rotuloDestino(i) {
+    if (i.situacao !== 'ACEITO') return '';
+    if (i.destino_tipo === 'CENARIO') return 'Cenário';
+    if (i.destino_tipo === 'ACAO') return i.destino_id ? 'Plano de ação' : 'Plano de ação · aguardando';
+    if (i.destino_tipo === 'FATOR') {
+      return { PESTEL: 'PESTEL', PORTER: 'Porter', SWOT: 'SWOT' }[i.destino_etapa] || 'Diagnóstico';
+    }
+    return '';
+  },
+
   /** Quadrante do grupo, quando classificado (a classificação vale para todos). */
   quadranteDe(g) {
     // Pelo LÍDER, não pelo representante: uma voz nova pode entrar no grupo já
@@ -142,6 +169,9 @@ const SecaoColeta = {
    */
   nuvem(adiadas = false) {
     return this.montarGrupos(adiadas)
+      // Fora da fila fica só o que está na matriz (tem quadrante). A ideia
+      // tirada do quadrante volta para cá — inclusive a já encaminhada, que
+      // volta com a tag do destino, para ninguém achar que está por tratar.
       .filter((g) => adiadas || !this.quadranteDe(g))
       .sort((a, b) =>
         (b.itens.length - a.itens.length) || (b.votos - a.votos) || (a.representante.id - b.representante.id));
@@ -183,7 +213,7 @@ const SecaoColeta = {
         // impacto/esforço entram no retrato: no quadrante "Descartar" a ideia
         // segue NOVO, e sem eles a classificação não redesenharia os outros
         // telões da sala
-        const retrato = (l) => JSON.stringify(l.map((i) => [i.id, i.situacao, i.votos, i.impacto, i.esforco, i.adiado]));
+        const retrato = (l) => JSON.stringify(l.map((i) => [i.id, i.situacao, i.votos, i.impacto, i.esforco, i.adiado, i.destino_tipo, i.destino_id]));
         const antes = retrato(this.itens);
         this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
         this.rodadas = await App.api(`/api/rodadas?planejamento_id=${this.plan.id}&ano=${ano}`);
@@ -322,9 +352,13 @@ const SecaoColeta = {
       const rotulo = i.texto_tratado || i.texto;
       const dica = adiada ? 'Trazer de volta para a fila'
         : `${Modal.esc(i.autor)} — toque para tratar, arraste sobre outra para juntar`;
+      // A encaminhada que voltou do quadrante carrega a etiqueta do destino:
+      // sem ela pareceria uma ideia por tratar, e alguém a encaminharia de novo
+      const destinoFicha = this.rotuloDestino(lider);
       return `<button type="button" class="ficha-nuvem ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
         style="--peso:1" ${acao} title="${dica}">${Modal.esc(rotulo)}${
-        selo ? ` <span class="repetida">${selo}</span>` : ''}</button>`;
+        selo ? ` <span class="repetida">${selo}</span>` : ''}${
+        destinoFicha ? ` <span class="fp-tag">${Modal.esc(destinoFicha)}</span>` : ''}</button>`;
     }
     const titulo = lider.texto_tratado || lider.texto;
     const filhas = g.itens.filter((x) => x !== lider);
@@ -464,16 +498,27 @@ const SecaoColeta = {
    * do painel não há o que juntar.
    */
   fichaPrio(g) {
-    const lider = g.itens.find((x) => !x.agrupado_em_id) || g.representante;
+    const lider = this.liderDe(g);
     const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
     const selo = `${g.itens.length > 1 ? `×${g.itens.length}` : ''}${g.votos ? ` ★${g.votos}` : ''}`.trim();
     // Arrastável para mudar de quadrante (reclassificar). Dentro do painel o
     // arraste nunca agrupa: o alvo resolvido é sempre o quadrante.
-    return `<button type="button" class="ficha-prio ${desteGrupo ? 'selecionada' : ''}"
-      data-selecionar="${lider.id}" data-arrastavel="${lider.id}"
-      title="${Modal.esc(lider.autor || '')} — toque para tratar, arraste para outro quadrante">
-      <span class="fp-texto">${Modal.esc(lider.texto_tratado || lider.texto)}</span>${
-      selo ? ` <span class="repetida">${selo}</span>` : ''}</button>`;
+    const destino = this.rotuloDestino(lider);
+    // O ✕ tira a ideia do quadrante e a devolve à fila. Se ela já estiver numa
+    // análise, o handler pergunta antes se deve sair de lá também.
+    const tirar = App.podeEditar()
+      ? `<button type="button" class="fp-tirar" data-tirar-quadrante="${lider.id}"
+          title="Tirar do quadrante e devolver à fila" aria-label="Tirar do quadrante">×</button>`
+      : '';
+    return `<span class="ficha-prio-caixa">
+      <button type="button" class="ficha-prio ${desteGrupo ? 'selecionada' : ''} ${
+        destino ? 'encaminhada' : ''}" data-selecionar="${lider.id}" data-arrastavel="${lider.id}"
+        title="${Modal.esc(lider.autor || '')} — ${destino
+          ? `encaminhada para ${destino}; arraste para outro quadrante`
+          : 'toque para tratar, arraste para outro quadrante'}">
+        <span class="fp-texto">${Modal.esc(lider.texto_tratado || lider.texto)}</span>${
+        selo ? ` <span class="repetida">${selo}</span>` : ''}${
+        destino ? ` <span class="fp-tag">${Modal.esc(destino)}</span>` : ''}</button>${tirar}</span>`;
   },
 
   // ---- Tela de condução (GTD): a fila à esquerda, a bancada à direita ----
@@ -914,6 +959,35 @@ const SecaoColeta = {
       // a ideia volta para a fila
       const limpar = !!item && item.impacto === impacto && item.esforco === esforco;
       await this.aplicarQuadrante(b.dataset.item, impacto, esforco, limpar);
+    }));
+
+    // ✕ da pílula: tira do quadrante e devolve à fila. Se a ideia já foi para
+    // uma análise, pergunta antes se ela deve sair de lá também — remover da
+    // SWOT apaga o fator, então nunca é feito em silêncio.
+    el.querySelectorAll('[data-tirar-quadrante]').forEach((b) => b.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const id = b.dataset.tirarQuadrante;
+      const item = this.itens.find((i) => i.id == id);
+      const destino = item ? this.rotuloDestino(item) : '';
+      if (!confirm(`Tirar «${item?.texto_tratado || item?.texto}» do quadrante e devolver à fila?`)) return;
+      try {
+        if (destino) {
+          const tirarDeLa = confirm(
+            `Esta ideia está em ${destino}.\n\n`
+            + `OK — remover também de ${destino} (o registro de lá é apagado).\n`
+            + `Cancelar — manter em ${destino}; ela volta à fila com a etiqueta.`);
+          // reabrir só existe para Cenário/Fator; o plano de ação pendente não
+          // tem registro no diagnóstico para apagar
+          if (tirarDeLa && item.destino_tipo !== 'ACAO') {
+            await App.api(`/api/coleta/${id}/reabrir`, { planejamento_id: this.plan.id });
+          }
+        }
+        await App.api(`/api/coleta/${id}/priorizar`, { planejamento_id: this.plan.id, limpar: true });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.selecionado = null;
+      this.carregar();
     }));
 
     el.querySelectorAll('[data-complementar]').forEach((b) => b.addEventListener('click', async () => {

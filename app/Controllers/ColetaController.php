@@ -40,10 +40,14 @@ class ColetaController
                     ci.dividido_de_id, ci.agrupado_em_id, ci.adiado, ci.texto, ci.texto_tratado, ci.destino_sugerido,
                     ci.situacao, ci.impacto, ci.esforco, ci.votos, ci.destino_tipo,
                     ci.destino_id, ci.motivo, ci.triado_em, ci.criado_em,
-                    COALESCE(a.nome, ci.autor_nome, 'Participante') AS autor, t.nome AS triador
+                    COALESCE(a.nome, ci.autor_nome, 'Participante') AS autor, t.nome AS triador,
+                    df.etapa AS destino_etapa
              FROM coleta_item ci
              LEFT JOIN usuario a ON a.id = ci.autor_id
              LEFT JOIN usuario t ON t.id = ci.triado_por
+             -- A etapa do fator é o que dá nome à tag do destino na matriz:
+             -- destino_tipo só diz FATOR, não se virou PESTEL, Porter ou SWOT
+             LEFT JOIN fator df ON df.id = ci.destino_id AND ci.destino_tipo = 'FATOR'
              WHERE ci.planejamento_id = ?{$filtroAno}
              ORDER BY ci.situacao = 'NOVO' DESC, ci.criado_em, ci.id",
             $params
@@ -300,19 +304,26 @@ class ColetaController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirTriagemColeta($planId);
         $item = $this->exigirItem($id, $planId);
-        if (in_array($item['situacao'], ['ACEITO', 'DESCARTADO'], true)) {
+        if (in_array($item['situacao'], ['DESCARTADO', 'DIVIDIDO'], true)) {
             Json::erro('Esta ideia já foi tratada.');
         }
+        // Encaminhada continua na matriz e pode mudar de quadrante: ali só a
+        // POSIÇÃO muda — a situação e o destino ficam intactos.
+        $encaminhada = $item['situacao'] === 'ACEITO';
 
         // Tocar de novo no quadrante já escolhido DESMARCA: a classificação é
-        // apagada e a ideia (o grupo inteiro) volta para a tempestade, como
+        // apagada e a ideia (o grupo inteiro) volta para a fila, como
         // "a tratar" — sem rota nova, é o inverso natural desta.
         if (!empty($d['limpar'])) {
             $grupo = $this->grupo($id, $planId);
             $marcas = implode(',', array_fill(0, count($grupo), '?'));
-            Database::executar(
-                "UPDATE coleta_item SET impacto = NULL, esforco = NULL, situacao = 'NOVO'
-                 WHERE id IN ({$marcas})",
+            // Encaminhada também sai da matriz — mas continua encaminhada: quem
+            // decide se ela sai TAMBÉM da análise é o `reabrir`, pedido à parte.
+            // Mexer na situação aqui apagaria o destino sem ninguém pedir.
+            Database::executar($encaminhada
+                ? "UPDATE coleta_item SET impacto = NULL, esforco = NULL WHERE id IN ({$marcas})"
+                : "UPDATE coleta_item SET impacto = NULL, esforco = NULL, situacao = 'NOVO'
+                   WHERE id IN ({$marcas})",
                 [...$grupo]
             );
             Json::ok(['limpo' => true]);
@@ -329,15 +340,24 @@ class ColetaController
         // ESQUECER. Registra a posição mas NÃO marca como selecionada — o front
         // abre o descarte com o motivo. Os outros três quadrantes são "esta vai
         // ser tratada" (SELECIONADO), e a fila passa a ordenar por eles.
-        $descartar = $impacto === 'BAIXO' && $esforco === 'ALTO';
-        $situacao = $descartar ? 'NOVO' : 'SELECIONADO';
+        $descartar = !$encaminhada && $impacto === 'BAIXO' && $esforco === 'ALTO';
         $grupo = $this->grupo($id, $planId);
         $marcas = implode(',', array_fill(0, count($grupo), '?'));
-        Database::executar(
-            "UPDATE coleta_item SET impacto = ?, esforco = ?, situacao = ?, adiado = 0
-             WHERE id IN ({$marcas})",
-            [$impacto, $esforco, $situacao, ...$grupo]
-        );
+        if ($encaminhada) {
+            // Só reposiciona: mexer na situação aqui desfaria o encaminhamento
+            // em silêncio, e o destino sumiria da tag sem ninguém pedir
+            Database::executar(
+                "UPDATE coleta_item SET impacto = ?, esforco = ?, adiado = 0 WHERE id IN ({$marcas})",
+                [$impacto, $esforco, ...$grupo]
+            );
+        } else {
+            $situacao = $descartar ? 'NOVO' : 'SELECIONADO';
+            Database::executar(
+                "UPDATE coleta_item SET impacto = ?, esforco = ?, situacao = ?, adiado = 0
+                 WHERE id IN ({$marcas})",
+                [$impacto, $esforco, $situacao, ...$grupo]
+            );
+        }
         Json::ok(['impacto' => $impacto, 'esforco' => $esforco, 'descartar' => $descartar]);
     }
 

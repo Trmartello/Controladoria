@@ -733,6 +733,37 @@ input[type=range].faixa-verde:focus-visible {
   color: #fff;
 }
 .ficha-prio .repetida { font-size: .68rem; opacity: .75; margin-left: .25rem; }
+/* Encaminhada: continua na matriz, com a etiqueta de para onde foi */
+.ficha-prio.encaminhada { border-style: dashed; }
+/* A pílula e o ✕ que a tira do quadrante andam juntos */
+.ficha-prio-caixa { display: inline-flex; align-items: center; max-width: 100%; }
+.fp-tirar {
+  border: 0;
+  background: none;
+  color: #9aa7a0;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 .15rem;
+  margin-left: -.35rem;
+  cursor: pointer;
+  border-radius: 50%;
+  touch-action: manipulation;
+  flex-shrink: 0;
+}
+.fp-tirar:hover { color: #8f3b3b; background: #f4dede; }
+.fp-tag {
+  display: inline-block;
+  margin-left: .3rem;
+  padding: 0 .35rem;
+  border-radius: .7rem;
+  font-size: .6rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #fff;
+  background: var(--cor-quad, #6c757d);
+  vertical-align: middle;
+}
+.ficha-prio.selecionada .fp-tag { background: rgba(255, 255, 255, .3); }
 /* No celular o rótulo já vem completo ("pouco esforço" / "muito esforço"):
    a coluna do eixo some e a largura vai toda para os quadrantes.
    (Depois das regras base das células, senão o desempate por ordem vence.) */
