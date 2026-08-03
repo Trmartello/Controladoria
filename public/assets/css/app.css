@@ -735,22 +735,69 @@ input[type=range].faixa-verde:focus-visible {
 .ficha-prio .repetida { font-size: .68rem; opacity: .75; margin-left: .25rem; }
 /* Encaminhada: continua na matriz, com a etiqueta de para onde foi */
 .ficha-prio.encaminhada { border-style: dashed; }
-/* A pílula e o ✕ que a tira do quadrante andam juntos */
-.ficha-prio-caixa { display: inline-flex; align-items: center; max-width: 100%; }
-.fp-tirar {
+/* A pílula e o menu flutuante que ela abre */
+.ficha-prio-caixa { display: inline-flex; align-items: center; max-width: 100%; position: relative; }
+.fp-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: .25rem;
+  z-index: 1030;
+  min-width: 11rem;
+  background: #fff;
+  border: 1px solid #cfe2d8;
+  border-radius: .5rem;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+  padding: .3rem;
+  text-align: left;
+}
+.fpm-titulo {
+  font-size: .62rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #6c757d;
+  padding: .15rem .4rem .3rem;
+}
+.fpm-grupo {
+  font-size: .6rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #9aa7a0;
+  padding: .3rem .4rem .1rem;
+  border-top: 1px solid #eef2f0;
+  margin-top: .2rem;
+}
+.fpm-item {
+  display: block;
+  width: 100%;
+  text-align: left;
   border: 0;
   background: none;
-  color: #9aa7a0;
-  font-size: 1rem;
-  line-height: 1;
-  padding: 0 .15rem;
-  margin-left: -.35rem;
+  padding: .3rem .5rem;
+  border-radius: .3rem;
+  font-size: .82rem;
+  color: #1f3d2f;
   cursor: pointer;
-  border-radius: 50%;
-  touch-action: manipulation;
-  flex-shrink: 0;
 }
-.fp-tirar:hover { color: #8f3b3b; background: #f4dede; }
+.fpm-item:hover { background: #eef6f1; color: var(--verde-escuro); }
+/* Remover do quadrante fecha o menu: fica separado e em vermelho */
+.fpm-remover {
+  color: #8f3b3b;
+  border-top: 1px solid #eef2f0;
+  margin-top: .2rem;
+  border-radius: 0 0 .3rem .3rem;
+}
+.fpm-remover:hover { background: #f4dede; color: #8f3b3b; }
+/* No celular a matriz é estreita: pílulas e quadrantes ficam compactos para
+   caber mais ideia por quadrante sem virar uma parede de bordas */
+@media (max-width: 767.98px) {
+  .celula-prio { padding: .25rem .3rem .3rem; min-height: 2.8rem; gap: .2rem; }
+  .cp-titulo { font-size: .72rem; }
+  .cp-fichas { gap: .2rem; }
+  .ficha-prio { padding: .08rem .4rem; font-size: .72rem; border-radius: .8rem; }
+  .ficha-prio .repetida { font-size: .6rem; }
+  .fp-tag { font-size: .55rem; padding: 0 .28rem; margin-left: .2rem; }
+}
 .fp-tag {
   display: inline-block;
   margin-left: .3rem;

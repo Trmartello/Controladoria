@@ -31,6 +31,18 @@ const QUADRANTES = {
   'BAIXO:ALTO': { titulo: 'Descartar', cor: '#8f3b3b', rank: 3 },
 };
 
+// Menu de encaminhamento da pílula, na hierarquia pedida pelo cliente:
+// Encaminhar para → Cenário · Framework (SWOT/PESTEL/Porter) · Resultados
+const MENU_DESTINOS = [
+  { grupo: '', itens: [{ valor: 'CENARIO', rotulo: 'Cenário' }] },
+  { grupo: 'Framework', itens: [
+    { valor: 'SWOT', rotulo: 'SWOT' },
+    { valor: 'PESTEL', rotulo: 'PESTEL' },
+    { valor: 'PORTER', rotulo: 'Porter' },
+  ] },
+  { grupo: 'Resultados', itens: [{ valor: 'ACAO', rotulo: 'Plano de ação' }] },
+];
+
 const CATEGORIAS_DESTINO = {
   PESTEL: [
     ['POLITICO', 'Político'], ['ECONOMICO', 'Econômico'], ['SOCIAL', 'Social'],
@@ -90,6 +102,7 @@ const SecaoColeta = {
   // a contagem no rótulo já diz quanta coisa está guardada ali
   depoisAberto: false,
   classificando: false, // trava de toque duplo no quadrante da bancada
+  menuDestino: null,    // id da pílula com o menu "Encaminhar para" aberto
   reclassificando: null, // id da ideia reaberta do diagnóstico, à espera do novo destino
   reclassificarRotulo: '', // de onde a ideia saiu (ex.: "Porter"), só para exibir
 
@@ -506,19 +519,28 @@ const SecaoColeta = {
     const destino = this.rotuloDestino(lider);
     // O ✕ tira a ideia do quadrante e a devolve à fila. Se ela já estiver numa
     // análise, o handler pergunta antes se deve sair de lá também.
-    const tirar = App.podeEditar()
-      ? `<button type="button" class="fp-tirar" data-tirar-quadrante="${lider.id}"
-          title="Tirar do quadrante e devolver à fila" aria-label="Tirar do quadrante">×</button>`
-      : '';
+    // Tocar na pílula abre o menu flutuante: destinos e "remover do quadrante"
+    // num lugar só, sem botões extras espremendo a ficha.
+    const menuAberto = this.menuDestino === lider.id && App.podeEditar();
+    const menu = menuAberto ? `<div class="fp-menu" role="menu">
+        <div class="fpm-titulo">Encaminhar para</div>
+        ${MENU_DESTINOS.map((s) => `
+          ${s.grupo ? `<div class="fpm-grupo">${s.grupo}</div>` : ''}
+          ${s.itens.map((d) => `<button type="button" class="fpm-item" role="menuitem"
+            data-destino-menu="${d.valor}" data-item="${lider.id}">${d.rotulo}</button>`).join('')}`).join('')}
+        <button type="button" class="fpm-item fpm-remover" role="menuitem"
+          data-tirar-quadrante="${lider.id}">Remover do quadrante</button>
+      </div>` : '';
     return `<span class="ficha-prio-caixa">
       <button type="button" class="ficha-prio ${desteGrupo ? 'selecionada' : ''} ${
         destino ? 'encaminhada' : ''}" data-selecionar="${lider.id}" data-arrastavel="${lider.id}"
+        aria-haspopup="true" aria-expanded="${menuAberto}"
         title="${Modal.esc(lider.autor || '')} — ${destino
-          ? `encaminhada para ${destino}; arraste para outro quadrante`
-          : 'toque para tratar, arraste para outro quadrante'}">
+          ? `encaminhada para ${destino}; toque para o menu, arraste para outro quadrante`
+          : 'toque para o menu, arraste para outro quadrante'}">
         <span class="fp-texto">${Modal.esc(lider.texto_tratado || lider.texto)}</span>${
         selo ? ` <span class="repetida">${selo}</span>` : ''}${
-        destino ? ` <span class="fp-tag">${Modal.esc(destino)}</span>` : ''}</button>${tirar}</span>`;
+        destino ? ` <span class="fp-tag">${Modal.esc(destino)}</span>` : ''}</button>${menu}</span>`;
   },
 
   // ---- Tela de condução (GTD): a fila à esquerda, a bancada à direita ----
@@ -596,13 +618,6 @@ const SecaoColeta = {
         ${ids.length > 1 ? `<button class="btn btn-sm btn-outline-secondary"
           data-desagrupar="${item.id}" title="Separar as ideias deste grupo">Desagrupar</button>` : ''}
         <button class="btn btn-sm btn-outline-secondary" data-adiar="${item.id}">Tratar depois</button>
-      </div>
-
-      <div class="rotulo-secao mt-3">Destino</div>
-      <div class="d-flex gap-1 flex-wrap">
-        ${DESTINOS_TRIAGEM.map((d) => `
-          <button class="btn btn-sm btn-destino" style="--cor-destino:${d.cor}"
-            data-encaminhar="${item.id}" data-destino="${d.valor}">${d.rotulo}</button>`).join('')}
       </div>`;
   },
 
@@ -808,6 +823,9 @@ const SecaoColeta = {
       // quadrante para ela).
       const naMatriz = !!b.closest('.cp-fichas');
       this.selecionado = (!naMatriz && this.selecionado === id) ? null : id;
+      // Na matriz, o toque também abre o menu (destinos + remover do
+      // quadrante); tocar de novo fecha. Na fila não há menu.
+      this.menuDestino = naMatriz && this.menuDestino !== id ? id : null;
       this.carregar();
     }));
 
@@ -868,6 +886,24 @@ const SecaoColeta = {
         caixa?.classList.toggle('compacta', !desta);
       });
     }));
+
+    // O menu de encaminhamento fecha ao tocar fora ou com Esc, como qualquer
+    // camada flutuante. Registrado uma vez só, não a cada redesenho.
+    if (!this.fecharMenuLigado) {
+      this.fecharMenuLigado = true;
+      document.addEventListener('click', (ev) => {
+        if (this.menuDestino !== null && !ev.target.closest('.ficha-prio-caixa')) {
+          this.menuDestino = null;
+          this.carregar();
+        }
+      });
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && this.menuDestino !== null) {
+          this.menuDestino = null;
+          this.carregar();
+        }
+      });
+    }
 
     this.ligarArraste(el);
 
@@ -959,6 +995,13 @@ const SecaoColeta = {
       // a ideia volta para a fila
       const limpar = !!item && item.impacto === impacto && item.esforco === esforco;
       await this.aplicarQuadrante(b.dataset.item, impacto, esforco, limpar);
+    }));
+
+    el.querySelectorAll('[data-destino-menu]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const item = this.itens.find((i) => i.id == b.dataset.item);
+      this.menuDestino = null;
+      if (item) this.modalEncaminhar(item, b.dataset.destinoMenu);
     }));
 
     // ✕ da pílula: tira do quadrante e devolve à fila. Se a ideia já foi para
