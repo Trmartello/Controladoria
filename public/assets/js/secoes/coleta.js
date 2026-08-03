@@ -446,9 +446,18 @@ const SecaoColeta = {
         <div class="cp-fichas">${porQuadrante(imp, esf)}</div>
       </div>`;
     };
+    // A ideia em foco vira um CARD à parte, e a orientação fica curta e fixa
+    // embaixo: misturar os dois num parágrafo só fazia o texto da ideia (que
+    // pode ser longo) parecer instrução do sistema.
+    const emFoco = podeClassificar ? `
+      <div class="cartao-foco">
+        <div class="cf-rotulo">Classificando</div>
+        <div class="cf-texto">${Modal.esc(lider.texto_tratado || lider.texto)}</div>
+        ${this.rotuloDestino(lider) ? `<span class="fp-tag">${
+          Modal.esc(this.rotuloDestino(lider))}</span>` : ''}
+      </div>` : '';
     const dica = podeClassificar
-      ? `Classificando <strong>${Modal.esc(lider.texto_tratado || lider.texto)}</strong> — toque num
-         quadrante. Tocar no mesmo desmarca; <strong>Descartar</strong> esquece a ideia (pede o motivo).`
+      ? 'Toque num quadrante para posicionar. Tocar no mesmo desmarca; <strong>Descartar</strong> esquece a ideia (pede o motivo).'
       : 'Arraste uma ideia da fila até um quadrante — ou toque nela e depois no quadrante. O quadrante já define impacto e esforço.';
     return `<div class="card mb-3 painel-prio"><div class="card-body py-2 px-3">
       <div class="rotulo-secao">Prioridade</div>
@@ -466,6 +475,7 @@ const SecaoColeta = {
         ${celula('BAIXO', 'ALTO', 'cp-ba')}
         ${celula('ALTO', 'ALTO', 'cp-aa')}
       </div>
+      ${emFoco}
       <div class="small text-muted mt-2">${dica}</div>
     </div></div>`;
   },
