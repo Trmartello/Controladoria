@@ -690,12 +690,30 @@ class ColetaController
     }
 
     /** Reserva a ideia para quem chegou primeiro (ver encaminhar). */
+    /**
+     * Reserva a ideia para o encaminhamento (reserva atômica: a condição vai no
+     * WHERE, não numa transação).
+     *
+     * O que protege a ideia é ter um registro JÁ CRIADO no diagnóstico
+     * (`destino_id`), não a situação: com `destino_id` nulo não existe fator
+     * nem item de cenário para ficar órfão, e o `encaminhar()` regrava
+     * `destino_tipo`/`destino_id` do grupo inteiro logo em seguida.
+     *
+     * Por isso `ACEITO` sem `destino_id` também é reservável. Sem isso a ideia
+     * ficava num beco sem saída — recusada com "já foi tratada por outra
+     * pessoa" em dois caminhos comuns: quando o fator/item de cenário dela foi
+     * excluído no diagnóstico, e quando ela estava parada em "Plano de ação"
+     * (que grava `destino_tipo='ACAO'` com `destino_id` nulo) e o condutor quis
+     * mandá-la para uma análise. Quem tem `destino_id` continua saindo só pelo
+     * "Desmarcar" (`reabrir()`), que apaga o registro antes.
+     */
     private function reservar(int $id, int $planId, int $usuarioId): bool
     {
         return Database::afetadas(
-            "UPDATE coleta_item SET situacao = 'ACEITO', triado_por = ?, triado_em = NOW()
-             WHERE id = ? AND planejamento_id = ? AND situacao IN ('NOVO','SELECIONADO')
-               AND destino_id IS NULL",
+            "UPDATE coleta_item
+                SET situacao = 'ACEITO', destino_tipo = NULL, triado_por = ?, triado_em = NOW()
+             WHERE id = ? AND planejamento_id = ? AND destino_id IS NULL
+               AND situacao IN ('NOVO','SELECIONADO','ACEITO')",
             [$usuarioId, $id, $planId]
         ) === 1;
     }

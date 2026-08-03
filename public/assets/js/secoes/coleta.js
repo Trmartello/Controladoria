@@ -717,6 +717,13 @@ const SecaoColeta = {
             arrastando = true;
             this.arrastando = true;
             ficha.classList.add('arrastando');
+            // O menu flutuante fica dentro da célula de ORIGEM. Sobre o
+            // quadrante de destino ele rouba o elementFromPoint e o alvo
+            // resolve para a origem — a solta vira "mesmo quadrante" e some em
+            // silêncio (no celular o menu cobre boa parte da matriz). Durante o
+            // gesto ele deixa de receber ponteiro; o estado dele não muda, para
+            // a solta inválida ainda devolver o menu aberto.
+            document.body.classList.add('arrastando-ficha');
             quadroRolagem = requestAnimationFrame(rolar);
           }
           e.preventDefault();
@@ -731,6 +738,7 @@ const SecaoColeta = {
           if (quadroRolagem) cancelAnimationFrame(quadroRolagem);
           this.arrastando = false;
           ficha.classList.remove('arrastando');
+          document.body.classList.remove('arrastando-ficha');
           limparRealce();
           // Solta a trava só depois do clique que o navegador dispara em seguida
           setTimeout(() => { this.gestoEmFicha = false; }, 60);
@@ -743,9 +751,16 @@ const SecaoColeta = {
             const [impacto, esforco] = quadAtual.dataset.soltaQuadrante.split(':');
             const arrastado = this.itens.find((i) => i.id == id);
             // Devolver ao mesmo quadrante não é desfazer: só desmarca quem
-            // toca no quadrante já escolhido
+            // toca no quadrante já escolhido. Nada mudou, então a seleção e o
+            // menu continuam como estavam — é uma tentativa, não uma operação.
             if (arrastado && arrastado.impacto === impacto && arrastado.esforco === esforco) return;
-            this.selecionado = Number(id);
+            // Movimento concluído = operação encerrada: a interface volta ao
+            // neutro. Sem isso o cartão seguia selecionado e o dedo continuava
+            // arrastando o mesmo item sem querer. Arrastar de novo continua
+            // valendo sem reselecionar (data-solta-quadrante é permanente);
+            // classificar por TOQUE é que volta a exigir escolher o cartão.
+            this.selecionado = null;
+            this.menuDestino = null;
             await this.aplicarQuadrante(id, impacto, esforco);
             return;
           }
@@ -913,6 +928,10 @@ const SecaoColeta = {
     if (!this.fecharMenuLigado) {
       this.fecharMenuLigado = true;
       document.addEventListener('click', (ev) => {
+        // O clique que é rabicho de um arraste não conta como "tocou fora":
+        // um arraste solto em área inválida deve deixar o menu como estava,
+        // para tentar de novo sem reabrir nada. Mesma trava do [data-quadrante].
+        if (this.gestoEmFicha) return;
         if (this.menuDestino !== null && !ev.target.closest('.ficha-prio-caixa')) {
           this.menuDestino = null;
           this.carregar();

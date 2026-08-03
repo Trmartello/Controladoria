@@ -74,9 +74,12 @@ class CenarioController
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirItem($id, $planId);
         // Solta o vínculo da Coleta antes de apagar: sem isso a ideia ficaria
-        // apontando para um id morto e o rastreio exibiria link quebrado
+        // apontando para um id morto e o rastreio exibiria link quebrado.
+        // Volta a SELECIONADO, como o "Desmarcar" (ColetaController::reabrir):
+        // ACEITO sem destino nenhum prendia a ideia num beco sem saída.
         Database::executar(
-            "UPDATE coleta_item SET destino_tipo = NULL, destino_id = NULL
+            "UPDATE coleta_item SET situacao = 'SELECIONADO', destino_tipo = NULL, destino_id = NULL,
+               triado_por = NULL, triado_em = NULL
              WHERE destino_tipo = 'CENARIO' AND destino_id = ?",
             [$id]
         );

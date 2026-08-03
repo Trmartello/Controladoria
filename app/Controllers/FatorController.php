@@ -96,9 +96,14 @@ class FatorController
         $this->exigirFator($id, $planId);
         // Solta o vínculo da Coleta (deste fator e do promovido) antes de
         // apagar: sem isso a ideia apontaria para um id morto e o rastreio
-        // exibiria link quebrado
+        // exibiria link quebrado.
+        // A ideia volta a SELECIONADO (mesmo estado do "Desmarcar" em
+        // ColetaController::reabrir): deixá-la ACEITO sem destino nenhum a
+        // prendia num beco sem saída — sem análise e sem conseguir ser
+        // encaminhada de novo.
         Database::executar(
-            "UPDATE coleta_item SET destino_tipo = NULL, destino_id = NULL
+            "UPDATE coleta_item SET situacao = 'SELECIONADO', destino_tipo = NULL, destino_id = NULL,
+               triado_por = NULL, triado_em = NULL
              WHERE destino_tipo = 'FATOR' AND destino_id IN
                (SELECT x.id FROM (SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?) x)",
             [$id, $id]

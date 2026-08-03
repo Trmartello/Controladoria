@@ -184,6 +184,15 @@ $pdo->exec(
      JOIN ciclo c ON c.id = p.ciclo_id
      SET f.ano = c.ano_base WHERE f.ano IS NULL'
 );
+// Ideias travadas: ACEITO sem destino nenhum. Sobra de quando excluir o fator
+// (ou o item de cenário) soltava o vínculo mas mantinha a ideia como tratada —
+// ela ficava sem análise e recusava novo encaminhamento com "já foi tratada
+// por outra pessoa". Volta para a fila, como faz o "Desmarcar".
+$pdo->exec(
+    "UPDATE coleta_item
+        SET situacao = 'SELECIONADO', triado_por = NULL, triado_em = NULL
+      WHERE situacao = 'ACEITO' AND destino_tipo IS NULL AND destino_id IS NULL"
+);
 
 executarArquivoSql($pdo, __DIR__ . '/seeds.sql');
 

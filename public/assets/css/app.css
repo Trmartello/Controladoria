@@ -777,6 +777,13 @@ input[type=range].faixa-verde:focus-visible {
 .ficha-prio.encaminhada { border-style: dashed; }
 /* A pílula e o menu flutuante que ela abre */
 .ficha-prio-caixa { display: inline-flex; align-items: center; max-width: 100%; position: relative; }
+/* Durante o arraste o menu não recebe ponteiro: ele mora na célula de ORIGEM e,
+   quando cobre o quadrante de destino (no celular cobre boa parte da matriz),
+   o elementFromPoint devolveria o menu — o alvo resolvia para a origem e a
+   solta sumia em silêncio. Só o hit-test muda; o menu segue aberto e visível,
+   para a solta em área inválida devolvê-lo como estava. */
+body.arrastando-ficha .fp-menu { pointer-events: none; }
+
 .fp-menu {
   position: absolute;
   top: 100%;
