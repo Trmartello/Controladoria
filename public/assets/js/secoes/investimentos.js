@@ -206,12 +206,13 @@ const SecaoInvestimentos = {
           ajuda: 'Base do ranking — retorno por real investido' },
         { nome: 'horizonte_id', rotulo: 'Horizonte', tipo: 'select', opcoes: opcoesHorizonte },
         // Situação só é editável antes da decisão; APROVADO pode avançar para
-        // EXECUTADO. REPROVADO/AUDITADO não mudam por edição.
-        ...(inv && ['PROPOSTO', 'RANQUEADO', 'EXECUTADO'].includes(inv.situacao) ? [{
+        // EXECUTADO. EXECUTADO/REPROVADO/AUDITADO não mudam por edição — chegar
+        // a EXECUTADO exige ter passado pela decisão, e voltar de lá apagaria um
+        // investimento já comprometido do painel.
+        ...(inv && ['PROPOSTO', 'RANQUEADO'].includes(inv.situacao) ? [{
           nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [
             { valor: 'PROPOSTO', rotulo: 'Proposto' },
             { valor: 'RANQUEADO', rotulo: 'Ranqueado' },
-            { valor: 'EXECUTADO', rotulo: 'Executado' },
           ]}] : []),
         ...(inv && inv.situacao === 'APROVADO' ? [{
           nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [

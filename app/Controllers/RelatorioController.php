@@ -7,6 +7,7 @@ use App\Core\Database;
 use App\Core\Email;
 use App\Core\Json;
 use App\Services\Avisos;
+use App\Services\Consolidacao;
 
 /**
  * Fase 6 — painéis (negócio, corporativo e consolidado) e relatório de
@@ -35,6 +36,10 @@ class RelatorioController
         $celulasTotal = $horizontes * $drivers * ($eixos + 1);
 
         $escopo = Auth::escopoNegocios($u);
+        // Atraso e status de projeto são derivados e só se acertam quando
+        // alguém lê: sem isto, o painel da direção contava zero atraso até
+        // alguém abrir a seção Projetos, e os números mudavam sozinhos depois
+        Consolidacao::reconciliarCiclo($cicloId, $escopo);
         $sqlNeg = "SELECT id, CONCAT(cod_negocio, ' - ', nome) AS rotulo
                    FROM negocio WHERE ativo = 1";
         if ($escopo !== null) {
@@ -195,6 +200,9 @@ class RelatorioController
     {
         $planId = (int)($_GET['planejamento_id'] ?? 0);
         $plan = Auth::exigirAcessoPlanejamento($planId);
+        // Mesmo motivo do painel: o relatório imprimia "0 ações atrasadas"
+        // enquanto a seção Projetos, aberta em seguida, mostrava as atrasadas
+        Consolidacao::reconciliar($planId);
 
         $hoje = date('Y-m-d');
         $de  = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['de'] ?? '') ? $_GET['de'] : date('Y-m-d', strtotime('-30 days'));

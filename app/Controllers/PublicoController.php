@@ -135,15 +135,25 @@ class PublicoController
             Json::erro('Escreva a ideia antes de salvar.');
         }
 
-        $editadas = Database::afetadas(
+        // A autoria é conferida por SELECT, não pelo número de linhas do UPDATE:
+        // o PDO devolve linhas ALTERADAS, e salvar sem ter mudado o texto (abrir
+        // o "✎", reler e confirmar) alterava zero linhas — o participante levava
+        // "Não dá mais para editar esta ideia" no meio de uma oficina, como se a
+        // ideia dele tivesse sido triada. O escopo continua sendo a guarda.
+        $minha = Database::um(
+            "SELECT id FROM coleta_item
+             WHERE id = ? AND rodada_id = ? AND participante_token = ? AND situacao = 'NOVO'",
+            [$id, (int)$r['id'], $p['token']]
+        );
+        if (!$minha) {
+            // Não é dela, já foi triada, ou a rodada virou: nada a corrigir.
+            Json::erro('Não dá mais para editar esta ideia.', 409);
+        }
+        Database::executar(
             "UPDATE coleta_item SET texto = ?
              WHERE id = ? AND rodada_id = ? AND participante_token = ? AND situacao = 'NOVO'",
             [$texto, $id, (int)$r['id'], $p['token']]
         );
-        if (!$editadas) {
-            // Não é dela, já foi triada, ou a rodada virou: nada a corrigir.
-            Json::erro('Não dá mais para editar esta ideia.', 409);
-        }
 
         // O agrupamento automático é por texto; mudando o texto, o vínculo pode
         // ter ficado velho. Reavalia só quando esta ideia NÃO lidera um grupo,

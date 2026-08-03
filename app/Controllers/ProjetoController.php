@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Consolidacao;
 use App\Services\Recorrencia;
 
 class ProjetoController
@@ -23,8 +24,7 @@ class ProjetoController
     {
         $planId = (int)($_GET['planejamento_id'] ?? 0);
         Auth::exigirAcessoPlanejamento($planId);
-        $this->sincronizarAtrasos($planId);
-        $this->consolidarProjetos($planId);
+        Consolidacao::reconciliar($planId);
         $projetos = Database::todos(
             'SELECT p.*, h.nome AS horizonte_nome, ce.escolha AS escolha_origem
              FROM projeto p
@@ -52,60 +52,6 @@ class ProjetoController
             unset($i);
         }
         Json::ok($projetos);
-    }
-
-    /**
-     * "No prazo" e "Atrasada" nunca são escolhidos pelo usuário: são derivados
-     * da data-limite da ação. Os demais status são manuais e não se mexe neles.
-     * A reconciliação acontece na leitura (sem agendador).
-     */
-    private function sincronizarAtrasos(int $planId): void
-    {
-        Database::executar(
-            "UPDATE desdobramento d JOIN projeto p ON p.id = d.projeto_id
-             SET d.status = 'ATRASADO'
-             WHERE p.planejamento_id = ? AND d.status IN ('NAO_INICIADO', 'EM_ANDAMENTO')
-               AND d.data_fim IS NOT NULL AND d.data_fim < CURDATE()",
-            [$planId]
-        );
-        Database::executar(
-            "UPDATE desdobramento d JOIN projeto p ON p.id = d.projeto_id
-             SET d.status = 'NAO_INICIADO'
-             WHERE p.planejamento_id = ? AND d.status = 'ATRASADO'
-               AND (d.data_fim IS NULL OR d.data_fim >= CURDATE())",
-            [$planId]
-        );
-    }
-
-    /**
-     * O período e o status do projeto são consequência das ações: início =
-     * menor data de início, fim = maior data de fim; o status agrega os das
-     * ações. Recalculado na leitura, cobre também mudanças vindas do diário.
-     * Projetos sem ações e os cancelados não são tocados.
-     */
-    private function consolidarProjetos(int $planId): void
-    {
-        Database::executar(
-            "UPDATE projeto p
-             JOIN (
-               SELECT projeto_id,
-                      MIN(data_inicio) AS di, MAX(data_fim) AS df,
-                      COUNT(*) AS n,
-                      SUM(status = 'CONCLUIDO') AS concluidas,
-                      SUM(status = 'ATRASADO') AS atrasadas,
-                      SUM(status IN ('EM_ANDAMENTO', 'PAUSADO', 'AGUARDANDO_VALIDACAO')) AS ativas
-               FROM desdobramento GROUP BY projeto_id
-             ) x ON x.projeto_id = p.id
-             SET p.data_inicio = COALESCE(x.di, p.data_inicio),
-                 p.data_fim = COALESCE(x.df, p.data_fim),
-                 p.status = CASE
-                   WHEN x.atrasadas > 0 THEN 'ATRASADO'
-                   WHEN x.concluidas = x.n THEN 'CONCLUIDO'
-                   WHEN x.ativas > 0 OR x.concluidas > 0 THEN 'EM_ANDAMENTO'
-                   ELSE 'NAO_INICIADO' END
-             WHERE p.planejamento_id = ? AND p.status <> 'CANCELADO'",
-            [$planId]
-        );
     }
 
     /** Resolve o status de uma ação na gravação, respeitando os manuais. */
@@ -209,7 +155,7 @@ class ProjetoController
         $horizonteId = (int)$horizonte['id'];
 
         // O cadastro pede só ano, título, descrição e responsável; datas e
-        // status vêm das ações (consolidarProjetos) e o restante é legado,
+        // status vêm das ações (Consolidacao) e o restante é legado,
         // preservado como está nos projetos antigos
         if ($id) {
             $this->exigirProjeto($id, $planId);
@@ -318,18 +264,39 @@ class ProjetoController
         // Só agora — com a ação inteira validada — resolve projeto e iniciativa,
         // criando na hora quando a ação vem de uma ideia da coleta ("Plano de
         // ação"). Os helpers validam os próprios campos antes de inserir.
+        // Em duas fases, e nesta ordem: primeiro CONFERE o par projeto+iniciativa
+        // por inteiro, só depois insere. Criar o projeto antes de validar a
+        // iniciativa deixava um projeto vazio no banco a cada tentativa inválida
+        // — não há transação aqui, e Json::erro() encerra a execução na hora.
         $projetoId = (int)($d['projeto_id'] ?? 0);
-        if (!$projetoId && trim((string)($d['projeto_novo'] ?? '')) !== '') {
+        $projetoNovo = trim((string)($d['projeto_novo'] ?? ''));
+        $iniciativaId = (int)($d['iniciativa_id'] ?? 0);
+        $iniciativaNova = trim((string)($d['iniciativa_nova'] ?? ''));
+
+        if (!$projetoId && $projetoNovo === '') {
+            Json::erro('Escolha o projeto (ou informe um novo) para a ação.');
+        }
+        if (!$iniciativaId && $iniciativaNova === '') {
+            Json::erro('Escolha a iniciativa (ou informe uma nova) para a ação.');
+        }
+        // Projeto que já existe é conferido agora; iniciativa que já existe
+        // precisa pertencer a ele — e com projeto novo não pode haver
+        // iniciativa antiga, que seria de outro projeto por definição
+        if ($projetoId) {
+            $this->exigirProjeto($projetoId, $planId);
+        }
+        if ($iniciativaId) {
+            $iniciativa = $this->exigirIniciativa($iniciativaId, $planId);
+            if (!$projetoId || (int)$iniciativa['projeto_id'] !== $projetoId) {
+                Json::erro('A iniciativa não pertence a este projeto.');
+            }
+        }
+        // Validado tudo, agora sim grava
+        if (!$projetoId) {
             $projetoId = $this->criarProjetoRapido($plan, $planId, $d);
         }
-        $this->exigirProjeto($projetoId, $planId);
-        $iniciativaId = (int)($d['iniciativa_id'] ?? 0);
-        if (!$iniciativaId && trim((string)($d['iniciativa_nova'] ?? '')) !== '') {
-            $iniciativaId = $this->criarIniciativaRapida($projetoId, (string)$d['iniciativa_nova']);
-        }
-        $iniciativa = $this->exigirIniciativa($iniciativaId, $planId);
-        if ((int)$iniciativa['projeto_id'] !== $projetoId) {
-            Json::erro('A iniciativa não pertence a este projeto.');
+        if (!$iniciativaId) {
+            $iniciativaId = $this->criarIniciativaRapida($projetoId, $iniciativaNova);
         }
 
         $params = [

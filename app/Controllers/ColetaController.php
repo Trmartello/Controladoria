@@ -207,6 +207,25 @@ class ColetaController
             [$rodadaId, $planId])) {
             Json::erro('Rodada não encontrada neste planejamento.', 404);
         }
+        // Solta os vínculos de grupo antes do DELETE: agrupado_em_id e
+        // dividido_de_id não têm chave estrangeira (é de propósito), então uma
+        // ideia que fica apontaria para um líder que deixou de existir
+        $alvos = Database::todos(
+            "SELECT id FROM coleta_item WHERE rodada_id = ? AND situacao = 'NOVO' AND autor_id IS NULL",
+            [$rodadaId]
+        );
+        if ($alvos) {
+            $ids = array_map(fn($l) => (int)$l['id'], $alvos);
+            $marcas = implode(',', array_fill(0, count($ids), '?'));
+            Database::executar(
+                "UPDATE coleta_item SET agrupado_em_id = NULL WHERE agrupado_em_id IN ({$marcas})",
+                $ids
+            );
+            Database::executar(
+                "UPDATE coleta_item SET dividido_de_id = NULL WHERE dividido_de_id IN ({$marcas})",
+                $ids
+            );
+        }
         $n = Database::afetadas(
             "DELETE FROM coleta_item WHERE rodada_id = ? AND situacao = 'NOVO' AND autor_id IS NULL",
             [$rodadaId]
@@ -536,6 +555,17 @@ class ColetaController
         if ($lider === $liderOrigem) {
             Json::erro('Essas ideias já estão no mesmo grupo.');
         }
+        // Juntar duas ideias que já foram para análises DIFERENTES criaria uma
+        // caixa só apontando para dois registros: a tela mostra apenas a
+        // etiqueta do líder, escondendo o outro, e "Desmarcar" apagaria só um
+        // deles — o outro ficaria vivo no diagnóstico e sem vínculo nenhum com a
+        // Coleta. Quem já tem destino sai dele primeiro (pelo "Desmarcar").
+        $destinoOrigem = $this->destinoDoGrupo($liderOrigem, $planId);
+        $destinoAlvo = $this->destinoDoGrupo($lider, $planId);
+        if ($destinoOrigem && $destinoAlvo && $destinoOrigem !== $destinoAlvo) {
+            Json::erro('As duas já foram encaminhadas para análises diferentes. '
+                . 'Desmarque o destino de uma delas antes de juntar.');
+        }
         Database::executar(
             'UPDATE coleta_item SET agrupado_em_id = ? WHERE planejamento_id = ? AND (id = ? OR agrupado_em_id = ?)',
             [$lider, $planId, $liderOrigem, $liderOrigem]
@@ -658,7 +688,13 @@ class ColetaController
                 );
                 Database::executar('UPDATE coleta_item SET agrupado_em_id = NULL WHERE id = ?', [$restante]);
             }
-            Database::executar('UPDATE coleta_item SET agrupado_em_id = NULL WHERE id = ?', [$lider]);
+            // O líder que sai também volta ao PRÓPRIO texto: o texto_tratado
+            // que ele carrega é o título da caixa-mãe, e mantê-lo deixava duas
+            // fichas (ele e o promovido) exibindo exatamente o mesmo nome
+            Database::executar(
+                'UPDATE coleta_item SET agrupado_em_id = NULL, texto_tratado = NULL WHERE id = ?',
+                [$lider]
+            );
         } else {
             // Membro comum: só ele sai do grupo. O texto tratado é o TÍTULO da
             // caixa-mãe (o complementar copia para o grupo inteiro): quem sai
@@ -707,6 +743,21 @@ class ColetaController
      * mandá-la para uma análise. Quem tem `destino_id` continua saindo só pelo
      * "Desmarcar" (`reabrir()`), que apaga o registro antes.
      */
+    /**
+     * Destino já materializado do grupo, como "FATOR:12" — ou null quando
+     * nenhuma ideia dele foi para o diagnóstico ainda.
+     */
+    private function destinoDoGrupo(int $lider, int $planId): ?string
+    {
+        $linha = Database::um(
+            'SELECT destino_tipo, destino_id FROM coleta_item
+             WHERE planejamento_id = ? AND (id = ? OR agrupado_em_id = ?)
+               AND destino_id IS NOT NULL LIMIT 1',
+            [$planId, $lider, $lider]
+        );
+        return $linha ? "{$linha['destino_tipo']}:{$linha['destino_id']}" : null;
+    }
+
     private function reservar(int $id, int $planId, int $usuarioId): bool
     {
         return Database::afetadas(

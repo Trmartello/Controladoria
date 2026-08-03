@@ -14,7 +14,23 @@ use App\Core\Json;
 class InvestimentoController
 {
     private const PAPEIS = ['OBRIGATORIO', 'MANUTENCAO', 'EFICIENCIA', 'CRESCIMENTO', 'ESTRATEGICO'];
-    private const SITUACOES_BASICAS = ['PROPOSTO', 'RANQUEADO', 'EXECUTADO'];
+    /**
+     * Transições permitidas na EDIÇÃO (decidir e auditar têm ações próprias).
+     *
+     * Antes as três situações "básicas" (PROPOSTO, RANQUEADO, EXECUTADO) eram
+     * um conjunto livremente intercambiável, e por ali vazava justamente o que
+     * a regra proíbe: um PROPOSTO pulava direto para EXECUTADO sem passar por
+     * decisão nenhuma, e um EXECUTADO — já com critério e data de decisão
+     * gravados — voltava a PROPOSTO e sumia do comprometido do painel.
+     */
+    private const TRANSICOES = [
+        'PROPOSTO'  => ['RANQUEADO'],
+        'RANQUEADO' => ['PROPOSTO'],
+        'APROVADO'  => ['EXECUTADO'],
+        'EXECUTADO' => [],
+        'REPROVADO' => [],
+        'AUDITADO'  => [],
+    ];
 
     public function listar(): void
     {
@@ -139,13 +155,9 @@ class InvestimentoController
             // APROVADO só avança para EXECUTADO; REPROVADO/AUDITADO ficam como estão.
             $situacao = $inv['situacao'];
             $nova = $d['situacao'] ?? '';
-            if ($nova !== '' && $nova !== $situacao) {
-                $permitidas = in_array($situacao, self::SITUACOES_BASICAS, true)
-                    ? self::SITUACOES_BASICAS
-                    : ($situacao === 'APROVADO' ? ['EXECUTADO'] : []);
-                if (in_array($nova, $permitidas, true)) {
-                    $situacao = $nova;
-                }
+            if ($nova !== '' && $nova !== $situacao
+                && in_array($nova, self::TRANSICOES[$situacao] ?? [], true)) {
+                $situacao = $nova;
             }
             Database::executar(
                 'UPDATE investimento SET descricao = ?, papel = ?, ano = ?, valor = ?,

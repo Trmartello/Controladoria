@@ -226,7 +226,13 @@ const SecaoColeta = {
         // impacto/esforço entram no retrato: no quadrante "Descartar" a ideia
         // segue NOVO, e sem eles a classificação não redesenharia os outros
         // telões da sala
-        const retrato = (l) => JSON.stringify(l.map((i) => [i.id, i.situacao, i.votos, i.impacto, i.esforco, i.adiado, i.destino_tipo, i.destino_id]));
+        // texto_tratado e agrupado_em_id também entram: com dois condutores (ou
+        // um telão e um notebook), juntar duas fichas ou salvar o texto na
+        // bancada não redesenhava a outra tela — ela seguia mostrando as fichas
+        // separadas e o texto velho até alguma outra mudança disparar o desenho
+        const retrato = (l) => JSON.stringify(l.map((i) => [i.id, i.situacao, i.votos,
+          i.impacto, i.esforco, i.adiado, i.destino_tipo, i.destino_id,
+          i.texto_tratado, i.agrupado_em_id]));
         const antes = retrato(this.itens);
         this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
         this.rodadas = await App.api(`/api/rodadas?planejamento_id=${this.plan.id}&ano=${ano}`);
@@ -1306,10 +1312,16 @@ const SecaoColeta = {
         Diag.irParaFator('cenario', id);
         return;
       }
-      // Fator: descobrir a etapa para abrir a seção certa
-      const item = this.itens.find((i) => String(i.destino_id) === String(id));
-      const etapa = (item?.destino_sugerido || 'PESTEL').toLowerCase();
-      Diag.irParaFator(['pestel', 'porter', 'swot'].includes(etapa) ? etapa : 'pestel', id);
+      // A etapa é onde a ideia FOI PARAR (destino_etapa, que o listar() traz
+      // com o LEFT JOIN em fator), não o destino_sugerido — este é o palpite de
+      // quem escreveu, e o padrão dele é NAO_SEI. Pelo palpite, uma ideia sem
+      // sugestão encaminhada para a SWOT abria a seção PESTEL e o destaque não
+      // achava o card. O casamento também confere o tipo: um cenario_item de
+      // mesmo id não pode ser escolhido no lugar do fator.
+      const item = this.itens.find((i) => String(i.destino_id) === String(id)
+        && i.destino_tipo === 'FATOR');
+      const etapa = (item?.destino_etapa || '').toLowerCase();
+      Diag.irParaFator(['pestel', 'porter', 'swot'].includes(etapa) ? etapa : 'swot', id);
     }));
 
     if (!App.podeEditar()) return;

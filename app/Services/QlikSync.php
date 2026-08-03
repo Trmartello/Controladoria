@@ -58,7 +58,10 @@ class QlikSync
         // recebem um código temporário, liberando os oficiais para a 2ª passada
         // (cargas antigas usavam códigos provisórios sequenciais que colidem).
         foreach (self::NEGOCIOS_FONTE as $cod => $nome) {
-            $linha = Database::um('SELECT id, cod_negocio FROM negocio WHERE nome = ?', [$nome]);
+            $linha = Database::um(
+                "SELECT id, cod_negocio FROM negocio WHERE nome = ? AND origem = 'QLIK'",
+                [$nome]
+            );
             if ($linha && $linha['cod_negocio'] !== (string)$cod) {
                 Database::executar(
                     'UPDATE negocio SET cod_negocio = ? WHERE id = ?',
@@ -72,7 +75,21 @@ class QlikSync
         $conflitos = 0;
         foreach (self::NEGOCIOS_FONTE as $cod => $nome) {
             $cod = (string)$cod;
-            $linha = Database::um('SELECT id FROM negocio WHERE nome = ?', [$nome]);
+            // Só linhas já da sincronização casam por nome. Sem o filtro de
+            // origem, um negócio cadastrado À MÃO com um dos nomes oficiais era
+            // adotado pela carga — virava origem QLIK, tinha o código reescrito
+            // e passava a ser desativável por ela, contra a regra de que linha
+            // manual nunca é sobrescrita.
+            $linha = Database::um(
+                "SELECT id FROM negocio WHERE nome = ? AND origem = 'QLIK'",
+                [$nome]
+            );
+            // Nome oficial ocupado por cadastro manual: registra como conflito
+            // e segue, sem tocar na linha de ninguém
+            if (!$linha && Database::um('SELECT id FROM negocio WHERE nome = ?', [$nome])) {
+                $conflitos++;
+                continue;
+            }
             $ocupante = Database::um(
                 'SELECT id FROM negocio WHERE cod_negocio = ? AND id <> ?',
                 [$cod, $linha ? (int)$linha['id'] : 0]
