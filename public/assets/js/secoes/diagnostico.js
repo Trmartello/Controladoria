@@ -18,22 +18,29 @@ const Diag = {
     return Math.min(Number(c.ano_fim), Math.max(Number(c.ano_base), a));
   },
 
-  seletorAno() {
+  /**
+   * `chave` deixa o id único por tela. As seções não são destruídas ao navegar
+   * (só ganham d-none), então cinco "sel-ano-analise" coexistiam no documento:
+   * o `for` do label casava sempre com o primeiro e clicar no rótulo da SWOT
+   * mandava o foco para o select escondido do Cenário.
+   */
+  seletorAno(chave = 'geral') {
     const c = this.cicloAtual();
     if (!c) return '';
     const atual = this.ano();
+    const id = `sel-ano-${String(chave).toLowerCase()}`;
     const anos = [];
     for (let a = Number(c.ano_base); a <= Number(c.ano_fim); a++) anos.push(a);
     return `<div class="d-flex align-items-center gap-2">
-      <label class="small text-muted text-nowrap" for="sel-ano-analise">Ano da análise</label>
-      <select id="sel-ano-analise" class="form-select form-select-sm" style="width:auto">
+      <label class="small text-muted text-nowrap" for="${id}">Ano da análise</label>
+      <select id="${id}" class="form-select form-select-sm sel-ano-analise" style="width:auto">
         ${anos.map((a) => `<option value="${a}" ${a === atual ? 'selected' : ''}>${a}</option>`).join('')}
       </select>
     </div>`;
   },
 
   ligarSeletorAno(el) {
-    el.querySelector('#sel-ano-analise')?.addEventListener('change', (ev) => {
+    el.querySelector('.sel-ano-analise')?.addEventListener('change', (ev) => {
       this.anoSelecionado = parseInt(ev.target.value, 10);
       App.recarregarSecaoAtiva();
     });
@@ -61,12 +68,13 @@ const Diag = {
       .map(([v, r]) => `<option value="${v}" ${v === atual ? 'selected' : ''}>${r}${v === 'TODAS' ? '' : ` (${contagens[v] || 0})`}</option>`)
       .join('');
     return `<div class="d-md-none mb-3">
-      <select id="sel-cat-movel" class="form-select sel-categoria-movel" aria-label="Categoria exibida">${ops}</select>
+      <select id="sel-cat-movel-${String(chave).toLowerCase()}"
+        class="form-select sel-categoria-movel" aria-label="Categoria exibida">${ops}</select>
     </div>`;
   },
 
   ligarSeletorCategoriaMovel(el, chave) {
-    const sel = el.querySelector('#sel-cat-movel');
+    const sel = el.querySelector('.sel-categoria-movel');
     if (!sel) return;
     const aplicar = () => {
       this.filtroMovel[chave] = sel.value;
@@ -91,9 +99,11 @@ const Diag = {
       btn.type = 'button';
       btn.className = 'btn btn-link btn-sm p-0 ver-mais';
       btn.textContent = 'ver mais';
+      btn.setAttribute('aria-expanded', 'false');
       btn.addEventListener('click', () => {
         const expandido = t.classList.toggle('expandido');
         btn.textContent = expandido ? 'ver menos' : 'ver mais';
+        btn.setAttribute('aria-expanded', String(expandido));
       });
       t.after(btn);
     });
@@ -332,8 +342,8 @@ const Diag = {
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>${titulo} — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
         <div class="d-flex align-items-center gap-2 flex-wrap">
-          ${this.seletorAno()}
-          ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" id="btn-novo-fator">+ Novo fator</button>` : ''}
+          ${this.seletorAno(etapa)}
+          ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
         </div>
       </div>
       ${descricao ? `<p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>` : ''}
@@ -366,7 +376,7 @@ const Diag = {
 
     // el.querySelector, não getElementById: PESTEL e Porter usam o mesmo id e
     // a seção anterior continua no DOM (oculta) — o global pegaria o botão errado
-    el.querySelector('#btn-novo-fator').addEventListener('click', () => modalFator());
+    el.querySelector('[data-novo-fator]')?.addEventListener('click', () => modalFator());
     el.querySelectorAll('[data-add-categoria]').forEach((b) => b.addEventListener('click', () =>
       modalFator(null, b.dataset.addCategoria)));
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
@@ -469,7 +479,7 @@ const SecaoCenario = {
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>Análise de Cenário — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
         <div class="d-flex align-items-center gap-2 flex-wrap">
-          ${Diag.seletorAno()}
+          ${Diag.seletorAno('cenario')}
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
         </div>
       </div>
@@ -604,7 +614,7 @@ const SecaoSwot = {
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>SWOT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
         <div class="d-flex align-items-center gap-2 flex-wrap">
-          ${Diag.seletorAno()}
+          ${Diag.seletorAno('swot')}
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
         </div>
       </div>
@@ -729,7 +739,7 @@ const SecaoGut = {
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>Matriz GUT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
-        ${Diag.seletorAno()}
+        ${Diag.seletorAno('gut')}
       </div>
       <div class="gut-legenda-barra small mb-3">
         <span class="gl-titulo">Prioridade = Gravidade × Urgência × Tendência (1–125)</span>

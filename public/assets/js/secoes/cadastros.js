@@ -195,7 +195,9 @@ const SecaoCadastros = {
           <tbody id="linhas-ordenaveis">${lista.map((i) => `
             <tr data-id="${i.id}" class="${i.ativo == 1 ? '' : 'table-secondary'}">
               ${administra ? `<td class="celula-alca"><button type="button" class="alca-arrastar"
-                title="Arrastar para reordenar" aria-label="Arrastar para reordenar">⠿</button></td>` : ''}
+                title="Arrastar para reordenar (ou Ctrl + seta para cima/baixo)"
+                aria-label="Reordenar: arraste, ou use Ctrl com as setas para cima e para baixo"
+                >⠿</button></td>` : ''}
               <td class="celula-ordem">${i.ordem}</td>
               <td>${Modal.esc(i.nome)}</td>
               <td>${i.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
@@ -261,6 +263,32 @@ const SecaoCadastros = {
         document.addEventListener('pointermove', mover);
         document.addEventListener('pointerup', soltar);
         document.addEventListener('pointercancel', soltar);
+      });
+
+      // Alternativa por teclado: a alça é um <button> focável, mas só tinha
+      // handler de ponteiro — sem mouse ou toque não havia como reordenar.
+      // Ctrl/Alt + setas move a linha; sozinhas, as setas continuam rolando.
+      alca.addEventListener('keydown', async (ev) => {
+        const paraCima = ev.key === 'ArrowUp';
+        const paraBaixo = ev.key === 'ArrowDown';
+        if ((!paraCima && !paraBaixo) || !(ev.ctrlKey || ev.altKey)) return;
+        ev.preventDefault();
+        const linha = alca.closest('tr');
+        const vizinho = paraCima ? linha.previousElementSibling : linha.nextElementSibling;
+        if (!vizinho) return;
+        if (paraCima) tbody.insertBefore(linha, vizinho);
+        else tbody.insertBefore(vizinho, linha);
+        const linhas = [...tbody.querySelectorAll('tr[data-id]')];
+        try {
+          await aoSoltar(linhas.map((t) => Number(t.dataset.id)));
+          linhas.forEach((t, i) => {
+            const cel = t.querySelector('.celula-ordem');
+            if (cel) cel.textContent = i + 1;
+          });
+        } catch (e) {
+          alert(e.message);
+        }
+        alca.focus(); // o foco acompanha a linha que se moveu
       });
     });
   },

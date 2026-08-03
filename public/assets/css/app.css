@@ -1378,3 +1378,68 @@ tr.card-destacado > td { background: #e8f5ee; }
   .card { border: 1px solid #ccc; break-inside: avoid; }
   a[href]::after { content: ''; }
 }
+
+/* ===== Foco visível e alvo de toque =====
+   O Bootstrap zera o outline no :focus-visible e desenha um box-shadow a
+   partir de --bs-btn-focus-shadow-rgb. Os botões com cor própria nunca
+   definiram essa variável, então ficavam SEM indicador nenhum de foco — quem
+   navega por teclado não via onde estava, inclusive no "Salvar" de todo
+   formulário. */
+.btn-verde,
+.btn-add-cat,
+.btn-swot-cat,
+.btn-ver-swot { --bs-btn-focus-shadow-rgb: 0, 122, 69; }
+
+.btn-mais:focus-visible,
+.btn-ditar:focus-visible,
+.btn-orientacao:focus-visible,
+.btn-ver-palavras:focus-visible,
+.alca-arrastar:focus-visible,
+.palavra-x:focus-visible {
+  outline: 2px solid var(--verde-coperdia);
+  outline-offset: 2px;
+  border-radius: .2rem;
+}
+
+/* No celular o dedo precisa de alvo: o ⓘ tinha 15x15 e ficava encostado no ✎
+   de 25x22. Cresce por DIMENSÃO real, não por ::after sobreposto — botões
+   vizinhos teriam áreas invisíveis se cobrindo, e o toque na fronteira cairia
+   no elemento errado. */
+@media (max-width: 767.98px) {
+  /* .btn-ver-palavras fica de fora: ele já ganha área de toque pelo ::after,
+     e altura real ali encorpava a caixa do grupo em 20px sem necessidade */
+  .btn-orientacao,
+  .btn-mais,
+  .alca-arrastar,
+  .palavra-x {
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+  }
+  .btn-orientacao,
+  .palavra-x,
+  .alca-arrastar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-ditar { width: 2.25rem; height: 2.25rem; }
+  .botoes-fator .btn {
+    --bs-btn-padding-y: .35rem;
+    --bs-btn-padding-x: .55rem;
+    min-height: 2.25rem;
+  }
+}
+
+/* Menu recolhido sai da ordem de tabulação: só com translateX(-100%) ele
+   continuava focável, e o Tab a partir do conteúdo entrava nos selects de ciclo
+   e negócio e nos links invisíveis. A visibilidade só cai DEPOIS que a
+   animação termina (transition-delay), senão o menu sumiria de uma vez em vez
+   de deslizar para fora. */
+.menu-lateral {
+  visibility: hidden;
+  transition: transform .25s ease, visibility 0s linear .25s;
+}
+body.menu-aberto .menu-lateral {
+  visibility: visible;
+  transition: transform .25s ease, visibility 0s;
+}

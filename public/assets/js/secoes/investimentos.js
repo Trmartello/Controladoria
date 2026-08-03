@@ -91,7 +91,8 @@ const SecaoInvestimentos = {
               ${['PROPOSTO', 'RANQUEADO'].includes(i.situacao) ? `<button class="btn btn-sm btn-outline-success" data-decidir="${i.id}">Decidir</button>` : ''}
               ${['APROVADO', 'EXECUTADO'].includes(i.situacao) ? `<button class="btn btn-sm btn-outline-dark" data-auditar="${i.id}">Auditar</button>` : ''}
               <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}">Editar</button>
-              <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}">×</button>` : ''}</td>
+              <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}"
+                title="Excluir investimento" aria-label="Excluir investimento">×</button>` : ''}</td>
           </tr>`;
         }).join('');
         const total = doGrupo.reduce((s, i) => s + Number(i.valor), 0);

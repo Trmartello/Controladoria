@@ -48,7 +48,8 @@ const SecaoProjetos = {
 
   /** Alternador de detalhe de um item (projeto, iniciativa ou ação). */
   botaoMais(chave, aberto) {
-    return `<button type="button" class="btn-mais" data-mais="${chave}">
+    return `<button type="button" class="btn-mais" data-mais="${chave}"
+      aria-expanded="${aberto}" aria-controls="detalhe-${chave}">
       ${aberto ? 'mostrar menos' : 'mostrar mais'}</button>`;
   },
 
@@ -62,6 +63,7 @@ const SecaoProjetos = {
       else this.detalhesAbertos.add(chave);
       alvo.classList.toggle('d-none', abrir);
       b.textContent = abrir ? 'mostrar mais' : 'mostrar menos';
+      b.setAttribute('aria-expanded', String(!abrir));
     }));
   },
 
@@ -93,7 +95,7 @@ const SecaoProjetos = {
         <span class="badge ${classeIni}">${rotIni}</span>
         ${this.botaoMais(chave, detalhado)}
       </div>
-      <div class="detalhe-item ${detalhado ? '' : 'd-none'}" data-detalhe="${chave}">
+      <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
         ${ini.descricao ? `<div class="small text-muted mt-1">${Modal.esc(ini.descricao)}</div>` : ''}
         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
           <span class="badge text-bg-light border" title="Ações concluídas">${feitas}/${acoes.length} ações</span>
@@ -155,7 +157,7 @@ const SecaoProjetos = {
           <span class="valor-progresso">${a.progresso}%</span>`}
           ${this.botaoMais(chave, detalhado)}
         </div>
-        <div class="detalhe-item ${detalhado ? '' : 'd-none'}" data-detalhe="${chave}">
+        <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
           ${extras ? `<div class="small text-muted mt-2">${extras}</div>` : ''}
           <span class="d-flex gap-1 flex-wrap mt-2">
             <button class="btn btn-sm btn-outline-success" data-diario="DESDOBRAMENTO:${a.id}">Diário</button>
@@ -243,7 +245,7 @@ const SecaoProjetos = {
             <span class="valor-progresso" data-media-projeto>${media}%</span>
             ${atrasadas ? `<span class="badge text-bg-danger">${atrasadas} atrasada(s)</span>` : ''}
           </div>
-          <div class="detalhe-item ${detalhado ? '' : 'd-none'}" data-detalhe="${chave}">
+          <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
             ${descricao}
             ${detalhes ? `<div class="small text-muted mt-1">${detalhes}</div>` : ''}
             <div class="small text-muted mt-1">${(p.iniciativas || []).length} iniciativa(s) ·

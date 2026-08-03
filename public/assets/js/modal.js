@@ -411,9 +411,17 @@ const Modal = {
           alvo.focus();
         }
       });
-      document.addEventListener('click', (ev) => {
+      // Fechar ao clicar fora: o listener é do DOCUMENTO e o modal é reaberto
+      // dezenas de vezes numa sessão. Registrado dentro do forEach e nunca
+      // removido, cada abertura deixava mais um closure preso ao painel antigo,
+      // que virava nó destacado. Sai junto com o modal.
+      const foraDoCombo = (ev) => {
         if (!painel.classList.contains('d-none') && !ev.target.closest('.combo-busca')) fechar();
-      });
+      };
+      document.addEventListener('click', foraDoCombo);
+      document.getElementById('modal-form')?.addEventListener('hidden.bs.modal', () => {
+        document.removeEventListener('click', foraDoCombo);
+      }, { once: true });
     });
   },
 

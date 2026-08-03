@@ -84,12 +84,13 @@
   </div>
 
   <!-- Modal genérico de cadastro -->
-  <div class="modal fade" id="modal-form" tabindex="-1">
+  <div class="modal fade" id="modal-form" tabindex="-1" aria-labelledby="modal-titulo">
     <div class="modal-dialog modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
           <h2 class="modal-title h6" id="modal-titulo"></h2>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+            aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
           <form id="modal-campos"></form>
