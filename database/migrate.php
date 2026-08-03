@@ -191,12 +191,17 @@ $pdo->exec(
      WHERE d.quem_usuario_id IS NULL AND d.quem IS NOT NULL AND d.quem <> \'\''
 );
 
-// Ações criadas antes das iniciativas são agrupadas numa frente padrão
+// Ações criadas antes das iniciativas são agrupadas numa frente padrão.
+// O NOT EXISTS evita criar uma SEGUNDA "Ações do projeto" num deploy posterior,
+// caso apareça outra ação sem iniciativa (o UPDATE seguinte apontaria para a
+// primeira e a segunda ficaria vazia na tela).
 $pdo->exec(
     "INSERT INTO iniciativa (projeto_id, titulo, ordem)
      SELECT DISTINCT d.projeto_id, 'Ações do projeto', 0
      FROM desdobramento d
-     WHERE d.iniciativa_id IS NULL"
+     WHERE d.iniciativa_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM (SELECT projeto_id, titulo FROM iniciativa) i2
+                       WHERE i2.projeto_id = d.projeto_id AND i2.titulo = 'Ações do projeto')"
 );
 $pdo->exec(
     "UPDATE desdobramento d
@@ -286,6 +291,36 @@ garantirIndice($pdo, 'coleta_item', 'idx_ci_part',
 garantirIndice($pdo, 'coleta_item', 'idx_ci_grupo',
     'ALTER TABLE coleta_item ADD KEY idx_ci_grupo (agrupado_em_id)');
 
+/** Cria uma chave estrangeira só se ela ainda não existe. */
+function garantirFk(PDO $pdo, string $tabela, string $nome, string $ddl): void
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?
+           AND CONSTRAINT_TYPE = \'FOREIGN KEY\''
+    );
+    $stmt->execute([$tabela, $nome]);
+    if ((int)$stmt->fetchColumn() === 0) {
+        $pdo->exec($ddl);
+        echo "migrate: chave estrangeira {$tabela}.{$nome} criada.\n";
+    }
+}
+
+// rodada_id e triado_por nasceram por ALTER e ficaram sem FK — ao contrário de
+// dividido_de_id/agrupado_em_id, que são deliberadamente sem chave (o código as
+// solta à mão, porque apontam para linhas que podem sumir a qualquer momento).
+// Limpa referências mortas antes, senão o ALTER falha e o container não sobe.
+$pdo->exec('UPDATE coleta_item SET rodada_id = NULL WHERE rodada_id IS NOT NULL
+            AND rodada_id NOT IN (SELECT id FROM (SELECT id FROM coleta_rodada) r)');
+$pdo->exec('UPDATE coleta_item SET triado_por = NULL WHERE triado_por IS NOT NULL
+            AND triado_por NOT IN (SELECT id FROM (SELECT id FROM usuario) u)');
+garantirFk($pdo, 'coleta_item', 'fk_ci_rodada',
+    'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_rodada
+     FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE SET NULL');
+garantirFk($pdo, 'coleta_item', 'fk_ci_triador',
+    'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_triador
+     FOREIGN KEY (triado_por) REFERENCES usuario(id) ON DELETE SET NULL');
+
 // Quem entra pela tempestade não tem conta: o autor passa a ser opcional
 $autorNulo = $pdo->query(
     "SELECT IS_NULLABLE FROM information_schema.COLUMNS
@@ -313,6 +348,39 @@ if ($tipoSituacaoColeta && !str_contains((string)$tipoSituacaoColeta, 'DIVIDIDO'
          WHERE situacao = 'DESCARTADO' AND motivo LIKE 'Dividida em %'"
     );
     echo "migrate: situacao da ideia ampliada (SELECIONADO, DIVIDIDO).\n";
+}
+
+// Collation uniforme em todas as tabelas. Sem COLLATE explícito, cada motor
+// escolhe o seu — MariaDB cai em utf8mb4_general_ci e o MySQL 8 em
+// utf8mb4_0900_ai_ci —, então homologação e produção discordam em ordenação e
+// na comparação de acentos (e um "nome já existe" pode valer num e não no
+// outro). A conversão roda uma vez só: depois dela a consulta não acha nada.
+$foraDoPadrao = $pdo->query(
+    "SELECT TABLE_NAME FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'
+       AND TABLE_COLLATION <> 'utf8mb4_unicode_ci'"
+)->fetchAll(PDO::FETCH_COLUMN);
+if ($foraDoPadrao) {
+    // As chaves estrangeiras exigem charset/collation iguais entre pai e filho;
+    // durante a conversão as tabelas ficam momentaneamente diferentes
+    $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+    foreach ($foraDoPadrao as $tabela) {
+        $pdo->exec("ALTER TABLE `{$tabela}` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+    }
+    $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+    echo 'migrate: collation uniformizada em ' . count($foraDoPadrao) . " tabela(s).\n";
+}
+
+// Faxina das tabelas que só crescem. O coletor de sessão do PHP roda por
+// probabilidade e há ambiente com session.gc_probability = 0, onde ele nunca é
+// chamado — e cada visita anônima a /login já cria uma linha em `sessao`, porque
+// o formulário precisa do token CSRF. Aqui a limpeza é determinística: acontece
+// em todo deploy (e de novo no cron diário, em cli/notificar.php).
+$sessoes = $pdo->exec("DELETE FROM sessao WHERE atualizado_em < (NOW() - INTERVAL 30 DAY)");
+$tentativas = $pdo->exec("DELETE FROM coleta_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY)")
+    + $pdo->exec("DELETE FROM login_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY)");
+if ($sessoes || $tentativas) {
+    echo "migrate: faxina — {$sessoes} sessão(ões) e {$tentativas} tentativa(s) expiradas removidas.\n";
 }
 
 $pdo->query("SELECT RELEASE_LOCK('migrate_controladoria')")->fetchColumn();

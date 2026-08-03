@@ -76,6 +76,9 @@ if ($https) {
 const SESSAO_DIAS = 30;
 if (!$rotaPublica) {
     ini_set('session.gc_maxlifetime', (string)(SESSAO_DIAS * 86400));
+    // Recusa id de sessão que o cliente inventou. A fixação já está coberta
+    // pelo session_regenerate_id do login; isto é defesa em profundidade barata
+    ini_set('session.use_strict_mode', '1');
     session_set_save_handler(new \App\Core\SessaoBanco(), true);
     session_set_cookie_params([
         'lifetime' => SESSAO_DIAS * 86400,

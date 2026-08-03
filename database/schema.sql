@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS sessao (
   dados         MEDIUMBLOB,
   atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_sessao_atualizado (atualizado_em)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS usuario (
   id            INT AUTO_INCREMENT PRIMARY KEY,
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS usuario (
   perfil        ENUM('ADMIN','CONTROLADORIA','DIRECAO','GESTOR','LEITURA') NOT NULL DEFAULT 'LEITURA',
   ativo         TINYINT(1) NOT NULL DEFAULT 1,
   criado_em     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS negocio (
   id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS negocio (
   sincronizado_em DATETIME NULL,
   ativo           TINYINT(1) NOT NULL DEFAULT 1,
   CONSTRAINT fk_negocio_gestor FOREIGN KEY (gestor_id) REFERENCES usuario(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS usuario_negocio (
   usuario_id INT NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS usuario_negocio (
   PRIMARY KEY (usuario_id, negocio_id),
   CONSTRAINT fk_un_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE,
   CONSTRAINT fk_un_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS ciclo (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS ciclo (
   ano_inicio  SMALLINT NOT NULL,
   ano_fim     SMALLINT NOT NULL,
   status      ENUM('EM_ELABORACAO','VIGENTE','ENCERRADO') NOT NULL DEFAULT 'EM_ELABORACAO'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS horizonte (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -56,21 +56,21 @@ CREATE TABLE IF NOT EXISTS horizonte (
   objetivo    TEXT NOT NULL,
   ordem       TINYINT NOT NULL DEFAULT 0,
   CONSTRAINT fk_horizonte_ciclo FOREIGN KEY (ciclo_id) REFERENCES ciclo(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS driver (
   id     INT AUTO_INCREMENT PRIMARY KEY,
   nome   VARCHAR(60) NOT NULL,
   ordem  TINYINT NOT NULL DEFAULT 0,
   ativo  TINYINT(1) NOT NULL DEFAULT 1
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS eixo (
   id     INT AUTO_INCREMENT PRIMARY KEY,
   nome   VARCHAR(60) NOT NULL,
   ordem  TINYINT NOT NULL DEFAULT 0,
   ativo  TINYINT(1) NOT NULL DEFAULT 1
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS planejamento (
   id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS planejamento (
   UNIQUE KEY uk_ciclo_neg (ciclo_id, escopo, negocio_chave),
   CONSTRAINT fk_plan_ciclo FOREIGN KEY (ciclo_id) REFERENCES ciclo(id),
   CONSTRAINT fk_plan_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS cenario_item (
   id               INT AUTO_INCREMENT PRIMARY KEY,
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS cenario_item (
   ordem            SMALLINT NOT NULL DEFAULT 0,
   descricao        TEXT NOT NULL,
   CONSTRAINT fk_cenario_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS fator (
   id               INT AUTO_INCREMENT PRIMARY KEY,
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS fator (
   criado_em        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_fator_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_fator_origem FOREIGN KEY (promovido_de_id) REFERENCES fator(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS gut (
   fator_id   INT PRIMARY KEY,
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS gut (
   tendencia  TINYINT NOT NULL CHECK (tendencia  BETWEEN 1 AND 5),
   score      SMALLINT GENERATED ALWAYS AS (gravidade * urgencia * tendencia) STORED,
   CONSTRAINT fk_gut_fator FOREIGN KEY (fator_id) REFERENCES fator(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS cascata_escolha (
   id               INT AUTO_INCREMENT PRIMARY KEY,
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS cascata_escolha (
   CONSTRAINT fk_casc_horiz FOREIGN KEY (horizonte_id) REFERENCES horizonte(id),
   CONSTRAINT fk_casc_driver FOREIGN KEY (driver_id) REFERENCES driver(id),
   CONSTRAINT fk_casc_eixo FOREIGN KEY (eixo_id) REFERENCES eixo(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS cascata_fator (
   cascata_id INT NOT NULL,
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS cascata_fator (
   PRIMARY KEY (cascata_id, fator_id),
   CONSTRAINT fk_cf_cascata FOREIGN KEY (cascata_id) REFERENCES cascata_escolha(id) ON DELETE CASCADE,
   CONSTRAINT fk_cf_fator FOREIGN KEY (fator_id) REFERENCES fator(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS indicador (
   id               INT AUTO_INCREMENT PRIMARY KEY,
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS indicador (
   horizonte_id     INT NULL,
   CONSTRAINT fk_ind_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_ind_horiz FOREIGN KEY (horizonte_id) REFERENCES horizonte(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS indicador_valor (
   id            INT AUTO_INCREMENT PRIMARY KEY,
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS indicador_valor (
   valor         DECIMAL(15,2) NOT NULL,
   UNIQUE KEY uk_ind_ano (indicador_id, ano, tipo, versao_meta),
   CONSTRAINT fk_iv_indicador FOREIGN KEY (indicador_id) REFERENCES indicador(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS projeto (
   id               INT AUTO_INCREMENT PRIMARY KEY,
@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS projeto (
   CONSTRAINT fk_proj_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_proj_horiz FOREIGN KEY (horizonte_id) REFERENCES horizonte(id),
   CONSTRAINT fk_proj_cascata FOREIGN KEY (cascata_id) REFERENCES cascata_escolha(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Frentes de trabalho dentro de um projeto (projeto → iniciativa → ação)
 CREATE TABLE IF NOT EXISTS iniciativa (
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS iniciativa (
   status      ENUM('ABERTA','EM_ANDAMENTO','CONCLUIDA') NOT NULL DEFAULT 'ABERTA',
   ordem       SMALLINT NOT NULL DEFAULT 0,
   CONSTRAINT fk_ini_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS desdobramento (
   id           INT AUTO_INCREMENT PRIMARY KEY,
@@ -222,7 +222,7 @@ CREATE TABLE IF NOT EXISTS desdobramento (
   ordem        SMALLINT NOT NULL DEFAULT 0,
   CONSTRAINT fk_desd_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id) ON DELETE CASCADE,
   CONSTRAINT fk_desd_iniciativa FOREIGN KEY (iniciativa_id) REFERENCES iniciativa(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS envelope_capital (
   id               INT AUTO_INCREMENT PRIMARY KEY,
@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS envelope_capital (
   regras           TEXT,
   CONSTRAINT fk_env_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_env_horiz FOREIGN KEY (horizonte_id) REFERENCES horizonte(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS investimento (
   id               INT AUTO_INCREMENT PRIMARY KEY,
@@ -253,7 +253,7 @@ CREATE TABLE IF NOT EXISTS investimento (
   CONSTRAINT fk_inv_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_inv_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id),
   CONSTRAINT fk_inv_horiz FOREIGN KEY (horizonte_id) REFERENCES horizonte(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Registro dos avisos por e-mail já enviados (evita repetir no mesmo dia)
 CREATE TABLE IF NOT EXISTS envio_email (
@@ -267,7 +267,7 @@ CREATE TABLE IF NOT EXISTS envio_email (
   enviado_em  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_envio (tipo, referencia, usuario_id),
   CONSTRAINT fk_envio_usuario FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS diario_bordo (
   id           INT AUTO_INCREMENT PRIMARY KEY,
@@ -281,7 +281,7 @@ CREATE TABLE IF NOT EXISTS diario_bordo (
   criado_em    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_ref (ref_tipo, ref_id, data_reg),
   CONSTRAINT fk_db_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Ata leve das reuniões de acompanhamento do planejamento
 CREATE TABLE IF NOT EXISTS reuniao (
@@ -298,7 +298,7 @@ CREATE TABLE IF NOT EXISTS reuniao (
   KEY idx_reu_plan (planejamento_id, data_reuniao),
   CONSTRAINT fk_reu_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_reu_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Coleta de ideias (brainstorm): item cru até virar cenário ou fator
 CREATE TABLE IF NOT EXISTS coleta_item (
@@ -335,7 +335,9 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   KEY idx_ci_grupo (agrupado_em_id),
   CONSTRAINT fk_ci_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_ci_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  -- fk_ci_rodada e fk_ci_triador ficam no migrate (garantirFk): coleta_rodada
+  -- é criada DEPOIS desta tabela, e a FK aqui quebraria a instalação nova
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Rodada de tempestade de ideias: sessão ao vivo com PIN para entrar
 CREATE TABLE IF NOT EXISTS coleta_rodada (
@@ -355,7 +357,7 @@ CREATE TABLE IF NOT EXISTS coleta_rodada (
   KEY idx_rodada_plan (planejamento_id, ano, situacao),
   CONSTRAINT fk_rod_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_rod_autor FOREIGN KEY (criado_por) REFERENCES usuario(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Voto de participante numa ideia da rodada (convergência opcional)
 CREATE TABLE IF NOT EXISTS coleta_voto (
@@ -368,7 +370,7 @@ CREATE TABLE IF NOT EXISTS coleta_voto (
   KEY idx_voto_rodada (rodada_id, participante_token),
   CONSTRAINT fk_voto_item FOREIGN KEY (item_id) REFERENCES coleta_item(id) ON DELETE CASCADE,
   CONSTRAINT fk_voto_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Quem entrou na rodada pelo PIN. Sem esta tabela o token do participante
 -- seria auto-emitido: qualquer string hex passaria na validação de formato.
@@ -380,7 +382,7 @@ CREATE TABLE IF NOT EXISTS coleta_participante (
   criado_em  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_part (rodada_id, token),
   CONSTRAINT fk_part_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Tentativas de resolver um PIN, para travar enumeração por força bruta
 CREATE TABLE IF NOT EXISTS coleta_tentativa (
@@ -388,7 +390,7 @@ CREATE TABLE IF NOT EXISTS coleta_tentativa (
   origem    VARCHAR(45) NOT NULL,
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_tentativa (origem, criado_em)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Tentativas de login falhas: trava de força bruta por e-mail e por origem
 CREATE TABLE IF NOT EXISTS login_tentativa (
@@ -398,5 +400,5 @@ CREATE TABLE IF NOT EXISTS login_tentativa (
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_login_origem (origem, criado_em),
   KEY idx_login_email (email, criado_em)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

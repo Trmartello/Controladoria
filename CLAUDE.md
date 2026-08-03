@@ -14,7 +14,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   (sessões em MySQL na tabela `sessao` — sobrevivem a deploys; cookie 30 dias).
 - **Serviços** (`app/Services/`): `QlikSync`, `Recorrencia` (repetição das
   ações — usada pelo cadastro **e** pelo diário), `Avisos` (e-mails do plano
-  de ação). Autoload PSR-4 caseiro em `public/index.php` (`App\` → `app/`);
+  de ação), `Consolidacao` (reconciliação do que é *consequência*: atraso da
+  ação e período/status do projeto). `Consolidacao::reconciliar($planId)` roda
+  no começo de **toda leitura** que exibe esses campos — Projetos, Painel e
+  Relatório. Deixá-la só em Projetos fazia o painel da direção contar zero
+  atraso até alguém abrir a seção, e os números mudavam sozinhos depois. Autoload PSR-4 caseiro em `public/index.php` (`App\` → `app/`);
   **não há Composer nem `vendor/`** — nada de dependência externa em PHP.
 - **Frontend**: JS vanilla, sem build. Seções em `public/assets/js/secoes/*.js`
   registradas em `App.recarregarSecaoAtiva()` (`app.js`). Formulários via
@@ -45,7 +49,20 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `versao_asset('/assets/...')` (acrescenta `?v=filemtime`). Assets novos em
   views devem usar esse helper, senão o cache de 24h serve versão velha.
 - **Segurança**: CSP sem script inline (JS sempre em arquivo externo), headers
-  em `public/index.php`. Não introduzir `onclick=` ou `<script>` inline.
+  em `public/index.php` — eles vêm **antes** do `session_start()`, porque o
+  handler de sessão consulta o MySQL e uma queda do banco devolvia 500 sem
+  cabeçalho nenhum. Não introduzir `onclick=` ou `<script>` inline.
+  `Auth::exigirLogin()` relê perfil e `ativo` no banco a cada requisição (com
+  cache por requisição): sem isso, desativar ou rebaixar alguém não revogava
+  nada até a sessão expirar — e o cookie é de 30 dias, deslizante.
+  A expiração de sessão é conferida no `SessaoBanco::read()`, não só no `gc()`:
+  o coletor do PHP roda por probabilidade e há ambiente com ela em zero.
+  Login tem trava de força bruta (`login_tentativa`, balde por e-mail e por
+  origem). Nunca usar `usleep` como defesa: ele roda dentro do trabalhador do
+  `php -S` e vira amplificador de DoS.
+  Arquivo real de `public/` fora de `/assets/` responde **404**: devolver
+  `false` fazia o cli-server incluir o `index.php` de novo na mesma requisição
+  e a redeclaração de `versao_asset()` derrubava o pedido com fatal.
 
 ## Regras de negócio importantes
 
@@ -233,7 +250,23 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   (`WHERE NOT EXISTS (SELECT 1 FROM tabela)`) — renomear algo pela UI não pode
   recriar linhas.
 - Compatibilidade MySQL 8 **e** MariaDB (por isso `ON DUPLICATE KEY UPDATE
-  VALUES()` e nada de sintaxe exclusiva do MySQL 8).
+  VALUES()` e nada de sintaxe exclusiva do MySQL 8). Toda tabela declara
+  `COLLATE=utf8mb4_unicode_ci`: sem isso cada motor escolhe a sua (MariaDB
+  `general_ci`, MySQL 8 `0900_ai_ci`) e homologação discorda de produção na
+  ordenação e na comparação de acentos.
+- Índice novo em tabela que já existe: `garantirIndice()`; chave estrangeira
+  nova: `garantirFk()`. `CREATE TABLE IF NOT EXISTS` não alcança tabela criada
+  antes, então índice declarado só no `schema.sql` nunca chega em produção.
+- FK cujo alvo é criado **depois** no `schema.sql` (ex.: `coleta_item` →
+  `coleta_rodada`) fica no migrate, nunca no `CREATE TABLE`: ali ela quebra a
+  instalação nova.
+- O migrate serializa por `GET_LOCK` (duas réplicas subindo juntas passariam as
+  duas no *check-then-act* de `garantirColuna`) e aborta na hora em erro
+  permanente (1045/1049), em vez de insistir 30 vezes dizendo "aguardando
+  banco".
+- Faxina determinística das tabelas que só crescem (`sessao`,
+  `coleta_tentativa`, `login_tentativa`) no migrate **e** em
+  `cli/notificar.php` — nunca confiar no `gc` do PHP.
 
 ## Rodando localmente
 
@@ -289,8 +322,16 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
   commitar e fazer `git push -u origin` sempre nessa branch.
 - Mensagens de commit em português, primeira linha descritiva.
 - Ao concluir trabalho grande: rodar o time de agentes de revisão
-  (segurança, corretude, infra) e aplicar os achados confirmados; manter a
-  responsividade mobile; validar com Playwright antes de commitar.
+  (segurança, corretude, infra, frontend) e aplicar os achados confirmados;
+  manter a responsividade mobile; validar com Playwright antes de commitar.
+- Acessibilidade que já custou defeito: as seções **não são destruídas** ao
+  navegar (só ganham `d-none`), então id repetido entre telas coexiste no
+  documento e o `for` do label casa sempre com o primeiro — ids de tela levam
+  sufixo (`sel-ano-swot`) ou viram atributo (`data-novo-fator`). Botão de cor
+  própria precisa de `--bs-btn-focus-shadow-rgb`, senão fica sem indicador de
+  foco. Alvo de toque no celular cresce por **dimensão real**, nunca por
+  `::after` sobreposto — áreas invisíveis de botões vizinhos se cobrem e o
+  toque na fronteira vai para o errado.
 - Roadmap e especificações: `docs/PLANEJAMENTO-SISTEMA.md` (fases 1–6 já
   entregues) e `docs/BACKLOG-EVOLUCAO.md` (matriz de impacto por negócio,
   triagem pós-brainstorm, mapa BSC, plano de contingência e ritual de

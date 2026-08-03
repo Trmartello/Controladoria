@@ -12,6 +12,13 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
  && printf 'display_errors=Off\nlog_errors=On\nerror_log=/dev/stderr\nexpose_php=Off\n' \
       > "$PHP_INI_DIR/conf.d/zz-app.ini"
 
+# O opcache vem na imagem, mas desligado — e no SAPI do servidor embutido ele
+# ainda exige enable_cli. Sem isso, todo pedido recompila o PHP inteiro.
+# O código não muda dentro do container, então a revalidação fica desligada.
+RUN docker-php-ext-enable opcache \
+ && printf 'opcache.enable=1\nopcache.enable_cli=1\nopcache.validate_timestamps=0\nopcache.memory_consumption=64\n' \
+      > "$PHP_INI_DIR/conf.d/zz-opcache.ini"
+
 # Mesmo fuso da cooperativa (o PHP também o fixa em config/config.php)
 ENV TZ=America/Sao_Paulo
 
