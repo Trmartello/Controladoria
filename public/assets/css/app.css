@@ -672,6 +672,12 @@ input[type=range].faixa-verde:focus-visible {
 .gp-lin-2 { grid-row: 4; }
 /* Com uma ideia em foco, o quadrante vira alvo: é aqui que se classifica */
 .celula-prio.clicavel { cursor: pointer; }
+/* Quadrante sob o dedo durante o arraste — visível do fundo da sala */
+.celula-prio.alvo-solta {
+  border-color: var(--cor-quad, var(--dourado));
+  border-width: 3px;
+  background: color-mix(in srgb, var(--cor-quad, #007a45) 14%, #fff);
+}
 .celula-prio.clicavel:hover { background: #f6faf8; border-color: var(--cor-quad, #ced4da); }
 .celula-prio.escolhido {
   border-color: var(--cor-quad, #007a45);
@@ -716,6 +722,10 @@ input[type=range].faixa-verde:focus-visible {
   overflow-wrap: anywhere;
   text-align: left;
 }
+/* Arrastável entre quadrantes: o toque não pode rolar a página no meio do
+   gesto (a rolagem durante o arraste é feita pelo auto-scroll) */
+.ficha-prio { touch-action: none; user-select: none; }
+.ficha-prio.arrastando { opacity: .5; }
 .ficha-prio:hover { background: #f4f8f6; }
 .ficha-prio.selecionada {
   background: var(--cor-quad, var(--verde-coperdia));

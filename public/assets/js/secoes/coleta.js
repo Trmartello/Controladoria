@@ -388,8 +388,11 @@ const SecaoColeta = {
         ? `data-quadrante="${imp}:${esf}" data-item="${lider.id}" role="button" tabindex="0"
            title="Pôr «${Modal.esc(lider.texto_tratado || lider.texto)}» em ${q.titulo}"`
         : '';
+      // data-solta-quadrante é PERMANENTE (alvo do arraste, mesmo sem seleção);
+      // data-quadrante só existe com uma ideia em foco (o toque que classifica)
       return `<div class="celula-prio ${area} ${escolhido ? 'escolhido' : ''} ${
-        podeClassificar ? 'clicavel' : ''}" style="--cor-quad:${q.cor}" ${alvo}>
+        podeClassificar ? 'clicavel' : ''}" style="--cor-quad:${q.cor}"
+        data-solta-quadrante="${imp}:${esf}" ${alvo}>
         <div class="cp-titulo">${q.titulo}</div>
         <div class="cp-fichas">${porQuadrante(imp, esf)}</div>
       </div>`;
@@ -418,6 +421,35 @@ const SecaoColeta = {
     </div></div>`;
   },
 
+  /**
+   * Põe a ideia (o grupo inteiro) num quadrante — o caminho único do clique e
+   * do arraste. `limpar` desfaz a classificação e devolve a ideia à fila.
+   */
+  async aplicarQuadrante(itemId, impacto, esforco, limpar = false) {
+    // Trava de reentrância: na projeção o alvo é grande e dois toques seguidos
+    // disparariam dois priorizar (e dois modais de descarte)
+    if (this.classificando) return;
+    this.classificando = true;
+    const item = this.itens.find((i) => i.id == itemId);
+    try {
+      const r = await App.api(`/api/coleta/${itemId}/priorizar`, limpar
+        ? { planejamento_id: this.plan.id, limpar: true }
+        : { planejamento_id: this.plan.id, impacto, esforco });
+      // Aguarda o redesenho ANTES do modal de descarte, senão a tela troca
+      // por baixo do modal recém-aberto
+      await this.carregar();
+      // Quadrante "Descartar": a matriz decide esquecer — abre o descarte já
+      // com o motivo da própria posição.
+      if (!limpar && r.descartar && item) {
+        this.abrirDescarte(item, 'Baixo impacto e alto esforço — fora da matriz de priorização.');
+      }
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      this.classificando = false;
+    }
+  },
+
   /** O grupo da ideia em foco — esteja ela na fila, no painel ou adiada. */
   grupoSelecionado() {
     if (!this.selecionado) return null;
@@ -435,8 +467,11 @@ const SecaoColeta = {
     const lider = g.itens.find((x) => !x.agrupado_em_id) || g.representante;
     const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
     const selo = `${g.itens.length > 1 ? `×${g.itens.length}` : ''}${g.votos ? ` ★${g.votos}` : ''}`.trim();
+    // Arrastável para mudar de quadrante (reclassificar). Dentro do painel o
+    // arraste nunca agrupa: o alvo resolvido é sempre o quadrante.
     return `<button type="button" class="ficha-prio ${desteGrupo ? 'selecionada' : ''}"
-      data-selecionar="${lider.id}" title="${Modal.esc(lider.autor || '')} — toque para tratar">
+      data-selecionar="${lider.id}" data-arrastavel="${lider.id}"
+      title="${Modal.esc(lider.autor || '')} — toque para tratar, arraste para outro quadrante">
       <span class="fp-texto">${Modal.esc(lider.texto_tratado || lider.texto)}</span>${
       selo ? ` <span class="repetida">${selo}</span>` : ''}</button>`;
   },
@@ -539,9 +574,55 @@ const SecaoColeta = {
         // ela própria um <button>, e essa continua arrastável.
         const botao = ev.target.closest('button');
         if (botao && botao !== ficha) return;
+        // Todo gesto iniciado numa ficha "engole" o clique que o navegador
+        // dispara depois no quadrante. Sem isso, pegar uma pílula e largá-la no
+        // próprio quadrante (arraste curto demais para virar arraste) chegaria
+        // ao quadrante como toque — e o toque no quadrante já escolhido
+        // DESCLASSIFICA a ideia. Perder a classificação assim seria destrutivo.
+        this.gestoEmFicha = true;
         const origem = { x: ev.clientX, y: ev.clientY };
         let arrastando = false;
-        let alvoAtual = null;
+        let alvoAtual = null;   // ficha/caixa sob o dedo → agrupar
+        let quadAtual = null;   // quadrante sob o dedo  → classificar
+        let ultimo = { x: ev.clientX, y: ev.clientY };
+        let quadroRolagem = null;
+
+        const limparRealce = () => {
+          alvoAtual?.classList.remove('alvo-juntar');
+          quadAtual?.classList.remove('alvo-solta');
+        };
+
+        // O quadrante tem PRECEDÊNCIA sobre a ficha: soltar em cima de uma
+        // pílula que está dentro de um quadrante classifica, nunca agrupa —
+        // agrupar é coisa da fila.
+        const atualizarAlvo = (x, y) => {
+          const sob = document.elementFromPoint(x, y);
+          const quad = sob?.closest('[data-solta-quadrante]') || null;
+          const alvo = quad ? null : sob?.closest('[data-arrastavel]');
+          const novoAlvo = alvo && alvo !== ficha ? alvo : null;
+          if (quad !== quadAtual || novoAlvo !== alvoAtual) limparRealce();
+          quadAtual = quad;
+          alvoAtual = novoAlvo;
+          quadAtual?.classList.add('alvo-solta');
+          alvoAtual?.classList.add('alvo-juntar');
+        };
+
+        // A matriz fica acima da fila: no celular o gesto atravessa uma
+        // rolagem. Perto das bordas a tela rola sozinha, e o alvo é recalculado
+        // a cada quadro — senão o realce congelaria enquanto a página desliza.
+        const rolar = () => {
+          const margem = 90;
+          const passo = 18;
+          const alt = window.innerHeight;
+          let d = 0;
+          if (ultimo.y < margem) d = -passo * (1 - ultimo.y / margem);
+          else if (ultimo.y > alt - margem) d = passo * (1 - (alt - ultimo.y) / margem);
+          if (d) {
+            window.scrollBy(0, d);
+            atualizarAlvo(ultimo.x, ultimo.y);
+          }
+          quadroRolagem = requestAnimationFrame(rolar);
+        };
 
         const mover = (e) => {
           const dist = Math.hypot(e.clientX - origem.x, e.clientY - origem.y);
@@ -551,27 +632,42 @@ const SecaoColeta = {
             arrastando = true;
             this.arrastando = true;
             ficha.classList.add('arrastando');
+            quadroRolagem = requestAnimationFrame(rolar);
           }
           e.preventDefault();
-          const sob = document.elementFromPoint(e.clientX, e.clientY);
-          const alvo = sob?.closest('[data-arrastavel]');
-          if (alvoAtual && alvoAtual !== alvo) alvoAtual.classList.remove('alvo-juntar');
-          alvoAtual = alvo && alvo !== ficha ? alvo : null;
-          if (alvoAtual) alvoAtual.classList.add('alvo-juntar');
+          ultimo = { x: e.clientX, y: e.clientY };
+          atualizarAlvo(e.clientX, e.clientY);
         };
 
-        const soltar = async (e) => {
+        const soltar = async () => {
           document.removeEventListener('pointermove', mover);
           document.removeEventListener('pointerup', soltar);
           document.removeEventListener('pointercancel', soltar);
+          if (quadroRolagem) cancelAnimationFrame(quadroRolagem);
           this.arrastando = false;
           ficha.classList.remove('arrastando');
-          alvoAtual?.classList.remove('alvo-juntar');
-          if (!arrastando || !alvoAtual) return;
+          limparRealce();
+          // Solta a trava só depois do clique que o navegador dispara em seguida
+          setTimeout(() => { this.gestoEmFicha = false; }, 60);
+          if (!arrastando || (!alvoAtual && !quadAtual)) return;
           ficha.dataset.arrastou = '1';
+          const id = ficha.dataset.arrastavel;
+
+          // Soltou num quadrante: classifica (é o gesto central do GTD)
+          if (quadAtual) {
+            const [impacto, esforco] = quadAtual.dataset.soltaQuadrante.split(':');
+            const arrastado = this.itens.find((i) => i.id == id);
+            // Devolver ao mesmo quadrante não é desfazer: só desmarca quem
+            // toca no quadrante já escolhido
+            if (arrastado && arrastado.impacto === impacto && arrastado.esforco === esforco) return;
+            this.selecionado = Number(id);
+            await this.aplicarQuadrante(id, impacto, esforco);
+            return;
+          }
+
           const alvo = Number(alvoAtual.dataset.arrastavel);
           try {
-            const r = await App.api(`/api/coleta/${ficha.dataset.arrastavel}/agrupar`,
+            const r = await App.api(`/api/coleta/${id}/agrupar`,
               { planejamento_id: this.plan.id, alvo });
             // O alvo do arraste é quem manda: ele (ou o líder do grupo dele)
             // vira a caixa-mãe, e a bancada abre já nela
@@ -806,32 +902,14 @@ const SecaoColeta = {
       // Tocar numa pílula DENTRO do quadrante leva aquela ideia à bancada —
       // não reclassifica a que está em foco
       if (ev?.target?.closest('[data-selecionar]')) return;
-      // Trava de toque duplo: na projeção o alvo é grande e dois cliques
-      // seguidos disparariam dois priorizar (e dois modais de descarte)
-      if (this.classificando) return;
-      this.classificando = true;
+      // Clique que é o rabicho de um arraste iniciado numa ficha: ignora
+      if (this.gestoEmFicha) return;
       const [impacto, esforco] = b.dataset.quadrante.split(':');
       const item = this.itens.find((i) => i.id == b.dataset.item);
       // Tocar no quadrante JÁ escolhido desmarca: a classificação é apagada e
-      // a ideia volta para a tempestade
+      // a ideia volta para a fila
       const limpar = !!item && item.impacto === impacto && item.esforco === esforco;
-      try {
-        const r = await App.api(`/api/coleta/${b.dataset.item}/priorizar`, limpar
-          ? { planejamento_id: this.plan.id, limpar: true }
-          : { planejamento_id: this.plan.id, impacto, esforco });
-        // Aguarda o redesenho ANTES do modal de descarte, senão a tela troca
-        // por baixo do modal recém-aberto
-        await this.carregar();
-        // Quadrante "Descartar": a matriz decide esquecer — abre o descarte já
-        // com o motivo da própria posição.
-        if (!limpar && r.descartar && item) {
-          this.abrirDescarte(item, 'Baixo impacto e alto esforço — fora da matriz de priorização.');
-        }
-      } catch (e) {
-        alert(e.message);
-      } finally {
-        this.classificando = false;
-      }
+      await this.aplicarQuadrante(b.dataset.item, impacto, esforco, limpar);
     }));
 
     el.querySelectorAll('[data-complementar]').forEach((b) => b.addEventListener('click', async () => {
