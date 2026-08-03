@@ -136,7 +136,7 @@ const SecaoColeta = {
   },
 
   /**
-   * A tempestade mostra só o que AINDA NÃO foi classificado: quem ganhou
+   * A fila mostra só o que AINDA NÃO foi classificado: quem ganhou
    * quadrante migra para o painel de prioridade. Mais repetidas e mais
    * votadas primeiro — é a leitura que interessa na sala.
    */
@@ -320,7 +320,7 @@ const SecaoColeta = {
 
     if (!multi) {
       const rotulo = i.texto_tratado || i.texto;
-      const dica = adiada ? 'Trazer de volta para a tempestade'
+      const dica = adiada ? 'Trazer de volta para a fila'
         : `${Modal.esc(i.autor)} — toque para tratar, arraste sobre outra para juntar`;
       return `<button type="button" class="ficha-nuvem ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
         style="--peso:1" ${acao} title="${dica}">${Modal.esc(rotulo)}${
@@ -328,7 +328,7 @@ const SecaoColeta = {
     }
     const titulo = lider.texto_tratado || lider.texto;
     const filhas = g.itens.filter((x) => x !== lider);
-    const dica = adiada ? 'Trazer de volta para a tempestade'
+    const dica = adiada ? 'Trazer de volta para a fila'
       : `Caixa com ${g.itens.length} ideias — toque para tratar tudo junto, arraste para juntar a outra`;
     // Um ✕ em cada palavra FILHA tira só ela do grupo (juntou por engano), sem
     // desfazer o resto; o título (líder) não tem ✕ — para desfazer a caixa há o
@@ -400,7 +400,7 @@ const SecaoColeta = {
     const dica = podeClassificar
       ? `Classificando <strong>${Modal.esc(lider.texto_tratado || lider.texto)}</strong> — toque num
          quadrante. Tocar no mesmo desmarca; <strong>Descartar</strong> esquece a ideia (pede o motivo).`
-      : 'Toque numa ideia da tempestade para posicioná-la aqui.';
+      : 'Arraste uma ideia da fila até um quadrante — ou toque nela e depois no quadrante. O quadrante já define impacto e esforço.';
     return `<div class="card mb-3 painel-prio"><div class="card-body py-2 px-3">
       <div class="rotulo-secao">Prioridade</div>
       <div class="grade-prio">
@@ -476,7 +476,10 @@ const SecaoColeta = {
       selo ? ` <span class="repetida">${selo}</span>` : ''}</button>`;
   },
 
-  // ---- Tela de condução: nuvem à esquerda, bancada à direita ----
+  // ---- Tela de condução (GTD): a fila à esquerda, a bancada à direita ----
+  // A matriz fica acima das duas, em largura cheia: capturar/esclarecer aqui,
+  // organizar lá. No celular empilha — a fila vem antes da bancada, para o
+  // arraste até a matriz ser o mais curto possível.
   telaConducao() {
     const grupos = this.nuvem();
     // A bancada procura o selecionado na tempestade E no painel de prioridade:
@@ -500,8 +503,9 @@ const SecaoColeta = {
     return `<div class="row g-3 mb-3">
       <div class="col-lg-7">
         <div class="card h-100"><div class="card-body py-2 px-3">
-          <div class="rotulo-secao">Tempestade — toque para levar à bancada,
-            arraste uma sobre a outra para juntar</div>
+          <div class="rotulo-secao">Fila de ideias — arraste até um quadrante da
+            matriz para classificar; toque para editar; arraste uma sobre a outra
+            para juntar</div>
           <div class="nuvem">${fichas || '<span class="text-muted small">Aguardando as primeiras ideias...</span>'}</div>
           ${adiadas.length ? `<div class="caixa-depois">
             <button type="button" class="rotulo-secao btn-depois" data-ver-depois
@@ -517,7 +521,7 @@ const SecaoColeta = {
       <div class="col-lg-5">
         <div class="card h-100 bancada"><div class="card-body py-2 px-3">
           <div class="rotulo-secao">Bancada</div>
-          ${item ? this.bancada(item, grupoSel) : '<p class="text-muted small mb-0">Escolha uma ideia da tempestade para discutir com o grupo.</p>'}
+          ${item ? this.bancada(item, grupoSel) : '<p class="text-muted small mb-0">Toque numa ideia da fila para editar, dividir ou agrupar. A prioridade é decidida na matriz, arrastando.</p>'}
         </div></div>
       </div>
     </div>`;
