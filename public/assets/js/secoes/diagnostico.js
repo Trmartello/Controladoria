@@ -129,6 +129,52 @@ const Diag = {
     OPORTUNIDADE: 'Externo · Ajuda', AMEACA: 'Externo · Atrapalha',
   },
 
+  /**
+   * Catálogo único das categorias de PESTEL e Porter: rótulo, cor e uma dica
+   * curta. Serve às colunas da seção E aos formulários — antes cada lugar
+   * repetia a sua lista, e o "Encaminhar" da Coleta usava rótulos com outra
+   * caixa dos que a seção mostrava.
+   *
+   * A dica é de UMA linha, no espírito do "Interno · Ajuda" da SWOT: cabe no
+   * cartão e serve de lembrete na hora de escolher. A explicação longa continua
+   * no ⓘ da seção (ORIENTACOES_CATEGORIA), que é onde há espaço para ela.
+   */
+  CATEGORIAS_ETAPA: {
+    PESTEL: [
+      ['POLITICO', 'Político', '#7a3b8f', 'Governo · Regulação'],
+      ['ECONOMICO', 'Econômico', '#b08d4f', 'Juros · Câmbio · Renda'],
+      ['SOCIAL', 'Social', '#2c7fb8', 'Comportamento · Demografia'],
+      ['TECNOLOGICO', 'Tecnológico', '#0d6e6e', 'Automação · Digital'],
+      ['ECOLOGICO', 'Ecológico', '#007a45', 'Clima · Recursos · ESG'],
+      ['LEGAL', 'Legal', '#8f3b3b', 'Leis · Compliance'],
+    ],
+    PORTER: [
+      ['RIVALIDADE', 'Rivalidade', '#8f3b3b', 'Concorrentes diretos'],
+      ['NOVOS_ENTRANTES', 'Novos Entrantes', '#b08d4f', 'Barreiras de entrada'],
+      ['SUBSTITUTOS', 'Substitutos', '#7a3b8f', 'Soluções alternativas'],
+      ['PODER_FORNECEDORES', 'Poder dos Fornecedores', '#2c7fb8', 'Quem nos abastece'],
+      ['PODER_CLIENTES', 'Poder dos Clientes', '#0d6e6e', 'Quem compra de nós'],
+    ],
+  },
+
+  /**
+   * Campo de categoria em CARTÕES, como o quadrante da SWOT: todas as opções à
+   * vista, escolhidas com um toque. Substitui o `select`, em que era preciso
+   * abrir a lista para descobrir o que existe — e onde não cabia a dica.
+   */
+  campoCategoria(etapa, nome = 'categoria', rotulo = 'Categoria') {
+    return {
+      nome,
+      rotulo,
+      tipo: 'quadrantes',
+      // Não é matriz: sem posição com significado, as opções fluem em colunas
+      layout: 'lista',
+      opcoes: (this.CATEGORIAS_ETAPA[etapa] || []).map(([valor, rot, cor, dica]) => ({
+        valor, rotulo: rot, cor, dica,
+      })),
+    };
+  },
+
   // O que considerar em cada tópico do macroambiente (PESTEL). O ícone ⓘ no
   // título abre e fecha esta orientação. Só aparece onde há texto definido.
   ORIENTACOES_CATEGORIA: {
@@ -369,7 +415,7 @@ const Diag = {
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'etapa', rotulo: '', tipo: 'hidden', padrao: etapa },
         { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
-        { nome: 'categoria', rotulo: 'Categoria', tipo: 'select', opcoes: opcoesCat },
+        Diag.campoCategoria(etapa),
         { nome: 'descricao', rotulo: 'Descrição do fator', tipo: 'textarea' },
       ],
     });
@@ -535,14 +581,7 @@ const SecaoPestel = {
     titulo: 'PESTEL',
     descricao: '',
     comPromocao: true,
-    categorias: [
-      ['POLITICO', 'Político', '#7a3b8f'],
-      ['ECONOMICO', 'Econômico', '#b08d4f'],
-      ['SOCIAL', 'Social', '#2c7fb8'],
-      ['TECNOLOGICO', 'Tecnológico', '#0d6e6e'],
-      ['ECOLOGICO', 'Ecológico', '#007a45'],
-      ['LEGAL', 'Legal', '#8f3b3b'],
-    ],
+    categorias: Diag.CATEGORIAS_ETAPA.PESTEL,
   }),
 };
 
@@ -553,13 +592,7 @@ const SecaoPorter = {
     titulo: 'Porter — 5 Forças',
     descricao: '',
     comPromocao: true,
-    categorias: [
-      ['RIVALIDADE', 'Rivalidade', '#8f3b3b'],
-      ['NOVOS_ENTRANTES', 'Novos Entrantes', '#b08d4f'],
-      ['SUBSTITUTOS', 'Substitutos', '#7a3b8f'],
-      ['PODER_FORNECEDORES', 'Poder dos Fornecedores', '#2c7fb8'],
-      ['PODER_CLIENTES', 'Poder dos Clientes', '#0d6e6e'],
-    ],
+    categorias: Diag.CATEGORIAS_ETAPA.PORTER,
   }),
 };
 

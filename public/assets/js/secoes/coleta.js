@@ -43,18 +43,6 @@ const MENU_DESTINOS = [
   { grupo: 'Resultados', itens: [{ valor: 'ACAO', rotulo: 'Plano de ação' }] },
 ];
 
-const CATEGORIAS_DESTINO = {
-  PESTEL: [
-    ['POLITICO', 'Político'], ['ECONOMICO', 'Econômico'], ['SOCIAL', 'Social'],
-    ['TECNOLOGICO', 'Tecnológico'], ['ECOLOGICO', 'Ecológico'], ['LEGAL', 'Legal'],
-  ],
-  PORTER: [
-    ['RIVALIDADE', 'Rivalidade'], ['NOVOS_ENTRANTES', 'Novos entrantes'],
-    ['SUBSTITUTOS', 'Substitutos'], ['PODER_FORNECEDORES', 'Poder dos fornecedores'],
-    ['PODER_CLIENTES', 'Poder dos clientes'],
-  ],
-};
-
 const SITUACOES = {
   NOVO: ['A tratar', 'text-bg-warning'],
   SELECIONADO: ['Na matriz', 'text-bg-info'],
@@ -1449,8 +1437,9 @@ const SecaoColeta = {
     } else if (destino === 'SWOT') {
       campos.push(Diag.campoQuadrante());
     } else if (!paraAcao) {
-      campos.push({ nome: 'categoria', rotulo: 'Categoria', tipo: 'select',
-        opcoes: CATEGORIAS_DESTINO[destino].map(([valor, rotulo]) => ({ valor, rotulo })) });
+      // Mesmos cartões da SWOT: as categorias ficam todas à vista, com a dica
+      // do que entra em cada uma, em vez de escondidas atrás de um select
+      campos.push(Diag.campoCategoria(destino));
     }
     campos.push({ nome: 'texto_tratado',
       rotulo: paraAcao ? 'Texto que vai para o plano de ação' : 'Texto que vai para o diagnóstico',

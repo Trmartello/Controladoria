@@ -164,7 +164,11 @@ const Modal = {
               ${o.dica ? `<span class="quadrante-dica">${this.esc(o.dica)}</span>` : ''}
             </label>`;
         }).join('');
-        controle = `<div class="grade-quadrantes" id="${id}" role="radiogroup"
+        // A SWOT é uma MATRIZ: as quatro posições têm significado, então ficam
+        // travadas em 2×2. PESTEL e Porter são só listas de categoria — com
+        // `layout: 'lista'` os cartões fluem e acomodam 5, 6 ou quantos forem.
+        const grade = c.layout === 'lista' ? 'grade-quadrantes grade-lista' : 'grade-quadrantes';
+        controle = `<div class="${grade}" id="${id}" role="radiogroup"
           aria-label="${this.esc(c.rotulo)}">${celulas}</div>`;
         break;
       }

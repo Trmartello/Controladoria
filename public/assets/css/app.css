@@ -1188,6 +1188,12 @@ tr.card-destacado > td { background: #e8f5ee; }
   grid-template-columns: 1fr 1fr;
   gap: .4rem;
 }
+/* Categorias de PESTEL e Porter: não é matriz, é lista. Os cartões se ajustam
+   à largura (2 colunas no celular, 3 no computador) e acomodam 5 ou 6 opções
+   sem sobrar buraco na última linha. */
+.grade-quadrantes.grade-lista {
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+}
 .quadrante-opcao {
   display: flex;
   flex-direction: column;
