@@ -304,6 +304,20 @@ class ColetaController
             Json::erro('Esta ideia já foi tratada.');
         }
 
+        // Tocar de novo no quadrante já escolhido DESMARCA: a classificação é
+        // apagada e a ideia (o grupo inteiro) volta para a tempestade, como
+        // "a tratar" — sem rota nova, é o inverso natural desta.
+        if (!empty($d['limpar'])) {
+            $grupo = $this->grupo($id, $planId);
+            $marcas = implode(',', array_fill(0, count($grupo), '?'));
+            Database::executar(
+                "UPDATE coleta_item SET impacto = NULL, esforco = NULL, situacao = 'NOVO'
+                 WHERE id IN ({$marcas})",
+                [...$grupo]
+            );
+            Json::ok(['limpo' => true]);
+        }
+
         $impacto = $d['impacto'] ?? null;
         $esforco = $d['esforco'] ?? null;
         if (!in_array($impacto, ['ALTO', 'BAIXO'], true) || !in_array($esforco, ['BAIXO', 'ALTO'], true)) {

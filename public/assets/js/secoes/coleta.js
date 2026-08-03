@@ -89,6 +89,7 @@ const SecaoColeta = {
   // "Tratar depois" nasce recolhido: o que importa na projeção é a tempestade;
   // a contagem no rótulo já diz quanta coisa está guardada ali
   depoisAberto: false,
+  classificando: false, // trava de toque duplo no quadrante da bancada
   reclassificando: null, // id da ideia reaberta do diagnóstico, à espera do novo destino
   reclassificarRotulo: '', // de onde a ideia saiu (ex.: "Porter"), só para exibir
 
@@ -102,7 +103,7 @@ const SecaoColeta = {
    * Agrupa as ideias ainda não tratadas por texto equivalente. O peso é
    * quantas pessoas disseram o mesmo — é o que faz a ficha crescer na nuvem.
    */
-  nuvem(adiadas = false) {
+  montarGrupos(adiadas = false) {
     const grupos = new Map();
     const rodadaId = this.rodadaAberta ? Number(this.rodadaAberta.id) : null;
     for (const i of this.itens) {
@@ -122,19 +123,36 @@ const SecaoColeta = {
       g.itens.push(i);
       g.votos += Number(i.votos || 0);
     }
-    // Prioridade primeiro (Fazer agora → Planejar → Encaixar → não posicionadas)
-    // e, dentro de cada faixa, mais repetidas e mais votadas primeiro. Durante a
-    // tempestade tudo é NOVO (mesma faixa), então a leitura da sala não muda — a
-    // ordem por prioridade só aparece depois que o condutor posiciona na matriz.
-    return [...grupos.values()].sort((a, b) =>
-      (this.prioridadeRank(a.representante) - this.prioridadeRank(b.representante))
-      || (b.itens.length - a.itens.length) || (b.votos - a.votos) || (a.representante.id - b.representante.id));
+    return [...grupos.values()];
   },
 
-  /** Faixa de prioridade da ideia posicionada; não posicionadas vão por último. */
-  prioridadeRank(i) {
-    const q = QUADRANTES[`${i.impacto}:${i.esforco}`];
-    return q && i.situacao === 'SELECIONADO' ? q.rank : 9;
+  /** Quadrante do grupo, quando classificado (a classificação vale para todos). */
+  quadranteDe(g) {
+    // Pelo LÍDER, não pelo representante: uma voz nova pode entrar no grupo já
+    // classificado (o agrupamento automático por texto continua valendo) e o
+    // representante é instável — o líder mantém a caixa no quadrante
+    const lider = g.itens.find((x) => !x.agrupado_em_id) || g.representante;
+    return QUADRANTES[`${lider.impacto}:${lider.esforco}`] || null;
+  },
+
+  /**
+   * A tempestade mostra só o que AINDA NÃO foi classificado: quem ganhou
+   * quadrante migra para o painel de prioridade. Mais repetidas e mais
+   * votadas primeiro — é a leitura que interessa na sala.
+   */
+  nuvem(adiadas = false) {
+    return this.montarGrupos(adiadas)
+      .filter((g) => adiadas || !this.quadranteDe(g))
+      .sort((a, b) =>
+        (b.itens.length - a.itens.length) || (b.votos - a.votos) || (a.representante.id - b.representante.id));
+  },
+
+  /** Grupos já classificados: são as fichas do painel de prioridade. */
+  priorizadas() {
+    return this.montarGrupos(false)
+      .filter((g) => this.quadranteDe(g))
+      .sort((a, b) =>
+        (b.votos - a.votos) || (b.itens.length - a.itens.length) || (a.representante.id - b.representante.id));
   },
 
   pararRelogio() {
@@ -162,11 +180,14 @@ const SecaoColeta = {
       // (no toque o gesto leva 1-2s e passaria por cima de um ciclo do polling)
       if (this.arrastando) return;
       try {
-        const antes = JSON.stringify(this.itens.map((i) => [i.id, i.situacao, i.votos]));
+        // impacto/esforço entram no retrato: no quadrante "Descartar" a ideia
+        // segue NOVO, e sem eles a classificação não redesenharia os outros
+        // telões da sala
+        const retrato = (l) => JSON.stringify(l.map((i) => [i.id, i.situacao, i.votos, i.impacto, i.esforco, i.adiado]));
+        const antes = retrato(this.itens);
         this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
         this.rodadas = await App.api(`/api/rodadas?planejamento_id=${this.plan.id}&ano=${ano}`);
-        const depois = JSON.stringify(this.itens.map((i) => [i.id, i.situacao, i.votos]));
-        if (antes !== depois) this.carregar();
+        if (antes !== retrato(this.itens)) this.carregar();
       } catch (e) { /* rede instável na oficina: tenta de novo no próximo ciclo */ }
     }, 3000);
   },
@@ -199,6 +220,7 @@ const SecaoColeta = {
 
       ${podeTriar ? this.painelReclassificar() : ''}
       ${podeTriar ? this.painelTempestade(ano) : ''}
+      ${this.rodadaAberta ? this.painelPrioridade() : ''}
       ${this.rodadaAberta ? this.telaConducao() : ''}
 
       ${podeTriar && naFila && !this.rodadaAberta ? `<div class="card mb-3 fila-coleta"><div class="card-body py-2 px-3">
@@ -287,10 +309,9 @@ const SecaoColeta = {
     const lider = g.itens.find((x) => !x.agrupado_em_id) || i;
     const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
     const selo = `${multi ? `×${g.itens.length}` : ''}${g.votos ? ` ★${g.votos}` : ''}`.trim();
-    // Faixa de prioridade da matriz, para quem já foi posicionada: mostra por que
-    // a ficha subiu na fila e qual quadrante o condutor escolheu.
-    const q = lider.situacao === 'SELECIONADO' ? QUADRANTES[`${lider.impacto}:${lider.esforco}`] : null;
-    const seloPrio = q ? ` <span class="selo-prio" style="--cor-prio:${q.cor}">${q.titulo}</span>` : '';
+    // Sem selo de quadrante aqui: quem foi classificada nem aparece mais na
+    // tempestade — ela migra para o painel de prioridade, que é quem conta essa
+    // história agora.
     // Adiada volta com um toque (data-retomar); ativa seleciona e arrasta.
     // No grupo, o id é o do líder: selecionar e arrastar valem para a caixa toda.
     const acao = adiada
@@ -303,7 +324,7 @@ const SecaoColeta = {
         : `${Modal.esc(i.autor)} — toque para tratar, arraste sobre outra para juntar`;
       return `<button type="button" class="ficha-nuvem ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
         style="--peso:1" ${acao} title="${dica}">${Modal.esc(rotulo)}${
-        selo ? ` <span class="repetida">${selo}</span>` : ''}${seloPrio}</button>`;
+        selo ? ` <span class="repetida">${selo}</span>` : ''}</button>`;
     }
     const titulo = lider.texto_tratado || lider.texto;
     const filhas = g.itens.filter((x) => x !== lider);
@@ -328,7 +349,7 @@ const SecaoColeta = {
           aria-expanded="${aberta}" aria-controls="palavras-${chave}"
           title="${aberta ? 'Recolher' : 'Mostrar'} as ideias reunidas nesta caixa">${
           g.itens.length} ideias juntas · ${aberta ? 'ver menos' : 'ver mais'}</button>${
-        g.votos ? `<span class="grupo-votos">★ ${g.votos}</span>` : ''}${seloPrio}
+        g.votos ? `<span class="grupo-votos">★ ${g.votos}</span>` : ''}
       </div>
       <div class="grupo-palavras ${aberta ? '' : 'recolhida'}" id="palavras-${chave}">
         ${filhas.map((w) => `<span class="palavra-grupo">${Modal.esc(w.texto)}${
@@ -338,13 +359,70 @@ const SecaoColeta = {
     </div>`;
   },
 
+  /**
+   * O quadro da sala: quatro quadrantes impacto × esforço, entre o painel do
+   * QR e a tempestade. Quem ganha classificação SAI da nuvem e vira uma ficha
+   * aqui dentro — e o quadrante cresce o quanto precisar, para nenhuma ficha
+   * ficar cortada. A classificação continua sendo feita na bancada; este
+   * painel é o retrato do que a sala já decidiu.
+   */
+  painelPrioridade() {
+    const grupos = this.priorizadas();
+    // O balde é decidido pelo MESMO critério de quadranteDe (o líder): uma voz
+    // nova sem classificação que entra no grupo não pode sumir com a pílula
+    const porQuadrante = (imp, esf) =>
+      grupos.filter((g) => this.quadranteDe(g) === QUADRANTES[`${imp}:${esf}`])
+        .map((g) => this.fichaPrio(g)).join('');
+    // Ordem visual do gráfico: linha de cima = pouco esforço, colunas
+    // pouco → muito impacto (mesma grade da bancada)
+    const celula = (imp, esf, area) => {
+      const q = QUADRANTES[`${imp}:${esf}`];
+      return `<div class="celula-prio ${area}" style="--cor-quad:${q.cor}">
+        <div class="cp-titulo">${q.titulo}</div>
+        <div class="cp-fichas">${porQuadrante(imp, esf)}</div>
+      </div>`;
+    };
+    return `<div class="card mb-3 painel-prio"><div class="card-body py-2 px-3">
+      <div class="rotulo-secao">Prioridade</div>
+      <div class="grade-prio">
+        <div class="gp-impacto">Impacto</div>
+        <div class="gp-col gp-col-1">Pouco</div>
+        <div class="gp-col gp-col-2">Muito</div>
+        <div class="gp-esforco">Esforço</div>
+        <div class="gp-lin gp-lin-1">Pouco</div>
+        <div class="gp-lin gp-lin-2">Muito</div>
+        ${celula('BAIXO', 'BAIXO', 'cp-bb')}
+        ${celula('ALTO', 'BAIXO', 'cp-ab')}
+        ${celula('BAIXO', 'ALTO', 'cp-ba')}
+        ${celula('ALTO', 'ALTO', 'cp-aa')}
+      </div>
+    </div></div>`;
+  },
+
+  /**
+   * Ficha do painel: a pílula da ideia (ou da caixa-mãe inteira, com o ×N).
+   * Toca para levar à bancada — lá se muda o quadrante, se desmarca (tocando
+   * no quadrante já escolhido) ou se escolhe o destino. Sem arraste: dentro
+   * do painel não há o que juntar.
+   */
+  fichaPrio(g) {
+    const lider = g.itens.find((x) => !x.agrupado_em_id) || g.representante;
+    const desteGrupo = g.itens.some((x) => x.id === this.selecionado);
+    const selo = `${g.itens.length > 1 ? `×${g.itens.length}` : ''}${g.votos ? ` ★${g.votos}` : ''}`.trim();
+    return `<button type="button" class="ficha-prio ${desteGrupo ? 'selecionada' : ''}"
+      data-selecionar="${lider.id}" title="${Modal.esc(lider.autor || '')} — toque para tratar">
+      <span class="fp-texto">${Modal.esc(lider.texto_tratado || lider.texto)}</span>${
+      selo ? ` <span class="repetida">${selo}</span>` : ''}</button>`;
+  },
+
   // ---- Tela de condução: nuvem à esquerda, bancada à direita ----
   telaConducao() {
     const grupos = this.nuvem();
-    // Busca por conteúdo, e não pelo representante: posicionar na matriz muda
-    // a situação da ideia e, com ela, quem representa o grupo — a bancada
-    // sumiria no meio da discussão
-    const grupoSel = grupos.find((g) => g.itens.some((i) => i.id === this.selecionado));
+    // A bancada procura o selecionado na tempestade E no painel de prioridade:
+    // classificar move o grupo de um para o outro, e a bancada não pode sumir
+    // no meio da tratativa (o Destino é escolhido depois de posicionar)
+    const grupoSel = [...grupos, ...this.priorizadas()]
+      .find((g) => g.itens.some((i) => i.id === this.selecionado));
     // Num grupo, a bancada é SEMPRE da caixa-mãe: o líder dá o título e toda
     // tratativa (texto, prioridade, destino) vale para a caixa como um todo —
     // não existe mais tratativa individual das filhas
@@ -510,9 +588,10 @@ const SecaoColeta = {
     });
   },
 
-  /** Ids que a nuvem agrupou por texto equivalente, para tratar de uma vez. */
+  /** Ids do grupo do item — esteja ele na tempestade, no painel ou adiado. */
   grupoAtual(item) {
-    const g = this.nuvem().find((x) => x.itens.some((i) => i.id === item.id));
+    const g = [...this.montarGrupos(), ...this.montarGrupos(true)]
+      .find((x) => x.itens.some((i) => i.id === item.id));
     return (g?.itens || [item]).map((i) => i.id);
   },
 
@@ -715,20 +794,31 @@ const SecaoColeta = {
     });
 
     el.querySelectorAll('[data-quadrante]').forEach((b) => b.addEventListener('click', async () => {
+      // Trava de toque duplo: na projeção o alvo é grande e dois cliques
+      // seguidos disparariam dois priorizar (e dois modais de descarte)
+      if (this.classificando) return;
+      this.classificando = true;
       const [impacto, esforco] = b.dataset.quadrante.split(':');
       const item = this.itens.find((i) => i.id == b.dataset.item);
+      // Tocar no quadrante JÁ escolhido desmarca: a classificação é apagada e
+      // a ideia volta para a tempestade
+      const limpar = !!item && item.impacto === impacto && item.esforco === esforco;
       try {
-        const r = await App.api(`/api/coleta/${b.dataset.item}/priorizar`, {
-          planejamento_id: this.plan.id, impacto, esforco,
-        });
-        this.carregar();
+        const r = await App.api(`/api/coleta/${b.dataset.item}/priorizar`, limpar
+          ? { planejamento_id: this.plan.id, limpar: true }
+          : { planejamento_id: this.plan.id, impacto, esforco });
+        // Aguarda o redesenho ANTES do modal de descarte, senão a tela troca
+        // por baixo do modal recém-aberto
+        await this.carregar();
         // Quadrante "Descartar": a matriz decide esquecer — abre o descarte já
         // com o motivo da própria posição.
-        if (r.descartar && item) {
+        if (!limpar && r.descartar && item) {
           this.abrirDescarte(item, 'Baixo impacto e alto esforço — fora da matriz de priorização.');
         }
       } catch (e) {
         alert(e.message);
+      } finally {
+        this.classificando = false;
       }
     }));
 
@@ -742,12 +832,15 @@ const SecaoColeta = {
         setTimeout(() => { b.textContent = 'Salvar texto'; }, 1500);
         const campo = el.querySelector('#texto-bancada');
         this.itens.find((i) => i.id == b.dataset.complementar).texto_tratado = campo.value;
-        // O texto salvo é o TÍTULO da caixa-mãe: atualiza na nuvem sem
-        // redesenhar (o aviso "Texto salvo" fica visível) e libera a trava do
-        // relógio, que segura o redesenho enquanto o textarea está editado
+        // O texto salvo é o TÍTULO da caixa-mãe (e o rótulo da ficha no painel
+        // de prioridade): atualiza na tela sem redesenhar (o aviso "Texto
+        // salvo" fica visível) e libera a trava do relógio, que segura o
+        // redesenho enquanto o textarea está editado
         campo.defaultValue = campo.value;
-        const titulo = el.querySelector(`[data-selecionar="${b.dataset.complementar}"] .grupo-titulo`);
-        if (titulo) titulo.textContent = campo.value;
+        el.querySelectorAll(`[data-selecionar="${b.dataset.complementar}"]`).forEach((n) => {
+          const alvo = n.querySelector('.grupo-titulo, .fp-texto');
+          if (alvo) alvo.textContent = campo.value;
+        });
       } catch (e) {
         alert(e.message);
       }
