@@ -19,9 +19,19 @@ class SessaoBanco implements \SessionHandlerInterface
         return true;
     }
 
+    /**
+     * A validade é conferida AQUI, não só no gc(). O coletor do PHP roda por
+     * probabilidade (session.gc_probability) e há ambientes em que ela é zero —
+     * lá o gc nunca é chamado e a sessão não expirava nunca, por mais antiga
+     * que fosse. Com a checagem na leitura, a expiração não depende de sorte.
+     */
     public function read(string $id): string
     {
-        $linha = Database::um('SELECT dados FROM sessao WHERE id = ?', [$id]);
+        $vida = (int)ini_get('session.gc_maxlifetime') ?: 1440;
+        $linha = Database::um(
+            'SELECT dados FROM sessao WHERE id = ? AND atualizado_em > DATE_SUB(NOW(), INTERVAL ? SECOND)',
+            [$id, $vida]
+        );
         return $linha ? (string)$linha['dados'] : '';
     }
 

@@ -338,7 +338,10 @@ class RelatorioController
         try {
             Json::ok(Avisos::despachar('auto'));
         } catch (\Throwable $e) {
-            Json::erro('Falha ao enviar: ' . $e->getMessage());
+            // A exceção do SMTP carrega host, banner e motivo da recusa de AUTH:
+            // fica no log do servidor, como no resto do sistema
+            error_log('ERRO SMTP: ' . $e->getMessage());
+            Json::erro('Falha ao enviar os avisos. Confira o log do servidor.');
         }
     }
 

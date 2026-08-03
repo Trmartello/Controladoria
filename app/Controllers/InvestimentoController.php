@@ -233,6 +233,9 @@ class InvestimentoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirInvestimento($id, $planId);
+        Database::executar(
+            "DELETE FROM diario_bordo WHERE ref_tipo = 'INVESTIMENTO' AND ref_id = ?", [$id]
+        );
         Database::executar('DELETE FROM investimento WHERE id = ?', [$id]);
         Json::ok();
     }

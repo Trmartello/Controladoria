@@ -318,10 +318,17 @@ class PublicoController
         return Json::corpo();
     }
 
-    /** O token só vale se a pessoa entrou nesta rodada. */
+    /**
+     * O token só vale se a pessoa entrou nesta rodada.
+     *
+     * Nas rotas GET ele chega pelo cabeçalho X-Participante, não pela query
+     * string: na URL o segredo vazava para o log de acesso do servidor, para o
+     * log da borda do Railway e para o histórico do navegador. A query segue
+     * aceita como alternativa para não quebrar uma aba já aberta na oficina.
+     */
     private function participante(array $rodada, array $origem): array
     {
-        $token = (string)($origem['token'] ?? '');
+        $token = (string)($_SERVER['HTTP_X_PARTICIPANTE'] ?? ($origem['token'] ?? ''));
         if (!preg_match('/^[0-9a-f]{32}$/', $token)) {
             Json::erro('Entre na rodada antes de participar.', 403);
         }

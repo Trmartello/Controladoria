@@ -8,6 +8,8 @@ class Json
     {
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
+        // Resposta de API carrega dado do planejamento: nada de cache em proxy
+        header('Cache-Control: no-store');
         echo json_encode(['ok' => true, 'dados' => $dados], JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -16,6 +18,8 @@ class Json
     {
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
+        // Resposta de API carrega dado do planejamento: nada de cache em proxy
+        header('Cache-Control: no-store');
         echo json_encode(['ok' => false, 'erro' => $mensagem], JSON_UNESCAPED_UNICODE);
         exit;
     }

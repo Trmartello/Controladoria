@@ -183,6 +183,15 @@ class ProjetoController
         $this->exigirProjeto($id, $planId);
         // Investimentos vinculados perdem o vínculo (a FK não tem ON DELETE)
         Database::executar('UPDATE investimento SET projeto_id = NULL WHERE projeto_id = ?', [$id]);
+        // Diário do projeto e o das ações que saem em cascata (ref_tipo/ref_id
+        // é polimórfico e não tem FK que os leve junto)
+        Database::executar(
+            "DELETE FROM diario_bordo WHERE ref_tipo = 'PROJETO' AND ref_id = ?", [$id]
+        );
+        Database::executar(
+            "DELETE FROM diario_bordo WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id IN
+               (SELECT id FROM (SELECT id FROM desdobramento WHERE projeto_id = ?) x)", [$id]
+        );
         Database::executar('DELETE FROM projeto WHERE id = ?', [$id]);
         Json::ok();
     }
@@ -406,6 +415,9 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirDesdobramento($id, $planId);
+        Database::executar(
+            "DELETE FROM diario_bordo WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id = ?", [$id]
+        );
         Database::executar('DELETE FROM desdobramento WHERE id = ?', [$id]);
         Json::ok();
     }

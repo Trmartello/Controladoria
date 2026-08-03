@@ -130,6 +130,11 @@ class CascataController
         }
         // Projetos originados desta escolha perdem o vínculo (a FK não tem ON DELETE)
         Database::executar('UPDATE projeto SET cascata_id = NULL WHERE cascata_id = ?', [$id]);
+        // O diário é polimórfico (ref_tipo/ref_id) e não tem FK: sem apagar
+        // junto, os registros ficariam órfãos para sempre no banco
+        Database::executar(
+            "DELETE FROM diario_bordo WHERE ref_tipo = 'CASCATA' AND ref_id = ?", [$id]
+        );
         Database::executar('DELETE FROM cascata_escolha WHERE id = ?', [$id]);
         Json::ok();
     }

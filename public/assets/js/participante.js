@@ -34,9 +34,11 @@ const Participante = {
   },
 
   async api(url, corpo = null) {
+    // O token vai no cabeçalho nas leituras: na query string ele acabaria no
+    // log de acesso, no log da borda e no histórico do navegador
     const r = await fetch(url, corpo
       ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) }
-      : {});
+      : { headers: this.token ? { 'X-Participante': this.token } : {} });
     // Mesmo envelope do resto da API: { ok, dados } ou { ok:false, erro }
     const json = await r.json().catch(() => ({}));
     if (!r.ok || !json.ok) throw new Error(json.erro || 'Falha na comunicação.');
@@ -138,8 +140,8 @@ const Participante = {
         this.render();
         return;
       }
-      this.minhas = await this.api(`/api/publico/minhas?pin=${this.pin}&token=${this.token}`);
-      this.votacao = await this.api(`/api/publico/votar?pin=${this.pin}&token=${this.token}`);
+      this.minhas = await this.api(`/api/publico/minhas?pin=${this.pin}`);
+      this.votacao = await this.api(`/api/publico/votar?pin=${this.pin}`);
     } catch (e) {
       if (!silencioso) this.telaEntrada(e.message);
       return;

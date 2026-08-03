@@ -87,7 +87,8 @@ CREATE TABLE IF NOT EXISTS planejamento (
 CREATE TABLE IF NOT EXISTS cenario_item (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,
-  ano              SMALLINT NULL,  -- análise anual; horizontes seguem plurianuais
+  -- análise anual; horizontes seguem plurianuais
+  ano              SMALLINT NULL,
   tipo             ENUM('SITUACAO_ATUAL','TENDENCIA') NOT NULL,
   ordem            SMALLINT NOT NULL DEFAULT 0,
   descricao        TEXT NOT NULL,
@@ -97,7 +98,8 @@ CREATE TABLE IF NOT EXISTS cenario_item (
 CREATE TABLE IF NOT EXISTS fator (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,
-  ano              SMALLINT NULL,  -- análise anual; horizontes seguem plurianuais
+  -- análise anual; horizontes seguem plurianuais
+  ano              SMALLINT NULL,
   etapa            ENUM('PESTEL','PORTER','SWOT') NOT NULL,
   categoria        VARCHAR(40) NOT NULL,
   descricao        TEXT NOT NULL,
@@ -302,12 +304,22 @@ CREATE TABLE IF NOT EXISTS reuniao (
 CREATE TABLE IF NOT EXISTS coleta_item (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,
+  rodada_id        INT NULL,
   ano              SMALLINT NOT NULL,
-  autor_id         INT NOT NULL,
+  -- nulo quando a ideia veio da tempestade (participante sem cadastro)
+  autor_id         INT NULL,
+  autor_nome       VARCHAR(120) NULL,
+  participante_token CHAR(32) NULL,
+  dividido_de_id   INT NULL,
+  agrupado_em_id   INT NULL,
+  adiado           TINYINT(1) NOT NULL DEFAULT 0,
   texto            TEXT NOT NULL,
   texto_tratado    TEXT NULL,
   destino_sugerido ENUM('CENARIO','PESTEL','PORTER','SWOT','NAO_SEI') NOT NULL DEFAULT 'NAO_SEI',
   situacao         ENUM('NOVO','SELECIONADO','ACEITO','DESCARTADO','DIVIDIDO') NOT NULL DEFAULT 'NOVO',
+  impacto          ENUM('ALTO','BAIXO') NULL,
+  esforco          ENUM('BAIXO','ALTO') NULL,
+  votos            SMALLINT NOT NULL DEFAULT 0,
   destino_tipo     ENUM('CENARIO','FATOR','ACAO') NULL,
   destino_id       INT NULL,
   motivo           TEXT NULL,
@@ -316,6 +328,11 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   criado_em        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_ci_plan (planejamento_id, ano, situacao),
   KEY idx_ci_destino (destino_tipo, destino_id),
+  -- a tela ao vivo consulta de 4 em 4 segundos por participante: sem estes
+  -- índices cada consulta varria a tabela que mais cresce na oficina
+  KEY idx_ci_rodada (rodada_id, situacao),
+  KEY idx_ci_part (rodada_id, participante_token),
+  KEY idx_ci_grupo (agrupado_em_id),
   CONSTRAINT fk_ci_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_ci_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -372,3 +389,14 @@ CREATE TABLE IF NOT EXISTS coleta_tentativa (
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_tentativa (origem, criado_em)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tentativas de login falhas: trava de força bruta por e-mail e por origem
+CREATE TABLE IF NOT EXISTS login_tentativa (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  origem    VARCHAR(45) NOT NULL,
+  email     VARCHAR(190) NOT NULL,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_login_origem (origem, criado_em),
+  KEY idx_login_email (email, criado_em)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

@@ -8,17 +8,40 @@ use App\Core\Json;
 
 class AuthController
 {
+    /** Falhas de login toleradas por e-mail (e o dobro por origem) na janela. */
+    private const MAX_FALHAS = 10;
+    private const JANELA_MIN = 15;
+
     public function login(): void
     {
         $dados = Json::corpo();
-        $email = trim($dados['email'] ?? '');
+        $email = mb_substr(trim($dados['email'] ?? ''), 0, 190);
         $senha = $dados['senha'] ?? '';
+        $origem = mb_substr((string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), 0, 45);
+
+        // Trava antes de conferir a senha. Antes havia só um usleep de 300-600ms
+        // por falha, e ele era pior que inútil: não travava nada (30 tentativas
+        // seguidas passavam) e, rodando DENTRO do trabalhador do php -S, quatro
+        // logins falhos simultâneos faziam a página de login sair de 7ms para
+        // 2,7s — um amplificador de DoS de graça para o atacante.
+        if ($this->bloqueado($email, $origem)) {
+            Json::erro('Muitas tentativas. Espere alguns minutos antes de tentar de novo.', 429);
+        }
 
         $u = Database::um('SELECT * FROM usuario WHERE email = ? AND ativo = 1', [$email]);
         if (!$u || !password_verify($senha, $u['senha_hash'])) {
-            usleep(random_int(300000, 600000)); // encarece força bruta online
+            Database::executar(
+                'INSERT INTO login_tentativa (origem, email) VALUES (?, ?)',
+                [$origem, $email]
+            );
+            // Limpeza oportunista: a tabela não pode crescer sem fim
+            Database::executar(
+                'DELETE FROM login_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY) LIMIT 500'
+            );
             Json::erro('E-mail ou senha inválidos.', 401);
         }
+        // Entrou: zera o balde daquele e-mail, para não punir quem só errou antes
+        Database::executar('DELETE FROM login_tentativa WHERE email = ?', [$email]);
 
         session_regenerate_id(true);
         $_SESSION['usuario'] = [
@@ -28,6 +51,30 @@ class AuthController
             'perfil' => $u['perfil'],
         ];
         Json::ok(self::dadosSessao());
+    }
+
+    /**
+     * Balde duplo: por e-mail (protege a conta alvo, mesmo com o atacante
+     * trocando de IP) e por origem (protege contra varrer vários e-mails de um
+     * lugar só). O da origem é mais folgado, porque um escritório inteiro sai
+     * pelo mesmo IP.
+     */
+    private function bloqueado(string $email, string $origem): bool
+    {
+        $porEmail = (int)(Database::um(
+            'SELECT COUNT(*) AS n FROM login_tentativa
+             WHERE email = ? AND criado_em > (NOW() - INTERVAL ? MINUTE)',
+            [$email, self::JANELA_MIN]
+        )['n'] ?? 0);
+        if ($porEmail >= self::MAX_FALHAS) {
+            return true;
+        }
+        $porOrigem = (int)(Database::um(
+            'SELECT COUNT(*) AS n FROM login_tentativa
+             WHERE origem = ? AND criado_em > (NOW() - INTERVAL ? MINUTE)',
+            [$origem, self::JANELA_MIN]
+        )['n'] ?? 0);
+        return $porOrigem >= self::MAX_FALHAS * 2;
     }
 
     public function logout(): void

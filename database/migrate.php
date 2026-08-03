@@ -12,9 +12,19 @@ for ($tentativa = 1; $tentativa <= 30; $tentativa++) {
     try {
         $pdo = new PDO($dsn, $db['user'], $db['pass'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_TIMEOUT => 5,
         ]);
         break;
     } catch (PDOException $e) {
+        // Erro PERMANENTE não melhora esperando: insistir 30 vezes escondia a
+        // causa atrás de "aguardando banco" e mandava o operador procurar um
+        // MySQL fora do ar quando o problema era a senha ou o nome da base.
+        // 1045 = acesso negado; 1049 = base inexistente.
+        $codigo = (int)($e->errorInfo[1] ?? 0);
+        if (in_array($codigo, [1045, 1049], true)) {
+            fwrite(STDERR, "migrate: credenciais ou base inválidas ({$codigo}): {$e->getMessage()}\n");
+            exit(1);
+        }
         fwrite(STDERR, "migrate: aguardando banco ({$tentativa}/30): {$e->getMessage()}\n");
         sleep(2);
     }
@@ -23,6 +33,11 @@ if (!$pdo) {
     fwrite(STDERR, "migrate: banco indisponível, abortando.\n");
     exit(1);
 }
+
+// Uma migração por vez: garantirColuna/garantirIndice conferem e depois agem,
+// e duas réplicas subindo juntas poderiam passar as duas na conferência — a
+// segunda morreria com "Duplicate column name" e o container não subiria.
+$pdo->query("SELECT GET_LOCK('migrate_controladoria', 60)")->fetchColumn();
 
 function executarArquivoSql(PDO $pdo, string $caminho): void
 {
@@ -48,6 +63,24 @@ function garantirColuna(PDO $pdo, string $tabela, string $coluna, string $ddl): 
     if ((int)$stmt->fetchColumn() === 0) {
         $pdo->exec($ddl);
         echo "migrate: coluna {$tabela}.{$coluna} criada.\n";
+    }
+}
+
+/**
+ * Cria um índice só se ele ainda não existe. Serve para índice que nasceu no
+ * CREATE TABLE depois que a tabela já estava em produção — ali o
+ * `CREATE TABLE IF NOT EXISTS` não faz nada e o índice nunca chegaria.
+ */
+function garantirIndice(PDO $pdo, string $tabela, string $indice, string $ddl): void
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?'
+    );
+    $stmt->execute([$tabela, $indice]);
+    if ((int)$stmt->fetchColumn() === 0) {
+        $pdo->exec($ddl);
+        echo "migrate: índice {$tabela}.{$indice} criado.\n";
     }
 }
 
@@ -242,6 +275,17 @@ garantirColuna($pdo, 'coleta_item', 'esforco',
 garantirColuna($pdo, 'coleta_item', 'votos',
     'ALTER TABLE coleta_item ADD COLUMN votos SMALLINT NOT NULL DEFAULT 0 AFTER esforco');
 
+// As colunas acima nasceram por ALTER e vieram sem índice nenhum. A tela ao
+// vivo da tempestade consulta por (rodada_id, participante_token) de 4 em 4
+// segundos POR PARTICIPANTE — numa oficina de 30 pessoas são centenas de
+// varreduras por minuto justamente na tabela que mais cresce.
+garantirIndice($pdo, 'coleta_item', 'idx_ci_rodada',
+    'ALTER TABLE coleta_item ADD KEY idx_ci_rodada (rodada_id, situacao)');
+garantirIndice($pdo, 'coleta_item', 'idx_ci_part',
+    'ALTER TABLE coleta_item ADD KEY idx_ci_part (rodada_id, participante_token)');
+garantirIndice($pdo, 'coleta_item', 'idx_ci_grupo',
+    'ALTER TABLE coleta_item ADD KEY idx_ci_grupo (agrupado_em_id)');
+
 // Quem entra pela tempestade não tem conta: o autor passa a ser opcional
 $autorNulo = $pdo->query(
     "SELECT IS_NULLABLE FROM information_schema.COLUMNS
@@ -270,5 +314,7 @@ if ($tipoSituacaoColeta && !str_contains((string)$tipoSituacaoColeta, 'DIVIDIDO'
     );
     echo "migrate: situacao da ideia ampliada (SELECIONADO, DIVIDIDO).\n";
 }
+
+$pdo->query("SELECT RELEASE_LOCK('migrate_controladoria')")->fetchColumn();
 
 echo "migrate: ok.\n";

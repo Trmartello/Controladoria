@@ -185,8 +185,15 @@ const App = {
     };
     const secao = secoes[this.secaoAtiva];
     if (secao) secao.carregar().catch((e) => {
-      document.getElementById(`secao-${this.secaoAtiva}`).innerHTML =
-        `<div class="alert alert-danger">${e.message}</div>`;
+      // A mensagem vai como TEXTO: várias respostas de erro do servidor
+      // devolvem entrada do usuário dentro delas, e interpolar isso em HTML
+      // seria o único ponto do front fora da disciplina de escape
+      const alvo = document.getElementById(`secao-${this.secaoAtiva}`);
+      alvo.innerHTML = '';
+      const aviso = document.createElement('div');
+      aviso.className = 'alert alert-danger';
+      aviso.textContent = e.message;
+      alvo.appendChild(aviso);
     });
   },
 };

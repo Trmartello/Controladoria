@@ -13,15 +13,24 @@ if (PHP_SAPI === 'cli-server') {
             'png' => 'image/png', 'svg' => 'image/svg+xml', 'ico' => 'image/x-icon',
         ];
         $ext = strtolower(pathinfo($arquivo, PATHINFO_EXTENSION));
-        if (str_starts_with($caminhoUrl, '/assets/') && isset($tipos[$ext])) {
-            header('Content-Type: ' . $tipos[$ext]);
-            header('Cache-Control: public, max-age=86400');
-            header('X-Content-Type-Options: nosniff');
-            header('Content-Length: ' . (string)filesize($arquivo));
-            readfile($arquivo);
-            exit;
+        if (str_starts_with($caminhoUrl, '/assets/') && $ext !== 'php') {
+            if (isset($tipos[$ext])) {
+                header('Content-Type: ' . $tipos[$ext]);
+                header('Cache-Control: public, max-age=86400');
+                header('X-Content-Type-Options: nosniff');
+                header('Content-Length: ' . (string)filesize($arquivo));
+                readfile($arquivo);
+                exit;
+            }
+            return false; // outro estático de assets/ (fonte, etc.)
         }
-        return false;
+        // Qualquer outro arquivo real de public/ vira 404. Devolver `false` aqui
+        // fazia o cli-server INCLUIR index.php de novo na mesma requisição, e a
+        // redeclaração de versao_asset() derrubava o pedido com fatal — bastava
+        // um robô pedir /index.php. Também impede servir dotfile em texto puro
+        // (o .htaccess era entregue inteiro, com 200).
+        http_response_code(404);
+        exit;
     }
 }
 
@@ -49,6 +58,20 @@ $caminho = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
 $rotaPublica = $caminho === '/entrar' || str_starts_with($caminho, '/entrar/')
     || str_starts_with($caminho, '/api/publico/');
 
+// Os cabeçalhos de segurança vêm ANTES da sessão: o handler de sessão consulta
+// o MySQL, e uma queda do banco ali estourava a exceção antes destas linhas —
+// a resposta 500 saía sem CSP, sem X-Frame-Options e com a versão do PHP à
+// mostra, justamente nas rotas autenticadas.
+header_remove('X-Powered-By');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('Referrer-Policy: same-origin');
+header("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; "
+    . "img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+if ($https) {
+    header('Strict-Transport-Security: max-age=31536000');
+}
+
 // Sessão no banco (sobrevive a deploys) com validade de 30 dias
 const SESSAO_DIAS = 30;
 if (!$rotaPublica) {
@@ -60,7 +83,15 @@ if (!$rotaPublica) {
         'samesite' => 'Lax',
         'secure'   => $https,
     ]);
-    session_start();
+    try {
+        session_start();
+    } catch (\Throwable $e) {
+        error_log('ERRO SESSAO: ' . $e->getMessage());
+        http_response_code(503);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => false, 'erro' => 'Serviço indisponível. Tente de novo em instantes.']);
+        exit;
+    }
 }
 
 /** URL do asset com a versão do arquivo — atualizações furam o cache do navegador. */
@@ -68,16 +99,6 @@ function versao_asset(string $caminho): string
 {
     $arquivo = __DIR__ . $caminho;
     return $caminho . '?v=' . (is_file($arquivo) ? filemtime($arquivo) : 1);
-}
-
-header_remove('X-Powered-By');
-header('X-Content-Type-Options: nosniff');
-header('X-Frame-Options: DENY');
-header('Referrer-Policy: same-origin');
-header("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; "
-    . "img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'");
-if ($https) {
-    header('Strict-Transport-Security: max-age=31536000');
 }
 
 use App\Core\Auth;
@@ -101,6 +122,8 @@ if ($metodo === 'GET' && ($caminho === '/' || $caminho === '/login')) {
     }
     $csrf = Auth::tokenCsrf();
     $app  = $GLOBALS['config']['app'];
+    // Página autenticada não pode ficar em cache de proxy corporativo
+    header('Cache-Control: no-store');
     require __DIR__ . '/../views/' . ($caminho === '/login' ? 'login.php' : 'shell.php');
     exit;
 }
