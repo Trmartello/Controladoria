@@ -11,24 +11,32 @@ if (PHP_SAPI === 'cli-server') {
         $tipos = [
             'css' => 'text/css', 'js' => 'application/javascript',
             'png' => 'image/png', 'svg' => 'image/svg+xml', 'ico' => 'image/x-icon',
+            'woff' => 'font/woff', 'woff2' => 'font/woff2', 'ttf' => 'font/ttf',
+            'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'webp' => 'image/webp',
+            'gif' => 'image/gif', 'json' => 'application/json', 'map' => 'application/json',
         ];
         $ext = strtolower(pathinfo($arquivo, PATHINFO_EXTENSION));
-        if (str_starts_with($caminhoUrl, '/assets/') && $ext !== 'php') {
-            if (isset($tipos[$ext])) {
-                header('Content-Type: ' . $tipos[$ext]);
-                header('Cache-Control: public, max-age=86400');
-                header('X-Content-Type-Options: nosniff');
-                header('Content-Length: ' . (string)filesize($arquivo));
-                readfile($arquivo);
-                exit;
-            }
-            return false; // outro estático de assets/ (fonte, etc.)
+        // Cabeçalhos mínimos valem para TODA resposta daqui, inclusive o 404:
+        // este bloco sai antes do bloco geral de segurança lá embaixo, e sem
+        // isto /index.php e /.htaccess respondiam sem CSP nem X-Frame-Options.
+        header_remove('X-Powered-By');
+        header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: DENY');
+        header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
+        if (str_starts_with($caminhoUrl, '/assets/') && isset($tipos[$ext])) {
+            header('Content-Type: ' . $tipos[$ext]);
+            header('Cache-Control: public, max-age=86400');
+            header('Content-Length: ' . (string)filesize($arquivo));
+            readfile($arquivo);
+            exit;
         }
-        // Qualquer outro arquivo real de public/ vira 404. Devolver `false` aqui
-        // fazia o cli-server INCLUIR index.php de novo na mesma requisição, e a
-        // redeclaração de versao_asset() derrubava o pedido com fatal — bastava
-        // um robô pedir /index.php. Também impede servir dotfile em texto puro
-        // (o .htaccess era entregue inteiro, com 200).
+        // Qualquer outro arquivo real de public/ vira 404 — inclusive asset de
+        // extensão que não conhecemos, que antes escapava por `return false` e
+        // era entregue sem Content-Type, sem cache e sem nosniff. Devolver
+        // `false` também fazia o cli-server INCLUIR index.php de novo na mesma
+        // requisição, e a redeclaração de versao_asset() derrubava o pedido com
+        // fatal — bastava um robô pedir /index.php. Extensão nova de asset
+        // entra no mapa acima; é uma linha.
         http_response_code(404);
         exit;
     }

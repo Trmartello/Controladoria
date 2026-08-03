@@ -279,6 +279,11 @@ class ColetaController
         $grupo = $this->grupo($id, $planId);
         $reservados = [];
         foreach ($grupo as $gid) {
+            // Destrava quem está aceito sem nada criado no diagnóstico antes de
+            // tentar reservar — sem isso a ideia parada em "Plano de ação" (ou a
+            // que perdeu o fator) era recusada com "já foi tratada por outra
+            // pessoa", sem saída nenhuma pela interface
+            $this->liberar($gid, $planId);
             if ($this->reservar($gid, $planId, (int)$u['id'])) {
                 $reservados[] = $gid;
             }
@@ -725,24 +730,6 @@ class ColetaController
         Json::ok(['adiado' => (bool)$adiado]);
     }
 
-    /** Reserva a ideia para quem chegou primeiro (ver encaminhar). */
-    /**
-     * Reserva a ideia para o encaminhamento (reserva atômica: a condição vai no
-     * WHERE, não numa transação).
-     *
-     * O que protege a ideia é ter um registro JÁ CRIADO no diagnóstico
-     * (`destino_id`), não a situação: com `destino_id` nulo não existe fator
-     * nem item de cenário para ficar órfão, e o `encaminhar()` regrava
-     * `destino_tipo`/`destino_id` do grupo inteiro logo em seguida.
-     *
-     * Por isso `ACEITO` sem `destino_id` também é reservável. Sem isso a ideia
-     * ficava num beco sem saída — recusada com "já foi tratada por outra
-     * pessoa" em dois caminhos comuns: quando o fator/item de cenário dela foi
-     * excluído no diagnóstico, e quando ela estava parada em "Plano de ação"
-     * (que grava `destino_tipo='ACAO'` com `destino_id` nulo) e o condutor quis
-     * mandá-la para uma análise. Quem tem `destino_id` continua saindo só pelo
-     * "Desmarcar" (`reabrir()`), que apaga o registro antes.
-     */
     /**
      * Destino já materializado do grupo, como "FATOR:12" — ou null quando
      * nenhuma ideia dele foi para o diagnóstico ainda.
@@ -758,15 +745,54 @@ class ColetaController
         return $linha ? "{$linha['destino_tipo']}:{$linha['destino_id']}" : null;
     }
 
+    /**
+     * Reserva a ideia para quem chegou primeiro (reserva atômica: a condição vai
+     * no WHERE, não numa transação).
+     *
+     * A exclusividade vem de a SITUAÇÃO mudar: só quem encontra
+     * NOVO/SELECIONADO ganha. Aceitar `ACEITO` aqui já abriu uma corrida séria —
+     * `destino_id` só é gravado no fim de `encaminhar()`, então na janela entre a
+     * reserva e essa gravação um segundo pedido casava com o mesmo WHERE, e um
+     * duplo clique do condutor criava DOIS fatores, um deles sem vínculo nenhum
+     * com a Coleta (nem "Desmarcar" nem excluir a ideia o alcançavam).
+     * Quem está parado sem registro criado é destravado antes, por `liberar()`.
+     */
     private function reservar(int $id, int $planId, int $usuarioId): bool
     {
         return Database::afetadas(
-            "UPDATE coleta_item
-                SET situacao = 'ACEITO', destino_tipo = NULL, triado_por = ?, triado_em = NOW()
+            "UPDATE coleta_item SET situacao = 'ACEITO', triado_por = ?, triado_em = NOW()
              WHERE id = ? AND planejamento_id = ? AND destino_id IS NULL
-               AND situacao IN ('NOVO','SELECIONADO','ACEITO')",
+               AND situacao IN ('NOVO','SELECIONADO')",
             [$usuarioId, $id, $planId]
         ) === 1;
+    }
+
+    /**
+     * Devolve à fila a ideia que está ACEITO sem NADA criado no diagnóstico, para
+     * a reserva seguinte poder pegá-la. Cobre os dois casos que travavam o
+     * encaminhamento com "já foi tratada por outra pessoa":
+     * a parada em "Plano de ação" (`destino_tipo='ACAO'`, `destino_id` nulo) e a
+     * que perdeu o fator/item de cenário.
+     *
+     * É exclusiva de propósito, e é isso que impede a corrida: uma reserva
+     * recém-feita tem `destino_tipo` nulo e `triado_em` de agora, então não casa
+     * com nenhuma das alternativas. Só entra quem tem destino declarado mas não
+     * materializado, ou quem está parado há mais de um minuto — tempo que
+     * nenhuma requisição viva leva entre reservar e gravar o destino.
+     */
+    private function liberar(int $id, int $planId): void
+    {
+        Database::executar(
+            "UPDATE coleta_item
+                SET situacao = 'SELECIONADO', destino_tipo = NULL,
+                    triado_por = NULL, triado_em = NULL
+             WHERE id = ? AND planejamento_id = ? AND situacao = 'ACEITO'
+               AND destino_id IS NULL
+               AND (destino_tipo IS NOT NULL
+                    OR triado_em IS NULL
+                    OR triado_em < (NOW() - INTERVAL 1 MINUTE))",
+            [$id, $planId]
+        );
     }
 
     /** Seção do menu que mostra o registro criado, para o front navegar até ele. */

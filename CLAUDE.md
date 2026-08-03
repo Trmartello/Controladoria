@@ -182,6 +182,17 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   O encaminhamento usa **reserva atômica** (`Database::afetadas()` num UPDATE
   com a condição no WHERE) em vez de transação — o repositório não usa
   `beginTransaction` e `Json::erro()` encerra a execução.
+  **A exclusividade da reserva vem de a SITUAÇÃO mudar** (`NOVO`/`SELECIONADO`
+  → `ACEITO`), e mexer nisso já custou caro: aceitar `ACEITO` no `reservar()`
+  abriu uma corrida real — `destino_id` só é gravado no FIM do `encaminhar()`,
+  então na janela entre a reserva e essa gravação um segundo pedido casava com
+  o mesmo WHERE, e um duplo clique do condutor criava DOIS fatores, um deles
+  sem vínculo nenhum com a Coleta (nem "Desmarcar" nem excluir a ideia o
+  alcançavam). Quem está aceito **sem registro criado** — parado em "Plano de
+  ação", ou órfão de um fator excluído — é destravado antes, por `liberar()`,
+  que é exclusivo de propósito: exige `destino_tipo` declarado **ou**
+  `triado_em` de mais de um minuto, de modo que nunca alcança uma reserva em
+  voo. Qualquer mudança aqui precisa de teste de concorrência de verdade.
   Escrita passa por `Auth::exigirRespostaColeta()` / `exigirTriagemColeta()`:
   existem para a regra do brainstorm poder mudar sem afrouxar a autorização
   geral. Eles **autorizam** (via `exigirEdicaoPlanejamento`) e **devolvem o

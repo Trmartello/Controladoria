@@ -19,15 +19,17 @@ class AuthController
         $senha = $dados['senha'] ?? '';
         $origem = mb_substr((string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), 0, 45);
 
-        // Trava antes de conferir a senha. Antes havia só um usleep de 300-600ms
-        // por falha, e ele era pior que inútil: não travava nada (30 tentativas
-        // seguidas passavam) e, rodando DENTRO do trabalhador do php -S, quatro
-        // logins falhos simultâneos faziam a página de login sair de 7ms para
-        // 2,7s — um amplificador de DoS de graça para o atacante.
-        if ($this->bloqueado($email, $origem)) {
-            Json::erro('Muitas tentativas. Espere alguns minutos antes de tentar de novo.', 429);
-        }
-
+        // A SENHA É CONFERIDA PRIMEIRO, e quem acerta entra mesmo com o balde
+        // cheio. A ordem inversa criava dois problemas sérios: a conta ficava
+        // travada por 15 minutos sem saída (não há recuperação de senha nem
+        // destravamento por admin, e o DELETE de sucesso abaixo era inalcançável
+        // com o balde cheio), e qualquer um que soubesse um e-mail corporativo
+        // trancava a conta do diretor à vontade — bastando errar 10 vezes. Pior:
+        // o balde por origem derrubava o escritório inteiro, porque atrás do NAT
+        // ou da borda do Railway todo mundo compartilha o REMOTE_ADDR.
+        // É a mesma conclusão a que rodadaPorPin já tinha chegado: quem acerta
+        // nunca é punido; o balde só alcança quem erra.
+        // O custo por tentativa aqui é o próprio bcrypt do password_verify.
         $u = Database::um('SELECT * FROM usuario WHERE email = ? AND ativo = 1', [$email]);
         if (!$u || !password_verify($senha, $u['senha_hash'])) {
             Database::executar(
@@ -38,6 +40,10 @@ class AuthController
             Database::executar(
                 'DELETE FROM login_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY) LIMIT 500'
             );
+            // Passado o limite, a resposta muda de tom — sem revelar mais nada
+            if ($this->bloqueado($email, $origem)) {
+                Json::erro('Muitas tentativas. Espere alguns minutos antes de tentar de novo.', 429);
+            }
             Json::erro('E-mail ou senha inválidos.', 401);
         }
         // Entrou: zera o balde daquele e-mail, para não punir quem só errou antes
@@ -58,6 +64,9 @@ class AuthController
      * trocando de IP) e por origem (protege contra varrer vários e-mails de um
      * lugar só). O da origem é mais folgado, porque um escritório inteiro sai
      * pelo mesmo IP.
+     *
+     * Só é consultado DEPOIS de a senha falhar: ele muda a mensagem de quem
+     * está errando, nunca nega a entrada de quem acerta.
      */
     private function bloqueado(string $email, string $origem): bool
     {

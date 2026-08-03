@@ -58,17 +58,22 @@ class Consolidacao
         Database::executar(
             "UPDATE projeto p
              JOIN (
-               SELECT projeto_id,
-                      MIN(data_inicio) AS di, MAX(data_fim) AS df,
+               SELECT d.projeto_id,
+                      MIN(d.data_inicio) AS di, MAX(d.data_fim) AS df,
                       COUNT(*) AS n,
-                      SUM(status = 'CONCLUIDO') AS concluidas,
-                      SUM(status = 'ATRASADO') AS atrasadas,
-                      SUM(status IN ('EM_ANDAMENTO', 'PAUSADO', 'AGUARDANDO_VALIDACAO')) AS ativas
+                      SUM(d.status = 'CONCLUIDO') AS concluidas,
+                      SUM(d.status = 'ATRASADO') AS atrasadas,
+                      SUM(d.status IN ('EM_ANDAMENTO', 'PAUSADO', 'AGUARDANDO_VALIDACAO')) AS ativas
                -- Ação cancelada não conta: com ela no total, 'concluidas = n'
                -- nunca fechava e um projeto com 3 de 4 ações prontas (a quarta
                -- cancelada) ficava EM_ANDAMENTO para sempre. O prazo também
                -- esticava, porque as datas dela entravam no MIN/MAX.
-               FROM desdobramento WHERE status <> 'CANCELADO' GROUP BY projeto_id
+               -- O JOIN com projeto filtra o derivado pelo planejamento: sem
+               -- ele, cada plano varria a tabela INTEIRA de ações, e o painel
+               -- (que reconcilia um plano por negócio) pagava isso N vezes.
+               FROM desdobramento d
+               JOIN projeto pr ON pr.id = d.projeto_id AND pr.planejamento_id = ?
+               WHERE d.status <> 'CANCELADO' GROUP BY d.projeto_id
              ) x ON x.projeto_id = p.id
              SET p.data_inicio = COALESCE(x.di, p.data_inicio),
                  p.data_fim = COALESCE(x.df, p.data_fim),
@@ -78,6 +83,21 @@ class Consolidacao
                    WHEN x.ativas > 0 OR x.concluidas > 0 THEN 'EM_ANDAMENTO'
                    ELSE 'NAO_INICIADO' END
              WHERE p.planejamento_id = ? AND p.status <> 'CANCELADO'",
+            [$planId, $planId]
+        );
+        // Projeto cujas ações foram TODAS canceladas some do derivado acima (o
+        // JOIN não casa) e ficava congelado no status antigo — inclusive
+        // ATRASADO, que o painel da direção continuava contando, sem forma de
+        // limpar pela tela (o status do projeto não é editável). Vale a mesma
+        // regra do projeto sem ação nenhuma: volta ao começo.
+        Database::executar(
+            "UPDATE projeto p
+                SET p.status = 'NAO_INICIADO'
+              WHERE p.planejamento_id = ? AND p.status <> 'CANCELADO'
+                AND EXISTS (SELECT 1 FROM (SELECT projeto_id FROM desdobramento) d
+                            WHERE d.projeto_id = p.id)
+                AND NOT EXISTS (SELECT 1 FROM (SELECT projeto_id, status FROM desdobramento) d2
+                                WHERE d2.projeto_id = p.id AND d2.status <> 'CANCELADO')",
             [$planId]
         );
     }

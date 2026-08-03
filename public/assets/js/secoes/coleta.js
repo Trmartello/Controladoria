@@ -754,8 +754,14 @@ const SecaoColeta = {
           setTimeout(() => { this.gestoEmFicha = false; }, 60);
           // Marca o gesto como arraste mesmo quando ele morre em área inválida:
           // o clique que o navegador dispara em seguida não pode ser lido como
-          // toque (selecionaria a ficha, ou abriria/fecharia a caixa)
-          if (arrastando) ficha.dataset.arrastou = '1';
+          // toque (selecionaria a ficha, ou abriria/fecharia a caixa).
+          // A marca EXPIRA junto com gestoEmFicha: quando o gesto morre fora de
+          // alvo não há redesenho, e uma marca pendurada engolia o próximo
+          // clique legítimo — era preciso tocar duas vezes para o menu abrir.
+          if (arrastando) {
+            ficha.dataset.arrastou = '1';
+            setTimeout(() => { delete ficha.dataset.arrastou; }, 60);
+          }
           if (!arrastando || (!alvoAtual && !quadAtual)) return;
           const id = ficha.dataset.arrastavel;
 

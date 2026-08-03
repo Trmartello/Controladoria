@@ -37,7 +37,14 @@ if (!$pdo) {
 // Uma migração por vez: garantirColuna/garantirIndice conferem e depois agem,
 // e duas réplicas subindo juntas poderiam passar as duas na conferência — a
 // segunda morreria com "Duplicate column name" e o container não subiria.
-$pdo->query("SELECT GET_LOCK('migrate_controladoria', 60)")->fetchColumn();
+$travou = $pdo->query("SELECT GET_LOCK('migrate_controladoria', 60)")->fetchColumn();
+if ((int)$travou !== 1) {
+    // Sem o lock, seguir em frente é exatamente o cenário que ele existe para
+    // evitar (duas réplicas no check-then-act de garantirColuna) — só que 60s
+    // mais tarde. Melhor abortar e deixar o Railway tentar de novo.
+    fwrite(STDERR, "migrate: outra migração está em andamento (lock não obtido). Abortando.\n");
+    exit(1);
+}
 
 function executarArquivoSql(PDO $pdo, string $caminho): void
 {
