@@ -70,6 +70,7 @@ ENCAMINHAR PARA
   ──────────────────────
   Desmarcar <destino>        (só quando há etiqueta)
   Remover do quadrante
+  Excluir ideia
 ```
 
 Escolher um destino abre o modal que já existia, com os campos daquele destino.
@@ -77,15 +78,44 @@ Escolher um destino abre o modal que já existia, com os campos daquele destino.
 ### A ideia encaminhada permanece na matriz
 Com a etiqueta do destino (`Cenário` · `PESTEL` · `Porter` · `SWOT` ·
 `Plano de ação`, este último com `· aguardando` enquanto não virou ação num
-projeto). Três saídas, todas explícitas:
+projeto). Quatro saídas, todas explícitas:
 
 | Ação | O que acontece |
 |---|---|
 | **Mover de quadrante** | muda só a posição; destino e etiqueta continuam |
 | **Desmarcar \<destino\>** | sai da análise (o fator/item de cenário é apagado), perde a etiqueta e **continua no quadrante** |
 | **Remover do quadrante** | volta para a fila **com a etiqueta**; pergunta antes se deve sair também da análise |
+| **Excluir ideia** | apaga a ideia (a caixa inteira) **e o que ela virou** no diagnóstico |
 
 Remover da SWOT apaga o fator — por isso nunca acontece em silêncio.
+
+### Excluir
+Disponível no menu da pílula **e na bancada** — sem o botão na bancada, ideia que
+está na fila não teria como ser excluída, porque o menu só existe na matriz.
+A confirmação é obrigatória e diz o que vai embora:
+
+> Excluir «Foco atendimento»?
+> São **2 ideias juntas** nesta caixa: todas serão excluídas.
+> Ela também sai de **SWOT** — o registro de lá é apagado.
+> Não dá para desfazer.
+
+Some junto: a caixa inteira, o fator (com os promovidos a partir dele), o item de
+cenário, o GUT, o vínculo com a cascata e os votos. **Ideia que já virou ação num
+projeto é recusada** — a ação tem vida própria e ficaria órfã.
+
+### Editar continua valendo depois de encaminhar
+A ideia encaminhada não sai mais de vista, então continua editável. Salvar o
+texto na bancada **corrige também a descrição no diagnóstico** (fator ou item de
+cenário) — sem isso os dois divergiriam e a SWOT ficaria com a redação velha.
+A bancada avisa: *"Já encaminhada para SWOT — salvar o texto aqui corrige lá
+também"*.
+
+### Ideia longa não vira paredão
+O texto da pílula é cortado em **duas linhas**. O texto inteiro fica no card
+**"Classificando"**, logo abaixo da grade — um card próprio, com rolagem a partir
+de ~4 linhas —, separado da **orientação** do sistema, que fica curta e fixa
+embaixo. Antes os dois vinham no mesmo parágrafo e o conteúdo do usuário parecia
+instrução da tela.
 
 ---
 
@@ -96,7 +126,8 @@ Remover da SWOT apaga o fator — por isso nunca acontece em silêncio.
 |---|---|
 | `bancada()` | perdeu a matriz, os destinos e o "Rejeitar" — virou editor |
 | `painelPrioridade()` | quadrantes com `data-solta-quadrante` (alvo permanente do arraste) e `data-quadrante` (toque, só com ideia em foco); dica que ensina o gesto |
-| `fichaPrio()` | pílula com etiqueta, arrastável, abrindo o menu flutuante |
+| `fichaPrio()` | pílula com etiqueta (texto em 2 linhas), arrastável, abrindo o menu flutuante |
+| `fichaOuCaixa()` | a caixa-mãe devolvida à fila também mostra a etiqueta, no rodapé |
 | `aplicarQuadrante()` | caminho único de clique e soltura, com trava de reentrância |
 | `ligarArraste()` | precedência do quadrante sobre a ficha + auto-scroll |
 | `montarGrupos()` | inclui `ACEITO` (a encaminhada fica na matriz) |
@@ -112,11 +143,20 @@ Remover da SWOT apaga o fator — por isso nunca acontece em silêncio.
 - `reabrir()`: trata o plano de ação pendente, recusa o que já virou ação num
   projeto e aplica ao grupo inteiro.
 - `grupo()`: passou a incluir `ACEITO`.
+- `complementar()`: aceita `ACEITO` e **propaga o texto** para o fator/item de
+  cenário, mantendo os dois em sincronia.
+- `excluir()`: apaga o grupo inteiro e o que ele gerou (fator + promovidos, item
+  de cenário); solta `dividido_de_id`/`agrupado_em_id`, que não têm chave
+  estrangeira e sobrariam apontando para linhas inexistentes; recusa ação já
+  criada em projeto. Autorização: o autor apaga a própria ideia enquanto ninguém
+  a triou; o resto exige quem conduz.
 
 ### `public/assets/css/app.css`
-`.celula-prio.clicavel/.escolhido/.alvo-solta`, `.ficha-prio` (+ `.encaminhada`),
-`.fp-tag`, `.fp-menu` e itens, e o bloco compacto do celular. Saiu o CSS órfão da
-matriz antiga (`.matriz-quad`, `.quadrante-prio`, `.grade-matriz`, `.mq-*`).
+`.celula-prio.clicavel/.escolhido/.alvo-solta`, `.ficha-prio` (+ `.encaminhada`,
+texto em `line-clamp: 2`), `.fp-tag`, `.fp-menu` e itens (incluindo
+`.fpm-desfazer` e `.fpm-excluir`), `.cartao-foco` e o bloco compacto do celular.
+Saiu o CSS órfão da matriz antiga (`.matriz-quad`, `.quadrante-prio`,
+`.grade-matriz`, `.mq-*`).
 
 ---
 
@@ -145,6 +185,14 @@ e a ideia removida do quadrante volta à fila **com a etiqueta**.
 | **Pílula selecionada desmarcava sozinha** | o toggle da fila travava a reclassificação: dentro da matriz, tocar sempre seleciona |
 | **Texto quebrando letra a letra** | os botões na mesma linha espremiam a pílula — resolvido movendo tudo para o menu |
 | **Voz nova sumia com a caixa** | o balde do quadrante usava o representante, não o líder |
+| **Encaminhada recusava edição** | `complementar()` barrava `ACEITO` — regra que fazia sentido quando a encaminhada sumia da tela, e deixou de fazer quando ela passou a continuar visível. Relatado pelo cliente: "Salvar texto" respondia *"Esta ideia já foi tratada."* |
+| **Caixa-mãe voltava sem etiqueta** | a tag só fora posta na ficha simples; a caixa devolvida à fila parecia por tratar e seria encaminhada de novo |
+| **Ideia longa virava paredão** | a pílula crescia sem limite no quadrante, e o texto dela entrava no meio da frase de orientação |
+
+> **Padrão por trás de três destes defeitos:** guardas escritas quando `ACEITO`
+> significava "fora de vista". Ao fazer a encaminhada continuar visível, cada uma
+> precisou ser revisitada. As que sobraram — `dividir` e `descartar` — recusam
+> `ACEITO` **de propósito**, com mensagem clara.
 
 ---
 
@@ -163,6 +211,11 @@ polling ligado e asserções no banco:
   ciclos de polling, e SWOT abre o modal com "Quadrante da SWOT";
 - etiqueta correta por destino; mover preserva destino e etiqueta;
 - desmarcar apaga o fator (1 → 0) e mantém a pílula no quadrante;
+- excluir: cancelar não apaga; excluir uma caixa-mãe de 2 ideias já encaminhada
+  apaga as duas linhas **e** o fator (1 → 0), deixando o quadrante vazio;
+- editar a encaminhada salva sem erro e a descrição do fator acompanha;
+- pílula de ~300 caracteres fica em 2 linhas (35px) sem estourar a célula, com o
+  texto completo no card de foco;
 - remover devolve à fila com a etiqueta, preservando ou apagando o fator conforme
   a resposta;
 - sem overflow horizontal e sem erros de console em nenhum cenário.

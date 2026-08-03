@@ -62,8 +62,12 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   parênteses (“Forças (Interno · Ajuda)”). Não reintroduzir parágrafos de
   introdução acima das listas — a orientação mora no ⓘ.
 - **Matriz de prioridade** (condução da tempestade): gráfico de **quatro
-  quadrantes**, Impacto no eixo horizontal e Esforço no vertical (rótulos
-  “pouco/muito” na vertical). Não há filtro de situação nessa tela.
+  quadrantes**, Impacto no eixo horizontal e Esforço no vertical. É a **única
+  matriz do sistema** e fica **acima** da fila — a bancada não tem matriz
+  nenhuma (refatoração GTD; ver `docs/REFATORACAO-GTD-COLETA.md`). No celular os
+  rótulos das linhas vêm inteiros (“pouco esforço”/“muito esforço”) e a coluna do
+  eixo some, para a largura ir toda para os quadrantes. Não há filtro de situação
+  nessa tela.
 - **Matriz GUT** (`Gravidade × Urgência × Tendência`, 1–125): cada dimensão tem
   **pergunta-guia** no modal de avaliação; score ≥64 vermelho (Alta), ≥27 dourado
   (Média), senão verde (Baixa), com a legenda distribuída na barra da matriz
@@ -105,26 +109,54 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   HTML não existe no toque) com os listeners no `document`, porque a ficha se
   move no DOM durante o gesto. Expandir o grupo é sempre server-side: a lista
   nunca vem do cliente.
-  Fluxo da condução: agrupar → descrever (`texto_tratado`) → matriz
-  (impacto × esforço) → destino, ou rejeitar, ou `adiado = 1` (caixa
-  "tratar depois"). O painel do QR recolhe depois que a sala entrou.
+  **Fluxo GTD da condução** (capturar → esclarecer → organizar): a bancada é só
+  editor (texto, dividir, desagrupar, tratar depois, excluir); a prioridade é
+  decidida **arrastando o cartão da fila até o quadrante**, que já define impacto
+  e esforço — sem popup nem tela intermediária. Reclassificar é arrastar entre
+  quadrantes. Regras do arraste: o **quadrante tem precedência** sobre a ficha na
+  resolução do alvo (soltar sobre uma pílula dentro do quadrante classifica,
+  nunca agrupa — agrupar é coisa da fila); soltar no mesmo quadrante **não**
+  desfaz; e todo gesto iniciado numa ficha **engole o clique seguinte**
+  (`gestoEmFicha`), senão um arraste curto vira toque no quadrante e
+  desclassifica. No celular há **auto-scroll** perto das bordas, com o alvo
+  recalculado a cada quadro. O painel do QR recolhe depois que a sala entrou, e
+  "Tratar depois" (`adiado = 1`) fica anexado à fila, recolhido.
   Na nuvem, ideia sozinha é uma ficha; grupo vira uma **caixa** (`.grupo-caixa`)
-  com todas as palavras juntadas à vista (`fichaOuCaixa()`). Tocar na caixa ou
-  em qualquer palavra dela leva o grupo à bancada. A caixa arrasta e é alvo de
-  arraste como a ficha (`touch-action: none` nela e nos filhos). Cada palavra
-  tem um ✕ que a tira só dela do grupo (`removerDoGrupo`, rota
-  `/api/coleta/{id}/remover-grupo`) — juntou por engano, tira uma sem desfazer
-  o resto; se sai o líder, o próximo membro é promovido. O ✕ para propagação
-  (não seleciona nem arrasta a caixa).
+  **compacta**: só o título, e a contagem do rodapé é o botão que revela as
+  palavras (`caixaAberta`, uma por vez). Tocar na caixa leva o grupo à bancada —
+  a tratativa é sempre da caixa inteira, e o texto salvo é o **título** dela. A
+  caixa arrasta e é alvo de arraste como a ficha (`touch-action: none` nela e nos
+  filhos; `manipulation` nos botões). Cada palavra tem um ✕ que a tira só dela do
+  grupo (`removerDoGrupo`, rota `/api/coleta/{id}/remover-grupo`) — juntou por
+  engano, tira uma sem desfazer o resto; se sai o líder, o próximo é promovido, e
+  quem sai **volta ao próprio texto** (o `texto_tratado` é o título da mãe). O ✕
+  para propagação (não seleciona nem arrasta a caixa).
 - **Coleta de Ideias** é o passo 0 do diagnóstico: ideia crua → triagem item a
   item → item de cenário, fator **ou plano de ação** (ou descarte com motivo,
   visível ao autor). `coleta_item.destino_tipo` é ENUM
-  `CENARIO`/`FATOR`/`ACAO`; a triagem (`DESTINOS_TRIAGEM` em `coleta.js`) oferece
-  os três destinos. O registro criado herda o `ano` da **ideia**, nunca o do
-  seletor da tela.
+  `CENARIO`/`FATOR`/`ACAO`. Com rodada aberta o destino é escolhido no **menu da
+  pílula** na matriz (`MENU_DESTINOS`: Cenário · Framework SWOT/PESTEL/Porter ·
+  Resultados Plano de ação); a fila antiga usa `DESTINOS_TRIAGEM`. O registro
+  criado herda o `ano` da **ideia**, nunca o do seletor da tela.
   O vínculo vale nos dois sentidos (selo “Coleta · Fulano” no card do
   diagnóstico, “Virou fator ↗” na ideia); apagar o destino limpa
   `destino_tipo`/`destino_id` em vez de deixar link quebrado.
+  **A ideia encaminhada não some**: continua na matriz com a etiqueta do destino
+  (`rotuloDestino()`), e por isso `listar()` faz `LEFT JOIN fator` para trazer a
+  **etapa** — `destino_tipo` só diz `FATOR`, não se virou SWOT, PESTEL ou Porter.
+  Consequência que já causou três defeitos: **guardas escritas quando `ACEITO`
+  significava “fora de vista” precisam ser revisitadas**. Hoje `priorizar()` e
+  `complementar()` aceitam `ACEITO` (o complementar **propaga o texto** para o
+  fator/item de cenário, senão os dois divergem), e `grupo()` inclui `ACEITO`;
+  `dividir()` e `descartar()` recusam de propósito.
+  Saídas da encaminhada, todas explícitas: mover de quadrante (só a posição),
+  **desmarcar o destino** (`reabrir` apaga o registro no diagnóstico e a ideia
+  fica no quadrante), **remover do quadrante** (volta à fila **com a etiqueta**;
+  pergunta se deve sair também da análise) e **excluir**. `reabrir()` e
+  `excluir()` valem para o **grupo inteiro** e recusam ideia que já virou ação em
+  projeto — desfazer ali deixaria a ação órfã. O `excluir()` apaga junto o fator
+  (com os promovidos a partir dele) ou o item de cenário, e solta
+  `dividido_de_id`/`agrupado_em_id`, que **não têm chave estrangeira**.
   Ideia cadastrada **manualmente** enquanto uma tempestade está aberta herda o
   `rodada_id` da rodada aberta (validado no back-end) e cai na nuvem, em vez de
   sumir. Listagens que juntam ideias da tempestade (autor_id NULL) usam
@@ -224,8 +256,19 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
   `require('/opt/node22/lib/node_modules/playwright')`), testar desktop
   (1500×800) e mobile (390×844). Web Speech API não existe no headless —
   simule com `window.webkitSpeechRecognition = class {...}` para o microfone
-  aparecer. Para preparar massa de teste, chame a própria API pelo
-  `page.evaluate` (`App.api(...)`) e apague o que criou ao final.
+  aparecer, **e sobrescreva também `window.SpeechRecognition`**: o headless
+  define o nativo (que não fala) e o código prefere ele. Para preparar massa de
+  teste, chame a própria API pelo `page.evaluate` (`App.api(...)`) e apague o que
+  criou ao final.
+  Três armadilhas do ambiente, todas já custaram depuração:
+  o Chromium novo **removeu o headless antigo**, então `chromium.launch()` só
+  sobe apontando para `/opt/pw-browsers/chromium_headless_shell-*/chrome-linux/
+  headless_shell`; a **CSP bloqueia `page.waitForFunction`** (avalia string como
+  JS) — use laço com `page.evaluate`; e o modal do Bootstrap deixa a classe
+  `.show` pendurada sem o `transitionend`, então teste fechamento com
+  `reducedMotion: 'reduce'` no contexto, senão o "modal fechou" dá falso-negativo.
+  Para gestos de arraste, ande em passos (`mouse.move` várias vezes): abaixo de
+  8px o código trata como toque, não arraste.
 - Dados inseridos pelo cliente `mysql` sem `--default-character-set=utf8mb4`
   saem com acentuação quebrada; o caminho do PDO da aplicação está correto.
 
@@ -252,3 +295,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
   entregues) e `docs/BACKLOG-EVOLUCAO.md` (matriz de impacto por negócio,
   triagem pós-brainstorm, mapa BSC, plano de contingência e ritual de
   acompanhamento — com o veredito de o que vale ou não construir).
+- `docs/REFATORACAO-GTD-COLETA.md`: o fluxo GTD da Coleta como ficou (matriz
+  única, arraste, menu da pílula, saídas da ideia encaminhada), as decisões do
+  cliente e os defeitos que a validação pegou. Leia antes de mexer na condução da
+  tempestade.
