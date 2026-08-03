@@ -531,6 +531,8 @@ const SecaoColeta = {
           data-desfazer-destino="${lider.id}">Desmarcar ${Modal.esc(destino)}</button>` : ''}
         <button type="button" class="fpm-item fpm-remover" role="menuitem"
           data-tirar-quadrante="${lider.id}">Remover do quadrante</button>
+        <button type="button" class="fpm-item fpm-excluir" role="menuitem"
+          data-excluir-ideia="${lider.id}">Excluir ideia</button>
       </div>` : '';
     return `<span class="ficha-prio-caixa">
       <button type="button" class="ficha-prio ${desteGrupo ? 'selecionada' : ''} ${
@@ -619,6 +621,9 @@ const SecaoColeta = {
         ${ids.length > 1 ? `<button class="btn btn-sm btn-outline-secondary"
           data-desagrupar="${item.id}" title="Separar as ideias deste grupo">Desagrupar</button>` : ''}
         <button class="btn btn-sm btn-outline-secondary" data-adiar="${item.id}">Tratar depois</button>
+        ${App.podeEditar() ? `<button class="btn btn-sm btn-outline-danger"
+          data-excluir-ideia="${item.id}" title="Apagar a ideia e o que ela virou no diagnóstico"
+          >Excluir</button>` : ''}
       </div>`;
   },
 
@@ -1287,13 +1292,28 @@ const SecaoColeta = {
     document.getElementById('btn-nova-ideia')?.addEventListener('click', () => modalIdeia());
     el.querySelectorAll('[data-editar-ideia]').forEach((b) => b.addEventListener('click', () =>
       modalIdeia(this.itens.find((i) => i.id == b.dataset.editarIdeia))));
-    el.querySelectorAll('[data-excluir-ideia]').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Excluir esta ideia?')) return;
+    // Excluir apaga a ideia e o que ela virou no diagnóstico. Como é
+    // irreversível, a confirmação diz exatamente o que vai embora: quantas
+    // ideias da caixa e de qual análise.
+    el.querySelectorAll('[data-excluir-ideia]').forEach((b) => b.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const id = b.dataset.excluirIdeia;
+      const item = this.itens.find((i) => i.id == id);
+      const grupo = [...this.montarGrupos(), ...this.montarGrupos(true)]
+        .find((g) => g.itens.some((i) => i.id == id));
+      const quantas = grupo ? grupo.itens.length : 1;
+      const destino = item ? this.rotuloDestino(item) : '';
+      if (!confirm(`Excluir «${item?.texto_tratado || item?.texto}»?`
+        + (quantas > 1 ? `\n\nSão ${quantas} ideias juntas nesta caixa: todas serão excluídas.` : '')
+        + (destino ? `\n\nEla também sai de ${destino} — o registro de lá é apagado.` : '')
+        + '\n\nNão dá para desfazer.')) return;
       try {
-        await App.api(`/api/coleta/${b.dataset.excluirIdeia}/excluir`, { planejamento_id: this.plan.id });
+        await App.api(`/api/coleta/${id}/excluir`, { planejamento_id: this.plan.id });
       } catch (e) {
         alert(e.message);
       }
+      this.selecionado = null;
+      this.menuDestino = null;
       this.carregar();
     }));
 

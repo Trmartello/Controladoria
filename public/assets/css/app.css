@@ -795,6 +795,9 @@ input[type=range].faixa-verde:focus-visible {
   border-radius: 0 0 .3rem .3rem;
 }
 .fpm-remover:hover { background: #f4dede; color: #8f3b3b; }
+/* Excluir é irreversível: fica por último, em vermelho cheio */
+.fpm-excluir { color: #fff; background: #8f3b3b; margin-top: .2rem; font-weight: 600; }
+.fpm-excluir:hover { background: #7a2f2f; color: #fff; }
 /* No celular a matriz é estreita: pílulas e quadrantes ficam compactos para
    caber mais ideia por quadrante sem virar uma parede de bordas */
 @media (max-width: 767.98px) {

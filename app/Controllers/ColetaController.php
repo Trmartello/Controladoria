@@ -142,20 +142,59 @@ class ColetaController
         $planId = (int)($d['planejamento_id'] ?? 0);
         $u = Auth::exigirRespostaColeta($planId);
         $item = $this->exigirItem($id, $planId);
-        // Ideia vinda da tempestade não tem autor cadastrado: quem tria é quem
-        // pode apagar, senão um despejo de participante ficaria para sempre
-        $doParticipante = $item['autor_id'] === null;
-        if (!$doParticipante && (int)$item['autor_id'] !== (int)$u['id']) {
-            Json::erro('Só o autor pode excluir a própria ideia.', 403);
-        }
-        if ($doParticipante) {
+        // O autor apaga a PRÓPRIA ideia enquanto ninguém a triou. Todo o resto
+        // — ideia de participante, já classificada ou já encaminhada — é ato de
+        // quem conduz, porque apaga também o que ela virou no diagnóstico.
+        $proprioNovo = $item['autor_id'] !== null
+            && (int)$item['autor_id'] === (int)$u['id']
+            && $item['situacao'] === 'NOVO';
+        if (!$proprioNovo) {
             Auth::exigirTriagemColeta($planId);
         }
-        if ($item['situacao'] !== 'NOVO') {
-            Json::erro('Esta ideia já foi triada e não pode mais ser excluída.');
+
+        // Some a caixa inteira: excluir só o líder deixaria as outras órfãs
+        $grupo = $this->grupo($id, $planId);
+        $marcas = implode(',', array_fill(0, count($grupo), '?'));
+
+        $destinos = Database::todos(
+            "SELECT DISTINCT destino_tipo, destino_id FROM coleta_item
+             WHERE id IN ({$marcas}) AND destino_tipo IS NOT NULL AND destino_id IS NOT NULL",
+            $grupo
+        );
+        // Ação já criada num projeto tem vida própria: apagar por aqui a
+        // deixaria órfã, sem rastro de onde veio
+        foreach ($destinos as $dst) {
+            if ($dst['destino_tipo'] === 'ACAO') {
+                Json::erro('Esta ideia já virou uma ação num projeto: exclua por lá antes.');
+            }
         }
-        Database::executar('DELETE FROM coleta_item WHERE id = ?', [$id]);
-        Json::ok();
+        foreach ($destinos as $dst) {
+            $destinoId = (int)$dst['destino_id'];
+            if ($dst['destino_tipo'] === 'CENARIO') {
+                Database::executar(
+                    'DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]
+                );
+            } elseif ($dst['destino_tipo'] === 'FATOR') {
+                // Fatores promovidos apontam para o de origem (sem ON DELETE):
+                // saem antes. GUT e vínculo com a cascata caem por CASCADE.
+                Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$destinoId]);
+                Database::executar(
+                    'DELETE FROM fator WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]
+                );
+            }
+        }
+
+        // dividido_de_id e agrupado_em_id não têm chave estrangeira: sem soltar
+        // aqui, sobrariam apontando para linhas que deixaram de existir
+        Database::executar(
+            "UPDATE coleta_item SET dividido_de_id = NULL WHERE dividido_de_id IN ({$marcas})", $grupo
+        );
+        Database::executar(
+            "UPDATE coleta_item SET agrupado_em_id = NULL WHERE agrupado_em_id IN ({$marcas})", $grupo
+        );
+        // Os votos saem por ON DELETE CASCADE (fk_voto_item)
+        Database::executar("DELETE FROM coleta_item WHERE id IN ({$marcas})", $grupo);
+        Json::ok(['removidas' => count($grupo)]);
     }
 
     /** Limpa de uma vez as ideias ainda não tratadas de uma rodada. */
