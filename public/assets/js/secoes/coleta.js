@@ -427,14 +427,20 @@ const SecaoColeta = {
     const celula = (imp, esf, area) => {
       const q = QUADRANTES[`${imp}:${esf}`];
       const escolhido = lider && lider.impacto === imp && lider.esforco === esf;
-      const alvo = podeClassificar
+      // O quadrante ONDE a ideia já está não é alvo de toque: ele é o retrato
+      // da posição atual. Tocar ali é o gesto de quem quer confirmar, e antes
+      // isso desclassificava a ideia — que sumia da matriz sem ninguém pedir.
+      const mover = podeClassificar && !escolhido;
+      const alvo = mover
         ? `data-quadrante="${imp}:${esf}" data-item="${lider.id}" role="button" tabindex="0"
            title="Pôr «${Modal.esc(lider.texto_tratado || lider.texto)}» em ${q.titulo}"`
-        : '';
+        : (escolhido
+          ? `title="«${Modal.esc(lider.texto_tratado || lider.texto)}» já está em ${q.titulo}"`
+          : '');
       // data-solta-quadrante é PERMANENTE (alvo do arraste, mesmo sem seleção);
       // data-quadrante só existe com uma ideia em foco (o toque que classifica)
       return `<div class="celula-prio ${area} ${escolhido ? 'escolhido' : ''} ${
-        podeClassificar ? 'clicavel' : ''}" style="--cor-quad:${q.cor}"
+        mover ? 'clicavel' : ''}" style="--cor-quad:${q.cor}"
         data-solta-quadrante="${imp}:${esf}" ${alvo}>
         <div class="cp-titulo">${q.titulo}</div>
         <div class="cp-fichas">${porQuadrante(imp, esf)}</div>
@@ -451,7 +457,7 @@ const SecaoColeta = {
           Modal.esc(this.rotuloDestino(lider))}</span>` : ''}
       </div>` : '';
     const dica = podeClassificar
-      ? 'Toque num quadrante para posicionar. Tocar no mesmo desmarca; <strong>Descartar</strong> esquece a ideia (pede o motivo).'
+      ? 'Toque num quadrante para posicionar. Tocar no quadrante atual não muda nada; <strong>Descartar</strong> esquece a ideia (pede o motivo).'
       : 'Arraste uma ideia da fila até um quadrante — ou toque nela e depois no quadrante. O quadrante já define impacto e esforço.';
     return `<div class="card mb-3 painel-prio"><div class="card-body py-2 px-3">
       <div class="rotulo-secao">Prioridade</div>
@@ -476,18 +482,18 @@ const SecaoColeta = {
 
   /**
    * Põe a ideia (o grupo inteiro) num quadrante — o caminho único do clique e
-   * do arraste. `limpar` desfaz a classificação e devolve a ideia à fila.
+   * do arraste. Só posiciona: tirar da matriz é o ✕ da pílula, que chama
+   * `priorizar` com `limpar` direto.
    */
-  async aplicarQuadrante(itemId, impacto, esforco, limpar = false) {
+  async aplicarQuadrante(itemId, impacto, esforco) {
     // Trava de reentrância: na projeção o alvo é grande e dois toques seguidos
     // disparariam dois priorizar (e dois modais de descarte)
     if (this.classificando) return;
     this.classificando = true;
     const item = this.itens.find((i) => i.id == itemId);
     try {
-      const r = await App.api(`/api/coleta/${itemId}/priorizar`, limpar
-        ? { planejamento_id: this.plan.id, limpar: true }
-        : { planejamento_id: this.plan.id, impacto, esforco });
+      const r = await App.api(`/api/coleta/${itemId}/priorizar`,
+        { planejamento_id: this.plan.id, impacto, esforco });
       // Posicionar é uma OPERAÇÃO COMPLETA: a interface volta ao neutro, sem
       // seleção e sem menu. Aqui vale para os dois caminhos — o arraste e o
       // toque no quadrante —, que passam ambos por este método.
@@ -503,7 +509,7 @@ const SecaoColeta = {
       await this.carregar();
       // Quadrante "Descartar": a matriz decide esquecer — abre o descarte já
       // com o motivo da própria posição.
-      if (!limpar && r.descartar && item) {
+      if (r.descartar && item) {
         this.abrirDescarte(item, 'Baixo impacto e alto esforço — fora da matriz de priorização.');
       }
     } catch (e) {
@@ -522,9 +528,9 @@ const SecaoColeta = {
 
   /**
    * Ficha do painel: a pílula da ideia (ou da caixa-mãe inteira, com o ×N).
-   * Toca para levar à bancada — lá se muda o quadrante, se desmarca (tocando
-   * no quadrante já escolhido) ou se escolhe o destino. Sem arraste: dentro
-   * do painel não há o que juntar.
+   * Toca para levar à bancada — lá se muda o quadrante (tocando em OUTRO), se
+   * escolhe o destino ou se tira da matriz pelo ✕. Sem arraste: dentro do
+   * painel não há o que juntar.
    */
   fichaPrio(g) {
     const lider = this.liderDe(g);
@@ -668,10 +674,10 @@ const SecaoColeta = {
         const botao = ev.target.closest('button');
         if (botao && botao !== ficha && !botao.matches('[data-ver-palavras]')) return;
         // Todo gesto iniciado numa ficha "engole" o clique que o navegador
-        // dispara depois no quadrante. Sem isso, pegar uma pílula e largá-la no
-        // próprio quadrante (arraste curto demais para virar arraste) chegaria
-        // ao quadrante como toque — e o toque no quadrante já escolhido
-        // DESCLASSIFICA a ideia. Perder a classificação assim seria destrutivo.
+        // dispara depois no quadrante. Sem isso, pegar uma pílula e largá-la
+        // num quadrante vizinho (arraste curto demais para virar arraste)
+        // chegaria ao quadrante como toque, e a ideia mudaria de posição por
+        // um gesto que ninguém completou.
         this.gestoEmFicha = true;
         const origem = { x: ev.clientX, y: ev.clientY };
         let arrastando = false;
@@ -767,9 +773,9 @@ const SecaoColeta = {
           if (quadAtual) {
             const [impacto, esforco] = quadAtual.dataset.soltaQuadrante.split(':');
             const arrastado = this.itens.find((i) => i.id == id);
-            // Devolver ao mesmo quadrante não é desfazer: só desmarca quem
-            // toca no quadrante já escolhido. Nada mudou, então a seleção e o
-            // menu continuam como estavam — é uma tentativa, não uma operação.
+            // Devolver ao mesmo quadrante não é desfazer nem reposicionar:
+            // nada mudou, então a seleção e o menu continuam como estavam — é
+            // uma tentativa, não uma operação. Mesma regra do toque.
             if (arrastado && arrastado.impacto === impacto && arrastado.esforco === esforco) return;
             // Movimento concluído = operação encerrada. Quem limpa a seleção e
             // o menu é o próprio aplicarQuadrante, ponto comum do arraste e do
@@ -1055,10 +1061,15 @@ const SecaoColeta = {
       if (this.gestoEmFicha) return;
       const [impacto, esforco] = b.dataset.quadrante.split(':');
       const item = this.itens.find((i) => i.id == b.dataset.item);
-      // Tocar no quadrante JÁ escolhido desmarca: a classificação é apagada e
-      // a ideia volta para a fila
-      const limpar = !!item && item.impacto === impacto && item.esforco === esforco;
-      await this.aplicarQuadrante(b.dataset.item, impacto, esforco, limpar);
+      // Tocar no quadrante JÁ escolhido não faz nada — nem move, nem desmarca.
+      // Desmarcar por toque tirava a ideia da matriz sem ninguém pedir: o
+      // quadrante da ideia em foco fica realçado, e confirmar a posição
+      // (tocando nele) é o gesto mais natural do mundo. Sair da matriz tem
+      // caminho próprio e explícito: o ✕ da pílula ("Remover do quadrante").
+      // Mesma regra do arraste, que já trata soltar no mesmo lugar como
+      // tentativa, não como operação.
+      if (item && item.impacto === impacto && item.esforco === esforco) return;
+      await this.aplicarQuadrante(b.dataset.item, impacto, esforco);
     }));
 
     el.querySelectorAll('[data-destino-menu]').forEach((b) => b.addEventListener('click', (ev) => {

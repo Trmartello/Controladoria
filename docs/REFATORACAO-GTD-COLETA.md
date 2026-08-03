@@ -57,6 +57,14 @@ Reclassificar é arrastar de um quadrante para outro. Sem popup, sem tela
 intermediária. Há também o caminho por toque (tocar a ideia, tocar o quadrante),
 que é o que funciona quando a matriz já está à vista.
 
+**O quadrante onde a ideia já está não é alvo**: ele fica realçado como retrato
+da posição atual, sem `data-quadrante`, sem cursor e sem hover. Tocar nele (ou
+soltar a ficha nele) **não faz nada** — nem move, nem desclassifica. Tocar no
+quadrante realçado é o gesto de quem quer confirmar a posição, e enquanto ele
+desclassificava a ideia sumia da matriz sem ninguém pedir, sem desfazer. Tirar
+da matriz tem caminho próprio e explícito: **Remover do quadrante**, no menu da
+pílula.
+
 ### O menu da pílula
 Tocar numa pílula da matriz abre o menu flutuante:
 
@@ -125,7 +133,7 @@ instrução da tela.
 | Função | Mudança |
 |---|---|
 | `bancada()` | perdeu a matriz, os destinos e o "Rejeitar" — virou editor |
-| `painelPrioridade()` | quadrantes com `data-solta-quadrante` (alvo permanente do arraste) e `data-quadrante` (toque, só com ideia em foco); dica que ensina o gesto |
+| `painelPrioridade()` | quadrantes com `data-solta-quadrante` (alvo permanente do arraste) e `data-quadrante` (toque, só com ideia em foco e **só nos quadrantes para onde ela pode ir** — o atual fica realçado e inerte); dica que ensina o gesto |
 | `fichaPrio()` | pílula com etiqueta (texto em 2 linhas), arrastável, abrindo o menu flutuante |
 | `fichaOuCaixa()` | a caixa-mãe devolvida à fila também mostra a etiqueta, no rodapé |
 | `aplicarQuadrante()` | caminho único de clique e soltura, com trava de reentrância |
@@ -139,7 +147,8 @@ instrução da tela.
 - `listar()`: **`LEFT JOIN fator`** para trazer a etapa do destino — sem ela o
   payload só diz `FATOR` e a etiqueta não teria como escrever "SWOT".
 - `priorizar()`: aceita `ACEITO` (move sem tocar em situação/destino) e `limpar`
-  para tirar do quadrante.
+  para tirar do quadrante — `limpar` só vem do "Remover do quadrante"; nem o
+  toque nem o arraste no quadrante atual desclassificam.
 - `reabrir()`: trata o plano de ação pendente, recusa o que já virou ação num
   projeto e aplica ao grupo inteiro.
 - `grupo()`: passou a incluir `ACEITO`.
@@ -179,7 +188,8 @@ e a ideia removida do quadrante volta à fila **com a etiqueta**.
 
 | Defeito | Por que acontecia |
 |---|---|
-| **Arraste curto desclassificava** | pegar uma pílula e largá-la no próprio quadrante chegava como *clique*, e clique no quadrante já escolhido desmarca. Todo gesto iniciado numa ficha passou a engolir o clique seguinte |
+| **Arraste curto desclassificava** | pegar uma pílula e largá-la no próprio quadrante chegava como *clique*, e clique no quadrante já escolhido desmarcava. Todo gesto iniciado numa ficha passou a engolir o clique seguinte — e depois o toque no quadrante atual deixou de desclassificar (linha abaixo) |
+| **Tocar no quadrante atual tirava a ideia da matriz** | relatado pelo cliente: tocar na ideia acende a pílula **e** o quadrante dela; tocar nesse quadrante realçado — o gesto natural de confirmar — desclassificava e devolvia a ideia à fila. O quadrante escolhido deixou de ser alvo de toque e de arraste: sair da matriz só pelo "Remover do quadrante" |
 | **Grupo ficava para trás** | `grupo()` filtrava `NOVO/SELECIONADO`: numa caixa-mãe encaminhada, mover ou desmarcar mexia só no líder e deixava as demais apontando para um fator apagado |
 | **`reabrir` recusava plano de ação** | exigia `destino_id`, que o plano pendente não tem |
 | **Pílula selecionada desmarcava sozinha** | o toggle da fila travava a reclassificação: dentro da matriz, tocar sempre seleciona |

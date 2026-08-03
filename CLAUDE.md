@@ -134,8 +134,13 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   resolução do alvo (soltar sobre uma pílula dentro do quadrante classifica,
   nunca agrupa — agrupar é coisa da fila); soltar no mesmo quadrante **não**
   desfaz; e todo gesto iniciado numa ficha **engole o clique seguinte**
-  (`gestoEmFicha`), senão um arraste curto vira toque no quadrante e
-  desclassifica. No celular há **auto-scroll** perto das bordas, com o alvo
+  (`gestoEmFicha`), senão um arraste curto vira toque no quadrante e reposiciona
+  sozinho. **O quadrante onde a ideia já está nunca é alvo**: sai sem
+  `data-quadrante`, sem `clicavel`, e o arraste também o ignora — tocar no
+  quadrante realçado é o gesto de confirmar a posição, e enquanto ele
+  desclassificava a ideia sumia da matriz sem ninguém pedir. Tirar da matriz é
+  só o "Remover do quadrante" (`priorizar` com `limpar`), que pergunta antes.
+  No celular há **auto-scroll** perto das bordas, com o alvo
   recalculado a cada quadro. O painel do QR recolhe depois que a sala entrou, e
   "Tratar depois" (`adiado = 1`) fica anexado à fila, recolhido.
   Na nuvem, ideia sozinha é uma ficha; grupo vira uma **caixa** (`.grupo-caixa`)

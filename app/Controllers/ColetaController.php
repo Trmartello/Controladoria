@@ -374,9 +374,12 @@ class ColetaController
         // POSIÇÃO muda — a situação e o destino ficam intactos.
         $encaminhada = $item['situacao'] === 'ACEITO';
 
-        // Tocar de novo no quadrante já escolhido DESMARCA: a classificação é
-        // apagada e a ideia (o grupo inteiro) volta para a fila, como
-        // "a tratar" — sem rota nova, é o inverso natural desta.
+        // `limpar` tira da matriz: a classificação é apagada e a ideia (o grupo
+        // inteiro) volta para a fila, como "a tratar" — sem rota nova, é o
+        // inverso natural desta. Só o ✕ da pílula ("Remover do quadrante")
+        // pede isso: nem o toque nem o arraste no quadrante já escolhido
+        // desclassificam, porque perder a posição por um gesto de confirmação
+        // é destrutivo e não tem desfazer.
         if (!empty($d['limpar'])) {
             $grupo = $this->grupo($id, $planId);
             $marcas = implode(',', array_fill(0, count($grupo), '?'));
