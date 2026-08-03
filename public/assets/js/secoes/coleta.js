@@ -373,15 +373,31 @@ const SecaoColeta = {
     const porQuadrante = (imp, esf) =>
       grupos.filter((g) => this.quadranteDe(g) === QUADRANTES[`${imp}:${esf}`])
         .map((g) => this.fichaPrio(g)).join('');
+    // Esta é a ÚNICA matriz do sistema: é aqui que se classifica. Com uma ideia
+    // escolhida na fila, os quadrantes viram alvo; sem seleção ficam inertes,
+    // servindo só de leitura para a sala.
+    const sel = this.grupoSelecionado();
+    const lider = sel ? (sel.itens.find((x) => !x.agrupado_em_id) || sel.representante) : null;
+    const podeClassificar = !!lider && App.podeEditar();
     // Ordem visual do gráfico: linha de cima = pouco esforço, colunas
-    // pouco → muito impacto (mesma grade da bancada)
+    // pouco → muito impacto
     const celula = (imp, esf, area) => {
       const q = QUADRANTES[`${imp}:${esf}`];
-      return `<div class="celula-prio ${area}" style="--cor-quad:${q.cor}">
+      const escolhido = lider && lider.impacto === imp && lider.esforco === esf;
+      const alvo = podeClassificar
+        ? `data-quadrante="${imp}:${esf}" data-item="${lider.id}" role="button" tabindex="0"
+           title="Pôr «${Modal.esc(lider.texto_tratado || lider.texto)}» em ${q.titulo}"`
+        : '';
+      return `<div class="celula-prio ${area} ${escolhido ? 'escolhido' : ''} ${
+        podeClassificar ? 'clicavel' : ''}" style="--cor-quad:${q.cor}" ${alvo}>
         <div class="cp-titulo">${q.titulo}</div>
         <div class="cp-fichas">${porQuadrante(imp, esf)}</div>
       </div>`;
     };
+    const dica = podeClassificar
+      ? `Classificando <strong>${Modal.esc(lider.texto_tratado || lider.texto)}</strong> — toque num
+         quadrante. Tocar no mesmo desmarca; <strong>Descartar</strong> esquece a ideia (pede o motivo).`
+      : 'Toque numa ideia da tempestade para posicioná-la aqui.';
     return `<div class="card mb-3 painel-prio"><div class="card-body py-2 px-3">
       <div class="rotulo-secao">Prioridade</div>
       <div class="grade-prio">
@@ -398,7 +414,15 @@ const SecaoColeta = {
         ${celula('BAIXO', 'ALTO', 'cp-ba')}
         ${celula('ALTO', 'ALTO', 'cp-aa')}
       </div>
+      <div class="small text-muted mt-2">${dica}</div>
     </div></div>`;
+  },
+
+  /** O grupo da ideia em foco — esteja ela na fila, no painel ou adiada. */
+  grupoSelecionado() {
+    if (!this.selecionado) return null;
+    return [...this.montarGrupos(), ...this.montarGrupos(true)]
+      .find((g) => g.itens.some((i) => i.id === this.selecionado)) || null;
   },
 
   /**
@@ -464,21 +488,13 @@ const SecaoColeta = {
     </div>`;
   },
 
+  /**
+   * A bancada é um EDITOR, e só isso (método GTD: capturar/esclarecer aqui,
+   * organizar na matriz). Não tem mais a matriz de prioridade — que virou a
+   * única, no painel do topo — nem o "Rejeitar": descartar é pôr no quadrante
+   * Descartar. Ver docs/REFATORACAO-GTD-COLETA.md.
+   */
   bancada(item, grupo) {
-    // Grelha na ordem do gráfico: colunas = impacto (pouco→muito), linhas =
-    // esforço (pouco→muito). Sequência: sup-esq, sup-dir, inf-esq, inf-dir.
-    const quadrantes = [
-      ['BAIXO', 'BAIXO', 'Encaixar', 'pouco impacto, pouco esforço', '#b08d4f'],
-      ['ALTO', 'BAIXO', 'Fazer agora', 'muito impacto, pouco esforço', '#007a45'],
-      ['BAIXO', 'ALTO', 'Descartar', 'pouco impacto, muito esforço', '#8f3b3b'],
-      ['ALTO', 'ALTO', 'Planejar', 'muito impacto, muito esforço', '#2c7fb8'],
-    ].map(([imp, esf, titulo, eixos, cor]) => `
-      <button type="button" class="quadrante-prio ${item.impacto === imp && item.esforco === esf ? 'escolhido' : ''}"
-        style="--cor-quad:${cor}" data-quadrante="${imp}:${esf}" data-item="${item.id}"
-        title="${titulo} — ${eixos}" aria-label="${titulo}: ${eixos}">
-        <span class="q-titulo">${titulo}</span>
-      </button>`).join('');
-
     // Quando a nuvem agrupou, a bancada trata o grupo inteiro de uma vez
     const ids = (grupo?.itens || [item]).map((i) => i.id);
     return `
@@ -498,25 +514,11 @@ const SecaoColeta = {
         <button class="btn btn-sm btn-outline-secondary" data-adiar="${item.id}">Tratar depois</button>
       </div>
 
-      <div class="rotulo-secao mt-3">Prioridade</div>
-      <div class="matriz-quad">
-        <div class="mq-topo">
-          <div class="mq-eixox">Impacto</div>
-          <div class="mq-cols"><span>Pouco</span><span>Muito</span></div>
-        </div>
-        <div class="mq-eixoy">Esforço</div>
-        <div class="mq-rotulos"><span>Pouco</span><span>Muito</span></div>
-        <div class="grade-matriz">${quadrantes}</div>
-      </div>
-      <div class="small text-muted mt-1">Pôr em <strong>Descartar</strong> esquece a ideia
-        (pede o motivo); os outros três a mantêm e a sobem na fila.</div>
-
       <div class="rotulo-secao mt-3">Destino</div>
       <div class="d-flex gap-1 flex-wrap">
         ${DESTINOS_TRIAGEM.map((d) => `
           <button class="btn btn-sm btn-destino" style="--cor-destino:${d.cor}"
             data-encaminhar="${item.id}" data-destino="${d.valor}">${d.rotulo}</button>`).join('')}
-        <button class="btn btn-sm btn-outline-danger" data-descartar="${item.id}">Rejeitar</button>
       </div>`;
   },
 
@@ -655,7 +657,12 @@ const SecaoColeta = {
         return;
       }
       const id = Number(b.dataset.selecionar);
-      this.selecionado = this.selecionado === id ? null : id;
+      // Na fila, tocar de novo desmarca. Na matriz, NÃO: a pílula já vem
+      // selecionada depois de classificar, e desmarcá-la deixaria a bancada
+      // vazia e travaria a reclassificação (não haveria como escolher outro
+      // quadrante para ela).
+      const naMatriz = !!b.closest('.cp-fichas');
+      this.selecionado = (!naMatriz && this.selecionado === id) ? null : id;
       this.carregar();
     }));
 
@@ -795,7 +802,10 @@ const SecaoColeta = {
       this.carregar();
     });
 
-    el.querySelectorAll('[data-quadrante]').forEach((b) => b.addEventListener('click', async () => {
+    el.querySelectorAll('[data-quadrante]').forEach((b) => this.ativarBotao(b, async (ev) => {
+      // Tocar numa pílula DENTRO do quadrante leva aquela ideia à bancada —
+      // não reclassifica a que está em foco
+      if (ev?.target?.closest('[data-selecionar]')) return;
       // Trava de toque duplo: na projeção o alvo é grande e dois cliques
       // seguidos disparariam dois priorizar (e dois modais de descarte)
       if (this.classificando) return;

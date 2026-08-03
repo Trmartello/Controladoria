@@ -670,6 +670,14 @@ input[type=range].faixa-verde:focus-visible {
 .gp-lin { grid-column: 2; font-size: .65rem; color: #6c757d; }
 .gp-lin-1 { grid-row: 3; }
 .gp-lin-2 { grid-row: 4; }
+/* Com uma ideia em foco, o quadrante vira alvo: é aqui que se classifica */
+.celula-prio.clicavel { cursor: pointer; }
+.celula-prio.clicavel:hover { background: #f6faf8; border-color: var(--cor-quad, #ced4da); }
+.celula-prio.escolhido {
+  border-color: var(--cor-quad, #007a45);
+  border-width: 2px;
+  background: color-mix(in srgb, var(--cor-quad, #007a45) 10%, #fff);
+}
 .celula-prio {
   border: 1px solid #ced4da;
   border-radius: .5rem;
@@ -728,57 +736,8 @@ input[type=range].faixa-verde:focus-visible {
   .cp-ab, .cp-aa { grid-column: 3; }
 }
 .bancada { border-left: 4px solid var(--dourado); }
-/* Matriz de prioridade = gráfico de quatro quadrantes (impacto × esforço) */
-.matriz-quad {
-  display: grid;
-  grid-template-columns: 1.1rem auto 1fr;
-  gap: .3rem .45rem;
-  align-items: stretch;
-}
-.matriz-quad .mq-topo { grid-column: 3; grid-row: 1; }
-.matriz-quad .mq-eixoy {
-  grid-column: 1; grid-row: 2;
-  align-self: center; text-align: center;
-  writing-mode: vertical-rl; transform: rotate(180deg);
-}
-.matriz-quad .mq-rotulos {
-  grid-column: 2; grid-row: 2;
-  display: flex; flex-direction: column;
-  justify-content: space-around; align-items: center;
-}
-/* Pouco/Muito do eixo de esforço na vertical: gutter estreito, layout limpo */
-.mq-rotulos span { writing-mode: vertical-rl; transform: rotate(180deg); }
-.matriz-quad .grade-matriz { grid-column: 3; grid-row: 2; margin: 0; }
-.mq-cols { display: grid; grid-template-columns: 1fr 1fr; gap: .45rem; text-align: center; }
-.mq-eixox { text-align: center; }
-.mq-eixoy, .mq-eixox { color: var(--verde-escuro); font-weight: 700; }
-.mq-cols span, .mq-rotulos span, .mq-eixoy, .mq-eixox {
-  font-size: .62rem; text-transform: uppercase; letter-spacing: .05em; line-height: 1.15;
-}
-.mq-cols span, .mq-rotulos span { color: #6c757d; font-weight: 600; }
-.grade-matriz {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: .4rem;
-}
-.quadrante-prio {
-  border: 1px solid #ced4da;
-  border-radius: .45rem;
-  padding: .5rem;
-  background: #fff;
-  min-height: 4.2rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-.quadrante-prio:hover { background: #f2f8f5; }
-.quadrante-prio.escolhido {
-  border-color: var(--cor-quad, #007a45);
-  border-width: 2px;
-  background: color-mix(in srgb, var(--cor-quad, #007a45) 10%, #fff);
-}
-.quadrante-prio .q-titulo { font-weight: 700; font-size: .84rem; color: var(--cor-quad, #007a45); }
+/* (A matriz que vivia na bancada saiu: agora existe uma só, o painel de
+   prioridade do topo — ver docs/REFATORACAO-GTD-COLETA.md.) */
 
 /* Orientação por tópico do PESTEL: ícone ⓘ no título e o texto que ele abre */
 .btn-orientacao {
