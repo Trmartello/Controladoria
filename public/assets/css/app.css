@@ -715,6 +715,18 @@ input[type=range].faixa-verde:focus-visible {
   color: #fff;
 }
 .ficha-prio .repetida { font-size: .68rem; opacity: .75; margin-left: .25rem; }
+/* No celular o rótulo já vem completo ("pouco esforço" / "muito esforço"):
+   a coluna do eixo some e a largura vai toda para os quadrantes.
+   (Depois das regras base das células, senão o desempate por ordem vence.) */
+@media (max-width: 767.98px) {
+  .grade-prio { grid-template-columns: 1.1rem 1fr 1fr; }
+  .gp-impacto { grid-column: 2 / 4; }
+  .gp-col-1 { grid-column: 2; }
+  .gp-col-2 { grid-column: 3; }
+  .gp-lin { grid-column: 1; }
+  .cp-bb, .cp-ba { grid-column: 2; }
+  .cp-ab, .cp-aa { grid-column: 3; }
+}
 .bancada { border-left: 4px solid var(--dourado); }
 /* Matriz de prioridade = gráfico de quatro quadrantes (impacto × esforço) */
 .matriz-quad {

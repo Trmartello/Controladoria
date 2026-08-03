@@ -388,9 +388,11 @@ const SecaoColeta = {
         <div class="gp-impacto">Impacto</div>
         <div class="gp-col gp-col-1">Pouco</div>
         <div class="gp-col gp-col-2">Muito</div>
-        <div class="gp-esforco">Esforço</div>
-        <div class="gp-lin gp-lin-1">Pouco</div>
-        <div class="gp-lin gp-lin-2">Muito</div>
+        <div class="gp-esforco d-none d-md-block">Esforço</div>
+        <div class="gp-lin gp-lin-1"><span class="d-md-none">Pouco esforço</span><span
+          class="d-none d-md-inline">Pouco</span></div>
+        <div class="gp-lin gp-lin-2"><span class="d-md-none">Muito esforço</span><span
+          class="d-none d-md-inline">Muito</span></div>
         ${celula('BAIXO', 'BAIXO', 'cp-bb')}
         ${celula('ALTO', 'BAIXO', 'cp-ab')}
         ${celula('BAIXO', 'ALTO', 'cp-ba')}
