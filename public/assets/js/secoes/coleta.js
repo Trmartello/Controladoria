@@ -517,10 +517,9 @@ const SecaoColeta = {
     // Arrastável para mudar de quadrante (reclassificar). Dentro do painel o
     // arraste nunca agrupa: o alvo resolvido é sempre o quadrante.
     const destino = this.rotuloDestino(lider);
-    // O ✕ tira a ideia do quadrante e a devolve à fila. Se ela já estiver numa
-    // análise, o handler pergunta antes se deve sair de lá também.
-    // Tocar na pílula abre o menu flutuante: destinos e "remover do quadrante"
-    // num lugar só, sem botões extras espremendo a ficha.
+    // Tocar na pílula abre o menu flutuante: destinos, desmarcar o destino
+    // atual e remover do quadrante — tudo num lugar só, sem botões extras
+    // espremendo a ficha.
     const menuAberto = this.menuDestino === lider.id && App.podeEditar();
     const menu = menuAberto ? `<div class="fp-menu" role="menu">
         <div class="fpm-titulo">Encaminhar para</div>
@@ -528,6 +527,8 @@ const SecaoColeta = {
           ${s.grupo ? `<div class="fpm-grupo">${s.grupo}</div>` : ''}
           ${s.itens.map((d) => `<button type="button" class="fpm-item" role="menuitem"
             data-destino-menu="${d.valor}" data-item="${lider.id}">${d.rotulo}</button>`).join('')}`).join('')}
+        ${destino ? `<button type="button" class="fpm-item fpm-desfazer" role="menuitem"
+          data-desfazer-destino="${lider.id}">Desmarcar ${Modal.esc(destino)}</button>` : ''}
         <button type="button" class="fpm-item fpm-remover" role="menuitem"
           data-tirar-quadrante="${lider.id}">Remover do quadrante</button>
       </div>` : '';
@@ -1002,6 +1003,24 @@ const SecaoColeta = {
       const item = this.itens.find((i) => i.id == b.dataset.item);
       this.menuDestino = null;
       if (item) this.modalEncaminhar(item, b.dataset.destinoMenu);
+    }));
+
+    // Desmarcar o destino: a ideia SAI da análise (o fator/item de cenário é
+    // apagado) e a etiqueta some, mas ela CONTINUA no quadrante — a prioridade
+    // que a sala decidiu não se perde junto.
+    el.querySelectorAll('[data-desfazer-destino]').forEach((b) => b.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const id = b.dataset.desfazerDestino;
+      const item = this.itens.find((i) => i.id == id);
+      const destino = item ? this.rotuloDestino(item) : 'destino';
+      if (!confirm(`Desmarcar ${destino}?\n\nA ideia sai de ${destino} (o registro de lá é apagado) e continua no quadrante.`)) return;
+      try {
+        await App.api(`/api/coleta/${id}/reabrir`, { planejamento_id: this.plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.menuDestino = null;
+      this.carregar();
     }));
 
     // ✕ da pílula: tira do quadrante e devolve à fila. Se a ideia já foi para

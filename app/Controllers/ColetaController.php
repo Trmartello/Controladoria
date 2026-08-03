@@ -437,10 +437,14 @@ class ColetaController
     private function grupo(int $id, int $planId): array
     {
         $lider = (int)($this->exigirItem($id, $planId)['agrupado_em_id'] ?? 0) ?: $id;
+        // ACEITO entra: a encaminhada continua na matriz e ainda é tratada em
+        // grupo (mover de quadrante, desmarcar o destino). Sem ela aqui, só o
+        // líder mudava e as outras ficavam para trás, apontando para um
+        // registro já apagado. DESCARTADO e DIVIDIDO ficam de fora: já saíram.
         $linhas = Database::todos(
             "SELECT id FROM coleta_item
              WHERE planejamento_id = ? AND (id = ? OR agrupado_em_id = ?)
-               AND situacao IN ('NOVO','SELECIONADO')",
+               AND situacao IN ('NOVO','SELECIONADO','ACEITO')",
             [$planId, $lider, $lider]
         );
         return array_map(fn($l) => (int)$l['id'], $linhas) ?: [$id];
@@ -491,32 +495,46 @@ class ColetaController
         $item = $this->exigirItem($id, $planId);
         $tipo = $item['destino_tipo'] ?? null;
         $destinoId = (int)($item['destino_id'] ?? 0);
-        if (!in_array($tipo, ['CENARIO', 'FATOR'], true) || !$destinoId) {
+        if ($tipo === 'ACAO') {
+            // Plano de ação ainda pendente é só uma marca: nada a apagar. Depois
+            // de virar ação num projeto, quem manda é o projeto — desfazer aqui
+            // deixaria a ação órfã, sem rastro de onde veio.
+            if ($destinoId) {
+                Json::erro('Esta ideia já virou uma ação num projeto: desfaça por lá antes.');
+            }
+            $rotulo = 'Plano de ação';
+        } elseif (in_array($tipo, ['CENARIO', 'FATOR'], true) && $destinoId) {
+            // Rótulo da classificação atual, capturado antes de apagar o registro,
+            // para a tela de reclassificação mostrar de onde a ideia está saindo
+            $rotulo = $tipo === 'CENARIO' ? 'Análise de Cenário' : (match (
+                (string)(Database::um('SELECT etapa FROM fator WHERE id = ?', [$destinoId])['etapa'] ?? '')
+            ) {
+                'PESTEL' => 'PESTEL',
+                'PORTER' => 'Porter',
+                'SWOT'   => 'SWOT',
+                default  => 'diagnóstico',
+            });
+            if ($tipo === 'CENARIO') {
+                Database::executar('DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
+            } else {
+                // Fatores promovidos apontam para o de origem (sem cascade): saem antes.
+                // O restante (GUT, vínculo com cascata) cai por ON DELETE CASCADE.
+                Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$destinoId]);
+                Database::executar('DELETE FROM fator WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
+            }
+        } else {
             Json::erro('Esta ideia não está numa análise para reclassificar.');
         }
-        // Rótulo da classificação atual, capturado antes de apagar o registro,
-        // para a tela de reclassificação mostrar de onde a ideia está saindo
-        $rotulo = $tipo === 'CENARIO' ? 'Análise de Cenário' : (match (
-            (string)(Database::um('SELECT etapa FROM fator WHERE id = ?', [$destinoId])['etapa'] ?? '')
-        ) {
-            'PESTEL' => 'PESTEL',
-            'PORTER' => 'Porter',
-            'SWOT'   => 'SWOT',
-            default  => 'diagnóstico',
-        });
-        if ($tipo === 'CENARIO') {
-            Database::executar('DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
-        } else {
-            // Fatores promovidos apontam para o de origem (sem cascade): saem antes.
-            // O restante (GUT, vínculo com cascata) cai por ON DELETE CASCADE.
-            Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$destinoId]);
-            Database::executar('DELETE FROM fator WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
-        }
+        // Vale para o GRUPO inteiro, como o encaminhar: encaminhar marca todas
+        // as ideias juntadas, e limpar só o líder deixaria as outras presas
+        // como "aceitas" apontando para um registro que não existe mais.
+        $grupo = $this->grupo($id, $planId);
+        $marcas = implode(',', array_fill(0, count($grupo), '?'));
         Database::executar(
             "UPDATE coleta_item SET situacao = 'SELECIONADO', destino_tipo = NULL, destino_id = NULL,
                triado_por = NULL, triado_em = NULL
-             WHERE id = ? AND planejamento_id = ?",
-            [$id, $planId]
+             WHERE id IN ({$marcas}) AND planejamento_id = ?",
+            [...$grupo, $planId]
         );
         Json::ok(['id' => $id, 'ano' => (int)$item['ano'], 'rotulo' => $rotulo]);
     }

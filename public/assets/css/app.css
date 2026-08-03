@@ -780,6 +780,13 @@ input[type=range].faixa-verde:focus-visible {
   cursor: pointer;
 }
 .fpm-item:hover { background: #eef6f1; color: var(--verde-escuro); }
+/* Desmarcar o destino: sai da análise, mas a ideia fica no quadrante */
+.fpm-desfazer {
+  color: var(--dourado);
+  border-top: 1px solid #eef2f0;
+  margin-top: .2rem;
+}
+.fpm-desfazer:hover { background: #fbf5e9; color: #8a6d3b; }
 /* Remover do quadrante fecha o menu: fica separado e em vermelho */
 .fpm-remover {
   color: #8f3b3b;
