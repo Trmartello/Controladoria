@@ -1,8 +1,8 @@
-# Refatoração GTD da Coleta — plano
+# Refatoração GTD da Coleta — ENTREGUE
 
 Reestruturação do fluxo da tempestade de ideias segundo o método GTD
-(**capturar → esclarecer → organizar**), pedida pelo cliente. Este documento é
-**plano**, não registro de entrega: nada aqui foi implementado.
+(**capturar → esclarecer → organizar**), pedida pelo cliente e **entregue nas
+cinco fatias** (commits `2a0908e` → `7fce6cd`).
 
 > **Princípio que guia tudo:** a matriz é ferramenta de **organização**, nunca de
 > captura. Ninguém interrompe o pensamento criativo para decidir prioridade.
@@ -10,71 +10,41 @@ Reestruturação do fluxo da tempestade de ideias segundo o método GTD
 
 ---
 
-## 1. O problema, em uma frase
+## 1. O problema que existia
 
-Hoje existem **duas matrizes** mostrando a mesma informação — uma no painel de
-prioridade (topo) e outra dentro da bancada — e a de baixo obriga o condutor a
-decidir impacto × esforço **no momento em que refina o texto**, no meio do fluxo
-criativo.
+Havia **duas matrizes** mostrando a mesma informação — uma no painel de
+prioridade (topo) e outra dentro da bancada — e a de baixo obrigava o condutor a
+decidir impacto × esforço **no momento em que refinava o texto**.
 
-Fluxo atual: `nova ideia → editar → escolher quadrante → salvar → atualiza as
-duas matrizes`.
-
-Fluxo proposto: `capturar → esclarecer → arrastar para a matriz` (o quadrante
-**é** a classificação).
+Antes: `nova ideia → editar → escolher quadrante → salvar → atualiza as duas matrizes`
+Agora: `capturar → esclarecer → arrastar para a matriz` (o quadrante **é** a classificação)
 
 ---
 
-## 2. O que já existe (e não precisa ser construído)
+## 2. Como ficou
 
-Boa notícia: a maior parte do "novo" já está no ar com outro nome.
-
-| Conceito GTD | O que já existe hoje |
-|---|---|
-| **Inbox** (capturar) | "+ Nova ideia" + as ideias que chegam pelo PIN/QR |
-| **Queue** (esclarecer) | **A nuvem da tempestade já É a fila**: `nuvem()` devolve exatamente os grupos *sem* quadrante |
-| Agrupamento automático | `PublicoController::liderEquivalente` (texto equivalente) + arraste manual → caixa-mãe |
-| Dividir / tratar depois | `dividir`, `adiar` — prontos |
-| **Priority Matrix** | `painelPrioridade()` já monta a grade 2×2 e recebe as classificadas |
-| Classificação | `priorizar()` já grava impacto+esforço no grupo inteiro e já aceita `limpar` |
-
-**O trabalho real é**: (a) tirar a matriz da bancada, (b) fazer a matriz do topo
-aceitar arraste, (c) o menu de encaminhamento, (d) o item destinado permanecer
-na matriz com tag.
-
----
-
-## 3. Etapa 1 — Capturar
-
-Ao criar/tocar uma ideia, abre **só a bancada**, como editor puro:
+### Capturar — a bancada é um editor
+Tocar numa ideia abre só a bancada:
 
 ```
 BANCADA
-Taylor Martello
+Ana e mais 1 · ★ 3 voto(s)
 ┌─────────────────────────────┐
-│ Meta                        │
+│ Foco no atendimento         │
 └─────────────────────────────┘
 [Salvar texto] [Dividir] [Desagrupar] [Tratar depois]
 ```
 
-**Sai da bancada:** o bloco "PRIORIDADE" (matriz 2×2 + a legenda do Descartar) e
-o bloco "DESTINO" (os cinco botões + "Rejeitar"). Nada mais muda ali.
+Saíram dali o bloco **PRIORIDADE** (a matriz duplicada), os botões de **DESTINO**
+e o **Rejeitar** — descartar passou a ser pôr no quadrante *Descartar*.
 
-O "Desagrupar" fica: é operação de *esclarecer*, não de organizar.
+### Esclarecer — sem mudanças
+Editar, dividir, agrupar (automático por texto equivalente e manual por arraste),
+salvar, tratar depois. O agrupamento continua como sempre foi.
 
-## 4. Etapa 2 — Esclarecer
-
-Sem mudança de comportamento — editar, dividir, agrupar (automático e por
-arraste), salvar, tratar depois. O agrupamento continua exatamente como está:
-
-```
-Meta vendas + Meta faturamento + Meta orçamento  →  caixa "Meta (3)"
-```
-
-## 5. Etapa 3 — Organizar
-
-A ideia salva fica na **fila** (a nuvem de hoje). O condutor **arrasta o cartão
-da fila para o quadrante** e pronto — o quadrante já é a classificação:
+### Organizar — a matriz única
+O condutor **arrasta o cartão da fila para o quadrante**. O quadrante já é a
+classificação:
 
 | Quadrante | Impacto | Esforço |
 |---|---|---|
@@ -83,143 +53,129 @@ da fila para o quadrante** e pronto — o quadrante já é a classificação:
 | Encaixar | Baixo | Baixo |
 | Descartar | Baixo | Alto |
 
-**Nenhum popup, nenhuma tela intermediária.** Reclassificar = arrastar de um
-quadrante para outro.
+Reclassificar é arrastar de um quadrante para outro. Sem popup, sem tela
+intermediária. Há também o caminho por toque (tocar a ideia, tocar o quadrante),
+que é o que funciona quando a matriz já está à vista.
+
+### O menu da pílula
+Tocar numa pílula da matriz abre o menu flutuante:
+
+```
+ENCAMINHAR PARA
+  Cenário
+  FRAMEWORK
+  SWOT · PESTEL · Porter
+  RESULTADOS
+  Plano de ação
+  ──────────────────────
+  Desmarcar <destino>        (só quando há etiqueta)
+  Remover do quadrante
+```
+
+Escolher um destino abre o modal que já existia, com os campos daquele destino.
+
+### A ideia encaminhada permanece na matriz
+Com a etiqueta do destino (`Cenário` · `PESTEL` · `Porter` · `SWOT` ·
+`Plano de ação`, este último com `· aguardando` enquanto não virou ação num
+projeto). Três saídas, todas explícitas:
+
+| Ação | O que acontece |
+|---|---|
+| **Mover de quadrante** | muda só a posição; destino e etiqueta continuam |
+| **Desmarcar \<destino\>** | sai da análise (o fator/item de cenário é apagado), perde a etiqueta e **continua no quadrante** |
+| **Remover do quadrante** | volta para a fila **com a etiqueta**; pergunta antes se deve sair também da análise |
+
+Remover da SWOT apaga o fator — por isso nunca acontece em silêncio.
 
 ---
 
-## 6. Encaminhar — menu hierárquico na pílula
-
-Na matriz, a pílula ganha o menu pedido:
-
-```
-📂 Encaminhar para →
-   Cenário
-   Framework →
-      SWOT
-      PESTEL
-      PORTER
-   Resultados →
-      Plano de Ação
-```
-
-Escolhido o destino, abre o modal que **já existe** (`modalEncaminhar`), com os
-campos daquele destino (SWOT pede o quadrante, PESTEL/Porter a categoria, etc.).
-
-**Como abre:** o menu é acionado por um **botão explícito na própria pílula**
-(um `⋯`), e não só por `hover` — no celular não existe passar o mouse, e o toque
-na pílula já é "levar à bancada". No desktop o `⋯` pode aparecer no hover; no
-celular fica sempre visível.
-
-## 7. O item destinado permanece na matriz, com tag
-
-Hoje o encaminhamento marca o grupo como `ACEITO` e ele **some** do painel —
-porque `montarGrupos()` só inclui `NOVO`/`SELECIONADO`. Passa a permanecer:
-
-```
-┌ Fazer agora ─────────────────┐
-│ ( Baixa margem  ×2  [SWOT] ) │
-│ ( Custo do frete )           │
-└──────────────────────────────┘
-```
-
-**A tag exige mudança no backend** (verificado): `ColetaController::listar`
-devolve `destino_tipo` (`CENARIO`/`FATOR`/`ACAO`) e `destino_id`, mas **não a
-etapa do fator** — sem ela é impossível escrever "SWOT" em vez de um genérico
-"Fator". Solução: um `LEFT JOIN fator` no `listar` trazendo a etapa.
-
-Rótulos: `Cenário` · `PESTEL` · `Porter` · `SWOT` · `Plano de ação` (e
-`Plano de ação (aguardando)` enquanto `destino_id` for nulo).
-
----
-
-## 8. Mudanças por arquivo
+## 3. O que mudou, arquivo por arquivo
 
 ### `public/assets/js/secoes/coleta.js`
-| Função | O que muda |
+| Função | Mudança |
 |---|---|
-| `bancada()` | Remove o bloco PRIORIDADE (matriz + legenda) e o bloco DESTINO (botões + Rejeitar). Vira editor puro. |
-| `painelPrioridade()` | Quadrantes viram **alvos de soltura** (`data-solta-quadrante`). Pílula ganha o botão `⋯` e a tag do destino. |
-| `ligarArraste()` | Precedência no soltar: **quadrante** (classificar) → **ficha da fila** (agrupar). Dentro do painel nunca agrupa. |
-| `montarGrupos()` | Passa a incluir `ACEITO` (para o destinado continuar na matriz). |
-| `nuvem()` | Continua excluindo quem tem quadrante — a fila só mostra o não classificado. |
-| **novo** menu | Menu hierárquico ancorado na pílula, estado em `SecaoColeta` (padrão `caixaAberta`), fecha com Esc/clique fora. |
-| `telaConducao()` | Nova ordem: matriz (topo) → bancada → fila. |
+| `bancada()` | perdeu a matriz, os destinos e o "Rejeitar" — virou editor |
+| `painelPrioridade()` | quadrantes com `data-solta-quadrante` (alvo permanente do arraste) e `data-quadrante` (toque, só com ideia em foco); dica que ensina o gesto |
+| `fichaPrio()` | pílula com etiqueta, arrastável, abrindo o menu flutuante |
+| `aplicarQuadrante()` | caminho único de clique e soltura, com trava de reentrância |
+| `ligarArraste()` | precedência do quadrante sobre a ficha + auto-scroll |
+| `montarGrupos()` | inclui `ACEITO` (a encaminhada fica na matriz) |
+| `nuvem()` | fila = o que não tem quadrante |
+| `liderDe` / `encaminhado` / `rotuloDestino` | helpers novos |
+| `telaConducao()` | matriz no topo; `fila \| bancada` lado a lado |
 
 ### `app/Controllers/ColetaController.php`
-- `listar()`: `LEFT JOIN fator` para devolver a **etapa** do destino (a tag).
-- `priorizar()`: hoje recusa `ACEITO` ("Esta ideia já foi tratada"). Para
-  reposicionar uma pílula **já destinada**, precisa aceitar `ACEITO` alterando
-  **apenas** impacto/esforço — sem tocar em destino.
+- `listar()`: **`LEFT JOIN fator`** para trazer a etapa do destino — sem ela o
+  payload só diz `FATOR` e a etiqueta não teria como escrever "SWOT".
+- `priorizar()`: aceita `ACEITO` (move sem tocar em situação/destino) e `limpar`
+  para tirar do quadrante.
+- `reabrir()`: trata o plano de ação pendente, recusa o que já virou ação num
+  projeto e aplica ao grupo inteiro.
+- `grupo()`: passou a incluir `ACEITO`.
 
 ### `public/assets/css/app.css`
-- `.celula-prio.alvo-solta` (realce do quadrante sob o dedo), `.fp-menu`
-  (o `⋯` e o painel do menu), `.fp-tag` (a etiqueta do destino).
+`.celula-prio.clicavel/.escolhido/.alvo-solta`, `.ficha-prio` (+ `.encaminhada`),
+`.fp-tag`, `.fp-menu` e itens, e o bloco compacto do celular. Saiu o CSS órfão da
+matriz antiga (`.matriz-quad`, `.quadrante-prio`, `.grade-matriz`, `.mq-*`).
 
 ---
 
-## 9. Riscos — e como evitar
+## 4. Decisões do cliente (todas aplicadas)
 
-| Risco | Por quê | Prevenção |
-|---|---|---|
-| **Arrastar da fila até a matriz no celular** | Em 390px a matriz fica no topo e a fila abaixo da bancada: o gesto atravessa uma rolagem, e hoje não há auto-scroll durante o arraste | **É o maior risco do plano.** Ou (a) auto-scroll durante o arraste, ou (b) manter um caminho por toque (tocar a ficha → tocar o quadrante), ou (c) no celular pôr a fila logo abaixo da matriz. Ver decisão nº 2 |
-| Soltar sobre uma pílula: agrupa ou classifica? | Hoje ficha-sobre-ficha agrupa | Dentro do painel **sempre classifica**; agrupar só dentro da fila |
-| Guardas recusam `ACEITO` | `priorizar`/`complementar`/`descartar` respondem "já foi tratada" | Afrouxar **só** `priorizar` (impacto/esforço), mantendo as demais |
-| Voz nova igual a uma ideia já destinada | `liderEquivalente` varre só `NOVO`/`SELECIONADO` | Ela nasce como ficha nova na fila — comportamento correto (o grupo antigo já seguiu adiante), mas precisa ser decisão consciente |
-| Soltar em "Descartar" | Hoje abre modal pedindo o motivo | Manter o motivo (é o que dá legitimidade), mas abrir o modal **depois** do redesenho |
-| Tag genérica ("Fator") | O payload não traz a etapa | O `LEFT JOIN` do item 8 — sem ele a tag não cumpre o pedido |
-| Menu aberto sumir no polling | O relógio de 3 s reescreve o HTML inteiro | Estado no objeto da seção, como `caixaAberta`/`depoisAberto` |
+1. **O "Rejeitar" saiu da bancada** — descartar é pôr no quadrante *Descartar*.
+2. **Auto-scroll durante o arraste** no celular: perto das bordas a tela rola
+   sozinha e o alvo é recalculado a cada quadro.
+3. **Fila e bancada lado a lado** no computador; empilhadas no celular, com a
+   fila antes da bancada (arraste mais curto até a matriz).
+4. **A pílula encaminhada pode mudar de quadrante.**
 
----
-
-## 10. Decisões — fechadas pelo cliente
-
-1. **O "Rejeitar" sai da bancada.** Descartar passa a ser arrastar o cartão para
-   o quadrante *Descartar*, que já pede o motivo. A bancada fica só com
-   Salvar / Dividir / Desagrupar / Tratar depois.
-2. **No celular: auto-scroll durante o arraste.** Ao arrastar perto da borda
-   superior, a tela rola sozinha até a matriz — o gesto continua sendo um só em
-   qualquer tela. É a peça mais delicada do plano (ver riscos) e deve ser a
-   primeira coisa validada no celular real da fatia 2.
-3. **No computador: fila e bancada lado a lado**, como hoje — matriz em largura
-   cheia no topo, e abaixo a linha `fila | bancada`. No celular, empilha.
-4. **A pílula já encaminhada pode mudar de quadrante**: arrastar altera só
-   impacto/esforço; o destino e a tag continuam. Exige afrouxar `priorizar()`
-   para aceitar `ACEITO` **sem** tocar em `destino_tipo`/`destino_id`.
+Ajustes pedidos depois do primeiro protótipo, também aplicados: o ✕ solto virou
+item **dentro** do menu; as pílulas e quadrantes ficaram **compactos no celular**;
+e a ideia removida do quadrante volta à fila **com a etiqueta**.
 
 ---
 
-## 11. Fatiamento e esforço — **G** no total
+## 5. Defeitos encontrados na validação — e corrigidos
 
-| Fatia | Conteúdo | Esforço | Entrega valor sozinha? |
-|---|---|---|---|
-| 1 | Bancada vira editor puro (sai a matriz e o destino de lá) | P | Sim — some a duplicidade na hora |
-| 2 | Matriz aceita arraste da fila + reclassificação entre quadrantes | M | Sim — é o coração do GTD |
-| 3 | Layout GTD (matriz → bancada → fila) | P | Sim |
-| 4 | Item destinado permanece com tag (inclui o `LEFT JOIN`) | M | Sim |
-| 5 | Menu hierárquico "Encaminhar para" na pílula | M | Sim — fecha o fluxo |
-
-Recomendo executar **nesta ordem**: a fatia 1 já elimina a duplicidade que mais
-incomoda, e a 2 entrega a sensação de post-it. As fatias 4 e 5 dependem uma da
-outra para o painel virar a "fonte única da verdade".
+| Defeito | Por que acontecia |
+|---|---|
+| **Arraste curto desclassificava** | pegar uma pílula e largá-la no próprio quadrante chegava como *clique*, e clique no quadrante já escolhido desmarca. Todo gesto iniciado numa ficha passou a engolir o clique seguinte |
+| **Grupo ficava para trás** | `grupo()` filtrava `NOVO/SELECIONADO`: numa caixa-mãe encaminhada, mover ou desmarcar mexia só no líder e deixava as demais apontando para um fator apagado |
+| **`reabrir` recusava plano de ação** | exigia `destino_id`, que o plano pendente não tem |
+| **Pílula selecionada desmarcava sozinha** | o toggle da fila travava a reclassificação: dentro da matriz, tocar sempre seleciona |
+| **Texto quebrando letra a letra** | os botões na mesma linha espremiam a pílula — resolvido movendo tudo para o menu |
+| **Voz nova sumia com a caixa** | o balde do quadrante usava o representante, não o líder |
 
 ---
 
-## 12. Como validar
+## 6. Como foi validado
 
-Playwright em **1500×800** e **390×844**, com rodada aberta e polling ligado:
+Playwright dirigindo o app real em **1500×800** e **390×844**, com rodada aberta,
+polling ligado e asserções no banco:
 
-1. Bancada sem matriz e sem botões de destino.
-2. Arrastar da fila para cada um dos 4 quadrantes grava o par impacto/esforço
-   correto (conferir no banco).
-3. Arrastar entre quadrantes reclassifica; a pílula não duplica.
-4. Soltar sobre uma pílula **classifica** (não agrupa); soltar ficha sobre ficha
-   **na fila** ainda agrupa.
-5. Caixa-mãe arrastada leva o grupo inteiro.
-6. Encaminhar pelo menu: a pílula **continua** no quadrante, com a tag certa
-   (SWOT/PESTEL/Porter/Cenário/Plano de ação).
-7. Pílula destinada muda de quadrante sem perder o destino.
-8. Menu abre no toque, fecha com Esc/clique fora e **sobrevive a dois ciclos de
-   polling**.
-9. Celular: o gesto de classificar funciona de ponta a ponta (conforme a decisão
-   nº 2), sem overflow horizontal.
+- classificar arrastando da fila (os quatro quadrantes gravam o par certo);
+- reclassificar entre quadrantes; soltar no mesmo quadrante **não** desfaz;
+- agrupar na fila continua funcionando (ficha sobre ficha);
+- caixa-mãe vai inteira e volta inteira;
+- **celular**: com a matriz fora da vista, segurar o cartão junto ao topo rola a
+  página sozinha, o quadrante realça sob o dedo e a soltura classifica;
+- menu com a hierarquia exata, `aria-expanded`, Esc fecha, sobrevive a dois
+  ciclos de polling, e SWOT abre o modal com "Quadrante da SWOT";
+- etiqueta correta por destino; mover preserva destino e etiqueta;
+- desmarcar apaga o fator (1 → 0) e mantém a pílula no quadrante;
+- remover devolve à fila com a etiqueta, preservando ou apagando o fator conforme
+  a resposta;
+- sem overflow horizontal e sem erros de console em nenhum cenário.
+
+---
+
+## 7. O que ficou de fora
+
+- **Abrir o menu ao passar o mouse** (hover). O cliente citou como alternativa ao
+  toque; ficou só o toque, que funciona nas duas telas — menu abrindo a cada
+  passagem do mouse numa grade cheia de pílulas seria ruído.
+- **Pesquisa e filtros na fila**, citados na arquitetura do pedido. A fila da
+  oficina é curta e a ordenação (mais repetidas, mais votadas) já resolve; entra
+  quando alguém sentir falta.
+- **Desfazer o plano de ação já convertido** em ação de projeto: é recusado de
+  propósito — desfazer ali deixaria a ação órfã, sem rastro de onde veio.
