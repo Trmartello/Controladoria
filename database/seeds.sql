@@ -90,8 +90,7 @@ INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
         UNION ALL SELECT 2030, 20.5 UNION ALL SELECT 2031, 21.0 UNION ALL SELECT 2032, 21.5
         UNION ALL SELECT 2033, 22.0 UNION ALL SELECT 2034, 22.5 UNION ALL SELECT 2035, 23.0) v
   WHERE i.nome = 'Margem bruta antes de investimentos'
-    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id
-                    AND iv.ano = v.ano AND iv.tipo = 'META' AND iv.versao_meta = 1);
+    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id);
 
 INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
   SELECT i.id, v.ano, 'META', 1, v.valor
@@ -102,8 +101,7 @@ INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
         UNION ALL SELECT 2030, 59.0 UNION ALL SELECT 2031, 62.0 UNION ALL SELECT 2032, 65.0
         UNION ALL SELECT 2033, 66.0 UNION ALL SELECT 2034, 68.0 UNION ALL SELECT 2035, 70.0) v
   WHERE i.nome = 'Market share por cooperado'
-    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id
-                    AND iv.ano = v.ano AND iv.tipo = 'META' AND iv.versao_meta = 1);
+    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id);
 
 INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
   SELECT i.id, v.ano, 'META', 1, v.valor
@@ -114,8 +112,7 @@ INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
         UNION ALL SELECT 2030, 52.0 UNION ALL SELECT 2031, 56.0 UNION ALL SELECT 2032, 60.0
         UNION ALL SELECT 2033, 64.0 UNION ALL SELECT 2034, 67.0 UNION ALL SELECT 2035, 70.0) v
   WHERE i.nome = 'Armazenagem própria'
-    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id
-                    AND iv.ano = v.ano AND iv.tipo = 'META' AND iv.versao_meta = 1);
+    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id);
 
 INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
   SELECT i.id, v.ano, 'META', 1, v.valor
@@ -126,5 +123,4 @@ INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
         UNION ALL SELECT 2030, 2.2 UNION ALL SELECT 2031, 2.4 UNION ALL SELECT 2032, 2.6
         UNION ALL SELECT 2033, 2.8 UNION ALL SELECT 2034, 2.9 UNION ALL SELECT 2035, 3.0) v
   WHERE i.nome = 'Cobertura de juros'
-    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id
-                    AND iv.ano = v.ano AND iv.tipo = 'META' AND iv.versao_meta = 1);
+    AND NOT EXISTS (SELECT 1 FROM indicador_valor iv WHERE iv.indicador_id = i.id);

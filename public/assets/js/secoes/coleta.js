@@ -654,11 +654,15 @@ const SecaoColeta = {
     el.querySelectorAll('[data-arrastavel]').forEach((ficha) => {
       ficha.addEventListener('pointerdown', (ev) => {
         if (ev.button !== undefined && ev.button !== 0) return;
-        // Nenhum botão de dentro da caixa (o ✕, o "ver mais") inicia arraste —
-        // um dedo trêmulo ali agruparia duas caixas ao vivo. A ficha simples é
-        // ela própria um <button>, e essa continua arrastável.
+        // O ✕ de tirar palavra do grupo nunca inicia arraste: é destrutivo, e um
+        // dedo trêmulo ali desfaria um agrupamento ao vivo.
+        // O "ver mais", ao contrário, PRECISA arrastar. Ele tem um ::after de
+        // toque confortável que cobre o centro da caixa compacta, e vetá-lo
+        // deixava ~30% da caixa — o miolo, justo onde a mão pega — sem resposta
+        // ao arraste. O limiar de 8px já separa o toque (revela as palavras) do
+        // arraste. A ficha simples é ela própria um <button> e segue arrastável.
         const botao = ev.target.closest('button');
-        if (botao && botao !== ficha) return;
+        if (botao && botao !== ficha && !botao.matches('[data-ver-palavras]')) return;
         // Todo gesto iniciado numa ficha "engole" o clique que o navegador
         // dispara depois no quadrante. Sem isso, pegar uma pílula e largá-la no
         // próprio quadrante (arraste curto demais para virar arraste) chegaria
@@ -742,8 +746,11 @@ const SecaoColeta = {
           limparRealce();
           // Solta a trava só depois do clique que o navegador dispara em seguida
           setTimeout(() => { this.gestoEmFicha = false; }, 60);
+          // Marca o gesto como arraste mesmo quando ele morre em área inválida:
+          // o clique que o navegador dispara em seguida não pode ser lido como
+          // toque (selecionaria a ficha, ou abriria/fecharia a caixa)
+          if (arrastando) ficha.dataset.arrastou = '1';
           if (!arrastando || (!alvoAtual && !quadAtual)) return;
-          ficha.dataset.arrastou = '1';
           const id = ficha.dataset.arrastavel;
 
           // Soltou num quadrante: classifica (é o gesto central do GTD)
@@ -906,6 +913,14 @@ const SecaoColeta = {
     // instantânea. Fica antes da trava de edição: quem só lê também abre.
     el.querySelectorAll('[data-ver-palavras]').forEach((b) => b.addEventListener('click', (ev) => {
       ev.stopPropagation();
+      // Agora o arraste pode começar neste botão. Só o clique que é rabicho de
+      // um ARRASTE é ignorado — o toque simples continua revelando as palavras
+      // (gestoEmFicha não serve aqui: ele é ligado em todo pointerdown).
+      const caixa = b.closest('[data-arrastavel]');
+      if (caixa?.dataset.arrastou === '1') {
+        delete caixa.dataset.arrastou;
+        return;
+      }
       const chave = b.dataset.verPalavras;
       const abrir = this.caixaAberta !== chave;
       this.caixaAberta = abrir ? chave : null;

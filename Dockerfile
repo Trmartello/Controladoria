@@ -2,6 +2,19 @@ FROM php:8.3-cli
 
 RUN docker-php-ext-install pdo_mysql
 
+# A imagem oficial não instala php.ini nenhum (só traz os modelos), e os padrões
+# compilados são display_errors=On e log_errors=Off — ou seja, erro do PHP era
+# impresso no corpo da resposta (com caminho do servidor e stack trace, e
+# quebrando o JSON que o front espera) enquanto os error_log() da aplicação não
+# gravavam em lugar nenhum. Aqui os dois papéis trocam de lado: o usuário recebe
+# resposta limpa e o operador vê o erro nos logs do Railway.
+RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
+ && printf 'display_errors=Off\nlog_errors=On\nerror_log=/dev/stderr\nexpose_php=Off\n' \
+      > "$PHP_INI_DIR/conf.d/zz-app.ini"
+
+# Mesmo fuso da cooperativa (o PHP também o fixa em config/config.php)
+ENV TZ=America/Sao_Paulo
+
 WORKDIR /app
 COPY . .
 

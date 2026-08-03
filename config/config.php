@@ -12,6 +12,14 @@ if (!function_exists('env')) {
     }
 }
 
+// O container roda em UTC e a cooperativa trabalha em UTC−3: das 21h à meia-noite
+// o servidor já estava no dia seguinte. Isso marcava como ATRASADA a ação que
+// vence só amanhã (sincronizarAtrasos), podia disparar o relatório semanal num
+// domingo à noite (Avisos) e gravava data_reg do dia errado no diário. Este
+// arquivo é carregado por todos os pontos de entrada — front controller,
+// migração e CLI de avisos —, então o fuso vale para todos.
+date_default_timezone_set(env('TZ_APP', 'America/Sao_Paulo'));
+
 return [
     'db' => [
         'host'    => env('MYSQLHOST', env('DB_HOST', '127.0.0.1')),

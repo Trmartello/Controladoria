@@ -17,6 +17,14 @@ class Database
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
+                // CURDATE()/NOW() do banco precisam concordar com o date() do
+                // PHP: os dois decidem atraso e recorrência. Vai o deslocamento
+                // (-03:00), não o nome da zona — nome exige as tabelas de fuso
+                // carregadas no MySQL, o que nem sempre acontece.
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone = '" . date('P') . "'",
+                // Banco mudo (sem recusar a conexão) prendia um trabalhador do
+                // php -S pelo timeout de TCP do sistema, travando a aplicação
+                PDO::ATTR_TIMEOUT            => 5,
             ]);
         }
         return self::$pdo;

@@ -35,6 +35,10 @@ class PublicoController
      * deixa uma varredura do espaço de 6 dígitos em escala de anos.
      */
     private const MAX_TENTATIVAS = 40;
+    // Teto de PINs errados na instalação inteira dentro da janela: segura o
+    // ataque distribuído, que passaria folgado pelo balde por origem. Só alcança
+    // quem erra o PIN — quem acerta entra mesmo com os baldes cheios.
+    private const MAX_TENTATIVAS_GLOBAL = 300;
     private const JANELA_MIN = 5;
 
     /**
@@ -334,30 +338,46 @@ class PublicoController
     /**
      * Resolve o PIN. Cada PIN que não existe conta contra a origem, o que
      * inviabiliza varrer o espaço de 6 dígitos dentro da janela da oficina.
+     *
+     * O PIN é resolvido ANTES de olhar o balde, e PIN certo nunca é punido nem
+     * contabilizado. A ordem inversa derrubava a oficina inteira: como este
+     * método atende todas as rotas públicas (inclusive as de quem já tem token),
+     * bastavam algumas dezenas de PINs errados de uma origem para tudo responder
+     * 429 por minutos — e a origem costuma ser compartilhada, seja o NAT do
+     * wi-fi da sala, seja a borda do Railway. Do jeito certo, o balde só alcança
+     * quem está errando o PIN, que é justamente quem tenta adivinhar.
      */
     private function rodadaPorPin(string $pin): array
     {
+        $r = preg_match('/^\d{6}$/', $pin)
+            ? Database::um('SELECT * FROM coleta_rodada WHERE pin = ?', [$pin])
+            : null;
+        if ($r) {
+            return $r;
+        }
+
         $origem = mb_substr((string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), 0, 45);
+        Database::executar('INSERT INTO coleta_tentativa (origem) VALUES (?)', [$origem]);
+        // Limpeza oportunista: a tabela não pode crescer sem fim
+        Database::executar(
+            'DELETE FROM coleta_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY) LIMIT 500'
+        );
+
         $recentes = (int)(Database::um(
             'SELECT COUNT(*) AS n FROM coleta_tentativa
              WHERE origem = ? AND criado_em > (NOW() - INTERVAL ? MINUTE)',
             [$origem, self::JANELA_MIN]
         )['n'] ?? 0);
-        if ($recentes >= self::MAX_TENTATIVAS) {
+        // Teto global para origens distribuídas: sozinho, o balde por origem só
+        // multiplica o orçamento de tentativas pelo número de origens
+        $totais = (int)(Database::um(
+            'SELECT COUNT(*) AS n FROM coleta_tentativa
+             WHERE criado_em > (NOW() - INTERVAL ? MINUTE)',
+            [self::JANELA_MIN]
+        )['n'] ?? 0);
+        if ($recentes >= self::MAX_TENTATIVAS || $totais >= self::MAX_TENTATIVAS_GLOBAL) {
             Json::erro('Muitas tentativas. Espere alguns minutos e confira o PIN no telão.', 429);
         }
-
-        $r = preg_match('/^\d{6}$/', $pin)
-            ? Database::um('SELECT * FROM coleta_rodada WHERE pin = ?', [$pin])
-            : null;
-        if (!$r) {
-            Database::executar('INSERT INTO coleta_tentativa (origem) VALUES (?)', [$origem]);
-            // Limpeza oportunista: a tabela não pode crescer sem fim
-            Database::executar(
-                'DELETE FROM coleta_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY) LIMIT 500'
-            );
-            Json::erro('Rodada não encontrada. Confira o PIN.', 404);
-        }
-        return $r;
+        Json::erro('Rodada não encontrada. Confira o PIN.', 404);
     }
 }
