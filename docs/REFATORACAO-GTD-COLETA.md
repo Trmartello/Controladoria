@@ -172,18 +172,20 @@ Rótulos: `Cenário` · `PESTEL` · `Porter` · `SWOT` · `Plano de ação` (e
 
 ---
 
-## 10. Decisões em aberto
+## 10. Decisões — fechadas pelo cliente
 
-1. **A bancada perde também o "Rejeitar"?** O plano assume que sim — descartar
-   passa a ser arrastar para o quadrante *Descartar*. Se preferir manter o botão,
-   é uma linha.
-2. **No celular, como classificar?** Arrastar da fila até a matriz atravessa uma
-   rolagem. Prefere (a) auto-scroll no arraste, (b) manter o toque-toque como
-   alternativa, ou (c) fila logo abaixo da matriz no celular?
-3. **No desktop, fila e bancada lado a lado (como hoje) ou empilhadas** como no
-   texto do pedido? Lado a lado aproveita a tela larga; empilhado é literal.
-4. **Uma pílula já destinada pode mudar de quadrante?** O plano assume que sim
-   (só muda a prioridade, o destino continua). Se não, a pílula destinada trava.
+1. **O "Rejeitar" sai da bancada.** Descartar passa a ser arrastar o cartão para
+   o quadrante *Descartar*, que já pede o motivo. A bancada fica só com
+   Salvar / Dividir / Desagrupar / Tratar depois.
+2. **No celular: auto-scroll durante o arraste.** Ao arrastar perto da borda
+   superior, a tela rola sozinha até a matriz — o gesto continua sendo um só em
+   qualquer tela. É a peça mais delicada do plano (ver riscos) e deve ser a
+   primeira coisa validada no celular real da fatia 2.
+3. **No computador: fila e bancada lado a lado**, como hoje — matriz em largura
+   cheia no topo, e abaixo a linha `fila | bancada`. No celular, empilha.
+4. **A pílula já encaminhada pode mudar de quadrante**: arrastar altera só
+   impacto/esforço; o destino e a tag continuam. Exige afrouxar `priorizar()`
+   para aceitar `ACEITO` **sem** tocar em `destino_tipo`/`destino_id`.
 
 ---
 
