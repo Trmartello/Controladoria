@@ -627,15 +627,45 @@ const SecaoProjetos = {
   // existente, guardando o vínculo com a ideia da coleta.
   modalConverterAcao(ideia) {
     if (!ideia) return;
-    // Onde a ideia entra: iniciativa existente, nova iniciativa num projeto, ou
-    // um projeto novo (a própria ideia). Tudo pode ser criado na hora.
-    const opcoes = [];
-    (this.projetos || []).forEach((p) => {
-      (p.iniciativas || []).forEach((ini) =>
-        opcoes.push({ valor: `e:${p.id}:${ini.id}`, rotulo: `${p.titulo} › ${ini.titulo}` }));
-      opcoes.push({ valor: `ni:${p.id}`, rotulo: `${p.titulo} › ➕ nova iniciativa` });
-    });
-    opcoes.push({ valor: 'np', rotulo: '➕ Novo projeto (com nova iniciativa)' });
+    const projetos = this.projetos || [];
+    const comIniciativas = projetos.filter((p) => (p.iniciativas || []).length);
+
+    // A decisão vem PRIMEIRO e em voz alta: uma lista só, misturando
+    // "Projeto › Iniciativa", "Projeto › ➕ nova iniciativa" e "➕ Novo projeto",
+    // escondia as duas perguntas que importam — a frente de trabalho é nova ou
+    // já existe? o projeto é novo ou já existe? — atrás de um seletor onde as
+    // três coisas pareciam a mesma coisa. Pior: o nome digitado servia ora para
+    // o projeto, ora para a iniciativa, ora para nada.
+    // Só entram os caminhos possíveis: sem nenhum projeto cadastrado não há
+    // iniciativa nem projeto existente para escolher.
+    const destinos = [];
+    if (comIniciativas.length) {
+      destinos.push({ valor: 'INI', rotulo: 'Iniciativa que já existe' });
+    }
+    if (projetos.length) {
+      destinos.push({ valor: 'NOVA_INI', rotulo: 'Nova iniciativa' });
+    }
+    destinos.push({ valor: 'NOVO_PROJ', rotulo: 'Projeto novo' });
+
+    const opcoesIniciativa = comIniciativas.flatMap((p) => (p.iniciativas || []).map((ini) => ({
+      // O par projeto+iniciativa anda junto: o servidor recusa iniciativa que
+      // não pertença ao projeto informado, e mandar os dois de uma escolha só
+      // torna impossível montar um par inválido pela tela.
+      valor: `${p.id}:${ini.id}`, rotulo: `${p.titulo} › ${ini.titulo}`,
+    })));
+    const opcoesProjeto = projetos.map((p) => ({ valor: String(p.id), rotulo: p.titulo }));
+
+    // Ano do projeto novo: era herdado da ideia, calado. Quando o ano dela caía
+    // fora dos horizontes do ciclo, o salvamento morria com "nenhum horizonte
+    // contempla o ano X" e não havia campo nenhum para corrigir.
+    const anos = this.anosDoCiclo();
+    const opcoesAno = anos.map((a) => ({ valor: a, rotulo: String(a) }));
+    const anoIdeia = Number(ideia.ano) || 0;
+    const anoPadrao = anos.includes(anoIdeia)
+      ? anoIdeia
+      : Math.min(Math.max(new Date().getFullYear(), anos[0] || 0), anos[anos.length - 1] || 9999);
+    const mapaHorizontes = this.cascata.horizontes
+      .map((h) => `${h.nome} ${h.ano_inicio}–${h.ano_fim}`).join(' · ');
 
     const nomeIdeia = ideia.texto_tratado || ideia.texto;
     Modal.abrir({
@@ -643,16 +673,38 @@ const SecaoProjetos = {
       url: '/api/desdobramentos',
       valores: {
         planejamento_id: this.plan.id, coleta_item_id: ideia.id,
-        onde: opcoes[0].valor, nome: nomeIdeia, o_que: nomeIdeia, prioridade: 'MEDIA',
+        destino: destinos[0].valor,
+        iniciativa_alvo: opcoesIniciativa[0]?.valor ?? '',
+        projeto_alvo: opcoesProjeto[0]?.valor ?? '',
+        iniciativa_nome: 'Ações',
+        projeto_nome: nomeIdeia,
+        projeto_ano: anoPadrao,
+        o_que: nomeIdeia, prioridade: 'MEDIA',
       },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'coleta_item_id', rotulo: '', tipo: 'hidden' },
         { nome: 'ideia', rotulo: 'Ideia da coleta', tipo: 'info', texto: ideia.texto,
           barra: { cor: '#5a3e2b', titulo: ideia.autor } },
-        { nome: 'onde', rotulo: 'Onde entra?', tipo: 'select', opcoes },
-        { nome: 'nome', rotulo: 'Nome do novo projeto/iniciativa',
-          ajuda: 'Usado só quando você cria um projeto ou iniciativa novos acima.' },
+        { nome: 'destino', rotulo: 'Onde esta ideia vira ação?', tipo: 'botoes', opcoes: destinos,
+          ajuda: 'A ação sempre entra numa iniciativa, e toda iniciativa vive dentro de um projeto.' },
+        { nome: 'iniciativa_alvo', rotulo: 'Em qual iniciativa?', tipo: 'select',
+          opcoes: opcoesIniciativa, visivelSe: { campo: 'destino', valores: ['INI'] },
+          ajuda: 'A frente de trabalho que já existe — o projeto dela vem junto.' },
+        { nome: 'projeto_alvo', rotulo: 'Em qual projeto entra a nova iniciativa?', tipo: 'select',
+          opcoes: opcoesProjeto, visivelSe: { campo: 'destino', valores: ['NOVA_INI'] } },
+        { nome: 'projeto_nome', rotulo: 'Nome do novo projeto', obrigatorio: true,
+          visivelSe: { campo: 'destino', valores: ['NOVO_PROJ'] },
+          exemplo: 'Ex.: Aproveitamento de coprodutos' },
+        { nome: 'projeto_ano', rotulo: 'Ano do novo projeto', tipo: 'select', opcoes: opcoesAno,
+          visivelSe: { campo: 'destino', valores: ['NOVO_PROJ'] },
+          nota: mapaHorizontes
+            ? `O horizonte é definido pelo ano: ${mapaHorizontes}.`
+            : 'Cadastre os horizontes do ciclo em Cadastros para o ano ser aceito.' },
+        { nome: 'iniciativa_nome', rotulo: 'Nome da nova iniciativa', obrigatorio: true,
+          visivelSe: { campo: 'destino', valores: ['NOVA_INI', 'NOVO_PROJ'] },
+          exemplo: 'Ex.: Licenciamento e obra civil',
+          ajuda: 'A frente de trabalho que vai receber a ação. No projeto novo, é a primeira dele.' },
         { nome: 'o_que', rotulo: 'O quê? (a ação)', obrigatorio: true, tipo: 'textarea', linhas: 2 },
         { nome: 'quem', rotulo: 'Quem?', obrigatorio: true, tipo: 'selecao_livre', opcoes: this.responsaveis,
           ajuda: 'Responsável pela ação (e pelo projeto, se for novo).' },
@@ -665,19 +717,16 @@ const SecaoProjetos = {
           planejamento_id: d.planejamento_id, coleta_item_id: d.coleta_item_id,
           o_que: d.o_que, quem: d.quem, prioridade: d.prioridade,
         };
-        const v = String(d.onde || '');
-        if (v.startsWith('e:')) {
-          const [, pid, iid] = v.split(':');
+        if (d.destino === 'INI') {
+          const [pid, iid] = String(d.iniciativa_alvo || '').split(':');
           return { ...base, projeto_id: Number(pid), iniciativa_id: Number(iid) };
         }
-        if (v.startsWith('ni:')) {
-          const [, pid] = v.split(':');
-          return { ...base, projeto_id: Number(pid), iniciativa_nova: d.nome };
+        if (d.destino === 'NOVA_INI') {
+          return { ...base, projeto_id: Number(d.projeto_alvo), iniciativa_nova: d.iniciativa_nome };
         }
-        // np — a ideia vira um projeto novo, com uma iniciativa "Ações"
         return {
-          ...base, projeto_novo: d.nome, projeto_ano: Number(ideia.ano) || undefined,
-          projeto_responsavel: d.quem, iniciativa_nova: 'Ações',
+          ...base, projeto_novo: d.projeto_nome, projeto_ano: Number(d.projeto_ano),
+          projeto_responsavel: d.quem, iniciativa_nova: d.iniciativa_nome,
         };
       },
       aoSalvar: () => this.carregar(),

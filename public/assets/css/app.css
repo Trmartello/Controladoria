@@ -1348,11 +1348,18 @@ tr.card-destacado > td { background: #e8f5ee; }
     flex: 0 1 auto;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    /* O piso mora AQUI, no bloco, e não no cartão. Ao contrário: com
+       `min-height: 0` no bloco e 4rem no cartão, um formulário com muitos
+       campos espremia o bloco abaixo do cartão e ele TRANSBORDAVA por cima do
+       rótulo do campo seguinte — no "Transformar ideia em ação", a pergunta do
+       destino aparecia atrás do texto da ideia. É o mesmo cuidado que a regra
+       do textarea logo acima documenta. */
+    min-height: 5.5rem;
   }
   #modal-form #modal-campos > div:has(.card-info-modal) .card-info-modal {
-    flex: 0 1 auto;
-    min-height: 4rem;
+    /* Preenche o bloco e encolhe dentro dele: quem rola é o corpo do cartão */
+    flex: 1 1 auto;
+    min-height: 0;
   }
   #modal-form #modal-campos > div:has(.card-info-modal) .card-info-modal .card-body {
     max-height: none;

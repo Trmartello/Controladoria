@@ -429,6 +429,19 @@ const Modal = {
     });
   },
 
+  /**
+   * Valor atual de um campo, seja ele qual for. `botoes` e `quadrantes` não são
+   * um controle só: o id fica numa div que agrupa os rádios, e `.value` nela é
+   * `undefined` — um `visivelSe` apontado para um grupo de botões escondia o
+   * campo dependente para sempre.
+   */
+  valorAtual(el) {
+    if (!el) return '';
+    if (el.tagName === 'DIV') return el.querySelector('input:checked')?.value ?? '';
+    if (el.type === 'checkbox') return el.checked ? '1' : '';
+    return el.value;
+  },
+
   // Campos que só aparecem conforme o valor de outro (visivelSe: {campo, valores})
   ligarCondicionais(raiz, campos) {
     const condicionais = campos.filter((c) => c.visivelSe);
@@ -438,7 +451,7 @@ const Modal = {
         const gatilho = document.getElementById(`campo-${c.visivelSe.campo}`);
         const bloco = document.getElementById(`campo-${c.nome}`)?.closest('.mb-3');
         if (!gatilho || !bloco) continue;
-        bloco.classList.toggle('d-none', !c.visivelSe.valores.includes(gatilho.value));
+        bloco.classList.toggle('d-none', !c.visivelSe.valores.includes(this.valorAtual(gatilho)));
       }
     };
     new Set(condicionais.map((c) => c.visivelSe.campo)).forEach((nome) => {
