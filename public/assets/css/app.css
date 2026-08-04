@@ -1082,6 +1082,14 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
 .acoes-iniciativa { padding-top: .5rem; }
 .acao-card { border-left: 4px solid var(--cor-prio, #b08d4f); }
 
+/* Duplo toque abre a edição do cartão (ver o dblclick em projetos.js). Sem
+   `manipulation` o iOS trata o segundo toque como zoom da página e o dblclick
+   ou não chega, ou chega depois da espera de 300ms. `manipulation` tira só o
+   zoom por duplo toque: rolar e pinçar continuam valendo, e a barra de
+   progresso segue arrastando como antes. */
+#secao-projetos .card,
+#secao-projetos .iniciativa { touch-action: manipulation; }
+
 /* "mostrar mais": o detalhe fica escondido até o usuário pedir */
 .btn-mais {
   border: 0;

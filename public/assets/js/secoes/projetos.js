@@ -278,7 +278,8 @@ const SecaoProjetos = {
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-proj">+ Novo projeto</button>' : ''}
         </div>
       </div>
-      <p class="text-muted">Toque no título para recolher e expandir; use “mostrar mais” para ver o detalhe.</p>
+      <p class="text-muted">Toque no título para recolher e expandir; use “mostrar mais” para ver o
+        detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>
       ${this.cartaoIdeiasAcao(ideiasAcao)}
       <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>`;
 
@@ -372,6 +373,52 @@ const SecaoProjetos = {
       const atual = barra ? { ...acao, progresso: Number(barra.value) } : acao;
       this.modalDesdobramento(proj.id, atual, acao.iniciativa_id);
     }));
+
+    // Duplo clique (duplo toque no celular) abre a edição do cartão sob o
+    // cursor — o mesmo que o ✎, sem precisar abrir o "mostrar mais" para
+    // alcançá-lo. Os botões continuam onde estavam: são o caminho de quem usa
+    // teclado, que não tem duplo clique.
+    //
+    // O listener vai em CADA cartão de projeto, não na seção: `el` sobrevive
+    // aos recarregamentos (as seções não são destruídas, só ganham `d-none`) e
+    // um listener nele empilharia uma cópia por `carregar()` — na terceira
+    // visita à tela, um duplo clique abriria três modais.
+    el.querySelectorAll('[data-projeto]').forEach((cartaoProj) => {
+      cartaoProj.addEventListener('dblclick', (ev) => {
+        // Controle é controle: dois cliques na barra de progresso, num botão ou
+        // num link são interação com ele. O diário mora DENTRO do cartão e tem
+        // os próprios registros — abrir a edição do projeto ao clicar duas
+        // vezes num registro seria surpresa.
+        if (ev.target.closest('button, a, input, select, textarea, label, [id^="diario-"]')) return;
+        // O duplo clique seleciona a palavra sob o cursor, e ela ficaria acesa
+        // atrás do modal
+        window.getSelection?.()?.removeAllRanges();
+
+        const proj = projetos.find((p) => p.id == cartaoProj.dataset.projeto);
+        if (!proj) return;
+
+        // Do mais interno para o mais externo: os três níveis são aninhados no
+        // DOM, e sem esta ordem um duplo clique na ação abriria o projeto.
+        const naAcao = ev.target.closest('[data-card-acao]');
+        if (naAcao) {
+          const acao = (proj.desdobramentos || []).find((dd) => dd.id == naAcao.dataset.cardAcao);
+          if (!acao) return;
+          // Mesma regra do ✎: vale o progresso que está na TELA, que a barra
+          // pode ter mudado depois da carga da lista
+          const barra = el.querySelector(`[data-progresso="${acao.id}"]`);
+          const atual = barra ? { ...acao, progresso: Number(barra.value) } : acao;
+          this.modalDesdobramento(proj.id, atual, acao.iniciativa_id);
+          return;
+        }
+        const naIniciativa = ev.target.closest('[data-iniciativa]');
+        if (naIniciativa) {
+          const ini = (proj.iniciativas || []).find((i) => i.id == naIniciativa.dataset.iniciativa);
+          if (ini) this.modalIniciativa(proj.id, ini);
+          return;
+        }
+        this.modalProjeto(proj, projetos);
+      });
+    });
     // Acordeão das iniciativas (clicar no cabeçalho abre/fecha)
     el.querySelectorAll('[data-abrir-ini]').forEach((c) => c.addEventListener('click', (ev) => {
       if (ev.target.closest('button')) return;
