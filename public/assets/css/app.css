@@ -1077,7 +1077,16 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
 .iniciativa-cabeca { cursor: pointer; padding: .15rem 0; }
 .projeto-cabeca { cursor: pointer; min-width: 0; }
 .seta-projeto { color: var(--verde-coperdia); font-weight: 700; margin-right: .15rem; }
-.panorama-projeto { flex-wrap: wrap; }
+/* Panorama de execução (mesmo bloco no projeto e na iniciativa): a barra tem
+   largura de leitura, não de preenchimento — esticada até a borda ela competia
+   com a barra ajustável das ações, que é a única que se arrasta. */
+.panorama-execucao { flex-wrap: wrap; }
+.panorama-execucao .faixa-progresso { max-width: 180px; }
+/* Um nível abaixo, o panorama é mais discreto: a leitura que manda na tela é a
+   do projeto, e a da iniciativa não pode disputar com ela. */
+.panorama-iniciativa .faixa-progresso { max-width: 140px; height: .45rem; }
+.panorama-iniciativa .valor-progresso { font-size: .72rem; }
+.panorama-iniciativa .badge { font-size: .62rem; }
 .seta-iniciativa { color: var(--verde-coperdia); font-size: .8rem; }
 .acoes-iniciativa { padding-top: .5rem; }
 .acao-card { border-left: 4px solid var(--cor-prio, #b08d4f); }

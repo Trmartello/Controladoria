@@ -67,6 +67,28 @@ const SecaoProjetos = {
     }));
   },
 
+  /**
+   * Panorama de um conjunto de ações: barra da média, o percentual e quantas
+   * estão atrasadas. É o MESMO bloco no projeto e na iniciativa — escritos
+   * separados, os dois níveis divergiriam na primeira mudança de regra (o
+   * "atrasada(s)" do projeto já contava por status, e a iniciativa não contava
+   * nada). A média é aritmética simples entre as ações, como sempre foi no
+   * projeto: ponderar por esforço exigiria um peso que o cadastro não tem.
+   */
+  panorama(acoes, marcaMedia, marcaBarra, classe = '', titulo = 'Progresso médio das ações') {
+    const media = acoes.length
+      ? Math.round(acoes.reduce((s, a) => s + Number(a.progresso), 0) / acoes.length)
+      : 0;
+    const atrasadas = acoes.filter((a) => a.status === 'ATRASADO').length;
+    return `<div class="d-flex align-items-center gap-2 mt-1 panorama-execucao ${classe}">
+      <div class="faixa-progresso flex-grow-1" title="${Modal.esc(titulo)}">
+        <span ${marcaBarra} style="width:${media}%"></span>
+      </div>
+      <span class="valor-progresso" ${marcaMedia}>${media}%</span>
+      ${atrasadas ? `<span class="badge text-bg-danger">${atrasadas} atrasada(s)</span>` : ''}
+    </div>`;
+  },
+
   // Período escolhido no calendário; textos antigos (prazo/quando_) seguem valendo
   periodo(inicio, fim, legado) {
     const br = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : null);
@@ -88,6 +110,12 @@ const SecaoProjetos = {
     // Recolhida mostra só título e situação; o resto vai no "mostrar mais"
     const chave = `ini-${ini.id}`;
     const detalhado = this.detalhesAbertos.has(chave);
+    // Panorama da frente de trabalho, o mesmo do projeto um nível acima: média
+    // do progresso das ações DELA e quantas estão atrasadas. Sem isto, saber
+    // como vai uma iniciativa exigia somar as barras das ações com o olho — e,
+    // com a iniciativa recolhida, não havia número nenhum.
+    const panorama = this.panorama(acoes, `data-media-ini="${ini.id}"`, `data-barra-ini="${ini.id}"`,
+      'panorama-iniciativa', 'Progresso médio das ações desta iniciativa');
     return `<div class="iniciativa mb-2" data-iniciativa="${ini.id}">
       <div class="d-flex align-items-center gap-2 flex-wrap iniciativa-cabeca" data-abrir-ini="${ini.id}">
         <span class="seta-iniciativa">${aberta ? '▾' : '▸'}</span>
@@ -95,6 +123,7 @@ const SecaoProjetos = {
         <span class="badge ${classeIni}">${rotIni}</span>
         ${this.botaoMais(chave, detalhado)}
       </div>
+      ${panorama}
       <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
         ${ini.descricao ? `<div class="small text-muted mt-1">${Modal.esc(ini.descricao)}</div>` : ''}
         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
@@ -208,19 +237,14 @@ const SecaoProjetos = {
         ? `<div class="small text-muted texto-fator mt-1">${Modal.esc(p.descricao)}</div>` : '';
       const origem = p.escolha_origem
         ? `<div class="small text-muted mt-1">↳ Escolha da cascata: “${Modal.esc(p.escolha_origem.slice(0, 90))}”</div>` : '';
-      const media = p.desdobramentos.length
-        ? Math.round(p.desdobramentos.reduce((s, d) => s + Number(d.progresso), 0) / p.desdobramentos.length)
-        : 0;
-
       const iniciativas = (p.iniciativas || []).map((ini) => this.blocoIniciativa(p, ini)).join('');
 
       const timelineProjeto = this.diarioAberto?.refTipo === 'PROJETO' && this.diarioAberto?.refId === p.id
         ? `<div id="diario-PROJETO-${p.id}" class="mt-2"></div>` : '';
 
-      // Panorama do projeto: some no cabeçalho o que está dentro dele
+      // Panorama do projeto: soma no cabeçalho o que está dentro dele
       const acoes = p.desdobramentos || [];
       const concluidas = acoes.filter((a) => a.status === 'CONCLUIDO').length;
-      const atrasadas = acoes.filter((a) => a.status === 'ATRASADO').length;
       const aberto = !this.projetosFechados.has(p.id);
 
       // Recolhido mostra só título, situação e a barra; o resto no "mostrar mais"
@@ -237,14 +261,8 @@ const SecaoProjetos = {
             </div>
             ${this.botaoMais(chave, detalhado)}
           </div>
-          <div class="d-flex align-items-center gap-2 mt-1 panorama-projeto">
-            <div class="faixa-progresso flex-grow-1" style="max-width:180px"
-              title="Progresso médio das ações">
-              <span data-barra-projeto style="width:${media}%"></span>
-            </div>
-            <span class="valor-progresso" data-media-projeto>${media}%</span>
-            ${atrasadas ? `<span class="badge text-bg-danger">${atrasadas} atrasada(s)</span>` : ''}
-          </div>
+          ${this.panorama(acoes, 'data-media-projeto', 'data-barra-projeto', 'panorama-projeto',
+            'Progresso médio das ações do projeto')}
           <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
             ${descricao}
             ${detalhes ? `<div class="small text-muted mt-1">${detalhes}</div>` : ''}
@@ -452,7 +470,7 @@ const SecaoProjetos = {
             planejamento_id: this.plan.id, progresso: Number(r.value),
           });
           r.dataset.salvo = r.value;
-          this.atualizarMediaProjeto(el, r.dataset.proj);
+          this.atualizarMedias(el, r);
         } catch (e) {
           // Falhou: devolve a barra ao valor que está no servidor
           r.value = anterior;
@@ -463,16 +481,29 @@ const SecaoProjetos = {
     });
   },
 
-  /** Recalcula na tela o percentual médio do projeto após ajustar uma ação. */
-  atualizarMediaProjeto(el, projetoId) {
-    const cartao = el.querySelector(`[data-projeto="${projetoId}"]`);
-    const medias = [...(cartao?.querySelectorAll('[data-progresso]') || [])].map((x) => Number(x.value));
-    const alvo = cartao?.querySelector('[data-media-projeto]');
-    if (!alvo || !medias.length) return;
-    const media = Math.round(medias.reduce((s, v) => s + v, 0) / medias.length);
-    alvo.textContent = `${media}%`;
-    const barra = cartao.querySelector('[data-barra-projeto]');
-    if (barra) barra.style.width = `${media}%`;
+  /**
+   * Recalcula na tela os percentuais que a ação ajustada afeta: o da iniciativa
+   * dela e o do projeto. Os dois níveis, não só o projeto — a barra da
+   * iniciativa ficaria mostrando o número velho até a próxima carga, bem na
+   * frente da ação que acabou de mudar.
+   *
+   * A média sai dos valores que estão na TELA (as barras), não dos dados da
+   * carga: é a ação recém-arrastada que precisa entrar na conta.
+   */
+  atualizarMedias(el, barra) {
+    const niveis = [
+      [barra.closest('[data-iniciativa]'), '[data-media-ini]', '[data-barra-ini]'],
+      [barra.closest('[data-projeto]'), '[data-media-projeto]', '[data-barra-projeto]'],
+    ];
+    for (const [raiz, marcaMedia, marcaBarra] of niveis) {
+      const valores = [...(raiz?.querySelectorAll('[data-progresso]') || [])].map((x) => Number(x.value));
+      const alvo = raiz?.querySelector(marcaMedia);
+      if (!alvo || !valores.length) continue;
+      const media = Math.round(valores.reduce((s, v) => s + v, 0) / valores.length);
+      alvo.textContent = `${media}%`;
+      const faixa = raiz.querySelector(marcaBarra);
+      if (faixa) faixa.style.width = `${media}%`;
+    }
   },
 
   // Anos de execução do ciclo vigente para o seletor "Ano do planejamento"
