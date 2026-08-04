@@ -89,8 +89,9 @@ const Diag = {
     aplicar();
   },
 
-  // Cartões com altura média: texto longo é cortado em ~6 linhas e ganha um
-  // "ver mais" para expandir/recolher, dando noção de quantos cards existem
+  // Cartão baixo: texto longo é cortado em 3 linhas (ver `.texto-fator`) e
+  // ganha um "ver mais" para expandir/recolher, dando noção de quantos cards
+  // existem sem obrigar a rolar um parágrafo por vez
   ligarVerMais(el) {
     el.querySelectorAll('.texto-fator').forEach((t) => {
       if (t.nextElementSibling?.classList.contains('ver-mais')) return;

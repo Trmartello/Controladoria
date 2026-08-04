@@ -225,11 +225,13 @@ input[type=range].faixa-verde:focus-visible {
 }
 .sel-categoria-movel option { background: #fff; color: #212529; }
 
-/* Cartões com altura média: o texto é cortado em ~6 linhas; "ver mais" expande */
+/* Cartão baixo: o texto é cortado em 3 linhas e "ver mais" expande. Três é o
+   mesmo corte do `lista_marcavel` — e o que faz caber mais de um card na tela
+   do celular, onde item de análise costuma ter parágrafo inteiro. */
 .texto-fator {
   display: -webkit-box;
-  -webkit-line-clamp: 6;
-  line-clamp: 6;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
