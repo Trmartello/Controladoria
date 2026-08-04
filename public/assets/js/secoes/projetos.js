@@ -68,6 +68,64 @@ const SecaoProjetos = {
   },
 
   /**
+   * Até onde a tela está aberta hoje. Serve para acender o botão do nível —
+   * e devolve vazio quando o usuário abriu/fechou itens à mão e o estado não
+   * corresponde a nenhum dos três: nesse caso nenhum botão fica aceso, em vez
+   * de mentir que a tela está num nível que ela não está.
+   *
+   * A ordem importa: com tudo recolhido as duas condições valem, e o nível é
+   * PROJETOS — o mais fechado dos dois.
+   */
+  nivelAtual(projetos) {
+    if (!projetos.length) return '';
+    const iniciativas = projetos.flatMap((p) => p.iniciativas || []);
+    if (projetos.every((p) => this.projetosFechados.has(p.id))) return 'PROJETOS';
+    // `every` de lista vazia é verdadeiro: sem nenhuma iniciativa cadastrada,
+    // "frentes recolhidas" não significa nada e o nível é o aberto
+    if (iniciativas.length && iniciativas.every((i) => this.iniciativasFechadas.has(i.id))) {
+      return 'FRENTES';
+    }
+    const nadaFechado = !projetos.some((p) => this.projetosFechados.has(p.id))
+      && !iniciativas.some((i) => this.iniciativasFechadas.has(i.id));
+    return nadaFechado ? 'ACOES' : '';
+  },
+
+  /**
+   * Reacende o botão do nível depois de alguém abrir/recolher um item à mão.
+   * Os acordeões mexem no DOM sem recarregar a seção (é o que os deixa
+   * instantâneos), então sem isto o grupo continuaria mostrando "Ações" com as
+   * ações já escondidas — o controle mentiria sobre a própria tela.
+   */
+  pintarNiveis(el, projetos) {
+    const nivel = this.nivelAtual(projetos);
+    el.querySelectorAll('[data-nivel]').forEach((b) => {
+      const ativo = b.dataset.nivel === nivel;
+      b.classList.toggle('btn-verde', ativo);
+      b.classList.toggle('btn-outline-secondary', !ativo);
+      b.setAttribute('aria-pressed', String(ativo));
+    });
+  },
+
+  /**
+   * Abre/recolhe a tela inteira até o nível pedido. Sempre parte do zero (os
+   * dois conjuntos limpos), senão um item recolhido à mão antes sobreviveria ao
+   * clique e o nível escolhido não seria o que a tela mostra.
+   */
+  aplicarNivel(nivel, projetos) {
+    this.projetosFechados.clear();
+    this.iniciativasFechadas.clear();
+    if (nivel !== 'ACOES') {
+      // Frentes e Projetos escondem as ações; Projetos esconde também as
+      // frentes. Recolher a iniciativa é justamente o que oculta as ações dela.
+      projetos.forEach((p) => {
+        (p.iniciativas || []).forEach((i) => this.iniciativasFechadas.add(i.id));
+        if (nivel === 'PROJETOS') this.projetosFechados.add(p.id);
+      });
+    }
+    this.carregar();
+  },
+
+  /**
    * Panorama de um conjunto de ações: barra da média, o percentual e quantas
    * estão atrasadas. É o MESMO bloco no projeto e na iniciativa — escritos
    * separados, os dois níveis divergiriam na primeira mudança de regra (o
@@ -285,37 +343,38 @@ const SecaoProjetos = {
       </div>`;
     }).join('');
 
-    // Tudo recolhido = panorama; expandido = trabalho no detalhe
-    const tudoFechado = projetos.length > 0 && projetos.every((p) => this.projetosFechados.has(p.id));
+    // Até onde a tela mostra. Eram só dois extremos — tudo aberto ou o
+    // "Recolher tudo", que sumia com projetos E frentes de uma vez. Faltava
+    // justamente o meio: recolher as AÇÕES e ficar com o retrato dos projetos e
+    // das suas frentes, que é como se lê o plano numa reunião.
+    const nivel = this.nivelAtual(projetos);
+    const botaoNivel = (valor, rotulo, dica) =>
+      `<button type="button" class="btn ${nivel === valor ? 'btn-verde' : 'btn-outline-secondary'}"
+        data-nivel="${valor}" title="${Modal.esc(dica)}"
+        aria-pressed="${nivel === valor}">${rotulo}</button>`;
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>Projetos — ${Modal.esc(App.rotuloContexto())}</h1>
-        <div class="d-flex gap-2">
-          ${projetos.length ? `<button class="btn btn-outline-secondary btn-sm" id="btn-alternar-tudo">
-            ${tudoFechado ? 'Expandir tudo' : 'Recolher tudo'}</button>` : ''}
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          ${projetos.length ? `<span class="small text-muted d-none d-sm-inline">Mostrar até</span>
+          <div class="btn-group btn-group-sm niveis-visao" role="group" aria-label="Mostrar até">
+            ${botaoNivel('ACOES', 'Ações', 'Abre tudo: projetos, frentes e as ações de cada uma')}
+            ${botaoNivel('FRENTES', 'Frentes', 'Recolhe as ações — projetos e frentes continuam à vista, com o percentual de cada um')}
+            ${botaoNivel('PROJETOS', 'Projetos', 'Recolhe tudo: só os projetos, com o percentual e os atrasos')}
+          </div>` : ''}
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-proj">+ Novo projeto</button>' : ''}
         </div>
       </div>
-      <p class="text-muted">Toque no título para recolher e expandir; use “mostrar mais” para ver o
-        detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>
+      <p class="text-muted">Toque no título para recolher e expandir um item; use “mostrar mais” para
+        ver o detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>
       ${this.cartaoIdeiasAcao(ideiasAcao)}
       <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>`;
 
     el.querySelectorAll('[data-virar-acao]').forEach((b) => b.addEventListener('click', () =>
       this.modalConverterAcao(ideiasAcao.find((i) => i.id == b.dataset.virarAcao))));
 
-    document.getElementById('btn-alternar-tudo')?.addEventListener('click', () => {
-      if (tudoFechado) {
-        this.projetosFechados.clear();
-        this.iniciativasFechadas.clear();
-      } else {
-        projetos.forEach((p) => {
-          this.projetosFechados.add(p.id);
-          (p.iniciativas || []).forEach((i) => this.iniciativasFechadas.add(i.id));
-        });
-      }
-      this.carregar();
-    });
+    el.querySelectorAll('[data-nivel]').forEach((b) =>
+      b.addEventListener('click', () => this.aplicarNivel(b.dataset.nivel, projetos)));
 
     // Acordeão do projeto (clicar no cabeçalho abre/fecha as iniciativas)
     el.querySelectorAll('[data-abrir-proj]').forEach((c) => {
@@ -327,6 +386,7 @@ const SecaoProjetos = {
         const fechado = this.projetosFechados.has(id);
         cartao.querySelector('.iniciativas-projeto').classList.toggle('d-none', fechado);
         cartao.querySelector('.seta-projeto').textContent = fechado ? '▸' : '▾';
+        this.pintarNiveis(el, projetos);
       };
       c.addEventListener('click', (ev) => {
         if (ev.target.closest('button, a, input')) return;
@@ -446,6 +506,7 @@ const SecaoProjetos = {
       const bloco = el.querySelector(`[data-iniciativa="${id}"]`);
       bloco.querySelector('.acoes-iniciativa').classList.toggle('d-none', this.iniciativasFechadas.has(id));
       bloco.querySelector('.seta-iniciativa').textContent = this.iniciativasFechadas.has(id) ? '▸' : '▾';
+      this.pintarNiveis(el, projetos);
     }));
     el.querySelectorAll('[data-excluir-desd]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Excluir este desdobramento?')) return;
@@ -679,7 +740,10 @@ const SecaoProjetos = {
         iniciativa_nome: 'Ações',
         projeto_nome: nomeIdeia,
         projeto_ano: anoPadrao,
-        o_que: nomeIdeia, prioridade: 'MEDIA',
+        // A ação nasce aqui inteira: os mesmos padrões de uma ação nova no
+        // cadastro, com o texto da ideia já no "O quê?"
+        ...this.valoresNovaAcao(),
+        o_que: nomeIdeia,
       },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
@@ -705,32 +769,111 @@ const SecaoProjetos = {
           visivelSe: { campo: 'destino', valores: ['NOVA_INI', 'NOVO_PROJ'] },
           exemplo: 'Ex.: Licenciamento e obra civil',
           ajuda: 'A frente de trabalho que vai receber a ação. No projeto novo, é a primeira dele.' },
-        { nome: 'o_que', rotulo: 'O quê? (a ação)', obrigatorio: true, tipo: 'textarea', linhas: 2 },
-        { nome: 'quem', rotulo: 'Quem?', obrigatorio: true, tipo: 'selecao_livre', opcoes: this.responsaveis,
-          ajuda: 'Responsável pela ação (e pelo projeto, se for novo).' },
-        { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes: [
-          { valor: 'ALTA', rotulo: 'Alta' }, { valor: 'MEDIA', rotulo: 'Média' }, { valor: 'BAIXA', rotulo: 'Baixa' },
-        ]},
+        // Daqui para baixo é a ação inteira, a MESMA lista do cadastro: quem
+        // direciona a ideia sai daqui com prazo, repetição, custo e status
+        // definidos, em vez de ter de reabrir a ação depois para completá-la.
+        ...this.camposAcao(),
       ],
       transformar: (d) => {
-        const base = {
-          planejamento_id: d.planejamento_id, coleta_item_id: d.coleta_item_id,
-          o_que: d.o_que, quem: d.quem, prioridade: d.prioridade,
-        };
-        if (d.destino === 'INI') {
-          const [pid, iid] = String(d.iniciativa_alvo || '').split(':');
+        // Os campos que só decidem o DESTINO ficam fora do payload: o servidor
+        // lê projeto_id/iniciativa_id/projeto_novo/iniciativa_nova, e mandar os
+        // nomes da tela junto confundiria quem for ler a requisição. O resto é
+        // a ação inteira, pela mesma regra de repetição do cadastro.
+        const {
+          destino, iniciativa_alvo: iniAlvo, projeto_alvo: projAlvo,
+          projeto_nome: projNome, projeto_ano: projAno, iniciativa_nome: iniNome,
+          ...acao
+        } = d;
+        const base = this.transformarAcao(acao);
+        if (destino === 'INI') {
+          const [pid, iid] = String(iniAlvo || '').split(':');
           return { ...base, projeto_id: Number(pid), iniciativa_id: Number(iid) };
         }
-        if (d.destino === 'NOVA_INI') {
-          return { ...base, projeto_id: Number(d.projeto_alvo), iniciativa_nova: d.iniciativa_nome };
+        if (destino === 'NOVA_INI') {
+          return { ...base, projeto_id: Number(projAlvo), iniciativa_nova: iniNome };
         }
         return {
-          ...base, projeto_novo: d.projeto_nome, projeto_ano: Number(d.projeto_ano),
-          projeto_responsavel: d.quem, iniciativa_nova: d.iniciativa_nome,
+          ...base, projeto_novo: projNome, projeto_ano: Number(projAno),
+          projeto_responsavel: base.quem, iniciativa_nova: iniNome,
         };
       },
       aoSalvar: () => this.carregar(),
     });
+  },
+
+  /**
+   * Os campos da AÇÃO, em lista única para os dois formulários que a escrevem:
+   * o cadastro (`modalDesdobramento`) e o direcionamento de uma ideia da coleta
+   * (`modalConverterAcao`). O direcionamento pedia só o quê/quem/prioridade e
+   * criava a ação sem como, sem prazo, sem repetição, sem custo e sem status —
+   * quem direcionava tinha de abrir a ação de novo, no cadastro, para terminar
+   * o serviço. Escritos separados, os dois formulários voltariam a divergir no
+   * primeiro campo novo.
+   *
+   * Ordem pedida: o quê, quem, como, prioridade, quando, repetição, quanto
+   * custa, status e progresso.
+   */
+  camposAcao(dd = null) {
+    return [
+      // "Por quê?" e "Onde?" saíram do formulário; os valores dos registros
+      // antigos seguem preservados nos campos ocultos
+      { nome: 'por_que', rotulo: '', tipo: 'hidden' },
+      { nome: 'onde', rotulo: '', tipo: 'hidden' },
+      { nome: 'o_que', rotulo: 'O quê?', obrigatorio: true, tipo: 'textarea', linhas: 2,
+        exemplo: 'Ex.: Contratar projeto executivo dos silos' },
+      { nome: 'quem', rotulo: 'Quem?', tipo: 'selecao_livre', opcoes: this.responsaveis,
+        obrigatorio: true, vazio: '(selecione o responsável)',
+        ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
+      { nome: 'como', rotulo: 'Como?' },
+      { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes:
+        Object.entries(PRIORIDADES).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
+      { nome: 'quando_', rotulo: '', tipo: 'hidden' },
+      { nome: 'quando_periodo', rotulo: 'Quando?', tipo: 'periodo',
+        campos: [
+          { nome: 'data_inicio', rotulo: 'Início' },
+          { nome: 'data_fim', rotulo: 'Fim previsto' },
+        ],
+        ajuda: 'Toque no campo para abrir o calendário.' },
+      { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', opcoes: [
+        { valor: 'NENHUMA', rotulo: 'Não se repete' },
+        { valor: 'SEMANAL', rotulo: 'Toda semana' },
+        { valor: 'MENSAL', rotulo: 'Todo mês' },
+      ], ajuda: 'Ao concluir uma ação que se repete, ela reabre na próxima data prevista.' },
+      { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select',
+        visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
+        opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo })) },
+      { nome: 'recorrencia_dia_mes', rotulo: 'Repete todo dia', tipo: 'select',
+        visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
+        opcoes: Array.from({ length: 31 }, (_, i) => ({ valor: i + 1, rotulo: String(i + 1) })),
+        ajuda: 'Em meses mais curtos, cai no último dia do mês.' },
+      { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date',
+        visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
+        ajuda: 'Opcional — depois dessa data a ação encerra de vez.' },
+      { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number' },
+      { nome: 'status', rotulo: 'Status', tipo: 'select',
+        opcoes: this.opcoesStatusAcao(dd?.status),
+        ajuda: '“No prazo” e “Atrasada” são definidos pela data de fim — escolha um status manual só quando quiser fixá-lo.' },
+      // Passo de 1 para o modal nunca arredondar o que a barra do cartão gravou
+      { nome: 'progresso', rotulo: 'Progresso', tipo: 'faixa', min: 0, max: 100, passo: 1, sufixo: '%' },
+    ];
+  },
+
+  /** Valores iniciais de uma ação que ainda não existe. */
+  valoresNovaAcao() {
+    return {
+      progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO', recorrencia: 'NENHUMA',
+      recorrencia_dia_semana: 1, recorrencia_dia_mes: 1,
+    };
+  },
+
+  /** O dia enviado depende do tipo de repetição escolhido. */
+  transformarAcao(dados) {
+    const { recorrencia_dia_semana: sem, recorrencia_dia_mes: mes, ...resto } = dados;
+    return {
+      ...resto,
+      recorrencia_dia: resto.recorrencia === 'SEMANAL' ? Number(sem)
+        : resto.recorrencia === 'MENSAL' ? Number(mes) : null,
+    };
   },
 
   modalDesdobramento(projetoId, dd, iniciativaId = null) {
@@ -745,63 +888,13 @@ const SecaoProjetos = {
             recorrencia_dia_semana: dd.recorrencia === 'SEMANAL' ? dd.recorrencia_dia : 1,
             recorrencia_dia_mes: dd.recorrencia === 'MENSAL' ? dd.recorrencia_dia : 1 }
         : { planejamento_id: this.plan.id, projeto_id: projetoId, iniciativa_id: iniciativaId,
-            progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO', recorrencia: 'NENHUMA',
-            recorrencia_dia_semana: 1, recorrencia_dia_mes: 1 },
-      // O dia enviado depende do tipo de repetição escolhido
-      transformar: (dados) => {
-        const { recorrencia_dia_semana: sem, recorrencia_dia_mes: mes, ...resto } = dados;
-        return {
-          ...resto,
-          recorrencia_dia: resto.recorrencia === 'SEMANAL' ? Number(sem)
-            : resto.recorrencia === 'MENSAL' ? Number(mes) : null,
-        };
-      },
+            ...this.valoresNovaAcao() },
+      transformar: (dados) => this.transformarAcao(dados),
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'projeto_id', rotulo: '', tipo: 'hidden' },
         { nome: 'iniciativa_id', rotulo: '', tipo: 'hidden' },
-        // "Por quê?" e "Onde?" saíram do formulário; os valores dos registros
-        // antigos seguem preservados nos campos ocultos
-        { nome: 'por_que', rotulo: '', tipo: 'hidden' },
-        { nome: 'onde', rotulo: '', tipo: 'hidden' },
-        // Ordem pedida: o quê, quem, como, prioridade, quando, repetição,
-        // quanto custa, status e progresso
-        { nome: 'o_que', rotulo: 'O quê?', obrigatorio: true, tipo: 'textarea', linhas: 2,
-          exemplo: 'Ex.: Contratar projeto executivo dos silos' },
-        { nome: 'quem', rotulo: 'Quem?', tipo: 'selecao_livre', opcoes: this.responsaveis,
-          obrigatorio: true, vazio: '(selecione o responsável)',
-          ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
-        { nome: 'como', rotulo: 'Como?' },
-        { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes:
-          Object.entries(PRIORIDADES).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
-        { nome: 'quando_', rotulo: '', tipo: 'hidden' },
-        { nome: 'quando_periodo', rotulo: 'Quando?', tipo: 'periodo',
-          campos: [
-            { nome: 'data_inicio', rotulo: 'Início' },
-            { nome: 'data_fim', rotulo: 'Fim previsto' },
-          ],
-          ajuda: 'Toque no campo para abrir o calendário.' },
-        { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', opcoes: [
-          { valor: 'NENHUMA', rotulo: 'Não se repete' },
-          { valor: 'SEMANAL', rotulo: 'Toda semana' },
-          { valor: 'MENSAL', rotulo: 'Todo mês' },
-        ], ajuda: 'Ao concluir uma ação que se repete, ela reabre na próxima data prevista.' },
-        { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select',
-          visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
-          opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo })) },
-        { nome: 'recorrencia_dia_mes', rotulo: 'Repete todo dia', tipo: 'select',
-          visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
-          opcoes: Array.from({ length: 31 }, (_, i) => ({ valor: i + 1, rotulo: String(i + 1) })),
-          ajuda: 'Em meses mais curtos, cai no último dia do mês.' },
-        { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date',
-          visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
-          ajuda: 'Opcional — depois dessa data a ação encerra de vez.' },
-        { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number' },
-        { nome: 'status', rotulo: 'Status', tipo: 'select',
-          opcoes: this.opcoesStatusAcao(dd?.status),
-          ajuda: '“No prazo” e “Atrasada” são definidos pela data de fim — escolha um status manual só quando quiser fixá-lo.' },
-        // Passo de 1 para o modal nunca arredondar o que a barra do cartão gravou
-        { nome: 'progresso', rotulo: 'Progresso', tipo: 'faixa', min: 0, max: 100, passo: 1, sufixo: '%' },
+        ...this.camposAcao(dd),
       ],
       aoSalvar: (r) => {
         this.avisarReagendamento(r);
