@@ -94,7 +94,11 @@ const Diag = {
   // existem sem obrigar a rolar um parágrafo por vez
   ligarVerMais(el) {
     el.querySelectorAll('.texto-fator').forEach((t) => {
-      if (t.nextElementSibling?.classList.contains('ver-mais')) return;
+      // A marca fica no texto, não no irmão seguinte: o botão passou a morar
+      // dentro do rodapé, e olhar `nextElementSibling` deixaria de reconhecer
+      // o que já foi ligado — cada troca de filtro no celular empilharia mais
+      // um "ver mais" no mesmo cartão.
+      if (t.dataset.verMais) return;
       if (t.scrollHeight <= t.clientHeight + 1) return;
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -106,7 +110,22 @@ const Diag = {
         btn.textContent = expandido ? 'ver menos' : 'ver mais';
         btn.setAttribute('aria-expanded', String(expandido));
       });
-      t.after(btn);
+      t.dataset.verMais = '1';
+
+      // O "ver mais" entra na MESMA linha dos botões do cartão. Numa linha só
+      // para ele, o cartão ganhava uma faixa vazia à direita do texto e outra
+      // à esquerda dos botões — em dezessete itens de cenário, isso é uma tela
+      // inteira de rolagem no celular.
+      const rodape = t.parentElement?.querySelector('.botoes-fator');
+      if (!rodape) {
+        t.after(btn);
+        return;
+      }
+      // Sem um `ms-auto` no rodapé (o cartão do Cenário), é o próprio "ver
+      // mais" que empurra os botões para a direita; com ele, dois automáticos
+      // dividiriam o vão e o que está no meio ficaria solto.
+      if (!rodape.querySelector('.ms-auto')) btn.classList.add('me-auto');
+      rodape.prepend(btn);
     });
   },
 
@@ -345,7 +364,7 @@ const Diag = {
              data-cat-swot="${f.promovido_categoria}" title="Abrir este fator na análise SWOT">Ver na SWOT ↗</button>`
         : `<button class="btn btn-sm btn-outline-success" data-promover="${f.id}" title="Promover para a SWOT">→ SWOT</button>`;
     }
-    return `<div class="botoes-fator d-flex gap-1 mt-2 align-items-center flex-wrap">
+    return `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
       ${swot}
       <span class="ms-auto d-flex gap-1">
         <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
@@ -500,7 +519,7 @@ const SecaoCenario = {
         <div class="card mb-2" data-card-fator="${i.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
           ${Diag.seloColeta(i)}
-          ${App.podeEditar() ? `<div class="botoes-fator d-flex gap-1 mt-2 justify-content-end">
+          ${App.podeEditar() ? `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center justify-content-end">
             <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
             <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
           </div>` : ''}
@@ -617,7 +636,7 @@ const SecaoSwot = {
                title="Ver na Matriz GUT">GUT ${f.score}</button>` : '';
         return `<div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
-          <div class="botoes-fator d-flex gap-1 mt-2 align-items-center flex-wrap">
+          <div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
             ${origem}${gut}
             ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
               <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
