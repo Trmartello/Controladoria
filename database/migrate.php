@@ -91,23 +91,6 @@ function garantirIndice(PDO $pdo, string $tabela, string $indice, string $ddl): 
     }
 }
 
-/**
- * Normaliza texto para comparar: minúsculas, sem acento, espaços colapsados.
- * Usada pela carga de conteúdo do cenário, para não regravar o que já está na
- * tela. A tabela substitui o Normalizer porque a extensão intl não está na
- * imagem — mesma razão de PublicoController::normalizar().
- */
-function chaveTextoCenario(string $t): string
-{
-    $t = strtr(mb_strtolower(trim($t), 'UTF-8'), [
-        'á' => 'a', 'à' => 'a', 'ã' => 'a', 'â' => 'a', 'ä' => 'a',
-        'é' => 'e', 'ê' => 'e', 'è' => 'e', 'í' => 'i', 'ì' => 'i',
-        'ó' => 'o', 'õ' => 'o', 'ô' => 'o', 'ö' => 'o',
-        'ú' => 'u', 'ù' => 'u', 'ü' => 'u', 'ç' => 'c',
-    ]);
-    return preg_replace('/\s+/u', ' ', $t);
-}
-
 executarArquivoSql($pdo, __DIR__ . '/schema.sql');
 
 // Análises do diagnóstico são anuais (horizontes seguem plurianuais)
@@ -342,85 +325,36 @@ if ($apagados) {
     echo "migrate: {$apagados} negócio(s) inativo(s) removido(s) do cadastro.\n";
 }
 
-// ---- Cenário macroeconômico na Análise de Cenário ----
-// O seeds.sql só age com o contexto vazio e a tela já tem itens escritos à mão,
-// então a carga nunca chegaria por lá. Aqui ela chega no deploy — UMA vez.
+// ---- Cargas de conteúdo: cenário macroeconômico e PESTEL ----
+// O seeds.sql só age com o contexto vazio e essas telas já têm itens escritos
+// à mão, então a carga nunca chegaria por lá. Aqui ela chega no deploy — UMA
+// vez por chave, e a marca em `carga_conteudo` é o que torna isso seguro:
+// cenário e fatores são conteúdo EDITÁVEL, e sem a marca todo deploy recriaria
+// o que alguém apagou e reporia a redação que alguém ajustou.
 //
-// A marca em `carga_conteudo` é o que torna isso seguro: cenário é conteúdo
-// EDITÁVEL, e sem a marca todo deploy recriaria o item que alguém apagou e
-// reporia o texto que alguém reescreveu. Revisar os números pede chave nova no
-// arquivo de conteúdo; a chave antiga fica marcada e nunca mais é reaplicada.
-//
-// Os textos vêm de database/conteudo_cenario_macro.php, o mesmo arquivo que
-// cli/cenario_macro.php lê — como os negócios oficiais vêm de
-// QlikSync::NEGOCIOS_FONTE, para não existir uma segunda cópia envelhecendo à
-// parte.
-$conteudoCenario = require __DIR__ . '/conteudo_cenario_macro.php';
-$chaveCarga = $conteudoCenario['chave'];
-$jaAplicada = $pdo->prepare('SELECT 1 FROM carga_conteudo WHERE chave = ?');
-$jaAplicada->execute([$chaveCarga]);
-if (!$jaAplicada->fetchColumn()) {
-    $anoCarga = (int)$conteudoCenario['ano'];
-    // Só o planejamento CORPORATIVO: o cenário macro é leitura da cooperativa
-    // inteira, e replicá-lo nos doze negócios encheria cada tela com o mesmo
-    // texto, empurrando para baixo a análise que é própria do negócio.
-    // O ano precisa caber no ciclo: o seletor da tela é limitado a
-    // [ano_base, ano_fim] e o item existiria sem nunca aparecer para ninguém.
-    $alvos = $pdo->prepare(
-        "SELECT p.id FROM planejamento p
-           JOIN ciclo c ON c.id = p.ciclo_id
-          WHERE p.escopo = 'CORPORATIVO' AND ? BETWEEN c.ano_base AND c.ano_fim"
-    );
-    $alvos->execute([$anoCarga]);
-    $planos = $alvos->fetchAll(PDO::FETCH_COLUMN);
-
+// A lógica mora em App\Services\CargaConteudo, a mesma que a CLI usa. O
+// arquivo só declara a classe: incluí-lo não executa nada nem exige o autoload
+// da aplicação — igual ao que já é feito com QlikSync.
+require_once __DIR__ . '/../app/Services/CargaConteudo.php';
+foreach (['conteudo_cenario_macro.php', 'conteudo_pestel_macro.php'] as $arquivo) {
+    $conteudo = require __DIR__ . '/' . $arquivo;
+    $chaveCarga = $conteudo['chave'];
+    if (App\Services\CargaConteudo::jaAplicada($pdo, $chaveCarga)) {
+        continue;
+    }
+    $planos = App\Services\CargaConteudo::planosCorporativos($pdo, (int)$conteudo['ano']);
     $gravados = 0;
     foreach ($planos as $planoId) {
-        $planoId = (int)$planoId;
-        // Texto que já está na tela não entra de novo: a carga pode ter sido
-        // aplicada à mão pela CLI antes deste deploy, e o operador veria tudo
-        // duplicado. A comparação normaliza acento, caixa e espaço, como faz
-        // o agrupamento da Coleta.
-        $existentes = [];
-        $atuais = $pdo->prepare(
-            'SELECT descricao FROM cenario_item WHERE planejamento_id = ? AND ano = ?'
-        );
-        $atuais->execute([$planoId, $anoCarga]);
-        foreach ($atuais->fetchAll(PDO::FETCH_COLUMN) as $d) {
-            $existentes[chaveTextoCenario((string)$d)] = true;
-        }
-
-        foreach ($conteudoCenario['itens'] as $tipo => $textos) {
-            // Continua a numeração do que já está na tela, em vez de disputar a
-            // ordem com os itens que o usuário escreveu antes
-            $maior = $pdo->prepare(
-                'SELECT COALESCE(MAX(ordem), 0) FROM cenario_item
-                  WHERE planejamento_id = ? AND ano = ? AND tipo = ?'
-            );
-            $maior->execute([$planoId, $anoCarga, $tipo]);
-            $ordem = (int)$maior->fetchColumn();
-
-            $insere = $pdo->prepare(
-                'INSERT INTO cenario_item (planejamento_id, ano, tipo, ordem, descricao)
-                 VALUES (?, ?, ?, ?, ?)'
-            );
-            foreach ($textos as $texto) {
-                if (isset($existentes[chaveTextoCenario($texto)])) {
-                    continue;
-                }
-                $existentes[chaveTextoCenario($texto)] = true;
-                $insere->execute([$planoId, $anoCarga, $tipo, ++$ordem, $texto]);
-                $gravados++;
-            }
-        }
+        $gravados += App\Services\CargaConteudo::aplicar($pdo, $conteudo, $planoId);
     }
     // A marca é gravada mesmo sem plano corporativo elegível: a carga é uma
     // fotografia datada, e reavaliá-la a cada deploy futuro faria o texto de
     // agosto/2026 aparecer meses depois, num ciclo criado muito mais tarde.
-    $pdo->prepare('INSERT INTO carga_conteudo (chave, detalhe) VALUES (?, ?)')
-        ->execute([$chaveCarga, "{$gravados} item(ns) em " . count($planos) . ' planejamento(s)']);
-    echo "migrate: cenário macro ({$chaveCarga}) — {$gravados} item(ns) "
-        . 'em ' . count($planos) . " planejamento(s) corporativo(s).\n";
+    App\Services\CargaConteudo::marcar(
+        $pdo, $chaveCarga, "{$gravados} registro(s) em " . count($planos) . ' planejamento(s)'
+    );
+    echo "migrate: carga {$chaveCarga} — {$gravados} registro(s) em "
+        . count($planos) . " planejamento(s) corporativo(s).\n";
 }
 
 // Usuário admin inicial (senha via env ADMIN_SENHA; sem a variável, gera uma

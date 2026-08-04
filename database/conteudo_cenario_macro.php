@@ -20,6 +20,8 @@
 
 return [
     'chave' => 'cenario_macro_2026_08',
+    // Grava em `cenario_item`; as chaves de `itens` são o `tipo` da coluna
+    'destino' => 'CENARIO',
     // Ano da análise. A tela limita o seletor a [ano_base, ano_fim] do ciclo:
     // item gravado fora da faixa existiria no banco sem jamais aparecer.
     'ano' => 2026,
