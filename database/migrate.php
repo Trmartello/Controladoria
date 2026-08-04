@@ -340,6 +340,7 @@ foreach ([
     'conteudo_cenario_macro.php',
     'conteudo_pestel_macro.php',
     'conteudo_porter_macro.php',
+    'conteudo_swot_macro.php',
 ] as $arquivo) {
     $conteudo = require __DIR__ . '/' . $arquivo;
     $chaveCarga = $conteudo['chave'];

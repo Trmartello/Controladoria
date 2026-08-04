@@ -335,7 +335,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   lista de `QlikSync::NEGOCIOS_FONTE` por reflexão para não virar terceira cópia
   dos códigos.
 - **Carga de conteúdo** (texto que o usuário edita depois: o cenário
-  macroeconômico da Análise de Cenário e os fatores da PESTEL): passo do
+  macroeconômico e os fatores de PESTEL, Porter e SWOT): passo do
   migrate marcado em `carga_conteudo` pela `chave` do arquivo de conteúdo. A
   marca é o que impede o deploy seguinte de recriar o item que alguém apagou e
   de repor a redação que alguém reescreveu — guarda que o `NOT EXISTS` dos
@@ -348,7 +348,10 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   lista do migrate e outra em `CARGAS` da CLI; escrever a lógica de novo faria
   as cópias divergirem na primeira revisão. Só o planejamento **CORPORATIVO**
   recebe do migrate: análise macro replicada nos doze negócios enterraria a
-  análise própria de cada um.
+  análise própria de cada um. A carga de SWOT entra **solta**, sem
+  `promovido_de_id`: promover é o gesto de quem conduz a análise (escolher qual
+  fator do PESTEL/Porter merece o quadrante), e promover pela carga decidiria
+  isso pelo usuário — o botão “→ SWOT” some depois que o fator foi promovido.
 - Compatibilidade MySQL 8 **e** MariaDB (por isso `ON DUPLICATE KEY UPDATE
   VALUES()` e nada de sintaxe exclusiva do MySQL 8). Toda tabela declara
   `COLLATE=utf8mb4_unicode_ci`: sem isso cada motor escolhe a sua (MariaDB
