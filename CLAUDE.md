@@ -36,7 +36,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   o item antes de marcar; `multiselect` só serve para listas curtas e não
   funciona no celular, onde não existe tecla Ctrl). Opções auxiliares:
   `obrigatorio`, `visivelSe: {campo, valores}`, `exemplo`, `ajuda`, `nota`,
-  `sufixo`, `passo`. Datas aparecem sempre como dd/mm/aaaa (`ligarDatasBr`).
+  `sufixo`, `passo`. O gatilho do `visivelSe` pode ser de qualquer tipo, mas o
+  valor precisa sair de `Modal.valorAtual()`: em `botoes` e `quadrantes` o id
+  fica na **div** que agrupa os rádios, e ler `.value` dela devolvia `undefined`
+  — o campo dependente ficava escondido para sempre.
+  Datas aparecem sempre como dd/mm/aaaa (`ligarDatasBr`).
   Textareas crescem com o texto até 60% da altura da tela e depois rolam por
   dentro (`crescerTextarea`). Medida que depende de layout (o que transborda,
   quanto o texto ocupa) vai em `Modal.aoAparecer`, disparada no
@@ -241,6 +245,16 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
     projeto/iniciativa antes de validar os campos da ação deixa os dois órfãos a
     cada tentativa inválida — toda a validação/cálculo da ação roda antes de
     qualquer INSERT de projeto ou iniciativa.
+    Na tela (`modalConverterAcao`), a escolha é uma **pergunta explícita** —
+    “Onde esta ideia vira ação?”, com *Iniciativa que já existe · Nova
+    iniciativa · Projeto novo* — e cada caminho abre só os campos dele. Um
+    seletor único misturando os três (como era) escondia as duas decisões e
+    fazia um mesmo campo “nome” servir ora ao projeto, ora à iniciativa, ora a
+    nada. Só entram os caminhos possíveis (sem projeto cadastrado, sobra
+    “Projeto novo”), a iniciativa existente viaja junto com o projeto dela na
+    mesma opção (`pid:iid`) — o servidor recusa par de projetos diferentes — e o
+    **ano do projeto novo é campo**: herdado calado da ideia, um ano fora dos
+    horizontes matava o salvamento sem oferecer correção.
   - **Reclassificar** (duplo clique num item já triado, na análise de origem):
     `Diag.reclassificar()` **não** apaga nada — só navega de volta à tempestade,
     que abre um **painel próprio** (`painelReclassificar`, independente da
@@ -276,6 +290,22 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   estilo (`.faixa-progresso` para leitura, `input[type=range].faixa-verde`
   para ajuste) com **passo 1** — passo maior faria o valor divergir do
   servidor.
+- **Duplo clique no cartão abre a edição** daquele nível (duplo toque no
+  celular), atalho para o ✎ que mora atrás do “mostrar mais”. O listener vai em
+  **cada cartão de projeto**, nunca na seção: `el` sobrevive aos
+  recarregamentos e um listener nele empilharia uma cópia por `carregar()`. A
+  resolução é do **mais interno para o mais externo** (ação → iniciativa →
+  projeto), porque os três níveis são aninhados no DOM. Botão, link, a barra de
+  progresso e o diário dentro do cartão não viram atalho; a seleção de texto do
+  duplo clique é limpa antes de abrir o modal. Os cartões levam
+  `touch-action: manipulation`, senão o iOS trata o segundo toque como zoom e o
+  `dblclick` não chega.
+- **Panorama de execução** (`panorama()`): barra da média + percentual +
+  “N atrasada(s)”. É o **mesmo bloco** no projeto e na iniciativa — escritos
+  separados, os dois níveis divergiriam na primeira mudança de regra.
+  `atualizarMedias()` recalcula os **dois** níveis ao arrastar a barra de uma
+  ação, lendo os valores que estão na tela (a ação recém-arrastada precisa
+  entrar na conta).
 
 ## Migrações e seeds
 
