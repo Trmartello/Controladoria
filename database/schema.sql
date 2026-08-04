@@ -392,6 +392,17 @@ CREATE TABLE IF NOT EXISTS coleta_tentativa (
   KEY idx_tentativa (origem, criado_em)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Cargas de conteúdo já aplicadas pelo migrate (ex.: o cenário macroeconômico
+-- da Análise de Cenário). O migrate roda a cada deploy e o conteúdo aqui é
+-- EDITÁVEL na tela: sem a marca, todo deploy recriaria o item que alguém
+-- apagou e desfaria a redação que alguém ajustou. Marcada uma vez, a carga
+-- nunca mais é reaplicada — revisão de texto pede chave nova.
+CREATE TABLE IF NOT EXISTS carga_conteudo (
+  chave       VARCHAR(80) PRIMARY KEY,
+  detalhe     VARCHAR(255) NULL,
+  aplicado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Tentativas de login falhas: trava de força bruta por e-mail e por origem
 CREATE TABLE IF NOT EXISTS login_tentativa (
   id        INT AUTO_INCREMENT PRIMARY KEY,

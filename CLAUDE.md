@@ -334,6 +334,16 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   a quem já tem cadastro pelo seeds; vai num passo próprio do migrate, que lê a
   lista de `QlikSync::NEGOCIOS_FONTE` por reflexão para não virar terceira cópia
   dos códigos.
+- **Carga de conteúdo** (texto que o usuário edita depois, como o cenário
+  macroeconômico da Análise de Cenário): passo do migrate marcado em
+  `carga_conteudo` pela `chave` do arquivo de conteúdo. A marca é o que impede
+  o deploy seguinte de recriar o item que alguém apagou e de repor a redação
+  que alguém reescreveu — guarda que o `NOT EXISTS` dos seeds não dá, porque
+  aqui o contexto nunca está vazio. Revisar os textos exige **chave nova**. O
+  conteúdo mora num arquivo só (`database/conteudo_cenario_macro.php`), lido
+  pelo migrate **e** pela CLI (`cli/cenario_macro.php`, que aplica a mesma
+  carga a um negócio ou ano fora do corporativo); duas cópias divergiriam na
+  primeira revisão dos números.
 - Compatibilidade MySQL 8 **e** MariaDB (por isso `ON DUPLICATE KEY UPDATE
   VALUES()` e nada de sintaxe exclusiva do MySQL 8). Toda tabela declara
   `COLLATE=utf8mb4_unicode_ci`: sem isso cada motor escolhe a sua (MariaDB
