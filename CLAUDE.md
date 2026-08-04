@@ -300,6 +300,21 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   duplo clique é limpa antes de abrir o modal. Os cartões levam
   `touch-action: manipulation`, senão o iOS trata o segundo toque como zoom e o
   `dblclick` não chega.
+- **Campos da ação numa lista só** (`camposAcao` + `valoresNovaAcao` +
+  `transformarAcao`): os dois formulários que escrevem uma ação — o cadastro e o
+  direcionamento de uma ideia da coleta — usam a MESMA lista. Escritos
+  separados, divergiram: o direcionamento pedia só o quê/quem/prioridade e
+  criava a ação sem como, prazo, repetição, custo nem status, obrigando a
+  reabri-la no cadastro para completá-la.
+- **Três níveis de recolhimento** (`nivelAtual` / `aplicarNivel` /
+  `pintarNiveis`): **Ações · Frentes · Projetos**, no lugar do "Recolher tudo"
+  que só tinha os extremos. "Frentes" é o nível que faltava — esconde as ações e
+  mantém projetos e frentes com os seus percentuais. Recolher a iniciativa já
+  era o que escondia as ações dela; o grupo só dá um toque para chegar lá. Com o
+  usuário abrindo/fechando itens à mão, `nivelAtual` devolve vazio e **nenhum
+  botão fica aceso** — melhor que um botão mentindo. Os acordeões chamam
+  `pintarNiveis`: eles mexem no DOM sem recarregar a seção, e sem isso o grupo
+  seguiria marcando "Ações" com as ações já escondidas.
 - **Panorama de execução** (`panorama()`): barra da média + percentual +
   “N atrasada(s)”. É o **mesmo bloco** no projeto e na iniciativa — escritos
   separados, os dois níveis divergiriam na primeira mudança de regra.
