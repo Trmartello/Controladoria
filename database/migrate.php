@@ -341,16 +341,27 @@ foreach ([
     'conteudo_pestel_macro.php',
     'conteudo_porter_macro.php',
     'conteudo_swot_macro.php',
+    'conteudo_cascata_h1.php',
 ] as $arquivo) {
     $conteudo = require __DIR__ . '/' . $arquivo;
     $chaveCarga = $conteudo['chave'];
     if (App\Services\CargaConteudo::jaAplicada($pdo, $chaveCarga)) {
         continue;
     }
-    $planos = App\Services\CargaConteudo::planosCorporativos($pdo, (int)$conteudo['ano']);
+    $planos = App\Services\CargaConteudo::planosCorporativos($pdo, $conteudo['ano'] ?? null);
     $gravados = 0;
-    foreach ($planos as $planoId) {
-        $gravados += App\Services\CargaConteudo::aplicar($pdo, $conteudo, $planoId);
+    try {
+        foreach ($planos as $planoId) {
+            $gravados += App\Services\CargaConteudo::aplicar($pdo, $conteudo, $planoId);
+        }
+    } catch (\RuntimeException $e) {
+        // A cascata casa driver, eixo e horizonte pelo NOME do cadastro, e os
+        // três são editáveis na tela. Uma renomeação em produção não pode
+        // derrubar o start do container nem enterrar a carga em silêncio: o
+        // deploy segue, a carga NÃO é marcada, e a tentativa se repete no
+        // próximo deploy — quando o nome voltar, ela entra sozinha.
+        fwrite(STDERR, "migrate: carga {$chaveCarga} adiada — {$e->getMessage()}\n");
+        continue;
     }
     // A marca é gravada mesmo sem plano corporativo elegível: a carga é uma
     // fotografia datada, e reavaliá-la a cada deploy futuro faria o texto de

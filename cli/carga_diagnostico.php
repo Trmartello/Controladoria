@@ -33,6 +33,7 @@ const CARGAS = [
     'pestel'  => 'conteudo_pestel_macro.php',
     'porter'  => 'conteudo_porter_macro.php',
     'swot'    => 'conteudo_swot_macro.php',
+    'cascata' => 'conteudo_cascata_h1.php',
 ];
 
 /** str_pad conta bytes: "2027–2035" tem travessão e desalinharia a coluna. */
@@ -53,8 +54,10 @@ function listar(): void
         $c = carregar($nome);
         $qtd = array_sum(array_map('count', $c['itens']));
         $aplicada = CargaConteudo::jaAplicada(Database::conn(), $c['chave']) ? 'sim' : 'não';
-        echo '  ' . coluna($nome, 10) . coluna("{$qtd} registro(s)", 18)
-            . coluna("ano {$c['ano']}", 10) . coluna("chave {$c['chave']}", 30)
+        $quando = isset($c['ano']) ? "ano {$c['ano']}" : "horizonte {$c['horizonte']}";
+        $unidade = $c['destino'] === 'CASCATA' ? 'célula(s)' : 'registro(s)';
+        echo '  ' . coluna($nome, 10) . coluna("{$qtd} {$unidade}", 18)
+            . coluna($quando, 16) . coluna("chave {$c['chave']}", 30)
             . "aplicada no deploy: {$aplicada}\n";
     }
 
@@ -67,6 +70,14 @@ function listar(): void
         if ($c['destino'] === 'CENARIO') {
             $contagens[] = "(SELECT COUNT(*) FROM cenario_item ci
                              WHERE ci.planejamento_id = p.id) AS `{$nome}`";
+            continue;
+        }
+        if ($c['destino'] === 'CASCATA') {
+            $contagens[] = "(SELECT COUNT(*) FROM cascata_escolha ce
+                              JOIN horizonte h ON h.id = ce.horizonte_id
+                             WHERE ce.planejamento_id = p.id
+                               AND h.nome = " . Database::conn()->quote($c['horizonte'])
+                . ") AS `{$nome}`";
             continue;
         }
         // A etapa vem do arquivo de conteúdo, não de entrada do usuário — mas
@@ -123,8 +134,9 @@ if (!isset(CARGAS[$nome])) {
     exit(2);
 }
 $conteudo = carregar($nome);
+$porHorizonte = $conteudo['destino'] === 'CASCATA';
 $planId = (int)($args[1] ?? 0);
-$ano = (int)($args[2] ?? $conteudo['ano']);
+$ano = (int)($args[2] ?? $conteudo['ano'] ?? 0);
 if ($planId <= 0) {
     fwrite(STDERR, "{$uso}\n");
     exit(2);
@@ -144,43 +156,70 @@ if (!$plan) {
     exit(1);
 }
 // O seletor de ano da tela é limitado a [ano_base, ano_fim]: registro gravado
-// fora da faixa existiria no banco sem jamais aparecer para o usuário.
-if ($ano < (int)$plan['ano_base'] || $ano > (int)$plan['ano_fim']) {
-    fwrite(STDERR, "carga: ano {$ano} fora do ciclo {$plan['ciclo']} "
-        . "({$plan['ano_base']}-{$plan['ano_fim']}); a tela não exibiria os registros.\n");
-    exit(1);
+// fora da faixa existiria no banco sem jamais aparecer para o usuário. A
+// cascata não passa por aqui: ela é do horizonte, que já pertence ao ciclo, e
+// quem confere se ele existe é a própria carga.
+if (!$porHorizonte) {
+    if ($ano < (int)$plan['ano_base'] || $ano > (int)$plan['ano_fim']) {
+        fwrite(STDERR, "carga: ano {$ano} fora do ciclo {$plan['ciclo']} "
+            . "({$plan['ano_base']}-{$plan['ano_fim']}); a tela não exibiria os registros.\n");
+        exit(1);
+    }
+    $conteudo['ano'] = $ano;
 }
-$conteudo['ano'] = $ano;
 
-echo "carga {$nome}: {$plan['negocio']} · {$plan['ciclo']} · ano {$ano}"
+$quando = $porHorizonte ? "horizonte {$conteudo['horizonte']}" : "ano {$ano}";
+echo "carga {$nome}: {$plan['negocio']} · {$plan['ciclo']} · {$quando}"
     . ($aplicar ? "\n" : "  [PRÉVIA — nada será gravado]\n");
 
-// A prévia repete a mesma decisão do serviço (o que já está na tela não entra),
-// só que sem gravar — por isso lista os grupos a partir do próprio conteúdo.
 $pdo = Database::conn();
+$total = array_sum(array_map('count', $conteudo['itens']));
+
+// A prévia pergunta ao SERVIÇO o que falta, em vez de repetir a comparação.
+// Repetida aqui, ela divergiria da que grava — e a prévia passaria a mentir
+// exatamente sobre o que a carga vai fazer.
 if (!$aplicar) {
+    if ($conteudo['destino'] === 'CASCATA') {
+        try {
+            $vazias = CargaConteudo::celulasVazias($pdo, $conteudo, $planId);
+        } catch (RuntimeException $e) {
+            fwrite(STDERR, "carga {$nome}: {$e->getMessage()}\n");
+            exit(1);
+        }
+        $grupo = null;
+        foreach ($vazias as $c) {
+            if ($c['driver'] !== $grupo) {
+                $grupo = $c['driver'];
+                echo "\n== {$grupo}\n";
+            }
+            $resumo = mb_substr($c['escolha'], 0, 70, 'UTF-8') . '…';
+            echo "  + gravaria [{$c['eixo']}]: {$resumo}\n";
+        }
+        $novos = count($vazias);
+        echo "\ncarga {$nome}: {$novos} célula(s) a gravar, "
+            . ($total - $novos) . " já preenchida(s).\n";
+        echo "carga {$nome}: repita com --aplicar para gravar.\n";
+        exit(0);
+    }
+
+    $ja = $conteudo['destino'] === 'CENARIO'
+        ? Database::todos(
+            'SELECT descricao FROM cenario_item WHERE planejamento_id = ? AND ano = ?',
+            [$planId, $ano])
+        : Database::todos(
+            'SELECT descricao FROM fator WHERE planejamento_id = ? AND ano = ? AND etapa = ?',
+            [$planId, $ano, $conteudo['etapa']]);
+    $existentes = [];
+    foreach ($ja as $l) {
+        $existentes[CargaConteudo::chaveTexto($l['descricao'])] = true;
+    }
     $novos = 0;
     $repetidos = 0;
     foreach ($conteudo['itens'] as $grupo => $textos) {
         echo "\n== {$grupo}\n";
         foreach ($textos as $texto) {
             $resumo = mb_substr($texto, 0, 84, 'UTF-8') . '…';
-            // Uma consulta por texto é desperdício irrelevante aqui: são dezenas
-            // de linhas, uma única vez, na mão de quem está conferindo
-            $ja = $conteudo['destino'] === 'CENARIO'
-                ? Database::todos(
-                    'SELECT descricao FROM cenario_item WHERE planejamento_id = ? AND ano = ?',
-                    [$planId, $ano])
-                : Database::todos(
-                    'SELECT descricao FROM fator WHERE planejamento_id = ? AND ano = ? AND etapa = ?',
-                    [$planId, $ano, $conteudo['etapa']]);
-            $existe = false;
-            foreach ($ja as $l) {
-                if (CargaConteudo::chaveTexto($l['descricao']) === CargaConteudo::chaveTexto($texto)) {
-                    $existe = true;
-                    break;
-                }
-            }
+            $existe = isset($existentes[CargaConteudo::chaveTexto($texto)]);
             echo $existe ? "  = já existe: {$resumo}\n" : "  + gravaria: {$resumo}\n";
             $existe ? $repetidos++ : $novos++;
         }
@@ -190,8 +229,12 @@ if (!$aplicar) {
     exit(0);
 }
 
-$gravados = CargaConteudo::aplicar($pdo, $conteudo, $planId);
-$total = array_sum(array_map('count', $conteudo['itens']));
+try {
+    $gravados = CargaConteudo::aplicar($pdo, $conteudo, $planId);
+} catch (RuntimeException $e) {
+    fwrite(STDERR, "carga {$nome}: {$e->getMessage()}\n");
+    exit(1);
+}
 echo "carga {$nome}: {$gravados} registro(s) gravado(s), "
     . ($total - $gravados) . " já presente(s).\n";
 exit(0);

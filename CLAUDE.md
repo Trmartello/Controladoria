@@ -335,7 +335,8 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   lista de `QlikSync::NEGOCIOS_FONTE` por reflexão para não virar terceira cópia
   dos códigos.
 - **Carga de conteúdo** (texto que o usuário edita depois: o cenário
-  macroeconômico e os fatores de PESTEL, Porter e SWOT): passo do
+  macroeconômico, os fatores de PESTEL, Porter e SWOT, e a cascata de um
+  horizonte): passo do
   migrate marcado em `carga_conteudo` pela `chave` do arquivo de conteúdo. A
   marca é o que impede o deploy seguinte de recriar o item que alguém apagou e
   de repor a redação que alguém reescreveu — guarda que o `NOT EXISTS` dos
@@ -352,6 +353,14 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `promovido_de_id`: promover é o gesto de quem conduz a análise (escolher qual
   fator do PESTEL/Porter merece o quadrante), e promover pela carga decidiria
   isso pelo usuário — o botão “→ SWOT” some depois que o fator foi promovido.
+  A carga de **cascata** (`destino: CASCATA`) tem guarda diferente: o que
+  protege não é o texto e sim a **célula** (plano × horizonte × driver × eixo),
+  porque cada uma guarda uma decisão tomada. Ela casa driver, eixo e horizonte
+  pelo **nome do cadastro**, e os três são editáveis na tela: nome que não
+  resolve faz a carga lançar `RuntimeException`, o migrate **adia** (não marca)
+  e o deploy segue — quando o nome voltar, ela entra sozinha. A validação roda
+  inteira **antes** do primeiro INSERT, senão um nome errado no meio da lista
+  deixaria metade da cascata gravada.
 - Compatibilidade MySQL 8 **e** MariaDB (por isso `ON DUPLICATE KEY UPDATE
   VALUES()` e nada de sintaxe exclusiva do MySQL 8). Toda tabela declara
   `COLLATE=utf8mb4_unicode_ci`: sem isso cada motor escolhe a sua (MariaDB
