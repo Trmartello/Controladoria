@@ -31,6 +31,7 @@ use App\Services\CargaConteudo;
 const CARGAS = [
     'cenario' => 'conteudo_cenario_macro.php',
     'pestel'  => 'conteudo_pestel_macro.php',
+    'porter'  => 'conteudo_porter_macro.php',
 ];
 
 /** str_pad conta bytes: "2027–2035" tem travessão e desalinharia a coluna. */
@@ -60,7 +61,8 @@ function listar(): void
         "SELECT p.id, c.nome AS ciclo, c.ano_base, c.ano_fim, p.escopo,
                 COALESCE(n.nome, 'Corporativo') AS negocio,
                 (SELECT COUNT(*) FROM cenario_item ci WHERE ci.planejamento_id = p.id) AS cenario,
-                (SELECT COUNT(*) FROM fator f WHERE f.planejamento_id = p.id AND f.etapa = 'PESTEL') AS pestel
+                (SELECT COUNT(*) FROM fator f WHERE f.planejamento_id = p.id AND f.etapa = 'PESTEL') AS pestel,
+                (SELECT COUNT(*) FROM fator f WHERE f.planejamento_id = p.id AND f.etapa = 'PORTER') AS porter
          FROM planejamento p
          JOIN ciclo c ON c.id = p.ciclo_id
          LEFT JOIN negocio n ON n.id = p.negocio_id
@@ -71,14 +73,15 @@ function listar(): void
         return;
     }
     echo "\n" . coluna('ID', 5) . coluna('CICLO', 26) . coluna('ESCOPO', 14)
-        . coluna('NEGÓCIO', 26) . coluna('CENÁRIO', 10) . "PESTEL\n";
+        . coluna('NEGÓCIO', 26) . coluna('CENÁRIO', 10) . coluna('PESTEL', 9) . "PORTER\n";
     foreach ($linhas as $l) {
         echo coluna((string)$l['id'], 5)
             . coluna("{$l['ciclo']} ({$l['ano_base']}-{$l['ano_fim']})", 26)
             . coluna((string)$l['escopo'], 14)
             . coluna((string)$l['negocio'], 26)
             . coluna((string)$l['cenario'], 10)
-            . $l['pestel'] . "\n";
+            . coluna((string)$l['pestel'], 9)
+            . $l['porter'] . "\n";
     }
 }
 

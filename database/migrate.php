@@ -336,7 +336,11 @@ if ($apagados) {
 // arquivo só declara a classe: incluí-lo não executa nada nem exige o autoload
 // da aplicação — igual ao que já é feito com QlikSync.
 require_once __DIR__ . '/../app/Services/CargaConteudo.php';
-foreach (['conteudo_cenario_macro.php', 'conteudo_pestel_macro.php'] as $arquivo) {
+foreach ([
+    'conteudo_cenario_macro.php',
+    'conteudo_pestel_macro.php',
+    'conteudo_porter_macro.php',
+] as $arquivo) {
     $conteudo = require __DIR__ . '/' . $arquivo;
     $chaveCarga = $conteudo['chave'];
     if (App\Services\CargaConteudo::jaAplicada($pdo, $chaveCarga)) {
