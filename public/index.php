@@ -289,6 +289,12 @@ try {
             (new CenarioController())->salvar((int)$m[1]); break;
 
         case $rota === 'GET /api/fatores':         (new FatorController())->listar(); break;
+        // Antes das rotas com {id}: "aguardando-acao" não é um número, mas a
+        // rota literal precisa vir primeiro para o leitor não ter de conferir
+        case $rota === 'GET /api/fatores/aguardando-acao':
+            (new FatorController())->aguardandoAcao(); break;
+        case (bool)preg_match('#^POST /api/fatores/(\d+)/plano-acao$#', $rota, $m):
+            (new FatorController())->planoAcao((int)$m[1]); break;
         case $rota === 'POST /api/fatores':        (new FatorController())->salvar(); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/excluir$#', $rota, $m):
             (new FatorController())->excluir((int)$m[1]); break;

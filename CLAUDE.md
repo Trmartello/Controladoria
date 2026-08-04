@@ -266,6 +266,23 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 
 ### Plano de ação (três níveis)
 
+- **Fila de "Aguardando plano de ação"**: o card de Projetos junta DUAS origens
+  — ideia da Coleta (`coleta_item.destino_tipo='ACAO'` com `destino_id` NULL) e
+  **fator da SWOT** (`fator.acao_em` preenchido com `desdobramento_id` NULL).
+  Uma fila só de propósito: a origem muda o selo e o campo que fecha o vínculo,
+  não a pergunta "o que ainda não virou ação?". O `modalConverterAcao` manda
+  `coleta_item_id` **ou** `fator_id`, nunca os dois, e o
+  `salvarDesdobramento` fecha o vínculo com a mesma guarda no WHERE (só o que
+  ainda está na fila), para pedido repetido não sequestrar vínculo alheio.
+  Só a **SWOT** vai direto ao plano: PESTEL e Porter descrevem o ambiente e
+  passam antes pela promoção a um quadrante — sem isso pulariam a síntese que a
+  SWOT existe para fazer. `fator.desdobramento_id` tem FK **ON DELETE SET
+  NULL**: apagada a ação, o fator volta sozinho para a fila. A ideia da Coleta
+  não tem FK (o destino é polimórfico) e por isso `excluirDesdobramento` limpa
+  o `destino_id` dela à mão — sem essa linha a ideia sumia da fila para sempre,
+  apontando para um desdobramento que não existe mais. Excluir um fator que já
+  virou ação é **recusado**: deixaria a ação no plano sem origem nenhuma.
+
 - **projeto → iniciativa → ação**, espelhando o projeto BSC. O cadastro do
   projeto tem só ano, título, descrição e responsável; **início e fim são
   consequência das ações** (menor `data_inicio`, maior `data_fim`) e o status

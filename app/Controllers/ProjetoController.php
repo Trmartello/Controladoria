@@ -352,6 +352,18 @@ class ProjetoController
             // Ação criada a partir de uma ideia da coleta ("Plano de ação"):
             // fecha o vínculo para a ideia deixar de ficar pendente e apontar
             // para o desdobramento que nasceu dela
+            // Fator da SWOT encaminhado ao plano: mesmo fechamento de vínculo,
+            // e a mesma guarda no WHERE — só fecha o que estava mesmo na fila,
+            // para um pedido repetido não sequestrar o vínculo de outra ação.
+            $fatorId = (int)($d['fator_id'] ?? 0);
+            if ($fatorId) {
+                Database::executar(
+                    "UPDATE fator SET desdobramento_id = ?
+                     WHERE id = ? AND planejamento_id = ? AND etapa = 'SWOT'
+                       AND acao_em IS NOT NULL AND desdobramento_id IS NULL",
+                    [$id, $fatorId, $planId]
+                );
+            }
             $coletaId = (int)($d['coleta_item_id'] ?? 0);
             if ($coletaId) {
                 Database::executar(
@@ -430,6 +442,16 @@ class ProjetoController
         $this->exigirDesdobramento($id, $planId);
         Database::executar(
             "DELETE FROM diario_bordo WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id = ?", [$id]
+        );
+        // A ideia da Coleta volta para a fila de "aguardando plano de ação".
+        // Sem isto ela ficava apontando para um desdobramento que não existe
+        // mais: sumia da fila (que filtra destino_id IS NULL), continuava
+        // marcada como "virou ação" e não havia como encaminhá-la de novo.
+        // O fator da SWOT não precisa da mesma linha — a FK dele é
+        // ON DELETE SET NULL e o banco faz isso sozinho.
+        Database::executar(
+            "UPDATE coleta_item SET destino_id = NULL
+             WHERE destino_tipo = 'ACAO' AND destino_id = ?", [$id]
         );
         Database::executar('DELETE FROM desdobramento WHERE id = ?', [$id]);
         Json::ok();

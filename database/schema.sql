@@ -104,6 +104,13 @@ CREATE TABLE IF NOT EXISTS fator (
   categoria        VARCHAR(40) NOT NULL,
   descricao        TEXT NOT NULL,
   promovido_de_id  INT NULL,
+  -- Encaminhamento do fator da SWOT para o plano de ação, na mesma regra da
+  -- ideia da Coleta: `acao_em` marca o envio (o destino_tipo='ACAO' de lá) e
+  -- `desdobramento_id` guarda a ação que nasceu dele (o destino_id). Os dois
+  -- juntos definem "aguardando alocação": marcado e ainda sem ação.
+  acao_em          DATETIME NULL,
+  acao_por         INT NULL,
+  desdobramento_id INT NULL,
   criado_em        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_fator_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_fator_origem FOREIGN KEY (promovido_de_id) REFERENCES fator(id)

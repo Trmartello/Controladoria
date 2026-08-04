@@ -99,6 +99,29 @@ garantirColuna($pdo, 'cenario_item', 'ano',
 garantirColuna($pdo, 'fator', 'ano',
     'ALTER TABLE fator ADD COLUMN ano SMALLINT NULL AFTER planejamento_id');
 
+// Fator da SWOT encaminhado ao plano de ação (mesma regra da ideia da Coleta:
+// marcado e sem ação = aguardando alocação em Projetos). A FK do
+// desdobramento é ON DELETE SET NULL: apagada a ação, o fator volta sozinho
+// para a fila de espera, em vez de ficar apontando para um id morto — que é
+// exatamente o que acontecia com a ideia da Coleta antes deste passo.
+garantirColuna($pdo, 'fator', 'acao_em',
+    'ALTER TABLE fator ADD COLUMN acao_em DATETIME NULL AFTER promovido_de_id');
+garantirColuna($pdo, 'fator', 'acao_por',
+    'ALTER TABLE fator ADD COLUMN acao_por INT NULL AFTER acao_em');
+garantirColuna($pdo, 'fator', 'desdobramento_id',
+    'ALTER TABLE fator ADD COLUMN desdobramento_id INT NULL AFTER acao_por');
+// Referência morta impediria o ALTER e derrubaria o start do container
+$pdo->exec('UPDATE fator SET acao_por = NULL WHERE acao_por IS NOT NULL
+            AND acao_por NOT IN (SELECT id FROM usuario)');
+$pdo->exec('UPDATE fator SET desdobramento_id = NULL WHERE desdobramento_id IS NOT NULL
+            AND desdobramento_id NOT IN (SELECT id FROM desdobramento)');
+garantirFk($pdo, 'fator', 'fk_fator_acao_por',
+    'ALTER TABLE fator ADD CONSTRAINT fk_fator_acao_por
+       FOREIGN KEY (acao_por) REFERENCES usuario(id) ON DELETE SET NULL');
+garantirFk($pdo, 'fator', 'fk_fator_desdobramento',
+    'ALTER TABLE fator ADD CONSTRAINT fk_fator_desdobramento
+       FOREIGN KEY (desdobramento_id) REFERENCES desdobramento(id) ON DELETE SET NULL');
+
 // Prazos por calendário: início e fim em projetos e ações planejadas
 // (os campos de texto prazo/quando_ permanecem para os registros antigos)
 garantirColuna($pdo, 'projeto', 'data_inicio',

@@ -45,6 +45,31 @@ const SecaoProjetos = {
   iniciativasFechadas: new Set(),
   projetosFechados: new Set(),
   detalhesAbertos: new Set(), // quem está com o "mostrar mais" aberto
+  // id da ação que a seção deve realçar ao abrir (vindo do "Virou ação ↗")
+  destacarAcao: null,
+
+  /**
+   * Realça a ação alcançada pela navegação vinda da SWOT.
+   *
+   * Revelar vem antes de realçar: a ação pode estar dentro de um projeto ou de
+   * uma iniciativa recolhidos, e piscar um cartão escondido não leva ninguém a
+   * lugar nenhum. O `d-none` sai direto no DOM em vez de mexer nos conjuntos de
+   * recolhidos — a preferência de quem recolheu continua valendo no próximo
+   * carregamento, e o desvio é só desta visita.
+   */
+  aplicarDestaqueAcao(el) {
+    const id = this.destacarAcao;
+    if (!id) return;
+    this.destacarAcao = null;
+    const card = el.querySelector(`[data-card-acao="${id}"]`);
+    if (!card) return;
+    for (let pai = card.parentElement; pai && pai !== el; pai = pai.parentElement) {
+      pai.classList.remove('d-none');
+    }
+    card.classList.add('card-destacado');
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => card.classList.remove('card-destacado'), 2600);
+  },
 
   /** Alternador de detalhe de um item (projeto, iniciativa ou ação). */
   botaoMais(chave, aberto) {
@@ -268,12 +293,21 @@ const SecaoProjetos = {
       return;
     }
     this.plan = await App.planejamento();
-    const [projetos, cascata, responsaveis, ideiasAcao] = await Promise.all([
+    const [projetos, cascata, responsaveis, ideiasAcao, fatoresAcao] = await Promise.all([
       App.api(`/api/projetos?planejamento_id=${this.plan.id}`),
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
       App.api(`/api/responsaveis?planejamento_id=${this.plan.id}`),
       App.api(`/api/coleta/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
+      App.api(`/api/fatores/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
     ]);
+    // Uma fila só: a origem muda o selo e o campo que fecha o vínculo, não o
+    // lugar onde a pendência aparece. Duas listas separadas fariam quem
+    // acompanha o plano ter de olhar em dois lugares para a mesma pergunta —
+    // "o que ainda não virou ação?".
+    const pendentes = [
+      ...ideiasAcao.map((i) => ({ ...i, origem: 'COLETA', chave: `c${i.id}` })),
+      ...fatoresAcao.map((f) => ({ ...f, chave: `f${f.id}` })),
+    ];
     this.cascata = cascata;
     this.responsaveis = responsaveis;
     this.projetos = projetos;   // guardado para o seletor de iniciativa ao converter ideias
@@ -367,11 +401,11 @@ const SecaoProjetos = {
       </div>
       <p class="text-muted">Toque no título para recolher e expandir um item; use “mostrar mais” para
         ver o detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>
-      ${this.cartaoIdeiasAcao(ideiasAcao)}
+      ${this.cartaoIdeiasAcao(pendentes)}
       <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>`;
 
     el.querySelectorAll('[data-virar-acao]').forEach((b) => b.addEventListener('click', () =>
-      this.modalConverterAcao(ideiasAcao.find((i) => i.id == b.dataset.virarAcao))));
+      this.modalConverterAcao(pendentes.find((p) => p.chave === b.dataset.virarAcao))));
 
     el.querySelectorAll('[data-nivel]').forEach((b) =>
       b.addEventListener('click', () => this.aplicarNivel(b.dataset.nivel, projetos)));
@@ -398,6 +432,7 @@ const SecaoProjetos = {
     });
 
     this.ligarBotoesMais(el);
+    this.aplicarDestaqueAcao(el);
 
     el.querySelectorAll('[data-diario]').forEach((b) => b.addEventListener('click', () => {
       const [refTipo, refId] = b.dataset.diario.split(':');
@@ -665,29 +700,36 @@ const SecaoProjetos = {
     return opcoes;
   },
 
-  // Ideias que vieram da coleta com destino "Plano de ação" e ainda não viraram
-  // uma ação: ficam listadas aqui para o condutor atribuí-las a uma iniciativa.
-  cartaoIdeiasAcao(ideias) {
-    if (!ideias || !ideias.length) return '';
+  // Pendências encaminhadas ao plano de ação e ainda sem ação criada: ideias da
+  // coleta e fatores da SWOT, na mesma fila. O selo diz de onde cada uma veio.
+  cartaoIdeiasAcao(pendentes) {
+    if (!pendentes || !pendentes.length) return '';
     const podeConverter = App.podeEditar();
-    const linhas = ideias.map((i) => `
-      <div class="d-flex align-items-center gap-2 flex-wrap ideia-acao" data-ideia-acao="${i.id}">
-        <span class="small flex-grow-1">${Modal.esc(i.texto_tratado || i.texto)}
-          <span class="text-muted">· ${Modal.esc(i.autor)}${i.votos ? ` · ★ ${i.votos}` : ''}</span></span>
+    const selo = (p) => (p.origem === 'SWOT'
+      ? `<span class="badge text-bg-light border" title="Fator da SWOT · ${Modal.esc(
+        Diag.QUADRANTES[p.categoria] || p.categoria)}">SWOT · ${Modal.esc(
+        Diag.QUADRANTES[p.categoria] || p.categoria)}</span>`
+      : `<span class="badge text-bg-light border">Coleta · ${Modal.esc(p.autor)}</span>`);
+    const linhas = pendentes.map((p) => `
+      <div class="d-flex align-items-center gap-2 flex-wrap ideia-acao" data-ideia-acao="${p.chave}">
+        <span class="small flex-grow-1">${Modal.esc(p.texto_tratado || p.texto)}
+          <span class="text-muted">${p.votos ? ` · ★ ${p.votos}` : ''}</span></span>
+        ${selo(p)}
         ${podeConverter ? `<button class="btn btn-sm btn-verde flex-shrink-0"
-          data-virar-acao="${i.id}">Transformar em ação</button>` : ''}
+          data-virar-acao="${p.chave}">Transformar em ação</button>` : ''}
       </div>`).join('');
     return `<div class="card mb-3 card-ideias-acao"><div class="card-body py-2 px-3">
-      <div class="rotulo-secao">Ideias aguardando plano de ação (${ideias.length})</div>
-      <div class="small text-muted mb-2">Vindas da coleta — atribua cada uma a uma iniciativa para virar ação.</div>
+      <div class="rotulo-secao">Aguardando plano de ação (${pendentes.length})</div>
+      <div class="small text-muted mb-2">Vindas da coleta e da SWOT — atribua cada uma a uma iniciativa para virar ação.</div>
       ${linhas}
     </div></div>`;
   },
 
-  // Transforma uma ideia pendente numa ação (desdobramento) de uma iniciativa
-  // existente, guardando o vínculo com a ideia da coleta.
+  // Transforma uma pendência numa ação (desdobramento) de uma iniciativa,
+  // guardando o vínculo com a origem — a ideia da coleta ou o fator da SWOT.
   modalConverterAcao(ideia) {
     if (!ideia) return;
+    const daSwot = ideia.origem === 'SWOT';
     const projetos = this.projetos || [];
     const comIniciativas = projetos.filter((p) => (p.iniciativas || []).length);
 
@@ -730,10 +772,13 @@ const SecaoProjetos = {
 
     const nomeIdeia = ideia.texto_tratado || ideia.texto;
     Modal.abrir({
-      titulo: 'Transformar ideia em ação',
+      titulo: daSwot ? 'Transformar fator da SWOT em ação' : 'Transformar ideia em ação',
       url: '/api/desdobramentos',
       valores: {
-        planejamento_id: this.plan.id, coleta_item_id: ideia.id,
+        planejamento_id: this.plan.id,
+        // Só o campo da origem certa viaja: mandar os dois faria o servidor
+        // fechar um vínculo que ninguém pediu
+        ...(daSwot ? { fator_id: ideia.id } : { coleta_item_id: ideia.id }),
         destino: destinos[0].valor,
         iniciativa_alvo: opcoesIniciativa[0]?.valor ?? '',
         projeto_alvo: opcoesProjeto[0]?.valor ?? '',
@@ -747,10 +792,15 @@ const SecaoProjetos = {
       },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'coleta_item_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'ideia', rotulo: 'Ideia da coleta', tipo: 'info', texto: ideia.texto,
-          barra: { cor: '#5a3e2b', titulo: ideia.autor } },
-        { nome: 'destino', rotulo: 'Onde esta ideia vira ação?', tipo: 'botoes', opcoes: destinos,
+        { nome: daSwot ? 'fator_id' : 'coleta_item_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'ideia', rotulo: daSwot ? 'Fator da SWOT' : 'Ideia da coleta', tipo: 'info',
+          texto: ideia.texto,
+          barra: daSwot
+            ? { cor: Diag.CORES_QUADRANTE[ideia.categoria] || '#007a45',
+                titulo: Diag.QUADRANTES[ideia.categoria] || 'SWOT' }
+            : { cor: '#5a3e2b', titulo: ideia.autor } },
+        { nome: 'destino', rotulo: daSwot ? 'Onde este fator vira ação?' : 'Onde esta ideia vira ação?',
+          tipo: 'botoes', opcoes: destinos,
           ajuda: 'A ação sempre entra numa iniciativa, e toda iniciativa vive dentro de um projeto.' },
         { nome: 'iniciativa_alvo', rotulo: 'Em qual iniciativa?', tipo: 'select',
           opcoes: opcoesIniciativa, visivelSe: { campo: 'destino', valores: ['INI'] },

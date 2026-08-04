@@ -349,6 +349,29 @@ const Diag = {
     </div>`;
   },
 
+  /**
+   * Estado do fator da SWOT em relação ao plano de ação, nos mesmos três
+   * estados da ideia da Coleta: fora da fila (botão que encaminha), na fila
+   * (selo que desfaz) e já convertida (selo que leva à ação em Projetos).
+   *
+   * O selo "Virou ação" NÃO oferece desfazer: a partir dali quem manda é a
+   * ação, e desfazer aqui a deixaria no plano sem nenhuma origem. O servidor
+   * recusa do mesmo jeito — este é o aviso antes da recusa, não no lugar dela.
+   */
+  seloPlanoAcao(f) {
+    if (f.desdobramento_id) {
+      return `<button type="button" class="badge selo-link text-bg-success" data-ir-acao="${f.desdobramento_id}"
+        title="Ver a ação no plano: ${Modal.esc(f.acao_titulo || '')}">Virou ação ↗</button>`;
+    }
+    if (!App.podeEditar()) return '';
+    if (f.acao_em) {
+      return `<button type="button" class="badge selo-link text-bg-secondary" data-tirar-acao="${f.id}"
+        title="Aguardando alocação em Projetos — clique para tirar da fila">Aguardando ação</button>`;
+    }
+    return `<button class="btn btn-sm btn-outline-primary" data-plano-acao="${f.id}"
+      title="Encaminhar para o plano de ação">→ Plano de ação</button>`;
+  },
+
   // Botões compactos abaixo do texto: SWOT à esquerda, editar/excluir à direita.
   // Depois de promovido, o botão mostra a categoria atribuída e reabre a edição.
   botoesFator(f, planId, comPromocao) {
@@ -634,10 +657,13 @@ const SecaoSwot = {
         const gut = f.score
           ? `<button type="button" class="badge selo-link text-bg-warning" data-ir-gut="${f.id}"
                title="Ver na Matriz GUT">GUT ${f.score}</button>` : '';
+        // Caminho do fator até o plano de ação, nos mesmos três estados da
+        // ideia da Coleta: fora da fila, na fila e já convertido em ação.
+        const acao = Diag.seloPlanoAcao(f);
         return `<div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
           <div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
-            ${origem}${gut}
+            ${origem}${gut}${acao}
             ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
               <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
               <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}" title="Excluir" aria-label="Excluir">×</button>
@@ -695,8 +721,28 @@ const SecaoSwot = {
     }));
     el.querySelectorAll('[data-ir-gut]').forEach((b) => b.addEventListener('click', () =>
       Diag.irParaFator('gut', b.dataset.irGut)));
+    // O selo "Virou ação" existe também para quem só lê, e por isso este
+    // listener fica ANTES da saída por podeEditar()
+    el.querySelectorAll('[data-ir-acao]').forEach((b) => b.addEventListener('click', () => {
+      SecaoProjetos.destacarAcao = b.dataset.irAcao;
+      App.mostrarSecao('projetos');
+    }));
 
     if (!App.podeEditar()) return;
+    const encaminharAcao = async (id, marcar) => {
+      try {
+        await App.api(`/api/fatores/${id}/plano-acao`, { planejamento_id: plan.id, marcar });
+        App.recarregarSecaoAtiva();
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+    el.querySelectorAll('[data-plano-acao]').forEach((b) => b.addEventListener('click', () =>
+      encaminharAcao(b.dataset.planoAcao, true)));
+    el.querySelectorAll('[data-tirar-acao]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Tirar este fator da fila do plano de ação?')) return;
+      encaminharAcao(b.dataset.tirarAcao, false);
+    }));
     const modalFator = (f = null, categoria = null) => Modal.abrir({
       titulo: f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,
       url: f ? `/api/fatores/${f.id}` : '/api/fatores',

@@ -33,8 +33,10 @@ class FatorController
                     (pr.id IS NOT NULL) AS promovido,
                     pr.id AS promovido_id, pr.categoria AS promovido_categoria,
                     pr.descricao AS promovido_descricao,
-                    ci.id AS coleta_item_id, ca.nome AS coleta_autor, co.n AS coleta_vozes
+                    ci.id AS coleta_item_id, ca.nome AS coleta_autor, co.n AS coleta_vozes,
+                    ds.o_que AS acao_titulo, ds.projeto_id AS acao_projeto_id
              FROM fator f
+             LEFT JOIN desdobramento ds ON ds.id = f.desdobramento_id
              LEFT JOIN gut g ON g.fator_id = f.id
              LEFT JOIN fator o ON o.id = f.promovido_de_id
              LEFT JOIN fator pr ON pr.promovido_de_id = f.id
@@ -88,12 +90,87 @@ class FatorController
         Json::ok(['id' => $id]);
     }
 
+    /**
+     * Fatores da SWOT encaminhados ao plano de ação e ainda sem ação criada.
+     *
+     * Espelha ColetaController::aguardandoAcao(): é a mesma fila, lida pela
+     * mesma tela de Projetos, e por isso devolve as mesmas chaves que o card
+     * de lá já consome (`texto`, `autor`), com a origem declarada em `origem`.
+     */
+    public function aguardandoAcao(): void
+    {
+        $planId = (int)($_GET['planejamento_id'] ?? 0);
+        Auth::exigirAcessoPlanejamento($planId);
+        Json::ok(Database::todos(
+            "SELECT f.id, f.ano, f.categoria, f.descricao AS texto, f.acao_em,
+                    COALESCE(u.nome, 'Diagnóstico') AS autor, 'SWOT' AS origem
+             FROM fator f
+             LEFT JOIN usuario u ON u.id = f.acao_por
+             WHERE f.planejamento_id = ? AND f.etapa = 'SWOT'
+               AND f.acao_em IS NOT NULL AND f.desdobramento_id IS NULL
+             ORDER BY f.acao_em, f.id",
+            [$planId]
+        ));
+    }
+
+    /**
+     * Marca (ou desmarca) um fator da SWOT como destino "Plano de ação".
+     *
+     * Só a SWOT: PESTEL e Porter descrevem o ambiente e o caminho deles para o
+     * plano é a promoção para um quadrante primeiro — deixar que virassem ação
+     * direto pularia a síntese que a SWOT existe para fazer.
+     */
+    public function planoAcao(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $u = Auth::exigirLogin();
+        $fator = $this->exigirFator($id, $planId);
+        if ($fator['etapa'] !== 'SWOT') {
+            Json::erro('Só um fator da SWOT vai direto para o plano de ação. '
+                . 'Promova-o para um quadrante primeiro.');
+        }
+        // `marcar` ausente vale como true: o botão da tela só envia o false
+        $marcar = !array_key_exists('marcar', $d) || (bool)$d['marcar'];
+
+        if (!$marcar) {
+            // Desmarcar depois de a ação existir deixaria a ação sem origem e
+            // o fator sem rastro dela. Quem quiser desfazer exclui a ação —
+            // a FK ON DELETE SET NULL devolve o fator para a fila sozinho.
+            if ($fator['desdobramento_id']) {
+                Json::erro('Este fator já virou uma ação no plano. '
+                    . 'Exclua a ação em Projetos para desfazer o encaminhamento.');
+            }
+            Database::executar(
+                'UPDATE fator SET acao_em = NULL, acao_por = NULL WHERE id = ?', [$id]
+            );
+            Json::ok(['acao_em' => null]);
+        }
+
+        if ($fator['acao_em']) {
+            Json::ok(['acao_em' => $fator['acao_em']]); // já estava na fila
+        }
+        Database::executar(
+            'UPDATE fator SET acao_em = NOW(), acao_por = ? WHERE id = ?',
+            [(int)$u['id'], $id]
+        );
+        Json::ok();
+    }
+
     public function excluir(int $id): void
     {
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
-        $this->exigirFator($id, $planId);
+        $fator = $this->exigirFator($id, $planId);
+        // Mesma recusa da ideia da Coleta que já virou ação: apagar aqui
+        // deixaria a ação no plano sem nenhuma origem, e ninguém saberia de
+        // onde ela veio nem por que existe.
+        if ($fator['desdobramento_id']) {
+            Json::erro('Este fator já virou uma ação no plano. '
+                . 'Exclua a ação em Projetos antes de excluir o fator.');
+        }
         // Solta o vínculo da Coleta (deste fator e do promovido) antes de
         // apagar: sem isso a ideia apontaria para um id morto e o rastreio
         // exibiria link quebrado.
