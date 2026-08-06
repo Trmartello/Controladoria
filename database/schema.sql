@@ -320,6 +320,13 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   dividido_de_id   INT NULL,
   agrupado_em_id   INT NULL,
   adiado           TINYINT(1) NOT NULL DEFAULT 0,
+  -- Quiz da cascata: a sugestão pertence a uma pergunta (célula) e declara de
+  -- que lado fala — a decisão (ESCOLHA) ou o que se abre mão (RENUNCIA).
+  -- `tipo_resposta` NOT NULL é a MARCA de item do quiz: é por ela que as
+  -- listagens da tempestade o deixam de fora (nunca por pergunta_id, cuja FK
+  -- é SET NULL e soltaria o item para dentro da tela errada).
+  pergunta_id      INT NULL,
+  tipo_resposta    ENUM('ESCOLHA','RENUNCIA') NULL,
   texto            TEXT NOT NULL,
   texto_tratado    TEXT NULL,
   destino_sugerido ENUM('CENARIO','PESTEL','PORTER','SWOT','NAO_SEI') NOT NULL DEFAULT 'NAO_SEI',
@@ -327,7 +334,7 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   impacto          ENUM('ALTO','BAIXO') NULL,
   esforco          ENUM('BAIXO','ALTO') NULL,
   votos            SMALLINT NOT NULL DEFAULT 0,
-  destino_tipo     ENUM('CENARIO','FATOR','ACAO') NULL,
+  destino_tipo     ENUM('CENARIO','FATOR','ACAO','CASCATA') NULL,
   destino_id       INT NULL,
   motivo           TEXT NULL,
   triado_por       INT NULL,
@@ -347,6 +354,11 @@ CREATE TABLE IF NOT EXISTS coleta_item (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Rodada de tempestade de ideias: sessão ao vivo com PIN para entrar
+-- A rodada tem um MODO: a tempestade clássica (tema aberto, matriz de
+-- prioridade) e o quiz da cascata (perguntas dirigidas a células da Cascata
+-- de Escolhas). É a MESMA sala — PIN, token, tetos, trava de força bruta —
+-- para os dois ritos; uma segunda sala seria a segunda cópia das regras de
+-- segurança das únicas rotas de escrita sem autenticação do sistema.
 CREATE TABLE IF NOT EXISTS coleta_rodada (
   id              INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id INT NOT NULL,
@@ -357,6 +369,7 @@ CREATE TABLE IF NOT EXISTS coleta_rodada (
   votacao         ENUM('FECHADA','ABERTA') NOT NULL DEFAULT 'FECHADA',
   max_ideias      TINYINT NOT NULL DEFAULT 5,
   max_votos       TINYINT NOT NULL DEFAULT 3,
+  modo            ENUM('TEMPESTADE','CASCATA') NOT NULL DEFAULT 'TEMPESTADE',
   criado_por      INT NOT NULL,
   criado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   encerrada_em    DATETIME NULL,
@@ -364,6 +377,31 @@ CREATE TABLE IF NOT EXISTS coleta_rodada (
   KEY idx_rodada_plan (planejamento_id, ano, situacao),
   CONSTRAINT fk_rod_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_rod_autor FOREIGN KEY (criado_por) REFERENCES usuario(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Roteiro do quiz da cascata: cada linha é uma célula da Cascata de Escolhas
+-- perguntada à sala. A pergunta ATIVA é a que a sala está respondendo agora —
+-- a fonte da verdade é esta situação, e não uma coluna na rodada: dois lugares
+-- dizendo "qual é a ativa" dessincronizariam na primeira corrida. Reabrir uma
+-- pergunta é devolvê-la a ATIVA; ENCERRADA ela para de aceitar envio, mas as
+-- sugestões continuam inteiras (navegar não apaga nada).
+CREATE TABLE IF NOT EXISTS cascata_pergunta (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  rodada_id    INT NOT NULL,
+  horizonte_id INT NOT NULL,
+  driver_id    INT NOT NULL,
+  eixo_id      INT NULL,
+  ordem        SMALLINT NOT NULL DEFAULT 0,
+  situacao     ENUM('PENDENTE','ATIVA','ENCERRADA') NOT NULL DEFAULT 'PENDENTE',
+  aberta_em    DATETIME NULL,
+  -- unicidade com NULL (síntese), como em cascata_escolha
+  eixo_chave   INT AS (COALESCE(eixo_id, 0)) STORED,
+  UNIQUE KEY uk_pergunta_celula (rodada_id, horizonte_id, driver_id, eixo_chave),
+  KEY idx_cp_ativa (rodada_id, situacao),
+  CONSTRAINT fk_cp_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cp_horizonte FOREIGN KEY (horizonte_id) REFERENCES horizonte(id),
+  CONSTRAINT fk_cp_driver FOREIGN KEY (driver_id) REFERENCES driver(id),
+  CONSTRAINT fk_cp_eixo FOREIGN KEY (eixo_id) REFERENCES eixo(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Voto de participante numa ideia da rodada (convergência opcional)

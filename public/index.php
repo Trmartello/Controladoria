@@ -163,6 +163,7 @@ $semCsrf = $caminho === '/api/login'
     || $caminho === '/api/publico/entrar'
     || $caminho === '/api/publico/ideia'
     || (bool)preg_match('#^/api/publico/ideia/\\d+$#', $caminho)
+    || $caminho === '/api/publico/resposta'
     || (bool)preg_match('#^/api/publico/votar/\\d+$#', $caminho);
 if ($metodo !== 'GET' && !$semCsrf) {
     Auth::validarCsrf();
@@ -170,6 +171,7 @@ if ($metodo !== 'GET' && !$semCsrf) {
 
 use App\Controllers\AuthController;
 use App\Controllers\CascataController;
+use App\Controllers\CascataQuizController;
 use App\Controllers\CenarioController;
 use App\Controllers\ColetaController;
 use App\Controllers\CicloController;
@@ -238,6 +240,8 @@ try {
         case $rota === 'GET /api/publico/votar':   (new PublicoController())->paraVotar(); break;
         case $rota === 'POST /api/publico/entrar': (new PublicoController())->entrar(); break;
         case $rota === 'POST /api/publico/ideia':  (new PublicoController())->ideia(); break;
+        // Resposta do quiz da cascata (escolha ou renúncia da pergunta ativa)
+        case $rota === 'POST /api/publico/resposta': (new PublicoController())->resposta(); break;
         case (bool)preg_match('#^POST /api/publico/ideia/(\\d+)$#', $rota, $m):
             (new PublicoController())->editarIdeia((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/publico/votar/(\\d+)$#', $rota, $m):
@@ -309,6 +313,13 @@ try {
 
         case $rota === 'GET /api/cascata':          (new CascataController())->listar(); break;
         case $rota === 'POST /api/cascata':         (new CascataController())->salvar(); break;
+        // Quiz da cascata — rotas do condutor (a escrita do participante é pública)
+        case $rota === 'GET /api/cascata/quiz':          (new CascataQuizController())->estado(); break;
+        case $rota === 'POST /api/cascata/quiz/abrir':   (new CascataQuizController())->abrir(); break;
+        case $rota === 'POST /api/cascata/quiz/perguntar': (new CascataQuizController())->perguntar(); break;
+        case $rota === 'POST /api/cascata/quiz/encerrar':  (new CascataQuizController())->encerrar(); break;
+        case (bool)preg_match('#^POST /api/cascata/quiz/sugestao/(\d+)/excluir$#', $rota, $m):
+            (new CascataQuizController())->excluirSugestao((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/cascata/(\d+)/excluir$#', $rota, $m):
             (new CascataController())->excluir((int)$m[1]); break;
 

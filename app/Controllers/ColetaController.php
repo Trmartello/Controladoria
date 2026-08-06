@@ -48,7 +48,10 @@ class ColetaController
              -- A etapa do fator é o que dá nome à tag do destino na matriz:
              -- destino_tipo só diz FATOR, não se virou PESTEL, Porter ou SWOT
              LEFT JOIN fator df ON df.id = ci.destino_id AND ci.destino_tipo = 'FATOR'
-             WHERE ci.planejamento_id = ?{$filtroAno}
+             -- Resposta do quiz da cascata fica FORA da tela da Coleta: o rito
+             -- dela é outro (as duas colunas da pergunta, em Cascata). A marca
+             -- é tipo_resposta, que nunca é solta — pergunta_id tem FK SET NULL
+             WHERE ci.planejamento_id = ? AND ci.tipo_resposta IS NULL{$filtroAno}
              ORDER BY ci.situacao = 'NOVO' DESC, ci.criado_em, ci.id",
             $params
         );
@@ -121,8 +124,11 @@ class ColetaController
             // aberta, para aparecer na nuvem. Só aceita rodada aberta deste
             // planejamento; qualquer outro valor cai para avulsa (NULL).
             $rodadaId = isset($d['rodada_id']) && $d['rodada_id'] !== '' ? (int)$d['rodada_id'] : null;
+            // Só rodada TEMPESTADE: numa sessão do quiz da cascata a "nuvem" é
+            // outra (as duas colunas da pergunta), e a ideia manual cairia lá
             if ($rodadaId !== null && !Database::um(
-                "SELECT id FROM coleta_rodada WHERE id = ? AND planejamento_id = ? AND situacao = 'ABERTA'",
+                "SELECT id FROM coleta_rodada
+                 WHERE id = ? AND planejamento_id = ? AND situacao = 'ABERTA' AND modo = 'TEMPESTADE'",
                 [$rodadaId, $planId]
             )) {
                 $rodadaId = null;
@@ -812,8 +818,14 @@ class ColetaController
 
     private function exigirItem(int $id, int $planId): array
     {
+        // `tipo_resposta IS NULL` isola os dois ritos: resposta do quiz da
+        // cascata NUNCA é alcançada pelas operações da tempestade (dividir,
+        // agrupar, priorizar, encaminhar...) — agrupar uma resposta de quiz com
+        // uma ideia da tempestade corromperia os dois lados. O quiz tem os
+        // próprios caminhos (CascataQuizController / CascataController).
         $item = Database::um(
-            'SELECT * FROM coleta_item WHERE id = ? AND planejamento_id = ?',
+            'SELECT * FROM coleta_item
+             WHERE id = ? AND planejamento_id = ? AND tipo_resposta IS NULL',
             [$id, $planId]
         );
         if (!$item) {

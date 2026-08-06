@@ -19,7 +19,7 @@
 <body class="corpo-participante">
   <div class="participante-topo">
     <span class="marca">COPÉRDIA</span>
-    <span class="small">Tempestade de ideias</span>
+    <span class="small" id="topo-rotulo">Tempestade de ideias</span>
   </div>
   <main class="participante-area" id="tela" data-pin="<?= htmlspecialchars($pin, ENT_QUOTES, 'UTF-8') ?>"></main>
   <script src="<?= versao_asset('/assets/js/participante.js') ?>"></script>

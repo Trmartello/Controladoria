@@ -90,11 +90,15 @@ Mudanças, todas aditivas e por `garantirColuna`/`garantirFk`:
 | Tabela | Coluna | Para quê |
 |---|---|---|
 | `coleta_rodada` | `modo ENUM('TEMPESTADE','CASCATA')` default `TEMPESTADE` | separa os dois ritos sem separar o código |
-| `coleta_rodada` | `pergunta_ativa_id INT NULL` | qual célula a sala está respondendo agora |
 | `coleta_item` | `pergunta_id INT NULL` | a qual pergunta a sugestão responde |
 | `coleta_item` | `tipo_resposta ENUM('ESCOLHA','RENUNCIA') NULL` | se a sugestão é a decisão ou o que se abre mão |
 | `coleta_item.destino_tipo` | + `'CASCATA'` | a sugestão virou a escolha de uma célula |
 | `cascata_pergunta` | tabela nova | o roteiro do encontro |
+
+*(Desvio da Fase 1, para melhor: o plano previa `pergunta_ativa_id` na rodada,
+mas a fonte da verdade da pergunta ativa é `cascata_pergunta.situacao='ATIVA'`
+— dois lugares dizendo "qual é a ativa" dessincronizariam na primeira corrida,
+e a coluna criaria FK circular entre rodada e pergunta.)*
 
 `coleta_item.destino_id` passa a poder apontar para `cascata_escolha.id`, como
 já aponta para `fator`, `cenario_item` e `desdobramento`. O vínculo continua
@@ -344,7 +348,11 @@ Coisas que a tempestade não tem e que vão morder se passarem batido:
 
 Cada fase é útil sozinha e pode ser validada antes da seguinte.
 
-**Fase 1 — o quiz de uma célula, ponta a ponta.**
+**Fase 1 — o quiz de uma célula, ponta a ponta.** ✅ *entregue em 06/08/2026;
+além do combinado, entraram: trocar o alvo da pergunta (síntese ↔ eixos) pelo
+próprio botão "Perguntar à sala", a exclusão de sugestão pelo condutor, o
+desvincular pelo ✕ da voz na célula, e o "✓ usada" na tela do participante.*
+
 Modelo (`modo`, `cascata_pergunta`, `pergunta_id`, `tipo_resposta`), abrir
 sessão a partir da célula, tela do participante respondendo com o par
 Escolha/Renúncia e o contador de 255, as duas áreas de coleta no painel do

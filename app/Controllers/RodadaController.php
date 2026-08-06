@@ -31,7 +31,7 @@ class RodadaController
         // planejamento não o recebe. Sem isso, um perfil LEITURA — barrado em
         // POST /api/coleta — lia o PIN aqui e gravava ideias pela porta pública.
         $podeEditar = (Auth::usuario()['perfil'] ?? '') !== 'LEITURA';
-        $colunas = $podeEditar ? 'r.*' : 'r.id, r.planejamento_id, r.ano, r.tema, r.situacao,
+        $colunas = $podeEditar ? 'r.*' : 'r.id, r.planejamento_id, r.ano, r.tema, r.situacao, r.modo,
                     r.votacao, r.max_ideias, r.max_votos, r.criado_por, r.criado_em, r.encerrada_em';
         Json::ok(Database::todos(
             "SELECT {$colunas}, u.nome AS autor,
@@ -65,12 +65,16 @@ class RodadaController
         // Duas rodadas abertas no mesmo plano deixariam uma delas invisível no
         // painel — e ela seguiria aceitando ideias pelo PIN antigo
         $jaAberta = Database::um(
-            "SELECT id, ano FROM coleta_rodada WHERE planejamento_id = ? AND situacao = 'ABERTA'",
+            "SELECT id, ano, modo FROM coleta_rodada WHERE planejamento_id = ? AND situacao = 'ABERTA'",
             [$planId]
         );
         if ($jaAberta) {
-            Json::erro("Já existe uma rodada aberta neste planejamento (ano {$jaAberta['ano']}). "
-                . 'Encerre-a antes de abrir outra.');
+            // A sala aberta pode ser o quiz da cascata: a mensagem diz qual é,
+            // senão o condutor procura uma tempestade que não existe
+            Json::erro($jaAberta['modo'] === 'CASCATA'
+                ? 'Há uma sessão da cascata aberta neste planejamento. Encerre-a na seção Cascata antes.'
+                : "Já existe uma rodada aberta neste planejamento (ano {$jaAberta['ano']}). "
+                    . 'Encerre-a antes de abrir outra.');
         }
         $maxIdeias = max(1, min(self::MAX_IDEIAS, (int)($d['max_ideias'] ?? 5)));
         $maxVotos = max(1, min(self::MAX_VOTOS, (int)($d['max_votos'] ?? 3)));

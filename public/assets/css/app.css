@@ -1475,3 +1475,49 @@ body.menu-aberto .menu-lateral {
   visibility: visible;
   transition: transform .25s ease, visibility 0s;
 }
+
+/* ===== Quiz da cascata — as duas áreas de coleta e as vozes na célula ===== */
+.painel-quiz-vivo { border-left: 4px solid var(--verde-coperdia); background: #f6faf8; }
+.coluna-quiz {
+  border-radius: .5rem;
+  padding: .5rem .6rem;
+  height: 100%;
+}
+.coluna-escolha { background: rgba(0, 122, 69, .07); border-top: 3px solid #007a45; }
+.coluna-renuncia { background: rgba(143, 59, 59, .07); border-top: 3px solid #8f3b3b; }
+.ficha-sugestao {
+  background: #fff;
+  border: 1px solid #e3e8e5;
+  border-radius: .4rem;
+  padding: .4rem .55rem;
+  margin-bottom: .4rem;
+}
+.ficha-sugestao.vinculada { border-color: var(--verde-coperdia); background: #eef7f2; }
+/* Voz vinculada dentro da célula: selo com o ✕ de dimensão real (nunca
+   ::after sobreposto — áreas invisíveis se cobrem e o toque erra o alvo) */
+.voz-vinculada {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-weight: 500;
+}
+.voz-escolha { color: #007a45; background: rgba(0, 122, 69, .12); }
+.voz-renuncia { color: #8f3b3b; background: rgba(143, 59, 59, .12); }
+.btn-desvincular {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: .9rem;
+  line-height: 1;
+  padding: .1rem .25rem;
+  min-width: 1.4rem;
+  min-height: 1.4rem;
+  cursor: pointer;
+}
+.btn-desvincular:hover { color: #b3261e; }
+/* Par Escolha/Renúncia do participante: alvos generosos no toque */
+.par-tipo-resposta .btn { min-height: 2.75rem; }
+.contexto-pergunta {
+  border-left: 4px solid var(--verde-coperdia);
+  padding-left: .75rem;
+}

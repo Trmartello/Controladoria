@@ -223,7 +223,8 @@ const SecaoColeta = {
           i.texto_tratado, i.agrupado_em_id]));
         const antes = retrato(this.itens);
         this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
-        this.rodadas = await App.api(`/api/rodadas?planejamento_id=${this.plan.id}&ano=${ano}`);
+        this.rodadas = (await App.api(`/api/rodadas?planejamento_id=${this.plan.id}&ano=${ano}`))
+          .filter((r) => r.modo !== 'CASCATA');
         if (antes !== retrato(this.itens)) this.carregar();
       } catch (e) { /* rede instável na oficina: tenta de novo no próximo ciclo */ }
     }, 3000);
@@ -238,6 +239,9 @@ const SecaoColeta = {
       App.api(`/api/coleta?planejamento_id=${plan.id}&ano=${ano}`),
       App.api(`/api/rodadas?planejamento_id=${plan.id}&ano=${ano}`).catch(() => []),
     ]);
+    // Sessão do quiz da cascata fica FORA desta tela: é outra sala, com
+    // outro rito (a condução mora na seção Cascata de Escolhas)
+    this.rodadas = this.rodadas.filter((r) => r.modo !== 'CASCATA');
     this.rodadaAberta = this.rodadas.find((r) => r.situacao === 'ABERTA') || null;
     this.prepararReclassificacao();
 

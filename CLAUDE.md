@@ -124,6 +124,31 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   tela, com confirmação.
 - Excluir um fator de PESTEL/Porter/SWOT remove também o promovido para a SWOT
   e a linha correspondente na matriz GUT (`FatorController::excluir`).
+- **Quiz da cascata** (`coleta_rodada.modo = 'CASCATA'`): a MESMA sala da
+  tempestade — PIN, token, tetos, trava de força bruta — respondendo células da
+  Cascata de Escolhas, uma pergunta ativa por vez (`cascata_pergunta.situacao`
+  é a única fonte da verdade; não existe coluna "pergunta ativa" na rodada).
+  Regras que não podem ser afrouxadas, além das da tempestade: o teto de envios
+  conta por **(pergunta, tipo)** dentro do INSERT; o corpo declara o
+  `pergunta_id` que o participante VIA e o servidor recusa com 409 se divergir
+  da ativa (nunca grava "na ativa" às cegas); `tipo_resposta` é lista branca; o
+  limite é 255 **no servidor**. O isolamento entre os ritos é
+  `tipo_resposta IS NULL` (nunca `pergunta_id`, cuja FK é SET NULL): filtra o
+  `listar()` e o `exigirItem()` da Coleta, e as rotas públicas guardam o modo
+  nos DOIS sentidos — `resposta()` recusa TEMPESTADE, `ideia()`/`votar()`
+  recusam CASCATA (sem o espelho, participante do quiz plantava ideia de 400
+  chars direto na fila de triagem). O `estado()` do quiz **omite o PIN para
+  perfil LEITURA**, como `RodadaController::listar` — o PIN é credencial de
+  escrita. Vincular sugestão à célula é conjunto no `CascataController::salvar`
+  (campo `sugestoes`, como `fatores`): muitas vozes com `destino_tipo='CASCATA'`
+  + situacao ACEITO (congela a edição do autor), UM texto por lado; a guarda do
+  vínculo é a CÉLULA (JOIN pela pergunta), nunca a rodada. No front: o rádio
+  focado do par Escolha/Renúncia NÃO conta como "digitando" (congelava o
+  polling); o rascunho atravessa redesenhos por `rascunhoPendente`; o 409 de
+  pergunta trocada rebusca e redesenha com o rascunho (senão vira beco); o
+  ditado dispara `input` manualmente para o contador; e o polling do condutor
+  rebusca `this.dados` junto com o estado, senão o modal reenviava conjunto
+  velho de vínculos. Plano e decisões: `docs/CASCATA-QUIZ-COLABORATIVO.md`.
 - **Tempestade de ideias**: rodada com PIN de 6 dígitos (`coleta_rodada`), tela
   do participante em `/entrar/{pin}` — **as únicas rotas de escrita sem
   autenticação do sistema**. Regras que não podem ser afrouxadas: o token do

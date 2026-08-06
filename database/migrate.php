@@ -169,6 +169,27 @@ if ($tipoDestinoCi && !str_contains((string)$tipoDestinoCi, 'ACAO')) {
     echo "migrate: coleta_item.destino_tipo agora aceita ACAO (plano de ação).\n";
 }
 
+// ---- Quiz da cascata: a sala responde células da Cascata de Escolhas ----
+// A rodada ganha um modo (a MESMA sala serve os dois ritos) e a sugestão passa
+// a pertencer a uma pergunta, declarando de que lado fala (escolha/renúncia).
+garantirColuna($pdo, 'coleta_rodada', 'modo',
+    "ALTER TABLE coleta_rodada ADD COLUMN modo ENUM('TEMPESTADE','CASCATA')
+     NOT NULL DEFAULT 'TEMPESTADE' AFTER max_votos");
+garantirColuna($pdo, 'coleta_item', 'pergunta_id',
+    'ALTER TABLE coleta_item ADD COLUMN pergunta_id INT NULL AFTER rodada_id');
+garantirColuna($pdo, 'coleta_item', 'tipo_resposta',
+    "ALTER TABLE coleta_item ADD COLUMN tipo_resposta ENUM('ESCOLHA','RENUNCIA') NULL
+     AFTER pergunta_id");
+$tipoDestinoCi2 = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'destino_tipo'"
+)->fetchColumn();
+if ($tipoDestinoCi2 && !str_contains((string)$tipoDestinoCi2, 'CASCATA')) {
+    $pdo->exec("ALTER TABLE coleta_item MODIFY COLUMN destino_tipo
+                ENUM('CENARIO','FATOR','ACAO','CASCATA') NULL");
+    echo "migrate: coleta_item.destino_tipo agora aceita CASCATA (célula da cascata).\n";
+}
+
 // O projeto pertence a um ano do planejamento; o horizonte deriva do ano.
 // Backfill: o horizonte escolhido explicitamente vence a data de início, e o
 // último recurso é o primeiro ano de execução (ano_base é o ano de elaboração,
@@ -482,6 +503,14 @@ garantirFk($pdo, 'coleta_item', 'fk_ci_rodada',
 garantirFk($pdo, 'coleta_item', 'fk_ci_triador',
     'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_triador
      FOREIGN KEY (triado_por) REFERENCES usuario(id) ON DELETE SET NULL');
+// SET NULL, não CASCADE: sumindo a pergunta, a sugestão sobrevive como voz
+// registrada — e é por isso que o isolamento das telas da tempestade usa
+// tipo_resposta, que nunca é solto, e não pergunta_id
+$pdo->exec('UPDATE coleta_item SET pergunta_id = NULL WHERE pergunta_id IS NOT NULL
+            AND pergunta_id NOT IN (SELECT id FROM cascata_pergunta)');
+garantirFk($pdo, 'coleta_item', 'fk_ci_pergunta',
+    'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_pergunta
+     FOREIGN KEY (pergunta_id) REFERENCES cascata_pergunta(id) ON DELETE SET NULL');
 
 // Quem entra pela tempestade não tem conta: o autor passa a ser opcional
 $autorNulo = $pdo->query(

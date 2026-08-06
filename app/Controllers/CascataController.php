@@ -36,6 +36,17 @@ class CascataController
                  ORDER BY g.score DESC, f.id',
                 [$e['id']]
             );
+            // Vozes do quiz que sustentam a decisão — muitas por célula, cada
+            // uma com autor e lado; o texto da célula continua sendo um só
+            $e['sugestoes'] = Database::todos(
+                "SELECT ci.id, ci.texto, ci.tipo_resposta, ci.votos,
+                        COALESCE(u.nome, ci.autor_nome, 'Participante') AS autor
+                 FROM coleta_item ci
+                 LEFT JOIN usuario u ON u.id = ci.autor_id
+                 WHERE ci.destino_tipo = 'CASCATA' AND ci.destino_id = ?
+                 ORDER BY ci.tipo_resposta, ci.votos DESC, ci.id",
+                [$e['id']]
+            );
         }
 
         Json::ok([
@@ -52,6 +63,10 @@ class CascataController
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
         $plan = Auth::exigirEdicaoPlanejamento($planId);
+        // exigirEdicaoPlanejamento devolve o PLANEJAMENTO; o vínculo das
+        // sugestões grava triado_por, que precisa do usuário — usar o retorno
+        // errado aqui estouraria a FK para usuario (defeito já catalogado)
+        $u = Auth::exigirLogin();
 
         $horizonteId = (int)($d['horizonte_id'] ?? 0);
         $driverId    = (int)($d['driver_id'] ?? 0);
@@ -113,6 +128,40 @@ class CascataController
                 );
             }
         }
+
+        // Vozes do quiz da cascata amarradas a esta célula. O front manda o
+        // CONJUNTO (como `fatores`): quem saiu é solto, quem entrou é amarrado.
+        // Muitas vozes, um texto por lado — o vínculo registra a origem; o
+        // texto da célula é o que o condutor redigiu acima.
+        if (array_key_exists('sugestoes', $d)) {
+            $sugestoes = array_values(array_unique(array_map('intval', (array)$d['sugestoes'])));
+            $marcas = $sugestoes ? implode(',', array_fill(0, count($sugestoes), '?')) : '';
+            // Solta quem saiu do conjunto: volta a NOVO, editável de novo pelo
+            // autor — o mesmo papel do "Desmarcar" da tempestade
+            Database::executar(
+                "UPDATE coleta_item SET destino_tipo = NULL, destino_id = NULL,
+                   situacao = 'NOVO', triado_por = NULL, triado_em = NULL
+                 WHERE destino_tipo = 'CASCATA' AND destino_id = ?"
+                . ($marcas ? " AND id NOT IN ({$marcas})" : ''),
+                array_merge([$id], $sugestoes)
+            );
+            foreach ($sugestoes as $sugestaoId) {
+                // A guarda é a CÉLULA, não a rodada: encontros diferentes podem
+                // ter perguntado a mesma célula, e todas essas vozes valem. O
+                // JOIN recusa sugestão de outra célula, de outro plano ou que
+                // não seja do quiz (tipo_resposta nulo).
+                Database::executar(
+                    "UPDATE coleta_item ci
+                     JOIN cascata_pergunta cp ON cp.id = ci.pergunta_id
+                     SET ci.destino_tipo = 'CASCATA', ci.destino_id = ?,
+                         ci.situacao = 'ACEITO', ci.triado_por = ?, ci.triado_em = NOW()
+                     WHERE ci.id = ? AND ci.planejamento_id = ? AND ci.tipo_resposta IS NOT NULL
+                       AND cp.horizonte_id = ? AND cp.driver_id = ?
+                       AND COALESCE(cp.eixo_id, 0) = COALESCE(?, 0)",
+                    [$id, (int)$u['id'], $sugestaoId, $planId, $horizonteId, $driverId, $eixoId]
+                );
+            }
+        }
         Json::ok(['id' => $id]);
     }
 
@@ -130,6 +179,14 @@ class CascataController
         }
         // Projetos originados desta escolha perdem o vínculo (a FK não tem ON DELETE)
         Database::executar('UPDATE projeto SET cascata_id = NULL WHERE cascata_id = ?', [$id]);
+        // Vozes do quiz voltam a soltas (e editáveis), como cenário/fator fazem
+        // com a ideia da Coleta: sem isso ficariam apontando para um id morto
+        Database::executar(
+            "UPDATE coleta_item SET destino_tipo = NULL, destino_id = NULL,
+               situacao = 'NOVO', triado_por = NULL, triado_em = NULL
+             WHERE destino_tipo = 'CASCATA' AND destino_id = ?",
+            [$id]
+        );
         // O diário é polimórfico (ref_tipo/ref_id) e não tem FK: sem apagar
         // junto, os registros ficariam órfãos para sempre no banco
         Database::executar(

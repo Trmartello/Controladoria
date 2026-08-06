@@ -12,6 +12,9 @@ const Participante = {
   relogio: null,
   ultimaAssinatura: null,
   editando: null,
+  // Quiz da cascata: o lado que a pessoa escolheu responder (sobrevive ao
+  // redesenho — o par de botões é re-pintado com ele)
+  tipoResposta: 'ESCOLHA',
 
   // Ditado por voz (Web Speech API) — o microfone só aparece se o navegador
   // suportar. A lógica é replicada do modal.js porque esta página é autônoma
@@ -115,7 +118,11 @@ const Participante = {
     // Ditando ou editando? O redesenho mataria o ditado / fecharia o editor.
     if (this.botaoGravando || this.editando !== null) return true;
     const ativo = document.activeElement;
-    if (ativo && (ativo.tagName === 'TEXTAREA' || ativo.tagName === 'INPUT')) return true;
+    // Rádio/checkbox focado NÃO é "digitando": tocar o par Escolha/Renúncia
+    // deixa o foco no input e, sem esta exceção, congelava o polling para
+    // sempre — a pergunta nunca mais mudava naquele celular
+    if (ativo && (ativo.tagName === 'TEXTAREA'
+      || (ativo.tagName === 'INPUT' && !['radio', 'checkbox'].includes(ativo.type)))) return true;
     const campo = document.getElementById('campo-ideia');
     return !!(campo && campo.value.trim() !== '');
   },
@@ -124,6 +131,9 @@ const Participante = {
   assinatura() {
     return JSON.stringify([
       this.rodada?.situacao, this.rodada?.tema, this.votacao?.votacao,
+      // A pergunta ativa do quiz: quando a condução avança (ou reabre), o
+      // cabeçalho e a lista de respostas precisam acompanhar
+      this.rodada?.pergunta?.id,
       this.minhas.map((i) => [i.id, i.texto, i.situacao]),
       (this.votacao?.itens || []).map((i) => [i.id, i.votei]),
       this.votacao?.meus_votos,
@@ -141,7 +151,10 @@ const Participante = {
         return;
       }
       this.minhas = await this.api(`/api/publico/minhas?pin=${this.pin}`);
-      this.votacao = await this.api(`/api/publico/votar?pin=${this.pin}`);
+      // Votação é rito da tempestade; no quiz ela chega na fase da estrela
+      this.votacao = this.rodada.modo === 'CASCATA'
+        ? null
+        : await this.api(`/api/publico/votar?pin=${this.pin}`);
     } catch (e) {
       if (!silencioso) this.telaEntrada(e.message);
       return;
@@ -158,6 +171,10 @@ const Participante = {
     // Um redesenho invalida o botão do mic; encerra qualquer ditado em curso.
     this.pararDitado();
     const r = this.rodada;
+    if (r.modo === 'CASCATA') {
+      this.renderQuiz();
+      return;
+    }
     const rascunho = document.getElementById('campo-ideia')?.value ?? '';
     const encerrada = r.situacao !== 'ABERTA';
     const votando = this.votacao?.votacao === 'ABERTA';
@@ -198,6 +215,186 @@ const Participante = {
     if (this.minhas.length && !votando) this.ligarEdicaoIdeias();
     if (votando) this.ligarVotacao();
     this.ligarDitado();
+  },
+
+  // ---- Quiz da cascata ----
+  /**
+   * A sala responde UMA célula da Cascata de Escolhas por vez. O participante
+   * escolhe o lado (Escolha ou Renúncia) num par de botões, escreve em até 255
+   * caracteres — com contador — e pode mandar várias de cada lado, até o teto.
+   * Quando a condução troca a pergunta, o cabeçalho acompanha sozinho (via
+   * assinatura do polling; nunca no meio da digitação).
+   */
+  renderQuiz() {
+    const r = this.rodada;
+    // O rascunho sobrevive a QUALQUER redesenho: do campo atual ou do que foi
+    // guardado quando o campo não existia (lado com o teto esgotado)
+    const rascunho = this.rascunhoPendente ?? (document.getElementById('campo-ideia')?.value ?? '');
+    this.rascunhoPendente = null;
+    const rotulo = document.getElementById('topo-rotulo');
+    if (rotulo) rotulo.textContent = 'Cascata de Escolhas';
+    const encerrada = r.situacao !== 'ABERTA';
+    const p = r.pergunta;
+    const minhasDaPergunta = p ? this.minhas.filter((i) => i.pergunta_id === p.id) : [];
+
+    this.tela.innerHTML = `
+      <div class="cartao-participante">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="badge text-bg-light border">PIN ${this.esc(this.pin)}</span>
+          <span class="small text-muted flex-grow-1">${this.esc(this.nome)}</span>
+        </div>
+        ${encerrada
+          ? '<div class="alert alert-secondary py-2 small mt-3">Esta sessão foi encerrada. Obrigado por participar!</div>'
+          : p ? this.blocoQuiz(p, minhasDaPergunta) : `
+            <h1 class="h5 tema-rodada">${this.esc(r.tema || 'Cascata de Escolhas')}</h1>
+            <div class="alert alert-info py-2 small mt-3">Aguarde: a condução vai abrir a
+              próxima pergunta no telão.</div>`}
+      </div>`;
+
+    if (!encerrada && p) {
+      const campo = document.getElementById('campo-ideia');
+      if (campo && rascunho) campo.value = rascunho;
+      // Sem campo neste lado (teto esgotado), o rascunho espera o lado voltar
+      else if (!campo && rascunho) this.rascunhoPendente = rascunho;
+      this.ligarQuiz(p);
+      if (minhasDaPergunta.length) this.ligarEdicaoIdeias();
+    }
+    this.ligarDitado();
+  },
+
+  blocoQuiz(p, minhas) {
+    const meta = `${p.horizonte} · ${p.ano_inicio}–${p.ano_fim} · “${this.esc(p.tema)}”`;
+    const lado = (tipo) => minhas.filter((i) => i.tipo_resposta === tipo);
+    const restamEscolha = this.rodada.max_ideias - lado('ESCOLHA').length;
+    const restamRenuncia = this.rodada.max_ideias - lado('RENUNCIA').length;
+    const tipo = this.tipoResposta;
+    const restam = tipo === 'RENUNCIA' ? restamRenuncia : restamEscolha;
+    const area = `<textarea id="campo-ideia" class="form-control" rows="3" maxlength="255"
+          placeholder="${tipo === 'RENUNCIA'
+            ? 'Do que abrimos mão nesta célula?'
+            : 'O que você decidiria nesta célula?'}"></textarea>`;
+
+    return `
+      <div class="contexto-pergunta">
+        <div class="small text-muted">${this.esc(meta)}</div>
+        <h1 class="h5 mb-1">${this.esc(p.driver)}${p.eixo ? ` · Eixo ${this.esc(p.eixo)}` : ' · Síntese'}</h1>
+        <div class="small text-muted">${this.esc(p.objetivo || '')}</div>
+      </div>
+
+      <div class="mt-3" role="radiogroup" aria-label="O que você vai sugerir">
+        <div class="btn-group w-100 par-tipo-resposta">
+          <input type="radio" class="btn-check" name="tipo-resposta" id="tipo-escolha"
+            value="ESCOLHA" ${tipo === 'ESCOLHA' ? 'checked' : ''}>
+          <label class="btn btn-outline-success" for="tipo-escolha">Escolha</label>
+          <input type="radio" class="btn-check" name="tipo-resposta" id="tipo-renuncia"
+            value="RENUNCIA" ${tipo === 'RENUNCIA' ? 'checked' : ''}>
+          <label class="btn btn-outline-danger" for="tipo-renuncia">Renúncia</label>
+        </div>
+      </div>
+
+      ${restam <= 0
+        ? `<div class="alert alert-success py-2 small mt-3">Você enviou todas as suas
+             ${tipo === 'RENUNCIA' ? 'renúncias' : 'respostas'} desta pergunta.
+             ${tipo === 'RENUNCIA' ? (restamEscolha > 0 ? 'Ainda pode sugerir escolhas.' : '')
+               : (restamRenuncia > 0 ? 'Ainda pode sugerir renúncias.' : '')}</div>`
+        : `<div class="mt-3">
+          <label class="form-label small" for="campo-ideia">Sua sugestão de
+            ${tipo === 'RENUNCIA' ? 'renúncia' : 'escolha'}</label>
+          ${this.comVoz(area, 'campo-ideia')}
+          <div class="d-flex align-items-center gap-2 mt-2">
+            <span class="small text-muted" id="contador-resposta">0/255</span>
+            <span class="small text-muted flex-grow-1">Pode enviar mais ${restam}.</span>
+            <button class="btn btn-verde" id="btn-enviar">Enviar</button>
+          </div>
+          <div id="aviso-envio" class="small mt-2"></div>
+        </div>`}
+
+      ${minhas.length ? `
+        <div class="mt-4">
+          <div class="rotulo-secao">Suas sugestões nesta pergunta</div>
+          ${minhas.map((i) => this.editando === i.id
+            ? this.editorIdeia(i)
+            : `<div class="ideia-minha d-flex align-items-start gap-2">
+                 <span class="badge ${i.tipo_resposta === 'RENUNCIA'
+                   ? 'text-bg-danger' : 'text-bg-success'} flex-shrink-0">${
+                   i.tipo_resposta === 'RENUNCIA' ? 'Renúncia' : 'Escolha'}</span>
+                 <span class="flex-grow-1">${this.esc(i.texto)}</span>
+                 ${i.situacao === 'NOVO'
+                   ? `<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none flex-shrink-0"
+                        data-editar="${i.id}" aria-label="Editar sugestão">✎</button>`
+                   : '<span class="small text-success flex-shrink-0" title="Usada pela condução">✓ usada</span>'}
+               </div>`).join('')}
+        </div>` : ''}`;
+  },
+
+  ligarQuiz(p) {
+    // O par de botões troca o lado; o rascunho digitado fica onde está
+    this.tela.querySelectorAll('input[name="tipo-resposta"]').forEach((radio) =>
+      radio.addEventListener('change', () => {
+        // O valor sai do RÁDIO MARCADO, nunca do contêiner (a lição do
+        // visivelSe: ler .value da div devolve undefined)
+        this.tipoResposta = radio.checked ? radio.value : this.tipoResposta;
+        // O rascunho atravessa a troca pelo mesmo canal do renderQuiz — mesmo
+        // quando o lado de destino está esgotado e o campo não vai existir
+        this.rascunhoPendente = document.getElementById('campo-ideia')?.value ?? '';
+        this.render();
+        this.atualizarContador();
+      }));
+
+    const campo = document.getElementById('campo-ideia');
+    const btn = document.getElementById('btn-enviar');
+    if (!campo || !btn) return;
+    // Contador ao digitar: mexe SÓ no texto do span — redesenhar aqui fecharia
+    // o teclado no meio da frase, a regra de ouro do polling vale para ele
+    campo.addEventListener('input', () => this.atualizarContador());
+    this.atualizarContador();
+
+    btn.addEventListener('click', async () => {
+      this.pararDitado();
+      const texto = campo.value.trim();
+      if (!texto) return;
+      const aviso = document.getElementById('aviso-envio');
+      btn.disabled = true;
+      try {
+        // pergunta_id diz o que a pessoa estava VENDO: se a condução avançou
+        // no meio da digitação, o servidor recusa em vez de gravar às cegas
+        await this.api('/api/publico/resposta', {
+          pin: this.pin, token: this.token, pergunta_id: p.id,
+          tipo: this.tipoResposta, texto,
+        });
+        campo.value = '';
+        await this.atualizar(true);
+        const novo = document.getElementById('aviso-envio');
+        if (novo) {
+          novo.className = 'small mt-2 text-success';
+          novo.textContent = 'Sugestão enviada.';
+        }
+      } catch (e) {
+        // A condução pode ter trocado a pergunta no meio da digitação (409).
+        // Só mostrar a mensagem prendia a pessoa num beco: o campo cheio
+        // suprime o redesenho do polling e cada reenvio repetia o mesmo
+        // pergunta_id velho. Rebusca, redesenha COM o rascunho e aí avisa.
+        this.rascunhoPendente = campo.value;
+        try {
+          this.rodada = await this.api(`/api/publico/rodada/${this.pin}`);
+          this.minhas = await this.api(`/api/publico/minhas?pin=${this.pin}`);
+        } catch { /* rede piscou; a tela atual continua valendo */ }
+        this.render();
+        const avisoNovo = document.getElementById('aviso-envio');
+        if (avisoNovo) {
+          avisoNovo.className = 'small mt-2 text-danger';
+          avisoNovo.textContent = e.message;
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  },
+
+  atualizarContador() {
+    const campo = document.getElementById('campo-ideia');
+    const alvo = document.getElementById('contador-resposta');
+    if (campo && alvo) alvo.textContent = `${campo.value.length}/255`;
   },
 
   blocoEnvio(restam) {
@@ -251,7 +448,10 @@ const Participante = {
 
   // ---- Corrigir a própria ideia ----
   editorIdeia(i) {
-    const area = `<textarea id="campo-editar-${i.id}" class="form-control" rows="3" maxlength="400"
+    // O limite acompanha o rito (255 no quiz da cascata, 400 na tempestade);
+    // quem garante é o servidor — o maxlength é só conforto
+    const area = `<textarea id="campo-editar-${i.id}" class="form-control" rows="3"
+          maxlength="${i.tipo_resposta ? 255 : 400}"
           data-editar-campo="${i.id}">${this.esc(i.texto)}</textarea>`;
     return `
       <div class="ideia-minha">
@@ -330,7 +530,12 @@ const Participante = {
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         if (ev.results[i].isFinal) {
           const texto = ev.results[i][0].transcript.trim();
-          if (texto) campo.value = campo.value ? `${campo.value.replace(/\s+$/, '')} ${texto}` : texto;
+          if (texto) {
+            campo.value = campo.value ? `${campo.value.replace(/\s+$/, '')} ${texto}` : texto;
+            // Atribuir .value por script não dispara 'input': sem este evento
+            // o contador de caracteres do quiz ficava parado durante o ditado
+            campo.dispatchEvent(new Event('input', { bubbles: true }));
+          }
         }
       }
     };
