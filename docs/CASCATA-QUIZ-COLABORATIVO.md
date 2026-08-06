@@ -1,7 +1,8 @@
 # Cascata colaborativa — quiz de preenchimento das células
 
-Plano de implementação. **Nada foi construído ainda**: este documento existe para
-a decisão vir antes do código A seção 10 registra as doze decisões já fechadas com o cliente.
+Plano de implementação. **Nada foi construído ainda**: este documento existe
+para a decisão vir antes do código. A seção 10 registra as doze decisões já
+fechadas com o cliente.
 
 ## 1. O que se quer
 
