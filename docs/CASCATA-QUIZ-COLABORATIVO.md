@@ -18,6 +18,17 @@ O pedido, nas palavras do cliente:
 > próprio quadrante. Que as pessoas também possam eleger todas as opções
 > sugeridas dando uma estrelinha na melhor ideia.
 
+E, na segunda rodada de refinamento:
+
+> O usuário escolhe se vai responder a renúncia ou a pergunta selecionando o
+> botão de seleção. Os usuários poderão enviar uma ou mais respostas e uma ou
+> mais renúncias; todas ficam em dois quadrantes — um de respostas e um de
+> renúncias — onde poderei unificar as respostas, assim como já fazemos na
+> tempestade de ideias, antes de arrastar para o quadrante final, onde a
+> resposta vai ser oficializada. Todas as respostas devem ficar salvas ao trocar
+> de pergunta: posso navegar entre as perguntas e, ao voltar para uma que já foi
+> respondida, aparecem todas as opções que os usuários deram.
+
 Ou seja: o mesmo ritual da Tempestade de Ideias — sala com PIN, celular na mão,
 nuvem ao vivo, votação, condutor tratando —, só que **dirigido a uma célula da
 cascata** em vez de a um tema aberto.
@@ -95,6 +106,25 @@ novo.
 
 ## 5. Fluxo
 
+### A tela do condutor tem três áreas
+
+O painel ao vivo da pergunta ativa é dividido assim:
+
+```
+┌─ Respostas (escolha) ────┐  ┌─ Renúncias ──────────────┐
+│  ficha  ficha  ficha     │  │  ficha  ficha            │
+│  grupo(3)  ficha         │  │  grupo(2)                │
+└──────────────────────────┘  └──────────────────────────┘
+┌─ A célula ─ Como Vencer × H1 · Mercado ─────────────────┐
+│  Escolha:  — vazia —          Renúncia:  — vazia —      │
+└─────────────────────────────────────────────────────────┘
+```
+
+As duas primeiras são as **áreas de coleta**: tudo o que a sala mandou, cada
+ficha com o autor e as estrelas. A terceira é o **destino final** — a célula de
+verdade, com os dois campos que hoje já existem no modal. Oficializar é levar
+uma ficha de cima para baixo.
+
 ### Condutor (tela da Cascata)
 
 1. Clica na célula → o detalhe abre como hoje, e ganha um botão
@@ -102,15 +132,30 @@ novo.
 2. Sem sessão aberta, ele cria uma (tema = o nome do encontro) e recebe o PIN +
    QR. Com uma sessão já aberta, a célula só entra no roteiro.
 3. A pergunta fica **ativa**: a sala inteira vê aquela célula.
-4. A tela mostra as sugestões chegando ao vivo, **em duas colunas** — o que a
-   sala propôs como escolha e o que propôs como renúncia —, cada ficha com o
-   número de estrelas.
-5. Ele agrupa vozes iguais (arrastar uma ficha sobre a outra, como hoje).
-6. Arrasta a ficha vencedora **para a célula** → abre o modal já preenchido no
-   campo correspondente (escolha ou renúncia, conforme o tipo da ficha), para
-   ajustar a redação. A célula fica completa quando as duas foram preenchidas —
-   por arraste, digitação ou uma mistura das duas.
-7. Avança para a próxima pergunta do roteiro.
+4. As fichas chegam ao vivo, cada uma na sua área conforme o tipo, com o número
+   de estrelas.
+5. Ele **unifica** vozes iguais dentro de cada área, arrastando uma ficha sobre
+   a outra — o mesmo gesto e o mesmo mecanismo da Tempestade (`agrupado_em_id`,
+   com o líder do grupo carregando o texto tratado).
+6. Arrasta a ficha (ou a caixa do grupo) vencedora **para a célula** → abre o
+   modal já preenchido no campo correspondente ao tipo dela, para ajustar a
+   redação antes de gravar.
+7. Repete para o outro lado. A célula fica completa quando escolha e renúncia
+   foram preenchidas — por arraste, digitação ou uma mistura das duas.
+8. Navega para outra pergunta do roteiro, à vontade, para frente e para trás.
+
+### Navegação entre perguntas: nada se perde
+
+Trocar de pergunta **não encerra nem apaga nada**. Ao voltar para uma pergunta
+já respondida, reaparecem todas as sugestões daquela célula, os grupos que já
+tinham sido unificados, as estrelas e o que já foi oficializado. É só mudar qual
+pergunta está ativa: as respostas continuam presas ao `pergunta_id` delas.
+
+Isso tem uma consequência que precisa ser dita: **voltar reabre a pergunta para
+a sala**, porque o celular sempre mostra a pergunta ativa. Quem ainda não
+esgotou a cota pode acrescentar; quem esgotou continua sem enviar. Se em algum
+momento for preciso "congelar" uma pergunta já tratada, isso é um estado a mais
+(`ENCERRADA`) e uma decisão nova — hoje o plano não prevê congelar.
 
 ### Participante (`/entrar/{pin}`, sem login)
 
@@ -124,8 +169,11 @@ novo.
    qual lado quer contribuir. O padrão é *Escolha*.
 4. Escreve a sugestão, em até **255 caracteres**, com o **contador visível**
    ("128/255") atualizando enquanto digita. O ditado por voz continua valendo.
-5. Quando o condutor abre a votação, dá a **estrela** nas melhores.
-6. A pergunta muda sozinha quando o condutor avança.
+5. Pode mandar **mais de uma de cada tipo**, até o teto: várias escolhas e
+   várias renúncias para a mesma pergunta. A lista das próprias respostas mostra
+   as duas famílias separadas, com o selo do tipo.
+6. Quando o condutor abre a votação, dá a **estrela** nas melhores.
+7. A pergunta muda sozinha quando o condutor avança — ou volta, se ele voltar.
 
 ## 6. Telas
 
@@ -173,31 +221,48 @@ Herdadas da tempestade, e valem igual aqui (ver `CLAUDE.md`):
 
 Coisas que a tempestade não tem e que vão morder se passarem batido:
 
-1. **O teto de envios é por PERGUNTA, não por rodada.** Hoje o cap conta
+1. **O teto de envios é por PERGUNTA e por TIPO.** Hoje o cap conta
    `WHERE rodada_id = ? AND participante_token = ?`. Mantido assim, o
    participante gasta as 5 sugestões na primeira pergunta e fica mudo pelo resto
-   do encontro. Tem de contar `pergunta_id`.
-2. **O teto de votos também.** `max_votos` passa a valer por pergunta, pela
-   mesma razão.
-3. **Uma célula tem uma decisão só, de cada lado.** Diferente da SWOT, onde
-   muitos fatores coexistem, aqui a sugestão aceita **substitui** o campo
+   do encontro. Tem de contar `pergunta_id` **e** `tipo_resposta`: como cada
+   pessoa pode mandar várias escolhas e várias renúncias, um teto único por
+   pergunta deixaria quem escreveu cinco escolhas sem poder propor nenhuma
+   renúncia. A contagem continua **dentro do INSERT**, como hoje.
+2. **O teto de votos também é por pergunta.** `max_votos` passa a valer por
+   pergunta, pela mesma razão. Se vale por tipo é decisão em aberto — estrelar
+   três escolhas e três renúncias é diferente de estrelar seis fichas
+   quaisquer.
+3. **Agrupar não pode cruzar os tipos.** O arraste de unificação vale dentro da
+   mesma área: juntar uma escolha com uma renúncia produziria um grupo cujo
+   líder não pertence a lado nenhum. A validação é do servidor, não da tela —
+   o gesto pode ser bloqueado no arraste, mas quem recusa de verdade é o
+   `agrupar`, comparando `tipo_resposta` dos dois.
+4. **Uma célula tem uma decisão só, de cada lado.** Diferente da SWOT, onde
+   muitos fatores coexistem, aqui a sugestão oficializada **substitui** o campo
    correspondente da célula. Sobrescrever pede confirmação mostrando o texto
    atual — e vale tanto para o que veio do quiz quanto para o que alguém
    escreveu à mão (é a mesma regra da carga de conteúdo: ninguém perde uma
-   decisão sem ver).
-4. **Pergunta encerrada não aceita resposta atrasada.** O envio valida a
-   pergunta ativa no servidor, não a que estava na tela do celular.
-5. **O limite de 255 caracteres é do servidor, não da tela.** O `maxlength` do
+   decisão sem ver). Muitas sugestões, uma oficializada por lado.
+5. **Oficializar de novo precisa soltar a anterior.** Se a ficha A já virou a
+   escolha da célula e a ficha B a substitui, A não pode continuar marcada como
+   "virou escolha" — senão duas fichas apontam para o mesmo campo e o rastreio
+   passa a mentir. Soltar o vínculo da anterior faz parte da mesma operação.
+6. **O envio valida a pergunta ATIVA no servidor**, não a que estava na tela do
+   celular: entre o participante começar a digitar e apertar enviar, o condutor
+   pode ter avançado. A resposta atrasada pertence à pergunta que estava ativa
+   **no momento do envio** — e é isso que o servidor grava, não o que o corpo do
+   pedido afirma.
+7. **O limite de 255 caracteres é do servidor, não da tela.** O `maxlength` do
    campo é conforto; o corte que vale é o do `PublicoController`, que hoje usa
    `MAX_TEXTO = 400` para a tempestade. São dois limites diferentes convivendo:
    400 na tempestade, 255 no quiz da cascata.
-6. **O tipo da resposta vem do participante e precisa ser validado.**
+8. **O tipo da resposta vem do participante e precisa ser validado.**
    `tipo_resposta` só aceita `ESCOLHA` ou `RENUNCIA`, e qualquer outra coisa
    vira `ESCOLHA` — nunca um valor livre vindo do corpo do pedido, pela mesma
    razão que o nome do participante vem do registro e não do corpo.
-7. **Voto do próprio autor.** Na tempestade isso não é travado. Vale decidir se
+9. **Voto do próprio autor.** Na tempestade isso não é travado. Vale decidir se
    aqui continua livre.
-8. **Sessão órfã.** Rodada de cascata aberta e esquecida trava a criação de uma
+10. **Sessão órfã.** Rodada de cascata aberta e esquecida trava a criação de uma
    tempestade (hoje há a guarda "já existe rodada aberta"). Com dois modos, a
    guarda precisa ser por modo, ou a mensagem precisa dizer qual sala está
    aberta.
@@ -209,22 +274,28 @@ Cada fase é útil sozinha e pode ser validada antes da seguinte.
 **Fase 1 — o quiz de uma célula, ponta a ponta.**
 Modelo (`modo`, `cascata_pergunta`, `pergunta_id`, `tipo_resposta`), abrir
 sessão a partir da célula, tela do participante respondendo com o par
-Escolha/Renúncia e o contador de 255, painel ao vivo do condutor nas duas
-colunas, e aceitar uma sugestão para dentro do campo certo da célula. Sem
-estrela, sem arraste, sem roteiro. *É a menor coisa que já muda o jeito de
-trabalhar.*
+Escolha/Renúncia e o contador de 255, as duas áreas de coleta no painel do
+condutor, e oficializar uma sugestão para dentro do campo certo da célula — por
+botão ("usar esta resposta"), ainda sem arraste. Sem estrela, sem agrupamento,
+sem roteiro. *É a menor coisa que já muda o jeito de trabalhar.*
 
-**Fase 2 — a estrela.**
-Reaproveita a votação da tempestade, com o teto por pergunta. Ordena as
-sugestões por estrela no painel.
+**Fase 2 — navegar entre perguntas.**
+Acrescentar células ao encontro, trocar a pergunta ativa para frente e para
+trás, e a garantia que o cliente pediu por escrito: **voltar mostra tudo o que
+já foi respondido**. Progresso ("pergunta 4 de 12") e o roteiro montado antes do
+encontro entram aqui. É a fase que transforma o quiz de uma célula em reunião de
+verdade — por isso vem antes da estrela e do arraste.
 
-**Fase 3 — agrupar e arrastar.**
-Agrupamento automático (texto equivalente) e manual (ficha sobre ficha), e o
-arraste da ficha até a célula, com o modal abrindo já preenchido.
+**Fase 3 — a estrela.**
+Reaproveita a votação da tempestade, com o teto por pergunta. Ordena as fichas
+por estrela dentro de cada área.
 
-**Fase 4 — o roteiro.**
-Montar a lista de células antes do encontro, avançar/voltar, barra de progresso
-("pergunta 4 de 12") e o resumo do encontro no fim.
+**Fase 4 — unificar e arrastar.**
+Agrupamento automático (texto equivalente) e manual (ficha sobre ficha, sem
+cruzar tipos), e o arraste da ficha ou da caixa do grupo até a célula, com o
+modal abrindo já preenchido. É a fase mais cara: reaproveita o arraste por
+eventos de ponteiro da Tempestade, que tem regras próprias (passos de 8px,
+listeners no `document`, gesto que engole o clique seguinte).
 
 ## 10. Decisões tomadas (06/08/2026)
 
@@ -238,9 +309,25 @@ Montar a lista de células antes do encontro, avançar/voltar, barra de progress
    contado por pergunta.
 4. **Sobrescrever célula preenchida** — **pedir confirmação**, mostrando o texto
    atual antes de substituir.
+5. **Quantas respostas por pessoa** — **várias de cada tipo**: uma ou mais
+   escolhas e uma ou mais renúncias na mesma pergunta, até o teto, que passa a
+   contar por (pergunta, tipo).
+6. **Duas áreas de coleta**, uma de Respostas e uma de Renúncias, com
+   unificação de vozes iguais dentro de cada uma — o mesmo gesto da Tempestade —
+   antes de a ficha ser levada para a célula, que é onde a resposta se
+   oficializa.
+7. **Navegar entre perguntas não perde nada.** Voltar a uma pergunta já
+   respondida mostra todas as sugestões, os grupos, as estrelas e o que já foi
+   oficializado. Não há "encerrar pergunta" nesta versão.
 
-Permanece em aberto, com o padrão da tempestade valendo até alguém decidir
-diferente: **quem responde** é qualquer pessoa com o PIN, sem cadastro — igual à
-Tempestade de Ideias. Se a cascata precisar de sala fechada (só usuários
-cadastrados), é uma mudança de autorização e vale decidir antes da Fase 1, não
-depois.
+Permanecem em aberto:
+
+- **Quem responde** — o padrão da Tempestade vale até alguém decidir diferente:
+  qualquer pessoa com o PIN, sem cadastro. Se a cascata precisar de sala fechada
+  (só usuários cadastrados), é mudança de autorização e vale decidir **antes da
+  Fase 1**, não depois.
+- **O teto de estrelas é por pergunta ou por (pergunta, tipo)?** Três em cada
+  lado é diferente de três no total, e a diferença aparece quando um dos lados
+  recebe muito mais sugestões que o outro.
+- **Congelar uma pergunta já tratada.** Hoje voltar reabre para a sala. Se
+  incomodar na prática, vira um estado a mais na pergunta.
