@@ -66,7 +66,24 @@ class PublicoController
             // pergunta respondível: driver, horizonte (com tema e objetivo) e
             // eixo. Sem isso a célula é abstrata demais para resposta útil.
             'pergunta' => $r['modo'] === 'CASCATA' ? $this->perguntaAtiva((int)$r['id']) : null,
+            'progresso' => $r['modo'] === 'CASCATA' ? $this->progressoRodada((int)$r['id']) : null,
         ]);
+    }
+
+    /** "Pergunta N de M" para o participante — N é a posição da ativa. */
+    private function progressoRodada(int $rodadaId): array
+    {
+        $perguntas = Database::todos(
+            'SELECT situacao FROM cascata_pergunta WHERE rodada_id = ? ORDER BY ordem, id',
+            [$rodadaId]
+        );
+        $atual = null;
+        foreach ($perguntas as $i => $p) {
+            if ($p['situacao'] === 'ATIVA') {
+                $atual = $i + 1;
+            }
+        }
+        return ['atual' => $atual, 'total' => count($perguntas)];
     }
 
     /**

@@ -360,7 +360,12 @@ condutor, e vincular uma ou mais sugestões ao lado certo da célula — por bot
 ("usar esta resposta"), ainda sem arraste, com o texto oferecido no modal. Sem estrela, sem agrupamento,
 sem roteiro. *É a menor coisa que já muda o jeito de trabalhar.*
 
-**Fase 2 — navegar entre perguntas.**
+**Fase 2 — navegar entre perguntas.** ✅ *entregue em 06/08/2026: roteiro com
+alvos em lote (síntese + eixos numa marcação só), "Ver" como navegação local
+(decisão 11 — a sala não percebe), abrir/reabrir/encerrar explícitos por
+pergunta, "Próxima pergunta →", progresso "Pergunta N de M" na faixa e no
+celular, e remoção de pendente sem sugestões.*
+
 Acrescentar células ao encontro, trocar a pergunta ativa para frente e para
 trás, e a garantia que o cliente pediu por escrito: **voltar mostra tudo o que
 já foi respondido**. Progresso ("pergunta 4 de 12") e o roteiro montado antes do

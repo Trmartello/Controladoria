@@ -17,6 +17,10 @@ const SecaoCascata = {
   // QR na caixa de expansão: sem guardar o estado, cada batida do polling
   // reconstruía a faixa e RECOLHIA o QR projetado no telão
   qrAbertoQuiz: false,
+  roteiroAberto: false,
+  // Pergunta em FOCO: a que o condutor está examinando pelo roteiro. Navegar
+  // é local — só ativar/reabrir/encerrar mexe no celular da sala.
+  perguntaFoco: null,
 
   async carregar() {
     const el = document.getElementById('secao-cascata');
@@ -28,7 +32,9 @@ const SecaoCascata = {
     this.plan = await App.planejamento();
     [this.dados, this.quiz] = await Promise.all([
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
-      App.api(`/api/cascata/quiz?planejamento_id=${this.plan.id}`).catch(() => ({ sessao: null })),
+      App.api(`/api/cascata/quiz?planejamento_id=${this.plan.id}`
+        + (this.perguntaFoco ? `&pergunta_id=${this.perguntaFoco}` : ''))
+        .catch(() => ({ sessao: null })),
     ]);
     const { horizontes, drivers, eixos, escolhas } = this.dados;
 
@@ -82,6 +88,8 @@ const SecaoCascata = {
           driverId: parseInt(td.dataset.driver, 10),
           horizonteId: parseInt(td.dataset.horizonte, 10),
         };
+        // Clicar na matriz volta o foco à regra padrão (a pergunta ativa)
+        this.perguntaFoco = null;
         el.querySelectorAll('.celula-cascata').forEach((c) => c.classList.remove('ativa'));
         td.classList.add('ativa');
         this.renderDetalhe();
@@ -105,19 +113,62 @@ const SecaoCascata = {
   },
 
   // ---- Sessão do quiz: faixa no topo (PIN, participantes, pergunta ativa) ----
+  /** Rótulo curto de uma pergunta do roteiro. */
+  rotuloPergunta(p) {
+    return `${p.driver}${p.eixo ? ` · ${p.eixo}` : ' · Síntese'} (${p.horizonte})`;
+  },
+
   faixaSessao() {
     const q = this.quiz;
     if (!q?.sessao) return '';
     const p = q.pergunta;
+    const roteiro = q.roteiro || [];
+    const prog = q.progresso || { atual: null, total: roteiro.length };
+    // A próxima pendente na ordem — o botão "Próxima" abre essa
+    const proxima = roteiro.find((x) => x.situacao === 'PENDENTE');
+    const podeConduzir = App.podeEditar();
+
+    const linhaRoteiro = (x, i) => {
+      const selo = x.situacao === 'ATIVA'
+        ? '<span class="badge text-bg-success">na sala</span>'
+        : x.situacao === 'ENCERRADA'
+          ? '<span class="badge text-bg-secondary">encerrada</span>'
+          : '<span class="badge text-bg-light border">pendente</span>';
+      const foco = this.perguntaFoco === x.id ? ' em-foco' : '';
+      return `<li class="linha-roteiro${foco}" data-pergunta="${x.id}">
+        <span class="small num-roteiro">${i + 1}.</span>
+        <span class="small flex-grow-1">${Modal.esc(this.rotuloPergunta(x))}
+          ${Number(x.sugestoes) ? `<span class="text-muted">· ${x.sugestoes} sugestão(ões)</span>` : ''}</span>
+        ${selo}
+        <button class="btn btn-sm btn-outline-secondary" data-ver-pergunta="${x.id}"
+          title="Examinar as sugestões sem mexer na sala">Ver</button>
+        ${podeConduzir && x.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
+          data-ativar-pergunta="${x.id}">${x.situacao === 'ENCERRADA' ? 'Reabrir' : 'Abrir para a sala'}</button>` : ''}
+        ${podeConduzir && x.situacao === 'ATIVA' ? `<button class="btn btn-sm btn-outline-secondary"
+          data-encerrar-pergunta="${x.id}" title="Fechar sem abrir outra">Encerrar</button>` : ''}
+        ${podeConduzir && x.situacao === 'PENDENTE' && !Number(x.sugestoes) ? `<button
+          class="btn btn-sm btn-outline-danger" data-remover-pergunta="${x.id}"
+          title="Tirar do roteiro" aria-label="Tirar do roteiro">×</button>` : ''}
+      </li>`;
+    };
+
     return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
       <div class="d-flex align-items-center gap-2 flex-wrap">
         ${q.sessao.pin ? `<span class="badge text-bg-light border">PIN <strong class="pin-mini">${Modal.esc(q.sessao.pin)}</strong></span>` : ''}
         <span class="badge text-bg-light border" data-quiz-participantes>${q.sessao.participantes} participante(s)</span>
-        ${p ? `<span class="badge badge-horizonte">Perguntando: ${Modal.esc(p.driver)}${p.eixo ? ` · ${Modal.esc(p.eixo)}` : ' · Síntese'} (${Modal.esc(p.horizonte)})</span>`
+        ${prog.total ? `<span class="badge text-bg-light border">${prog.atual
+          ? `Pergunta ${prog.atual} de ${prog.total}` : `${prog.total} no roteiro`}</span>` : ''}
+        ${p ? `<span class="badge badge-horizonte">Perguntando: ${Modal.esc(this.rotuloPergunta(p))}</span>`
             : '<span class="badge text-bg-secondary">nenhuma pergunta ativa</span>'}
         <span class="small text-muted flex-grow-1 text-truncate">${Modal.esc(q.sessao.tema)}</span>
-        ${App.podeEditar() ? `<button class="btn btn-sm btn-outline-danger" id="btn-encerrar-quiz">Encerrar sessão</button>` : ''}
+        ${podeConduzir && proxima ? `<button class="btn btn-sm btn-verde" id="btn-proxima-pergunta"
+          title="${Modal.esc(this.rotuloPergunta(proxima))}">Próxima pergunta →</button>` : ''}
+        ${podeConduzir ? `<button class="btn btn-sm btn-outline-danger" id="btn-encerrar-quiz">Encerrar sessão</button>` : ''}
       </div>
+      ${roteiro.length ? `<details class="mt-2" id="det-roteiro"${this.roteiroAberto ? ' open' : ''}>
+        <summary class="small">Roteiro do encontro (${roteiro.length} pergunta(s))</summary>
+        <ol class="lista-roteiro mt-2">${roteiro.map(linhaRoteiro).join('')}</ol>
+      </details>` : ''}
       ${q.sessao.pin ? `<details class="painel-qr mt-2" id="det-qr-quiz"${this.qrAbertoQuiz ? ' open' : ''}>
         <summary>QR code para projetar</summary>
         <div class="d-flex flex-wrap gap-3 align-items-start mt-2">
@@ -134,6 +185,61 @@ const SecaoCascata = {
   ligarFaixaSessao(el) {
     const det = el.querySelector('#det-qr-quiz');
     if (det) det.addEventListener('toggle', () => { this.qrAbertoQuiz = det.open; });
+    const detRot = el.querySelector('#det-roteiro');
+    if (detRot) detRot.addEventListener('toggle', () => { this.roteiroAberto = detRot.open; });
+
+    // Navegar: examina a pergunta SEM mexer na sala — abre a célula dela no
+    // detalhe e traz as sugestões que ela já recebeu
+    el.querySelectorAll('[data-ver-pergunta]').forEach((b) => b.addEventListener('click', async () => {
+      const id = Number(b.dataset.verPergunta);
+      const pergunta = (this.quiz?.roteiro || []).find((x) => x.id === id);
+      if (!pergunta) return;
+      this.perguntaFoco = id;
+      this.celulaAberta = {
+        driverId: Number(pergunta.driver_id),
+        horizonteId: Number(pergunta.horizonte_id),
+      };
+      this.roteiroAberto = true;
+      await this.carregar();
+      document.getElementById('detalhe-celula')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+
+    const conduzir = async (url) => {
+      try {
+        await App.api(url, { planejamento_id: this.plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.roteiroAberto = true;
+      App.recarregarSecaoAtiva();
+    };
+    el.querySelectorAll('[data-ativar-pergunta]').forEach((b) => b.addEventListener('click', () => {
+      // Abrir/reabrir MEXE na sala: o celular de todo mundo muda junto
+      this.perguntaFoco = null;
+      conduzir(`/api/cascata/quiz/pergunta/${b.dataset.ativarPergunta}/ativar`);
+    }));
+    el.querySelectorAll('[data-encerrar-pergunta]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Fechar esta pergunta? A sala vê "aguarde a próxima"; as sugestões ficam guardadas.')) return;
+      conduzir(`/api/cascata/quiz/pergunta/${b.dataset.encerrarPergunta}/encerrar`);
+    }));
+    el.querySelectorAll('[data-remover-pergunta]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Tirar esta pergunta do roteiro?')) return;
+      conduzir(`/api/cascata/quiz/pergunta/${b.dataset.removerPergunta}/remover`);
+    }));
+    const btnProxima = el.querySelector('#btn-proxima-pergunta');
+    if (btnProxima) {
+      btnProxima.addEventListener('click', () => {
+        const proxima = (this.quiz?.roteiro || []).find((x) => x.situacao === 'PENDENTE');
+        if (!proxima) return;
+        this.perguntaFoco = null;
+        this.celulaAberta = {
+          driverId: Number(proxima.driver_id),
+          horizonteId: Number(proxima.horizonte_id),
+        };
+        conduzir(`/api/cascata/quiz/pergunta/${proxima.id}/ativar`);
+      });
+    }
+
     const btn = el.querySelector('#btn-encerrar-quiz');
     if (btn) {
       btn.addEventListener('click', async () => {
@@ -181,13 +287,23 @@ const SecaoCascata = {
       if (document.querySelector('.modal.show')) return;
       const ativo = document.activeElement;
       if (ativo && (ativo.tagName === 'TEXTAREA' || ativo.tagName === 'INPUT')) return;
+      // Captura o foco DO DISPARO: se o condutor navegar pelo roteiro com esta
+      // resposta em voo, ela chega falando de outra pergunta — aplicá-la
+      // apagaria o painel que ele acabou de abrir (ou deixaria o "Usar" mudo,
+      // procurando ids que não estão mais em this.quiz)
+      const focoPedido = this.perguntaFoco;
+      let quizNovo;
       try {
-        this.quiz = await App.api(`/api/cascata/quiz?planejamento_id=${this.plan.id}`);
+        quizNovo = await App.api(`/api/cascata/quiz?planejamento_id=${this.plan.id}`
+          + (focoPedido ? `&pergunta_id=${focoPedido}` : ''));
       } catch (e) {
         return; // rede piscou; a próxima batida tenta de novo
       }
+      if (focoPedido !== this.perguntaFoco) return; // resposta de outra navegação
+      this.quiz = quizNovo;
       const assinatura = JSON.stringify([
-        this.quiz.sessao?.participantes, this.quiz.pergunta?.id,
+        this.quiz.sessao?.participantes, this.quiz.pergunta?.id, this.quiz.foco?.id,
+        (this.quiz.roteiro || []).map((x) => [x.id, x.situacao, x.sugestoes]),
         (this.quiz.sugestoes || []).map((s) => [s.id, s.texto, s.votos, s.vinculada]),
         this.quiz.celula?.escolha, this.quiz.celula?.renuncia,
       ]);
@@ -214,9 +330,12 @@ const SecaoCascata = {
     }, 4000);
   },
 
-  /** A pergunta ativa é a célula aberta no detalhe? */
+  /**
+   * A pergunta em FOCO (a examinada pelo roteiro; por padrão, a ativa),
+   * quando ela pertence à célula aberta no detalhe.
+   */
   perguntaDaCelulaAberta() {
-    const p = this.quiz?.pergunta;
+    const p = this.quiz?.foco || this.quiz?.pergunta;
     if (!p || !this.celulaAberta) return null;
     return Number(p.driver_id) === Number(this.celulaAberta.driverId)
       && Number(p.horizonte_id) === Number(this.celulaAberta.horizonteId) ? p : null;
@@ -386,11 +505,22 @@ const SecaoCascata = {
         ${linhas || '<div class="text-muted small">Nenhuma sugestão ainda.</div>'}
       </div></div>`;
     };
+    // O foco pode ser uma pergunta encerrada (navegação pelo roteiro) ou
+    // pendente: o painel mostra o que já foi coletado e oferece abrir/reabrir
+    const situacao = p.situacao === 'ATIVA'
+      ? '<span class="badge text-bg-success">na sala agora</span>'
+      : p.situacao === 'ENCERRADA'
+        ? '<span class="badge text-bg-secondary">pergunta encerrada</span>'
+        : '<span class="badge text-bg-light border">ainda não aberta</span>';
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
       <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
         <strong class="small text-uppercase">Sugestões da sala — ${Modal.esc(alvoEixo)}</strong>
+        ${situacao}
         <span class="small text-muted flex-grow-1">Use uma sugestão para levá-la ao campo da célula;
           as vozes ficam registradas embaixo do texto.</span>
+        ${App.podeEditar() && p.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
+          data-reabrir-foco="${p.id}">${p.situacao === 'ENCERRADA'
+            ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>` : ''}
       </div>
       <div class="row g-2">
         ${coluna('ESCOLHA', 'Respostas (escolha)', 'coluna-escolha')}
@@ -400,6 +530,18 @@ const SecaoCascata = {
   },
 
   ligarPainelVivo(alvo) {
+    alvo.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await App.api(`/api/cascata/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`, {
+          planejamento_id: this.plan.id,
+        });
+      } catch (e) {
+        alert(e.message);
+      }
+      // Aberta para a sala, a pergunta vira a ativa: o foco volta ao padrão
+      this.perguntaFoco = null;
+      App.recarregarSecaoAtiva();
+    }));
     alvo.querySelectorAll('[data-usar-sugestao]').forEach((b) => b.addEventListener('click', () => {
       const s = (this.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarSugestao);
       const p = this.perguntaDaCelulaAberta();
@@ -428,26 +570,45 @@ const SecaoCascata = {
    */
   perguntarASala() {
     const { driverId, horizonteId } = this.celulaAberta;
-    // Fase 1: a pergunta é por EIXO quando só um eixo está sem preencher?
-    // Simples e explícito: pergunta a síntese por padrão; o condutor escolhe o
-    // eixo num select — a célula toda numa pergunta só confundiria a sala.
-    const eixos = this.dados.eixos;
-    const opcoesAlvo = [{ valor: '', rotulo: 'Síntese da célula' },
-      ...eixos.map((x) => ({ valor: String(x.id), rotulo: `Eixo · ${x.nome}` }))];
+    const driver = this.dados.drivers.find((d) => d.id == driverId);
+    // Vários alvos de uma vez: "as 6 aberturas de Como Vencer" entram juntas
+    // no roteiro. 'S' marca a síntese — o transformar troca por null.
+    const opcoesAlvo = [
+      { valor: 'S', texto: 'Síntese da célula', selo: driver ? driver.nome : 'Síntese' },
+      ...this.dados.eixos.map((x) => ({ valor: String(x.id), texto: `Eixo · ${x.nome}` })),
+    ];
+    const paraAlvos = (marcados) =>
+      (marcados || []).map((v) => (v === 'S' ? null : Number(v)));
 
     if (this.quiz?.sessao) {
       Modal.abrir({
         titulo: 'Perguntar à sala',
         url: '/api/cascata/quiz/perguntar',
-        valores: { planejamento_id: this.plan.id, horizonte_id: horizonteId, driver_id: driverId, eixo_id: '' },
+        valores: {
+          planejamento_id: this.plan.id, horizonte_id: horizonteId, driver_id: driverId,
+          alvos: ['S'], acao: 'AGORA',
+        },
         campos: [
           { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
           { nome: 'horizonte_id', rotulo: '', tipo: 'hidden' },
           { nome: 'driver_id', rotulo: '', tipo: 'hidden' },
-          { nome: 'eixo_id', rotulo: 'O que a sala responde?', tipo: 'select', opcoes: opcoesAlvo,
-            ajuda: 'A pergunta ativa muda no celular de todo mundo. As sugestões já enviadas ficam guardadas por pergunta.' },
+          { nome: 'alvos', rotulo: 'O que a sala responde nesta célula?', tipo: 'lista_marcavel',
+            opcoes: opcoesAlvo, obrigatorio: true,
+            ajuda: 'Marque um ou vários: cada um vira uma pergunta do roteiro.' },
+          { nome: 'acao', rotulo: 'Quando?', tipo: 'botoes', opcoes: [
+            { valor: 'AGORA', rotulo: 'Abrir a primeira agora' },
+            { valor: 'ROTEIRO', rotulo: 'Só adicionar ao roteiro' },
+          ], ajuda: 'Abrir agora muda o celular de todo mundo; o roteiro guarda para depois.' },
         ],
-        aoSalvar: () => App.recarregarSecaoAtiva(),
+        transformar: (d) => {
+          const { alvos, acao, ...resto } = d;
+          return { ...resto, alvos: paraAlvos(alvos), ativar: acao !== 'ROTEIRO' };
+        },
+        aoSalvar: () => {
+          this.perguntaFoco = null;
+          this.roteiroAberto = true;
+          App.recarregarSecaoAtiva();
+        },
       });
       return;
     }
@@ -456,20 +617,29 @@ const SecaoCascata = {
       url: '/api/cascata/quiz/abrir',
       valores: {
         planejamento_id: this.plan.id, horizonte_id: horizonteId, driver_id: driverId,
-        eixo_id: '', tema: '', max_ideias: 5,
+        alvos: ['S'], tema: '', max_ideias: 5,
       },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'horizonte_id', rotulo: '', tipo: 'hidden' },
         { nome: 'driver_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'eixo_id', rotulo: 'Primeira pergunta', tipo: 'select', opcoes: opcoesAlvo,
-          ajuda: 'A sala entra pelo PIN (como na tempestade) e responde uma célula por vez.' },
+        { nome: 'alvos', rotulo: 'Primeiras perguntas (desta célula)', tipo: 'lista_marcavel',
+          opcoes: opcoesAlvo, obrigatorio: true,
+          ajuda: 'A sala entra pelo PIN (como na tempestade) e responde uma pergunta por vez; '
+            + 'a primeira marcada já abre para a sala, as demais ficam no roteiro.' },
         { nome: 'tema', rotulo: 'Nome do encontro',
           exemplo: 'Ex.: Oficina da cascata — diretoria, agosto/2026' },
         { nome: 'max_ideias', rotulo: 'Sugestões por pessoa (em cada lado)', tipo: 'number', padrao: 5,
           ajuda: 'Vale por pergunta: N escolhas e N renúncias para cada participante.' },
       ],
-      aoSalvar: () => App.recarregarSecaoAtiva(),
+      transformar: (d) => {
+        const { alvos, ...resto } = d;
+        return { ...resto, alvos: paraAlvos(alvos) };
+      },
+      aoSalvar: () => {
+        this.perguntaFoco = null;
+        App.recarregarSecaoAtiva();
+      },
     });
   },
 

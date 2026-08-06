@@ -318,6 +318,13 @@ try {
         case $rota === 'POST /api/cascata/quiz/abrir':   (new CascataQuizController())->abrir(); break;
         case $rota === 'POST /api/cascata/quiz/perguntar': (new CascataQuizController())->perguntar(); break;
         case $rota === 'POST /api/cascata/quiz/encerrar':  (new CascataQuizController())->encerrar(); break;
+        // Roteiro: abrir/reabrir, fechar sem abrir outra, tirar pendente
+        case (bool)preg_match('#^POST /api/cascata/quiz/pergunta/(\d+)/ativar$#', $rota, $m):
+            (new CascataQuizController())->ativar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/cascata/quiz/pergunta/(\d+)/encerrar$#', $rota, $m):
+            (new CascataQuizController())->encerrarPergunta((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/cascata/quiz/pergunta/(\d+)/remover$#', $rota, $m):
+            (new CascataQuizController())->removerPergunta((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/cascata/quiz/sugestao/(\d+)/excluir$#', $rota, $m):
             (new CascataQuizController())->excluirSugestao((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/cascata/(\d+)/excluir$#', $rota, $m):

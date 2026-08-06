@@ -132,8 +132,10 @@ const Participante = {
     return JSON.stringify([
       this.rodada?.situacao, this.rodada?.tema, this.votacao?.votacao,
       // A pergunta ativa do quiz: quando a condução avança (ou reabre), o
-      // cabeçalho e a lista de respostas precisam acompanhar
+      // cabeçalho e a lista de respostas precisam acompanhar — e o progresso
+      // muda até sem trocar a ativa (o roteiro cresceu)
       this.rodada?.pergunta?.id,
+      this.rodada?.progresso?.atual, this.rodada?.progresso?.total,
       this.minhas.map((i) => [i.id, i.texto, i.situacao]),
       (this.votacao?.itens || []).map((i) => [i.id, i.votei]),
       this.votacao?.meus_votos,
@@ -263,7 +265,9 @@ const Participante = {
   },
 
   blocoQuiz(p, minhas) {
-    const meta = `${p.horizonte} · ${p.ano_inicio}–${p.ano_fim} · “${this.esc(p.tema)}”`;
+    const prog = this.rodada?.progresso;
+    const meta = `${p.horizonte} · ${p.ano_inicio}–${p.ano_fim} · “${this.esc(p.tema)}”`
+      + (prog?.atual ? ` · Pergunta ${prog.atual} de ${prog.total}` : '');
     const lado = (tipo) => minhas.filter((i) => i.tipo_resposta === tipo);
     const restamEscolha = this.rodada.max_ideias - lado('ESCOLHA').length;
     const restamRenuncia = this.rodada.max_ideias - lado('RENUNCIA').length;
