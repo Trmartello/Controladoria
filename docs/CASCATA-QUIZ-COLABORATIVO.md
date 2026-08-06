@@ -1,7 +1,7 @@
 # Cascata colaborativa — quiz de preenchimento das células
 
 Plano de implementação. **Nada foi construído ainda**: este documento existe para
-a decisão vir antes do código, e tem uma seção de decisões em aberto no fim.
+a decisão vir antes do código A seção 10 registra as doze decisões já fechadas com o cliente.
 
 ## 1. O que se quer
 
@@ -77,6 +77,10 @@ cascata_pergunta
 O condutor monta o roteiro antes (ex.: "as 6 aberturas de *Como Vencer* no H1")
 ou acrescenta perguntas na hora. `UNIQUE` impede a mesma célula entrar duas
 vezes no mesmo encontro.
+
+O ciclo de vida da pergunta é `PENDENTE → ATIVA → ENCERRADA`, e **reabrir a
+devolve para `ATIVA`** — não é um quarto estado. Encerrada, a pergunta continua
+inteira na tela do condutor; o que ela para de aceitar é envio novo.
 
 ## 4. Modelo de dados
 
@@ -170,18 +174,50 @@ as fichas que o sustentam.
 Desvincular é explícito: um ✕ na ficha listada dentro da célula tira só ela,
 sem mexer no texto já redigido — quem decide se o texto muda é quem escreveu.
 
-### Navegação entre perguntas: nada se perde
+### Navegar é uma coisa; reabrir é outra
 
 Trocar de pergunta **não encerra nem apaga nada**. Ao voltar para uma pergunta
 já respondida, reaparecem todas as sugestões daquela célula, os grupos que já
-tinham sido unificados, as estrelas e o que já foi oficializado. É só mudar qual
-pergunta está ativa: as respostas continuam presas ao `pergunta_id` delas.
+tinham sido unificados, as estrelas e o que já foi vinculado — tudo continua
+preso ao `pergunta_id`.
 
-Isso tem uma consequência que precisa ser dita: **voltar reabre a pergunta para
-a sala**, porque o celular sempre mostra a pergunta ativa. Quem ainda não
-esgotou a cota pode acrescentar; quem esgotou continua sem enviar. Se em algum
-momento for preciso "congelar" uma pergunta já tratada, isso é um estado a mais
-(`ENCERRADA`) e uma decisão nova — hoje o plano não prevê congelar.
+Mas **navegar não mexe na sala**. São duas coisas separadas, e essa é a
+distinção que faz o encontro funcionar:
+
+| | O que faz | Quem vê |
+|---|---|---|
+| **Navegar** (condutor) | põe a pergunta em foco na tela dele | só ele |
+| **Ativar / Reabrir** | muda o que a sala está respondendo | todo mundo |
+
+O condutor pode revisitar a pergunta 3 enquanto a sala ainda responde a 5, sem
+que ninguém no celular perceba. Quando ele quer voltar a discutir a 3, aperta
+**"Reabrir para a sala"** e aí sim os celulares mudam.
+
+Reabrir serve para **refinar**: escolher outras opções, receber sugestões novas
+de quem pensou melhor no assunto e reavaliar o que estava vinculado. As
+sugestões antigas continuam lá — o que muda é que a pergunta volta a aceitar
+envio.
+
+Sem isso, o desenho anterior (voltar = reabrir automaticamente) tinha um efeito
+ruim: o condutor não conseguiria **conferir** uma célula já tratada sem
+bagunçar a tela de quem está na sala.
+
+### O condutor pode excluir uma sugestão
+
+Cada ficha, nos dois quadrantes, tem um ✕. Serve para o que sempre aparece numa
+oficina: teste, duplicata óbvia, coisa fora de contexto, ofensa. Vale para
+respostas e para renúncias, e é do condutor — passa pela mesma autorização da
+triagem (`Auth::exigirTriagemColeta`), nunca do participante.
+
+Excluir tem três consequências que o código precisa tratar, todas já resolvidas
+na Tempestade e que aqui valem igual:
+
+- a ficha **vinculada à célula** precisa soltar o vínculo antes de sumir, senão
+  a célula mostra uma voz que não existe mais;
+- a ficha que é **líder de um grupo** promove o próximo do grupo, e quem sai
+  volta ao próprio texto;
+- os **votos** dela caem junto (`coleta_voto` já é `ON DELETE CASCADE`), e as
+  estrelas dos outros não podem ser recontadas para menos por causa disso.
 
 ### Participante (`/entrar/{pin}`, sem login)
 
@@ -277,20 +313,28 @@ Coisas que a tempestade não tem e que vão morder se passarem batido:
    para somar, não para recomeçar.
 6. **O envio valida a pergunta ATIVA no servidor**, não a que estava na tela do
    celular: entre o participante começar a digitar e apertar enviar, o condutor
-   pode ter avançado. A resposta atrasada pertence à pergunta que estava ativa
-   **no momento do envio** — e é isso que o servidor grava, não o que o corpo do
-   pedido afirma.
-7. **O limite de 255 caracteres é do servidor, não da tela.** O `maxlength` do
+   pode ter avançado, encerrado ou reaberto outra. A resposta pertence à
+   pergunta que estava ativa **no momento do envio** — e é isso que o servidor
+   grava, não o que o corpo do pedido afirma. Pergunta `ENCERRADA` recusa envio,
+   com a mensagem dizendo que ela foi fechada, e não um erro genérico.
+7. **Excluir uma sugestão é do condutor, nunca do participante.** O participante
+   já pode corrigir a própria resposta enquanto ela está `NOVO` (o escopo do
+   UPDATE por token é a guarda); apagar a de outra pessoa é ato de condução e
+   passa por `Auth::exigirTriagemColeta`.
+8. **Excluir uma ficha vinculada solta o vínculo primeiro.** Senão a célula
+   passa a listar uma voz que não existe mais — o mesmo defeito que a Coleta já
+   teve quando apagar o destino deixava a ideia apontando para um id morto.
+9. **O limite de 255 caracteres é do servidor, não da tela.** O `maxlength` do
    campo é conforto; o corte que vale é o do `PublicoController`, que hoje usa
    `MAX_TEXTO = 400` para a tempestade. São dois limites diferentes convivendo:
    400 na tempestade, 255 no quiz da cascata.
-8. **O tipo da resposta vem do participante e precisa ser validado.**
+10. **O tipo da resposta vem do participante e precisa ser validado.**
    `tipo_resposta` só aceita `ESCOLHA` ou `RENUNCIA`, e qualquer outra coisa
    vira `ESCOLHA` — nunca um valor livre vindo do corpo do pedido, pela mesma
    razão que o nome do participante vem do registro e não do corpo.
-9. **Voto do próprio autor.** Na tempestade isso não é travado. Vale decidir se
+11. **Voto do próprio autor.** Na tempestade isso não é travado. Vale decidir se
    aqui continua livre.
-10. **Sessão órfã.** Rodada de cascata aberta e esquecida trava a criação de uma
+12. **Sessão órfã.** Rodada de cascata aberta e esquecida trava a criação de uma
    tempestade (hoje há a guarda "já existe rodada aberta"). Com dois modos, a
    guarda precisa ser por modo, ou a mensagem precisa dizer qual sala está
    aberta.
@@ -352,12 +396,16 @@ listeners no `document`, gesto que engole o clique seguinte).
 9. **Vincular aceita uma ou mais sugestões por lado.** Muitos vínculos
    registrados, um texto redigido por lado. Nenhuma tabela nova: `destino_id`
    já é muitos-para-um, como a Coleta faz com as vozes agrupadas.
+10. **Quem responde** — **qualquer pessoa com o PIN**, sem cadastro, igual à
+    Tempestade de Ideias. A sala é aberta, e as guardas continuam sendo o token
+    do participante, o teto por INSERT e a trava de força bruta do PIN.
+11. **Navegar ≠ reabrir.** O condutor circula pelas perguntas sem mexer na tela
+    de ninguém; a sala só muda quando ele **ativa ou reabre**. Reabrir devolve a
+    pergunta para `ATIVA` e serve para refinar: trocar as opções vinculadas e
+    receber sugestões novas.
+12. **O condutor exclui sugestões** — respostas e renúncias —, com o ✕ na
+    ficha. Passa por `exigirTriagemColeta`; o participante segue podendo apenas
+    corrigir a própria, enquanto ela não foi tratada.
 
-Permanecem em aberto:
-
-- **Quem responde** — o padrão da Tempestade vale até alguém decidir diferente:
-  qualquer pessoa com o PIN, sem cadastro. Se a cascata precisar de sala fechada
-  (só usuários cadastrados), é mudança de autorização e vale decidir **antes da
-  Fase 1**, não depois.
-- **Congelar uma pergunta já tratada.** Hoje voltar reabre para a sala. Se
-  incomodar na prática, vira um estado a mais na pergunta.
+Nada permanece em aberto no desenho. As perguntas que sobram são de
+implementação e aparecem na hora de construir cada fase.
