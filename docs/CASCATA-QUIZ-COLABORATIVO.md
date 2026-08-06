@@ -76,6 +76,7 @@ Mudanças, todas aditivas e por `garantirColuna`/`garantirFk`:
 | `coleta_rodada` | `modo ENUM('TEMPESTADE','CASCATA')` default `TEMPESTADE` | separa os dois ritos sem separar o código |
 | `coleta_rodada` | `pergunta_ativa_id INT NULL` | qual célula a sala está respondendo agora |
 | `coleta_item` | `pergunta_id INT NULL` | a qual pergunta a sugestão responde |
+| `coleta_item` | `tipo_resposta ENUM('ESCOLHA','RENUNCIA') NULL` | se a sugestão é a decisão ou o que se abre mão |
 | `coleta_item.destino_tipo` | + `'CASCATA'` | a sugestão virou a escolha de uma célula |
 | `cascata_pergunta` | tabela nova | o roteiro do encontro |
 
@@ -83,6 +84,10 @@ Mudanças, todas aditivas e por `garantirColuna`/`garantirFk`:
 já aponta para `fator`, `cenario_item` e `desdobramento`. O vínculo continua
 valendo nos dois sentidos: o selo "Coleta · Fulano" aparece na célula, e a ideia
 mostra "Virou escolha ↗".
+
+Como uma célula é preenchida por **duas** sugestões (a escolha e a renúncia),
+`destino_id` sozinho não diz qual das duas é — quem responde isso é
+`tipo_resposta`, que a sugestão já carrega.
 
 **O que NÃO muda:** `coleta_participante`, `coleta_voto`, `coleta_tentativa` e
 `login_tentativa` seguem como estão. Nenhuma tabela nova de sala, nenhum token
@@ -97,11 +102,14 @@ novo.
 2. Sem sessão aberta, ele cria uma (tema = o nome do encontro) e recebe o PIN +
    QR. Com uma sessão já aberta, a célula só entra no roteiro.
 3. A pergunta fica **ativa**: a sala inteira vê aquela célula.
-4. A tela mostra as sugestões chegando ao vivo, com o número de estrelas.
+4. A tela mostra as sugestões chegando ao vivo, **em duas colunas** — o que a
+   sala propôs como escolha e o que propôs como renúncia —, cada ficha com o
+   número de estrelas.
 5. Ele agrupa vozes iguais (arrastar uma ficha sobre a outra, como hoje).
-6. Arrasta a ficha vencedora **para a célula** → abre o modal de escolha já
-   preenchido com o texto da sugestão, para ajustar a redação e escrever a
-   renúncia.
+6. Arrasta a ficha vencedora **para a célula** → abre o modal já preenchido no
+   campo correspondente (escolha ou renúncia, conforme o tipo da ficha), para
+   ajustar a redação. A célula fica completa quando as duas foram preenchidas —
+   por arraste, digitação ou uma mistura das duas.
 7. Avança para a próxima pergunta do roteiro.
 
 ### Participante (`/entrar/{pin}`, sem login)
@@ -111,9 +119,13 @@ novo.
    (H1 · 2027–2029 · "Recuperação" + o objetivo), a linha base (Como Vencer) e
    o eixo (Mercado). Sem esse contexto a pergunta é abstrata demais para uma
    resposta útil.
-3. Escreve a sugestão (com o ditado por voz que já existe).
-4. Quando o condutor abre a votação, dá a **estrela** nas melhores.
-5. A pergunta muda sozinha quando o condutor avança.
+3. Escolhe, num **par de botões**, se o que vai escrever é uma **Escolha** ou
+   uma **Renúncia** — é uma pergunta só por célula, e o participante decide de
+   qual lado quer contribuir. O padrão é *Escolha*.
+4. Escreve a sugestão, em até **255 caracteres**, com o **contador visível**
+   ("128/255") atualizando enquanto digita. O ditado por voz continua valendo.
+5. Quando o condutor abre a votação, dá a **estrela** nas melhores.
+6. A pergunta muda sozinha quando o condutor avança.
 
 ## 6. Telas
 
@@ -121,8 +133,20 @@ novo.
   faixa de sessão ativa no topo (PIN, quantos entraram, pergunta atual); painel
   ao vivo das sugestões da pergunta ativa, com arraste até a célula.
 - **Participante** (`participante.js`): um bloco novo para o modo CASCATA —
-  cabeçalho com a célula, campo de sugestão, lista das próprias respostas e a
-  votação por estrela. O bloco da tempestade continua intacto.
+  cabeçalho com a célula, o par de botões Escolha/Renúncia, o campo de sugestão
+  com contador de caracteres, a lista das próprias respostas (cada uma com o
+  selo do tipo) e a votação por estrela. O bloco da tempestade continua intacto.
+
+  O par de botões usa o tipo `botoes` do modal, que já existe — e vale o alerta
+  registrado no `CLAUDE.md`: em `botoes` o id fica na **div** que agrupa os
+  rádios, e ler `.value` dela devolve `undefined`. Aqui a tela é a do
+  participante, que não usa a fábrica de modais, então o par é escrito à mão;
+  ainda assim, o valor tem de sair do rádio marcado, não do contêiner.
+
+  O contador de caracteres atualiza no `input` do próprio campo. Ele **não pode
+  disparar redesenho**: a regra do polling — nunca redesenhar com campo em foco
+  ou texto digitado — vale igual, e um contador que reconstrói o bloco fecharia
+  o teclado no meio da frase.
 - **Coleta**: sem mudança. As duas salas convivem porque a rodada declara o modo.
 
 ## 7. Regras que não podem ser afrouxadas
@@ -155,19 +179,25 @@ Coisas que a tempestade não tem e que vão morder se passarem batido:
    do encontro. Tem de contar `pergunta_id`.
 2. **O teto de votos também.** `max_votos` passa a valer por pergunta, pela
    mesma razão.
-3. **Uma célula tem uma decisão só.** Diferente da SWOT, onde muitos fatores
-   coexistem, aqui a sugestão aceita **substitui** o conteúdo da célula. Aceitar
-   uma segunda precisa dizer em voz alta que vai sobrescrever — e a célula
-   preenchida à mão nunca pode ser sobrescrita em silêncio (é a mesma regra da
-   carga de conteúdo).
+3. **Uma célula tem uma decisão só, de cada lado.** Diferente da SWOT, onde
+   muitos fatores coexistem, aqui a sugestão aceita **substitui** o campo
+   correspondente da célula. Sobrescrever pede confirmação mostrando o texto
+   atual — e vale tanto para o que veio do quiz quanto para o que alguém
+   escreveu à mão (é a mesma regra da carga de conteúdo: ninguém perde uma
+   decisão sem ver).
 4. **Pergunta encerrada não aceita resposta atrasada.** O envio valida a
    pergunta ativa no servidor, não a que estava na tela do celular.
-5. **A renúncia.** O quiz pergunta a escolha; a renúncia é o outro lado dela e
-   sai mais natural do condutor no momento de aceitar. Se a sala for perguntada
-   pelas duas, são duas perguntas por célula — 252 no total. Ver decisões.
-6. **Voto do próprio autor.** Na tempestade isso não é travado. Vale decidir se
+5. **O limite de 255 caracteres é do servidor, não da tela.** O `maxlength` do
+   campo é conforto; o corte que vale é o do `PublicoController`, que hoje usa
+   `MAX_TEXTO = 400` para a tempestade. São dois limites diferentes convivendo:
+   400 na tempestade, 255 no quiz da cascata.
+6. **O tipo da resposta vem do participante e precisa ser validado.**
+   `tipo_resposta` só aceita `ESCOLHA` ou `RENUNCIA`, e qualquer outra coisa
+   vira `ESCOLHA` — nunca um valor livre vindo do corpo do pedido, pela mesma
+   razão que o nome do participante vem do registro e não do corpo.
+7. **Voto do próprio autor.** Na tempestade isso não é travado. Vale decidir se
    aqui continua livre.
-7. **Sessão órfã.** Rodada de cascata aberta e esquecida trava a criação de uma
+8. **Sessão órfã.** Rodada de cascata aberta e esquecida trava a criação de uma
    tempestade (hoje há a guarda "já existe rodada aberta"). Com dois modos, a
    guarda precisa ser por modo, ou a mensagem precisa dizer qual sala está
    aberta.
@@ -177,10 +207,12 @@ Coisas que a tempestade não tem e que vão morder se passarem batido:
 Cada fase é útil sozinha e pode ser validada antes da seguinte.
 
 **Fase 1 — o quiz de uma célula, ponta a ponta.**
-Modelo (`modo`, `cascata_pergunta`, `pergunta_id`), abrir sessão a partir da
-célula, tela do participante respondendo, painel ao vivo do condutor, e aceitar
-uma sugestão preenchendo escolha + renúncia. Sem estrela, sem arraste, sem
-roteiro. *É a menor coisa que já muda o jeito de trabalhar.*
+Modelo (`modo`, `cascata_pergunta`, `pergunta_id`, `tipo_resposta`), abrir
+sessão a partir da célula, tela do participante respondendo com o par
+Escolha/Renúncia e o contador de 255, painel ao vivo do condutor nas duas
+colunas, e aceitar uma sugestão para dentro do campo certo da célula. Sem
+estrela, sem arraste, sem roteiro. *É a menor coisa que já muda o jeito de
+trabalhar.*
 
 **Fase 2 — a estrela.**
 Reaproveita a votação da tempestade, com o teto por pergunta. Ordena as
@@ -194,15 +226,21 @@ arraste da ficha até a célula, com o modal abrindo já preenchido.
 Montar a lista de células antes do encontro, avançar/voltar, barra de progresso
 ("pergunta 4 de 12") e o resumo do encontro no fim.
 
-## 10. Decisões em aberto
+## 10. Decisões tomadas (06/08/2026)
 
-1. **Escopo da sessão** — um PIN para o encontro inteiro, com o condutor
-   trocando a pergunta ativa (recomendado), ou um PIN por célula?
-2. **Renúncia** — perguntada à sala também, ou escrita pelo condutor ao aceitar
-   (recomendado)?
-3. **Estrela** — uma só na melhor, ou N estrelas como o `max_votos` da
-   tempestade?
-4. **Quem responde** — qualquer pessoa com o PIN (como a tempestade), ou só
-   usuários cadastrados?
-5. **Sobrescrever célula preenchida** — recusar, pedir confirmação, ou guardar
-   as duas versões?
+1. **Escopo da sessão** — **um PIN para o encontro inteiro**, com o condutor
+   trocando a pergunta ativa. É o que justifica a tabela de roteiro.
+2. **Renúncia** — **uma pergunta por célula**, e o participante escolhe num par
+   de botões se responde a *Escolha* ou a *Renúncia*. Resposta de até **255
+   caracteres**, com contador visível enquanto digita. Não são duas perguntas
+   por célula: é uma, com dois lados possíveis.
+3. **Estrela** — **N estrelas**, reaproveitando o `max_votos` da tempestade,
+   contado por pergunta.
+4. **Sobrescrever célula preenchida** — **pedir confirmação**, mostrando o texto
+   atual antes de substituir.
+
+Permanece em aberto, com o padrão da tempestade valendo até alguém decidir
+diferente: **quem responde** é qualquer pessoa com o PIN, sem cadastro — igual à
+Tempestade de Ideias. Se a cascata precisar de sala fechada (só usuários
+cadastrados), é uma mudança de autorização e vale decidir antes da Fase 1, não
+depois.
