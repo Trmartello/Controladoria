@@ -96,9 +96,27 @@ já aponta para `fator`, `cenario_item` e `desdobramento`. O vínculo continua
 valendo nos dois sentidos: o selo "Coleta · Fulano" aparece na célula, e a ideia
 mostra "Virou escolha ↗".
 
-Como uma célula é preenchida por **duas** sugestões (a escolha e a renúncia),
-`destino_id` sozinho não diz qual das duas é — quem responde isso é
+Como uma célula é preenchida pelos **dois lados** (a escolha e a renúncia),
+`destino_id` sozinho não diz de qual lado a sugestão fala — quem responde isso é
 `tipo_resposta`, que a sugestão já carrega.
+
+### Vincular é muitos-para-um, e isso não custa tabela nenhuma
+
+Várias sugestões podem ser vinculadas à mesma célula: `destino_id` é
+muitos-para-um por natureza, e a Coleta já usa isso — quando a oficina agrupa
+vozes iguais, N ideias apontam para UM destino. Nenhuma tabela nova é
+necessária.
+
+É o mesmo formato do `cascata_fator`, que hoje amarra vários fatores da SWOT a
+uma célula como evidência. A diferença é o que cada coisa guarda:
+
+- **os vínculos** são muitos — todas as sugestões que fundamentam aquela
+  decisão, cada uma com autor, estrelas e tipo;
+- **o texto da célula** é um só de cada lado — `escolha` e `renuncia` são
+  `TEXT` únicos, e quem os redige é o condutor.
+
+Ou seja: vincular cinco fichas não escreve cinco escolhas. Escreve **uma**
+escolha, sustentada por cinco vozes que ficam registradas e visíveis na célula.
 
 **O que NÃO muda:** `coleta_participante`, `coleta_voto`, `coleta_tentativa` e
 `login_tentativa` seguem como estão. Nenhuma tabela nova de sala, nenhum token
@@ -116,14 +134,15 @@ O painel ao vivo da pergunta ativa é dividido assim:
 │  grupo(3)  ficha         │  │  grupo(2)                │
 └──────────────────────────┘  └──────────────────────────┘
 ┌─ A célula ─ Como Vencer × H1 · Mercado ─────────────────┐
-│  Escolha:  — vazia —          Renúncia:  — vazia —      │
+│  Escolha:  "Vencer por eficiência…"   ← 3 vozes ✕ ✕ ✕   │
+│  Renúncia: — vazia —                                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
 As duas primeiras são as **áreas de coleta**: tudo o que a sala mandou, cada
 ficha com o autor e as estrelas. A terceira é o **destino final** — a célula de
-verdade, com os dois campos que hoje já existem no modal. Oficializar é levar
-uma ficha de cima para baixo.
+verdade, com os dois campos que hoje já existem no modal, e embaixo de cada um
+as fichas que o sustentam.
 
 ### Condutor (tela da Cascata)
 
@@ -137,12 +156,19 @@ uma ficha de cima para baixo.
 5. Ele **unifica** vozes iguais dentro de cada área, arrastando uma ficha sobre
    a outra — o mesmo gesto e o mesmo mecanismo da Tempestade (`agrupado_em_id`,
    com o líder do grupo carregando o texto tratado).
-6. Arrasta a ficha (ou a caixa do grupo) vencedora **para a célula** → abre o
-   modal já preenchido no campo correspondente ao tipo dela, para ajustar a
-   redação antes de gravar.
-7. Repete para o outro lado. A célula fica completa quando escolha e renúncia
+6. Arrasta **uma ou mais** fichas (ou caixas de grupo) para a célula. Cada
+   arraste **acrescenta** um vínculo, não substitui o anterior: dá para
+   sustentar a decisão em três vozes diferentes.
+7. O modal abre com o texto das fichas vinculadas daquele lado, uma por linha,
+   como matéria-prima — o condutor redige **uma** escolha (ou **uma** renúncia)
+   a partir delas. É aqui que "a ideia já formatada" do pedido acontece: a
+   redação final é dele, as vozes ficam registradas embaixo.
+8. Repete para o outro lado. A célula fica completa quando escolha e renúncia
    foram preenchidas — por arraste, digitação ou uma mistura das duas.
-8. Navega para outra pergunta do roteiro, à vontade, para frente e para trás.
+9. Navega para outra pergunta do roteiro, à vontade, para frente e para trás.
+
+Desvincular é explícito: um ✕ na ficha listada dentro da célula tira só ela,
+sem mexer no texto já redigido — quem decide se o texto muda é quem escreveu.
 
 ### Navegação entre perguntas: nada se perde
 
@@ -228,25 +254,27 @@ Coisas que a tempestade não tem e que vão morder se passarem batido:
    pessoa pode mandar várias escolhas e várias renúncias, um teto único por
    pergunta deixaria quem escreveu cinco escolhas sem poder propor nenhuma
    renúncia. A contagem continua **dentro do INSERT**, como hoje.
-2. **O teto de votos também é por pergunta.** `max_votos` passa a valer por
-   pergunta, pela mesma razão. Se vale por tipo é decisão em aberto — estrelar
-   três escolhas e três renúncias é diferente de estrelar seis fichas
-   quaisquer.
+2. **O teto de votos é por PERGUNTA, e só por pergunta.** Cada pessoa tem N
+   estrelas naquela célula e gasta onde quiser — todas em escolhas, todas em
+   renúncias ou divididas. Diferente do teto de envios, que é por
+   (pergunta, tipo): ali a separação existe para ninguém ficar sem poder
+   contribuir de um dos lados; aqui, dividir por tipo tiraria da pessoa a
+   liberdade de dizer que, naquela célula, o que importa é a renúncia.
 3. **Agrupar não pode cruzar os tipos.** O arraste de unificação vale dentro da
    mesma área: juntar uma escolha com uma renúncia produziria um grupo cujo
    líder não pertence a lado nenhum. A validação é do servidor, não da tela —
    o gesto pode ser bloqueado no arraste, mas quem recusa de verdade é o
    `agrupar`, comparando `tipo_resposta` dos dois.
-4. **Uma célula tem uma decisão só, de cada lado.** Diferente da SWOT, onde
-   muitos fatores coexistem, aqui a sugestão oficializada **substitui** o campo
-   correspondente da célula. Sobrescrever pede confirmação mostrando o texto
-   atual — e vale tanto para o que veio do quiz quanto para o que alguém
-   escreveu à mão (é a mesma regra da carga de conteúdo: ninguém perde uma
-   decisão sem ver). Muitas sugestões, uma oficializada por lado.
-5. **Oficializar de novo precisa soltar a anterior.** Se a ficha A já virou a
-   escolha da célula e a ficha B a substitui, A não pode continuar marcada como
-   "virou escolha" — senão duas fichas apontam para o mesmo campo e o rastreio
-   passa a mentir. Soltar o vínculo da anterior faz parte da mesma operação.
+4. **Muitos vínculos, um texto por lado.** Vincular acumula e nunca sobrescreve
+   — é registro de origem. O que é único é o **texto** da célula: `escolha` e
+   `renuncia` são um só cada. Trocar esse texto por cima de algo já escrito pede
+   confirmação mostrando o atual, venha do quiz ou da mão de alguém (mesma regra
+   da carga de conteúdo: ninguém perde uma decisão sem ver).
+5. **Vincular e redigir são operações separadas.** Arrastar uma ficha não
+   reescreve a célula sozinho; ele acrescenta o vínculo e **oferece** o texto no
+   modal. Se as duas coisas virassem uma, o segundo arraste apagaria a redação
+   que o condutor acabou de ajustar — e ele arrasta a segunda ficha justamente
+   para somar, não para recomeçar.
 6. **O envio valida a pergunta ATIVA no servidor**, não a que estava na tela do
    celular: entre o participante começar a digitar e apertar enviar, o condutor
    pode ter avançado. A resposta atrasada pertence à pergunta que estava ativa
@@ -275,8 +303,8 @@ Cada fase é útil sozinha e pode ser validada antes da seguinte.
 Modelo (`modo`, `cascata_pergunta`, `pergunta_id`, `tipo_resposta`), abrir
 sessão a partir da célula, tela do participante respondendo com o par
 Escolha/Renúncia e o contador de 255, as duas áreas de coleta no painel do
-condutor, e oficializar uma sugestão para dentro do campo certo da célula — por
-botão ("usar esta resposta"), ainda sem arraste. Sem estrela, sem agrupamento,
+condutor, e vincular uma ou mais sugestões ao lado certo da célula — por botão
+("usar esta resposta"), ainda sem arraste, com o texto oferecido no modal. Sem estrela, sem agrupamento,
 sem roteiro. *É a menor coisa que já muda o jeito de trabalhar.*
 
 **Fase 2 — navegar entre perguntas.**
@@ -307,8 +335,8 @@ listeners no `document`, gesto que engole o clique seguinte).
    por célula: é uma, com dois lados possíveis.
 3. **Estrela** — **N estrelas**, reaproveitando o `max_votos` da tempestade,
    contado por pergunta.
-4. **Sobrescrever célula preenchida** — **pedir confirmação**, mostrando o texto
-   atual antes de substituir.
+4. **Sobrescrever o texto da célula** — **pedir confirmação**, mostrando o
+   texto atual antes de substituir.
 5. **Quantas respostas por pessoa** — **várias de cada tipo**: uma ou mais
    escolhas e uma ou mais renúncias na mesma pergunta, até o teto, que passa a
    contar por (pergunta, tipo).
@@ -319,6 +347,11 @@ listeners no `document`, gesto que engole o clique seguinte).
 7. **Navegar entre perguntas não perde nada.** Voltar a uma pergunta já
    respondida mostra todas as sugestões, os grupos, as estrelas e o que já foi
    oficializado. Não há "encerrar pergunta" nesta versão.
+8. **A estrela é por pergunta.** Cada pessoa tem N estrelas na célula e as gasta
+   onde quiser, entre respostas e renúncias, sem cota separada por lado.
+9. **Vincular aceita uma ou mais sugestões por lado.** Muitos vínculos
+   registrados, um texto redigido por lado. Nenhuma tabela nova: `destino_id`
+   já é muitos-para-um, como a Coleta faz com as vozes agrupadas.
 
 Permanecem em aberto:
 
@@ -326,8 +359,5 @@ Permanecem em aberto:
   qualquer pessoa com o PIN, sem cadastro. Se a cascata precisar de sala fechada
   (só usuários cadastrados), é mudança de autorização e vale decidir **antes da
   Fase 1**, não depois.
-- **O teto de estrelas é por pergunta ou por (pergunta, tipo)?** Três em cada
-  lado é diferente de três no total, e a diferença aparece quando um dos lados
-  recebe muito mais sugestões que o outro.
 - **Congelar uma pergunta já tratada.** Hoje voltar reabre para a sala. Se
   incomodar na prática, vira um estado a mais na pergunta.
