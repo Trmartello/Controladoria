@@ -87,6 +87,20 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `painelOrientacao` / `ligarOrientacoes`. Os títulos da SWOT trazem o eixo entre
   parênteses (“Forças (Interno · Ajuda)”). Não reintroduzir parágrafos de
   introdução acima das listas — a orientação mora no ⓘ.
+- **Impressão das análises** (o "PDF" do ⤓ Relatório): o **canvas é uma tabela de
+  verdade** (`<table class="canvas-analise">`, cabeçalho no `<thead>`) —
+  neutralizada na tela (todas as partes viram bloco, o layout é o de sempre) e
+  ativa no papel, onde o `<thead>` vira o cabeçalho **repetido em toda página**.
+  Foi medido no Chromium: `display: table-header-group` num `<div>` sai **só na
+  primeira** folha, e `position: fixed` deslocado para a margem some **na
+  última** — o `<thead>` real é o único que repete em todas. Na tela quem gruda
+  é o **`<thead>`**, não o bloco de dentro: `sticky` só se move dentro do bloco
+  container, e o container virou a célula, que tem a altura exata do cabeçalho.
+  No papel o corpo é **uma coluna**: título da categoria, traço e os cartões
+  dela em largura cheia, um bloco depois do outro — em coluna estreita o mesmo
+  texto gasta três vezes mais linhas. E `break-inside: avoid` fica **só no
+  cartão**: na coluna inteira, ela era empurrada para a folha seguinte e a
+  primeira saía em branco.
 - **Relatório da análise** (PESTEL, Porter, SWOT, Cenário): botão **⤓ Relatório**
   no cabeçalho, com dois caminhos — **Word**, um `.doc` de HTML baixado por
   `Blob` (o mesmo caminho do `.xls` do Relatório de Status: sem Composer não há
@@ -109,7 +123,13 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   quebra em duas ou três linhas conforme a largura, e um palpite em `rem` curto
   demais deixaria o cabeçalho da coluna por cima do da análise. As margens
   negativas do bloco cobrem a sarjeta do `.row`, senão o cartão aparecia pelas
-  beiradas ao passar por baixo. O painel de vozes fica **fora** do fixo: ele
+  beiradas ao passar por baixo. O selo da sala fica **na mesma linha do
+  título**, logo depois dele: numa linha própria custava uma faixa inteira do
+  cabeçalho fixo, que é altura roubada de todas as telas o tempo todo. A largura
+  das colunas vem do **`row-cols-*` da fila**, calculado com o número de
+  categorias da análise — com um `col-*` fixo o Porter (cinco forças num
+  `col-xl-2`) deixava um sexto da tela vazio e espremia os cartões à toa.
+  O painel de vozes fica **fora** do fixo: ele
   cresce com a oficina e engoliria a tela.
 - **Colunas das análises** (as mesmas quatro): o cabeçalho de cada
   categoria é `position: sticky` logo abaixo do cabeçalho da análise
@@ -207,6 +227,10 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   fase pelo selo **★ a sala está pontuando**, que vem de `estrelas_em` no
   `estado()` — sem ele, fechar o 🎤 pareceria "sala parada" justamente no
   momento de ler a sala.
+  Com a pergunta tendo LADOS (a cascata, o cenário), o celular mostra as
+  respostas em **blocos por lado** — todas as escolhas juntas, todas as
+  renúncias juntas, com o selo virando título do bloco. Misturadas, obrigavam a
+  ler o selo de cada ficha para saber de que lado ela era.
   O isolamento entre os ritos é **`coleta_item.origem`** (`TEMPESTADE`/`QUIZ`),
   nunca `pergunta_id` (FK SET NULL) e **nunca mais `tipo_resposta IS NULL`**:
   alvo sem lado responde com `tipo_resposta` nulo e vazaria para a fila da
@@ -255,6 +279,9 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   sempre**: o 🎤 é tocado duas vezes sem querer o tempo todo, e a segunda tocada
   não pode calar a sala no meio da oficina. Quem fecha guarda a pergunta em
   `perguntaFoco`, senão o painel de vozes se esvazia junto com o fechamento.
+  O painel de vozes tem o **mesmo interruptor em botão**: no lugar do "Reabrir
+  para a sala" aparece **"Fechar para a sala"** quando a pergunta está ativa —
+  mesmo `data-mic-fechar`, mesma confirmação, mesmo pedido.
   Lições da revisão adversarial desta fase: **o servidor nunca fabrica a
   confirmação do usuário** — o `abrir_sala` do 🎤 inventava `confirmar_encerrar`
   e derrubava a sala de outra pessoa entre o SELECT (fora da trava) e o
