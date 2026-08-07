@@ -582,7 +582,11 @@ const Diag = {
           ${this.botoesFator(f, plan.id, comPromocao, this.selosOrigem(f))}
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
         </div></div>`).join('');
-      return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
+      // A largura vem do `row-cols-*` da FILA, não de um `col-*` fixo: com
+      // `col-xl-2` (um sexto) o Porter, que tem cinco categorias, deixava um
+      // sexto da tela vazio à direita e espremia os cartões à toa. Agora cada
+      // análise divide a largura pelo número de categorias que ela tem.
+      return `<div class="coluna-categoria" data-coluna-categoria="${cat}">
         <div class="caixa-coluna">
           <div class="cabecalho-coluna d-flex align-items-center mb-2">
             ${this.iconeOrientacao(cat, cor, rotulo)}
@@ -619,7 +623,8 @@ const Diag = {
       ${descricao ? `<p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>` : ''}
       <div data-quiz-vivo>${this.quizPainel(dono, etapa, ano)}</div>
       ${this.seletorCategoriaMovel(etapa, categorias.map(([cat, rotulo]) => [cat, rotulo]), contagens)}
-      <div class="row g-3">${colunas}</div>`;
+      <div class="row g-3 row-cols-1 row-cols-sm-2 row-cols-md-3
+        row-cols-xl-${categorias.length}">${colunas}</div>`;
 
     this.ligarCabecalhoFixo(el);
     // O relatório é montado no clique, com o que ESTA tela carregou: os mesmos
