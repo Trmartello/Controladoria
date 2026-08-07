@@ -768,8 +768,9 @@ degatear — mas está aqui escrito para não virar surpresa.
 
 # Parte III — A sala tem casa própria, e a pergunta segue a tela
 
-Revisão de escopo pedida em 07/08/2026, depois da Fase 3 entregue. **Nada desta
-parte foi construído**: a seção 20 tem a decisão que depende de você.
+Revisão de escopo pedida em 07/08/2026, depois da Fase 3 entregue, com as
+decisões fechadas no mesmo dia (seção 20). **Nada desta parte foi construído** —
+ela existe para a decisão vir antes do código.
 
 ## 18. O que se quer agora
 
@@ -856,55 +857,76 @@ alvo significa. A rota nova é uma só:
 POST /api/quiz/tela   { planejamento_id, alvo_tipo, ano, etapa, categoria… }
 ```
 
-"A condução está aqui; ponha isto na sala." Idempotente: se já é a ativa, não
-faz nada — senão cada batida do polling reabriria a pergunta.
+"Ponha ISTO na sala." Ela enfileira o alvo se ele ainda não estiver no roteiro,
+ativa, e devolve o estado. Idempotente: já sendo a ativa, não faz nada — senão
+um toque repetido reabriria a pergunta e zeraria o cronômetro dela.
 
-## 20. A decisão que trava tudo: navegar **arrasta** a sala?
+**Sem sala aberta**, a rota responde 409 com o código `SEM_SALA`, e a tela
+oferece "Abrir a sala e perguntar?" — um confirme, o mesmo padrão do
+`SALA_ABERTA` que já existe. Nunca cria sessão por acidente: uma sessão que
+nasce sozinha é uma sessão sem nome, que ninguém sabe que abriu.
 
-A Fase 2 fechou o oposto, e por um motivo concreto (decisão 11, seção 10):
+## 20. Decisão: a sala muda quando você ESCOLHE, e aí muda na hora
 
-> **Navegar ≠ reabrir.** O condutor circula pelas perguntas sem mexer na tela
-> de ninguém; a sala só muda quando ele **ativa ou reabre**.
+Fechada em 07/08/2026, em duas respostas que dizem a mesma coisa:
 
-O pedido agora é que mudar de página mude a pergunta. Os dois têm razão em
-situações diferentes, e é por isso que a resposta não é óbvia:
+> **Um toque para confirmar.**
+>
+> **O administrador que estiver conduzindo a reunião escolhe a categoria a ser
+> trabalhada, e o celular altera automaticamente para as pessoas lançarem as
+> informações desejadas.**
 
-- **A favor de arrastar:** é o gesto natural de quem conduz uma oficina no
-  telão. Ele abre a SWOT, a sala responde SWOT. Nenhum clique extra, nenhum
-  "abrir para a sala" para esquecer.
-- **Contra:** o mesmo condutor abre a SWOT **só para conferir um fator**
-  enquanto a sala ainda responde Porter — e a sala pula no meio da frase de
-  alguém. Não é hipótese remota: é o que se faz o tempo todo numa discussão. E,
-  com duas pessoas logadas no mesmo planejamento, a navegação de uma arrasta a
-  sala da outra.
+Ou seja: **navegar não mexe na sala** — a regra da Fase 2 ("Navegar ≠ ativar")
+continua valendo, e continua valendo pelo mesmo motivo: abrir a SWOT só para
+conferir um fator não pode interromper a discussão de Porter no meio da frase
+de alguém. O que muda é o **gesto**: onde antes era um modal com formulário,
+agora é **um toque no 🎤 da coluna** — e todo celular da sala vira junto.
 
-Três saídas possíveis, com trabalhos diferentes:
+Três consequências, e vale escrever porque cada uma já tem um erro conhecido do
+outro lado:
 
-1. **Sempre automático.** Entrar na tela põe a pergunta dela na sala. Fiel ao
-   pedido e o mais simples de construir. Aceita o risco acima.
-2. **Chave "conduzir daqui"** (recomendada). Um interruptor na aba Sala: ligado,
-   a navegação arrasta a sala; desligado, navegar é só olhar. Quem conduz liga
-   uma vez no começo do encontro e esquece; quem só consulta nunca liga. O
-   estado fica visível no selo de cada análise ("🎤 conduzindo").
-3. **Um toque para confirmar.** Entrar na tela não muda nada; o selo mostra "a
-   sala está em Porter · Rivalidade — trazer para cá?" e um toque muda. É a
-   Fase 2 com menos atrito, mas mantém um clique por tela.
+1. **Entrar numa tela não ativa nada.** Nem a primeira categoria, nem a última
+   perguntada. A tela fica *pronta*, e quieta.
+2. **O 🎤 da categoria que JÁ está na sala não é alvo.** Ele vira selo ("na
+   sala"), não botão. É a mesma lição do quadrante da Coleta: enquanto ele era
+   clicável, tocar no realçado desclassificava a ideia e ela sumia da matriz sem
+   ninguém pedir. Aqui, tocar de novo reabriria a pergunta e zeraria o
+   cronômetro dela.
+3. **A tela diz onde a sala está, mesmo quando é longe.** Se a sala responde
+   Porter e o condutor está na SWOT, o selo do topo diz "a sala está em Porter ·
+   Rivalidade". Sem isso ele conduz às cegas — e o silêncio seria lido como "não
+   tem sala aberta", que é justamente quando alguém abre uma segunda.
 
-Sobra uma segunda decisão, menor: **entrando numa tela de 6 categorias, qual
-delas vai para a sala?** A primeira ainda não perguntada (o encontro anda
-sozinho na ordem) ou nenhuma até o condutor tocar o 🎤 da coluna (a tela fica
-pronta, mas quieta).
+O que **não** vamos construir, por não ser mais necessário: a chave "conduzir
+daqui". Ela existia para proteger de uma navegação que arrasta a sala; sem essa
+navegação, ela seria um interruptor sem função.
 
 ## 21. O que muda no que já foi entregue
 
 | Entregue na Fase 3 | O que acontece |
 |---|---|
 | `QuizSala.faixa` nas análises | vira `QuizSala.selo` (uma linha); a faixa inteira migra para a aba Sala |
-| Botão "Perguntar à sala" do Cenário | vira o 🎤 por categoria/lado; o modal de enunciado migra para o roteiro |
+| Botão "Perguntar à sala" do Cenário | vira o 🎤 de um toque; o modal de enunciado migra para o roteiro, na aba Sala |
 | Modal "abrir sessão" | passa a viver na aba Sala — é lá que a sessão nasce |
-| `quiz.js` | ganha o mapa tela → alvo e o `sincronizarTela()`; perde a faixa |
+| `quiz.js` | ganha o mapa tela → alvo, o `selo()` e o `perguntar()` de um toque; perde a faixa |
+| Decisão 11 da Parte I ("Navegar ≠ ativar") | **continua valendo** — só o gesto de ativar ficou mais curto |
 | Painel de sugestões (Cenário, Cascata) | **fica onde está** — é o trabalho da tela |
 | Banco, rotas de condução, isolamento entre ritos | **intactos** |
 
 Com PESTEL/Porter/SWOT entrando aqui, a Fase 4 fica só com a Tempestade virando
 pergunta `LIVRE` do roteiro, a estrela por pergunta e a unificação de vozes.
+
+## 22. Ordem de entrega
+
+1. **A aba Sala** — a seção nova, com QR grande, PIN, participantes, roteiro e o
+   modal de abrir/encerrar sessão. Enquanto a faixa ainda está nas análises,
+   nada quebra: as duas coexistem por um passo.
+2. **O 🎤 e o selo** — `QuizSala.selo()` e `QuizSala.perguntar()`, a rota
+   `POST /api/quiz/tela`, e o mapa tela → alvo em `App\Services\Quiz`.
+3. **Cenário e Cascata** trocam a faixa pelo selo (o painel de sugestões fica).
+4. **PESTEL, Porter e SWOT** ganham o 🎤 por categoria e o painel de sugestões —
+   as três compartilham `Diag.etapaFatores`, então saem juntas.
+5. **A faixa sai** de `quiz.js` quando ninguém mais a usa.
+
+Cada passo é entregável sozinho: entre um e outro o sistema fica coerente, e a
+validação de uma tela não espera a próxima.
