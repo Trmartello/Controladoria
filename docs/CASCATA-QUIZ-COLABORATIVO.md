@@ -434,9 +434,9 @@ implementação e aparecem na hora de construir cada fase.
 
 # Parte II — A sala é do PROJETO, não da tela
 
-Revisão de escopo pedida em 06/08/2026, depois das Fases 1 e 2 entregues.
-**Nada desta parte foi construído**: ela existe para a decisão vir antes do
-código, e a seção 16 lista o que depende de você.
+Revisão de escopo pedida em 06/08/2026, depois das Fases 1 e 2 entregues, com
+as decisões fechadas em 07/08/2026 (seção 16). **Nada desta parte foi
+construído**: ela existe para a decisão vir antes do código.
 
 ## 11. O que se quer agora
 
@@ -451,7 +451,7 @@ Três exigências, e vale separá-las porque **duas já estão prontas e uma nã
 
 | Exigência | Situação |
 |---|---|
-| Um quiz aberto por vez, com aviso para fechar o outro | ✅ já existe (a guarda de "uma rodada aberta por planejamento") |
+| Um quiz aberto por vez, com aviso para fechar o outro | ⚠️ existe como **recusa**; vira **confirmação que encerra a anterior** (seção 16) |
 | Uma pergunta ativa por vez, mudando sozinha no celular | ✅ já existe (Fases 1 e 2) |
 | **Um PIN só para o projeto todo, valendo em todas as telas** | ❌ é o que falta |
 
@@ -505,7 +505,7 @@ migrate já faz em tudo):
 ```
 quiz_pergunta
   id, rodada_id, ordem, situacao, aberta_em
-  alvo_tipo ENUM('CASCATA','CENARIO','FATOR')
+  alvo_tipo ENUM('CASCATA','CENARIO','FATOR','LIVRE')
   enunciado VARCHAR(255) NULL      -- a pergunta nas palavras do condutor
   -- CASCATA: a célula (como hoje)
   horizonte_id, driver_id, eixo_id
@@ -514,11 +514,19 @@ quiz_pergunta
   -- FATOR: qual coluna do PESTEL/Porter/SWOT
   etapa ENUM('PESTEL','PORTER','SWOT') NULL
   categoria VARCHAR(40) NULL
+  -- LIVRE: nada. O alvo é a própria fila da Coleta.
 ```
 
 Colunas nulas por tipo, e não uma `alvo_id` genérica: a célula da cascata
 precisa de **três** ids, que não cabem num só. É o mesmo formato de
 `diario_bordo` (`ref_tipo`/`ref_id`) levado ao caso que tem chave composta.
+
+`LIVRE` é a **Tempestade de Ideias** dentro do roteiro (decisão 1 da seção 16):
+a pergunta não aponta para lugar nenhum, a resposta cai na fila da Coleta e
+segue o rito de sempre — matriz de prioridade, agrupar, triagem, encaminhar.
+Ela é o único alvo cujas respostas nascem com `origem='TEMPESTADE'`; é
+justamente por isso que a marca de isolamento precisa ser explícita e não
+derivada de `pergunta_id` ser nulo.
 
 **(b) A marca de isolamento sai de `tipo_resposta` e vira explícita.**
 
@@ -542,6 +550,7 @@ quiz, mas **dentro** da sessão de quiz quem manda é o alvo da pergunta ativa.
 | Cascata | **Sim**: Escolha \| Renúncia | `cascata_escolha.escolha` / `.renuncia` |
 | Cenário | **Sim**: Situação atual \| Tendência | `cenario_item` do tipo escolhido |
 | PESTEL / Porter / SWOT | **Não** — a categoria É a pergunta | `fator` daquela etapa e categoria |
+| Livre (Tempestade) | **Não** | `coleta_item` na fila, como hoje |
 
 Ou seja, o par de botões que já existe no celular serve aos dois primeiros sem
 mudança nenhuma de conceito: muda só o rótulo. Para PESTEL/Porter/SWOT o
@@ -565,23 +574,66 @@ de nome**.
 | Vínculo à célula (Fase 1) | intacto; ganha irmãos em `CenarioController` e `FatorController` |
 | `CascataQuizController` | vira `QuizController` (a sala é do projeto) |
 | Guardas de modo no `PublicoController` | passam a olhar o alvo da pergunta ativa |
-| Tela do participante | o cabeçalho vira genérico; o par de botões passa a ter rótulos por alvo |
+| Tela do participante | o cabeçalho vira genérico; o par de botões passa a ter rótulos por alvo, e some no alvo que não tem lado |
 | Faixa da sessão em `cascata.js` | **precisa virar componente compartilhado** — cinco telas reescrevendo o painel divergem na primeira mudança, como já aconteceu com `panorama()` e `camposAcao` |
+| `RodadaController::abrir` (Tempestade) | passa a **enfileirar uma pergunta `LIVRE`** na sala do projeto em vez de criar uma rodada própria |
+| Guarda de "uma rodada aberta" | de recusa para **confirmação**: com `confirmar_encerrar=1`, encerra a sala anterior e abre a nova (seção 16, decisão 1) |
 
-## 16. Decisões em aberto
+## 16. Decisões tomadas
 
-1. **A Tempestade entra na mesma sala?** Ela tem rito próprio (matriz de
-   prioridade, arrastar, agrupar, triagem) que não é quiz. Duas leituras:
-   *(a)* ela também vira uma pergunta do roteiro, e aí é **um PIN para tudo,
-   sempre**; *(b)* ela continua uma sala à parte, e o PIN único vale para as
-   análises — na prática ainda é um PIN por encontro, porque só uma sala fica
-   aberta por vez.
-2. **PESTEL/Porter/SWOT: uma categoria por pergunta, ou a sala classifica?**
-   Perguntar "me deem ameaças" (recomendado) é mais dirigido; deixar a sala
-   escolher o quadrante dá um seletor de 4 a 6 opções no celular.
-3. **A sugestão vira o registro na hora ou passa por triagem?** Na cascata o
-   condutor redige o texto final a partir das vozes. Em PESTEL/SWOT, aceitar uma
-   sugestão pode criar o fator direto — ou passar pela mesma bancada de triagem
-   da Coleta.
-4. **Ordem de entrega.** As telas novas podem vir todas juntas ou uma a uma
-   (Cenário primeiro, por ser a mais simples: dois lados, um texto).
+Fechadas em 07/08/2026. Nada da Parte II fica em aberto.
+
+**1. A Tempestade entra na mesma sala, como pergunta `LIVRE`.** O PIN serve
+para tudo. Não existe mais "a rodada da tempestade" separada da "rodada do
+quiz": existe **a sala do projeto**, e a Tempestade é um item do roteiro que
+não aponta para célula nenhuma — a resposta cai na fila da Coleta e segue o
+rito de sempre.
+
+**2. Abrir e fechar é por tela, e a colisão vira pergunta, não recusa.** Cada
+tela (Cenário, PESTEL, Porter, SWOT, Cascata, Tempestade) tem seu botão de
+abrir e fechar a sala. Ao abrir com outra tela ainda aberta — o caso real de
+quem esqueceu de fechar —, o sistema **pergunta se deseja encerrar a discussão
+anterior** para liberar a tela atual, e ao confirmar faz as duas coisas num
+pedido só. O enunciado do aviso é montado com a tela aberta e a tela pedida
+("A sala está aberta em *Análise PESTEL*. Encerrar aquela discussão e abrir em
+*Cascata de Escolhas*?"), porque um texto genérico não diz onde a sala ficou.
+
+Consequências no back-end, e é onde mora o risco:
+
+- `POST /api/coleta/rodadas` e o `abrir()` do quiz passam a aceitar
+  `confirmar_encerrar`. **Sem ele a recusa continua** — 409 com o nome da tela
+  aberta no corpo, para a tela poder perguntar. Abrir encerrando calado seria
+  derrubar a discussão de outra pessoa por um clique distraído.
+- O encerra-e-abre é **um pedido**, não dois: dois pedidos deixam a janela em
+  que a sala está fechada e ninguém consegue responder, e o segundo pode falhar
+  depois de o primeiro ter encerrado.
+- **A pergunta muda conforme a tela ativa**: abrir na tela X enfileira (ou
+  reativa) a pergunta cujo alvo é X e a torna `ATIVA`. Quem está com o celular
+  na mão vê o enunciado trocar sozinho, sem escanear nada — é exatamente o
+  mecanismo da Fase 2, agora disparado pela navegação do condutor.
+- Reabrir uma tela já discutida **não apaga o que ela recebeu**: as sugestões,
+  os grupos e as estrelas daquela pergunta continuam lá (decisão 7 da Parte I).
+
+**3. PESTEL / Porter / SWOT: uma categoria por pergunta.** O condutor pergunta
+"me deem ameaças" e a sala responde só aquilo. Sem seletor de quadrante no
+celular, e sem par de botões — esse alvo não tem lado.
+
+**4. O condutor redige ao aceitar.** Vale para todos os alvos, como já vale na
+cascata: as vozes da sala são matéria-prima, o texto que vira `fator` ou
+`cenario_item` é redigido por quem conduz, com os vínculos registrados em
+`destino_tipo`/`destino_id`. Não há bancada de triagem intermediária para os
+alvos de análise — a bancada continua sendo coisa da Tempestade (`LIVRE`), que
+é justamente onde o rito dela faz sentido.
+
+**5. Ordem de entrega: Cenário primeiro.** É a tela mais simples (dois lados,
+um texto) e serve de gabarito para as outras. Depois PESTEL, Porter e SWOT, que
+compartilham o mesmo alvo `FATOR` e saem quase juntas. A Cascata já está pronta
+e só troca de nome; a Tempestade entra por último, porque é a que mais mexe em
+código que já roda em produção.
+
+### Fase 3 — o recorte
+
+Com isso fechado, a Fase 3 é: `quiz_pergunta` com alvo polimórfico,
+`coleta_item.origem`, a faixa da sessão como componente compartilhado, o
+encerra-e-abre confirmado, e a tela de Cenário como primeira consumidora.
+PESTEL/Porter/SWOT e a migração da Tempestade vêm na Fase 4.
