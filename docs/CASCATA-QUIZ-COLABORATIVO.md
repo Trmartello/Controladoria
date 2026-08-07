@@ -763,3 +763,148 @@ da interface cria essas perguntas hoje, então o usuário não alcança o beco; 
 que ele veria, se chegasse lá pela API, é a contagem no roteiro. A Fase 4 fecha
 isso ao construir as telas. Preferi manter o servidor pronto a gatear e
 degatear — mas está aqui escrito para não virar surpresa.
+
+---
+
+# Parte III — A sala tem casa própria, e a pergunta segue a tela
+
+Revisão de escopo pedida em 07/08/2026, depois da Fase 3 entregue. **Nada desta
+parte foi construído**: a seção 20 tem a decisão que depende de você.
+
+## 18. O que se quer agora
+
+> Até a leitura do QR code, o PIN deve estar em uma aba específica e não mais
+> aparecer em todas as telas — no final do sidebar, na última posição. Assim as
+> telas das análises ficam mais limpas. E como será um único QR code para todas
+> as perguntas, a pergunta é alterada a cada vez que muda de uma página para
+> outra: sai da análise Porter para a SWOT, as perguntas devem ser do quadrante
+> da SWOT; na Porter, dos tópicos da Porter, e assim por diante.
+
+São **dois pedidos**, e eles têm pesos bem diferentes:
+
+| Pedido | Tamanho |
+|---|---|
+| **(a)** PIN e QR saem das análises e viram uma aba, última do menu | pequeno — é mover um componente que já é compartilhado |
+| **(b)** A pergunta da sala **acompanha a tela** que a condução abre | grande — inverte uma decisão da Fase 2 e adianta a Fase 4 |
+
+O (b) traz junto, sem custo extra, o que estava planejado para a Fase 4:
+perguntar por **categoria** em PESTEL, Porter e SWOT. Sem essas telas, "as
+perguntas do quadrante da SWOT" não existem para serem ativadas.
+
+## 19. O desenho
+
+### (a) A aba **Sala**
+
+Nova seção `sala`, última do `#nav-secoes`, reunindo o que hoje está espalhado
+na faixa de cada análise:
+
+```
+┌─ Sala do encontro ───────────────────────────────────────┐
+│   [ QR grande, para projetar ]     PIN  4 8 2 5 0 9       │
+│                                    <host>/entrar          │
+│   12 participantes · Pergunta 7 de 23                     │
+│   Perguntando agora: Ameaças · SWOT 2026                  │
+│   [ Encerrar sessão ]                                     │
+├─ Roteiro do encontro ────────────────────────────────────┤
+│   1. Cenário 2026            encerrada   Ver  Reabrir     │
+│   2. Rivalidade · PORTER     encerrada   Ver  Reabrir     │
+│   3. Ameaças · SWOT 2026     na sala     Ver  Encerrar    │
+│   …                                                       │
+└───────────────────────────────────────────────────────────┘
+```
+
+O QR deixa de ser um `<details>` recolhido e vira o protagonista: esta aba é a
+**tela de projeção** do encontro. É também onde se escreve o enunciado de uma
+pergunta — assim o gesto na análise passa a ser um toque só, sem modal.
+
+### (b) O que sobra na tela da análise
+
+Sai: PIN, QR, participantes, roteiro, botões de sessão.
+**Fica**: um selo de onde a sala está, e o painel de sugestões.
+
+O painel **não é sujeira** — é o trabalho. É nele que o condutor lê as vozes e
+aceita uma, que vira o fator. Tirá-lo esvaziaria a tela do sentido.
+
+```
+SWOT — Corporativo · 2026                    [🎤 Ameaças · na sala]
+┌ Forças ⓘ (8)      + 🎤 ┐ ┌ Fraquezas ⓘ (5)   + 🎤 ┐ …
+```
+
+Cada coluna de categoria ganha um **🎤** ao lado do **+** que já existe:
+"perguntar esta categoria à sala". Um ícone por coluna, na barra que já está lá
+— o oposto de sujeira, porque substitui um painel inteiro.
+
+### (c) A pergunta segue a tela
+
+Cada tela declara o conjunto de perguntas que sabe fazer. É a mesma tabela de
+alvos da Fase 3, agora lida ao contrário:
+
+| Tela | Perguntas possíveis | Alvo |
+|---|---|---|
+| Análise de Cenário | uma, com dois lados (situação atual · tendência) | `CENARIO` |
+| PESTEL | 6 categorias | `FATOR` |
+| Porter | 5 forças | `FATOR` |
+| SWOT | 4 quadrantes | `FATOR` |
+| Cascata | célula × (síntese + eixos) | `CASCATA` |
+| Coleta | tema livre | `LIVRE` |
+
+**Nada muda no banco.** `quiz_pergunta.alvo_tipo` já cobre os quatro; o mapa
+tela → alvos entra em `App\Services\Quiz`, que já é a fonte única do que cada
+alvo significa. A rota nova é uma só:
+
+```
+POST /api/quiz/tela   { planejamento_id, alvo_tipo, ano, etapa, categoria… }
+```
+
+"A condução está aqui; ponha isto na sala." Idempotente: se já é a ativa, não
+faz nada — senão cada batida do polling reabriria a pergunta.
+
+## 20. A decisão que trava tudo: navegar **arrasta** a sala?
+
+A Fase 2 fechou o oposto, e por um motivo concreto (decisão 11, seção 10):
+
+> **Navegar ≠ reabrir.** O condutor circula pelas perguntas sem mexer na tela
+> de ninguém; a sala só muda quando ele **ativa ou reabre**.
+
+O pedido agora é que mudar de página mude a pergunta. Os dois têm razão em
+situações diferentes, e é por isso que a resposta não é óbvia:
+
+- **A favor de arrastar:** é o gesto natural de quem conduz uma oficina no
+  telão. Ele abre a SWOT, a sala responde SWOT. Nenhum clique extra, nenhum
+  "abrir para a sala" para esquecer.
+- **Contra:** o mesmo condutor abre a SWOT **só para conferir um fator**
+  enquanto a sala ainda responde Porter — e a sala pula no meio da frase de
+  alguém. Não é hipótese remota: é o que se faz o tempo todo numa discussão. E,
+  com duas pessoas logadas no mesmo planejamento, a navegação de uma arrasta a
+  sala da outra.
+
+Três saídas possíveis, com trabalhos diferentes:
+
+1. **Sempre automático.** Entrar na tela põe a pergunta dela na sala. Fiel ao
+   pedido e o mais simples de construir. Aceita o risco acima.
+2. **Chave "conduzir daqui"** (recomendada). Um interruptor na aba Sala: ligado,
+   a navegação arrasta a sala; desligado, navegar é só olhar. Quem conduz liga
+   uma vez no começo do encontro e esquece; quem só consulta nunca liga. O
+   estado fica visível no selo de cada análise ("🎤 conduzindo").
+3. **Um toque para confirmar.** Entrar na tela não muda nada; o selo mostra "a
+   sala está em Porter · Rivalidade — trazer para cá?" e um toque muda. É a
+   Fase 2 com menos atrito, mas mantém um clique por tela.
+
+Sobra uma segunda decisão, menor: **entrando numa tela de 6 categorias, qual
+delas vai para a sala?** A primeira ainda não perguntada (o encontro anda
+sozinho na ordem) ou nenhuma até o condutor tocar o 🎤 da coluna (a tela fica
+pronta, mas quieta).
+
+## 21. O que muda no que já foi entregue
+
+| Entregue na Fase 3 | O que acontece |
+|---|---|
+| `QuizSala.faixa` nas análises | vira `QuizSala.selo` (uma linha); a faixa inteira migra para a aba Sala |
+| Botão "Perguntar à sala" do Cenário | vira o 🎤 por categoria/lado; o modal de enunciado migra para o roteiro |
+| Modal "abrir sessão" | passa a viver na aba Sala — é lá que a sessão nasce |
+| `quiz.js` | ganha o mapa tela → alvo e o `sincronizarTela()`; perde a faixa |
+| Painel de sugestões (Cenário, Cascata) | **fica onde está** — é o trabalho da tela |
+| Banco, rotas de condução, isolamento entre ritos | **intactos** |
+
+Com PESTEL/Porter/SWOT entrando aqui, a Fase 4 fica só com a Tempestade virando
+pergunta `LIVRE` do roteiro, a estrela por pergunta e a unificação de vozes.
