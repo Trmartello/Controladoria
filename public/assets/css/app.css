@@ -1564,226 +1564,18 @@ tr.card-destacado > td { background: #e8f5ee; }
 
 /* Relatório de status — impressão vira o PDF da reunião */
 @media print {
-  .menu-lateral, .topbar, .backdrop-menu, .nao-imprimir { display: none !important; }
-  .conteudo { padding: 0 !important; }
-  body { background: #fff; }
-  .card { border: 1px solid #ccc; break-inside: avoid; }
-  a[href]::after { content: ''; }
-}
+  /* ===== Impressão: o PDF do relatório =====
+     O botão "PDF" chama a caixa de impressão do navegador — é ela que salva o
+     arquivo. O que estas regras fazem é transformar a TELA em documento.
 
-/* ===== Foco visível e alvo de toque =====
-   O Bootstrap zera o outline no :focus-visible e desenha um box-shadow a
-   partir de --bs-btn-focus-shadow-rgb. Os botões com cor própria nunca
-   definiram essa variável, então ficavam SEM indicador nenhum de foco — quem
-   navega por teclado não via onde estava, inclusive no "Salvar" de todo
-   formulário. */
-.btn-verde,
-.btn-add-cat,
-.btn-swot-cat,
-.btn-ver-swot { --bs-btn-focus-shadow-rgb: 0, 122, 69; }
+     No papel o corpo deixa de ser multicoluna e vira uma sequência VERTICAL:
+     título da categoria, um traço, e os cartões dela em largura cheia, um
+     bloco depois do outro. Em coluna estreita, o mesmo texto gastava três vezes
+     mais linhas — e as colunas, altas demais para o espaço que sobrava, eram
+     empurradas inteiras para a página seguinte, deixando a primeira em branco. */
+  @page { margin: 1.4cm 1.2cm 1.2cm; }
 
-.btn-mais:focus-visible,
-.btn-ditar:focus-visible,
-.btn-orientacao:focus-visible,
-.btn-ver-palavras:focus-visible,
-.alca-arrastar:focus-visible,
-.palavra-x:focus-visible {
-  outline: 2px solid var(--verde-coperdia);
-  outline-offset: 2px;
-  border-radius: .2rem;
-}
-
-/* No celular o dedo precisa de alvo: o ⓘ tinha 15x15 e ficava encostado no ✎
-   de 25x22. Cresce por DIMENSÃO real, não por ::after sobreposto — botões
-   vizinhos teriam áreas invisíveis se cobrindo, e o toque na fronteira cairia
-   no elemento errado. */
-@media (max-width: 767.98px) {
-  /* .btn-ver-palavras fica de fora: ele já ganha área de toque pelo ::after,
-     e altura real ali encorpava a caixa do grupo em 20px sem necessidade */
-  .btn-orientacao,
-  .btn-mais,
-  .alca-arrastar,
-  .palavra-x {
-    min-width: 2.25rem;
-    min-height: 2.25rem;
-  }
-  .btn-orientacao,
-  .palavra-x,
-  .alca-arrastar {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .btn-ditar { width: 2.25rem; height: 2.25rem; }
-  .botoes-fator .btn {
-    --bs-btn-padding-y: .35rem;
-    --bs-btn-padding-x: .55rem;
-    min-height: 2.25rem;
-  }
-}
-
-/* Menu recolhido sai da ordem de tabulação: só com translateX(-100%) ele
-   continuava focável, e o Tab a partir do conteúdo entrava nos selects de ciclo
-   e negócio e nos links invisíveis. A visibilidade só cai DEPOIS que a
-   animação termina (transition-delay), senão o menu sumiria de uma vez em vez
-   de deslizar para fora. */
-.menu-lateral {
-  visibility: hidden;
-  transition: transform .25s ease, visibility 0s linear .25s;
-}
-body.menu-aberto .menu-lateral {
-  visibility: visible;
-  transition: transform .25s ease, visibility 0s;
-}
-
-/* ===== Quiz da cascata — as duas áreas de coleta e as vozes na célula ===== */
-.painel-quiz-vivo { border-left: 4px solid var(--verde-coperdia); background: #f6faf8; }
-.coluna-quiz {
-  border-radius: .5rem;
-  padding: .4rem .5rem;
-  height: 100%;
-}
-.coluna-escolha { background: rgba(0, 122, 69, .07); border-top: 3px solid #007a45; }
-.coluna-renuncia { background: rgba(143, 59, 59, .07); border-top: 3px solid #8f3b3b; }
-/* ===== As vozes da sala, em GRADE =====
-   Resposta de oficina costuma ter duas ou três palavras. Uma ficha por linha,
-   na largura da página, gastava meia tela com cinco respostas — a grade põe
-   quantas couberem lado a lado e o teto de altura impede que uma oficina cheia
-   empurre as colunas da análise para fora da tela. */
-/* A altura padrão — duas fileiras de fichas — é medida em `QuizSala.ligarVozes`
-   depois de pintar: fileira é coisa de layout, e em CSS ela só daria um palpite
-   em `vh`. Aqui ficam o teto do arraste e o `resize`, que é o canto de onde o
-   condutor puxa a grade para baixo quando quer ver tudo de uma vez. */
-.grade-sugestoes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  align-content: start;
-  gap: .35rem;
-  max-height: 85vh;
-  overflow-y: auto;
-  resize: vertical;
-  scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
-}
-.ficha-sugestao {
-  background: #fff;
-  border: 1px solid #e3e8e5;
-  border-radius: .4rem;
-  padding: .3rem .45rem;
-  font-size: .8rem;
-  display: flex;
-  flex-direction: column;
-  gap: .15rem;
-}
-.ficha-sugestao.vinculada { border-color: var(--verde-coperdia); background: #eef7f2; }
-/* Texto em 3 linhas — o mesmo corte dos cartões de fator, e o que mantém a
-   altura da grade previsível. Aqui o corte NÃO esconde o resto: a caixa rola
-   por dentro (a resposta comprida se lê sem sair do lugar) e o 👁 do rodapé
-   abre a ficha inteira, para quem prefere ler tudo de uma vez. O `line-height`
-   é explícito porque é dele que sai a conta das três linhas. */
-.texto-voz {
-  line-height: 1.35;
-  max-height: 4.05em;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-  scrollbar-width: thin;
-}
-.ficha-sugestao.voz-aberta .texto-voz { max-height: none; overflow: visible; }
-.rodape-voz {
-  display: flex;
-  align-items: center;
-  gap: .25rem;
-  margin-top: auto;
-}
-.autor-voz {
-  font-size: .7rem;
-  color: #6c757d;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.btn-voz {
-  --bs-btn-padding-y: .05rem;
-  --bs-btn-padding-x: .35rem;
-  --bs-btn-font-size: .7rem;
-  --bs-btn-focus-shadow-rgb: 0, 122, 69;
-  flex-shrink: 0;
-}
-.cabecalho-quiz { row-gap: .25rem; }
-/* No dedo, os botões da ficha crescem por DIMENSÃO REAL — nunca por ::after
-   sobreposto, que faria áreas invisíveis de fichas vizinhas se cobrirem */
-@media (max-width: 767.98px) {
-  /* 130px e não 150: num iPhone de 390 a grade tem 305px úteis, e dois tracks
-     de 150 mais o vão dão 305,6 — errava por meio pixel e caía numa coluna só.
-     O min-content da ficha é 117px, então 130 não a estoura. */
-  .grade-sugestoes { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
-  .btn-voz { min-height: 2rem; min-width: 2rem; }
-}
-/* Voz vinculada dentro da célula: selo com o ✕ de dimensão real (nunca
-   ::after sobreposto — áreas invisíveis se cobrem e o toque erra o alvo) */
-.voz-vinculada {
-  display: inline-flex;
-  align-items: center;
-  gap: .3rem;
-  font-weight: 500;
-}
-.voz-escolha { color: #007a45; background: rgba(0, 122, 69, .12); }
-.voz-renuncia { color: #8f3b3b; background: rgba(143, 59, 59, .12); }
-.btn-desvincular {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font-size: .9rem;
-  line-height: 1;
-  padding: .1rem .25rem;
-  min-width: 1.4rem;
-  min-height: 1.4rem;
-  cursor: pointer;
-}
-.btn-desvincular:hover { color: #b3261e; }
-/* Par Escolha/Renúncia do participante: alvos generosos no toque */
-.par-tipo-resposta .btn { min-height: 2.75rem; }
-.contexto-pergunta {
-  border-left: 4px solid var(--verde-coperdia);
-  padding-left: .75rem;
-}
-/* Roteiro do encontro (quiz da cascata) */
-.lista-roteiro { list-style: none; margin: 0; padding: 0; }
-.linha-roteiro {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  padding: .3rem .4rem;
-  border-radius: .4rem;
-  flex-wrap: wrap;
-}
-.linha-roteiro:nth-child(odd) { background: #f2f6f4; }
-.linha-roteiro.em-foco { outline: 2px solid var(--verde-coperdia); }
-.linha-roteiro .btn { --bs-btn-padding-y: .1rem; --bs-btn-padding-x: .45rem; --bs-btn-font-size: .75rem; }
-.num-roteiro { color: #6c757d; min-width: 1.4rem; text-align: right; }
-/* No dedo, o roteiro é a lista com os botões mais apertados da tela. Cresce por
-   DIMENSÃO REAL (min-height/min-width), nunca por ::after sobreposto: área
-   invisível de botão vizinho se cobre e o toque na fronteira vai para o errado. */
-@media (max-width: 767.98px) {
-  .linha-roteiro .btn {
-    min-height: 2.25rem;
-    min-width: 2.25rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-}
-
-/* ===== Impressão: o PDF do relatório =====
-   O botão "PDF" chama a caixa de impressão do navegador — é ela que salva o
-   arquivo. O que estas regras fazem é transformar a TELA em página: sem menu,
-   sem topbar, sem botão de ação, com as colunas abertas (nada de rolagem por
-   dentro numa folha de papel) e, principalmente, com o texto do cartão
-   INTEIRO — o corte de três linhas é conforto de tela, e no papel viraria
-   relatório truncado. */
-@media print {
+  /* --- o que não vai para o papel: comando é da tela, não do documento --- */
   .topbar,
   .menu-lateral,
   .backdrop-menu,
@@ -1793,7 +1585,8 @@ body.menu-aberto .menu-lateral {
   .btn-add-cat,
   .ver-mais,
   .dropdown,
-  .selo-sala,
+  .btn-orientacao,
+  .orientacao-categoria,
   [data-novo-fator],
   [data-editar],
   [data-excluir],
@@ -1802,6 +1595,8 @@ body.menu-aberto .menu-lateral {
   [data-plano-acao],
   [data-tirar-acao],
   [data-desvincular],
+  [data-promover],
+  [data-ir-swot],
   #btn-novo-swot,
   #btn-novo-cenario { display: none !important; }
 
@@ -1809,21 +1604,64 @@ body.menu-aberto .menu-lateral {
   .conteudo { padding: 0 !important; }
   .secao { display: block; }
 
-  /* Nada de grudado no papel: sticky vira sobreposição na quebra de página */
-  .cabecalho-analise,
-  .cabecalho-coluna {
+  /* O seletor de ano vira TEXTO: a caixa de formulário com a setinha é comando
+     de tela, mas o ano é contexto e tem de continuar legível no documento. */
+  .cabecalho-analise .form-select {
+    border: 0 !important;
+    background-image: none !important;
+    padding: 0 !important;
+    width: auto !important;
+    font-size: inherit;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  /* --- cabeçalho da análise --- */
+  .cabecalho-analise {
     position: static !important;
     box-shadow: none !important;
+    margin: 0 0 .3cm !important;
+    padding: 0 0 .12cm !important;
+    border-bottom: 1pt solid #adb5bd;
+  }
+  .cabecalho-analise h1 { font-size: 14pt; }
+
+  /* --- corpo: uma categoria embaixo da outra, em largura cheia --- */
+  .row:has(> [data-coluna-categoria]) {
+    display: block !important;
     margin: 0 !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
+  }
+  [data-coluna-categoria] {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: none !important;
+    padding: 0 !important;
+    margin: 0 0 .5cm !important;
   }
   .caixa-coluna {
     display: block !important;
     max-height: none !important;
     background: none !important;
+    padding: 0 !important;
   }
-  .corpo-coluna { overflow: visible !important; }
+  .corpo-coluna {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  /* Título da categoria com o traço — e nunca sozinho no pé da página */
+  .cabecalho-coluna {
+    position: static !important;
+    box-shadow: none !important;
+    margin: 0 0 .18cm !important;
+    padding: 0 0 .08cm !important;
+    border-bottom: 1.5pt solid #adb5bd;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* O texto do cartão vai INTEIRO: o corte de três linhas é conforto de tela e
+     no papel viraria documento truncado. */
   .texto-fator,
   .texto-voz {
     display: block !important;
@@ -1832,8 +1670,11 @@ body.menu-aberto .menu-lateral {
     max-height: none !important;
     overflow: visible !important;
   }
-  /* Cartão partido ao meio pela quebra de página é o defeito clássico daqui */
-  .card,
+  /* Cartão partido ao meio pela quebra de página é o defeito clássico daqui.
+     O `avoid` fica SÓ no cartão: numa coluna inteira ele empurrava o bloco
+     todo para a página seguinte. */
+  .card { break-inside: avoid; page-break-inside: avoid; }
   .coluna-categoria,
-  .caixa-coluna { break-inside: avoid; page-break-inside: avoid; }
+  .caixa-coluna,
+  .corpo-coluna { break-inside: auto; page-break-inside: auto; }
 }
