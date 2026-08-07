@@ -242,7 +242,7 @@ const SecaoCascata = {
             ${QuizSala.microfone(
               { alvo_tipo: 'CASCATA', horizonte_id: horizonteId, driver_id: driverId,
                 alvos: [eixoId ?? null] },
-              Modal.esc(rotulo),
+              rotulo,
               { ativo: this.perguntaAtivaDoAlvo(eixoId) })}
             <button class="btn btn-sm btn-outline-secondary" data-editar-celula="${eixoId ?? ''}">${registro ? 'Editar' : 'Definir'}</button>
             ${registro ? `<button class="btn btn-sm btn-outline-danger" data-excluir-celula="${registro.id}">×</button>` : ''}

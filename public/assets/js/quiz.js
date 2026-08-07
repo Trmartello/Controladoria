@@ -88,7 +88,7 @@ const QuizSala = {
    * poder ir até ela é meia informação — e o silêncio seria lido como "não tem
    * sala aberta", que é justamente quando alguém abre uma segunda.
    */
-  selo(dono, secaoDaTela) {
+  selo(dono, secaoDaTela, aqui = null) {
     const q = dono.quiz;
     if (!q?.sessao) {
       return '<span class="selo-sala vazio">sala fechada</span>';
@@ -98,18 +98,31 @@ const QuizSala = {
     if (!p) {
       return `<span class="selo-sala aberta">sala aberta · nenhuma pergunta</span> ${gente}`;
     }
-    if (p.secao === secaoDaTela) {
+    // "Aqui" é a seção E o contexto que a tela mostra. Comparar só a seção fazia
+    // o selo dizer "na sala" com a tela em 2027 e a sala em 2026: nenhum 🎤
+    // aceso, nenhum painel, e nem o "Ir até lá" — que só aparecia quando a seção
+    // diferia. Quem sabe se é o mesmo contexto é a tela, então ela responde.
+    const mesmaTela = aqui === null ? p.secao === secaoDaTela : !!aqui;
+    if (mesmaTela) {
       return `<span class="selo-sala aqui">🎤 ${Modal.esc(this.rotulo(p))} · na sala</span> ${gente}`;
     }
     return `<span class="selo-sala longe">a sala está em ${Modal.esc(p.tela)} ·
       ${Modal.esc(this.rotulo(p))}</span>
-      <button class="btn btn-sm btn-outline-secondary" data-ir-sala="${Modal.esc(p.secao)}">Ir até lá</button>
+      <button class="btn btn-sm btn-outline-secondary" data-ir-sala="${Modal.esc(p.secao)}"
+        data-ano-sala="${Modal.esc(p.ano ?? '')}">Ir até lá</button>
       ${gente}`;
   },
 
   ligarSelo(el) {
-    el.querySelectorAll('[data-ir-sala]').forEach((b) => b.addEventListener('click', () =>
-      App.mostrarSecao(b.dataset.irSala)));
+    el.querySelectorAll('[data-ir-sala]').forEach((b) => b.addEventListener('click', () => {
+      // O atalho leva ao ANO da pergunta também: as análises de diagnóstico são
+      // anuais e o seletor é compartilhado, então chegar na seção certa no ano
+      // errado é chegar numa tela vazia.
+      const ano = Number(b.dataset.anoSala);
+      if (ano && typeof Diag !== 'undefined') Diag.anoSelecionado = ano;
+      if (b.dataset.irSala === App.secaoAtiva) App.recarregarSecaoAtiva();
+      else App.mostrarSecao(b.dataset.irSala);
+    }));
   },
 
   /**
@@ -121,11 +134,18 @@ const QuizSala = {
   microfone(alvo, rotulo, { ativo = false, cor = null } = {}) {
     if (!App.podeEditar()) return '';
     if (ativo) {
-      return `<span class="mic-sala ativo" title="A sala está respondendo isto">🎤</span>`;
+      return '<span class="mic-sala ativo" title="A sala está respondendo isto">🎤</span>';
     }
+    // O escape é feito AQUI, não pelo chamador: o rótulo pode ser texto que o
+    // usuário edita (o nome de um eixo, em Cadastros), e um contrato em que
+    // "cada chamador escapa o seu" quebra no primeiro que esquecer. A cor passa
+    // pela mesma validação do campo `info` do modal — atributo `style` montado
+    // com string de fora é a outra metade do mesmo problema.
+    const seguro = Modal.esc(rotulo);
+    const corOk = /^#[0-9a-f]{6}$/i.test(cor || '') ? cor : null;
     return `<button class="btn btn-sm mic-sala" data-mic='${Modal.esc(JSON.stringify(alvo))}'
-      ${cor ? `style="--cor-cat:${cor}"` : ''}
-      title="Perguntar ${rotulo} à sala" aria-label="Perguntar ${rotulo} à sala">🎤</button>`;
+      ${corOk ? `style="--cor-cat:${corOk}"` : ''}
+      title="Perguntar ${seguro} à sala" aria-label="Perguntar ${seguro} à sala">🎤</button>`;
   },
 
   /**
@@ -143,7 +163,16 @@ const QuizSala = {
       }
       b.disabled = true;
       try {
-        await this.perguntar(dono, alvo);
+        const r = await this.perguntar(dono, alvo);
+        // Desistiu no confirm: não é erro, não alerta e não mexe em nada —
+        // mostrar a MESMA pergunta de volta como alerta vermelho é confuso
+        if (r === null) return;
+        // O 🎤 torna este alvo a ATIVA, então o foco volta ao padrão. Sem isto o
+        // painel ficava preso na pergunta que o condutor tinha EXAMINADO: ele
+        // abria a categoria nova para a sala, os celulares respondiam, e ele
+        // seguia lendo as vozes velhas — sem saída, porque `perguntaFoco` mora
+        // na seção e sobrevive à navegação.
+        dono.perguntaFoco = null;
       } catch (e) {
         alert(e.message);
       } finally {
@@ -232,13 +261,17 @@ const QuizSala = {
     }
   },
 
-  /** POST /api/quiz/tela, tratando SEM_SALA (abre) e SALA_ABERTA (encerra). */
+  /**
+   * POST /api/quiz/tela, tratando SEM_SALA (abre) e SALA_ABERTA (encerra).
+   * Devolve `null` quando o condutor DESISTE — desistir não é erro.
+   */
   async perguntar(dono, alvo) {
     const corpo = { planejamento_id: dono.plan.id, ...alvo };
     try {
       return await App.api('/api/quiz/tela', corpo);
     } catch (e) {
-      if (e.codigo !== 'SEM_SALA' || !confirm(e.message)) throw e;
+      if (e.codigo !== 'SEM_SALA') throw e;
+      if (!confirm(e.message)) return null;
       // Abrir a sala pede um nome; sem ele o padrão do servidor serve, e o
       // condutor renomeia na aba Sala
       const tema = prompt('Nome do encontro (opcional):', '') ?? '';

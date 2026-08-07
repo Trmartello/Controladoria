@@ -967,3 +967,30 @@ Validado com Playwright em desktop (1500×900) e celular (390×844): 21
 verificações do fluxo novo, 5 de responsividade e 8 de regressão da Fase 3
 (Cenário com dois lados, Cascata, PIN único, colisão de sala, isolamento com a
 Coleta).
+
+### A revisão adversarial da Parte III
+
+Doze achados, todos corrigidos e virados em teste.
+
+| # | O que era | Correção |
+|---|---|---|
+| 1 | O `abrir_sala` do 🎤 **fabricava o `confirmar_encerrar`**: o SELECT que decide "não há sala" roda fora da trava, então entre ele e o `GET_LOCK` outra pessoa pode abrir uma — e o servidor a encerrava calado. O usuário confirmou "abrir a sala", não "encerrar a discussão de alguém" | não fabricar; cai no 409/`SALA_ABERTA`, que o front já transforma numa segunda pergunta com o nome da sala que REALMENTE apareceu |
+| 2 | **O 🎤 não devolvia o foco ao padrão**: depois de examinar uma pergunta pelo roteiro, o condutor abria outra categoria para a sala, os celulares respondiam, e ele seguia lendo as vozes velhas — sem saída, porque `perguntaFoco` sobrevive à navegação | `dono.perguntaFoco = null` ao trocar a pergunta da sala |
+| 3 | `FatorController::salvar` aceitava a **etapa pelo corpo** na edição: gravava categoria de PESTEL numa linha SWOT, e o fator sumia das duas telas (uma filtra por categoria, a outra por etapa) segurando vozes que ninguém mais conseguia desvincular | etapa e ano saem da LINHA — são a identidade do fator, não campos do formulário |
+| 4 | A guarda do vínculo **não conferia a categoria**, só etapa e ano | `AND qp.categoria = ?` |
+| 5 | `sugestoes` **sem teto**, num UPDATE por id: 20 mil ids = 6 s de servidor travado | teto antes de tocar o banco + UM comando para o conjunto (nos três controllers) |
+| 6 | Voz já vinculada era **roubada em silêncio** por outro registro | guarda `destino_id IS NULL OR é o meu` |
+| 7 | A batida do polling **recarregava a seção errada** quando o condutor navegava com a resposta em voo — a tela nova carregava duas vezes e perdia o estado só-de-DOM | saída cedo quando `App.secaoAtiva` mudou |
+| 8 | O selo dizia **"na sala" comparando só a seção**: com a tela em 2027 e a sala em 2026, verde e sem painel, sem 🎤 aceso e sem atalho | "aqui" é seção **e** contexto; o atalho leva ao ano da pergunta |
+| 9 | **Desistir** do `SEM_SALA` virava alerta vermelho com a mesma pergunta | desistir devolve `null` e não alerta |
+| 10 | Fator com **`ano` NULL** (linha antiga, coluna por ALTER) fazia o vínculo falhar calado — e o "solta quem saiu" ainda desamarrava o que já estava | recusa explícita |
+| 11 | `Quiz::mesmoAlvo` **ignorava o enunciado**: dois alvos `LIVRE` diferentes davam "mesmo alvo" e a rota respondia `sem_mudanca` | compara o enunciado quando o alvo é `LIVRE` |
+| 12 | A assinatura **não era semeada** ao pintar: a primeira batida repintava de graça e, na aba Sala, regenerava o SVG do QR — uma piscada no telão | semeada ao fim do `carregar()` |
+
+Além disso, o `microfone()` passou a **escapar por dentro** (rótulo e cor): o
+contrato "cada chamador escapa o seu" quebra no primeiro que esquecer, e um dos
+rótulos é o nome de um eixo — texto que o usuário edita em Cadastros.
+
+Duas invariantes que a revisão tentou quebrar e não conseguiu: o XSS pelo
+`data-mic` (o `Modal.esc` escapa aspas simples, então o JSON no atributo está
+fechado) e o perfil LEITURA (sem PIN, sem 🎤, 403 em todas as rotas de escrita).

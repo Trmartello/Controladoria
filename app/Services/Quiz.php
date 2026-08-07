@@ -272,7 +272,15 @@ class Quiz
      */
     public static function mesmoAlvo(array $a, array $b): bool
     {
-        foreach (['alvo_tipo', 'horizonte_id', 'driver_id', 'eixo_id', 'ano', 'etapa', 'categoria'] as $c) {
+        $colunas = ['alvo_tipo', 'horizonte_id', 'driver_id', 'eixo_id', 'ano', 'etapa', 'categoria'];
+        // Em LIVRE o alvo É o enunciado (o UNIQUE `alvo_chave` inclui o MD5
+        // dele). Sem compará-lo, duas tempestades diferentes davam "mesmo
+        // alvo", a rota respondia `sem_mudanca` e a sala ficava na pergunta
+        // velha — silenciosamente.
+        if (($a['alvo_tipo'] ?? '') === 'LIVRE') {
+            $colunas[] = 'enunciado';
+        }
+        foreach ($colunas as $c) {
             if ((string)($a[$c] ?? '') !== (string)($b[$c] ?? '')) {
                 return false;
             }

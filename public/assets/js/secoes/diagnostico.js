@@ -402,6 +402,17 @@ const Diag = {
   // (as seções não são destruídas ao navegar, só ganham d-none) e um estado
   // compartilhado faria o polling de uma repintar a outra.
 
+  /**
+   * A pergunta ATIVA é desta etapa E deste ano? É o que o selo precisa saber
+   * para dizer "na sala" — a seção sozinha não basta, porque o ano do
+   * diagnóstico é um seletor à parte.
+   */
+  salaNestaEtapa(dono, etapa, ano) {
+    const p = dono.quiz?.pergunta;
+    return !!p && p.alvo_tipo === 'FATOR' && p.etapa === etapa
+      && Number(p.ano) === Number(ano);
+  },
+
   /** A pergunta em foco (ou a ativa) quando ela é desta etapa e ano. */
   quizFoco(dono, etapa, ano) {
     const p = dono.quiz?.foco || dono.quiz?.pergunta;
@@ -554,7 +565,8 @@ const Diag = {
         </div>
       </div>
       <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
-        data-selo-quiz>${QuizSala.selo(dono, idSecao.replace('secao-', ''))}</div>
+        data-selo-quiz>${QuizSala.selo(dono, idSecao.replace('secao-', ''),
+          this.salaNestaEtapa(dono, etapa, ano))}</div>
       ${descricao ? `<p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>` : ''}
       <div data-quiz-vivo>${this.quizPainel(dono, etapa, ano)}</div>
       ${this.seletorCategoriaMovel(etapa, categorias.map(([cat, rotulo]) => [cat, rotulo]), contagens)}
@@ -566,6 +578,7 @@ const Diag = {
     this.aplicarDestaque(el, idSecao.replace('secao-', ''));
     this.ligarSeloColeta(el, ({ PESTEL: 'PESTEL', PORTER: 'Porter', SWOT: 'SWOT' })[etapa] || etapa);
     this.ligarOrientacoes(el);
+    dono.assinaturaQuiz = QuizSala.assinatura(dono.quiz);
     QuizSala.armarRelogio(dono);
     if (!App.podeEditar()) {
       // O "Ir até lá" do selo vale para LEITURA também: acompanhar o encontro
@@ -742,7 +755,7 @@ const SecaoCenario = {
         </div>
       </div>
       <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
-        id="selo-quiz-cenario">${QuizSala.selo(this, 'cenario')}</div>
+        id="selo-quiz-cenario">${QuizSala.selo(this, 'cenario', this.salaNesteAno(ano))}</div>
       <div id="quiz-vivo-cenario">${this.painelVivo()}</div>
       ${Diag.seletorCategoriaMovel('CENARIO', [
         ['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências'],
@@ -754,6 +767,9 @@ const SecaoCenario = {
 
     QuizSala.ligarSelo(el);
     QuizSala.ligarMicrofones(this, el);
+    // A assinatura é semeada com o que acabou de ser pintado: sem isso a
+    // primeira batida (4s) sempre difere e repinta tudo de graça
+    this.assinaturaQuiz = QuizSala.assinatura(this.quiz);
     QuizSala.armarRelogio(this);
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
@@ -821,6 +837,16 @@ const SecaoCenario = {
       title="Sugestões da sala usadas neste item">Sala · ${n} voz(es)</span></div>` : '';
   },
 
+  /**
+   * A pergunta ATIVA é o cenário do ano EXIBIDO? O selo precisa disto: o ano do
+   * diagnóstico é um seletor à parte, e dizer "na sala" com a tela em 2027 e a
+   * sala em 2026 deixa o condutor sem painel, sem 🎤 aceso e sem atalho.
+   */
+  salaNesteAno(ano) {
+    const p = this.quiz?.pergunta;
+    return !!p && p.alvo_tipo === 'CENARIO' && Number(p.ano) === Number(ano);
+  },
+
   /** A pergunta em foco (ou a ativa) quando ela é o cenário do ano exibido. */
   perguntaDoAno() {
     const p = this.quiz?.foco || this.quiz?.pergunta;
@@ -837,13 +863,14 @@ const SecaoCenario = {
   },
 
   async aoBater(quizNovo) {
+    if (App.secaoAtiva !== 'cenario') return;
     const assinatura = QuizSala.assinatura(quizNovo);
     if (assinatura === this.assinaturaQuiz) return;
     this.assinaturaQuiz = assinatura;
     const el = document.getElementById(this.secaoId);
     const selo = document.getElementById('selo-quiz-cenario');
     if (selo) {
-      selo.innerHTML = QuizSala.selo(this, 'cenario');
+      selo.innerHTML = QuizSala.selo(this, 'cenario', this.salaNesteAno(Diag.ano()));
       QuizSala.ligarSelo(el);
     }
     const vivo = document.getElementById('quiz-vivo-cenario');
@@ -972,6 +999,12 @@ function secaoEtapa({ idSecao, etapa, titulo, categorias }) {
     },
 
     aoBater(quizNovo) {
+      // A batida pode chegar DEPOIS de o condutor ter navegado: o relógio só
+      // confere `d-none` no começo, e `recarregarSecaoAtiva` recarrega a seção
+      // de AGORA. Sem esta saída, abrir Projetos no meio de um voo do PESTEL
+      // recarregava Projetos duas vezes e apagava o estado só-de-DOM dela
+      // (acordeões, "ver mais", rolagem).
+      if (App.secaoAtiva !== this.secaoId.replace('secao-', '')) return;
       const assinatura = QuizSala.assinatura(quizNovo);
       if (assinatura === this.assinaturaQuiz) return;
       this.assinaturaQuiz = assinatura;
@@ -1007,6 +1040,9 @@ const SecaoSwot = {
   },
 
   aoBater(quizNovo) {
+    // Ver o comentário em secaoEtapa.aoBater: a batida pode chegar depois de o
+    // condutor ter navegado, e recarregaria a seção errada
+    if (App.secaoAtiva !== 'swot') return;
     const assinatura = QuizSala.assinatura(quizNovo);
     if (assinatura === this.assinaturaQuiz) return;
     this.assinaturaQuiz = assinatura;
@@ -1083,7 +1119,7 @@ const SecaoSwot = {
         </div>
       </div>
       <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
-        data-selo-quiz>${QuizSala.selo(this, 'swot')}</div>
+        data-selo-quiz>${QuizSala.selo(this, 'swot', Diag.salaNestaEtapa(this, 'SWOT', ano))}</div>
       <div data-quiz-vivo>${Diag.quizPainel(this, 'SWOT', ano)}</div>
       ${Diag.seletorCategoriaMovel('SWOT', [
         ['FORCA', 'Forças'], ['FRAQUEZA', 'Fraquezas'],
@@ -1102,6 +1138,7 @@ const SecaoSwot = {
     Diag.aplicarDestaque(el, 'swot');
     Diag.ligarSeloColeta(el, 'SWOT');
     Diag.ligarOrientacoes(el);
+    this.assinaturaQuiz = QuizSala.assinatura(this.quiz);
     QuizSala.armarRelogio(this);
 
     el.querySelectorAll('[data-ir-origem]').forEach((b) => b.addEventListener('click', () => {

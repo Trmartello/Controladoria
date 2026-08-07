@@ -28,6 +28,10 @@ const SecaoSala = {
     this.quiz = await QuizSala.estado(this.plan.id, null);
     el.innerHTML = this.corpo();
     this.ligar(el);
+    // Semeia a assinatura com o que acabou de ser pintado: sem isso a primeira
+    // batida (4s) sempre difere, o corpo é repintado e o SVG do QR é REGERADO —
+    // uma piscada no telão logo depois de abrir a aba.
+    this.assinaturaQuiz = QuizSala.assinatura(this.quiz);
     QuizSala.armarRelogio(this);
   },
 
@@ -145,6 +149,7 @@ const SecaoSala = {
   aoNavegar() {},
 
   async aoBater(quizNovo) {
+    if (App.secaoAtiva !== 'sala') return;
     const assinatura = QuizSala.assinatura(quizNovo);
     if (assinatura === this.assinaturaQuiz) return;
     this.assinaturaQuiz = assinatura;

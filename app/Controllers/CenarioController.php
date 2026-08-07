@@ -9,6 +9,9 @@ use App\Services\Quiz;
 
 class CenarioController
 {
+    /** Teto de vozes num pedido de vínculo — ver FatorController. */
+    private const MAX_SUGESTOES = 500;
+
     public function listar(): void
     {
         $planId = (int)($_GET['planejamento_id'] ?? 0);
@@ -91,32 +94,49 @@ class CenarioController
         if (!array_key_exists('sugestoes', $d)) {
             return;
         }
+        // Ano zero não casaria com pergunta nenhuma e o vínculo falharia em
+        // silêncio, enquanto o "solta quem saiu" desamarraria o que já estava
+        if ($ano <= 0) {
+            Json::erro('Informe o ano da análise antes de vincular vozes da sala.');
+        }
         $u = Auth::exigirLogin();
         $sugestoes = array_values(array_unique(array_map('intval', (array)$d['sugestoes'])));
+        // A lista é medida ANTES de tocar o banco: `php -S` é single-threaded, e
+        // um laço de milhares de UPDATEs segura o servidor inteiro. Mesma lição
+        // de `Quiz::alvosCrus`.
+        if (count($sugestoes) > self::MAX_SUGESTOES) {
+            Json::erro('Sugestões demais num pedido só.');
+        }
         $marcas = $sugestoes ? implode(',', array_fill(0, count($sugestoes), '?')) : '';
         // Solta quem saiu do conjunto: volta a NOVO, editável de novo pelo autor
         Database::executar(
             "UPDATE coleta_item SET destino_tipo = NULL, destino_id = NULL,
                situacao = 'NOVO', triado_por = NULL, triado_em = NULL
-             WHERE destino_tipo = 'CENARIO' AND destino_id = ? AND origem = 'QUIZ'"
+             WHERE destino_tipo = 'CENARIO' AND destino_id = ? AND origem = 'QUIZ'
+               AND planejamento_id = ?"
             . ($marcas ? " AND id NOT IN ({$marcas})" : ''),
-            array_merge([$id], $sugestoes)
+            array_merge([$id, $planId], $sugestoes)
         );
-        foreach ($sugestoes as $sugestaoId) {
-            // A guarda é o ALVO da pergunta, não a rodada: encontros diferentes
-            // podem ter perguntado o mesmo ano, e todas essas vozes valem. O
-            // JOIN recusa sugestão de outro ano, de outro plano, de outra
-            // análise ou que não seja do quiz.
-            Database::executar(
-                "UPDATE coleta_item ci
-                 JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
-                 SET ci.destino_tipo = 'CENARIO', ci.destino_id = ?,
-                     ci.situacao = 'ACEITO', ci.triado_por = ?, ci.triado_em = NOW()
-                 WHERE ci.id = ? AND ci.planejamento_id = ? AND ci.origem = 'QUIZ'
-                   AND qp.alvo_tipo = 'CENARIO' AND qp.ano = ?",
-                [$id, (int)$u['id'], $sugestaoId, $planId, $ano]
-            );
+        if (!$sugestoes) {
+            return;
         }
+        // UM comando para o conjunto inteiro, não um por id. A guarda é o ALVO
+        // da pergunta, não a rodada: encontros diferentes podem ter perguntado o
+        // mesmo ano, e todas essas vozes valem. Recusa sugestão de outro ano, de
+        // outro plano, de outra análise, que não seja do quiz, ou que já esteja
+        // amarrada a OUTRO item — roubar o vínculo faria o item de origem perder
+        // vozes sem ninguém tocar nele.
+        Database::executar(
+            "UPDATE coleta_item ci
+             JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
+             SET ci.destino_tipo = 'CENARIO', ci.destino_id = ?,
+                 ci.situacao = 'ACEITO', ci.triado_por = ?, ci.triado_em = NOW()
+             WHERE ci.id IN ({$marcas}) AND ci.planejamento_id = ? AND ci.origem = 'QUIZ'
+               AND qp.alvo_tipo = 'CENARIO' AND qp.ano = ?
+               AND (ci.destino_id IS NULL
+                    OR (ci.destino_tipo = 'CENARIO' AND ci.destino_id = ?))",
+            array_merge([$id, (int)$u['id']], $sugestoes, [$planId, $ano, $id])
+        );
     }
 
     public function excluir(int $id): void

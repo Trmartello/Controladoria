@@ -10,6 +10,12 @@ use App\Services\Quiz;
 /** Fatores das etapas PESTEL, Porter e SWOT, com promoção e notas GUT. */
 class FatorController
 {
+    /**
+     * Teto de vozes num pedido de vínculo. Uma pergunta comporta, no limite,
+     * `max_ideias` × participantes — algumas centenas numa oficina grande.
+     */
+    private const MAX_SUGESTOES = 500;
+
     private const CATEGORIAS = [
         'PESTEL' => ['POLITICO', 'ECONOMICO', 'SOCIAL', 'TECNOLOGICO', 'ECOLOGICO', 'LEGAL'],
         'PORTER' => ['RIVALIDADE', 'NOVOS_ENTRANTES', 'SUBSTITUTOS', 'PODER_FORNECEDORES', 'PODER_CLIENTES'],
@@ -73,9 +79,16 @@ class FatorController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
 
-        $etapa = $d['etapa'] ?? '';
         $categoria = $d['categoria'] ?? '';
         $descricao = trim($d['descricao'] ?? '');
+        $fator = $id ? $this->exigirFator($id, $planId) : null;
+        // Na edição, a ETAPA e o ANO saem da LINHA, nunca do corpo: eles são a
+        // identidade do fator, não campos do formulário. Aceitando-os do corpo,
+        // um pedido forjado gravava categoria de PESTEL numa linha SWOT — o
+        // fator sumia das duas telas (a SWOT filtra por categoria dela, o
+        // PESTEL por etapa) e virava órfão invisível, segurando vozes em ACEITO
+        // que ninguém mais conseguia desvincular.
+        $etapa = $fator ? (string)$fator['etapa'] : (string)($d['etapa'] ?? '');
         if (!isset(self::CATEGORIAS[$etapa]) || !in_array($categoria, self::CATEGORIAS[$etapa], true)) {
             Json::erro('Etapa ou categoria inválida.');
         }
@@ -84,7 +97,6 @@ class FatorController
         }
 
         if ($id) {
-            $fator = $this->exigirFator($id, $planId);
             $ano = (int)($fator['ano'] ?? 0);
             Database::executar(
                 'UPDATE fator SET categoria = ?, descricao = ? WHERE id = ?',
@@ -100,7 +112,7 @@ class FatorController
                 [$planId, $ano, $etapa, $categoria, $descricao]
             );
         }
-        $this->vincularSugestoes($d, $id, $planId, $etapa, $ano);
+        $this->vincularSugestoes($d, $id, $planId, $etapa, $categoria, $ano);
         Json::ok(['id' => $id]);
     }
 
@@ -114,37 +126,62 @@ class FatorController
      * Sem a chave `sugestoes` no corpo, nada é tocado — é o que faz uma edição
      * comum do fator preservar as vozes já registradas.
      */
-    private function vincularSugestoes(array $d, int $id, int $planId, string $etapa, int $ano): void
-    {
+    private function vincularSugestoes(
+        array $d, int $id, int $planId, string $etapa, string $categoria, int $ano
+    ): void {
         if (!array_key_exists('sugestoes', $d)) {
             return;
         }
+        // `fator.ano` nasceu por ALTER e pode ser NULL em linha antiga. Com ano
+        // 0 a guarda `qp.ano = ?` não casa com nada: o vínculo falharia em
+        // SILÊNCIO — e pior, o "solta quem saiu" abaixo não depende do ano e
+        // desamarraria as vozes que já estavam ali. Recusar é honesto; o fator
+        // precisa de ano antes de receber voz.
+        if ($ano <= 0) {
+            Json::erro('Este fator não tem ano definido: edite o ano antes de vincular vozes da sala.');
+        }
         $u = Auth::exigirLogin();
         $sugestoes = array_values(array_unique(array_map('intval', (array)$d['sugestoes'])));
+        // A lista é medida ANTES de tocar o banco: é a mesma lição de
+        // `Quiz::alvosCrus` — `php -S` é single-threaded, e 20 mil ids no corpo
+        // seguravam o servidor inteiro por seis segundos.
+        if (count($sugestoes) > self::MAX_SUGESTOES) {
+            Json::erro('Sugestões demais num pedido só.');
+        }
         $marcas = $sugestoes ? implode(',', array_fill(0, count($sugestoes), '?')) : '';
         // Solta quem saiu do conjunto: volta a NOVO, editável de novo pelo autor
         Database::executar(
             "UPDATE coleta_item SET destino_tipo = NULL, destino_id = NULL,
                situacao = 'NOVO', triado_por = NULL, triado_em = NULL
-             WHERE destino_tipo = 'FATOR' AND destino_id = ? AND origem = 'QUIZ'"
+             WHERE destino_tipo = 'FATOR' AND destino_id = ? AND origem = 'QUIZ'
+               AND planejamento_id = ?"
             . ($marcas ? " AND id NOT IN ({$marcas})" : ''),
-            array_merge([$id], $sugestoes)
+            array_merge([$id, $planId], $sugestoes)
         );
-        foreach ($sugestoes as $sugestaoId) {
-            // A guarda é o ALVO da pergunta, não a rodada: encontros diferentes
-            // podem ter perguntado a mesma categoria, e todas essas vozes valem.
-            // O JOIN recusa sugestão de outra categoria, de outro ano, de outra
-            // etapa, de outro plano ou que não seja do quiz.
-            Database::executar(
-                "UPDATE coleta_item ci
-                 JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
-                 SET ci.destino_tipo = 'FATOR', ci.destino_id = ?,
-                     ci.situacao = 'ACEITO', ci.triado_por = ?, ci.triado_em = NOW()
-                 WHERE ci.id = ? AND ci.planejamento_id = ? AND ci.origem = 'QUIZ'
-                   AND qp.alvo_tipo = 'FATOR' AND qp.etapa = ? AND qp.ano = ?",
-                [$id, (int)$u['id'], $sugestaoId, $planId, $etapa, $ano]
-            );
+        if (!$sugestoes) {
+            return;
         }
+        // UM comando para o conjunto inteiro, não um por id: o laço era o
+        // amplificador que o teto acima passou a cortar, e a regra é a mesma
+        // para todos.
+        //
+        // A guarda é o ALVO da pergunta, não a rodada: encontros diferentes
+        // podem ter perguntado a mesma categoria, e todas essas vozes valem. Ela
+        // recusa sugestão de outra CATEGORIA, etapa, ano ou plano, que não seja
+        // do quiz, ou que já esteja amarrada a OUTRO fator — roubar o vínculo
+        // deixaria o fator de origem perdendo vozes sem ninguém tocar nele.
+        Database::executar(
+            "UPDATE coleta_item ci
+             JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
+             SET ci.destino_tipo = 'FATOR', ci.destino_id = ?,
+                 ci.situacao = 'ACEITO', ci.triado_por = ?, ci.triado_em = NOW()
+             WHERE ci.id IN ({$marcas}) AND ci.planejamento_id = ? AND ci.origem = 'QUIZ'
+               AND qp.alvo_tipo = 'FATOR' AND qp.etapa = ? AND qp.categoria = ? AND qp.ano = ?
+               AND (ci.destino_id IS NULL
+                    OR (ci.destino_tipo = 'FATOR' AND ci.destino_id = ?))",
+            array_merge([$id, (int)$u['id']], $sugestoes,
+                        [$planId, $etapa, $categoria, $ano, $id])
+        );
     }
 
     /**

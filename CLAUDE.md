@@ -192,6 +192,24 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   sem sala aberta responde 409/**`SEM_SALA`** para a tela perguntar antes (sessão
   que nasce sozinha é sessão sem nome, que ninguém sabe que abriu); e o 🎤 da
   categoria que já está na sala **vira selo, não botão**.
+  Lições da revisão adversarial desta fase: **o servidor nunca fabrica a
+  confirmação do usuário** — o `abrir_sala` do 🎤 inventava `confirmar_encerrar`
+  e derrubava a sala de outra pessoa entre o SELECT (fora da trava) e o
+  `GET_LOCK`; **na edição, etapa e ano saem da LINHA, nunca do corpo** (são a
+  identidade do registro, não campos do formulário: aceitá-los do corpo gravava
+  categoria de PESTEL numa linha SWOT, e o fator sumia das duas telas);
+  **vínculo é um UPDATE só, com teto e com a categoria na guarda**; **`ano` nulo
+  recusa o vínculo** em vez de falhar calado (o "solta quem saiu" não depende do
+  ano e desamarraria o que já estava); e **quem toca o 🎤 tem o foco devolvido
+  ao padrão** — sem isso o painel ficava preso na pergunta EXAMINADA e o condutor
+  lia vozes velhas enquanto a sala respondia outra coisa.
+  O selo só diz "na sala" quando **a seção E o contexto** batem: o ano do
+  diagnóstico é um seletor à parte, e "na sala" com a tela num ano e a sala em
+  outro deixava o condutor sem painel, sem 🎤 aceso e sem atalho.
+  A batida do polling **sai cedo quando a seção não é mais a ativa**: o relógio
+  só confere `d-none` no começo, e `recarregarSecaoAtiva` recarregaria a tela de
+  agora. E a assinatura é **semeada ao pintar**, senão a primeira batida repinta
+  de graça — na aba Sala isso regenerava o SVG do QR, uma piscada no telão.
   A pergunta que a sala lê vem de `Quiz::PERGUNTA_CATEGORIA`, uma por categoria:
   montá-la do rótulo dava "Quais político você vê para 2026?" — as categorias do
   PESTEL são adjetivos, e pergunta torta é resposta torta.

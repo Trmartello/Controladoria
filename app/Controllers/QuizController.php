@@ -132,9 +132,13 @@ class QuizController
                     : 'Nenhuma sala aberta. Abrir a sala e já perguntar isto?',
                     409, 'SEM_SALA');
             }
-            // Quem confirma o SEM_SALA aceita as duas coisas de uma vez: abrir a
-            // sala e encerrar o que estivesse aberto
-            $d['confirmar_encerrar'] = 1;
+            // O `confirmar_encerrar` NÃO é fabricado aqui. O SELECT acima roda
+            // FORA da trava, então entre ele e o `GET_LOCK` do `liberarSala`
+            // outra pessoa pode ter aberto a sala — e o usuário confirmou
+            // "abrir a sala", não "encerrar a discussão de alguém". Sem a
+            // fabricação, esse caso cai no 409/SALA_ABERTA e vira uma segunda
+            // pergunta, com o nome da sala que REALMENTE apareceu; o front já
+            // reenvia com a confirmação (`QuizSala.pedir`).
             Json::ok($this->criarSala($planId, $d, $alvos) + ['abriu_sala' => true]);
         }
 

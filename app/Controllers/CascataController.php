@@ -135,6 +135,12 @@ class CascataController
         // texto da célula é o que o condutor redigiu acima.
         if (array_key_exists('sugestoes', $d)) {
             $sugestoes = array_values(array_unique(array_map('intval', (array)$d['sugestoes'])));
+            // A lista é medida ANTES de tocar o banco: `php -S` é
+            // single-threaded, e um laço de milhares de UPDATEs segura o
+            // servidor inteiro. Mesma lição de `Quiz::alvosCrus`.
+            if (count($sugestoes) > 500) {
+                Json::erro('Sugestões demais num pedido só.');
+            }
             $marcas = $sugestoes ? implode(',', array_fill(0, count($sugestoes), '?')) : '';
             // Solta quem saiu do conjunto: volta a NOVO, editável de novo pelo
             // autor — o mesmo papel do "Desmarcar" da tempestade
