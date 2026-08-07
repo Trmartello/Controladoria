@@ -14,7 +14,9 @@ const Participante = {
   editando: null,
   // Quiz da cascata: o lado que a pessoa escolheu responder (sobrevive ao
   // redesenho — o par de botões é re-pintado com ele)
-  tipoResposta: 'ESCOLHA',
+  // Lado escolhido pelo participante; validado contra os lados DA PERGUNTA
+  // em ladoAtual() — a sala troca de análise e o lado antigo pode não existir
+  tipoResposta: null,
 
   // Ditado por voz (Web Speech API) — o microfone só aparece se o navegador
   // suportar. A lógica é replicada do modal.js porque esta página é autônoma
@@ -154,7 +156,7 @@ const Participante = {
       }
       this.minhas = await this.api(`/api/publico/minhas?pin=${this.pin}`);
       // Votação é rito da tempestade; no quiz ela chega na fase da estrela
-      this.votacao = this.rodada.modo === 'CASCATA'
+      this.votacao = this.rodada.modo === 'QUIZ'
         ? null
         : await this.api(`/api/publico/votar?pin=${this.pin}`);
     } catch (e) {
@@ -173,10 +175,14 @@ const Participante = {
     // Um redesenho invalida o botão do mic; encerra qualquer ditado em curso.
     this.pararDitado();
     const r = this.rodada;
-    if (r.modo === 'CASCATA') {
+    if (r.modo === 'QUIZ') {
       this.renderQuiz();
       return;
     }
+    // O rótulo do topo é do JS nos dois ritos: o HTML nasce genérico porque a
+    // mesma página serve a tempestade e o quiz de qualquer análise
+    const rotuloTopo = document.getElementById('topo-rotulo');
+    if (rotuloTopo) rotuloTopo.textContent = 'Tempestade de ideias';
     const rascunho = document.getElementById('campo-ideia')?.value ?? '';
     const encerrada = r.situacao !== 'ABERTA';
     const votando = this.votacao?.votacao === 'ABERTA';
@@ -233,10 +239,12 @@ const Participante = {
     // guardado quando o campo não existia (lado com o teto esgotado)
     const rascunho = this.rascunhoPendente ?? (document.getElementById('campo-ideia')?.value ?? '');
     this.rascunhoPendente = null;
-    const rotulo = document.getElementById('topo-rotulo');
-    if (rotulo) rotulo.textContent = 'Cascata de Escolhas';
-    const encerrada = r.situacao !== 'ABERTA';
     const p = r.pergunta;
+    const rotulo = document.getElementById('topo-rotulo');
+    // O cabeçalho acompanha a tela que a condução abriu: a sala é do projeto,
+    // e o participante nunca escaneia de novo ao trocar de análise
+    if (rotulo) rotulo.textContent = p ? p.rotulo : (r.tema || 'Planejamento estratégico');
+    const encerrada = r.situacao !== 'ABERTA';
     const minhasDaPergunta = p ? this.minhas.filter((i) => i.pergunta_id === p.id) : [];
 
     this.tela.innerHTML = `
@@ -248,7 +256,7 @@ const Participante = {
         ${encerrada
           ? '<div class="alert alert-secondary py-2 small mt-3">Esta sessão foi encerrada. Obrigado por participar!</div>'
           : p ? this.blocoQuiz(p, minhasDaPergunta) : `
-            <h1 class="h5 tema-rodada">${this.esc(r.tema || 'Cascata de Escolhas')}</h1>
+            <h1 class="h5 tema-rodada">${this.esc(r.tema || 'Planejamento estratégico')}</h1>
             <div class="alert alert-info py-2 small mt-3">Aguarde: a condução vai abrir a
               próxima pergunta no telão.</div>`}
       </div>`;
@@ -264,49 +272,69 @@ const Participante = {
     this.ligarDitado();
   },
 
+  /**
+   * O lado escolhido, sempre válido PARA ESTA PERGUNTA. A sala é do projeto:
+   * a condução pode sair da cascata (Escolha/Renúncia) para o cenário
+   * (Situação atual/Tendência), e o lado guardado de antes não existe mais no
+   * alvo novo — enviá-lo faria o servidor cair no primeiro lado sem a pessoa
+   * saber. Alvo sem lados (PESTEL, Porter, SWOT) devolve null.
+   */
+  ladoAtual(p) {
+    const lados = p.lados || [];
+    if (!lados.length) return null;
+    return lados.some((l) => l.valor === this.tipoResposta) ? this.tipoResposta : lados[0].valor;
+  },
+
   blocoQuiz(p, minhas) {
     const prog = this.rodada?.progresso;
-    const meta = `${p.horizonte} · ${p.ano_inicio}–${p.ano_fim} · “${this.esc(p.tema)}”`
-      + (prog?.atual ? ` · Pergunta ${prog.atual} de ${prog.total}` : '');
-    const lado = (tipo) => minhas.filter((i) => i.tipo_resposta === tipo);
-    const restamEscolha = this.rodada.max_ideias - lado('ESCOLHA').length;
-    const restamRenuncia = this.rodada.max_ideias - lado('RENUNCIA').length;
-    const tipo = this.tipoResposta;
-    const restam = tipo === 'RENUNCIA' ? restamRenuncia : restamEscolha;
-    const area = `<textarea id="campo-ideia" class="form-control" rows="3" maxlength="255"
-          placeholder="${tipo === 'RENUNCIA'
-            ? 'Do que abrimos mão nesta célula?'
-            : 'O que você decidiria nesta célula?'}"></textarea>`;
+    const lados = p.lados || [];
+    const lado = this.ladoAtual(p);
+    const rotuloLado = (valor) => (lados.find((l) => l.valor === valor)?.rotulo) || 'sugestão';
+    const usadas = (valor) => minhas.filter((i) => (i.tipo_resposta || null) === valor).length;
+    const restam = this.rodada.max_ideias - usadas(lado);
+    const maxTexto = Number(p.max_texto) || 255;
+    // Duas cores para dois lados; o segundo lado é sempre o "contraponto"
+    const classeLado = (i) => (i === 0 ? 'success' : 'danger');
+    const area = `<textarea id="campo-ideia" class="form-control" rows="3" maxlength="${maxTexto}"
+          placeholder="${this.esc(lado ? rotuloLado(lado) + '…' : 'Escreva sua sugestão…')}"></textarea>`;
+
+    const contexto = (p.contexto || []).map((c) =>
+      `<div class="small text-muted"><strong>${this.esc(c.rotulo)}:</strong> ${this.esc(c.valor)}</div>`
+    ).join('');
+
+    // Com o teto esgotado neste lado, dizer o que AINDA dá para fazer evita a
+    // leitura de "acabou para mim" quando o outro lado segue aberto
+    const outrosAbertos = lados
+      .filter((l) => l.valor !== lado && this.rodada.max_ideias - usadas(l.valor) > 0)
+      .map((l) => l.rotulo.toLowerCase());
 
     return `
       <div class="contexto-pergunta">
-        <div class="small text-muted">${this.esc(meta)}</div>
-        <h1 class="h5 mb-1">${this.esc(p.driver)}${p.eixo ? ` · Eixo ${this.esc(p.eixo)}` : ' · Síntese'}</h1>
-        <div class="small text-muted">${this.esc(p.objetivo || '')}</div>
+        <div class="small text-muted">${this.esc(p.rotulo)}${
+          prog?.atual ? ` · Pergunta ${prog.atual} de ${prog.total}` : ''}</div>
+        <h1 class="h5 mb-1">${this.esc(p.titulo)}</h1>
+        ${contexto}
       </div>
 
-      <div class="mt-3" role="radiogroup" aria-label="O que você vai sugerir">
+      ${lados.length ? `<div class="mt-3" role="radiogroup" aria-label="O que você vai sugerir">
         <div class="btn-group w-100 par-tipo-resposta">
-          <input type="radio" class="btn-check" name="tipo-resposta" id="tipo-escolha"
-            value="ESCOLHA" ${tipo === 'ESCOLHA' ? 'checked' : ''}>
-          <label class="btn btn-outline-success" for="tipo-escolha">Escolha</label>
-          <input type="radio" class="btn-check" name="tipo-resposta" id="tipo-renuncia"
-            value="RENUNCIA" ${tipo === 'RENUNCIA' ? 'checked' : ''}>
-          <label class="btn btn-outline-danger" for="tipo-renuncia">Renúncia</label>
+          ${lados.map((l, i) => `
+            <input type="radio" class="btn-check" name="tipo-resposta" id="tipo-lado-${i}"
+              value="${this.esc(l.valor)}" ${l.valor === lado ? 'checked' : ''}>
+            <label class="btn btn-outline-${classeLado(i)}" for="tipo-lado-${i}">${this.esc(l.rotulo)}</label>`).join('')}
         </div>
-      </div>
+      </div>` : ''}
 
       ${restam <= 0
         ? `<div class="alert alert-success py-2 small mt-3">Você enviou todas as suas
-             ${tipo === 'RENUNCIA' ? 'renúncias' : 'respostas'} desta pergunta.
-             ${tipo === 'RENUNCIA' ? (restamEscolha > 0 ? 'Ainda pode sugerir escolhas.' : '')
-               : (restamRenuncia > 0 ? 'Ainda pode sugerir renúncias.' : '')}</div>`
+             sugestões${lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''} desta pergunta.
+             ${outrosAbertos.length ? `Ainda pode sugerir ${this.esc(outrosAbertos.join(' e '))}.` : ''}</div>`
         : `<div class="mt-3">
-          <label class="form-label small" for="campo-ideia">Sua sugestão de
-            ${tipo === 'RENUNCIA' ? 'renúncia' : 'escolha'}</label>
+          <label class="form-label small" for="campo-ideia">Sua sugestão${
+            lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''}</label>
           ${this.comVoz(area, 'campo-ideia')}
           <div class="d-flex align-items-center gap-2 mt-2">
-            <span class="small text-muted" id="contador-resposta">0/255</span>
+            <span class="small text-muted" id="contador-resposta" data-max="${maxTexto}">0/${maxTexto}</span>
             <span class="small text-muted flex-grow-1">Pode enviar mais ${restam}.</span>
             <button class="btn btn-verde" id="btn-enviar">Enviar</button>
           </div>
@@ -319,9 +347,9 @@ const Participante = {
           ${minhas.map((i) => this.editando === i.id
             ? this.editorIdeia(i)
             : `<div class="ideia-minha d-flex align-items-start gap-2">
-                 <span class="badge ${i.tipo_resposta === 'RENUNCIA'
-                   ? 'text-bg-danger' : 'text-bg-success'} flex-shrink-0">${
-                   i.tipo_resposta === 'RENUNCIA' ? 'Renúncia' : 'Escolha'}</span>
+                 ${i.tipo_resposta ? `<span class="badge text-bg-${classeLado(
+                   lados.findIndex((l) => l.valor === i.tipo_resposta))} flex-shrink-0">${
+                   this.esc(rotuloLado(i.tipo_resposta))}</span>` : ''}
                  <span class="flex-grow-1">${this.esc(i.texto)}</span>
                  ${i.situacao === 'NOVO'
                    ? `<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none flex-shrink-0"
@@ -357,14 +385,15 @@ const Participante = {
       this.pararDitado();
       const texto = campo.value.trim();
       if (!texto) return;
-      const aviso = document.getElementById('aviso-envio');
       btn.disabled = true;
       try {
         // pergunta_id diz o que a pessoa estava VENDO: se a condução avançou
-        // no meio da digitação, o servidor recusa em vez de gravar às cegas
+        // no meio da digitação, o servidor recusa em vez de gravar às cegas.
+        // O lado vai resolvido contra ESTA pergunta, nunca o guardado de uma
+        // análise anterior.
         await this.api('/api/publico/resposta', {
           pin: this.pin, token: this.token, pergunta_id: p.id,
-          tipo: this.tipoResposta, texto,
+          tipo: this.ladoAtual(p), texto,
         });
         campo.value = '';
         await this.atualizar(true);
@@ -398,7 +427,10 @@ const Participante = {
   atualizarContador() {
     const campo = document.getElementById('campo-ideia');
     const alvo = document.getElementById('contador-resposta');
-    if (campo && alvo) alvo.textContent = `${campo.value.length}/255`;
+    // O teto vem do ALVO da pergunta (data-max), não de um 255 fixo: alvos
+    // diferentes têm limites diferentes, e um contador mentindo faz a pessoa
+    // escrever até estourar sem aviso
+    if (campo && alvo) alvo.textContent = `${campo.value.length}/${alvo.dataset.max || 255}`;
   },
 
   blocoEnvio(restam) {
@@ -452,10 +484,12 @@ const Participante = {
 
   // ---- Corrigir a própria ideia ----
   editorIdeia(i) {
-    // O limite acompanha o rito (255 no quiz da cascata, 400 na tempestade);
-    // quem garante é o servidor — o maxlength é só conforto
+    // O limite vem do ALVO, calculado pelo servidor (`max_texto`), não do
+    // tipo_resposta: alvo sem lado (PESTEL, Porter, SWOT) responde com tipo
+    // nulo e o editor oferecia 400 num campo que o servidor corta em 255 —
+    // perda silenciosa de texto. Quem garante continua sendo o servidor.
     const area = `<textarea id="campo-editar-${i.id}" class="form-control" rows="3"
-          maxlength="${i.tipo_resposta ? 255 : 400}"
+          maxlength="${Number(i.max_texto) || 400}"
           data-editar-campo="${i.id}">${this.esc(i.texto)}</textarea>`;
     return `
       <div class="ideia-minha">

@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Quiz;
 
 /**
  * Rodadas da tempestade de ideias — a sessão ao vivo da oficina.
@@ -62,24 +63,16 @@ class RodadaController
         if ($ano < 2000 || $ano > 2100) {
             Json::erro('Informe o ano da coleta.');
         }
-        // Duas rodadas abertas no mesmo plano deixariam uma delas invisível no
-        // painel — e ela seguiria aceitando ideias pelo PIN antigo
-        $jaAberta = Database::um(
-            "SELECT id, ano, modo FROM coleta_rodada WHERE planejamento_id = ? AND situacao = 'ABERTA'",
-            [$planId]
-        );
-        if ($jaAberta) {
-            // A sala aberta pode ser o quiz da cascata: a mensagem diz qual é,
-            // senão o condutor procura uma tempestade que não existe
-            Json::erro($jaAberta['modo'] === 'CASCATA'
-                ? 'Há uma sessão da cascata aberta neste planejamento. Encerre-a na seção Cascata antes.'
-                : "Já existe uma rodada aberta neste planejamento (ano {$jaAberta['ano']}). "
-                    . 'Encerre-a antes de abrir outra.');
-        }
+        // Uma sala aberta por planejamento, de qualquer rito: duas deixariam uma
+        // delas invisível no painel, seguindo a aceitar ideias pelo PIN antigo.
+        // A colisão é PERGUNTA, não recusa — quem esqueceu de fechar a sala de
+        // outra análise confirma o encerramento e segue daqui mesmo.
+        Quiz::liberarSala($planId, $d, Quiz::tela('LIVRE'));
+
         $maxIdeias = max(1, min(self::MAX_IDEIAS, (int)($d['max_ideias'] ?? 5)));
         $maxVotos = max(1, min(self::MAX_VOTOS, (int)($d['max_votos'] ?? 3)));
 
-        $pin = $this->pinLivre();
+        $pin = Quiz::pinLivre();
         $id = (int)Database::executar(
             'INSERT INTO coleta_rodada (planejamento_id, ano, tema, pin, max_ideias, max_votos, criado_por)
              VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -118,21 +111,6 @@ class RodadaController
             [$abrir ? 'ABERTA' : 'FECHADA', $id]
         );
         Json::ok(['votacao' => $abrir ? 'ABERTA' : 'FECHADA']);
-    }
-
-    /**
-     * PIN de 6 dígitos que não colide com outra rodada. O UNIQUE do banco é a
-     * garantia final; o laço só evita o erro na maioria dos casos.
-     */
-    private function pinLivre(): string
-    {
-        for ($i = 0; $i < 30; $i++) {
-            $pin = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-            if (!Database::um('SELECT id FROM coleta_rodada WHERE pin = ?', [$pin])) {
-                return $pin;
-            }
-        }
-        Json::erro('Não foi possível gerar um PIN livre. Encerre rodadas antigas e tente de novo.');
     }
 
     private function exigirRodada(int $id, int $planId): array

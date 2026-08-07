@@ -6,9 +6,20 @@ Plano de implementação, em duas partes.
 fechadas com o cliente e **entregue** nas Fases 1 e 2 (commits `e4549df` e
 `3767aba`).
 
-**Parte II (seções 11–16)** — a revisão de escopo pedida depois: a sala deixa de
-ser da tela e passa a ser **do projeto**, um PIN só para todas as análises.
-**Ainda não construída** — tem decisões em aberto na seção 16.
+> ⚠️ **A Parte I descreve o modelo como ele nasceu, e o modelo mudou.** As
+> doze decisões de produto continuam valendo, mas o desenho técnico foi
+> substituído pela Fase 3: `cascata_pergunta` virou `quiz_pergunta` com alvo
+> polimórfico, `coleta_rodada.modo='CASCATA'` virou `'QUIZ'`, e o isolamento
+> entre os ritos saiu de `tipo_resposta IS NULL` para `coleta_item.origem`.
+> **Antes de mexer no código, leia a seção 17** — ela é o que está no ar.
+
+
+**Parte II (seções 11–17)** — a revisão de escopo pedida depois: a sala deixa de
+ser da tela e passa a ser **do projeto**, um PIN só para todas as análises. As
+decisões estão fechadas (seção 16) e a **Fase 3 foi entregue** (seção 17): o
+modelo novo, a sala única com encerra-e-abre confirmado, e a Análise de Cenário
+como primeira tela. PESTEL/Porter/SWOT e a migração da Tempestade ficam para a
+Fase 4.
 
 ## 1. O que se quer
 
@@ -435,8 +446,9 @@ implementação e aparecem na hora de construir cada fase.
 # Parte II — A sala é do PROJETO, não da tela
 
 Revisão de escopo pedida em 06/08/2026, depois das Fases 1 e 2 entregues, com
-as decisões fechadas em 07/08/2026 (seção 16). **Nada desta parte foi
-construído**: ela existe para a decisão vir antes do código.
+as decisões fechadas em 07/08/2026 (seção 16). As seções 11 a 16 são o desenho
+como foi decidido; a **seção 17 registra o que a Fase 3 entregou** e onde cada
+peça ficou.
 
 ## 11. O que se quer agora
 
@@ -637,3 +649,117 @@ Com isso fechado, a Fase 3 é: `quiz_pergunta` com alvo polimórfico,
 `coleta_item.origem`, a faixa da sessão como componente compartilhado, o
 encerra-e-abre confirmado, e a tela de Cenário como primeira consumidora.
 PESTEL/Porter/SWOT e a migração da Tempestade vêm na Fase 4.
+
+---
+
+## 17. Fase 3 entregue — a sala do projeto, e o Cenário como primeira tela
+
+O que foi construído, e por quê cada peça ficou onde ficou.
+
+### O banco
+
+| Antes | Depois |
+|---|---|
+| `cascata_pergunta` (célula obrigatória) | `quiz_pergunta` com `alvo_tipo` CASCATA/CENARIO/FATOR/LIVRE e colunas nulas por tipo |
+| `UNIQUE (rodada, horizonte, driver, eixo_chave)` | `UNIQUE (rodada, alvo_chave)` — coluna gerada que junta o alvo inteiro |
+| `coleta_rodada.modo` = TEMPESTADE \| CASCATA | TEMPESTADE \| **QUIZ** |
+| isolamento por `tipo_resposta IS NULL` | **`coleta_item.origem`** (TEMPESTADE \| QUIZ) |
+| `tipo_resposta` ENUM(ESCOLHA, RENUNCIA) | + SITUACAO_ATUAL, TENDENCIA (os lados do cenário) |
+
+Três decisões de migração que valem registro:
+
+- **O `RENAME TABLE` roda ANTES do `schema.sql`.** Ele já declara
+  `quiz_pergunta`; rodando primeiro, criaria uma tabela nova e vazia ao lado da
+  que guarda as perguntas do encontro — e o roteiro sumiria sem erro nenhum. O
+  RENAME leva junto a FK que aponta para ela (`fk_ci_pergunta`), nos dois
+  motores.
+- **A unicidade virou uma coluna gerada** porque `NULL` nunca colide com `NULL`
+  num UNIQUE comum: com as colunas do alvo nulas por tipo, a mesma célula
+  entraria duas vezes no roteiro. `alvo_chave` concatena tudo — e inclui um
+  `MD5(enunciado)` só para `LIVRE`, cujo alvo é a própria pergunta. Isso já
+  deixa a Fase 4 sem precisar mexer num UNIQUE em produção.
+- **O ENUM do modo troca em três passos** (o valor novo entra, as linhas migram,
+  o velho sai), porque um ENUM não troca de valor em uso.
+
+Testado nos dois caminhos: instalação nova e uma base no formato da Fase 2, com
+pergunta ativa, sugestão de quiz e ideia de tempestade — as duas convergem para
+o mesmo esquema, e a segunda passada do migrate não faz nada.
+
+### O código
+
+- **`App\Services\Quiz`** é a fonte única do que cada alvo significa: o lado da
+  resposta, o limite de texto, o rótulo curto, o contexto que o celular lê, a
+  validação do que entra no roteiro, e a sala única (abrir, colidir, encerrar).
+- **`QuizController`** (era `CascataQuizController`) conduz; as rotas saíram de
+  `/api/cascata/quiz/*` para **`/api/quiz/*`**, porque a sala não é da tela.
+- **`PublicoController`** olha o **alvo da pergunta ativa**, não o modo da
+  rodada. O lado é lista branca derivada do alvo; o teto usa `<=>` para contar
+  certo quando o alvo não tem lado.
+- **`public/assets/js/quiz.js`** (`QuizSala`) é a faixa compartilhada. Não
+  guarda estado — quem guarda é a seção dona. Duas seções dividindo o "QR
+  recolhido" recolheriam o QR uma da outra no meio do encontro.
+- **`Modal.abrir` ganhou `enviar`**: sem esse gancho, o 409 de sala aberta
+  aparecia como erro dentro do modal, sem nenhum jeito de responder "sim".
+- **`Json::erro` ganhou `codigo`** e `App.api` o repassa no `Error`: mensagem é
+  para ler, código é para decidir.
+
+### A tela de Cenário
+
+Primeira consumidora, e o gabarito das próximas: botão "Perguntar à sala"
+(que vira selo quando o ano já está no roteiro — perguntar de novo não faria
+nada), faixa da sessão, painel das duas colunas (Situação atual · Tendências),
+"Usar" levando o texto ao formulário do item, e o selo "Sala · N voz(es)" no
+card. O vínculo viaja pelo `transformar`, nunca por um campo `hidden` — hidden
+guarda texto, e uma lista viraria a string `"12"` no caminho de volta.
+
+O selo "Coleta · Fulano" continua só para ideia da **tempestade**: ele navega
+para a tela da Coleta, e a resposta de quiz não mora lá — o clique cairia numa
+lista que não a contém.
+
+### O que a validação pegou
+
+Na tela:
+
+- Os botões do roteiro tinham 23px de altura no celular. Cresceram por
+  **dimensão real** (`min-height`/`min-width`), nunca por `::after` sobreposto.
+- O botão "A sala está nesta análise" parecia status e era ação: virou selo
+  quando o alvo já está no roteiro.
+
+Na revisão adversarial (segurança e corretude), dez achados — todos corrigidos:
+
+| # | O que era | Correção |
+|---|---|---|
+| 1 | Lista `alvos` sem teto: 50 mil elementos = **12,6 s** de servidor travado (`php -S` é single-threaded), e o pedido terminava em erro de qualquer jeito | a lista é medida, deduplicada e limitada **antes** de tocar no banco (`Quiz::alvosCrus`) |
+| 2 | Abrir a tempestade pela tela da Coleta virava **beco sem saída**: o 409 era uma pergunta pintada como erro vermelho, sem jeito de responder "sim" — e aquela tela nem lista a sessão de quiz | `enviar: QuizSala.pedir` no modal da rodada |
+| 3 | Sala aberta **sem pergunta ativa** dizia "aberta em Planejamento" — uma tela que não existe | cai para o alvo da **última** pergunta, onde o encontro parou |
+| 4 | `estado()` e `Quiz::ativa()` resolviam "qual é a ativa" por critérios **diferentes**: com duas ATIVA, o condutor via uma e a sala respondia outra | fonte única (`Quiz::ativa`), e ativar virou **um UPDATE só** — em dois havia janela sem nenhuma ativa |
+| 5 | `Quiz::roteiro()` (3 JOINs + `COUNT` por pergunta) entrou no caminho **público**, que roda a cada 4 s por participante | `progressoDaRodada()` enxuto; o roteiro completo é do condutor |
+| 6 | O editor da própria resposta oferecia 400 caracteres num alvo cortado em 255 — **perda silenciosa de texto** | `/api/publico/minhas` devolve `max_texto` do alvo |
+| 7 | `FatorController::listar` não filtrava `origem`: o mesmo defeito que o Cenário acabou de corrigir, esperando a Fase 4 | filtro + `quiz_vozes`, igual ao Cenário |
+| 8 | A assinatura do polling perdeu a célula da cascata: outro condutor salvando a escolha não repintava o detalhe | a cascata compõe a própria assinatura, e rebusca **antes** de comparar |
+| 9 | Reperguntar um alvo com **outra redação** descartava o enunciado em silêncio (o `INSERT IGNORE` come o INSERT) | UPDATE do enunciado quando o alvo já está no roteiro |
+| 10 | Apagar um item de cenário ou um fator deixava as vozes do quiz **ACEITO em cima de linha morta** — congeladas para o autor | `Quiz::soltarVozes`, usado pelos **quatro** caminhos que apagam esses registros |
+
+Duas invariantes que a revisão tentou quebrar e **não conseguiu**, com teste de
+concorrência real: o teto de envios dentro do INSERT (20 envios simultâneos com
+teto 3 → exatamente 3 gravadas, inclusive em alvo sem lado, onde o `<=>` é o
+que segura) e a autorização cruzada entre planejamentos e perfis.
+
+O encerra-e-abre também ganhou **`GET_LOCK` por planejamento**: era
+check-then-act, e dois condutores passavam os dois — o segundo encerrando a
+sala que o primeiro acabou de abrir.
+
+### Fase 4
+
+PESTEL, Porter e SWOT (mesmo alvo `FATOR`, saem quase juntas) e a migração da
+Tempestade para pergunta `LIVRE` do roteiro — deixada por último porque é a que
+mais mexe em código que já roda em produção. Depois delas, a estrela por
+pergunta e a unificação de vozes iguais dentro de cada lado.
+
+**Uma ponta solta consciente:** o servidor já aceita os alvos `FATOR` e `LIVRE`
+(e o banco já os guarda), mas **nenhuma tela mostra as respostas deles** — o
+painel do Cenário e o da Cascata recusam alvo que não é o seu. Nenhum caminho
+da interface cria essas perguntas hoje, então o usuário não alcança o beco; o
+que ele veria, se chegasse lá pela API, é a contagem no roteiro. A Fase 4 fecha
+isso ao construir as telas. Preferi manter o servidor pronto a gatear e
+degatear — mas está aqui escrito para não virar surpresa.

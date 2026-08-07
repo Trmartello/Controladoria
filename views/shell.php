@@ -108,6 +108,9 @@
   <script src="<?= versao_asset('/assets/vendor/bootstrap.bundle.min.js') ?>"></script>
   <script src="<?= versao_asset('/assets/vendor/qrcode.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/modal.js') ?>"></script>
+  <!-- A faixa da sessão do quiz é a mesma em toda tela que conduz um encontro:
+       carrega antes das seções, que a consomem -->
+  <script src="<?= versao_asset('/assets/js/quiz.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/painel.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cadastros.js') ?>"></script>

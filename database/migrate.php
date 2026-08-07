@@ -91,6 +91,28 @@ function garantirIndice(PDO $pdo, string $tabela, string $indice, string $ddl): 
     }
 }
 
+/** A tabela existe neste banco? */
+function tabelaExiste(PDO $pdo, string $tabela): bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
+    );
+    $stmt->execute([$tabela]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
+// A sala deixou de ser só da cascata: a pergunta passou a apontar para qualquer
+// análise, e cascata_pergunta virou quiz_pergunta. O RENAME vem ANTES do
+// schema.sql porque ele já declara quiz_pergunta — rodando primeiro, criaria
+// uma tabela nova e VAZIA ao lado da que guarda as perguntas do encontro, e o
+// roteiro sumiria sem erro nenhum. O RENAME leva junto as chaves estrangeiras
+// que apontam para ela (fk_ci_pergunta), nos dois motores.
+if (!tabelaExiste($pdo, 'quiz_pergunta') && tabelaExiste($pdo, 'cascata_pergunta')) {
+    $pdo->exec('RENAME TABLE cascata_pergunta TO quiz_pergunta');
+    echo "migrate: cascata_pergunta renomeada para quiz_pergunta.\n";
+}
+
 executarArquivoSql($pdo, __DIR__ . '/schema.sql');
 
 // Análises do diagnóstico são anuais (horizontes seguem plurianuais)
@@ -173,7 +195,7 @@ if ($tipoDestinoCi && !str_contains((string)$tipoDestinoCi, 'ACAO')) {
 // A rodada ganha um modo (a MESMA sala serve os dois ritos) e a sugestão passa
 // a pertencer a uma pergunta, declarando de que lado fala (escolha/renúncia).
 garantirColuna($pdo, 'coleta_rodada', 'modo',
-    "ALTER TABLE coleta_rodada ADD COLUMN modo ENUM('TEMPESTADE','CASCATA')
+    "ALTER TABLE coleta_rodada ADD COLUMN modo ENUM('TEMPESTADE','QUIZ')
      NOT NULL DEFAULT 'TEMPESTADE' AFTER max_votos");
 garantirColuna($pdo, 'coleta_item', 'pergunta_id',
     'ALTER TABLE coleta_item ADD COLUMN pergunta_id INT NULL AFTER rodada_id');
@@ -188,6 +210,117 @@ if ($tipoDestinoCi2 && !str_contains((string)$tipoDestinoCi2, 'CASCATA')) {
     $pdo->exec("ALTER TABLE coleta_item MODIFY COLUMN destino_tipo
                 ENUM('CENARIO','FATOR','ACAO','CASCATA') NULL");
     echo "migrate: coleta_item.destino_tipo agora aceita CASCATA (célula da cascata).\n";
+}
+
+// ---- A sala é do PROJETO: a pergunta ganha um alvo polimórfico ----
+// O roteiro deixa de saber só de células da cascata e passa a apontar para
+// qualquer análise. As colunas do alvo entram todas nulas: linha antiga é
+// CASCATA (o DEFAULT), e horizonte/driver deixam de ser obrigatórios porque
+// pergunta de cenário e de PESTEL não tem célula nenhuma.
+garantirColuna($pdo, 'quiz_pergunta', 'alvo_tipo',
+    "ALTER TABLE quiz_pergunta ADD COLUMN alvo_tipo ENUM('CASCATA','CENARIO','FATOR','LIVRE')
+     NOT NULL DEFAULT 'CASCATA' AFTER rodada_id");
+garantirColuna($pdo, 'quiz_pergunta', 'enunciado',
+    'ALTER TABLE quiz_pergunta ADD COLUMN enunciado VARCHAR(255) NULL AFTER alvo_tipo');
+garantirColuna($pdo, 'quiz_pergunta', 'ano',
+    'ALTER TABLE quiz_pergunta ADD COLUMN ano SMALLINT NULL AFTER eixo_id');
+garantirColuna($pdo, 'quiz_pergunta', 'etapa',
+    "ALTER TABLE quiz_pergunta ADD COLUMN etapa ENUM('PESTEL','PORTER','SWOT') NULL AFTER ano");
+garantirColuna($pdo, 'quiz_pergunta', 'categoria',
+    'ALTER TABLE quiz_pergunta ADD COLUMN categoria VARCHAR(40) NULL AFTER etapa');
+foreach (['horizonte_id', 'driver_id'] as $colunaCelula) {
+    $obrigatoria = $pdo->query(
+        "SELECT IS_NULLABLE FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quiz_pergunta'
+           AND COLUMN_NAME = '{$colunaCelula}'"
+    )->fetchColumn();
+    if ($obrigatoria === 'NO') {
+        $pdo->exec("ALTER TABLE quiz_pergunta MODIFY COLUMN {$colunaCelula} INT NULL");
+        echo "migrate: quiz_pergunta.{$colunaCelula} agora é opcional (alvo fora da cascata).\n";
+    }
+}
+// A unicidade passa a ser do ALVO INTEIRO: colunas nulas por tipo não formam
+// UNIQUE (NULL nunca colide com NULL), então a chave é uma coluna gerada que
+// junta todas elas. A antiga (uk_pergunta_celula, sobre eixo_chave) sai junto
+// com a coluna que só ela usava.
+garantirColuna($pdo, 'quiz_pergunta', 'alvo_chave',
+    "ALTER TABLE quiz_pergunta ADD COLUMN alvo_chave VARCHAR(160)
+     AS (CONCAT_WS('|', alvo_tipo, COALESCE(horizonte_id, 0), COALESCE(driver_id, 0),
+         COALESCE(eixo_id, 0), COALESCE(ano, 0), COALESCE(etapa, ''), COALESCE(categoria, ''),
+         IF(alvo_tipo = 'LIVRE', MD5(COALESCE(enunciado, '')), ''))) STORED");
+garantirIndice($pdo, 'quiz_pergunta', 'uk_pergunta_alvo',
+    'ALTER TABLE quiz_pergunta ADD UNIQUE KEY uk_pergunta_alvo (rodada_id, alvo_chave)');
+garantirIndice($pdo, 'quiz_pergunta', 'idx_qp_ativa',
+    'ALTER TABLE quiz_pergunta ADD KEY idx_qp_ativa (rodada_id, situacao)');
+$temChaveVelha = $pdo->query(
+    "SELECT COUNT(*) FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quiz_pergunta'
+       AND INDEX_NAME = 'uk_pergunta_celula'"
+)->fetchColumn();
+if ((int)$temChaveVelha > 0) {
+    // O índice sai ANTES da coluna gerada: eixo_chave só existe para ele.
+    $pdo->exec('ALTER TABLE quiz_pergunta DROP INDEX uk_pergunta_celula');
+    echo "migrate: uk_pergunta_celula substituída por uk_pergunta_alvo.\n";
+}
+// idx_cp_ativa e idx_qp_ativa são o MESMO índice com nomes de épocas
+// diferentes: sem soltar o velho, a instalação existente carrega os dois e
+// paga escrita dobrada — e diverge da nova, que só tem um.
+$temIndiceVelho = $pdo->query(
+    "SELECT COUNT(*) FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quiz_pergunta'
+       AND INDEX_NAME = 'idx_cp_ativa'"
+)->fetchColumn();
+if ((int)$temIndiceVelho > 0) {
+    $pdo->exec('ALTER TABLE quiz_pergunta DROP INDEX idx_cp_ativa');
+    echo "migrate: idx_cp_ativa removido (idx_qp_ativa é o mesmo índice).\n";
+}
+$temEixoChave = $pdo->query(
+    "SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quiz_pergunta'
+       AND COLUMN_NAME = 'eixo_chave'"
+)->fetchColumn();
+if ((int)$temEixoChave > 0) {
+    $pdo->exec('ALTER TABLE quiz_pergunta DROP COLUMN eixo_chave');
+    echo "migrate: quiz_pergunta.eixo_chave removida (a chave agora é do alvo inteiro).\n";
+}
+
+// A MARCA de isolamento entre os ritos passa a ser explícita. Ela era
+// `tipo_resposta IS NULL`, o que só funcionava enquanto TODA resposta de quiz
+// tinha lado: alvo sem lado (PESTEL, Porter, SWOT) responde com tipo_resposta
+// nulo e a sugestão vazaria para a fila de triagem da Coleta.
+garantirColuna($pdo, 'coleta_item', 'origem',
+    "ALTER TABLE coleta_item ADD COLUMN origem ENUM('TEMPESTADE','QUIZ')
+     NOT NULL DEFAULT 'TEMPESTADE' AFTER rodada_id");
+// Backfill idempotente: item com lado declarado é, por definição, do quiz.
+$pdo->exec("UPDATE coleta_item SET origem = 'QUIZ'
+            WHERE tipo_resposta IS NOT NULL AND origem = 'TEMPESTADE'");
+// O lado ganha os valores do cenário (o alvo CENARIO tem dois, como a cascata)
+$tipoResposta = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'tipo_resposta'"
+)->fetchColumn();
+if ($tipoResposta && !str_contains((string)$tipoResposta, 'SITUACAO_ATUAL')) {
+    $pdo->exec("ALTER TABLE coleta_item MODIFY COLUMN tipo_resposta
+                ENUM('ESCOLHA','RENUNCIA','SITUACAO_ATUAL','TENDENCIA') NULL");
+    echo "migrate: coleta_item.tipo_resposta agora aceita os lados do cenário.\n";
+}
+
+// O modo CASCATA vira QUIZ: a sessão não é mais de uma análise só. Três passos
+// porque um ENUM não troca de valor em uso — o novo entra, as linhas migram, o
+// velho sai.
+$modoRodada = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_rodada' AND COLUMN_NAME = 'modo'"
+)->fetchColumn();
+if ($modoRodada && str_contains((string)$modoRodada, "'CASCATA'")) {
+    if (!str_contains((string)$modoRodada, "'QUIZ'")) {
+        $pdo->exec("ALTER TABLE coleta_rodada MODIFY COLUMN modo
+                    ENUM('TEMPESTADE','CASCATA','QUIZ') NOT NULL DEFAULT 'TEMPESTADE'");
+    }
+    $pdo->exec("UPDATE coleta_rodada SET modo = 'QUIZ' WHERE modo = 'CASCATA'");
+    $pdo->exec("ALTER TABLE coleta_rodada MODIFY COLUMN modo
+                ENUM('TEMPESTADE','QUIZ') NOT NULL DEFAULT 'TEMPESTADE'");
+    echo "migrate: coleta_rodada.modo CASCATA virou QUIZ (a sala é do projeto).\n";
 }
 
 // O projeto pertence a um ano do planejamento; o horizonte deriva do ano.
@@ -505,12 +638,12 @@ garantirFk($pdo, 'coleta_item', 'fk_ci_triador',
      FOREIGN KEY (triado_por) REFERENCES usuario(id) ON DELETE SET NULL');
 // SET NULL, não CASCADE: sumindo a pergunta, a sugestão sobrevive como voz
 // registrada — e é por isso que o isolamento das telas da tempestade usa
-// tipo_resposta, que nunca é solto, e não pergunta_id
+// `origem`, que nunca é solta, e não pergunta_id
 $pdo->exec('UPDATE coleta_item SET pergunta_id = NULL WHERE pergunta_id IS NOT NULL
-            AND pergunta_id NOT IN (SELECT id FROM cascata_pergunta)');
+            AND pergunta_id NOT IN (SELECT id FROM (SELECT id FROM quiz_pergunta) q)');
 garantirFk($pdo, 'coleta_item', 'fk_ci_pergunta',
     'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_pergunta
-     FOREIGN KEY (pergunta_id) REFERENCES cascata_pergunta(id) ON DELETE SET NULL');
+     FOREIGN KEY (pergunta_id) REFERENCES quiz_pergunta(id) ON DELETE SET NULL');
 
 // Quem entra pela tempestade não tem conta: o autor passa a ser opcional
 $autorNulo = $pdo->query(

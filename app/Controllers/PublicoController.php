@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Quiz;
 
 /**
  * Entrada do participante na tempestade de ideias — as ÚNICAS rotas de escrita
@@ -27,10 +28,6 @@ use App\Core\Json;
 class PublicoController
 {
     private const MAX_TEXTO = 400;
-    // Resposta do quiz da cascata: vira o texto de uma célula de decisão, e 255
-    // é o tamanho que cabe numa síntese — limite diferente da tempestade de
-    // propósito, e imposto AQUI: o maxlength do campo é só conforto da tela.
-    private const MAX_TEXTO_CASCATA = 255;
     private const MAX_NOME = 60;
     /**
      * Tentativas de PIN inválido toleradas por origem dentro da janela.
@@ -55,6 +52,12 @@ class PublicoController
         if ($r['situacao'] !== 'ABERTA') {
             Json::ok(['situacao' => 'ENCERRADA']);
         }
+        // O rito é da PERGUNTA ATIVA, não da rodada: o mesmo PIN atende a
+        // cascata, o cenário e os quadrantes do PESTEL/Porter/SWOT, e o celular
+        // acompanha a tela que o condutor abriu. `paraSala` monta o contexto
+        // que torna a pergunta respondível — sem ele a célula da cascata é
+        // abstrata demais e o quadrante da SWOT vira adivinhação.
+        $ativa = $r['modo'] === 'QUIZ' ? Quiz::ativa((int)$r['id']) : null;
         Json::ok([
             'tema' => $r['tema'],
             'situacao' => $r['situacao'],
@@ -62,47 +65,12 @@ class PublicoController
             'modo' => $r['modo'],
             'max_ideias' => (int)$r['max_ideias'],
             'max_votos' => (int)$r['max_votos'],
-            // No quiz da cascata o celular precisa do contexto que torna a
-            // pergunta respondível: driver, horizonte (com tema e objetivo) e
-            // eixo. Sem isso a célula é abstrata demais para resposta útil.
-            'pergunta' => $r['modo'] === 'CASCATA' ? $this->perguntaAtiva((int)$r['id']) : null,
-            'progresso' => $r['modo'] === 'CASCATA' ? $this->progressoRodada((int)$r['id']) : null,
+            'pergunta' => $ativa ? Quiz::paraSala($ativa) : null,
+            // Progresso enxuto: o roteiro completo é do condutor. Esta rota
+            // roda a cada 4s por participante.
+            'progresso' => $r['modo'] === 'QUIZ'
+                ? Quiz::progressoDaRodada((int)$r['id']) : null,
         ]);
-    }
-
-    /** "Pergunta N de M" para o participante — N é a posição da ativa. */
-    private function progressoRodada(int $rodadaId): array
-    {
-        $perguntas = Database::todos(
-            'SELECT situacao FROM cascata_pergunta WHERE rodada_id = ? ORDER BY ordem, id',
-            [$rodadaId]
-        );
-        $atual = null;
-        foreach ($perguntas as $i => $p) {
-            if ($p['situacao'] === 'ATIVA') {
-                $atual = $i + 1;
-            }
-        }
-        return ['atual' => $atual, 'total' => count($perguntas)];
-    }
-
-    /**
-     * A pergunta que a sala está respondendo agora — a fonte da verdade é a
-     * situação ATIVA em cascata_pergunta, nunca uma coluna na rodada.
-     */
-    private function perguntaAtiva(int $rodadaId): ?array
-    {
-        return Database::um(
-            "SELECT p.id, d.nome AS driver, e.nome AS eixo,
-                    h.nome AS horizonte, h.ano_inicio, h.ano_fim, h.tema, h.objetivo
-             FROM cascata_pergunta p
-             JOIN driver d ON d.id = p.driver_id
-             JOIN horizonte h ON h.id = p.horizonte_id
-             LEFT JOIN eixo e ON e.id = p.eixo_id
-             WHERE p.rodada_id = ? AND p.situacao = 'ATIVA'
-             ORDER BY p.aberta_em DESC, p.id DESC",
-            [$rodadaId]
-        );
     }
 
     /** Entra na rodada com um nome; registra e devolve o token da pessoa. */
@@ -130,49 +98,58 @@ class PublicoController
     }
 
     /**
-     * Resposta do quiz da cascata: uma sugestão de escolha OU de renúncia para
-     * a pergunta ATIVA. O participante pode mandar várias de cada lado — o teto
-     * (`max_ideias`) conta por (pergunta, tipo), senão quem gastasse tudo em
-     * escolhas ficaria proibido de propor uma renúncia sequer.
+     * Resposta do quiz: uma sugestão para a pergunta ATIVA, do lado escolhido
+     * quando o alvo tem lados. O participante pode mandar várias de cada lado —
+     * o teto (`max_ideias`) conta por (pergunta, tipo), senão quem gastasse
+     * tudo num lado ficaria proibido de propor uma única coisa do outro.
      */
     public function resposta(): void
     {
         $d = $this->corpo();
         $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
-        if ($r['modo'] !== 'CASCATA') {
+        if ($r['modo'] !== 'QUIZ') {
             Json::erro('Esta rodada é uma tempestade de ideias — envie pela tela de ideias.');
         }
         $p = $this->participante($r, $d);
 
-        $ativa = $this->perguntaAtiva((int)$r['id']);
+        $ativa = Quiz::ativa((int)$r['id']);
         if (!$ativa) {
             Json::erro('A pergunta foi fechada pela condução. Aguarde a próxima.', 409);
         }
         // O corpo declara qual pergunta o participante estava VENDO; a verdade é
         // a ativa. Se divergem (a condução avançou no meio da digitação), a
-        // resposta seria gravada numa célula que a pessoa nunca leu — recusar é
+        // resposta seria gravada num alvo que a pessoa nunca leu — recusar é
         // mais honesto que aceitar em silêncio.
         if ((int)($d['pergunta_id'] ?? 0) !== (int)$ativa['id']) {
             Json::erro('A condução mudou de pergunta. Releia o contexto e envie de novo.', 409);
         }
 
-        // Lista branca: qualquer outra coisa vinda do corpo vira ESCOLHA, pela
-        // mesma razão que o nome sai do registro e nunca do corpo
-        $tipo = ($d['tipo'] ?? '') === 'RENUNCIA' ? 'RENUNCIA' : 'ESCOLHA';
-        $texto = mb_substr(trim(is_string($d['texto'] ?? null) ? $d['texto'] : ''), 0, self::MAX_TEXTO_CASCATA);
+        // Lista branca DERIVADA DO ALVO, não um ENUM fixo: alvo sem lado
+        // (PESTEL, Porter, SWOT — a categoria já é a pergunta) grava NULL, e
+        // valor inventado no corpo cai no primeiro lado válido, pela mesma
+        // razão que o nome sai do registro e nunca do corpo.
+        $alvoTipo = (string)$ativa['alvo_tipo'];
+        $lados = array_keys(Quiz::LADOS[$alvoTipo] ?? []);
+        $tipo = $lados
+            ? (in_array($d['tipo'] ?? '', $lados, true) ? (string)$d['tipo'] : $lados[0])
+            : null;
+        $limite = Quiz::LIMITE_TEXTO[$alvoTipo] ?? 255;
+        $texto = mb_substr(trim(is_string($d['texto'] ?? null) ? $d['texto'] : ''), 0, $limite);
         if ($texto === '') {
             Json::erro('Escreva a sugestão antes de enviar.');
         }
 
         // Teto dentro do INSERT, por (pergunta, tipo): dois envios simultâneos
-        // não furam a contagem
+        // não furam a contagem. O <=> compara com NULL (alvo sem lado), onde o
+        // `=` devolveria NULL e a contagem sairia sempre zero — o teto virava
+        // decoração justamente nas telas que não têm lado.
         $gravadas = Database::afetadas(
-            'INSERT INTO coleta_item (planejamento_id, rodada_id, pergunta_id, tipo_resposta,
+            "INSERT INTO coleta_item (planejamento_id, rodada_id, origem, pergunta_id, tipo_resposta,
                ano, autor_id, autor_nome, participante_token, texto)
-             SELECT ?, ?, ?, ?, ?, NULL, ?, ?, ?
+             SELECT ?, ?, 'QUIZ', ?, ?, ?, NULL, ?, ?, ?
              FROM DUAL WHERE (SELECT COUNT(*) FROM coleta_item x
                               WHERE x.pergunta_id = ? AND x.participante_token = ?
-                                AND x.tipo_resposta = ?) < ?',
+                                AND x.tipo_resposta <=> ?) < ?",
             [
                 (int)$r['planejamento_id'], (int)$r['id'], (int)$ativa['id'], $tipo,
                 (int)$r['ano'], $p['nome'], $p['token'], $texto,
@@ -180,7 +157,9 @@ class PublicoController
             ]
         );
         if (!$gravadas) {
-            $lado = $tipo === 'RENUNCIA' ? 'renúncia(s)' : 'resposta(s)';
+            $lado = $tipo !== null
+                ? mb_strtolower(Quiz::LADOS[$alvoTipo][$tipo]) . '(s)'
+                : 'sugestão(ões)';
             Json::erro("Você já enviou {$r['max_ideias']} {$lado} nesta pergunta.");
         }
         Json::ok(['ok' => true]);
@@ -190,12 +169,12 @@ class PublicoController
     {
         $d = $this->corpo();
         $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
-        // Espelho da guarda de resposta(): sem ela, um participante do quiz da
-        // cascata (mesmo PIN, mesma tabela) plantava "ideias" de 400 caracteres
-        // fora de pergunta nenhuma — invisíveis para o condutor do quiz e
-        // caindo direto na fila de triagem da Coleta
+        // Espelho da guarda de resposta(): sem ela, um participante do quiz
+        // (mesmo PIN, mesma tabela) plantava "ideias" de 400 caracteres fora de
+        // pergunta nenhuma — invisíveis para o condutor do quiz e caindo direto
+        // na fila de triagem da Coleta
         if ($r['modo'] !== 'TEMPESTADE') {
-            Json::erro('Esta sala é o quiz da cascata — responda pela tela da pergunta.');
+            Json::erro('Esta sala é uma sessão de quiz — responda pela tela da pergunta.');
         }
         $p = $this->participante($r, $d);
 
@@ -248,8 +227,10 @@ class PublicoController
         // (No quiz da cascata, NOVO também significa "ainda não vinculada à
         // célula": o vínculo marca ACEITO, e a voz oficializada congela.)
         $minha = Database::um(
-            "SELECT id, tipo_resposta FROM coleta_item
-             WHERE id = ? AND rodada_id = ? AND participante_token = ? AND situacao = 'NOVO'",
+            "SELECT ci.id, ci.origem, p.alvo_tipo FROM coleta_item ci
+             LEFT JOIN quiz_pergunta p ON p.id = ci.pergunta_id
+             WHERE ci.id = ? AND ci.rodada_id = ? AND ci.participante_token = ?
+               AND ci.situacao = 'NOVO'",
             [$id, (int)$r['id'], $p['token']]
         );
         if (!$minha) {
@@ -257,9 +238,12 @@ class PublicoController
             Json::erro('Não dá mais para editar esta ideia.', 409);
         }
 
-        // O limite acompanha o rito: 255 na resposta do quiz, 400 na tempestade
-        $eQuiz = $minha['tipo_resposta'] !== null;
-        $limite = $eQuiz ? self::MAX_TEXTO_CASCATA : self::MAX_TEXTO;
+        // O limite acompanha o ALVO, o mesmo que valeu no envio: corrigir não
+        // pode ser porta para um texto que a resposta original não aceitaria.
+        $eQuiz = $minha['origem'] === 'QUIZ';
+        $limite = $eQuiz
+            ? (Quiz::LIMITE_TEXTO[(string)$minha['alvo_tipo']] ?? 255)
+            : self::MAX_TEXTO;
         $texto = mb_substr(trim(is_string($d['texto'] ?? null) ? $d['texto'] : ''), 0, $limite);
         if ($texto === '') {
             Json::erro('Escreva a ideia antes de salvar.');
@@ -294,13 +278,26 @@ class PublicoController
     {
         $r = $this->rodadaPorPin((string)($_GET['pin'] ?? ''));
         $p = $this->participante($r, $_GET);
-        // pergunta_id e tipo_resposta servem ao quiz da cascata (a tela mostra
-        // só as da pergunta ativa, com o selo do lado); na tempestade vêm nulos
-        Json::ok(Database::todos(
-            'SELECT id, texto, votos, situacao, pergunta_id, tipo_resposta FROM coleta_item
-             WHERE rodada_id = ? AND participante_token = ? ORDER BY id',
+        // pergunta_id e tipo_resposta servem ao quiz (a tela mostra só as da
+        // pergunta ativa, com o selo do lado); na tempestade vêm nulos.
+        // `max_texto` vem do ALVO de cada uma: o editor precisa do MESMO limite
+        // que valeu no envio, senão oferece espaço que o servidor vai cortar em
+        // silêncio — e num alvo sem lado (PESTEL, SWOT) não dá para deduzi-lo
+        // pelo tipo_resposta, que ali é nulo.
+        $itens = Database::todos(
+            'SELECT ci.id, ci.texto, ci.votos, ci.situacao, ci.pergunta_id, ci.tipo_resposta,
+                    ci.origem, qp.alvo_tipo
+             FROM coleta_item ci
+             LEFT JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
+             WHERE ci.rodada_id = ? AND ci.participante_token = ? ORDER BY ci.id',
             [(int)$r['id'], $p['token']]
-        ));
+        );
+        foreach ($itens as &$i) {
+            $i['max_texto'] = $i['origem'] === 'QUIZ'
+                ? (Quiz::LIMITE_TEXTO[(string)$i['alvo_tipo']] ?? 255)
+                : self::MAX_TEXTO;
+        }
+        Json::ok($itens);
     }
 
     /** Ideias abertas para votação, quando quem conduz liberar essa fase. */
@@ -308,8 +305,8 @@ class PublicoController
     {
         $r = $this->rodadaPorPin((string)($_GET['pin'] ?? ''));
         $p = $this->participante($r, $_GET);
-        // A estrela do quiz da cascata chega na fase própria, com teto POR
-        // PERGUNTA; a votação da tempestade conta por rodada e furaria a regra
+        // A estrela do quiz chega na fase própria, com teto POR PERGUNTA; a
+        // votação da tempestade conta por rodada e furaria a regra
         if ($r['situacao'] !== 'ABERTA' || $r['votacao'] !== 'ABERTA' || $r['modo'] !== 'TEMPESTADE') {
             Json::ok(['votacao' => 'FECHADA', 'itens' => [], 'meus_votos' => 0]);
         }
@@ -403,9 +400,13 @@ class PublicoController
     private function liderEquivalente(int $rodadaId, string $texto, ?int $excetoId = null): ?int
     {
         $alvo = self::normalizar($texto);
+        // Só ideias da tempestade: o agrupamento da resposta de quiz é por
+        // (pergunta, lado) e chega na fase própria — juntar as duas famílias
+        // faria a ideia da fila liderar uma voz que pertence a outro rito.
         foreach (Database::todos(
             "SELECT id, agrupado_em_id, texto FROM coleta_item
-             WHERE rodada_id = ? AND situacao IN ('NOVO','SELECIONADO') ORDER BY id",
+             WHERE rodada_id = ? AND origem = 'TEMPESTADE'
+               AND situacao IN ('NOVO','SELECIONADO') ORDER BY id",
             [$rodadaId]
         ) as $i) {
             // Ao reagrupar uma ideia editada, ela não pode ser líder de si mesma.

@@ -148,14 +148,16 @@ class CascataController
             foreach ($sugestoes as $sugestaoId) {
                 // A guarda é a CÉLULA, não a rodada: encontros diferentes podem
                 // ter perguntado a mesma célula, e todas essas vozes valem. O
-                // JOIN recusa sugestão de outra célula, de outro plano ou que
-                // não seja do quiz (tipo_resposta nulo).
+                // JOIN recusa sugestão de outra célula, de outro plano, de
+                // outro alvo (o roteiro agora tem cenário e fator no meio) ou
+                // que não seja do quiz.
                 Database::executar(
                     "UPDATE coleta_item ci
-                     JOIN cascata_pergunta cp ON cp.id = ci.pergunta_id
+                     JOIN quiz_pergunta cp ON cp.id = ci.pergunta_id
                      SET ci.destino_tipo = 'CASCATA', ci.destino_id = ?,
                          ci.situacao = 'ACEITO', ci.triado_por = ?, ci.triado_em = NOW()
-                     WHERE ci.id = ? AND ci.planejamento_id = ? AND ci.tipo_resposta IS NOT NULL
+                     WHERE ci.id = ? AND ci.planejamento_id = ? AND ci.origem = 'QUIZ'
+                       AND cp.alvo_tipo = 'CASCATA'
                        AND cp.horizonte_id = ? AND cp.driver_id = ?
                        AND COALESCE(cp.eixo_id, 0) = COALESCE(?, 0)",
                     [$id, (int)$u['id'], $sugestaoId, $planId, $horizonteId, $driverId, $eixoId]

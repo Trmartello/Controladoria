@@ -171,7 +171,7 @@ if ($metodo !== 'GET' && !$semCsrf) {
 
 use App\Controllers\AuthController;
 use App\Controllers\CascataController;
-use App\Controllers\CascataQuizController;
+use App\Controllers\QuizController;
 use App\Controllers\CenarioController;
 use App\Controllers\ColetaController;
 use App\Controllers\CicloController;
@@ -311,22 +311,24 @@ try {
         case (bool)preg_match('#^POST /api/fatores/(\d+)$#', $rota, $m):
             (new FatorController())->salvar((int)$m[1]); break;
 
+        // Quiz — a sala do PROJETO: um PIN para todas as análises. Rotas do
+        // condutor (a escrita do participante é pública, em /api/publico).
+        case $rota === 'GET /api/quiz':            (new QuizController())->estado(); break;
+        case $rota === 'POST /api/quiz/abrir':     (new QuizController())->abrir(); break;
+        case $rota === 'POST /api/quiz/perguntar': (new QuizController())->perguntar(); break;
+        case $rota === 'POST /api/quiz/encerrar':  (new QuizController())->encerrar(); break;
+        // Roteiro: abrir/reabrir, fechar sem abrir outra, tirar pendente
+        case (bool)preg_match('#^POST /api/quiz/pergunta/(\d+)/ativar$#', $rota, $m):
+            (new QuizController())->ativar((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/quiz/pergunta/(\d+)/encerrar$#', $rota, $m):
+            (new QuizController())->encerrarPergunta((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/quiz/pergunta/(\d+)/remover$#', $rota, $m):
+            (new QuizController())->removerPergunta((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/quiz/sugestao/(\d+)/excluir$#', $rota, $m):
+            (new QuizController())->excluirSugestao((int)$m[1]); break;
+
         case $rota === 'GET /api/cascata':          (new CascataController())->listar(); break;
         case $rota === 'POST /api/cascata':         (new CascataController())->salvar(); break;
-        // Quiz da cascata — rotas do condutor (a escrita do participante é pública)
-        case $rota === 'GET /api/cascata/quiz':          (new CascataQuizController())->estado(); break;
-        case $rota === 'POST /api/cascata/quiz/abrir':   (new CascataQuizController())->abrir(); break;
-        case $rota === 'POST /api/cascata/quiz/perguntar': (new CascataQuizController())->perguntar(); break;
-        case $rota === 'POST /api/cascata/quiz/encerrar':  (new CascataQuizController())->encerrar(); break;
-        // Roteiro: abrir/reabrir, fechar sem abrir outra, tirar pendente
-        case (bool)preg_match('#^POST /api/cascata/quiz/pergunta/(\d+)/ativar$#', $rota, $m):
-            (new CascataQuizController())->ativar((int)$m[1]); break;
-        case (bool)preg_match('#^POST /api/cascata/quiz/pergunta/(\d+)/encerrar$#', $rota, $m):
-            (new CascataQuizController())->encerrarPergunta((int)$m[1]); break;
-        case (bool)preg_match('#^POST /api/cascata/quiz/pergunta/(\d+)/remover$#', $rota, $m):
-            (new CascataQuizController())->removerPergunta((int)$m[1]); break;
-        case (bool)preg_match('#^POST /api/cascata/quiz/sugestao/(\d+)/excluir$#', $rota, $m):
-            (new CascataQuizController())->excluirSugestao((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/cascata/(\d+)/excluir$#', $rota, $m):
             (new CascataController())->excluir((int)$m[1]); break;
 

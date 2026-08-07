@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Quiz;
 
 /** Fatores das etapas PESTEL, Porter e SWOT, com promoção e notas GUT. */
 class FatorController
@@ -34,6 +35,7 @@ class FatorController
                     pr.id AS promovido_id, pr.categoria AS promovido_categoria,
                     pr.descricao AS promovido_descricao,
                     ci.id AS coleta_item_id, ca.nome AS coleta_autor, co.n AS coleta_vozes,
+                    COALESCE(qz.n, 0) AS quiz_vozes,
                     ds.o_que AS acao_titulo, ds.projeto_id AS acao_projeto_id
              FROM fator f
              LEFT JOIN desdobramento ds ON ds.id = f.desdobramento_id
@@ -41,13 +43,23 @@ class FatorController
              LEFT JOIN fator o ON o.id = f.promovido_de_id
              LEFT JOIN fator pr ON pr.promovido_de_id = f.id
              -- Uma ideia só por fator: quando a oficina agrupa vozes iguais,
-             -- várias ideias apontam para o mesmo fator e o JOIN duplicaria o card
+             -- várias ideias apontam para o mesmo fator e o JOIN duplicaria o
+             -- card. Só ideia da TEMPESTADE alimenta este selo: ele navega para
+             -- a tela da Coleta, e a resposta de quiz não mora lá — o clique
+             -- cairia numa lista que não a contém. As vozes da sala vêm em
+             -- `quiz_vozes`, contadas à parte (o mesmo par do CenarioController).
              LEFT JOIN coleta_item ci ON ci.id = (
                SELECT MIN(x.id) FROM coleta_item x
-               WHERE x.destino_tipo = 'FATOR' AND x.destino_id = f.id)
+               WHERE x.destino_tipo = 'FATOR' AND x.destino_id = f.id
+                 AND x.origem = 'TEMPESTADE')
              LEFT JOIN (
                SELECT destino_id, COUNT(*) AS n FROM coleta_item
-               WHERE destino_tipo = 'FATOR' GROUP BY destino_id) co ON co.destino_id = f.id
+               WHERE destino_tipo = 'FATOR' AND origem = 'TEMPESTADE'
+               GROUP BY destino_id) co ON co.destino_id = f.id
+             LEFT JOIN (
+               SELECT destino_id, COUNT(*) AS n FROM coleta_item
+               WHERE destino_tipo = 'FATOR' AND origem = 'QUIZ'
+               GROUP BY destino_id) qz ON qz.destino_id = f.id
              LEFT JOIN usuario ca ON ca.id = ci.autor_id
              WHERE f.planejamento_id = ? AND f.etapa = ?{$filtroAno}
              ORDER BY f.categoria, f.id",
@@ -178,13 +190,9 @@ class FatorController
         // ColetaController::reabrir): deixá-la ACEITO sem destino nenhum a
         // prendia num beco sem saída — sem análise e sem conseguir ser
         // encaminhada de novo.
-        Database::executar(
-            "UPDATE coleta_item SET situacao = 'SELECIONADO', destino_tipo = NULL, destino_id = NULL,
-               triado_por = NULL, triado_em = NULL
-             WHERE destino_tipo = 'FATOR' AND destino_id IN
-               (SELECT x.id FROM (SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?) x)",
-            [$id, $id]
-        );
+        Quiz::soltarVozes('FATOR', array_column(Database::todos(
+            'SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?', [$id, $id]
+        ), 'id'));
         // Excluir o fator de origem leva junto o que foi promovido dele para a
         // SWOT e, com ele, a avaliação na Matriz GUT (FK gut ON DELETE CASCADE)
         Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$id]);

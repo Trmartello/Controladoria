@@ -320,13 +320,15 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   dividido_de_id   INT NULL,
   agrupado_em_id   INT NULL,
   adiado           TINYINT(1) NOT NULL DEFAULT 0,
-  -- Quiz da cascata: a sugestão pertence a uma pergunta (célula) e declara de
-  -- que lado fala — a decisão (ESCOLHA) ou o que se abre mão (RENUNCIA).
-  -- `tipo_resposta` NOT NULL é a MARCA de item do quiz: é por ela que as
-  -- listagens da tempestade o deixam de fora (nunca por pergunta_id, cuja FK
-  -- é SET NULL e soltaria o item para dentro da tela errada).
+  -- Quiz: a sugestão pertence a uma pergunta do roteiro e, quando o alvo tem
+  -- dois lados, declara de qual fala. `origem` é a MARCA de isolamento entre
+  -- os ritos — é por ela que as listagens da tempestade deixam a resposta de
+  -- quiz de fora. Nunca por pergunta_id (FK SET NULL, que soltaria o item para
+  -- dentro da tela errada) nem por tipo_resposta: alvo sem lado (PESTEL, SWOT)
+  -- responde com tipo_resposta NULL e vazaria para a fila da Coleta.
+  origem           ENUM('TEMPESTADE','QUIZ') NOT NULL DEFAULT 'TEMPESTADE',
   pergunta_id      INT NULL,
-  tipo_resposta    ENUM('ESCOLHA','RENUNCIA') NULL,
+  tipo_resposta    ENUM('ESCOLHA','RENUNCIA','SITUACAO_ATUAL','TENDENCIA') NULL,
   texto            TEXT NOT NULL,
   texto_tratado    TEXT NULL,
   destino_sugerido ENUM('CENARIO','PESTEL','PORTER','SWOT','NAO_SEI') NOT NULL DEFAULT 'NAO_SEI',
@@ -355,10 +357,12 @@ CREATE TABLE IF NOT EXISTS coleta_item (
 
 -- Rodada de tempestade de ideias: sessão ao vivo com PIN para entrar
 -- A rodada tem um MODO: a tempestade clássica (tema aberto, matriz de
--- prioridade) e o quiz da cascata (perguntas dirigidas a células da Cascata
--- de Escolhas). É a MESMA sala — PIN, token, tetos, trava de força bruta —
--- para os dois ritos; uma segunda sala seria a segunda cópia das regras de
--- segurança das únicas rotas de escrita sem autenticação do sistema.
+-- prioridade) e a sessão de QUIZ, com roteiro de perguntas dirigidas às
+-- análises. É a MESMA sala — PIN, token, tetos, trava de força bruta — para os
+-- dois ritos; uma segunda sala seria a segunda cópia das regras de segurança
+-- das únicas rotas de escrita sem autenticação do sistema. Dentro do quiz o
+-- rito é da PERGUNTA ATIVA, não da rodada: é isso que dá um PIN só para o
+-- projeto inteiro, valendo em todas as telas de análise.
 CREATE TABLE IF NOT EXISTS coleta_rodada (
   id              INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id INT NOT NULL,
@@ -369,7 +373,7 @@ CREATE TABLE IF NOT EXISTS coleta_rodada (
   votacao         ENUM('FECHADA','ABERTA') NOT NULL DEFAULT 'FECHADA',
   max_ideias      TINYINT NOT NULL DEFAULT 5,
   max_votos       TINYINT NOT NULL DEFAULT 3,
-  modo            ENUM('TEMPESTADE','CASCATA') NOT NULL DEFAULT 'TEMPESTADE',
+  modo            ENUM('TEMPESTADE','QUIZ') NOT NULL DEFAULT 'TEMPESTADE',
   criado_por      INT NOT NULL,
   criado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   encerrada_em    DATETIME NULL,
@@ -379,29 +383,49 @@ CREATE TABLE IF NOT EXISTS coleta_rodada (
   CONSTRAINT fk_rod_autor FOREIGN KEY (criado_por) REFERENCES usuario(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Roteiro do quiz da cascata: cada linha é uma célula da Cascata de Escolhas
--- perguntada à sala. A pergunta ATIVA é a que a sala está respondendo agora —
--- a fonte da verdade é esta situação, e não uma coluna na rodada: dois lugares
--- dizendo "qual é a ativa" dessincronizariam na primeira corrida. Reabrir uma
--- pergunta é devolvê-la a ATIVA; ENCERRADA ela para de aceitar envio, mas as
--- sugestões continuam inteiras (navegar não apaga nada).
-CREATE TABLE IF NOT EXISTS cascata_pergunta (
+-- Roteiro do encontro: cada linha é uma pergunta que a sala responde, e a
+-- pergunta aponta para QUALQUER análise do planejamento (ALVO polimórfico) —
+-- uma célula da Cascata, o cenário de um ano, um quadrante do PESTEL/Porter/
+-- SWOT, ou nada (LIVRE, a tempestade de ideias). É o que permite UM PIN para o
+-- projeto todo: o participante escaneia uma vez e o celular acompanha o que o
+-- condutor abre em cada tela.
+--
+-- A pergunta ATIVA é a que a sala está respondendo agora — a fonte da verdade é
+-- esta situação, e não uma coluna na rodada: dois lugares dizendo "qual é a
+-- ativa" dessincronizariam na primeira corrida. Reabrir uma pergunta é
+-- devolvê-la a ATIVA; ENCERRADA ela para de aceitar envio, mas as sugestões
+-- continuam inteiras (navegar não apaga nada).
+CREATE TABLE IF NOT EXISTS quiz_pergunta (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   rodada_id    INT NOT NULL,
-  horizonte_id INT NOT NULL,
-  driver_id    INT NOT NULL,
+  alvo_tipo    ENUM('CASCATA','CENARIO','FATOR','LIVRE') NOT NULL DEFAULT 'CASCATA',
+  -- a pergunta nas palavras do condutor (o padrão vem do alvo, em App\Services\Quiz)
+  enunciado    VARCHAR(255) NULL,
+  -- CASCATA: a célula (driver x horizonte x eixo). Nulos nos demais alvos.
+  horizonte_id INT NULL,
+  driver_id    INT NULL,
   eixo_id      INT NULL,
+  -- CENARIO e FATOR: a análise de diagnóstico é anual
+  ano          SMALLINT NULL,
+  -- FATOR: qual coluna do PESTEL/Porter/SWOT
+  etapa        ENUM('PESTEL','PORTER','SWOT') NULL,
+  categoria    VARCHAR(40) NULL,
   ordem        SMALLINT NOT NULL DEFAULT 0,
   situacao     ENUM('PENDENTE','ATIVA','ENCERRADA') NOT NULL DEFAULT 'PENDENTE',
   aberta_em    DATETIME NULL,
-  -- unicidade com NULL (síntese), como em cascata_escolha
-  eixo_chave   INT AS (COALESCE(eixo_id, 0)) STORED,
-  UNIQUE KEY uk_pergunta_celula (rodada_id, horizonte_id, driver_id, eixo_chave),
-  KEY idx_cp_ativa (rodada_id, situacao),
-  CONSTRAINT fk_cp_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE,
-  CONSTRAINT fk_cp_horizonte FOREIGN KEY (horizonte_id) REFERENCES horizonte(id),
-  CONSTRAINT fk_cp_driver FOREIGN KEY (driver_id) REFERENCES driver(id),
-  CONSTRAINT fk_cp_eixo FOREIGN KEY (eixo_id) REFERENCES eixo(id)
+  -- Uma chave só para todos os alvos: colunas nulas por tipo não formam UNIQUE
+  -- (NULL nunca colide com NULL), e a mesma célula/categoria não pode entrar
+  -- duas vezes no mesmo roteiro. LIVRE entra pelo enunciado, que é o alvo dela.
+  alvo_chave   VARCHAR(160) AS (CONCAT_WS('|', alvo_tipo,
+                 COALESCE(horizonte_id, 0), COALESCE(driver_id, 0), COALESCE(eixo_id, 0),
+                 COALESCE(ano, 0), COALESCE(etapa, ''), COALESCE(categoria, ''),
+                 IF(alvo_tipo = 'LIVRE', MD5(COALESCE(enunciado, '')), ''))) STORED,
+  UNIQUE KEY uk_pergunta_alvo (rodada_id, alvo_chave),
+  KEY idx_qp_ativa (rodada_id, situacao),
+  CONSTRAINT fk_qp_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE,
+  CONSTRAINT fk_qp_horizonte FOREIGN KEY (horizonte_id) REFERENCES horizonte(id),
+  CONSTRAINT fk_qp_driver FOREIGN KEY (driver_id) REFERENCES driver(id),
+  CONSTRAINT fk_qp_eixo FOREIGN KEY (eixo_id) REFERENCES eixo(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Voto de participante numa ideia da rodada (convergência opcional)

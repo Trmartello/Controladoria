@@ -528,12 +528,31 @@ const Diag = {
   },
 };
 
+// Análise de Cenário — a primeira tela a consumir a SALA DO PROJETO: o mesmo
+// PIN da cascata, do PESTEL e da tempestade. O condutor abre a sala aqui, a
+// sala responde por lado (situação atual / tendência) e o texto que vira item
+// é o que ELE redige ao aceitar — as vozes ficam registradas como origem.
 const SecaoCenario = {
+  plan: null,
+  quiz: null,
+  relogioQuiz: null,
+  assinaturaQuiz: null,
+  quizUi: { qrAberto: false, roteiroAberto: false },
+  secaoId: 'secao-cenario',
+  perguntaFoco: null,
+  itens: [],
+
   async carregar() {
     const base = await Diag.preparar('secao-cenario');
     if (!base) return;
     const { el, plan, ano } = base;
-    const itens = await App.api(`/api/cenario?planejamento_id=${plan.id}&ano=${ano}`);
+    this.plan = plan;
+    const [itens, quiz] = await Promise.all([
+      App.api(`/api/cenario?planejamento_id=${plan.id}&ano=${ano}`),
+      QuizSala.estado(plan.id, this.perguntaFoco),
+    ]);
+    this.itens = itens;
+    this.quiz = quiz;
 
     const bloco = (tipo, titulo) => {
       const lista = itens.filter((i) => i.tipo === tipo);
@@ -541,7 +560,7 @@ const SecaoCenario = {
       const linhas = lista.map((i, idx) => `
         <div class="card mb-2" data-card-fator="${i.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
-          ${Diag.seloColeta(i)}
+          ${Diag.seloColeta(i)}${this.seloSala(i)}
           ${App.podeEditar() ? `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center justify-content-end">
             <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
             <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
@@ -569,9 +588,18 @@ const SecaoCenario = {
         <h1>Análise de Cenário — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
         <div class="d-flex align-items-center gap-2 flex-wrap">
           ${Diag.seletorAno('cenario')}
+          ${App.podeEditar() ? (this.noRoteiro(ano)
+            ? `<span class="badge ${this.perguntaDoAno()?.situacao === 'ATIVA'
+                ? 'text-bg-success' : 'text-bg-light border'}">${
+                this.perguntaDoAno()?.situacao === 'ATIVA'
+                  ? 'A sala está nesta análise' : 'Já no roteiro do encontro'}</span>`
+            : `<button class="btn btn-sm btn-verde" id="btn-perguntar-cenario">${
+                this.quiz?.sessao ? 'Perguntar à sala' : 'Perguntar à sala (abrir sessão)'}</button>`) : ''}
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
         </div>
       </div>
+      <div id="faixa-quiz-cenario">${QuizSala.faixa(this)}</div>
+      <div id="quiz-vivo-cenario">${this.painelVivo()}</div>
       ${Diag.seletorCategoriaMovel('CENARIO', [
         ['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências'],
       ], contagensCen)}
@@ -580,6 +608,8 @@ const SecaoCenario = {
         ${bloco('TENDENCIA', 'Tendências')}
       </div>`;
 
+    QuizSala.ligar(this, el);
+    QuizSala.armarRelogio(this);
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
     Diag.ligarVerMais(el);
@@ -587,15 +617,30 @@ const SecaoCenario = {
     Diag.ligarSeloColeta(el, 'Análise de Cenário');
     Diag.ligarOrientacoes(el);
     if (!App.podeEditar()) return;
-    const modalItem = (i = null, tipoNovo = null) => Modal.abrir({
-      titulo: i ? `Editar item do cenário (${i.ano || ano})` : `Novo item do cenário · ${ano}`,
+    // `sugestao` chega do painel da sala: o texto entra como RASCUNHO (o
+    // condutor redige antes de salvar) e o id viaja em `sugestoes`, que é o
+    // conjunto de vozes amarradas ao item — editar o item depois sem esse campo
+    // não desfaz nada, porque o servidor só mexe no vínculo quando ele vem.
+    const modalItem = (i = null, tipoNovo = null, sugestao = null) => Modal.abrir({
+      titulo: sugestao ? `Aceitar sugestão da sala · ${ano}`
+        : i ? `Editar item do cenário (${i.ano || ano})` : `Novo item do cenário · ${ano}`,
       url: i ? `/api/cenario/${i.id}` : '/api/cenario',
       valores: i
         ? { ...i, planejamento_id: plan.id }
-        : { planejamento_id: plan.id, ano, ...(tipoNovo ? { tipo: tipoNovo } : {}) },
+        : {
+            planejamento_id: plan.id, ano,
+            ...(tipoNovo ? { tipo: tipoNovo } : {}),
+            ...(sugestao ? { descricao: sugestao.texto } : {}),
+          },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
+        ...(sugestao ? [
+          { nome: 'origem_sala', rotulo: '', tipo: 'info',
+            texto: `${sugestao.autor}: “${sugestao.texto}”`,
+            barra: { cor: sugestao.tipo_resposta === 'TENDENCIA' ? '#8f3b3b' : '#007a45',
+                     titulo: sugestao.tipo_resposta === 'TENDENCIA' ? 'Tendência' : 'Situação atual' } },
+        ] : []),
         { nome: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: [
           { valor: 'SITUACAO_ATUAL', rotulo: 'Situação atual' },
           { valor: 'TENDENCIA', rotulo: 'Tendência' },
@@ -603,8 +648,16 @@ const SecaoCenario = {
         { nome: 'descricao', rotulo: 'Descrição', tipo: 'textarea', linhas: 4 },
         { nome: 'ordem', rotulo: 'Ordem', tipo: 'number', padrao: 0 },
       ],
+      // O vínculo viaja pelo transformar, nunca por um campo `hidden`: hidden
+      // guarda texto, e uma lista viraria a string "12" no caminho de volta.
+      // Sem a chave `sugestoes` o servidor não mexe em vínculo nenhum — é o que
+      // faz uma edição comum do item preservar as vozes já registradas.
+      ...(sugestao ? { transformar: (d) => ({ ...d, sugestoes: [sugestao.id] }) } : {}),
     });
+    this.modalItem = modalItem;
     document.getElementById('btn-novo-cenario').addEventListener('click', () => modalItem());
+    document.getElementById('btn-perguntar-cenario')
+      ?.addEventListener('click', () => this.perguntarASala(ano));
     el.querySelectorAll('[data-add-categoria]').forEach((b) => b.addEventListener('click', () =>
       modalItem(null, b.dataset.addCategoria)));
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
@@ -614,6 +667,194 @@ const SecaoCenario = {
       await App.api(`/api/cenario/${b.dataset.excluir}/excluir`, { planejamento_id: plan.id });
       App.recarregarSecaoAtiva();
     }));
+    this.ligarPainelVivo(el);
+  },
+
+  // ---- A sala do projeto nesta tela ----
+  /** Vozes da sala registradas no item: selo próprio, sem link (elas não moram na Coleta). */
+  seloSala(i) {
+    const n = Number(i.quiz_vozes || 0);
+    return n ? `<div class="mt-1"><span class="badge text-bg-light border"
+      title="Sugestões da sala usadas neste item">Sala · ${n} voz(es)</span></div>` : '';
+  },
+
+  /**
+   * O cenário deste ano já está no roteiro do encontro? Com ele lá, "perguntar"
+   * de novo não faria nada (o alvo é único no roteiro) — o botão vira selo, e
+   * quem quer devolvê-lo à sala usa o "Reabrir" do painel ou do roteiro.
+   */
+  noRoteiro(ano) {
+    return (this.quiz?.roteiro || []).some(
+      (x) => x.alvo_tipo === 'CENARIO' && Number(x.ano) === Number(ano));
+  },
+
+  /** A pergunta em foco (ou a ativa) quando ela é o cenário do ano exibido. */
+  perguntaDoAno() {
+    const p = this.quiz?.foco || this.quiz?.pergunta;
+    // A sala é do projeto: a ativa pode ser de outra análise. Sem conferir o
+    // alvo, uma pergunta da cascata (ano nulo) casaria com qualquer ano.
+    if (!p || p.alvo_tipo !== 'CENARIO') return null;
+    return Number(p.ano) === Number(Diag.ano()) ? p : null;
+  },
+
+  /** Navegar pelo roteiro leva ESTA tela ao ano da pergunta examinada. */
+  aoNavegar(pergunta) {
+    if (pergunta.alvo_tipo !== 'CENARIO') return;
+    Diag.anoSelecionado = Number(pergunta.ano);
+  },
+
+  async aoBater(quizNovo) {
+    const assinatura = QuizSala.assinatura(quizNovo);
+    if (assinatura === this.assinaturaQuiz) return;
+    this.assinaturaQuiz = assinatura;
+    const el = document.getElementById(this.secaoId);
+    const faixa = document.getElementById('faixa-quiz-cenario');
+    if (faixa) {
+      faixa.innerHTML = QuizSala.faixa(this);
+      QuizSala.ligar(this, el);
+    }
+    const vivo = document.getElementById('quiz-vivo-cenario');
+    if (vivo) {
+      vivo.innerHTML = this.painelVivo();
+      this.ligarPainelVivo(el);
+    }
+    if (!quizNovo.sessao) {
+      clearInterval(this.relogioQuiz);
+      this.relogioQuiz = null;
+    }
+  },
+
+  /**
+   * As duas áreas de coleta da pergunta do ano: Situação atual e Tendências.
+   * "Usar" abre o modal do item com o texto da voz — o condutor redige e
+   * salva, e o vínculo vai junto. Aceitar é ato de quem conduz (decisão do
+   * encontro): a voz da sala é matéria-prima, não redação final.
+   */
+  painelVivo() {
+    const p = this.perguntaDoAno();
+    if (!p) return '';
+    const sugestoes = this.quiz?.sugestoes || [];
+    const coluna = (tipo, rotulo, classe) => {
+      const fichas = sugestoes.filter((s) => s.tipo_resposta === tipo);
+      const linhas = fichas.map((s) => `
+        <div class="ficha-sugestao ${Number(s.vinculada) ? 'vinculada' : ''}">
+          <div class="small">${Modal.esc(s.texto)}</div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <span class="small text-muted flex-grow-1">${Modal.esc(s.autor)}${Number(s.votos) ? ` · ★ ${s.votos}` : ''}
+              ${Number(s.vinculada) ? ' · <strong>virou item</strong>' : ''}</span>
+            ${App.podeEditar() && !Number(s.vinculada) ? `
+              <button class="btn btn-sm btn-verde" data-usar-cenario="${s.id}">Usar</button>
+              <button class="btn btn-sm btn-outline-danger" data-excluir-sugestao="${s.id}"
+                title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
+          </div>
+        </div>`).join('');
+      return `<div class="col-md-6"><div class="coluna-quiz ${classe}">
+        <div class="fw-bold small text-uppercase mb-2">${rotulo}
+          <span class="badge rounded-pill text-bg-secondary">${fichas.length}</span></div>
+        ${linhas || '<div class="text-muted small">Nenhuma sugestão ainda.</div>'}
+      </div></div>`;
+    };
+    const situacao = p.situacao === 'ATIVA'
+      ? '<span class="badge text-bg-success">na sala agora</span>'
+      : p.situacao === 'ENCERRADA'
+        ? '<span class="badge text-bg-secondary">pergunta encerrada</span>'
+        : '<span class="badge text-bg-light border">ainda não aberta</span>';
+    return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+        <strong class="small text-uppercase">Sugestões da sala — cenário ${p.ano}</strong>
+        ${situacao}
+        <span class="small text-muted flex-grow-1">Use uma sugestão para levá-la ao formulário do item;
+          a voz fica registrada como origem.</span>
+        ${App.podeEditar() && p.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
+          data-reabrir-foco="${p.id}">${p.situacao === 'ENCERRADA'
+            ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>` : ''}
+      </div>
+      <div class="row g-2">
+        ${coluna('SITUACAO_ATUAL', 'Situação atual', 'coluna-escolha')}
+        ${coluna('TENDENCIA', 'Tendências', 'coluna-renuncia')}
+      </div>
+    </div></div>`;
+  },
+
+  ligarPainelVivo(el) {
+    el.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`, {
+          planejamento_id: this.plan.id,
+        });
+      } catch (e) {
+        alert(e.message);
+      }
+      // Aberta para a sala, a pergunta vira a ativa: o foco volta ao padrão
+      this.perguntaFoco = null;
+      App.recarregarSecaoAtiva();
+    }));
+    el.querySelectorAll('[data-usar-cenario]').forEach((b) => b.addEventListener('click', () => {
+      const s = (this.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarCenario);
+      if (!s || !this.modalItem) return;
+      this.modalItem(null, s.tipo_resposta, s);
+    }));
+    el.querySelectorAll('[data-excluir-sugestao]').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Excluir esta sugestão? Ela some para a sala também.')) return;
+      try {
+        await App.api(`/api/quiz/sugestao/${b.dataset.excluirSugestao}/excluir`, {
+          planejamento_id: this.plan.id,
+        });
+        this.quiz = await QuizSala.estado(this.plan.id, this.perguntaFoco);
+        this.assinaturaQuiz = null;
+        await this.aoBater(this.quiz);
+      } catch (e) {
+        alert(e.message);
+      }
+    }));
+  },
+
+  /**
+   * "Perguntar à sala": com a sessão aberta, põe o cenário deste ano no
+   * roteiro e o abre; sem sessão, abre a sala aqui — e se ela estiver aberta em
+   * outra análise, o QuizSala pergunta antes de encerrar aquela.
+   */
+  perguntarASala(ano) {
+    const jaAberta = !!this.quiz?.sessao;
+    Modal.abrir({
+      titulo: jaAberta ? 'Perguntar à sala' : 'Abrir sessão colaborativa',
+      url: jaAberta ? '/api/quiz/perguntar' : '/api/quiz/abrir',
+      valores: {
+        planejamento_id: this.plan.id, alvo_tipo: 'CENARIO', ano,
+        enunciado: '', ...(jaAberta ? { acao: 'AGORA' } : { tema: '', max_ideias: 5 }),
+      },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'alvo_tipo', rotulo: '', tipo: 'hidden' },
+        { nome: 'ano', rotulo: '', tipo: 'hidden' },
+        { nome: 'enunciado', rotulo: 'Pergunta para a sala',
+          exemplo: `Ex.: O que já está acontecendo no nosso mercado em ${ano}?`,
+          ajuda: 'Em branco, a sala lê a pergunta padrão do cenário.' },
+        ...(jaAberta ? [
+          { nome: 'acao', rotulo: 'Quando?', tipo: 'botoes', opcoes: [
+            { valor: 'AGORA', rotulo: 'Abrir agora' },
+            { valor: 'ROTEIRO', rotulo: 'Só adicionar ao roteiro' },
+          ], ajuda: 'Abrir agora muda o celular de todo mundo; o roteiro guarda para depois.' },
+        ] : [
+          { nome: 'tema', rotulo: 'Nome do encontro',
+            exemplo: 'Ex.: Oficina de diagnóstico — diretoria, agosto/2026',
+            ajuda: 'O PIN vale para o encontro inteiro: as outras análises usam a mesma sala.' },
+          { nome: 'max_ideias', rotulo: 'Sugestões por pessoa (em cada lado)', tipo: 'number', padrao: 5,
+            ajuda: 'Vale por pergunta: N de situação atual e N de tendência para cada participante.' },
+        ]),
+      ],
+      transformar: (d) => {
+        const { acao, ...resto } = d;
+        return jaAberta ? { ...resto, ativar: acao !== 'ROTEIRO' } : resto;
+      },
+      // A sala é do PROJETO: aberta em outra análise, o servidor devolve
+      // 409/SALA_ABERTA e o QuizSala pergunta se encerra aquela discussão
+      enviar: (corpo) => QuizSala.pedir(jaAberta ? '/api/quiz/perguntar' : '/api/quiz/abrir', corpo),
+      aoSalvar: () => {
+        this.perguntaFoco = null;
+        App.recarregarSecaoAtiva();
+      },
+    });
   },
 };
 

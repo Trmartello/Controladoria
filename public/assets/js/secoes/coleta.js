@@ -224,7 +224,7 @@ const SecaoColeta = {
         const antes = retrato(this.itens);
         this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
         this.rodadas = (await App.api(`/api/rodadas?planejamento_id=${this.plan.id}&ano=${ano}`))
-          .filter((r) => r.modo !== 'CASCATA');
+          .filter((r) => r.modo !== 'QUIZ');
         if (antes !== retrato(this.itens)) this.carregar();
       } catch (e) { /* rede instável na oficina: tenta de novo no próximo ciclo */ }
     }, 3000);
@@ -241,7 +241,7 @@ const SecaoColeta = {
     ]);
     // Sessão do quiz da cascata fica FORA desta tela: é outra sala, com
     // outro rito (a condução mora na seção Cascata de Escolhas)
-    this.rodadas = this.rodadas.filter((r) => r.modo !== 'CASCATA');
+    this.rodadas = this.rodadas.filter((r) => r.modo !== 'QUIZ');
     this.rodadaAberta = this.rodadas.find((r) => r.situacao === 'ABERTA') || null;
     this.prepararReclassificacao();
 
@@ -1020,6 +1020,12 @@ const SecaoColeta = {
         { nome: 'max_votos', rotulo: 'Votos por participante', tipo: 'number', padrao: 3,
           ajuda: 'Só vale se você abrir a fase de votação depois.' },
       ],
+      // A sala é do PROJETO: com uma sessão de quiz aberta em outra análise, o
+      // servidor devolve 409/SALA_ABERTA e o QuizSala pergunta se encerra
+      // aquela. Sem este gancho a pergunta virava um erro vermelho no modal,
+      // sem nenhum jeito de responder "sim" — e esta tela nem lista a sessão de
+      // quiz (filtra `modo !== 'QUIZ'`), então o condutor ficava sem saída.
+      enviar: (corpo) => QuizSala.pedir('/api/rodadas', corpo),
       aoSalvar: () => this.carregar(),
     }));
 

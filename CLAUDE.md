@@ -23,7 +23,12 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 - **Frontend**: JS vanilla, sem build. Seções em `public/assets/js/secoes/*.js`
   registradas em `App.recarregarSecaoAtiva()` (`app.js`). Formulários via
   fábrica declarativa `Modal.abrir({campos, url, valores, transformar, extra,
-  aoSalvar})` (`modal.js`).
+  aoSalvar, enviar})` (`modal.js`) — `enviar` substitui o POST padrão quando
+  salvar exige mais de uma chamada (o 409 de sala aberta virando confirmação).
+  Componentes usados por VÁRIAS seções ficam soltos em `public/assets/js/`
+  (`quiz.js`) e carregam antes das seções no `shell.php`.
+  `App.api` põe `codigo` e `status` no `Error` que lança: erro que a tela
+  precisa DECIDIR (e não só mostrar) vem por código, nunca por texto.
   Bootstrap 5.3.3 **vendorado** em `public/assets/vendor/` (CDNs são
   bloqueados no ambiente de execução — nunca referencie CDN).
 - **Tipos de campo do modal**: `text`, `textarea`, `select`, `multiselect`,
@@ -124,31 +129,81 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   tela, com confirmação.
 - Excluir um fator de PESTEL/Porter/SWOT remove também o promovido para a SWOT
   e a linha correspondente na matriz GUT (`FatorController::excluir`).
-- **Quiz da cascata** (`coleta_rodada.modo = 'CASCATA'`): a MESMA sala da
-  tempestade — PIN, token, tetos, trava de força bruta — respondendo células da
-  Cascata de Escolhas, uma pergunta ativa por vez (`cascata_pergunta.situacao`
-  é a única fonte da verdade; não existe coluna "pergunta ativa" na rodada).
+- **Quiz — a sala do PROJETO** (`coleta_rodada.modo = 'QUIZ'`): a MESMA sala da
+  tempestade — PIN, token, tetos, trava de força bruta — servindo a TODAS as
+  análises. **Um PIN para o encontro inteiro**: o participante escaneia uma vez
+  e o celular acompanha a tela que o condutor abre. Uma pergunta ativa por vez
+  (`quiz_pergunta.situacao` é a única fonte da verdade; não existe coluna
+  "pergunta ativa" na rodada).
+  A pergunta tem **alvo polimórfico** (`quiz_pergunta.alvo_tipo`):
+  `CASCATA` (célula driver×horizonte×eixo), `CENARIO` (ano), `FATOR` (ano +
+  etapa + categoria) e `LIVRE` (a tempestade dentro do roteiro). Colunas nulas
+  por tipo — e por isso a unicidade é a coluna gerada `alvo_chave`, que junta
+  todas elas: NULL nunca colide com NULL num UNIQUE comum, e a mesma célula
+  entraria duas vezes no roteiro.
+  O que cada alvo SIGNIFICA (o lado da resposta, o limite de texto, o rótulo, o
+  contexto que o celular lê) mora em **`App\Services\Quiz`** — cinco telas
+  reescrevendo isso divergiriam na primeira análise nova.
   Regras que não podem ser afrouxadas, além das da tempestade: o teto de envios
-  conta por **(pergunta, tipo)** dentro do INSERT; o corpo declara o
-  `pergunta_id` que o participante VIA e o servidor recusa com 409 se divergir
-  da ativa (nunca grava "na ativa" às cegas); `tipo_resposta` é lista branca; o
-  limite é 255 **no servidor**. O isolamento entre os ritos é
-  `tipo_resposta IS NULL` (nunca `pergunta_id`, cuja FK é SET NULL): filtra o
-  `listar()` e o `exigirItem()` da Coleta, e as rotas públicas guardam o modo
-  nos DOIS sentidos — `resposta()` recusa TEMPESTADE, `ideia()`/`votar()`
-  recusam CASCATA (sem o espelho, participante do quiz plantava ideia de 400
-  chars direto na fila de triagem). O `estado()` do quiz **omite o PIN para
-  perfil LEITURA**, como `RodadaController::listar` — o PIN é credencial de
-  escrita. Vincular sugestão à célula é conjunto no `CascataController::salvar`
-  (campo `sugestoes`, como `fatores`): muitas vozes com `destino_tipo='CASCATA'`
-  + situacao ACEITO (congela a edição do autor), UM texto por lado; a guarda do
-  vínculo é a CÉLULA (JOIN pela pergunta), nunca a rodada. No front: o rádio
-  focado do par Escolha/Renúncia NÃO conta como "digitando" (congelava o
-  polling); o rascunho atravessa redesenhos por `rascunhoPendente`; o 409 de
-  pergunta trocada rebusca e redesenha com o rascunho (senão vira beco); o
-  ditado dispara `input` manualmente para o contador; e o polling do condutor
-  rebusca `this.dados` junto com o estado, senão o modal reenviava conjunto
-  velho de vínculos. Plano e decisões: `docs/CASCATA-QUIZ-COLABORATIVO.md`.
+  conta por **(pergunta, tipo)** dentro do INSERT, com `<=>` e não `=` (alvo sem
+  lado grava `tipo_resposta` NULL, e o `=` devolveria NULL — o teto virava
+  decoração justamente nas telas sem lado); o corpo declara o `pergunta_id` que
+  o participante VIA e o servidor recusa com 409 se divergir da ativa (nunca
+  grava "na ativa" às cegas); o lado é lista branca **derivada do alvo**, nunca
+  um ENUM fixo; o limite de texto vem do alvo, **no servidor**.
+  O isolamento entre os ritos é **`coleta_item.origem`** (`TEMPESTADE`/`QUIZ`),
+  nunca `pergunta_id` (FK SET NULL) e **nunca mais `tipo_resposta IS NULL`**:
+  alvo sem lado responde com `tipo_resposta` nulo e vazaria para a fila da
+  Coleta. `origem` filtra o `listar()` e o `exigirItem()` da Coleta, o
+  `liderEquivalente()` do agrupamento automático e o vínculo de sugestões. As
+  rotas públicas guardam o modo nos DOIS sentidos — `resposta()` recusa
+  TEMPESTADE, `ideia()`/`votar()`/`paraVotar()` recusam QUIZ (sem o espelho,
+  participante do quiz plantava ideia de 400 chars direto na fila de triagem).
+  O `estado()` do quiz **omite o PIN para perfil LEITURA**, como
+  `RodadaController::listar` — o PIN é credencial de escrita.
+  **Uma sala aberta por planejamento**, e a colisão é PERGUNTA, não recusa:
+  `Quiz::liberarSala` devolve 409 com o código **`SALA_ABERTA`** e o nome da
+  tela em que ela ficou; com `confirmar_encerrar` no corpo, encerra a anterior e
+  abre a nova **num pedido só** (dois deixariam uma janela sem sala nenhuma, e o
+  segundo pode falhar depois de o primeiro ter encerrado). Sem a confirmação a
+  recusa continua — encerrar calado derrubaria a discussão de outra pessoa por
+  um clique distraído. `Json::erro` ganhou o terceiro parâmetro `codigo` para
+  isso: mensagem é para ler, código é para decidir (casar por texto seria refém
+  da redação).
+  Vincular sugestão ao registro é **conjunto** (campo `sugestoes`, como
+  `fatores`): muitas vozes com `destino_tipo` + situacao ACEITO (congela a
+  edição do autor), UM texto redigido pelo condutor — **aceitar é ato de quem
+  conduz**, em todos os alvos. A guarda do vínculo é o ALVO da pergunta (JOIN
+  por `quiz_pergunta`), nunca a rodada: encontros diferentes podem ter
+  perguntado o mesmo alvo e todas essas vozes valem.
+  No front, a faixa da sessão (PIN, QR, participantes, pergunta ativa, roteiro)
+  é o componente compartilhado **`public/assets/js/quiz.js`** (`QuizSala`), que
+  não guarda estado: quem guarda é a seção dona (`plan`, `quiz`, `perguntaFoco`,
+  `quizUi`, `secaoId`, `aoNavegar`, `aoBater`) — duas seções dividindo o "QR
+  recolhido" recolheriam o QR uma da outra no meio do encontro. `Modal.abrir`
+  ganhou `enviar` para o 409 virar confirmação em vez de erro morto no modal.
+  Armadilhas já pagas: o rádio focado do par de lados NÃO conta como
+  "digitando" (congelava o polling); o rascunho atravessa redesenhos por
+  `rascunhoPendente`; o 409 de pergunta trocada rebusca e redesenha com o
+  rascunho (senão vira beco); o ditado dispara `input` manualmente para o
+  contador; o polling do condutor rebusca os dados da tela junto com o estado,
+  senão o modal reenviava conjunto velho de vínculos; e `ladoAtual()` valida o
+  lado contra a pergunta ATUAL — a sala troca de análise e o lado guardado pode
+  não existir no alvo novo. Toda tela que resolve "a pergunta é minha?" precisa
+  conferir o `alvo_tipo` **antes** dos ids: pergunta de cenário tem
+  `driver_id`/`horizonte_id` nulos e casaria com qualquer célula.
+  Mais três lições da revisão adversarial: **"qual é a pergunta ativa" tem uma
+  fonte só** (`Quiz::ativa`) e ativar é **um UPDATE só** — dois critérios
+  faziam o condutor ver uma pergunta e a sala responder outra; **lista vinda do
+  corpo é medida antes de tocar o banco** (`alvos` com 50 mil elementos = um
+  SELECT cada, e `php -S` é single-threaded: doze segundos de servidor travado
+  por um pedido que ia falhar de qualquer jeito); e **apagar um item de cenário
+  ou um fator solta as vozes** por `Quiz::soltarVozes` — a da tempestade volta a
+  SELECIONADO, a do quiz volta a NOVO (a única situação em que o autor ainda
+  consegue corrigi-la pelo celular). O encerra-e-abre é serializado por
+  `GET_LOCK` por planejamento: era check-then-act, e dois condutores passavam
+  os dois — o segundo encerrando a sala que o primeiro acabou de abrir.
+  Plano e decisões: `docs/CASCATA-QUIZ-COLABORATIVO.md`.
 - **Tempestade de ideias**: rodada com PIN de 6 dígitos (`coleta_rodada`), tela
   do participante em `/entrar/{pin}` — **as únicas rotas de escrita sem
   autenticação do sistema**. Regras que não podem ser afrouxadas: o token do

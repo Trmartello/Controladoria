@@ -14,10 +14,10 @@ const SecaoCascata = {
   quiz: null,         // estado da sessão do quiz (ou {sessao:null})
   relogioQuiz: null,
   assinaturaQuiz: null,
-  // QR na caixa de expansão: sem guardar o estado, cada batida do polling
-  // reconstruía a faixa e RECOLHIA o QR projetado no telão
-  qrAbertoQuiz: false,
-  roteiroAberto: false,
+  // Estado visual da faixa compartilhada (QuizSala): sem guardar, cada batida
+  // do polling reconstruía a faixa e RECOLHIA o QR projetado no telão
+  quizUi: { qrAberto: false, roteiroAberto: false },
+  secaoId: 'secao-cascata',
   // Pergunta em FOCO: a que o condutor está examinando pelo roteiro. Navegar
   // é local — só ativar/reabrir/encerrar mexe no celular da sala.
   perguntaFoco: null,
@@ -32,9 +32,7 @@ const SecaoCascata = {
     this.plan = await App.planejamento();
     [this.dados, this.quiz] = await Promise.all([
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
-      App.api(`/api/cascata/quiz?planejamento_id=${this.plan.id}`
-        + (this.perguntaFoco ? `&pergunta_id=${this.perguntaFoco}` : ''))
-        .catch(() => ({ sessao: null })),
+      QuizSala.estado(this.plan.id, this.perguntaFoco),
     ]);
     const { horizontes, drivers, eixos, escolhas } = this.dados;
 
@@ -71,7 +69,7 @@ const SecaoCascata = {
           <span class="badge badge-horizonte fs-6">Sínteses ${feitasSinteses}/${totalSinteses}</span>
         </div>
       </div>
-      <div id="faixa-quiz">${this.faixaSessao()}</div>
+      <div id="faixa-quiz">${QuizSala.faixa(this)}</div>
       <p class="text-muted">Cada célula <em>driver × horizonte</em> tem uma síntese e ${eixos.length}
       aberturas por eixo — cada escolha declara também a sua renúncia. Clique na célula para detalhar.</p>
       <div class="table-responsive">
@@ -97,10 +95,13 @@ const SecaoCascata = {
       });
     });
 
-    this.ligarFaixaSessao(el);
+    QuizSala.ligar(this, el);
     // Sessão aberta: sem célula escolhida ainda, abre a da pergunta ativa —
-    // quem entra na seção durante o encontro cai direto no que a sala vê
-    if (!this.celulaAberta && this.quiz?.pergunta) {
+    // quem entra na seção durante o encontro cai direto no que a sala vê.
+    // Só a pergunta desta tela tem célula: a sala é do projeto e a ativa pode
+    // ser um cenário ou um quadrante da SWOT, que não apontam para lugar nenhum
+    // na matriz da cascata.
+    if (!this.celulaAberta && this.quiz?.pergunta?.alvo_tipo === 'CASCATA') {
       this.celulaAberta = {
         driverId: Number(this.quiz.pergunta.driver_id),
         horizonteId: Number(this.quiz.pergunta.horizonte_id),
@@ -109,225 +110,55 @@ const SecaoCascata = {
       if (td) td.classList.add('ativa');
     }
     if (this.celulaAberta) this.renderDetalhe();
-    this.armarRelogioQuiz();
+    QuizSala.armarRelogio(this);
   },
 
-  // ---- Sessão do quiz: faixa no topo (PIN, participantes, pergunta ativa) ----
-  /** Rótulo curto de uma pergunta do roteiro. */
-  rotuloPergunta(p) {
-    return `${p.driver}${p.eixo ? ` · ${p.eixo}` : ' · Síntese'} (${p.horizonte})`;
-  },
-
-  faixaSessao() {
-    const q = this.quiz;
-    if (!q?.sessao) return '';
-    const p = q.pergunta;
-    const roteiro = q.roteiro || [];
-    const prog = q.progresso || { atual: null, total: roteiro.length };
-    // A próxima pendente na ordem — o botão "Próxima" abre essa
-    const proxima = roteiro.find((x) => x.situacao === 'PENDENTE');
-    const podeConduzir = App.podeEditar();
-
-    const linhaRoteiro = (x, i) => {
-      const selo = x.situacao === 'ATIVA'
-        ? '<span class="badge text-bg-success">na sala</span>'
-        : x.situacao === 'ENCERRADA'
-          ? '<span class="badge text-bg-secondary">encerrada</span>'
-          : '<span class="badge text-bg-light border">pendente</span>';
-      const foco = this.perguntaFoco === x.id ? ' em-foco' : '';
-      return `<li class="linha-roteiro${foco}" data-pergunta="${x.id}">
-        <span class="small num-roteiro">${i + 1}.</span>
-        <span class="small flex-grow-1">${Modal.esc(this.rotuloPergunta(x))}
-          ${Number(x.sugestoes) ? `<span class="text-muted">· ${x.sugestoes} sugestão(ões)</span>` : ''}</span>
-        ${selo}
-        <button class="btn btn-sm btn-outline-secondary" data-ver-pergunta="${x.id}"
-          title="Examinar as sugestões sem mexer na sala">Ver</button>
-        ${podeConduzir && x.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
-          data-ativar-pergunta="${x.id}">${x.situacao === 'ENCERRADA' ? 'Reabrir' : 'Abrir para a sala'}</button>` : ''}
-        ${podeConduzir && x.situacao === 'ATIVA' ? `<button class="btn btn-sm btn-outline-secondary"
-          data-encerrar-pergunta="${x.id}" title="Fechar sem abrir outra">Encerrar</button>` : ''}
-        ${podeConduzir && x.situacao === 'PENDENTE' && !Number(x.sugestoes) ? `<button
-          class="btn btn-sm btn-outline-danger" data-remover-pergunta="${x.id}"
-          title="Tirar do roteiro" aria-label="Tirar do roteiro">×</button>` : ''}
-      </li>`;
+  // ---- Sessão do quiz: a faixa é o componente compartilhado (QuizSala) ----
+  /**
+   * Chamado pelo QuizSala quando o condutor examina outra pergunta do roteiro:
+   * posiciona ESTA tela na célula dela. Pergunta de outra análise (cenário, um
+   * quadrante da SWOT) não tem célula — a matriz fica onde está e o condutor vê
+   * as sugestões pela tela de origem.
+   */
+  aoNavegar(pergunta) {
+    if (pergunta.alvo_tipo !== 'CASCATA') return;
+    this.celulaAberta = {
+      driverId: Number(pergunta.driver_id),
+      horizonteId: Number(pergunta.horizonte_id),
     };
-
-    return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
-      <div class="d-flex align-items-center gap-2 flex-wrap">
-        ${q.sessao.pin ? `<span class="badge text-bg-light border">PIN <strong class="pin-mini">${Modal.esc(q.sessao.pin)}</strong></span>` : ''}
-        <span class="badge text-bg-light border" data-quiz-participantes>${q.sessao.participantes} participante(s)</span>
-        ${prog.total ? `<span class="badge text-bg-light border">${prog.atual
-          ? `Pergunta ${prog.atual} de ${prog.total}` : `${prog.total} no roteiro`}</span>` : ''}
-        ${p ? `<span class="badge badge-horizonte">Perguntando: ${Modal.esc(this.rotuloPergunta(p))}</span>`
-            : '<span class="badge text-bg-secondary">nenhuma pergunta ativa</span>'}
-        <span class="small text-muted flex-grow-1 text-truncate">${Modal.esc(q.sessao.tema)}</span>
-        ${podeConduzir && proxima ? `<button class="btn btn-sm btn-verde" id="btn-proxima-pergunta"
-          title="${Modal.esc(this.rotuloPergunta(proxima))}">Próxima pergunta →</button>` : ''}
-        ${podeConduzir ? `<button class="btn btn-sm btn-outline-danger" id="btn-encerrar-quiz">Encerrar sessão</button>` : ''}
-      </div>
-      ${roteiro.length ? `<details class="mt-2" id="det-roteiro"${this.roteiroAberto ? ' open' : ''}>
-        <summary class="small">Roteiro do encontro (${roteiro.length} pergunta(s))</summary>
-        <ol class="lista-roteiro mt-2">${roteiro.map(linhaRoteiro).join('')}</ol>
-      </details>` : ''}
-      ${q.sessao.pin ? `<details class="painel-qr mt-2" id="det-qr-quiz"${this.qrAbertoQuiz ? ' open' : ''}>
-        <summary>QR code para projetar</summary>
-        <div class="d-flex flex-wrap gap-3 align-items-start mt-2">
-          <div class="caixa-qr" id="qr-quiz" aria-hidden="true"></div>
-          <div class="flex-grow-1" style="min-width:12rem">
-            <div class="rotulo-secao">Entre em ${Modal.esc(location.host)}/entrar</div>
-            <div class="pin-grande">${Modal.esc(q.sessao.pin)}</div>
-          </div>
-        </div>
-      </details>` : ''}
-    </div></div>`;
-  },
-
-  ligarFaixaSessao(el) {
-    const det = el.querySelector('#det-qr-quiz');
-    if (det) det.addEventListener('toggle', () => { this.qrAbertoQuiz = det.open; });
-    const detRot = el.querySelector('#det-roteiro');
-    if (detRot) detRot.addEventListener('toggle', () => { this.roteiroAberto = detRot.open; });
-
-    // Navegar: examina a pergunta SEM mexer na sala — abre a célula dela no
-    // detalhe e traz as sugestões que ela já recebeu
-    el.querySelectorAll('[data-ver-pergunta]').forEach((b) => b.addEventListener('click', async () => {
-      const id = Number(b.dataset.verPergunta);
-      const pergunta = (this.quiz?.roteiro || []).find((x) => x.id === id);
-      if (!pergunta) return;
-      this.perguntaFoco = id;
-      this.celulaAberta = {
-        driverId: Number(pergunta.driver_id),
-        horizonteId: Number(pergunta.horizonte_id),
-      };
-      this.roteiroAberto = true;
-      await this.carregar();
-      document.getElementById('detalhe-celula')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }));
-
-    const conduzir = async (url) => {
-      try {
-        await App.api(url, { planejamento_id: this.plan.id });
-      } catch (e) {
-        alert(e.message);
-      }
-      this.roteiroAberto = true;
-      App.recarregarSecaoAtiva();
-    };
-    el.querySelectorAll('[data-ativar-pergunta]').forEach((b) => b.addEventListener('click', () => {
-      // Abrir/reabrir MEXE na sala: o celular de todo mundo muda junto
-      this.perguntaFoco = null;
-      conduzir(`/api/cascata/quiz/pergunta/${b.dataset.ativarPergunta}/ativar`);
-    }));
-    el.querySelectorAll('[data-encerrar-pergunta]').forEach((b) => b.addEventListener('click', () => {
-      if (!confirm('Fechar esta pergunta? A sala vê "aguarde a próxima"; as sugestões ficam guardadas.')) return;
-      conduzir(`/api/cascata/quiz/pergunta/${b.dataset.encerrarPergunta}/encerrar`);
-    }));
-    el.querySelectorAll('[data-remover-pergunta]').forEach((b) => b.addEventListener('click', () => {
-      if (!confirm('Tirar esta pergunta do roteiro?')) return;
-      conduzir(`/api/cascata/quiz/pergunta/${b.dataset.removerPergunta}/remover`);
-    }));
-    const btnProxima = el.querySelector('#btn-proxima-pergunta');
-    if (btnProxima) {
-      btnProxima.addEventListener('click', () => {
-        const proxima = (this.quiz?.roteiro || []).find((x) => x.situacao === 'PENDENTE');
-        if (!proxima) return;
-        this.perguntaFoco = null;
-        this.celulaAberta = {
-          driverId: Number(proxima.driver_id),
-          horizonteId: Number(proxima.horizonte_id),
-        };
-        conduzir(`/api/cascata/quiz/pergunta/${proxima.id}/ativar`);
-      });
-    }
-
-    const btn = el.querySelector('#btn-encerrar-quiz');
-    if (btn) {
-      btn.addEventListener('click', async () => {
-        if (!confirm('Encerrar a sessão? Os celulares deixam de receber perguntas; as sugestões ficam guardadas.')) return;
-        try {
-          await App.api('/api/cascata/quiz/encerrar', { planejamento_id: this.plan.id });
-        } catch (e) {
-          alert(e.message);
-        }
-        App.recarregarSecaoAtiva();
-      });
-    }
-    const caixa = el.querySelector('#qr-quiz');
-    if (caixa && this.quiz?.sessao && typeof qrcode === 'function') {
-      try {
-        const q = qrcode(0, 'M');
-        q.addData(`${location.origin}/entrar/${this.quiz.sessao.pin}`);
-        q.make();
-        caixa.innerHTML = q.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
-      } catch (e) {
-        caixa.remove();
-      }
-    } else if (caixa) {
-      caixa.remove();
-    }
   },
 
   /**
-   * Consulta periódica da sessão, nos moldes da tempestade: 4s, e NUNCA
-   * redesenha com um modal aberto ou um campo em foco — fecharia o modal do
-   * condutor no meio da redação. Para sozinha quando a seção sai de cena (as
-   * seções não são destruídas, só ganham d-none — o relógio sobreviveria).
+   * Batida do polling: repinta a faixa e o detalhe quando algo mudou. Repintar
+   * à toa custa o foco e, no celular, o teclado aberto.
    */
-  armarRelogioQuiz() {
-    clearInterval(this.relogioQuiz);
-    this.relogioQuiz = null;
-    if (!this.quiz?.sessao) return;
-    this.relogioQuiz = setInterval(async () => {
-      const el = document.getElementById('secao-cascata');
-      if (!el || el.classList.contains('d-none')) {
-        clearInterval(this.relogioQuiz);
-        this.relogioQuiz = null;
-        return;
-      }
-      if (document.querySelector('.modal.show')) return;
-      const ativo = document.activeElement;
-      if (ativo && (ativo.tagName === 'TEXTAREA' || ativo.tagName === 'INPUT')) return;
-      // Captura o foco DO DISPARO: se o condutor navegar pelo roteiro com esta
-      // resposta em voo, ela chega falando de outra pergunta — aplicá-la
-      // apagaria o painel que ele acabou de abrir (ou deixaria o "Usar" mudo,
-      // procurando ids que não estão mais em this.quiz)
-      const focoPedido = this.perguntaFoco;
-      let quizNovo;
-      try {
-        quizNovo = await App.api(`/api/cascata/quiz?planejamento_id=${this.plan.id}`
-          + (focoPedido ? `&pergunta_id=${focoPedido}` : ''));
-      } catch (e) {
-        return; // rede piscou; a próxima batida tenta de novo
-      }
-      if (focoPedido !== this.perguntaFoco) return; // resposta de outra navegação
-      this.quiz = quizNovo;
-      const assinatura = JSON.stringify([
-        this.quiz.sessao?.participantes, this.quiz.pergunta?.id, this.quiz.foco?.id,
-        (this.quiz.roteiro || []).map((x) => [x.id, x.situacao, x.sugestoes]),
-        (this.quiz.sugestoes || []).map((s) => [s.id, s.texto, s.votos, s.vinculada]),
-        this.quiz.celula?.escolha, this.quiz.celula?.renuncia,
-      ]);
-      if (assinatura === this.assinaturaQuiz) return;
-      this.assinaturaQuiz = assinatura;
-      // A célula e as vozes do detalhe saem de this.dados: sem rebuscar aqui,
-      // o renderDetalhe repintava texto e vínculos VELHOS — e um modal aberto
-      // desse estado reenviaria o conjunto antigo, desfazendo o recém-salvo
-      try {
-        this.dados = await App.api(`/api/cascata?planejamento_id=${this.plan.id}`);
-      } catch (e) {
-        return;
-      }
-      const faixa = document.getElementById('faixa-quiz');
-      if (faixa) {
-        faixa.innerHTML = this.faixaSessao();
-        this.ligarFaixaSessao(el);
-      }
-      if (!this.quiz.sessao) {
-        clearInterval(this.relogioQuiz);
-        this.relogioQuiz = null;
-      }
-      if (this.celulaAberta) this.renderDetalhe();
-    }, 4000);
+  async aoBater(quizNovo) {
+    const el = document.getElementById(this.secaoId);
+    // A célula e as vozes do detalhe saem de this.dados, e o estado do quiz não
+    // fala delas: outro condutor salvando a escolha da célula não mexe em nada
+    // que a assinatura do QuizSala enxergue. Rebuscar ANTES de comparar é o que
+    // impede o detalhe de seguir mostrando o texto velho — e um modal aberto
+    // desse estado reenviaria o conjunto antigo, desfazendo o recém-salvo.
+    try {
+      this.dados = await App.api(`/api/cascata?planejamento_id=${this.plan.id}`);
+    } catch (e) {
+      return;
+    }
+    const assinatura = QuizSala.assinatura(quizNovo)
+      + JSON.stringify((this.dados.escolhas || []).map(
+        (e) => [e.id, e.escolha, e.renuncia, (e.sugestoes || []).length]));
+    if (assinatura === this.assinaturaQuiz) return;
+    this.assinaturaQuiz = assinatura;
+    const faixa = document.getElementById('faixa-quiz');
+    if (faixa) {
+      faixa.innerHTML = QuizSala.faixa(this);
+      QuizSala.ligar(this, el);
+    }
+    if (!quizNovo.sessao) {
+      clearInterval(this.relogioQuiz);
+      this.relogioQuiz = null;
+    }
+    if (this.celulaAberta) this.renderDetalhe();
   },
 
   /**
@@ -336,7 +167,10 @@ const SecaoCascata = {
    */
   perguntaDaCelulaAberta() {
     const p = this.quiz?.foco || this.quiz?.pergunta;
-    if (!p || !this.celulaAberta) return null;
+    // A sala é do projeto: a ativa pode ser de outra análise. Sem conferir o
+    // alvo, uma pergunta de cenário (driver_id e horizonte_id nulos) casaria
+    // com qualquer célula cujos ids também viessem indefinidos.
+    if (!p || p.alvo_tipo !== 'CASCATA' || !this.celulaAberta) return null;
     return Number(p.driver_id) === Number(this.celulaAberta.driverId)
       && Number(p.horizonte_id) === Number(this.celulaAberta.horizonteId) ? p : null;
   },
@@ -532,7 +366,7 @@ const SecaoCascata = {
   ligarPainelVivo(alvo) {
     alvo.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
       try {
-        await App.api(`/api/cascata/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`, {
+        await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`, {
           planejamento_id: this.plan.id,
         });
       } catch (e) {
@@ -551,10 +385,10 @@ const SecaoCascata = {
     alvo.querySelectorAll('[data-excluir-sugestao]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Excluir esta sugestão? Ela some para a sala também.')) return;
       try {
-        await App.api(`/api/cascata/quiz/sugestao/${b.dataset.excluirSugestao}/excluir`, {
+        await App.api(`/api/quiz/sugestao/${b.dataset.excluirSugestao}/excluir`, {
           planejamento_id: this.plan.id,
         });
-        this.quiz = await App.api(`/api/cascata/quiz?planejamento_id=${this.plan.id}`);
+        this.quiz = await App.api(`/api/quiz?planejamento_id=${this.plan.id}`);
         this.renderDetalhe();
       } catch (e) {
         alert(e.message);
@@ -583,13 +417,14 @@ const SecaoCascata = {
     if (this.quiz?.sessao) {
       Modal.abrir({
         titulo: 'Perguntar à sala',
-        url: '/api/cascata/quiz/perguntar',
+        url: '/api/quiz/perguntar',
         valores: {
-          planejamento_id: this.plan.id, horizonte_id: horizonteId, driver_id: driverId,
-          alvos: ['S'], acao: 'AGORA',
+          planejamento_id: this.plan.id, alvo_tipo: 'CASCATA',
+          horizonte_id: horizonteId, driver_id: driverId, alvos: ['S'], acao: 'AGORA',
         },
         campos: [
           { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+          { nome: 'alvo_tipo', rotulo: '', tipo: 'hidden' },
           { nome: 'horizonte_id', rotulo: '', tipo: 'hidden' },
           { nome: 'driver_id', rotulo: '', tipo: 'hidden' },
           { nome: 'alvos', rotulo: 'O que a sala responde nesta célula?', tipo: 'lista_marcavel',
@@ -606,7 +441,7 @@ const SecaoCascata = {
         },
         aoSalvar: () => {
           this.perguntaFoco = null;
-          this.roteiroAberto = true;
+          this.quizUi.roteiroAberto = true;
           App.recarregarSecaoAtiva();
         },
       });
@@ -614,13 +449,14 @@ const SecaoCascata = {
     }
     Modal.abrir({
       titulo: 'Abrir sessão colaborativa',
-      url: '/api/cascata/quiz/abrir',
+      url: '/api/quiz/abrir',
       valores: {
-        planejamento_id: this.plan.id, horizonte_id: horizonteId, driver_id: driverId,
-        alvos: ['S'], tema: '', max_ideias: 5,
+        planejamento_id: this.plan.id, alvo_tipo: 'CASCATA',
+        horizonte_id: horizonteId, driver_id: driverId, alvos: ['S'], tema: '', max_ideias: 5,
       },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'alvo_tipo', rotulo: '', tipo: 'hidden' },
         { nome: 'horizonte_id', rotulo: '', tipo: 'hidden' },
         { nome: 'driver_id', rotulo: '', tipo: 'hidden' },
         { nome: 'alvos', rotulo: 'Primeiras perguntas (desta célula)', tipo: 'lista_marcavel',
@@ -636,6 +472,9 @@ const SecaoCascata = {
         const { alvos, ...resto } = d;
         return { ...resto, alvos: paraAlvos(alvos) };
       },
+      // A sala é do PROJETO: se ela já está aberta em outra análise, o servidor
+      // devolve 409/SALA_ABERTA e o QuizSala pergunta se encerra aquela
+      enviar: (corpo) => QuizSala.pedir('/api/quiz/abrir', corpo),
       aoSalvar: () => {
         this.perguntaFoco = null;
         App.recarregarSecaoAtiva();

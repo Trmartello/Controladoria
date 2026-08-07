@@ -1535,3 +1535,15 @@ body.menu-aberto .menu-lateral {
 .linha-roteiro.em-foco { outline: 2px solid var(--verde-coperdia); }
 .linha-roteiro .btn { --bs-btn-padding-y: .1rem; --bs-btn-padding-x: .45rem; --bs-btn-font-size: .75rem; }
 .num-roteiro { color: #6c757d; min-width: 1.4rem; text-align: right; }
+/* No dedo, o roteiro é a lista com os botões mais apertados da tela. Cresce por
+   DIMENSÃO REAL (min-height/min-width), nunca por ::after sobreposto: área
+   invisível de botão vizinho se cobre e o toque na fronteira vai para o errado. */
+@media (max-width: 767.98px) {
+  .linha-roteiro .btn {
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}

@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Quiz;
 
 /**
  * Coleta de ideias — o passo 0 do diagnóstico.
@@ -48,10 +49,11 @@ class ColetaController
              -- A etapa do fator é o que dá nome à tag do destino na matriz:
              -- destino_tipo só diz FATOR, não se virou PESTEL, Porter ou SWOT
              LEFT JOIN fator df ON df.id = ci.destino_id AND ci.destino_tipo = 'FATOR'
-             -- Resposta do quiz da cascata fica FORA da tela da Coleta: o rito
-             -- dela é outro (as duas colunas da pergunta, em Cascata). A marca
-             -- é tipo_resposta, que nunca é solta — pergunta_id tem FK SET NULL
-             WHERE ci.planejamento_id = ? AND ci.tipo_resposta IS NULL{$filtroAno}
+             -- Resposta do quiz fica FORA da tela da Coleta: o rito dela é
+             -- outro (as colunas da pergunta, na tela da análise). A marca é
+             -- `origem`, que nunca é solta — pergunta_id tem FK SET NULL, e
+             -- tipo_resposta é nulo nos alvos sem lado (PESTEL, Porter, SWOT)
+             WHERE ci.planejamento_id = ? AND ci.origem = 'TEMPESTADE'{$filtroAno}
              ORDER BY ci.situacao = 'NOVO' DESC, ci.criado_em, ci.id",
             $params
         );
@@ -124,8 +126,8 @@ class ColetaController
             // aberta, para aparecer na nuvem. Só aceita rodada aberta deste
             // planejamento; qualquer outro valor cai para avulsa (NULL).
             $rodadaId = isset($d['rodada_id']) && $d['rodada_id'] !== '' ? (int)$d['rodada_id'] : null;
-            // Só rodada TEMPESTADE: numa sessão do quiz da cascata a "nuvem" é
-            // outra (as duas colunas da pergunta), e a ideia manual cairia lá
+            // Só rodada TEMPESTADE: numa sessão de quiz a "nuvem" é outra (as
+            // colunas da pergunta, na tela da análise) e a ideia manual cairia lá
             if ($rodadaId !== null && !Database::um(
                 "SELECT id FROM coleta_rodada
                  WHERE id = ? AND planejamento_id = ? AND situacao = 'ABERTA' AND modo = 'TEMPESTADE'",
@@ -177,12 +179,19 @@ class ColetaController
         foreach ($destinos as $dst) {
             $destinoId = (int)$dst['destino_id'];
             if ($dst['destino_tipo'] === 'CENARIO') {
+                // Vozes de OUTRA origem (o quiz) também apontam para este
+                // registro: sem soltá-las, ficariam ACEITO em cima de uma linha
+                // morta — congeladas para o autor e "usadas" para o condutor
+                Quiz::soltarVozes('CENARIO', [$destinoId]);
                 Database::executar(
                     'DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]
                 );
             } elseif ($dst['destino_tipo'] === 'FATOR') {
                 // Fatores promovidos apontam para o de origem (sem ON DELETE):
                 // saem antes. GUT e vínculo com a cascata caem por CASCADE.
+                Quiz::soltarVozes('FATOR', array_column(Database::todos(
+                    'SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?', [$destinoId, $destinoId]
+                ), 'id'));
                 Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$destinoId]);
                 Database::executar(
                     'DELETE FROM fator WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]
@@ -620,11 +629,17 @@ class ColetaController
                 'SWOT'   => 'SWOT',
                 default  => 'diagnóstico',
             });
+            // Vozes do quiz apontando para o mesmo registro saem junto (o
+            // UPDATE do grupo, mais abaixo, só alcança a família da tempestade)
             if ($tipo === 'CENARIO') {
+                Quiz::soltarVozes('CENARIO', [$destinoId]);
                 Database::executar('DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
             } else {
                 // Fatores promovidos apontam para o de origem (sem cascade): saem antes.
                 // O restante (GUT, vínculo com cascata) cai por ON DELETE CASCADE.
+                Quiz::soltarVozes('FATOR', array_column(Database::todos(
+                    'SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?', [$destinoId, $destinoId]
+                ), 'id'));
                 Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$destinoId]);
                 Database::executar('DELETE FROM fator WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
             }
@@ -818,14 +833,14 @@ class ColetaController
 
     private function exigirItem(int $id, int $planId): array
     {
-        // `tipo_resposta IS NULL` isola os dois ritos: resposta do quiz da
-        // cascata NUNCA é alcançada pelas operações da tempestade (dividir,
-        // agrupar, priorizar, encaminhar...) — agrupar uma resposta de quiz com
-        // uma ideia da tempestade corromperia os dois lados. O quiz tem os
-        // próprios caminhos (CascataQuizController / CascataController).
+        // `origem = 'TEMPESTADE'` isola os dois ritos: resposta do quiz NUNCA é
+        // alcançada pelas operações da tempestade (dividir, agrupar, priorizar,
+        // encaminhar...) — agrupar uma resposta de quiz com uma ideia da
+        // tempestade corromperia os dois lados. O quiz tem os próprios caminhos
+        // (QuizController e a tela da análise que ele alimenta).
         $item = Database::um(
-            'SELECT * FROM coleta_item
-             WHERE id = ? AND planejamento_id = ? AND tipo_resposta IS NULL',
+            "SELECT * FROM coleta_item
+             WHERE id = ? AND planejamento_id = ? AND origem = 'TEMPESTADE'",
             [$id, $planId]
         );
         if (!$item) {

@@ -22,7 +22,15 @@ const App = {
     const resp = await fetch(url, opts);
     if (resp.status === 401) { window.location.href = '/login'; throw new Error('sessão expirada'); }
     const json = await resp.json();
-    if (!json.ok) throw new Error(json.erro || 'Erro inesperado');
+    if (!json.ok) {
+      // O código vem junto do erro para quem precisa DECIDIR por ele, não só
+      // mostrá-lo (a sala do quiz aberta em outra tela vira uma confirmação).
+      // Casar por texto da mensagem seria refém da redação.
+      const erro = new Error(json.erro || 'Erro inesperado');
+      erro.codigo = json.codigo || null;
+      erro.status = resp.status;
+      throw erro;
+    }
     return json.dados;
   },
 
