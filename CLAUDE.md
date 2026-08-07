@@ -87,9 +87,21 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `painelOrientacao` / `ligarOrientacoes`. Os títulos da SWOT trazem o eixo entre
   parênteses (“Forças (Interno · Ajuda)”). Não reintroduzir parágrafos de
   introdução acima das listas — a orientação mora no ⓘ.
-- **Colunas das análises** (PESTEL, Porter, SWOT, Cenário): o cabeçalho de cada
-  categoria é `position: sticky` logo abaixo da topbar (`.cabecalho-coluna`,
-  `top: 52px`) e, no computador, o corpo rola **por dentro** da caixa
+- **Cabeçalho fixo das análises** (PESTEL, Porter, SWOT, Cenário): título, ano,
+  "+ Novo" e o selo da sala moram num bloco só (`.cabecalho-analise`,
+  `data-cabecalho-analise`) que fica **fixo abaixo da topbar** — o condutor
+  percorre os cartões sem perder de vista que análise, que ano e onde a sala
+  está. O degrau é feito de duas variáveis: `--topo-app` (a altura da `.topbar`,
+  em `:root`) e `--altura-cabecalho`, **medida no JS** por
+  `Diag.ligarCabecalhoFixo` a cada pintura, com um `ResizeObserver` — o bloco
+  quebra em duas ou três linhas conforme a largura, e um palpite em `rem` curto
+  demais deixaria o cabeçalho da coluna por cima do da análise. As margens
+  negativas do bloco cobrem a sarjeta do `.row`, senão o cartão aparecia pelas
+  beiradas ao passar por baixo. O painel de vozes fica **fora** do fixo: ele
+  cresce com a oficina e engoliria a tela.
+- **Colunas das análises** (as mesmas quatro): o cabeçalho de cada
+  categoria é `position: sticky` logo abaixo do cabeçalho da análise
+  (`.cabecalho-coluna`) e, no computador, o corpo rola **por dentro** da caixa
   (`.corpo-coluna` dentro de `.caixa-coluna`, teto de `100dvh - 5rem`). Rolando
   a página, o título saía de vista e a pilha de cartões virava coluna anônima —
   ninguém sabia mais o que era de quê. Quatro detalhes que não podem ser

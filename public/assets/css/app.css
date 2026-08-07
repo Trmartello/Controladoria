@@ -1,4 +1,6 @@
 :root {
+  /* Altura da .topbar: quem gruda abaixo dela soma este valor no `top` */
+  --topo-app: 52px;
   --verde-coperdia: #007a45;
   --verde-escuro: #06432a;
   --dourado: #b08d4f;
@@ -1373,9 +1375,31 @@ tr.card-destacado > td { background: #e8f5ee; }
     var(--fundo-coluna, #f4f6f5);
 }
 .caixa-coluna { min-width: 0; }
+
+/* ===== O cabeçalho da análise =====
+   Título, ano, "+ Novo" e o selo da sala ficam FIXOS abaixo da topbar: o
+   contexto da análise (que ano, qual escopo, onde a sala está) tem de
+   acompanhar a rolagem, senão o condutor percorre os cartões sem saber mais o
+   que está lendo. `--topo-app` é a altura da `.topbar`; `--altura-cabecalho`
+   é medido em `Diag.ligarCabecalhoFixo`, porque esse bloco quebra em duas ou
+   três linhas conforme a largura.
+   As margens negativas cobrem a sarjeta do `.row` (que puxa as colunas para
+   fora da caixa do cabeçalho): sem elas, um cartão aparecia pelas beiradas
+   enquanto passava por baixo. */
+.cabecalho-analise {
+  position: sticky;
+  top: var(--topo-app);
+  z-index: 4;
+  background: #f4f6f5;
+  margin: 0 -.75rem .25rem;
+  padding: .35rem .75rem .3rem;
+  box-shadow: 0 .35rem .35rem -.3rem rgba(0, 0, 0, .22);
+}
+.cabecalho-analise h1 { margin-bottom: 0; }
+
 .cabecalho-coluna {
   position: sticky;
-  top: 52px;
+  top: calc(var(--topo-app) + var(--altura-cabecalho, 0px));
   z-index: 2;
   padding-top: .2rem;
   padding-bottom: .2rem;
@@ -1391,7 +1415,10 @@ tr.card-destacado > td { background: #e8f5ee; }
   .caixa-coluna {
     display: flex;
     flex-direction: column;
-    max-height: calc(100dvh - 5rem);
+    /* O que sobra da tela: fora a topbar, a folga do `main` e o cabeçalho fixo
+       da análise. Sem descontá-lo, a coluna terminava abaixo da dobra e a
+       última linha de cartões ficava fora de alcance. */
+    max-height: calc(100dvh - 5rem - var(--altura-cabecalho, 0px));
   }
   /* Sem `overscroll-behavior: contain` de propósito: chegando ao fim da coluna
      a roda tem de CONTINUAR na página. Contido, o cursor parado sobre a coluna

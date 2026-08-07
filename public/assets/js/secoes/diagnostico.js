@@ -89,6 +89,35 @@ const Diag = {
     aplicar();
   },
 
+  /**
+   * O cabeçalho da análise — título, ano, "+ Novo", selo da sala — fica FIXO
+   * logo abaixo da topbar, e o cabeçalho de cada coluna gruda logo abaixo dele:
+   * o contexto da análise acompanha a rolagem enquanto só os cartões se movem.
+   *
+   * O degrau é calculado aqui porque a altura do bloco muda com a largura (no
+   * celular ele quebra em três linhas) e com o conteúdo (o selo da sala longe
+   * ganha um botão). Em CSS isso só daria um palpite em `rem`, e um palpite
+   * curto deixaria o cabeçalho da coluna POR CIMA do da análise.
+   */
+  observadoresCabecalho: {},
+
+  ligarCabecalhoFixo(el) {
+    const cab = el.querySelector('[data-cabecalho-analise]');
+    if (!cab) return;
+    const medir = () => {
+      // Seção escondida mede zero — e zero aqui empilharia os dois cabeçalhos
+      const h = Math.round(cab.getBoundingClientRect().height);
+      if (h) el.style.setProperty('--altura-cabecalho', `${h}px`);
+    };
+    medir();
+    // O observador é trocado a cada pintura: o elemento anterior já saiu do
+    // documento (innerHTML novo) e observá-lo seria medir o que ninguém vê.
+    this.observadoresCabecalho[el.id]?.disconnect();
+    const ro = new ResizeObserver(medir);
+    ro.observe(cab);
+    this.observadoresCabecalho[el.id] = ro;
+  },
+
   // Cartão baixo: texto longo é cortado em 3 linhas (ver `.texto-fator`) e
   // ganha um "ver mais" para expandir/recolher, dando noção de quantos cards
   // existem sem obrigar a rolar um parágrafo por vez
@@ -555,21 +584,24 @@ const Diag = {
       categorias.map(([cat]) => [cat, fatores.filter((f) => f.categoria === cat).length]));
 
     el.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h1>${titulo} — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-          ${this.seletorAno(etapa)}
-          ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
+      <div class="cabecalho-analise" data-cabecalho-analise>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h1>${titulo} — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            ${this.seletorAno(etapa)}
+            ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
+          </div>
         </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap"
+          data-selo-quiz>${QuizSala.selo(dono, idSecao.replace('secao-', ''),
+            this.salaNestaEtapa(dono, etapa, ano))}</div>
       </div>
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
-        data-selo-quiz>${QuizSala.selo(dono, idSecao.replace('secao-', ''),
-          this.salaNestaEtapa(dono, etapa, ano))}</div>
       ${descricao ? `<p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>` : ''}
       <div data-quiz-vivo>${this.quizPainel(dono, etapa, ano)}</div>
       ${this.seletorCategoriaMovel(etapa, categorias.map(([cat, rotulo]) => [cat, rotulo]), contagens)}
       <div class="row g-3">${colunas}</div>`;
 
+    this.ligarCabecalhoFixo(el);
     this.ligarSeletorAno(el);
     this.ligarSeletorCategoriaMovel(el, etapa);
     this.ligarVerMais(el);
@@ -750,18 +782,20 @@ const SecaoCenario = {
     };
 
     el.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h1>Análise de Cenário — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-          ${Diag.seletorAno('cenario')}
-          ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
-            { ativo: this.perguntaDoAno()?.situacao === 'ATIVA',
-              pergunta: this.perguntaDoAno()?.situacao === 'ATIVA' ? this.perguntaDoAno().id : null })}
-          ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
+      <div class="cabecalho-analise" data-cabecalho-analise>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h1>Análise de Cenário — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            ${Diag.seletorAno('cenario')}
+            ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
+              { ativo: this.perguntaDoAno()?.situacao === 'ATIVA',
+                pergunta: this.perguntaDoAno()?.situacao === 'ATIVA' ? this.perguntaDoAno().id : null })}
+            ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
+          </div>
         </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap"
+          id="selo-quiz-cenario">${QuizSala.selo(this, 'cenario', this.salaNesteAno(ano))}</div>
       </div>
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
-        id="selo-quiz-cenario">${QuizSala.selo(this, 'cenario', this.salaNesteAno(ano))}</div>
       <div id="quiz-vivo-cenario">${this.painelVivo()}</div>
       ${Diag.seletorCategoriaMovel('CENARIO', [
         ['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências'],
@@ -777,6 +811,7 @@ const SecaoCenario = {
     // primeira batida (4s) sempre difere e repinta tudo de graça
     this.assinaturaQuiz = QuizSala.assinatura(this.quiz);
     QuizSala.armarRelogio(this);
+    Diag.ligarCabecalhoFixo(el);
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
     Diag.ligarVerMais(el);
@@ -1100,15 +1135,17 @@ const SecaoSwot = {
       .map((cat) => [cat, fatores.filter((f) => f.categoria === cat).length]));
 
     el.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h1>SWOT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-          ${Diag.seletorAno('swot')}
-          ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
+      <div class="cabecalho-analise" data-cabecalho-analise>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h1>SWOT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            ${Diag.seletorAno('swot')}
+            ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
+          </div>
         </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap"
+          data-selo-quiz>${QuizSala.selo(this, 'swot', Diag.salaNestaEtapa(this, 'SWOT', ano))}</div>
       </div>
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
-        data-selo-quiz>${QuizSala.selo(this, 'swot', Diag.salaNestaEtapa(this, 'SWOT', ano))}</div>
       <div data-quiz-vivo>${Diag.quizPainel(this, 'SWOT', ano)}</div>
       ${Diag.seletorCategoriaMovel('SWOT', [
         ['FORCA', 'Forças'], ['FRAQUEZA', 'Fraquezas'],
@@ -1121,6 +1158,7 @@ const SecaoSwot = {
         ${quadrante('AMEACA', 'Ameaças', '#8f3b3b')}
       </div>`;
 
+    Diag.ligarCabecalhoFixo(el);
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'SWOT');
     Diag.ligarVerMais(el);
