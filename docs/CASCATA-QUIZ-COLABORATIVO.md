@@ -1,8 +1,14 @@
-# Cascata colaborativa — quiz de preenchimento das células
+# Quiz colaborativo do planejamento
 
-Plano de implementação. **Nada foi construído ainda**: este documento existe
-para a decisão vir antes do código. A seção 10 registra as doze decisões já
-fechadas com o cliente.
+Plano de implementação, em duas partes.
+
+**Parte I (seções 1–10)** — o quiz da Cascata de Escolhas: doze decisões
+fechadas com o cliente e **entregue** nas Fases 1 e 2 (commits `e4549df` e
+`3767aba`).
+
+**Parte II (seções 11–16)** — a revisão de escopo pedida depois: a sala deixa de
+ser da tela e passa a ser **do projeto**, um PIN só para todas as análises.
+**Ainda não construída** — tem decisões em aberto na seção 16.
 
 ## 1. O que se quer
 
@@ -423,3 +429,159 @@ listeners no `document`, gesto que engole o clique seguinte).
 
 Nada permanece em aberto no desenho. As perguntas que sobram são de
 implementação e aparecem na hora de construir cada fase.
+
+---
+
+# Parte II — A sala é do PROJETO, não da tela
+
+Revisão de escopo pedida em 06/08/2026, depois das Fases 1 e 2 entregues.
+**Nada desta parte foi construído**: ela existe para a decisão vir antes do
+código, e a seção 16 lista o que depende de você.
+
+## 11. O que se quer agora
+
+> Vamos ter vários quiz durante o projeto, em cada tela — por exemplo definição
+> de cenários, análise Porter, PESTEL: todas essas análises vão ter um quiz.
+> Porém o quiz deve ser único para o projeto todo: o usuário escaneia o QR code
+> uma vez e as interações serão com base no quiz que estiver aberto. E só pode
+> ter um quiz aberto: se eu abrir um sem ter fechado o outro, ele pede para
+> fechar o que está aberto, para dar sequência ao planejamento.
+
+Três exigências, e vale separá-las porque **duas já estão prontas e uma não**:
+
+| Exigência | Situação |
+|---|---|
+| Um quiz aberto por vez, com aviso para fechar o outro | ✅ já existe (a guarda de "uma rodada aberta por planejamento") |
+| Uma pergunta ativa por vez, mudando sozinha no celular | ✅ já existe (Fases 1 e 2) |
+| **Um PIN só para o projeto todo, valendo em todas as telas** | ❌ é o que falta |
+
+## 12. O que trava hoje: a sala tem um rito
+
+`coleta_rodada.modo` (`TEMPESTADE` ou `CASCATA`) diz o rito da **sala inteira**.
+Isso foi a decisão certa quando existiam dois ritos, mas é exatamente o que
+impede o PIN único: para perguntar uma célula da cascata e depois um fator do
+PESTEL seriam **duas rodadas**, dois PINs, e o participante escaneando de novo
+no meio do encontro.
+
+O acoplamento está em três lugares:
+
+1. **`coleta_rodada.modo`** — `PublicoController` decide pelo modo da rodada o
+   que devolver (`rodada()`, linhas 68-69) e o que aceitar (`resposta()` recusa
+   TEMPESTADE, `ideia()`/`votar()` recusam CASCATA).
+2. **`cascata_pergunta`** só sabe apontar para uma célula da cascata
+   (`horizonte_id`, `driver_id`, `eixo_id`). Não há onde dizer "esta pergunta é
+   sobre o quadrante Ameaças da SWOT de 2026".
+3. **`tipo_resposta IS NULL`** é a marca que isola os dois ritos (o `listar()` e
+   o `exigirItem()` da Coleta). Ela funciona porque hoje **toda** resposta de
+   quiz tem lado (ESCOLHA/RENUNCIA). Uma pergunta de PESTEL não tem lado — a
+   resposta viria com `tipo_resposta` nulo e **vazaria para a tela da Coleta**,
+   tratável pela triagem da tempestade. É o mesmo defeito que a revisão da Fase
+   1 pegou em `ideia()`, por outro caminho.
+
+## 13. O que já está pronto e não precisa ser refeito
+
+Antes do que muda, o que se aproveita inteiro — e é a maior parte:
+
+- **O vínculo já é polimórfico.** `coleta_item.destino_tipo` já é
+  `ENUM('CENARIO','FATOR','ACAO','CASCATA')`: amarrar uma sugestão a um item de
+  cenário ou a um fator do PESTEL **já tem casa no banco**, com o mesmo par
+  `destino_tipo`/`destino_id` que a Coleta usa desde sempre.
+- **O roteiro inteiro** (ordem, situação, pergunta ativa, foco, progresso,
+  reabrir, encerrar, remover pendente) é mecânica de sequência — ela não sabe
+  nada sobre cascata além de para onde a pergunta aponta.
+- **A sala**: PIN, token registrado, tetos dentro do INSERT, trava de força
+  bruta, polling que não redesenha digitando, `/entrar/{pin}`.
+- **A guarda de um aberto por vez**, com a mensagem já dizendo qual rito está
+  aberto.
+
+## 14. O modelo novo
+
+Três mudanças, todas aditivas.
+
+**(a) A pergunta ganha um ALVO polimórfico.** `cascata_pergunta` passa a
+`quiz_pergunta` (`RENAME TABLE` guardado por `information_schema`, como o
+migrate já faz em tudo):
+
+```
+quiz_pergunta
+  id, rodada_id, ordem, situacao, aberta_em
+  alvo_tipo ENUM('CASCATA','CENARIO','FATOR')
+  enunciado VARCHAR(255) NULL      -- a pergunta nas palavras do condutor
+  -- CASCATA: a célula (como hoje)
+  horizonte_id, driver_id, eixo_id
+  -- CENARIO e FATOR: a análise é anual
+  ano SMALLINT NULL
+  -- FATOR: qual coluna do PESTEL/Porter/SWOT
+  etapa ENUM('PESTEL','PORTER','SWOT') NULL
+  categoria VARCHAR(40) NULL
+```
+
+Colunas nulas por tipo, e não uma `alvo_id` genérica: a célula da cascata
+precisa de **três** ids, que não cabem num só. É o mesmo formato de
+`diario_bordo` (`ref_tipo`/`ref_id`) levado ao caso que tem chave composta.
+
+**(b) A marca de isolamento sai de `tipo_resposta` e vira explícita.**
+
+```
+coleta_item.origem ENUM('TEMPESTADE','QUIZ') NOT NULL DEFAULT 'TEMPESTADE'
+```
+
+Nunca solta, independente de FK — a lição que já está no `CLAUDE.md` sobre não
+usar `pergunta_id` (FK SET NULL) para isso. `tipo_resposta` fica livre para ser
+o **lado da resposta**, que só alguns alvos têm.
+
+**(c) `coleta_rodada.modo` deixa de decidir o rito.** Ele continua distinguindo
+a tempestade clássica (matriz de prioridade, triagem, votação) da sessão de
+quiz, mas **dentro** da sessão de quiz quem manda é o alvo da pergunta ativa.
+`PublicoController` passa a olhar a pergunta, não a rodada.
+
+### O lado da resposta, por alvo
+
+| Alvo | A sala escolhe um lado? | Vira |
+|---|---|---|
+| Cascata | **Sim**: Escolha \| Renúncia | `cascata_escolha.escolha` / `.renuncia` |
+| Cenário | **Sim**: Situação atual \| Tendência | `cenario_item` do tipo escolhido |
+| PESTEL / Porter / SWOT | **Não** — a categoria É a pergunta | `fator` daquela etapa e categoria |
+
+Ou seja, o par de botões que já existe no celular serve aos dois primeiros sem
+mudança nenhuma de conceito: muda só o rótulo. Para PESTEL/Porter/SWOT o
+condutor pergunta **uma categoria por vez** ("me deem ameaças"), o que é melhor
+para a discussão e dispensa seletor no celular.
+
+A lista branca do `tipo_resposta` deixa de ser um ENUM fixo e passa a ser
+**derivada do alvo pelo servidor** — de constantes que já existem
+(`FatorController::CATEGORIAS`, os tipos do `CenarioController`). O corpo do
+pedido continua sem poder inventar valor.
+
+## 15. O que muda no que já foi entregue
+
+Honestamente, para você dimensionar: **nada se perde, e a maior parte só troca
+de nome**.
+
+| Entregue | O que acontece |
+|---|---|
+| `cascata_pergunta` (Fase 1/2) | vira `quiz_pergunta` com `alvo_tipo='CASCATA'`; as linhas existentes migram com um UPDATE |
+| Roteiro, foco, progresso, reabrir (Fase 2) | intactos — não sabem o que é uma célula |
+| Vínculo à célula (Fase 1) | intacto; ganha irmãos em `CenarioController` e `FatorController` |
+| `CascataQuizController` | vira `QuizController` (a sala é do projeto) |
+| Guardas de modo no `PublicoController` | passam a olhar o alvo da pergunta ativa |
+| Tela do participante | o cabeçalho vira genérico; o par de botões passa a ter rótulos por alvo |
+| Faixa da sessão em `cascata.js` | **precisa virar componente compartilhado** — cinco telas reescrevendo o painel divergem na primeira mudança, como já aconteceu com `panorama()` e `camposAcao` |
+
+## 16. Decisões em aberto
+
+1. **A Tempestade entra na mesma sala?** Ela tem rito próprio (matriz de
+   prioridade, arrastar, agrupar, triagem) que não é quiz. Duas leituras:
+   *(a)* ela também vira uma pergunta do roteiro, e aí é **um PIN para tudo,
+   sempre**; *(b)* ela continua uma sala à parte, e o PIN único vale para as
+   análises — na prática ainda é um PIN por encontro, porque só uma sala fica
+   aberta por vez.
+2. **PESTEL/Porter/SWOT: uma categoria por pergunta, ou a sala classifica?**
+   Perguntar "me deem ameaças" (recomendado) é mais dirigido; deixar a sala
+   escolher o quadrante dá um seletor de 4 a 6 opções no celular.
+3. **A sugestão vira o registro na hora ou passa por triagem?** Na cascata o
+   condutor redige o texto final a partir das vozes. Em PESTEL/SWOT, aceitar uma
+   sugestão pode criar o fator direto — ou passar pela mesma bancada de triagem
+   da Coleta.
+4. **Ordem de entrega.** As telas novas podem vir todas juntas ou uma a uma
+   (Cenário primeiro, por ser a mais simples: dois lados, um texto).
