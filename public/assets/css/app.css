@@ -1775,3 +1775,65 @@ body.menu-aberto .menu-lateral {
     justify-content: center;
   }
 }
+
+/* ===== Impressão: o PDF do relatório =====
+   O botão "PDF" chama a caixa de impressão do navegador — é ela que salva o
+   arquivo. O que estas regras fazem é transformar a TELA em página: sem menu,
+   sem topbar, sem botão de ação, com as colunas abertas (nada de rolagem por
+   dentro numa folha de papel) e, principalmente, com o texto do cartão
+   INTEIRO — o corte de três linhas é conforto de tela, e no papel viraria
+   relatório truncado. */
+@media print {
+  .topbar,
+  .menu-lateral,
+  .backdrop-menu,
+  .painel-quiz-vivo,
+  .sel-categoria-movel,
+  .mic-sala,
+  .btn-add-cat,
+  .ver-mais,
+  .dropdown,
+  .selo-sala,
+  [data-novo-fator],
+  [data-editar],
+  [data-excluir],
+  [data-editar-celula],
+  [data-excluir-celula],
+  [data-plano-acao],
+  [data-tirar-acao],
+  [data-desvincular],
+  #btn-novo-swot,
+  #btn-novo-cenario { display: none !important; }
+
+  body { background: #fff; }
+  .conteudo { padding: 0 !important; }
+  .secao { display: block; }
+
+  /* Nada de grudado no papel: sticky vira sobreposição na quebra de página */
+  .cabecalho-analise,
+  .cabecalho-coluna {
+    position: static !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .caixa-coluna {
+    display: block !important;
+    max-height: none !important;
+    background: none !important;
+  }
+  .corpo-coluna { overflow: visible !important; }
+  .texto-fator,
+  .texto-voz {
+    display: block !important;
+    -webkit-line-clamp: none !important;
+    line-clamp: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  /* Cartão partido ao meio pela quebra de página é o defeito clássico daqui */
+  .card,
+  .coluna-categoria,
+  .caixa-coluna { break-inside: avoid; page-break-inside: avoid; }
+}

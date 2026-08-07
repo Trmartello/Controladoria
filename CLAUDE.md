@@ -87,6 +87,18 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `painelOrientacao` / `ligarOrientacoes`. Os títulos da SWOT trazem o eixo entre
   parênteses (“Forças (Interno · Ajuda)”). Não reintroduzir parágrafos de
   introdução acima das listas — a orientação mora no ⓘ.
+- **Relatório da análise** (PESTEL, Porter, SWOT, Cenário): botão **⤓ Relatório**
+  no cabeçalho, com dois caminhos — **Word**, um `.doc` de HTML baixado por
+  `Blob` (o mesmo caminho do `.xls` do Relatório de Status: sem Composer não há
+  `.docx` de verdade), e **PDF**, que é `window.print()` — quem gera o arquivo é
+  o navegador, em "Salvar como PDF". O documento é montado **no front**
+  (`public/assets/js/relatorio-analise.js`, `RelatorioAnalise`) porque é lá que
+  moram os rótulos e as cores das categorias; no servidor seria uma segunda
+  cópia do catálogo, divergindo na primeira revisão. A folha `@media print`
+  desliga menu, topbar, botões, `position: sticky` e **o corte de três linhas
+  dos cartões** — conforto de tela que no papel viraria relatório truncado.
+  `montar()` só roda no clique: montado a cada pintura, o relatório seria
+  refeito a cada batida do polling.
 - **Cabeçalho fixo das análises** (PESTEL, Porter, SWOT, Cenário): título, ano,
   "+ Novo" e o selo da sala moram num bloco só (`.cabecalho-analise`,
   `data-cabecalho-analise`) que fica **fixo abaixo da topbar** — o condutor

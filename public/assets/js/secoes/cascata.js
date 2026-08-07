@@ -220,11 +220,15 @@ const SecaoCascata = {
           title="${Modal.esc(f.descricao)}">${Diag.QUADRANTES[f.categoria] || f.categoria}${
           f.score ? ` · GUT ${f.score}` : ''}</span>`;
       }).join(' ');
-      // Vozes do quiz vinculadas: registro de origem com ✕ para desvincular
+      // Vozes do quiz vinculadas: registro de origem com ✕ para desvincular.
+      // Sem o NOME de quem respondeu: na síntese, cada voz virava uma pílula do
+      // tamanho de um nome completo e a linha estourava com três delas. A
+      // autoria continua no banco e no painel de vozes — o que sai é a
+      // repetição dela aqui, onde o que importa é de que lado a voz entrou.
       const vozes = (registro?.sugestoes || []).map((s) => `
         <span class="badge voz-vinculada ${s.tipo_resposta === 'RENUNCIA' ? 'voz-renuncia' : 'voz-escolha'}"
-          title="${Modal.esc(s.autor)}: ${Modal.esc(s.texto)}">
-          ${s.tipo_resposta === 'RENUNCIA' ? 'R' : 'E'} · ${Modal.esc(s.autor)}${Number(s.votos) ? ` ★${s.votos}` : ''}
+          title="${Modal.esc(s.texto)}">
+          ${s.tipo_resposta === 'RENUNCIA' ? 'R' : 'E'}${Number(s.votos) ? ` ★${s.votos}` : ''}
           ${App.podeEditar() ? `<button type="button" class="btn-desvincular" data-desvincular="${s.id}"
             data-eixo-celula="${eixoId ?? ''}" title="Tirar esta voz da célula"
             aria-label="Tirar esta voz da célula">×</button>` : ''}

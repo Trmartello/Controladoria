@@ -114,6 +114,7 @@
   <!-- As peças da sala do quiz (selo, 🎤, roteiro) são as mesmas em toda tela
        que conduz um encontro: carregam antes das seções, que as consomem -->
   <script src="<?= versao_asset('/assets/js/quiz.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/relatorio-analise.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/painel.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cadastros.js') ?>"></script>

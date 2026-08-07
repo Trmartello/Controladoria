@@ -90,6 +90,25 @@ const Diag = {
   },
 
   /**
+   * As notas de um fator no relatório: o que o cartão mostra em selo vira uma
+   * linha de texto embaixo do item. Sem o NOME de quem sugeriu — relatório é
+   * documento da análise, e a autoria da voz vive na sala, não nele.
+   */
+  notasFator(f) {
+    const n = [];
+    if (Number(f.promovido) && f.promovido_categoria) {
+      n.push(`Promovido à SWOT: ${this.QUADRANTES[f.promovido_categoria] || f.promovido_categoria}`);
+    }
+    if (f.origem_etapa) n.push(`Origem: ${f.origem_etapa}`);
+    if (f.score) n.push(`GUT ${f.score}`);
+    if (f.acao_titulo) n.push(`Plano de ação: ${f.acao_titulo}`);
+    else if (f.acao_em) n.push('Aguardando plano de ação');
+    if (f.coleta_item_id) n.push('Veio da Coleta de ideias');
+    if (Number(f.quiz_vozes)) n.push(`${f.quiz_vozes} voz(es) da sala`);
+    return n;
+  },
+
+  /**
    * O cabeçalho da análise — título, ano, "+ Novo", selo da sala — fica FIXO
    * logo abaixo da topbar, e o cabeçalho de cada coluna gruda logo abaixo dele:
    * o contexto da análise acompanha a rolagem enquanto só os cartões se movem.
@@ -589,6 +608,7 @@ const Diag = {
           <h1>${titulo} — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${this.seletorAno(etapa)}
+            ${RelatorioAnalise.botao()}
             ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
           </div>
         </div>
@@ -602,6 +622,19 @@ const Diag = {
       <div class="row g-3">${colunas}</div>`;
 
     this.ligarCabecalhoFixo(el);
+    // O relatório é montado no clique, com o que ESTA tela carregou: os mesmos
+    // fatores, na mesma ordem das colunas, do mesmo ano do seletor.
+    RelatorioAnalise.ligar(el, () => ({
+      titulo: `${titulo} — ${App.rotuloContexto()} · ${ano}`,
+      contexto: `Diagnóstico · análise de ${ano} · ${fatores.length} fator(es)`,
+      secoes: categorias.map(([cat, rotulo, cor, dica]) => ({
+        rotulo,
+        cor,
+        dica,
+        itens: fatores.filter((f) => f.categoria === cat)
+          .map((f) => ({ texto: f.descricao, notas: this.notasFator(f) })),
+      })),
+    }));
     this.ligarSeletorAno(el);
     this.ligarSeletorCategoriaMovel(el, etapa);
     this.ligarVerMais(el);
@@ -790,6 +823,7 @@ const SecaoCenario = {
             ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
               { ativo: this.perguntaDoAno()?.situacao === 'ATIVA',
                 pergunta: this.perguntaDoAno()?.situacao === 'ATIVA' ? this.perguntaDoAno().id : null })}
+            ${RelatorioAnalise.botao()}
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
           </div>
         </div>
@@ -812,6 +846,17 @@ const SecaoCenario = {
     this.assinaturaQuiz = QuizSala.assinatura(this.quiz);
     QuizSala.armarRelogio(this);
     Diag.ligarCabecalhoFixo(el);
+    RelatorioAnalise.ligar(el, () => ({
+      titulo: `Análise de Cenário — ${App.rotuloContexto()} · ${ano}`,
+      contexto: `Diagnóstico · análise de ${ano} · ${itens.length} item(ns)`,
+      secoes: [['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências']]
+        .map(([tipo, rotulo]) => ({
+          rotulo,
+          cor: '#007a45',
+          itens: itens.filter((i) => i.tipo === tipo)
+            .map((i) => ({ texto: i.descricao, notas: Diag.notasFator(i) })),
+        })),
+    }));
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
     Diag.ligarVerMais(el);
@@ -1140,6 +1185,7 @@ const SecaoSwot = {
           <h1>SWOT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.seletorAno('swot')}
+            ${RelatorioAnalise.botao()}
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
           </div>
         </div>
@@ -1159,6 +1205,19 @@ const SecaoSwot = {
       </div>`;
 
     Diag.ligarCabecalhoFixo(el);
+    RelatorioAnalise.ligar(el, () => ({
+      titulo: `SWOT — ${App.rotuloContexto()} · ${ano}`,
+      contexto: `Diagnóstico · análise de ${ano} · ${fatores.length} fator(es)`,
+      // No plural, como as colunas: `Diag.QUADRANTES` guarda o singular do selo
+      secoes: [['FORCA', 'Forças'], ['FRAQUEZA', 'Fraquezas'],
+        ['OPORTUNIDADE', 'Oportunidades'], ['AMEACA', 'Ameaças']].map(([cat, rotulo]) => ({
+        rotulo,
+        cor: Diag.CORES_QUADRANTE[cat],
+        dica: Diag.DICAS_QUADRANTE[cat],
+        itens: fatores.filter((f) => f.categoria === cat)
+          .map((f) => ({ texto: f.descricao, notas: Diag.notasFator(f) })),
+      })),
+    }));
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'SWOT');
     Diag.ligarVerMais(el);
