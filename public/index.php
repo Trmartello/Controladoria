@@ -164,6 +164,7 @@ $semCsrf = $caminho === '/api/login'
     || $caminho === '/api/publico/ideia'
     || (bool)preg_match('#^/api/publico/ideia/\\d+$#', $caminho)
     || $caminho === '/api/publico/resposta'
+    || (bool)preg_match('#^/api/publico/estrela/\\d+$#', $caminho)
     || (bool)preg_match('#^/api/publico/votar/\\d+$#', $caminho);
 if ($metodo !== 'GET' && !$semCsrf) {
     Auth::validarCsrf();
@@ -238,6 +239,11 @@ try {
             (new PublicoController())->rodada($m[1]); break;
         case $rota === 'GET /api/publico/minhas':  (new PublicoController())->minhas(); break;
         case $rota === 'GET /api/publico/votar':   (new PublicoController())->paraVotar(); break;
+        // Fase da estrela do quiz: com o 🎤 fechado, o celular vota no que a
+        // sala acabou de dizer (teto por PERGUNTA, não por rodada)
+        case $rota === 'GET /api/publico/estrelas': (new PublicoController())->estrelas(); break;
+        case (bool)preg_match('#^POST /api/publico/estrela/(\\d+)$#', $rota, $m):
+            (new PublicoController())->estrela((int)$m[1]); break;
         case $rota === 'POST /api/publico/entrar': (new PublicoController())->entrar(); break;
         case $rota === 'POST /api/publico/ideia':  (new PublicoController())->ideia(); break;
         // Resposta do quiz da cascata (escolha ou renúncia da pergunta ativa)

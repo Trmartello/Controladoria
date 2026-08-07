@@ -155,6 +155,26 @@ class Quiz
         );
     }
 
+    /**
+     * A última pergunta que esteve na sala e já foi fechada. É a janela da
+     * ESTRELA: fechado o 🎤, o celular passa a votar no que acabou de ser dito,
+     * e só nessa pergunta — a de antes já foi triada, e votar nela seria mexer
+     * no que a condução deu por encerrado.
+     *
+     * Ordena por `aberta_em`, como `ativa()`: reabrir uma pergunta atualiza
+     * essa data, então "a última que esteve na sala" é a última aberta, não a
+     * última criada — o condutor volta a uma pergunta antiga o tempo todo.
+     */
+    public static function encerradaRecente(int $rodadaId): ?array
+    {
+        return Database::um(
+            self::SQL_BASE . " WHERE p.rodada_id = ? AND p.situacao = 'ENCERRADA'
+               AND p.aberta_em IS NOT NULL
+             ORDER BY p.aberta_em DESC, p.id DESC",
+            [$rodadaId]
+        );
+    }
+
     /** O roteiro inteiro, na ordem, com a contagem de sugestões por pergunta. */
     public static function roteiro(int $rodadaId): array
     {

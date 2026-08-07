@@ -191,6 +191,22 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   o participante VIA e o servidor recusa com 409 se divergir da ativa (nunca
   grava "na ativa" às cegas); o lado é lista branca **derivada do alvo**, nunca
   um ENUM fixo; o limite de texto vem do alvo, **no servidor**.
+  **A fase da ESTRELA** abre sozinha quando o condutor fecha o 🎤: sem pergunta
+  ativa, o celular passa a votar nas respostas da **última pergunta fechada**
+  (`Quiz::encerradaRecente`, ordenada por `aberta_em` como a `ativa()` — reabrir
+  atualiza essa data). Com pergunta ativa não há estrela: responder é o
+  trabalho, e a estrela dividiria a atenção de quem escreve. O teto é **por
+  PERGUNTA** (`coleta_rodada.max_votos`, escolhido ao abrir a sessão, padrão 3)
+  — o da tempestade conta por rodada e, num encontro de dez perguntas, acabaria
+  na segunda. As rotas são `GET /api/publico/estrelas` e
+  `POST /api/publico/estrela/{id}`, com as mesmas guardas das outras públicas
+  (token registrado, `Content-Type` JSON, isenção de CSRF na lista **explícita**)
+  e o teto **dentro do INSERT**. Quem decide qual pergunta está em votação é
+  `perguntaComEstrela()`, uma fonte só para a leitura e a escrita: separadas, o
+  celular mostraria uma pergunta e o toque gravaria em outra. O condutor vê a
+  fase pelo selo **★ a sala está pontuando**, que vem de `estrelas_em` no
+  `estado()` — sem ele, fechar o 🎤 pareceria "sala parada" justamente no
+  momento de ler a sala.
   O isolamento entre os ritos é **`coleta_item.origem`** (`TEMPESTADE`/`QUIZ`),
   nunca `pergunta_id` (FK SET NULL) e **nunca mais `tipo_resposta IS NULL`**:
   alvo sem lado responde com `tipo_resposta` nulo e vazaria para a fila da

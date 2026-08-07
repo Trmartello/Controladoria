@@ -375,6 +375,114 @@ class PublicoController
     }
 
     /**
+     * A fase da ESTRELA do quiz: fechado o 🎤, o celular passa a votar no que a
+     * sala acabou de dizer — e SÓ enquanto nenhuma outra pergunta está aberta.
+     * Com pergunta ativa, responder é o trabalho; a estrela esperaria a vez e
+     * dividiria a atenção de quem está escrevendo.
+     *
+     * O teto é POR PERGUNTA (o da tempestade conta por rodada): num encontro de
+     * dez perguntas, um teto por rodada acabaria na segunda.
+     */
+    public function estrelas(): void
+    {
+        $r = $this->rodadaPorPin((string)($_GET['pin'] ?? ''));
+        $p = $this->participante($r, $_GET);
+        $pergunta = $this->perguntaComEstrela($r);
+        if (!$pergunta) {
+            Json::ok(['fase' => 'FECHADA', 'itens' => []]);
+        }
+        $itens = Database::todos(
+            "SELECT i.id, i.texto, i.tipo_resposta, i.votos, (v.id IS NOT NULL) AS votei
+             FROM coleta_item i
+             LEFT JOIN coleta_voto v ON v.item_id = i.id AND v.participante_token = ?
+             WHERE i.pergunta_id = ? AND i.origem = 'QUIZ' AND i.situacao = 'NOVO'
+             ORDER BY i.id",
+            [$p['token'], (int)$pergunta['id']]
+        );
+        Json::ok([
+            'fase' => 'ESTRELAS',
+            'pergunta' => Quiz::paraSala($pergunta),
+            'itens' => $itens,
+            'meus_votos' => $this->estrelasUsadas((int)$pergunta['id'], $p['token']),
+            'max_votos' => (int)$r['max_votos'],
+        ]);
+    }
+
+    /** Alterna a estrela numa resposta do quiz, respeitando o teto da pergunta. */
+    public function estrela(int $id): void
+    {
+        $d = $this->corpo();
+        $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
+        $p = $this->participante($r, $d);
+        $pergunta = $this->perguntaComEstrela($r);
+        if (!$pergunta) {
+            Json::erro('A votação desta pergunta foi encerrada pela condução.', 409);
+        }
+        // O item tem de ser DESTA pergunta: sem a guarda, um id de outra
+        // pergunta (ou da tempestade) entraria e furaria o teto de todas
+        if (!Database::um(
+            "SELECT id FROM coleta_item
+             WHERE id = ? AND pergunta_id = ? AND origem = 'QUIZ' AND situacao = 'NOVO'",
+            [$id, (int)$pergunta['id']]
+        )) {
+            Json::erro('Esta resposta não está mais em votação.', 404);
+        }
+
+        if (Database::afetadas(
+            'DELETE FROM coleta_voto WHERE item_id = ? AND participante_token = ?',
+            [$id, $p['token']]
+        )) {
+            $this->recontar($id);
+            Json::ok(['votou' => false, 'meus_votos' => $this->estrelasUsadas((int)$pergunta['id'], $p['token'])]);
+        }
+
+        // Teto DENTRO do INSERT, como o da tempestade e o dos envios: dois
+        // toques simultâneos furariam uma contagem feita antes
+        $gravou = Database::afetadas(
+            "INSERT IGNORE INTO coleta_voto (item_id, rodada_id, participante_token)
+             SELECT ?, ?, ?
+             FROM DUAL WHERE (SELECT COUNT(*) FROM coleta_voto v
+                              JOIN coleta_item i ON i.id = v.item_id
+                                AND i.situacao = 'NOVO' AND i.pergunta_id = ?
+                              WHERE v.participante_token = ?) < ?",
+            [$id, (int)$r['id'], $p['token'], (int)$pergunta['id'], $p['token'], (int)$r['max_votos']]
+        );
+        if (!$gravou) {
+            Json::erro("Você já usou suas {$r['max_votos']} estrela(s) nesta pergunta. "
+                . 'Toque numa que já marcou para trocar.');
+        }
+        $this->recontar($id);
+        Json::ok(['votou' => true, 'meus_votos' => $this->estrelasUsadas((int)$pergunta['id'], $p['token'])]);
+    }
+
+    /**
+     * A pergunta aberta para a estrela — a última fechada, e só com a sala sem
+     * pergunta ativa. Uma fonte só para as duas rotas: separadas, a leitura
+     * mostraria uma pergunta e a escrita gravaria em outra.
+     */
+    private function perguntaComEstrela(array $r): ?array
+    {
+        if ($r['situacao'] !== 'ABERTA' || $r['modo'] !== 'QUIZ') {
+            return null;
+        }
+        if (Quiz::ativa((int)$r['id'])) {
+            return null;
+        }
+        return Quiz::encerradaRecente((int)$r['id']);
+    }
+
+    /** Estrelas que esta pessoa já gastou NESTA pergunta. */
+    private function estrelasUsadas(int $perguntaId, string $token): int
+    {
+        return (int)(Database::um(
+            "SELECT COUNT(*) AS n FROM coleta_voto v
+             JOIN coleta_item i ON i.id = v.item_id AND i.situacao = 'NOVO'
+             WHERE i.pergunta_id = ? AND v.participante_token = ?",
+            [$perguntaId, $token]
+        )['n'] ?? 0);
+    }
+
+    /**
      * Minúsculas, sem acento e sem espaço sobrando — a mesma regra do `norm()`
      * de `coleta.js`. Feita com tabela em vez de `Normalizer`: a extensão
      * `intl` não está na imagem (o Dockerfile só instala `pdo_mysql`).

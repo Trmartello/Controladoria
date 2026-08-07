@@ -291,10 +291,19 @@ class QuizController
                 'tema' => $r['tema'],
                 'participantes' => (int)$r['participantes'],
                 'max_ideias' => (int)$r['max_ideias'],
+                'max_votos' => (int)$r['max_votos'],
             ],
             'roteiro' => $roteiro,
             'progresso' => Quiz::progresso($roteiro),
             'pergunta' => $ativa,
+            // Em que pergunta os celulares estão pondo estrela agora. Vem do
+            // servidor (a MESMA regra da rota pública) porque o condutor não
+            // tem como saber qual é "a última fechada" olhando o roteiro — e
+            // sem esse aviso ele fecha o 🎤 sem perceber que a sala está
+            // votando o que acabou de dizer.
+            'estrelas_em' => $ativa
+                ? null
+                : ((int)(Quiz::encerradaRecente((int)$r['id'])['id'] ?? 0) ?: null),
             'foco' => $foco,
             'sugestoes' => $sugestoes,
         ]);

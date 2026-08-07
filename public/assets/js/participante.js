@@ -9,6 +9,8 @@ const Participante = {
   rodada: null,
   minhas: [],
   votacao: null,
+  // Fase da estrela do quiz (a votação do rito da tempestade é `votacao`)
+  estrelas: null,
   relogio: null,
   ultimaAssinatura: null,
   editando: null,
@@ -141,6 +143,11 @@ const Participante = {
       this.minhas.map((i) => [i.id, i.texto, i.situacao]),
       (this.votacao?.itens || []).map((i) => [i.id, i.votei]),
       this.votacao?.meus_votos,
+      // A estrela entra na assinatura: sem isso o celular só descobriria a fase
+      // na próxima mudança de pergunta — que é justamente o que não vai
+      // acontecer enquanto a sala vota
+      this.estrelas?.fase, this.estrelas?.pergunta?.id, this.estrelas?.meus_votos,
+      (this.estrelas?.itens || []).map((i) => [i.id, i.votei, i.votos]),
     ]);
   },
 
@@ -155,10 +162,17 @@ const Participante = {
         return;
       }
       this.minhas = await this.api(`/api/publico/minhas?pin=${this.pin}`);
-      // Votação é rito da tempestade; no quiz ela chega na fase da estrela
-      this.votacao = this.rodada.modo === 'QUIZ'
-        ? null
-        : await this.api(`/api/publico/votar?pin=${this.pin}`);
+      // Dois ritos, duas rotas: a votação é da tempestade (teto por rodada) e a
+      // estrela é do quiz (teto por pergunta, e só com o 🎤 fechado)
+      if (this.rodada.modo === 'QUIZ') {
+        this.votacao = null;
+        this.estrelas = this.rodada.pergunta
+          ? null
+          : await this.api(`/api/publico/estrelas?pin=${this.pin}`);
+      } else {
+        this.estrelas = null;
+        this.votacao = await this.api(`/api/publico/votar?pin=${this.pin}`);
+      }
     } catch (e) {
       if (!silencioso) this.telaEntrada(e.message);
       return;
@@ -255,7 +269,9 @@ const Participante = {
         </div>
         ${encerrada
           ? '<div class="alert alert-secondary py-2 small mt-3">Esta sessão foi encerrada. Obrigado por participar!</div>'
-          : p ? this.blocoQuiz(p, minhasDaPergunta) : `
+          : p ? this.blocoQuiz(p, minhasDaPergunta)
+            : this.estrelas?.fase === 'ESTRELAS' ? this.blocoEstrelas()
+            : `
             <h1 class="h5 tema-rodada">${this.esc(r.tema || 'Planejamento estratégico')}</h1>
             <div class="alert alert-info py-2 small mt-3">Aguarde: a condução vai abrir a
               próxima pergunta no telão.</div>`}
@@ -269,7 +285,67 @@ const Participante = {
       this.ligarQuiz(p);
       if (minhasDaPergunta.length) this.ligarEdicaoIdeias();
     }
+    if (!encerrada && !p && this.estrelas?.fase === 'ESTRELAS') this.ligarEstrelas();
     this.ligarDitado();
+  },
+
+  /**
+   * A fase da estrela: fechado o 🎤, o celular vota no que a sala acabou de
+   * dizer. As respostas vêm da ÚLTIMA pergunta fechada, e o teto é dela — num
+   * encontro de dez perguntas, um teto por rodada acabaria na segunda.
+   *
+   * A própria resposta da pessoa aparece na lista, como na tempestade: tirar a
+   * dela obrigaria a explicar por que aquela sumiu, e ninguém gasta as três
+   * estrelas em si mesmo numa sala que está olhando.
+   */
+  blocoEstrelas() {
+    const e = this.estrelas;
+    const restam = Math.max(0, (e.max_votos || 0) - (e.meus_votos || 0));
+    const lados = e.pergunta?.lados || [];
+    const rotuloLado = (v) => (lados.find((l) => l.valor === v)?.rotulo) || '';
+    const classeLado = (v) => (lados.findIndex((l) => l.valor === v) === 0 ? 'success' : 'danger');
+    if (!e.itens.length) {
+      return `
+        <div class="small text-muted">${this.esc(e.pergunta?.rotulo || '')}</div>
+        <h1 class="h5 mb-2">${this.esc(e.pergunta?.titulo || '')}</h1>
+        <div class="alert alert-info py-2 small mt-3">Nenhuma resposta para votar nesta
+          pergunta. Aguarde: a condução vai abrir a próxima no telão.</div>`;
+    }
+    return `
+      <div class="small text-muted">${this.esc(e.pergunta?.rotulo || '')}</div>
+      <h1 class="h5 mb-1">${this.esc(e.pergunta?.titulo || '')}</h1>
+      <p class="small text-muted mb-2">A condução fechou esta pergunta. Marque com a estrela
+        as respostas que você considera mais importantes.</p>
+      <div class="alert ${restam ? 'alert-success' : 'alert-secondary'} py-2 small mb-2">
+        ${restam
+          ? `Você tem <strong>${restam}</strong> estrela(s) de ${e.max_votos}.`
+          : `Você usou suas ${e.max_votos} estrela(s). Toque numa marcada para trocar.`}</div>
+      ${e.itens.map((i) => `
+        <button type="button" class="ideia-votavel${Number(i.votei) ? ' votada' : ''}"
+          data-estrela="${i.id}" aria-pressed="${Number(i.votei) ? 'true' : 'false'}">
+          <span class="voto-marca" aria-hidden="true">${Number(i.votei) ? '★' : '☆'}</span>
+          <span class="flex-grow-1">${i.tipo_resposta
+            ? `<span class="badge text-bg-${classeLado(i.tipo_resposta)} me-1">${
+              this.esc(rotuloLado(i.tipo_resposta))}</span>` : ''}${this.esc(i.texto)}</span>
+          ${Number(i.votos) ? `<span class="badge text-bg-light border">${i.votos}</span>` : ''}
+        </button>`).join('')}`;
+  },
+
+  ligarEstrelas() {
+    this.tela.querySelectorAll('[data-estrela]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await this.api(`/api/publico/estrela/${b.dataset.estrela}`, {
+          pin: this.pin, token: this.token,
+        });
+        // Redesenha com o estado do servidor: a contagem do teto é de lá, e
+        // pintar a estrela no otimismo mentiria quando o teto recusasse
+        await this.atualizar();
+      } catch (erro) {
+        alert(erro.message);
+        b.disabled = false;
+      }
+    }));
   },
 
   /**

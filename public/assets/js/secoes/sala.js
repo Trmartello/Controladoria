@@ -107,7 +107,7 @@ const SecaoSala = {
     el.querySelector('#btn-abrir-sala')?.addEventListener('click', () => Modal.abrir({
       titulo: 'Abrir a sala do encontro',
       url: '/api/quiz/abrir',
-      valores: { planejamento_id: this.plan.id, tema: '', max_ideias: 5 },
+      valores: { planejamento_id: this.plan.id, tema: '', max_ideias: 5, max_votos: 3 },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'tema', rotulo: 'Nome do encontro',
@@ -115,6 +115,13 @@ const SecaoSala = {
           ajuda: 'O PIN vale para o encontro inteiro: todas as análises usam a mesma sala.' },
         { nome: 'max_ideias', rotulo: 'Sugestões por pessoa (em cada pergunta)',
           tipo: 'number', padrao: 5 },
+        // A estrela é a fase que abre sozinha quando o condutor fecha o 🎤: o
+        // celular passa a votar no que a sala acabou de dizer. O teto é POR
+        // PERGUNTA, e por isso ele se escolhe aqui, uma vez para o encontro.
+        { nome: 'max_votos', rotulo: 'Estrelas por pessoa (em cada pergunta)',
+          tipo: 'number', padrao: 3,
+          ajuda: 'Fechada a pergunta, quem está na sala marca com estrela as respostas '
+            + 'mais importantes — até este limite, em cada pergunta.' },
       ],
       // A sessão nasce SEM pergunta: o roteiro cresce com o 🎤 de cada análise.
       // Pedir um alvo aqui obrigaria a escolher a primeira pergunta antes de

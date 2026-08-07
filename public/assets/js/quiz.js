@@ -316,11 +316,18 @@ const QuizSala = {
       abertas: sugestoes.filter((s) => !Number(s.vinculada)).length,
     };
     const ui = dono.quizUi || (dono.quizUi = {});
+    // Fechada e sendo a ÚLTIMA fechada, a sala não está parada: os celulares
+    // estão pondo estrela nas respostas dela. Quem conduz precisa saber disso —
+    // é o momento de ler a sala antes de abrir a próxima pergunta.
+    const pontuando = p.situacao === 'ENCERRADA' && dono.quiz?.estrelas_em === p.id;
     const situacao = p.situacao === 'ATIVA'
       ? '<span class="badge text-bg-success">na sala agora</span>'
-      : p.situacao === 'ENCERRADA'
-        ? '<span class="badge text-bg-secondary">encerrada</span>'
-        : '<span class="badge text-bg-light border">não aberta</span>';
+      : pontuando
+        ? '<span class="badge text-bg-warning text-dark" title="A sala está marcando com '
+          + 'estrela as respostas mais importantes desta pergunta">★ a sala está pontuando</span>'
+        : p.situacao === 'ENCERRADA'
+          ? '<span class="badge text-bg-secondary">encerrada</span>'
+          : '<span class="badge text-bg-light border">não aberta</span>';
     return `<div class="d-flex align-items-center gap-2 flex-wrap cabecalho-quiz">
       <strong class="small text-uppercase">${Modal.esc(p.rotulo)}</strong>
       ${situacao}
@@ -491,6 +498,10 @@ const QuizSala = {
       q.sessao.participantes,
       q.pergunta?.id || 0,
       q.foco?.id || 0,
+      // Em que pergunta a sala está pondo estrela: fechar o 🎤 já muda a ativa,
+      // mas o selo "★ a sala está pontuando" também precisa aparecer quando
+      // ela SAI (a próxima pergunta abre e a fase acaba)
+      q.estrelas_em || 0,
       (q.roteiro || []).map((x) => [x.id, x.situacao, x.sugestoes]),
       (q.sugestoes || []).map((s) => [s.id, s.texto, s.votos, s.vinculada, s.tipo_resposta]),
     ]);
