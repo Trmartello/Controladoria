@@ -121,7 +121,11 @@ const Diag = {
   observadoresCabecalho: {},
 
   ligarCabecalhoFixo(el) {
-    const cab = el.querySelector('[data-cabecalho-analise]');
+    // Mede o que GRUDA — no papel o cabeçalho vira `<thead>`, e na tela é ele
+    // quem carrega o recuo e a sombra; medir só o bloco de dentro deixaria o
+    // cabeçalho da coluna dez pixels alto demais, por cima do da análise.
+    const bloco = el.querySelector('[data-cabecalho-analise]');
+    const cab = bloco?.closest('thead') || bloco;
     if (!cab) return;
     const medir = () => {
       // Seção escondida mede zero — e zero aqui empilharia os dois cabeçalhos
@@ -606,25 +610,34 @@ const Diag = {
     const contagens = Object.fromEntries(
       categorias.map(([cat]) => [cat, fatores.filter((f) => f.categoria === cat).length]));
 
+    // O canvas é uma TABELA de verdade: só assim o cabeçalho se repete em toda
+    // página impressa (medido: `display: table-header-group` num div sai só na
+    // primeira, e `position: fixed` deslocado some na última). Na tela ela é
+    // neutralizada por CSS — todas as partes viram bloco — e o layout é o mesmo.
     el.innerHTML = `
+      <table class="canvas-analise"><thead><tr><td>
       <div class="cabecalho-analise" data-cabecalho-analise>
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <h1>${titulo} — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h1 class="mb-0">${titulo} — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+            <div class="d-flex align-items-center gap-2 flex-wrap"
+              data-selo-quiz>${QuizSala.selo(dono, idSecao.replace('secao-', ''),
+                this.salaNestaEtapa(dono, etapa, ano))}</div>
+          </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${this.seletorAno(etapa)}
             ${RelatorioAnalise.botao()}
             ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
           </div>
         </div>
-        <div class="d-flex align-items-center gap-2 flex-wrap"
-          data-selo-quiz>${QuizSala.selo(dono, idSecao.replace('secao-', ''),
-            this.salaNestaEtapa(dono, etapa, ano))}</div>
       </div>
+      </td></tr></thead><tbody><tr><td>
       ${descricao ? `<p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>` : ''}
       <div data-quiz-vivo>${this.quizPainel(dono, etapa, ano)}</div>
       ${this.seletorCategoriaMovel(etapa, categorias.map(([cat, rotulo]) => [cat, rotulo]), contagens)}
       <div class="row g-3 row-cols-1 row-cols-sm-2 row-cols-md-3
-        row-cols-xl-${categorias.length}">${colunas}</div>`;
+        row-cols-xl-${categorias.length}">${colunas}</div>
+      </td></tr></tbody></table>`;
 
     this.ligarCabecalhoFixo(el);
     // O relatório é montado no clique, com o que ESTA tela carregou: os mesmos
@@ -820,9 +833,14 @@ const SecaoCenario = {
     };
 
     el.innerHTML = `
+      <table class="canvas-analise"><thead><tr><td>
       <div class="cabecalho-analise" data-cabecalho-analise>
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <h1>Análise de Cenário — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h1 class="mb-0">Análise de Cenário — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+            <div class="d-flex align-items-center gap-2 flex-wrap"
+              id="selo-quiz-cenario">${QuizSala.selo(this, 'cenario', this.salaNesteAno(ano))}</div>
+          </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.seletorAno('cenario')}
             ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
@@ -832,9 +850,8 @@ const SecaoCenario = {
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
           </div>
         </div>
-        <div class="d-flex align-items-center gap-2 flex-wrap"
-          id="selo-quiz-cenario">${QuizSala.selo(this, 'cenario', this.salaNesteAno(ano))}</div>
       </div>
+      </td></tr></thead><tbody><tr><td>
       <div id="quiz-vivo-cenario">${this.painelVivo()}</div>
       ${Diag.seletorCategoriaMovel('CENARIO', [
         ['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências'],
@@ -842,7 +859,8 @@ const SecaoCenario = {
       <div class="row g-4">
         ${bloco('SITUACAO_ATUAL', 'Situação Atual')}
         ${bloco('TENDENCIA', 'Tendências')}
-      </div>`;
+      </div>
+      </td></tr></tbody></table>`;
 
     QuizSala.ligarSelo(el);
     QuizSala.ligarMicrofones(this, el);
@@ -1185,18 +1203,22 @@ const SecaoSwot = {
       .map((cat) => [cat, fatores.filter((f) => f.categoria === cat).length]));
 
     el.innerHTML = `
+      <table class="canvas-analise"><thead><tr><td>
       <div class="cabecalho-analise" data-cabecalho-analise>
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <h1>SWOT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h1 class="mb-0">SWOT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+            <div class="d-flex align-items-center gap-2 flex-wrap"
+              data-selo-quiz>${QuizSala.selo(this, 'swot', Diag.salaNestaEtapa(this, 'SWOT', ano))}</div>
+          </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.seletorAno('swot')}
             ${RelatorioAnalise.botao()}
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
           </div>
         </div>
-        <div class="d-flex align-items-center gap-2 flex-wrap"
-          data-selo-quiz>${QuizSala.selo(this, 'swot', Diag.salaNestaEtapa(this, 'SWOT', ano))}</div>
       </div>
+      </td></tr></thead><tbody><tr><td>
       <div data-quiz-vivo>${Diag.quizPainel(this, 'SWOT', ano)}</div>
       ${Diag.seletorCategoriaMovel('SWOT', [
         ['FORCA', 'Forças'], ['FRAQUEZA', 'Fraquezas'],
@@ -1207,7 +1229,8 @@ const SecaoSwot = {
         ${quadrante('FRAQUEZA', 'Fraquezas', '#b08d4f')}
         ${quadrante('OPORTUNIDADE', 'Oportunidades', '#2c7fb8')}
         ${quadrante('AMEACA', 'Ameaças', '#8f3b3b')}
-      </div>`;
+      </div>
+      </td></tr></tbody></table>`;
 
     Diag.ligarCabecalhoFixo(el);
     RelatorioAnalise.ligar(el, () => ({

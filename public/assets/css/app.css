@@ -1376,6 +1376,26 @@ tr.card-destacado > td { background: #e8f5ee; }
 }
 .caixa-coluna { min-width: 0; }
 
+/* ===== O canvas da análise é uma TABELA — mas só no papel =====
+   Na tela todas as partes viram bloco e o layout é o mesmo de sempre; na
+   impressão elas voltam ao normal e o `<thead>` passa a ser o cabeçalho
+   REPETIDO em toda página. É tabela de verdade porque foi medido: um div com
+   `display: table-header-group` só aparece na primeira página, e um
+   `position: fixed` deslocado para a margem some justamente na última. */
+.canvas-analise,
+.canvas-analise > thead,
+.canvas-analise > tbody,
+.canvas-analise > * > tr,
+.canvas-analise > * > tr > td {
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  vertical-align: baseline;
+  text-align: inherit;
+}
+
 /* ===== O cabeçalho da análise =====
    Título, ano, "+ Novo" e o selo da sala ficam FIXOS abaixo da topbar: o
    contexto da análise (que ano, qual escopo, onde a sala está) tem de
@@ -1386,7 +1406,11 @@ tr.card-destacado > td { background: #e8f5ee; }
    As margens negativas cobrem a sarjeta do `.row` (que puxa as colunas para
    fora da caixa do cabeçalho): sem elas, um cartão aparecia pelas beiradas
    enquanto passava por baixo. */
-.cabecalho-analise {
+/* Quem gruda é o `<thead>`, não o bloco de dentro: `position: sticky` só se
+   move DENTRO do bloco container, e o container do cabeçalho passou a ser a
+   célula da tabela — que tem exatamente a altura dele. Grudado ali, ele não
+   tinha para onde ir e sumia com a rolagem. */
+.canvas-analise > thead {
   position: sticky;
   top: var(--topo-app);
   z-index: 4;
@@ -1573,7 +1597,9 @@ tr.card-destacado > td { background: #e8f5ee; }
      bloco depois do outro. Em coluna estreita, o mesmo texto gastava três vezes
      mais linhas — e as colunas, altas demais para o espaço que sobrava, eram
      empurradas inteiras para a página seguinte, deixando a primeira em branco. */
-  @page { margin: 1.4cm 1.2cm 1.2cm; }
+  /* A margem de cima é a FAIXA DO CABEÇALHO: ele é pintado ali, em toda
+     página, e o conteúdo fluído nunca passa por baixo dele. */
+  @page { margin: 1.2cm; }
 
   /* --- o que não vai para o papel: comando é da tela, não do documento --- */
   .topbar,
@@ -1602,7 +1628,6 @@ tr.card-destacado > td { background: #e8f5ee; }
 
   body { background: #fff; }
   .conteudo { padding: 0 !important; }
-  .secao { display: block; }
 
   /* O seletor de ano vira TEXTO: a caixa de formulário com a setinha é comando
      de tela, mas o ano é contexto e tem de continuar legível no documento. */
@@ -1616,15 +1641,50 @@ tr.card-destacado > td { background: #e8f5ee; }
     -webkit-appearance: none;
   }
 
-  /* --- cabeçalho da análise --- */
+  /* --- cabeçalho da análise: repetido em TODA página ---
+     `display: table-header-group` é a única forma que o navegador REPETE de
+     verdade no topo de cada folha. (`position: fixed` também é pintado por
+     página, mas some na ÚLTIMA — medido: cabeçalho em 2 de 3 páginas.)
+     Para isso a seção vira tabela e os dois blocos do cabeçalho viram
+     inline-flex, que o navegador embrulha numa linha só. */
+  /* A tabela volta a ser tabela: o `<thead>` é o cabeçalho repetido. */
+  .canvas-analise {
+    display: table !important;
+    width: 100% !important;
+    table-layout: fixed;
+  }
+  .canvas-analise > thead {
+    display: table-header-group !important;
+    position: static !important;
+    box-shadow: none !important;
+    background: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .canvas-analise > tbody { display: table-row-group !important; }
+  .canvas-analise > * > tr { display: table-row !important; }
+  .canvas-analise > * > tr > td { display: table-cell !important; }
+
   .cabecalho-analise {
     position: static !important;
     box-shadow: none !important;
-    margin: 0 0 .3cm !important;
+    margin: 0 !important;
     padding: 0 0 .12cm !important;
     border-bottom: 1pt solid #adb5bd;
   }
-  .cabecalho-analise h1 { font-size: 14pt; }
+  .cabecalho-analise > div {
+    display: inline-flex !important;
+    align-items: baseline;
+    gap: .3cm;
+    flex-wrap: nowrap !important;
+  }
+  .cabecalho-analise h1 {
+    font-size: 12pt;
+    margin: 0 .45cm 0 0;
+  }
+  .cabecalho-analise .selo-sala,
+  .cabecalho-analise .small,
+  .cabecalho-analise label { font-size: 8pt; white-space: nowrap; }
 
   /* --- corpo: uma categoria embaixo da outra, em largura cheia --- */
   .row:has(> [data-coluna-categoria]) {
@@ -1632,6 +1692,7 @@ tr.card-destacado > td { background: #e8f5ee; }
     margin: 0 !important;
   }
   [data-coluna-categoria] {
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
     flex: none !important;
@@ -1677,4 +1738,16 @@ tr.card-destacado > td { background: #e8f5ee; }
   .coluna-categoria,
   .caixa-coluna,
   .corpo-coluna { break-inside: auto; page-break-inside: auto; }
+}
+
+/* Fase da estrela: as respostas em BLOCOS, um por lado da pergunta (escolhas
+   de um lado, renúncias do outro). Misturadas, o celular obrigava a ler o selo
+   de cada ficha para saber de qual lado ela era. */
+.bloco-estrelas { margin-bottom: .9rem; }
+.bloco-estrelas:last-child { margin-bottom: 0; }
+.titulo-bloco-estrelas {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: .35rem;
 }

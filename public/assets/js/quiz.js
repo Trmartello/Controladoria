@@ -333,9 +333,15 @@ const QuizSala = {
       ${situacao}
       <span class="badge text-bg-light border" title="Vozes ainda não usadas, do total recebido">${
         quantas.abertas} de ${quantas.total} voz(es)</span>
-      ${App.podeEditar() && p.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
-        data-reabrir-foco="${p.id}">${p.situacao === 'ENCERRADA'
-          ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>` : ''}
+      ${App.podeEditar() ? (p.situacao === 'ATIVA'
+        // O par do "Reabrir": no MESMO lugar, o botão alterna conforme a
+        // pergunta está aberta ou fechada. É a segunda forma de fechar a sala
+        // (a primeira é o 🎤 aceso) e usa o mesmo `data-mic-fechar` — mesma
+        // confirmação, mesmo pedido, mesma volta ao foco.
+        ? `<button class="btn btn-sm btn-outline-secondary" data-mic-fechar="${p.id}"
+             title="Fechar e parar de receber respostas">Fechar para a sala</button>`
+        : `<button class="btn btn-sm btn-verde" data-reabrir-foco="${p.id}">${
+            p.situacao === 'ENCERRADA' ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>`) : ''}
       <button class="btn btn-sm btn-outline-secondary ms-auto" data-recolher-painel
         aria-expanded="${ui.painelRecolhido ? 'false' : 'true'}">${
         ui.painelRecolhido ? 'Mostrar' : 'Recolher'}</button>

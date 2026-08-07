@@ -320,15 +320,38 @@ const Participante = {
         ${restam
           ? `Você tem <strong>${restam}</strong> estrela(s) de ${e.max_votos}.`
           : `Você usou suas ${e.max_votos} estrela(s). Toque numa marcada para trocar.`}</div>
-      ${e.itens.map((i) => `
-        <button type="button" class="ideia-votavel${Number(i.votei) ? ' votada' : ''}"
-          data-estrela="${i.id}" aria-pressed="${Number(i.votei) ? 'true' : 'false'}">
-          <span class="voto-marca" aria-hidden="true">${Number(i.votei) ? '★' : '☆'}</span>
-          <span class="flex-grow-1">${i.tipo_resposta
-            ? `<span class="badge text-bg-${classeLado(i.tipo_resposta)} me-1">${
-              this.esc(rotuloLado(i.tipo_resposta))}</span>` : ''}${this.esc(i.texto)}</span>
-          ${Number(i.votos) ? `<span class="badge text-bg-light border">${i.votos}</span>` : ''}
-        </button>`).join('')}`;
+      ${this.listaEstrelas(e, lados, rotuloLado, classeLado)}`;
+  },
+
+  /**
+   * As respostas em BLOCOS quando a pergunta tem lados: todas as escolhas
+   * juntas, todas as renúncias juntas. Misturadas (a ordem de chegada), o
+   * celular obrigava a ler o selo de cada ficha para saber de que lado ela era,
+   * e a lista virava um vaivém entre duas conversas diferentes. Sem lados
+   * (PESTEL, Porter, SWOT — a categoria já é a pergunta) continua lista única.
+   */
+  listaEstrelas(e, lados, rotuloLado, classeLado) {
+    const ficha = (i) => `
+      <button type="button" class="ideia-votavel${Number(i.votei) ? ' votada' : ''}"
+        data-estrela="${i.id}" aria-pressed="${Number(i.votei) ? 'true' : 'false'}">
+        <span class="voto-marca" aria-hidden="true">${Number(i.votei) ? '★' : '☆'}</span>
+        <span class="flex-grow-1">${this.esc(i.texto)}</span>
+        ${Number(i.votos) ? `<span class="badge text-bg-light border">${i.votos}</span>` : ''}
+      </button>`;
+    if (lados.length < 2) return e.itens.map(ficha).join('');
+    // O selo sai da ficha e vira o TÍTULO do bloco: repetido em cada linha, ele
+    // gastava um terço da largura do celular dizendo o que o bloco já diz.
+    return lados.map((l) => {
+      const doLado = e.itens.filter((i) => i.tipo_resposta === l.valor);
+      if (!doLado.length) return '';
+      return `<div class="bloco-estrelas">
+        <div class="titulo-bloco-estrelas">
+          <span class="badge text-bg-${classeLado(l.valor)}">${this.esc(l.rotulo)}</span>
+          <span class="small text-muted">${doLado.length} resposta(s)</span>
+        </div>
+        ${doLado.map(ficha).join('')}
+      </div>`;
+    }).join('');
   },
 
   ligarEstrelas() {
