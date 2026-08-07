@@ -183,6 +183,71 @@ const QuizSala = {
   },
 
   /**
+   * As fichas de um conjunto de sugestões, em GRADE. Mora aqui porque as três
+   * telas que mostram sugestões desenhavam o mesmo cartão — e escrever este
+   * layout três vezes seria criar a divergência na primeira mudança.
+   *
+   * A grade (e não uma pilha) é o que faz caber: resposta de oficina costuma
+   * ter duas ou três palavras, e uma ficha por linha, na largura da página,
+   * gastava meia tela com cinco respostas.
+   */
+  fichas(sugestoes, { acao = 'Usar', virou = 'usada' } = {}) {
+    if (!sugestoes.length) {
+      return '<div class="text-muted small">Nenhuma sugestão ainda.</div>';
+    }
+    const cartao = (s) => `
+      <div class="ficha-sugestao ${Number(s.vinculada) ? 'vinculada' : ''}">
+        <div class="texto-voz" title="${Modal.esc(s.texto)}">${Modal.esc(s.texto)}</div>
+        <div class="rodape-voz">
+          <span class="autor-voz" title="${Modal.esc(s.autor)}">${Modal.esc(s.autor)}${
+            Number(s.votos) ? ` · ★ ${s.votos}` : ''}</span>
+          ${Number(s.vinculada)
+            ? `<span class="text-success flex-shrink-0" title="Já ${Modal.esc(virou)}">✓</span>`
+            : App.podeEditar() ? `
+              <button class="btn btn-verde btn-voz" data-usar-sugestao="${s.id}">${Modal.esc(acao)}</button>
+              <button class="btn btn-outline-danger btn-voz" data-excluir-sugestao="${s.id}"
+                title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
+        </div>
+      </div>`;
+    return `<div class="grade-sugestoes">${sugestoes.map(cartao).join('')}</div>`;
+  },
+
+  /**
+   * O cabeçalho do painel: o que a sala responde, quantas vozes chegaram, e o
+   * botão de recolher. Recolher atende o caso real — numa oficina cheia o
+   * painel empurra as colunas da análise para fora da tela, e às vezes o
+   * condutor quer trabalhar nos cartões.
+   */
+  cabecalhoPainel(dono, p, quantas) {
+    const ui = dono.quizUi || (dono.quizUi = {});
+    const situacao = p.situacao === 'ATIVA'
+      ? '<span class="badge text-bg-success">na sala agora</span>'
+      : p.situacao === 'ENCERRADA'
+        ? '<span class="badge text-bg-secondary">encerrada</span>'
+        : '<span class="badge text-bg-light border">não aberta</span>';
+    return `<div class="d-flex align-items-center gap-2 flex-wrap cabecalho-quiz">
+      <strong class="small text-uppercase">${Modal.esc(p.rotulo)}</strong>
+      ${situacao}
+      <span class="badge text-bg-light border">${quantas} voz(es)</span>
+      ${App.podeEditar() && p.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
+        data-reabrir-foco="${p.id}">${p.situacao === 'ENCERRADA'
+          ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>` : ''}
+      <button class="btn btn-sm btn-outline-secondary ms-auto" data-recolher-painel
+        aria-expanded="${ui.painelRecolhido ? 'false' : 'true'}">${
+        ui.painelRecolhido ? 'Mostrar' : 'Recolher'}</button>
+    </div>`;
+  },
+
+  /** Liga o botão de recolher. O estado é do DONO, como o resto. */
+  ligarRecolher(dono, el) {
+    el.querySelectorAll('[data-recolher-painel]').forEach((b) => b.addEventListener('click', () => {
+      const ui = dono.quizUi || (dono.quizUi = {});
+      ui.painelRecolhido = !ui.painelRecolhido;
+      App.recarregarSecaoAtiva();
+    }));
+  },
+
+  /**
    * Liga os botões do roteiro. `dono.aoNavegar(pergunta)` é chamado antes de
    * recarregar quando o condutor examina outra pergunta — é onde cada tela se
    * posiciona (a célula da cascata, o ano do cenário) sem que o componente

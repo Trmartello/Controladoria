@@ -1549,19 +1549,77 @@ body.menu-aberto .menu-lateral {
 .painel-quiz-vivo { border-left: 4px solid var(--verde-coperdia); background: #f6faf8; }
 .coluna-quiz {
   border-radius: .5rem;
-  padding: .5rem .6rem;
+  padding: .4rem .5rem;
   height: 100%;
 }
 .coluna-escolha { background: rgba(0, 122, 69, .07); border-top: 3px solid #007a45; }
 .coluna-renuncia { background: rgba(143, 59, 59, .07); border-top: 3px solid #8f3b3b; }
+/* ===== As vozes da sala, em GRADE =====
+   Resposta de oficina costuma ter duas ou três palavras. Uma ficha por linha,
+   na largura da página, gastava meia tela com cinco respostas — a grade põe
+   quantas couberem lado a lado e o teto de altura impede que uma oficina cheia
+   empurre as colunas da análise para fora da tela. */
+.grade-sugestoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: .35rem;
+  max-height: 32vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .ficha-sugestao {
   background: #fff;
   border: 1px solid #e3e8e5;
   border-radius: .4rem;
-  padding: .4rem .55rem;
-  margin-bottom: .4rem;
+  padding: .3rem .45rem;
+  font-size: .8rem;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
 }
 .ficha-sugestao.vinculada { border-color: var(--verde-coperdia); background: #eef7f2; }
+/* Texto cortado em 3 linhas, com o inteiro no `title` — o mesmo corte dos
+   cartões de fator, e o que mantém a altura da grade previsível */
+.texto-voz {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.rodape-voz {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  margin-top: auto;
+}
+.autor-voz {
+  font-size: .7rem;
+  color: #6c757d;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.btn-voz {
+  --bs-btn-padding-y: .05rem;
+  --bs-btn-padding-x: .35rem;
+  --bs-btn-font-size: .7rem;
+  --bs-btn-focus-shadow-rgb: 0, 122, 69;
+  flex-shrink: 0;
+}
+.cabecalho-quiz { row-gap: .25rem; }
+/* No dedo, os botões da ficha crescem por DIMENSÃO REAL — nunca por ::after
+   sobreposto, que faria áreas invisíveis de fichas vizinhas se cobrirem */
+@media (max-width: 767.98px) {
+  /* 130px e não 150: num iPhone de 390 a grade tem 305px úteis, e dois tracks
+     de 150 mais o vão dão 305,6 — errava por meio pixel e caía numa coluna só.
+     O min-content da ficha é 117px, então 130 não a estoura. */
+  .grade-sugestoes { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); max-height: 40vh; }
+  .btn-voz { min-height: 2rem; min-width: 2rem; }
+}
 /* Voz vinculada dentro da célula: selo com o ✕ de dimensão real (nunca
    ::after sobreposto — áreas invisíveis se cobrem e o toque erra o alvo) */
 .voz-vinculada {

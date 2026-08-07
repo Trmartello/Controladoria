@@ -343,52 +343,26 @@ const SecaoCascata = {
     const p = this.perguntaDaCelulaAberta();
     if (!p) return '';
     const sugestoes = this.quiz?.sugestoes || [];
-    const alvoEixo = p.eixo ? `Eixo ${p.eixo}` : 'Síntese';
+    const recolhido = this.quizUi?.painelRecolhido;
     const coluna = (tipo, rotulo, classe) => {
       const fichas = sugestoes.filter((s) => s.tipo_resposta === tipo);
-      const linhas = fichas.map((s) => `
-        <div class="ficha-sugestao ${Number(s.vinculada) ? 'vinculada' : ''}">
-          <div class="small">${Modal.esc(s.texto)}</div>
-          <div class="d-flex align-items-center gap-2 mt-1">
-            <span class="small text-muted flex-grow-1">${Modal.esc(s.autor)}${Number(s.votos) ? ` · ★ ${s.votos}` : ''}
-              ${Number(s.vinculada) ? ' · <strong>na célula</strong>' : ''}</span>
-            ${App.podeEditar() && !Number(s.vinculada) ? `
-              <button class="btn btn-sm btn-verde" data-usar-sugestao="${s.id}">Usar</button>
-              <button class="btn btn-sm btn-outline-danger" data-excluir-sugestao="${s.id}"
-                title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
-          </div>
-        </div>`).join('');
       return `<div class="col-md-6"><div class="coluna-quiz ${classe}">
         <div class="fw-bold small text-uppercase mb-2">${rotulo}
           <span class="badge rounded-pill text-bg-secondary">${fichas.length}</span></div>
-        ${linhas || '<div class="text-muted small">Nenhuma sugestão ainda.</div>'}
+        ${QuizSala.fichas(fichas, { virou: 'na célula' })}
       </div></div>`;
     };
-    // O foco pode ser uma pergunta encerrada (navegação pelo roteiro) ou
-    // pendente: o painel mostra o que já foi coletado e oferece abrir/reabrir
-    const situacao = p.situacao === 'ATIVA'
-      ? '<span class="badge text-bg-success">na sala agora</span>'
-      : p.situacao === 'ENCERRADA'
-        ? '<span class="badge text-bg-secondary">pergunta encerrada</span>'
-        : '<span class="badge text-bg-light border">ainda não aberta</span>';
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-        <strong class="small text-uppercase">Sugestões da sala — ${Modal.esc(alvoEixo)}</strong>
-        ${situacao}
-        <span class="small text-muted flex-grow-1">Use uma sugestão para levá-la ao campo da célula;
-          as vozes ficam registradas embaixo do texto.</span>
-        ${App.podeEditar() && p.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
-          data-reabrir-foco="${p.id}">${p.situacao === 'ENCERRADA'
-            ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>` : ''}
-      </div>
-      <div class="row g-2">
+      ${QuizSala.cabecalhoPainel(this, p, sugestoes.length)}
+      ${recolhido ? '' : `<div class="row g-2 mt-1">
         ${coluna('ESCOLHA', 'Respostas (escolha)', 'coluna-escolha')}
         ${coluna('RENUNCIA', 'Renúncias', 'coluna-renuncia')}
-      </div>
+      </div>`}
     </div></div>`;
   },
 
   ligarPainelVivo(alvo) {
+    QuizSala.ligarRecolher(this, alvo);
     alvo.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
       try {
         await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`, {

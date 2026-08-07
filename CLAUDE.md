@@ -213,8 +213,19 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   A pergunta que a sala lê vem de `Quiz::PERGUNTA_CATEGORIA`, uma por categoria:
   montá-la do rótulo dava "Quais político você vê para 2026?" — as categorias do
   PESTEL são adjetivos, e pergunta torta é resposta torta.
-  No front, as peças (`selo`, `microfone`, `roteiro`, `perguntar`) são o
-  componente compartilhado **`public/assets/js/quiz.js`** (`QuizSala`), que não
+  As vozes aparecem em **grade** (`.grade-sugestoes`), não em pilha: resposta de
+  oficina tem duas ou três palavras, e uma ficha por linha na largura da página
+  gastava metade da tela com cinco respostas. A grade tem **teto de altura com
+  rolagem por dentro** (32vh; 40vh no celular) e o painel **recolhe**
+  (`quizUi.painelRecolhido`) — numa oficina cheia ele empurraria as colunas da
+  análise para fora da tela. A ficha é uma só (`QuizSala.fichas`), usada pelas
+  três telas: escrita em cada uma, este layout divergiria na primeira mudança.
+  Selo de origem (`Coleta · Fulano`, `🎤 N`) mora **dentro da faixa dos botões**
+  do cartão, nunca numa linha própria: cada um numa linha custava duas linhas
+  por cartão, e um cartão de três palavras ficava com a altura de um parágrafo.
+  No front, as peças (`selo`, `microfone`, `roteiro`, `perguntar`, `fichas`,
+  `cabecalhoPainel`) são o componente compartilhado
+  **`public/assets/js/quiz.js`** (`QuizSala`), que não
   guarda estado: quem guarda é a seção dona (`plan`, `quiz`, `perguntaFoco`,
   `quizUi`, `secaoId`, `aoNavegar`, `aoBater`). PESTEL/Porter/SWOT nascem de
   `secaoEtapa()` justamente por isso — as três coexistem no DOM (navegar só põe

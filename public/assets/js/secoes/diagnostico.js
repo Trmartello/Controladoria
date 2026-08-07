@@ -266,12 +266,22 @@ const Diag = {
    * de quem foi. É o vínculo que se perdia quando alguém redigitava a lista
    * crua à mão dentro do diagnóstico.
    */
+  /**
+   * Os selos de ORIGEM do registro (a ideia da Coleta, as vozes da sala). São
+   * inline de propósito: cada um numa linha própria custava duas linhas por
+   * cartão, e um cartão de três palavras ficava com a altura de um parágrafo.
+   * Quem os posiciona é a faixa dos botões, que já existe em todo cartão.
+   */
+  selosOrigem(registro) {
+    return this.seloColeta(registro) + this.seloSala(registro);
+  },
+
   seloColeta(registro) {
     if (!registro.coleta_item_id) return '';
-    return `<div class="mt-1"><button type="button" class="btn btn-sm selo-link"
+    return `<button type="button" class="btn btn-sm selo-link"
       data-ir-coleta="${registro.coleta_item_id}"
       title="Ver a ideia original na Coleta">Coleta · ${Modal.esc(registro.coleta_autor || '—')}${
-      Number(registro.coleta_vozes) > 1 ? ` +${Number(registro.coleta_vozes) - 1}` : ''}</button></div>`;
+      Number(registro.coleta_vozes) > 1 ? ` +${Number(registro.coleta_vozes) - 1}` : ''}</button>`;
   },
 
   ligarSeloColeta(el, rotuloAnalise = '') {
@@ -374,8 +384,12 @@ const Diag = {
 
   // Botões compactos abaixo do texto: SWOT à esquerda, editar/excluir à direita.
   // Depois de promovido, o botão mostra a categoria atribuída e reabre a edição.
-  botoesFator(f, planId, comPromocao) {
-    if (!App.podeEditar()) return '';
+  botoesFator(f, planId, comPromocao, selos = '') {
+    // A faixa existe quando há selo, mesmo sem poder editar: a origem do
+    // registro é informação de leitura, não de edição
+    if (!App.podeEditar()) {
+      return selos ? `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">${selos}</div>` : '';
+    }
     let swot = '';
     if (comPromocao) {
       // Promovido: à esquerda o botão da categoria (reclassificar/desvincular)
@@ -388,7 +402,7 @@ const Diag = {
         : `<button class="btn btn-sm btn-outline-success" data-promover="${f.id}" title="Promover para a SWOT">→ SWOT</button>`;
     }
     return `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
-      ${swot}
+      ${selos}${swot}
       <span class="ms-auto d-flex gap-1">
         <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
         <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}" title="Excluir" aria-label="Excluir">×</button>
@@ -440,44 +454,20 @@ const Diag = {
     const p = this.quizFoco(dono, etapa, ano);
     if (!p) return '';
     const sugestoes = dono.quiz?.sugestoes || [];
-    const fichas = sugestoes.map((sg) => `
-      <div class="ficha-sugestao ${Number(sg.vinculada) ? 'vinculada' : ''}">
-        <div class="small">${Modal.esc(sg.texto)}</div>
-        <div class="d-flex align-items-center gap-2 mt-1">
-          <span class="small text-muted flex-grow-1">${Modal.esc(sg.autor)}${Number(sg.votos) ? ` · ★ ${sg.votos}` : ''}
-            ${Number(sg.vinculada) ? ' · <strong>virou fator</strong>' : ''}</span>
-          ${App.podeEditar() && !Number(sg.vinculada) ? `
-            <button class="btn btn-sm btn-verde" data-usar-fator="${sg.id}">Usar</button>
-            <button class="btn btn-sm btn-outline-danger" data-excluir-sugestao="${sg.id}"
-              title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
-        </div>
-      </div>`).join('');
-    const situacao = p.situacao === 'ATIVA'
-      ? '<span class="badge text-bg-success">na sala agora</span>'
-      : p.situacao === 'ENCERRADA'
-        ? '<span class="badge text-bg-secondary">pergunta encerrada</span>'
-        : '<span class="badge text-bg-light border">ainda não aberta</span>';
+    const recolhido = dono.quizUi?.painelRecolhido;
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-        <strong class="small text-uppercase">Sugestões da sala — ${Modal.esc(p.rotulo)}</strong>
-        ${situacao}
-        <span class="small text-muted flex-grow-1">Use uma sugestão para levá-la ao formulário do
-          fator; a voz fica registrada como origem.</span>
-        ${App.podeEditar() && p.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
-          data-reabrir-foco="${p.id}">${p.situacao === 'ENCERRADA'
-            ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>` : ''}
-      </div>
-      <div class="coluna-quiz coluna-escolha">
-        ${fichas || '<div class="text-muted small">Nenhuma sugestão ainda.</div>'}
-      </div>
+      ${QuizSala.cabecalhoPainel(dono, p, sugestoes.length)}
+      ${recolhido ? '' : `<div class="coluna-quiz coluna-escolha mt-2">
+        ${QuizSala.fichas(sugestoes, { virou: 'virou fator' })}
+      </div>`}
     </div></div>`;
   },
 
-  /** Vozes da sala registradas no fator: selo próprio, sem link. */
+  /** Vozes da sala registradas no registro: selo próprio, sem link. */
   seloSala(f) {
     const n = Number(f.quiz_vozes || 0);
-    return n ? `<div class="mt-1"><span class="badge text-bg-light border"
-      title="Sugestões da sala usadas neste fator">Sala · ${n} voz(es)</span></div>` : '';
+    return n ? `<span class="badge text-bg-light border" title="${n} sugestão(ões) da sala
+      usada(s) aqui">🎤 ${n}</span>` : '';
   },
 
   /** Liga selo, 🎤 e as ações do painel de sugestões de uma tela de etapa. */
@@ -496,8 +486,9 @@ const Diag = {
       App.recarregarSecaoAtiva();
     }));
     if (!modalFator) return;
-    el.querySelectorAll('[data-usar-fator]').forEach((b) => b.addEventListener('click', () => {
-      const sg = (dono.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarFator);
+    QuizSala.ligarRecolher(dono, el);
+    el.querySelectorAll('[data-usar-sugestao]').forEach((b) => b.addEventListener('click', () => {
+      const sg = (dono.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarSugestao);
       const p = this.quizFoco(dono, etapa, ano);
       if (!sg || !p) return;
       modalFator(null, p.categoria, sg);
@@ -536,8 +527,7 @@ const Diag = {
       const cartoes = itens.map((f) => `
         <div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-2">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
-          ${this.seloColeta(f)}${this.seloSala(f)}
-          ${this.botoesFator(f, plan.id, comPromocao)}
+          ${this.botoesFator(f, plan.id, comPromocao, this.selosOrigem(f))}
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
         </div></div>`).join('');
       return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
@@ -721,11 +711,14 @@ const SecaoCenario = {
       const linhas = lista.map((i, idx) => `
         <div class="card mb-2" data-card-fator="${i.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
-          ${Diag.seloColeta(i)}${this.seloSala(i)}
-          ${App.podeEditar() ? `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center justify-content-end">
-            <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
-            <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
-          </div>` : ''}
+          ${Diag.selosOrigem(i) || App.podeEditar()
+            ? `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
+                ${Diag.selosOrigem(i)}
+                ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
+                  <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
+                  <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
+                </span>` : ''}
+              </div>` : ''}
         </div></div>`).join('');
       const cor = 'var(--verde-coperdia)';
       return `<div class="col-md-6" data-coluna-categoria="${tipo}">
@@ -894,45 +887,21 @@ const SecaoCenario = {
     const p = this.perguntaDoAno();
     if (!p) return '';
     const sugestoes = this.quiz?.sugestoes || [];
+    const recolhido = this.quizUi?.painelRecolhido;
     const coluna = (tipo, rotulo, classe) => {
       const fichas = sugestoes.filter((s) => s.tipo_resposta === tipo);
-      const linhas = fichas.map((s) => `
-        <div class="ficha-sugestao ${Number(s.vinculada) ? 'vinculada' : ''}">
-          <div class="small">${Modal.esc(s.texto)}</div>
-          <div class="d-flex align-items-center gap-2 mt-1">
-            <span class="small text-muted flex-grow-1">${Modal.esc(s.autor)}${Number(s.votos) ? ` · ★ ${s.votos}` : ''}
-              ${Number(s.vinculada) ? ' · <strong>virou item</strong>' : ''}</span>
-            ${App.podeEditar() && !Number(s.vinculada) ? `
-              <button class="btn btn-sm btn-verde" data-usar-cenario="${s.id}">Usar</button>
-              <button class="btn btn-sm btn-outline-danger" data-excluir-sugestao="${s.id}"
-                title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
-          </div>
-        </div>`).join('');
       return `<div class="col-md-6"><div class="coluna-quiz ${classe}">
         <div class="fw-bold small text-uppercase mb-2">${rotulo}
           <span class="badge rounded-pill text-bg-secondary">${fichas.length}</span></div>
-        ${linhas || '<div class="text-muted small">Nenhuma sugestão ainda.</div>'}
+        ${QuizSala.fichas(fichas, { virou: 'virou item' })}
       </div></div>`;
     };
-    const situacao = p.situacao === 'ATIVA'
-      ? '<span class="badge text-bg-success">na sala agora</span>'
-      : p.situacao === 'ENCERRADA'
-        ? '<span class="badge text-bg-secondary">pergunta encerrada</span>'
-        : '<span class="badge text-bg-light border">ainda não aberta</span>';
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-        <strong class="small text-uppercase">Sugestões da sala — cenário ${p.ano}</strong>
-        ${situacao}
-        <span class="small text-muted flex-grow-1">Use uma sugestão para levá-la ao formulário do item;
-          a voz fica registrada como origem.</span>
-        ${App.podeEditar() && p.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
-          data-reabrir-foco="${p.id}">${p.situacao === 'ENCERRADA'
-            ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>` : ''}
-      </div>
-      <div class="row g-2">
+      ${QuizSala.cabecalhoPainel(this, p, sugestoes.length)}
+      ${recolhido ? '' : `<div class="row g-2 mt-1">
         ${coluna('SITUACAO_ATUAL', 'Situação atual', 'coluna-escolha')}
         ${coluna('TENDENCIA', 'Tendências', 'coluna-renuncia')}
-      </div>
+      </div>`}
     </div></div>`;
   },
 
@@ -949,8 +918,9 @@ const SecaoCenario = {
       this.perguntaFoco = null;
       App.recarregarSecaoAtiva();
     }));
-    el.querySelectorAll('[data-usar-cenario]').forEach((b) => b.addEventListener('click', () => {
-      const s = (this.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarCenario);
+    QuizSala.ligarRecolher(this, el);
+    el.querySelectorAll('[data-usar-sugestao]').forEach((b) => b.addEventListener('click', () => {
+      const s = (this.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarSugestao);
       if (!s || !this.modalItem) return;
       this.modalItem(null, s.tipo_resposta, s);
     }));
@@ -1081,9 +1051,8 @@ const SecaoSwot = {
         const acao = Diag.seloPlanoAcao(f);
         return `<div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
-          ${Diag.seloSala(f)}
           <div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
-            ${origem}${gut}${acao}
+            ${Diag.selosOrigem(f)}${origem}${gut}${acao}
             ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
               <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
               <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}" title="Excluir" aria-label="Excluir">×</button>
