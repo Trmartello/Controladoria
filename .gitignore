@@ -168,3 +168,7 @@ planejamento.db
 # public/assets/vendor/, onde ficam as bibliotecas vendoradas do front —
 # elas precisam ir para o repositório, senão o deploy serve 404.
 /vendor/
+
+# Worktrees temporárias dos agentes de revisão (criadas e removidas pelo
+# Claude Code): entram no índice como repositório embutido e sujam o commit.
+/.claude/
