@@ -344,18 +344,26 @@ const Participante = {
       ${minhas.length ? `
         <div class="mt-4">
           <div class="rotulo-secao">Suas sugestões nesta pergunta</div>
-          ${minhas.map((i) => this.editando === i.id
-            ? this.editorIdeia(i)
-            : `<div class="ideia-minha d-flex align-items-start gap-2">
-                 ${i.tipo_resposta ? `<span class="badge text-bg-${classeLado(
-                   lados.findIndex((l) => l.valor === i.tipo_resposta))} flex-shrink-0">${
-                   this.esc(rotuloLado(i.tipo_resposta))}</span>` : ''}
-                 <span class="flex-grow-1">${this.esc(i.texto)}</span>
+          ${minhas.map((i) => {
+            if (this.editando === i.id) return this.editorIdeia(i);
+            // O selo do lado e o ✎ dividem uma faixa PRÓPRIA, acima do texto.
+            // Lado a lado com a frase, o selo comia um terço da largura do
+            // celular e a resposta descia em coluna estreita — sete linhas para
+            // o que cabe em quatro. A listra da borda segue o mesmo lado do
+            // selo: verde em cima de selo vermelho fazia a ficha dizer duas
+            // coisas ao mesmo tempo.
+            const classe = i.tipo_resposta
+              ? classeLado(lados.findIndex((l) => l.valor === i.tipo_resposta)) : '';
+            return `<div class="ideia-minha${classe ? ` lado-${classe}` : ''}">
                  ${i.situacao === 'NOVO'
-                   ? `<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none flex-shrink-0"
-                        data-editar="${i.id}" aria-label="Editar sugestão">✎</button>`
-                   : '<span class="small text-success flex-shrink-0" title="Usada pela condução">✓ usada</span>'}
-               </div>`).join('')}
+                   ? `<button type="button" class="btn btn-link btn-sm p-0 float-end ms-2 text-decoration-none"
+                        data-editar="${i.id}" aria-label="Editar sugestão">✎ editar</button>`
+                   : '<span class="small text-success float-end ms-2" title="Usada pela condução">✓ usada</span>'}
+                 ${classe ? `<span class="badge text-bg-${classe} float-start me-2">${
+                   this.esc(rotuloLado(i.tipo_resposta))}</span>` : ''}
+                 <div>${this.esc(i.texto)}</div>
+               </div>`;
+          }).join('')}
         </div>` : ''}`;
   },
 

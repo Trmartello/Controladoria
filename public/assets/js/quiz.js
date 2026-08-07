@@ -126,15 +126,26 @@ const QuizSala = {
   },
 
   /**
-   * O 🎤 de um alvo. `ativo` desenha o SELO em vez do botão: a categoria que já
-   * está na sala não é alvo de toque — tocar de novo reabriria a pergunta e
-   * zeraria o cronômetro dela. É a mesma lição do quadrante da Coleta, onde o
-   * realçado clicável fazia a ideia sumir da matriz sem ninguém pedir.
+   * O 🎤 de um alvo. Aceso (`ativo`), ele é o INTERRUPTOR da pergunta: tocar de
+   * novo a FECHA e a sala para de receber respostas ali mesmo, sem passar pela
+   * aba Sala. Reabrir é tocar mais uma vez — a pergunta volta com as vozes que
+   * já tinha.
+   *
+   * Fechar pede confirmação (em `ligarMicrofones`) e nunca deixa de pedir: o 🎤
+   * é tocado duas vezes sem querer o tempo todo, e a segunda tocada não pode
+   * calar a sala no meio da oficina. Foi por isso que ele já foi selo sem
+   * toque nenhum; o que mudou é que agora existe o que fazer com o segundo
+   * toque, não que o toque acidental tenha deixado de acontecer.
    */
-  microfone(alvo, rotulo, { ativo = false, cor = null } = {}) {
+  microfone(alvo, rotulo, { ativo = false, cor = null, pergunta = null } = {}) {
     if (!App.podeEditar()) return '';
     if (ativo) {
-      return '<span class="mic-sala ativo" title="A sala está respondendo isto">🎤</span>';
+      if (!pergunta) {
+        return '<span class="mic-sala ativo" title="A sala está respondendo isto">🎤</span>';
+      }
+      const t = 'A sala está respondendo isto — toque para fechar e parar de receber respostas';
+      return `<button class="btn btn-sm mic-sala ativo" data-mic-fechar="${Number(pergunta)}"
+        title="${t}" aria-label="${t}">🎤</button>`;
     }
     // O escape é feito AQUI, não pelo chamador: o rótulo pode ser texto que o
     // usuário edita (o nome de um eixo, em Cadastros), e um contrato em que
@@ -173,6 +184,27 @@ const QuizSala = {
         // seguia lendo as vozes velhas — sem saída, porque `perguntaFoco` mora
         // na seção e sobrevive à navegação.
         dono.perguntaFoco = null;
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        b.disabled = false;
+      }
+      App.recarregarSecaoAtiva();
+    }));
+
+    // O toque no 🎤 aceso FECHA a pergunta: a sala para de receber respostas
+    // sem que o condutor precise ir até a aba Sala. Encerrar não apaga nada —
+    // as vozes ficam, e o mesmo 🎤 reabre a pergunta com elas.
+    el.querySelectorAll('[data-mic-fechar]').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Fechar esta pergunta? A sala para de receber respostas '
+        + '— as sugestões já enviadas ficam, e o 🎤 reabre quando você quiser.')) return;
+      b.disabled = true;
+      try {
+        await App.api(`/api/quiz/pergunta/${b.dataset.micFechar}/encerrar`,
+          { planejamento_id: dono.plan.id });
+        // A pergunta fechada continua sendo a que o condutor está lendo; o foco
+        // é o que mantém o painel de vozes na tela em vez de esvaziá-lo junto
+        dono.perguntaFoco = Number(b.dataset.micFechar);
       } catch (e) {
         alert(e.message);
       } finally {

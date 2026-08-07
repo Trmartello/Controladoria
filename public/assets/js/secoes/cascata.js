@@ -243,7 +243,8 @@ const SecaoCascata = {
               { alvo_tipo: 'CASCATA', horizonte_id: horizonteId, driver_id: driverId,
                 alvos: [eixoId ?? null] },
               rotulo,
-              { ativo: this.perguntaAtivaDoAlvo(eixoId) })}
+              { ativo: this.perguntaAtivaDoAlvo(eixoId),
+                pergunta: this.perguntaAtivaDoAlvo(eixoId) ? this.quiz?.pergunta?.id : null })}
             <button class="btn btn-sm btn-outline-secondary" data-editar-celula="${eixoId ?? ''}">${registro ? 'Editar' : 'Definir'}</button>
             ${registro ? `<button class="btn btn-sm btn-outline-danger" data-excluir-celula="${registro.id}">×</button>` : ''}
           </div>` : ''}

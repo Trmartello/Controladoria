@@ -410,6 +410,12 @@ input[type=range].faixa-verde:focus-visible {
   margin-bottom: .35rem;
   overflow-wrap: anywhere;
 }
+/* A listra da borda (e o fundo) seguem o LADO da resposta, os mesmos do par de
+   botões: verde no primeiro (situação atual, escolha), vermelho no segundo
+   (tendência, renúncia). Tudo verde obrigava a ler o selo para saber de que
+   lado era cada uma — e o selo é justamente o que se quer parar de ler. */
+.ideia-minha.lado-success { border-left-color: var(--verde-coperdia); background: #f2f8f5; }
+.ideia-minha.lado-danger { border-left-color: #dc3545; background: #fdf3f4; }
 .ideia-votavel {
   display: flex;
   gap: .5rem;
@@ -501,7 +507,15 @@ input[type=range].faixa-verde:focus-visible {
   border-radius: .3rem;
   padding: .05rem .35rem;
   font-size: .8rem;
-  cursor: default;
+  cursor: pointer;
+}
+/* Aceso, o 🎤 é o interruptor da pergunta: fica VERMELHO ao encostar o mouse,
+   porque o que o toque faz ali é fechar a sala para aquele alvo. Verde no
+   repouso (a sala está aqui), vermelho na intenção (vou fechar). */
+.mic-sala.ativo:hover,
+.mic-sala.ativo:focus-visible {
+  background: #b02a37;
+  border-color: #b02a37;
 }
 @media (max-width: 767.98px) {
   .mic-sala {

@@ -207,7 +207,14 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   cronômetro da pergunta, e o 🎤 é tocado duas vezes sem querer o tempo todo);
   sem sala aberta responde 409/**`SEM_SALA`** para a tela perguntar antes (sessão
   que nasce sozinha é sessão sem nome, que ninguém sabe que abriu); e o 🎤 da
-  categoria que já está na sala **vira selo, não botão**.
+  categoria que já está na sala **é o interruptor dela**: tocar de novo
+  **fecha** a pergunta (`POST /api/quiz/pergunta/{id}/encerrar`) e a sala para
+  de receber respostas ali mesmo, sem passar pela aba Sala — tocar mais uma vez
+  reabre, com as vozes que já tinha. Aceso ele fica vermelho ao encostar o mouse
+  (verde = a sala está aqui; vermelho = vou fechar) e **fechar pede confirmação,
+  sempre**: o 🎤 é tocado duas vezes sem querer o tempo todo, e a segunda tocada
+  não pode calar a sala no meio da oficina. Quem fecha guarda a pergunta em
+  `perguntaFoco`, senão o painel de vozes se esvazia junto com o fechamento.
   Lições da revisão adversarial desta fase: **o servidor nunca fabrica a
   confirmação do usuário** — o `abrir_sala` do 🎤 inventava `confirmar_encerrar`
   e derrubava a sala de outra pessoa entre o SELECT (fora da trava) e o
@@ -307,6 +314,14 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   **nunca redesenha com um campo em foco ou com texto digitado** — nas duas
   telas. Redesenhar tira o foco e, no celular, isso **fecha o teclado no meio
   da frase**: o participante não consegue escrever.
+  Em "suas sugestões", a ficha do participante **flutua** o selo do lado e o
+  ✎ (`float-start`/`float-end`): a frase começa ao lado do selo e as linhas
+  seguintes ocupam a largura toda. Ao lado do texto em coluna (o que era), o
+  selo comia um terço da tela do celular e uma resposta de quatro linhas descia
+  em sete. A **listra da borda segue o lado** — `.ideia-minha.lado-success`
+  (verde, primeiro lado) e `.lado-danger` (vermelho, segundo) —, os mesmos do
+  par de botões: tudo verde obrigava a ler o selo para saber de que lado era
+  cada uma, e o selo é justamente o que se quer parar de ler.
   Vozes iguais são agrupadas na nuvem e tratadas **em grupo**: N ideias
   apontam para UM destino. Por isso `FatorController`/`CenarioController`
   fazem o JOIN pelo `MIN(id)` — juntar direto multiplicaria o card.

@@ -442,7 +442,8 @@ const Diag = {
     const naSala = ativa && ativa.alvo_tipo === 'FATOR' && ativa.etapa === etapa
       && Number(ativa.ano) === Number(ano) && ativa.categoria === cat;
     return QuizSala.microfone(
-      { alvo_tipo: 'FATOR', etapa, ano, alvos: [cat] }, rotulo, { ativo: naSala, cor });
+      { alvo_tipo: 'FATOR', etapa, ano, alvos: [cat] }, rotulo,
+      { ativo: naSala, cor, pergunta: naSala ? ativa.id : null });
   },
 
   /**
@@ -754,7 +755,8 @@ const SecaoCenario = {
         <div class="d-flex align-items-center gap-2 flex-wrap">
           ${Diag.seletorAno('cenario')}
           ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
-            { ativo: this.perguntaDoAno()?.situacao === 'ATIVA' })}
+            { ativo: this.perguntaDoAno()?.situacao === 'ATIVA',
+              pergunta: this.perguntaDoAno()?.situacao === 'ATIVA' ? this.perguntaDoAno().id : null })}
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
         </div>
       </div>
