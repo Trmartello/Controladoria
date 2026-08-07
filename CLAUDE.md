@@ -220,6 +220,16 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   (`quizUi.painelRecolhido`) — numa oficina cheia ele empurraria as colunas da
   análise para fora da tela. A ficha é uma só (`QuizSala.fichas`), usada pelas
   três telas: escrita em cada uma, este layout divergiria na primeira mudança.
+  **A voz que virou registro SAI do painel** — o lugar dela passa a ser o
+  quadrante de destino, e mantê-la ali com um ✓ fazia a fila de trabalho crescer
+  com o que já foi feito (o contador vira "abertas de total"). Apagado o
+  destino, ela **volta sozinha e JÁ REDIGIDA**: `Quiz::guardarRedacao` guarda o
+  texto do registro no vínculo (a cada salvamento, não só ao amarrar — senão a
+  edição seguinte deixaria a redação velha; na cascata, por LADO, porque a
+  célula tem dois textos) e `Quiz::soltarVozes` **promove** esse
+  `texto_tratado` a `texto`, limpando-o. Deixá-lo por cima do original criaria
+  duas verdades, e a correção do participante pelo celular escreve em `texto` e
+  ficaria invisível.
   Selo de origem (`Coleta · Fulano`, `🎤 N`) mora **dentro da faixa dos botões**
   do cartão, nunca numa linha própria: cada um numa linha custava duas linhas
   por cartão, e um cartão de três palavras ficava com a altura de um parágrafo.

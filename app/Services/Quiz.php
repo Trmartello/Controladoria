@@ -657,6 +657,12 @@ class Quiz
      * cenário ou um fator (a tela da análise, a exclusão da ideia, a
      * reclassificação e a exclusão do fator) — escrita quatro vezes, a regra
      * divergiria na primeira mudança.
+     *
+     * A voz volta com o TEXTO REDIGIDO, não com o original: quem aceitou
+     * refinou a frase da sala, e apagar o registro não desfaz esse trabalho. O
+     * `texto_tratado` (a redação, guardada no vínculo) é PROMOVIDO a `texto` e
+     * some — deixá-lo por cima do original criaria duas verdades, e a correção
+     * do participante pelo celular escreve em `texto` e ficaria invisível.
      */
     public static function soltarVozes(string $destinoTipo, array $destinoIds): void
     {
@@ -668,9 +674,35 @@ class Quiz
         Database::executar(
             "UPDATE coleta_item
                 SET situacao = CASE WHEN origem = 'QUIZ' THEN 'NOVO' ELSE 'SELECIONADO' END,
+                    texto = CASE WHEN origem = 'QUIZ' AND texto_tratado IS NOT NULL
+                                   AND texto_tratado <> '' THEN texto_tratado ELSE texto END,
+                    texto_tratado = CASE WHEN origem = 'QUIZ' THEN NULL ELSE texto_tratado END,
                     destino_tipo = NULL, destino_id = NULL, triado_por = NULL, triado_em = NULL
               WHERE destino_tipo = ? AND destino_id IN ({$marcas})",
             array_merge([$destinoTipo], $ids)
+        );
+    }
+
+    /**
+     * Guarda no vínculo a redação ATUAL do registro, para a voz voltar refinada
+     * ao painel se ele for apagado (`soltarVozes` promove este campo).
+     *
+     * É chamado a cada salvamento, não só ao amarrar: editar o fator meses
+     * depois sem tocar nas vozes deixaria a redação guardada velha, e a voz
+     * voltaria com um texto que ninguém mais reconhece. `$lado` existe para a
+     * cascata, cuja célula tem dois textos — devolver a renúncia com o texto da
+     * escolha seria pior que devolver o original.
+     */
+    public static function guardarRedacao(
+        string $destinoTipo, int $destinoId, string $texto, ?string $lado = null
+    ): void {
+        Database::executar(
+            "UPDATE coleta_item SET texto_tratado = ?
+             WHERE destino_tipo = ? AND destino_id = ? AND origem = 'QUIZ'"
+            . ($lado === null ? '' : ' AND tipo_resposta = ?'),
+            $lado === null
+                ? [$texto, $destinoTipo, $destinoId]
+                : [$texto, $destinoTipo, $destinoId, $lado]
         );
     }
 

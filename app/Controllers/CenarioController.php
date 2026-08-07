@@ -80,6 +80,8 @@ class CenarioController
             );
         }
         $this->vincularSugestoes($d, $id, $planId, $ano);
+        // Sempre, não só ao amarrar: ver o comentário em FatorController
+        Quiz::guardarRedacao('CENARIO', $id, $descricao);
         Json::ok(['id' => $id]);
     }
 

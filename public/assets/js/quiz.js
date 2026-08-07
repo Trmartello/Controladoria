@@ -191,25 +191,32 @@ const QuizSala = {
    * ter duas ou três palavras, e uma ficha por linha, na largura da página,
    * gastava meia tela com cinco respostas.
    */
-  fichas(sugestoes, { acao = 'Usar', virou = 'usada' } = {}) {
-    if (!sugestoes.length) {
-      return '<div class="text-muted small">Nenhuma sugestão ainda.</div>';
+  fichas(sugestoes, { acao = 'Usar', virou = 'registro' } = {}) {
+    // A voz que já virou registro SAI do painel: o lugar dela agora é o
+    // quadrante de destino, e mantê-la aqui com um ✓ fazia a fila de trabalho
+    // crescer com o que já foi feito. Apagado o destino, ela volta sozinha
+    // (`Quiz::soltarVozes`), já com o texto que o condutor redigiu.
+    const abertas = sugestoes.filter((s) => !Number(s.vinculada));
+    if (!abertas.length) {
+      const usadas = sugestoes.length;
+      return `<div class="text-muted small">${usadas
+        ? `${usadas === 1 ? 'A única sugestão já virou' : `Todas as ${usadas} sugestões já viraram`}
+           ${Modal.esc(virou)}.`
+        : 'Nenhuma sugestão ainda.'}</div>`;
     }
     const cartao = (s) => `
-      <div class="ficha-sugestao ${Number(s.vinculada) ? 'vinculada' : ''}">
+      <div class="ficha-sugestao">
         <div class="texto-voz" title="${Modal.esc(s.texto)}">${Modal.esc(s.texto)}</div>
         <div class="rodape-voz">
           <span class="autor-voz" title="${Modal.esc(s.autor)}">${Modal.esc(s.autor)}${
             Number(s.votos) ? ` · ★ ${s.votos}` : ''}</span>
-          ${Number(s.vinculada)
-            ? `<span class="text-success flex-shrink-0" title="Já ${Modal.esc(virou)}">✓</span>`
-            : App.podeEditar() ? `
-              <button class="btn btn-verde btn-voz" data-usar-sugestao="${s.id}">${Modal.esc(acao)}</button>
-              <button class="btn btn-outline-danger btn-voz" data-excluir-sugestao="${s.id}"
-                title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
+          ${App.podeEditar() ? `
+            <button class="btn btn-verde btn-voz" data-usar-sugestao="${s.id}">${Modal.esc(acao)}</button>
+            <button class="btn btn-outline-danger btn-voz" data-excluir-sugestao="${s.id}"
+              title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
         </div>
       </div>`;
-    return `<div class="grade-sugestoes">${sugestoes.map(cartao).join('')}</div>`;
+    return `<div class="grade-sugestoes">${abertas.map(cartao).join('')}</div>`;
   },
 
   /**
@@ -218,7 +225,11 @@ const QuizSala = {
    * painel empurra as colunas da análise para fora da tela, e às vezes o
    * condutor quer trabalhar nos cartões.
    */
-  cabecalhoPainel(dono, p, quantas) {
+  cabecalhoPainel(dono, p, sugestoes) {
+    const quantas = {
+      total: sugestoes.length,
+      abertas: sugestoes.filter((s) => !Number(s.vinculada)).length,
+    };
     const ui = dono.quizUi || (dono.quizUi = {});
     const situacao = p.situacao === 'ATIVA'
       ? '<span class="badge text-bg-success">na sala agora</span>'
@@ -228,7 +239,8 @@ const QuizSala = {
     return `<div class="d-flex align-items-center gap-2 flex-wrap cabecalho-quiz">
       <strong class="small text-uppercase">${Modal.esc(p.rotulo)}</strong>
       ${situacao}
-      <span class="badge text-bg-light border">${quantas} voz(es)</span>
+      <span class="badge text-bg-light border" title="Vozes ainda não usadas, do total recebido">${
+        quantas.abertas} de ${quantas.total} voz(es)</span>
       ${App.podeEditar() && p.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
         data-reabrir-foco="${p.id}">${p.situacao === 'ENCERRADA'
           ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>` : ''}

@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Quiz;
 
 /** Cascata de escolhas: células driver × horizonte com síntese e aberturas por eixo. */
 class CascataController
@@ -170,6 +171,10 @@ class CascataController
                 );
             }
         }
+        // Sempre, e por LADO: a célula tem dois textos, e devolver a renúncia
+        // com o texto da escolha seria pior que devolver o original
+        Quiz::guardarRedacao('CASCATA', $id, $escolha, 'ESCOLHA');
+        Quiz::guardarRedacao('CASCATA', $id, $renuncia, 'RENUNCIA');
         Json::ok(['id' => $id]);
     }
 

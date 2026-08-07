@@ -346,14 +346,17 @@ const SecaoCascata = {
     const recolhido = this.quizUi?.painelRecolhido;
     const coluna = (tipo, rotulo, classe) => {
       const fichas = sugestoes.filter((s) => s.tipo_resposta === tipo);
+      // O contador é das ABERTAS: a voz já usada saiu da grade, e contá-la aqui
+      // faria o número prometer trabalho que não existe mais
+      const abertas = fichas.filter((s) => !Number(s.vinculada)).length;
       return `<div class="col-md-6"><div class="coluna-quiz ${classe}">
         <div class="fw-bold small text-uppercase mb-2">${rotulo}
-          <span class="badge rounded-pill text-bg-secondary">${fichas.length}</span></div>
-        ${QuizSala.fichas(fichas, { virou: 'na célula' })}
+          <span class="badge rounded-pill text-bg-secondary">${abertas}</span></div>
+        ${QuizSala.fichas(fichas, { virou: 'escolha da célula' })}
       </div></div>`;
     };
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
-      ${QuizSala.cabecalhoPainel(this, p, sugestoes.length)}
+      ${QuizSala.cabecalhoPainel(this, p, sugestoes)}
       ${recolhido ? '' : `<div class="row g-2 mt-1">
         ${coluna('ESCOLHA', 'Respostas (escolha)', 'coluna-escolha')}
         ${coluna('RENUNCIA', 'Renúncias', 'coluna-renuncia')}

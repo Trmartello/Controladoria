@@ -113,6 +113,9 @@ class FatorController
             );
         }
         $this->vincularSugestoes($d, $id, $planId, $etapa, $categoria, $ano);
+        // Sempre, não só ao amarrar: a redação guardada precisa acompanhar as
+        // edições seguintes do fator, senão a voz volta com um texto velho
+        Quiz::guardarRedacao('FATOR', $id, $descricao);
         Json::ok(['id' => $id]);
     }
 
