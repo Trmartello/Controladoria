@@ -769,8 +769,8 @@ degatear — mas está aqui escrito para não virar surpresa.
 # Parte III — A sala tem casa própria, e a pergunta segue a tela
 
 Revisão de escopo pedida em 07/08/2026, depois da Fase 3 entregue, com as
-decisões fechadas no mesmo dia (seção 20). **Nada desta parte foi construído** —
-ela existe para a decisão vir antes do código.
+decisões fechadas no mesmo dia (seção 20) e **entregue** na sequência
+(seção 23).
 
 ## 18. O que se quer agora
 
@@ -930,3 +930,40 @@ pergunta `LIVRE` do roteiro, a estrela por pergunta e a unificação de vozes.
 
 Cada passo é entregável sozinho: entre um e outro o sistema fica coerente, e a
 validação de uma tela não espera a próxima.
+
+## 23. Entregue
+
+Os cinco passos da seção 22 saíram juntos, e o que mudou de rumo pelo caminho:
+
+- **A aba Sala** (`sala.js`, última do menu) com QR de 260px, PIN de 3,2rem,
+  participantes, pergunta ativa, roteiro e renomear. O "Ver" do roteiro
+  **navega até a análise de origem** — examinar uma pergunta é ler as
+  sugestões, e elas moram lá. O foco atravessa a navegação por
+  `QuizSala.focoPendente`, que quem chega consome e limpa.
+- **`POST /api/quiz/tela`** com as três guardas da seção 20 (idempotente,
+  `SEM_SALA`, 🎤 ativo vira selo).
+- **A sessão pode nascer VAZIA.** Abrir pela aba Sala não pede alvo nenhum: o
+  roteiro cresce com o 🎤 de cada análise. Exigir a primeira pergunta ali
+  obrigaria a escolher por onde o encontro começa antes de saber.
+- **PESTEL, Porter e SWOT** ganharam 🎤 por categoria, selo, painel de
+  sugestões e o vínculo em `FatorController::vincularSugestoes` (guarda por
+  etapa **e** ano, como o cenário guarda por ano).
+- **`secaoEtapa()`**: as três telas de etapa nascem de uma fábrica com estado
+  próprio da sala. Compartilhar o estado faria o polling de uma repintar a
+  outra — elas coexistem no DOM.
+- **O botão da Cascata mudou de papel**: "Perguntar à sala" virou "Montar
+  roteiro desta célula", e o padrão passou de *abrir agora* para *só
+  enfileirar*. Montar seis aberturas de uma vez é preparação; conduzir é o 🎤 de
+  um toque em cada cartão.
+
+Dois defeitos que a validação pegou:
+
+| O que era | Correção |
+|---|---|
+| O celular perguntava **"Quais político você vê para 2026?"** — o enunciado era montado do rótulo, e as categorias do PESTEL são adjetivos | `Quiz::PERGUNTA_CATEGORIA`, uma pergunta escrita por categoria ("Que fatores POLÍTICOS afetam o nosso negócio em 2026?") |
+| O 🎤 inativo saía em `grayscale`, e ao lado do "+" era lido como ícone de edição | sai em cor, com opacidade menor — a leitura vira imediata |
+
+Validado com Playwright em desktop (1500×900) e celular (390×844): 21
+verificações do fluxo novo, 5 de responsividade e 8 de regressão da Fase 3
+(Cenário com dois lados, Cascata, PIN único, colisão de sala, isolamento com a
+Coleta).

@@ -190,6 +190,7 @@ const App = {
       swot: SecaoSwot, gut: SecaoGut, cascata: SecaoCascata,
       projetos: SecaoProjetos, investimentos: SecaoInvestimentos,
       metas: SecaoMetas, relatorio: SecaoRelatorio,
+      sala: SecaoSala,
     };
     const secao = secoes[this.secaoAtiva];
     if (secao) secao.carregar().catch((e) => {

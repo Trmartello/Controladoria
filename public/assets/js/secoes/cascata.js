@@ -29,6 +29,12 @@ const SecaoCascata = {
       el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu ☰.</div>';
       return;
     }
+    // Foco vindo do "Ver" da aba Sala: abre a célula da pergunta examinada
+    const vindo = QuizSala.consumirFoco('cascata');
+    if (vindo) {
+      this.perguntaFoco = vindo.perguntaId;
+      this.aoNavegar(vindo.pergunta);
+    }
     this.plan = await App.planejamento();
     [this.dados, this.quiz] = await Promise.all([
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
@@ -69,7 +75,8 @@ const SecaoCascata = {
           <span class="badge badge-horizonte fs-6">Sínteses ${feitasSinteses}/${totalSinteses}</span>
         </div>
       </div>
-      <div id="faixa-quiz">${QuizSala.faixa(this)}</div>
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
+        id="selo-quiz">${QuizSala.selo(this, 'cascata')}</div>
       <p class="text-muted">Cada célula <em>driver × horizonte</em> tem uma síntese e ${eixos.length}
       aberturas por eixo — cada escolha declara também a sua renúncia. Clique na célula para detalhar.</p>
       <div class="table-responsive">
@@ -95,7 +102,7 @@ const SecaoCascata = {
       });
     });
 
-    QuizSala.ligar(this, el);
+    QuizSala.ligarSelo(el);
     // Sessão aberta: sem célula escolhida ainda, abre a da pergunta ativa —
     // quem entra na seção durante o encontro cai direto no que a sala vê.
     // Só a pergunta desta tela tem célula: a sala é do projeto e a ativa pode
@@ -149,10 +156,10 @@ const SecaoCascata = {
         (e) => [e.id, e.escolha, e.renuncia, (e.sugestoes || []).length]));
     if (assinatura === this.assinaturaQuiz) return;
     this.assinaturaQuiz = assinatura;
-    const faixa = document.getElementById('faixa-quiz');
-    if (faixa) {
-      faixa.innerHTML = QuizSala.faixa(this);
-      QuizSala.ligar(this, el);
+    const selo = document.getElementById('selo-quiz');
+    if (selo) {
+      selo.innerHTML = QuizSala.selo(this, 'cascata');
+      QuizSala.ligarSelo(el);
     }
     if (!quizNovo.sessao) {
       clearInterval(this.relogioQuiz);
@@ -165,6 +172,19 @@ const SecaoCascata = {
    * A pergunta em FOCO (a examinada pelo roteiro; por padrão, a ativa),
    * quando ela pertence à célula aberta no detalhe.
    */
+  /**
+   * A pergunta ATIVA é exatamente esta parte da célula aberta? É o que decide
+   * se o 🎤 do cartão vira selo — a categoria que já está na sala não é alvo de
+   * toque (reativar reabriria a pergunta e zeraria o cronômetro dela).
+   */
+  perguntaAtivaDoAlvo(eixoId) {
+    const p = this.quiz?.pergunta;
+    if (!p || p.alvo_tipo !== 'CASCATA' || !this.celulaAberta) return false;
+    return Number(p.driver_id) === Number(this.celulaAberta.driverId)
+      && Number(p.horizonte_id) === Number(this.celulaAberta.horizonteId)
+      && Number(p.eixo_id || 0) === Number(eixoId || 0);
+  },
+
   perguntaDaCelulaAberta() {
     const p = this.quiz?.foco || this.quiz?.pergunta;
     // A sala é do projeto: a ativa pode ser de outra análise. Sem conferir o
@@ -219,6 +239,11 @@ const SecaoCascata = {
             ${vozes ? `<div class="mt-1 d-flex gap-1 flex-wrap">${vozes}</div>` : ''}
           </div>
           ${App.podeEditar() ? `<div class="d-flex gap-1 flex-shrink-0 align-items-start">
+            ${QuizSala.microfone(
+              { alvo_tipo: 'CASCATA', horizonte_id: horizonteId, driver_id: driverId,
+                alvos: [eixoId ?? null] },
+              Modal.esc(rotulo),
+              { ativo: this.perguntaAtivaDoAlvo(eixoId) })}
             <button class="btn btn-sm btn-outline-secondary" data-editar-celula="${eixoId ?? ''}">${registro ? 'Editar' : 'Definir'}</button>
             ${registro ? `<button class="btn btn-sm btn-outline-danger" data-excluir-celula="${registro.id}">×</button>` : ''}
           </div>` : ''}
@@ -238,10 +263,9 @@ const SecaoCascata = {
               (${horizonte.ano_inicio}–${horizonte.ano_fim} · “${Modal.esc(horizonte.tema)}”)
               <div class="small text-muted">${Modal.esc(horizonte.objetivo)}</div>
             </div>
-            ${podePerguntar ? `<button class="btn btn-sm ${perguntaAqui ? 'btn-outline-success' : 'btn-verde'}"
-              id="btn-perguntar-sala">
-              ${perguntaAqui ? 'Perguntar outra parte à sala'
-                : this.quiz?.sessao ? 'Perguntar à sala' : 'Perguntar à sala (abrir sessão)'}</button>` : ''}
+            ${podePerguntar ? `<button class="btn btn-sm btn-outline-secondary"
+              id="btn-perguntar-sala" title="Pôr várias partes desta célula no roteiro">
+              Montar roteiro desta célula</button>` : ''}
             ${perguntaAqui ? '<span class="badge text-bg-success align-self-center">A sala está respondendo esta célula</span>' : ''}
           </div>
         </div>
@@ -305,6 +329,7 @@ const SecaoCascata = {
       App.recarregarSecaoAtiva();
     }));
 
+    QuizSala.ligarMicrofones(this, alvo);
     this.ligarPainelVivo(alvo);
   },
 
@@ -397,10 +422,9 @@ const SecaoCascata = {
   },
 
   /**
-   * "Perguntar à sala": com sessão aberta, só ativa a pergunta desta célula
-   * (síntese; as aberturas entram pelo mesmo botão quando a célula do eixo
-   * estiver em foco — Fase 1 pergunta a célula driver × horizonte na síntese).
-   * Sem sessão, abre uma (tema + tetos) e já ativa a pergunta.
+   * Montar o roteiro desta célula: várias partes de uma vez ("as 6 aberturas de
+   * *Como Vencer*"). É trabalho de PREPARAÇÃO — conduzir é o 🎤 de cada cartão,
+   * de um toque. Por isso o padrão aqui é só enfileirar, sem mexer na sala.
    */
   perguntarASala() {
     const { driverId, horizonteId } = this.celulaAberta;
@@ -431,8 +455,8 @@ const SecaoCascata = {
             opcoes: opcoesAlvo, obrigatorio: true,
             ajuda: 'Marque um ou vários: cada um vira uma pergunta do roteiro.' },
           { nome: 'acao', rotulo: 'Quando?', tipo: 'botoes', opcoes: [
-            { valor: 'AGORA', rotulo: 'Abrir a primeira agora' },
             { valor: 'ROTEIRO', rotulo: 'Só adicionar ao roteiro' },
+            { valor: 'AGORA', rotulo: 'Abrir a primeira agora' },
           ], ajuda: 'Abrir agora muda o celular de todo mundo; o roteiro guarda para depois.' },
         ],
         transformar: (d) => {

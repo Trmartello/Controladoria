@@ -52,6 +52,8 @@
         <li class="nav-item mt-2 text-white-50 small">Gestão</li>
         <li><a class="nav-link" href="#metas" data-secao="metas">Metas · Indicadores</a></li>
         <li><a class="nav-link" href="#relatorio" data-secao="relatorio">Relatório de Status</a></li>
+        <li class="nav-item mt-2 text-white-50 small">Encontro</li>
+        <li><a class="nav-link" href="#sala" data-secao="sala">Sala · PIN e QR code</a></li>
       </ul>
 
       <div class="mt-auto pt-3 border-top border-secondary">
@@ -80,6 +82,7 @@
       <section id="secao-investimentos" class="secao d-none"></section>
       <section id="secao-metas" class="secao d-none"></section>
       <section id="secao-relatorio" class="secao d-none"></section>
+      <section id="secao-sala" class="secao d-none"></section>
     </main>
   </div>
 
@@ -108,8 +111,8 @@
   <script src="<?= versao_asset('/assets/vendor/bootstrap.bundle.min.js') ?>"></script>
   <script src="<?= versao_asset('/assets/vendor/qrcode.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/modal.js') ?>"></script>
-  <!-- A faixa da sessão do quiz é a mesma em toda tela que conduz um encontro:
-       carrega antes das seções, que a consomem -->
+  <!-- As peças da sala do quiz (selo, 🎤, roteiro) são as mesmas em toda tela
+       que conduz um encontro: carregam antes das seções, que as consomem -->
   <script src="<?= versao_asset('/assets/js/quiz.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/painel.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
@@ -121,6 +124,7 @@
   <script src="<?= versao_asset('/assets/js/secoes/investimentos.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/metas.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/relatorio.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/sala.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/app.js') ?>"></script>
 </body>
 </html>

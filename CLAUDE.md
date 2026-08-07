@@ -176,11 +176,31 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   conduz**, em todos os alvos. A guarda do vínculo é o ALVO da pergunta (JOIN
   por `quiz_pergunta`), nunca a rodada: encontros diferentes podem ter
   perguntado o mesmo alvo e todas essas vozes valem.
-  No front, a faixa da sessão (PIN, QR, participantes, pergunta ativa, roteiro)
-  é o componente compartilhado **`public/assets/js/quiz.js`** (`QuizSala`), que
-  não guarda estado: quem guarda é a seção dona (`plan`, `quiz`, `perguntaFoco`,
-  `quizUi`, `secaoId`, `aoNavegar`, `aoBater`) — duas seções dividindo o "QR
-  recolhido" recolheriam o QR uma da outra no meio do encontro. `Modal.abrir`
+  **O PIN e o QR moram numa aba só** — `Sala · PIN e QR code`, a ÚLTIMA do menu
+  (`sala.js`): é a tela de PROJEÇÃO do encontro (QR e PIN grandes) e a casa do
+  roteiro. As análises ficam com duas coisas: o **selo** (`QuizSala.selo`), uma
+  linha dizendo onde a sala está — e ela fala mesmo quando está LONGE, com
+  atalho ("a sala está em Porter · Rivalidade"), porque o silêncio seria lido
+  como "não tem sala aberta", que é justamente quando alguém abre uma segunda —
+  e o **painel de sugestões**, que não é sujeira: é onde a voz vira fator.
+  **A sala muda quando o condutor ESCOLHE, nunca por navegar** (a regra
+  "Navegar ≠ ativar" continua valendo, e pelo mesmo motivo: abrir a SWOT só para
+  conferir um fator não pode interromper a discussão de Porter). O gesto é o
+  **🎤 de cada categoria/lado/cartão** → `POST /api/quiz/tela`, um alvo por vez.
+  Três guardas dessa rota: já sendo a ativa **não faz nada** (reativar zeraria o
+  cronômetro da pergunta, e o 🎤 é tocado duas vezes sem querer o tempo todo);
+  sem sala aberta responde 409/**`SEM_SALA`** para a tela perguntar antes (sessão
+  que nasce sozinha é sessão sem nome, que ninguém sabe que abriu); e o 🎤 da
+  categoria que já está na sala **vira selo, não botão**.
+  A pergunta que a sala lê vem de `Quiz::PERGUNTA_CATEGORIA`, uma por categoria:
+  montá-la do rótulo dava "Quais político você vê para 2026?" — as categorias do
+  PESTEL são adjetivos, e pergunta torta é resposta torta.
+  No front, as peças (`selo`, `microfone`, `roteiro`, `perguntar`) são o
+  componente compartilhado **`public/assets/js/quiz.js`** (`QuizSala`), que não
+  guarda estado: quem guarda é a seção dona (`plan`, `quiz`, `perguntaFoco`,
+  `quizUi`, `secaoId`, `aoNavegar`, `aoBater`). PESTEL/Porter/SWOT nascem de
+  `secaoEtapa()` justamente por isso — as três coexistem no DOM (navegar só põe
+  `d-none`) e um estado compartilhado faria o polling de uma repintar a outra. `Modal.abrir`
   ganhou `enviar` para o 409 virar confirmação em vez de erro morto no modal.
   Armadilhas já pagas: o rádio focado do par de lados NÃO conta como
   "digitando" (congelava o polling); o rascunho atravessa redesenhos por

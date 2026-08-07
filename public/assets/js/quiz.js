@@ -41,23 +41,18 @@ const QuizSala = {
     return p?.rotulo || '—';
   },
 
-  // ---- A faixa ----
+  // ---- Peças ----
 
   /**
-   * `dono` precisa de: quiz (estado), perguntaFoco, quizUi {qrAberto,
-   * roteiroAberto}. Devolve '' quando não há sessão aberta.
+   * O roteiro do encontro, com os botões de condução. Mora aqui porque a aba
+   * Sala e (por enquanto) a faixa mostram a MESMA lista — duas cópias
+   * divergiriam no primeiro estado novo de pergunta.
    */
-  faixa(dono) {
-    const q = dono.quiz;
-    if (!q?.sessao) return '';
-    const ui = dono.quizUi || (dono.quizUi = {});
-    const p = q.pergunta;
-    const roteiro = q.roteiro || [];
-    const prog = q.progresso || { atual: null, total: roteiro.length };
-    const proxima = roteiro.find((x) => x.situacao === 'PENDENTE');
+  roteiro(dono) {
+    const lista = dono.quiz?.roteiro || [];
+    if (!lista.length) return '';
     const podeConduzir = App.podeEditar();
-
-    const linhaRoteiro = (x, i) => {
+    const linha = (x, i) => {
       const selo = x.situacao === 'ATIVA'
         ? '<span class="badge text-bg-success">na sala</span>'
         : x.situacao === 'ENCERRADA'
@@ -70,7 +65,8 @@ const QuizSala = {
           ${Number(x.sugestoes) ? `<span class="text-muted">· ${x.sugestoes} sugestão(ões)</span>` : ''}</span>
         ${selo}
         <button class="btn btn-sm btn-outline-secondary" data-ver-pergunta="${x.id}"
-          title="Examinar as sugestões sem mexer na sala">Ver</button>
+          data-secao-pergunta="${Modal.esc(x.secao || '')}"
+          title="Examinar as sugestões na tela de origem">Ver</button>
         ${podeConduzir && x.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
           data-ativar-pergunta="${x.id}">${x.situacao === 'ENCERRADA' ? 'Reabrir' : 'Abrir para a sala'}</button>` : ''}
         ${podeConduzir && x.situacao === 'ATIVA' ? `<button class="btn btn-sm btn-outline-secondary"
@@ -80,55 +76,104 @@ const QuizSala = {
           title="Tirar do roteiro" aria-label="Tirar do roteiro">×</button>` : ''}
       </li>`;
     };
-
-    return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
-      <div class="d-flex align-items-center gap-2 flex-wrap">
-        ${q.sessao.pin ? `<span class="badge text-bg-light border">PIN <strong class="pin-mini">${Modal.esc(q.sessao.pin)}</strong></span>` : ''}
-        <span class="badge text-bg-light border" data-quiz-participantes>${q.sessao.participantes} participante(s)</span>
-        ${prog.total ? `<span class="badge text-bg-light border">${prog.atual
-          ? `Pergunta ${prog.atual} de ${prog.total}` : `${prog.total} no roteiro`}</span>` : ''}
-        ${p ? `<span class="badge badge-horizonte">Perguntando: ${Modal.esc(this.rotulo(p))}</span>`
-            : '<span class="badge text-bg-secondary">nenhuma pergunta ativa</span>'}
-        <span class="small text-muted flex-grow-1 text-truncate">${Modal.esc(q.sessao.tema)}</span>
-        ${podeConduzir && proxima ? `<button class="btn btn-sm btn-verde" data-quiz-proxima
-          title="${Modal.esc(this.rotulo(proxima))}">Próxima pergunta →</button>` : ''}
-        ${podeConduzir ? '<button class="btn btn-sm btn-outline-danger" data-quiz-encerrar>Encerrar sessão</button>' : ''}
-      </div>
-      ${roteiro.length ? `<details class="mt-2" data-quiz-roteiro${ui.roteiroAberto ? ' open' : ''}>
-        <summary class="small">Roteiro do encontro (${roteiro.length} pergunta(s))</summary>
-        <ol class="lista-roteiro mt-2">${roteiro.map(linhaRoteiro).join('')}</ol>
-      </details>` : ''}
-      ${q.sessao.pin ? `<details class="painel-qr mt-2" data-quiz-qr${ui.qrAberto ? ' open' : ''}>
-        <summary>QR code para projetar</summary>
-        <div class="d-flex flex-wrap gap-3 align-items-start mt-2">
-          <div class="caixa-qr" data-quiz-qrcode aria-hidden="true"></div>
-          <div class="flex-grow-1" style="min-width:12rem">
-            <div class="rotulo-secao">Entre em ${Modal.esc(location.host)}/entrar</div>
-            <div class="pin-grande">${Modal.esc(q.sessao.pin)}</div>
-          </div>
-        </div>
-      </details>` : ''}
-    </div></div>`;
+    return `<ol class="lista-roteiro">${lista.map(linha).join('')}</ol>`;
   },
 
   /**
-   * Liga os eventos da faixa dentro de `el`. `dono.aoNavegar(pergunta)` é
-   * chamado antes de recarregar quando o condutor examina outra pergunta —
-   * é onde cada seção posiciona a própria tela (a célula da cascata, o ano do
-   * cenário) sem que o componente precise saber o que ela mostra.
+   * O SELO de uma análise: uma linha dizendo onde a sala está. Substitui a
+   * faixa inteira nas telas de análise (PIN, QR e roteiro moram na aba Sala).
+   *
+   * Ele fala mesmo quando a sala está LONGE ("a sala está em Porter ·
+   * Rivalidade"), com atalho para lá: saber que a sala está em outro lugar sem
+   * poder ir até ela é meia informação — e o silêncio seria lido como "não tem
+   * sala aberta", que é justamente quando alguém abre uma segunda.
    */
-  ligar(dono, el) {
-    const ui = dono.quizUi || (dono.quizUi = {});
-    const det = el.querySelector('[data-quiz-qr]');
-    if (det) det.addEventListener('toggle', () => { ui.qrAberto = det.open; });
-    const detRot = el.querySelector('[data-quiz-roteiro]');
-    if (detRot) detRot.addEventListener('toggle', () => { ui.roteiroAberto = detRot.open; });
+  selo(dono, secaoDaTela) {
+    const q = dono.quiz;
+    if (!q?.sessao) {
+      return '<span class="selo-sala vazio">sala fechada</span>';
+    }
+    const p = q.pergunta;
+    const gente = `<span class="small text-muted">${q.sessao.participantes} na sala</span>`;
+    if (!p) {
+      return `<span class="selo-sala aberta">sala aberta · nenhuma pergunta</span> ${gente}`;
+    }
+    if (p.secao === secaoDaTela) {
+      return `<span class="selo-sala aqui">🎤 ${Modal.esc(this.rotulo(p))} · na sala</span> ${gente}`;
+    }
+    return `<span class="selo-sala longe">a sala está em ${Modal.esc(p.tela)} ·
+      ${Modal.esc(this.rotulo(p))}</span>
+      <button class="btn btn-sm btn-outline-secondary" data-ir-sala="${Modal.esc(p.secao)}">Ir até lá</button>
+      ${gente}`;
+  },
 
-    // Navegar: examina a pergunta SEM mexer na sala
+  ligarSelo(el) {
+    el.querySelectorAll('[data-ir-sala]').forEach((b) => b.addEventListener('click', () =>
+      App.mostrarSecao(b.dataset.irSala)));
+  },
+
+  /**
+   * O 🎤 de um alvo. `ativo` desenha o SELO em vez do botão: a categoria que já
+   * está na sala não é alvo de toque — tocar de novo reabriria a pergunta e
+   * zeraria o cronômetro dela. É a mesma lição do quadrante da Coleta, onde o
+   * realçado clicável fazia a ideia sumir da matriz sem ninguém pedir.
+   */
+  microfone(alvo, rotulo, { ativo = false, cor = null } = {}) {
+    if (!App.podeEditar()) return '';
+    if (ativo) {
+      return `<span class="mic-sala ativo" title="A sala está respondendo isto">🎤</span>`;
+    }
+    return `<button class="btn btn-sm mic-sala" data-mic='${Modal.esc(JSON.stringify(alvo))}'
+      ${cor ? `style="--cor-cat:${cor}"` : ''}
+      title="Perguntar ${rotulo} à sala" aria-label="Perguntar ${rotulo} à sala">🎤</button>`;
+  },
+
+  /**
+   * Liga os 🎤 de `el`. Um toque manda o alvo para a sala; sem sala aberta, o
+   * servidor devolve 409/SEM_SALA e aqui vira uma pergunta antes de criar a
+   * sessão.
+   */
+  ligarMicrofones(dono, el) {
+    el.querySelectorAll('[data-mic]').forEach((b) => b.addEventListener('click', async () => {
+      let alvo;
+      try {
+        alvo = JSON.parse(b.dataset.mic);
+      } catch (e) {
+        return;
+      }
+      b.disabled = true;
+      try {
+        await this.perguntar(dono, alvo);
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        b.disabled = false;
+      }
+      App.recarregarSecaoAtiva();
+    }));
+  },
+
+  /**
+   * Liga os botões do roteiro. `dono.aoNavegar(pergunta)` é chamado antes de
+   * recarregar quando o condutor examina outra pergunta — é onde cada tela se
+   * posiciona (a célula da cascata, o ano do cenário) sem que o componente
+   * precise saber o que ela mostra. Da aba Sala, "Ver" NAVEGA até a análise de
+   * origem: examinar uma pergunta é ler as sugestões, e elas moram lá.
+   */
+  ligarRoteiro(dono, el) {
+    const ui = dono.quizUi || (dono.quizUi = {});
     el.querySelectorAll('[data-ver-pergunta]').forEach((b) => b.addEventListener('click', async () => {
       const id = Number(b.dataset.verPergunta);
       const pergunta = (dono.quiz?.roteiro || []).find((x) => x.id === id);
       if (!pergunta) return;
+      const secao = b.dataset.secaoPergunta;
+      if (secao && secao !== App.secaoAtiva) {
+        // O foco viaja para a seção de destino: ela é que sabe desenhar as
+        // sugestões desta pergunta
+        this.focoPendente = { secao, perguntaId: id, pergunta };
+        App.mostrarSecao(secao);
+        return;
+      }
       dono.perguntaFoco = id;
       ui.roteiroAberto = true;
       if (dono.aoNavegar) dono.aoNavegar(pergunta);
@@ -157,43 +202,47 @@ const QuizSala = {
       if (!confirm('Tirar esta pergunta do roteiro?')) return;
       conduzir(`/api/quiz/pergunta/${b.dataset.removerPergunta}/remover`);
     }));
+  },
 
-    const btnProxima = el.querySelector('[data-quiz-proxima]');
-    if (btnProxima) {
-      btnProxima.addEventListener('click', () => {
-        const proxima = (dono.quiz?.roteiro || []).find((x) => x.situacao === 'PENDENTE');
-        if (!proxima) return;
-        dono.perguntaFoco = null;
-        if (dono.aoNavegar) dono.aoNavegar(proxima);
-        conduzir(`/api/quiz/pergunta/${proxima.id}/ativar`);
-      });
-    }
+  /**
+   * Foco que atravessa a navegação: o "Ver" da aba Sala manda a seção de
+   * destino abrir uma pergunta específica. Quem chega consome e limpa — senão
+   * o foco voltaria a se aplicar na próxima visita à seção.
+   */
+  focoPendente: null,
 
-    const btnEncerrar = el.querySelector('[data-quiz-encerrar]');
-    if (btnEncerrar) {
-      btnEncerrar.addEventListener('click', async () => {
-        if (!confirm('Encerrar a sessão? Os celulares deixam de receber perguntas; as sugestões ficam guardadas.')) return;
-        try {
-          await App.api('/api/quiz/encerrar', { planejamento_id: dono.plan.id });
-        } catch (e) {
-          alert(e.message);
-        }
-        App.recarregarSecaoAtiva();
-      });
-    }
+  consumirFoco(secao) {
+    if (this.focoPendente?.secao !== secao) return null;
+    const f = this.focoPendente;
+    this.focoPendente = null;
+    return f;
+  },
 
-    const caixa = el.querySelector('[data-quiz-qrcode]');
-    if (caixa && dono.quiz?.sessao?.pin && typeof qrcode === 'function') {
-      try {
-        const q = qrcode(0, 'M');
-        q.addData(`${location.origin}/entrar/${dono.quiz.sessao.pin}`);
-        q.make();
-        caixa.innerHTML = q.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
-      } catch (e) {
-        caixa.remove();
-      }
-    } else if (caixa) {
+  /** Desenha o QR de uma sessão dentro de `caixa` (some se não der). */
+  desenharQr(caixa, pin) {
+    if (!caixa) return;
+    if (!pin || typeof qrcode !== 'function') { caixa.remove(); return; }
+    try {
+      const q = qrcode(0, 'M');
+      q.addData(`${location.origin}/entrar/${pin}`);
+      q.make();
+      caixa.innerHTML = q.createSvgTag({ cellSize: 6, margin: 1, scalable: true });
+    } catch (e) {
       caixa.remove();
+    }
+  },
+
+  /** POST /api/quiz/tela, tratando SEM_SALA (abre) e SALA_ABERTA (encerra). */
+  async perguntar(dono, alvo) {
+    const corpo = { planejamento_id: dono.plan.id, ...alvo };
+    try {
+      return await App.api('/api/quiz/tela', corpo);
+    } catch (e) {
+      if (e.codigo !== 'SEM_SALA' || !confirm(e.message)) throw e;
+      // Abrir a sala pede um nome; sem ele o padrão do servidor serve, e o
+      // condutor renomeia na aba Sala
+      const tema = prompt('Nome do encontro (opcional):', '') ?? '';
+      return this.pedir('/api/quiz/tela', { ...corpo, abrir_sala: 1, tema });
     }
   },
 

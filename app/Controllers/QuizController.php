@@ -49,12 +49,32 @@ class QuizController
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
         $plan = Auth::exigirEdicaoPlanejamento($planId);
-        $u = Auth::exigirLogin();
-
         // Validar ANTES de encerrar a sala anterior: alvo inválido não pode
         // custar a discussão que estava rolando na outra tela.
-        $alvos = Quiz::validarAlvos($d, $plan);
-        Quiz::liberarSala($planId, $d, Quiz::tela((string)$alvos[0]['alvo_tipo']));
+        $alvos = $this->alvosOpcionais($d, $plan);
+        Json::ok($this->criarSala($planId, $d, $alvos));
+    }
+
+    /**
+     * Abrir a sala pela aba Sala não pede alvo nenhum: a sessão nasce vazia e o
+     * roteiro cresce com o 🎤 de cada análise. Abrir por uma análise (o caminho
+     * do `SEM_SALA`) já traz a primeira pergunta junto.
+     */
+    private function alvosOpcionais(array $d, array $plan): array
+    {
+        return array_key_exists('alvo_tipo', $d) ? Quiz::validarAlvos($d, $plan) : [];
+    }
+
+    /**
+     * Cria a sala e, havendo alvos, ativa o primeiro. Existe como método porque
+     * DOIS caminhos abrem sessão — a aba Sala e o 🎤 de uma análise sem sala —
+     * e escritos separados divergiriam no primeiro campo novo.
+     */
+    private function criarSala(int $planId, array $d, array $alvos): array
+    {
+        $u = Auth::exigirLogin();
+        Quiz::liberarSala($planId, $d, $alvos
+            ? Quiz::telaDe($alvos[0]) : 'Sala do encontro');
 
         $tema = mb_substr(trim(is_string($d['tema'] ?? null) ? $d['tema'] : ''), 0, 180)
             ?: 'Planejamento estratégico — preenchimento colaborativo';
@@ -71,8 +91,59 @@ class QuizController
              VALUES (?, ?, ?, ?, ?, ?, 'QUIZ', ?)",
             [$planId, (int)date('Y'), $tema, $pin, $maxIdeias, $maxVotos, (int)$u['id']]
         );
-        $ids = $this->enfileirar($rodadaId, $alvos, true);
-        Json::ok(['id' => $rodadaId, 'pin' => $pin, 'pergunta_id' => $ids[0] ?? null]);
+        $ids = $alvos ? $this->enfileirar($rodadaId, $alvos, true) : [];
+        return ['id' => $rodadaId, 'pin' => $pin, 'pergunta_id' => $ids[0] ?? null];
+    }
+
+    /**
+     * "Ponha ISTO na sala" — o toque no 🎤 de uma categoria, de um lado ou de
+     * uma célula. Um alvo por vez: é gesto de condução, não montagem de roteiro
+     * (essa é do `perguntar()`, que aceita vários e pode só enfileirar).
+     *
+     * Já sendo a pergunta ativa, não faz NADA e diz isso — reativar reabriria a
+     * pergunta e zeraria o cronômetro dela, e o 🎤 é um alvo de toque que a
+     * condução acerta duas vezes sem querer o tempo todo.
+     *
+     * Sem sala aberta (ou com a sala sendo uma tempestade clássica), responde
+     * 409/`SEM_SALA`: a tela pergunta antes de criar uma sessão. Sessão que
+     * nasce sozinha é sessão sem nome, que ninguém sabe que abriu.
+     */
+    public function perguntarTela(): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        $plan = Auth::exigirEdicaoPlanejamento($planId);
+        $alvos = Quiz::validarAlvos($d, $plan);
+        if (count($alvos) !== 1) {
+            Json::erro('Escolha uma pergunta por vez.');
+        }
+
+        $r = Database::um(
+            "SELECT * FROM coleta_rodada
+             WHERE planejamento_id = ? AND situacao = 'ABERTA' AND modo = 'QUIZ'",
+            [$planId]
+        );
+        if (!$r) {
+            if (empty($d['abrir_sala'])) {
+                $outra = Quiz::salaAberta($planId);
+                Json::erro($outra
+                    ? "Há uma tempestade de ideias aberta em {$outra['onde']}. "
+                        . 'Encerrá-la e abrir a sala do quiz com esta pergunta?'
+                    : 'Nenhuma sala aberta. Abrir a sala e já perguntar isto?',
+                    409, 'SEM_SALA');
+            }
+            // Quem confirma o SEM_SALA aceita as duas coisas de uma vez: abrir a
+            // sala e encerrar o que estivesse aberto
+            $d['confirmar_encerrar'] = 1;
+            Json::ok($this->criarSala($planId, $d, $alvos) + ['abriu_sala' => true]);
+        }
+
+        $ativa = Quiz::ativa((int)$r['id']);
+        if ($ativa && Quiz::mesmoAlvo($ativa, $alvos[0])) {
+            Json::ok(['pergunta_id' => (int)$ativa['id'], 'sem_mudanca' => true]);
+        }
+        $ids = $this->enfileirar((int)$r['id'], $alvos, true);
+        Json::ok(['pergunta_id' => $ids[0] ?? null]);
     }
 
     /**
@@ -223,6 +294,25 @@ class QuizController
             'foco' => $foco,
             'sugestoes' => $sugestoes,
         ]);
+    }
+
+    /**
+     * Renomeia o encontro. O nome é o que a sala lê no topo do celular e o que
+     * identifica a sessão depois — e quem abre a sala pelo 🎤 de uma análise
+     * não passou por um formulário para escrevê-lo.
+     */
+    public function renomear(): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $r = $this->sessaoAberta($planId);
+        $tema = mb_substr(trim(is_string($d['tema'] ?? null) ? $d['tema'] : ''), 0, 180);
+        if ($tema === '') {
+            Json::erro('Escreva o nome do encontro.');
+        }
+        Database::executar('UPDATE coleta_rodada SET tema = ? WHERE id = ?', [$tema, (int)$r['id']]);
+        Json::ok(['tema' => $tema]);
     }
 
     /** Encerra o encontro: a rodada e o que estiver ativo nela. */

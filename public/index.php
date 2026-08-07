@@ -316,6 +316,9 @@ try {
         case $rota === 'GET /api/quiz':            (new QuizController())->estado(); break;
         case $rota === 'POST /api/quiz/abrir':     (new QuizController())->abrir(); break;
         case $rota === 'POST /api/quiz/perguntar': (new QuizController())->perguntar(); break;
+        // O 🎤 de uma categoria/lado/célula: um alvo, um toque, a sala vira
+        case $rota === 'POST /api/quiz/tela':      (new QuizController())->perguntarTela(); break;
+        case $rota === 'POST /api/quiz/renomear':  (new QuizController())->renomear(); break;
         case $rota === 'POST /api/quiz/encerrar':  (new QuizController())->encerrar(); break;
         // Roteiro: abrir/reabrir, fechar sem abrir outra, tirar pendente
         case (bool)preg_match('#^POST /api/quiz/pergunta/(\d+)/ativar$#', $rota, $m):

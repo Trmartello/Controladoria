@@ -84,7 +84,8 @@ class FatorController
         }
 
         if ($id) {
-            $this->exigirFator($id, $planId);
+            $fator = $this->exigirFator($id, $planId);
+            $ano = (int)($fator['ano'] ?? 0);
             Database::executar(
                 'UPDATE fator SET categoria = ?, descricao = ? WHERE id = ?',
                 [$categoria, $descricao, $id]
@@ -99,7 +100,51 @@ class FatorController
                 [$planId, $ano, $etapa, $categoria, $descricao]
             );
         }
+        $this->vincularSugestoes($d, $id, $planId, $etapa, $ano);
         Json::ok(['id' => $id]);
+    }
+
+    /**
+     * Vozes do quiz amarradas a este fator. O front manda o CONJUNTO (como
+     * `fatores` na cascata e `sugestoes` no cenário): quem saiu é solto, quem
+     * entrou é amarrado. Muitas vozes, um texto — o vínculo registra a origem;
+     * o texto do fator é o que o condutor redigiu, que é a regra de aceitar do
+     * encontro.
+     *
+     * Sem a chave `sugestoes` no corpo, nada é tocado — é o que faz uma edição
+     * comum do fator preservar as vozes já registradas.
+     */
+    private function vincularSugestoes(array $d, int $id, int $planId, string $etapa, int $ano): void
+    {
+        if (!array_key_exists('sugestoes', $d)) {
+            return;
+        }
+        $u = Auth::exigirLogin();
+        $sugestoes = array_values(array_unique(array_map('intval', (array)$d['sugestoes'])));
+        $marcas = $sugestoes ? implode(',', array_fill(0, count($sugestoes), '?')) : '';
+        // Solta quem saiu do conjunto: volta a NOVO, editável de novo pelo autor
+        Database::executar(
+            "UPDATE coleta_item SET destino_tipo = NULL, destino_id = NULL,
+               situacao = 'NOVO', triado_por = NULL, triado_em = NULL
+             WHERE destino_tipo = 'FATOR' AND destino_id = ? AND origem = 'QUIZ'"
+            . ($marcas ? " AND id NOT IN ({$marcas})" : ''),
+            array_merge([$id], $sugestoes)
+        );
+        foreach ($sugestoes as $sugestaoId) {
+            // A guarda é o ALVO da pergunta, não a rodada: encontros diferentes
+            // podem ter perguntado a mesma categoria, e todas essas vozes valem.
+            // O JOIN recusa sugestão de outra categoria, de outro ano, de outra
+            // etapa, de outro plano ou que não seja do quiz.
+            Database::executar(
+                "UPDATE coleta_item ci
+                 JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
+                 SET ci.destino_tipo = 'FATOR', ci.destino_id = ?,
+                     ci.situacao = 'ACEITO', ci.triado_por = ?, ci.triado_em = NOW()
+                 WHERE ci.id = ? AND ci.planejamento_id = ? AND ci.origem = 'QUIZ'
+                   AND qp.alvo_tipo = 'FATOR' AND qp.etapa = ? AND qp.ano = ?",
+                [$id, (int)$u['id'], $sugestaoId, $planId, $etapa, $ano]
+            );
+        }
     }
 
     /**

@@ -443,6 +443,75 @@ input[type=range].faixa-verde:focus-visible {
 }
 .caixa-qr { background: #fff; padding: .4rem; border-radius: .4rem; line-height: 0; }
 .caixa-qr svg { width: 150px; height: 150px; }
+
+/* ===== Aba Sala: a tela de PROJEÇÃO do encontro =====
+   Aqui o QR e o PIN são o conteúdo, não um detalhe recolhido: alguém no fundo
+   da sala precisa ler os dois do telão. */
+.cartao-projecao { border-left: 4px solid var(--verde-coperdia); }
+.caixa-qr-grande { background: #fff; padding: .6rem; border-radius: .5rem; line-height: 0; }
+.caixa-qr-grande svg { width: 260px; height: 260px; }
+.pin-projecao {
+  font-size: 3.2rem;
+  font-weight: 800;
+  letter-spacing: .35rem;
+  line-height: 1.1;
+  color: var(--verde-escuro);
+}
+@media (max-width: 575.98px) {
+  .caixa-qr-grande svg { width: min(70vw, 260px); height: min(70vw, 260px); }
+  .pin-projecao { font-size: 2.2rem; letter-spacing: .25rem; }
+}
+
+/* ===== O selo da sala nas análises =====
+   Uma linha, no lugar da faixa inteira: onde a sala está, e um atalho se for
+   longe. Cores diferentes para "aqui", "longe" e "fechada" — a diferença entre
+   elas é a que decide se o condutor precisa agir. */
+.selo-sala {
+  display: inline-block;
+  font-size: .78rem;
+  font-weight: 600;
+  padding: .18rem .5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.selo-sala.aqui { color: #fff; background: var(--verde-coperdia); }
+.selo-sala.longe { color: var(--dourado); background: #b08d4f1f; border-color: var(--dourado); }
+.selo-sala.aberta { color: var(--verde-escuro); background: #e8f1ec; border-color: #b9d3c6; }
+.selo-sala.vazio { color: #6c757d; background: #f1f3f2; border-color: #dde2e0; }
+
+/* O 🎤 de cada categoria: mesmo tamanho do "+" que já mora ao lado dele.
+   Alvo de toque cresce por DIMENSÃO REAL no celular, nunca por ::after. */
+.mic-sala {
+  --bs-btn-padding-y: .05rem;
+  --bs-btn-padding-x: .35rem;
+  --bs-btn-font-size: .8rem;
+  --bs-btn-focus-shadow-rgb: 0, 122, 69;
+  line-height: 1.2;
+  border: 1px solid var(--cor-cat, #007a45);
+  background: #fff;
+  /* Sem grayscale: o microfone cinza vira um glifo ambíguo, lido como ícone de
+     edição ao lado do "+". Em cor, a leitura é imediata. */
+  opacity: .85;
+}
+.mic-sala:hover { opacity: 1; background: #eef6f1; }
+.mic-sala.ativo {
+  opacity: 1;
+  border-color: var(--verde-coperdia);
+  background: var(--verde-coperdia);
+  border-radius: .3rem;
+  padding: .05rem .35rem;
+  font-size: .8rem;
+  cursor: default;
+}
+@media (max-width: 767.98px) {
+  .mic-sala {
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
 .pin-mini { font-variant-numeric: tabular-nums; letter-spacing: .08em; }
 /* Caixa de expansão do QR: o triângulo nativo já indica aberto/fechado */
 .painel-qr > summary {

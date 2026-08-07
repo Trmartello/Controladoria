@@ -73,12 +73,57 @@ class Quiz
         'OPORTUNIDADE' => 'Oportunidades', 'AMEACA' => 'Ameaças',
     ];
 
+    /**
+     * A pergunta que a sala lê, por categoria. Não dá para montar isso a partir
+     * do rótulo: as categorias do PESTEL são ADJETIVOS ("Político") e viravam
+     * "Quais político você vê para 2026?" — o participante lê isso no celular,
+     * e uma pergunta torta é uma resposta torta.
+     */
+    private const PERGUNTA_CATEGORIA = [
+        // PESTEL — fatores do ambiente
+        'POLITICO' => 'Que fatores POLÍTICOS afetam o nosso negócio em %d?',
+        'ECONOMICO' => 'Que fatores ECONÔMICOS afetam o nosso negócio em %d?',
+        'SOCIAL' => 'Que fatores SOCIAIS e culturais afetam o nosso negócio em %d?',
+        'TECNOLOGICO' => 'Que fatores TECNOLÓGICOS afetam o nosso negócio em %d?',
+        'ECOLOGICO' => 'Que fatores AMBIENTAIS afetam o nosso negócio em %d?',
+        'LEGAL' => 'Que fatores LEGAIS e regulatórios afetam o nosso negócio em %d?',
+        // Porter — o que pesa em cada força
+        'RIVALIDADE' => 'O que pesa na RIVALIDADE entre os concorrentes em %d?',
+        'NOVOS_ENTRANTES' => 'O que facilita ou dificulta a entrada de NOVOS CONCORRENTES em %d?',
+        'SUBSTITUTOS' => 'Que produtos ou serviços podem SUBSTITUIR os nossos em %d?',
+        'PODER_FORNECEDORES' => 'Onde os FORNECEDORES têm poder sobre nós em %d?',
+        'PODER_CLIENTES' => 'Onde os CLIENTES têm poder sobre nós em %d?',
+        // SWOT — os quatro quadrantes
+        'FORCA' => 'Quais são as nossas FORÇAS em %d?',
+        'FRAQUEZA' => 'Quais são as nossas FRAQUEZAS em %d?',
+        'OPORTUNIDADE' => 'Que OPORTUNIDADES você enxerga para %d?',
+        'AMEACA' => 'Que AMEAÇAS você enxerga para %d?',
+    ];
+
     /** A tela de onde a sala está sendo conduzida — para o aviso de colisão. */
     private const TELA = [
         'CASCATA' => 'Cascata de Escolhas',
         'CENARIO' => 'Análise de Cenário',
         'FATOR'   => 'Diagnóstico',
         'LIVRE'   => 'Tempestade de ideias',
+    ];
+
+    /**
+     * O alvo FATOR serve a TRÊS telas — quem diz qual é a etapa. Sem isto o
+     * aviso de colisão mandava o condutor para um "Diagnóstico" que não é uma
+     * aba do menu, e o selo não sabia para onde navegar.
+     */
+    private const TELA_ETAPA = [
+        'PESTEL' => 'PESTEL',
+        'PORTER' => 'Porter — 5 Forças',
+        'SWOT'   => 'SWOT',
+    ];
+
+    /** A seção do menu que conduz cada alvo (o `data-secao` do shell). */
+    private const SECAO = [
+        'CASCATA' => 'cascata',
+        'CENARIO' => 'cenario',
+        'LIVRE'   => 'coleta',
     ];
 
     // ---- Consultas ----
@@ -127,6 +172,8 @@ class Quiz
         );
         foreach ($linhas as &$p) {
             $p['rotulo'] = self::rotulo($p);
+            $p['secao'] = self::secaoDe($p);
+            $p['tela'] = self::telaDe($p);
         }
         return $linhas;
     }
@@ -192,10 +239,45 @@ class Quiz
         return self::ROTULO_CATEGORIA[$c] ?? $c;
     }
 
-    /** O nome da tela de onde a pergunta é conduzida. */
+    /** O nome da tela de onde a pergunta é conduzida, pelo tipo do alvo. */
     public static function tela(string $alvoTipo): string
     {
         return self::TELA[$alvoTipo] ?? 'Planejamento';
+    }
+
+    /** O mesmo, para uma pergunta concreta — FATOR depende da etapa dela. */
+    public static function telaDe(array $p): string
+    {
+        return ($p['alvo_tipo'] ?? '') === 'FATOR'
+            ? (self::TELA_ETAPA[(string)$p['etapa']] ?? 'Diagnóstico')
+            : self::tela((string)($p['alvo_tipo'] ?? ''));
+    }
+
+    /**
+     * A seção do menu onde esta pergunta é conduzida. O selo de cada análise
+     * usa isto para dizer "a sala está em Porter · Rivalidade" com um atalho —
+     * saber que a sala está longe sem poder ir até lá é meia informação.
+     */
+    public static function secaoDe(array $p): string
+    {
+        return ($p['alvo_tipo'] ?? '') === 'FATOR'
+            ? strtolower((string)$p['etapa'])
+            : (self::SECAO[(string)($p['alvo_tipo'] ?? '')] ?? 'painel');
+    }
+
+    /**
+     * Duas perguntas apontam para o MESMO alvo? Serve para o toque no 🎤 da
+     * categoria que já está na sala não fazer nada: reativar reabriria a
+     * pergunta e zeraria o cronômetro dela.
+     */
+    public static function mesmoAlvo(array $a, array $b): bool
+    {
+        foreach (['alvo_tipo', 'horizonte_id', 'driver_id', 'eixo_id', 'ano', 'etapa', 'categoria'] as $c) {
+            if ((string)($a[$c] ?? '') !== (string)($b[$c] ?? '')) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -234,8 +316,11 @@ class Quiz
             case 'CENARIO':
                 return "O que descreve o cenário de {$p['ano']}?";
             case 'FATOR':
-                return 'Quais ' . mb_strtolower(self::rotuloCategoria((string)$p['categoria']))
-                    . " você vê para {$p['ano']}?";
+                $modelo = self::PERGUNTA_CATEGORIA[(string)$p['categoria']] ?? null;
+                return $modelo
+                    ? sprintf($modelo, (int)$p['ano'])
+                    : 'O que você vê em ' . self::rotuloCategoria((string)$p['categoria'])
+                        . " para {$p['ano']}?";
             case 'LIVRE':
                 return 'Quais ideias você tem sobre este tema?';
             default:
@@ -491,7 +576,7 @@ class Quiz
              ORDER BY aberta_em IS NULL, aberta_em DESC, id DESC',
             [(int)$r['id']]
         );
-        $r['onde'] = $p ? self::tela((string)$p['alvo_tipo']) : 'Planejamento';
+        $r['onde'] = $p ? self::telaDe($p) : 'Planejamento';
         return $r;
     }
 

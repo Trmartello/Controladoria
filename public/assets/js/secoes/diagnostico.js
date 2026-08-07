@@ -397,18 +397,135 @@ const Diag = {
   },
 
   // Renderiza uma etapa de fatores em colunas de categorias
-  async etapaFatores({ idSecao, etapa, titulo, descricao, categorias, comPromocao }) {
+  // ===== A sala nas telas de etapa (PESTEL, Porter, SWOT) =====
+  // O estado é do DONO (a seção), nunca do Diag: as três coexistem no DOM
+  // (as seções não são destruídas ao navegar, só ganham d-none) e um estado
+  // compartilhado faria o polling de uma repintar a outra.
+
+  /** A pergunta em foco (ou a ativa) quando ela é desta etapa e ano. */
+  quizFoco(dono, etapa, ano) {
+    const p = dono.quiz?.foco || dono.quiz?.pergunta;
+    // A sala é do projeto: a ativa pode ser de outra análise. Sem conferir o
+    // alvo, uma pergunta de cenário (etapa nula) casaria com qualquer coluna.
+    if (!p || p.alvo_tipo !== 'FATOR') return null;
+    return p.etapa === etapa && Number(p.ano) === Number(ano) ? p : null;
+  },
+
+  /** O 🎤 de uma categoria — selo quando ela já é a pergunta ATIVA. */
+  quizMic(dono, etapa, ano, cat, rotulo, cor) {
+    const ativa = dono.quiz?.pergunta;
+    const naSala = ativa && ativa.alvo_tipo === 'FATOR' && ativa.etapa === etapa
+      && Number(ativa.ano) === Number(ano) && ativa.categoria === cat;
+    return QuizSala.microfone(
+      { alvo_tipo: 'FATOR', etapa, ano, alvos: [cat] }, rotulo, { ativo: naSala, cor });
+  },
+
+  /**
+   * As sugestões da categoria em foco. O alvo FATOR não tem lado — a categoria
+   * JÁ é a pergunta —, então é uma lista só. "Usar" leva o texto ao formulário
+   * do fator: aceitar é ato de quem conduz, e o texto final é o dele.
+   */
+  quizPainel(dono, etapa, ano) {
+    const p = this.quizFoco(dono, etapa, ano);
+    if (!p) return '';
+    const sugestoes = dono.quiz?.sugestoes || [];
+    const fichas = sugestoes.map((sg) => `
+      <div class="ficha-sugestao ${Number(sg.vinculada) ? 'vinculada' : ''}">
+        <div class="small">${Modal.esc(sg.texto)}</div>
+        <div class="d-flex align-items-center gap-2 mt-1">
+          <span class="small text-muted flex-grow-1">${Modal.esc(sg.autor)}${Number(sg.votos) ? ` · ★ ${sg.votos}` : ''}
+            ${Number(sg.vinculada) ? ' · <strong>virou fator</strong>' : ''}</span>
+          ${App.podeEditar() && !Number(sg.vinculada) ? `
+            <button class="btn btn-sm btn-verde" data-usar-fator="${sg.id}">Usar</button>
+            <button class="btn btn-sm btn-outline-danger" data-excluir-sugestao="${sg.id}"
+              title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
+        </div>
+      </div>`).join('');
+    const situacao = p.situacao === 'ATIVA'
+      ? '<span class="badge text-bg-success">na sala agora</span>'
+      : p.situacao === 'ENCERRADA'
+        ? '<span class="badge text-bg-secondary">pergunta encerrada</span>'
+        : '<span class="badge text-bg-light border">ainda não aberta</span>';
+    return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+        <strong class="small text-uppercase">Sugestões da sala — ${Modal.esc(p.rotulo)}</strong>
+        ${situacao}
+        <span class="small text-muted flex-grow-1">Use uma sugestão para levá-la ao formulário do
+          fator; a voz fica registrada como origem.</span>
+        ${App.podeEditar() && p.situacao !== 'ATIVA' ? `<button class="btn btn-sm btn-verde"
+          data-reabrir-foco="${p.id}">${p.situacao === 'ENCERRADA'
+            ? 'Reabrir para a sala' : 'Abrir para a sala'}</button>` : ''}
+      </div>
+      <div class="coluna-quiz coluna-escolha">
+        ${fichas || '<div class="text-muted small">Nenhuma sugestão ainda.</div>'}
+      </div>
+    </div></div>`;
+  },
+
+  /** Vozes da sala registradas no fator: selo próprio, sem link. */
+  seloSala(f) {
+    const n = Number(f.quiz_vozes || 0);
+    return n ? `<div class="mt-1"><span class="badge text-bg-light border"
+      title="Sugestões da sala usadas neste fator">Sala · ${n} voz(es)</span></div>` : '';
+  },
+
+  /** Liga selo, 🎤 e as ações do painel de sugestões de uma tela de etapa. */
+  quizLigarEtapa(dono, el, etapa, ano, modalFator) {
+    QuizSala.ligarSelo(el);
+    QuizSala.ligarMicrofones(dono, el);
+    el.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`,
+          { planejamento_id: dono.plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
+      // Aberta para a sala, a pergunta vira a ativa: o foco volta ao padrão
+      dono.perguntaFoco = null;
+      App.recarregarSecaoAtiva();
+    }));
+    if (!modalFator) return;
+    el.querySelectorAll('[data-usar-fator]').forEach((b) => b.addEventListener('click', () => {
+      const sg = (dono.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarFator);
+      const p = this.quizFoco(dono, etapa, ano);
+      if (!sg || !p) return;
+      modalFator(null, p.categoria, sg);
+    }));
+    el.querySelectorAll('[data-excluir-sugestao]').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Excluir esta sugestão? Ela some para a sala também.')) return;
+      try {
+        await App.api(`/api/quiz/sugestao/${b.dataset.excluirSugestao}/excluir`,
+          { planejamento_id: dono.plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
+      App.recarregarSecaoAtiva();
+    }));
+  },
+
+  async etapaFatores({ idSecao, etapa, titulo, descricao, categorias, comPromocao, dono }) {
+    // Foco vindo do "Ver" da aba Sala: posiciona o ano ANTES de resolver a base
+    const vindo = QuizSala.consumirFoco(idSecao.replace('secao-', ''));
+    if (vindo) {
+      dono.perguntaFoco = vindo.perguntaId;
+      this.anoSelecionado = Number(vindo.pergunta.ano);
+    }
     const base = await this.preparar(idSecao);
     if (!base) return;
     const { el, plan, ano } = base;
-    const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=${etapa}&ano=${ano}`);
+    dono.plan = plan;
+    const [fatores, quiz] = await Promise.all([
+      App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=${etapa}&ano=${ano}`),
+      QuizSala.estado(plan.id, dono.perguntaFoco),
+    ]);
+    dono.quiz = quiz;
 
     const colunas = categorias.map(([cat, rotulo, cor]) => {
       const itens = fatores.filter((f) => f.categoria === cat);
       const cartoes = itens.map((f) => `
         <div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-2">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
-          ${this.seloColeta(f)}
+          ${this.seloColeta(f)}${this.seloSala(f)}
           ${this.botoesFator(f, plan.id, comPromocao)}
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
         </div></div>`).join('');
@@ -418,6 +535,7 @@ const Diag = {
           <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
             ${this.contadorCards(itens.length, cor)}</span>
           ${this.botaoAddCategoria(cat, rotulo, cor)}
+          ${this.quizMic(dono, etapa, ano, cat, rotulo, cor)}
         </div>
         ${this.painelOrientacao(cat, cor)}
         ${cartoes || '<div class="text-muted small">—</div>'}
@@ -435,7 +553,10 @@ const Diag = {
           ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
         </div>
       </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
+        data-selo-quiz>${QuizSala.selo(dono, idSecao.replace('secao-', ''))}</div>
       ${descricao ? `<p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>` : ''}
+      <div data-quiz-vivo>${this.quizPainel(dono, etapa, ano)}</div>
       ${this.seletorCategoriaMovel(etapa, categorias.map(([cat, rotulo]) => [cat, rotulo]), contagens)}
       <div class="row g-3">${colunas}</div>`;
 
@@ -445,23 +566,43 @@ const Diag = {
     this.aplicarDestaque(el, idSecao.replace('secao-', ''));
     this.ligarSeloColeta(el, ({ PESTEL: 'PESTEL', PORTER: 'Porter', SWOT: 'SWOT' })[etapa] || etapa);
     this.ligarOrientacoes(el);
-    if (!App.podeEditar()) return;
+    QuizSala.armarRelogio(dono);
+    if (!App.podeEditar()) {
+      // O "Ir até lá" do selo vale para LEITURA também: acompanhar o encontro
+      // não é escrever nele
+      QuizSala.ligarSelo(el);
+      return;
+    }
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
-    const modalFator = (f = null, categoria = null) => Modal.abrir({
-      titulo: f ? `Editar fator (${f.ano || ano})` : `Novo fator — ${titulo} · ${ano}`,
+    // `sugestao` chega do painel da sala: o texto entra como RASCUNHO (o condutor
+    // redige antes de salvar) e o id viaja em `sugestoes`, que é o conjunto de
+    // vozes amarradas ao fator. O vínculo vai pelo `transformar`, nunca por um
+    // campo `hidden`: hidden guarda texto, e uma lista viraria a string "12".
+    const modalFator = (f = null, categoria = null, sugestao = null) => Modal.abrir({
+      titulo: sugestao ? `Aceitar sugestão da sala · ${ano}`
+        : f ? `Editar fator (${f.ano || ano})` : `Novo fator — ${titulo} · ${ano}`,
       url: f ? `/api/fatores/${f.id}` : '/api/fatores',
       valores: f
         ? { ...f, planejamento_id: plan.id }
-        : { planejamento_id: plan.id, etapa, ano, ...(categoria ? { categoria } : {}) },
+        : {
+            planejamento_id: plan.id, etapa, ano,
+            ...(categoria ? { categoria } : {}),
+            ...(sugestao ? { descricao: sugestao.texto } : {}),
+          },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'etapa', rotulo: '', tipo: 'hidden', padrao: etapa },
         { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
+        ...(sugestao ? [{ nome: 'origem_sala', rotulo: '', tipo: 'info',
+          texto: `${sugestao.autor}: “${sugestao.texto}”`,
+          barra: { cor: '#007a45', titulo: 'Voz da sala' } }] : []),
         Diag.campoCategoria(etapa),
         { nome: 'descricao', rotulo: 'Descrição do fator', tipo: 'textarea' },
       ],
+      ...(sugestao ? { transformar: (dd) => ({ ...dd, sugestoes: [sugestao.id] }) } : {}),
     });
+    Diag.quizLigarEtapa(dono, el, etapa, ano, modalFator);
 
     // el.querySelector, não getElementById: PESTEL e Porter usam o mesmo id e
     // a seção anterior continua no DOM (oculta) — o global pegaria o botão errado
@@ -543,6 +684,13 @@ const SecaoCenario = {
   itens: [],
 
   async carregar() {
+    // Foco vindo do "Ver" da aba Sala: posiciona o ano ANTES de resolver a
+    // base, senão a tela abriria no ano do seletor e o foco cairia fora
+    const vindo = QuizSala.consumirFoco('cenario');
+    if (vindo) {
+      this.perguntaFoco = vindo.perguntaId;
+      this.aoNavegar(vindo.pergunta);
+    }
     const base = await Diag.preparar('secao-cenario');
     if (!base) return;
     const { el, plan, ano } = base;
@@ -588,17 +736,13 @@ const SecaoCenario = {
         <h1>Análise de Cenário — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
         <div class="d-flex align-items-center gap-2 flex-wrap">
           ${Diag.seletorAno('cenario')}
-          ${App.podeEditar() ? (this.noRoteiro(ano)
-            ? `<span class="badge ${this.perguntaDoAno()?.situacao === 'ATIVA'
-                ? 'text-bg-success' : 'text-bg-light border'}">${
-                this.perguntaDoAno()?.situacao === 'ATIVA'
-                  ? 'A sala está nesta análise' : 'Já no roteiro do encontro'}</span>`
-            : `<button class="btn btn-sm btn-verde" id="btn-perguntar-cenario">${
-                this.quiz?.sessao ? 'Perguntar à sala' : 'Perguntar à sala (abrir sessão)'}</button>`) : ''}
+          ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
+            { ativo: this.perguntaDoAno()?.situacao === 'ATIVA' })}
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
         </div>
       </div>
-      <div id="faixa-quiz-cenario">${QuizSala.faixa(this)}</div>
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
+        id="selo-quiz-cenario">${QuizSala.selo(this, 'cenario')}</div>
       <div id="quiz-vivo-cenario">${this.painelVivo()}</div>
       ${Diag.seletorCategoriaMovel('CENARIO', [
         ['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências'],
@@ -608,7 +752,8 @@ const SecaoCenario = {
         ${bloco('TENDENCIA', 'Tendências')}
       </div>`;
 
-    QuizSala.ligar(this, el);
+    QuizSala.ligarSelo(el);
+    QuizSala.ligarMicrofones(this, el);
     QuizSala.armarRelogio(this);
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
@@ -656,8 +801,6 @@ const SecaoCenario = {
     });
     this.modalItem = modalItem;
     document.getElementById('btn-novo-cenario').addEventListener('click', () => modalItem());
-    document.getElementById('btn-perguntar-cenario')
-      ?.addEventListener('click', () => this.perguntarASala(ano));
     el.querySelectorAll('[data-add-categoria]').forEach((b) => b.addEventListener('click', () =>
       modalItem(null, b.dataset.addCategoria)));
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
@@ -676,16 +819,6 @@ const SecaoCenario = {
     const n = Number(i.quiz_vozes || 0);
     return n ? `<div class="mt-1"><span class="badge text-bg-light border"
       title="Sugestões da sala usadas neste item">Sala · ${n} voz(es)</span></div>` : '';
-  },
-
-  /**
-   * O cenário deste ano já está no roteiro do encontro? Com ele lá, "perguntar"
-   * de novo não faria nada (o alvo é único no roteiro) — o botão vira selo, e
-   * quem quer devolvê-lo à sala usa o "Reabrir" do painel ou do roteiro.
-   */
-  noRoteiro(ano) {
-    return (this.quiz?.roteiro || []).some(
-      (x) => x.alvo_tipo === 'CENARIO' && Number(x.ano) === Number(ano));
   },
 
   /** A pergunta em foco (ou a ativa) quando ela é o cenário do ano exibido. */
@@ -708,10 +841,10 @@ const SecaoCenario = {
     if (assinatura === this.assinaturaQuiz) return;
     this.assinaturaQuiz = assinatura;
     const el = document.getElementById(this.secaoId);
-    const faixa = document.getElementById('faixa-quiz-cenario');
-    if (faixa) {
-      faixa.innerHTML = QuizSala.faixa(this);
-      QuizSala.ligar(this, el);
+    const selo = document.getElementById('selo-quiz-cenario');
+    if (selo) {
+      selo.innerHTML = QuizSala.selo(this, 'cenario');
+      QuizSala.ligarSelo(el);
     }
     const vivo = document.getElementById('quiz-vivo-cenario');
     if (vivo) {
@@ -809,83 +942,92 @@ const SecaoCenario = {
     }));
   },
 
-  /**
-   * "Perguntar à sala": com a sessão aberta, põe o cenário deste ano no
-   * roteiro e o abre; sem sessão, abre a sala aqui — e se ela estiver aberta em
-   * outra análise, o QuizSala pergunta antes de encerrar aquela.
-   */
-  perguntarASala(ano) {
-    const jaAberta = !!this.quiz?.sessao;
-    Modal.abrir({
-      titulo: jaAberta ? 'Perguntar à sala' : 'Abrir sessão colaborativa',
-      url: jaAberta ? '/api/quiz/perguntar' : '/api/quiz/abrir',
-      valores: {
-        planejamento_id: this.plan.id, alvo_tipo: 'CENARIO', ano,
-        enunciado: '', ...(jaAberta ? { acao: 'AGORA' } : { tema: '', max_ideias: 5 }),
-      },
-      campos: [
-        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'alvo_tipo', rotulo: '', tipo: 'hidden' },
-        { nome: 'ano', rotulo: '', tipo: 'hidden' },
-        { nome: 'enunciado', rotulo: 'Pergunta para a sala',
-          exemplo: `Ex.: O que já está acontecendo no nosso mercado em ${ano}?`,
-          ajuda: 'Em branco, a sala lê a pergunta padrão do cenário.' },
-        ...(jaAberta ? [
-          { nome: 'acao', rotulo: 'Quando?', tipo: 'botoes', opcoes: [
-            { valor: 'AGORA', rotulo: 'Abrir agora' },
-            { valor: 'ROTEIRO', rotulo: 'Só adicionar ao roteiro' },
-          ], ajuda: 'Abrir agora muda o celular de todo mundo; o roteiro guarda para depois.' },
-        ] : [
-          { nome: 'tema', rotulo: 'Nome do encontro',
-            exemplo: 'Ex.: Oficina de diagnóstico — diretoria, agosto/2026',
-            ajuda: 'O PIN vale para o encontro inteiro: as outras análises usam a mesma sala.' },
-          { nome: 'max_ideias', rotulo: 'Sugestões por pessoa (em cada lado)', tipo: 'number', padrao: 5,
-            ajuda: 'Vale por pergunta: N de situação atual e N de tendência para cada participante.' },
-        ]),
-      ],
-      transformar: (d) => {
-        const { acao, ...resto } = d;
-        return jaAberta ? { ...resto, ativar: acao !== 'ROTEIRO' } : resto;
-      },
-      // A sala é do PROJETO: aberta em outra análise, o servidor devolve
-      // 409/SALA_ABERTA e o QuizSala pergunta se encerra aquela discussão
-      enviar: (corpo) => QuizSala.pedir(jaAberta ? '/api/quiz/perguntar' : '/api/quiz/abrir', corpo),
-      aoSalvar: () => {
-        this.perguntaFoco = null;
-        App.recarregarSecaoAtiva();
-      },
-    });
-  },
 };
 
-const SecaoPestel = {
-  carregar: () => Diag.etapaFatores({
-    idSecao: 'secao-pestel',
-    etapa: 'PESTEL',
-    titulo: 'PESTEL',
-    descricao: '',
-    comPromocao: true,
-    categorias: Diag.CATEGORIAS_ETAPA.PESTEL,
-  }),
-};
+/**
+ * Fábrica das telas de etapa. Cada uma nasce com estado PRÓPRIO da sala: as
+ * três seções coexistem no DOM (navegar só põe `d-none`), e um estado
+ * compartilhado faria o polling de uma repintar a outra.
+ */
+function secaoEtapa({ idSecao, etapa, titulo, categorias }) {
+  return {
+    plan: null,
+    quiz: null,
+    relogioQuiz: null,
+    assinaturaQuiz: null,
+    quizUi: {},
+    secaoId: idSecao,
+    perguntaFoco: null,
+    etapa,
 
-const SecaoPorter = {
-  carregar: () => Diag.etapaFatores({
-    idSecao: 'secao-porter',
-    etapa: 'PORTER',
-    titulo: 'Porter — 5 Forças',
-    descricao: '',
-    comPromocao: true,
-    categorias: Diag.CATEGORIAS_ETAPA.PORTER,
-  }),
-};
+    carregar() {
+      return Diag.etapaFatores({
+        idSecao, etapa, titulo, descricao: '', comPromocao: true, categorias, dono: this,
+      });
+    },
+
+    /** Navegar pelo roteiro leva ESTA tela ao ano da pergunta examinada. */
+    aoNavegar(pergunta) {
+      if (pergunta.alvo_tipo === 'FATOR') Diag.anoSelecionado = Number(pergunta.ano);
+    },
+
+    aoBater(quizNovo) {
+      const assinatura = QuizSala.assinatura(quizNovo);
+      if (assinatura === this.assinaturaQuiz) return;
+      this.assinaturaQuiz = assinatura;
+      // A contagem de vozes por fator vem da listagem, não do estado da sala:
+      // recarregar a seção inteira é o único jeito de o selo "Sala · N" andar
+      // junto — e é o que já acontece quando o condutor aceita uma sugestão.
+      App.recarregarSecaoAtiva();
+    },
+  };
+}
+
+const SecaoPestel = secaoEtapa({
+  idSecao: 'secao-pestel', etapa: 'PESTEL', titulo: 'PESTEL',
+  categorias: Diag.CATEGORIAS_ETAPA.PESTEL,
+});
+
+const SecaoPorter = secaoEtapa({
+  idSecao: 'secao-porter', etapa: 'PORTER', titulo: 'Porter — 5 Forças',
+  categorias: Diag.CATEGORIAS_ETAPA.PORTER,
+});
 
 const SecaoSwot = {
+  plan: null,
+  quiz: null,
+  relogioQuiz: null,
+  assinaturaQuiz: null,
+  quizUi: {},
+  secaoId: 'secao-swot',
+  perguntaFoco: null,
+
+  aoNavegar(pergunta) {
+    if (pergunta.alvo_tipo === 'FATOR') Diag.anoSelecionado = Number(pergunta.ano);
+  },
+
+  aoBater(quizNovo) {
+    const assinatura = QuizSala.assinatura(quizNovo);
+    if (assinatura === this.assinaturaQuiz) return;
+    this.assinaturaQuiz = assinatura;
+    App.recarregarSecaoAtiva();
+  },
+
   async carregar() {
+    const vindo = QuizSala.consumirFoco('swot');
+    if (vindo) {
+      this.perguntaFoco = vindo.perguntaId;
+      this.aoNavegar(vindo.pergunta);
+    }
     const base = await Diag.preparar('secao-swot');
     if (!base) return;
     const { el, plan, ano } = base;
-    const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT&ano=${ano}`);
+    this.plan = plan;
+    const [fatores, quiz] = await Promise.all([
+      App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT&ano=${ano}`),
+      QuizSala.estado(plan.id, this.perguntaFoco),
+    ]);
+    this.quiz = quiz;
 
     const quadrante = (cat, rotulo, cor) => {
       const itens = fatores.filter((f) => f.categoria === cat);
@@ -903,6 +1045,7 @@ const SecaoSwot = {
         const acao = Diag.seloPlanoAcao(f);
         return `<div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
+          ${Diag.seloSala(f)}
           <div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
             ${origem}${gut}${acao}
             ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
@@ -920,6 +1063,7 @@ const SecaoSwot = {
               <span class="ambiente-quadrante">(${Diag.DICAS_QUADRANTE[cat]})</span>
               ${Diag.contadorCards(itens.length, cor)}</span>
             ${Diag.botaoAddCategoria(cat, rotulo, cor)}
+            ${Diag.quizMic(this, 'SWOT', ano, cat, rotulo, cor)}
           </div>
           ${Diag.painelOrientacao(cat, cor)}
           ${cartoes || '<div class="text-muted small">Nenhum fator.</div>'}
@@ -938,6 +1082,9 @@ const SecaoSwot = {
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
         </div>
       </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
+        data-selo-quiz>${QuizSala.selo(this, 'swot')}</div>
+      <div data-quiz-vivo>${Diag.quizPainel(this, 'SWOT', ano)}</div>
       ${Diag.seletorCategoriaMovel('SWOT', [
         ['FORCA', 'Forças'], ['FRAQUEZA', 'Fraquezas'],
         ['OPORTUNIDADE', 'Oportunidades'], ['AMEACA', 'Ameaças'],
@@ -955,6 +1102,7 @@ const SecaoSwot = {
     Diag.aplicarDestaque(el, 'swot');
     Diag.ligarSeloColeta(el, 'SWOT');
     Diag.ligarOrientacoes(el);
+    QuizSala.armarRelogio(this);
 
     el.querySelectorAll('[data-ir-origem]').forEach((b) => b.addEventListener('click', () => {
       const etapa = b.dataset.etapaOrigem;
@@ -969,7 +1117,10 @@ const SecaoSwot = {
       App.mostrarSecao('projetos');
     }));
 
-    if (!App.podeEditar()) return;
+    if (!App.podeEditar()) {
+      QuizSala.ligarSelo(el);
+      return;
+    }
     const encaminharAcao = async (id, marcar) => {
       try {
         await App.api(`/api/fatores/${id}/plano-acao`, { planejamento_id: plan.id, marcar });
@@ -984,20 +1135,30 @@ const SecaoSwot = {
       if (!confirm('Tirar este fator da fila do plano de ação?')) return;
       encaminharAcao(b.dataset.tirarAcao, false);
     }));
-    const modalFator = (f = null, categoria = null) => Modal.abrir({
-      titulo: f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,
+    const modalFator = (f = null, categoria = null, sugestao = null) => Modal.abrir({
+      titulo: sugestao ? `Aceitar sugestão da sala · ${ano}`
+        : f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,
       url: f ? `/api/fatores/${f.id}` : '/api/fatores',
       valores: f
         ? { ...f, planejamento_id: plan.id }
-        : { planejamento_id: plan.id, etapa: 'SWOT', ano, ...(categoria ? { categoria } : {}) },
+        : {
+            planejamento_id: plan.id, etapa: 'SWOT', ano,
+            ...(categoria ? { categoria } : {}),
+            ...(sugestao ? { descricao: sugestao.texto } : {}),
+          },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'etapa', rotulo: '', tipo: 'hidden', padrao: 'SWOT' },
         { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
+        ...(sugestao ? [{ nome: 'origem_sala', rotulo: '', tipo: 'info',
+          texto: `${sugestao.autor}: “${sugestao.texto}”`,
+          barra: { cor: '#007a45', titulo: 'Voz da sala' } }] : []),
         Diag.campoQuadrante('categoria', 'Quadrante'),
         { nome: 'descricao', rotulo: 'Descrição do fator', tipo: 'textarea' },
       ],
+      ...(sugestao ? { transformar: (dd) => ({ ...dd, sugestoes: [sugestao.id] }) } : {}),
     });
+    Diag.quizLigarEtapa(this, el, 'SWOT', ano, modalFator);
     document.getElementById('btn-novo-swot').addEventListener('click', () => modalFator());
     el.querySelectorAll('[data-add-categoria]').forEach((b) => b.addEventListener('click', () =>
       modalFator(null, b.dataset.addCategoria)));
