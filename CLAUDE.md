@@ -87,6 +87,22 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `painelOrientacao` / `ligarOrientacoes`. Os títulos da SWOT trazem o eixo entre
   parênteses (“Forças (Interno · Ajuda)”). Não reintroduzir parágrafos de
   introdução acima das listas — a orientação mora no ⓘ.
+- **Colunas das análises** (PESTEL, Porter, SWOT, Cenário): o cabeçalho de cada
+  categoria é `position: sticky` logo abaixo da topbar (`.cabecalho-coluna`,
+  `top: 52px`) e, no computador, o corpo rola **por dentro** da caixa
+  (`.corpo-coluna` dentro de `.caixa-coluna`, teto de `100dvh - 5rem`). Rolando
+  a página, o título saía de vista e a pilha de cartões virava coluna anônima —
+  ninguém sabia mais o que era de quê. Quatro detalhes que não podem ser
+  desfeitos: o flex e o teto vão na **caixa**, nunca na coluna do grid (o filtro
+  de categoria do celular pendura `d-md-block` nela, e o `display: block
+  !important` desmontaria a rolagem); o **fundo é declarado no cabeçalho
+  também**, porque sob ele passam cartões e transparente eles apareceriam atrás
+  do título (a tinta do quadrante da SWOT chega por `--tinta-coluna`, empilhada
+  sobre branco — translúcida sozinha, não esconderia nada); **nada de
+  `overscroll-behavior: contain`** no corpo, senão o cursor parado sobre a
+  coluna mais longa trava a rolagem da página; e no **celular não há rolagem
+  interna** — só o cabeçalho grudado, que ali já resolve, e rolagem aninhada no
+  dedo é o que não se quer.
 - **Matriz de prioridade** (condução da tempestade): gráfico de **quatro
   quadrantes**, Impacto no eixo horizontal e Esforço no vertical. É a **única
   matriz do sistema** e fica **acima** da fila — a bancada não tem matriz
@@ -215,10 +231,22 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   PESTEL são adjetivos, e pergunta torta é resposta torta.
   As vozes aparecem em **grade** (`.grade-sugestoes`), não em pilha: resposta de
   oficina tem duas ou três palavras, e uma ficha por linha na largura da página
-  gastava metade da tela com cinco respostas. A grade tem **teto de altura com
-  rolagem por dentro** (32vh; 40vh no celular) e o painel **recolhe**
-  (`quizUi.painelRecolhido`) — numa oficina cheia ele empurraria as colunas da
-  análise para fora da tela. A ficha é uma só (`QuizSala.fichas`), usada pelas
+  gastava metade da tela com cinco respostas. A grade nasce com **duas fileiras
+  de fichas** e o resto rola por dentro — ou o condutor **arrasta o canto**
+  (`resize: vertical`) até a altura que quiser; o painel ainda **recolhe**
+  (`quizUi.painelRecolhido`), porque numa oficina cheia ele empurraria as
+  colunas da análise para fora da tela. Fileira é medida de layout: quem calcula
+  as duas é `QuizSala.ligarVozes`, **depois de pintar** (com o elemento
+  escondido toda altura vale zero), e a altura escolhida no arraste mora no DONO
+  (`quizUi.alturaGrade`) — no DOM, a batida seguinte do polling a devolveria ao
+  padrão no meio de uma leitura. O `pointerup` que a guarda compara com
+  `alturaPadrao`: clique comum dentro da grade também solta o ponteiro ali e
+  congelaria a altura sem ninguém ter pedido.
+  A ficha mostra **três linhas** e rola por dentro; o **👁** do rodapé abre a
+  resposta inteira e só existe na ficha que não coube (medida, não palpite) —
+  numa resposta de duas palavras ele seria ruído. Ele vem antes do
+  `podeEditar()`: ler a resposta é direito de quem só acompanha também.
+  A ficha é uma só (`QuizSala.fichas`), usada pelas
   três telas: escrita em cada uma, este layout divergiria na primeira mudança.
   **A voz que virou registro SAI do painel** — o lugar dela passa a ser o
   quadrante de destino, e mantê-la ali com um ✓ fazia a fila de trabalho crescer

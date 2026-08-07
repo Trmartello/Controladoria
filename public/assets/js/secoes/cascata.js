@@ -366,6 +366,7 @@ const SecaoCascata = {
 
   ligarPainelVivo(alvo) {
     QuizSala.ligarRecolher(this, alvo);
+    QuizSala.ligarVozes(this, alvo);
     alvo.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
       try {
         await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`, {

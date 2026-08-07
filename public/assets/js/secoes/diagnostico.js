@@ -474,6 +474,9 @@ const Diag = {
   quizLigarEtapa(dono, el, etapa, ano, modalFator) {
     QuizSala.ligarSelo(el);
     QuizSala.ligarMicrofones(dono, el);
+    // Antes da saída por `modalFator`: o 👁 e a altura da grade valem para
+    // LEITURA também, que acompanha o encontro sem aceitar sugestão nenhuma
+    QuizSala.ligarVozes(dono, el);
     el.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
       try {
         await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`,
@@ -531,15 +534,19 @@ const Diag = {
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
         </div></div>`).join('');
       return `<div class="col-12 col-sm-6 col-md-4 col-xl-2 coluna-categoria" data-coluna-categoria="${cat}">
-        <div class="d-flex align-items-center mb-2">
-          ${this.iconeOrientacao(cat, cor, rotulo)}
-          <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
-            ${this.contadorCards(itens.length, cor)}</span>
-          ${this.botaoAddCategoria(cat, rotulo, cor)}
-          ${this.quizMic(dono, etapa, ano, cat, rotulo, cor)}
+        <div class="caixa-coluna">
+          <div class="cabecalho-coluna d-flex align-items-center mb-2">
+            ${this.iconeOrientacao(cat, cor, rotulo)}
+            <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
+              ${this.contadorCards(itens.length, cor)}</span>
+            ${this.botaoAddCategoria(cat, rotulo, cor)}
+            ${this.quizMic(dono, etapa, ano, cat, rotulo, cor)}
+          </div>
+          <div class="corpo-coluna">
+            ${this.painelOrientacao(cat, cor)}
+            ${cartoes || '<div class="text-muted small">—</div>'}
+          </div>
         </div>
-        ${this.painelOrientacao(cat, cor)}
-        ${cartoes || '<div class="text-muted small">—</div>'}
       </div>`;
     }).join('');
 
@@ -722,13 +729,17 @@ const SecaoCenario = {
         </div></div>`).join('');
       const cor = 'var(--verde-coperdia)';
       return `<div class="col-md-6" data-coluna-categoria="${tipo}">
-        <div class="d-flex align-items-center">
-          ${Diag.iconeOrientacao(tipo, cor, titulo)}
-          <h2 class="h6 text-uppercase text-muted mb-0">${titulo} ${Diag.contadorCards(lista.length, cor)}</h2>
-          ${Diag.botaoAddCategoria(tipo, titulo, cor)}
+        <div class="caixa-coluna">
+          <div class="cabecalho-coluna d-flex align-items-center mb-2">
+            ${Diag.iconeOrientacao(tipo, cor, titulo)}
+            <h2 class="h6 text-uppercase text-muted mb-0">${titulo} ${Diag.contadorCards(lista.length, cor)}</h2>
+            ${Diag.botaoAddCategoria(tipo, titulo, cor)}
+          </div>
+          <div class="corpo-coluna">
+            ${Diag.painelOrientacao(tipo, cor)}
+            ${linhas || '<div class="text-muted small">Nenhum item.</div>'}
+          </div>
         </div>
-        ${Diag.painelOrientacao(tipo, cor)}
-        ${linhas || '<div class="text-muted small">Nenhum item.</div>'}
       </div>`;
     };
 
@@ -909,6 +920,7 @@ const SecaoCenario = {
   },
 
   ligarPainelVivo(el) {
+    QuizSala.ligarVozes(this, el);
     el.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
       try {
         await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`, {
@@ -1064,8 +1076,9 @@ const SecaoSwot = {
         </div></div>`;
       }).join('');
       return `<div class="col-md-6" data-coluna-categoria="${cat}">
-        <div class="p-2 rounded" style="background:${cor}18; border-top: 3px solid ${cor}">
-          <div class="d-flex align-items-center mb-2">
+        <div class="p-2 rounded caixa-coluna"
+          style="--tinta-coluna:${cor}18; border-top: 3px solid ${cor}">
+          <div class="cabecalho-coluna d-flex align-items-center mb-2">
             ${Diag.iconeOrientacao(cat, cor, rotulo)}
             <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
               <span class="ambiente-quadrante">(${Diag.DICAS_QUADRANTE[cat]})</span>
@@ -1073,8 +1086,10 @@ const SecaoSwot = {
             ${Diag.botaoAddCategoria(cat, rotulo, cor)}
             ${Diag.quizMic(this, 'SWOT', ano, cat, rotulo, cor)}
           </div>
-          ${Diag.painelOrientacao(cat, cor)}
-          ${cartoes || '<div class="text-muted small">Nenhum fator.</div>'}
+          <div class="corpo-coluna">
+            ${Diag.painelOrientacao(cat, cor)}
+            ${cartoes || '<div class="text-muted small">Nenhum fator.</div>'}
+          </div>
         </div>
       </div>`;
     };

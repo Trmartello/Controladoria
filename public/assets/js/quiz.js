@@ -204,12 +204,18 @@ const QuizSala = {
            ${Modal.esc(virou)}.`
         : 'Nenhuma sugestão ainda.'}</div>`;
     }
+    // O 👁 nasce em toda ficha e SAI (em `ligarVozes`) da que cabe em três
+    // linhas: numa resposta de duas palavras ele seria só ruído — e só depois
+    // de pintar dá para saber qual é qual. Ele vem antes do `podeEditar()`
+    // porque ler a resposta inteira é direito de quem só acompanha também.
     const cartao = (s) => `
       <div class="ficha-sugestao">
         <div class="texto-voz" title="${Modal.esc(s.texto)}">${Modal.esc(s.texto)}</div>
         <div class="rodape-voz">
           <span class="autor-voz" title="${Modal.esc(s.autor)}">${Modal.esc(s.autor)}${
             Number(s.votos) ? ` · ★ ${s.votos}` : ''}</span>
+          <button class="btn btn-outline-secondary btn-voz" data-ver-voz aria-expanded="false"
+            title="Ver a resposta inteira" aria-label="Ver a resposta inteira">👁</button>
           ${App.podeEditar() ? `
             <button class="btn btn-verde btn-voz" data-usar-sugestao="${s.id}">${Modal.esc(acao)}</button>
             <button class="btn btn-outline-danger btn-voz" data-excluir-sugestao="${s.id}"
@@ -217,6 +223,53 @@ const QuizSala = {
         </div>
       </div>`;
     return `<div class="grade-sugestoes">${abertas.map(cartao).join('')}</div>`;
+  },
+
+  /**
+   * O que nas fichas depende de LAYOUT, e por isso só pode ser resolvido depois
+   * de pintar: qual voz não coube em três linhas (ganha o 👁) e onde a grade
+   * deve parar (duas fileiras; o resto rola, ou o condutor arrasta o canto).
+   *
+   * A altura escolhida no arraste mora no DONO, nunca no DOM: o polling repinta
+   * a seção a cada mudança de assinatura e a grade voltaria sozinha ao padrão
+   * bem no meio de uma leitura. Já o 👁 aberto é DOM puro, como o "ver mais"
+   * dos cartões — o repintar o recolhe, e é isso mesmo: a voz mudou.
+   */
+  ligarVozes(dono, el) {
+    const ui = dono.quizUi || (dono.quizUi = {});
+    el.querySelectorAll('.ficha-sugestao').forEach((f) => {
+      const texto = f.querySelector('.texto-voz');
+      const olho = f.querySelector('[data-ver-voz]');
+      if (!texto || !olho) return;
+      if (texto.scrollHeight <= texto.clientHeight + 1) {
+        olho.remove();
+        return;
+      }
+      olho.addEventListener('click', () => {
+        const aberta = f.classList.toggle('voz-aberta');
+        olho.setAttribute('aria-expanded', String(aberta));
+        olho.title = aberta ? 'Recolher a resposta' : 'Ver a resposta inteira';
+      });
+    });
+    el.querySelectorAll('.grade-sugestoes').forEach((g) => {
+      const ficha = g.querySelector('.ficha-sugestao');
+      if (!ficha) return;
+      const vao = parseFloat(getComputedStyle(g).rowGap) || 0;
+      const duasFileiras = Math.round(ficha.offsetHeight * 2 + vao);
+      if (ui.alturaGrade) g.style.height = `${ui.alturaGrade}px`;
+      else if (g.scrollHeight > duasFileiras + 1) g.style.height = `${duasFileiras}px`;
+      // O padrão fica guardado para o `pointerup` saber distinguir o arraste do
+      // canto de um clique qualquer dentro da grade — que também solta o ponteiro
+      // aqui e, sem essa comparação, congelaria a altura sem ninguém ter pedido.
+      g.dataset.alturaPadrao = String(parseFloat(g.style.height) || 0);
+      g.addEventListener('pointerup', () => {
+        const altura = parseFloat(g.style.height) || 0;
+        if (!altura) return;
+        if (ui.alturaGrade || Math.abs(altura - Number(g.dataset.alturaPadrao)) > 1) {
+          ui.alturaGrade = Math.round(altura);
+        }
+      });
+    });
   },
 
   /**

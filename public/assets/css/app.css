@@ -1341,6 +1341,56 @@ tr.card-destacado > td { background: #e8f5ee; }
 .coluna-categoria .card { overflow: hidden; }
 .coluna-categoria .small { overflow-wrap: anywhere; }
 
+/* ===== Colunas das análises: cabeçalho fixo e rolagem por dentro =====
+   Rolando a página, o título de cada categoria saía por cima e a pilha de
+   cartões virava uma coluna anônima — não dava para saber mais o que era de
+   quê. O cabeçalho gruda logo abaixo da topbar (por isso `top: 52px`, a altura
+   dela) e, no computador, o corpo da coluna rola POR DENTRO: assim a categoria
+   mais longa deixa de ditar a altura da página inteira.
+   O fundo é declarado nos dois (caixa e cabeçalho) com a mesma regra: sob o
+   cabeçalho grudado passam cartões, e um fundo transparente os deixaria
+   aparecer atrás do título. A tinta do quadrante da SWOT chega por
+   `--tinta-coluna` e é empilhada sobre branco — translúcida sozinha, ela não
+   esconderia nada. */
+.caixa-coluna,
+.cabecalho-coluna {
+  background:
+    linear-gradient(var(--tinta-coluna, transparent), var(--tinta-coluna, transparent)),
+    var(--fundo-coluna, #f4f6f5);
+}
+.caixa-coluna { min-width: 0; }
+.cabecalho-coluna {
+  position: sticky;
+  top: 52px;
+  z-index: 2;
+  padding-top: .2rem;
+  padding-bottom: .2rem;
+  /* Grudado, o cabeçalho passa POR CIMA do primeiro cartão da pilha. A sombra
+     é o que faz esse corte ser lido como "tem mais coisa acima" em vez de
+     cartão quebrado — é a mesma convenção de qualquer cabeçalho fixo. */
+  box-shadow: 0 .35rem .35rem -.3rem rgba(0, 0, 0, .22);
+}
+@media (min-width: 768px) {
+  /* A caixa (e não a coluna do grid) é quem vira flex: o filtro de categoria do
+     celular pendura `d-md-block` na coluna, e um `display: block !important`
+     por cima do flex desmontaria a rolagem interna justamente aqui. */
+  .caixa-coluna {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 5rem);
+  }
+  /* Sem `overscroll-behavior: contain` de propósito: chegando ao fim da coluna
+     a roda tem de CONTINUAR na página. Contido, o cursor parado sobre a coluna
+     mais longa travava a rolagem e a tela parecia presa. */
+  .corpo-coluna {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding-right: .15rem;
+  }
+}
+
 /* Modais de digitação: quando há campo de texto (textarea), o modal ocupa a
    altura toda da tela e o campo cresce para preencher o espaço restante */
 #modal-form .modal-dialog:has(textarea) {
@@ -1559,12 +1609,19 @@ body.menu-aberto .menu-lateral {
    na largura da página, gastava meia tela com cinco respostas — a grade põe
    quantas couberem lado a lado e o teto de altura impede que uma oficina cheia
    empurre as colunas da análise para fora da tela. */
+/* A altura padrão — duas fileiras de fichas — é medida em `QuizSala.ligarVozes`
+   depois de pintar: fileira é coisa de layout, e em CSS ela só daria um palpite
+   em `vh`. Aqui ficam o teto do arraste e o `resize`, que é o canto de onde o
+   condutor puxa a grade para baixo quando quer ver tudo de uma vez. */
 .grade-sugestoes {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  align-content: start;
   gap: .35rem;
-  max-height: 32vh;
+  max-height: 85vh;
   overflow-y: auto;
+  resize: vertical;
+  scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
 }
 .ficha-sugestao {
@@ -1578,16 +1635,19 @@ body.menu-aberto .menu-lateral {
   gap: .15rem;
 }
 .ficha-sugestao.vinculada { border-color: var(--verde-coperdia); background: #eef7f2; }
-/* Texto cortado em 3 linhas, com o inteiro no `title` — o mesmo corte dos
-   cartões de fator, e o que mantém a altura da grade previsível */
+/* Texto em 3 linhas — o mesmo corte dos cartões de fator, e o que mantém a
+   altura da grade previsível. Aqui o corte NÃO esconde o resto: a caixa rola
+   por dentro (a resposta comprida se lê sem sair do lugar) e o 👁 do rodapé
+   abre a ficha inteira, para quem prefere ler tudo de uma vez. O `line-height`
+   é explícito porque é dele que sai a conta das três linhas. */
 .texto-voz {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-height: 1.35;
+  max-height: 4.05em;
+  overflow-y: auto;
   overflow-wrap: anywhere;
+  scrollbar-width: thin;
 }
+.ficha-sugestao.voz-aberta .texto-voz { max-height: none; overflow: visible; }
 .rodape-voz {
   display: flex;
   align-items: center;
@@ -1617,7 +1677,7 @@ body.menu-aberto .menu-lateral {
   /* 130px e não 150: num iPhone de 390 a grade tem 305px úteis, e dois tracks
      de 150 mais o vão dão 305,6 — errava por meio pixel e caía numa coluna só.
      O min-content da ficha é 117px, então 130 não a estoura. */
-  .grade-sugestoes { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); max-height: 40vh; }
+  .grade-sugestoes { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
   .btn-voz { min-height: 2rem; min-width: 2rem; }
 }
 /* Voz vinculada dentro da célula: selo com o ✕ de dimensão real (nunca
