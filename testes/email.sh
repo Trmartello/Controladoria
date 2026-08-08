@@ -118,6 +118,60 @@ echo "### 4. Rede fora do ar não passa por sucesso"
 R=$(env EMAIL_API_URL='http://127.0.0.1:9/' EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/enviar.php" 2>&1)
 afirma "serviço inalcançável vira erro, não silêncio" 'RECUSA' "$R"
 
+echo "### 5. A trava de duplicidade e o reenvio manual"
+# `Avisos` fala com o banco só por métodos ESTÁTICOS de Database, então um
+# dublê declarado ANTES do require substitui a tabela inteira — sem MySQL, sem
+# massa e sem depender de instância no ar. O que se prova aqui é a assimetria
+# que o botão do Relatório de Status introduziu: ele FORÇA (quem clica quer o
+# e-mail agora) e o agendamento NÃO (roda sozinho, e sem a trava um cron a cada
+# cinco minutos viraria doze e-mails por hora para gente de verdade).
+cat > "$TMP/avisos.php" <<'PHP'
+<?php
+namespace App\Core;
+
+/** Dublê: uma responsável, uma ação vencendo hoje, e o aviso do dia JÁ enviado. */
+class Database
+{
+    public static array $gravou = [];
+    public static function todos(string $sql, array $p = []): array
+    {
+        if (str_contains($sql, 'FROM usuario u')) {
+            return [['id' => 7, 'nome' => 'Fulana', 'email' => 'fulana@exemplo.com']];
+        }
+        return [['id' => 1, 'o_que' => 'Ação de teste', 'data_fim' => date('Y-m-d'),
+                 'status' => 'NAO_INICIADO', 'prioridade' => 'ALTA', 'progresso' => 0,
+                 'projeto' => 'Projeto', 'iniciativa' => 'Frente']];
+    }
+    public static function um(string $sql, array $p = []): ?array
+    {
+        return ['id' => 99]; // já saiu um envio bem-sucedido hoje
+    }
+    public static function executar(string $sql, array $p = []): void { self::$gravou[] = $p; }
+}
+
+namespace Prova;
+
+$GLOBALS['config'] = require 'config/config.php';
+require 'app/Core/Email.php';
+require 'app/Services/Avisos.php';
+
+$modo = $argv[1] ?? 'cron';
+$r = \App\Services\Avisos::despachar('diario', null, $modo === 'botao')['diario'];
+printf(
+    "%s: enviados=%d reenviados=%d ja_enviados=%d falhas=%d gravou=%d",
+    $modo, $r['enviados'], $r['reenviados'], $r['ja_enviados'], $r['falhas'],
+    count(\App\Core\Database::$gravou)
+);
+PHP
+
+R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" cron 2>&1)
+afirma "o agendamento não repete o aviso do dia" 'cron: enviados=0 reenviados=0 ja_enviados=1' "$R"
+# Sem esta, a trava poderia estar "funcionando" por não conseguir enviar nada.
+afirma "e nem sequer grava linha nova" 'gravou=0' "$R"
+R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" botao 2>&1)
+afirma "o botão reenvia mesmo já tendo saído hoje" 'botao: enviados=1 reenviados=1 ja_enviados=0' "$R"
+afirma "e o reenvio não vira falha" 'falhas=0' "$R"
+
 echo
 if [ $FALHA -eq 0 ]; then
     echo "✓ e-mail: $OK verificação(ões), nenhuma falha."

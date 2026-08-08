@@ -334,17 +334,24 @@ class RelatorioController
 
     /**
      * Dispara na hora os avisos por e-mail (o mesmo que o agendamento diário
-     * faria). Útil para conferir a configuração de SMTP e para o caso de o
-     * agendamento ainda não estar ligado. Nada é reenviado no mesmo dia.
+     * faria). Útil para conferir a configuração de e-mail e para o caso de o
+     * agendamento ainda não estar ligado.
+     *
+     * Aqui o disparo é FORÇADO: quem clica é um ADMIN, na tela, querendo o
+     * e-mail agora — se o botão respondesse "já enviado" e não fizesse nada, não
+     * haveria caminho nenhum para reenviar um aviso que a pessoa apagou, nem
+     * para conferir o conteúdo depois de corrigir uma ação. A trava de
+     * duplicidade de `envio_email` continua valendo onde ela protege de verdade:
+     * no agendamento, que roda sozinho e sem ninguém olhando.
      */
     public function despacharAvisos(): void
     {
         Auth::exigirAdministrador();
         if (!Email::configurado()) {
-            Json::erro('Envio de e-mail não configurado — defina SMTP_HOST e SMTP_REMETENTE no ambiente.');
+            Json::erro('Envio de e-mail não configurado — defina EMAIL_API_CHAVE (ou SMTP_HOST) e SMTP_REMETENTE no ambiente.');
         }
         try {
-            Json::ok(Avisos::despachar('auto'));
+            Json::ok(Avisos::despachar('auto', null, true));
         } catch (\Throwable $e) {
             // A exceção do SMTP carrega host, banner e motivo da recusa de AUTH:
             // fica no log do servidor, como no resto do sistema

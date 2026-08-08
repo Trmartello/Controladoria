@@ -773,6 +773,19 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   semanal na segunda e pendências do dia. `envio_email` é a trava contra
   duplicidade — só conta como enviado o registro com `erro IS NULL`, para uma
   queda do serviço não bloquear o aviso.
+  **A trava vale para o agendamento, não para o botão.** `Avisos::despachar`
+  tem `$forcar`, ligado só por `RelatorioController::despacharAvisos`: quem
+  clica é um ADMIN que quer o e-mail agora — para conferir o conteúdo, ou porque
+  a pessoa apagou o de mais cedo — e um botão que responde "já enviado" e não faz
+  nada deixa o sistema sem caminho nenhum para reenviar. O cron **nunca** força:
+  ele roda sozinho e sem ninguém olhando, e sem a trava um agendamento a cada
+  cinco minutos viraria doze e-mails por hora para gente de verdade. O reenvio
+  atualiza `enviado_em` (a linha passa a valer pelo ÚLTIMO disparo) e é contado
+  em `reenviados`, separado de `enviados` — senão o alerta da tela diria
+  "1 enviado" para o primeiro clique e para o décimo. A assimetria é provada na
+  bateria de e-mail (§5) com um dublê estático de `Database`, sem banco e sem
+  massa: `Avisos` só fala com o banco por método estático, então a classe
+  declarada antes do `require` substitui a tabela inteira.
   Disparo por cron (`php cli/notificar.php`) ou pelo botão do Relatório.
   **Dois caminhos de envio**: SMTP na mão (EHLO/STARTTLS/AUTH LOGIN) e **API
   sobre HTTPS** (`EMAIL_API_CHAVE` + `EMAIL_API_URL`, formato da API

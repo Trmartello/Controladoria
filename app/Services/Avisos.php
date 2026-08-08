@@ -12,31 +12,40 @@ use App\Core\Email;
  *
  * Cada disparo é registrado em envio_email com chave única (tipo, data,
  * usuário), então rodar duas vezes no mesmo dia não manda e-mail repetido.
+ *
+ * O `$forcar` desliga essa trava, e existe só para o botão do Relatório de
+ * Status — um clique deliberado de um ADMIN, que quer o e-mail na caixa agora
+ * (para conferir o conteúdo, ou porque a pessoa apagou o de mais cedo). O
+ * agendamento NUNCA força: ele roda sozinho, e sem a trava um cron a cada cinco
+ * minutos viraria doze e-mails por hora para gente de verdade.
  */
 class Avisos
 {
     private const STATUS_ABERTOS = "('NAO_INICIADO','EM_ANDAMENTO','ATRASADO','PAUSADO','AGUARDANDO_VALIDACAO')";
 
     /** Dispara o que estiver pendente para hoje. Devolve o resumo do que rodou. */
-    public static function despachar(string $tipo = 'auto', ?string $hoje = null): array
+    public static function despachar(string $tipo = 'auto', ?string $hoje = null, bool $forcar = false): array
     {
         $hoje = $hoje ?: date('Y-m-d');
         $resultado = [];
         $ehSegunda = (int)date('N', strtotime($hoje)) === 1;
 
         if ($tipo === 'semanal' || ($tipo === 'auto' && $ehSegunda)) {
-            $resultado['semanal'] = self::rodar('SEMANAL', $hoje);
+            $resultado['semanal'] = self::rodar('SEMANAL', $hoje, $forcar);
         }
         if ($tipo === 'diario' || $tipo === 'auto') {
-            $resultado['diario'] = self::rodar('DIARIO', $hoje);
+            $resultado['diario'] = self::rodar('DIARIO', $hoje, $forcar);
         }
         return $resultado;
     }
 
-    private static function rodar(string $tipo, string $hoje): array
+    private static function rodar(string $tipo, string $hoje, bool $forcar = false): array
     {
         $referencia = $tipo === 'SEMANAL' ? date('Y-m-d', strtotime('monday this week', strtotime($hoje))) : $hoje;
-        $resumo = ['enviados' => 0, 'sem_itens' => 0, 'falhas' => 0, 'ja_enviados' => 0, 'detalhes' => []];
+        $resumo = [
+            'enviados' => 0, 'sem_itens' => 0, 'falhas' => 0,
+            'ja_enviados' => 0, 'reenviados' => 0, 'detalhes' => [],
+        ];
 
         foreach (self::responsaveis() as $u) {
             // Só conta como enviado o que saiu sem erro: uma falha de SMTP
@@ -46,7 +55,7 @@ class Avisos
                  WHERE tipo = ? AND referencia = ? AND usuario_id = ? AND erro IS NULL',
                 [$tipo, $referencia, (int)$u['id']]
             );
-            if ($ja) {
+            if ($ja && !$forcar) {
                 $resumo['ja_enviados']++;
                 continue;
             }
@@ -69,6 +78,9 @@ class Avisos
                     self::corpo($tipo, $u['nome'], $acoes, $hoje)
                 );
                 $resumo['enviados']++;
+                if ($ja) {
+                    $resumo['reenviados']++;
+                }
             } catch (\Throwable $e) {
                 $erro = $e->getMessage();
                 $resumo['falhas']++;
@@ -76,9 +88,14 @@ class Avisos
             $resumo['detalhes'][] = ['usuario' => $u['nome'], 'itens' => count($acoes), 'erro' => $erro];
 
             Database::executar(
+                // `enviado_em` também é atualizado: com o reenvio manual, a linha
+                // passa a valer pelo ÚLTIMO disparo. Mantê-la no primeiro deixava
+                // o registro dizendo que o aviso saiu de manhã quando a caixa da
+                // pessoa mostra o das cinco da tarde.
                 'INSERT INTO envio_email (tipo, referencia, usuario_id, destinatario, itens, erro)
                  VALUES (?, ?, ?, ?, ?, ?)
-                 ON DUPLICATE KEY UPDATE itens = VALUES(itens), erro = VALUES(erro)',
+                 ON DUPLICATE KEY UPDATE itens = VALUES(itens), erro = VALUES(erro),
+                                         enviado_em = CURRENT_TIMESTAMP',
                 [$tipo, $referencia, (int)$u['id'], $u['email'], count($acoes), $erro]
             );
         }

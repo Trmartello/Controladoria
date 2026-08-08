@@ -254,7 +254,15 @@ const SecaoRelatorio = {
         const r = await App.api('/api/avisos/despachar', {});
         const resumo = Object.entries(r)
           .map(([q, x]) => {
-            const linha = `${q}: ${x.enviados} enviado(s), ${x.falhas} falha(s), ${x.ja_enviados} já enviado(s)`;
+            // O botão FORÇA o envio (ver RelatorioController::despacharAvisos),
+            // então "já enviado" seria sempre zero aqui. O que a pessoa precisa
+            // saber é quantos foram repetidos — e, quando não sai nada, que o
+            // motivo é não haver pendência, e não uma falha silenciosa.
+            const partes = [`${x.enviados} enviado(s)`, `${x.falhas} falha(s)`];
+            if (x.reenviados) partes.push(`${x.reenviados} reenviado(s)`);
+            if (x.ja_enviados) partes.push(`${x.ja_enviados} já enviado(s)`);
+            if (!x.enviados && !x.falhas && x.sem_itens) partes.push(`${x.sem_itens} sem pendência`);
+            const linha = `${q}: ${partes.join(', ')}`;
             // O MOTIVO de cada falha vem no `detalhes` (o mesmo texto que vai
             // para `envio_email.erro`). Sem ele aqui, "2 falha(s)" mandava
             // procurar em log de servidor uma informação que já estava na
