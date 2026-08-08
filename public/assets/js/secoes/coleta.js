@@ -310,14 +310,29 @@ const SecaoColeta = {
         </div>
       </div></div>`;
     }
+    // O ✎ da pergunta mora AQUI, e não na tela de projeção: é nesta tela que
+    // quem conduz está — vendo as ideias chegarem — e é lendo as respostas que
+    // se percebe que a pergunta precisa ser reformulada. Trocar o texto não
+    // mexe no PIN nem no QR, então não há motivo para atravessar o sistema.
+    // Só com alguém conectado: antes disso a pergunta se ajusta no formulário
+    // que abre a rodada, e um botão a mais na tela vazia é ruído.
+    const temSala = Number(r.participantes) > 0;
+    const editar = temSala && App.podeEditar()
+      ? '<button class="btn btn-sm btn-outline-secondary" data-editar-pergunta>✎ Editar pergunta</button>'
+      : '';
     return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <strong class="small text-uppercase">Tempestade aberta</strong>
         <span class="badge text-bg-light border">${r.participantes} participante(s)</span>
         <span class="badge text-bg-light border">${r.ideias} ideia(s)</span>
         ${r.votacao === 'ABERTA' ? '<span class="badge text-bg-warning">votação aberta</span>' : ''}
-        <span class="small text-muted flex-grow-1 text-truncate">${Modal.esc(r.tema)}</span>
+        <span class="small text-muted flex-grow-1"></span>
         <button class="btn btn-sm btn-outline-secondary" data-ir-sala>PIN e QR na Sala</button>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
+        <span class="rotulo-secao mb-0">Pergunta da sala</span>
+        <span class="small flex-grow-1">${Modal.esc(r.tema)}</span>
+        ${editar}
       </div>
     </div></div>`;
   },
@@ -827,6 +842,11 @@ const SecaoColeta = {
   ligarTempestade(el, ano) {
     el.querySelectorAll('[data-ir-sala]').forEach((b) =>
       b.addEventListener('click', () => App.mostrarSecao('sala')));
+
+    // O mesmo modal da aba Sala (QuizSala.modalPergunta): uma redação só para
+    // o campo, o rótulo e a ajuda, em qualquer tela que edite a pergunta.
+    el.querySelector('[data-editar-pergunta]')?.addEventListener('click', () =>
+      QuizSala.modalPergunta(this.plan.id, this.rodadaAberta, () => this.carregar()));
 
     el.querySelectorAll('[data-selecionar]').forEach((b) => this.ativarBotao(b, () => {
       // Um arraste que terminou em cima de outra ficha não é um toque

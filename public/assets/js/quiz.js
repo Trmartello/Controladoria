@@ -665,6 +665,28 @@ const QuizSala = {
     };
   },
 
+  /**
+   * Reescrever a PERGUNTA da tempestade. Mora aqui porque quem edita é a tela
+   * da CONDUÇÃO (a Coleta, onde as ideias chegam) e não a de projeção: trocar a
+   * pergunta não mexe no PIN nem no QR, então mandar o condutor até a aba Sala
+   * para isso era uma viagem sem motivo no meio da oficina.
+   */
+  modalPergunta(planId, rodada, aoSalvar) {
+    Modal.abrir({
+      titulo: 'Editar a pergunta da tempestade',
+      url: `/api/rodadas/${rodada.id}/pergunta`,
+      valores: { planejamento_id: planId, tema: rodada.tema },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        this.campoPergunta({
+          ajuda: 'A pergunta nova chega ao celular de quem já está na sala; as '
+            + 'ideias e os votos já enviados continuam onde estão.',
+        }),
+      ],
+      aoSalvar,
+    });
+  },
+
   /** Desenha o QR de uma sessão dentro de `caixa` (some se não der). */
   desenharQr(caixa, pin) {
     if (!caixa) return;

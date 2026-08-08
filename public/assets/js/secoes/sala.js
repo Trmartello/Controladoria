@@ -133,10 +133,7 @@ const SecaoSala = {
         rodape: `${aviso}
         <div class="mt-3 pergunta-sala">
           <div class="rotulo-secao">A pergunta que abre a tempestade</div>
-          <p class="mb-1">${Modal.esc(r.tema)}</p>
-          ${podeConduzir
-            ? '<button class="btn btn-sm btn-outline-secondary" id="btn-editar-pergunta">✎ Editar pergunta</button>'
-            : ''}
+          <p class="mb-0">${Modal.esc(r.tema)}</p>
         </div>`,
       })}
       <p class="text-muted small">As ideias que chegam aparecem na seção
@@ -225,19 +222,9 @@ const SecaoSala = {
       aoSalvar: () => this.carregar(),
     }));
 
-    el.querySelector('#btn-editar-pergunta')?.addEventListener('click', () => Modal.abrir({
-      titulo: 'Editar a pergunta da tempestade',
-      url: `/api/rodadas/${this.tempestade.id}/pergunta`,
-      valores: { planejamento_id: this.plan.id, tema: this.tempestade.tema },
-      campos: [
-        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-        QuizSala.campoPergunta({
-          ajuda: 'A pergunta nova chega ao celular de quem já está na sala; as '
-            + 'ideias e os votos já enviados continuam onde estão.',
-        }),
-      ],
-      aoSalvar: () => this.carregar(),
-    }));
+    // Editar a pergunta mora na aba da TEMPESTADE (a Coleta), onde o condutor
+    // já está trabalhando as ideias: trocar o texto não mexe no PIN nem no QR,
+    // e vir até a tela de projeção só para isso era viagem perdida.
 
     el.querySelector('#btn-votacao')?.addEventListener('click', async () => {
       try {

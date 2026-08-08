@@ -37,8 +37,13 @@ class RodadaController
         Json::ok(Database::todos(
             "SELECT {$colunas}, u.nome AS autor,
                     (SELECT COUNT(*) FROM coleta_item i WHERE i.rodada_id = r.id) AS ideias,
-                    (SELECT COUNT(DISTINCT i.participante_token) FROM coleta_item i
-                      WHERE i.rodada_id = r.id AND i.participante_token IS NOT NULL) AS participantes
+                    -- Participante é quem ENTROU (escaneou o QR e se identificou),
+                    -- não quem já enviou ideia: contar por `coleta_item` deixava
+                    -- a sala cheia marcando zero enquanto ninguém tivesse
+                    -- escrito, que é exatamente o momento em que quem conduz
+                    -- precisa saber se pode começar.
+                    (SELECT COUNT(*) FROM coleta_participante cp
+                      WHERE cp.rodada_id = r.id) AS participantes
              FROM coleta_rodada r JOIN usuario u ON u.id = r.criado_por
              WHERE r.planejamento_id = ?{$filtro}
              ORDER BY r.situacao = 'ABERTA' DESC, r.criado_em DESC",
