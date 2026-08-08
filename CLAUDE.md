@@ -1003,7 +1003,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 
 ## Baterias de validação (`testes/`)
 
-`./testes/rodar.sh` roda as cinco em sequência e devolve 0 só se todas passarem
+`./testes/rodar.sh` roda as seis em sequência e devolve 0 só se todas passarem
 — dá para pendurar num hook ou num CI. Elas batem numa instância **local**
 (nunca produção: a funcional cria e apaga registros) e o detalhe está em
 `testes/README.md`, inclusive o que elas **não** cobrem.
@@ -1014,7 +1014,8 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | `sistema.js` | As 16 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
-| `email.sh` | O envio por API de `App\Core\Email`, contra um serviço de mentira | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, ou a chave passou a vazar na mensagem de erro |
+| `email.sh` | O envio por API de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |
+| `backup_remoto.sh` | A cópia fora do provedor, contra um B2 de mentira | O envio parou de subir o arquivo inteiro, o erro do serviço deixou de chegar, a chave vazou, ou a falta de configuração passou a derrubar o backup local |
 
 A do backup é a única que **não** passa pela aplicação — fala com o banco
 direto, lê o de trabalho sem escrever nele e faz o vaivém em dois bancos
@@ -1067,7 +1068,25 @@ mínima. A checagem passou a rodar nas duas larguras.
   e leva o nome do BANCO no prefixo — com prefixo fixo, a faxina de retenção de
   um ambiente contava os arquivos do outro. No Railway o disco é efêmero: o cron
   diário só serve com um **Volume** montado e `BACKUP_DIR` apontando para ele
-  (ver `docs/DEPLOY-RAILWAY.md`), e uma cópia periódica fora do provedor.
+  (ver `docs/DEPLOY-RAILWAY.md`). O script **avisa** quando o destino está no
+  disco do contêiner (`avisar_efemero`, ponto de montagem `/`), e só no
+  provedor: na máquina de quem desenvolve, `/` é disco de verdade e o aviso
+  apareceria sempre — aviso que aparece sempre é aviso que ninguém lê.
+- **Cópia fora do provedor** (`cli/backup_remoto.php`, Backblaze B2): o backup
+  local protege contra erro DENTRO do Railway; não protege contra perder o
+  Railway. Sai de dentro do `backup.sh`, **depois** de o arquivo ter passado por
+  íntegro, e falha no envio **não** derruba o backup — o arquivo local existe, e
+  devolver erro faria o cron marcar como perdido um backup que está feito. Sem
+  as variáveis `B2_*` não faz nada e não reclama.
+  Três decisões: é **PHP**, não shell (a imagem tem PHP por definição; `curl` de
+  linha de comando pode não estar lá); é **B2 e não S3** (a API nativa é
+  token em três chamadas — a da Amazon e as compatíveis exigem assinar cada
+  pedido com SigV4, que é criptografia escrita à mão para resolver um upload); e
+  o envio usa `CURLOPT_UPLOAD` com o método trocado para POST — `POSTFIELDS`
+  carregaria o dump inteiro na memória e um POST com `READFUNCTION` não tem como
+  anunciar o tamanho (o PHP não expõe `CURLOPT_POSTFIELDSIZE`), virando
+  `chunked` e pendurando o envio. `B2_API_URL` existe para a bateria apontar a
+  um serviço de mentira.
 
 ## Convenções de entrega
 

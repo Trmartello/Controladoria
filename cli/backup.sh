@@ -240,12 +240,33 @@ resumo_dump() {
     '
 }
 
+# O destino sobrevive ao fim do contêiner?
+#
+# Sem um Volume montado, o disco do serviço é apagado quando ele termina — e um
+# serviço de cron termina todo dia. O backup rodava, dizia "✓", e o arquivo
+# sumia junto com o contêiner: sucesso diário até o dia de restaurar.
+#
+# A checagem só vale NO PROVEDOR (as variáveis RAILWAY_* dizem que é lá): na
+# máquina de quem desenvolve, "/" é disco de verdade e o aviso seria ruído em
+# toda execução — e aviso que aparece sempre é aviso que ninguém lê.
+avisar_efemero() {
+    [ -n "${RAILWAY_ENVIRONMENT:-}${RAILWAY_PROJECT_ID:-}${RAILWAY_SERVICE_ID:-}" ] || return 0
+    command -v stat >/dev/null 2>&1 || return 0
+    local ponto
+    ponto=$(stat -c '%m' "$BACKUP_DIR" 2>/dev/null) || return 0
+    [ "$ponto" = "/" ] || return 0
+    erro "ATENÇÃO: $BACKUP_DIR está no disco do contêiner (ponto de montagem \"/\")."
+    erro "  Esse disco é apagado quando o contêiner termina — o arquivo NÃO sobrevive."
+    erro "  Monte um Volume e aponte BACKUP_DIR para o Mount Path dele."
+}
+
 gerar() {
     conectar
     [ -n "$DUMP" ] || { erro "nem mysqldump nem mariadb-dump no PATH (instale o cliente MySQL/MariaDB)."; exit 1; }
     opcoes_dump
 
     mkdir -p "$BACKUP_DIR" || exit 1
+    avisar_efemero
 
     local carimbo destino parcial ignorar=() t
     carimbo=$(date +%Y-%m-%d-%H%M%S)
@@ -311,7 +332,29 @@ gerar() {
     chmod 600 "$destino"
 
     msg "✓ $destino ($(du -h "$destino" | cut -f1), $tabelas tabelas)"
+    remoto "$destino"
     faxina
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cópia fora do provedor
+#
+# O backup local protege contra erro DENTRO do provedor — alguém apagar dado,
+# uma migração ruim. Não protege contra perder o provedor: conta suspensa,
+# projeto excluído, região fora do ar. Por isso a cópia sai daqui, logo depois
+# de o arquivo ter passado por íntegro (nunca antes: subir um dump truncado
+# gasta banda para guardar lixo com cara de backup).
+#
+# Sem as variáveis do B2 isto não faz nada e não reclama: quem ainda não
+# configurou a cópia remota não pode ver o backup diário falhar por causa dela.
+# Falha no envio também NÃO derruba o backup — o arquivo local já existe, e
+# devolver erro aqui faria o cron marcar como perdido um backup que está feito.
+remoto() {
+    local arquivo=$1
+    [ -n "${B2_KEY_ID:-}" ] && [ -n "${B2_KEY:-}" ] || return 0
+    command -v php >/dev/null 2>&1 || { erro "cópia remota: php não está no PATH."; return 0; }
+    php "$(dirname "$0")/backup_remoto.php" enviar "$arquivo" \
+        || erro "a cópia remota falhou — o backup LOCAL está feito em $arquivo."
 }
 
 faxina() {

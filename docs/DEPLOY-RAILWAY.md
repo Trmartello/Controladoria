@@ -390,6 +390,45 @@ Ou seja: mesmo que os e-mails demorem a ser liberados pelo TI, o serviço `aviso
 agendado já paga o próprio aluguel. Ele vai registrar falha todo dia enquanto o
 SMTP não existir — o que é honesto, e some sozinho quando as variáveis chegarem.
 
+### Cópia fora do Railway (Backblaze B2)
+
+O backup do passo 7 protege contra erro **dentro** do Railway — alguém apagar
+dado, uma migração ruim. Ele não protege contra **perder** o Railway: conta
+suspensa, projeto excluído, região fora do ar. Uma cópia que mora no mesmo lugar
+do original é meia cópia.
+
+`cli/backup.sh` sobe cada backup para o Backblaze B2 assim que ele passa pela
+verificação — mas só se estas variáveis existirem no serviço **`backup`**:
+
+| Variável | Valor |
+|---|---|
+| `B2_KEY_ID` | o *keyID* da chave de aplicação |
+| `B2_KEY` | o *applicationKey* (aparece **uma única vez**, na criação) |
+| `B2_BUCKET` | o nome do balde (ou `B2_BUCKET_ID`, se preferir o id) |
+| `B2_PREFIXO` | opcional; a pasta remota (padrão `controladoria`) |
+
+Como criar, no [backblaze.com](https://www.backblaze.com/) → **B2 Cloud Storage**
+(10 GB grátis):
+
+1. **Buckets → Create a Bucket**: nome único, **Files in Bucket are: Private**,
+   *Default Encryption* ligada.
+2. **Application Keys → Add a New Application Key**: dê acesso **só a esse
+   balde**, com permissão de leitura e escrita. Copie o `keyID` e o
+   `applicationKey` — a chave não é mostrada de novo.
+3. Ponha as três variáveis no serviço `backup` e mande **Deploy**.
+4. Confira sem enviar nada, pela **Console** do serviço web:
+   `php cli/backup_remoto.php diagnostico`.
+
+**Você deve ver** `Cópia remota configurada e alcançável`. Depois do próximo
+backup, `php cli/backup_remoto.php listar` mostra as cópias que estão lá.
+
+Duas coisas que o script faz de propósito: **sem as variáveis ele não faz nada e
+não reclama** (quem ainda não configurou não pode ver o backup diário falhar por
+causa disso), e **falha no envio não derruba o backup** — o arquivo local já
+está feito, e devolver erro faria o cron marcar como perdido um backup que
+existe. A retenção remota é do lado do B2: em **Bucket Settings → Lifecycle
+Settings**, "keep only the last version" com a idade que você quiser.
+
 ## 7. Backup do banco — passo a passo
 
 O banco **é** o sistema. Além do planejamento inteiro, ele guarda os anexos dos
