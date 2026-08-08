@@ -414,8 +414,12 @@ const QuizSala = {
           const passo = 14;
           const caixa = grade?.getBoundingClientRect();
           if (caixa && grade.scrollHeight > grade.clientHeight + 1) {
-            if (ultimo.y < caixa.top + margem) grade.scrollTop -= passo;
-            else if (ultimo.y > caixa.bottom - margem) grade.scrollTop += passo;
+            // A grade tem, por construção, a altura de DUAS fichas (~110px): a
+            // margem da janela cobriria a caixa inteira, não sobraria ponto
+            // neutro nenhum e o arraste saltaria sozinho para o extremo.
+            const m = Math.min(margem, caixa.height / 6);
+            if (ultimo.y < caixa.top + m) grade.scrollTop -= passo;
+            else if (ultimo.y > caixa.bottom - m) grade.scrollTop += passo;
           }
           const alt = window.innerHeight;
           if (ultimo.y < margem) window.scrollBy(0, -passo);
