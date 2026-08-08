@@ -33,6 +33,24 @@ body { background: #f4f6f5; }
   top: 0;
   z-index: 1035;
 }
+/* Atalho para os Cadastros, ao lado do ☰.
+   Quadrado do tamanho do ☰ para os dois lerem como o mesmo tipo de controle —
+   e porque alvo de toque cresce por DIMENSÃO real, nunca por área invisível
+   sobreposta, que se cobriria com a do botão vizinho. */
+#btn-cadastros {
+  width: 31px;
+  height: 31px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+/* A tela dele está aberta. Não é `.active` (não é item de lista): a fonte é o
+   aria-current, que o leitor de tela já anuncia — dois atributos para o mesmo
+   estado divergiriam na primeira mudança. */
+#btn-cadastros[aria-current] {
+  background: var(--verde-coperdia);
+  border-color: var(--verde-coperdia);
+  color: #fff;
+}
 .menu-lateral {
   width: 280px;
   background: var(--verde-escuro);
@@ -73,6 +91,14 @@ body.menu-aberto .menu-lateral {
 /* Tabelas largas nunca estouram a página — rolam no próprio contêiner */
 .secao .table-responsive { -webkit-overflow-scrolling: touch; }
 .secao { min-width: 0; }
+/* O ciclo em uso no menu: texto, não campo. Ele imita a caixa do seletor de
+   negócio logo abaixo para as duas linhas não brigarem, mas sem borda de
+   controle — o que não se clica não pode parecer clicável. */
+.ciclo-atual {
+  color: #fff;
+  font-weight: 600;
+  padding: 2px 0;
+}
 .menu-lateral .nav-link { color: #d3e5dc; padding: 6px 10px; }
 .menu-lateral .nav-link.active { background: var(--verde-coperdia); color: #fff; }
 .menu-lateral .nav-link.disabled { color: #6d8a7c; }

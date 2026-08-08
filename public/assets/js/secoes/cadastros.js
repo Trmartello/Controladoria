@@ -4,7 +4,25 @@
 const SecaoCadastros = {
   abaAtiva: 'negocios',
 
+  /**
+   * Pinturas SERIALIZADAS.
+   *
+   * Trocar de aba enquanto a anterior ainda carregava quebrava a seção inteira:
+   * cada renderizador busca a lista dele (`await App.api`) e só então escreve no
+   * `#conteudo-aba` e liga os botões. Voltando do await depois da troca, ele
+   * escrevia no conteúdo que já era de OUTRA aba e procurava um botão que não
+   * existe mais — `null.addEventListener`, e a tela virava alerta vermelho.
+   * Enfileirar é o conserto certo: a próxima pintura só começa quando a
+   * anterior termina, então a última pedida é a que fica. Descartar a pintura
+   * velha por geração também resolveria o erro, mas deixaria a aba antiga
+   * meio-pintada na tela no meio do caminho.
+   */
   async carregar() {
+    this.fila = Promise.resolve(this.fila).catch(() => {}).then(() => this.pintar());
+    return this.fila;
+  },
+
+  async pintar() {
     const el = document.getElementById('secao-cadastros');
     const administra = ['ADMIN', 'CONTROLADORIA'].includes(App.sessao.usuario.perfil);
     const abas = [
@@ -115,6 +133,7 @@ const SecaoCadastros = {
   async ciclos(administra) {
     const lista = await App.api('/api/ciclos');
     const alvo = document.getElementById('conteudo-aba');
+    const emUso = App.contexto.cicloId;
 
     const blocos = lista.map((c) => {
       // Cada horizonte é um card: período e tema em destaque, objetivo abaixo
@@ -135,6 +154,7 @@ const SecaoCadastros = {
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <div>
             <strong>${Modal.esc(c.nome)}</strong>
+            ${c.id === emUso ? '<span class="badge text-bg-success ms-1">em uso</span>' : ''}
             <span class="text-muted small">· ano do planejamento: ${c.ano_base} · ${c.status}</span>
           </div>
           <div class="d-flex gap-2">
@@ -148,9 +168,29 @@ const SecaoCadastros = {
       </div></div>`;
     }).join('');
 
+    // O ciclo EM USO é escolhido aqui — saiu do menu lateral, onde dividia
+    // espaço com o negócio e convidava ao mesmo gesto: o negócio troca o dia
+    // inteiro, o ciclo troca uma vez por ano. O menu passou a só MOSTRAR qual
+    // é. Quem guarda a escolha continua sendo o núcleo (`App.trocarCiclo`),
+    // porque o ciclo é contexto de todas as telas, não estado desta seção.
+    // O seletor aparece mesmo para quem não administra: escolher em qual ciclo
+    // se está trabalhando é leitura, não cadastro.
     alvo.innerHTML = `
+      <div class="card mb-3"><div class="card-body py-2 px-3 d-flex align-items-center gap-2 flex-wrap">
+        <label class="form-label mb-0 small fw-bold" for="sel-ciclo-uso">Ciclo em uso</label>
+        <select id="sel-ciclo-uso" class="form-select form-select-sm w-auto">
+          ${lista.map((c) => `<option value="${c.id}"${c.id === emUso ? ' selected' : ''}>${Modal.esc(c.nome)} (base ${c.ano_base})</option>`).join('')}
+        </select>
+        <span class="text-muted small">vale para todas as telas do sistema</span>
+      </div></div>
       ${administra ? '<button class="btn btn-verde btn-sm mb-2" id="btn-novo-ciclo">+ Novo ciclo</button>' : ''}
       ${blocos || '<div class="text-muted">Nenhum ciclo cadastrado.</div>'}`;
+
+    // `trocarCiclo` repinta a seção ativa — que é esta —, então o listener é
+    // religado pelo próprio redesenho; nada a desfazer aqui.
+    alvo.querySelector('#sel-ciclo-uso')?.addEventListener('change', (ev) => {
+      App.trocarCiclo(ev.target.value);
+    });
 
     Diag.ligarVerMais(alvo);
     if (!administra) return;

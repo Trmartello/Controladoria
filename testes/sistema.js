@@ -58,6 +58,85 @@ async function percorrer(page, largura) {
 }
 
 /**
+ * O atalho ⚙ da topbar. Ele não é item do `#nav-secoes`, então o percurso das
+ * seções não o exercita: o listener de navegação precisa alcançá-lo pelo
+ * atributo, e não pelo lugar.
+ *
+ * A segunda prova é de LAYOUT e nasceu de uma regressão medida: com a
+ * engrenagem ao lado do ☰, "Planejamento Estratégico" passou a quebrar em duas
+ * linhas dentro de uma topbar de 52px no celular. Botão novo na topbar é
+ * espaço tirado de alguém — quem confere é a altura da linha, não o olho.
+ */
+async function provasAtalhoCadastros(page, largura) {
+  await page.evaluate(() => App.mostrarSecao('painel'));
+  await page.click('#btn-cadastros');
+  const abriu = await esperar(page,
+    "App.secaoAtiva === 'cadastros' && !document.getElementById('secao-cadastros').classList.contains('d-none')");
+  t(`[${largura}] ⚙ da topbar abre os Cadastros`, abriu);
+  t(`[${largura}] ⚙ marca a tela ativa`,
+    await page.evaluate(() => document.getElementById('btn-cadastros').getAttribute('aria-current') === 'page'));
+  await page.evaluate(() => App.mostrarSecao('painel'));
+  t(`[${largura}] ⚙ desmarca ao sair`,
+    await page.evaluate(() => !document.getElementById('btn-cadastros').getAttribute('aria-current')));
+
+  // Contar LINHAS DE TEXTO, com um Range sobre o conteúdo: ele devolve um
+  // retângulo por linha. As duas medidas óbvias não servem, as duas testadas:
+  // a altura da topbar é fixa em 52px com transbordo visível (continua 52 com o
+  // texto quebrado) e `elemento.getClientRects()` devolve UM retângulo mesmo
+  // com duas linhas, porque item de flex é blocificado.
+  const quebrados = await page.evaluate(() =>
+    [...document.querySelectorAll('.topbar > *')]
+      .filter((el) => el.getClientRects().length && !el.querySelector('*'))
+      .filter((el) => {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        return r.getClientRects().length > 1;
+      })
+      .map((el) => el.textContent.trim().slice(0, 40)));
+  t(`[${largura}] nada na topbar quebra em duas linhas`,
+    quebrados.length === 0, JSON.stringify(quebrados));
+}
+
+/**
+ * O ciclo saiu do menu lateral e passou a ser escolhido em Cadastros › Ciclos &
+ * Horizontes; o menu só MOSTRA qual é. São duas telas que precisam concordar,
+ * e o contexto do ciclo alimenta toda consulta do sistema — um rótulo vazio no
+ * menu, ou um seletor apontando para outro ciclo, é o tipo de divergência que
+ * só aparece quando alguém estranha o número na tela.
+ */
+async function provasCiclo(page, largura) {
+  t(`[${largura}] o menu não tem mais seletor de ciclo`,
+    await page.evaluate(() => !document.getElementById('sel-ciclo')));
+  const rotulo = await page.evaluate(() => document.getElementById('ciclo-atual').textContent.trim());
+  t(`[${largura}] o menu mostra o ciclo em uso`,
+    rotulo.length > 0 && rotulo !== '(nenhum ciclo)', rotulo);
+
+  // A aba é clicada em LAÇO, pelo DOM. Duas armadilhas já pagas aqui: chamar
+  // `SecaoCadastros.carregar()` à mão corre com a repintura que `mostrarSecao`
+  // dispara (vencia a que terminasse por último, às vezes a aba Negócios), e o
+  // `page.click` do Playwright espera o elemento ficar estável — mas ele é
+  // substituído a cada repintura, então a espera nunca termina.
+  await page.evaluate(() => App.mostrarSecao('cadastros'));
+  const temSeletor = await esperar(page, () => {
+    if (document.getElementById('sel-ciclo-uso')) return true;
+    document.querySelector('#abas-cadastro [data-aba="ciclos"]')?.click();
+    return false;
+  }, 20000);
+  t(`[${largura}] Cadastros › Ciclos traz o seletor do ciclo em uso`, temSeletor);
+  if (temSeletor) {
+    // O seletor e o menu falam do MESMO ciclo — é a divergência que interessa.
+    const bate = await page.evaluate(() =>
+      Number(document.getElementById('sel-ciclo-uso').value) === App.contexto.cicloId
+      && document.getElementById('ciclo-atual').textContent.includes(
+        document.querySelector('#sel-ciclo-uso option:checked').textContent.trim().split(' (base')[0]));
+    t(`[${largura}] o seletor e o menu apontam para o mesmo ciclo`, bate);
+    t(`[${largura}] o ciclo em uso é marcado na lista`,
+      await page.evaluate(() => !!document.querySelector('#conteudo-aba .badge.text-bg-success')));
+  }
+  await page.evaluate(() => App.mostrarSecao('painel'));
+}
+
+/**
  * Duas invariantes da Matriz GUT que já custaram defeito e não aparecem no
  * "a seção pinta": o cabeçalho que precisa GRUDAR ao rolar (sem ele as quatro
  * colunas de número viram números anônimos) e o aviso de campo abaixo da dobra
@@ -165,13 +244,18 @@ async function provasAcao(page) {
   const ctx = await browser.newContext({ viewport: { width: 1500, height: 700 }, reducedMotion: 'reduce' });
   const page = await entrar(ctx, 'desktop', erros);
   await percorrer(page, 'desktop');
+  await provasAtalhoCadastros(page, 'desktop');
+  await provasCiclo(page, 'desktop');
   await provasGut(page);
   await provasAcao(page);
 
   const ctxM = await browser.newContext({
     viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true,
   });
-  await percorrer(await entrar(ctxM, 'celular', erros), 'celular');
+  const pageM = await entrar(ctxM, 'celular', erros);
+  await percorrer(pageM, 'celular');
+  await provasAtalhoCadastros(pageM, 'celular');
+  await provasCiclo(pageM, 'celular');
 
   await browser.close();
   process.exit(relatar(ok, bad, erros));

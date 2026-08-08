@@ -26,8 +26,37 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   plano sem origem nenhuma. Autoload PSR-4 caseiro em `public/index.php`
   (`App\` → `app/`);
   **não há Composer nem `vendor/`** — nada de dependência externa em PHP.
+- **Contexto: ciclo × negócio.** O **negócio** é seletor do menu lateral — troca
+  o dia inteiro. O **ciclo** não: ele é escolhido em **Cadastros › Ciclos &
+  Horizontes** (`#sel-ciclo-uso`), e o menu apenas MOSTRA qual está em uso
+  (`#ciclo-atual`, com atalho para a aba). Lado a lado no menu, os dois pediam o
+  mesmo gesto para decisões de escalas muito diferentes — a do ciclo se toma uma
+  vez por ano. Quem guarda a escolha continua sendo o núcleo
+  (`App.trocarCiclo`), não a seção: o ciclo alimenta `contextoParams()` de todas
+  as telas, e estado desses em seção que se repinta some no primeiro redesenho.
+  O rótulo tem uma fonte só (`App.rotuloCiclo`), usada pelo menu e pela topbar.
+- **Atalho ⚙ na topbar** (`#btn-cadastros`, ao lado do ☰): abre os Cadastros —
+  a tela de AJUSTAR o sistema, que não faz parte do percurso do planejamento e
+  se procurava no meio de dezesseis seções. É um `<a data-secao>`, o mesmo
+  contrato dos itens do menu, e por isso o ouvinte de navegação casa por
+  `[data-secao]` sem prefixo de container (ele não alcança o
+  `data-secao-pergunta` do quiz: seletor de atributo casa por nome exato). O
+  estado "esta é a tela dele" é `aria-current`, não `.active` — ele não é item
+  de lista, e dois atributos para o mesmo estado divergiriam. Botão novo na
+  topbar é espaço tirado de alguém: com ele, "Planejamento Estratégico" passou a
+  quebrar em duas linhas numa barra de 52px no celular, e o subtítulo virou
+  `d-none d-sm-inline`. A bateria confere isso contando **linhas de texto** com
+  um `Range` — a altura da topbar é fixa (continua 52px com o texto quebrado) e
+  `elemento.getClientRects()` devolve um retângulo só, porque item de flex é
+  blocificado; as duas medidas óbvias passavam com o defeito de pé.
 - **Frontend**: JS vanilla, sem build. Seções em `public/assets/js/secoes/*.js`
-  registradas em `App.recarregarSecaoAtiva()` (`app.js`). Formulários via
+  registradas em `App.recarregarSecaoAtiva()` (`app.js`).
+  Seção com **abas que buscam dados** serializa as pinturas
+  (`SecaoCadastros.carregar` enfileira `pintar`): cada renderizador escreve no
+  container e liga os botões DEPOIS do `await`, então trocar de aba com a
+  anterior ainda carregando fazia a antiga escrever no conteúdo que já era de
+  outra e procurar um botão inexistente — `null.addEventListener`, e a tela
+  inteira virava alerta vermelho. Formulários via
   fábrica declarativa `Modal.abrir({campos, url, valores, transformar, extra,
   aoSalvar, enviar})` (`modal.js`) — `enviar` substitui o POST padrão quando
   salvar exige mais de uma chamada (o 409 de sala aberta virando confirmação).

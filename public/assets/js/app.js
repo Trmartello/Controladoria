@@ -55,7 +55,11 @@ const App = {
       });
     });
 
-    document.querySelectorAll('#nav-secoes [data-secao]').forEach((el) => {
+    // `[data-secao]` sem prefixo: o atalho da engrenagem mora na topbar, fora do
+    // #nav-secoes. O seletor pega os dois porque o contrato é o atributo, não o
+    // lugar — e ele NÃO alcança o `data-secao-pergunta` do quiz, que é outro
+    // nome de atributo (seletor de atributo casa por nome exato).
+    document.querySelectorAll('[data-secao]').forEach((el) => {
       el.addEventListener('click', (ev) => {
         ev.preventDefault();
         this.mostrarSecao(el.dataset.secao);
@@ -83,8 +87,8 @@ const App = {
     menu.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-secao]')) alternar(false);
     });
-    ['sel-ciclo', 'sel-negocio'].forEach((id) =>
-      document.getElementById(id).addEventListener('change', () => alternar(false)));
+    // Só o negócio: o ciclo saiu do menu e agora é escolhido em Cadastros.
+    document.getElementById('sel-negocio').addEventListener('change', () => alternar(false));
 
     // Desktop: expande ao encostar na borda esquerda e recolhe quando o
     // mouse se afasta do menu (o menu tem 280px; folga de 20px)
@@ -111,10 +115,11 @@ const App = {
   },
 
   montarSeletores() {
-    const selCiclo = document.getElementById('sel-ciclo');
-    selCiclo.innerHTML = this.sessao.ciclos
-      .map((c) => `<option value="${c.id}">${Modal.esc(c.nome)} (base ${c.ano_base})</option>`)
-      .join('');
+    // O ciclo já não é um seletor do menu: quem o troca é a aba Cadastros ›
+    // Ciclos & Horizontes, por `App.trocarCiclo`. Aqui só se define o inicial —
+    // o primeiro da lista, como o `selected` implícito do <select> fazia.
+    this.contexto.cicloId = this.contexto.cicloId || (this.sessao.ciclos[0]?.id ?? null);
+    this.mostrarCicloAtual();
 
     const selNegocio = document.getElementById('sel-negocio');
     const opcoes = [];
@@ -125,18 +130,40 @@ const App = {
     selNegocio.innerHTML = opcoes.join('') || '<option value="">(nenhum negócio vinculado)</option>';
 
     const atualizar = () => {
-      this.contexto.cicloId = parseInt(selCiclo.value, 10) || null;
       this.contexto.corporativo = selNegocio.value === 'CORP';
       this.contexto.negocioId = this.contexto.corporativo ? null : parseInt(selNegocio.value, 10) || null;
       this.atualizarTopbar();
       this.recarregarSecaoAtiva();
     };
-    selCiclo.addEventListener('change', atualizar);
     selNegocio.addEventListener('change', atualizar);
-    this.contexto.cicloId = parseInt(selCiclo.value, 10) || null;
     this.contexto.corporativo = selNegocio.value === 'CORP';
     this.contexto.negocioId = this.contexto.corporativo ? null : parseInt(selNegocio.value, 10) || null;
     this.atualizarTopbar();
+  },
+
+  /** Rótulo do ciclo em uso, o mesmo texto no menu e na aba de Cadastros. */
+  rotuloCiclo() {
+    const c = (this.sessao.ciclos || []).find((x) => x.id === this.contexto.cicloId);
+    return c ? `${c.nome} (base ${c.ano_base})` : '(nenhum ciclo)';
+  },
+
+  mostrarCicloAtual() {
+    const el = document.getElementById('ciclo-atual');
+    if (el) el.textContent = this.rotuloCiclo();
+  },
+
+  /**
+   * Troca o ciclo em uso. Mora aqui, e não na seção, porque o ciclo é contexto
+   * de TODAS as telas: quem o escolhe é a aba de Cadastros, mas quem o guarda
+   * (e repinta o menu, a topbar e a seção aberta) continua sendo o núcleo.
+   */
+  trocarCiclo(id) {
+    const novo = parseInt(id, 10) || null;
+    if (!novo || novo === this.contexto.cicloId) return;
+    this.contexto.cicloId = novo;
+    this.mostrarCicloAtual();
+    this.atualizarTopbar();
+    this.recarregarSecaoAtiva();
   },
 
   // Com o menu recolhido, a barra superior mostra o contexto selecionado
@@ -153,6 +180,12 @@ const App = {
     document.querySelectorAll('#nav-secoes .nav-link').forEach((l) => l.classList.remove('active'));
     document.getElementById(`secao-${nome}`).classList.remove('d-none');
     document.querySelector(`#nav-secoes [data-secao="${nome}"]`).classList.add('active');
+    // O atalho da topbar não vira `.active` (ele não é item de lista): quem diz
+    // que a tela é a dele é o `aria-current`, que o leitor de tela anuncia e o
+    // CSS usa para acender o botão.
+    const atalho = document.getElementById('btn-cadastros');
+    if (nome === 'cadastros') atalho.setAttribute('aria-current', 'page');
+    else atalho.removeAttribute('aria-current');
     this.recarregarSecaoAtiva();
   },
 
