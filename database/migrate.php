@@ -202,6 +202,18 @@ garantirColuna($pdo, 'coleta_item', 'pergunta_id',
 garantirColuna($pdo, 'coleta_item', 'tipo_resposta',
     "ALTER TABLE coleta_item ADD COLUMN tipo_resposta ENUM('ESCOLHA','RENUNCIA') NULL
      AFTER pergunta_id");
+
+// Unificação de respostas do quiz: o condutor arrasta uma ficha sobre a outra e
+// as duas passam a ser um cartão só. O vínculo em si é o `agrupado_em_id` que a
+// tempestade já usava; estas três colunas são a RASTREABILIDADE que a operação
+// exige — quem uniu, quando, e de que grupo a ficha veio (é o que permite
+// DESFAZER exatamente, devolvendo cada uma ao líder de antes).
+garantirColuna($pdo, 'coleta_item', 'unido_de_id',
+    'ALTER TABLE coleta_item ADD COLUMN unido_de_id INT NULL AFTER agrupado_em_id');
+garantirColuna($pdo, 'coleta_item', 'unido_por',
+    'ALTER TABLE coleta_item ADD COLUMN unido_por INT NULL AFTER unido_de_id');
+garantirColuna($pdo, 'coleta_item', 'unido_em',
+    'ALTER TABLE coleta_item ADD COLUMN unido_em DATETIME NULL AFTER unido_por');
 $tipoDestinoCi2 = $pdo->query(
     "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'destino_tipo'"

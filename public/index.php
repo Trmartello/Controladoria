@@ -333,6 +333,12 @@ try {
             (new QuizController())->encerrarPergunta((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/quiz/pergunta/(\d+)/remover$#', $rota, $m):
             (new QuizController())->removerPergunta((int)$m[1]); break;
+        // Unificação de respostas (só com a pergunta fechada): a arrastada
+        // passa a apontar para a que ficou; separar desfaz.
+        case (bool)preg_match('#^POST /api/quiz/sugestao/(\d+)/unir$#', $rota, $m):
+            (new QuizController())->unirSugestoes((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/quiz/sugestao/(\d+)/separar$#', $rota, $m):
+            (new QuizController())->separarSugestao((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/quiz/sugestao/(\d+)/excluir$#', $rota, $m):
             (new QuizController())->excluirSugestao((int)$m[1]); break;
 

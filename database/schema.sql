@@ -319,6 +319,14 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   participante_token CHAR(32) NULL,
   dividido_de_id   INT NULL,
   agrupado_em_id   INT NULL,
+  -- Unificação de respostas do quiz (o condutor arrasta uma ficha sobre a
+  -- outra): o vínculo é o `agrupado_em_id` acima; estas guardam a
+  -- rastreabilidade — de que grupo a ficha veio, quem uniu e quando. É
+  -- `unido_de_id` que permite DESFAZER exatamente, devolvendo cada linha ao
+  -- líder que ela tinha antes.
+  unido_de_id      INT NULL,
+  unido_por        INT NULL,
+  unido_em         DATETIME NULL,
   adiado           TINYINT(1) NOT NULL DEFAULT 0,
   -- Quiz: a sugestão pertence a uma pergunta do roteiro e, quando o alvo tem
   -- dois lados, declara de qual fala. `origem` é a MARCA de isolamento entre

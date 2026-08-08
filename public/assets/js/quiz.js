@@ -223,7 +223,7 @@ const QuizSala = {
    * ter duas ou três palavras, e uma ficha por linha, na largura da página,
    * gastava meia tela com cinco respostas.
    */
-  fichas(sugestoes, { acao = 'Usar', virou = 'registro' } = {}) {
+  fichas(sugestoes, { acao = 'Usar', virou = 'registro', podeUnir = false } = {}) {
     // A voz que já virou registro SAI do painel: o lugar dela agora é o
     // quadrante de destino, e mantê-la aqui com um ✓ fazia a fila de trabalho
     // crescer com o que já foi feito. Apagado o destino, ela volta sozinha
@@ -236,16 +236,31 @@ const QuizSala = {
            ${Modal.esc(virou)}.`
         : 'Nenhuma sugestão ainda.'}</div>`;
     }
+    const grupos = this.agrupar(abertas);
     // O 👁 nasce em toda ficha e SAI (em `ligarVozes`) da que cabe em três
     // linhas: numa resposta de duas palavras ele seria só ruído — e só depois
     // de pintar dá para saber qual é qual. Ele vem antes do `podeEditar()`
     // porque ler a resposta inteira é direito de quem só acompanha também.
-    const cartao = (s) => `
-      <div class="ficha-sugestao">
-        <div class="texto-voz" title="${Modal.esc(s.texto)}">${Modal.esc(s.texto)}</div>
+    const cartao = (g) => {
+      const s = g.lider;
+      const inteiro = this.textoDoGrupo(g);
+      // As unidas viram LINHAS do mesmo cartão, cada uma com o ↩ que a devolve
+      // ao lugar: unir é gesto de condução e precisa de desfazer imediato.
+      const unidas = g.unidas.map((x) => `
+        <div class="voz-unida">
+          <span class="texto-voz" title="${Modal.esc(x.texto)}">${Modal.esc(x.texto)}</span>
+          ${podeUnir ? `<button class="btn btn-outline-secondary btn-voz" data-separar-voz="${x.id}"
+            title="Separar esta resposta de volta" aria-label="Separar esta resposta de volta">↩</button>` : ''}
+        </div>`).join('');
+      return `
+      <div class="ficha-sugestao${g.unidas.length ? ' unificada' : ''}${podeUnir ? ' arrastavel' : ''}"
+        ${podeUnir ? `data-arrastavel-voz="${s.id}"` : ''}>
+        <div class="texto-voz" title="${Modal.esc(inteiro)}">${Modal.esc(s.texto)}</div>
+        ${unidas}
         <div class="rodape-voz">
-          <span class="autor-voz" title="${Modal.esc(s.autor)}">${Modal.esc(s.autor)}${
-            Number(s.votos) ? ` · ★ ${s.votos}` : ''}</span>
+          <span class="autor-voz" title="${Modal.esc(s.autor)}">${g.unidas.length
+            ? `${g.unidas.length + 1} respostas unidas`
+            : Modal.esc(s.autor)}${Number(g.votos) ? ` · ★ ${g.votos}` : ''}</span>
           <button class="btn btn-outline-secondary btn-voz" data-ver-voz aria-expanded="false"
             title="Ver a resposta inteira" aria-label="Ver a resposta inteira">👁</button>
           ${App.podeEditar() ? `
@@ -254,7 +269,62 @@ const QuizSala = {
               title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
         </div>
       </div>`;
-    return `<div class="grade-sugestoes">${abertas.map(cartao).join('')}</div>`;
+    };
+    return `<div class="grade-sugestoes">${grupos.map(cartao).join('')}</div>`;
+  },
+
+  /**
+   * As vozes em GRUPOS: cada cartão é um líder (`agrupado_em_id` nulo) mais o
+   * que foi arrastado para ele. É o MESMO mecanismo de grupo da tempestade —
+   * nada é apagado ao unir, cada linha guarda o próprio texto, autor e votos.
+   *
+   * Voz cujo líder não está nesta lista (o líder virou registro, por exemplo)
+   * volta a ser cartão próprio: some do painel sem ela seria perder a voz.
+   */
+  agrupar(abertas) {
+    const porId = new Map(abertas.map((s) => [Number(s.id), s]));
+    const grupos = new Map();
+    const lider = (s) => {
+      const pai = Number(s.agrupado_em_id || 0);
+      return pai && porId.has(pai) ? pai : Number(s.id);
+    };
+    abertas.forEach((s) => {
+      const id = lider(s);
+      if (!grupos.has(id)) grupos.set(id, { lider: porId.get(id), unidas: [], votos: 0 });
+      const g = grupos.get(id);
+      if (Number(s.id) !== id) g.unidas.push(s);
+      g.votos += Number(s.votos) || 0;
+    });
+    return [...grupos.values()].filter((g) => g.lider);
+  },
+
+  /** O texto do cartão inteiro: o do líder e o das unidas, um por linha. */
+  textoDoGrupo(g) {
+    return [g.lider.texto, ...g.unidas.map((x) => x.texto)].join('\n');
+  },
+
+  /**
+   * O grupo de uma voz, para quem vai USAR o cartão: o texto de todas juntas e
+   * os ids de todas. O vínculo é conjunto — aceitar o cartão unificado amarra
+   * as vozes que ele reúne, senão as absorvidas ficariam no painel para sempre.
+   */
+  grupoDe(sugestoes, id) {
+    const abertas = (sugestoes || []).filter((s) => !Number(s.vinculada));
+    const g = this.agrupar(abertas).find((x) => Number(x.lider.id) === Number(id));
+    if (!g) {
+      const s = (sugestoes || []).find((x) => Number(x.id) === Number(id));
+      return s ? { ...s, ids: [Number(s.id)] } : null;
+    }
+    return {
+      ...g.lider,
+      texto: this.textoDoGrupo(g),
+      ids: [Number(g.lider.id), ...g.unidas.map((x) => Number(x.id))],
+    };
+  },
+
+  /** Quantos CARTÕES o painel mostra — o contador conta cartão, não linha. */
+  contarCartoes(sugestoes) {
+    return this.agrupar((sugestoes || []).filter((s) => !Number(s.vinculada))).length;
   },
 
   /**
@@ -305,6 +375,115 @@ const QuizSala = {
   },
 
   /**
+   * Arrastar uma ficha sobre a outra UNE as duas — o gesto de consolidar, e só
+   * com a pergunta já fechada (quem decide é a seção, que passa `podeUnir`).
+   *
+   * Mesmo padrão do arraste da Coleta, e pelas mesmas razões: eventos de
+   * PONTEIRO (a API de arrastar do HTML não existe no toque), listeners no
+   * `document` (a ficha é repintada durante o gesto) e limiar de 8px separando
+   * o toque do arraste — sem ele, tocar em "Usar" perto da borda uniria fichas
+   * sem ninguém pedir.
+   */
+  ligarUniao(dono, el) {
+    if (!App.podeEditar()) return;
+    el.querySelectorAll('[data-arrastavel-voz]').forEach((ficha) => {
+      ficha.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== undefined && ev.button !== 0) return;
+        // Botão nenhum inicia arraste: Usar, ×, 👁 e ↩ são atos próprios
+        if (ev.target.closest('button')) return;
+        const origem = { x: ev.clientX, y: ev.clientY };
+        let arrastando = false;
+        let alvoAtual = null;
+        let ultimo = { x: ev.clientX, y: ev.clientY };
+        let quadroRolagem = null;
+
+        const limpar = () => alvoAtual?.classList.remove('alvo-juntar');
+        const atualizarAlvo = (x, y) => {
+          const sob = document.elementFromPoint(x, y)?.closest('[data-arrastavel-voz]');
+          const novo = sob && sob !== ficha ? sob : null;
+          if (novo !== alvoAtual) limpar();
+          alvoAtual = novo;
+          alvoAtual?.classList.add('alvo-juntar');
+        };
+        // A grade rola por dentro (teto de duas fileiras) e a página rola por
+        // fora: perto das bordas as duas andam sozinhas, com o alvo recalculado
+        // a cada quadro — senão o realce congela enquanto a tela desliza.
+        const grade = ficha.closest('.grade-sugestoes');
+        const rolar = () => {
+          const margem = 60;
+          const passo = 14;
+          const caixa = grade?.getBoundingClientRect();
+          if (caixa && grade.scrollHeight > grade.clientHeight + 1) {
+            if (ultimo.y < caixa.top + margem) grade.scrollTop -= passo;
+            else if (ultimo.y > caixa.bottom - margem) grade.scrollTop += passo;
+          }
+          const alt = window.innerHeight;
+          if (ultimo.y < margem) window.scrollBy(0, -passo);
+          else if (ultimo.y > alt - margem) window.scrollBy(0, passo);
+          atualizarAlvo(ultimo.x, ultimo.y);
+          quadroRolagem = requestAnimationFrame(rolar);
+        };
+
+        const mover = (e) => {
+          const dist = Math.hypot(e.clientX - origem.x, e.clientY - origem.y);
+          if (!arrastando && dist < 8) return;
+          if (!arrastando) {
+            arrastando = true;
+            // O polling não repinta no meio do gesto: a ficha sairia da mão
+            dono.unindoVoz = true;
+            ficha.classList.add('arrastando');
+            document.body.classList.add('arrastando-ficha');
+            quadroRolagem = requestAnimationFrame(rolar);
+          }
+          e.preventDefault();
+          ultimo = { x: e.clientX, y: e.clientY };
+          atualizarAlvo(e.clientX, e.clientY);
+        };
+
+        const soltar = async () => {
+          document.removeEventListener('pointermove', mover);
+          document.removeEventListener('pointerup', soltar);
+          document.removeEventListener('pointercancel', soltar);
+          if (quadroRolagem) cancelAnimationFrame(quadroRolagem);
+          const alvo = alvoAtual;
+          limpar();
+          ficha.classList.remove('arrastando');
+          document.body.classList.remove('arrastando-ficha');
+          dono.unindoVoz = false;
+          // Solto fora de outra ficha: nada acontece, nem erro nem seleção
+          if (!arrastando || !alvo) return;
+          try {
+            await App.api(`/api/quiz/sugestao/${ficha.dataset.arrastavelVoz}/unir`, {
+              planejamento_id: dono.plan.id,
+              alvo: Number(alvo.dataset.arrastavelVoz),
+            });
+          } catch (erro) {
+            alert(erro.message);
+          }
+          App.recarregarSecaoAtiva();
+        };
+
+        document.addEventListener('pointermove', mover);
+        document.addEventListener('pointerup', soltar);
+        document.addEventListener('pointercancel', soltar);
+      });
+    });
+
+    // Desfazer: devolve a resposta ao cartão próprio, com o grupo que trouxe
+    el.querySelectorAll('[data-separar-voz]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await App.api(`/api/quiz/sugestao/${b.dataset.separarVoz}/separar`,
+          { planejamento_id: dono.plan.id });
+      } catch (erro) {
+        alert(erro.message);
+        b.disabled = false;
+      }
+      App.recarregarSecaoAtiva();
+    }));
+  },
+
+  /**
    * O cabeçalho do painel: o que a sala responde, quantas vozes chegaram, e o
    * botão de recolher. Recolher atende o caso real — numa oficina cheia o
    * painel empurra as colunas da análise para fora da tela, e às vezes o
@@ -313,7 +492,9 @@ const QuizSala = {
   cabecalhoPainel(dono, p, sugestoes) {
     const quantas = {
       total: sugestoes.length,
-      abertas: sugestoes.filter((s) => !Number(s.vinculada)).length,
+      // Cartões, não linhas: unidas duas respostas, o painel mostra uma —
+      // e o contador que prometesse duas mandaria procurar o que não existe
+      abertas: this.contarCartoes(sugestoes),
     };
     const ui = dono.quizUi || (dono.quizUi = {});
     // Fechada e sendo a ÚLTIMA fechada, a sala não está parada: os celulares
@@ -475,6 +656,8 @@ const QuizSala = {
         return;
       }
       if (document.querySelector('.modal.show')) return;
+      // Arraste em curso: repintar tiraria a ficha da mão de quem a segura
+      if (dono.unindoVoz) return;
       const ativo = document.activeElement;
       if (ativo && (ativo.tagName === 'TEXTAREA' || ativo.tagName === 'INPUT')) return;
       // Captura o foco DO DISPARO: se o condutor navegar pelo roteiro com esta

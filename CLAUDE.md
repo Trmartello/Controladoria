@@ -250,6 +250,23 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   um clique distraído. `Json::erro` ganhou o terceiro parâmetro `codigo` para
   isso: mensagem é para ler, código é para decidir (casar por texto seria refém
   da redação).
+  **Unificar respostas** é o gesto de CONSOLIDAR, e só com a pergunta **já
+  fechada** (`POST /api/quiz/sugestao/{id}/unir`; `separar` desfaz): o condutor
+  arrasta uma ficha sobre a outra e as duas viram um cartão só — o texto de
+  cada uma vira uma LINHA dele, com o ↩ que a devolve ao lugar. Nada é apagado:
+  o vínculo é o mesmo `coleta_item.agrupado_em_id` da tempestade, e cada linha
+  guarda o próprio texto, autor, data e votos. O que a unificação acrescenta é
+  a rastreabilidade — `unido_por`, `unido_em` e, principalmente, `unido_de_id`,
+  o líder de ONDE a ficha veio, que é o que faz o desfazer devolver o grupo
+  inteiro ao lugar de antes. Com a pergunta ATIVA o servidor recusa
+  (409/`SALA_ABERTA`) e a tela nem desenha o arraste: unir enquanto a sala
+  responde mexeria na lista embaixo de quem ainda está escrevendo. O contador
+  do painel conta **cartões**, não linhas, e o "Usar" leva o texto de todas e
+  amarra **todas** (`QuizSala.grupoDe`) — amarrar só o líder deixaria as
+  absorvidas no painel, prometendo trabalho já feito.
+  Sem pergunta ATIVA o `estado()` põe o foco na **última encerrada**: fechar o
+  🎤 apagava o painel inteiro, e é exatamente aí que começa o trabalho de ler as
+  estrelas, unir o parecido e transformar em registro.
   Vincular sugestão ao registro é **conjunto** (campo `sugestoes`, como
   `fatores`): muitas vozes com `destino_tipo` + situacao ACEITO (congela a
   edição do autor), UM texto redigido pelo condutor — **aceitar é ato de quem

@@ -511,7 +511,8 @@ const Diag = {
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
       ${QuizSala.cabecalhoPainel(dono, p, sugestoes)}
       ${recolhido ? '' : `<div class="coluna-quiz coluna-escolha mt-2">
-        ${QuizSala.fichas(sugestoes, { virou: 'fator' })}
+        ${QuizSala.fichas(sugestoes, { virou: 'fator',
+          podeUnir: App.podeEditar() && p.situacao !== 'ATIVA' })}
       </div>`}
     </div></div>`;
   },
@@ -530,6 +531,7 @@ const Diag = {
     // Antes da saída por `modalFator`: o 👁 e a altura da grade valem para
     // LEITURA também, que acompanha o encontro sem aceitar sugestão nenhuma
     QuizSala.ligarVozes(dono, el);
+    QuizSala.ligarUniao(dono, el);
     el.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
       try {
         await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`,
@@ -544,7 +546,8 @@ const Diag = {
     if (!modalFator) return;
     QuizSala.ligarRecolher(dono, el);
     el.querySelectorAll('[data-usar-sugestao]').forEach((b) => b.addEventListener('click', () => {
-      const sg = (dono.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarSugestao);
+      // O cartão pode reunir várias vozes: leva o texto de todas e amarra todas
+      const sg = QuizSala.grupoDe(dono.quiz?.sugestoes, b.dataset.usarSugestao);
       const p = this.quizFoco(dono, etapa, ano);
       if (!sg || !p) return;
       modalFator(null, p.categoria, sg);
@@ -694,7 +697,7 @@ const Diag = {
         Diag.campoCategoria(etapa),
         { nome: 'descricao', rotulo: 'Descrição do fator', tipo: 'textarea' },
       ],
-      ...(sugestao ? { transformar: (dd) => ({ ...dd, sugestoes: [sugestao.id] }) } : {}),
+      ...(sugestao ? { transformar: (dd) => ({ ...dd, sugestoes: sugestao.ids || [sugestao.id] }) } : {}),
     });
     Diag.quizLigarEtapa(dono, el, etapa, ano, modalFator);
 
@@ -922,7 +925,7 @@ const SecaoCenario = {
       // guarda texto, e uma lista viraria a string "12" no caminho de volta.
       // Sem a chave `sugestoes` o servidor não mexe em vínculo nenhum — é o que
       // faz uma edição comum do item preservar as vozes já registradas.
-      ...(sugestao ? { transformar: (d) => ({ ...d, sugestoes: [sugestao.id] }) } : {}),
+      ...(sugestao ? { transformar: (d) => ({ ...d, sugestoes: sugestao.ids || [sugestao.id] }) } : {}),
     });
     this.modalItem = modalItem;
     document.getElementById('btn-novo-cenario').addEventListener('click', () => modalItem());
@@ -1004,15 +1007,16 @@ const SecaoCenario = {
     if (!p) return '';
     const sugestoes = this.quiz?.sugestoes || [];
     const recolhido = this.quizUi?.painelRecolhido;
+    const podeUnir = App.podeEditar() && p.situacao !== 'ATIVA';
     const coluna = (tipo, rotulo, classe) => {
       const fichas = sugestoes.filter((s) => s.tipo_resposta === tipo);
-      // O contador é das ABERTAS: a voz já usada saiu da grade, e contá-la aqui
-      // faria o número prometer trabalho que não existe mais
-      const abertas = fichas.filter((s) => !Number(s.vinculada)).length;
+      // O contador é dos CARTÕES abertos (ver cascata.js): voz usada saiu da
+      // grade e as unidas viraram um cartão só
+      const abertas = QuizSala.contarCartoes(fichas);
       return `<div class="col-md-6"><div class="coluna-quiz ${classe}">
         <div class="fw-bold small text-uppercase mb-2">${rotulo}
           <span class="badge rounded-pill text-bg-secondary">${abertas}</span></div>
-        ${QuizSala.fichas(fichas, { virou: 'item de cenário' })}
+        ${QuizSala.fichas(fichas, { virou: 'item de cenário', podeUnir })}
       </div></div>`;
     };
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
@@ -1026,6 +1030,7 @@ const SecaoCenario = {
 
   ligarPainelVivo(el) {
     QuizSala.ligarVozes(this, el);
+    QuizSala.ligarUniao(this, el);
     el.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
       try {
         await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`, {
@@ -1040,7 +1045,8 @@ const SecaoCenario = {
     }));
     QuizSala.ligarRecolher(this, el);
     el.querySelectorAll('[data-usar-sugestao]').forEach((b) => b.addEventListener('click', () => {
-      const s = (this.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarSugestao);
+      // O cartão pode reunir várias vozes: leva o texto de todas e amarra todas
+      const s = QuizSala.grupoDe(this.quiz?.sugestoes, b.dataset.usarSugestao);
       if (!s || !this.modalItem) return;
       this.modalItem(null, s.tipo_resposta, s);
     }));
@@ -1307,7 +1313,7 @@ const SecaoSwot = {
         Diag.campoQuadrante('categoria', 'Quadrante'),
         { nome: 'descricao', rotulo: 'Descrição do fator', tipo: 'textarea' },
       ],
-      ...(sugestao ? { transformar: (dd) => ({ ...dd, sugestoes: [sugestao.id] }) } : {}),
+      ...(sugestao ? { transformar: (dd) => ({ ...dd, sugestoes: sugestao.ids || [sugestao.id] }) } : {}),
     });
     Diag.quizLigarEtapa(this, el, 'SWOT', ano, modalFator);
     document.getElementById('btn-novo-swot').addEventListener('click', () => modalFator());

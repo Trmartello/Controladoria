@@ -258,10 +258,22 @@ class QuizController
                 $ativa = $p;
             }
         }
-        // O foco é o que o condutor está EXAMINANDO — por padrão, a ativa.
-        // Foco que não existe mais (pergunta removida) cai para a ativa.
+        // O foco é o que o condutor está EXAMINANDO — por padrão, a ativa; sem
+        // ativa, a ÚLTIMA FECHADA. Fechar o 🎤 apagava o painel inteiro, e é
+        // exatamente aí que começa o trabalho: ler as estrelas, unir as
+        // respostas parecidas e transformá-las em registro. Sem isto, o
+        // condutor tinha de caçar a pergunta no roteiro para ver o que a sala
+        // acabou de dizer.
         $focoId = (int)($_GET['pergunta_id'] ?? 0);
         $foco = $ativa;
+        if (!$foco) {
+            $recente = Quiz::encerradaRecente((int)$r['id']);
+            foreach ($roteiro as $p) {
+                if ($recente && (int)$p['id'] === (int)$recente['id']) {
+                    $foco = $p;
+                }
+            }
+        }
         foreach ($roteiro as $p) {
             if ($focoId && (int)$p['id'] === $focoId) {
                 $foco = $p;
@@ -270,6 +282,7 @@ class QuizController
 
         $sugestoes = $foco ? Database::todos(
             "SELECT ci.id, ci.texto, ci.tipo_resposta, ci.votos, ci.situacao,
+                    ci.agrupado_em_id, ci.unido_de_id,
                     (ci.destino_id IS NOT NULL) AS vinculada,
                     COALESCE(u.nome, ci.autor_nome, 'Participante') AS autor
              FROM coleta_item ci
@@ -366,6 +379,112 @@ class QuizController
         );
         Database::executar('DELETE FROM coleta_item WHERE id = ?', [$id]);
         Json::ok();
+    }
+
+    /**
+     * Une duas respostas: a arrastada passa a apontar para a que ficou, e as
+     * duas viram um cartão só. Nada é apagado — cada linha guarda o próprio
+     * texto, autor, data e votos; o que muda é `agrupado_em_id`, o MESMO
+     * mecanismo de grupo que a tempestade já usa.
+     *
+     * Só com a pergunta FECHADA: unir enquanto a sala responde mexeria na lista
+     * embaixo de quem ainda está escrevendo, e a ficha que sumisse no meio do
+     * envio pareceria resposta perdida.
+     *
+     * O grupo INTEIRO da origem migra (a ficha arrastada pode já ser um cartão
+     * unificado), e `unido_de_id` guarda de onde ele veio — é o que faz o
+     * desfazer devolver cada linha ao líder que ela tinha antes.
+     */
+    public function unirSugestoes(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        $u = Auth::exigirTriagemColeta($planId);
+        $alvo = (int)($d['alvo'] ?? 0);
+        if ($alvo === $id) {
+            Json::erro('Arraste sobre outra resposta.');
+        }
+        $origem = $this->exigirSugestao($id, $planId);
+        $destino = $this->exigirSugestao($alvo, $planId);
+
+        // Mesma pergunta e mesmo LADO: juntar uma escolha com uma renúncia
+        // criaria um cartão que fala das duas coisas, e o painel mostra cada
+        // lado na sua coluna — ele teria de aparecer nas duas.
+        if ((int)$origem['pergunta_id'] !== (int)$destino['pergunta_id']
+            || ($origem['tipo_resposta'] ?? null) !== ($destino['tipo_resposta'] ?? null)) {
+            Json::erro('Só dá para unir respostas da mesma pergunta e do mesmo lado.');
+        }
+        if (!(int)$origem['pergunta_id']) {
+            Json::erro('Esta resposta não pertence a uma pergunta do roteiro.');
+        }
+        $p = Database::um(
+            'SELECT situacao FROM quiz_pergunta WHERE id = ?', [(int)$origem['pergunta_id']]
+        );
+        if (($p['situacao'] ?? '') === 'ATIVA') {
+            Json::erro('Feche a pergunta para a sala antes de unir as respostas.', 409, 'SALA_ABERTA');
+        }
+        // Voz já virada registro está fora do painel: uni-la esconderia dentro
+        // de outro cartão algo que já é fator, item de cenário ou célula.
+        if ($origem['destino_id'] || $destino['destino_id']) {
+            Json::erro('Uma dessas respostas já virou registro. Desfaça o vínculo antes de unir.');
+        }
+
+        $liderOrigem = (int)($origem['agrupado_em_id'] ?? 0) ?: $id;
+        $lider = (int)($destino['agrupado_em_id'] ?? 0) ?: $alvo;
+        if ($lider === $liderOrigem) {
+            Json::erro('Essas respostas já estão no mesmo cartão.');
+        }
+        Database::executar(
+            "UPDATE coleta_item
+                SET agrupado_em_id = ?, unido_de_id = ?, unido_por = ?, unido_em = NOW()
+              WHERE planejamento_id = ? AND origem = 'QUIZ'
+                AND (id = ? OR agrupado_em_id = ?)",
+            [$lider, $liderOrigem, (int)$u['id'], $planId, $liderOrigem, $liderOrigem]
+        );
+        Json::ok(['lider' => $lider]);
+    }
+
+    /**
+     * Desfaz uma unificação: a ficha volta a ser cartão próprio, com o grupo
+     * que ela trazia. Restaura pelo `unido_de_id` — todas as linhas que
+     * entraram JUNTAS naquele gesto voltam ao líder de então, que é o desfazer
+     * exato do que foi feito.
+     */
+    public function separarSugestao(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirTriagemColeta($planId);
+        $item = $this->exigirSugestao($id, $planId);
+        if (!(int)($item['agrupado_em_id'] ?? 0)) {
+            Json::erro('Esta resposta não está unida a nenhuma outra.');
+        }
+        // Linha antiga (unida antes destas colunas existirem) volta sozinha
+        $origem = (int)($item['unido_de_id'] ?? 0) ?: $id;
+        Database::executar(
+            "UPDATE coleta_item
+                SET agrupado_em_id = IF(id = ?, NULL, ?),
+                    unido_de_id = NULL, unido_por = NULL, unido_em = NULL
+              WHERE planejamento_id = ? AND origem = 'QUIZ'
+                AND (id = ? OR unido_de_id = ?)",
+            [$origem, $origem, $planId, $id, $origem]
+        );
+        Json::ok(['lider' => $origem]);
+    }
+
+    /** A sugestão do QUIZ deste planejamento, com o que as duas rotas leem. */
+    private function exigirSugestao(int $id, int $planId): array
+    {
+        $item = Database::um(
+            "SELECT id, pergunta_id, tipo_resposta, agrupado_em_id, unido_de_id, destino_id
+             FROM coleta_item
+             WHERE id = ? AND planejamento_id = ? AND origem = 'QUIZ'",
+            [$id, $planId]
+        );
+        if (!$item) {
+            Json::erro('Resposta não encontrada neste planejamento.', 404);
+        }
+        return $item;
     }
 
     // ---- Miolo ----

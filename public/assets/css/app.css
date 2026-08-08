@@ -1959,3 +1959,34 @@ body.menu-aberto .menu-lateral {
   gap: .4rem;
   margin-bottom: .35rem;
 }
+
+/* ===== Unificar respostas: arrastar uma ficha sobre a outra =====
+   Mesma linguagem do arraste da Coleta (`.ficha-nuvem`): a arrastada esmaece, a
+   que vai receber ganha a borda dourada e cresce um pouco. Só existe com a
+   pergunta já fechada — quem decide é a seção, que passa `podeUnir`. */
+.ficha-sugestao.arrastavel {
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.ficha-sugestao.arrastando { opacity: .5; }
+.ficha-sugestao.alvo-juntar {
+  border-color: var(--dourado);
+  border-width: 2px;
+  background: #fbf5e9;
+}
+/* A voz absorvida é uma LINHA do mesmo cartão, com o ↩ que a devolve ao lugar:
+   unir é gesto de condução e precisa de desfazer imediato. O traço acima dela
+   é o que faz o cartão ser lido como "duas respostas", e não como um texto só
+   que alguém digitou em duas linhas. */
+.voz-unida {
+  display: flex;
+  align-items: flex-start;
+  gap: .25rem;
+  border-top: 1px dashed #c9d4ce;
+  padding-top: .18rem;
+  margin-top: .18rem;
+}
+.voz-unida .texto-voz { flex: 1 1 auto; min-width: 0; }
+.voz-unida .btn-voz { flex-shrink: 0; }
+.ficha-sugestao.unificada { border-color: var(--dourado); }

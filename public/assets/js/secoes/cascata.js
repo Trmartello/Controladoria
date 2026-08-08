@@ -108,10 +108,15 @@ const SecaoCascata = {
     // Só a pergunta desta tela tem célula: a sala é do projeto e a ativa pode
     // ser um cenário ou um quadrante da SWOT, que não apontam para lugar nenhum
     // na matriz da cascata.
-    if (!this.celulaAberta && this.quiz?.pergunta?.alvo_tipo === 'CASCATA') {
+    // A pergunta em FOCO conta junto com a ativa: fechada a sala, o foco cai na
+    // última encerrada, e é nela que o condutor lê as estrelas, une as
+    // respostas parecidas e as transforma em escolha da célula. Sem isso, quem
+    // recarregasse a página depois de fechar caía numa matriz sem painel.
+    const perguntaAbrir = this.quiz?.pergunta || this.quiz?.foco;
+    if (!this.celulaAberta && perguntaAbrir?.alvo_tipo === 'CASCATA') {
       this.celulaAberta = {
-        driverId: Number(this.quiz.pergunta.driver_id),
-        horizonteId: Number(this.quiz.pergunta.horizonte_id),
+        driverId: Number(perguntaAbrir.driver_id),
+        horizonteId: Number(perguntaAbrir.horizonte_id),
       };
       const td = el.querySelector(`.celula-cascata[data-driver="${this.celulaAberta.driverId}"][data-horizonte="${this.celulaAberta.horizonteId}"]`);
       if (td) td.classList.add('ativa');
@@ -349,15 +354,20 @@ const SecaoCascata = {
     if (!p) return '';
     const sugestoes = this.quiz?.sugestoes || [];
     const recolhido = this.quizUi?.painelRecolhido;
+    // Unir respostas é gesto de CONSOLIDAÇÃO: só com a pergunta já fechada para
+    // a sala. Com ela aberta, a ficha sumindo no meio de um envio pareceria
+    // resposta perdida para quem está respondendo.
+    const podeUnir = App.podeEditar() && p.situacao !== 'ATIVA';
     const coluna = (tipo, rotulo, classe) => {
       const fichas = sugestoes.filter((s) => s.tipo_resposta === tipo);
-      // O contador é das ABERTAS: a voz já usada saiu da grade, e contá-la aqui
-      // faria o número prometer trabalho que não existe mais
-      const abertas = fichas.filter((s) => !Number(s.vinculada)).length;
+      // O contador é dos CARTÕES abertos: a voz já usada saiu da grade e as
+      // unidas viraram um cartão só — contá-las faria o número prometer
+      // trabalho que não existe mais
+      const abertas = QuizSala.contarCartoes(fichas);
       return `<div class="col-md-6"><div class="coluna-quiz ${classe}">
         <div class="fw-bold small text-uppercase mb-2">${rotulo}
           <span class="badge rounded-pill text-bg-secondary">${abertas}</span></div>
-        ${QuizSala.fichas(fichas, { virou: 'escolha da célula' })}
+        ${QuizSala.fichas(fichas, { virou: 'escolha da célula', podeUnir })}
       </div></div>`;
     };
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
@@ -372,6 +382,7 @@ const SecaoCascata = {
   ligarPainelVivo(alvo) {
     QuizSala.ligarRecolher(this, alvo);
     QuizSala.ligarVozes(this, alvo);
+    QuizSala.ligarUniao(this, alvo);
     alvo.querySelectorAll('[data-reabrir-foco]').forEach((b) => b.addEventListener('click', async () => {
       try {
         await App.api(`/api/quiz/pergunta/${b.dataset.reabrirFoco}/ativar`, {
@@ -385,7 +396,8 @@ const SecaoCascata = {
       App.recarregarSecaoAtiva();
     }));
     alvo.querySelectorAll('[data-usar-sugestao]').forEach((b) => b.addEventListener('click', () => {
-      const s = (this.quiz?.sugestoes || []).find((x) => x.id == b.dataset.usarSugestao);
+      // O cartão pode reunir várias vozes: leva o texto de todas e amarra todas
+      const s = QuizSala.grupoDe(this.quiz?.sugestoes, b.dataset.usarSugestao);
       const p = this.perguntaDaCelulaAberta();
       if (!s || !p) return;
       this.abrirModalCelula(p.eixo_id ? Number(p.eixo_id) : null, s);
@@ -520,7 +532,11 @@ const SecaoCascata = {
         if (sugestao.tipo_resposta === 'RENUNCIA') renunciaValor = sugestao.texto;
         else escolhaValor = sugestao.texto;
       }
-      if (!sugestoesIds.includes(sugestao.id)) sugestoesIds.push(sugestao.id);
+      // O cartão unificado entra INTEIRO no vínculo: amarrar só o líder
+      // deixaria as absorvidas no painel, prometendo trabalho já feito.
+      (sugestao.ids || [sugestao.id]).forEach((id) => {
+        if (!sugestoesIds.includes(id)) sugestoesIds.push(id);
+      });
     }
 
     // Fatores da SWOT ordenados por score GUT para o vínculo. A descrição vai
