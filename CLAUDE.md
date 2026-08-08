@@ -326,7 +326,24 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `cruzamentos` (a contagem dos DOIS lados) e a confirmação da SWOT diz o que vai
   junto. **Não existe grade 4×4 clicável**, e é decisão: com seis fatores por
   quadrante seriam 36 células por bloco, e na prática se escolhem três — a grade
-  convidaria a preencher tudo. O selo do par é cortado em UMA linha por
+  convidaria a preencher tudo.
+  **O cartão tem UM "ver mais" para o cartão inteiro**
+  (`SecaoCruzamentos.ligarVerMaisCartao`), não um por texto como o
+  `Diag.ligarVerMais` do resto do diagnóstico: são três caixas cortadas (os dois
+  selos do par e a estratégia) e um rodapé só — com o genérico seriam três
+  botões empilhados no mesmo lugar, nenhum dizendo a qual texto pertence. Os
+  textos saem marcados com `data-ver-mais="1"` para o helper genérico não
+  encostar neles. O rodapé é uma linha: **expandir à esquerda** (é leitura) e
+  **agir à direita** (selo do plano, ✎, ×). O botão só existe quando alguma
+  caixa foi mesmo cortada, medido com o cartão **recolhido** — aberto, nada está
+  cortado e ele sumiria de quem acabou de usá-lo —, e o filtro de categoria do
+  celular obriga a religá-lo, porque caixa escondida por `d-none` mede zero. O
+  estado mora em `expandidos` (um `Set` na seção), nunca no DOM: a tela se
+  repinta com o relógio da sala e o texto voltaria a ser cortado no meio da
+  leitura. A altura é animada com o destino **medido** (`animarAltura`), com o
+  `max-height` limpo no fim — mantê-lo prenderia o cartão numa altura fixa e
+  esconderia o que crescesse depois — e respeitando `prefers-reduced-motion`.
+  O selo do par é cortado em UMA linha por
   `line-clamp`, **nunca por `nowrap`**: com `nowrap` a largura mínima do selo
   vira o parágrafo inteiro, e essa mínima sobe pela coluna e pela fila até o
   `<main>` (item de flex) — a página inteira passava a rolar na horizontal no

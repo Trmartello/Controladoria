@@ -1511,6 +1511,21 @@ tr.linha-arrastando { opacity: .85; }
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+/* Aberto pelo "ver mais" do rodapé — um estado só para o cartão inteiro.
+   O `overflow-wrap: anywhere` do seletor acima CONTINUA valendo: é ele que
+   mantém a largura mínima do selo pequena, e sem essa mínima a coluna, a fila e
+   o `<main>` (item de flex) empurravam a página a rolar na horizontal. */
+.selo-cruz-texto.expandido {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+/* A seta acompanha o estado: é ela que se lê de relance, o texto confirma. */
+.ver-mais-chevron { transition: transform .18s ease; flex: 0 0 auto; }
+.ver-mais[aria-expanded="true"] .ver-mais-chevron { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .ver-mais-chevron { transition: none; }
+}
 .card-cruzamento { border-left: 3px solid var(--cor-quad, transparent); }
 
 /* ===== Coleta de Ideias =====

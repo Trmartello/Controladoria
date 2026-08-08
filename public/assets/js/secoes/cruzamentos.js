@@ -35,6 +35,114 @@ const SecaoCruzamentos = {
   },
 
   /**
+   * Cartões com o "ver mais" aberto, por id.
+   *
+   * Mora no DONO da seção, e não no DOM, pelo mesmo motivo da altura da grade
+   * de vozes do quiz: esta tela se repinta sozinha (o selo da sala bate de
+   * tempos em tempos) e quem estivesse lendo um fator expandido veria o texto
+   * voltar a ser cortado no meio da leitura.
+   */
+  expandidos: new Set(),
+
+  /**
+   * Um "ver mais" por CARTÃO — não um por texto, que é o que
+   * `Diag.ligarVerMais` faz no resto do diagnóstico.
+   *
+   * Aqui o cartão tem TRÊS caixas de texto cortadas (os dois fatores do par e a
+   * estratégia) e um rodapé só. Com o helper genérico, cada uma ganharia o
+   * próprio botão: três "ver mais" empilhados no mesmo lugar, e nenhum deles
+   * dizendo a qual texto pertence. Um estado só para o cartão inteiro também é
+   * o que a leitura pede — o par é uma coisa só, e ler metade dele não ajuda.
+   *
+   * O botão só existe quando alguma caixa foi MESMA cortada, e isso é medido
+   * (`scrollHeight > clientHeight`), nunca suposto: em fator de três palavras
+   * ele seria ruído. A medida é feita com o cartão RECOLHIDO — com ele já
+   * aberto nada está cortado, e o botão sumiria justamente de quem o usou.
+   */
+  ligarVerMaisCartao(el) {
+    el.querySelectorAll('[data-card-cruzamento]').forEach((card) => {
+      const rodape = card.querySelector('.botoes-fator');
+      if (!rodape || rodape.querySelector('.ver-mais')) return;
+
+      const caixas = [...card.querySelectorAll('.selo-cruz-texto, .texto-fator')];
+      const id = Number(card.dataset.cardCruzamento);
+      if (!caixas.some((t) => t.scrollHeight > t.clientHeight + 1)) {
+        this.expandidos.delete(id);
+        return;
+      }
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-link btn-sm p-0 ver-mais d-inline-flex align-items-center gap-1';
+      btn.setAttribute('aria-expanded', 'false');
+      // O chevron é o MESMO símbolo em todo lugar (`<use>` no shell.php) e gira
+      // com o estado: a seta é o que se lê de relance, o texto é a confirmação.
+      btn.innerHTML = '<span class="ver-mais-texto">ver mais</span>'
+        + '<svg class="ver-mais-chevron" width="12" height="12" aria-hidden="true" '
+        + 'focusable="false"><use href="#i-chevron"/></svg>';
+
+      const aplicar = (aberto, animar) => {
+        const mudar = () => {
+          caixas.forEach((t) => t.classList.toggle('expandido', aberto));
+          btn.querySelector('.ver-mais-texto').textContent = aberto ? 'ver menos' : 'ver mais';
+          btn.setAttribute('aria-expanded', String(aberto));
+        };
+        if (animar) this.animarAltura(card, mudar);
+        else mudar();
+        if (aberto) this.expandidos.add(id);
+        else this.expandidos.delete(id);
+      };
+
+      btn.addEventListener('click', () =>
+        aplicar(btn.getAttribute('aria-expanded') !== 'true', true));
+      rodape.prepend(btn);
+
+      // O estado guardado é reposto SEM animação: na primeira pintura não houve
+      // gesto nenhum, e animar aqui faria o cartão "abrir sozinho" a cada
+      // batida do relógio da sala.
+      if (this.expandidos.has(id)) aplicar(true, false);
+    });
+  },
+
+  /**
+   * Troca as classes e leva a altura do cartão de uma à outra.
+   *
+   * A altura de destino é MEDIDA depois da troca, e não estimada: o texto do
+   * fator tem o tamanho que tem, e um `max-height` chutado ou cortaria o
+   * parágrafo ou faria a transição correr rápido demais e parar no vazio.
+   * A leitura do `getBoundingClientRect` entre as duas escritas força o
+   * recálculo — sem ela o navegador junta as duas e não há transição nenhuma.
+   *
+   * Quem pediu menos movimento não recebe movimento: a troca acontece direto.
+   */
+  animarAltura(card, mudar) {
+    const antes = card.getBoundingClientRect().height;
+    mudar();
+    const depois = card.getBoundingClientRect().height;
+    const parado = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (parado || Math.abs(depois - antes) < 1) return;
+
+    card.style.overflow = 'hidden';
+    card.style.maxHeight = `${antes}px`;
+    card.getBoundingClientRect();
+    card.style.transition = 'max-height .18s ease';
+    card.style.maxHeight = `${depois}px`;
+
+    // O `max-height` sai no fim: mantê-lo deixaria o cartão preso numa altura
+    // fixa, e o texto que crescesse depois (uma edição, o selo da sala) ficaria
+    // escondido atrás do `overflow: hidden`. O tempo é a rede de segurança —
+    // `transitionend` não chega quando a aba está em segundo plano.
+    const fim = () => {
+      card.style.transition = '';
+      card.style.maxHeight = '';
+      card.style.overflow = '';
+      card.removeEventListener('transitionend', fim);
+    };
+    card.addEventListener('transitionend', fim);
+    setTimeout(fim, 400);
+  },
+
+  /**
    * O caminho do cruzamento para o plano de ação, nos MESMOS três estados e com
    * a mesma aparência do fator da SWOT (`Diag.seloPlanoAcao`): encaminhar,
    * aguardando (que desfaz), e "Virou ação ↗", que navega até a ação.
@@ -106,15 +214,26 @@ const SecaoCruzamentos = {
               ${seloFator(c.fator_interno_id, c.interno_categoria, c.interno_descricao)}
               ${seloFator(c.fator_externo_id, c.externo_categoria, c.externo_descricao)}
             </div>
-            <div class="small texto-fator mt-1">${Modal.esc(c.estrategia)}</div>
-            <div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
-              ${this.seloAcao(c)}
-              ${editar ? `<span class="ms-auto d-flex gap-1">
-                <button class="btn btn-sm btn-outline-secondary" data-editar-cruz="${c.id}"
+            <!-- data-ver-mais="1" desliga o "ver mais" GENÉRICO deste texto
+                 (Diag.ligarVerMais pula o que já está marcado): neste cartão
+                 quem expande é um botão só, do cartão inteiro. Sem isso o
+                 rodapé ganharia dois "ver mais" lado a lado, um para a
+                 estratégia e outro para os fatores, e nenhum diria o que faz. -->
+            <div class="small texto-fator mt-1" data-ver-mais="1">${Modal.esc(c.estrategia)}</div>
+            <!-- Rodapé numa linha só: expandir à ESQUERDA (é leitura), agir à
+                 DIREITA (mexer no registro). O botão de expandir é criado no
+                 JS, depois de medir se alguma caixa foi mesmo cortada — o
+                 ms-auto do grupo da direita é o que segura o alinhamento
+                 enquanto ele não existe, e por isso fica junto do
+                 justify-content-between. -->
+            <div class="botoes-fator d-flex justify-content-between align-items-center gap-1 mt-1 flex-wrap">
+              <span class="ms-auto d-flex gap-1 align-items-center">
+                ${this.seloAcao(c)}
+                ${editar ? `<button class="btn btn-sm btn-outline-secondary" data-editar-cruz="${c.id}"
                   title="Editar" aria-label="Editar">✎</button>
                 <button class="btn btn-sm btn-outline-danger" data-excluir-cruz="${c.id}"
-                  title="Excluir" aria-label="Excluir">×</button>
-              </span>` : ''}
+                  title="Excluir" aria-label="Excluir">×</button>` : ''}
+              </span>
             </div>
           </div>
         </div>`).join('');
@@ -177,6 +296,17 @@ const SecaoCruzamentos = {
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CRUZAMENTOS');
     Diag.ligarVerMais(el);
+    // Depois do genérico: os textos deste cartão saem marcados com
+    // `data-ver-mais`, então ele não encosta neles — quem os expande é o botão
+    // único do rodapé, ligado aqui.
+    this.ligarVerMaisCartao(el);
+    // O filtro do celular mostra UMA categoria por vez com `d-none`, e caixa
+    // escondida mede zero: o cartão que aparece depois nunca teria ganhado o
+    // botão, porque na primeira passagem nada parecia cortado. O seletor já
+    // religa o "ver mais" genérico pelo mesmo motivo; aqui é o mesmo remédio
+    // para o botão do cartão.
+    el.querySelector('.sel-categoria-movel')
+      ?.addEventListener('change', () => this.ligarVerMaisCartao(el));
 
     el.querySelectorAll('[data-ir-swot]').forEach((b) => b.addEventListener('click', () =>
       Diag.irParaFator('swot', b.dataset.irSwot, 'SWOT', b.dataset.catSwot)));

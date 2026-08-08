@@ -153,6 +153,96 @@ async function provasCiclo(page, largura) {
 }
 
 /**
+ * O cartão do cruzamento: UM "ver mais" para o cartão inteiro.
+ *
+ * O cartão tem três caixas cortadas (os dois fatores do par e a estratégia) e
+ * um rodapé só. Com o "ver mais" genérico do diagnóstico, cada uma ganharia o
+ * próprio botão — três empilhados no mesmo lugar, nenhum dizendo a qual texto
+ * pertence. Estas provas guardam o botão único, o estado compartilhado e o
+ * rodapé em UMA linha (expandir à esquerda, agir à direita).
+ *
+ * A massa é criada e apagada aqui: a instância de teste não tem cruzamento
+ * nenhum garantido, e um teste que só roda "se houver dado" não prova nada.
+ */
+async function provasCartaoCruzamento(page) {
+  const ids = await page.evaluate(async () => {
+    const cria = async (cat, desc) => (await App.api('/api/fatores',
+      { planejamento_id: 1, etapa: 'SWOT', categoria: cat, descricao: desc, ano: 2026 })).id;
+    // Textos longos de propósito: o botão só aparece no que foi MESMO cortado.
+    const fi = await cria('FORCA', 'Força de teste com um texto deliberadamente longo para '
+      + 'não caber em uma linha só dentro do selo do par, forçando o corte por line-clamp');
+    const fe = await cria('OPORTUNIDADE', 'Oportunidade de teste, também longa o bastante '
+      + 'para ser cortada em uma linha e precisar do ver mais para ser lida inteira');
+    const c = await App.api('/api/cruzamentos', {
+      planejamento_id: 1, fator_interno_id: fi, fator_externo_id: fe,
+      rotulo: 'Par de teste do cartão',
+      estrategia: 'Estratégia de teste, escrita com folga suficiente para passar das três '
+        + 'linhas que o cartão mostra e exercitar o corte do texto da estratégia junto com '
+        + 'os dois selos do par, que é justamente o que o botão único precisa expandir.',
+    });
+    return { fi, fe, c: c.id };
+  });
+
+  await page.evaluate(() => App.mostrarSecao('cruzamentos'));
+  const pintou = await esperar(page, `!!document.querySelector('[data-card-cruzamento="${ids.c}"] .ver-mais')`);
+  t('[desktop] cartão do cruzamento ganha o "ver mais"', pintou);
+
+  if (pintou) {
+    const sel = `[data-card-cruzamento="${ids.c}"]`;
+    const medir = () => page.evaluate((s) => {
+      const card = document.querySelector(s);
+      const btn = card.querySelector('.ver-mais');
+      const acoes = card.querySelector('.botoes-fator .ms-auto');
+      return {
+        botoes: card.querySelectorAll('.ver-mais').length,
+        rotulo: card.querySelector('.ver-mais-texto').textContent.trim(),
+        aria: btn.getAttribute('aria-expanded'),
+        expandidas: card.querySelectorAll('.expandido').length,
+        caixas: card.querySelectorAll('.selo-cruz-texto, .texto-fator').length,
+        altura: Math.round(card.getBoundingClientRect().height),
+        // Mesma linha: os dois blocos do rodapé começam na mesma altura.
+        mesmaLinha: Math.abs(Math.round(btn.getBoundingClientRect().top)
+          - Math.round(acoes.getBoundingClientRect().top)) <= 4,
+        // E o de expandir vem ANTES das ações, na ordem da tela.
+        esquerda: btn.getBoundingClientRect().left < acoes.getBoundingClientRect().left,
+        rolagemH: document.documentElement.scrollWidth > window.innerWidth + 1,
+      };
+    }, sel);
+
+    const fechado = await medir();
+    t('[desktop] um único "ver mais" no cartão', fechado.botoes === 1, `${fechado.botoes}`);
+    t('[desktop] as três caixas começam cortadas', fechado.expandidas === 0 && fechado.caixas === 3,
+      JSON.stringify(fechado));
+    t('[desktop] rodapé: expandir à esquerda e ações à direita, na mesma linha',
+      fechado.mesmaLinha && fechado.esquerda, JSON.stringify(fechado));
+
+    await page.click(`${sel} .ver-mais`);
+    const aberto = await medir();
+    // O estado é UM só: um clique abre as três caixas, não uma.
+    t('[desktop] um clique expande as três caixas juntas', aberto.expandidas === 3,
+      JSON.stringify(aberto));
+    t('[desktop] o botão vira "ver menos"', aberto.rotulo === 'ver menos' && aberto.aria === 'true',
+      JSON.stringify(aberto));
+    t('[desktop] e o cartão cresce', aberto.altura > fechado.altura,
+      `${fechado.altura} → ${aberto.altura}`);
+    // O selo do par corta por line-clamp, nunca por nowrap: expandido, a largura
+    // mínima dele não pode subir pela coluna até o <main> e rolar a página.
+    t('[desktop] expandido não rola na horizontal', !aberto.rolagemH);
+
+    await page.click(`${sel} .ver-mais`);
+    const refechado = await medir();
+    t('[desktop] "ver menos" recolhe as três de volta',
+      refechado.expandidas === 0 && refechado.rotulo === 'ver mais', JSON.stringify(refechado));
+  }
+
+  await page.evaluate(async (ids) => {
+    await App.api(`/api/cruzamentos/${ids.c}/excluir`, { planejamento_id: 1 });
+    await App.api(`/api/fatores/${ids.fi}/excluir`, { planejamento_id: 1 });
+    await App.api(`/api/fatores/${ids.fe}/excluir`, { planejamento_id: 1 });
+  }, ids);
+}
+
+/**
  * Duas invariantes da Matriz GUT que já custaram defeito e não aparecem no
  * "a seção pinta": o cabeçalho que precisa GRUDAR ao rolar (sem ele as quatro
  * colunas de número viram números anônimos) e o aviso de campo abaixo da dobra
@@ -262,6 +352,7 @@ async function provasAcao(page) {
   await percorrer(page, 'desktop');
   await provasAtalhoCadastros(page, 'desktop');
   await provasCiclo(page, 'desktop');
+  await provasCartaoCruzamento(page);
   await provasGut(page);
   await provasAcao(page);
 
