@@ -318,8 +318,47 @@ que está aberta) em vez de SMTP — serviços como Brevo, Resend ou Mailgun tê
 faixa gratuita suficiente para o volume deste sistema (um aviso por pessoa com
 pendência, uma vez ao dia).
 
-Isso **não** é configuração: `App\Core\Email` fala SMTP na mão, e enviar por API
-é um caminho novo dentro dele. Peça a implementação — é pequena, mas é código.
+Esse caminho **já existe** em `App\Core\Email` e liga-se por duas variáveis:
+
+| Variável | Valor |
+|---|---|
+| `EMAIL_API_CHAVE` | a chave da API do serviço (no Brevo: **SMTP & API → API Keys**) |
+| `EMAIL_API_URL` | opcional; o padrão já é `https://api.brevo.com/v3/smtp/email` |
+
+`SMTP_REMETENTE` continua obrigatório (é o remetente do e-mail) e precisa ser um
+remetente **verificado** no serviço. Com a chave definida, a API tem
+**precedência** sobre o SMTP: quem chegou até aqui já descobriu que a porta não
+abre, e tentar o SMTP antes custaria 20s de espera por destinatário para
+terminar no mesmo tempo esgotado.
+
+#### `HTTP 401 … unrecognised IP address`
+
+Resposta do Brevo, não do sistema:
+
+```
+O serviço de e-mail recusou (HTTP 401): {"message":"We have detected you are
+using an unrecognised IP address 162.220.232.173 …","code":"unauthorized"}
+```
+
+A chave está certa. O que barra é a **lista de IPs autorizados** do Brevo, que
+ele liga sozinho no primeiro uso da API: o pedido saiu do contêiner do Railway,
+cujo IP a conta nunca viu.
+
+Autorizar aquele IP em **app.brevo.com/security/authorised_ips** destrava o
+envio de hoje — e volta a falhar depois. **O IP de saída do Railway não é
+fixo**: muda a cada deploy e a cada reinício do contêiner (IP estático de saída
+é recurso de plano pago), então a lista envelhece sem ninguém mexer nela, e a
+falha reaparece no dia em que alguém publicar uma correção qualquer.
+
+O que resolve de vez é **desligar a restrição por IP** na mesma tela do Brevo.
+Quem protege a conta aí é a chave — que só existe nas variáveis do Railway e
+nunca entra em mensagem de erro (a exceção carrega a resposta do serviço, jamais
+a chave).
+
+Enquanto isso não é feito, nada se perde: falha **não** conta como enviado
+(`envio_email` só marca o registro com `erro IS NULL`), então basta clicar de
+novo em **Enviar avisos por e-mail** depois de ajustar — os mesmos
+destinatários do dia são tentados outra vez.
 
 ---
 
