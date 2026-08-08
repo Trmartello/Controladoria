@@ -48,7 +48,17 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   funciona no celular, onde não existe tecla Ctrl). Opções auxiliares:
   `obrigatorio`, `visivelSe: {campo, valores}`, `exemplo`, `ajuda`, `nota`,
   `sufixo`, `passo`, `unico` (no `lista_marcavel`: escolhe UM item, os quadrados
-  viram redondos e o campo devolve o valor em vez da lista).
+  viram redondos e o campo devolve o valor em vez da lista) e `linha` (campos
+  **consecutivos** com a mesma `linha` dividem uma fileira — `.grade-campos`,
+  montada por `Modal.renderCampos`). Campo curto ocupando a largura inteira
+  custa uma faixa de tela cada, e o Salvar mora no rodapé fixo: o que sobra de
+  altura é rolagem. Duas cautelas: o agrupamento é **por vizinhança** (juntar
+  campos distantes reordenaria o formulário por baixo do pano, e a ordem é
+  decisão de quem escreveu a lista) e a grade é `auto-fit`, nunca coluna fixa —
+  na fileira da repetição há campo que some com o `visivelSe`, e coluna fixa
+  deixaria buraco no lugar do escondido. **`obrigatorio` desenha o asterisco,
+  não recusa o envio**: quem valida é o servidor, e marcar um campo na tela sem
+  a guarda lá deixa o formulário mentindo.
   `Modal.abrir` aceita ainda `aoMudar(dados, raiz)`, chamado ao abrir e a cada
   mudança de campo, para formulário cujo TEXTO depende do que já foi escolhido —
   o bloco do cruzamento da SWOT, que depende de DOIS campos e por isso não cabe
@@ -785,6 +795,17 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   separados, divergiram: o direcionamento pedia só o quê/quem/prioridade e
   criava a ação sem como, prazo, repetição, custo nem status, obrigando a
   reabri-la no cadastro para completá-la.
+  Ordem (pedido do cliente): **o quê, como, quem, quando, prioridade**, a
+  **linha** da repetição (repetição · repete toda · repetir até), a **linha** de
+  status e custo, e o progresso. "Quem?" não estava na ordem pedida e ficou
+  assim mesmo, logo depois do "Como?": é de `quem_usuario_id` que saem os avisos
+  por e-mail e o filtro de "minhas ações" — sem ele a ação não tem dono.
+  **Obrigatórios: o quê, como, quem e o período** — os quatro recusados em
+  `ProjetoController::salvarDesdobramento`, não só marcados na tela. Ação sem
+  caminho e sem prazo não é plano, e o prazo é o que alimenta o atraso
+  automático, os avisos e o painel. Consequência para quem for mexer: ação
+  antiga sem "como" ou sem datas passa a exigir os dois na próxima vez que
+  alguém abrir e salvar.
 - **Três níveis de recolhimento** (`nivelAtual` / `aplicarNivel` /
   `pintarNiveis`): **Ações · Frentes · Projetos**, no lugar do "Recolher tudo"
   que só tinha os extremos. "Frentes" é o nível que faltava — esconde as ações e

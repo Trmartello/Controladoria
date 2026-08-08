@@ -276,6 +276,19 @@ input[type=range].faixa-verde:focus-visible {
 }
 .faixa-limites { font-size: .7rem; color: #8a939b; }
 .grade-datas { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+/* Campos que dividem uma linha (a opção `linha` de Modal.abrir).
+   `auto-fit` e não um número fixo de colunas: na linha da repetição há campo
+   que aparece e some conforme a escolha (`visivelSe` põe `d-none` no bloco), e
+   coluna fixa deixaria um buraco no lugar do escondido em vez de fechar a fila.
+   A mínima é 8.5rem por medida, não por gosto: o corpo do modal tem ~465px por
+   dentro, e com 12rem só cabiam DUAS colunas — o "Repetir até" caía sozinho
+   numa segunda fileira e a linha da repetição deixava de ser uma linha.
+   O empilhamento no celular é media query e não `minmax`: entre a largura do
+   modal no computador e a do celular há um terço de diferença, perto demais
+   para uma mínima só separar as duas — e no celular a coluna de 170px espremia
+   o seletor do dia da semana. */
+.grade-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0 .75rem; }
+@media (max-width: 575.98px) { .grade-campos { grid-template-columns: 1fr; } }
 .sub-rotulo {
   display: block;
   font-size: .75rem;

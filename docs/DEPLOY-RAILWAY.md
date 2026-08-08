@@ -99,9 +99,54 @@ senha: a resposta será sempre de autenticação recusada. O TI precisa **habili
 o SMTP AUTH para essa caixa específica** (é uma opção no painel do Microsoft
 365, por caixa de correio). Peça isso explicitamente, junto com os dados acima.
 
-Se for **Gmail / Google Workspace**, o caminho é outro: a conta precisa de
-verificação em duas etapas ligada e uma **senha de aplicativo** gerada só para
-isto — a senha normal da conta não funciona.
+#### O caminho do Gmail (o atalho enquanto o TI não libera)
+
+Uma conta do Gmail criada para o projeto resolve **hoje**, sem depender de
+ninguém, e o código fala o dialeto dela sem alteração nenhuma (EHLO → STARTTLS →
+AUTH LOGIN na porta 587). Os valores prontos:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORTA=587
+SMTP_SEGURANCA=tls
+SMTP_USUARIO=<a conta>@gmail.com
+SMTP_SENHA=<senha de app, 16 letras, sem espaços>
+SMTP_REMETENTE=<a mesma conta>@gmail.com
+SMTP_NOME_REMETENTE=Planejamento Estratégico Copérdia
+```
+
+Três coisas que não podem ser trocadas de lugar:
+
+- **a senha NÃO é a da conta.** É preciso ligar a verificação em duas etapas e
+  gerar uma *senha de aplicativo*: `myaccount.google.com` → **Segurança** →
+  **Verificação em duas etapas** → **Senhas de app**. O Google mostra 16 letras
+  em quatro blocos; **cole sem os espaços**;
+- **`SMTP_REMETENTE` tem de ser a própria conta.** O Gmail reescreve o remetente
+  para a conta autenticada — pôr `planejamento@coperdia.com.br` ali não faz o
+  e-mail sair de lá, só cria confusão em quem for depurar depois;
+- **o `SMTP_NOME_REMETENTE` é o que suaviza o endereço estranho.** Sem ele, o
+  aviso chega assinado por uma conta do Gmail e mais nada.
+
+**O risco, que é silencioso.** Os avisos vão sair de um `@gmail.com`, e filtro
+corporativo desconfia de remetente externo que se parece com aviso interno. O
+e-mail não volta com erro: ele cai na quarentena de quem deveria lê-lo. Num
+sistema de aviso essa é a pior falha possível, porque ninguém reclama de e-mail
+que não chegou — as pessoas só param de responder aos prazos, e a conclusão vira
+"o sistema não está pegando".
+
+Por isso, depois de configurar, faça um teste **dirigido**: peça a duas ou três
+pessoas com e-mail `@coperdia.com.br` que confirmem se o aviso chegou **na caixa
+de entrada**, e pergunte explicitamente pelo lixo eletrônico — quem não é da
+área não pensa em olhar lá. Caindo no spam, você ganha o argumento concreto que
+faz o pedido ao TI andar: "precisamos enviar do nosso domínio porque o do Gmail
+está sendo barrado".
+
+O limite de envio do Gmail gratuito (cerca de 500 por dia) não chega perto do
+que este sistema usa — um aviso por pessoa com pendência, uma vez ao dia.
+
+**Se for Google Workspace** (a conta do próprio domínio), vale o mesmo caminho e
+o mesmo tipo de senha de aplicativo — com a vantagem de o remetente já ser
+`@coperdia.com.br`, o que apaga o risco acima.
 
 Vale pedir uma caixa **própria** para o sistema (algo como
 `planejamento@coperdia.com.br`), não a caixa pessoal de alguém: quando essa

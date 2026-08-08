@@ -861,8 +861,11 @@ const SecaoProjetos = {
    * o serviço. Escritos separados, os dois formulários voltariam a divergir no
    * primeiro campo novo.
    *
-   * Ordem pedida: o quê, quem, como, prioridade, quando, repetição, quanto
-   * custa, status e progresso.
+   * Ordem pedida: o quê, como, quem, quando, prioridade, a linha da repetição,
+   * a linha de status e custo, e o progresso. "Quem?" fica logo depois do
+   * "Como?" — ele não estava na ordem pedida, mas é ele que amarra a ação a uma
+   * pessoa: é de `quem_usuario_id` que saem os avisos por e-mail e o filtro de
+   * "minhas ações". Tirá-lo do formulário deixaria a ação sem dono.
    */
   camposAcao(dd = null) {
     return [
@@ -872,38 +875,41 @@ const SecaoProjetos = {
       { nome: 'onde', rotulo: '', tipo: 'hidden' },
       { nome: 'o_que', rotulo: 'O quê?', obrigatorio: true, tipo: 'textarea', linhas: 2,
         exemplo: 'Ex.: Contratar projeto executivo dos silos' },
+      { nome: 'como', rotulo: 'Como?', obrigatorio: true },
       { nome: 'quem', rotulo: 'Quem?', tipo: 'selecao_livre', opcoes: this.responsaveis,
         obrigatorio: true, vazio: '(selecione o responsável)',
         ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
-      { nome: 'como', rotulo: 'Como?' },
-      { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes:
-        Object.entries(PRIORIDADES).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
       { nome: 'quando_', rotulo: '', tipo: 'hidden' },
-      { nome: 'quando_periodo', rotulo: 'Quando?', tipo: 'periodo',
+      { nome: 'quando_periodo', rotulo: 'Quando?', tipo: 'periodo', obrigatorio: true,
         campos: [
           { nome: 'data_inicio', rotulo: 'Início' },
           { nome: 'data_fim', rotulo: 'Fim previsto' },
         ],
         ajuda: 'Toque no campo para abrir o calendário.' },
-      { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', opcoes: [
+      { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes:
+        Object.entries(PRIORIDADES).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
+      // As três decisões da repetição numa linha só: repetir? em que dia? até
+      // quando? Empilhadas, custavam três faixas de tela para a ação que NÃO se
+      // repete, que é a maioria — e as duas últimas nem aparecem nesse caso.
+      { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', linha: 'repeticao', opcoes: [
         { valor: 'NENHUMA', rotulo: 'Não se repete' },
         { valor: 'SEMANAL', rotulo: 'Toda semana' },
         { valor: 'MENSAL', rotulo: 'Todo mês' },
-      ], ajuda: 'Ao concluir uma ação que se repete, ela reabre na próxima data prevista.' },
-      { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select',
+      ], ajuda: 'Ao concluir, reabre na próxima data.' },
+      { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select', linha: 'repeticao',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
         opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo })) },
-      { nome: 'recorrencia_dia_mes', rotulo: 'Repete todo dia', tipo: 'select',
+      { nome: 'recorrencia_dia_mes', rotulo: 'Repete todo dia', tipo: 'select', linha: 'repeticao',
         visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
         opcoes: Array.from({ length: 31 }, (_, i) => ({ valor: i + 1, rotulo: String(i + 1) })),
-        ajuda: 'Em meses mais curtos, cai no último dia do mês.' },
-      { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date',
+        ajuda: 'Em meses curtos, cai no último dia.' },
+      { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date', linha: 'repeticao',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
-        ajuda: 'Opcional — depois dessa data a ação encerra de vez.' },
-      { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number' },
-      { nome: 'status', rotulo: 'Status', tipo: 'select',
+        ajuda: 'Opcional — depois dela, encerra.' },
+      { nome: 'status', rotulo: 'Status', tipo: 'select', linha: 'situacao',
         opcoes: this.opcoesStatusAcao(dd?.status),
-        ajuda: '“No prazo” e “Atrasada” são definidos pela data de fim — escolha um status manual só quando quiser fixá-lo.' },
+        ajuda: '“No prazo” e “Atrasada” saem da data de fim.' },
+      { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number', linha: 'situacao' },
       // Passo de 1 para o modal nunca arredondar o que a barra do cartão gravou
       { nome: 'progresso', rotulo: 'Progresso', tipo: 'faixa', min: 0, max: 100, passo: 1, sufixo: '%' },
     ];

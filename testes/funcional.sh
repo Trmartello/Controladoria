@@ -75,9 +75,18 @@ PRJ=$(echo "$R" | id_de)
 R=$(post /api/iniciativas "{\"planejamento_id\":1,\"projeto_id\":$PRJ,\"titulo\":\"Frente de teste\"}")
 afirma "cria iniciativa" '"ok":true' "$R"
 INI=$(echo "$R" | id_de)
-R=$(post /api/desdobramentos "{\"planejamento_id\":1,\"projeto_id\":$PRJ,\"iniciativa_id\":$INI,\"o_que\":\"Ação de teste\",\"quem\":\"QA\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\",\"prioridade\":\"MEDIA\",\"status\":\"NAO_INICIADO\",\"progresso\":0,\"recorrencia\":\"NENHUMA\"}")
+BASE_ACAO="\"planejamento_id\":1,\"projeto_id\":$PRJ,\"iniciativa_id\":$INI,\"quem\":\"QA\",\"prioridade\":\"MEDIA\",\"status\":\"NAO_INICIADO\",\"progresso\":0,\"recorrencia\":\"NENHUMA\""
+R=$(post /api/desdobramentos "{$BASE_ACAO,\"o_que\":\"Ação de teste\",\"como\":\"Passo a passo do teste\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\"}")
 afirma "cria ação 5W2H" '"ok":true' "$R"
 ACAO=$(echo "$R" | id_de)
+# O asterisco do modal DESENHA a obrigatoriedade, não a impõe: quem recusa é o
+# servidor, e por aqui passa também o direcionamento de uma ideia da Coleta.
+R=$(post /api/desdobramentos "{$BASE_ACAO,\"o_que\":\"Sem caminho\",\"como\":\"\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\"}")
+afirma "recusa ação sem o Como" 'Como' "$R"
+R=$(post /api/desdobramentos "{$BASE_ACAO,\"o_que\":\"Sem prazo\",\"como\":\"x\",\"data_inicio\":\"\",\"data_fim\":\"\"}")
+afirma "recusa ação sem período" 'Quando' "$R"
+R=$(post /api/desdobramentos "{$BASE_ACAO,\"o_que\":\"Só começo\",\"como\":\"x\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"\"}")
+afirma "recusa ação sem fim previsto" 'Quando' "$R"
 R=$(get "/api/projetos?planejamento_id=1")
 afirma "projeto aparece com período consolidado das ações" '2027-01-01|01/01/2027' "$R"
 

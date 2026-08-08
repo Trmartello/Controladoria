@@ -45,7 +45,7 @@ const Modal = {
 
     const form = document.getElementById('modal-campos');
     this.combos = {};
-    form.innerHTML = campos.map((c) => this.renderCampo(c, valores[c.nome], valores)).join('');
+    form.innerHTML = this.renderCampos(campos, valores);
     this.ligarBotoesSenha(form);
     this.ligarBotoesDitado(form);
     this.ligarSelecaoLivre(form);
@@ -69,6 +69,40 @@ const Modal = {
         this.aoAparecer(document.getElementById('modal-campos')));
     }
     this.bsModal.show();
+  },
+
+  /**
+   * Monta a lista de campos, juntando numa MESMA LINHA os que declaram a mesma
+   * `linha` (ex.: `linha: 'repeticao'` nos três campos da repetição da ação).
+   *
+   * Campo curto ocupando a largura inteira do modal custa uma faixa de tela
+   * cada, e o formulário da ação passou a ter nove — o Salvar mora no rodapé
+   * fixo, então o que sobra de altura é rolagem. Agrupar é o que devolve a
+   * decisão inteira (repetir? quando? até quando?) a um olhar só.
+   *
+   * O agrupamento é por vizinhança: só campos CONSECUTIVOS com a mesma `linha`
+   * entram na mesma caixa. Juntar campos distantes reordenaria o formulário por
+   * baixo do pano, e a ordem é decisão de quem escreveu a lista.
+   */
+  renderCampos(campos, valores) {
+    const partes = [];
+    let grupo = null;
+    for (const c of campos) {
+      const html = this.renderCampo(c, valores[c.nome], valores);
+      if (!c.linha) {
+        grupo = null;
+        partes.push(html);
+        continue;
+      }
+      if (!grupo || grupo.linha !== c.linha) {
+        grupo = { linha: c.linha, itens: [] };
+        partes.push(grupo);
+      }
+      grupo.itens.push(html);
+    }
+    return partes
+      .map((p) => (typeof p === 'string' ? p : `<div class="grade-campos">${p.itens.join('')}</div>`))
+      .join('');
   },
 
   renderCampo(c, valor, valores = {}) {

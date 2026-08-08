@@ -98,6 +98,61 @@ async function provasGut(page) {
   await page.keyboard.press('Escape');
 }
 
+/**
+ * O formulário da AÇÃO: a ordem dos campos e as duas linhas agrupadas.
+ *
+ * A ordem é pedido do cliente, e a agrupada é medida — "na mesma linha" só é
+ * verdade se os três campos dividirem o mesmo topo. Com a mínima da coluna em
+ * 12rem eles couberam DOIS por fileira no modal (~465px por dentro) e o
+ * "Repetir até" desceu sozinho: passava numa conferência de olho, que vê três
+ * campos agrupados, e falhava no que foi pedido.
+ */
+async function provasAcao(page) {
+  const prj = await page.evaluate(async () => {
+    const p = await App.api('/api/projetos', {
+      planejamento_id: 1, titulo: 'Projeto prova ação', ano: 2027, responsavel: 'QA', descricao: 'x',
+    });
+    await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id, titulo: 'Frente prova' });
+    return p.id;
+  });
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  await esperar(page, "!document.getElementById('secao-projetos').classList.contains('d-none')", 15000);
+  const temBotao = await esperar(page, "!!document.querySelector('[data-nova-acao]')", 15000);
+  t('[desktop] Iniciativa oferece "+ Ação"', temBotao);
+  if (temBotao) {
+    // O botão mora no acordeão recolhido; o formulário é o mesmo do clique.
+    await page.evaluate(() => {
+      const b = document.querySelector('[data-nova-acao]');
+      SecaoProjetos.modalDesdobramento(parseInt(b.dataset.proj, 10), null, parseInt(b.dataset.novaAcao, 10));
+    });
+    const abriu = await esperar(page, "!!document.getElementById('campo-o_que')", 8000);
+    t('[desktop] Modal da ação abre', abriu);
+    if (abriu) {
+      const ordem = await page.evaluate(() => [...document.querySelectorAll('#modal-campos .form-label')]
+        .map((l) => l.textContent.trim().replace(/0%$/, '')));
+      const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Quando? *', 'Prioridade', 'Repetição',
+        'Repete toda', 'Repete todo dia', 'Repetir até', 'Status', 'Quanto custa? (R$)', 'Progresso'];
+      t('[desktop] Campos da ação na ordem pedida',
+        JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
+
+      await page.selectOption('#campo-recorrencia', 'SEMANAL');
+      await new Promise((r) => setTimeout(r, 200));
+      const linhas = await page.evaluate(() =>
+        [...document.querySelectorAll('#modal-campos .grade-campos')].map((g) =>
+          [...g.querySelectorAll('.mb-3')].filter((b) => !b.classList.contains('d-none'))
+            .map((b) => ({ rotulo: b.querySelector('.form-label')?.textContent.trim(),
+              topo: Math.round(b.getBoundingClientRect().top) }))));
+      const mesmaLinha = (l) => l.length > 1 && l.every((c) => c.topo === l[0].topo);
+      t('[desktop] Repetição, Repete toda e Repetir até na MESMA linha',
+        !!linhas[0] && linhas[0].length === 3 && mesmaLinha(linhas[0]), JSON.stringify(linhas[0]));
+      t('[desktop] Status e Quanto custa na MESMA linha',
+        !!linhas[1] && linhas[1].length === 2 && mesmaLinha(linhas[1]), JSON.stringify(linhas[1]));
+    }
+    await page.keyboard.press('Escape');
+  }
+  await page.evaluate((id) => App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 }), prj);
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -111,6 +166,7 @@ async function provasGut(page) {
   const page = await entrar(ctx, 'desktop', erros);
   await percorrer(page, 'desktop');
   await provasGut(page);
+  await provasAcao(page);
 
   const ctxM = await browser.newContext({
     viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true,

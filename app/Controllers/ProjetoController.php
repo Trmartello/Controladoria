@@ -224,6 +224,16 @@ class ProjetoController
         if ($oQue === '') {
             Json::erro('Descreva a ação (O quê?).');
         }
+        // "Como?" e o período passaram a ser exigidos junto com o quê/quem: ação
+        // sem caminho e sem prazo não é plano, é intenção — e o prazo é o que
+        // alimenta o atraso automático, os avisos por e-mail e o painel. A
+        // guarda mora AQUI e não só no asterisco da tela: o `obrigatorio` do
+        // modal desenha o asterisco, não recusa o envio, e este mesmo endpoint
+        // recebe também o direcionamento de uma ideia da Coleta.
+        $como = trim($d['como'] ?? '');
+        if ($como === '') {
+            Json::erro('Descreva como a ação será feita (Como?).');
+        }
         $quem = mb_substr(trim($d['quem'] ?? ''), 0, 255);
         if ($quem === '') {
             Json::erro('Informe o responsável pela ação (Quem?).');
@@ -240,6 +250,9 @@ class ProjetoController
         $quanto = ($d['quanto'] ?? '') !== '' && $d['quanto'] !== null ? (float)$d['quanto'] : null;
 
         [$inicio, $fim] = $this->periodo($d);
+        if ($inicio === null || $fim === null) {
+            Json::erro('Informe o período da ação (Quando?) — início e fim previsto.');
+        }
         $status = $this->resolverStatus($status, $fim);
 
         // Repetição da ação (ex.: toda segunda-feira, ou todo dia 5)
@@ -329,7 +342,7 @@ class ProjetoController
             mb_substr(trim($d['quando_'] ?? ''), 0, 60),
             $inicio, $fim,
             mb_substr(trim($d['onde'] ?? ''), 0, 120),
-            trim($d['como'] ?? ''),
+            $como,
             $quanto, $status, $prioridade, $progresso, $concluidoEm, (int)($d['ordem'] ?? 0),
         ];
         if ($id) {
