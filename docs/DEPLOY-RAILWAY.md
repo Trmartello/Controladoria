@@ -344,13 +344,20 @@ A chave está certa. O que barra é a **lista de IPs autorizados** do Brevo, que
 ele liga sozinho no primeiro uso da API: o pedido saiu do contêiner do Railway,
 cujo IP a conta nunca viu.
 
-Autorizar aquele IP em **app.brevo.com/security/authorised_ips** destrava o
-envio de hoje — e volta a falhar depois. **O IP de saída do Railway não é
-fixo**: muda a cada deploy e a cada reinício do contêiner (IP estático de saída
-é recurso de plano pago), então a lista envelhece sem ninguém mexer nela, e a
-falha reaparece no dia em que alguém publicar uma correção qualquer.
+Autorizar aquele IP em **app.brevo.com/security/authorised_ips** não resolve, e
+isso foi **medido**: num único clique de "Enviar avisos", os dois e-mails saíram
+por IPs **diferentes** (`162.220.232.173` e `.106`). O IP de saída do Railway
+não é fixo nem por deploy — varia de uma requisição para a outra, dentro do
+mesmo envio. Uma lista de IPs autorizados nunca fica em dia aqui.
 
-O que resolve de vez é **desligar a restrição por IP** na mesma tela do Brevo.
+O que resolve é **desligar a restrição por IP** na mesma tela do Brevo:
+**Security → IPs autorizados → Bloquear endereços IP não autorizados →
+`Chaves API` → Desativar para chaves API**. É a linha das **chaves API** — é
+por API sobre HTTPS que este sistema envia. A de `Chaves SMTP` fica como está.
+
+A mudança tem **atraso de propagação**: o primeiro envio depois de desativar
+ainda pode recusar um IP recém-detectado, com o mesmo 401. Espere dois ou três
+minutos e clique de novo — não há risco de duplicar (ver o parágrafo abaixo).
 Quem protege a conta aí é a chave — que só existe nas variáveis do Railway e
 nunca entra em mensagem de erro (a exceção carrega a resposta do serviço, jamais
 a chave).
