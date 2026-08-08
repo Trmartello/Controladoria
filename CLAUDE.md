@@ -769,11 +769,27 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `carga_conteudo`, com `data_reg` virando `criado_em` ao meio-dia e status/
   progresso virando texto). A tabela `diario_bordo` fica no banco como arquivo
   da migração, sem código nenhum lendo dela.
-- **Avisos por e-mail** (`App\Services\Avisos` + `App\Core\Email`, SMTP na
-  mão): relatório semanal na segunda e pendências do dia. `envio_email` é a
-  trava contra duplicidade — só conta como enviado o registro com
-  `erro IS NULL`, para uma queda do SMTP não bloquear o aviso.
+- **Avisos por e-mail** (`App\Services\Avisos` + `App\Core\Email`): relatório
+  semanal na segunda e pendências do dia. `envio_email` é a trava contra
+  duplicidade — só conta como enviado o registro com `erro IS NULL`, para uma
+  queda do serviço não bloquear o aviso.
   Disparo por cron (`php cli/notificar.php`) ou pelo botão do Relatório.
+  **Dois caminhos de envio**: SMTP na mão (EHLO/STARTTLS/AUTH LOGIN) e **API
+  sobre HTTPS** (`EMAIL_API_CHAVE` + `EMAIL_API_URL`, formato da API
+  transacional do Brevo). A API tem **precedência**: quem definiu a chave já
+  descobriu que a porta não abre, e tentar o SMTP antes custaria 20s de espera
+  por destinatário para terminar no mesmo tempo esgotado.
+  O segundo caminho não é luxo — **no Railway as portas de e-mail são
+  bloqueadas** (medido: 587, 465 e 2525 dão tempo esgotado, a 443 abre na hora),
+  e ali *nenhum* servidor de e-mail é alcançável, nem o do próprio domínio.
+  Quem separa as causas é `php cli/notificar.php diagnostico`: imprime a
+  configuração (**a senha e a chave nunca**, só se estão definidas e o
+  tamanho), resolve o DNS, tenta as portas com a 443 como referência e conclui.
+  A referência é o que distingue "SMTP bloqueado" de "contêiner sem rede".
+  Erro de envio vira exceção com a resposta do serviço, e a tela **mostra o
+  motivo** agrupado por mensagem (não só a contagem): "2 falha(s)" mandava
+  procurar em log do provedor uma informação que já vinha na resposta, e as
+  causas prováveis pedem providências opostas.
 - Cartões de projeto/iniciativa/ação mostram só título e situação; o resto vai
   atrás de **“mostrar mais”**. As barras de progresso usam sempre o mesmo
   estilo (`.faixa-progresso` para leitura, `input[type=range].faixa-verde`
@@ -919,7 +935,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 
 ## Baterias de validação (`testes/`)
 
-`./testes/rodar.sh` roda as quatro em sequência e devolve 0 só se todas passarem
+`./testes/rodar.sh` roda as cinco em sequência e devolve 0 só se todas passarem
 — dá para pendurar num hook ou num CI. Elas batem numa instância **local**
 (nunca produção: a funcional cria e apaga registros) e o detalhe está em
 `testes/README.md`, inclusive o que elas **não** cobrem.
@@ -930,6 +946,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | `sistema.js` | As 16 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
+| `email.sh` | O envio por API de `App\Core\Email`, contra um serviço de mentira | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, ou a chave passou a vazar na mensagem de erro |
 
 A do backup é a única que **não** passa pela aplicação — fala com o banco
 direto, lê o de trabalho sem escrever nele e faz o vaivém em dois bancos

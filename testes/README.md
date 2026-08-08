@@ -9,6 +9,7 @@ leitura do código — cobrem o que a leitura não pega: regressão silenciosa.
 | `sistema.js` | As **16 seções** em 1500×900 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
 | `participante.js` | A tela **pública** da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | O vaivém de `cli/backup.sh` — gerar, verificar, restaurar | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
+| `email.sh` | O envio por **API** de `App\Core\Email`, contra um serviço de mentira | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, ou a chave passou a vazar na mensagem de erro |
 
 ## Antes de rodar
 
@@ -36,12 +37,20 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 node testes/sistema.js            # só a de sistema
 node testes/participante.js 123456   # precisa do PIN de uma rodada ABERTA
 ./testes/backup.sh                # backup/restauração (cria e derruba bancos descartáveis)
+./testes/email.sh                 # envio por API (não precisa de banco nem de servidor)
 ```
 
 A `backup.sh` é a única que **não** passa pela aplicação: ela fala com o banco
 direto. O banco de trabalho é só lido; ela cria `<banco>_bkp1` e `<banco>_bkp2`
 para o vaivém e os derruba no fim. Sem um usuário com `CREATE DATABASE` ela é
 **pulada**, não reprovada — o usuário que o Railway cria não tem esse direito.
+
+A `email.sh` é a única que não precisa de **nada** de pé — nem banco, nem
+aplicação. Ela sobe um servidor local que responde como o serviço de e-mail
+real (401 sem chave, 400 com remetente não verificado, 201 no sucesso) e
+exercita o `Email` contra ele. Falar com o serviço de verdade exigiria
+credencial no repositório, gastaria cota e ficaria vermelho quando ele saísse
+do ar — três motivos para a bateria acabar ignorada.
 
 Variáveis, se a instância não estiver no padrão:
 `APP_URL` (padrão `http://127.0.0.1:8099`), `APP_EMAIL`, `APP_SENHA`.

@@ -50,22 +50,63 @@ function diagnostico(): int
     $senha = (string)($c['senha'] ?? '');
     $cfg = $GLOBALS['config'] ?? [];
 
+    $porApi = Email::porApi();
+
     echo "notificar: diagnóstico do envio de e-mail\n\n";
-    echo "Configuração\n";
+    echo 'Caminho de envio: ', $porApi ? "API sobre HTTPS (o SMTP é ignorado)\n" : "SMTP\n";
+    echo "\nConfiguração\n";
     foreach ([
         'SMTP_HOST' => $c['host'], 'SMTP_PORTA' => $c['porta'], 'SMTP_SEGURANCA' => $seg,
         'SMTP_USUARIO' => $c['usuario'], 'SMTP_REMETENTE' => $c['remetente'],
         'SMTP_NOME_REMETENTE' => $c['nome_remetente'], 'APP_URL' => $cfg['app_url'] ?? '',
+        'EMAIL_API_URL' => $c['api_url'] ?? '',
     ] as $chave => $valor) {
         printf("  %-20s %s\n", $chave, ($valor ?? '') === '' ? '(vazia)' : $valor);
     }
     printf("  %-20s %s\n", 'SMTP_SENHA', $senha === ''
         ? '(vazia)'
         : sprintf('definida, %d caractere(s)', strlen($senha)));
+    $chaveApi = (string)($c['api_chave'] ?? '');
+    printf("  %-20s %s\n", 'EMAIL_API_CHAVE', $chaveApi === ''
+        ? '(vazia)'
+        : sprintf('definida, %d caractere(s)', strlen($chaveApi)));
 
     $avisos = [];
     if (!Email::configurado()) {
-        $avisos[] = 'SMTP_HOST ou SMTP_REMETENTE está vazia — sem as duas nada é enviado.';
+        $avisos[] = 'falta SMTP_REMETENTE, ou falta SMTP_HOST/EMAIL_API_CHAVE — sem isso nada é enviado.';
+    }
+    if ($porApi && $chaveApi !== '' && trim($chaveApi) !== $chaveApi) {
+        $avisos[] = 'EMAIL_API_CHAVE tem espaço no começo ou no fim.';
+    }
+
+    // Com a API no comando, testar porta de e-mail seria diagnosticar o caminho
+    // que o sistema não usa — e o veredito "SMTP bloqueado" mandaria consertar
+    // o que já foi contornado.
+    if ($porApi) {
+        $alvo = parse_url((string)$c['api_url'], PHP_URL_HOST) ?: '';
+        echo "\nSaída de rede (8s de espera cada)\n";
+        $t0 = microtime(true);
+        $s = $alvo ? @stream_socket_client("ssl://{$alvo}:443", $n, $m, 8) : false;
+        printf("  %-4s %-5d %-34s (%.1fs)\n", 'ssl', 443, $s ? "ABERTO ({$alvo})" : "FECHADO: $m",
+            microtime(true) - $t0);
+        if ($s) {
+            fclose($s);
+        }
+        echo "\nVeredito\n";
+        if ($s) {
+            echo "  O serviço de e-mail está alcançável. Se ainda falha, o motivo vem\n"
+               . "  dele (chave recusada, remetente não verificado): dispare pelo botão\n"
+               . "  do Relatório de Status, que mostra a resposta do serviço.\n";
+        } else {
+            echo "  Não há saída para {$alvo} na porta 443. Confira EMAIL_API_URL.\n";
+        }
+        if ($avisos) {
+            echo "\nAvisos\n";
+            foreach ($avisos as $a3) {
+                echo "  ! {$a3}\n";
+            }
+        }
+        return $avisos || !$s ? 1 : 0;
     }
     // O par porta×segurança é a troca mais fácil de fazer e a mais difícil de
     // ver: as duas combinações erradas dão o MESMO "timed out" da porta fechada.

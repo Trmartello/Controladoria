@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Roda as três baterias em sequência e devolve 0 só se todas passarem.
+# Roda as cinco baterias em sequência e devolve 0 só se todas passarem.
 # Ver testes/README.md para o que precisa estar de pé antes.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -12,15 +12,15 @@ if ! curl -sf -o /dev/null "$BASE/login"; then
   exit 2
 fi
 
-echo "═══ 1/4  funcional (escrita de cada módulo pela API)"
+echo "═══ 1/5  funcional (escrita de cada módulo pela API)"
 ./testes/funcional.sh || FALHOU=1
 
 echo
-echo "═══ 2/4  sistema (16 seções, desktop e celular)"
+echo "═══ 2/5  sistema (16 seções, desktop e celular)"
 node testes/sistema.js || FALHOU=1
 
 echo
-echo "═══ 3/4  participante (tela pública, celular)"
+echo "═══ 3/5  participante (tela pública, celular)"
 # Precisa de uma rodada ABERTA. Sem PIN à mão a bateria é pulada em vez de
 # falhar: ela depende de estado que nem toda instância tem, e um vermelho por
 # ausência de massa ensinaria a ignorar o vermelho.
@@ -32,10 +32,17 @@ else
 fi
 
 echo
-echo "═══ 4/4  backup (gerar, verificar, restaurar)"
+echo "═══ 4/5  backup (gerar, verificar, restaurar)"
 # Fala com o banco direto, não com a aplicação: é a única que precisa de um
 # usuário com CREATE DATABASE, e sem ele ela se pula sozinha.
 ./testes/backup.sh || FALHOU=1
+
+echo
+echo "═══ 5/5  e-mail (envio por API, com serviço de mentira)"
+# Não manda e-mail nem toca no banco: sobe um servidor local que responde como
+# o serviço real. É o caminho que roda em produção — a hospedagem bloqueia as
+# portas de SMTP, e ali nenhum servidor de e-mail é alcançável.
+./testes/email.sh || FALHOU=1
 
 echo
 if [ $FALHOU -eq 0 ]; then echo "✓ Todas as baterias passaram."; else echo "✗ Há bateria com falha."; fi

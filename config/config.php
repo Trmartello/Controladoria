@@ -48,6 +48,16 @@ return [
         'remetente'      => env('SMTP_REMETENTE'),
         'nome_remetente' => env('SMTP_NOME_REMETENTE', 'Planejamento Estratégico Copérdia'),
         'dominio'        => env('SMTP_DOMINIO', 'coperdia.com.br'),
+        // Envio por API sobre HTTPS, no lugar do SMTP. Existe porque hospedagem
+        // costuma BLOQUEAR as portas de e-mail para conter spam — no Railway,
+        // medido, 587/465/2525 dão tempo esgotado e a 443 abre na hora. Ali
+        // nenhum servidor de e-mail é alcançável, nem o do próprio domínio, e
+        // nenhuma variável de SMTP contorna isso.
+        // Com a chave definida, ela tem PRECEDÊNCIA sobre o SMTP: quem a
+        // preencheu já concluiu que a porta não abre, e cair calado no caminho
+        // que não funciona só devolveria o mesmo tempo esgotado.
+        'api_chave'      => env('EMAIL_API_CHAVE'),
+        'api_url'        => env('EMAIL_API_URL', 'https://api.brevo.com/v3/smtp/email'),
     ],
     'app_url' => rtrim(env('APP_URL', ''), '/'),
 

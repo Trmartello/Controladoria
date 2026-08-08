@@ -15,7 +15,21 @@ class Email
     public static function configurado(): bool
     {
         $c = self::config();
-        return $c['host'] !== null && $c['remetente'] !== null;
+        return $c['remetente'] !== null && ($c['host'] !== null || self::porApi());
+    }
+
+    /**
+     * Manda por API (HTTPS) em vez de SMTP?
+     *
+     * A chave tem precedência sobre o SMTP de propósito: quem a preencheu já
+     * descobriu que a porta 587 não abre daquele contêiner. Tentar o SMTP antes
+     * "por via das dúvidas" custaria 20 segundos de espera por destinatário
+     * para terminar no mesmo tempo esgotado.
+     */
+    public static function porApi(): bool
+    {
+        $c = self::config();
+        return ($c['api_chave'] ?? null) !== null && ($c['api_url'] ?? '') !== '';
     }
 
     public static function config(): array
@@ -36,7 +50,13 @@ class Email
     {
         $c = self::config();
         if (!self::configurado()) {
-            throw new \RuntimeException('SMTP não configurado (defina SMTP_HOST e SMTP_REMETENTE).');
+            throw new \RuntimeException(
+                'Envio não configurado (defina SMTP_HOST e SMTP_REMETENTE, ou EMAIL_API_CHAVE e SMTP_REMETENTE).'
+            );
+        }
+        if (self::porApi()) {
+            self::enviarPorApi($para, $assunto, $html);
+            return;
         }
 
         $porta = (int)$c['porta'];
@@ -100,6 +120,105 @@ class Email
         } finally {
             fclose($conexao);
         }
+    }
+
+    /**
+     * O mesmo e-mail, entregue por HTTPS (porta 443) em vez de SMTP.
+     *
+     * O corpo segue o formato da API transacional do Brevo, que é o serviço
+     * documentado na seção 6 do guia de deploy — escolhido por ser o que aceita
+     * verificar um remetente AVULSO, sem exigir domínio próprio, que é a
+     * situação de quem está validando o sistema. `EMAIL_API_URL` existe para
+     * apontar a outro serviço de formato compatível sem mexer no código.
+     *
+     * Erro vira RuntimeException com o corpo da resposta, como no SMTP: é o que
+     * o botão do Relatório de Status mostra e o que vai para `envio_email.erro`.
+     * A CHAVE nunca entra na mensagem — ela viaja em cabeçalho e a exceção
+     * termina em log de provedor.
+     */
+    private static function enviarPorApi(string $para, string $assunto, string $html): void
+    {
+        $c = self::config();
+        $corpo = json_encode([
+            'sender' => array_filter([
+                'email' => $c['remetente'],
+                'name'  => $c['nome_remetente'] ?: null,
+            ]),
+            'to'          => [['email' => $para]],
+            'subject'     => $assunto,
+            'htmlContent' => $html,
+        ], JSON_UNESCAPED_UNICODE);
+        if ($corpo === false) {
+            throw new \RuntimeException('Falha ao montar o corpo do e-mail (JSON).');
+        }
+        $cabecalhos = [
+            'accept: application/json',
+            'content-type: application/json',
+            'api-key: ' . $c['api_chave'],
+        ];
+
+        [$status, $resposta, $erroRede] = \function_exists('curl_init')
+            ? self::postarCurl($c['api_url'], $cabecalhos, $corpo)
+            : self::postarStream($c['api_url'], $cabecalhos, $corpo);
+
+        if ($erroRede !== '') {
+            throw new \RuntimeException("Não foi possível falar com {$c['api_url']} — {$erroRede}");
+        }
+        if ($status < 200 || $status >= 300) {
+            // A resposta é cortada: mensagem de erro vai para o banco e para um
+            // alerta na tela, e serviço nenhum garante que ela seja curta.
+            throw new \RuntimeException(
+                "O serviço de e-mail recusou (HTTP {$status}): " . mb_substr(trim($resposta), 0, 300)
+            );
+        }
+    }
+
+    /** @return array{0:int,1:string,2:string} status, corpo, erro de rede */
+    private static function postarCurl(string $url, array $cabecalhos, string $corpo): array
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_HTTPHEADER     => $cabecalhos,
+            CURLOPT_POSTFIELDS     => $corpo,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => self::TEMPO_LIMITE,
+            CURLOPT_CONNECTTIMEOUT => 10,
+        ]);
+        $resposta = curl_exec($ch);
+        $erro = $resposta === false ? curl_error($ch) : '';
+        $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        return [$status, (string)$resposta, $erro];
+    }
+
+    /**
+     * O mesmo POST sem a extensão curl. A imagem publicada a tem, mas este
+     * arquivo também roda na máquina de quem desenvolve, e um envio que morre
+     * por extensão faltando manda procurar o defeito no lugar errado.
+     */
+    private static function postarStream(string $url, array $cabecalhos, string $corpo): array
+    {
+        $ctx = stream_context_create(['http' => [
+            'method'        => 'POST',
+            'header'        => implode("\r\n", $cabecalhos),
+            'content'       => $corpo,
+            'timeout'       => self::TEMPO_LIMITE,
+            // Sem isto, resposta 4xx faz o fopen devolver false e a mensagem do
+            // serviço — que é justamente o diagnóstico — se perde.
+            'ignore_errors' => true,
+        ]]);
+        $resposta = @file_get_contents($url, false, $ctx);
+        if ($resposta === false) {
+            return [0, '', 'sem resposta (rede ou allow_url_fopen desligado)'];
+        }
+        $status = 0;
+        foreach ($http_response_header ?? [] as $linha) {
+            if (preg_match('#^HTTP/\S+\s+(\d{3})#', $linha, $m)) {
+                $status = (int)$m[1];
+            }
+        }
+        return [$status, $resposta, ''];
     }
 
     /** Cabeçalhos + corpo, com assunto codificado e linhas normalizadas. */
