@@ -247,39 +247,15 @@ const Diag = {
     };
   },
 
-  // O que considerar em cada tópico do macroambiente (PESTEL). O ícone ⓘ no
-  // título abre e fecha esta orientação. Só aparece onde há texto definido.
-  ORIENTACOES_CATEGORIA: {
-    POLITICO: 'Mudanças na legislação, tributação e políticas setoriais; estabilidade política, '
-      + 'incentivos e regulação do governo que afetam o setor.',
-    ECONOMICO: 'Taxa de juros, inflação, poder de compra do consumidor, taxa de câmbio, crédito e '
-      + 'crescimento — as forças econômicas que movem o mercado.',
-    SOCIAL: 'Mudanças de comportamento, hábitos de consumo, demografia e valores culturais do público.',
-    TECNOLOGICO: 'Automação, novas ferramentas, inteligência artificial e transformação digital que '
-      + 'mudam como o setor opera.',
-    ECOLOGICO: 'Clima, sustentabilidade, uso de recursos naturais, exigências ambientais e agenda ESG.',
-    LEGAL: 'Leis trabalhistas, tributárias e setoriais, normas regulatórias, contratos e compliance '
-      + 'que a empresa precisa cumprir.',
-    // Porter — as 5 forças que medem a atratividade e a competitividade do setor
-    RIVALIDADE: 'Quem são os concorrentes diretos e como disputam o mercado (preço, qualidade, marca)?',
-    NOVOS_ENTRANTES: 'É fácil ou difícil surgirem novos concorrentes? Que barreiras protegem o setor?',
-    SUBSTITUTOS: 'Existem alternativas que resolvem a mesma dor do cliente de forma diferente?',
-    PODER_FORNECEDORES: 'A empresa depende de poucos fornecedores críticos que ditam preço e prazo?',
-    PODER_CLIENTES: 'Quão exigentes ou sensíveis a preço os clientes são, e quanto poder têm na negociação?',
-    // SWOT — o que costuma entrar em cada quadrante
-    FORCA: 'Diferenciais competitivos, processos bem consolidados, equipe qualificada, '
-      + 'boa margem de lucro, tecnologia própria.',
-    FRAQUEZA: 'Falta de padronização, dependência de pessoas-chave, sistemas defasados, '
-      + 'alto custo operacional, comunicação ruidosa.',
-    OPORTUNIDADE: 'Nichos de mercado não atendidos, novas tecnologias disponíveis, '
-      + 'mudanças regulatórias favoráveis, expansão de demanda.',
-    AMEACA: 'Entrada de concorrentes agressivos em preço, instabilidade econômica, '
-      + 'escassez de matéria-prima, mudanças bruscas no comportamento do consumidor.',
-    // Análise de Cenário
-    SITUACAO_ATUAL: 'Onde o negócio está hoje: os fatos e números que descrevem a realidade atual '
-      + '— mercado, resultado, capacidade e posição competitiva.',
-    TENDENCIA: 'Para onde o ambiente aponta: movimentos que já se desenham e devem se intensificar '
-      + '— mercado, tecnologia, comportamento do cliente e regulação.',
+  // O que considerar em cada tópico. O ícone ⓘ no título abre e fecha esta
+  // orientação; só aparece onde há texto definido.
+  //
+  // O catálogo vem do SERVIDOR (`App\Services\Quiz::ORIENTACAO_CATEGORIA`, em
+  // `/api/me`): o mesmo texto desce ao celular junto com a pergunta da sala, e
+  // duas cópias divergiriam na primeira revisão — deixando quem responde
+  // orientado por uma coisa e quem conduz por outra.
+  get ORIENTACOES_CATEGORIA() {
+    return App.sessao?.orientacoes || {};
   },
 
   // Ícone ⓘ e o painel de orientação de um tópico (só onde há texto definido).

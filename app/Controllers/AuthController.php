@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Quiz;
 
 class AuthController
 {
@@ -129,6 +130,11 @@ class AuthController
             'veTudo'   => Auth::veTudo($u),
             'negocios' => $negocios,
             'ciclos'   => Database::todos('SELECT * FROM ciclo ORDER BY ano_inicio DESC'),
+            // O catálogo do ⓘ vem do servidor porque o CELULAR também o lê,
+            // junto com a pergunta: duas cópias divergiriam na primeira revisão
+            // do texto, e quem responde ficaria orientado por uma e quem conduz
+            // por outra. Fonte única: App\Services\Quiz.
+            'orientacoes' => Quiz::ORIENTACAO_CATEGORIA,
         ];
     }
 }

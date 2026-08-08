@@ -424,6 +424,7 @@ const Participante = {
           prog?.atual ? ` · Pergunta ${prog.atual} de ${prog.total}` : ''}</div>
         <h1 class="h5 mb-1">${this.esc(p.titulo)}</h1>
         ${contexto}
+        ${p.orientacao ? `<div class="orientacao-pergunta">${this.esc(p.orientacao)}</div>` : ''}
       </div>
 
       ${lados.length ? `<div class="mt-3" role="radiogroup" aria-label="O que você vai sugerir">

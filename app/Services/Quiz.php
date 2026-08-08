@@ -74,6 +74,57 @@ class Quiz
     ];
 
     /**
+     * O que considerar em cada tópico — a orientação que o ⓘ da análise abre e
+     * que o CELULAR passa a ler junto com a pergunta.
+     *
+     * Mora no servidor, e não no `Diag` do front, pelo mesmo motivo que a
+     * pergunta: quem lê são DUAS telas (o condutor, pelo ⓘ, e o participante,
+     * pelo celular) e uma segunda cópia divergiria na primeira revisão do
+     * texto — deixando quem responde orientado por uma coisa e quem conduz por
+     * outra. O front recebe o catálogo inteiro em `/api/me`.
+     */
+    public const ORIENTACAO_CATEGORIA = [
+        // PESTEL — o macroambiente
+        'POLITICO' => 'Mudanças na legislação, tributação e políticas setoriais; estabilidade '
+            . 'política, incentivos e regulação do governo que afetam o setor.',
+        'ECONOMICO' => 'Taxa de juros, inflação, poder de compra do consumidor, taxa de câmbio, '
+            . 'crédito e crescimento — as forças econômicas que movem o mercado.',
+        'SOCIAL' => 'Mudanças de comportamento, hábitos de consumo, demografia e valores culturais '
+            . 'do público.',
+        'TECNOLOGICO' => 'Automação, novas ferramentas, inteligência artificial e transformação '
+            . 'digital que mudam como o setor opera.',
+        'ECOLOGICO' => 'Clima, sustentabilidade, uso de recursos naturais, exigências ambientais e '
+            . 'agenda ESG.',
+        'LEGAL' => 'Leis trabalhistas, tributárias e setoriais, normas regulatórias, contratos e '
+            . 'compliance que a empresa precisa cumprir.',
+        // Porter — as 5 forças
+        'RIVALIDADE' => 'Quem são os concorrentes diretos e como disputam o mercado (preço, '
+            . 'qualidade, marca)?',
+        'NOVOS_ENTRANTES' => 'É fácil ou difícil surgirem novos concorrentes? Que barreiras '
+            . 'protegem o setor?',
+        'SUBSTITUTOS' => 'Existem alternativas que resolvem a mesma dor do cliente de forma '
+            . 'diferente?',
+        'PODER_FORNECEDORES' => 'A empresa depende de poucos fornecedores críticos que ditam preço '
+            . 'e prazo?',
+        'PODER_CLIENTES' => 'Quão exigentes ou sensíveis a preço os clientes são, e quanto poder '
+            . 'têm na negociação?',
+        // SWOT — o que entra em cada quadrante
+        'FORCA' => 'Diferenciais competitivos, processos bem consolidados, equipe qualificada, '
+            . 'boa margem de lucro, tecnologia própria.',
+        'FRAQUEZA' => 'Falta de padronização, dependência de pessoas-chave, sistemas defasados, '
+            . 'alto custo operacional, comunicação ruidosa.',
+        'OPORTUNIDADE' => 'Nichos de mercado não atendidos, novas tecnologias disponíveis, '
+            . 'mudanças regulatórias favoráveis, expansão de demanda.',
+        'AMEACA' => 'Entrada de concorrentes agressivos em preço, instabilidade econômica, '
+            . 'escassez de matéria-prima, mudanças bruscas no comportamento do consumidor.',
+        // Cenário
+        'SITUACAO_ATUAL' => 'Onde o negócio está hoje: os fatos e números que descrevem a '
+            . 'realidade atual — mercado, resultado, capacidade e posição competitiva.',
+        'TENDENCIA' => 'Para onde o ambiente aponta: movimentos que já se desenham e devem se '
+            . 'intensificar — mercado, tecnologia, comportamento do cliente e regulação.',
+    ];
+
+    /**
      * A pergunta que a sala lê, por categoria. Não dá para montar isso a partir
      * do rótulo: as categorias do PESTEL são ADJETIVOS ("Político") e viravam
      * "Quais político você vê para 2026?" — o participante lê isso no celular,
@@ -330,6 +381,10 @@ class Quiz
             // O rótulo curto vai junto: a tela do participante mostra "sobre o
             // que estamos falando" mesmo quando o condutor não escreveu nada
             'rotulo' => self::rotulo($p),
+            // A orientação do ⓘ desce com a pergunta: quem responde pelo celular
+            // não vê o ícone da análise, e sem ela "que fatores TECNOLÓGICOS
+            // afetam o negócio?" fica no ar. É o mesmo texto que o condutor lê.
+            'orientacao' => self::ORIENTACAO_CATEGORIA[(string)($p['categoria'] ?? '')] ?? null,
         ];
     }
 
