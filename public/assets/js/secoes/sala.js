@@ -136,8 +136,11 @@ const SecaoSala = {
           <p class="mb-0">${Modal.esc(r.tema)}</p>
         </div>`,
       })}
-      <p class="text-muted small">As ideias que chegam aparecem na seção
-        <strong>Coleta de Ideias</strong>, que é onde elas são agrupadas, priorizadas e tratadas.</p>`;
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <button class="btn btn-verde btn-sm" data-ir-coleta>Ir para a Coleta de Ideias</button>
+        <span class="text-muted small">É lá que as ideias chegam, são agrupadas, priorizadas e
+          tratadas — e onde a pergunta da sala se reescreve durante o encontro.</span>
+      </div>`;
   },
 
   // ---- Encontro com roteiro (quiz) ----
@@ -199,6 +202,11 @@ const SecaoSala = {
     QuizSala.desenharQr(el.querySelector('#qr-sala'), this.tempestade?.pin || this.quiz?.sessao?.pin);
     QuizSala.ligarCompartilhar(el);
     QuizSala.ligarRoteiro(this, el);
+
+    // Ida e volta entre as duas telas do mesmo encontro: a Coleta manda para cá
+    // pelo "PIN e QR na Sala", e daqui se volta por este botão. Sem o par, o
+    // condutor caía no menu ☰ no meio da oficina.
+    el.querySelector('[data-ir-coleta]')?.addEventListener('click', () => App.mostrarSecao('coleta'));
 
     el.querySelector('#btn-abrir-rodada')?.addEventListener('click', () => Modal.abrir({
       titulo: 'Abrir tempestade de ideias',
