@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Fatores;
 use App\Services\Quiz;
 
 /** Fatores das etapas PESTEL, Porter e SWOT, com promoção e notas GUT. */
@@ -263,14 +264,14 @@ class FatorController
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
-        $fator = $this->exigirFator($id, $planId);
-        // Mesma recusa da ideia da Coleta que já virou ação: apagar aqui
-        // deixaria a ação no plano sem nenhuma origem, e ninguém saberia de
-        // onde ela veio nem por que existe.
-        if ($fator['desdobramento_id']) {
-            Json::erro('Este fator já virou uma ação no plano. '
-                . 'Exclua a ação em Projetos antes de excluir o fator.');
-        }
+        $this->exigirFator($id, $planId);
+        // A guarda olha o fator E os promovidos a partir dele: o DELETE logo
+        // abaixo leva o promovido junto, e é ELE quem costuma carregar o
+        // vínculo com a ação (o PESTEL não vai direto ao plano — passa pela
+        // promoção à SWOT primeiro). Conferir só `$fator['desdobramento_id']`
+        // deixava passar justamente o caso mais comum.
+        Fatores::exigirSemAcao([$id], 'Este fator já virou uma ação no plano. '
+            . 'Exclua a ação em Projetos antes de excluir o fator.');
         // Solta o vínculo da Coleta (deste fator e do promovido) antes de
         // apagar: sem isso a ideia apontaria para um id morto e o rastreio
         // exibiria link quebrado.

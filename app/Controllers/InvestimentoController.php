@@ -183,11 +183,26 @@ class InvestimentoController
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
-        $this->exigirInvestimento($id, $planId);
+        $inv = $this->exigirInvestimento($id, $planId);
 
         $situacao = $d['situacao'] ?? '';
         if (!in_array($situacao, ['APROVADO', 'REPROVADO'], true)) {
             Json::erro('A decisão deve ser APROVADO ou REPROVADO.');
+        }
+        // Decidir é o passo que SAI de PROPOSTO/RANQUEADO. Sem esta guarda um
+        // investimento já EXECUTADO ou AUDITADO podia ser reprovado: o valor
+        // saía do "comprometido" do painel e do relatório (que somam APROVADO,
+        // EXECUTADO e AUDITADO), o envelope de capital passava a mostrar folga
+        // que não existe, e a auditoria ficava pendurada numa linha reprovada.
+        // É a mesma regra que `salvar()` já aplica pela tabela TRANSICOES —
+        // ela só não alcançava este caminho.
+        if (!in_array($inv['situacao'], ['PROPOSTO', 'RANQUEADO'], true)) {
+            Json::erro(
+                'Este investimento já foi decidido e está como ' . $inv['situacao']
+                    . '. Decisão só a partir de proposto ou ranqueado.',
+                409,
+                'JA_DECIDIDO'
+            );
         }
         $criterio = trim($d['decisao_criterio'] ?? '');
         if ($criterio === '') {

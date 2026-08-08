@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Fatores;
 use App\Services\Quiz;
 
 /**
@@ -187,6 +188,10 @@ class ColetaController
                     'DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]
                 );
             } elseif ($dst['destino_tipo'] === 'FATOR') {
+                // A mesma recusa de FatorController::excluir — este caminho
+                // apaga o mesmo fator e deixaria a ação no plano sem origem
+                Fatores::exigirSemAcao([$destinoId], 'Esta ideia já virou uma ação no plano. '
+                    . 'Exclua a ação em Projetos antes de excluir a ideia.');
                 // Fatores promovidos apontam para o de origem (sem ON DELETE):
                 // saem antes. GUT e vínculo com a cascata caem por CASCADE.
                 Quiz::soltarVozes('FATOR', array_column(Database::todos(
@@ -578,16 +583,34 @@ class ColetaController
         if ($lider === $liderOrigem) {
             Json::erro('Essas ideias já estão no mesmo grupo.');
         }
-        // Juntar duas ideias que já foram para análises DIFERENTES criaria uma
-        // caixa só apontando para dois registros: a tela mostra apenas a
-        // etiqueta do líder, escondendo o outro, e "Desmarcar" apagaria só um
-        // deles — o outro ficaria vivo no diagnóstico e sem vínculo nenhum com a
-        // Coleta. Quem já tem destino sai dele primeiro (pelo "Desmarcar").
+        // Só se juntam ideias no MESMO estado de encaminhamento: as duas ainda
+        // na fila, ou as duas já no mesmo destino.
+        //
+        // Duas com destinos DIFERENTES criariam uma caixa só apontando para
+        // dois registros: a tela mostra apenas a etiqueta do líder, escondendo
+        // o outro, e "Desmarcar" apagaria só um deles.
+        //
+        // Uma encaminhada com uma da fila é pior, e passava por aqui: a guarda
+        // exigia que AS DUAS tivessem destino. Arrastando a encaminhada sobre
+        // uma ideia nova, ela perdia a liderança, e a partir daí a tela lê o
+        // estado do LÍDER — a etiqueta do destino sumia do cartão, `priorizar`
+        // rebaixava o grupo inteiro para SELECIONADO sem limpar
+        // destino_tipo/destino_id, e a ideia ficava descartável com um fator
+        // vivo do outro lado. Pior ainda, `encaminhar` no grupo reservava só a
+        // que não tinha destino e criava um SEGUNDO fator para o mesmo cartão —
+        // a duplicação que o tratamento em grupo existe para impedir.
+        //
+        // Fechar a porta aqui basta: `encaminhar` e `reabrir` já agem sobre o
+        // grupo inteiro, então um grupo misto não nasce por nenhum outro
+        // caminho. Quem quiser juntar, desmarca o destino antes.
         $destinoOrigem = $this->destinoDoGrupo($liderOrigem, $planId);
         $destinoAlvo = $this->destinoDoGrupo($lider, $planId);
-        if ($destinoOrigem && $destinoAlvo && $destinoOrigem !== $destinoAlvo) {
-            Json::erro('As duas já foram encaminhadas para análises diferentes. '
-                . 'Desmarque o destino de uma delas antes de juntar.');
+        if ($destinoOrigem !== $destinoAlvo) {
+            Json::erro($destinoOrigem && $destinoAlvo
+                ? 'As duas já foram encaminhadas para análises diferentes. '
+                    . 'Desmarque o destino de uma delas antes de juntar.'
+                : 'Uma delas já foi encaminhada e a outra ainda está na fila. '
+                    . 'Desmarque o destino antes de juntar as duas.');
         }
         Database::executar(
             'UPDATE coleta_item SET agrupado_em_id = ? WHERE planejamento_id = ? AND (id = ? OR agrupado_em_id = ?)',
@@ -635,6 +658,10 @@ class ColetaController
                 Quiz::soltarVozes('CENARIO', [$destinoId]);
                 Database::executar('DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
             } else {
+                // Desmarcar apaga o fator: se ele já virou ação, a ação ficaria
+                // no plano sem origem — a mesma recusa dos outros dois caminhos
+                Fatores::exigirSemAcao([$destinoId], 'Esta ideia já virou uma ação no plano. '
+                    . 'Exclua a ação em Projetos antes de desmarcar o destino.');
                 // Fatores promovidos apontam para o de origem (sem cascade): saem antes.
                 // O restante (GUT, vínculo com cascata) cai por ON DELETE CASCADE.
                 Quiz::soltarVozes('FATOR', array_column(Database::todos(

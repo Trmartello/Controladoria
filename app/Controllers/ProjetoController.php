@@ -111,7 +111,10 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirIniciativa($id, $planId);
-        // As ações da iniciativa saem junto (FK ON DELETE CASCADE)
+        // As ações da iniciativa saem junto (FK ON DELETE CASCADE) — e por
+        // isso o que aponta para elas precisa ser solto ANTES do DELETE:
+        // depois, a subconsulta não as encontraria mais
+        $this->soltarAcoes('iniciativa_id = ?', [$id]);
         Database::executar('DELETE FROM iniciativa WHERE id = ?', [$id]);
         Json::ok();
     }
@@ -196,16 +199,13 @@ class ProjetoController
         $this->exigirProjeto($id, $planId);
         // Investimentos vinculados perdem o vínculo (a FK não tem ON DELETE)
         Database::executar('UPDATE investimento SET projeto_id = NULL WHERE projeto_id = ?', [$id]);
-        // Comentários do projeto e os das ações que saem em cascata (ref_tipo/
-        // ref_id é polimórfico e não tem FK que os leve junto; os anexos descem
-        // com o comentário, por ON DELETE CASCADE)
+        // Comentários do projeto (ref_tipo/ref_id é polimórfico e não tem FK
+        // que os leve junto; os anexos descem com o comentário, por CASCADE)
         Database::executar(
             "DELETE FROM comentario WHERE ref_tipo = 'PROJETO' AND ref_id = ?", [$id]
         );
-        Database::executar(
-            "DELETE FROM comentario WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id IN
-               (SELECT id FROM (SELECT id FROM desdobramento WHERE projeto_id = ?) x)", [$id]
-        );
+        // As ações do projeto saem em cascata: solta o que aponta para elas
+        $this->soltarAcoes('projeto_id = ?', [$id]);
         Database::executar('DELETE FROM projeto WHERE id = ?', [$id]);
         Json::ok();
     }
@@ -443,21 +443,46 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirDesdobramento($id, $planId);
-        Database::executar(
-            "DELETE FROM comentario WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id = ?", [$id]
-        );
-        // A ideia da Coleta volta para a fila de "aguardando plano de ação".
-        // Sem isto ela ficava apontando para um desdobramento que não existe
-        // mais: sumia da fila (que filtra destino_id IS NULL), continuava
-        // marcada como "virou ação" e não havia como encaminhá-la de novo.
-        // O fator da SWOT não precisa da mesma linha — a FK dele é
-        // ON DELETE SET NULL e o banco faz isso sozinho.
-        Database::executar(
-            "UPDATE coleta_item SET destino_id = NULL
-             WHERE destino_tipo = 'ACAO' AND destino_id = ?", [$id]
-        );
+        $this->soltarAcoes('id = ?', [$id]);
         Database::executar('DELETE FROM desdobramento WHERE id = ?', [$id]);
         Json::ok();
+    }
+
+    /**
+     * Solta o que aponta para ações que estão prestes a sair.
+     *
+     * O CASCADE do banco leva os desdobramentos, mas não alcança nem o
+     * comentário nem a ideia da Coleta: os dois apontam por par polimórfico
+     * (ref_tipo/ref_id e destino_tipo/destino_id), e par polimórfico não tem
+     * FK que o carregue junto.
+     *
+     * Sem esta limpeza a ideia ficava apontando para uma ação que não existe
+     * mais, num beco sem saída permanente: sumia da fila de "aguardando plano
+     * de ação" (que filtra `destino_id IS NULL`), seguia marcada como "virou
+     * ação", e tanto `reabrir` quanto `excluir` a recusavam justamente por
+     * isso. Só `excluirDesdobramento` fazia a limpeza — apagar o PROJETO ou a
+     * INICIATIVA derruba as ações por CASCADE sem passar por lá.
+     *
+     * O fator da SWOT não precisa de linha nenhuma: a FK dele é
+     * ON DELETE SET NULL e o banco o devolve para a fila sozinho.
+     *
+     * @param string $onde   condição sobre `desdobramento`, literal do código
+     * @param array  $params os valores dessa condição
+     */
+    private function soltarAcoes(string $onde, array $params): void
+    {
+        // A derivada `(SELECT ... FROM (...) x)` é o mesmo contorno já usado
+        // aqui para o MySQL não reclamar da subconsulta no DELETE
+        $alvo = "(SELECT id FROM (SELECT id FROM desdobramento WHERE {$onde}) x)";
+        Database::executar(
+            "DELETE FROM comentario WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id IN {$alvo}",
+            $params
+        );
+        Database::executar(
+            "UPDATE coleta_item SET destino_id = NULL
+             WHERE destino_tipo = 'ACAO' AND destino_id IN {$alvo}",
+            $params
+        );
     }
 
     /**
