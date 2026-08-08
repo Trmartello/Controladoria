@@ -2172,3 +2172,24 @@ body.menu-aberto .menu-lateral {
   line-height: 1.35;
   color: #4a5551;
 }
+
+/* Alvo de toque na tela pública da tempestade. 2,25rem é a medida que o resto
+   do sistema já adota de propósito (`.mic-sala`, `.btn-mais`, `.palavra-x`), e
+   esta tela ficara abaixo dela: microfone de 1,75rem, "✎ editar" de 21px e
+   "Enviar" de 33px. É a tela que roda na mão de trinta pessoas ao mesmo tempo,
+   com o dedo e em pé — o erro de toque ali é constante.
+   Cresce por DIMENSÃO REAL, nunca por `::after` sobreposto: área invisível de
+   botões vizinhos se cobre e o toque na fronteira vai para o errado. */
+.participante-area .campo-voz > .btn-ditar {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+.participante-area #btn-enviar { min-height: 2.5rem; }
+/* O `p-0` do Bootstrap é utilitário com !important: sem repetir aqui, o padding
+   não cresce e a altura mínima sozinha deixa o rótulo colado na borda. */
+.participante-area [data-editar] {
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: .4rem !important;
+}
