@@ -1297,6 +1297,25 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   color: #6c757d;
 }
 .gut-nota { font-size: 1rem; font-weight: 800; color: var(--verde-escuro); }
+/* Sinal da nota (1–5): cinco barras crescentes, as N primeiras acesas. A altura
+   vai por `style` no HTML (é o dado, não o estilo); aqui fica só a forma. Sem
+   cor semântica: no mesmo cartão o selo do score já usa vermelho para
+   "prioridade alta", e pintar as barras por faixa faria a cor dizer duas
+   coisas. O que varia é QUANTAS acendem. */
+.gut-sinal {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  height: 14px;
+  margin: .15rem 0 .1rem;
+}
+.gut-sinal > i {
+  width: 4px;
+  border-radius: 1px;
+  background: #dde3e0;
+}
+.gut-sinal > i.aceso { background: var(--verde-escuro); }
 .gut-score {
   font-size: 1rem;
   font-weight: 800;

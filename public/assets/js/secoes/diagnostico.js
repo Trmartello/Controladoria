@@ -1365,6 +1365,23 @@ const SecaoGut = {
     return `<span class="esforco-selo" title="${dica}" aria-label="${dica}">${e.letra}</span>`;
   },
 
+  // O sinal de uma nota: cinco barras crescentes, as `nota` primeiras acesas.
+  // Três números soltos (5 5 5) obrigam a ler e comparar; o desenho diz de
+  // relance ONDE a ameaça é forte — gravidade no talo com tendência baixa é
+  // outro problema, e outra conversa, que "5 5 2" não conta sozinho.
+  // Sem cor própria, de propósito: nesta tela vermelho já quer dizer
+  // "prioridade alta" no selo do score, e pintar as barras por faixa faria a
+  // mesma cor significar duas coisas no mesmo cartão. O que varia é quantas
+  // acendem. Fica `aria-hidden`: a nota em número está logo abaixo, e anunciar
+  // as duas leria o mesmo valor duas vezes.
+  sinal(nota) {
+    const n = Number(nota) || 0;
+    const barras = [1, 2, 3, 4, 5].map((i) =>
+      `<i class="${i <= n ? 'aceso' : ''}" style="height:${i * 20}%"></i>`).join('');
+    return `<div class="gut-sinal" aria-hidden="true"
+      title="${n ? `${n} de 5` : 'não avaliado'}">${barras}</div>`;
+  },
+
   async carregar() {
     const base = await Diag.preparar('secao-gut');
     if (!base) return;
@@ -1382,6 +1399,7 @@ const SecaoGut = {
       const notas = [['G', f.gravidade], ['U', f.urgencia], ['T', f.tendencia]].map(([k, v]) => `
         <div class="text-center">
           <div class="gut-chave">${k}</div>
+          ${this.sinal(v)}
           <div class="gut-nota ${avaliado ? '' : 'text-black-50'}">${v ?? '—'}</div>
         </div>`).join('');
       return `<div class="card gut-card mb-2 ${avaliado ? '' : 'sem-nota'}" style="--cor-quad:${cor}"
