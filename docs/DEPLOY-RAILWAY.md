@@ -96,54 +96,278 @@ php cli/notificar.php semanal    # só o relatório da semana
 php cli/notificar.php diario     # só as pendências do dia
 ```
 
-## 7. Backup do banco
+## 7. Backup do banco — passo a passo
 
-O banco **é** o sistema: além do planejamento inteiro, ele guarda os anexos dos
-comentários (LONGBLOB), justamente porque o disco do contêiner é efêmero. Não há
-pasta de arquivos para copiar — backup aqui é dump do MySQL, e quem faz isso é
-`cli/backup.sh` (o cliente `mysqldump` já vem na imagem).
+O banco **é** o sistema. Além do planejamento inteiro, ele guarda os anexos dos
+comentários dentro das próprias tabelas, porque o disco do contêiner do Railway
+é apagado a cada deploy. Não existe pasta de arquivos para copiar: fazer backup
+aqui é tirar uma cópia do MySQL, e quem faz isso é `cli/backup.sh`.
 
-```bash
-./cli/backup.sh                       # gera backups/<banco>-<data>.sql.gz
-./cli/backup.sh listar                # o que existe, do mais novo ao mais velho
-./cli/backup.sh verificar <arquivo>   # confere sem restaurar nada
-./cli/backup.sh restaurar <arquivo>   # DESTRUTIVO — digita-se o nome do banco para confirmar
+Esta seção é para ser seguida **clicando junto**. Cada passo tem um "você deve
+ver" no fim — se o que aparecer for diferente, pare ali e vá para *Se der errado*.
+
+---
+
+### Passo 0 — De qual branch o Railway faz deploy?
+
+Isso decide se você precisa fazer alguma coisa antes de tudo. O backup só
+funciona se a imagem publicada tiver o cliente do MySQL instalado, e ele entrou
+no `Dockerfile` na branch de trabalho — **não está na `main`**.
+
+1. Abra o projeto no [railway.app](https://railway.app).
+2. Clique no serviço **web** (o do sistema, não o do banco).
+3. Vá em **Settings** e procure a área **Source** (ou *Service Source*).
+4. Leia o nome da **branch**.
+
+**Você deve ver** uma destas duas situações:
+
+| O que aparece | O que fazer |
+|---|---|
+| `claude/git-repo-overview-d17774` | Nada. Cada envio de código já virou deploy; a imagem já tem o cliente do MySQL. Siga para o passo 1. |
+| `main` | O sistema publicado está **muito atrás** do código atual (a `main` não tem sequer o arquivo de backup). Antes de continuar, é preciso juntar a branch de trabalho na `main` — peça isso, é uma operação de código, não de configuração. |
+
+---
+
+### Passo 1 — O Railway já não faz backup sozinho?
+
+Vale checar antes de montar qualquer coisa: dependendo do plano, o próprio
+Railway oferece cópia automática do banco, e ligar um botão é mais simples do
+que tudo o que vem abaixo.
+
+1. Clique no serviço do **MySQL** (não no do sistema).
+2. Procure uma aba ou seção chamada **Backups**.
+
+**Se existir**, ligue — e ainda assim faça o passo 8 desta seção. São coisas
+diferentes: o backup do provedor protege contra erro dentro do Railway; o
+`cli/backup.sh` te dá um **arquivo na sua mão**, que abre em qualquer MySQL,
+inclusive fora do Railway.
+
+**Se não existir**, siga para o passo 2 — é o caminho completo.
+
+---
+
+### Passo 2 — Criar o serviço que vai rodar o backup
+
+Um "serviço" no Railway é uma caixa que roda um comando. O do sistema roda o
+site; este vai rodar só o backup, uma vez por dia, e desligar.
+
+1. Dentro do projeto, clique em **+ Create** (ou *New*).
+2. Escolha **Empty Service** (serviço vazio).
+3. Quando ele pedir a origem do código, aponte para o mesmo repositório
+   **`Trmartello/Controladoria`** e a **mesma branch** que você leu no passo 0.
+4. Renomeie o serviço para **`backup`** (clique no nome, em Settings) — só para
+   você reconhecer depois.
+
+**Você deve ver** um terceiro quadrado no projeto, ao lado do serviço web e do
+MySQL, chamado `backup`.
+
+> Ele vai tentar subir e falhar nas primeiras vezes, porque ainda não tem
+> configuração. É esperado; os próximos passos resolvem.
+
+---
+
+### Passo 3 — Dar um lugar ao arquivo (o volume)
+
+Este é **o passo que decide se o backup é de verdade**. O disco do contêiner é
+apagado a cada deploy: sem um volume, o arquivo é gerado, some no dia seguinte,
+e você fica com a impressão de ter backup sem ter.
+
+Um "volume" é um disco que sobrevive aos deploys.
+
+1. Com o serviço **`backup`** aberto, vá em **Settings**.
+2. Procure **Volumes** → **Add Volume** (ou *Attach Volume*).
+3. No campo de caminho (*Mount Path*), digite exatamente:
+
+   ```
+   /backups
+   ```
+
+**Você deve ver** o volume listado, com o caminho `/backups`.
+
+> Um serviço só pode ter um volume, e o volume pertence a esse serviço. Por isso
+> ele fica no serviço de backup, não no do sistema.
+
+---
+
+### Passo 4 — Dizer ao backup qual é o banco (as variáveis)
+
+O serviço de backup precisa das mesmas credenciais do MySQL que o serviço web
+usa. No Railway isso se faz por **referência**: em vez de copiar a senha, você
+aponta para o serviço do banco, e ele preenche sozinho.
+
+1. No serviço **`backup`**, abra a aba **Variables**.
+2. Clique em **Add Reference** (ou *Variable Reference*) e adicione, **uma a
+   uma**, estas cinco:
+
+   | Variável | Aponte para |
+   |---|---|
+   | `MYSQLHOST` | MySQL → `MYSQLHOST` |
+   | `MYSQLPORT` | MySQL → `MYSQLPORT` |
+   | `MYSQLDATABASE` | MySQL → `MYSQLDATABASE` |
+   | `MYSQLUSER` | MySQL → `MYSQLUSER` |
+   | `MYSQLPASSWORD` | MySQL → `MYSQLPASSWORD` |
+
+3. Agora clique em **New Variable** (variável comum, digitada) e acrescente:
+
+   | Variável | Valor | Para que serve |
+   |---|---|---|
+   | `BACKUP_DIR` | `/backups` | onde gravar — o mesmo caminho do volume do passo 3 |
+   | `BACKUP_MANTER` | `30` | quantos arquivos guardar; os mais antigos são apagados sozinhos |
+
+**Você deve ver** sete variáveis na lista: cinco com ícone de referência ao
+MySQL e duas digitadas por você.
+
+> `BACKUP_MANTER=30` guarda um mês de cópias diárias. Se preferir menos espaço,
+> use `14`. Com `0`, nada é apagado nunca.
+
+---
+
+### Passo 5 — Dizer o que rodar e quando
+
+1. Ainda no serviço **`backup`**, vá em **Settings**.
+2. Em **Custom Start Command** (comando de início), digite exatamente:
+
+   ```
+   ./cli/backup.sh
+   ```
+
+3. Procure **Cron Schedule** (agendamento) e digite:
+
+   ```
+   0 7 * * *
+   ```
+
+**O que esses números querem dizer:** minuto 0, hora 7, todo dia. O Railway usa
+o relógio de Greenwich (UTC), que está 3 horas à frente do nosso — então
+**7h em UTC é 4h da manhã aqui**. É de propósito: a essa hora ninguém está
+usando o sistema.
+
+**Você deve ver**, na tela do serviço, o comando e o agendamento salvos.
+
+---
+
+### Passo 6 — Testar agora, sem esperar amanhã
+
+Não espere as 4h da manhã para descobrir se funcionou.
+
+1. No serviço **`backup`**, force uma execução: procure **Deploy** /
+   **Redeploy** (ou *Run now*, se o Railway oferecer).
+2. Abra a aba **Logs** (ou *Deploy Logs*) e leia até o fim.
+
+**Você deve ver** três linhas parecidas com estas:
+
+```
+Banco:   railway em mysql.railway.internal:3306 (cliente: mysqldump)
+Gravando /backups/railway-2026-08-08-040000.sql.gz …
+✓ /backups/railway-2026-08-08-040000.sql.gz (1,2M, 36 tabelas)
 ```
 
-Por padrão mantém os **14** mais recentes (`BACKUP_MANTER`) e grava em
-`./backups` (`BACKUP_DIR`). O arquivo nasce `0600`: ele traz hash de senha,
-e-mail de todo mundo e o conteúdo dos anexos.
+O ✓ na última linha é a confirmação de que o arquivo foi gerado **e conferido**
+— o programa só o batiza depois de checar que não veio truncado. Se aparecer um
+✗, vá para *Se der errado*, no fim desta seção.
 
-### O detalhe que decide se o backup é de verdade
+> O nome do arquivo começa com o nome do banco. No Railway o banco costuma
+> chamar-se `railway`, então o arquivo sai como `railway-<data>.sql.gz`.
 
-**O disco do contêiner some a cada deploy.** Um cron que rode `./cli/backup.sh`
-gravando em `/app/backups` produz um arquivo que morre no deploy seguinte —
-parece backup, e não é. Há dois caminhos, e o certo é usar os dois:
+---
 
-1. **Diário, no Railway** — no serviço de cron, crie um **Volume** (Settings →
-   Volumes) montado em `/backups` e adicione `BACKUP_DIR=/backups`.
-   Cron Schedule `0 7 * * *` (7h UTC = 4h de Brasília) e Custom Start Command
-   `./cli/backup.sh`. Replique as referências `MYSQL*`.
-2. **Cópia fora do Railway** — backup que mora no mesmo provedor do banco não
-   protege contra perder a conta. Periodicamente, rode da sua máquina apontando
-   para o **endpoint público** do MySQL (aba *Variables* do serviço MySQL,
-   valores `MYSQL_PUBLIC_URL`/`RAILWAY_TCP_PROXY_*`):
+### Passo 7 — Conferir no dia seguinte
+
+Um dia depois, abra os **Logs** do serviço `backup` e confirme que rodou
+sozinho às 4h. Feito isso, a parte automática está no ar.
+
+---
+
+### Passo 8 — A cópia que fica com você
+
+O volume protege contra deploy e contra apagão acidental de tabela. Ele **não**
+protege contra perder a conta do Railway, e não dá para baixar um arquivo de
+dentro dele com facilidade. Por isso existe a segunda cópia: rodada do seu
+computador, ela deixa o arquivo no seu disco.
+
+Isso exige ter o projeto baixado e o cliente do MySQL instalado na sua máquina.
+Uma vez por mês já muda o jogo.
+
+1. No Railway, clique no serviço do **MySQL** → aba **Variables**.
+2. Procure os valores **públicos** (nomes como `MYSQL_PUBLIC_URL` ou
+   `RAILWAY_TCP_PROXY_DOMAIN` e `RAILWAY_TCP_PROXY_PORT`). Anote o **host** e a
+   **porta** públicos, e a **senha** (`MYSQLPASSWORD`).
+3. No seu computador, dentro da pasta do projeto, rode:
 
 ```bash
 MYSQLHOST=<host público> MYSQLPORT=<porta pública> MYSQLDATABASE=railway \
 MYSQLUSER=root MYSQLPASSWORD=<senha> ./cli/backup.sh
 ```
 
-### Restaurar
+O arquivo aparece em `./backups`. **Guarde-o fora do computador também** — nuvem
+pessoal, HD externo, o que preferir.
+
+> O arquivo contém e-mail de todo mundo, senhas cifradas e os anexos dos
+> comentários. Ele nasce legível só para o seu usuário; trate-o como documento
+> confidencial e não o coloque em pasta compartilhada aberta.
+
+---
+
+### Passo 9 — Provar que dá para restaurar
+
+Backup que ninguém testou é esperança, não backup. O teste barato:
 
 ```bash
-./cli/backup.sh restaurar backups/planejamento-2026-08-08-040000.sql.gz
+./cli/backup.sh verificar backups/railway-2026-08-08-040000.sql.gz
 ```
 
-Ele recusa arquivo corrompido ou cortado pela metade **antes** de tocar no
-banco, e pede o nome do banco digitado para confirmar (em cron, `CONFIRMAR=<nome
-do banco>`). Depois de restaurar um arquivo mais antigo que o código, rode
+**Você deve ver** o cabeçalho do arquivo e a linha `✓ íntegro: 36 tabela(s)`.
+
+O teste completo — restaurar num banco descartável — está em `testes/README.md`.
+Vale fazer uma vez, com calma, antes de precisar.
+
+---
+
+### Restaurar de verdade (o dia ruim)
+
+```bash
+./cli/backup.sh restaurar backups/railway-2026-08-08-040000.sql.gz
+```
+
+Ele **recusa** arquivo corrompido ou cortado antes de tocar no banco, mostra
+para qual banco vai escrever e **pede que você digite o nome do banco** para
+confirmar — restaurar apaga o trabalho feito desde a data do arquivo, e um "sim"
+distraído é barato demais para o tamanho do estrago.
+
+Se o arquivo for mais antigo que o código publicado, rode depois
 `php database/migrate.php` para o schema alcançar a versão atual.
+
+---
+
+### Os outros comandos
+
+```bash
+./cli/backup.sh                       # gera o arquivo
+./cli/backup.sh listar                # o que existe, do mais novo ao mais velho
+./cli/backup.sh verificar <arquivo>   # confere sem restaurar nada
+./cli/backup.sh restaurar <arquivo>   # DESTRUTIVO — pede confirmação
+./cli/backup.sh --help                # a ajuda inteira
+```
+
+O que ele guarda: **tudo**, menos as linhas de três tabelas descartáveis
+(sessões abertas e as contagens de tentativa de login). A estrutura delas vai
+junto; só o conteúdo fica de fora, porque restaurar sessões devolveria acesso a
+quem estava logado no dia do backup.
+
+---
+
+### Se der errado
+
+| O que aparece no log | O que está acontecendo | O que fazer |
+|---|---|---|
+| `nem mysqldump nem mariadb-dump no PATH` | A imagem publicada é antiga e não tem o cliente do MySQL | Volte ao passo 0: a branch do deploy está errada, ou falta um deploy novo |
+| `php não encontrado no PATH` | O serviço não está usando a imagem do projeto | Confira se o serviço `backup` aponta para o repositório certo (passo 2) |
+| `Access denied for user` | Credenciais erradas | Refaça o passo 4: as cinco variáveis precisam ser **referências** ao MySQL, não valores digitados |
+| `Can't connect to MySQL server` | Endereço errado ou banco fora do ar | Confira `MYSQLHOST`; ele deve ser o interno (`mysql.railway.internal`) |
+| `caching_sha2_password` | Incompatibilidade de autenticação | Avise — é ajuste de imagem, não de configuração |
+| `dump truncado` ou `não passa no teste do gzip` | Espaço acabou ou a execução foi interrompida | Aumente o volume ou reduza `BACKUP_MANTER`; **nenhum arquivo ruim é salvo** |
+| O arquivo é gerado mas some no dia seguinte | O volume não está montado | Refaça o passo 3 e confira que `BACKUP_DIR` é `/backups` |
+| O serviço fica reiniciando sem parar | Está configurado como serviço comum, não agendado | Confira o **Cron Schedule** do passo 5 |
 
 ## 8. Iterando
 
