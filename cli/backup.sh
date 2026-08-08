@@ -171,7 +171,14 @@ opcoes_dump() {
 
 cabecalho() {
     local commit
-    commit=$(git rev-parse --short HEAD 2>/dev/null || printf '?')
+    # Qual versão do código gerou este dump — é o que diz, na hora de restaurar,
+    # se o schema do arquivo é mais velho que o da aplicação. Na imagem do
+    # Railway NÃO existe `.git` (o .dockerignore o exclui), e é justamente lá
+    # que a informação importa: o Railway publica o commit do deploy em
+    # RAILWAY_GIT_COMMIT_SHA, que serve de segunda fonte.
+    commit=$(git rev-parse --short HEAD 2>/dev/null) \
+        || commit=$(printf '%.7s' "${RAILWAY_GIT_COMMIT_SHA:-}")
+    [ -n "$commit" ] || commit='?'
     printf -- '-- Backup — Planejamento Estratégico Copérdia\n'
     printf -- '-- banco:     %s em %s:%s\n' "$DB_N" "$DB_H" "${DB_P:-3306}"
     printf -- '-- gerado em: %s\n' "$(date '+%Y-%m-%d %H:%M:%S %Z')"
