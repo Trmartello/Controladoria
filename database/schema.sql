@@ -514,38 +514,6 @@ CREATE TABLE IF NOT EXISTS carga_conteudo (
   aplicado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Plano de contingência: a resposta datada a uma ameaça já priorizada no GUT.
--- Pertence ao PLANEJAMENTO (ciclo), NÃO ao ano — é a exceção consciente à
--- regra "diagnóstico é anual". O diagnóstico é refeito todo ano por desenho,
--- mas a resposta a um risco atravessa o ciclo: com uma coluna `ano` aqui, todo
--- plano sumiria da tela na virada e alguém teria que "repetir no próximo ano".
--- O ano da ameaça de origem já vem do JOIN e serve de rótulo na tela.
---
--- `fator_id` é FK de verdade (ON DELETE CASCADE) em vez de par polimórfico
--- ref_tipo/ref_id: o polimorfismo nasceria com seis valores dos quais cinco
--- nunca seriam gravados, e era ele que abria a única brecha real de segurança
--- da funcionalidade — escopo por negócio driblado com um ref_id forjado.
--- Sem coluna de severidade: quem gradua a gravidade é o score GUT da ameaça
--- de origem. Duas escalas sem conciliação é o defeito que esta tela evita.
-CREATE TABLE IF NOT EXISTS contingencia (
-  id              INT AUTO_INCREMENT PRIMARY KEY,
-  planejamento_id INT NOT NULL,
-  fator_id        INT NULL,
-  risco           TEXT NULL,
-  gatilho         TEXT NOT NULL,
-  fonte_gatilho   VARCHAR(120) NULL,
-  responsavel     VARCHAR(255) NOT NULL,
-  resposta        TEXT NOT NULL,
-  situacao        ENUM('MONITORANDO','ACIONADO','ENCERRADO') NOT NULL DEFAULT 'MONITORANDO',
-  verificado_em   DATE NULL,
-  acionado_em     DATE NULL,
-  criado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_cont_plan (planejamento_id, situacao),
-  KEY idx_cont_fator (fator_id),
-  CONSTRAINT fk_cont_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
-  CONSTRAINT fk_cont_fator FOREIGN KEY (fator_id) REFERENCES fator(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 -- Tentativas de login falhas: trava de força bruta por e-mail e por origem
 CREATE TABLE IF NOT EXISTS login_tentativa (
   id        INT AUTO_INCREMENT PRIMARY KEY,

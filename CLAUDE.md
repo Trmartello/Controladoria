@@ -830,7 +830,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
   toque na fronteira vai para o errado.
 - Roadmap e especificações: `docs/PLANEJAMENTO-SISTEMA.md` (fases 1–6 já
   entregues) e `docs/BACKLOG-EVOLUCAO.md` (matriz de impacto por negócio,
-  triagem pós-brainstorm, mapa BSC, plano de contingência e ritual de
+  triagem pós-brainstorm, mapa BSC e ritual de
   acompanhamento — com o veredito de o que vale ou não construir).
 - `docs/REFATORACAO-GTD-COLETA.md`: o fluxo GTD da Coleta como ficou (matriz
   única, arraste, menu da pílula, saídas da ideia encaminhada), as decisões do

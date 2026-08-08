@@ -177,7 +177,6 @@ use App\Controllers\CenarioController;
 use App\Controllers\ColetaController;
 use App\Controllers\CicloController;
 use App\Controllers\ComentarioController;
-use App\Controllers\ContingenciaController;
 use App\Controllers\DriverEixoController;
 use App\Controllers\FatorController;
 use App\Controllers\IndicadorController;
@@ -413,13 +412,6 @@ try {
             (new RelatorioController())->salvarReuniao((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/reunioes/(\d+)/excluir$#', $rota, $m):
             (new RelatorioController())->excluirReuniao((int)$m[1]); break;
-
-        case $rota === 'GET /api/contingencias':    (new ContingenciaController())->listar(); break;
-        case $rota === 'POST /api/contingencias':   (new ContingenciaController())->salvar(); break;
-        case (bool)preg_match('#^POST /api/contingencias/(\d+)$#', $rota, $m):
-            (new ContingenciaController())->salvar((int)$m[1]); break;
-        case (bool)preg_match('#^POST /api/contingencias/(\d+)/excluir$#', $rota, $m):
-            (new ContingenciaController())->excluir((int)$m[1]); break;
 
         default:
             Json::erro('Rota não encontrada.', 404);

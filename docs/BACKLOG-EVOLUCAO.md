@@ -14,8 +14,8 @@ listado explicitamente, para ninguém reabrir a discussão sem contexto.
 **Escala de esforço.** P = uma PR pequena, ~1 dia. M = 2–4 dias com validação
 Playwright e revisão. G = uma semana ou mais.
 
-**Aviso de completude.** Chegaram quatro propostas com crítica (impacto,
-coleta/triagem, mapa BSC, contingência). O quinto tema — **ritual de
+**Aviso de completude.** Chegaram três propostas com crítica (impacto,
+coleta/triagem, mapa BSC). O quarto tema — **ritual de
 acompanhamento** — não veio com proposta nem revisão; a seção 5 foi escrita
 diretamente da leitura do código (`app/Services/Avisos.php`, `cli/notificar.php`,
 `RelatorioController`, `PlanejamentoController::checklist`) e deve ser tratada
@@ -781,192 +781,6 @@ usa), dentro de `.table-responsive`:
 
 ---
 
-## 4. Plano de Contingência
-
-### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço M)
-
-Ancorado na **ameaça da SWOT já priorizada pelo GUT** — não dentro de cada
-projeto — porque o risco estratégico da Copérdia (dólar, preço do leite, clima,
-crédito) atravessa o negócio inteiro e o sistema já tem o registro de riscos e a
-priorização; o que falta é a **resposta datada com gatilho verificável**.
-
-### A hipótese "dentro de cada projeto", avaliada
-
-**Rejeitada como casa principal**, por quatro motivos:
-
-1. **Grão errado.** O risco existe mesmo sem projeto algum. Dentro do projeto ele
-   ficaria repetido em N projetos ou órfão.
-2. **Já existe um registro de riscos priorizado**: `fator` com `etapa='SWOT'` e
-   `categoria='AMEACA'` + `gut.score` (1–125, com ranking). Criar uma segunda
-   lista de riscos que ninguém concilia é o pior desfecho possível.
-3. **Competiria com o motor de execução que já existe.** Projeto → iniciativa →
-   ação 5W2H tem status automático pela data-limite, prioridade, progresso e
-   diário. Um campo risco/gatilho/resposta dentro do projeto seria um campo morto:
-   sem situação, sem data de checagem, um risco só por projeto. O caminho correto
-   é o inverso — quando o gatilho dispara, **a resposta vira um projeto**.
-4. **Governança.** A reunião roda pelo Relatório de Status. Risco escondido numa
-   aba de projeto não é revisado; risco na pauta é revisado toda reunião.
-
-**Concessão:** a contingência dentro do projeto **não está descartada, está
-derivada**. Quando alguém pedir, o padrão de `MODIFY COLUMN` idempotente já
-provado no `migrate.php` transforma `fator_id` em referência polimórfica sem
-quebrar nada.
-
-**Uma correção de premissa, para o registro:** a afirmação de que "o ranking GUT
-morre e nada é feito com a ameaça de score alto" é **falsa**. O vínculo
-ameaça → escolha existe e é explícito (`cascata_fator`, `CascataController::listar`
-com `ORDER BY g.score DESC`, o multiselect "Fatores que fundamentam (SWOT/GUT)"
-e o badge "GUT nn" na célula). O buraco real é mais estreito e continua válido:
-**não existe resposta datada, com gatilho e com checagem verificável.**
-
-**Sobre as outras âncoras avaliadas:** envelope de capital (`envelope_capital.regras`
-já guarda guard-rails; vira referência depois, se pedirem) e indicador fora da
-meta — o modelo mais bonito e o mais inviável agora, porque em `indicador_valor`
-o real é **anual e digitado à mão**: comparar meta × real dispararia uma vez por
-ano, depois do ano fechado. Isso é post-mortem, não contingência. Só quando
-houver série mensal vinda do Qlik.
-
-### Onde encaixa
-
-- **Bloco no fim da própria Matriz GUT** ("Respostas às ameaças priorizadas"),
-  reusando `Diag.preparar`/`seletorAno` e a chamada `/api/fatores?etapa=SWOT&ano=`
-  que `SecaoGut` já faz. **Sem seção nova, sem item de menu, sem `<section>` no
-  `shell.php`, sem linha em `app.js`.** O botão fica a um toque do ranking que
-  motivou o plano.
-- Promover a seção própria só quando a lista passar de ~10 planos — e aí no bloco
-  **Gestão** (ao lado do Relatório de Status), não em Diagnóstico: contingência é
-  acompanhamento, não diagnóstico.
-- **Relatório de Status:** nova seção "6. Riscos e contingências", ao fim, sem
-  renumerar as existentes. É o que faz o ritual acontecer.
-
-### Modelo de dados
-
-```sql
-CREATE TABLE IF NOT EXISTS contingencia (
-  id              INT AUTO_INCREMENT PRIMARY KEY,
-  planejamento_id INT NOT NULL,
-  fator_id        INT NULL,                 -- ameaça de origem (NULL = risco avulso)
-  risco           TEXT NULL,                -- só no avulso; com fator_id vem do JOIN
-  gatilho         TEXT NOT NULL,            -- sinal observável + limiar
-  fonte_gatilho   VARCHAR(120) NULL,        -- onde se confere (CEPEA, BCB, Qlik, contrato)
-  responsavel     VARCHAR(255) NOT NULL,
-  resposta        TEXT NOT NULL,
-  situacao        ENUM('MONITORANDO','ACIONADO','ENCERRADO') NOT NULL DEFAULT 'MONITORANDO',
-  verificado_em   DATE NULL,                -- última checagem na reunião
-  acionado_em     DATE NULL,
-  CONSTRAINT fk_cont_plan  FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
-  CONSTRAINT fk_cont_fator FOREIGN KEY (fator_id) REFERENCES fator(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
-
-Dez colunas em vez de dezesseis. Quatro decisões, todas vindas da crítica:
-
-- **`fator_id` com FK `ON DELETE CASCADE` no lugar de `ref_tipo`/`ref_id`
-  polimórficos.** O polimorfismo nasceria com 6 valores dos quais 5 nunca seriam
-  gravados, e era ele que obrigava a copiar o `validarRef` do `DiarioController`
-  (~25 linhas), criava a **única brecha real de segurança** da feature (escopo por
-  negócio via `ref_id` forjado) e deixava órfãos ao excluir o fator. Um campo
-  resolve os três.
-- **Sem `severidade`.** Duplicaria o score GUT da própria ameaça de origem —
-  `SecaoGut.corScore` já classifica em três faixas (≥64 alta, ≥27 média, resto).
-  Duas escalas de gravidade sem conciliação é exatamente o defeito que a feature
-  diz querer evitar.
-- **Sem copiar `risco` quando há `fator_id`.** `FatorController::salvar` atualiza
-  `fator.descricao` sem tocar em mais nada; a cópia congelada divergiria no
-  primeiro edit e a tela mostraria dois textos para a mesma ameaça.
-- **Sem coluna `ano`.** A contingência pertence ao **planejamento (ciclo)**, não
-  ao ano — o ano do fator de origem já aparece como rótulo ("ameaça priorizada em
-  2027"). Isso resolve de graça o "sumiu tudo em 2028" e dispensa o botão "repetir
-  no próximo ano". É o ponto de maior atrito com o método (o diagnóstico é refeito
-  por ano **por desenho**), e vale registrar a exceção no `CLAUDE.md` junto com a
-  regra dos horizontes.
-
-**Rotas — 4:** `GET /api/contingencias?planejamento_id=`, `POST /api/contingencias`,
-`POST /api/contingencias/{id}` (o `salvar($id)` já cobre a checagem — o modal curto
-manda só `situacao` + `verificado_em`), `POST /api/contingencias/{id}/excluir`.
-Controller de ~90 linhas no padrão do `FatorController`.
-
-Sem seeds.
-
-### Telas e fluxo
-
-- **Bloco no fim do GUT:** lista ordenada por situação (ACIONADO → MONITORANDO →
-  ENCERRADO) e depois por score GUT. Cada cartão: badge de situação, badge do score
-  GUT com a cor do quadrante, a **ameaça** (do JOIN), o **gatilho** em destaque com
-  a fonte, o responsável, "última checagem: dd/mm/aaaa", a **resposta**. Acima,
-  "Ameaças graves sem plano" — `AMEACA` com `score >= 64` e sem contingência, cada
-  uma com "+ Criar plano". É o gancho que faz a lista se preencher sozinha.
-- **Botão nos cartões AMEACA do GUT** — atenção: o cartão inteiro já é
-  `data-avaliar role="button" tabindex="0"` e o listener captura tudo que borbulha;
-  como o `Modal` é singleton, sem `stopPropagation` **no clique e no keydown**
-  (Enter/Espaço) o modal de contingência abre e é imediatamente sobrescrito pelo de
-  Avaliação GUT. Não sai de graça.
-- **Modal** (`Modal.abrir`): `gatilho` textarea obrigatório com ajuda "escreva um
-  limiar verificável: o quê, quanto e por quanto tempo — ex.: saca do milho acima
-  de R$ 90 por 30 dias corridos"; `fonte_gatilho`; `responsavel` do tipo
-  `selecao_livre` alimentado por `/api/responsaveis` (igual ao 5W2H); `resposta`;
-  `situacao`. Campo `tipo: 'info'` no topo com a ameaça de origem.
-- **Na reunião:** plano a plano, "o gatilho disparou?" → botão "Registrar checagem"
-  → grava `verificado_em` (+ `acionado_em` quando vira ACIONADO). Um clique por
-  risco; é isso que mantém o plano vivo.
-- **Relatório, seção 6:** Risco | Gatilho (com a fonte) | Situação | Responsável |
-  Última checagem | Resposta. Acima da tabela, a linha que cobra o ritual:
-  **"N planos · X acionados no período · Y sem checagem desde \<de\>"**, calculada
-  na leitura — mesmo padrão declarado no `ProjetoController` ("a reconciliação
-  acontece na leitura, sem agendador"). Sem coluna "Severidade" (é o GUT), para
-  caber no mobile e no `.xls`.
-
-### Entrega mínima
-
-Tabela de 10 colunas + `ContingenciaController` (~90 linhas) + 4 rotas + bloco no
-fim de `SecaoGut` com o modal e o botão (com `stopPropagation`) + seção 6 no
-Relatório de Status (tela + `.xls`). ~55% da superfície da proposta original, com
-o mesmo valor: ameaça priorizada → gatilho verificável → resposta → checagem
-datada cobrada pelo relatório.
-
-**Alternativa ainda menor (fatia 0, ~1/5 do custo)** — recomendada **se o ritual
-mensal ainda não estiver rodando**: três colunas em `fator` via `garantirColuna`
-(`gatilho TEXT NULL`, `resposta TEXT NULL`, `verificado_em DATE NULL`), dois
-textareas e um campo de data a mais no modal de Avaliação GUT reaproveitando
-`POST /api/fatores/{id}/gut`, e um bloco no relatório listando ameaças com
-`score >= 64` e suas respostas. Zero tabela, zero controller, zero rota, zero
-mexida no `shell.php`. Testa a única hipótese que pode matar a feature, que é
-comportamental ("alguém vai mesmo checar todo mês?"). Se em dois ciclos de reunião
-as colunas estiverem preenchidas e faltar histórico/acionamento, promove-se para
-tabela com um `INSERT ... SELECT` idempotente no `migrate.php`.
-
-### O que ficou de fora (cortes adotados)
-
-- `ref_tipo`/`ref_id` polimórfico, `severidade`, `ordem`, `risco` no caminho
-  padrão, `ano`, `EM_ALERTA` (não muda nenhuma decisão nem filtro — quem está
-  preocupado escreve na observação da checagem).
-- **`projeto_id`** (o projeto de resposta). Some junto o defeito: a FK sem
-  `ON DELETE` derrubaria `ProjetoController::excluir` com 500, porque o método só
-  limpa `investimento.projeto_id`. Quando entrar, entra com `garantirColuna` **e**
-  a linha `UPDATE contingencia SET projeto_id = NULL WHERE projeto_id = ?` ao lado
-  da de investimento.
-- **Seção própria + item de menu + `<section>` + registro em `app.js`.**
-- **Cartão no Hub** — exige levar `ano` até `/api/contexto`, `checklist()` e
-  `hub.js`, que hoje não têm ano nenhum (verificado: `checklist(int $planId, int $cicloId)`).
-  Não são "6 linhas". E o sinal "ameaça grave sem plano" já aparece dentro do GUT,
-  que é onde a pessoa está quando prioriza.
-- Diário de bordo em contingência, contador no Painel, e a variante "indicador
-  fura a meta" — todos v2+.
-
-### Riscos
-
-- **Gatilho vago mata a feature.** "Se o mercado piorar" é inverificável. O
-  servidor só valida não-vazio; o resto é disciplina da Controladoria na primeira
-  rodada de preenchimento.
-- **Não prometer alerta automático.** Não há cron no app (o `entrypoint.sh` roda
-  migrate + `php -S`) e o Qlik hoje só alimenta a lista de negócios. O vocabulário
-  da UI é **"checagem na reunião"**. (Ressalva importante: a infra de e-mail
-  **não** é zero — ver o tema 5.)
-- **Ritual que ninguém executa** é o risco dominante, e é comportamental. Por isso
-  a fatia 0 existe.
-
----
-
 ## 5. Ritual de acompanhamento (metodologia + calendário + suporte no sistema)
 
 ### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço P no sistema; o resto é método)
@@ -1006,8 +820,8 @@ ligar o cron e conferir o SMTP.
 | Cadência | Quem | Duração | Insumo no sistema | Saída |
 |---|---|---|---|---|
 | **Semanal — pessoal** | cada responsável, sozinho | 10 min | e-mail de segunda (`Avisos` SEMANAL) | atualizar status/progresso das ações 5W2H e escrever no diário |
-| **Mensal — por negócio** | gestor + controladoria | 45 min | Relatório de Status do mês (negócio) | ações atrasadas repactuadas, contingências checadas, registro de reunião |
-| **Trimestral — direção** | direção + controladoria + gestores | 2 h | Painel consolidado + relatório corporativo + Matriz de Impacto | decisões de capital, revisão de metas, ameaças acionadas |
+| **Mensal — por negócio** | gestor + controladoria | 45 min | Relatório de Status do mês (negócio) | ações atrasadas repactuadas, registro de reunião |
+| **Trimestral — direção** | direção + controladoria + gestores | 2 h | Painel consolidado + relatório corporativo + Matriz de Impacto | decisões de capital, revisão de metas |
 | **Anual — replanejamento** | todos | oficina | Coleta & Triagem → diagnóstico do ano | novo diagnóstico anual, cascata revisada |
 
 **Pauta fixa da reunião mensal** (é a ordem das seções do Relatório de Status, de
@@ -1018,8 +832,7 @@ propósito — a pauta é o documento):
 3. Projetos: atrasados primeiro, depois os que mudaram de status.
 4. Capital: envelope × comprometido; decisões do período.
 5. Diário de bordo do período (o que aconteceu).
-6. *(quando existir)* Riscos e contingências: gatilho disparou? — tema 4.
-7. Encerramento: ações repactuadas e quem faz o quê até a próxima.
+6. Encerramento: ações repactuadas e quem faz o quê até a próxima.
 
 **Regra de higiene:** a reunião **não** é para preencher o sistema. Quem chega com
 o status desatualizado tem a ação marcada como "sem informação" no registro — e é
@@ -1068,7 +881,7 @@ CREATE TABLE IF NOT EXISTS reuniao (
 
 **Fatia 2 (P, opcional) — "Pendências para a reunião":** um bloco no topo do
 Relatório de Status, calculado na leitura, sem cron: ações atrasadas, projetos
-sem registro no diário no período, contingências sem checagem no período,
+sem registro no diário no período,
 indicadores sem real lançado no último ano fechado. É a linha que o relator lê em
 voz alta no começo da reunião.
 
@@ -1076,9 +889,6 @@ voz alta no começo da reunião.
 
 - **Cron dentro do app.** Não existe agendador no `entrypoint.sh` e não vale criar
   um; o cron do Railway já está documentado e é a resposta certa.
-- **Aviso automático de "checagem de contingência vencida" por e-mail.** É barato
-  adiante (`Avisos` já tem a estrutura, o dedup e o template), mas só depois que
-  houver contingências cadastradas de verdade.
 - **Convite/agenda/integração com calendário.** Não é problema deste sistema.
 - **Aprovação/assinatura de ata.** Ata leve é ata leve; se virar documento formal,
   vira outro projeto.
@@ -1109,30 +919,24 @@ valor/esforço do backlog inteiro.
 
 **1. Ritual de acompanhamento — fatia 1 (P).** Registro de reunião no Relatório de
 Status. É o menor código do backlog e é a pré-condição de valor de tudo o que vem
-depois: sem reunião mensal, contingência não é checada, matriz não é lida e a
-matriz de execução não é discutida.
+depois: sem reunião mensal, a matriz não é lida e a matriz de execução não é
+discutida.
 
 **2. Micro-entrega da Matriz de Execução (P, ~15 linhas).** Reanimar
 `projeto.cascata_id` no modal de projeto e em `ProjetoController::salvar`. O JOIN
 e a exibição já existem; é a correção mais barata do repositório e pré-requisito
 da coluna "Iniciativas".
 
-**3. Plano de Contingência (M — ou fatia 0, se o ritual ainda não estiver rodando).**
-Entra logo depois do ritual porque é o item que mais alimenta a pauta: gatilho +
-checagem datada + a linha "Y sem checagem desde \<de\>" no relatório. Se houver
-qualquer dúvida de que a reunião mensal vai percorrer os planos, **comece pela
-fatia 0** (3 colunas em `fator`), que custa um quinto e testa a hipótese.
-
-**4. Matriz de Execução — resto (P).** `indicador_cascata` + multiselect no modal
+**3. Matriz de Execução — resto (P).** `indicador_cascata` + multiselect no modal
 de indicador + aba na Cascata. Depende do passo 2 para a coluna de iniciativas
 fazer sentido, e é a leitura que a direção pede no trimestral.
 
-**5. Matriz de Impacto por Negócio (P).** Independente de tudo, mas depende de a
+**4. Matriz de Impacto por Negócio (P).** Independente de tudo, mas depende de a
 SWOT/GUT **corporativa** do ano estar preenchida — por isso vem depois de o ciclo
 de reuniões já estar consumindo o diagnóstico. Abre a reunião do gestor com
 "o que o corporativo diz que me impacta".
 
-**6. Coleta & Triagem (M) — condicionada ao calendário.** É sazonal: só serve na
+**5. Coleta & Triagem (M) — condicionada ao calendário.** É sazonal: só serve na
 janela da próxima oficina de diagnóstico. Se a oficina for daqui a 30–60 dias,
 **este item pula para o topo** (junto com o passo 0), porque perder a janela
 significa esperar um ano. Se for daqui a 6 meses, fica onde está.
@@ -1153,8 +957,8 @@ nota de impacto, e não convém passar a atribuir.
 
 | | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
 |---|---|---|
-| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 5 registro de reunião · 3b vínculo com a Cascata · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 4 Plano de Contingência · 2 Coleta & Triagem |
-| **Impacto baixo** | **Encaixar** — 4b contingência dentro do projeto *(não construir agora)* | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
+| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 5 registro de reunião · 3b vínculo com a Cascata · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 2 Coleta & Triagem |
+| **Impacto baixo** | — | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
 
 **O que essa leitura mostra — e o que ela não decide.** Cinco dos dez temas
 caem no mesmo quadrante. Não é falha da leitura: é o retrato de um backlog já
@@ -1173,13 +977,11 @@ discutir a dependência, não o quadrante.
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
 | 5 | Ritual de acompanhamento (registro de reunião) | **Entregue** | P | 1 ✔ |
 | 3b | Reanimar `projeto.cascata_id` | Construir | P (micro) | 2 |
-| 4 | Plano de Contingência (ancorado na ameaça GUT) | Construir simplificado | M | 3 |
-| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 4 |
-| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 5 |
-| 2 | Coleta & Triagem (tratativa item a item) | **Entregue** | M | 6 ✔ (antecipada) |
+| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 3 |
+| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 4 |
+| 2 | Coleta & Triagem (tratativa item a item) | **Entregue** | M | 5 ✔ (antecipada) |
 | 2.1 | Tempestade: quiz por PIN/QR, condução ao vivo e matriz | **Entregue** | M | ✔ |
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
-| 4b | Contingência dentro de cada projeto | **Não construir agora** (deriva de 4) | P | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |
 
 ---
@@ -1203,12 +1005,8 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
    (`eixo.perspectiva`); a segunda custa zero.
 5. **Cadência oficial do ritual:** mensal por negócio + trimestral com a direção,
    como proposto? Quem conduz? A reunião mensal é por negócio ou agrupa negócios?
-6. **A contingência é do ciclo (recomendado) ou do ano?** Se for do ano, é preciso
-   orçar desde já o "repetir no próximo ano" — e aceitar que os planos somem da
-   tela na virada.
-7. **Existe (ou existirá) real com granularidade mensal vindo do Qlik?** Se sim,
-   destrava a contingência ancorada em indicador (o `OFF_TRACK` do BSC) e muda a
-   pauta do ritual. Se não, meta × real continua sendo assunto anual.
+6. **Existe (ou existirá) real com granularidade mensal vindo do Qlik?** Se sim,
+   meta × real deixa de ser assunto só anual e muda a pauta do ritual.
 8. ~~Quem responde ao quiz da tempestade?~~ **Respondido e entregue:** qualquer
    pessoa, por QR ou link, sem cadastro — modelo do Quiz Copérdia. A revisão de
    segurança exigida (tema 2.1, decisão A) **foi executada** antes de subir
