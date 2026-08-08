@@ -442,19 +442,13 @@ input[type=range].faixa-verde:focus-visible {
 /* ===== Tempestade — tela de condução (projetada) ===== */
 .painel-rodada { border-left: 4px solid var(--verde-coperdia); }
 .painel-reclassificar { border-left: 4px solid var(--dourado); }
-.pin-grande {
-  font-size: clamp(1.8rem, 6vw, 3rem);
-  font-weight: 800;
-  letter-spacing: .18em;
-  color: var(--verde-escuro);
-  font-variant-numeric: tabular-nums;
-}
-.caixa-qr { background: #fff; padding: .4rem; border-radius: .4rem; line-height: 0; }
-.caixa-qr svg { width: 150px; height: 150px; }
 
 /* ===== Aba Sala: a tela de PROJEÇÃO do encontro =====
    Aqui o QR e o PIN são o conteúdo, não um detalhe recolhido: alguém no fundo
-   da sala precisa ler os dois do telão. */
+   da sala precisa ler os dois do telão. Vale para os DOIS ritos — a tempestade
+   também projeta daqui, e o painel dela saiu da tela da Coleta. */
+.pergunta-sala { border-top: 1px solid #dee2e6; padding-top: .6rem; }
+.pergunta-sala p { font-size: 1.05rem; }
 .cartao-projecao { border-left: 4px solid var(--verde-coperdia); }
 .caixa-qr-grande { background: #fff; padding: .6rem; border-radius: .5rem; line-height: 0; }
 .caixa-qr-grande svg { width: 260px; height: 260px; }

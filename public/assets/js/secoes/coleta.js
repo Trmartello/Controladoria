@@ -80,7 +80,6 @@ const SecaoColeta = {
   rodadaAberta: null,
   selecionado: null,   // id da ideia na bancada
   relogio: null,       // consulta periódica enquanto a rodada está aberta
-  qrAberto: false,     // QR na caixa de expansão: fechada até o condutor projetar
   arrastando: false,   // arraste em curso: o polling não redesenha por cima
   // Caixa-mãe com as palavras à mostra ("ver mais"). Uma por vez, para a nuvem
   // projetada não voltar a inchar. Mora aqui, e não no DOM, porque o relógio de
@@ -293,46 +292,33 @@ const SecaoColeta = {
     if (this.rodadaAberta) this.ligarRelogio(ano); else this.pararRelogio();
   },
 
-  // ---- Painel da rodada: PIN, QR e link para projetar ----
-  painelTempestade(ano) {
+  /**
+   * A sala (PIN, QR, link, pergunta, votação, encerrar) mora na aba
+   * **Sala · PIN e QR code** — os dois ritos no mesmo lugar. Aqui fica só a
+   * linha que diz em que estado a tela está e leva até lá: sem ela, a Coleta
+   * mudava de comportamento (nuvem ao vivo em vez de fila) sem dizer por quê.
+   */
+  painelTempestade() {
     const r = this.rodadaAberta;
     if (!r) {
       return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <strong class="small text-uppercase">Tempestade de ideias</strong>
-          <span class="small text-muted flex-grow-1">Abra uma rodada e projete o PIN:
-            os participantes entram pelo celular, sem cadastro.</span>
-          <button class="btn btn-sm btn-verde" id="btn-abrir-rodada">Abrir tempestade</button>
+          <span class="small text-muted flex-grow-1">Nenhuma rodada aberta. O PIN e o QR
+            para projetar ficam na aba Sala.</span>
+          <button class="btn btn-sm btn-verde" data-ir-sala>Ir para a Sala</button>
         </div>
       </div></div>`;
     }
-    const url = `${location.origin}/entrar/${r.pin}`;
-    // Painel compacto: PIN, contadores e ações numa linha só; o QR grande fica
-    // numa caixa de expansão (details), aberta quando o condutor vai projetar
     return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
       <div class="d-flex align-items-center gap-2 flex-wrap">
-        <span class="badge text-bg-light border">PIN <strong class="pin-mini">${Modal.esc(r.pin)}</strong></span>
+        <strong class="small text-uppercase">Tempestade aberta</strong>
         <span class="badge text-bg-light border">${r.participantes} participante(s)</span>
         <span class="badge text-bg-light border">${r.ideias} ideia(s)</span>
         ${r.votacao === 'ABERTA' ? '<span class="badge text-bg-warning">votação aberta</span>' : ''}
         <span class="small text-muted flex-grow-1 text-truncate">${Modal.esc(r.tema)}</span>
+        <button class="btn btn-sm btn-outline-secondary" data-ir-sala>PIN e QR na Sala</button>
       </div>
-      <div class="d-flex gap-2 flex-wrap mt-2">
-        <button class="btn btn-sm btn-outline-secondary" data-copiar-link="${Modal.esc(url)}">Copiar link</button>
-        <button class="btn btn-sm btn-outline-secondary" id="btn-votacao">
-          ${r.votacao === 'ABERTA' ? 'Fechar votação' : 'Abrir votação'}</button>
-        <button class="btn btn-sm btn-outline-danger" id="btn-encerrar-rodada">Encerrar</button>
-      </div>
-      <details class="painel-qr mt-2" id="det-qr"${this.qrAberto ? ' open' : ''}>
-        <summary>QR code para projetar</summary>
-        <div class="d-flex flex-wrap gap-3 align-items-start mt-2">
-          <div class="caixa-qr" id="qr-rodada" aria-hidden="true"></div>
-          <div class="flex-grow-1" style="min-width:12rem">
-            <div class="rotulo-secao">Entre em ${Modal.esc(location.host)}/entrar</div>
-            <div class="pin-grande">${Modal.esc(r.pin)}</div>
-          </div>
-        </div>
-      </details>
     </div></div>`;
   },
 
@@ -839,37 +825,8 @@ const SecaoColeta = {
   },
 
   ligarTempestade(el, ano) {
-    // O QR é desenhado por biblioteca vendorada (MIT); sem ela, o PIN basta
-    const caixa = el.querySelector('#qr-rodada');
-    if (caixa && this.rodadaAberta && typeof qrcode === 'function') {
-      try {
-        const q = qrcode(0, 'M');
-        q.addData(`${location.origin}/entrar/${this.rodadaAberta.pin}`);
-        q.make();
-        caixa.innerHTML = q.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
-      } catch (e) {
-        caixa.remove();
-      }
-    } else if (caixa) {
-      caixa.remove();
-    }
-
-    // O QR mora numa caixa de expansão; guardamos o estado para o polling não
-    // fechar a caixa a cada redesenho. Não recarrega: o próprio <details> abre.
-    el.querySelector('#det-qr')?.addEventListener('toggle', (ev) => {
-      this.qrAberto = ev.target.open;
-    });
-
-    el.querySelectorAll('[data-copiar-link]').forEach((b) => b.addEventListener('click', async () => {
-      const url = b.dataset.copiarLink;
-      try {
-        await navigator.clipboard.writeText(url);
-        b.textContent = 'Link copiado';
-        setTimeout(() => { b.textContent = 'Copiar link'; }, 1800);
-      } catch (e) {
-        prompt('Copie o link da rodada:', url);
-      }
-    }));
+    el.querySelectorAll('[data-ir-sala]').forEach((b) =>
+      b.addEventListener('click', () => App.mostrarSecao('sala')));
 
     el.querySelectorAll('[data-selecionar]').forEach((b) => this.ativarBotao(b, () => {
       // Um arraste que terminou em cima de outra ficha não é um toque
@@ -1006,38 +963,8 @@ const SecaoColeta = {
       this.carregar();
     });
 
-    document.getElementById('btn-abrir-rodada')?.addEventListener('click', () => Modal.abrir({
-      titulo: 'Abrir tempestade de ideias',
-      url: '/api/rodadas',
-      valores: { planejamento_id: this.plan.id, ano, max_ideias: 5, max_votos: 3 },
-      campos: [
-        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'ano', rotulo: '', tipo: 'hidden', padrao: ano },
-        { nome: 'tema', rotulo: 'A pergunta que abre a tempestade', tipo: 'text', obrigatorio: true,
-          exemplo: 'O que pode atrapalhar o nosso resultado nos próximos três anos?' },
-        { nome: 'max_ideias', rotulo: 'Ideias por participante', tipo: 'number', padrao: 5,
-          ajuda: 'Um teto evita que uma pessoa domine a tempestade.' },
-        { nome: 'max_votos', rotulo: 'Votos por participante', tipo: 'number', padrao: 3,
-          ajuda: 'Só vale se você abrir a fase de votação depois.' },
-      ],
-      // A sala é do PROJETO: com uma sessão de quiz aberta em outra análise, o
-      // servidor devolve 409/SALA_ABERTA e o QuizSala pergunta se encerra
-      // aquela. Sem este gancho a pergunta virava um erro vermelho no modal,
-      // sem nenhum jeito de responder "sim" — e esta tela nem lista a sessão de
-      // quiz (filtra `modo !== 'QUIZ'`), então o condutor ficava sem saída.
-      enviar: (corpo) => QuizSala.pedir('/api/rodadas', corpo),
-      aoSalvar: () => this.carregar(),
-    }));
-
-    document.getElementById('btn-encerrar-rodada')?.addEventListener('click', async () => {
-      if (!confirm('Encerrar a rodada? Os participantes não conseguem mais enviar ideias.')) return;
-      try {
-        await App.api(`/api/rodadas/${this.rodadaAberta.id}/encerrar`, { planejamento_id: this.plan.id });
-      } catch (e) {
-        alert(e.message);
-      }
-      this.carregar();
-    });
+    // Abrir, encerrar e votação da tempestade moram na aba Sala, junto do PIN,
+    // do QR e da pergunta: a sala é uma só, e tinha comando em duas telas.
 
     document.getElementById('btn-limpar-rodada')?.addEventListener('click', async () => {
       if (!confirm('Apagar as ideias desta rodada que ainda não foram tratadas?')) return;

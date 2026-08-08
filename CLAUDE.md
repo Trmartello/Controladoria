@@ -275,7 +275,31 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   perguntado o mesmo alvo e todas essas vozes valem.
   **O PIN e o QR moram numa aba só** — `Sala · PIN e QR code`, a ÚLTIMA do menu
   (`sala.js`): é a tela de PROJEÇÃO do encontro (QR e PIN grandes) e a casa do
-  roteiro. As análises ficam com duas coisas: o **selo** (`QuizSala.selo`), uma
+  roteiro. **Os DOIS ritos projetam dali**: a tempestade (`modo` TEMPESTADE) e o
+  encontro com roteiro (`modo` QUIZ) dividem o mesmo cartão de projeção
+  (`cartaoProjecao`), porque a sala é uma só por planejamento e antes o PIN
+  aparecia em telas diferentes conforme o rito — quem procurava "onde está o
+  PIN" tinha de saber de antemão qual dos dois havia sido aberto. A Coleta ficou
+  com uma linha de contexto e um atalho, sem PIN, sem QR e sem comando: comando
+  em duas telas é sala em dois lugares. Junto do PIN vão **Copiar link** e
+  **Compartilhar no WhatsApp** (`QuizSala.compartilhar`, um `wa.me` comum, sem
+  SDK): nem toda sala tem telão nem todo participante consegue mirar o QR.
+  A rodada da tempestade é buscada **sem filtro de ano** — ela pode ter nascido
+  num ano diferente do seletor do diagnóstico, e filtrando por ano a aba dizia
+  "nenhuma sessão" com a sala no ar. Ela tem **relógio próprio** (o de
+  `QuizSala.armarRelogio` acompanha a sessão de roteiro e sai fora quando não há
+  uma) e, com a tempestade no ar, o `aoBater` do quiz não repinta: o estado dele
+  é "sem sessão" e apagaria o PIN do telão.
+  **A pergunta da tempestade é da condução, não do cadastro**: o ✎ ao lado dela
+  (`POST /api/rodadas/{id}/pergunta`, só com a rodada ABERTA e só para quem edita
+  o planejamento) reescreve o `tema`, que chega ao celular na batida seguinte —
+  ideias e votos já enviados ficam onde estão. Encerrar a rodada só para
+  reformular jogaria fora PIN, participantes e o que já foi coletado. O campo é
+  **`QuizSala.campoPergunta`**, um só para o formulário que abre e o que edita, e
+  é `textarea` de propósito: é o campo de composição do sistema, o que traz o
+  botão de ditado (`Modal.botaoDitar`) e cresce com o texto — numa linha só, a
+  pergunta ditada saía da vista no meio da frase.
+  As análises ficam com duas coisas: o **selo** (`QuizSala.selo`), uma
   linha dizendo onde a sala está — e ela fala mesmo quando está LONGE, com
   atalho ("a sala está em Porter · Rivalidade"), porque o silêncio seria lido
   como "não tem sala aberta", que é justamente quando alguém abre uma segunda —

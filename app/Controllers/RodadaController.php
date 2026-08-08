@@ -95,6 +95,39 @@ class RodadaController
         Json::ok();
     }
 
+    /**
+     * Reescreve a PERGUNTA da tempestade, com a rodada aberta.
+     *
+     * A pergunta é da condução, não do cadastro: o rumo do encontro muda no
+     * meio dele, e quem conduz precisa poder reformular sem encerrar a rodada
+     * (o que jogaria fora PIN, participantes e ideias já coletadas). Ela chega
+     * ao celular de todo mundo na batida seguinte — a tela do participante já
+     * lê o `tema` e o tem na assinatura do polling.
+     *
+     * Só com a rodada ABERTA: mexer no tema de uma rodada encerrada reescreveria
+     * a pergunta sob as ideias que já foram respondidas e arquivadas.
+     * A guarda é a mesma de encerrar e de abrir a votação — quem conduz o
+     * planejamento; perfil LEITURA não passa de `exigirEdicaoPlanejamento`.
+     */
+    public function pergunta(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $rodada = $this->exigirRodada($id, $planId);
+        if ($rodada['situacao'] !== 'ABERTA') {
+            Json::erro('A rodada já foi encerrada.');
+        }
+        // Mesmo corte do `abrir()`: a coluna é VARCHAR(180) e o texto vem da
+        // sala, ditado por voz — sem o corte, o INSERT falharia em modo estrito
+        $tema = mb_substr(trim(is_string($d['tema'] ?? null) ? $d['tema'] : ''), 0, 180);
+        if ($tema === '') {
+            Json::erro('Escreva a pergunta que abre a tempestade.');
+        }
+        Database::executar('UPDATE coleta_rodada SET tema = ? WHERE id = ?', [$tema, $id]);
+        Json::ok(['tema' => $tema]);
+    }
+
     /** Liga ou desliga a votação dos participantes (convergência opcional). */
     public function votacao(int $id): void
     {

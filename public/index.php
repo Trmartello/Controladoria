@@ -259,6 +259,8 @@ try {
             (new RodadaController())->encerrar((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/rodadas/(\\d+)/votacao$#', $rota, $m):
             (new RodadaController())->votacao((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/rodadas/(\\d+)/pergunta$#', $rota, $m):
+            (new RodadaController())->pergunta((int)$m[1]); break;
 
         case $rota === 'GET /api/coleta':          (new ColetaController())->listar(); break;
         case $rota === 'GET /api/coleta/aguardando-acao': (new ColetaController())->aguardandoAcao(); break;

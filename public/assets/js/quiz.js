@@ -607,6 +607,64 @@ const QuizSala = {
     return f;
   },
 
+  /** O endereço que o participante abre no celular — o mesmo do QR. */
+  linkEntrada(pin) {
+    return `${location.origin}/entrar/${pin}`;
+  },
+
+  /**
+   * Copiar o link e mandar pelo WhatsApp: nem toda sala tem telão, e nem todo
+   * participante consegue mirar o QR (reunião híbrida, quem entra pelo
+   * celular na mão). O WhatsApp é um link `wa.me` comum — sem SDK, sem
+   * dependência externa, e o próprio aparelho escolhe entre o app e a web.
+   */
+  compartilhar(pin, tema) {
+    if (!pin) return '';
+    const url = this.linkEntrada(pin);
+    const texto = `${tema ? `${tema}\n\n` : ''}Entre na sala pelo link: ${url}\nPIN: ${pin}`;
+    return `<div class="d-flex gap-2 flex-wrap">
+      <button class="btn btn-sm btn-outline-secondary" type="button"
+        data-copiar-link="${Modal.esc(url)}">Copiar link</button>
+      <a class="btn btn-sm btn-outline-success" target="_blank" rel="noopener"
+        href="https://wa.me/?text=${encodeURIComponent(texto)}">Compartilhar no WhatsApp</a>
+    </div>`;
+  },
+
+  /** O "Copiar link" — com `prompt` de reserva onde a área de transferência
+   *  não é liberada (http sem TLS, permissão negada). */
+  ligarCompartilhar(el) {
+    el.querySelectorAll('[data-copiar-link]').forEach((b) => b.addEventListener('click', async () => {
+      const url = b.dataset.copiarLink;
+      try {
+        await navigator.clipboard.writeText(url);
+        b.textContent = 'Link copiado';
+        setTimeout(() => { b.textContent = 'Copiar link'; }, 1800);
+      } catch (e) {
+        prompt('Copie o link da sala:', url);
+      }
+    }));
+  },
+
+  /**
+   * O campo da PERGUNTA da tempestade, definido uma vez só: o formulário que
+   * abre a rodada e o que reescreve a pergunta usam o MESMO campo — escritos
+   * separados, divergiriam no primeiro ajuste de rótulo ou de exemplo.
+   * É `textarea` de propósito: é o campo de composição do sistema, o que traz
+   * o botão de ditado e cresce com o texto. Numa linha só, a pergunta ditada
+   * pela voz saía da vista no meio da frase.
+   */
+  campoPergunta(extra = {}) {
+    return {
+      nome: 'tema',
+      rotulo: 'A pergunta que abre a tempestade',
+      tipo: 'textarea',
+      linhas: 2,
+      obrigatorio: true,
+      exemplo: 'O que pode atrapalhar o nosso resultado nos próximos três anos?',
+      ...extra,
+    };
+  },
+
   /** Desenha o QR de uma sessão dentro de `caixa` (some se não der). */
   desenharQr(caixa, pin) {
     if (!caixa) return;
