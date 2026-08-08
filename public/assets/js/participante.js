@@ -199,7 +199,15 @@ const Participante = {
     if (rotuloTopo) rotuloTopo.textContent = 'Tempestade de ideias';
     const rascunho = document.getElementById('campo-ideia')?.value ?? '';
     const encerrada = r.situacao !== 'ABERTA';
-    const votando = this.votacao?.votacao === 'ABERTA';
+    // Votação aberta SEM nada para votar não é fase de votação: é um beco. A
+    // fase substitui o campo de enviar ideia, então com a lista vazia o
+    // participante ficava numa tela onde não dava para escrever nem para votar
+    // — e, de fora, isso parece "bloqueado". Enquanto não houver ideia na
+    // lista, o celular segue recolhendo; ele passa a votar assim que a
+    // primeira chegar, que é o que a condução pediu ao abrir a fase.
+    const paraVotar = (this.votacao?.itens || []).length;
+    const votacaoAberta = this.votacao?.votacao === 'ABERTA';
+    const votando = votacaoAberta && paraVotar > 0;
     const restam = r.max_ideias - this.minhas.length;
 
     this.tela.innerHTML = `
@@ -212,7 +220,10 @@ const Participante = {
 
         ${encerrada
           ? '<div class="alert alert-secondary py-2 small mt-3">Esta rodada foi encerrada. Obrigado por participar!</div>'
-          : votando ? this.blocoVotacao() : this.blocoEnvio(restam)}
+          : votando ? this.blocoVotacao() : `
+            ${votacaoAberta ? `<div class="alert alert-warning py-2 small mt-3">A votação já está
+              aberta, mas ainda não há ideia para votar. Envie a sua.</div>` : ''}
+            ${this.blocoEnvio(restam)}`}
 
         ${this.minhas.length && !votando ? `
           <div class="mt-4">

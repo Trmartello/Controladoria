@@ -241,6 +241,15 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   participante do quiz plantava ideia de 400 chars direto na fila de triagem).
   O `estado()` do quiz **omite o PIN para perfil LEITURA**, como
   `RodadaController::listar` — o PIN é credencial de escrita.
+  **A sala TROCA DE RITO sem trocar de PIN**: com a tempestade aberta, o 🎤 de
+  uma análise não a encerra — `Quiz::assumirTempestade` vira o `modo` da MESMA
+  rodada para QUIZ (409/`ASSUMIR_TEMPESTADE`, código próprio porque essa tela
+  não pede nome de encontro: a sala já tem um). Encerrar e abrir outra rodada
+  criava um PIN novo e deixava todo mundo preso em "Esta rodada foi encerrada",
+  sem aviso e sem caminho — o celular está amarrado ao PIN que escaneou. É
+  seguro porque quem separa os dois ritos é `coleta_item.origem`, não a rodada:
+  as ideias já enviadas continuam TEMPESTADE e seguem na Coleta, e os
+  participantes continuam registrados com o mesmo token.
   **Uma sala aberta por planejamento**, e a colisão é PERGUNTA, não recusa:
   `Quiz::liberarSala` devolve 409 com o código **`SALA_ABERTA`** e o nome da
   tela em que ela ficou; com `confirmar_encerrar` no corpo, encerra a anterior e

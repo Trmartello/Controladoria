@@ -688,12 +688,15 @@ const QuizSala = {
     try {
       return await App.api('/api/quiz/tela', corpo);
     } catch (e) {
-      if (e.codigo !== 'SEM_SALA') throw e;
+      const assumir = e.codigo === 'ASSUMIR_TEMPESTADE';
+      if (e.codigo !== 'SEM_SALA' && !assumir) throw e;
       if (!confirm(e.message)) return null;
-      // Abrir a sala pede um nome; sem ele o padrão do servidor serve, e o
-      // condutor renomeia na aba Sala
-      const tema = prompt('Nome do encontro (opcional):', '') ?? '';
-      return this.pedir('/api/quiz/tela', { ...corpo, abrir_sala: 1, tema });
+      // Assumir a tempestade não pede nome: a sala já tem um, e o PIN é o
+      // mesmo. Só a sala que nasce do zero precisa ser batizada — sem nome, o
+      // padrão do servidor serve e o condutor renomeia na aba Sala.
+      const tema = assumir ? '' : (prompt('Nome do encontro (opcional):', '') ?? '');
+      return this.pedir('/api/quiz/tela',
+        { ...corpo, abrir_sala: 1, tema, ...(assumir ? { confirmar_encerrar: 1 } : {}) });
     }
   },
 

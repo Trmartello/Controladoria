@@ -73,8 +73,22 @@ class QuizController
     private function criarSala(int $planId, array $d, array $alvos): array
     {
         $u = Auth::exigirLogin();
-        Quiz::liberarSala($planId, $d, $alvos
-            ? Quiz::telaDe($alvos[0]) : 'Sala do encontro');
+        $tela = $alvos ? Quiz::telaDe($alvos[0]) : 'Sala do encontro';
+
+        // Havendo tempestade aberta, a sala TROCA DE RITO em vez de morrer e
+        // renascer com outro PIN: quem já escaneou o QR continua dentro e passa
+        // a receber as perguntas. Sem isto, tocar o 🎤 de uma célula da cascata
+        // deixava a sala inteira em "Esta rodada foi encerrada".
+        $assumida = Quiz::assumirTempestade($planId, $d, $tela);
+        if ($assumida) {
+            $ids = $alvos ? $this->enfileirar((int)$assumida['id'], $alvos, true) : [];
+            return [
+                'id' => (int)$assumida['id'],
+                'pin' => $assumida['pin'],
+                'pergunta_id' => $ids[0] ?? null,
+                'assumiu_tempestade' => true,
+            ];
+        }
 
         $tema = mb_substr(trim(is_string($d['tema'] ?? null) ? $d['tema'] : ''), 0, 180)
             ?: 'Planejamento estratégico — preenchimento colaborativo';
@@ -126,11 +140,15 @@ class QuizController
         if (!$r) {
             if (empty($d['abrir_sala'])) {
                 $outra = Quiz::salaAberta($planId);
+                // Códigos diferentes porque as DUAS telas decidem coisas
+                // diferentes: assumir a tempestade não pede nome (a sala já tem
+                // um), abrir do zero pede. Casar por texto seria refém da
+                // redação da mensagem.
                 Json::erro($outra
-                    ? "Há uma tempestade de ideias aberta em {$outra['onde']}. "
-                        . 'Encerrá-la e abrir a sala do quiz com esta pergunta?'
+                    ? 'A sala está na tempestade de ideias. Passar a MESMA sala para esta '
+                        . 'pergunta? Ninguém precisa escanear o QR de novo.'
                     : 'Nenhuma sala aberta. Abrir a sala e já perguntar isto?',
-                    409, 'SEM_SALA');
+                    409, $outra ? 'ASSUMIR_TEMPESTADE' : 'SEM_SALA');
             }
             // O `confirmar_encerrar` NÃO é fabricado aqui. O SELECT acima roda
             // FORA da trava, então entre ele e o `GET_LOCK` do `liberarSala`

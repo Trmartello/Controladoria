@@ -98,11 +98,25 @@ const SecaoSala = {
   corpoTempestade() {
     const r = this.tempestade;
     const podeConduzir = App.podeEditar();
+    // O selo diz a CONSEQUÊNCIA, não só o estado: abrir a votação tira o campo
+    // de enviar ideia do celular de todo mundo, e "votação aberta" sozinho não
+    // contava isso — o condutor via a sala parada sem saber que tinha sido ele.
+    const votacaoAberta = r.votacao === 'ABERTA';
     const selos = [
       `<span class="badge text-bg-light border">${r.participantes} participante(s)</span>`,
       `<span class="badge text-bg-light border">${r.ideias} ideia(s)</span>`,
-      r.votacao === 'ABERTA' ? '<span class="badge text-bg-warning">votação aberta</span>' : '',
+      votacaoAberta
+        ? '<span class="badge text-bg-warning">votação aberta · a sala não envia mais ideias</span>'
+        : '<span class="badge text-bg-light border">recolhendo ideias</span>',
     ].join('');
+    // Votação aberta sem nenhuma ideia é o beco: não há o que votar e não dá
+    // para escrever. O celular contorna (volta a recolher), mas quem conduz
+    // precisa saber que a fase está no lugar errado.
+    const aviso = votacaoAberta && !Number(r.ideias) && podeConduzir
+      ? `<div class="alert alert-warning py-2 small mt-2 mb-0">A votação está aberta e ainda não
+         há nenhuma ideia. Feche a votação para a sala voltar a enviar — enquanto ela estiver
+         aberta, o celular só mostra a lista para votar.</div>`
+      : '';
     const acoes = podeConduzir ? `
       <button class="btn btn-sm btn-outline-secondary" id="btn-votacao">
         ${r.votacao === 'ABERTA' ? 'Fechar votação' : 'Abrir votação'}</button>
@@ -116,7 +130,8 @@ const SecaoSala = {
         // encontro muda no meio dele. Fica em destaque, com o ✎ ao lado —
         // encerrar a rodada só para reformular jogaria fora PIN, participantes
         // e as ideias já coletadas.
-        rodape: `<div class="mt-3 pergunta-sala">
+        rodape: `${aviso}
+        <div class="mt-3 pergunta-sala">
           <div class="rotulo-secao">A pergunta que abre a tempestade</div>
           <p class="mb-1">${Modal.esc(r.tema)}</p>
           ${podeConduzir

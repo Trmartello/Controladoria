@@ -639,12 +639,67 @@ class Quiz
             // encerra a execução sem passar por nenhum `finally`.
             self::soltarPlanejamento($planId);
             Json::erro(
-                "A sala está aberta em {$aberta['onde']}. Encerrar aquela discussão e abrir em {$telaPedida}?",
+                $aberta['modo'] === 'QUIZ'
+                    ? "A sala está aberta em {$aberta['onde']}. Encerrar aquela discussão e abrir em {$telaPedida}?"
+                    : "A sala está na tempestade de ideias. Passar a MESMA sala para {$telaPedida}? "
+                        . 'Ninguém precisa escanear o QR de novo, e as ideias já enviadas ficam guardadas.',
                 409,
                 'SALA_ABERTA'
             );
         }
         self::encerrarSala((int)$aberta['id']);
+    }
+
+    /**
+     * Passa a sala da TEMPESTADE para o quiz **sem trocar o PIN**.
+     *
+     * Encerrar a tempestade e abrir uma rodada nova quebrava a promessa da aba
+     * Sala — "um PIN para o encontro inteiro" —, e quebrava no pior momento: o
+     * condutor recolhia ideias, tocava o 🎤 de uma célula da cascata e todo
+     * mundo na sala ficava preso em "Esta rodada foi encerrada", sem aviso e sem
+     * caminho, porque o celular está amarrado ao PIN que escaneou.
+     *
+     * Trocar `modo` é seguro porque o que separa os dois ritos NÃO é a rodada, e
+     * sim `coleta_item.origem`: as ideias já enviadas continuam TEMPESTADE (e
+     * seguem na Coleta), e as respostas do quiz nascem QUIZ. Os participantes
+     * continuam registrados na mesma rodada, com o mesmo token. A votação da
+     * tempestade é fechada: ela conta por rodada e não vale no rito novo.
+     *
+     * Devolve a rodada assumida, ou `null` quando não havia tempestade aberta —
+     * aí o chamador cria a sala do zero, como sempre fez.
+     */
+    public static function assumirTempestade(int $planId, array $d, string $telaPedida): ?array
+    {
+        self::travarPlanejamento($planId);
+        $aberta = self::salaAberta($planId);
+        if (!$aberta) {
+            self::soltarPlanejamento($planId);
+            return null;
+        }
+        if ($aberta['modo'] === 'QUIZ') {
+            // Sala de quiz já aberta é outro caso: quem chama aqui é o caminho
+            // que só existe quando NÃO há sessão de quiz. Cai na regra de
+            // sempre — pergunta e encerra.
+            self::soltarPlanejamento($planId);
+            self::liberarSala($planId, $d, $telaPedida);
+            return null;
+        }
+        if (empty($d['confirmar_encerrar'])) {
+            self::soltarPlanejamento($planId);
+            Json::erro(
+                "A sala está na tempestade de ideias. Passar a MESMA sala para {$telaPedida}? "
+                    . 'Ninguém precisa escanear o QR de novo, e as ideias já enviadas ficam guardadas.',
+                409,
+                'SALA_ABERTA'
+            );
+        }
+        Database::executar(
+            "UPDATE coleta_rodada SET modo = 'QUIZ', votacao = 'FECHADA'
+              WHERE id = ? AND situacao = 'ABERTA' AND modo = 'TEMPESTADE'",
+            [(int)$aberta['id']]
+        );
+        $aberta['modo'] = 'QUIZ';
+        return $aberta;
     }
 
     /**
