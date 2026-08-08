@@ -234,7 +234,7 @@ class InvestimentoController
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirInvestimento($id, $planId);
         Database::executar(
-            "DELETE FROM diario_bordo WHERE ref_tipo = 'INVESTIMENTO' AND ref_id = ?", [$id]
+            "DELETE FROM comentario WHERE ref_tipo = 'INVESTIMENTO' AND ref_id = ?", [$id]
         );
         Database::executar('DELETE FROM investimento WHERE id = ?', [$id]);
         Json::ok();

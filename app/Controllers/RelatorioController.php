@@ -181,10 +181,12 @@ class RelatorioController
         }
         $html .= '</table>';
 
-        $html .= '<h3>Diário de bordo do período</h3><table border="1"><tr><th>Data</th><th>Referência</th><th>Registro</th><th>Autor</th></tr>';
-        foreach ($r['diario'] as $d) {
+        $html .= '<h3>Comentários do período</h3><table border="1"><tr><th>Data</th>'
+            . '<th>Referência</th><th>Comentário</th><th>Anexos</th><th>Autor</th></tr>';
+        foreach ($r['comentarios'] as $d) {
             $html .= '<tr><td>' . $esc($d['data_reg']) . '</td><td>' . $esc($d['referencia'])
-                . '</td><td>' . $esc($d['texto']) . '</td><td>' . $esc($d['autor']) . '</td></tr>';
+                . '</td><td>' . $esc($d['texto']) . '</td><td>' . (int)($d['anexos'] ?? 0)
+                . '</td><td>' . $esc($d['autor']) . '</td></tr>';
         }
         $html .= '</table></body></html>';
 
@@ -282,31 +284,37 @@ class RelatorioController
             [$planId, $de, $ate]
         );
 
-        // Diário do período com o rótulo da referência (projeto/5W2H/investimento/cascata)
-        $diario = Database::todos(
-            "SELECT db.data_reg, db.texto, db.status_atual, db.progresso, u.nome AS autor,
-                    CASE db.ref_tipo
+        // Comentários do período com o rótulo da referência (projeto/5W2H/
+        // investimento/cascata). Sucederam o diário de bordo — os registros
+        // antigos atravessaram na migração, então a série histórica continua.
+        // `criado_em` é DATETIME: o `BETWEEN` precisa do dia inteiro do fim,
+        // senão tudo que foi comentado depois da meia-noite da data final
+        // ficava de fora do relatório.
+        $comentarios = Database::todos(
+            "SELECT DATE(c.criado_em) AS data_reg, c.texto, u.nome AS autor,
+                    (SELECT COUNT(*) FROM comentario_anexo a WHERE a.comentario_id = c.id) AS anexos,
+                    CASE c.ref_tipo
                       WHEN 'PROJETO' THEN CONCAT('Projeto: ', COALESCE(p.titulo, '?'))
                       WHEN 'DESDOBRAMENTO' THEN CONCAT('5W2H: ', COALESCE(dd.o_que, '?'))
                       WHEN 'INVESTIMENTO' THEN CONCAT('Investimento: ', COALESCE(i.descricao, '?'))
                       WHEN 'CASCATA' THEN CONCAT('Cascata: ', COALESCE(LEFT(ce.escolha, 80), '?'))
-                      ELSE db.ref_tipo
+                      ELSE c.ref_tipo
                     END AS referencia
-             FROM diario_bordo db
-             JOIN usuario u ON u.id = db.autor_id
-             LEFT JOIN projeto p ON db.ref_tipo = 'PROJETO' AND p.id = db.ref_id
-             LEFT JOIN desdobramento dd ON db.ref_tipo = 'DESDOBRAMENTO' AND dd.id = db.ref_id
+             FROM comentario c
+             JOIN usuario u ON u.id = c.autor_id
+             LEFT JOIN projeto p ON c.ref_tipo = 'PROJETO' AND p.id = c.ref_id
+             LEFT JOIN desdobramento dd ON c.ref_tipo = 'DESDOBRAMENTO' AND dd.id = c.ref_id
              LEFT JOIN projeto pd ON pd.id = dd.projeto_id
-             LEFT JOIN investimento i ON db.ref_tipo = 'INVESTIMENTO' AND i.id = db.ref_id
-             LEFT JOIN cascata_escolha ce ON db.ref_tipo = 'CASCATA' AND ce.id = db.ref_id
-             WHERE db.data_reg BETWEEN ? AND ?
+             LEFT JOIN investimento i ON c.ref_tipo = 'INVESTIMENTO' AND i.id = c.ref_id
+             LEFT JOIN cascata_escolha ce ON c.ref_tipo = 'CASCATA' AND ce.id = c.ref_id
+             WHERE DATE(c.criado_em) BETWEEN ? AND ?
                AND (
-                 (db.ref_tipo = 'PROJETO' AND p.planejamento_id = ?)
-                 OR (db.ref_tipo = 'DESDOBRAMENTO' AND pd.planejamento_id = ?)
-                 OR (db.ref_tipo = 'INVESTIMENTO' AND i.planejamento_id = ?)
-                 OR (db.ref_tipo = 'CASCATA' AND ce.planejamento_id = ?)
+                 (c.ref_tipo = 'PROJETO' AND p.planejamento_id = ?)
+                 OR (c.ref_tipo = 'DESDOBRAMENTO' AND pd.planejamento_id = ?)
+                 OR (c.ref_tipo = 'INVESTIMENTO' AND i.planejamento_id = ?)
+                 OR (c.ref_tipo = 'CASCATA' AND ce.planejamento_id = ?)
                )
-             ORDER BY db.data_reg DESC, db.id DESC",
+             ORDER BY c.criado_em DESC, c.id DESC",
             [$de, $ate, $planId, $planId, $planId, $planId]
         );
 
@@ -320,7 +328,7 @@ class RelatorioController
             'projetos'     => $projetos,
             'capital'      => $capital,
             'decisoes'     => $decisoes,
-            'diario'       => $diario,
+            'comentarios'  => $comentarios,
         ];
     }
 

@@ -176,7 +176,7 @@ use App\Controllers\QuizController;
 use App\Controllers\CenarioController;
 use App\Controllers\ColetaController;
 use App\Controllers\CicloController;
-use App\Controllers\DiarioController;
+use App\Controllers\ComentarioController;
 use App\Controllers\DriverEixoController;
 use App\Controllers\FatorController;
 use App\Controllers\IndicadorController;
@@ -368,8 +368,16 @@ try {
         case (bool)preg_match('#^POST /api/desdobramentos/(\d+)$#', $rota, $m):
             (new ProjetoController())->salvarDesdobramento((int)$m[1]); break;
 
-        case $rota === 'GET /api/diario':           (new DiarioController())->listar(); break;
-        case $rota === 'POST /api/diario':          (new DiarioController())->criar(); break;
+        // Comentários de acompanhamento (sucederam o diário de bordo).
+        // `POST /api/comentarios` recebe multipart, não JSON: os anexos sobem
+        // com o texto no mesmo pedido.
+        case $rota === 'GET /api/comentarios':      (new ComentarioController())->listar(); break;
+        case $rota === 'POST /api/comentarios':     (new ComentarioController())->criar(); break;
+        case (bool)preg_match('#^POST /api/comentarios/(\d+)/excluir$#', $rota, $m):
+            (new ComentarioController())->excluir((int)$m[1]); break;
+        // Devolve BYTES (não JSON): a rota escreve os próprios cabeçalhos.
+        case (bool)preg_match('#^GET /api/anexos/(\d+)$#', $rota, $m):
+            (new ComentarioController())->baixar((int)$m[1]); break;
 
         case $rota === 'GET /api/investimentos':    (new InvestimentoController())->listar(); break;
         case $rota === 'POST /api/investimentos':   (new InvestimentoController())->salvar(); break;

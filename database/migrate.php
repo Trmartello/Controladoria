@@ -707,6 +707,47 @@ if ($foraDoPadrao) {
     echo 'migrate: collation uniformizada em ' . count($foraDoPadrao) . " tabela(s).\n";
 }
 
+// ---- Diário de bordo → comentários ----
+// O diário virou "Comentários", que é a mesma coisa com anexo junto. Os
+// registros antigos precisam atravessar: eles são o histórico de acompanhamento
+// dos projetos, e o Relatório de Status lê deles a seção do período.
+//
+// A marca em `carga_conteudo` é o que impede o deploy seguinte de duplicar tudo
+// (um `NOT EXISTS` por linha não serve: o mesmo autor pode comentar duas vezes
+// o mesmo texto no mesmo dia, e a segunda vez é um comentário de verdade).
+// A tabela `diario_bordo` NÃO é apagada: ela fica como arquivo da migração,
+// sem código nenhum lendo dela. Descartá-la aqui tornaria o passo irreversível
+// no primeiro deploy, e o custo de mantê-la é uma tabela parada.
+$temDiario = (bool)$pdo->query(
+    "SELECT 1 FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'diario_bordo'"
+)->fetchColumn();
+if ($temDiario && !App\Services\CargaConteudo::jaAplicada($pdo, 'migracao_diario_comentario')) {
+    // `data_reg` é a data que o autor escolheu no diário; `criado_em` do
+    // comentário herda ela (ao meio-dia, para não escorregar de dia em
+    // conversão de fuso), senão a linha do tempo nova nasceria toda com a data
+    // do deploy e a ordem do histórico se perderia.
+    // Status e progresso viravam texto: eram a informação do registro, e sem
+    // eles o comentário migrado diria menos do que dizia o diário.
+    $migrados = $pdo->exec(
+        "INSERT INTO comentario (ref_tipo, ref_id, autor_id, texto, criado_em)
+         SELECT db.ref_tipo, db.ref_id, db.autor_id,
+                CONCAT(db.texto,
+                  CASE WHEN db.status_atual IS NULL THEN ''
+                       ELSE CONCAT('\n\nStatus registrado: ', db.status_atual) END,
+                  CASE WHEN db.progresso IS NULL THEN ''
+                       ELSE CONCAT('\nProgresso registrado: ', db.progresso, '%') END),
+                TIMESTAMP(db.data_reg, '12:00:00')
+           FROM diario_bordo db"
+    );
+    App\Services\CargaConteudo::marcar(
+        $pdo,
+        'migracao_diario_comentario',
+        "{$migrados} registro(s) do diário de bordo migrados para comentários"
+    );
+    echo "migrate: {$migrados} registro(s) do diário migrados para comentários.\n";
+}
+
 // Faxina das tabelas que só crescem. O coletor de sessão do PHP roda por
 // probabilidade e há ambiente com session.gc_probability = 0, onde ele nunca é
 // chamado — e cada visita anônima a /login já cria uma linha em `sessao`, porque

@@ -127,12 +127,11 @@ const SecaoRelatorio = {
       <td class="text-end">R$ ${this.fmt(d.valor)}</td>
     </tr>`).join('');
 
-    const linhasDiario = r.diario.map((d) => `<tr>
+    const linhasComentarios = r.comentarios.map((d) => `<tr>
       <td class="text-nowrap">${this.data(d.data_reg)}</td>
       <td class="small">${Modal.esc(d.referencia)}</td>
       <td>${Modal.esc(d.texto)}
-        ${d.status_atual ? `<span class="badge ${(STATUS_PROJETO[d.status_atual] || ['', 'text-bg-light'])[1]} ms-1">${(STATUS_PROJETO[d.status_atual] || [d.status_atual])[0]}</span>` : ''}
-        ${d.progresso !== null ? `<span class="badge text-bg-light border ms-1">${d.progresso}%</span>` : ''}</td>
+        ${Number(d.anexos) ? `<span class="badge text-bg-light border ms-1">📎 ${d.anexos}</span>` : ''}</td>
       <td class="small text-muted">${Modal.esc(d.autor)}</td>
     </tr>`).join('');
 
@@ -211,11 +210,11 @@ const SecaoRelatorio = {
             <tbody>${linhasDecisoes}</tbody></table></div>`
             : '<p class="text-muted small">Nenhuma decisão registrada no período.</p>')}
 
-        ${this.secao('5. Diário de bordo do período',
-          r.diario.length ? `<div class="table-responsive"><table class="table table-sm align-middle">
-            <thead><tr><th>Data</th><th>Referência</th><th>Registro</th><th>Autor</th></tr></thead>
-            <tbody>${linhasDiario}</tbody></table></div>`
-            : '<p class="text-muted small">Nenhum registro no período.</p>')}
+        ${this.secao('5. Comentários do período',
+          r.comentarios.length ? `<div class="table-responsive"><table class="table table-sm align-middle">
+            <thead><tr><th>Data</th><th>Referência</th><th>Comentário</th><th>Autor</th></tr></thead>
+            <tbody>${linhasComentarios}</tbody></table></div>`
+            : '<p class="text-muted small">Nenhum comentário no período.</p>')}
 
         ${this.secao('6. Últimas reuniões de acompanhamento',
           cartoesReuniao || `<p class="text-muted small">Nenhuma reunião registrada.

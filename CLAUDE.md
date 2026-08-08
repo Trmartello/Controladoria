@@ -13,7 +13,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `Database` (PDO, sempre prepared statements), `Json`, `SessaoBanco`
   (sessões em MySQL na tabela `sessao` — sobrevivem a deploys; cookie 30 dias).
 - **Serviços** (`app/Services/`): `QlikSync`, `Recorrencia` (repetição das
-  ações — usada pelo cadastro **e** pelo diário), `Avisos` (e-mails do plano
+  ações — usada pelo cadastro), `Avisos` (e-mails do plano
   de ação), `Consolidacao` (reconciliação do que é *consequência*: atraso da
   ação e período/status do projeto). `Consolidacao::reconciliar($planId)` roda
   no começo de **toda leitura** que exibe esses campos — Projetos, Painel e
@@ -583,10 +583,47 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   data-limite, reconciliados em `sincronizarAtrasos()`); os demais são manuais.
 - **Recorrência** (`recorrencia` NENHUMA/SEMANAL/MENSAL + `recorrencia_dia` +
   `recorrencia_ate`): concluir uma ocorrência não encerra a ação — ela reabre
-  na próxima data prevista e a conclusão fica no diário. A regra está em
-  `App\Services\Recorrencia` e vale para os **dois** caminhos que concluem uma
-  ação (cadastro e diário de bordo); o reagendamento avança ocorrência a
-  ocorrência até passar de hoje.
+  na próxima data prevista e a conclusão vira um comentário automático — a
+  ação volta a NAO_INICIADO e, sem esse registro, não sobraria rastro nenhum de
+  que ela chegou a ser concluída. A regra está em `App\Services\Recorrencia`, o
+  reagendamento avança ocorrência a ocorrência até passar de hoje, e o caminho
+  que conclui uma ação é **um só**: o cadastro (era dois — o diário de bordo era
+  o outro, e sumiu com ele).
+- **Comentários com anexos** (`comentario` + `comentario_anexo`): sucederam o
+  Diário de Bordo, que saiu do código. O registro continua datado e nunca
+  sobrescrito; o que mudou é que agora carrega arquivo. O que o diário fazia
+  além de listar texto — mexer em status e progresso — voltou para onde já
+  existia: o formulário do cartão e a barra de progresso.
+  O arquivo mora no **banco** (`LONGBLOB`), não em disco: o contêiner do Railway
+  é efêmero e pasta de upload some no deploy seguinte, levando o anexo de todo
+  mundo; sem Composer, SDK de armazenamento externo também está fora. O
+  `conteudo` fica numa tabela à parte para o SELECT da lista não arrastar
+  megabytes que a tela não usa — a miniatura busca cada arquivo por
+  `GET /api/anexos/{id}`.
+  O envio é **multipart** (`POST /api/comentarios`), não JSON com base64: base64
+  infla 33% e carrega o arquivo duas vezes na memória. O CSRF continua valendo —
+  ele é o header, não o tipo do corpo — mas `App.api` só fala JSON, então este é
+  o único `fetch` na mão do sistema. E o Dockerfile precisa de
+  `upload_max_filesize`/`post_max_size`: o `php.ini-production` corta em 2M/8M,
+  abaixo do teto de 5 MB por arquivo, e o PHP descartaria o upload antes do
+  controller.
+  Guardas que não podem ser afrouxadas na rota que **serve** o anexo: o
+  `Content-Type` sai da lista branca por EXTENSÃO (nunca do que o navegador
+  declarou), `nosniff` impede o navegador de adivinhar outro, só imagem desce
+  `inline` (o resto vai como `attachment`) e a CSP da resposta é
+  `default-src 'none'; sandbox`. Imagem é conferida com `getimagesize` no
+  recebimento: sem isso, um script renomeado para `.png` seria servido como
+  imagem do MESMO domínio da sessão. O cache é `private` — em cache
+  compartilhado o anexo vazaria para outra sessão.
+  Apagar comentário é do **autor ou de um ADMIN**: quem edita o planejamento não
+  herda o direito de apagar registro dos outros. Apagar projeto, ação,
+  investimento ou escolha da cascata leva os comentários junto à mão (`ref_tipo`/
+  `ref_id` é polimórfico e não tem FK); os anexos descem por ON DELETE CASCADE.
+  A seção 5 do Relatório de Status e a aba do Excel passaram a ler daqui, e os
+  registros antigos do diário **atravessaram na migração** (passo marcado em
+  `carga_conteudo`, com `data_reg` virando `criado_em` ao meio-dia e status/
+  progresso virando texto). A tabela `diario_bordo` fica no banco como arquivo
+  da migração, sem código nenhum lendo dela.
 - **Avisos por e-mail** (`App\Services\Avisos` + `App\Core\Email`, SMTP na
   mão): relatório semanal na segunda e pendências do dia. `envio_email` é a
   trava contra duplicidade — só conta como enviado o registro com
@@ -603,7 +640,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   recarregamentos e um listener nele empilharia uma cópia por `carregar()`. A
   resolução é do **mais interno para o mais externo** (ação → iniciativa →
   projeto), porque os três níveis são aninhados no DOM. Botão, link, a barra de
-  progresso e o diário dentro do cartão não viram atalho; a seleção de texto do
+  progresso e os comentários dentro do cartão não viram atalho; a seleção de texto do
   duplo clique é limpa antes de abrir o modal. Os cartões levam
   `touch-action: manipulation`, senão o iOS trata o segundo toque como zoom e o
   `dblclick` não chega.

@@ -39,7 +39,7 @@ const SecaoProjetos = {
   plan: null,
   cascata: null,
   responsaveis: [],
-  diarioAberto: null, // { refTipo, refId }
+  comentariosAbertos: null, // { refTipo, refId }
   // Recolhidos guardam quem está fechado; projeto e iniciativa começam
   // abertos e a escolha do usuário sobrevive aos recarregamentos da seção
   iniciativasFechadas: new Set(),
@@ -236,8 +236,8 @@ const SecaoProjetos = {
       a.por_que && `Por quê: ${a.por_que}`,
       a.quanto !== null && a.quanto !== undefined && `Quanto: R$ ${Number(a.quanto).toLocaleString('pt-BR')}`,
     ].filter(Boolean).map(Modal.esc).join(' · ');
-    const timeline = this.diarioAberto?.refTipo === 'DESDOBRAMENTO' && this.diarioAberto?.refId === a.id
-      ? `<div id="diario-DESDOBRAMENTO-${a.id}" class="mt-2"></div>` : '';
+    const timeline = this.comentariosAbertos?.refTipo === 'DESDOBRAMENTO' && this.comentariosAbertos?.refId === a.id
+      ? `<div id="comentarios-DESDOBRAMENTO-${a.id}" class="mt-2"></div>` : '';
     const repeticao = a.recorrencia === 'SEMANAL'
       ? `toda ${(DIAS_SEMANA.find(([v]) => v == a.recorrencia_dia) || [, ''])[1].toLowerCase()}`
       : a.recorrencia === 'MENSAL' ? `todo dia ${a.recorrencia_dia}` : '';
@@ -272,7 +272,7 @@ const SecaoProjetos = {
         <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
           ${extras ? `<div class="small text-muted mt-2">${extras}</div>` : ''}
           <span class="d-flex gap-1 flex-wrap mt-2">
-            <button class="btn btn-sm btn-outline-success" data-diario="DESDOBRAMENTO:${a.id}">Diário</button>
+            <button class="btn btn-sm btn-outline-success" data-comentarios="DESDOBRAMENTO:${a.id}">Comentários</button>
             ${App.podeEditar() ? `
               <button class="btn btn-sm btn-outline-secondary" data-editar-desd="${a.id}" data-proj="${p.id}"
                 title="Editar ação" aria-label="Editar ação">✎</button>
@@ -331,8 +331,8 @@ const SecaoProjetos = {
         ? `<div class="small text-muted mt-1">↳ Escolha da cascata: “${Modal.esc(p.escolha_origem.slice(0, 90))}”</div>` : '';
       const iniciativas = (p.iniciativas || []).map((ini) => this.blocoIniciativa(p, ini)).join('');
 
-      const timelineProjeto = this.diarioAberto?.refTipo === 'PROJETO' && this.diarioAberto?.refId === p.id
-        ? `<div id="diario-PROJETO-${p.id}" class="mt-2"></div>` : '';
+      const timelineProjeto = this.comentariosAbertos?.refTipo === 'PROJETO' && this.comentariosAbertos?.refId === p.id
+        ? `<div id="comentarios-PROJETO-${p.id}" class="mt-2"></div>` : '';
 
       // Panorama do projeto: soma no cabeçalho o que está dentro dele
       const acoes = p.desdobramentos || [];
@@ -362,7 +362,7 @@ const SecaoProjetos = {
               ${concluidas}/${acoes.length} ações concluídas</div>
             ${origem}
             <div class="d-flex gap-1 flex-wrap mt-2">
-              <button class="btn btn-sm btn-outline-success" data-diario="PROJETO:${p.id}">Diário</button>
+              <button class="btn btn-sm btn-outline-success" data-comentarios="PROJETO:${p.id}">Comentários</button>
               ${App.podeEditar() ? `
                 <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
                 <button class="btn btn-sm btn-outline-secondary" data-editar-proj="${p.id}">Editar</button>
@@ -434,13 +434,14 @@ const SecaoProjetos = {
     this.ligarBotoesMais(el);
     this.aplicarDestaqueAcao(el);
 
-    el.querySelectorAll('[data-diario]').forEach((b) => b.addEventListener('click', () => {
-      const [refTipo, refId] = b.dataset.diario.split(':');
-      const mesmo = this.diarioAberto?.refTipo === refTipo && this.diarioAberto?.refId === Number(refId);
-      this.diarioAberto = mesmo ? null : { refTipo, refId: Number(refId) };
+    el.querySelectorAll('[data-comentarios]').forEach((b) => b.addEventListener('click', () => {
+      const [refTipo, refId] = b.dataset.comentarios.split(':');
+      const mesmo = this.comentariosAbertos?.refTipo === refTipo
+        && this.comentariosAbertos?.refId === Number(refId);
+      this.comentariosAbertos = mesmo ? null : { refTipo, refId: Number(refId) };
       this.carregar();
     }));
-    if (this.diarioAberto) this.renderDiario();
+    if (this.comentariosAbertos) this.renderComentarios();
 
     if (!App.podeEditar()) return;
 
@@ -502,7 +503,7 @@ const SecaoProjetos = {
         // num link são interação com ele. O diário mora DENTRO do cartão e tem
         // os próprios registros — abrir a edição do projeto ao clicar duas
         // vezes num registro seria surpresa.
-        if (ev.target.closest('button, a, input, select, textarea, label, [id^="diario-"]')) return;
+        if (ev.target.closest('button, a, input, select, textarea, label, [id^="comentarios-"]')) return;
         // O duplo clique seleciona a palavra sob o cursor, e ela ficaria acesa
         // atrás do modal
         window.getSelection?.()?.removeAllRanges();
@@ -965,58 +966,162 @@ const SecaoProjetos = {
       + `${String(data).split('-').reverse().join('/')}.`);
   },
 
-  async renderDiario() {
-    const { refTipo, refId } = this.diarioAberto;
-    const alvo = document.getElementById(`diario-${refTipo}-${refId}`);
-    if (!alvo) return;
-    const registros = await App.api(
-      `/api/diario?planejamento_id=${this.plan.id}&ref_tipo=${refTipo}&ref_id=${refId}`);
+  /** dd/mm/aaaa hh:mm a partir do DATETIME que o banco devolve. */
+  quando(iso) {
+    if (!iso) return '';
+    const [data, hora] = String(iso).split(' ');
+    return `${data.split('-').reverse().join('/')}${hora ? ` ${hora.slice(0, 5)}` : ''}`;
+  },
 
-    const itens = registros.map((r) => {
-      const [rotulo, classe] = r.status_atual ? STATUS_ROTULOS[r.status_atual] : [null, null];
-      return `<div class="border-start border-success border-3 ps-2 mb-2">
-        <div class="small text-muted">${r.data_reg.split('-').reverse().join('/')} · ${Modal.esc(r.autor)}
-          ${rotulo ? `<span class="badge ${classe}">${rotulo}</span>` : ''}
-          ${r.progresso !== null && r.progresso !== undefined ? `<span class="badge text-bg-light border">${r.progresso}%</span>` : ''}
+  /** 162,9 KB / 2,1 MB — o mesmo jeito de escrever tamanho do resto do sistema. */
+  tamanho(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} KB`;
+    return `${(n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
+  },
+
+  /**
+   * A miniatura do anexo. Imagem mostra a própria imagem; documento mostra o
+   * selo da extensão, com a cor do tipo — o ícone genérico de "arquivo" obriga
+   * a ler o nome para saber se é a proposta ou a planilha.
+   * A imagem é a original, encolhida por CSS: não há GD na imagem do PHP para
+   * gerar miniatura no servidor, e o teto de 5 MB por arquivo segura o peso.
+   */
+  miniaturaAnexo(a) {
+    const url = `/api/anexos/${a.id}?planejamento_id=${this.plan.id}`;
+    const ext = (a.nome.split('.').pop() || '').toUpperCase().slice(0, 4);
+    const corpo = a.imagem
+      ? `<img src="${url}" alt="${Modal.esc(a.nome)}" loading="lazy">`
+      : `<span class="selo-ext selo-ext-${ext.toLowerCase()}">${Modal.esc(ext)}</span>`;
+    // `download` no link do documento: ele já desce como anexo pelo servidor, e
+    // o atributo evita a aba em branco que o navegador abre antes de baixar.
+    return `<a class="anexo-mini" href="${url}" target="_blank" rel="noopener"
+        ${a.imagem ? '' : 'download'} title="${Modal.esc(a.nome)}">
+      <span class="anexo-face">${corpo}</span>
+      <span class="anexo-nome">${Modal.esc(a.nome)}</span>
+      <span class="anexo-tamanho">(${this.tamanho(a.tamanho)})</span>
+    </a>`;
+  },
+
+  /**
+   * Comentários com anexos — sucederam o diário de bordo. O bloco é o mesmo nos
+   * dois níveis que o usam (projeto e ação): escritos separados, divergiriam na
+   * primeira mudança.
+   */
+  async renderComentarios() {
+    const { refTipo, refId } = this.comentariosAbertos;
+    const alvo = document.getElementById(`comentarios-${refTipo}-${refId}`);
+    if (!alvo) return;
+    const lista = await App.api(
+      `/api/comentarios?planejamento_id=${this.plan.id}&ref_tipo=${refTipo}&ref_id=${refId}`);
+    const eu = App.sessao.usuario;
+
+    const itens = lista.map((c) => {
+      const inicial = (c.autor || '?').trim().charAt(0).toUpperCase();
+      const anexos = (c.anexos || []).length
+        ? `<div class="grade-anexos">${c.anexos.map((a) => this.miniaturaAnexo(a)).join('')}</div>` : '';
+      const podeApagar = Number(c.autor_id) === Number(eu.id) || eu.perfil === 'ADMIN';
+      return `<div class="comentario d-flex gap-2">
+        <span class="avatar-inicial" aria-hidden="true">${Modal.esc(inicial)}</span>
+        <div class="flex-grow-1 min-w-0">
+          <div class="d-flex align-items-baseline gap-2 flex-wrap">
+            <strong class="small">${Modal.esc(c.autor)}</strong>
+            <span class="small text-muted flex-grow-1">${this.quando(c.criado_em)}</span>
+            ${podeApagar ? `<button class="btn btn-sm btn-link p-0 text-danger"
+              data-excluir-comentario="${c.id}" title="Excluir comentário"
+              aria-label="Excluir comentário">×</button>` : ''}
+          </div>
+          ${c.texto ? `<div class="small texto-comentario">${Modal.esc(c.texto)}</div>` : ''}
+          ${anexos}
         </div>
-        <div class="small">${Modal.esc(r.texto)}</div>
       </div>`;
     }).join('');
 
+    const formulario = App.podeEditar() ? `
+      <div class="novo-comentario mb-3">
+        <div class="rotulo-secao">Novo comentário</div>
+        <textarea class="form-control" id="texto-comentario" rows="3"
+          placeholder="Descreva o andamento, bloqueios ou próximos passos..."></textarea>
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mt-2">
+          <div>
+            <label class="btn btn-sm btn-outline-secondary mb-0" for="arquivos-comentario">📎 Anexar</label>
+            <input type="file" id="arquivos-comentario" class="d-none" multiple
+              accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt">
+            <span class="small text-muted ms-2" id="lista-escolhidos"></span>
+          </div>
+          <button class="btn btn-sm btn-verde" id="btn-enviar-comentario">Enviar</button>
+        </div>
+        <div class="form-text">Até 5 arquivos por comentário, 5 MB cada — imagem, PDF, Word, Excel, PowerPoint, CSV ou TXT.</div>
+      </div>` : '';
+
     alvo.innerHTML = `<div class="card bg-light"><div class="card-body py-2">
       <div class="d-flex justify-content-between align-items-center mb-2">
-        <strong class="small text-uppercase">Diário de bordo</strong>
-        ${App.podeEditar() ? `<button class="btn btn-sm btn-verde" id="btn-novo-registro">+ Registro</button>` : ''}
+        <strong class="small text-uppercase">Comentários</strong>
+        <span class="small text-muted">${lista.length} registro(s)</span>
       </div>
-      ${itens || '<div class="text-muted small">Nenhum registro ainda.</div>'}
+      ${formulario}
+      ${itens || '<div class="text-muted small">Nenhum comentário ainda.</div>'}
     </div></div>`;
 
+    alvo.querySelectorAll('[data-excluir-comentario]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        if (!confirm('Excluir este comentário? Os anexos dele saem junto.')) return;
+        try {
+          await App.api(`/api/comentarios/${b.dataset.excluirComentario}/excluir`,
+            { planejamento_id: this.plan.id });
+        } catch (e) {
+          alert(e.message);
+        }
+        this.renderComentarios();
+      }));
+
     if (!App.podeEditar()) return;
-    document.getElementById('btn-novo-registro').addEventListener('click', () => Modal.abrir({
-      titulo: 'Novo registro no diário de bordo',
-      url: '/api/diario',
-      valores: {
-        planejamento_id: this.plan.id, ref_tipo: refTipo, ref_id: refId,
-        data_reg: App.hoje(),
-      },
-      campos: [
-        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'ref_tipo', rotulo: '', tipo: 'hidden' },
-        { nome: 'ref_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'data_reg', rotulo: 'Data', tipo: 'date' },
-        { nome: 'texto', rotulo: 'Situação atual / acompanhamento', tipo: 'textarea', linhas: 4 },
-        ...(refTipo !== 'CASCATA' ? [
-          { nome: 'status_atual', rotulo: 'Atualizar status do item (opcional)', tipo: 'select',
-            opcoes: [{ valor: '', rotulo: '(manter status atual)' }, ...OPCOES_STATUS] },
-        ] : []),
-        ...(refTipo === 'DESDOBRAMENTO' ? [
-          { nome: 'progresso', rotulo: 'Atualizar progresso % (opcional)', tipo: 'number' },
-        ] : []),
-      ],
-      aoSalvar: (r) => {
-        this.avisarReagendamento(r);
-        App.recarregarSecaoAtiva();
-      },
-    }));
+    const campo = alvo.querySelector('#texto-comentario');
+    Modal.crescerTextarea(campo);
+    const entrada = alvo.querySelector('#arquivos-comentario');
+    const escolhidos = alvo.querySelector('#lista-escolhidos');
+    entrada.addEventListener('change', () => {
+      const nomes = [...entrada.files].map((f) => f.name);
+      escolhidos.textContent = nomes.length
+        ? `${nomes.length} arquivo(s): ${nomes.join(', ')}` : '';
+    });
+
+    alvo.querySelector('#btn-enviar-comentario').addEventListener('click', async (ev) => {
+      const botao = ev.currentTarget;
+      const texto = campo.value.trim();
+      if (!texto && !entrada.files.length) {
+        alert('Escreva o comentário ou anexe um arquivo.');
+        return;
+      }
+      // O corpo é multipart porque leva arquivo: `App.api` fala JSON, então o
+      // envio é `fetch` na mão — com o mesmo header de CSRF, que é o que a
+      // rota confere.
+      const dados = new FormData();
+      dados.append('planejamento_id', this.plan.id);
+      dados.append('ref_tipo', refTipo);
+      dados.append('ref_id', refId);
+      dados.append('texto', texto);
+      for (const arquivo of entrada.files) dados.append('arquivos[]', arquivo);
+      botao.disabled = true;
+      botao.textContent = 'Enviando...';
+      try {
+        const resposta = await fetch('/api/comentarios', {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': App.csrf },
+          body: dados,
+        });
+        const corpo = await resposta.json().catch(() => ({}));
+        if (!resposta.ok || corpo.ok === false) {
+          throw new Error(corpo.erro || 'Não foi possível enviar o comentário.');
+        }
+        this.renderComentarios();
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        botao.disabled = false;
+        botao.textContent = 'Enviar';
+      }
+    });
   },
 };

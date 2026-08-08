@@ -290,6 +290,36 @@ CREATE TABLE IF NOT EXISTS diario_bordo (
   CONSTRAINT fk_db_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Comentários de acompanhamento, com anexos. Sucedem o diário de bordo: o
+-- registro continua sendo datado e nunca sobrescrito, mas agora carrega
+-- arquivo junto (a foto da obra, a proposta em PDF, a planilha do orçamento).
+CREATE TABLE IF NOT EXISTS comentario (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  ref_tipo     ENUM('PROJETO','DESDOBRAMENTO','INVESTIMENTO','CASCATA') NOT NULL,
+  ref_id       INT NOT NULL,
+  autor_id     INT NOT NULL,
+  texto        TEXT NOT NULL,
+  criado_em    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ref (ref_tipo, ref_id, criado_em),
+  CONSTRAINT fk_com_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- O arquivo mora no BANCO, não em disco: o contêiner do Railway é efêmero e
+-- pasta de upload some no deploy seguinte, levando junto o anexo de todo mundo.
+-- O conteúdo fica numa tabela à parte para o SELECT da lista não arrastar
+-- megabytes de BLOB a cada abertura do cartão.
+CREATE TABLE IF NOT EXISTS comentario_anexo (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  comentario_id INT NOT NULL,
+  nome          VARCHAR(200) NOT NULL,
+  tipo          VARCHAR(100) NOT NULL,
+  tamanho       INT NOT NULL,
+  conteudo      LONGBLOB NOT NULL,
+  criado_em     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_com (comentario_id),
+  CONSTRAINT fk_anexo_com FOREIGN KEY (comentario_id) REFERENCES comentario(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Ata leve das reuniões de acompanhamento do planejamento
 CREATE TABLE IF NOT EXISTS reuniao (
   id              INT AUTO_INCREMENT PRIMARY KEY,

@@ -196,13 +196,14 @@ class ProjetoController
         $this->exigirProjeto($id, $planId);
         // Investimentos vinculados perdem o vínculo (a FK não tem ON DELETE)
         Database::executar('UPDATE investimento SET projeto_id = NULL WHERE projeto_id = ?', [$id]);
-        // Diário do projeto e o das ações que saem em cascata (ref_tipo/ref_id
-        // é polimórfico e não tem FK que os leve junto)
+        // Comentários do projeto e os das ações que saem em cascata (ref_tipo/
+        // ref_id é polimórfico e não tem FK que os leve junto; os anexos descem
+        // com o comentário, por ON DELETE CASCADE)
         Database::executar(
-            "DELETE FROM diario_bordo WHERE ref_tipo = 'PROJETO' AND ref_id = ?", [$id]
+            "DELETE FROM comentario WHERE ref_tipo = 'PROJETO' AND ref_id = ?", [$id]
         );
         Database::executar(
-            "DELETE FROM diario_bordo WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id IN
+            "DELETE FROM comentario WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id IN
                (SELECT id FROM (SELECT id FROM desdobramento WHERE projeto_id = ?) x)", [$id]
         );
         Database::executar('DELETE FROM projeto WHERE id = ?', [$id]);
@@ -374,11 +375,13 @@ class ProjetoController
             }
         }
 
-        // A conclusão de uma ocorrência fica registrada no diário de bordo
+        // A conclusão de uma ocorrência fica registrada nos comentários: a ação
+        // volta a NAO_INICIADO na data seguinte, e sem o registro não sobraria
+        // rastro nenhum de que ela chegou a ser concluída uma vez.
         if ($reagendou !== null) {
             Database::executar(
-                "INSERT INTO diario_bordo (ref_tipo, ref_id, data_reg, autor_id, texto, status_atual, progresso)
-                 VALUES ('DESDOBRAMENTO', ?, CURDATE(), ?, ?, 'CONCLUIDO', 100)",
+                "INSERT INTO comentario (ref_tipo, ref_id, autor_id, texto)
+                 VALUES ('DESDOBRAMENTO', ?, ?, ?)",
                 [
                     $id,
                     (int)Auth::usuario()['id'],
@@ -441,7 +444,7 @@ class ProjetoController
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirDesdobramento($id, $planId);
         Database::executar(
-            "DELETE FROM diario_bordo WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id = ?", [$id]
+            "DELETE FROM comentario WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id = ?", [$id]
         );
         // A ideia da Coleta volta para a fila de "aguardando plano de ação".
         // Sem isto ela ficava apontando para um desdobramento que não existe
