@@ -194,13 +194,33 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   fila só por ser cara. Ele entra apenas como **desempate** na ordenação
   (`pesoEsforco`, sem estimativa vai para o fim), e a estimativa é **opcional**:
   chutar "médio" ao reabrir o modal gravaria uma medida que ninguém fez.
-  Na tela ele é **uma letra** (P/M/G), nunca a palavra: as faixas do score se
-  chamam pequeno/médio/grande também, e escrever a palavra nas duas leituras
-  deixava a mesma linha dizendo "grande" para *prioridade alta* e para *caro de
-  resolver*, que são coisas opostas. O que a letra significa mora no **ⓘ** da
-  legenda (`Diag.ligarOrientacoes`, o mesmo padrão das análises) e no `title` de
-  cada selo — não num parágrafo acima da tabela, que custava uma faixa inteira
-  da tela.
+  Na tela ele é **uma letra** (P/M/G), nunca a palavra — e as faixas do score
+  aparecem como letra também, na barra da legenda: escrever "Pequeno/Médio/
+  Grande" ali deixava a mesma linha dizendo "grande" para *prioridade alta* e
+  para *caro de resolver*, que são coisas opostas. Quem separa as duas leituras
+  na barra é o **número entre parênteses** (`< 27`, `27–63`, `≥ 64`), que fica.
+  **A cor é uma paleta só** (`SecaoGut.FAIXAS` → `corScore` e `corLetra`): P
+  verde, M dourado, G vermelho, no score e no esforço. Foi decisão do cliente,
+  pedida duas vezes — o padrão de cor vale mais que a ambiguidade —, e o que a
+  cor junta é a **forma** que separa: o selo do esforço é **redondo**
+  (`.esforco-selo`, `border-radius: 50%`) e o do score é retangular
+  (`.gut-score`). Duas listas de cor divergiriam na primeira revisão de paleta,
+  e a legenda passaria a explicar uma cor que a tabela não usa. **Sem estimativa
+  não se pinta nada**: fica o traço (`.esforco-selo.vazio`), porque cor ali
+  afirmaria uma medida que ninguém fez.
+  O que cada letra significa mora no **ⓘ** da legenda (chave `PMG`,
+  `Diag.ligarOrientacoes`, o mesmo padrão das análises) e no `title` de cada
+  selo — não num parágrafo acima da tabela, que custava uma faixa inteira da
+  tela. O ⓘ explica **as duas leituras**, uma embaixo da outra, e é o único
+  lugar que diz que o esforço mede a resposta e não o problema. A antiga
+  etiqueta `Esforço P · M · G` saiu da barra por ser a terceira repetição da
+  mesma informação.
+  **Ponto aberto medido, não resolvido**: sobre branco, o verde `#007a45` dá
+  5,43:1 e o vermelho `#8f3b3b` 7,35:1, mas o dourado `#b08d4f` dá **3,10:1** —
+  abaixo do 4,5:1 da WCAG AA para texto pequeno. Hoje a letra e a faixa
+  numérica carregam a informação sem depender da cor, então nada fica
+  ilegível; numa revisão de paleta o dourado deve subir (`#8a6a2a` dá 5,03:1 e
+  mantém o tom).
   O cabeçalho da seção (`.cabecalho-gut`) e o `<thead>` da tabela **grudam**
   abaixo da topbar, em degraus: `--topo-app` e `--altura-cabecalho`, medida por
   `Diag.ligarCabecalhoFixo` (o mesmo helper das análises). Rolando o ranking,
@@ -886,7 +906,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | Bateria | Cobre | Falha quando |
 |---|---|---|
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As 16 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
+| `sistema.js` | As 16 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 
@@ -903,11 +923,17 @@ fixá-lo faria a bateria parar de rodar sem ninguém entender por quê.
 A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
-Duas cautelas ao escrever prova nova: a seção continua no DOM quando escondida,
+Três cautelas ao escrever prova nova: a seção continua no DOM quando escondida,
 então **esperar pelo seletor não prova que a tela está visível** (confira o
-`d-none` e reemita `App.mostrarSecao`); e a altura de janela é parte do teste —
-a bateria roda em 700px justamente porque é a janela em que o modal da GUT não
-cabia inteiro.
+`d-none` e reemita `App.mostrarSecao` num laço — o `mostrarSecao('painel')` da
+inicialização chega depois e reesconde a seção que a prova acabou de abrir); a
+altura de janela é parte do teste — a bateria roda em 700px justamente porque é
+a janela em que o modal da GUT não cabia inteiro; e **defeito de largura não é
+só de celular**. A rolagem horizontal era conferida apenas em 390px, e a que os
+Cruzamentos introduziram aparecia no **computador**: a mínima de conteúdo de um
+selo com `nowrap` sobe pela coluna e pela fila até o `<main>`, que é item de
+flex — quanto mais larga a tela, mais texto cabe numa linha e maior fica essa
+mínima. A checagem passou a rodar nas duas larguras.
 
 ## Deploy
 
@@ -964,7 +990,10 @@ cabia inteiro.
   cliente e os defeitos que a validação pegou. Leia antes de mexer na condução da
   tempestade.
 - `docs/CRUZAMENTOS-SWOT.md`: o plano dos **cruzamentos (TOWS)** — a quinta tela
-  do diagnóstico, o modelo de dados (tipo derivado do par, par único por ano,
-  destino polimórfico), a ponte para a cascata e as cinco fatias de entrega.
-  **Ainda não implementado**: o §9 lista as três perguntas em aberto que
-  esperam decisão do cliente.
+  do diagnóstico, o modelo de dados (tipo derivado do par, par único por ano),
+  a ponte para a cascata e as cinco fatias de entrega. As **fatias 1 e 2 estão
+  entregues** (tabela, controller, tela, testes); o §9 registra o que foi
+  decidido na execução — entre outras coisas, que o `destino_tipo`/`destino_id`
+  polimórfico do plano **não** entrou, porque a fatia que o usaria ainda não
+  existe e coluna sem leitor é convite a divergir — e o §10 lista o que a
+  **fatia 3** ainda precisa resolver antes de ser escrita.

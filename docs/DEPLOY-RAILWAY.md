@@ -137,12 +137,24 @@ que tudo o que vem abaixo.
 1. Clique no serviço do **MySQL** (não no do sistema).
 2. Procure uma aba ou seção chamada **Backups**.
 
-**Se existir**, ligue — e ainda assim faça o passo 8 desta seção. São coisas
-diferentes: o backup do provedor protege contra erro dentro do Railway; o
+São três respostas possíveis:
+
+| O que aparece | O que fazer |
+|---|---|
+| A aba não existe | Siga para o passo 2 — é o caminho completo. |
+| *"Backups and point-in-time recovery (PITR) are only available for customers on the **Pro plan**"* | É o caso deste projeto. O recurso existe, mas está fora do plano atual: **não há atalho**, siga para o passo 2. |
+| A aba deixa você ligar | Ligue — e **ainda assim faça o passo 8**. |
+
+O passo 8 continua valendo mesmo com o backup do provedor ligado, porque são
+coisas diferentes: o do Railway protege contra erro *dentro* do Railway; o
 `cli/backup.sh` te dá um **arquivo na sua mão**, que abre em qualquer MySQL,
 inclusive fora do Railway.
 
-**Se não existir**, siga para o passo 2 — é o caminho completo.
+> Aviso de leitura: a mensagem *"No Backups — This service's volume does not have
+> any backups"* fala do **volume do MySQL**, não do nosso arquivo. Depois de
+> montar os passos 2 a 6, essa tela continuará dizendo a mesma coisa — o backup
+> do `cli/backup.sh` mora no volume do serviço `backup`, e o Railway não o
+> enxerga aqui. Quem mostra que ele rodou são os **Logs** do passo 6.
 
 ---
 
