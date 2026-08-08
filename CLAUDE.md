@@ -826,6 +826,21 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   bateria de e-mail (§5) com um dublê estático de `Database`, sem banco e sem
   massa: `Avisos` só fala com o banco por método estático, então a classe
   declarada antes do `require` substitui a tabela inteira.
+  **Relatório do disparo** (`tipo = 'RESUMO'` em `envio_email`): depois de cada
+  rodada de avisos, quem tem perfil **ADMIN** recebe um e-mail com o que acabou
+  de sair (incluindo o motivo de cada falha) e a **carteira por responsável** —
+  total, abertas, atrasadas, vencem hoje, concluídas — mais a quebra **por
+  situação**, sempre com o percentual **ao lado do número absoluto**: "100%
+  atrasadas" de uma ação e de quarenta pedem providências diferentes. Ele só sai
+  quando **alguma coisa foi disparada**; um relatório diário de "nada aconteceu"
+  ensina a ignorar o remetente, e aí o dia em que algo falha passa junto. Três
+  decisões da consulta (`Avisos::carteira`): entra TODA ação, não só a do dia;
+  "atrasada" é medida pela **data**, o mesmo critério da cobrança, e não pelo
+  status `ATRASADO`, que é reconciliado na leitura das telas e no horário do
+  cron pode estar velho; e ação **sem responsável** ganha linha própria, porque
+  ela não recebe cobrança nenhuma e some de todos os outros relatórios.
+  O `RESUMO` precisou de tipo próprio no ENUM: sem ele, colidiria com o aviso do
+  próprio admin na chave (tipo, referência, usuário).
   Disparo por cron (`php cli/notificar.php`) ou pelo botão do Relatório.
   **Dois caminhos de envio**: SMTP na mão (EHLO/STARTTLS/AUTH LOGIN) e **API
   sobre HTTPS** (`EMAIL_API_CHAVE` + `EMAIL_API_URL`, formato da API

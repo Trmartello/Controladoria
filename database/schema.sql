@@ -306,7 +306,7 @@ CREATE TABLE IF NOT EXISTS investimento (
 -- Registro dos avisos por e-mail já enviados (evita repetir no mesmo dia)
 CREATE TABLE IF NOT EXISTS envio_email (
   id          INT AUTO_INCREMENT PRIMARY KEY,
-  tipo        ENUM('SEMANAL','DIARIO') NOT NULL,
+  tipo        ENUM('SEMANAL','DIARIO','RESUMO') NOT NULL,
   referencia  DATE NOT NULL,
   usuario_id  INT NOT NULL,
   destinatario VARCHAR(255) NOT NULL,

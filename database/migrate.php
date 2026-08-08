@@ -180,6 +180,19 @@ if ($tipoStatus && !str_contains((string)$tipoStatus, 'PAUSADO')) {
     echo "migrate: status da ação ampliado (PAUSADO, AGUARDANDO_VALIDACAO).\n";
 }
 
+// O relatório do disparo, que vai para quem administra depois de cada rodada de
+// avisos. Ele entra em `envio_email` como os outros para herdar a trava de
+// duplicidade — sem um tipo próprio, ele colidiria com o aviso do próprio
+// admin na chave (tipo, referência, usuário).
+$tipoEnvio = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'envio_email' AND COLUMN_NAME = 'tipo'"
+)->fetchColumn();
+if ($tipoEnvio && !str_contains((string)$tipoEnvio, 'RESUMO')) {
+    $pdo->exec("ALTER TABLE envio_email MODIFY COLUMN tipo ENUM('SEMANAL','DIARIO','RESUMO') NOT NULL");
+    echo "migrate: envio_email.tipo agora aceita RESUMO (relatório do disparo).\n";
+}
+
 // A ideia da coleta pode ir para um plano de ação (vira desdobramento depois),
 // além de Cenário/fator do diagnóstico
 $tipoDestinoCi = $pdo->query(

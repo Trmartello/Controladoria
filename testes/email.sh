@@ -42,11 +42,18 @@ if (($d['sender']['email'] ?? '') !== getenv('REMETENTE_ESPERADO')) {
     exit(json_encode(['code' => 'invalid_parameter', 'message' => 'sender not verified']));
 }
 http_response_code(201);
+// O que saiu fica em disco: a prova do relatório do disparo precisa afirmar
+// QUEM recebeu o quê, e não só o que a função devolveu.
+file_put_contents(getenv('DIARIO_ENVIOS'),
+    ($d['to'][0]['email'] ?? '') . ' | ' . ($d['subject'] ?? '') . ' | '
+    . str_replace("\n", ' ', $d['htmlContent'] ?? '') . "\n", FILE_APPEND);
 echo json_encode(['messageId' => '<x@teste>', 'para' => $d['to'][0]['email'] ?? '',
     'assunto' => $d['subject'] ?? '', 'corpo' => $d['htmlContent'] ?? '']);
 PHP
 
-CHAVE_ESPERADA="$CHAVE" REMETENTE_ESPERADO="$REMETENTE" \
+ENVIOS="$TMP/enviados.log"
+: > "$ENVIOS"
+CHAVE_ESPERADA="$CHAVE" REMETENTE_ESPERADO="$REMETENTE" DIARIO_ENVIOS="$ENVIOS" \
     php -S "127.0.0.1:$PORTA" -t "$TMP" "$TMP/api.php" > "$TMP/api.log" 2>&1 &
 SERVIDOR=$!
 trap 'kill $SERVIDOR 2>/dev/null; rm -rf "$TMP"' EXIT HUP INT TERM
@@ -129,14 +136,33 @@ cat > "$TMP/avisos.php" <<'PHP'
 <?php
 namespace App\Core;
 
-/** Dublê: uma responsável, uma ação vencendo hoje, e o aviso do dia JÁ enviado. */
+/**
+ * Dublê do banco: uma responsável com uma ação vencendo hoje, uma
+ * administradora, e a carteira que o relatório do disparo resume.
+ *
+ * O modo (argv) diz se o aviso do dia JÁ saiu e se há pendência nenhuma —
+ * é o que separa os quatro cenários provados abaixo.
+ */
 class Database
 {
     public static array $gravou = [];
     public static function todos(string $sql, array $p = []): array
     {
+        if (str_contains($sql, "perfil = 'ADMIN'")) {
+            return [['id' => 1, 'nome' => 'Chefia', 'email' => 'chefia@exemplo.com']];
+        }
+        if (str_contains($sql, 'GROUP BY nome')) { // a carteira do relatório
+            return [[
+                'nome' => 'Fulana', 'total' => 10, 'concluidas' => 3, 'canceladas' => 0,
+                'abertas' => 7, 'atrasadas' => 2, 'vencem_hoje' => 1, 'nao_iniciadas' => 5,
+                'em_andamento' => 0, 'marcadas_atraso' => 1, 'pausadas' => 0, 'aguardando' => 1,
+            ]];
+        }
         if (str_contains($sql, 'FROM usuario u')) {
             return [['id' => 7, 'nome' => 'Fulana', 'email' => 'fulana@exemplo.com']];
+        }
+        if ($GLOBALS['modo'] === 'vazio') {
+            return []; // ninguém com prazo vencendo: nada a disparar
         }
         return [['id' => 1, 'o_que' => 'Ação de teste', 'data_fim' => date('Y-m-d'),
                  'status' => 'NAO_INICIADO', 'prioridade' => 'ALTA', 'progresso' => 0,
@@ -144,7 +170,7 @@ class Database
     }
     public static function um(string $sql, array $p = []): ?array
     {
-        return ['id' => 99]; // já saiu um envio bem-sucedido hoje
+        return in_array($GLOBALS['modo'], ['cron', 'botao'], true) ? ['id' => 99] : null;
     }
     public static function executar(string $sql, array $p = []): void { self::$gravou[] = $p; }
 }
@@ -155,12 +181,14 @@ $GLOBALS['config'] = require 'config/config.php';
 require 'app/Core/Email.php';
 require 'app/Services/Avisos.php';
 
-$modo = $argv[1] ?? 'cron';
-$r = \App\Services\Avisos::despachar('diario', null, $modo === 'botao')['diario'];
+$GLOBALS['modo'] = $modo = $argv[1] ?? 'cron';
+$saida = \App\Services\Avisos::despachar('diario', null, $modo === 'botao');
+$r = $saida['diario'];
 printf(
-    "%s: enviados=%d reenviados=%d ja_enviados=%d falhas=%d gravou=%d",
+    "%s: enviados=%d reenviados=%d ja_enviados=%d falhas=%d gravou=%d resumo=%s",
     $modo, $r['enviados'], $r['reenviados'], $r['ja_enviados'], $r['falhas'],
-    count(\App\Core\Database::$gravou)
+    count(\App\Core\Database::$gravou),
+    isset($saida['resumo']) ? (int)$saida['resumo']['enviados'] : 'ausente'
 );
 PHP
 
@@ -171,6 +199,24 @@ afirma "e nem sequer grava linha nova" 'gravou=0' "$R"
 R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" botao 2>&1)
 afirma "o botão reenvia mesmo já tendo saído hoje" 'botao: enviados=1 reenviados=1 ja_enviados=0' "$R"
 afirma "e o reenvio não vira falha" 'falhas=0' "$R"
+
+echo "### 6. O relatório do disparo, para quem administra"
+: > "$ENVIOS"
+R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" novo 2>&1)
+afirma "sai junto com os avisos do dia" 'novo: enviados=1 reenviados=0 ja_enviados=0 falhas=0 gravou=2 resumo=1' "$R"
+L=$(cat "$ENVIOS")
+afirma "vai para quem administra" 'chefia@exemplo.com | Planejamento — relatório do disparo' "$L"
+afirma "traz a carteira por responsável" 'Por responsável' "$L"
+afirma "com o percentual ao lado do número" '2</strong> (29%)' "$L"
+afirma "e a quebra por situação" 'Aguardando validação' "$L"
+# O rótulo é escrito, não derivado da chave: `ucfirst('diario')` dava "Diario".
+afirma "com o rótulo acentuado do que saiu" 'Pendências do dia' "$L"
+# Um relatório diário de "nada aconteceu" ensina a ignorar o remetente, e aí o
+# dia em que algo falha passa junto.
+: > "$ENVIOS"
+R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" vazio 2>&1)
+afirma "não sai quando nada foi disparado" 'vazio: enviados=0 reenviados=0 ja_enviados=0 falhas=0 gravou=0 resumo=ausente' "$R"
+afirma_nao "e nenhum e-mail é gerado nesse caso" 'relatório do disparo' "$(cat "$ENVIOS")"
 
 echo
 if [ $FALHA -eq 0 ]; then
