@@ -128,6 +128,42 @@ echo "### 5. Faxina (retenção)"
 for _ in 1 2 3; do MYSQLDATABASE="$A" DB_NAME="$A" BACKUP_DIR="$TMP/ret" BACKUP_MANTER=2 ./cli/backup.sh >/dev/null 2>&1; sleep 1; done
 afirma_igual "mantém só os N mais novos" "2" "$(find "$TMP/ret" -name '*.sql.gz' | wc -l)"
 
+echo "### 6. Certificado assinado pelo próprio banco (o do Railway)"
+# O defeito: contra banco gerenciado, o cliente do MariaDB derrubava a conexão
+# com "TLS/SSL error: self-signed certificate in certificate chain" (erro 2026)
+# e NENHUM backup era gravado — todo dia, em silêncio, com o serviço reiniciando
+# em laço. A cura é uma linha no arquivo de opções.
+# O defeito ficou invisível no desenvolvimento por um motivo que vale registrar:
+# o padrão MUDOU entre versões do cliente. O MariaDB 10.11 (o do contêiner de
+# desenvolvimento) não verifica; o 11.4+ (o da imagem publicada) verifica. Por
+# isso o script escreve o valor nos dois sentidos em vez de omitir a linha — e
+# por isso a prova abaixo força a verificação em vez de confiar no padrão.
+afirma "escreve a diretiva do certificado" 'loose-ssl-verify-server-cert=%s' "$(cat cli/backup.sh)"
+afirma "e o BACKUP_SSL_VERIFICAR a inverte" 'BACKUP_SSL_VERIFICAR' "$(cat cli/backup.sh)"
+# A prova de fogo só existe onde o servidor fala TLS. No banco local comum ela é
+# pulada (não reprovada), pelo mesmo motivo da bateria do participante: vermelho
+# por falta de ambiente ensina a ignorar vermelho. Para exercitá-la, suba um
+# servidor com par autoassinado (`openssl req -x509` + `mariadbd --ssl-cert
+# --ssl-key`) e aponte as DB_* para ele.
+if [ "$(sql "SHOW VARIABLES LIKE 'have_ssl'" | awk '{print $2}')" = "YES" ]; then
+    R=$(MYSQLDATABASE="$A" DB_NAME="$A" BACKUP_DIR="$TMP/tls1" BACKUP_SSL_VERIFICAR=1 ./cli/backup.sh 2>&1)
+    afirma "com verificação, o certificado próprio derruba o dump" 'o dump falhou' "$R"
+    afirma_igual "e nada é gravado" "0" "$(find "$TMP/tls1" -type f 2>/dev/null | wc -l)"
+    R=$(MYSQLDATABASE="$A" DB_NAME="$A" BACKUP_DIR="$TMP/tls0" ./cli/backup.sh 2>&1)
+    afirma "sem ela, o backup atravessa o TLS" '✓ ' "$R"
+else
+    echo "  ⏭  servidor sem TLS: a prova do certificado próprio foi pulada."
+fi
+# O prefixo `loose-` é o que faz a linha servir aos dois clientes: no da Oracle,
+# que não conhece a opção, ela precisa virar AVISO — sem ele o arquivo de opções
+# derruba o comando inteiro e a correção de um cliente vira defeito no outro.
+CNF_TLS="$TMP/tls.cnf"
+{ cat "$CNF"; printf 'loose-ssl-verify-server-cert=0\nloose-opcao-que-nao-existe=1\n'; } > "$CNF_TLS"
+"$DUMP" --defaults-file="$CNF_TLS" --single-transaction --quick "$A" >/dev/null 2>"$TMP/tls.err"
+afirma_igual "o cliente de dump aceita a diretiva" "0" "$?"
+afirma_igual "e opção desconhecida não é erro" "0" \
+    "$("$CLIENTE" --defaults-file="$CNF_TLS" -N -B -e "SELECT 1" >/dev/null 2>&1; echo $?)"
+
 echo
 if [ $FALHA -eq 0 ]; then
     echo "✓ backup: $OK verificação(ões), nenhuma falha."

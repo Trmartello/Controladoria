@@ -411,6 +411,7 @@ quem estava logado no dia do backup.
 | `php não encontrado no PATH` | O serviço não está usando a imagem do projeto | Confira se o serviço `backup` aponta para o repositório certo (passo 2) |
 | `Access denied for user` | Credenciais erradas | Refaça o passo 4: as cinco variáveis precisam ser **referências** ao MySQL, não valores digitados |
 | `Can't connect to MySQL server` | Endereço errado ou banco fora do ar | Confira `MYSQLHOST`; ele deve ser o interno (`mysql.railway.internal`) |
+| `TLS/SSL error: self-signed certificate` (erro 2026) | O cliente exigia certificado de autoridade conhecida, e banco gerenciado assina o próprio | **Já corrigido** — a conexão segue cifrada, só não confere quem assinou. Se voltar, confira se `BACKUP_SSL_VERIFICAR` não ficou em `1` |
 | `caching_sha2_password` | Incompatibilidade de autenticação | Avise — é ajuste de imagem, não de configuração |
 | `dump truncado` ou `não passa no teste do gzip` | Espaço acabou ou a execução foi interrompida | Aumente o volume ou reduza `BACKUP_MANTER`; **nenhum arquivo ruim é salvo** |
 | O arquivo é gerado mas some no dia seguinte | O volume não está montado | Refaça o passo 3 e confira que `BACKUP_DIR` é `/backups` |

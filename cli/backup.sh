@@ -24,6 +24,10 @@
 #   MYSQLDUMP_BIN   força o cliente de dump (padrão: mysqldump, senão mariadb-dump)
 #   MYSQL_BIN       força o cliente de restauração (padrão: mysql, senão mariadb)
 #   CONFIRMAR       nome do banco, para restaurar sem terminal (cron/CI)
+#   BACKUP_SSL_VERIFICAR=1  exige certificado de autoridade conhecida (fora disso
+#                   a conexão continua CIFRADA, só não confere quem assinou — é
+#                   o que permite falar com banco gerenciado, que assina o
+#                   próprio certificado)
 #
 set -uo pipefail
 
@@ -125,6 +129,28 @@ conectar() {
         printf 'password="%s"\n' "$(escapar_cnf "$DB_S")"
         # CLAUDE.md: cliente sem utf8mb4 explícito devolve acentuação quebrada.
         printf 'default-character-set=utf8mb4\n'
+        # Banco gerenciado (Railway, e todo provedor que se parece com ele) serve
+        # certificado assinado por ele mesmo, e o cliente do MariaDB derruba a
+        # conexão antes de autenticar: erro 2026, "self-signed certificate in
+        # certificate chain" — nenhum backup era gravado, todo dia.
+        # Isto NÃO desliga a criptografia: o `--ssl` do cliente continua
+        # negociando TLS (medido: TLS_AES_256_GCM_SHA384 com esta linha posta).
+        # O que sai é só a exigência de que o certificado venha de uma autoridade
+        # conhecida — a mesma postura que o PDO da aplicação já toma para falar
+        # com o mesmo banco, pela mesma rede privada. Backup mais estrito que a
+        # aplicação que ESCREVE o dado não protege nada e não roda.
+        # Quem tiver certificado de autoridade de verdade recupera a checagem com
+        # BACKUP_SSL_VERIFICAR=1.
+        # O valor é escrito nos DOIS sentidos, nunca omitido: o padrão do cliente
+        # não é o mesmo em toda máquina — o MariaDB 10.11 (o do desenvolvimento)
+        # vem com verificação desligada e o 11.4+ (o da imagem publicada) vem com
+        # ela ligada. Foi essa diferença que deixou o defeito invisível aqui e
+        # diário lá; omitir a linha devolveria exatamente essa armadilha.
+        # O prefixo `loose-` é o que faz uma linha só servir aos dois clientes:
+        # no do MySQL da Oracle, que não conhece esta opção, ela vira aviso em
+        # vez de erro (sem ele, o arquivo de opções derruba o comando inteiro).
+        printf 'loose-ssl-verify-server-cert=%s\n' \
+            "$([ "${BACKUP_SSL_VERIFICAR:-0}" = "1" ] && echo 1 || echo 0)"
     } > "$CNF"
 }
 
