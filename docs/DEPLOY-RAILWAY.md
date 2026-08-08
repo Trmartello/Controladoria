@@ -218,8 +218,12 @@ serviço não grava arquivo nenhum.
 
 ### Passo 4 — As variáveis
 
-No serviço **`avisos`** → aba **Variables** → **Raw Editor**, cole (trocando os
-valores de e-mail pelos seus):
+O serviço de cron é um contêiner **separado** do web: ele não enxerga as
+variáveis de lá. O que valer no web tem de ser repetido aqui — e o que vale é o
+**mesmo caminho de envio que você já provou pelo botão**, senão o cron vai
+falhar todo dia por um motivo que a tela não mostra.
+
+No serviço **`avisos`** → aba **Variables** → **Raw Editor**, cole:
 
 ```
 MYSQLHOST=${{MySQL.MYSQLHOST}}
@@ -228,13 +232,19 @@ MYSQLDATABASE=${{MySQL.MYSQLDATABASE}}
 MYSQLUSER=${{MySQL.MYSQLUSER}}
 MYSQLPASSWORD=${{MySQL.MYSQLPASSWORD}}
 APP_URL=https://<o endereço do sistema>
-SMTP_HOST=smtp.office365.com
-SMTP_PORTA=587
-SMTP_SEGURANCA=tls
-SMTP_USUARIO=planejamento@coperdia.com.br
-SMTP_SENHA=<a senha>
-SMTP_REMETENTE=planejamento@coperdia.com.br
+EMAIL_API_CHAVE=<a mesma chave do serviço web>
+SMTP_REMETENTE=<o remetente verificado no serviço de e-mail>
+SMTP_NOME_REMETENTE=Planejamento Estratégico Copérdia
 ```
+
+`${{MySQL.…}}` são referências ao serviço do banco: o Railway as resolve
+sozinho, e o nome antes do ponto tem de ser o nome do **seu** serviço de MySQL.
+
+**Não copie o bloco `SMTP_*` do serviço web se ele existir lá.** No Railway as
+portas de e-mail são bloqueadas; o envio que funciona é o de API sobre HTTPS, e
+é `EMAIL_API_CHAVE` que o liga. Com as duas configurações presentes a API tem
+precedência, então nada quebra — mas variável de um caminho morto só engana
+quem for depurar depois.
 
 ---
 
