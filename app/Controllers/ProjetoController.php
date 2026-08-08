@@ -378,6 +378,17 @@ class ProjetoController
                     [$id, $fatorId, $planId]
                 );
             }
+            // Cruzamento da SWOT (TOWS): terceira origem da mesma fila, mesmo
+            // fechamento e mesma guarda no WHERE.
+            $cruzamentoId = (int)($d['cruzamento_id'] ?? 0);
+            if ($cruzamentoId) {
+                Database::executar(
+                    'UPDATE swot_cruzamento SET desdobramento_id = ?
+                     WHERE id = ? AND planejamento_id = ?
+                       AND acao_em IS NOT NULL AND desdobramento_id IS NULL',
+                    [$id, $cruzamentoId, $planId]
+                );
+            }
             $coletaId = (int)($d['coleta_item_id'] ?? 0);
             if ($coletaId) {
                 Database::executar(

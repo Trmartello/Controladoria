@@ -157,13 +157,21 @@ CREATE TABLE IF NOT EXISTS swot_cruzamento (
   estrategia       TEXT NOT NULL,
   criado_por       INT NOT NULL,
   criado_em        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  acao_em          DATETIME NULL,
+  acao_por         INT NULL,
+  desdobramento_id INT NULL,
   UNIQUE KEY uk_par (planejamento_id, ano, fator_interno_id, fator_externo_id),
   KEY idx_cruz_plan (planejamento_id, ano, tipo),
   KEY idx_cruz_externo (fator_externo_id),
   CONSTRAINT fk_cruz_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_cruz_interno FOREIGN KEY (fator_interno_id) REFERENCES fator(id) ON DELETE CASCADE,
   CONSTRAINT fk_cruz_externo FOREIGN KEY (fator_externo_id) REFERENCES fator(id) ON DELETE CASCADE,
-  CONSTRAINT fk_cruz_autor FOREIGN KEY (criado_por) REFERENCES usuario(id)
+  CONSTRAINT fk_cruz_autor FOREIGN KEY (criado_por) REFERENCES usuario(id),
+  CONSTRAINT fk_cruz_acao_por FOREIGN KEY (acao_por) REFERENCES usuario(id),
+  -- SET NULL, como no fator: apagada a ação, o cruzamento volta sozinho para a
+  -- fila de "aguardando plano de ação" em vez de apontar para o que não existe.
+  CONSTRAINT fk_cruz_desdobramento FOREIGN KEY (desdobramento_id)
+    REFERENCES desdobramento(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS cascata_escolha (

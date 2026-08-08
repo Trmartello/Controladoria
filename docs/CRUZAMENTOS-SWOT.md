@@ -237,17 +237,47 @@ oficina — as quatro primeiras não dependem dela.
   de quem conduz, entre encontros. O `QuizSala` inteiro continua disponível se a
   decisão mudar.
 
-## 10. O que a fatia 3 ainda precisa resolver
+## 10. Fatia 3 — entregue: o cruzamento vira ação
 
-A ponte não é só um botão. As células da cascata **já têm texto** (vieram da
-carga), e o cruzamento que “vira” uma célula precisa decidir se sobrescreve,
-acrescenta ou só vincula. O sistema já resolveu isso uma vez, no quiz
-(`comUso()` / `Quiz::guardarRedacao`): texto composto automaticamente é
-recomposto; texto reescrito à mão é de quem escreveu e só muda com confirmação.
-A fatia 3 tem de **reusar essa regra**, não inventar outra.
+**A decisão foi ir direto ao plano de ação, não à cascata.** Pedido do cliente,
+e ela dissolve as duas perguntas que este capítulo listava como pendentes: não
+há texto de célula para sobrescrever, e não há costura entre o ano do
+cruzamento e o horizonte da célula. O cruzamento **já é** a estratégia que
+nasce do par; a cascata decide outra coisa (em que horizonte cada driver
+aposta). Fazê-lo virar célula primeiro obrigaria a traduzir uma decisão que já
+está tomada.
 
-E há uma costura a decidir explicitamente: o cruzamento é **anual** (como a
-SWOT) e a célula da cascata é do **horizonte** (plurianual). Ligar um cruzamento
-de 2026 a uma célula de H1 é bom — vira rastreabilidade de qual leitura
-justificou a escolha —, mas precisa ser decisão registrada, não descoberta no
-meio da implementação.
+O caminho é o **mesmo do fator da SWOT**, e isso é a maior parte do valor: as
+três colunas (`acao_em`, `acao_por`, `desdobramento_id`), a fila única de
+“Aguardando plano de ação” em Projetos, o modal de conversão e os três estados
+do selo (`→ Plano de ação` · `Aguardando ação` · `Virou ação ↗`) já existiam.
+A fatia acrescentou a terceira origem, não um segundo mecanismo.
+
+O que precisou de cuidado próprio:
+
+- **A guarda contra ação órfã ganhou um caminho novo.** As FKs do cruzamento
+  para os dois fatores são `ON DELETE CASCADE`: apagar um fator leva junto o
+  cruzamento que o cita — e, se esse cruzamento já virou ação, a ação ficaria no
+  plano sem origem nenhuma. `Fatores::exigirSemAcao` passou a olhar também os
+  cruzamentos dos fatores pedidos **e dos promovidos a partir deles**.
+- **`desdobramento_id` é `ON DELETE SET NULL`**, como no fator: apagada a ação,
+  o cruzamento volta sozinho para a fila em vez de apontar para o que não
+  existe. É o que faz o desfazer ser do lado da ação, não deste.
+- **Excluir e “tirar da fila” são recusados depois que a ação existe.** As duas
+  recusas são do servidor; a tela só deixa de desenhar o botão.
+- **No selo da fila vai o BLOCO** (atacar, defender…), não o rótulo do par: é o
+  bloco que diz de que leitura da SWOT a estratégia nasceu, e o rótulo já vai no
+  texto. E o **nome do projeto novo** é o rótulo, não a estratégia — o rótulo
+  tem duas ou três palavras, a estratégia é um parágrafo.
+
+Provas em `testes/funcional.sh` §9b: encaminhar, aparecer na fila, tirar da
+fila, virar ação, as três recusas, e o retorno à fila quando a ação é apagada.
+
+## 11. O que ficou fora
+
+A ponte para a **cascata** continua sem existir, e agora por decisão: quem quer
+rastrear qual leitura justificou uma escolha do horizonte ainda faz isso pelo
+texto. Se um dia ela entrar, as duas perguntas deste capítulo voltam a valer —
+o texto da célula segue a regra do quiz (`comUso()` / `Quiz::guardarRedacao`:
+composto automaticamente é recomposto, reescrito à mão só muda com confirmação)
+e a costura ano × horizonte precisa ser decidida antes, não no meio.

@@ -39,13 +39,26 @@ class Fatores
             return;
         }
         $marcas = implode(',', array_fill(0, count($ids), '?'));
+        // O segundo SELECT cobre o CRUZAMENTO. As FKs dele para os dois fatores
+        // são ON DELETE CASCADE: apagar um fator leva junto o cruzamento que o
+        // cita, e se esse cruzamento já virou ação, a ação ficaria no plano sem
+        // origem nenhuma — o mesmo defeito que esta guarda existe para impedir,
+        // por um caminho que ela ainda não olhava.
         $preso = Database::um(
             "SELECT d.o_que
              FROM fator f
              JOIN desdobramento d ON d.id = f.desdobramento_id
              WHERE f.id IN ({$marcas}) OR f.promovido_de_id IN ({$marcas})
+             UNION ALL
+             SELECT d.o_que
+             FROM swot_cruzamento c
+             JOIN desdobramento d ON d.id = c.desdobramento_id
+             JOIN fator fi ON fi.id = c.fator_interno_id
+             JOIN fator fe ON fe.id = c.fator_externo_id
+             WHERE fi.id IN ({$marcas}) OR fe.id IN ({$marcas})
+                OR fi.promovido_de_id IN ({$marcas}) OR fe.promovido_de_id IN ({$marcas})
              LIMIT 1",
-            array_merge($ids, $ids)
+            array_merge($ids, $ids, $ids, $ids, $ids, $ids)
         );
         if ($preso) {
             Json::erro($mensagem . ' (ação: “' . $preso['o_que'] . '”)');

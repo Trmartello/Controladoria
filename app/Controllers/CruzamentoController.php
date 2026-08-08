@@ -135,9 +135,85 @@ class CruzamentoController
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
-        $this->exigirCruzamento($id, $planId);
+        $c = $this->exigirCruzamento($id, $planId);
+        // Mesma recusa do fator que virou ação: apagar deixaria a ação viva no
+        // plano sem origem nenhuma, e o caminho de volta apontaria para uma
+        // linha morta. Quem quiser desfazer apaga a AÇÃO — aí o cruzamento
+        // volta sozinho para a fila (a FK é ON DELETE SET NULL).
+        if ($c['desdobramento_id']) {
+            $acao = Database::um('SELECT o_que FROM desdobramento WHERE id = ?', [$c['desdobramento_id']]);
+            Json::erro('Este cruzamento já virou ação no plano e não pode ser excluído'
+                . ($acao ? ' (ação: “' . $acao['o_que'] . '”)' : '') . '.');
+        }
         Database::executar('DELETE FROM swot_cruzamento WHERE id = ?', [$id]);
         Json::ok();
+    }
+
+    /**
+     * Cruzamentos encaminhados ao plano de ação e ainda sem ação criada.
+     *
+     * Espelha `FatorController::aguardandoAcao()` e `ColetaController` — mesma
+     * fila, mesma tela, mesmas chaves (`texto`, `autor`, `origem`). A pergunta
+     * que a fila responde é uma só: "o que ainda não virou ação?".
+     *
+     * O texto é a ESTRATÉGIA, não o rótulo: é ela que descreve o que fazer, e é
+     * dela que sai o "o quê" da ação. O rótulo vai junto como contexto.
+     */
+    public function aguardandoAcao(): void
+    {
+        $planId = (int)($_GET['planejamento_id'] ?? 0);
+        Auth::exigirAcessoPlanejamento($planId);
+        Json::ok(Database::todos(
+            "SELECT c.id, c.ano, c.tipo AS categoria, c.rotulo, c.estrategia AS texto, c.acao_em,
+                    COALESCE(u.nome, 'Diagnóstico') AS autor, 'TOWS' AS origem
+             FROM swot_cruzamento c
+             LEFT JOIN usuario u ON u.id = c.acao_por
+             WHERE c.planejamento_id = ?
+               AND c.acao_em IS NOT NULL AND c.desdobramento_id IS NULL
+             ORDER BY c.acao_em, c.id",
+            [$planId]
+        ));
+    }
+
+    /**
+     * Marca (ou desmarca) um cruzamento como destino "Plano de ação".
+     *
+     * O cruzamento vai DIRETO ao plano, sem passar pela cascata: ele já é a
+     * estratégia que nasce do par, e a cascata decide outra coisa (em que
+     * horizonte cada driver aposta). Fazê-lo virar célula primeiro obrigaria a
+     * traduzir uma decisão que já está tomada.
+     *
+     * Desmarcar só vale enquanto a ação não existe — depois disso o vínculo é
+     * de quem apaga a ação, não de quem desmarca aqui, senão a ação ficaria no
+     * plano sem origem.
+     */
+    public function planoAcao(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $u = Auth::exigirLogin();
+        $c = $this->exigirCruzamento($id, $planId);
+        // `marcar` ausente vale como true: o botão da tela só envia o false
+        $marcar = !array_key_exists('marcar', $d) || (bool)$d['marcar'];
+
+        if ($c['desdobramento_id']) {
+            Json::erro('Este cruzamento já virou ação no plano.');
+        }
+        if ($marcar) {
+            Database::executar(
+                'UPDATE swot_cruzamento SET acao_em = NOW(), acao_por = ?
+                 WHERE id = ? AND desdobramento_id IS NULL',
+                [(int)$u['id'], $id]
+            );
+        } else {
+            Database::executar(
+                'UPDATE swot_cruzamento SET acao_em = NULL, acao_por = NULL
+                 WHERE id = ? AND desdobramento_id IS NULL',
+                [$id]
+            );
+        }
+        Json::ok(['acao_em' => $marcar]);
     }
 
     /** O cruzamento, conferido contra o planejamento do pedido. */

@@ -185,6 +185,42 @@ afirma "listagem traz o par e o rótulo novo" "\"fator_interno_id\":$SW_F" "$R"
 afirma "listagem traz a categoria do fator externo" '"externo_categoria":"OPORTUNIDADE"' "$R"
 R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026")
 afirma "fator conta os cruzamentos que o citam" '"cruzamentos":1' "$R"
+echo "### 9b. Cruzamento → plano de ação"
+# A terceira origem da MESMA fila (as outras duas são a ideia da coleta e o
+# fator da SWOT). O cruzamento vai DIRETO ao plano, sem passar pela cascata:
+# ele já é a estratégia que nasce do par.
+R=$(get "/api/cruzamentos/aguardando-acao?planejamento_id=1")
+nega "cruzamento não encaminhado fica fora da fila" "\"id\":$CRUZ2," "$R"
+R=$(post /api/cruzamentos/$CRUZ2/plano-acao '{"planejamento_id":1}')
+afirma "encaminha o cruzamento ao plano" '"acao_em":true' "$R"
+R=$(get "/api/cruzamentos/aguardando-acao?planejamento_id=1")
+afirma "e ele aparece na fila com a estratégia" '"origem":"TOWS"' "$R"
+afirma "com o bloco como categoria" '"categoria":"PROTEGER"' "$R"
+# Desmarcar só vale enquanto a ação não existe.
+R=$(post /api/cruzamentos/$CRUZ2/plano-acao '{"planejamento_id":1,"marcar":false}')
+afirma "tirar da fila desfaz o encaminhamento" '"acao_em":false' "$R"
+R=$(get "/api/cruzamentos/aguardando-acao?planejamento_id=1")
+nega "e ele some da fila" "\"id\":$CRUZ2," "$R"
+
+post /api/cruzamentos/$CRUZ2/plano-acao '{"planejamento_id":1}' >/dev/null
+ACAO_CRUZ=$(post /api/desdobramentos "{$BASE_ACAO,\"cruzamento_id\":$CRUZ2,\"o_que\":\"Ação do cruzamento\",\"como\":\"passo\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\"}" | id_de)
+R=$(get "/api/cruzamentos/aguardando-acao?planejamento_id=1")
+nega "virada a ação, sai da fila" "\"id\":$CRUZ2," "$R"
+# As três recusas que evitam ação órfã no plano.
+R=$(post /api/cruzamentos/$CRUZ2/excluir '{"planejamento_id":1}')
+afirma "recusa excluir cruzamento que virou ação" 'já virou ação' "$R"
+R=$(post /api/cruzamentos/$CRUZ2/plano-acao '{"planejamento_id":1,"marcar":false}')
+afirma "recusa tirar da fila depois da ação criada" 'já virou ação' "$R"
+# Apagar o fator do par derrubaria o cruzamento por CASCATA e deixaria a ação
+# sem origem — a guarda compartilhada precisa enxergar esse caminho também.
+R=$(post /api/fatores/$SW_FR/excluir '{"planejamento_id":1}')
+afirma "recusa excluir o fator do par que virou ação" 'já virou' "$R"
+# Apagada a AÇÃO, o cruzamento volta sozinho para a fila (FK ON DELETE SET NULL).
+post /api/desdobramentos/$ACAO_CRUZ/excluir '{"planejamento_id":1}' >/dev/null
+R=$(get "/api/cruzamentos/aguardando-acao?planejamento_id=1")
+afirma "apagada a ação, o cruzamento volta para a fila" "\"id\":$CRUZ2," "$R"
+post /api/cruzamentos/$CRUZ2/plano-acao '{"planejamento_id":1,"marcar":false}' >/dev/null
+
 # Apagado o fator, o cruzamento que o cita perde o sentido e vai junto (FK
 # ON DELETE CASCADE) — a tela avisa antes, e este é o teste de que vai mesmo.
 post /api/fatores/$SW_F/excluir '{"planejamento_id":1}' >/dev/null

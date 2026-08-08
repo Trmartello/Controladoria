@@ -34,6 +34,34 @@ const SecaoCruzamentos = {
     return this.BLOCOS.find((b) => b.tipo === tipo) || null;
   },
 
+  /**
+   * O caminho do cruzamento para o plano de ação, nos MESMOS três estados e com
+   * a mesma aparência do fator da SWOT (`Diag.seloPlanoAcao`): encaminhar,
+   * aguardando (que desfaz), e "Virou ação ↗", que navega até a ação.
+   *
+   * A cópia visual é de propósito — é o mesmo gesto, na mesma etapa do trabalho.
+   * O que muda é só a rota, porque a origem é outra.
+   *
+   * O "Virou ação" NÃO oferece desfazer: dali em diante quem manda é a ação, e
+   * desfazer aqui a deixaria no plano sem origem nenhuma. O servidor recusa do
+   * mesmo jeito — este é o aviso antes da recusa, não no lugar dela. E ele
+   * existe para quem só lê também: o caminho de volta não é privilégio de quem
+   * edita.
+   */
+  seloAcao(c) {
+    if (c.desdobramento_id) {
+      return `<button type="button" class="badge selo-link text-bg-success"
+        data-ir-acao="${c.desdobramento_id}" title="Ver a ação no plano">Virou ação ↗</button>`;
+    }
+    if (!App.podeEditar()) return '';
+    if (c.acao_em) {
+      return `<button type="button" class="badge selo-link text-bg-secondary" data-tirar-acao-cruz="${c.id}"
+        title="Aguardando alocação em Projetos — clique para tirar da fila">Aguardando ação</button>`;
+    }
+    return `<button class="btn btn-sm btn-outline-primary" data-plano-acao-cruz="${c.id}"
+      title="Encaminhar para o plano de ação">→ Plano de ação</button>`;
+  },
+
   /** O bloco que nasce de um par de categorias (o mesmo cálculo do servidor). */
   blocoDoPar(catInterna, catExterna) {
     return this.BLOCOS.find((b) => b.interno === catInterna && b.externo === catExterna) || null;
@@ -80,6 +108,7 @@ const SecaoCruzamentos = {
             </div>
             <div class="small texto-fator mt-1">${Modal.esc(c.estrategia)}</div>
             <div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
+              ${this.seloAcao(c)}
               ${editar ? `<span class="ms-auto d-flex gap-1">
                 <button class="btn btn-sm btn-outline-secondary" data-editar-cruz="${c.id}"
                   title="Editar" aria-label="Editar">✎</button>
@@ -153,8 +182,26 @@ const SecaoCruzamentos = {
       Diag.irParaFator('swot', b.dataset.irSwot, 'SWOT', b.dataset.catSwot)));
     el.querySelector('[data-ir-swot-vazio]')?.addEventListener('click', () =>
       App.mostrarSecao('swot'));
+    // Antes da saída por `editar`: o caminho de volta até a ação vale para quem
+    // só acompanha também — é leitura, não edição.
+    el.querySelectorAll('[data-ir-acao]').forEach((b) => b.addEventListener('click', () => {
+      SecaoProjetos.destacarAcao = b.dataset.irAcao;
+      App.mostrarSecao('projetos');
+    }));
 
     if (!editar) return;
+
+    // O caminho para o plano: marcar põe na fila de Projetos, desmarcar tira.
+    // O servidor recusa as duas coisas depois que a ação existe — aqui o botão
+    // nem aparece, mas a recusa continua sendo dele.
+    const marcarAcao = async (id, marcar) => {
+      await App.api(`/api/cruzamentos/${id}/plano-acao`, { planejamento_id: plan.id, marcar });
+      App.recarregarSecaoAtiva();
+    };
+    el.querySelectorAll('[data-plano-acao-cruz]').forEach((b) => b.addEventListener('click', () =>
+      marcarAcao(b.dataset.planoAcaoCruz, true)));
+    el.querySelectorAll('[data-tirar-acao-cruz]').forEach((b) => b.addEventListener('click', () =>
+      marcarAcao(b.dataset.tirarAcaoCruz, false)));
 
     // ── Cadastro e edição ────────────────────────────────────────────────
     // Na ordem dos quadrantes da SWOT, não na do banco: lá as categorias saem

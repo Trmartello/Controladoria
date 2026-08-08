@@ -322,9 +322,16 @@ try {
 
         // Cruzamentos da SWOT (TOWS): o par interno × externo e a estratégia
         case $rota === 'GET /api/cruzamentos':     (new CruzamentoController())->listar(); break;
+        // Antes das rotas com {id}: "aguardando-acao" não é um número, mas a
+        // ordem no `switch` é o que garante isso — o mesmo cuidado da fila de
+        // fatores logo acima.
+        case $rota === 'GET /api/cruzamentos/aguardando-acao':
+            (new CruzamentoController())->aguardandoAcao(); break;
         case $rota === 'POST /api/cruzamentos':    (new CruzamentoController())->salvar(); break;
         case (bool)preg_match('#^POST /api/cruzamentos/(\d+)/excluir$#', $rota, $m):
             (new CruzamentoController())->excluir((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/cruzamentos/(\d+)/plano-acao$#', $rota, $m):
+            (new CruzamentoController())->planoAcao((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/cruzamentos/(\d+)$#', $rota, $m):
             (new CruzamentoController())->salvar((int)$m[1]); break;
 

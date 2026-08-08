@@ -293,12 +293,13 @@ const SecaoProjetos = {
       return;
     }
     this.plan = await App.planejamento();
-    const [projetos, cascata, responsaveis, ideiasAcao, fatoresAcao] = await Promise.all([
+    const [projetos, cascata, responsaveis, ideiasAcao, fatoresAcao, cruzamentosAcao] = await Promise.all([
       App.api(`/api/projetos?planejamento_id=${this.plan.id}`),
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
       App.api(`/api/responsaveis?planejamento_id=${this.plan.id}`),
       App.api(`/api/coleta/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
       App.api(`/api/fatores/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
+      App.api(`/api/cruzamentos/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
     ]);
     // Uma fila só: a origem muda o selo e o campo que fecha o vínculo, não o
     // lugar onde a pendência aparece. Duas listas separadas fariam quem
@@ -307,6 +308,7 @@ const SecaoProjetos = {
     const pendentes = [
       ...ideiasAcao.map((i) => ({ ...i, origem: 'COLETA', chave: `c${i.id}` })),
       ...fatoresAcao.map((f) => ({ ...f, chave: `f${f.id}` })),
+      ...cruzamentosAcao.map((c) => ({ ...c, chave: `x${c.id}` })),
     ];
     this.cascata = cascata;
     this.responsaveis = responsaveis;
@@ -702,15 +704,27 @@ const SecaoProjetos = {
   },
 
   // Pendências encaminhadas ao plano de ação e ainda sem ação criada: ideias da
-  // coleta e fatores da SWOT, na mesma fila. O selo diz de onde cada uma veio.
+  // coleta, fatores da SWOT e cruzamentos (TOWS), na mesma fila. O selo diz de
+  // onde cada uma veio.
   cartaoIdeiasAcao(pendentes) {
     if (!pendentes || !pendentes.length) return '';
     const podeConverter = App.podeEditar();
-    const selo = (p) => (p.origem === 'SWOT'
-      ? `<span class="badge text-bg-light border" title="Fator da SWOT · ${Modal.esc(
-        Diag.QUADRANTES[p.categoria] || p.categoria)}">SWOT · ${Modal.esc(
-        Diag.QUADRANTES[p.categoria] || p.categoria)}</span>`
-      : `<span class="badge text-bg-light border">Coleta · ${Modal.esc(p.autor)}</span>`);
+    // Três origens, um selo cada. O do cruzamento mostra o BLOCO (atacar,
+    // defender…), que é o que diz de que leitura da SWOT a estratégia nasceu —
+    // o rótulo do par já vai no texto.
+    const selo = (p) => {
+      if (p.origem === 'TOWS') {
+        const b = SecaoCruzamentos.bloco(p.categoria);
+        return `<span class="badge text-bg-light border" title="Cruzamento da SWOT · ${
+          Modal.esc(b?.rotulo || p.categoria)}">TOWS · ${Modal.esc(b?.verbo || p.categoria)}</span>`;
+      }
+      if (p.origem === 'SWOT') {
+        return `<span class="badge text-bg-light border" title="Fator da SWOT · ${Modal.esc(
+          Diag.QUADRANTES[p.categoria] || p.categoria)}">SWOT · ${Modal.esc(
+          Diag.QUADRANTES[p.categoria] || p.categoria)}</span>`;
+      }
+      return `<span class="badge text-bg-light border">Coleta · ${Modal.esc(p.autor)}</span>`;
+    };
     const linhas = pendentes.map((p) => `
       <div class="d-flex align-items-center gap-2 flex-wrap ideia-acao" data-ideia-acao="${p.chave}">
         <span class="small flex-grow-1">${Modal.esc(p.texto_tratado || p.texto)}
@@ -721,7 +735,7 @@ const SecaoProjetos = {
       </div>`).join('');
     return `<div class="card mb-3 card-ideias-acao"><div class="card-body py-2 px-3">
       <div class="rotulo-secao">Aguardando plano de ação (${pendentes.length})</div>
-      <div class="small text-muted mb-2">Vindas da coleta e da SWOT — atribua cada uma a uma iniciativa para virar ação.</div>
+      <div class="small text-muted mb-2">Vindas da coleta, da SWOT e dos cruzamentos — atribua cada uma a uma iniciativa para virar ação.</div>
       ${linhas}
     </div></div>`;
   },
@@ -731,6 +745,11 @@ const SecaoProjetos = {
   modalConverterAcao(ideia) {
     if (!ideia) return;
     const daSwot = ideia.origem === 'SWOT';
+    const doCruzamento = ideia.origem === 'TOWS';
+    // O campo que fecha o vínculo, um por origem. Mandar mais de um faria o
+    // servidor fechar um vínculo que ninguém pediu.
+    const campoOrigem = doCruzamento ? 'cruzamento_id' : (daSwot ? 'fator_id' : 'coleta_item_id');
+    const blocoCruz = doCruzamento ? SecaoCruzamentos.bloco(ideia.categoria) : null;
     const projetos = this.projetos || [];
     const comIniciativas = projetos.filter((p) => (p.iniciativas || []).length);
 
@@ -773,18 +792,19 @@ const SecaoProjetos = {
 
     const nomeIdeia = ideia.texto_tratado || ideia.texto;
     Modal.abrir({
-      titulo: daSwot ? 'Transformar fator da SWOT em ação' : 'Transformar ideia em ação',
+      titulo: doCruzamento ? 'Transformar cruzamento em ação'
+        : (daSwot ? 'Transformar fator da SWOT em ação' : 'Transformar ideia em ação'),
       url: '/api/desdobramentos',
       valores: {
         planejamento_id: this.plan.id,
-        // Só o campo da origem certa viaja: mandar os dois faria o servidor
-        // fechar um vínculo que ninguém pediu
-        ...(daSwot ? { fator_id: ideia.id } : { coleta_item_id: ideia.id }),
+        [campoOrigem]: ideia.id,
         destino: destinos[0].valor,
         iniciativa_alvo: opcoesIniciativa[0]?.valor ?? '',
         projeto_alvo: opcoesProjeto[0]?.valor ?? '',
         iniciativa_nome: 'Ações',
-        projeto_nome: nomeIdeia,
+        // No cruzamento o nome do projeto é o RÓTULO do par, não a estratégia:
+        // o rótulo tem duas ou três palavras e a estratégia é um parágrafo.
+        projeto_nome: doCruzamento ? (ideia.rotulo || nomeIdeia) : nomeIdeia,
         projeto_ano: anoPadrao,
         // A ação nasce aqui inteira: os mesmos padrões de uma ação nova no
         // cadastro, com o texto da ideia já no "O quê?"
@@ -793,14 +813,24 @@ const SecaoProjetos = {
       },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-        { nome: daSwot ? 'fator_id' : 'coleta_item_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'ideia', rotulo: daSwot ? 'Fator da SWOT' : 'Ideia da coleta', tipo: 'info',
+        { nome: campoOrigem, rotulo: '', tipo: 'hidden' },
+        { nome: 'ideia',
+          rotulo: doCruzamento ? 'Cruzamento da SWOT'
+            : (daSwot ? 'Fator da SWOT' : 'Ideia da coleta'),
+          tipo: 'info',
+          // No cruzamento o texto é a ESTRATÉGIA e o rótulo do par vai na barra:
+          // é a estratégia que descreve o que fazer, e é dela que sai o "o quê".
           texto: ideia.texto,
-          barra: daSwot
-            ? { cor: Diag.CORES_QUADRANTE[ideia.categoria] || '#007a45',
-                titulo: Diag.QUADRANTES[ideia.categoria] || 'SWOT' }
-            : { cor: '#5a3e2b', titulo: ideia.autor } },
-        { nome: 'destino', rotulo: daSwot ? 'Onde este fator vira ação?' : 'Onde esta ideia vira ação?',
+          barra: doCruzamento
+            ? { cor: blocoCruz?.cor || '#007a45',
+                titulo: `${blocoCruz?.verbo || 'cruzamento'} — ${ideia.rotulo || ''}` }
+            : (daSwot
+              ? { cor: Diag.CORES_QUADRANTE[ideia.categoria] || '#007a45',
+                  titulo: Diag.QUADRANTES[ideia.categoria] || 'SWOT' }
+              : { cor: '#5a3e2b', titulo: ideia.autor }) },
+        { nome: 'destino',
+          rotulo: doCruzamento ? 'Onde este cruzamento vira ação?'
+            : (daSwot ? 'Onde este fator vira ação?' : 'Onde esta ideia vira ação?'),
           tipo: 'botoes', opcoes: destinos,
           ajuda: 'A ação sempre entra numa iniciativa, e toda iniciativa vive dentro de um projeto.' },
         { nome: 'iniciativa_alvo', rotulo: 'Em qual iniciativa?', tipo: 'select',

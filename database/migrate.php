@@ -180,6 +180,24 @@ if ($tipoStatus && !str_contains((string)$tipoStatus, 'PAUSADO')) {
     echo "migrate: status da ação ampliado (PAUSADO, AGUARDANDO_VALIDACAO).\n";
 }
 
+// O cruzamento da SWOT vai direto ao plano de ação, como o fator da SWOT: as
+// três colunas são as mesmas de lá, e por isso a fila de "aguardando plano de
+// ação" continua sendo UMA — a origem muda o selo, não a pergunta.
+garantirColuna($pdo, 'swot_cruzamento', 'acao_em',
+    'ALTER TABLE swot_cruzamento ADD COLUMN acao_em DATETIME NULL AFTER criado_em');
+garantirColuna($pdo, 'swot_cruzamento', 'acao_por',
+    'ALTER TABLE swot_cruzamento ADD COLUMN acao_por INT NULL AFTER acao_em');
+garantirColuna($pdo, 'swot_cruzamento', 'desdobramento_id',
+    'ALTER TABLE swot_cruzamento ADD COLUMN desdobramento_id INT NULL AFTER acao_por');
+garantirFk($pdo, 'swot_cruzamento', 'fk_cruz_acao_por',
+    'ALTER TABLE swot_cruzamento ADD CONSTRAINT fk_cruz_acao_por
+     FOREIGN KEY (acao_por) REFERENCES usuario(id)');
+// SET NULL: apagada a ação, o cruzamento volta sozinho para a fila em vez de
+// apontar para um desdobramento que não existe mais.
+garantirFk($pdo, 'swot_cruzamento', 'fk_cruz_desdobramento',
+    'ALTER TABLE swot_cruzamento ADD CONSTRAINT fk_cruz_desdobramento
+     FOREIGN KEY (desdobramento_id) REFERENCES desdobramento(id) ON DELETE SET NULL');
+
 // O relatório do disparo, que vai para quem administra depois de cada rodada de
 // avisos. Ele entra em `envio_email` como os outros para herdar a trava de
 // duplicidade — sem um tipo próprio, ele colidiria com o aviso do próprio

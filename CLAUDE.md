@@ -334,6 +334,13 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `-webkit-box` a um `<button>`, e o `white-space: normal` precisa ser declarado
   para desfazer o `.badge` do Bootstrap. Plano, decisões e o que falta:
   `docs/CRUZAMENTOS-SWOT.md`.
+  O cruzamento **vira ação** pelo mesmo caminho do fator da SWOT (`acao_em`,
+  `acao_por`, `desdobramento_id`; `POST /api/cruzamentos/{id}/plano-acao`), e a
+  guarda contra ação órfã precisou de um caminho novo: como as FKs do par são
+  CASCATA, apagar um fator leva junto o cruzamento que o cita — e se ele já
+  virou ação, ela ficaria no plano sem origem. Por isso `Fatores::exigirSemAcao`
+  olha também os cruzamentos dos fatores pedidos **e dos promovidos a partir
+  deles**.
 - **Quiz — a sala do PROJETO** (`coleta_rodada.modo = 'QUIZ'`): a MESMA sala da
   tempestade — PIN, token, tetos, trava de força bruta — servindo a TODAS as
   análises. **Um PIN para o encontro inteiro**: o participante escaneia uma vez
@@ -741,9 +748,12 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 
 ### Plano de ação (três níveis)
 
-- **Fila de "Aguardando plano de ação"**: o card de Projetos junta DUAS origens
-  — ideia da Coleta (`coleta_item.destino_tipo='ACAO'` com `destino_id` NULL) e
-  **fator da SWOT** (`fator.acao_em` preenchido com `desdobramento_id` NULL).
+- **Fila de "Aguardando plano de ação"**: o card de Projetos junta TRÊS origens
+  — ideia da Coleta (`coleta_item.destino_tipo='ACAO'` com `destino_id` NULL),
+  **fator da SWOT** (`fator.acao_em` preenchido com `desdobramento_id` NULL) e
+  **cruzamento (TOWS)**, com as mesmas três colunas do fator. O cruzamento vai
+  **direto ao plano, sem passar pela cascata**: ele já é a estratégia que nasce
+  do par, e a cascata decide outra coisa (em que horizonte cada driver aposta).
   Uma fila só de propósito: a origem muda o selo e o campo que fecha o vínculo,
   não a pergunta "o que ainda não virou ação?". O `modalConverterAcao` manda
   `coleta_item_id` **ou** `fator_id`, nunca os dois, e o
