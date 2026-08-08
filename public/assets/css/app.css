@@ -1701,6 +1701,7 @@ tr.card-destacado > td { background: #e8f5ee; }
    navega por teclado não via onde estava, inclusive no "Salvar" de todo
    formulário. */
 .btn-verde,
+.btn-outline-verde,
 .btn-add-cat,
 .btn-swot-cat,
 .btn-ver-swot { --bs-btn-focus-shadow-rgb: 0, 122, 69; }
@@ -1798,7 +1799,22 @@ body.menu-aberto .menu-lateral {
   flex-direction: column;
   gap: .15rem;
 }
-.ficha-sugestao.vinculada { border-color: var(--verde-coperdia); background: #eef7f2; }
+/* Cartão marcado como "Usado" (a síntese da célula): fica onde está, em verde.
+   A borda é reforçada por sombra interna, e não por `border-width`: um pixel a
+   mais mudaria a altura da ficha, e é dela que sai a conta das duas fileiras
+   da grade — a coluna inteira dava um salto a cada marcação. */
+.ficha-sugestao.usada {
+  border-color: var(--verde-coperdia);
+  box-shadow: inset 0 0 0 1px var(--verde-coperdia);
+  background: #eef7f2;
+}
+.btn-outline-verde {
+  color: var(--verde-coperdia);
+  border-color: var(--verde-coperdia);
+  background: transparent;
+}
+.btn-outline-verde:hover,
+.btn-outline-verde:focus { color: var(--verde-coperdia); background: rgba(0, 122, 69, .12); }
 /* Texto em 3 linhas — o mesmo corte dos cartões de fator, e o que mantém a
    altura da grade previsível. Aqui o corte NÃO esconde o resto: a caixa rola
    por dentro (a resposta comprida se lê sem sair do lugar) e o 👁 do rodapé
@@ -1844,28 +1860,14 @@ body.menu-aberto .menu-lateral {
   .grade-sugestoes { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
   .btn-voz { min-height: 2rem; min-width: 2rem; }
 }
-/* Voz vinculada dentro da célula: selo com o ✕ de dimensão real (nunca
-   ::after sobreposto — áreas invisíveis se cobrem e o toque erra o alvo) */
-.voz-vinculada {
-  display: inline-flex;
-  align-items: center;
-  gap: .3rem;
-  font-weight: 500;
-}
-.voz-escolha { color: #007a45; background: rgba(0, 122, 69, .12); }
-.voz-renuncia { color: #8f3b3b; background: rgba(143, 59, 59, .12); }
-.btn-desvincular {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font-size: .9rem;
-  line-height: 1;
-  padding: .1rem .25rem;
-  min-width: 1.4rem;
-  min-height: 1.4rem;
-  cursor: pointer;
-}
-.btn-desvincular:hover { color: #b3261e; }
+/* As pílulas "E ×"/"R ×" da célula saíram: o rastro de uso é o cartão verde no
+   painel de respostas, e a célula publica o TEXTO. O estilo delas foi removido
+   junto — regra de CSS sem dono volta a aparecer na primeira busca por
+   "vinculada" e faz alguém reconstruir o que foi decidido tirar.
+
+   O texto da célula é composto pelos cartões marcados, um por linha: sem o
+   `pre-line` as contribuições se emendariam numa frase só no HTML. */
+.texto-celula { white-space: pre-line; }
 /* Par Escolha/Renúncia do participante: alvos generosos no toque */
 .par-tipo-resposta .btn { min-height: 2.75rem; }
 .contexto-pergunta {

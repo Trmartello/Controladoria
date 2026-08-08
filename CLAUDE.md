@@ -372,10 +372,41 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `podeEditar()`: ler a resposta é direito de quem só acompanha também.
   A ficha é uma só (`QuizSala.fichas`), usada pelas
   três telas: escrita em cada uma, este layout divergiria na primeira mudança.
-  **A voz que virou registro SAI do painel** — o lugar dela passa a ser o
-  quadrante de destino, e mantê-la ali com um ✓ fazia a fila de trabalho crescer
-  com o que já foi feito (o contador vira "abertas de total"). Apagado o
-  destino, ela **volta sozinha e JÁ REDIGIDA**: `Quiz::guardarRedacao` guarda o
+  **O "Usar" tem duas leituras, conforme o que o rito faz com a voz**, e a
+  ficha as distingue pela opção `marcar`:
+  - onde cada voz vira **um registro próprio** (um fator, um item de cenário),
+    ela **SAI do painel** — o lugar dela passa a ser o quadrante de destino, e
+    mantê-la ali com um ✓ fazia a fila de trabalho crescer com o que já foi
+    feito (o contador vira "abertas de total");
+  - onde **muitas vozes viram um texto só** (a síntese da célula da cascata),
+    ela **FICA onde está**, marcada de verde, e o "Usar" é um **interruptor**
+    (`Usar` ↔ `Usado ✓`). Tirá-la da grade escondia justamente o que compõe a
+    síntese, e desmarcar ficava sem onde ser clicado. O estado é do **cartão
+    inteiro** — marcada uma resposta unida, o bloco está marcado — e o contador
+    **não muda** ao marcar (`contarCartoes(…, {marcar:true})`), senão marcar
+    prometia trabalho a menos do que a coluna mostra.
+  Nesse segundo caso, marcar **não salva nada**: a intenção mora em
+  `SecaoCascata.usoQuiz[perguntaId] = {mais, menos}` (o que foi marcado e o que
+  foi desmarcado agora) sobre a verdade do servidor (`vinculada`), e `comUso()`
+  é a **única** fonte do verde e do texto composto — duas leituras separadas
+  divergiriam no primeiro clique. Guardar só uma lista pronta faria a marca de
+  outro condutor, chegando pelo polling, sumir da tela. O compromisso acontece
+  UMA vez, ao salvar a célula ("Redigir com os marcados"): o texto de cada lado
+  chega **composto na ordem dos cartões da coluna** — nunca na ordem dos
+  cliques, que embaralharia a frase a cada desmarcar/remarcar — e é editável,
+  porque a voz da sala é matéria-prima e a redação final é do condutor. O texto
+  guardado só é recomposto enquanto ainda for o composto automaticamente
+  (comparação com a composição do que está **vinculado**); reescrito à mão, ele
+  é de quem escreveu e trocá-lo exige confirmação. Só o lado da pergunta EM
+  FOCO é composto: com o painel na síntese, editar o cartão de um eixo não pode
+  reescrever o texto nem os vínculos dele.
+  **A célula não mostra pílula de voz** (as antigas "E ×"/"R ×"): ela publica o
+  TEXTO, e o rastro de uso é o cartão verde no painel. Duas siglas com um ✕ cada
+  empilhavam-se debaixo da síntese sem dizer nada legível, e o ✕ escondia uma
+  ação destrutiva (desvincular) num lugar de leitura. O texto composto vai um
+  cartão por linha e por isso a célula usa `.texto-celula` (`white-space:
+  pre-line`) — sem ele as contribuições se emendam numa frase só no HTML.
+  Apagado o destino, a voz **volta sozinha e JÁ REDIGIDA**: `Quiz::guardarRedacao` guarda o
   texto do registro no vínculo (a cada salvamento, não só ao amarrar — senão a
   edição seguinte deixaria a redação velha; na cascata, por LADO, porque a
   célula tem dois textos) e `Quiz::soltarVozes` **promove** esse
@@ -805,3 +836,8 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
   única, arraste, menu da pílula, saídas da ideia encaminhada), as decisões do
   cliente e os defeitos que a validação pegou. Leia antes de mexer na condução da
   tempestade.
+- `docs/CRUZAMENTOS-SWOT.md`: o plano dos **cruzamentos (TOWS)** — a quinta tela
+  do diagnóstico, o modelo de dados (tipo derivado do par, par único por ano,
+  destino polimórfico), a ponte para a cascata e as cinco fatias de entrega.
+  **Ainda não implementado**: o §9 lista as três perguntas em aberto que
+  esperam decisão do cliente.

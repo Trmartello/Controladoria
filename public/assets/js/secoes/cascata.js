@@ -21,6 +21,12 @@ const SecaoCascata = {
   // Pergunta em FOCO: a que o condutor está examinando pelo roteiro. Navegar
   // é local — só ativar/reabrir/encerrar mexe no celular da sala.
   perguntaFoco: null,
+  // Cartões marcados com "Usado", por pergunta: { [perguntaId]: {mais, menos} }.
+  // A verdade do servidor é o vínculo já salvo (`vinculada`); estes dois
+  // conjuntos são a INTENÇÃO ainda não salva — o que o condutor acabou de
+  // marcar e o que ele acabou de desmarcar. Guardar só uma lista pronta faria
+  // a marca de um segundo condutor (que chega pelo polling) sumir da tela.
+  usoQuiz: {},
 
   async carregar() {
     const el = document.getElementById('secao-cascata');
@@ -60,7 +66,7 @@ const SecaoCascata = {
         const ativa = this.celulaAberta
           && this.celulaAberta.driverId == d.id && this.celulaAberta.horizonteId == h.id;
         return `<td class="celula-cascata ${ativa ? 'ativa' : ''}" data-driver="${d.id}" data-horizonte="${h.id}">
-          <div class="small">${sintese ? Modal.esc(sintese.escolha) : '<span class="text-muted">— definir síntese —</span>'}</div>
+          <div class="small texto-celula">${sintese ? Modal.esc(sintese.escolha) : '<span class="text-muted">— definir síntese —</span>'}</div>
           <span class="badge ${aberturas === eixos.length ? 'text-bg-success' : 'text-bg-light border'} mt-1">${aberturas}/${eixos.length} eixos</span>
         </td>`;
       }).join('');
@@ -225,27 +231,18 @@ const SecaoCascata = {
           title="${Modal.esc(f.descricao)}">${Diag.QUADRANTES[f.categoria] || f.categoria}${
           f.score ? ` · GUT ${f.score}` : ''}</span>`;
       }).join(' ');
-      // Vozes do quiz vinculadas: registro de origem com ✕ para desvincular.
-      // Sem o NOME de quem respondeu: na síntese, cada voz virava uma pílula do
-      // tamanho de um nome completo e a linha estourava com três delas. A
-      // autoria continua no banco e no painel de vozes — o que sai é a
-      // repetição dela aqui, onde o que importa é de que lado a voz entrou.
-      const vozes = (registro?.sugestoes || []).map((s) => `
-        <span class="badge voz-vinculada ${s.tipo_resposta === 'RENUNCIA' ? 'voz-renuncia' : 'voz-escolha'}"
-          title="${Modal.esc(s.texto)}">
-          ${s.tipo_resposta === 'RENUNCIA' ? 'R' : 'E'}${Number(s.votos) ? ` ★${s.votos}` : ''}
-          ${App.podeEditar() ? `<button type="button" class="btn-desvincular" data-desvincular="${s.id}"
-            data-eixo-celula="${eixoId ?? ''}" title="Tirar esta voz da célula"
-            aria-label="Tirar esta voz da célula">×</button>` : ''}
-        </span>`).join(' ');
+      // Sem pílula de voz aqui. A célula mostra o TEXTO — que é o que a matriz
+      // publica —, e o rastro de quem o compôs é o cartão verde no painel de
+      // respostas. Duas siglas ("E", "R") com um ✕ cada empilhavam-se debaixo
+      // da síntese sem dizer nada legível, e o ✕ escondia uma ação destrutiva
+      // (desvincular) num lugar de leitura.
       return `<div class="card mb-2"><div class="card-body py-2 px-3">
         <div class="d-flex justify-content-between gap-2">
           <div>
             <div class="fw-bold small text-uppercase">${Modal.esc(rotulo)}</div>
-            <div class="small mt-1">${registro ? Modal.esc(registro.escolha) : '<span class="text-muted">Não definida.</span>'}</div>
-            ${registro?.renuncia ? `<div class="small text-muted mt-1"><strong>Renúncia:</strong> ${Modal.esc(registro.renuncia)}</div>` : ''}
+            <div class="small mt-1 texto-celula">${registro ? Modal.esc(registro.escolha) : '<span class="text-muted">Não definida.</span>'}</div>
+            ${registro?.renuncia ? `<div class="small text-muted mt-1 texto-celula"><strong>Renúncia:</strong> ${Modal.esc(registro.renuncia)}</div>` : ''}
             ${fatores ? `<div class="mt-1 d-flex gap-1 flex-wrap">${fatores}</div>` : ''}
-            ${vozes ? `<div class="mt-1 d-flex gap-1 flex-wrap">${vozes}</div>` : ''}
           </div>
           ${App.podeEditar() ? `<div class="d-flex gap-1 flex-shrink-0 align-items-start">
             ${QuizSala.microfone(
@@ -303,32 +300,6 @@ const SecaoCascata = {
       this.abrirModalCelula(eixoId);
     }));
 
-    // Tirar uma voz da célula: reenvia a célula com o conjunto sem ela — o
-    // texto redigido não muda (quem decide se muda é quem escreveu)
-    alvo.querySelectorAll('[data-desvincular]').forEach((b) => b.addEventListener('click', async (ev) => {
-      ev.stopPropagation();
-      if (!confirm('Tirar esta voz da célula? O texto da célula não muda.')) return;
-      const eixoId = b.dataset.eixoCelula ? parseInt(b.dataset.eixoCelula, 10) : null;
-      const registro = daCelula(eixoId);
-      if (!registro) return;
-      try {
-        await App.api('/api/cascata', {
-          planejamento_id: this.plan.id,
-          horizonte_id: horizonteId,
-          driver_id: driverId,
-          eixo_id: eixoId ?? '',
-          escolha: registro.escolha,
-          renuncia: registro.renuncia || '',
-          fatores: (registro.fatores || []).map((f) => f.id),
-          sugestoes: (registro.sugestoes || []).map((s) => s.id)
-            .filter((id) => id !== Number(b.dataset.desvincular)),
-        });
-      } catch (e) {
-        alert(e.message);
-      }
-      App.recarregarSecaoAtiva();
-    }));
-
     alvo.querySelectorAll('[data-excluir-celula]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Excluir esta escolha?')) return;
       try {
@@ -346,13 +317,16 @@ const SecaoCascata = {
   // ---- Painel ao vivo: as duas áreas de coleta da pergunta ativa ----
   /**
    * Só aparece quando a pergunta ativa é a célula aberta. Duas colunas —
-   * Respostas e Renúncias — cada ficha com autor e "Usar", que leva o texto ao
-   * campo do MESMO lado no modal da célula. Vincular acumula; o texto é um só.
+   * Respostas e Renúncias — e o "Usar" de cada cartão é um INTERRUPTOR: o
+   * cartão fica onde está, marcado de verde, e o texto da célula é composto na
+   * ordem em que os cartões aparecem na coluna (nunca na ordem dos cliques —
+   * desmarcar e remarcar embaralharia a frase). Redigir é ato à parte: o
+   * condutor abre a célula com o texto já composto e escreve a versão final.
    */
   painelVivo() {
     const p = this.perguntaDaCelulaAberta();
     if (!p) return '';
-    const sugestoes = this.quiz?.sugestoes || [];
+    const sugestoes = this.comUso(p);
     const recolhido = this.quizUi?.painelRecolhido;
     // Unir respostas é gesto de CONSOLIDAÇÃO: só com a pergunta já fechada para
     // a sala. Com ela aberta, a ficha sumindo no meio de um envio pareceria
@@ -360,23 +334,80 @@ const SecaoCascata = {
     const podeUnir = App.podeEditar() && p.situacao !== 'ATIVA';
     const coluna = (tipo, rotulo, classe) => {
       const fichas = sugestoes.filter((s) => s.tipo_resposta === tipo);
-      // O contador é dos CARTÕES abertos: a voz já usada saiu da grade e as
-      // unidas viraram um cartão só — contá-las faria o número prometer
-      // trabalho que não existe mais
-      const abertas = QuizSala.contarCartoes(fichas);
+      // Cartões, não linhas: unidas duas respostas, a coluna mostra uma. Marcar
+      // NÃO mexe nesta conta — o cartão marcado continua na grade
+      const cartoes = QuizSala.contarCartoes(fichas, { marcar: true });
       return `<div class="col-md-6"><div class="coluna-quiz ${classe}">
         <div class="fw-bold small text-uppercase mb-2">${rotulo}
-          <span class="badge rounded-pill text-bg-secondary">${abertas}</span></div>
-        ${QuizSala.fichas(fichas, { virou: 'escolha da célula', podeUnir })}
+          <span class="badge rounded-pill text-bg-secondary">${cartoes}</span></div>
+        ${QuizSala.fichas(fichas, { virou: 'escolha da célula', podeUnir, marcar: true })}
       </div></div>`;
     };
+    const marcados = QuizSala.agrupar(sugestoes)
+      .filter((g) => [g.lider, ...g.unidas].some((x) => x.usado)).length;
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
-      ${QuizSala.cabecalhoPainel(this, p, sugestoes)}
+      ${QuizSala.cabecalhoPainel(this, p, sugestoes, { marcar: true })}
       ${recolhido ? '' : `<div class="row g-2 mt-1">
         ${coluna('ESCOLHA', 'Respostas (escolha)', 'coluna-escolha')}
         ${coluna('RENUNCIA', 'Renúncias', 'coluna-renuncia')}
-      </div>`}
+      </div>
+      ${App.podeEditar() ? `<div class="d-flex align-items-center gap-2 flex-wrap mt-2">
+        <span class="small text-muted flex-grow-1">Marque em “Usar” o que entra na célula;
+          o texto vem na ordem dos cartões e você edita antes de salvar.</span>
+        <button class="btn btn-sm btn-verde" data-redigir-celula>${marcados
+          ? `Redigir com os marcados (${marcados})` : 'Redigir esta parte da célula'}</button>
+      </div>` : ''}`}
     </div></div>`;
+  },
+
+  // ---- Marcação dos cartões ("Usado") ----
+  /** Os dois conjuntos de intenção da pergunta, criados na primeira marcação. */
+  usoDe(perguntaId) {
+    const chave = String(perguntaId);
+    if (!this.usoQuiz[chave]) this.usoQuiz[chave] = { mais: new Set(), menos: new Set() };
+    return this.usoQuiz[chave];
+  },
+
+  /**
+   * As sugestões da pergunta com o campo `usado` resolvido: o vínculo já salvo
+   * no servidor, mais o que o condutor marcou agora, menos o que desmarcou.
+   * É a única fonte do verde na tela e do texto composto — as duas leituras
+   * separadas divergiriam no primeiro clique.
+   */
+  comUso(p) {
+    const u = this.usoDe(p.id);
+    return (this.quiz?.sugestoes || []).map((s) => ({
+      ...s,
+      usado: (Number(s.vinculada) === 1 || u.mais.has(Number(s.id))) && !u.menos.has(Number(s.id)),
+    }));
+  },
+
+  /** Marca/desmarca o cartão INTEIRO (o líder e as respostas unidas a ele). */
+  alternarUso(p, idLider) {
+    const g = QuizSala.grupoDe(this.comUso(p), idLider, { marcar: true });
+    if (!g) return;
+    const u = this.usoDe(p.id);
+    const ligar = !g.usado;
+    g.ids.forEach((id) => {
+      u.mais[ligar ? 'add' : 'delete'](id);
+      u.menos[ligar ? 'delete' : 'add'](id);
+    });
+    this.renderDetalhe();
+  },
+
+  /**
+   * O texto de um lado composto pelos cartões marcados, na ordem da coluna.
+   * `sos` = `comUso(p)`; com `somenteSalvos`, considera só o que já está
+   * vinculado no banco — é assim que se descobre se o texto guardado ainda é o
+   * composto automaticamente ou se alguém o reescreveu à mão.
+   */
+  composicao(sos, tipo, { somenteSalvos = false } = {}) {
+    const fichas = sos.filter((s) => s.tipo_resposta === tipo);
+    return QuizSala.agrupar(fichas)
+      .filter((g) => [g.lider, ...g.unidas].some(
+        (x) => (somenteSalvos ? Number(x.vinculada) === 1 : x.usado)))
+      .map((g) => QuizSala.textoDoGrupo(g))
+      .join('\n');
   },
 
   ligarPainelVivo(alvo) {
@@ -395,12 +426,17 @@ const SecaoCascata = {
       this.perguntaFoco = null;
       App.recarregarSecaoAtiva();
     }));
+    // "Usar" é interruptor e não salva nada: marcar é escolher o que ENTRA na
+    // síntese, e o compromisso acontece uma vez só, ao salvar a célula. Salvar a
+    // cada clique obrigaria a célula a existir com texto antes da primeira
+    // marca — e o servidor exige escolha preenchida.
     alvo.querySelectorAll('[data-usar-sugestao]').forEach((b) => b.addEventListener('click', () => {
-      // O cartão pode reunir várias vozes: leva o texto de todas e amarra todas
-      const s = QuizSala.grupoDe(this.quiz?.sugestoes, b.dataset.usarSugestao);
       const p = this.perguntaDaCelulaAberta();
-      if (!s || !p) return;
-      this.abrirModalCelula(p.eixo_id ? Number(p.eixo_id) : null, s);
+      if (p) this.alternarUso(p, b.dataset.usarSugestao);
+    }));
+    alvo.querySelectorAll('[data-redigir-celula]').forEach((b) => b.addEventListener('click', () => {
+      const p = this.perguntaDaCelulaAberta();
+      if (p) this.abrirModalCelula(p.eixo_id ? Number(p.eixo_id) : null);
     }));
     alvo.querySelectorAll('[data-excluir-sugestao]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Excluir esta sugestão? Ela some para a sala também.')) return;
@@ -502,13 +538,15 @@ const SecaoCascata = {
   },
 
   /**
-   * Modal da célula. Com uma sugestão em mãos ("Usar"), o texto entra no campo
-   * do MESMO lado — perguntando antes de substituir o que já está escrito — e
-   * a voz entra no conjunto de vínculos. Vincular e redigir são operações
-   * separadas: o texto oferecido é matéria-prima, a redação final é do
-   * condutor.
+   * Modal da célula — o ÚNICO ponto em que a marcação vira compromisso. O texto
+   * de cada lado chega composto pelos cartões marcados (na ordem da coluna) e é
+   * editável: a voz da sala é matéria-prima, a redação final é do condutor.
+   *
+   * Só o lado da pergunta EM FOCO é composto: com o painel na síntese, editar o
+   * cartão de um eixo não pode reescrever o texto dele nem mexer nos vínculos
+   * dele — a marcação é da pergunta, não da célula inteira.
    */
-  async abrirModalCelula(eixoId, sugestao = null) {
+  async abrirModalCelula(eixoId) {
     const { driverId, horizonteId } = this.celulaAberta;
     const { horizontes, drivers, escolhas } = this.dados;
     const driver = drivers.find((d) => d.id == driverId);
@@ -519,24 +557,37 @@ const SecaoCascata = {
 
     let escolhaValor = registro?.escolha || '';
     let renunciaValor = registro?.renuncia || '';
-    const sugestoesIds = (registro?.sugestoes || []).map((s) => s.id);
-    if (sugestao) {
-      const lado = sugestao.tipo_resposta === 'RENUNCIA' ? 'renúncia' : 'escolha';
-      const atual = sugestao.tipo_resposta === 'RENUNCIA' ? renunciaValor : escolhaValor;
-      let usarTexto = true;
-      if (atual.trim() && atual.trim() !== sugestao.texto.trim()) {
-        usarTexto = confirm(`A célula já tem uma ${lado}:\n\n“${atual}”\n\nSubstituir pelo texto da sugestão? `
-          + '(Cancelar mantém o texto atual; a voz entra na célula do mesmo jeito.)');
-      }
-      if (usarTexto) {
-        if (sugestao.tipo_resposta === 'RENUNCIA') renunciaValor = sugestao.texto;
-        else escolhaValor = sugestao.texto;
-      }
-      // O cartão unificado entra INTEIRO no vínculo: amarrar só o líder
-      // deixaria as absorvidas no painel, prometendo trabalho já feito.
-      (sugestao.ids || [sugestao.id]).forEach((id) => {
-        if (!sugestoesIds.includes(id)) sugestoesIds.push(id);
-      });
+    let sugestoesIds = (registro?.sugestoes || []).map((s) => Number(s.id));
+
+    const foco = this.perguntaDaCelulaAberta();
+    const p = foco && Number(foco.eixo_id || 0) === Number(eixoId || 0) ? foco : null;
+    if (p) {
+      const sos = this.comUso(p);
+      const compor = (tipo, atual) => {
+        const nova = this.composicao(sos, tipo);
+        // O texto guardado ainda é o composto automaticamente? Então acompanha
+        // a marcação — inclusive encolhendo, que é o desmarcar tirando a
+        // contribuição do cartão. Reescrito à mão, ele é de quem escreveu:
+        // trocá-lo calado apagaria a redação no meio do encontro.
+        const salva = this.composicao(sos, tipo, { somenteSalvos: true });
+        if (!atual.trim() || atual.trim() === salva.trim()) return nova;
+        if (!nova.trim()) return atual;
+        const lado = tipo === 'RENUNCIA' ? 'renúncia' : 'escolha';
+        return confirm(`A ${lado} desta célula foi redigida à mão:\n\n“${atual}”\n\n`
+          + 'Substituir pelo texto dos cartões marcados?\n'
+          + '(Cancelar mantém o que está escrito; os cartões marcados continuam marcados.)')
+          ? nova : atual;
+      };
+      escolhaValor = compor('ESCOLHA', escolhaValor);
+      renunciaValor = compor('RENUNCIA', renunciaValor);
+      // O conjunto de vozes é o marcado AGORA, preservando o que veio de outro
+      // encontro: vínculo de uma pergunta antiga não aparece neste painel e
+      // seria solto pelo servidor se saísse da lista.
+      const noPainel = new Set(sos.map((s) => Number(s.id)));
+      sugestoesIds = [
+        ...sugestoesIds.filter((id) => !noPainel.has(id)),
+        ...sos.filter((s) => s.usado).map((s) => Number(s.id)),
+      ];
     }
 
     // Fatores da SWOT ordenados por score GUT para o vínculo. A descrição vai
@@ -573,10 +624,12 @@ const SecaoCascata = {
         { nome: 'horizonte_id', rotulo: '', tipo: 'hidden' },
         { nome: 'driver_id', rotulo: '', tipo: 'hidden' },
         { nome: 'eixo_id', rotulo: '', tipo: 'hidden' },
-        ...(sugestao ? [{
-          nome: 'voz', rotulo: 'Sugestão da sala', tipo: 'info', texto: sugestao.texto,
-          barra: { cor: sugestao.tipo_resposta === 'RENUNCIA' ? '#8f3b3b' : '#007a45',
-                   titulo: `${sugestao.autor} · ${sugestao.tipo_resposta === 'RENUNCIA' ? 'Renúncia' : 'Escolha'}` },
+        ...(p ? [{
+          nome: 'origem', rotulo: 'De onde vem este texto', tipo: 'info',
+          texto: 'Os campos abaixo já vêm com as respostas marcadas na sala, na ordem em que '
+            + 'aparecem nas colunas. Edite à vontade: o que for salvo aqui é o texto da matriz, '
+            + 'e as respostas marcadas ficam registradas como origem da decisão.',
+          barra: { cor: '#007a45', titulo: Modal.esc(p.rotulo || 'Respostas da sala') },
         }] : []),
         { nome: 'escolha', rotulo: 'Escolha (o que decidimos)', tipo: 'textarea', linhas: 3 },
         { nome: 'renuncia', rotulo: 'Renúncia (do que abrimos mão)', tipo: 'textarea', linhas: 2 },
@@ -587,7 +640,12 @@ const SecaoCascata = {
             + 'A lista vem ordenada pelo score da matriz GUT, do mais crítico ao menos.',
         }] : []),
       ],
-      aoSalvar: () => App.recarregarSecaoAtiva(),
+      aoSalvar: () => {
+        // Salvo, quem manda é o servidor: a intenção local cumpriu o papel e
+        // guardá-la esconderia a marcação que outro condutor fizer depois
+        if (p) delete this.usoQuiz[String(p.id)];
+        App.recarregarSecaoAtiva();
+      },
     });
   },
 };

@@ -223,12 +223,18 @@ const QuizSala = {
    * ter duas ou três palavras, e uma ficha por linha, na largura da página,
    * gastava meia tela com cinco respostas.
    */
-  fichas(sugestoes, { acao = 'Usar', virou = 'registro', podeUnir = false } = {}) {
-    // A voz que já virou registro SAI do painel: o lugar dela agora é o
-    // quadrante de destino, e mantê-la aqui com um ✓ fazia a fila de trabalho
-    // crescer com o que já foi feito. Apagado o destino, ela volta sozinha
-    // (`Quiz::soltarVozes`), já com o texto que o condutor redigiu.
-    const abertas = sugestoes.filter((s) => !Number(s.vinculada));
+  fichas(sugestoes, { acao = 'Usar', virou = 'registro', podeUnir = false, marcar = false } = {}) {
+    // Duas leituras de "usada", conforme o que o rito faz com a voz:
+    //
+    //  - onde cada voz vira UM REGISTRO PRÓPRIO (um fator, um item de cenário),
+    //    ela SAI do painel: o lugar dela agora é o quadrante de destino, e
+    //    mantê-la aqui com um ✓ fazia a fila de trabalho crescer com o que já
+    //    foi feito. Apagado o destino, ela volta sozinha (`Quiz::soltarVozes`);
+    //  - onde MUITAS vozes viram UM TEXTO SÓ (a síntese da célula da cascata),
+    //    ela FICA, marcada de verde (`marcar`). Tirá-la da grade escondia
+    //    justamente o que compõe a síntese — e desmarcar ficava sem onde ser
+    //    clicado, já que o cartão era o único lugar do gesto.
+    const abertas = marcar ? sugestoes : sugestoes.filter((s) => !Number(s.vinculada));
     if (!abertas.length) {
       const usadas = sugestoes.length;
       return `<div class="text-muted small">${usadas
@@ -244,6 +250,9 @@ const QuizSala = {
     const cartao = (g) => {
       const s = g.lider;
       const inteiro = this.textoDoGrupo(g);
+      // O estado é do CARTÃO inteiro, nunca de uma resposta unida: o que entra
+      // na síntese é o bloco, e marcar meia caixa não teria significado nenhum
+      const usado = marcar && [g.lider, ...g.unidas].some((x) => Number(x.usado));
       // As unidas viram LINHAS do mesmo cartão, cada uma com o ↩ que a devolve
       // ao lugar: unir é gesto de condução e precisa de desfazer imediato.
       const unidas = g.unidas.map((x) => `
@@ -253,7 +262,8 @@ const QuizSala = {
             title="Separar esta resposta de volta" aria-label="Separar esta resposta de volta">↩</button>` : ''}
         </div>`).join('');
       return `
-      <div class="ficha-sugestao${g.unidas.length ? ' unificada' : ''}${podeUnir ? ' arrastavel' : ''}"
+      <div class="ficha-sugestao${g.unidas.length ? ' unificada' : ''}${podeUnir ? ' arrastavel' : ''}${
+        usado ? ' usada' : ''}"
         ${podeUnir ? `data-arrastavel-voz="${s.id}"` : ''}>
         <div class="texto-voz" title="${Modal.esc(inteiro)}">${Modal.esc(s.texto)}</div>
         ${unidas}
@@ -264,7 +274,10 @@ const QuizSala = {
           <button class="btn btn-outline-secondary btn-voz" data-ver-voz aria-expanded="false"
             title="Ver a resposta inteira" aria-label="Ver a resposta inteira">👁</button>
           ${App.podeEditar() ? `
-            <button class="btn btn-verde btn-voz" data-usar-sugestao="${s.id}">${Modal.esc(acao)}</button>
+            <button class="btn ${usado ? 'btn-outline-verde' : 'btn-verde'} btn-voz"
+              data-usar-sugestao="${s.id}"${marcar ? ` aria-pressed="${usado}"
+              title="${usado ? 'Tirar esta resposta da síntese' : 'Levar esta resposta para a síntese'}"` : ''}>${
+              usado ? 'Usado ✓' : Modal.esc(acao)}</button>
             <button class="btn btn-outline-danger btn-voz" data-excluir-sugestao="${s.id}"
               title="Excluir sugestão" aria-label="Excluir sugestão">×</button>` : ''}
         </div>
@@ -308,23 +321,35 @@ const QuizSala = {
    * os ids de todas. O vínculo é conjunto — aceitar o cartão unificado amarra
    * as vozes que ele reúne, senão as absorvidas ficariam no painel para sempre.
    */
-  grupoDe(sugestoes, id) {
-    const abertas = (sugestoes || []).filter((s) => !Number(s.vinculada));
+  grupoDe(sugestoes, id, { marcar = false } = {}) {
+    const abertas = marcar
+      ? (sugestoes || [])
+      : (sugestoes || []).filter((s) => !Number(s.vinculada));
     const g = this.agrupar(abertas).find((x) => Number(x.lider.id) === Number(id));
     if (!g) {
       const s = (sugestoes || []).find((x) => Number(x.id) === Number(id));
-      return s ? { ...s, ids: [Number(s.id)] } : null;
+      return s ? { ...s, ids: [Number(s.id)], usado: !!Number(s.usado) } : null;
     }
     return {
       ...g.lider,
       texto: this.textoDoGrupo(g),
       ids: [Number(g.lider.id), ...g.unidas.map((x) => Number(x.id))],
+      // O estado é do BLOCO: marcada uma resposta unida, o cartão está marcado
+      usado: [g.lider, ...g.unidas].some((x) => !!Number(x.usado)),
     };
   },
 
-  /** Quantos CARTÕES o painel mostra — o contador conta cartão, não linha. */
-  contarCartoes(sugestoes) {
-    return this.agrupar((sugestoes || []).filter((s) => !Number(s.vinculada))).length;
+  /**
+   * Quantos CARTÕES o painel mostra — o contador conta cartão, não linha.
+   *
+   * Com `marcar`, a voz usada continua na grade: o número tem de contá-la, do
+   * contrário marcar um cartão fazia o contador cair e prometia trabalho a
+   * menos do que a coluna mostra.
+   */
+  contarCartoes(sugestoes, { marcar = false } = {}) {
+    return this.agrupar(
+      (sugestoes || []).filter((s) => marcar || !Number(s.vinculada))
+    ).length;
   },
 
   /**
@@ -493,12 +518,12 @@ const QuizSala = {
    * painel empurra as colunas da análise para fora da tela, e às vezes o
    * condutor quer trabalhar nos cartões.
    */
-  cabecalhoPainel(dono, p, sugestoes) {
+  cabecalhoPainel(dono, p, sugestoes, { marcar = false } = {}) {
     const quantas = {
       total: sugestoes.length,
       // Cartões, não linhas: unidas duas respostas, o painel mostra uma —
       // e o contador que prometesse duas mandaria procurar o que não existe
-      abertas: this.contarCartoes(sugestoes),
+      abertas: this.contarCartoes(sugestoes, { marcar }),
     };
     const ui = dono.quizUi || (dono.quizUi = {});
     // Fechada e sendo a ÚLTIMA fechada, a sala não está parada: os celulares
@@ -516,7 +541,9 @@ const QuizSala = {
     return `<div class="d-flex align-items-center gap-2 flex-wrap cabecalho-quiz">
       <strong class="small text-uppercase">${Modal.esc(p.rotulo)}</strong>
       ${situacao}
-      <span class="badge text-bg-light border" title="Vozes ainda não usadas, do total recebido">${
+      <span class="badge text-bg-light border" title="${marcar
+        ? 'Cartões na grade, do total de vozes recebidas — marcar não muda a conta'
+        : 'Vozes ainda não usadas, do total recebido'}">${
         quantas.abertas} de ${quantas.total} voz(es)</span>
       ${App.podeEditar() ? (p.situacao === 'ATIVA'
         // O par do "Reabrir": no MESMO lugar, o botão alterna conforme a
