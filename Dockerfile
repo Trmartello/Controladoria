@@ -2,6 +2,16 @@ FROM php:8.3-cli
 
 RUN docker-php-ext-install pdo_mysql
 
+# Cliente de linha de comando do MySQL — o que `cli/backup.sh` usa para gerar e
+# restaurar o dump. A imagem oficial do PHP traz só a extensão PDO, e sem o
+# cliente o backup existiria apenas na máquina de quem desenvolve: no Railway,
+# onde o serviço de cron roda ESTA imagem, ele não rodaria de jeito nenhum — e
+# backup que só roda longe do dado é backup que ninguém faz. `default-mysql-`
+# `client` é o cliente do MariaDB, que fala com servidor MySQL 8 também.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends default-mysql-client \
+ && rm -rf /var/lib/apt/lists/*
+
 # A imagem oficial não instala php.ini nenhum (só traz os modelos), e os padrões
 # compilados são display_errors=On e log_errors=Off — ou seja, erro do PHP era
 # impresso no corpo da resposta (com caminho do servidor e stack trace, e

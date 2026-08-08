@@ -162,6 +162,10 @@ cython_debug/
 # Banco de dados local do app
 planejamento.db
 
+# Backups gerados por cli/backup.sh. NUNCA versionar: o dump traz hash de
+# senha, o e-mail de todo mundo e o conteúdo dos anexos dos comentários.
+/backups/
+
 # PHP
 .env
 # Só o vendor da raiz (Composer). `vendor/` solto também pegava

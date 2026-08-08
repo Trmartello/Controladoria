@@ -847,7 +847,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 
 ## Baterias de validação (`testes/`)
 
-`./testes/rodar.sh` roda as três em sequência e devolve 0 só se todas passarem
+`./testes/rodar.sh` roda as quatro em sequência e devolve 0 só se todas passarem
 — dá para pendurar num hook ou num CI. Elas batem numa instância **local**
 (nunca produção: a funcional cria e apaga registros) e o detalhe está em
 `testes/README.md`, inclusive o que elas **não** cobrem.
@@ -857,6 +857,12 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
 | `sistema.js` | As 15 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
+| `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
+
+A do backup é a única que **não** passa pela aplicação — fala com o banco
+direto, lê o de trabalho sem escrever nele e faz o vaivém em dois bancos
+descartáveis que ela mesma cria e derruba. Sem um usuário com `CREATE DATABASE`
+ela é **pulada**, pelo mesmo motivo da do participante.
 
 O que é comum às duas de navegador mora em `testes/comum.js` — resolver o
 Chromium, fazer login, esperar sem `waitForFunction`. Escritas separadas,
@@ -882,6 +888,23 @@ cabia inteiro.
 - E-mail: variáveis `SMTP_*` e `EMAIL_REMETENTE` (tabela em
   `docs/DEPLOY-RAILWAY.md`); sem elas os avisos ficam desligados. O envio
   diário depende de um cron do Railway chamando `php cli/notificar.php`.
+- **Backup** (`cli/backup.sh`, com `restaurar`/`verificar`/`listar`): é um dump
+  do MySQL e só — o banco guarda TUDO, inclusive os anexos dos comentários, e
+  não existe pasta de arquivos para copiar. A conexão sai de `config/config.php`
+  (uma verdade só) e a senha vai num arquivo de opções temporário, nunca em `-p`
+  na linha de comando, que o `ps` de qualquer usuário lê. Decisões que não podem
+  ser desfeitas: são **dois passos de dump** no mesmo fluxo — estrutura de tudo,
+  dados de tudo menos `sessao`/`login_tentativa`/`coleta_tentativa` (restaurar
+  sessão devolve acesso a quem estava logado no dia do dump, com o cookie de 30
+  dias ainda de pé) —, e por isso a marca de fim é **própria**
+  (`-- FIM DO BACKUP`, escrita só se os dois passos voltarem zero): o
+  `-- Dump completed` do mysqldump fecha o PRIMEIRO passo e cai no meio do
+  arquivo, então um dump cortado durante os dados passava por íntegro. O arquivo
+  só ganha o nome final depois de verificado (até lá é `.parcial`), nasce `0600`
+  e leva o nome do BANCO no prefixo — com prefixo fixo, a faxina de retenção de
+  um ambiente contava os arquivos do outro. No Railway o disco é efêmero: o cron
+  diário só serve com um **Volume** montado e `BACKUP_DIR` apontando para ele
+  (ver `docs/DEPLOY-RAILWAY.md`), e uma cópia periódica fora do provedor.
 
 ## Convenções de entrega
 

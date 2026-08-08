@@ -96,7 +96,56 @@ php cli/notificar.php semanal    # só o relatório da semana
 php cli/notificar.php diario     # só as pendências do dia
 ```
 
-## 7. Iterando
+## 7. Backup do banco
+
+O banco **é** o sistema: além do planejamento inteiro, ele guarda os anexos dos
+comentários (LONGBLOB), justamente porque o disco do contêiner é efêmero. Não há
+pasta de arquivos para copiar — backup aqui é dump do MySQL, e quem faz isso é
+`cli/backup.sh` (o cliente `mysqldump` já vem na imagem).
+
+```bash
+./cli/backup.sh                       # gera backups/<banco>-<data>.sql.gz
+./cli/backup.sh listar                # o que existe, do mais novo ao mais velho
+./cli/backup.sh verificar <arquivo>   # confere sem restaurar nada
+./cli/backup.sh restaurar <arquivo>   # DESTRUTIVO — digita-se o nome do banco para confirmar
+```
+
+Por padrão mantém os **14** mais recentes (`BACKUP_MANTER`) e grava em
+`./backups` (`BACKUP_DIR`). O arquivo nasce `0600`: ele traz hash de senha,
+e-mail de todo mundo e o conteúdo dos anexos.
+
+### O detalhe que decide se o backup é de verdade
+
+**O disco do contêiner some a cada deploy.** Um cron que rode `./cli/backup.sh`
+gravando em `/app/backups` produz um arquivo que morre no deploy seguinte —
+parece backup, e não é. Há dois caminhos, e o certo é usar os dois:
+
+1. **Diário, no Railway** — no serviço de cron, crie um **Volume** (Settings →
+   Volumes) montado em `/backups` e adicione `BACKUP_DIR=/backups`.
+   Cron Schedule `0 7 * * *` (7h UTC = 4h de Brasília) e Custom Start Command
+   `./cli/backup.sh`. Replique as referências `MYSQL*`.
+2. **Cópia fora do Railway** — backup que mora no mesmo provedor do banco não
+   protege contra perder a conta. Periodicamente, rode da sua máquina apontando
+   para o **endpoint público** do MySQL (aba *Variables* do serviço MySQL,
+   valores `MYSQL_PUBLIC_URL`/`RAILWAY_TCP_PROXY_*`):
+
+```bash
+MYSQLHOST=<host público> MYSQLPORT=<porta pública> MYSQLDATABASE=railway \
+MYSQLUSER=root MYSQLPASSWORD=<senha> ./cli/backup.sh
+```
+
+### Restaurar
+
+```bash
+./cli/backup.sh restaurar backups/planejamento-2026-08-08-040000.sql.gz
+```
+
+Ele recusa arquivo corrompido ou cortado pela metade **antes** de tocar no
+banco, e pede o nome do banco digitado para confirmar (em cron, `CONFIRMAR=<nome
+do banco>`). Depois de restaurar um arquivo mais antigo que o código, rode
+`php database/migrate.php` para o schema alcançar a versão atual.
+
+## 8. Iterando
 
 Cada `git push` na branch configurada dispara um novo deploy automaticamente.
 A migração é idempotente — os dados existentes são preservados.
