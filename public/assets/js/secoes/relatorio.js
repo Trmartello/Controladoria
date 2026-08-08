@@ -253,7 +253,22 @@ const SecaoRelatorio = {
       try {
         const r = await App.api('/api/avisos/despachar', {});
         const resumo = Object.entries(r)
-          .map(([q, x]) => `${q}: ${x.enviados} enviado(s), ${x.falhas} falha(s), ${x.ja_enviados} já enviado(s)`)
+          .map(([q, x]) => {
+            const linha = `${q}: ${x.enviados} enviado(s), ${x.falhas} falha(s), ${x.ja_enviados} já enviado(s)`;
+            // O MOTIVO de cada falha vem no `detalhes` (o mesmo texto que vai
+            // para `envio_email.erro`). Sem ele aqui, "2 falha(s)" mandava
+            // procurar em log de servidor uma informação que já estava na
+            // resposta — e as causas prováveis pedem providências opostas:
+            // senha recusada é variável errada, porta bloqueada é provedor.
+            // Agrupado por mensagem porque a falha costuma ser a mesma para
+            // todo mundo, e um alerta com uma linha por destinatário não caberia
+            // na tela justamente quando a lista é grande.
+            const porErro = new Map();
+            (x.detalhes || []).filter((d) => d.erro)
+              .forEach((d) => porErro.set(d.erro, (porErro.get(d.erro) || 0) + 1));
+            const motivos = [...porErro].map(([msg, n]) => `  • ${msg}${n > 1 ? ` (${n}×)` : ''}`);
+            return [linha, ...motivos].join('\n');
+          })
           .join('\n');
         alert(resumo || 'Nada previsto para hoje.');
       } catch (e) {
