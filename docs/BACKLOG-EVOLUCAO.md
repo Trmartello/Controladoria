@@ -5,6 +5,11 @@ Consolidação das propostas de evolução discutidas depois das fases 1–6
 revisão adversarial de cada uma. Salvo onde marcado **ENTREGUE**, nada aqui foi
 implementado — este documento é backlog, não registro de entrega.
 
+**Onde olhar primeiro:** a *tabela-resumo*, no fim. É ela que diz o que está de
+pé e o que vem depois; as seções abaixo são o porquê de cada veredito. Dois
+temas (4 e 6) chegaram depois da rodada de propostas e têm documento próprio —
+aqui ficam só o veredito e o ponteiro.
+
 **Como ler.** Cada tema traz: veredito, onde encaixa (sistema + menu), modelo de
 dados concreto, telas e fluxo, entrega mínima, esforço, dependências/riscos e —
 importante — **o que ficou de fora** depois da crítica. Quando o revisor cortou,
@@ -662,10 +667,14 @@ com raias e setas de causa-e-efeito* **não vale agora**, por três motivos:
 2. **A evidência do próprio repositório é contra mais uma classificação.** O item
    de execução já carrega horizonte + driver + eixo, e `projeto` ainda tem
    `cascata_id` e `impacto ENUM('RENTABILIDADE','FATURAMENTO','SUSTENTABILIDADE','PESSOAS')`
-   — que são, na prática, quatro perspectivas. **Ambos estão mortos**:
-   `ProjetoController::salvar` não lê nem grava nenhum dos dois, e `modalProjeto`
-   não tem os campos (verificado). Duas classificações de execução já foram
-   abandonadas por atrito de preenchimento; a perspectiva seria a terceira.
+   — que são, na prática, quatro perspectivas. `impacto` continua **morto**:
+   `ProjetoController::salvar` não o lê nem o grava, e `modalProjeto` não tem o
+   campo. Uma classificação de execução já foi abandonada por atrito de
+   preenchimento; a perspectiva seria a segunda.
+   > **Atualizado.** O `cascata_id` **deixou de estar morto**: o item 3b foi
+   > entregue e ele agora tem campo no modal, validação de escopo no controller
+   > e gravação. Isso não enfraquece o argumento — reforça: o vínculo que a
+   > diretoria queria (execução ↔ escolha) coube num select, sem entidade nova.
 3. **Não há nada a portar do BSC de referência.** Em
    `/workspace/bsc-coperdia/apps/api/prisma/schema.prisma`, `IndicatorMap.flowData`
    é um blob JSON do ReactFlow e `IndicatorMapEntry` guarda `positionX/positionY`
@@ -703,13 +712,13 @@ com a mesma validação de escopo que `CascataController` já faz ao inserir em
 `cascata_fator`. **Zero rota nova** — `POST /api/indicadores` e
 `/api/indicadores/{id}` já existem.
 
-**Micro-entrega que fecha a outra metade do vão (~15 linhas):** acrescentar o
-select "Escolha da cascata que origina este projeto" em `modalProjeto`
-(`projetos.js`) e persistir `cascata_id` em `ProjetoController::salvar`,
-validando que a escolha é do mesmo planejamento. **O JOIN já existe**
-(`LEFT JOIN cascata_escolha ce ON ce.id = p.cascata_id`) e **a exibição já
-existe** (`projetos.js` mostra "↳ Escolha da cascata: …") — hoje o campo
-simplesmente nunca tem valor.
+**Micro-entrega que fechava a outra metade do vão — ENTREGUE (item 3b):** o
+select "Escolha da Cascata que este projeto executa" está em `modalProjeto`
+(`projetos.js`) e `ProjetoController::salvar` persiste `cascata_id` validando
+que a escolha é do mesmo planejamento (a guarda de IDOR listada em Riscos, mais
+abaixo, foi aplicada). O JOIN e a exibição "↳ Escolha da cascata: …" já existiam.
+Ou seja: **metade da fonte de dados da matriz já está preenchível hoje**; falta
+o lado do indicador.
 
 **Fonte de dados da matriz:** ampliar `CascataController::listar`
 (`GET /api/cascata`, já consumida por `cascata.js` e `projetos.js`) para devolver,
@@ -744,8 +753,14 @@ usa), dentro de `.table-responsive`:
 1. `indicador_cascata` no `schema.sql`.
 2. Multiselect no modal de indicador + gravação com validação de escopo em
    `IndicadorController::salvar`.
-3. Select `cascata_id` em `modalProjeto` + persistência em `ProjetoController::salvar`.
+3. ~~Select `cascata_id` em `modalProjeto` + persistência em
+   `ProjetoController::salvar`~~ — **feito** (item 3b).
 4. Ampliação de `CascataController::listar` + aba "Matriz de Execução" em `cascata.js`.
+
+Sobraram os passos 1, 2 e 4. O passo 2 deve usar `lista_marcavel` (com
+`obrigatorio` opcional), não `multiselect`: o texto de uma escolha da cascata é
+uma frase inteira, e o `multiselect` não funciona no celular, onde não há Ctrl
+(ver CLAUDE.md). O controle já existe e agora também tem modo de escolha única.
 
 ### O que ficou de fora (cortes adotados)
 
@@ -778,6 +793,22 @@ usa), dentro de `.table-responsive`:
 - **Texto longo na caixa:** `cascata_escolha` é textarea. Se ficar ilegível como
   rótulo, a evolução barata é `garantirColuna cascata_escolha.titulo VARCHAR(120) NULL`
   — uma coluna, não uma tabela.
+
+---
+
+## 4. Cruzamentos da SWOT (TOWS)
+
+### Veredito: **CONSTRUIR** (esforço M) — **fatias 1–2 ENTREGUES**
+
+O elo entre descrever o ambiente e decidir o que fazer: o par de um fator
+interno com um externo e a estratégia que nasce dele, no bloco que o próprio par
+define. Tema que não passou pelo rito das seções acima (não veio como proposta
+com crítica) — nasceu do material do cliente e tem **documento próprio**, com
+modelo de dados, decisões e fatiamento: **`docs/CRUZAMENTOS-SWOT.md`**.
+
+Entregues a tabela, a API, a tela das quatro colunas, o cadastro e a edição.
+Faltam a ponte com a cascata (fatia 3), a síntese e o relatório (4) e a sala (5)
+— e a fatia 3 tem um ponto em aberto registrado no §10 daquele documento.
 
 ---
 
@@ -907,39 +938,68 @@ voz alta no começo da reunião.
 
 ---
 
+## 6. Backup do banco (operação)
+
+### Veredito: **EXECUTAR** — o código está entregue, falta ligar
+
+`cli/backup.sh` gera, verifica e restaura o dump do MySQL, com bateria própria
+(`testes/backup.sh`). Não é desenvolvimento: falta a configuração no Railway, e
+o detalhe está em **`docs/DEPLOY-RAILWAY.md` §7**.
+
+O ponto que decide se o backup é real: **o disco do contêiner é efêmero**. Um
+cron gravando em `/app/backups` produz arquivo que morre no deploy seguinte —
+parece backup e não é. Precisa de um **Volume** montado com `BACKUP_DIR`
+apontando para ele, mais uma cópia periódica **fora do provedor** (backup no
+mesmo lugar do banco não protege contra perder a conta).
+
+Enquanto isso não estiver de pé, todo o resto deste backlog constrói em cima de
+um banco sem cópia — e o custo de adiar não tem teto.
+
+---
+
 ## Ordem de implementação recomendada
 
 O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro**, e
 depois o que se alimenta delas. Construir conteúdo (matriz, mapa, coleta) antes de
 existir um fórum que consome esse conteúdo é como o sistema morre.
 
+> **Estado da fila.** Os passos 1, 2 e 5 abaixo foram entregues (registro de
+> reunião, `projeto.cascata_id`, Coleta & Triagem). O que resta como *código* é
+> o passo 3 (Matriz de Execução) e o 4 (Matriz de Impacto, travada na decisão 1);
+> o que resta como *operação* são os passos 0 e 0-bis, que continuam no topo.
+
 **0. Ligar o que já existe (horas, zero código).** SMTP + cron diário do Railway
 para `cli/notificar.php`. Um módulo pronto que não roda é a melhor relação
 valor/esforço do backlog inteiro.
 
-**1. Ritual de acompanhamento — fatia 1 (P).** Registro de reunião no Relatório de
-Status. É o menor código do backlog e é a pré-condição de valor de tudo o que vem
-depois: sem reunião mensal, a matriz não é lida e a matriz de execução não é
-discutida.
+**0-bis. Ligar o backup (horas, zero código).** Volume + cron para
+`cli/backup.sh` (§6). Entrou depois desta lista ser escrita e vai junto com o
+passo 0 — é a mesma visita ao Railway, e este tem prioridade sobre aquele: um
+aviso que não sai custa um lembrete; um banco sem cópia custa o sistema.
 
-**2. Micro-entrega da Matriz de Execução (P, ~15 linhas).** Reanimar
+**1. Ritual de acompanhamento — fatia 1 (P). ✔ ENTREGUE.** Registro de reunião no
+Relatório de Status. É o menor código do backlog e é a pré-condição de valor de
+tudo o que vem depois: sem reunião mensal, a matriz não é lida e a matriz de
+execução não é discutida.
+
+**2. Micro-entrega da Matriz de Execução (P, ~15 linhas). ✔ ENTREGUE.** Reanimar
 `projeto.cascata_id` no modal de projeto e em `ProjetoController::salvar`. O JOIN
-e a exibição já existem; é a correção mais barata do repositório e pré-requisito
-da coluna "Iniciativas".
+e a exibição já existiam; era a correção mais barata do repositório e é
+pré-requisito da coluna "Iniciativas".
 
-**3. Matriz de Execução — resto (P).** `indicador_cascata` + multiselect no modal
-de indicador + aba na Cascata. Depende do passo 2 para a coluna de iniciativas
-fazer sentido, e é a leitura que a direção pede no trimestral.
+**3. Matriz de Execução — resto (P).** `indicador_cascata` + escolha múltipla no
+modal de indicador + aba na Cascata. O passo 2 já está feito, então a coluna de
+iniciativas já tem de onde sair; é a leitura que a direção pede no trimestral.
+**É o próximo item de código da fila.**
 
 **4. Matriz de Impacto por Negócio (P).** Independente de tudo, mas depende de a
 SWOT/GUT **corporativa** do ano estar preenchida — por isso vem depois de o ciclo
 de reuniões já estar consumindo o diagnóstico. Abre a reunião do gestor com
-"o que o corporativo diz que me impacta".
+"o que o corporativo diz que me impacta". **Travada na decisão 1** (acesso do
+gestor ao diagnóstico corporativo).
 
-**5. Coleta & Triagem (M) — condicionada ao calendário.** É sazonal: só serve na
-janela da próxima oficina de diagnóstico. Se a oficina for daqui a 30–60 dias,
-**este item pula para o topo** (junto com o passo 0), porque perder a janela
-significa esperar um ano. Se for daqui a 6 meses, fica onde está.
+**5. Coleta & Triagem (M) — condicionada ao calendário. ✔ ENTREGUE** (antecipada
+justamente por isso: era sazonal, e a janela da oficina não espera o backlog).
 
 **Nunca (nesta forma):** o Mapa Estratégico com raias, caixas próprias
 (`objetivo_estrategico`) e setas de causa-e-efeito. Reavaliar só se, depois de a
@@ -950,20 +1010,25 @@ que atravessa eixos ou que não nasce de nenhuma escolha da cascata.
 
 ## Leitura impacto × esforço
 
-Cruzamento dos dez temas, para quem quiser conferir a fila por outro ângulo.
+Cruzamento dos temas da tabela-resumo, para quem quiser conferir a fila por
+outro ângulo.
 O esforço e o veredito vêm da tabela abaixo; **a posição no eixo de impacto é
 leitura derivada dos argumentos de cada seção** — este documento não atribui
 nota de impacto, e não convém passar a atribuir.
 
 | | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
 |---|---|---|
-| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 5 registro de reunião · 3b vínculo com a Cascata · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 2 Coleta & Triagem |
+| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 4b Cruzamentos: a ponte (fatia 3) |
 | **Impacto baixo** | — | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
 
-**O que essa leitura mostra — e o que ela não decide.** Cinco dos dez temas
-caem no mesmo quadrante. Não é falha da leitura: é o retrato de um backlog já
-podado, em que o trabalho caro e duvidoso foi cortado antes de entrar na lista.
-O que sobrou é quase tudo barato e valioso.
+Saíram do quadro por estarem entregues: 5 (registro de reunião), 3b (vínculo com
+a Cascata), 2 e 2.1 (Coleta e Tempestade) e as fatias 1–2 dos Cruzamentos.
+
+**O que essa leitura mostra — e o que ela não decide.** O que sobrou no "fazer
+agora" é quase tudo **operação, não desenvolvimento**: dois dos quatro itens (0 e
+6) são configuração no Railway de código que já existe. Não é falha da leitura —
+é o retrato de um backlog já podado, em que o trabalho caro e duvidoso foi
+cortado antes de entrar na lista.
 
 Por isso a coluna "Ordem" da tabela-resumo **não** sai desse cruzamento — ele
 empataria cinco itens. Ela sai da **dependência**: o que precisa existir antes
@@ -974,15 +1039,29 @@ discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
+| 6 | **Ligar o backup no Railway** (Volume + cron; código entregue em `cli/backup.sh`) | Executar | — | 0 |
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
-| 5 | Ritual de acompanhamento (registro de reunião) | **Entregue** | P | 1 ✔ |
-| 3b | Reanimar `projeto.cascata_id` | Construir | P (micro) | 2 |
-| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 3 |
-| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 4 |
-| 2 | Coleta & Triagem (tratativa item a item) | **Entregue** | M | 5 ✔ (antecipada) |
+| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 1 |
+| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 2 (trava: decisão 1) |
+| 4b | Cruzamentos da SWOT — a ponte, a síntese e o relatório (fatias 3–5) | Construir | M | 3 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 4a | Cruzamentos da SWOT — tabela, API, tela, cadastro (fatias 1–2) | **Entregue** | M | ✔ |
+| 3b | Reanimar `projeto.cascata_id` | **Entregue** | P (micro) | ✔ |
+| 5 | Ritual de acompanhamento (registro de reunião) | **Entregue** | P | ✔ |
+| 2 | Coleta & Triagem (tratativa item a item) | **Entregue** | M | ✔ (antecipada) |
 | 2.1 | Tempestade: quiz por PIN/QR, condução ao vivo e matriz | **Entregue** | M | ✔ |
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |
+
+**Por que 3a antes de 1.** Não é impacto, é dependência e trava: a Matriz de
+Impacto (item 1) esbarra na **decisão 1** abaixo — se o GESTOR pode ler
+descrições do diagnóstico corporativo —, que é mudança do modelo de acesso e
+não detalhe de controller. A Matriz de Execução não depende de decisão nenhuma
+e, com o 3b entregue, já tem metade da fonte de dados preenchível.
+
+**Nota de manutenção.** Esta tabela ficou desatualizada uma vez (o 3b constava
+como "Construir" já estando entregue, e por pouco não guiou a escolha do
+trabalho seguinte). Ao entregar um tema, marque-o aqui **no mesmo commit** — é
+o índice que se consulta para decidir o que vem depois.
 
 ---
 
@@ -998,8 +1077,10 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
 2. **Perfil LEITURA pode gravar ideia na Coleta?** Seria a primeira escrita por
    LEITURA em todo o sistema. É o que permite brainstorm amplo sem inflar perfis —
    mas é mudança do modelo de segurança, não detalhe de controller.
-3. **Quando é a próxima oficina de diagnóstico?** Define se a Coleta & Triagem
-   pula para o topo da fila ou espera.
+3. ~~Quando é a próxima oficina de diagnóstico?~~ **Deixou de travar a fila:** a
+   Coleta & Triagem foi antecipada e entregue justamente por ser sazonal. A
+   pergunta continua valendo para o calendário do ritual (item 5), não para a
+   ordem do backlog.
 4. **As 4 perspectivas do BSC são inegociáveis para a diretoria**, ou os 6 eixos
    já cadastrados servem como raia? A primeira resposta custa uma coluna
    (`eixo.perspectiva`); a segunda custa zero.
@@ -1007,14 +1088,19 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
    como proposto? Quem conduz? A reunião mensal é por negócio ou agrupa negócios?
 6. **Existe (ou existirá) real com granularidade mensal vindo do Qlik?** Se sim,
    meta × real deixa de ser assunto só anual e muda a pauta do ritual.
-8. ~~Quem responde ao quiz da tempestade?~~ **Respondido e entregue:** qualquer
+7. **Quem é o dono da Matriz de Impacto:** a controladoria preenche a grade inteira,
+   ou cada gestor preenche a coluna dele? A versão proposta assume a primeira
+   (gestor só lê) — é o mais simples e o mais defensável, mas é decisão de processo.
+8. **SMTP, cron e backup já estão configurados em produção?** Se não estiverem,
+   os passos 0 e 0-bis são a primeira coisa a fazer, antes de qualquer linha de
+   código deste backlog. O backup vem primeiro dos dois: um aviso que não sai
+   custa um lembrete; um banco sem cópia custa o sistema.
+9. ~~Quem responde ao quiz da tempestade?~~ **Respondido e entregue:** qualquer
    pessoa, por QR ou link, sem cadastro — modelo do Quiz Copérdia. A revisão de
    segurança exigida (tema 2.1, decisão A) **foi executada** antes de subir
    (commit `22e6f31`).
-9. ~~"Separar as palavras" é dividir ou nuvem?~~ **Respondido:** é a tela de
+10. ~~"Separar as palavras" é dividir ou nuvem?~~ **Respondido:** é a tela de
    condução ao vivo, com nuvem de um lado e bancada do outro (decisão B).
-10. **Quem é o dono da Matriz de Impacto:** a controladoria preenche a grade inteira,
-   ou cada gestor preenche a coluna dele? A versão proposta assume a primeira
-   (gestor só lê) — é o mais simples e o mais defensável, mas é decisão de processo.
-9. **SMTP e cron já estão configurados em produção?** Se não estiverem, o passo 0
-   é a primeira coisa a fazer, antes de qualquer linha de código deste backlog.
+11. ~~As três perguntas dos Cruzamentos da SWOT~~ (carga inicial dos 12, nome da
+   seção no menu, conduzir em oficina) — **respondidas** e registradas no §9 de
+   `docs/CRUZAMENTOS-SWOT.md`: sem carga, menu "Cruzamentos", sala adiada.
