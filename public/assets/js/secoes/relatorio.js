@@ -15,6 +15,19 @@ const SecaoRelatorio = {
   de: null,
   ate: null,
 
+  /**
+   * Uma seção numerada do documento. O título vai no `<thead>` do bloco: se as
+   * linhas da seção atravessarem a quebra de página, o navegador repete
+   * "3. Capital — envelope × comprometido" no topo da folha seguinte, em vez de
+   * despejar uma tabela sem nome. Na tela o bloco não existe.
+   */
+  secao(titulo, corpo) {
+    return RelatorioAnalise.bloco({
+      cabecalho: `<h2 class="h6 mt-3">${titulo}</h2>`,
+      corpo,
+    });
+  },
+
   fmt(v) {
     return v === null || v === undefined || v === ''
       ? '—'
@@ -162,45 +175,52 @@ const SecaoRelatorio = {
         </div>
       </div>
 
-      <div class="card mb-3"><div class="card-body py-2 px-3">
-        <strong>${Modal.esc(r.rotulo)}</strong> · Ciclo ${Modal.esc(r.ciclo.nome)}
-        <div class="small text-muted">Período da reunião: ${this.data(r.periodo.de)} a ${this.data(r.periodo.ate)}
-          · Gerado em ${this.data(App.hoje())}</div>
-      </div></div>
+      ${RelatorioAnalise.canvas({
+        // O cartão de contexto é o cabeçalho REPETIDO em toda folha impressa —
+        // na tela ele segue sendo o mesmo cartão do topo. Sem isso, quem pegava
+        // a página 3 não sabia de que relatório, de que negócio nem de que
+        // período ela era: o `<h1>` fica na barra de comandos, que não imprime.
+        cabecalho: `<div class="card mb-3"><div class="card-body py-2 px-3">
+          <strong><span class="somente-impressao">Relatório de Status — </span>${Modal.esc(r.rotulo)}</strong>
+            · Ciclo ${Modal.esc(r.ciclo.nome)}
+          <div class="small text-muted">Período da reunião: ${this.data(r.periodo.de)} a ${this.data(r.periodo.ate)}
+            · Gerado em ${this.data(App.hoje())}</div>
+        </div></div>`,
+        corpo: `
+        ${this.secao('1. Métricas-âncora',
+          ancoras.length ? `<div class="table-responsive"><table class="table table-sm table-bordered tabela-metas">
+            <thead><tr><th style="min-width:200px">Indicador</th><th></th>
+              ${r.anos.map((a) => `<th class="col-ano">${a}</th>`).join('')}</tr></thead>
+            <tbody>${linhasIndicadores(ancoras)}</tbody></table></div>`
+            : '<p class="text-muted small">Nenhuma métrica-âncora definida.</p>')}
 
-      <h2 class="h6 mt-3">1. Métricas-âncora</h2>
-      ${ancoras.length ? `<div class="table-responsive"><table class="table table-sm table-bordered tabela-metas">
-        <thead><tr><th style="min-width:200px">Indicador</th><th></th>
-          ${r.anos.map((a) => `<th class="col-ano">${a}</th>`).join('')}</tr></thead>
-        <tbody>${linhasIndicadores(ancoras)}</tbody></table></div>`
-        : '<p class="text-muted small">Nenhuma métrica-âncora definida.</p>'}
+        ${this.secao('2. Projetos e execução',
+          r.projetos.length ? `<div class="table-responsive"><table class="table table-sm align-middle">
+            <thead><tr><th>Projeto</th><th>Responsável</th><th>Prazo</th><th>Status</th><th>Progresso</th></tr></thead>
+            <tbody>${linhasProjetos}</tbody></table></div>`
+            : '<p class="text-muted small">Nenhum projeto cadastrado.</p>')}
 
-      <h2 class="h6 mt-3">2. Projetos e execução</h2>
-      ${r.projetos.length ? `<div class="table-responsive"><table class="table table-sm align-middle">
-        <thead><tr><th>Projeto</th><th>Responsável</th><th>Prazo</th><th>Status</th><th>Progresso</th></tr></thead>
-        <tbody>${linhasProjetos}</tbody></table></div>`
-        : '<p class="text-muted small">Nenhum projeto cadastrado.</p>'}
+        ${this.secao('3. Capital — envelope × comprometido',
+          `<div class="table-responsive"><table class="table table-sm">
+            <thead><tr><th>Horizonte</th><th class="text-end">Envelope</th><th class="text-end">Comprometido</th></tr></thead>
+            <tbody>${linhasCapital || '<tr><td colspan="3" class="text-muted">Nenhum envelope definido.</td></tr>'}</tbody></table></div>`)}
 
-      <h2 class="h6 mt-3">3. Capital — envelope × comprometido</h2>
-      <div class="table-responsive"><table class="table table-sm">
-        <thead><tr><th>Horizonte</th><th class="text-end">Envelope</th><th class="text-end">Comprometido</th></tr></thead>
-        <tbody>${linhasCapital || '<tr><td colspan="3" class="text-muted">Nenhum envelope definido.</td></tr>'}</tbody></table></div>
+        ${this.secao('4. Decisões de investimento no período',
+          r.decisoes.length ? `<div class="table-responsive"><table class="table table-sm align-middle">
+            <thead><tr><th>Data</th><th>Investimento · critério</th><th>Decisão</th><th class="text-end">Valor</th></tr></thead>
+            <tbody>${linhasDecisoes}</tbody></table></div>`
+            : '<p class="text-muted small">Nenhuma decisão registrada no período.</p>')}
 
-      <h2 class="h6 mt-3">4. Decisões de investimento no período</h2>
-      ${r.decisoes.length ? `<div class="table-responsive"><table class="table table-sm align-middle">
-        <thead><tr><th>Data</th><th>Investimento · critério</th><th>Decisão</th><th class="text-end">Valor</th></tr></thead>
-        <tbody>${linhasDecisoes}</tbody></table></div>`
-        : '<p class="text-muted small">Nenhuma decisão registrada no período.</p>'}
+        ${this.secao('5. Diário de bordo do período',
+          r.diario.length ? `<div class="table-responsive"><table class="table table-sm align-middle">
+            <thead><tr><th>Data</th><th>Referência</th><th>Registro</th><th>Autor</th></tr></thead>
+            <tbody>${linhasDiario}</tbody></table></div>`
+            : '<p class="text-muted small">Nenhum registro no período.</p>')}
 
-      <h2 class="h6 mt-3">5. Diário de bordo do período</h2>
-      ${r.diario.length ? `<div class="table-responsive"><table class="table table-sm align-middle">
-        <thead><tr><th>Data</th><th>Referência</th><th>Registro</th><th>Autor</th></tr></thead>
-        <tbody>${linhasDiario}</tbody></table></div>`
-        : '<p class="text-muted small">Nenhum registro no período.</p>'}
-
-      <h2 class="h6 mt-3">6. Últimas reuniões de acompanhamento</h2>
-      ${cartoesReuniao || `<p class="text-muted small">Nenhuma reunião registrada.
-        ${App.podeEditar() ? 'Use “Registrar reunião” depois do encontro para guardar decisões e próximos passos.' : ''}</p>`}`;
+        ${this.secao('6. Últimas reuniões de acompanhamento',
+          cartoesReuniao || `<p class="text-muted small">Nenhuma reunião registrada.
+            ${App.podeEditar() ? 'Use “Registrar reunião” depois do encontro para guardar decisões e próximos passos.' : ''}</p>`)}`,
+      })}`;
 
     // Os dois únicos campos de data fora de um modal no sistema; sem isto o
     // navegador desenha 02/07 como "07/02" e a tela contradiz o resto

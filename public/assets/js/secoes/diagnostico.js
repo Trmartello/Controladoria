@@ -593,19 +593,24 @@ const Diag = {
       // `col-xl-2` (um sexto) o Porter, que tem cinco categorias, deixava um
       // sexto da tela vazio à direita e espremia os cartões à toa. Agora cada
       // análise divide a largura pelo número de categorias que ela tem.
+      // O cabeçalho e o corpo vão numa `RelatorioAnalise.bloco`: no papel ela é
+      // a tabela que repete o título da categoria quando os cartões atravessam
+      // a quebra de página; na tela ela não existe (`display: contents`).
       return `<div class="coluna-categoria" data-coluna-categoria="${cat}">
         <div class="caixa-coluna">
-          <div class="cabecalho-coluna d-flex align-items-center mb-2">
-            ${this.iconeOrientacao(cat, cor, rotulo)}
-            <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
-              ${this.contadorCards(itens.length, cor)}</span>
-            ${this.botaoAddCategoria(cat, rotulo, cor)}
-            ${this.quizMic(dono, etapa, ano, cat, rotulo, cor)}
-          </div>
-          <div class="corpo-coluna">
-            ${this.painelOrientacao(cat, cor)}
-            ${cartoes || '<div class="text-muted small">—</div>'}
-          </div>
+          ${RelatorioAnalise.bloco({
+            cabecalho: `<div class="cabecalho-coluna d-flex align-items-center mb-2">
+              ${this.iconeOrientacao(cat, cor, rotulo)}
+              <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
+                ${this.contadorCards(itens.length, cor)}</span>
+              ${this.botaoAddCategoria(cat, rotulo, cor)}
+              ${this.quizMic(dono, etapa, ano, cat, rotulo, cor)}
+            </div>`,
+            corpo: `<div class="corpo-coluna">
+              ${this.painelOrientacao(cat, cor)}
+              ${cartoes || '<div class="text-muted small">—</div>'}
+            </div>`,
+          })}
         </div>
       </div>`;
     }).join('');
@@ -613,12 +618,10 @@ const Diag = {
     const contagens = Object.fromEntries(
       categorias.map(([cat]) => [cat, fatores.filter((f) => f.categoria === cat).length]));
 
-    // O canvas é uma TABELA de verdade: só assim o cabeçalho se repete em toda
-    // página impressa (medido: `display: table-header-group` num div sai só na
-    // primeira, e `position: fixed` deslocado some na última). Na tela ela é
-    // neutralizada por CSS — todas as partes viram bloco — e o layout é o mesmo.
-    el.innerHTML = `
-      <table class="canvas-analise"><thead><tr><td>
+    // O canvas é uma TABELA de verdade (`RelatorioAnalise.canvas`): só assim o
+    // cabeçalho se repete em toda página impressa.
+    el.innerHTML = RelatorioAnalise.canvas({
+      cabecalho: `
       <div class="cabecalho-analise" data-cabecalho-analise>
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -633,14 +636,14 @@ const Diag = {
             ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
           </div>
         </div>
-      </div>
-      </td></tr></thead><tbody><tr><td>
+      </div>`,
+      corpo: `
       ${descricao ? `<p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>` : ''}
       <div data-quiz-vivo>${this.quizPainel(dono, etapa, ano)}</div>
       ${this.seletorCategoriaMovel(etapa, categorias.map(([cat, rotulo]) => [cat, rotulo]), contagens)}
       <div class="row g-3 row-cols-1 row-cols-sm-2 row-cols-md-3
-        row-cols-xl-${categorias.length}">${colunas}</div>
-      </td></tr></tbody></table>`;
+        row-cols-xl-${categorias.length}">${colunas}</div>`,
+    });
 
     this.ligarCabecalhoFixo(el);
     // O relatório é montado no clique, com o que ESTA tela carregou: os mesmos
@@ -817,15 +820,17 @@ const SecaoCenario = {
       const cor = 'var(--verde-coperdia)';
       return `<div class="col-md-6" data-coluna-categoria="${tipo}">
         <div class="caixa-coluna">
-          <div class="cabecalho-coluna d-flex align-items-center mb-2">
-            ${Diag.iconeOrientacao(tipo, cor, titulo)}
-            <h2 class="h6 text-uppercase text-muted mb-0">${titulo} ${Diag.contadorCards(lista.length, cor)}</h2>
-            ${Diag.botaoAddCategoria(tipo, titulo, cor)}
-          </div>
-          <div class="corpo-coluna">
-            ${Diag.painelOrientacao(tipo, cor)}
-            ${linhas || '<div class="text-muted small">Nenhum item.</div>'}
-          </div>
+          ${RelatorioAnalise.bloco({
+            cabecalho: `<div class="cabecalho-coluna d-flex align-items-center mb-2">
+              ${Diag.iconeOrientacao(tipo, cor, titulo)}
+              <h2 class="h6 text-uppercase text-muted mb-0">${titulo} ${Diag.contadorCards(lista.length, cor)}</h2>
+              ${Diag.botaoAddCategoria(tipo, titulo, cor)}
+            </div>`,
+            corpo: `<div class="corpo-coluna">
+              ${Diag.painelOrientacao(tipo, cor)}
+              ${linhas || '<div class="text-muted small">Nenhum item.</div>'}
+            </div>`,
+          })}
         </div>
       </div>`;
     };
@@ -835,8 +840,8 @@ const SecaoCenario = {
       TENDENCIA: itens.filter((i) => i.tipo === 'TENDENCIA').length,
     };
 
-    el.innerHTML = `
-      <table class="canvas-analise"><thead><tr><td>
+    el.innerHTML = RelatorioAnalise.canvas({
+      cabecalho: `
       <div class="cabecalho-analise" data-cabecalho-analise>
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -853,8 +858,8 @@ const SecaoCenario = {
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
           </div>
         </div>
-      </div>
-      </td></tr></thead><tbody><tr><td>
+      </div>`,
+      corpo: `
       <div id="quiz-vivo-cenario">${this.painelVivo()}</div>
       ${Diag.seletorCategoriaMovel('CENARIO', [
         ['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências'],
@@ -862,8 +867,8 @@ const SecaoCenario = {
       <div class="row g-4">
         ${bloco('SITUACAO_ATUAL', 'Situação Atual')}
         ${bloco('TENDENCIA', 'Tendências')}
-      </div>
-      </td></tr></tbody></table>`;
+      </div>`,
+    });
 
     QuizSala.ligarSelo(el);
     QuizSala.ligarMicrofones(this, el);
@@ -1189,18 +1194,20 @@ const SecaoSwot = {
       return `<div class="col-md-6" data-coluna-categoria="${cat}">
         <div class="p-2 rounded caixa-coluna"
           style="--tinta-coluna:${cor}18; border-top: 3px solid ${cor}">
-          <div class="cabecalho-coluna d-flex align-items-center mb-2">
-            ${Diag.iconeOrientacao(cat, cor, rotulo)}
-            <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
-              <span class="ambiente-quadrante">(${Diag.DICAS_QUADRANTE[cat]})</span>
-              ${Diag.contadorCards(itens.length, cor)}</span>
-            ${Diag.botaoAddCategoria(cat, rotulo, cor)}
-            ${Diag.quizMic(this, 'SWOT', ano, cat, rotulo, cor)}
-          </div>
-          <div class="corpo-coluna">
-            ${Diag.painelOrientacao(cat, cor)}
-            ${cartoes || '<div class="text-muted small">Nenhum fator.</div>'}
-          </div>
+          ${RelatorioAnalise.bloco({
+            cabecalho: `<div class="cabecalho-coluna d-flex align-items-center mb-2">
+              ${Diag.iconeOrientacao(cat, cor, rotulo)}
+              <span class="fw-bold small text-uppercase" style="color:${cor}">${rotulo}
+                <span class="ambiente-quadrante">(${Diag.DICAS_QUADRANTE[cat]})</span>
+                ${Diag.contadorCards(itens.length, cor)}</span>
+              ${Diag.botaoAddCategoria(cat, rotulo, cor)}
+              ${Diag.quizMic(this, 'SWOT', ano, cat, rotulo, cor)}
+            </div>`,
+            corpo: `<div class="corpo-coluna">
+              ${Diag.painelOrientacao(cat, cor)}
+              ${cartoes || '<div class="text-muted small">Nenhum fator.</div>'}
+            </div>`,
+          })}
         </div>
       </div>`;
     };
@@ -1208,8 +1215,8 @@ const SecaoSwot = {
     const contagensSwot = Object.fromEntries(Object.keys(Diag.QUADRANTES)
       .map((cat) => [cat, fatores.filter((f) => f.categoria === cat).length]));
 
-    el.innerHTML = `
-      <table class="canvas-analise"><thead><tr><td>
+    el.innerHTML = RelatorioAnalise.canvas({
+      cabecalho: `
       <div class="cabecalho-analise" data-cabecalho-analise>
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -1223,8 +1230,8 @@ const SecaoSwot = {
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
           </div>
         </div>
-      </div>
-      </td></tr></thead><tbody><tr><td>
+      </div>`,
+      corpo: `
       <div data-quiz-vivo>${Diag.quizPainel(this, 'SWOT', ano)}</div>
       ${Diag.seletorCategoriaMovel('SWOT', [
         ['FORCA', 'Forças'], ['FRAQUEZA', 'Fraquezas'],
@@ -1235,8 +1242,8 @@ const SecaoSwot = {
         ${quadrante('FRAQUEZA', 'Fraquezas', '#b08d4f')}
         ${quadrante('OPORTUNIDADE', 'Oportunidades', '#2c7fb8')}
         ${quadrante('AMEACA', 'Ameaças', '#8f3b3b')}
-      </div>
-      </td></tr></tbody></table>`;
+      </div>`,
+    });
 
     Diag.ligarCabecalhoFixo(el);
     RelatorioAnalise.ligar(el, () => ({

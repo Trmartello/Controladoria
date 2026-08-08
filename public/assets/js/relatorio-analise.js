@@ -18,6 +18,42 @@
 // entrega os dados prontos em `ligar(el, montar)`.
 
 const RelatorioAnalise = {
+  /**
+   * O canvas do relatório: uma TABELA de verdade cujo `<thead>` o navegador
+   * repete no topo de TODA página impressa. Foi medido: um `<div>` com
+   * `display: table-header-group` sai só na primeira folha, e um
+   * `position: fixed` deslocado para a margem some justamente na última.
+   * Na tela a tabela é neutralizada por CSS (`.canvas-analise`) e o layout é o
+   * de sempre.
+   */
+  canvas({ cabecalho, corpo }) {
+    return `<table class="canvas-analise">
+      <thead><tr><td>${cabecalho}</td></tr></thead>
+      <tbody><tr><td>${corpo}</td></tr></tbody>
+      </table>`;
+  },
+
+  /**
+   * Um BLOCO do relatório — a categoria da análise, a seção do documento — com
+   * a mesma mecânica um nível abaixo: atravessando a quebra de página, o
+   * navegador repete o `<thead>` do bloco no topo da folha seguinte. Sem isso a
+   * página seguinte trazia só os cartões restantes, sem dizer de que quadrante
+   * eles eram.
+   * Na tela a tabela é `display: contents` — ela não existe: o cabeçalho e o
+   * corpo continuam sendo filhos diretos da caixa da coluna, que é quem tem o
+   * flex, a rolagem interna e o fundo.
+   * O cabeçalho órfão no pé da folha não precisa de regra: o navegador não
+   * fragmenta entre o `<thead>` repetido e a primeira linha do corpo, então o
+   * título desce junto com o primeiro cartão (medido em varredura de 1 mm).
+   */
+  bloco({ cabecalho, corpo, classe = '', estilo = '' }) {
+    return `<table class="canvas-bloco${classe ? ` ${classe}` : ''}"${
+      estilo ? ` style="${estilo}"` : ''}>
+      <thead><tr><td>${cabecalho}</td></tr></thead>
+      <tbody><tr><td>${corpo}</td></tr></tbody>
+      </table>`;
+  },
+
   /** O botão da barra da análise. `dropdown` do Bootstrap, que já é vendorado. */
   botao() {
     return `<div class="dropdown">

@@ -1396,6 +1396,27 @@ tr.card-destacado > td { background: #e8f5ee; }
   text-align: inherit;
 }
 
+/* ===== O bloco do relatório é uma TABELA dentro da tabela =====
+   O `<thead>` do canvas repete o TÍTULO em toda folha; este repete o cabeçalho
+   do BLOCO — o quadrante da SWOT, a categoria do PESTEL, a seção do Relatório
+   de Status — quando o conteúdo dele atravessa a quebra de página. Sem isso a
+   folha seguinte trazia só os cartões restantes e ninguém sabia de que
+   quadrante eram.
+   Na tela ela é `display: contents`: a tabela não gera caixa nenhuma e o
+   cabeçalho e o corpo continuam sendo filhos DIRETOS da caixa da coluna — que
+   é quem tem o flex, a rolagem interna e o fundo. Com `display: block` (o que
+   o canvas usa) eles virariam netos, e `flex: 1 1 auto` do corpo deixaria de
+   valer: a rolagem por dentro da coluna morreria no computador. */
+.canvas-bloco,
+.canvas-bloco > thead,
+.canvas-bloco > tbody,
+.canvas-bloco > * > tr,
+.canvas-bloco > * > tr > td { display: contents; }
+
+/* Texto que só existe no papel — hoje o nome do relatório no cabeçalho que se
+   repete: na tela ele já está no `<h1>` da barra de comandos, que não imprime. */
+.somente-impressao { display: none; }
+
 /* ===== O cabeçalho da análise =====
    Título, ano, "+ Novo" e o selo da sala ficam FIXOS abaixo da topbar: o
    contexto da análise (que ano, qual escopo, onde a sala está) tem de
@@ -1834,6 +1855,7 @@ body.menu-aberto .menu-lateral {
   body { background: #fff; }
   .conteudo { padding: 0 !important; }
   .nao-imprimir { display: none !important; }
+  .somente-impressao { display: inline; }
   .card { border: 1px solid #ccc; }
   a[href]::after { content: ''; }
 
@@ -1872,6 +1894,39 @@ body.menu-aberto .menu-lateral {
   .canvas-analise > tbody { display: table-row-group !important; }
   .canvas-analise > * > tr { display: table-row !important; }
   .canvas-analise > * > tr > td { display: table-cell !important; }
+
+  /* --- e cada bloco repete o PRÓPRIO cabeçalho ---
+     Mesma mecânica um nível abaixo: o quadrante que começa numa folha e
+     continua na outra leva o título junto. O `<thead>` de uma tabela aninhada
+     repete de verdade dentro da célula que fragmenta — medido no Chromium, com
+     e sem uma linha por cartão.
+     Cabeçalho órfão no pé da folha não precisa de regra: não há ponto de
+     quebra entre o `<thead>` repetido e a primeira linha do corpo, então o
+     título desce junto com o primeiro cartão (varredura de 1 mm). */
+  .canvas-bloco {
+    display: table !important;
+    width: 100% !important;
+    table-layout: fixed;
+    /* `border-spacing` é 2px por padrão e apareceria como três frestas — acima
+       do cabeçalho, entre ele e o corpo, e abaixo. Medido: o bloco descia 6px
+       em relação ao relatório de antes, e o pedido era não mexer no espaçamento. */
+    border-collapse: collapse;
+  }
+  /* O último cartão da coluna leva `mb-2`. Fora da tabela essa margem escapava
+     por colapso e sumia dentro do `.5cm` do bloco; dentro da célula (que é um
+     contexto de formatação próprio) ela vira espaço real e afastava as
+     categorias 8px a mais do que no relatório de antes. */
+  .canvas-bloco .corpo-coluna > :last-child { margin-bottom: 0 !important; }
+  .canvas-bloco > thead { display: table-header-group !important; }
+  .canvas-bloco > tbody { display: table-row-group !important; }
+  .canvas-bloco > * > tr { display: table-row !important; }
+  .canvas-bloco > * > tr > td {
+    display: table-cell !important;
+    padding: 0 !important;
+    border: 0 !important;
+    vertical-align: top;
+    text-align: inherit;
+  }
 
   .cabecalho-analise {
     position: static !important;
