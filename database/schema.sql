@@ -129,6 +129,43 @@ CREATE TABLE IF NOT EXISTS gut (
   CONSTRAINT fk_gut_fator FOREIGN KEY (fator_id) REFERENCES fator(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Cruzamentos da SWOT (TOWS): o par de um fator INTERNO com um EXTERNO e a
+-- estratégia que nasce dele. É o elo que faltava entre descrever o ambiente e
+-- decidir o que fazer — "uma boa SWOT não descreve a empresa, descreve o que
+-- ela precisa decidir".
+--
+-- Três coisas que o modelo carrega de propósito:
+--   • `tipo` é DERIVADO do par (força+oportunidade só pode ser ATACAR) e
+--     calculado no servidor. Deixá-lo escolher abriria a porta para a linha
+--     gravada no bloco errado — o mesmo defeito que a etapa/ano do fator já
+--     custou.
+--   • O par é ÚNICO por ano. Sem a chave, o mesmo cruzamento entraria duas
+--     vezes com redações diferentes e o bloco viraria discussão em vez de
+--     decisão.
+--   • `ano`, como toda análise do diagnóstico: os horizontes são do ciclo, mas
+--     a SWOT é anual e o cruzamento é leitura da SWOT daquele ano.
+-- As FKs dos dois fatores são ON DELETE CASCADE: apagado o fator, o cruzamento
+-- que o cita perde o sentido — não existe cruzamento de um lado só.
+CREATE TABLE IF NOT EXISTS swot_cruzamento (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  planejamento_id  INT NOT NULL,
+  ano              SMALLINT NOT NULL,
+  fator_interno_id INT NOT NULL,
+  fator_externo_id INT NOT NULL,
+  tipo             ENUM('ATACAR','DEFENDER','REFORCAR','PROTEGER') NOT NULL,
+  rotulo           VARCHAR(120) NOT NULL,
+  estrategia       TEXT NOT NULL,
+  criado_por       INT NOT NULL,
+  criado_em        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_par (planejamento_id, ano, fator_interno_id, fator_externo_id),
+  KEY idx_cruz_plan (planejamento_id, ano, tipo),
+  KEY idx_cruz_externo (fator_externo_id),
+  CONSTRAINT fk_cruz_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cruz_interno FOREIGN KEY (fator_interno_id) REFERENCES fator(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cruz_externo FOREIGN KEY (fator_externo_id) REFERENCES fator(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cruz_autor FOREIGN KEY (criado_por) REFERENCES usuario(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS cascata_escolha (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,

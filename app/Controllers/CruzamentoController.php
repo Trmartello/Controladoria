@@ -1,0 +1,173 @@
+<?php
+
+namespace App\Controllers;
+
+use App\Core\Auth;
+use App\Core\Database;
+use App\Core\Json;
+
+/**
+ * Cruzamentos da SWOT (TOWS): o par de um fator interno com um externo e a
+ * estratégia que nasce dele.
+ *
+ * A regra que organiza tudo: o BLOCO não é escolhido, é consequência do par.
+ * Força + oportunidade só pode ser "atacar"; fraqueza + ameaça só pode ser
+ * "proteger". Por isso o tipo é calculado aqui e nunca lido do corpo — aceitar
+ * o bloco do cliente permitiria gravar a linha no quadro errado, que é o mesmo
+ * defeito que a etapa/ano do fator já custou (ver CLAUDE.md).
+ */
+class CruzamentoController
+{
+    /** O bloco que nasce de cada par [categoria interna][categoria externa]. */
+    private const TIPOS = [
+        'FORCA'    => ['OPORTUNIDADE' => 'ATACAR',   'AMEACA' => 'DEFENDER'],
+        'FRAQUEZA' => ['OPORTUNIDADE' => 'REFORCAR', 'AMEACA' => 'PROTEGER'],
+    ];
+
+    private const MAX_ROTULO = 120;
+
+    public function listar(): void
+    {
+        $planId = (int)($_GET['planejamento_id'] ?? 0);
+        Auth::exigirAcessoPlanejamento($planId);
+        // A análise é anual, como a SWOT que ela lê
+        $ano = (int)($_GET['ano'] ?? 0);
+        $filtroAno = $ano ? ' AND c.ano = ?' : '';
+        $params = $ano ? [$planId, $ano] : [$planId];
+
+        Json::ok(Database::todos(
+            "SELECT c.*,
+                    fi.descricao AS interno_descricao, fi.categoria AS interno_categoria,
+                    fe.descricao AS externo_descricao, fe.categoria AS externo_categoria,
+                    u.nome AS autor
+             FROM swot_cruzamento c
+             JOIN fator fi ON fi.id = c.fator_interno_id
+             JOIN fator fe ON fe.id = c.fator_externo_id
+             LEFT JOIN usuario u ON u.id = c.criado_por
+             WHERE c.planejamento_id = ?{$filtroAno}
+             ORDER BY c.tipo, c.id",
+            $params
+        ));
+    }
+
+    public function salvar(?int $id = null): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        // exigirEdicaoPlanejamento devolve a linha do PLANEJAMENTO, não o
+        // usuário: quem grava `criado_por` precisa do login (ver CLAUDE.md — o
+        // id do plano em autor_id já estourou FK em outro controller).
+        $u = Auth::exigirLogin();
+
+        $rotulo = trim($d['rotulo'] ?? '');
+        $estrategia = trim($d['estrategia'] ?? '');
+        if ($rotulo === '') {
+            Json::erro('Informe um nome curto para o cruzamento (ex.: "Pecuária + proteína").');
+        }
+        if (mb_strlen($rotulo) > self::MAX_ROTULO) {
+            Json::erro('O nome do cruzamento deve ter até ' . self::MAX_ROTULO . ' caracteres.');
+        }
+        if ($estrategia === '') {
+            Json::erro('Escreva a estratégia — o que fazer com este cruzamento.');
+        }
+
+        if ($id) {
+            // Na edição o PAR sai da LINHA, nunca do corpo: ele é a identidade
+            // do cruzamento (é o que a chave única guarda), não um campo do
+            // formulário. Trocar o par pelo corpo mudaria o bloco por baixo de
+            // uma linha já discutida; para outro par, outro cruzamento.
+            $atual = $this->exigirCruzamento($id, $planId);
+            Database::executar(
+                'UPDATE swot_cruzamento SET rotulo = ?, estrategia = ? WHERE id = ?',
+                [$rotulo, $estrategia, $id]
+            );
+            Json::ok(['id' => (int)$atual['id'], 'tipo' => $atual['tipo']]);
+        }
+
+        $interno = $this->exigirFatorSwot((int)($d['fator_interno_id'] ?? 0), $planId);
+        $externo = $this->exigirFatorSwot((int)($d['fator_externo_id'] ?? 0), $planId);
+
+        $tipo = self::TIPOS[$interno['categoria']][$externo['categoria']] ?? null;
+        if ($tipo === null) {
+            // Cobre os dois erros possíveis de uma vez: dois internos, dois
+            // externos, ou o par invertido. A mensagem diz o que fazer, não o
+            // que o servidor viu.
+            Json::erro('O cruzamento liga um fator INTERNO (força ou fraqueza) a um '
+                . 'fator EXTERNO (oportunidade ou ameaça). Reveja o par escolhido.');
+        }
+        // O ano sai dos FATORES, não do corpo: cruzamento é leitura da SWOT de
+        // um ano, e um par de anos diferentes não é leitura de ano nenhum.
+        if ((int)$interno['ano'] !== (int)$externo['ano']) {
+            Json::erro('Os dois fatores precisam ser do mesmo ano da análise.');
+        }
+        $ano = (int)$interno['ano'];
+        if ($ano <= 0) {
+            Json::erro('Os fatores escolhidos não têm ano de análise definido.');
+        }
+
+        // O par é único por ano. A conferência é antes, para a mensagem ser
+        // legível; o catch é o que segura a corrida de dois envios simultâneos,
+        // em que os dois passam pelo SELECT e só a chave separa.
+        $ja = Database::um(
+            'SELECT id FROM swot_cruzamento
+             WHERE planejamento_id = ? AND ano = ? AND fator_interno_id = ? AND fator_externo_id = ?',
+            [$planId, $ano, $interno['id'], $externo['id']]
+        );
+        if ($ja) {
+            Json::erro('Este par já foi cruzado neste ano. Edite o cruzamento existente.');
+        }
+        try {
+            $novoId = (int)Database::executar(
+                'INSERT INTO swot_cruzamento
+                   (planejamento_id, ano, fator_interno_id, fator_externo_id, tipo, rotulo, estrategia, criado_por)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [$planId, $ano, $interno['id'], $externo['id'], $tipo, $rotulo, $estrategia, $u['id']]
+            );
+        } catch (\PDOException $e) {
+            Json::erro('Este par já foi cruzado neste ano. Edite o cruzamento existente.');
+        }
+        Json::ok(['id' => $novoId, 'tipo' => $tipo]);
+    }
+
+    public function excluir(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $this->exigirCruzamento($id, $planId);
+        Database::executar('DELETE FROM swot_cruzamento WHERE id = ?', [$id]);
+        Json::ok();
+    }
+
+    /** O cruzamento, conferido contra o planejamento do pedido. */
+    private function exigirCruzamento(int $id, int $planId): array
+    {
+        $linha = Database::um(
+            'SELECT * FROM swot_cruzamento WHERE id = ? AND planejamento_id = ?',
+            [$id, $planId]
+        );
+        if (!$linha) {
+            Json::erro('Cruzamento não encontrado.', 404);
+        }
+        return $linha;
+    }
+
+    /**
+     * Um fator da SWOT deste planejamento. A guarda confere a ETAPA além do
+     * planejamento: sem ela, um id de fator do PESTEL entraria no par e o
+     * cruzamento citaria algo que a tela da SWOT nem mostra.
+     */
+    private function exigirFatorSwot(int $id, int $planId): array
+    {
+        $f = Database::um(
+            "SELECT id, ano, categoria FROM fator
+             WHERE id = ? AND planejamento_id = ? AND etapa = 'SWOT'",
+            [$id, $planId]
+        );
+        if (!$f) {
+            Json::erro('Escolha dois fatores da SWOT deste planejamento.');
+        }
+        return $f;
+    }
+}

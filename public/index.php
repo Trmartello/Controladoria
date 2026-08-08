@@ -177,6 +177,7 @@ use App\Controllers\CenarioController;
 use App\Controllers\ColetaController;
 use App\Controllers\CicloController;
 use App\Controllers\ComentarioController;
+use App\Controllers\CruzamentoController;
 use App\Controllers\DriverEixoController;
 use App\Controllers\FatorController;
 use App\Controllers\IndicadorController;
@@ -318,6 +319,14 @@ try {
             (new FatorController())->limparGut((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)$#', $rota, $m):
             (new FatorController())->salvar((int)$m[1]); break;
+
+        // Cruzamentos da SWOT (TOWS): o par interno × externo e a estratégia
+        case $rota === 'GET /api/cruzamentos':     (new CruzamentoController())->listar(); break;
+        case $rota === 'POST /api/cruzamentos':    (new CruzamentoController())->salvar(); break;
+        case (bool)preg_match('#^POST /api/cruzamentos/(\d+)/excluir$#', $rota, $m):
+            (new CruzamentoController())->excluir((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/cruzamentos/(\d+)$#', $rota, $m):
+            (new CruzamentoController())->salvar((int)$m[1]); break;
 
         // Quiz — a sala do PROJETO: um PIN para todas as análises. Rotas do
         // condutor (a escrita do participante é pública, em /api/publico).

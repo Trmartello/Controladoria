@@ -10,9 +10,12 @@ em [`docs/PLANEJAMENTO-SISTEMA.md`](docs/PLANEJAMENTO-SISTEMA.md).
   Direção, Gestor, Leitura); autorização por **usuário × negócio**; cadastros em
   formulário modal (negócios com sincronização Qlik, ciclos, horizontes,
   drivers, eixos, usuários); Hub do Planejamento; deploy no Railway
-- **Fase 2 — Diagnóstico**: análise de cenário, PESTEL, Porter, SWOT e Matriz
-  GUT — **análises anuais** (seletor "Ano da análise" em cada seção, do ano do
-  planejamento ao fim do ciclo); horizontes e cascata seguem plurianuais
+- **Fase 2 — Diagnóstico**: análise de cenário, PESTEL, Porter, SWOT, Matriz
+  GUT e **Cruzamentos (TOWS)** — **análises anuais** (seletor "Ano da análise"
+  em cada seção, do ano do planejamento ao fim do ciclo); horizontes e cascata
+  seguem plurianuais. Os cruzamentos ligam um fator interno a um externo e
+  registram a estratégia que nasce do par, no bloco que o próprio par define
+  (atacar, defender, reforçar, proteger)
 - **Fase 3 — Cascata de Escolhas**: matriz drivers × horizontes com aberturas
   por eixo, renúncias e vínculo com os fatores da GUT
 - **Fase 4 — Execução**: projetos, desdobramentos 5W2H e diário de bordo

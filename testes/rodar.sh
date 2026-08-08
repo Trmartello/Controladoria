@@ -16,7 +16,7 @@ echo "═══ 1/4  funcional (escrita de cada módulo pela API)"
 ./testes/funcional.sh || FALHOU=1
 
 echo
-echo "═══ 2/4  sistema (15 seções, desktop e celular)"
+echo "═══ 2/4  sistema (16 seções, desktop e celular)"
 node testes/sistema.js || FALHOU=1
 
 echo

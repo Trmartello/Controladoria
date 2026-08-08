@@ -6,7 +6,7 @@ leitura do código — cobrem o que a leitura não pega: regressão silenciosa.
 | Bateria | O que cobre | Como falha |
 |---|---|---|
 | `funcional.sh` | Os caminhos de **escrita** de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As **15 seções** em 1500×900 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
+| `sistema.js` | As **16 seções** em 1500×900 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
 | `participante.js` | A tela **pública** da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | O vaivém de `cli/backup.sh` — gerar, verificar, restaurar | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 

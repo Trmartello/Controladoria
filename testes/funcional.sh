@@ -24,6 +24,13 @@ afirma() {
   if echo "$3" | grep -qE "$2"; then ok; else falha "$1" "$2" "$(echo "$3" | head -c 200)"; fi
 }
 
+# nega <nome> <padrão-que-NÃO-pode-aparecer> <resposta>
+# Para o que some: registro apagado em cascata não tem resposta própria para
+# afirmar — o que se prova é a ausência dele na listagem.
+nega() {
+  if echo "$3" | grep -qE "$2"; then falha "$1" "sem $2" "$(echo "$3" | head -c 200)"; else ok; fi
+}
+
 login() {
   curl -s -c $J -o /dev/null $BASE/login
   curl -s -b $J -c $J -X POST $BASE/api/login -H 'Content-Type: application/json' \
@@ -134,7 +141,49 @@ if [ -n "$PIN" ]; then
   afirma "teto de 3 ideias é aplicado no 4º envio" '"ok":false' "$R"
 fi
 
-echo "### 9. Limpeza"
+echo "### 9. Cruzamentos da SWOT (TOWS)"
+# O bloco é DERIVADO do par, nunca escolhido: é a regra que este trecho guarda.
+# A massa é própria — quatro fatores da SWOT criados e apagados aqui — porque a
+# do diagnóstico carregado muda com a revisão do conteúdo.
+cria_swot() { echo $(post /api/fatores "{\"planejamento_id\":1,\"etapa\":\"SWOT\",\"categoria\":\"$1\",\"descricao\":\"$2\",\"ano\":2026}" | id_de); }
+SW_F=$(cria_swot FORCA        "Força de teste do cruzamento")
+SW_FR=$(cria_swot FRAQUEZA    "Fraqueza de teste do cruzamento")
+SW_O=$(cria_swot OPORTUNIDADE "Oportunidade de teste do cruzamento")
+SW_A=$(cria_swot AMEACA       "Ameaça de teste do cruzamento")
+
+R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$SW_F,\"fator_externo_id\":$SW_O,\"rotulo\":\"Par de teste\",\"estrategia\":\"Estratégia de teste.\"}")
+afirma "força × oportunidade nasce ATACAR" '"tipo":"ATACAR"' "$R"
+CRUZ=$(echo "$R" | id_de)
+R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$SW_FR,\"fator_externo_id\":$SW_A,\"rotulo\":\"Par de teste 2\",\"estrategia\":\"Outra.\"}")
+afirma "fraqueza × ameaça nasce PROTEGER" '"tipo":"PROTEGER"' "$R"
+CRUZ2=$(echo "$R" | id_de)
+R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$SW_O,\"fator_externo_id\":$SW_F,\"rotulo\":\"x\",\"estrategia\":\"y\"}")
+afirma "recusa par invertido (externo no lugar do interno)" 'INTERNO' "$R"
+R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$SW_F,\"fator_externo_id\":$SW_FR,\"rotulo\":\"x\",\"estrategia\":\"y\"}")
+afirma "recusa dois fatores internos" 'INTERNO' "$R"
+R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$SW_F,\"fator_externo_id\":$SW_O,\"rotulo\":\"repetido\",\"estrategia\":\"z\"}")
+afirma "recusa o mesmo par duas vezes no ano" 'já foi cruzado' "$R"
+R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$SW_FR,\"fator_externo_id\":$SW_O,\"rotulo\":\"\",\"estrategia\":\"y\"}")
+afirma "recusa cruzamento sem rótulo" '"ok":false' "$R"
+R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$SW_FR,\"fator_externo_id\":$SW_O,\"rotulo\":\"sem estratégia\",\"estrategia\":\"\"}")
+afirma "recusa cruzamento sem estratégia" '"ok":false' "$R"
+# O par é a IDENTIDADE do cruzamento: na edição ele sai da linha, e um corpo
+# forjado com outro par não pode mover a linha de bloco.
+R=$(post /api/cruzamentos/$CRUZ "{\"planejamento_id\":1,\"fator_interno_id\":$SW_FR,\"fator_externo_id\":$SW_A,\"rotulo\":\"Renomeado\",\"estrategia\":\"Reescrita.\"}")
+afirma "edição não troca o par pelo corpo" '"tipo":"ATACAR"' "$R"
+R=$(get "/api/cruzamentos?planejamento_id=1&ano=2026")
+afirma "listagem traz o par e o rótulo novo" "\"fator_interno_id\":$SW_F" "$R"
+afirma "listagem traz a categoria do fator externo" '"externo_categoria":"OPORTUNIDADE"' "$R"
+R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026")
+afirma "fator conta os cruzamentos que o citam" '"cruzamentos":1' "$R"
+# Apagado o fator, o cruzamento que o cita perde o sentido e vai junto (FK
+# ON DELETE CASCADE) — a tela avisa antes, e este é o teste de que vai mesmo.
+post /api/fatores/$SW_F/excluir '{"planejamento_id":1}' >/dev/null
+R=$(get "/api/cruzamentos?planejamento_id=1&ano=2026")
+nega "excluir o fator leva o cruzamento junto" "\"id\":$CRUZ," "$R"
+afirma "e não leva os outros cruzamentos" "\"id\":$CRUZ2," "$R"
+
+echo "### 10. Limpeza"
 [ -n "${REU:-}" ]  && post /api/reunioes/$REU/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${ACAO:-}" ] && post /api/desdobramentos/$ACAO/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${INI:-}" ]  && post /api/iniciativas/$INI/excluir '{"planejamento_id":1}' >/dev/null
@@ -144,6 +193,11 @@ echo "### 9. Limpeza"
 [ -n "${IDEIA:-}" ]&& post /api/coleta/$IDEIA/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${CEN:-}" ]  && post /api/cenario/$CEN/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${FAT:-}" ]  && post /api/fatores/$FAT/excluir '{"planejamento_id":1}' >/dev/null
+# Os fatores da SWOT levam consigo os cruzamentos que sobraram (FK em cascata),
+# então basta apagá-los — não há ordem a respeitar aqui.
+for F in "${SW_FR:-}" "${SW_O:-}" "${SW_A:-}"; do
+  [ -n "$F" ] && post /api/fatores/$F/excluir '{"planejamento_id":1}' >/dev/null
+done
 
 echo
 echo "=========================================="

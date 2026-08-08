@@ -1306,8 +1306,15 @@ const SecaoSwot = {
       modalFator(fatores.find((f) => f.id == b.dataset.editar))));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
       const f = fatores.find((x) => x.id == b.dataset.excluir);
-      const aviso = f?.score
-        ? 'Excluir este fator da SWOT? A avaliação dele na Matriz GUT também será apagada.'
+      // O que vai junto precisa ser dito ANTES, um item por vez: a GUT some por
+      // cascata da FK e os cruzamentos também, e um "excluir?" seco escondia
+      // que a estratégia escrita a partir deste fator ia embora com ele.
+      const junto = [
+        f?.score ? 'a avaliação dele na Matriz GUT' : '',
+        Number(f?.cruzamentos) ? `${f.cruzamentos} cruzamento(s) da SWOT` : '',
+      ].filter(Boolean);
+      const aviso = junto.length
+        ? `Excluir este fator da SWOT? Também será apagado: ${junto.join(' e ')}.`
         : 'Excluir este fator da SWOT?';
       if (!confirm(aviso)) return;
       await App.api(`/api/fatores/${b.dataset.excluir}/excluir`, { planejamento_id: plan.id });

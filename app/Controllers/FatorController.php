@@ -46,6 +46,7 @@ class FatorController
                     pr.descricao AS promovido_descricao,
                     ci.id AS coleta_item_id, ca.nome AS coleta_autor, co.n AS coleta_vozes,
                     COALESCE(qz.n, 0) AS quiz_vozes,
+                    COALESCE(cz.n, 0) AS cruzamentos,
                     ds.o_que AS acao_titulo, ds.projeto_id AS acao_projeto_id
              FROM fator f
              LEFT JOIN desdobramento ds ON ds.id = f.desdobramento_id
@@ -70,6 +71,15 @@ class FatorController
                SELECT destino_id, COUNT(*) AS n FROM coleta_item
                WHERE destino_tipo = 'FATOR' AND origem = 'QUIZ'
                GROUP BY destino_id) qz ON qz.destino_id = f.id
+             -- Quantos cruzamentos da SWOT citam este fator, dos DOIS lados
+             -- (interno e externo): a FK é ON DELETE CASCADE, então excluir o
+             -- fator os leva junto — e a tela precisa avisar antes disso.
+             LEFT JOIN (
+               SELECT fator_id, COUNT(*) AS n FROM (
+                 SELECT fator_interno_id AS fator_id FROM swot_cruzamento
+                 UNION ALL
+                 SELECT fator_externo_id FROM swot_cruzamento) lados
+               GROUP BY fator_id) cz ON cz.fator_id = f.id
              LEFT JOIN usuario ca ON ca.id = ci.autor_id
              WHERE f.planejamento_id = ? AND f.etapa = ?{$filtroAno}
              ORDER BY f.categoria, f.id",

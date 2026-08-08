@@ -1,8 +1,12 @@
 # Cruzamentos da SWOT (TOWS) — plano
 
 Plano para trazer ao sistema o material “Cruzando os quadrantes: as quatro
-estratégias” e a síntese “O que a SWOT diz ao planejamento”. **Nada disto está
-construído** — este documento existe para ser revisado antes de virar código.
+estratégias” e a síntese “O que a SWOT diz ao planejamento”.
+
+> **Situação: fatias 1 e 2 ENTREGUES** (tabela, API, tela das quatro colunas,
+> cadastro, edição e a cascata de exclusão a partir do fator). Faltam a ponte
+> (§5), a síntese e o relatório (§6 e §7) e a sala (§8, fatia 5). O §8 traz o
+> que mudou em relação ao planejado e o §9, as decisões já tomadas.
 
 > A frase que fecha o material é a especificação inteira em uma linha:
 > **“Uma boa SWOT não descreve a empresa — descreve o que ela precisa decidir.”**
@@ -180,9 +184,9 @@ No papel o cruzamento deve sair **em tabela de duas colunas**, como no material
 
 Cada fatia é entregável sozinha:
 
-1. **Tabela + API + tela de leitura** — modelo, `CruzamentoController`
+1. ✅ **Tabela + API + tela de leitura** — modelo, `CruzamentoController`
    (listar/salvar/excluir com o tipo derivado no servidor), as quatro colunas.
-2. **Cadastro e edição** — o modal com o par, o `info` que antecipa o bloco, a
+2. ✅ **Cadastro e edição** — o modal com o par, o `info` que antecipa o bloco, a
    cascata de exclusão a partir do fator.
 3. **A ponte** — botão de destino, vínculo nos dois sentidos, selos, “desmarcar”.
 4. **Síntese e relatório** — os campos de texto e o `montar()` da etapa.
@@ -192,16 +196,58 @@ Cada fatia é entregável sozinha:
 A fatia 5 é opcional e depende de o cliente querer conduzir esta etapa em
 oficina — as quatro primeiras não dependem dela.
 
+### O que mudou na execução das fatias 1 e 2
+
+- **`destino_tipo`/`destino_id` NÃO entraram na tabela.** Eles são da fatia 3, e
+  coluna que nada escreve é regra que ninguém testa: a guarda “recusa excluir o
+  fator cujo cruzamento já tem destino” não teria como ser provada. Entram por
+  `garantirColuna` junto com a ponte, com a guarda e o teste no mesmo commit.
+- **A exclusão em cascata é da FK**, não do controller: as duas FKs de fator são
+  `ON DELETE CASCADE`. O que o código acrescenta é o AVISO — `FatorController::
+  listar` devolve `cruzamentos` (a contagem dos dois lados) e a confirmação da
+  SWOT diz o que vai junto, item por item.
+- **Na edição o PAR sai da linha**, como a etapa e o ano do fator: ele é a
+  identidade do cruzamento (é o que a chave única guarda). Para outro par, outro
+  cruzamento — e o formulário de edição mostra o par como bloco de leitura.
+- **Duas peças novas no `Modal`**, ambas nascidas aqui e reaproveitáveis:
+  `aoMudar(dados, raiz)`, que roda a cada mudança de campo (o `visivelSe` não
+  servia — ele olha UM campo, e o bloco depende de dois); e `lista_marcavel`
+  com `unico: true`, que é o controle certo quando o item precisa ser LIDO
+  antes de escolhido (um `select` com um parágrafo dentro obriga a abrir a
+  lista para descobrir o que existe).
+- **Sem grade 4×4**, como planejado. O “+” de cada bloco já chega com as listas
+  filtradas nas categorias daquele bloco; o “+ Novo cruzamento” do cabeçalho
+  abre as listas inteiras e anuncia o bloco enquanto o par é escolhido.
+
 ---
 
-## 9. O que precisa ser decidido antes da fatia 1
+## 9. O que foi decidido
 
-- **Carga inicial**: o material tem 12 cruzamentos escritos. Entram como
-  `database/conteudo_cruzamentos_*.php` (com marca em `carga_conteudo`, só no
-  planejamento CORPORATIVO)? Se sim, eles precisam casar os fatores **pelo
-  texto** do fator da SWOT — e a carga adia, como a da cascata, quando um nome
-  não resolve.
-- **Nome da seção no menu**: “Cruzamentos (SWOT)” ou “Estratégias”? O material
-  chama as quatro combinações de “as quatro estratégias”.
-- **Fatia 5 (sala)**: conduzir esta etapa em oficina, ou é trabalho de
-  controladoria entre encontros?
+- **Carga inicial dos 12 cruzamentos: NÃO construir.** Digitar 12 linhas na tela
+  é meia hora da controladoria; a carga seria código permanente casando fatores
+  **pelo texto**, que é frágil. O padrão se pagou na cascata (42 células) — em
+  12 linhas, não se paga. Se um dia entrar, segue a regra da cascata: valida
+  tudo antes do primeiro INSERT e **adia** (não marca) quando um texto não
+  resolve.
+- **Nome da seção no menu: “Cruzamentos”.** “Estratégias” disputaria sentido com
+  o que já existe (as escolhas da cascata, as iniciativas, o próprio nome do
+  sistema). Os verbos do material — atacar, defender, reforçar, proteger — são o
+  subtítulo de cada coluna, que é o lugar deles.
+- **Fatia 5 (sala): adiada.** A oficina produz *fatores*; o cruzamento é síntese
+  de quem conduz, entre encontros. O `QuizSala` inteiro continua disponível se a
+  decisão mudar.
+
+## 10. O que a fatia 3 ainda precisa resolver
+
+A ponte não é só um botão. As células da cascata **já têm texto** (vieram da
+carga), e o cruzamento que “vira” uma célula precisa decidir se sobrescreve,
+acrescenta ou só vincula. O sistema já resolveu isso uma vez, no quiz
+(`comUso()` / `Quiz::guardarRedacao`): texto composto automaticamente é
+recomposto; texto reescrito à mão é de quem escreveu e só muda com confirmação.
+A fatia 3 tem de **reusar essa regra**, não inventar outra.
+
+E há uma costura a decidir explicitamente: o cruzamento é **anual** (como a
+SWOT) e a célula da cascata é do **horizonte** (plurianual). Ligar um cruzamento
+de 2026 a uma célula de H1 é bom — vira rastreabilidade de qual leitura
+justificou a escolha —, mas precisa ser decisão registrada, não descoberta no
+meio da implementação.

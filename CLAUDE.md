@@ -47,7 +47,14 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   o item antes de marcar; `multiselect` só serve para listas curtas e não
   funciona no celular, onde não existe tecla Ctrl). Opções auxiliares:
   `obrigatorio`, `visivelSe: {campo, valores}`, `exemplo`, `ajuda`, `nota`,
-  `sufixo`, `passo`. O gatilho do `visivelSe` pode ser de qualquer tipo, mas o
+  `sufixo`, `passo`, `unico` (no `lista_marcavel`: escolhe UM item, os quadrados
+  viram redondos e o campo devolve o valor em vez da lista).
+  `Modal.abrir` aceita ainda `aoMudar(dados, raiz)`, chamado ao abrir e a cada
+  mudança de campo, para formulário cujo TEXTO depende do que já foi escolhido —
+  o bloco do cruzamento da SWOT, que depende de DOIS campos e por isso não cabe
+  no `visivelSe`. O ouvinte fica no formulário (o `change` sobe por
+  borbulhamento) e o `selecao_livre` dispara o evento à mão, porque o valor dele
+  mora num `input[type=hidden]`, que não emite nada quando escrito por código. O gatilho do `visivelSe` pode ser de qualquer tipo, mas o
   valor precisa sair de `Modal.valorAtual()`: em `botoes` e `quadrantes` o id
   fica na **div** que agrupa os rádios, e ler `.value` dela devolvia `undefined`
   — o campo dependente ficava escondido para sempre.
@@ -233,6 +240,30 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   tela, com confirmação.
 - Excluir um fator de PESTEL/Porter/SWOT remove também o promovido para a SWOT
   e a linha correspondente na matriz GUT (`FatorController::excluir`).
+- **Cruzamentos da SWOT (TOWS)** (`swot_cruzamento`, `CruzamentoController`,
+  `secoes/cruzamentos.js`): o par de um fator INTERNO com um EXTERNO e a
+  estratégia que nasce dele — a quinta análise, entre a GUT e a Cascata. O
+  **bloco não é escolhido, é consequência do par** (força+oportunidade só pode
+  ser ATACAR) e por isso o `tipo` é calculado no SERVIDOR e nunca lido do corpo;
+  aceitá-lo do cliente gravaria a linha no quadro errado, que é o mesmo defeito
+  que a etapa/ano do fator já custou. O par é **único por ano** (sem a chave, o
+  mesmo cruzamento entraria duas vezes com redações diferentes e o bloco viraria
+  discussão em vez de decisão) e o **`ano` sai dos FATORES**, não do corpo — par
+  de anos diferentes não é leitura de ano nenhum. Na edição o **par sai da
+  LINHA**: ele é a identidade do registro; para outro par, outro cruzamento.
+  As FKs dos dois fatores são `ON DELETE CASCADE` — não existe cruzamento de um
+  lado só —, e quem avisa é a tela: `FatorController::listar` devolve
+  `cruzamentos` (a contagem dos DOIS lados) e a confirmação da SWOT diz o que vai
+  junto. **Não existe grade 4×4 clicável**, e é decisão: com seis fatores por
+  quadrante seriam 36 células por bloco, e na prática se escolhem três — a grade
+  convidaria a preencher tudo. O selo do par é cortado em UMA linha por
+  `line-clamp`, **nunca por `nowrap`**: com `nowrap` a largura mínima do selo
+  vira o parágrafo inteiro, e essa mínima sobe pela coluna e pela fila até o
+  `<main>` (item de flex) — a página inteira passava a rolar na horizontal no
+  computador. O clamp mora num `<span>` de dentro porque o Chrome não aplica
+  `-webkit-box` a um `<button>`, e o `white-space: normal` precisa ser declarado
+  para desfazer o `.badge` do Bootstrap. Plano, decisões e o que falta:
+  `docs/CRUZAMENTOS-SWOT.md`.
 - **Quiz — a sala do PROJETO** (`coleta_rodada.modo = 'QUIZ'`): a MESMA sala da
   tempestade — PIN, token, tetos, trava de força bruta — servindo a TODAS as
   análises. **Um PIN para o encontro inteiro**: o participante escaneia uma vez
@@ -855,7 +886,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | Bateria | Cobre | Falha quando |
 |---|---|---|
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As 15 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
+| `sistema.js` | As 16 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 

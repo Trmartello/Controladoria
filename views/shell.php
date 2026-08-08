@@ -43,6 +43,7 @@
         <li><a class="nav-link" href="#porter" data-secao="porter">Porter — 5 Forças</a></li>
         <li><a class="nav-link" href="#swot" data-secao="swot">SWOT</a></li>
         <li><a class="nav-link" href="#gut" data-secao="gut">Matriz GUT</a></li>
+        <li><a class="nav-link" href="#cruzamentos" data-secao="cruzamentos">Cruzamentos</a></li>
         <li class="nav-item mt-2 text-white-50 small">Estratégia</li>
         <li><a class="nav-link" href="#cascata" data-secao="cascata">Cascata de Escolhas</a></li>
         <li class="nav-item mt-2 text-white-50 small">Execução</li>
@@ -77,6 +78,7 @@
       <section id="secao-porter" class="secao d-none"></section>
       <section id="secao-swot" class="secao d-none"></section>
       <section id="secao-gut" class="secao d-none"></section>
+      <section id="secao-cruzamentos" class="secao d-none"></section>
       <section id="secao-cascata" class="secao d-none"></section>
       <section id="secao-projetos" class="secao d-none"></section>
       <section id="secao-investimentos" class="secao d-none"></section>
@@ -126,6 +128,7 @@
   <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cadastros.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/diagnostico.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/cruzamentos.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/coleta.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cascata.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/projetos.js') ?>"></script>

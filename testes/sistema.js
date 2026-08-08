@@ -1,4 +1,4 @@
-// Bateria de sistema: percorre as 15 seções em desktop e celular e afirma que
+// Bateria de sistema: percorre as 16 seções em desktop e celular e afirma que
 // cada uma PINTA de verdade — não só que a casca do shell existe. Registra todo
 // erro de página e de console: um `pageerror` numa seção é falha, mesmo que a
 // tela pareça certa.
@@ -22,6 +22,7 @@ const SECOES = [
   { id: 'porter', nome: 'Porter', prova: '#secao-porter h1' },
   { id: 'swot', nome: 'SWOT', prova: '#secao-swot h1' },
   { id: 'gut', nome: 'Matriz GUT', prova: '#secao-gut .gut-legenda-barra' },
+  { id: 'cruzamentos', nome: 'Cruzamentos (TOWS)', prova: '#secao-cruzamentos [data-coluna-categoria]' },
   { id: 'cascata', nome: 'Cascata de Escolhas', prova: '#secao-cascata h1' },
   { id: 'projetos', nome: 'Projetos · 5W2H', prova: '#secao-projetos h1' },
   { id: 'investimentos', nome: 'Investimentos', prova: '#secao-investimentos h1' },
@@ -45,11 +46,14 @@ async function percorrer(page, largura) {
     }, s.id);
     t(`[${largura}] ${s.nome} sem alerta de erro`, !falhou, falhou || '');
 
-    if (largura === 'celular') {
-      const rola = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-      t(`[celular] ${s.nome} não rola na horizontal`, !rola,
-        rola ? await page.evaluate(() => `${document.documentElement.scrollWidth}px > ${window.innerWidth}px`) : '');
-    }
+    // Rolagem horizontal é defeito nas DUAS larguras, não só no celular. No
+    // computador ela nasce de outro jeito: um texto que não quebra (um selo com
+    // `white-space: nowrap`) vira a largura MÍNIMA da coluna, e essa mínima
+    // sobe pela fila até o `<main>`, que é item de flex — a página inteira sai
+    // da janela. Foi assim nos Cruzamentos, e o teste só olhava o celular.
+    const rola = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    t(`[${largura}] ${s.nome} não rola na horizontal`, !rola,
+      rola ? await page.evaluate(() => `${document.documentElement.scrollWidth}px > ${window.innerWidth}px`) : '');
   }
 }
 

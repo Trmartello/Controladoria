@@ -1410,6 +1410,54 @@ tr.linha-arrastando { opacity: .85; }
 .selo-link { cursor: pointer; }
 .selo-link:hover { filter: brightness(.94); }
 
+/* ===== Cruzamentos da SWOT (TOWS) =====
+   O cartão publica a ESTRATÉGIA; o par de fatores é a procedência dela. Por
+   isso cada fator vem numa linha só, cortada com reticências: o texto inteiro
+   de um fator é um parágrafo, e dois parágrafos por cartão empurrariam a
+   decisão — que é o que se lê aqui — para baixo da dobra. O texto completo fica
+   no `title`, e o toque leva ao fator na SWOT. */
+.selos-cruzamento {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .15rem;
+  min-width: 0;
+}
+/* A coluna precisa poder encolher abaixo do conteúdo. O padrão do flex é
+   `min-width: auto`, que resolve para a largura MÍNIMA do conteúdo — e o selo
+   é `nowrap`, então essa mínima é o parágrafo inteiro do fator: a fila estourava
+   a tela para a direita e a página rolava na horizontal. Escopado à seção
+   porque as outras análises têm texto que quebra sozinho e não precisam disto. */
+#secao-cruzamentos [data-coluna-categoria] { min-width: 0; }
+/* Uma linha, cortada — mas por `line-clamp`, NUNCA por `nowrap`. Com `nowrap`
+   a largura MÍNIMA do selo passa a ser o parágrafo inteiro, e essa mínima sobe
+   pela coluna, pela fila e pelo `<main>` (que é item de flex) até a janela: a
+   página inteira rolava na horizontal, no computador. Com o clamp o texto
+   quebra por dentro, a mínima volta a ser uma palavra, e só a primeira linha
+   aparece. É o mesmo recurso do `.texto-fator`, com uma linha em vez de três.
+   Duas armadilhas já pagas aqui: o `.badge` do Bootstrap traz `white-space:
+   nowrap` e precisa ser desfeito explicitamente (mesma especificidade, ganha
+   quem vem depois — mas só se declarar a propriedade); e o clamp mora no
+   `<span>` de dentro porque o Chrome não aplica `-webkit-box` a um `<button>`,
+   que impõe o próprio contexto de layout. */
+.selo-cruz-fator {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  font-weight: 500;
+  border: 0;
+}
+.selo-cruz-texto {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.card-cruzamento { border-left: 3px solid var(--cor-quad, transparent); }
+
 /* ===== Coleta de Ideias =====
    A fila de tratativa é o coração da tela: um card por vez, botões grandes
    o bastante para a triagem acontecer no celular, em reunião. */

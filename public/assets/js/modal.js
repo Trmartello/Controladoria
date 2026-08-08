@@ -25,8 +25,14 @@ const Modal = {
   // o caso real é o quiz, cujo 409 de "sala aberta em outra tela" vira uma
   // confirmação e um reenvio. Sem esse gancho a pergunta aparecia como erro
   // dentro do modal, sem nenhum jeito de responder sim.
+  // `aoMudar(dados, raiz)` roda ao abrir e a cada mudança de campo, para o
+  // formulário cujo TEXTO depende do que já foi escolhido. O caso real é o
+  // cruzamento da SWOT: o bloco (atacar/defender/reforçar/proteger) é
+  // consequência do par, e sem esse aviso o usuário só descobria em que quadro
+  // a linha caiu depois de salvar. `visivelSe` não resolve — ele olha UM campo,
+  // e aqui a resposta depende de dois.
   abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null, extra = null,
-          enviar = null }) {
+          enviar = null, aoMudar = null }) {
     this.config = { campos, url, aoSalvar, transformar, extra, enviar };
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-erro').classList.add('d-none');
@@ -48,6 +54,7 @@ const Modal = {
     this.ligarFaixas(form, campos);
     this.ligarCondicionais(form, campos);
     this.ligarTextareasElasticas(form);
+    this.ligarMudanca(form, aoMudar);
 
     if (!this.bsModal) {
       this.bsModal = new bootstrap.Modal(document.getElementById('modal-form'));
@@ -105,8 +112,16 @@ const Modal = {
         // Lista de itens marcáveis com o texto inteiro à vista — para escolhas
         // em que saber exatamente o que se está amarrando importa mais que
         // caber em uma linha. Com muitos itens, ganha campo de pesquisa.
+        //
+        // Com `unico: true` a lista escolhe UM item: os quadrados viram
+        // redondos e o campo devolve o valor, não a lista. É o controle certo
+        // sempre que o item precisa ser LIDO antes de escolhido — um `select`
+        // com um parágrafo dentro obriga a abrir a lista para descobrir o que
+        // existe, e no celular fica ilegível.
         const opcoes = c.opcoes || [];
-        const marcados = (Array.isArray(v) ? v : []).map(String);
+        const marcados = c.unico
+          ? (v === null || v === undefined || v === '' ? [] : [String(v)])
+          : (Array.isArray(v) ? v : []).map(String);
         const itens = opcoes.map((o) => {
           const cor = /^#[0-9a-f]{6}$/i.test(o.cor || '') ? o.cor : '#007a45';
           const selos = [
@@ -115,7 +130,8 @@ const Modal = {
           ].filter(Boolean).join(' ');
           const busca = this.esc(`${o.selo || ''} ${o.selo2 || ''} ${o.texto || o.rotulo || ''}`);
           return `<label class="marcavel-item" data-busca="${busca}">
-            <input class="form-check-input" type="checkbox" value="${this.esc(o.valor)}"
+            <input class="form-check-input" type="${c.unico ? 'radio' : 'checkbox'}"
+              ${c.unico ? `name="${id}-opcao"` : ''} value="${this.esc(o.valor)}"
               ${marcados.includes(String(o.valor)) ? 'checked' : ''}>
             <span class="marcavel-corpo">
               ${selos ? `<span class="marcavel-selos">${selos}</span>` : ''}
@@ -214,7 +230,10 @@ const Modal = {
                ${c.barra.origem ? `<span class="info-barra-origem">${this.esc(c.barra.origem)}</span>` : ''}
              </div>`
           : '';
-        return `<div class="mb-3">
+        // O id vai no bloco inteiro: `info` não tem controle, e é por ele que
+        // um `aoMudar` alcança o texto para reescrevê-lo (o bloco do
+        // cruzamento da SWOT, que só se conhece depois de escolhido o par).
+        return `<div class="mb-3" id="${id}">
           ${c.rotulo ? `<label class="form-label rotulo-info">${this.esc(c.rotulo)}</label>` : ''}
           <div class="card card-info-modal">${barra}<div class="card-body py-2 px-3 small">${this.esc(c.texto ?? v)}</div></div>
         </div>`;
@@ -355,16 +374,21 @@ const Modal = {
       const contador = caixa.querySelector('.marcavel-contador');
       const busca = caixa.querySelector('.marcavel-busca');
 
+      // Na lista de escolha única não se conta o que está marcado (é sempre um
+      // ou nenhum): o contador serve para dizer o que a pesquisa escondeu.
+      const unico = !!caixa.querySelector('input[type=radio]');
+
       const contar = () => {
         const n = itens.filter((i) => i.querySelector('input').checked).length;
         const ocultos = itens.filter((i) => i.classList.contains('d-none')).length;
         contador.textContent = [
-          n === 0 ? 'Nenhum item marcado' : `${n} marcado${n > 1 ? 's' : ''}`,
+          unico ? (n ? '' : 'Nenhum item escolhido')
+                : (n === 0 ? 'Nenhum item marcado' : `${n} marcado${n > 1 ? 's' : ''}`),
           ocultos ? `${ocultos} fora da pesquisa` : '',
         ].filter(Boolean).join(' · ');
       };
 
-      caixa.querySelectorAll('input[type=checkbox]').forEach((ch) =>
+      caixa.querySelectorAll('input').forEach((ch) =>
         ch.addEventListener('change', contar));
       busca?.addEventListener('input', () => {
         const q = norm(busca.value.trim());
@@ -397,6 +421,10 @@ const Modal = {
         alvo.innerHTML = valor
           ? this.esc(valor)
           : `<span class="text-muted">${this.esc(vazio)}</span>`;
+        // O valor mora num `input[type=hidden]`, e campo escrito por código não
+        // emite evento sozinho: sem este disparo, `visivelSe` e `aoMudar` nunca
+        // ficariam sabendo da escolha feita neste controle.
+        oculto.dispatchEvent(new Event('change', { bubbles: true }));
         fechar();
       };
 
@@ -492,6 +520,24 @@ const Modal = {
       document.getElementById(`campo-${nome}`)?.addEventListener('change', aplicar);
     });
     aplicar();
+  },
+
+  /**
+   * Avisa a tela dona a cada mudança de campo (ver `aoMudar` em `abrir`).
+   *
+   * O ouvinte fica no FORMULÁRIO e não em cada campo: o `change` sobe por
+   * borbulhamento, e assim vale também para o que é desenhado por dentro
+   * (`selecao_livre` guarda o valor num `input[type=hidden]`, que não emite
+   * evento sozinho — quem o preenche dispara o `change` à mão).
+   * O formulário é reconstruído a cada abertura (`innerHTML`), então não há
+   * ouvinte antigo empilhado aqui.
+   */
+  ligarMudanca(raiz, aoMudar) {
+    if (!aoMudar) return;
+    const disparar = () => aoMudar(this.coletar(), raiz);
+    raiz.addEventListener('change', disparar);
+    raiz.addEventListener('input', disparar);
+    disparar();
   },
 
   // O valor da faixa acompanha o arraste do controle
@@ -614,6 +660,9 @@ const Modal = {
         }
         continue;
       }
+      // `info` é bloco de leitura: tem id (para ser reescrito por `aoMudar`)
+      // mas não tem valor, e sem esta saída ele entraria no corpo como `undefined`
+      if (c.tipo === 'info') continue;
       const el = document.getElementById(`campo-${c.nome}`);
       if (!el) continue;
       if (c.tipo === 'checkbox') dados[c.nome] = el.checked;
@@ -624,7 +673,10 @@ const Modal = {
       }
       else if (c.tipo === 'multiselect') dados[c.nome] = Array.from(el.selectedOptions).map((o) => o.value);
       else if (c.tipo === 'lista_marcavel') {
-        dados[c.nome] = [...el.querySelectorAll('input[type=checkbox]:checked')].map((ch) => ch.value);
+        const marcados = [...el.querySelectorAll('input:checked')].map((ch) => ch.value);
+        // `unico` devolve o valor, não a lista de um: quem consome é campo de
+        // id, e um array aqui viraria "Array" no corpo do pedido.
+        dados[c.nome] = c.unico ? (marcados[0] ?? null) : marcados;
       }
       else if (c.tipo === 'number' || c.tipo === 'faixa') dados[c.nome] = el.value === '' ? null : Number(el.value);
       else dados[c.nome] = el.value;
