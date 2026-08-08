@@ -18,7 +18,13 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   ação e período/status do projeto). `Consolidacao::reconciliar($planId)` roda
   no começo de **toda leitura** que exibe esses campos — Projetos, Painel e
   Relatório. Deixá-la só em Projetos fazia o painel da direção contar zero
-  atraso até alguém abrir a seção, e os números mudavam sozinhos depois. Autoload PSR-4 caseiro em `public/index.php` (`App\` → `app/`);
+  atraso até alguém abrir a seção, e os números mudavam sozinhos depois.
+  `Fatores::exigirSemAcao` é a guarda **compartilhada** por `FatorController` e
+  `ColetaController`: excluir um fator (ou a ideia que virou fator) apaga junto
+  o promovido à SWOT, e é ele que pode carregar o `desdobramento_id` — a guarda
+  confere `f.id IN (…) OR f.promovido_de_id IN (…)`, senão a ação ficava no
+  plano sem origem nenhuma. Autoload PSR-4 caseiro em `public/index.php`
+  (`App\` → `app/`);
   **não há Composer nem `vendor/`** — nada de dependência externa em PHP.
 - **Frontend**: JS vanilla, sem build. Seções em `public/assets/js/secoes/*.js`
   registradas em `App.recarregarSecaoAtiva()` (`app.js`). Formulários via
@@ -50,6 +56,20 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   dentro (`crescerTextarea`). Medida que depende de layout (o que transborda,
   quanto o texto ocupa) vai em `Modal.aoAparecer`, disparada no
   `shown.bs.modal` — com o modal escondido toda altura vale zero.
+  **Campo abaixo da dobra é anunciado** (`Modal.ligarAvisoRolagem`, o botão
+  `#modal-mais` em `shell.php`): o corpo do modal sempre rolou, mas nada dizia
+  isso, e o Salvar mora no rodapé FIXO, sempre visível. Numa janela de
+  notebook, o formulário de quatro perguntas da matriz GUT mostrava três e o
+  botão — quem respondia o que via e salvava deixava o esforço "não estimado"
+  sem nunca ter escolhido isso. O aviso é `position: sticky; bottom: 0` (e não
+  `absolute`: a altura do rodapé muda com o botão extra, e um deslocamento fixo
+  erraria o alvo em metade dos formulários) e some quando a rolagem acaba. O
+  ouvinte é ligado UMA vez — o corpo é o mesmo elemento em todos os
+  formulários, e religá-lo a cada abertura empilharia uma cópia por modal.
+  Pelo mesmo motivo, a recusa do servidor passa por `Modal.mostrarErro`, que dá
+  `scrollIntoView` no aviso (sem mexer no foco): com o corpo rolado até o fim —
+  o estado de quem acabou de preencher e clicou em Salvar — a mensagem nascia
+  fora da vista e o formulário parecia ter ignorado o clique.
 - Bibliotecas vendoradas do front ficam em `public/assets/vendor/` e **vão
   para o repositório**. O `.gitignore` usa `/vendor/` (só a raiz, do Composer);
   um `vendor/` solto engoliria essa pasta e o `git add -A` deixaria o arquivo
@@ -155,10 +175,34 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   eixo some, para a largura ir toda para os quadrantes. Não há filtro de situação
   nessa tela.
 - **Matriz GUT** (`Gravidade × Urgência × Tendência`, 1–125): cada dimensão tem
-  **pergunta-guia** no modal de avaliação; score ≥64 vermelho (Alta), ≥27 dourado
-  (Média), senão verde (Baixa), com a legenda distribuída na barra da matriz
-  (`.gut-legenda-barra`). O botão **Redefinir** (`extra.manterAberto`) zera os
-  valores **sem fechar** o modal, para continuar editando.
+  **pergunta-guia** no modal de avaliação; a prioridade é **Pequeno** (<27,
+  verde), **Médio** (27–63, dourado) e **Grande** (≥64, vermelho — tratar
+  agora), com a legenda distribuída na barra da matriz (`.gut-legenda-barra`).
+  O botão **Redefinir** (`extra.manterAberto`) zera os valores **sem fechar** o
+  modal, para continuar editando.
+  Cada ameaça também recebe um **esforço** (`gut.esforco`, ENUM
+  PEQUENO/MEDIO/GRANDE, nulo = não estimado). Ele fica **fora** do produto
+  G×U×T de propósito: o score mede o tamanho do problema e o esforço o da
+  resposta — multiplicá-los faria uma ameaça gravíssima e cara despencar na
+  fila só por ser cara. Ele entra apenas como **desempate** na ordenação
+  (`pesoEsforco`, sem estimativa vai para o fim), e a estimativa é **opcional**:
+  chutar "médio" ao reabrir o modal gravaria uma medida que ninguém fez.
+  Na tela ele é **uma letra** (P/M/G), nunca a palavra: as faixas do score se
+  chamam pequeno/médio/grande também, e escrever a palavra nas duas leituras
+  deixava a mesma linha dizendo "grande" para *prioridade alta* e para *caro de
+  resolver*, que são coisas opostas. O que a letra significa mora no **ⓘ** da
+  legenda (`Diag.ligarOrientacoes`, o mesmo padrão das análises) e no `title` de
+  cada selo — não num parágrafo acima da tabela, que custava uma faixa inteira
+  da tela.
+  O cabeçalho da seção (`.cabecalho-gut`) e o `<thead>` da tabela **grudam**
+  abaixo da topbar, em degraus: `--topo-app` e `--altura-cabecalho`, medida por
+  `Diag.ligarCabecalhoFixo` (o mesmo helper das análises). Rolando o ranking,
+  G, U, T, Score e Esforço saíam de vista e viravam cinco números anônimos.
+  A tabela **não** usa `.table-responsive`: `overflow-x: auto` faria da própria
+  caixa o scrollport do `sticky`, e o cabeçalho grudaria numa caixa que nunca
+  rola na vertical — ou seja, nunca. Ela só aparece a partir de `md`, onde
+  cabe; no celular são cartões, cada um com os próprios rótulos, e ali nada
+  gruda (o título quebra em duas linhas e custaria um quinto da tela).
 - Metas plurianuais versionadas: `indicador_valor` única por
   (indicador, ano, tipo, versão); leitura usa a MAIOR versão de cada ano.
 - Investimentos decididos nunca voltam a PROPOSTO; APROVADO só avança para
@@ -801,6 +845,33 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 - Dados inseridos pelo cliente `mysql` sem `--default-character-set=utf8mb4`
   saem com acentuação quebrada; o caminho do PDO da aplicação está correto.
 
+## Baterias de validação (`testes/`)
+
+`./testes/rodar.sh` roda as três em sequência e devolve 0 só se todas passarem
+— dá para pendurar num hook ou num CI. Elas batem numa instância **local**
+(nunca produção: a funcional cria e apaga registros) e o detalhe está em
+`testes/README.md`, inclusive o que elas **não** cobrem.
+
+| Bateria | Cobre | Falha quando |
+|---|---|---|
+| `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
+| `sistema.js` | As 15 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
+| `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
+
+O que é comum às duas de navegador mora em `testes/comum.js` — resolver o
+Chromium, fazer login, esperar sem `waitForFunction`. Escritas separadas,
+divergiriam na primeira mudança da tela de login. `chromiumExec()` acha o
+binário **por glob**: o número da build muda a cada atualização da imagem, e
+fixá-lo faria a bateria parar de rodar sem ninguém entender por quê.
+A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
+depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
+falta de massa ensina a ignorar o vermelho.
+Duas cautelas ao escrever prova nova: a seção continua no DOM quando escondida,
+então **esperar pelo seletor não prova que a tela está visível** (confira o
+`d-none` e reemita `App.mostrarSecao`); e a altura de janela é parte do teste —
+a bateria roda em 700px justamente porque é a janela em que o modal da GUT não
+cabia inteiro.
+
 ## Deploy
 
 - Railway, servidor embutido do PHP (`php -S` no `entrypoint.sh`) — adequado a
@@ -819,7 +890,9 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 - Mensagens de commit em português, primeira linha descritiva.
 - Ao concluir trabalho grande: rodar o time de agentes de revisão
   (segurança, corretude, infra, frontend) e aplicar os achados confirmados;
-  manter a responsividade mobile; validar com Playwright antes de commitar.
+  manter a responsividade mobile; rodar `./testes/rodar.sh` antes de commitar.
+  Defeito corrigido vira **prova na bateria**, no mesmo commit: é o que impede
+  que ele volte na refatoração seguinte sem ninguém notar.
 - Acessibilidade que já custou defeito: as seções **não são destruídas** ao
   navegar (só ganham `d-none`), então id repetido entre telas coexiste no
   documento e o `for` do label casa sempre com o primeiro — ids de tela levam

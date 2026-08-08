@@ -1327,11 +1327,16 @@ const SecaoGut = {
   // Tamanho do enfrentamento. Deliberadamente SEM cor própria: no mesmo cartão
   // já existe o selo do score, onde vermelho quer dizer "prioridade alta". Um
   // segundo selo colorido faria vermelho significar duas coisas diferentes lado
-  // a lado. O tamanho aparece como barra de 1 a 3 traços, que se lê de relance.
+  // a lado.
+  // Na tela ele aparece como UMA LETRA. As faixas do score também se chamam
+  // pequeno/médio/grande, e escrever a palavra nas duas leituras deixava a
+  // mesma linha dizendo "grande" para "prioridade alta" e para "caro de
+  // resolver" — que são coisas opostas. A letra não colide com a palavra, e o
+  // que ela significa está no ⓘ da legenda e no title de cada selo.
   ESFORCOS: {
-    PEQUENO: { rotulo: 'pequeno', tracos: 1 },
-    MEDIO:   { rotulo: 'médio',   tracos: 2 },
-    GRANDE:  { rotulo: 'grande',  tracos: 3 },
+    PEQUENO: { letra: 'P', rotulo: 'pequeno', ajuda: 'a equipe resolve com o que já tem' },
+    MEDIO:   { letra: 'M', rotulo: 'médio', ajuda: 'exige remanejar time, verba ou prazo' },
+    GRANDE:  { letra: 'G', rotulo: 'grande', ajuda: 'precisa de projeto, investimento ou decisão da direção' },
   },
   // Ordem de desempate: entre ameaças de prioridade parecida, começa a que
   // custa menos. Sem estimativa vai para o fim — não se compara com o que foi
@@ -1342,9 +1347,8 @@ const SecaoGut = {
   seloEsforco(esforco) {
     const e = this.ESFORCOS[esforco];
     if (!e) return '<span class="esforco-selo vazio" title="Esforço não estimado">—</span>';
-    const tracos = [1, 2, 3].map((n) => `<i class="${n <= e.tracos ? 'on' : ''}"></i>`).join('');
-    return `<span class="esforco-selo" title="Esforço para tratar: ${e.rotulo}">
-      <span class="esforco-barra">${tracos}</span>${e.rotulo}</span>`;
+    const dica = `Esforço ${e.rotulo} — ${e.ajuda}`;
+    return `<span class="esforco-selo" title="${dica}" aria-label="${dica}">${e.letra}</span>`;
   },
 
   async carregar() {
@@ -1405,22 +1409,34 @@ const SecaoGut = {
 
     const vazio = 'Cadastre fatores na SWOT para avaliá-los aqui.';
     el.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h1>Matriz GUT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
-        ${Diag.seletorAno('gut')}
+      <div class="cabecalho-gut" data-cabecalho-analise>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h1 class="mb-0">Matriz GUT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+          ${Diag.seletorAno('gut')}
+        </div>
       </div>
       <div class="gut-legenda-barra small mb-3">
-        <span class="gl-titulo">Prioridade = Gravidade × Urgência × Tendência (1–125)</span>
+        <span class="gl-titulo">Prioridade =
+          <span class="d-none d-lg-inline">Gravidade × Urgência × Tendência</span>
+          <span class="d-lg-none">G × U × T</span> (1–125)</span>
         <span class="gl-faixas">
-          <span><i style="background:${this.corScore(64)}"></i>Alta (≥ 64) — tratar agora</span>
-          <span><i style="background:${this.corScore(27)}"></i>Média (27–63)</span>
-          <span><i style="background:${this.corScore(1)}"></i>Baixa (&lt; 27)</span>
+          <span><i style="background:${this.corScore(1)}"></i>Pequeno (&lt; 27)</span>
+          <span><i style="background:${this.corScore(27)}"></i>Médio (27–63)</span>
+          <span><i style="background:${this.corScore(64)}"></i>Grande (≥ 64)<span
+            class="d-none d-md-inline"> — tratar agora</span></span>
+        </span>
+        <span class="gl-esforco">Esforço
+          ${Object.values(this.ESFORCOS).map((e) => `<b>${e.letra}</b>`).join('·')}
+          <button type="button" class="btn-orientacao" data-orientacao="ESFORCO"
+            style="--cor-cat:#5d6b64" aria-expanded="false"
+            title="O que significa o esforço" aria-label="O que significa o esforço">ⓘ</button>
         </span>
       </div>
-      <div class="small text-muted mb-3 esforco-nota">
-        ${this.seloEsforco('PEQUENO')} ${this.seloEsforco('MEDIO')} ${this.seloEsforco('GRANDE')}
-        <span>— o esforço mede o tamanho da <strong>resposta</strong>, não o do problema.
-        Ele não entra no score: só desempata por onde começar entre ameaças de prioridade parecida.</span>
+      <div class="orientacao-categoria small d-none mb-3" data-orientacao-alvo="ESFORCO"
+        style="--cor-cat:#5d6b64">
+        ${Object.values(this.ESFORCOS).map((e) => `<b>${e.letra}</b> = ${e.rotulo} (${e.ajuda})`).join(' · ')}.
+        O esforço mede o tamanho da <strong>resposta</strong>, não o do problema: não entra no score,
+        só desempata por onde começar entre ameaças de prioridade parecida.
       </div>
 
       <div class="d-md-none">
@@ -1431,7 +1447,7 @@ const SecaoGut = {
         </div>` : ''}
       </div>
 
-      <div class="table-responsive d-none d-md-block">
+      <div class="tabela-gut d-none d-md-block">
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Ranking</th><th>Quadrante</th><th>Fator</th>
@@ -1444,6 +1460,12 @@ const SecaoGut = {
 
     Diag.ligarSeletorAno(el);
     Diag.ligarVerMais(el);
+    Diag.ligarOrientacoes(el);
+    // Mede `--altura-cabecalho` para o `<thead>` grudar logo ABAIXO do título,
+    // e não por cima dele. É o mesmo helper das outras análises de propósito:
+    // o bloco quebra em uma ou duas linhas conforme a largura, e um palpite em
+    // `rem` deixaria os dois cabeçalhos empilhados na tela errada.
+    Diag.ligarCabecalhoFixo(el);
     Diag.aplicarDestaque(el, 'gut');
     if (!editar) return;
     const escala = [1, 2, 3, 4, 5].map((n) => ({ valor: n, rotulo: String(n) }));

@@ -1084,6 +1084,63 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   white-space: nowrap;
 }
 
+/* "mais campos abaixo ↓": grudado no fim da área visível do corpo do modal
+   enquanto sobrar campo. `sticky` em vez de `absolute` de propósito — a altura
+   do rodapé muda com o botão extra, e um deslocamento fixo erraria o alvo em
+   metade dos formulários. Ele ocupa uma linha no fim do conteúdo, e por isso
+   só aparece quando há mesmo o que rolar. */
+.aviso-rolagem {
+  position: sticky;
+  bottom: 0;
+  display: block;
+  margin: .25rem auto 0;
+  border: 1px solid #dde3e0;
+  background: #eef1ef;
+  color: #495057;
+  border-radius: 20px;
+  font-size: .75rem;
+  font-weight: 600;
+  padding: .2rem .7rem;
+  min-height: 1.6rem;
+  box-shadow: 0 .25rem .4rem -.2rem rgba(0, 0, 0, .25);
+}
+.aviso-rolagem:hover { background: #e3e8e5; }
+
+/* Cabeçalho da Matriz GUT grudado abaixo da topbar, e o `<thead>` grudado
+   abaixo dele. Rolando o ranking, os títulos saíam de vista e as quatro
+   colunas de número viravam números anônimos — não dava para saber qual era
+   G, qual era Score e qual era Esforço. Só a partir de md: no celular a tabela
+   nem existe (são cartões, e cada um traz os próprios rótulos), e ali o título
+   quebra em duas linhas — grudá-lo custaria um quinto da tela o tempo todo. */
+@media (min-width: 768px) {
+  .cabecalho-gut {
+    position: sticky;
+    top: var(--topo-app);
+    z-index: 3;
+    background: #f4f6f5;
+    /* Cobre a sarjeta do container, senão a linha da tabela aparece pelas
+       beiradas enquanto passa por baixo */
+    margin: 0 -.75rem .5rem;
+    padding: .4rem .75rem;
+    box-shadow: 0 .35rem .35rem -.3rem rgba(0, 0, 0, .22);
+  }
+  /* `overflow: visible` no lugar do `.table-responsive`: `overflow-x: auto`
+     faria da própria caixa o scrollport do sticky, e o cabeçalho grudaria numa
+     caixa que nunca rola na vertical — ou seja, nunca grudaria. A tabela só
+     aparece de md para cima, onde ela cabe sem rolagem horizontal. */
+  .tabela-gut { overflow: visible; }
+  .tabela-gut thead th {
+    position: sticky;
+    top: calc(var(--topo-app) + var(--altura-cabecalho, 0px));
+    z-index: 2;
+    background: #fff;
+    /* Com `border-collapse`, a borda de um `th` grudado não acompanha: a linha
+       de baixo é desenhada por dentro, com a sombra fazendo o corte ser lido
+       como "tem mais coisa acima". */
+    box-shadow: inset 0 -1px 0 #dee2e6, 0 .35rem .35rem -.3rem rgba(0, 0, 0, .18);
+  }
+}
+
 /* Legenda de prioridade da Matriz GUT: barra clara com as faixas espalhadas */
 .gut-legenda-barra {
   display: flex;
@@ -1101,6 +1158,14 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
 .gut-legenda-barra .gl-faixas { display: flex; flex-wrap: wrap; gap: .35rem 1rem; }
 .gut-legenda-barra .gl-faixas > span { display: inline-flex; align-items: center; gap: .35rem; }
 .gut-legenda-barra i { width: .8rem; height: .8rem; border-radius: .2rem; display: inline-block; flex-shrink: 0; }
+/* No celular a barra inteira cabe em três linhas curtas: com o espaçamento do
+   computador ela gastava um quinto da tela antes do primeiro fator. */
+@media (max-width: 767.98px) {
+  .gut-legenda-barra { gap: .2rem .6rem; padding: .4rem .55rem; justify-content: flex-start; }
+  .gut-legenda-barra .gl-faixas { gap: .2rem .6rem; }
+  .gut-legenda-barra .gl-faixas > span { gap: .25rem; }
+  .gut-legenda-barra i { width: .65rem; height: .65rem; }
+}
 
 /* Ideias da coleta aguardando virar ação num plano de ação */
 .card-ideias-acao { border-left: 4px solid #5a3e2b; }
@@ -1206,31 +1271,25 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   border-radius: 20px;
 }
 .gut-acao { margin-left: auto; font-size: .7rem; font-weight: 600; color: #adb5bd; }
-/* Esforço: sem cor semântica, para não disputar leitura com o selo do score
-   (onde vermelho quer dizer "prioridade alta"). O tamanho é a barra. */
+/* Esforço: uma LETRA (P/M/G) num selo sem cor semântica — não pode disputar
+   leitura com o selo do score, onde vermelho quer dizer "prioridade alta".
+   Largura fixa para as letras ficarem alinhadas na coluna da tabela. */
 .esforco-selo {
   display: inline-flex;
   align-items: center;
-  gap: .3rem;
-  font-size: .65rem;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  font-size: .7rem;
   font-weight: 700;
-  letter-spacing: .03em;
-  text-transform: uppercase;
   color: #5d6b64;
   background: #eef1ef;
   border: 1px solid #dde3e0;
   border-radius: 20px;
-  padding: .1rem .45rem;
-  white-space: nowrap;
 }
-.esforco-selo.vazio { color: #a9b3ad; font-weight: 600; }
-.esforco-barra { display: inline-flex; align-items: flex-end; gap: 1px; height: .6rem; }
-.esforco-barra i { width: 3px; background: #c8d1cc; border-radius: 1px; }
-.esforco-barra i:nth-child(1) { height: 40%; }
-.esforco-barra i:nth-child(2) { height: 70%; }
-.esforco-barra i:nth-child(3) { height: 100%; }
-.esforco-barra i.on { background: var(--verde-escuro); }
-.esforco-nota { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
+.esforco-selo.vazio { color: #a9b3ad; background: none; border-color: transparent; }
+.gut-legenda-barra .gl-esforco { display: inline-flex; align-items: center; gap: .3rem; }
+.gut-legenda-barra .gl-esforco b { font-weight: 700; color: #5d6b64; }
 .gut-chave {
   font-size: .6rem;
   font-weight: 700;

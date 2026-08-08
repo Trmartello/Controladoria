@@ -53,6 +53,47 @@ async function percorrer(page, largura) {
   }
 }
 
+/**
+ * Duas invariantes da Matriz GUT que já custaram defeito e não aparecem no
+ * "a seção pinta": o cabeçalho que precisa GRUDAR ao rolar (sem ele as quatro
+ * colunas de número viram números anônimos) e o aviso de campo abaixo da dobra
+ * no modal (sem ele o Esforço ficava "não estimado" sem ninguém escolher isso).
+ */
+async function provasGut(page) {
+  await page.evaluate(() => App.mostrarSecao('gut'));
+  await esperar(page, "!document.getElementById('secao-gut').classList.contains('d-none')", 15000);
+
+  await page.evaluate(() => window.scrollTo(0, 900));
+  await new Promise((r) => setTimeout(r, 400));
+  const fixo = await page.evaluate(() => {
+    const topo = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--topo-app'), 10);
+    const cab = document.querySelector('#secao-gut .cabecalho-gut');
+    const th = document.querySelector('#secao-gut .tabela-gut thead th');
+    if (!cab || !th) return null;
+    return { cab: Math.round(cab.getBoundingClientRect().top),
+      th: Math.round(th.getBoundingClientRect().top), topo };
+  });
+  t('[desktop] Cabeçalho da GUT gruda abaixo da topbar ao rolar',
+    !!fixo && fixo.cab === fixo.topo, JSON.stringify(fixo));
+  t('[desktop] Cabeçalho da tabela gruda abaixo do título, sem cobri-lo',
+    !!fixo && fixo.th > fixo.cab, JSON.stringify(fixo));
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.click('#secao-gut tbody tr:first-child [data-avaliar]');
+  const abriu = await esperar(page, "!!document.getElementById('campo-esforco')", 8000);
+  t('[desktop] Modal da GUT traz o campo de esforço', abriu);
+  if (!abriu) return;
+  await new Promise((r) => setTimeout(r, 400));
+  const dobra = await page.evaluate(() => {
+    const c = document.querySelector('.modal-body');
+    const a = document.getElementById('modal-mais');
+    return { sobra: c.scrollHeight - c.clientHeight > 8, aviso: !a.classList.contains('d-none') };
+  });
+  t('[desktop] Campo abaixo da dobra é anunciado (e só então)',
+    dobra.sobra === dobra.aviso, JSON.stringify(dobra));
+  await page.keyboard.press('Escape');
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -60,8 +101,12 @@ async function percorrer(page, largura) {
   // `reducedMotion` é obrigatório: sem ele o modal do Bootstrap deixa a classe
   // `.show` pendurada por falta do `transitionend`, e "o modal fechou" vira
   // falso-negativo em qualquer teste que feche diálogo.
-  const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 }, reducedMotion: 'reduce' });
-  await percorrer(await entrar(ctx, 'desktop', erros), 'desktop');
+  // 700px de altura de propósito: é a janela de notebook em que o modal da GUT
+  // não cabia inteiro, e a dobra é justamente o que se quer provar.
+  const ctx = await browser.newContext({ viewport: { width: 1500, height: 700 }, reducedMotion: 'reduce' });
+  const page = await entrar(ctx, 'desktop', erros);
+  await percorrer(page, 'desktop');
+  await provasGut(page);
 
   const ctxM = await browser.newContext({
     viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true,

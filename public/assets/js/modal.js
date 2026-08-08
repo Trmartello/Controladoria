@@ -274,6 +274,35 @@ const Modal = {
   aoAparecer(raiz) {
     this.aplicarVerMais(raiz);
     raiz.querySelectorAll('textarea').forEach((t) => this.crescerTextarea(t));
+    this.ligarAvisoRolagem(raiz.closest('.modal-body'));
+  },
+
+  /**
+   * Avisa que há campo abaixo da dobra.
+   *
+   * O corpo rola desde sempre, mas nada indicava isso — e o Salvar mora no
+   * rodapé fixo, sempre visível. Numa janela de notebook, o formulário de
+   * quatro perguntas da matriz GUT mostrava três e o botão: quem respondia as
+   * três e salvava deixava o esforço "não estimado" sem nunca ter escolhido
+   * isso. Vale para todo modal do sistema, não só para o da GUT.
+   *
+   * O ouvinte de rolagem é ligado UMA vez: o corpo do modal é o mesmo elemento
+   * em todos os formulários, e religá-lo a cada abertura empilharia uma cópia
+   * por modal aberto na sessão.
+   */
+  ligarAvisoRolagem(corpo) {
+    const aviso = document.getElementById('modal-mais');
+    if (!corpo || !aviso) return;
+    const medir = () => aviso.classList.toggle(
+      'd-none', corpo.scrollHeight - corpo.clientHeight - corpo.scrollTop <= 8);
+    if (!corpo.dataset.avisoLigado) {
+      corpo.addEventListener('scroll', medir);
+      aviso.addEventListener('click', () => corpo.scrollTo({
+        top: corpo.scrollTop + corpo.clientHeight * 0.8, behavior: 'smooth',
+      }));
+      corpo.dataset.avisoLigado = '1';
+    }
+    medir();
   },
 
   /**
@@ -622,9 +651,7 @@ const Modal = {
         else App.recarregarSecaoAtiva();
       }
     } catch (e) {
-      const erro = document.getElementById('modal-erro');
-      erro.textContent = e.message;
-      erro.classList.remove('d-none');
+      this.mostrarErro(e.message);
     } finally {
       botao.disabled = false;
     }
@@ -645,12 +672,25 @@ const Modal = {
       if (this.config.aoSalvar) this.config.aoSalvar(resposta);
       else App.recarregarSecaoAtiva();
     } catch (e) {
-      const erro = document.getElementById('modal-erro');
-      erro.textContent = e.message;
-      erro.classList.remove('d-none');
+      this.mostrarErro(e.message);
     } finally {
       botao.disabled = false;
     }
+  },
+
+  /**
+   * A recusa do servidor aparece acima do rodapé — e o rodapé é justamente
+   * onde está o Salvar que acabou de ser clicado. Com o corpo rolado até o
+   * fim, o aviso nascia fora da área visível e o formulário parecia ter
+   * simplesmente ignorado o clique. O `scrollIntoView` traz o aviso à vista; o
+   * foco fica onde está, para não tirar o cursor do campo que precisa mudar.
+   */
+  mostrarErro(mensagem) {
+    const erro = document.getElementById('modal-erro');
+    if (!erro) return;
+    erro.textContent = mensagem;
+    erro.classList.remove('d-none');
+    erro.scrollIntoView({ block: 'nearest' });
   },
 
   esc(s) {

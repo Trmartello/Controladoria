@@ -97,7 +97,14 @@
         </div>
         <div class="modal-body">
           <form id="modal-campos"></form>
-          <div id="modal-erro" class="alert alert-danger d-none py-2 mt-2"></div>
+          <div id="modal-erro" class="alert alert-danger d-none py-2 mt-2" role="alert"></div>
+          <!-- O corpo do modal rola, mas nada dizia isso: numa janela baixa o
+               formulário mostrava os primeiros campos e o Salvar logo abaixo
+               (ele mora no rodapé fixo), e quem preenchia o que via e salvava
+               nunca soube que havia mais. Fica por último de propósito: como é
+               `position: sticky; bottom: 0`, ele acompanha o fim da área
+               visível enquanto sobrar campo, e só sai quando a rolagem acaba. -->
+          <button type="button" id="modal-mais" class="aviso-rolagem d-none">mais campos abaixo ↓</button>
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline-danger btn-sm me-auto d-none" id="modal-extra"></button>
