@@ -122,6 +122,10 @@ CREATE TABLE IF NOT EXISTS gut (
   urgencia   TINYINT NOT NULL CHECK (urgencia   BETWEEN 1 AND 5),
   tendencia  TINYINT NOT NULL CHECK (tendencia  BETWEEN 1 AND 5),
   score      SMALLINT GENERATED ALWAYS AS (gravidade * urgencia * tendencia) STORED,
+  -- Esforço para tratar a ameaça. Fica NULO nas avaliações feitas antes de a
+  -- coluna existir: prioridade continua sendo o score, e o esforço só diz por
+  -- onde começar entre fatores de prioridade parecida.
+  esforco    ENUM('PEQUENO','MEDIO','GRANDE') NULL,
   CONSTRAINT fk_gut_fator FOREIGN KEY (fator_id) REFERENCES fator(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -1206,6 +1206,31 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   border-radius: 20px;
 }
 .gut-acao { margin-left: auto; font-size: .7rem; font-weight: 600; color: #adb5bd; }
+/* Esforço: sem cor semântica, para não disputar leitura com o selo do score
+   (onde vermelho quer dizer "prioridade alta"). O tamanho é a barra. */
+.esforco-selo {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: #5d6b64;
+  background: #eef1ef;
+  border: 1px solid #dde3e0;
+  border-radius: 20px;
+  padding: .1rem .45rem;
+  white-space: nowrap;
+}
+.esforco-selo.vazio { color: #a9b3ad; font-weight: 600; }
+.esforco-barra { display: inline-flex; align-items: flex-end; gap: 1px; height: .6rem; }
+.esforco-barra i { width: 3px; background: #c8d1cc; border-radius: 1px; }
+.esforco-barra i:nth-child(1) { height: 40%; }
+.esforco-barra i:nth-child(2) { height: 70%; }
+.esforco-barra i:nth-child(3) { height: 100%; }
+.esforco-barra i.on { background: var(--verde-escuro); }
+.esforco-nota { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
 .gut-chave {
   font-size: .6rem;
   font-weight: 700;

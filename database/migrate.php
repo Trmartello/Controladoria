@@ -351,6 +351,12 @@ $pdo->exec(
 );
 garantirColuna($pdo, 'projeto', 'descricao',
     'ALTER TABLE projeto ADD COLUMN descricao TEXT NULL AFTER titulo');
+
+// Esforço para tratar a ameaça, ao lado das notas G/U/T. Nulo nas avaliações
+// anteriores à coluna: a matriz não inventa um esforço que ninguém estimou —
+// o cartão mostra "—" e continua ordenado pelo score.
+garantirColuna($pdo, 'gut', 'esforco',
+    "ALTER TABLE gut ADD COLUMN esforco ENUM('PEQUENO','MEDIO','GRANDE') NULL AFTER score");
 // Reparo dos backfills antigos (idempotente): ano desalinhado do horizonte
 // escolhido volta para o primeiro ano dele; projeto sem horizonte com ano
 // anterior à execução vai para o primeiro ano de execução do ciclo

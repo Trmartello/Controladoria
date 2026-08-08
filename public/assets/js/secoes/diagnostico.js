@@ -1324,12 +1324,37 @@ const SecaoGut = {
     return '#007a45';
   },
 
+  // Tamanho do enfrentamento. Deliberadamente SEM cor própria: no mesmo cartão
+  // já existe o selo do score, onde vermelho quer dizer "prioridade alta". Um
+  // segundo selo colorido faria vermelho significar duas coisas diferentes lado
+  // a lado. O tamanho aparece como barra de 1 a 3 traços, que se lê de relance.
+  ESFORCOS: {
+    PEQUENO: { rotulo: 'pequeno', tracos: 1 },
+    MEDIO:   { rotulo: 'médio',   tracos: 2 },
+    GRANDE:  { rotulo: 'grande',  tracos: 3 },
+  },
+  // Ordem de desempate: entre ameaças de prioridade parecida, começa a que
+  // custa menos. Sem estimativa vai para o fim — não se compara com o que foi
+  // medido, e fingir "pequeno" mandaria a fila para o lugar errado.
+  pesoEsforco(esforco) {
+    return { PEQUENO: 1, MEDIO: 2, GRANDE: 3 }[esforco] || 9;
+  },
+  seloEsforco(esforco) {
+    const e = this.ESFORCOS[esforco];
+    if (!e) return '<span class="esforco-selo vazio" title="Esforço não estimado">—</span>';
+    const tracos = [1, 2, 3].map((n) => `<i class="${n <= e.tracos ? 'on' : ''}"></i>`).join('');
+    return `<span class="esforco-selo" title="Esforço para tratar: ${e.rotulo}">
+      <span class="esforco-barra">${tracos}</span>${e.rotulo}</span>`;
+  },
+
   async carregar() {
     const base = await Diag.preparar('secao-gut');
     if (!base) return;
     const { el, plan, ano } = base;
     const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT&ano=${ano}`);
-    const ordenados = [...fatores].sort((a, b) => (b.score || 0) - (a.score || 0));
+    const ordenados = [...fatores].sort((a, b) =>
+      (b.score || 0) - (a.score || 0)
+      || this.pesoEsforco(a.esforco) - this.pesoEsforco(b.esforco));
     const editar = App.podeEditar();
 
     // Celular: cartões tocáveis. Computador: a tabela de ranking de sempre.
@@ -1347,6 +1372,7 @@ const SecaoGut = {
           <div class="d-flex align-items-center gap-2 mb-1">
             <span class="gut-rank ${avaliado ? '' : 'text-black-50'}">${avaliado ? `${idx + 1}º` : '—'}</span>
             <span class="badge gut-tag" style="color:${cor};background:${cor}1f">${Diag.QUADRANTES[f.categoria]}</span>
+            ${avaliado ? this.seloEsforco(f.esforco) : ''}
             ${editar ? '<span class="ms-auto gut-acao">avaliar ✎</span>' : ''}
           </div>
           <div class="small texto-fator mb-2">${Modal.esc(f.descricao)}</div>
@@ -1372,6 +1398,7 @@ const SecaoGut = {
         <td class="text-center">${f.tendencia ?? '—'}</td>
         <td class="text-center">${f.score
           ? `<span class="badge gut-score" style="background:${this.corScore(f.score)}">${f.score}</span>` : '—'}</td>
+        <td class="text-center">${f.score ? this.seloEsforco(f.esforco) : '—'}</td>
         <td>${editar ? `<button class="btn btn-sm btn-outline-secondary" data-avaliar="${f.id}">Avaliar</button>` : ''}</td>
       </tr>`;
     }).join('');
@@ -1390,6 +1417,11 @@ const SecaoGut = {
           <span><i style="background:${this.corScore(1)}"></i>Baixa (&lt; 27)</span>
         </span>
       </div>
+      <div class="small text-muted mb-3 esforco-nota">
+        ${this.seloEsforco('PEQUENO')} ${this.seloEsforco('MEDIO')} ${this.seloEsforco('GRANDE')}
+        <span>— o esforço mede o tamanho da <strong>resposta</strong>, não o do problema.
+        Ele não entra no score: só desempata por onde começar entre ameaças de prioridade parecida.</span>
+      </div>
 
       <div class="d-md-none">
         ${cartoes || `<div class="text-muted small">${vazio}</div>`}
@@ -1404,9 +1436,9 @@ const SecaoGut = {
           <thead><tr>
             <th>Ranking</th><th>Quadrante</th><th>Fator</th>
             <th class="text-center">G</th><th class="text-center">U</th><th class="text-center">T</th>
-            <th class="text-center">Score</th><th></th>
+            <th class="text-center">Score</th><th class="text-center">Esforço</th><th></th>
           </tr></thead>
-          <tbody>${linhas || `<tr><td colspan="8" class="text-muted">${vazio}</td></tr>`}</tbody>
+          <tbody>${linhas || `<tr><td colspan="9" class="text-muted">${vazio}</td></tr>`}</tbody>
         </table>
       </div>`;
 
@@ -1421,6 +1453,10 @@ const SecaoGut = {
       valores: {
         planejamento_id: plan.id,
         gravidade: f.gravidade || 3, urgencia: f.urgencia || 3, tendencia: f.tendencia || 3,
+        // Sem padrão: esforço não estimado tem que continuar não estimado ao
+        // reabrir o modal. Chutar "médio" gravaria uma estimativa que ninguém
+        // fez, e ela entraria na ordem da fila como se fosse medida.
+        esforco: f.esforco || '',
       },
       campos: [
         { nome: 'fator_info', rotulo: 'Fator avaliado', tipo: 'info', texto: f.descricao,
@@ -1436,6 +1472,19 @@ const SecaoGut = {
           ajuda: '1 = pode esperar · 5 = agir já. Qual o prazo para agir e o quanto adiar pressiona o cronograma ou gera perdas imediatas?' },
         { nome: 'tendencia', rotulo: 'Tendência — "Se nada for feito, isso vira uma bola de neve?"', tipo: 'botoes', opcoes: escala,
           ajuda: '1 = estável · 5 = piora rápido. O problema tende a continuar do mesmo tamanho ou piorar rapidamente? (velocidade de deterioração)' },
+        // Fora do produto G×U×T de propósito: o score mede o tamanho do
+        // problema, e o esforço mede o tamanho da resposta. Multiplicá-los
+        // faria uma ameaça gravíssima e cara despencar na fila só por ser cara.
+        { nome: 'esforco', rotulo: 'Esforço — "Quanto custa enfrentar isso?"', tipo: 'botoes',
+          opcoes: [
+            { valor: 'PEQUENO', rotulo: 'Pequeno' },
+            { valor: 'MEDIO', rotulo: 'Médio' },
+            { valor: 'GRANDE', rotulo: 'Grande' },
+            { valor: '', rotulo: 'Não estimado' },
+          ],
+          ajuda: 'Pequeno = a equipe resolve com o que já tem · Médio = exige remanejar time, verba ou prazo · '
+            + 'Grande = precisa de projeto, investimento ou decisão da direção. Não entra no score: '
+            + 'ele só desempata quem tratar primeiro entre ameaças de prioridade parecida.' },
       ],
       // Só há o que redefinir se o fator já tiver notas registradas. Redefinir
       // zera a avaliação e volta os botões ao padrão SEM fechar o modal, para
@@ -1450,6 +1499,11 @@ const SecaoGut = {
             const alvo = document.querySelector(`#campo-${nome} input[value="3"]`);
             if (alvo) alvo.checked = true;
           });
+          // `limpar` apaga a linha inteira do GUT, esforço incluído: deixar o
+          // botão anterior aceso mostraria na tela um valor que o banco não
+          // tem mais, e o próximo salvamento o regravaria sem ninguém pedir.
+          const semEsforco = document.querySelector('#campo-esforco input[value=""]');
+          if (semEsforco) semEsforco.checked = true;
         },
       } : null,
     });
