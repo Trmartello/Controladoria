@@ -281,7 +281,45 @@ php cli/notificar.php            # decide pelo dia
 php cli/notificar.php semanal    # só o relatório da semana
 php cli/notificar.php diario     # só as pendências do dia
 php cli/notificar.php auto 2027-03-01   # simula outra data, para conferir a regra
+php cli/notificar.php diagnostico       # por que o e-mail não sai
 ```
+
+### Quando o envio falha — rode o diagnóstico
+
+`Connection timed out` tem **três causas** que exigem providências opostas, e a
+mensagem não as separa. Em vez de tentar uma variável por vez (cada tentativa
+custa um deploy e um reinício do sistema), rode:
+
+```bash
+php cli/notificar.php diagnostico
+```
+
+No Railway isso se faz pela aba **Console** do serviço **web** — ele fica ligado
+o tempo todo, então o terminal conecta. (No serviço de cron não conecta: entre
+execuções não há contêiner no ar.)
+
+Ele imprime a configuração — **a senha nunca**, só se está definida e quantos
+caracteres tem —, resolve o DNS, tenta as portas de e-mail e a 443 como
+referência, e dá um veredito:
+
+| O que ele diz | O que fazer |
+|---|---|
+| Avisa que a porta 587 pede `tls` (ou a 465 pede `ssl`) | Trocar `SMTP_SEGURANCA`. As duas combinações erradas dão o **mesmo** "timed out" da porta fechada — é o engano mais difícil de enxergar |
+| Avisa que a senha tem espaço | A senha de aplicativo do Google é mostrada em quatro blocos; na variável ela vai emendada |
+| 443 abre e **nenhuma** porta de e-mail abre | Bloqueio de SMTP do provedor. Nenhuma variável resolve — ver *Se o SMTP estiver bloqueado*, abaixo |
+| Nem a 443 abre | O contêiner está sem saída para a internet; não é assunto de e-mail |
+| Diz que está tudo em ordem | O problema vem do servidor de e-mail (senha recusada, remetente não autorizado). Dispare pelo botão do Relatório de Status, que mostra a resposta |
+
+### Se o SMTP estiver bloqueado
+
+Hospedagem costuma bloquear as portas de e-mail para conter spam, e não há
+variável que contorne. O caminho é enviar por **API sobre HTTPS** (porta 443,
+que está aberta) em vez de SMTP — serviços como Brevo, Resend ou Mailgun têm
+faixa gratuita suficiente para o volume deste sistema (um aviso por pessoa com
+pendência, uma vez ao dia).
+
+Isso **não** é configuração: `App\Core\Email` fala SMTP na mão, e enviar por API
+é um caminho novo dentro dele. Peça a implementação — é pequena, mas é código.
 
 ---
 
