@@ -1317,11 +1317,25 @@ const SecaoSwot = {
 };
 
 const SecaoGut = {
-  // Severidade do score (1–125) colore o selo: alta, média ou baixa prioridade
+  // As três faixas do score (1–125). Na barra da legenda elas aparecem como
+  // LETRA, não por extenso: ao lado mora o esforço, que também é P/M/G, e as
+  // duas leituras escritas deixavam "Grande" a um palmo de "G" significando
+  // coisas opostas (prioridade alta × caro de resolver). O que separa uma
+  // leitura da outra na tela é o número entre parênteses, que fica; o que cada
+  // letra quer dizer mora no ⓘ da barra e no title de cada faixa.
+  FAIXAS: [
+    { letra: 'P', rotulo: 'pequena', piso: 1,  faixa: '&lt; 27', extenso: 'abaixo de 27', cor: '#007a45' },
+    { letra: 'M', rotulo: 'média',   piso: 27, faixa: '27–63',   extenso: 'de 27 a 63',   cor: '#b08d4f' },
+    { letra: 'G', rotulo: 'grande',  piso: 64, faixa: '≥ 64',    extenso: '64 ou mais',   cor: '#8f3b3b' },
+  ],
+  // Severidade do score colore o selo: alta, média ou baixa prioridade. Sai da
+  // MESMA lista da legenda — a cor do selo e a do quadradinho escritas
+  // separadas divergiriam na primeira revisão de paleta, e aí a legenda
+  // passaria a explicar uma cor que a tabela não usa.
   corScore(score) {
-    if (score >= 64) return '#8f3b3b';
-    if (score >= 27) return '#b08d4f';
-    return '#007a45';
+    let cor = this.FAIXAS[0].cor;
+    this.FAIXAS.forEach((f) => { if (score >= f.piso) cor = f.cor; });
+    return cor;
   },
 
   // Tamanho do enfrentamento. Deliberadamente SEM cor própria: no mesmo cartão
@@ -1420,20 +1434,24 @@ const SecaoGut = {
           <span class="d-none d-lg-inline">Gravidade × Urgência × Tendência</span>
           <span class="d-lg-none">G × U × T</span> (1–125)</span>
         <span class="gl-faixas">
-          <span><i style="background:${this.corScore(1)}"></i>Pequeno (&lt; 27)</span>
-          <span><i style="background:${this.corScore(27)}"></i>Médio (27–63)</span>
-          <span><i style="background:${this.corScore(64)}"></i>Grande (≥ 64)<span
-            class="d-none d-md-inline"> — tratar agora</span></span>
+          ${this.FAIXAS.map((f) => `<span title="Prioridade ${f.rotulo} — score ${f.extenso}"
+            aria-label="Prioridade ${f.rotulo} — score ${f.extenso}"><i
+            style="background:${this.corScore(f.piso)}"></i><b>${f.letra}</b> (${f.faixa})${
+            f.piso === 64 ? '<span class="d-none d-md-inline"> — tratar agora</span>' : ''}</span>`).join('')}
         </span>
         <span class="gl-esforco">Esforço
           ${Object.values(this.ESFORCOS).map((e) => `<b>${e.letra}</b>`).join('·')}
           <button type="button" class="btn-orientacao" data-orientacao="ESFORCO"
             style="--cor-cat:#5d6b64" aria-expanded="false"
-            title="O que significa o esforço" aria-label="O que significa o esforço">ⓘ</button>
+            title="O que significam P, M e G" aria-label="O que significam P, M e G">ⓘ</button>
         </span>
       </div>
       <div class="orientacao-categoria small d-none mb-3" data-orientacao-alvo="ESFORCO"
         style="--cor-cat:#5d6b64">
+        <b>P</b>, <b>M</b> e <b>G</b> aparecem em duas leituras diferentes desta tela.<br>
+        Na <strong>prioridade</strong> (o score) são as faixas:
+        ${this.FAIXAS.map((f) => `<b>${f.letra}</b> = ${f.rotulo} (${f.faixa})`).join(' · ')}.<br>
+        No <strong>esforço</strong> são o tamanho da resposta:
         ${Object.values(this.ESFORCOS).map((e) => `<b>${e.letra}</b> = ${e.rotulo} (${e.ajuda})`).join(' · ')}.
         O esforço mede o tamanho da <strong>resposta</strong>, não o do problema: não entra no score,
         só desempata por onde começar entre ameaças de prioridade parecida.
