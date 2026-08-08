@@ -199,6 +199,14 @@ Um "volume" é um disco que sobrevive aos deploys.
 > Um serviço só pode ter um volume, e o volume pertence a esse serviço. Por isso
 > ele fica no serviço de backup, não no do sistema.
 
+**No plano Hobby o teto é 5 GB por volume**, e esse teto é a única coisa que
+separa "backup rodando" de "backup parado sem avisar": cheio o disco, o dump sai
+cortado, o script recusa o arquivo e o dia fica sem cópia. Quem gasta esse
+espaço são os **anexos dos comentários** — cada arquivo vale até 5 MB, vai
+inteiro para dentro do banco e **não encolhe no `gzip`** (PDF e JPEG já estão
+comprimidos). Não é preciso adivinhar: o passo 6 imprime o tamanho do arquivo, e
+o passo 4 usa esse número para escolher quantos guardar.
+
 ---
 
 ### Passo 4 — Dizer ao backup qual é o banco (as variáveis)
@@ -224,13 +232,26 @@ aponta para o serviço do banco, e ele preenche sozinho.
    | Variável | Valor | Para que serve |
    |---|---|---|
    | `BACKUP_DIR` | `/backups` | onde gravar — o mesmo caminho do volume do passo 3 |
-   | `BACKUP_MANTER` | `30` | quantos arquivos guardar; os mais antigos são apagados sozinhos |
+   | `BACKUP_MANTER` | `14` | quantos arquivos guardar; os mais antigos são apagados sozinhos |
 
 **Você deve ver** sete variáveis na lista: cinco com ícone de referência ao
 MySQL e duas digitadas por você.
 
-> `BACKUP_MANTER=30` guarda um mês de cópias diárias. Se preferir menos espaço,
-> use `14`. Com `0`, nada é apagado nunca.
+**Por que 14 e não 30.** No plano Hobby o volume vai até 5 GB, e o script apaga
+os antigos *depois* de gravar o novo — ou seja, o pico é `BACKUP_MANTER + 1`
+arquivos ao mesmo tempo. A conta é `tamanho do arquivo × 15` e precisa caber
+com folga nos 5 GB. Rode o passo 6 primeiro, veja o tamanho impresso no log e
+volte aqui:
+
+| Tamanho de um arquivo | Guarde |
+|---|---|
+| até 50 MB | `30` — um mês inteiro cabe |
+| 50 a 150 MB | `14` (duas semanas) |
+| 150 a 300 MB | `7` (uma semana) |
+| acima de 300 MB | `7`, **e me avise** — nesse tamanho o caminho é tirar os anexos do banco, não encolher a retenção |
+
+Comece em `14`: é o valor que funciona sem saber o tamanho ainda. Com `0` nada é
+apagado nunca — não use aqui, o disco enche e o backup para.
 
 ---
 
@@ -255,6 +276,14 @@ o relógio de Greenwich (UTC), que está 3 horas à frente do nosso — então
 usando o sistema.
 
 **Você deve ver**, na tela do serviço, o comando e o agendamento salvos.
+
+> **O Cron Schedule não é opcional — é o que impede a conta de crescer.** O
+> plano Hobby inclui US$ 5 de crédito por mês, e um serviço *sem* agendamento o
+> Railway trata como servidor: ele roda o comando, o comando termina em poucos
+> segundos, o Railway reinicia, e assim a noite inteira. Não quebra nada, mas
+> consome crédito de graça e enche o log de reinícios. **Com** o agendamento,
+> ele acorda uma vez por dia, gasta menos de um minuto e desliga — custo
+> desprezível.
 
 ---
 
@@ -286,7 +315,13 @@ O ✓ na última linha é a confirmação de que o arquivo foi gerado **e confer
 ### Passo 7 — Conferir no dia seguinte
 
 Um dia depois, abra os **Logs** do serviço `backup` e confirme que rodou
-sozinho às 4h. Feito isso, a parte automática está no ar.
+sozinho às 4h. Aproveite e anote o **tamanho do arquivo** que aparece no ✓ —
+é com ele que você fecha a escolha do `BACKUP_MANTER` no passo 4.
+
+> **O log do plano Hobby guarda 7 dias.** Depois disso não há como olhar para
+> trás e saber se o backup de três semanas atrás rodou. Por isso a conferência
+> não pode ser "vou olhar quando lembrar": faça o passo 8 uma vez por mês — o
+> arquivo que chega no seu computador é a prova que não expira.
 
 ---
 
