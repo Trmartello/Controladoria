@@ -375,7 +375,16 @@ class QuizController
         // morto. Os votos caem pela FK (ON DELETE CASCADE). Grupos chegam na
         // fase de unificação; o solta abaixo é cinto de segurança, não fluxo.
         Database::executar(
-            'UPDATE coleta_item SET agrupado_em_id = NULL WHERE agrupado_em_id = ?', [$id]
+            'UPDATE coleta_item SET agrupado_em_id = NULL, unido_de_id = NULL,
+               unido_por = NULL, unido_em = NULL
+             WHERE agrupado_em_id = ?', [$id]
+        );
+        // E quem foi unido A PARTIR desta linha perde a marca também: sem isso,
+        // `unido_de_id` apontaria para uma linha apagada e o desfazer devolveria
+        // a ficha a um líder que não existe mais.
+        Database::executar(
+            'UPDATE coleta_item SET unido_de_id = NULL, unido_por = NULL, unido_em = NULL
+             WHERE unido_de_id = ?', [$id]
         );
         Database::executar('DELETE FROM coleta_item WHERE id = ?', [$id]);
         Json::ok();
@@ -461,13 +470,17 @@ class QuizController
         }
         // Linha antiga (unida antes destas colunas existirem) volta sozinha
         $origem = (int)($item['unido_de_id'] ?? 0) ?: $id;
+        // A guarda `agrupado_em_id = <líder de agora>` é o que impede o desfazer
+        // de puxar de volta uma linha que já foi para OUTRO cartão depois: sem
+        // ela, desfazer aqui desmontaria um agrupamento que ninguém tocou.
         Database::executar(
             "UPDATE coleta_item
                 SET agrupado_em_id = IF(id = ?, NULL, ?),
                     unido_de_id = NULL, unido_por = NULL, unido_em = NULL
               WHERE planejamento_id = ? AND origem = 'QUIZ'
+                AND agrupado_em_id = ?
                 AND (id = ? OR unido_de_id = ?)",
-            [$origem, $origem, $planId, $id, $origem]
+            [$origem, $origem, $planId, (int)$item['agrupado_em_id'], $id, $origem]
         );
         Json::ok(['lider' => $origem]);
     }
