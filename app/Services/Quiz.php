@@ -712,13 +712,22 @@ class Quiz
      * voltaria com um texto que ninguém mais reconhece. `$lado` existe para a
      * cascata, cuja célula tem dois textos — devolver a renúncia com o texto da
      * escolha seria pior que devolver o original.
+     *
+     * A redação é do CARTÃO, e o cartão é o LÍDER: as absorvidas ficam com
+     * `texto_tratado` nulo e voltam com o próprio texto. Sem a cláusula, o
+     * "Usar" de um cartão unificado (que amarra o grupo inteiro) gravava a mesma
+     * frase do condutor em todas, e o `soltarVozes` da exclusão do registro a
+     * promovia a `texto`: N-1 respostas distintas, de autores diferentes,
+     * apagadas sem histórico — justamente o que a unificação existe para
+     * preservar ("cada linha guarda o próprio texto, autor, data e votos").
      */
     public static function guardarRedacao(
         string $destinoTipo, int $destinoId, string $texto, ?string $lado = null
     ): void {
         Database::executar(
             "UPDATE coleta_item SET texto_tratado = ?
-             WHERE destino_tipo = ? AND destino_id = ? AND origem = 'QUIZ'"
+             WHERE destino_tipo = ? AND destino_id = ? AND origem = 'QUIZ'
+               AND agrupado_em_id IS NULL"
             . ($lado === null ? '' : ' AND tipo_resposta = ?'),
             $lado === null
                 ? [$texto, $destinoTipo, $destinoId]
