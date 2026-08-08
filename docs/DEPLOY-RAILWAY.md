@@ -43,20 +43,10 @@ E estas variáveis simples (valores seus):
 
 ### Avisos por e-mail (opcional)
 
-Sem estas variáveis o sistema funciona normalmente, apenas não envia e-mail.
-
-| Variável | Exemplo | Observação |
-|---|---|---|
-| `SMTP_HOST` | `smtp.office365.com` | servidor de saída |
-| `SMTP_PORTA` | `587` | 587 com `tls`, 465 com `ssl` |
-| `SMTP_SEGURANCA` | `tls` | `tls`, `ssl` ou `nenhuma` |
-| `SMTP_USUARIO` | `planejamento@coperdia.com.br` | deixe vazio se o servidor não pede autenticação |
-| `SMTP_SENHA` | *(senha do e-mail)* | |
-| `SMTP_REMETENTE` | `planejamento@coperdia.com.br` | endereço que aparece como remetente |
-| `SMTP_NOME_REMETENTE` | `Planejamento Estratégico Copérdia` | opcional |
-
-Depois de configurar, teste pelo próprio sistema: **Relatório de Status →
-Enviar avisos por e-mail** (botão visível para o perfil Admin).
+Sem as variáveis `SMTP_*` o sistema funciona normalmente, apenas não envia
+e-mail. Elas e o serviço que dispara os avisos todo dia estão na **seção 6**,
+com o passo a passo — inclusive o bloqueio do Microsoft 365, que é onde a
+configuração costuma travar. Uma lista só, para as duas não divergirem.
 
 ## 4. Gerar a URL pública
 
@@ -74,27 +64,192 @@ URL `https://<nome>.up.railway.app`.
 5. Em **Cadastros → Usuários**, crie os gestores (perfil GESTOR + vínculo ao
    negócio) e os perfis de Controladoria/Direção.
 
-## 6. Agendar os avisos por e-mail
+## 6. Avisos por e-mail — passo a passo
 
-Os avisos saem de um comando de linha; o Railway precisa executá-lo uma vez
-por dia. No projeto: **+ Create → Empty Service**, aponte para o mesmo
-repositório e, em **Settings**:
+O sistema sabe quem tem ação atrasada e quem tem prazo hoje. O que falta é ele
+poder **avisar sem que alguém precise abrir a tela**: um relatório da semana na
+segunda e as pendências do dia, todo dia. Quem faz isso é `cli/notificar.php`,
+e ele precisa de duas coisas — uma conta de e-mail para enviar, e alguém que o
+execute uma vez por dia.
 
-- **Cron Schedule**: `0 11 * * *` (o Railway usa UTC — 11h UTC = 8h de Brasília);
-- **Custom Start Command**: `php cli/notificar.php`;
-- em **Variables**, replique as referências `MYSQL*` e as variáveis `SMTP_*`.
+Esta seção é para ser seguida clicando junto, como a do backup. A diferença é
+que aqui **o primeiro passo não é no Railway**: é conseguir a conta de envio, e
+é nele que quase todo mundo trava.
 
-O comando decide sozinho o que enviar: na **segunda-feira** manda o relatório
-da semana e, **todo dia**, as pendências do dia. Rodar duas vezes no mesmo dia
-não duplica nada — cada envio fica registrado na tabela `envio_email`.
+---
 
-Para forçar manualmente (ou testar):
+### Passo 0 — Conseguir uma conta que possa enviar (o passo que trava)
+
+Enviar e-mail em nome da cooperativa exige uma caixa de e-mail que aceite envio
+por programa (o chamado **SMTP**). Você vai precisar de cinco informações, e
+quem as tem é o TI:
+
+| O que pedir | Exemplo |
+|---|---|
+| Servidor de saída | `smtp.office365.com` |
+| Porta | `587` |
+| Tipo de segurança | `tls` |
+| Usuário | `planejamento@coperdia.com.br` |
+| Senha | *(a da caixa, ou uma "senha de aplicativo")* |
+
+**O aviso que economiza uma tarde.** Se a Copérdia usa **Microsoft 365**, o
+envio por programa vem **bloqueado de fábrica** desde 2022 — a Microsoft
+desligou isso para todo mundo por segurança. Não adianta acertar host, porta e
+senha: a resposta será sempre de autenticação recusada. O TI precisa **habilitar
+o SMTP AUTH para essa caixa específica** (é uma opção no painel do Microsoft
+365, por caixa de correio). Peça isso explicitamente, junto com os dados acima.
+
+Se for **Gmail / Google Workspace**, o caminho é outro: a conta precisa de
+verificação em duas etapas ligada e uma **senha de aplicativo** gerada só para
+isto — a senha normal da conta não funciona.
+
+Vale pedir uma caixa **própria** para o sistema (algo como
+`planejamento@coperdia.com.br`), não a caixa pessoal de alguém: quando essa
+pessoa trocar de senha ou sair, os avisos param sem ninguém entender por quê.
+
+---
+
+### Passo 1 — Conferir o endereço do sistema
+
+Todo e-mail de aviso leva um botão que abre a ação no sistema. Esse link vem de
+uma variável, e sem ela o e-mail chega sem link nenhum.
+
+1. Abra o serviço **Controladoria** (o do sistema) → aba **Variables**.
+2. Procure **`APP_URL`**.
+
+**Se existir**, confira que o valor é o endereço público do sistema
+(`https://…up.railway.app`), sem barra no fim. **Se não existir**, crie com esse
+valor.
+
+---
+
+### Passo 2 — Testar antes de automatizar
+
+Este é o passo que a seção do backup não tinha, e aqui ele importa mais: e-mail
+vai para **pessoas de verdade**. Antes de agendar qualquer coisa, prove que o
+envio funciona — e veja o que sai.
+
+1. No serviço **Controladoria** → **Variables**, acrescente as variáveis de
+   e-mail (só `SMTP_HOST` e `SMTP_REMETENTE` são obrigatórias; as outras têm
+   padrão):
+
+   | Variável | Valor |
+   |---|---|
+   | `SMTP_HOST` | o servidor do passo 0 |
+   | `SMTP_PORTA` | `587` |
+   | `SMTP_SEGURANCA` | `tls` |
+   | `SMTP_USUARIO` | a caixa do passo 0 |
+   | `SMTP_SENHA` | a senha do passo 0 |
+   | `SMTP_REMETENTE` | a caixa do passo 0 |
+
+2. Espere o serviço reiniciar e entre no sistema como **Admin**.
+3. Vá em **Relatório de Status** e clique em **Enviar avisos por e-mail**.
+
+**Você deve ver** uma resposta dizendo quantos foram enviados. E, na sua caixa,
+o e-mail — confira se o botão dele abre o sistema.
+
+> **Quem recebe.** Só usuários **ativos**, **com e-mail preenchido** e **com ação
+> em aberto atribuída a eles**. Ninguém mais. Hoje a base tem pouquíssimo
+> conteúdo, então o mais provável é que o teste envie zero e-mails — o que
+> prova a conexão, mas não o conteúdo. Para ver um de verdade, atribua uma ação
+> a você mesmo, com prazo para hoje, e clique de novo.
+
+Se a resposta trouxer erro de autenticação, volte ao passo 0: é o bloqueio do
+Microsoft 365 em nove de cada dez casos.
+
+---
+
+### Passo 3 — Criar o serviço que envia todo dia
+
+Agora sim, o Railway. É o mesmo caminho do backup, **sem volume** — este
+serviço não grava arquivo nenhum.
+
+1. No projeto, **+ Create → Empty Service**.
+2. Em **Settings → Source → Connect Repo**: `Trmartello/Controladoria`, e a
+   **mesma branch** do serviço web.
+3. Renomeie o serviço para **`avisos`**.
+
+---
+
+### Passo 4 — As variáveis
+
+No serviço **`avisos`** → aba **Variables** → **Raw Editor**, cole (trocando os
+valores de e-mail pelos seus):
+
+```
+MYSQLHOST=${{MySQL.MYSQLHOST}}
+MYSQLPORT=${{MySQL.MYSQLPORT}}
+MYSQLDATABASE=${{MySQL.MYSQLDATABASE}}
+MYSQLUSER=${{MySQL.MYSQLUSER}}
+MYSQLPASSWORD=${{MySQL.MYSQLPASSWORD}}
+APP_URL=https://<o endereço do sistema>
+SMTP_HOST=smtp.office365.com
+SMTP_PORTA=587
+SMTP_SEGURANCA=tls
+SMTP_USUARIO=planejamento@coperdia.com.br
+SMTP_SENHA=<a senha>
+SMTP_REMETENTE=planejamento@coperdia.com.br
+```
+
+---
+
+### Passo 5 — O comando e a hora
+
+Ainda em **Settings**:
+
+- **Custom Start Command**: `php cli/notificar.php`
+- **Cron Schedule**: `0 11 * * *`
+
+`0 11` em Greenwich é **8h da manhã em Brasília** — o aviso chega antes do
+expediente começar, que é quando ele serve para alguma coisa.
+
+O comando decide sozinho o que mandar: **na segunda** o relatório da semana e,
+**todo dia**, as pendências do dia. Rodar duas vezes no mesmo dia não duplica
+nada: cada envio fica registrado na tabela `envio_email`, e só conta como
+enviado o que saiu sem erro — uma queda do servidor de e-mail não bloqueia a
+tentativa seguinte.
+
+---
+
+### Passo 6 — Provar que rodou
+
+Como no backup, force uma execução em vez de esperar amanhã: troque o
+agendamento para `*/5 * * * *`, mande **Deploy**, e leia a aba **Cron Runs**.
+
+**Você deve ver** uma linha por destinatário, assim:
+
+```
+notificar[diario]: 3 enviado(s), 0 falha(s), 0 já enviado(s) hoje, 12 sem pendência.
+```
+
+**Depois volte o agendamento para `0 11 * * *`.**
+
+Se aparecer `SMTP não configurado`, alguma das duas obrigatórias
+(`SMTP_HOST`, `SMTP_REMETENTE`) não chegou até aqui.
+
+---
+
+### Para forçar ou testar pela linha de comando
 
 ```bash
 php cli/notificar.php            # decide pelo dia
 php cli/notificar.php semanal    # só o relatório da semana
 php cli/notificar.php diario     # só as pendências do dia
+php cli/notificar.php auto 2027-03-01   # simula outra data, para conferir a regra
 ```
+
+---
+
+### Vale a pena mesmo sem e-mail configurado?
+
+Vale, e é um efeito colateral que convém conhecer: **antes** de olhar o SMTP,
+este comando faz a faxina das três tabelas que só crescem (sessões vencidas e as
+contagens de tentativa de login e de PIN). O migrate faz o mesmo a cada deploy,
+mas um sistema que fica semanas sem deploy nenhum não teria quem limpasse.
+
+Ou seja: mesmo que os e-mails demorem a ser liberados pelo TI, o serviço `avisos`
+agendado já paga o próprio aluguel. Ele vai registrar falha todo dia enquanto o
+SMTP não existir — o que é honesto, e some sozinho quando as variáveis chegarem.
 
 ## 7. Backup do banco — passo a passo
 
