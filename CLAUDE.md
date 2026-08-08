@@ -35,6 +35,17 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   (`App.trocarCiclo`), não a seção: o ciclo alimenta `contextoParams()` de todas
   as telas, e estado desses em seção que se repinta some no primeiro redesenho.
   O rótulo tem uma fonte só (`App.rotuloCiclo`), usada pelo menu e pela topbar.
+  O cabeçalho do menu é **espaço tirado da navegação** — ele empurra as
+  dezesseis seções para baixo. Por isso rótulo, valor e o ⚙ dividem UMA linha,
+  o subtítulo "Planejamento Estratégico" só aparece onde a topbar o esconde
+  (`d-sm-none`, abaixo de 576px) e no menu vai só o NOME do ciclo, com o
+  ano-base no `title`: numa linha só, "2027–2035 (base 2026)" era cortado
+  justamente no ano-base, e meia informação engana mais que informação nenhuma.
+  Medido: 238px → **144px** antes do primeiro item (desktop), 173px no celular.
+  A engrenagem é a MESMA da topbar, por `<use href="#i-engrenagem">` — o
+  símbolo é desenhado uma vez no `shell.php`, senão as duas cópias divergiriam
+  na primeira revisão do ícone e o leitor lê "mesmo símbolo" como "mesmo
+  destino".
 - **Atalho ⚙ na topbar** (`#btn-cadastros`, ao lado do ☰): abre os Cadastros —
   a tela de AJUSTAR o sistema, que não faz parte do percurso do planejamento e
   se procurava no meio de dezesseis seções. É um `<a data-secao>`, o mesmo

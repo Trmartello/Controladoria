@@ -91,14 +91,30 @@ body.menu-aberto .menu-lateral {
 /* Tabelas largas nunca estouram a página — rolam no próprio contêiner */
 .secao .table-responsive { -webkit-overflow-scrolling: touch; }
 .secao { min-width: 0; }
-/* O ciclo em uso no menu: texto, não campo. Ele imita a caixa do seletor de
-   negócio logo abaixo para as duas linhas não brigarem, mas sem borda de
-   controle — o que não se clica não pode parecer clicável. */
+/* O ciclo em uso no menu: texto, não campo — o que não se clica não pode
+   parecer clicável. `min-width: 0` porque ele é item de flex com `text-truncate`
+   ao lado do rótulo: sem isso a base do item de flex é o conteúdo inteiro, o
+   corte nunca acontece e o nome longo empurra a engrenagem para fora. */
 .ciclo-atual {
   color: #fff;
   font-weight: 600;
-  padding: 2px 0;
+  min-width: 0;
 }
+/* Ícone-ação dentro do menu (o ⚙ que leva o ciclo aos Cadastros). Quadrado de
+   28px por DIMENSÃO real, nunca por área invisível sobreposta: no celular ele
+   fica encostado no seletor de negócio, e área que transborda rouba o toque do
+   vizinho. */
+.icone-menu {
+  color: #d3e5dc;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.icone-menu:hover, .icone-menu:focus-visible { color: #fff; background: rgba(255, 255, 255, .12); }
 .menu-lateral .nav-link { color: #d3e5dc; padding: 6px 10px; }
 .menu-lateral .nav-link.active { background: var(--verde-coperdia); color: #fff; }
 .menu-lateral .nav-link.disabled { color: #6d8a7c; }

@@ -111,6 +111,22 @@ async function provasCiclo(page, largura) {
   t(`[${largura}] o menu mostra o ciclo em uso`,
     rotulo.length > 0 && rotulo !== '(nenhum ciclo)', rotulo);
 
+  // A compactação do cabeçalho do menu: rótulo, valor e ⚙ em UMA linha. Se o
+  // nome do ciclo crescer e empurrar a engrenagem para baixo, o cabeçalho volta
+  // a comer itens de navegação — e é por isso que o valor tem `text-truncate`.
+  const linhaCiclo = await page.evaluate(() => {
+    document.body.classList.add('menu-aberto');
+    const alvos = [document.getElementById('ciclo-atual'), document.getElementById('link-trocar-ciclo')];
+    const topos = alvos.map((el) => Math.round(el.getBoundingClientRect().top));
+    return { topos, iguais: topos[0] === topos[1] || Math.abs(topos[0] - topos[1]) <= 8 };
+  });
+  t(`[${largura}] ciclo e ⚙ na mesma linha do menu`, linhaCiclo.iguais, JSON.stringify(linhaCiclo.topos));
+
+  // O ⚙ do menu leva ao mesmo lugar que o da topbar — mesmo ícone, mesmo destino.
+  await page.evaluate(() => { App.mostrarSecao('painel'); document.getElementById('link-trocar-ciclo').click(); });
+  t(`[${largura}] o ⚙ do menu abre os Cadastros`,
+    await esperar(page, "App.secaoAtiva === 'cadastros'"));
+
   // A aba é clicada em LAÇO, pelo DOM. Duas armadilhas já pagas aqui: chamar
   // `SecaoCadastros.carregar()` à mão corre com a repintura que `mostrarSecao`
   // dispara (vencia a que terminasse por último, às vezes a aba Negócios), e o

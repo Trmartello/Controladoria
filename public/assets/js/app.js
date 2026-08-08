@@ -147,9 +147,19 @@ const App = {
     return c ? `${c.nome} (base ${c.ano_base})` : '(nenhum ciclo)';
   },
 
+  /**
+   * No menu vai só o NOME do ciclo; o ano-base fica no `title`.
+   * Numa linha só com o rótulo e o ⚙, "2027–2035 (base 2026)" era cortado
+   * justamente no ano-base — e meia informação engana mais do que informação
+   * nenhuma. O ano-base é detalhe de cadastro: quem precisa dele está na aba
+   * onde ele é editado, e ali o rótulo aparece inteiro.
+   */
   mostrarCicloAtual() {
     const el = document.getElementById('ciclo-atual');
-    if (el) el.textContent = this.rotuloCiclo();
+    if (!el) return;
+    const c = (this.sessao.ciclos || []).find((x) => x.id === this.contexto.cicloId);
+    el.textContent = c ? c.nome : '(nenhum ciclo)';
+    el.title = this.rotuloCiclo();
   },
 
   /**

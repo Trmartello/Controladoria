@@ -10,6 +10,21 @@
 </head>
 <body>
   <!-- Barra superior: o menu recolhe e expande automaticamente (☰ ou borda esquerda) -->
+  <!--
+    Ícones desenhados uma vez e reaproveitados por <use>. A engrenagem aparece
+    em dois lugares (o atalho da topbar e o "trocar o ciclo" do menu) e são o
+    MESMO gesto — copiar o caminho duas vezes faria os dois divergirem na
+    primeira revisão do ícone, e o leitor lê "o mesmo símbolo" como "o mesmo
+    destino". Fica escondido pelo atributo `hidden` (não por CSS): o `<use>`
+    referencia o símbolo mesmo com o dono fora da tela.
+  -->
+  <svg hidden aria-hidden="true">
+    <symbol id="i-engrenagem" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
+      <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"/>
+    </symbol>
+  </svg>
+
   <header class="topbar d-flex align-items-center gap-2 px-3">
     <button class="btn btn-outline-light btn-sm" id="btn-menu" aria-label="Abrir menu"
       aria-controls="menu-lateral" aria-expanded="false">☰</button>
@@ -24,11 +39,7 @@
     <a class="btn btn-outline-light btn-sm d-inline-flex align-items-center justify-content-center"
       id="btn-cadastros" href="#cadastros" data-secao="cadastros"
       title="Cadastros e configurações" aria-label="Cadastros e configurações">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"
-        focusable="false">
-        <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
-        <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"/>
-      </svg>
+      <svg width="15" height="15" aria-hidden="true" focusable="false"><use href="#i-engrenagem"/></svg>
     </a>
     <span class="marca">COPÉRDIA</span>
     <!-- Some no celular: com a engrenagem ao lado do ☰ o subtítulo passou a
@@ -44,22 +55,34 @@
     <!-- Menu lateral -->
     <nav id="menu-lateral" class="menu-lateral d-flex flex-column p-3">
       <div class="marca mb-1">COPÉRDIA</div>
-      <div class="text-white-50 small mb-3">Planejamento Estratégico</div>
+      <!--
+        `d-sm-none`: o subtítulo aparece aqui só onde a topbar o esconde (abaixo
+        de 576px). Nas outras larguras ele já está lá em cima, e repeti-lo
+        custava uma faixa do cabeçalho do menu — altura que sai das seções.
+      -->
+      <div class="text-white-50 small mb-2 d-sm-none">Planejamento Estratégico</div>
 
-      <div class="mb-3">
+      <div class="mb-2">
         <!--
           O ciclo é ESCOLHIDO em Cadastros › Ciclos & Horizontes; aqui ele é só
           mostrado. Ele é decisão plurianual — troca-se uma vez por ano, não a
           cada tela —, e um seletor no menu ao lado do negócio (que troca o dia
           inteiro) convidava ao mesmo gesto para as duas coisas.
+          O rótulo, o valor e o atalho dividem UMA linha: em três, o cabeçalho do
+          menu comia quatro itens de navegação. O atalho virou a engrenagem — a
+          mesma da topbar, pelo mesmo <use> —, que diz "isto se ajusta ali" sem
+          gastar a linha que "trocar em Cadastros" gastava.
         -->
-        <label class="form-label text-white-50 small mb-1">Ciclo</label>
-        <div class="ciclo-atual small" id="ciclo-atual"></div>
-        <!-- `d-block`: como <a> inline, o rótulo "Negócio" logo abaixo subia
-             para a mesma linha e os dois viravam uma frase só. -->
-        <a class="d-block text-white-50 small text-decoration-none" href="#cadastros"
-          data-secao="cadastros" id="link-trocar-ciclo">trocar em Cadastros ⚙</a>
-        <label class="form-label text-white-50 small mb-1 mt-2">Negócio</label>
+        <div class="d-flex align-items-center gap-1">
+          <span class="text-white-50 small">Ciclo</span>
+          <span class="ciclo-atual small text-truncate" id="ciclo-atual"></span>
+          <a class="icone-menu ms-auto" href="#cadastros" data-secao="cadastros"
+            id="link-trocar-ciclo" title="Trocar o ciclo em Cadastros"
+            aria-label="Trocar o ciclo em Cadastros">
+            <svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-engrenagem"/></svg>
+          </a>
+        </div>
+        <label class="form-label text-white-50 small mb-1 mt-1" for="sel-negocio">Negócio</label>
         <select id="sel-negocio" class="form-select form-select-sm"></select>
       </div>
 
