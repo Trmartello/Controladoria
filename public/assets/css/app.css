@@ -1271,25 +1271,28 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   border-radius: 20px;
 }
 .gut-acao { margin-left: auto; font-size: .7rem; font-weight: 600; color: #adb5bd; }
-/* Esforço: uma LETRA (P/M/G) num selo sem cor semântica — não pode disputar
-   leitura com o selo do score, onde vermelho quer dizer "prioridade alta".
-   Largura fixa para as letras ficarem alinhadas na coluna da tabela. */
+/* Esforço: uma LETRA (P/M/G) num selo REDONDO, pintado na cor da letra pelo JS
+   (mesma paleta das faixas do score — P/M/G é um padrão de cor só).
+   O redondo é o que separa esta leitura da do score, que é retangular: as duas
+   colunas usam as mesmas três cores para dizer coisas diferentes (vermelho no
+   score é "tratar agora"; aqui é "caro de resolver"), e sem a diferença de
+   forma nada distinguiria uma da outra à distância.
+   Tamanho fixo nos dois eixos, senão a letra estica o círculo em elipse. */
 .esforco-selo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.35rem;
-  height: 1.35rem;
-  font-size: .7rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: .75rem;
   font-weight: 700;
-  color: #5d6b64;
-  background: #eef1ef;
-  border: 1px solid #dde3e0;
-  border-radius: 20px;
+  color: #fff;
+  background: #5d6b64;
+  border-radius: 50%;
 }
-.esforco-selo.vazio { color: #a9b3ad; background: none; border-color: transparent; }
-.gut-legenda-barra .gl-esforco { display: inline-flex; align-items: center; gap: .3rem; }
-.gut-legenda-barra .gl-esforco b { font-weight: 700; color: #5d6b64; }
+/* Sem estimativa não se pinta nada: o traço é ausência de medida, não uma
+   medida "neutra". */
+.esforco-selo.vazio { color: #a9b3ad; background: none; }
 .gut-chave {
   font-size: .6rem;
   font-weight: 700;

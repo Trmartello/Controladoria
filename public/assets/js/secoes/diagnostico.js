@@ -1338,15 +1338,15 @@ const SecaoGut = {
     return cor;
   },
 
-  // Tamanho do enfrentamento. Deliberadamente SEM cor própria: no mesmo cartão
-  // já existe o selo do score, onde vermelho quer dizer "prioridade alta". Um
-  // segundo selo colorido faria vermelho significar duas coisas diferentes lado
-  // a lado.
-  // Na tela ele aparece como UMA LETRA. As faixas do score também se chamam
-  // pequeno/médio/grande, e escrever a palavra nas duas leituras deixava a
-  // mesma linha dizendo "grande" para "prioridade alta" e para "caro de
-  // resolver" — que são coisas opostas. A letra não colide com a palavra, e o
-  // que ela significa está no ⓘ da legenda e no title de cada selo.
+  // Tamanho do enfrentamento, como UMA LETRA num selo redondo pintado na cor da
+  // letra — P verde, M dourado, G vermelho, a mesma paleta das faixas do score
+  // (corLetra), porque P/M/G é UM padrão de cor no sistema inteiro.
+  // Atenção a quem for mexer: aqui a cor NÃO quer dizer a mesma coisa que na
+  // coluna do score. Vermelho no score é "prioridade alta, tratar agora";
+  // vermelho aqui é "caro de resolver". As duas leituras convivem lado a lado
+  // por decisão do cliente (o padrão de cor vale mais que a ambiguidade), e é
+  // por isso que o selo é REDONDO e o do score é retangular: a forma separa o
+  // que a cor junta. O significado mora no ⓘ da legenda e no title do selo.
   ESFORCOS: {
     PEQUENO: { letra: 'P', rotulo: 'pequeno', ajuda: 'a equipe resolve com o que já tem' },
     MEDIO:   { letra: 'M', rotulo: 'médio', ajuda: 'exige remanejar time, verba ou prazo' },
@@ -1358,11 +1358,23 @@ const SecaoGut = {
   pesoEsforco(esforco) {
     return { PEQUENO: 1, MEDIO: 2, GRANDE: 3 }[esforco] || 9;
   },
+  // A cor de uma letra P/M/G — uma paleta só para as duas leituras da tela.
+  // Duas listas de cor divergiriam na primeira revisão, e aí o verde do esforço
+  // deixaria de ser o verde da legenda que o explica.
+  corLetra(letra) {
+    const f = this.FAIXAS.find((x) => x.letra === letra);
+    return f ? f.cor : '#5d6b64';
+  },
+
   seloEsforco(esforco) {
     const e = this.ESFORCOS[esforco];
+    // Estimar o esforço é OPCIONAL: quem avaliou G/U/T e não mediu o
+    // enfrentamento fica com o traço, e o traço não se pinta — cor aqui
+    // afirmaria uma medida que ninguém fez.
     if (!e) return '<span class="esforco-selo vazio" title="Esforço não estimado">—</span>';
     const dica = `Esforço ${e.rotulo} — ${e.ajuda}`;
-    return `<span class="esforco-selo" title="${dica}" aria-label="${dica}">${e.letra}</span>`;
+    return `<span class="esforco-selo" style="background:${this.corLetra(e.letra)}"
+      title="${dica}" aria-label="${dica}">${e.letra}</span>`;
   },
 
   // O sinal de uma nota: cinco barras crescentes, as `nota` primeiras acesas.
@@ -1456,15 +1468,12 @@ const SecaoGut = {
             aria-label="Prioridade ${f.rotulo} — score ${f.extenso}"><i
             style="background:${this.corScore(f.piso)}"></i><b>${f.letra}</b> (${f.faixa})${
             f.piso === 64 ? '<span class="d-none d-md-inline"> — tratar agora</span>' : ''}</span>`).join('')}
-        </span>
-        <span class="gl-esforco">Esforço
-          ${Object.values(this.ESFORCOS).map((e) => `<b>${e.letra}</b>`).join('·')}
-          <button type="button" class="btn-orientacao" data-orientacao="ESFORCO"
+          <button type="button" class="btn-orientacao" data-orientacao="PMG"
             style="--cor-cat:#5d6b64" aria-expanded="false"
             title="O que significam P, M e G" aria-label="O que significam P, M e G">ⓘ</button>
         </span>
       </div>
-      <div class="orientacao-categoria small d-none mb-3" data-orientacao-alvo="ESFORCO"
+      <div class="orientacao-categoria small d-none mb-3" data-orientacao-alvo="PMG"
         style="--cor-cat:#5d6b64">
         <b>P</b>, <b>M</b> e <b>G</b> aparecem em duas leituras diferentes desta tela.<br>
         Na <strong>prioridade</strong> (o score) são as faixas:
