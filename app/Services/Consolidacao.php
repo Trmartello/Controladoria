@@ -23,6 +23,7 @@ class Consolidacao
     public static function reconciliar(int $planId): void
     {
         self::sincronizarAtrasos($planId);
+        self::consolidarIniciativas($planId);
         self::consolidarProjetos($planId);
     }
 
@@ -45,6 +46,44 @@ class Consolidacao
              WHERE p.planejamento_id = ? AND d.status = 'ATRASADO'
                AND (d.data_fim IS NULL OR d.data_fim >= CURDATE())",
             [$planId]
+        );
+    }
+
+    /**
+     * O status da FRENTE (iniciativa) é consequência das ações dela, como o do
+     * projeto: todas concluídas fecham a frente ("Concluída"), qualquer ação em
+     * curso (ou atrasada, ou já concluída entre pendentes) a põe "Em andamento",
+     * e sem ação nenhuma iniciada ela volta a "Aberta". Não existe frente
+     * "Atrasada" no enum — o atraso aparece no panorama ("N atrasada(s)") e no
+     * status do projeto. O campo deixou de ser editável no modal quando esta
+     * regra entrou: um status digitado seria sobrescrito na primeira leitura.
+     *
+     * Frente sem ação não-cancelada (inclusive recém-criada) cai no LEFT JOIN
+     * sem par e volta a ABERTA — a mesma lição do projeto congelado no status
+     * antigo depois de todas as ações serem canceladas.
+     */
+    public static function consolidarIniciativas(int $planId): void
+    {
+        Database::executar(
+            "UPDATE iniciativa i
+             JOIN projeto p ON p.id = i.projeto_id AND p.planejamento_id = ?
+             LEFT JOIN (
+               SELECT d.iniciativa_id,
+                      COUNT(*) AS n,
+                      SUM(d.status = 'CONCLUIDO') AS concluidas,
+                      SUM(d.status = 'ATRASADO') AS atrasadas,
+                      SUM(d.status IN ('EM_ANDAMENTO', 'PAUSADO', 'AGUARDANDO_VALIDACAO')) AS ativas
+               FROM desdobramento d
+               JOIN projeto pr ON pr.id = d.projeto_id AND pr.planejamento_id = ?
+               WHERE d.status <> 'CANCELADO' AND d.iniciativa_id IS NOT NULL
+               GROUP BY d.iniciativa_id
+             ) x ON x.iniciativa_id = i.id
+             SET i.status = CASE
+               WHEN x.iniciativa_id IS NULL THEN 'ABERTA'
+               WHEN x.concluidas = x.n THEN 'CONCLUIDA'
+               WHEN x.atrasadas > 0 OR x.ativas > 0 OR x.concluidas > 0 THEN 'EM_ANDAMENTO'
+               ELSE 'ABERTA' END",
+            [$planId, $planId]
         );
     }
 

@@ -16,7 +16,6 @@ class ProjetoController
         'EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO', 'PAUSADO', 'AGUARDANDO_VALIDACAO',
     ];
     private const STATUS_PROJETO = ['NAO_INICIADO', 'EM_ANDAMENTO', 'CONCLUIDO', 'ATRASADO', 'CANCELADO'];
-    private const STATUS_INICIATIVA = ['ABERTA', 'EM_ANDAMENTO', 'CONCLUIDA'];
     private const PRIORIDADES = ['ALTA', 'MEDIA', 'BAIXA'];
     private const RECORRENCIAS = Recorrencia::TIPOS;
 
@@ -79,17 +78,16 @@ class ProjetoController
         if ($titulo === '') {
             Json::erro('Informe o título da iniciativa.');
         }
-        $status = $d['status'] ?? 'ABERTA';
-        if (!in_array($status, self::STATUS_INICIATIVA, true)) {
-            Json::erro('Status da iniciativa inválido.');
-        }
         $descricao = trim($d['descricao'] ?? '');
 
+        // O status da frente NÃO vem do corpo: ele é consequência das ações
+        // (Consolidacao::consolidarIniciativas, recalculado em toda leitura).
+        // Aceitá-lo aqui seria gravar um valor que a primeira leitura apaga.
         if ($id) {
             $this->exigirIniciativa($id, $planId);
             Database::executar(
-                'UPDATE iniciativa SET titulo = ?, descricao = ?, status = ?, ordem = ? WHERE id = ?',
-                [$titulo, $descricao, $status, (int)($d['ordem'] ?? 0), $id]
+                'UPDATE iniciativa SET titulo = ?, descricao = ?, ordem = ? WHERE id = ?',
+                [$titulo, $descricao, (int)($d['ordem'] ?? 0), $id]
             );
         } else {
             // ordem = quantidade atual, como no plano de ação de referência
@@ -98,8 +96,9 @@ class ProjetoController
                 [$projetoId]
             )['n'] ?? 0);
             $id = (int)Database::executar(
-                'INSERT INTO iniciativa (projeto_id, titulo, descricao, status, ordem) VALUES (?, ?, ?, ?, ?)',
-                [$projetoId, $titulo, $descricao, $status, $ordem]
+                "INSERT INTO iniciativa (projeto_id, titulo, descricao, status, ordem)
+                 VALUES (?, ?, ?, 'ABERTA', ?)",
+                [$projetoId, $titulo, $descricao, $ordem]
             );
         }
         Json::ok(['id' => $id]);
@@ -246,7 +245,7 @@ class ProjetoController
         if (!in_array($prioridade, self::PRIORIDADES, true)) {
             Json::erro('Prioridade inválida.');
         }
-        $progresso = max(0, min(100, (int)($d['progresso'] ?? 0)));
+        $progresso = $this->arredondarProgresso((int)($d['progresso'] ?? 0));
         $quanto = ($d['quanto'] ?? '') !== '' && $d['quanto'] !== null ? (float)$d['quanto'] : null;
 
         [$inicio, $fim] = $this->periodo($d);
@@ -456,9 +455,20 @@ class ProjetoController
         if (!array_key_exists('progresso', $d) || !is_numeric($d['progresso'])) {
             Json::erro('Informe o progresso.');
         }
-        $progresso = max(0, min(100, (int)$d['progresso']));
+        $progresso = $this->arredondarProgresso((int)$d['progresso']);
         Database::executar('UPDATE desdobramento SET progresso = ? WHERE id = ?', [$progresso, $id]);
         Json::ok(['progresso' => $progresso]);
+    }
+
+    /**
+     * O progresso anda de 5 em 5 — na barra, no modal E aqui. Arredondar no
+     * servidor é o que impede a tela e o banco de divergirem: um valor fora da
+     * grade (legado, ou vindo de um cliente antigo) seria "encaixado" pelo
+     * range do navegador e cada salvamento gravaria outro número.
+     */
+    private function arredondarProgresso(int $p): int
+    {
+        return (int)(5 * round(max(0, min(100, $p)) / 5));
     }
 
     public function excluirDesdobramento(int $id): void

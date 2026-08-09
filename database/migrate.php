@@ -785,6 +785,15 @@ if ($temDiario && !App\Services\CargaConteudo::jaAplicada($pdo, 'migracao_diario
     echo "migrate: {$migrados} registro(s) do diário migrados para comentários.\n";
 }
 
+// O progresso das ações anda de 5 em 5 (barra, modal e servidor). Valores
+// legados fora da grade seriam "encaixados" pelo range do navegador e cada
+// salvamento gravaria outro número — normaliza uma vez; o WHERE torna o passo
+// inócuo nos deploys seguintes.
+$fora = $pdo->exec('UPDATE desdobramento SET progresso = 5 * ROUND(progresso / 5) WHERE progresso % 5 <> 0');
+if ($fora) {
+    echo "migrate: {$fora} progresso(s) de ação arredondado(s) para múltiplo de 5.\n";
+}
+
 // Faxina das tabelas que só crescem. O coletor de sessão do PHP roda por
 // probabilidade e há ambiente com session.gc_probability = 0, onde ele nunca é
 // chamado — e cada visita anônima a /login já cria uma linha em `sessao`, porque

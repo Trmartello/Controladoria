@@ -805,6 +805,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   o projeto herda o H1/H2/H3 pelo ano. Não existe mais ação plurianual × anual.
 - Status `NAO_INICIADO` e `ATRASADO` são **automáticos** (derivados da
   data-limite, reconciliados em `sincronizarAtrasos()`); os demais são manuais.
+- O status da **frente** (iniciativa) é **todo derivado** das ações dela
+  (`consolidarIniciativas()`): todas concluídas fecham a frente sozinha, e o
+  modal **não tem campo de status** — um valor digitado seria sobrescrito na
+  primeira leitura. Frente sem ação (ou só com canceladas) volta a "Aberta".
+  Não existe frente "Atrasada": o atraso aparece no panorama e no projeto.
 - **Recorrência** (`recorrencia` NENHUMA/SEMANAL/MENSAL + `recorrencia_dia` +
   `recorrencia_ate`): concluir uma ocorrência não encerra a ação — ela reabre
   na próxima data prevista e a conclusão vira um comentário automático — a
@@ -920,8 +925,10 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   **barra** (`flex-grow`), nunca o selo nem a seta: ela é a única peça que se lê
   por proporção, e as outras duas viram texto cortado. As barras de progresso usam sempre o mesmo
   estilo (`.faixa-progresso` para leitura, `input[type=range].faixa-verde`
-  para ajuste) com **passo 1** — passo maior faria o valor divergir do
-  servidor.
+  para ajuste) com **passo 5 nas três pontas** — barra do cartão, campo do
+  modal e servidor (`arredondarProgresso`), com o migrate normalizando o
+  legado. Passo diferente entre elas faz o range do navegador "encaixar" o
+  valor e a tela divergir do banco a cada salvamento.
 - **Duplo clique no cartão abre a edição** daquele nível (duplo toque no
   celular), atalho para o ✎ que mora atrás do “mostrar mais”. O listener vai em
   **cada cartão de projeto**, nunca na seção: `el` sobrevive aos

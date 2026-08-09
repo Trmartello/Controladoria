@@ -563,7 +563,7 @@ const SecaoProjetos = {
         <div class="d-flex align-items-center gap-2 linha-acao-topo">
           <span class="badge ${classe} flex-shrink-0">${rotulo}</span>
           ${App.podeEditar() ? `
-          <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="1"
+          <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="5"
             style="--pct:${a.progresso}%" value="${a.progresso}"
             data-progresso="${a.id}" data-proj="${p.id}"
             title="Arraste para ajustar o progresso" aria-label="Progresso da ação">
@@ -636,9 +636,9 @@ const SecaoProjetos = {
     projetos.forEach((p) => {
       conteudos.set(`proj-${p.id}`, this.conteudoPopover(p.desdobramentos || []));
       (p.iniciativas || []).forEach((ini) => {
-        // A situação cadastrada da frente vem no rodapé do balão dela: saiu do
-        // cabeçalho a pedido, e sem lugar nenhum ela deixaria de existir na
-        // tela — só no formulário de edição.
+        // A situação da frente vem no rodapé do balão dela: saiu do cabeçalho
+        // a pedido, e sem lugar nenhum ela deixaria de existir na tela. Ela é
+        // DERIVADA das ações (Consolidacao) — todas concluídas fecham a frente.
         const [rot] = STATUS_INICIATIVA[ini.status] || [ini.status];
         conteudos.set(`ini-${ini.id}`, this.conteudoPopover(ini.acoes || [], ['Frente', rot]));
       });
@@ -1061,7 +1061,10 @@ const SecaoProjetos = {
       url: ini ? `/api/iniciativas/${ini.id}` : '/api/iniciativas',
       valores: ini
         ? { ...ini, planejamento_id: this.plan.id, projeto_id: projetoId }
-        : { planejamento_id: this.plan.id, projeto_id: projetoId, status: 'ABERTA' },
+        : { planejamento_id: this.plan.id, projeto_id: projetoId },
+      // Sem campo de status: o da frente é consequência das ações (todas
+      // concluídas fecham a frente sozinhas — Consolidacao), e um seletor aqui
+      // gravaria um valor que a primeira leitura apaga.
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'projeto_id', rotulo: '', tipo: 'hidden' },
@@ -1069,8 +1072,6 @@ const SecaoProjetos = {
           exemplo: 'Ex.: Licenciamento e obra civil',
           ajuda: 'Agrupa as ações de uma mesma frente dentro do projeto.' },
         { nome: 'descricao', rotulo: 'Descrição', tipo: 'textarea', linhas: 2 },
-        { nome: 'status', rotulo: 'Status', tipo: 'select', opcoes:
-          Object.entries(STATUS_INICIATIVA).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
       ],
     });
   },
@@ -1339,8 +1340,10 @@ const SecaoProjetos = {
         opcoes: this.opcoesStatusAcao(dd?.status),
         ajuda: '“No prazo” e “Atrasada” saem da data de fim.' },
       { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number', linha: 'situacao' },
-      // Passo de 1 para o modal nunca arredondar o que a barra do cartão gravou
-      { nome: 'progresso', rotulo: 'Progresso', tipo: 'faixa', min: 0, max: 100, passo: 1, sufixo: '%' },
+      // O progresso anda de 5 em 5 — aqui, na barra do cartão e no servidor
+      // (que arredonda ao gravar): os três no mesmo passo, senão o range do
+      // navegador "encaixa" o valor e a tela diverge do banco.
+      { nome: 'progresso', rotulo: 'Progresso', tipo: 'faixa', min: 0, max: 100, passo: 5, sufixo: '%' },
     ];
   },
 
