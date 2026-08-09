@@ -456,14 +456,27 @@ class ProjetoController
             Json::erro('Informe o progresso.');
         }
         $progresso = $this->arredondarProgresso((int)$d['progresso']);
-
-        // 100% com `concluir` marca a ação como CONCLUÍDA pelo MESMO caminho do
-        // formulário: concluido_em e, na recorrente, o reagendamento. Um UPDATE
-        // cru de status aqui pularia a regra da repetição — a ação "concluía"
-        // e nunca mais reabria. A confirmação é da tela; sem ela, grava só o
-        // percentual e o status fica como está.
         $acao = Database::um('SELECT * FROM desdobramento WHERE id = ?', [$id]);
-        if (!empty($d['concluir']) && $progresso === 100 && $acao['status'] !== 'CONCLUIDO') {
+
+        // `status` opcional: é o pop-up de quem TIRA uma ação concluída dos
+        // 100% — o gesto reabre a decisão do status, e a tela pergunta qual.
+        // O automático passa pelo resolverStatus (a data-limite decide entre
+        // "No prazo" e "Atrasada"), como no formulário.
+        $statusNovo = null;
+        if (isset($d['status']) && is_string($d['status'])) {
+            if (!in_array($d['status'], self::STATUS, true)) {
+                Json::erro('Status inválido.');
+            }
+            $statusNovo = $this->resolverStatus($d['status'], $acao['data_fim']);
+        }
+
+        // Concluir — pelo `concluir` dos 100% ou por um status escolhido —
+        // segue o MESMO caminho do formulário: concluido_em e, na recorrente,
+        // o reagendamento. Um UPDATE cru de status pularia a regra da
+        // repetição: a ação "concluía" e nunca mais reabria. A confirmação é
+        // da tela; sem ela, grava só o percentual e o status fica como está.
+        $concluir = (!empty($d['concluir']) && $progresso === 100) || $statusNovo === 'CONCLUIDO';
+        if ($concluir && $acao['status'] !== 'CONCLUIDO') {
             if (($acao['recorrencia'] ?? 'NENHUMA') !== 'NENHUMA') {
                 $reagendou = Recorrencia::reagendar(
                     $acao['data_inicio'], $acao['recorrencia'],
@@ -480,11 +493,22 @@ class ProjetoController
                 }
             }
             Database::executar(
-                "UPDATE desdobramento SET status = 'CONCLUIDO', progresso = 100,
+                "UPDATE desdobramento SET status = 'CONCLUIDO', progresso = ?,
                    concluido_em = COALESCE(concluido_em, NOW()) WHERE id = ?",
-                [$id]
+                [$progresso, $id]
             );
-            Json::ok(['progresso' => 100, 'concluida' => true]);
+            Json::ok(['progresso' => $progresso, 'concluida' => true]);
+        }
+
+        if ($statusNovo !== null && $statusNovo !== 'CONCLUIDO') {
+            // Saiu da conclusão (ou trocou de situação): a marca de concluída
+            // cai junto — concluído com data e status "Em andamento" é registro
+            // que mente para o relatório
+            Database::executar(
+                'UPDATE desdobramento SET progresso = ?, status = ?, concluido_em = NULL WHERE id = ?',
+                [$progresso, $statusNovo, $id]
+            );
+            Json::ok(['progresso' => $progresso, 'status' => $statusNovo]);
         }
 
         Database::executar('UPDATE desdobramento SET progresso = ? WHERE id = ?', [$progresso, $id]);
