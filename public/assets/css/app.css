@@ -195,8 +195,16 @@ input[type=range].faixa-verde {
   width: 100%;
   height: 8px;
   border-radius: 999px;
-  background: linear-gradient(to right,
-    var(--verde-coperdia) 0 var(--pct, 0%), #e9ecef var(--pct, 0%) 100%);
+  /* Duas camadas: as BOLINHAS de 5 em 5 (a régua visual do passo — cada ponto
+     marca 5%, 10%, 15%…) por cima do preenchimento verde/cinza. O ponto fica
+     na borda direita de cada célula de 5%, então a régua começa no 5% e não
+     desenha meia-bolinha no zero. */
+  background-image:
+    radial-gradient(circle at 100% 50%, rgba(33, 37, 41, .30) 1.1px, transparent 1.7px),
+    linear-gradient(to right,
+      var(--verde-coperdia) 0 var(--pct, 0%), #e9ecef var(--pct, 0%) 100%);
+  background-size: 5% 100%, 100% 100%;
+  background-repeat: repeat-x, no-repeat;
   cursor: pointer;
   /* Arrastar na horizontal muda o valor; na vertical a página continua rolando */
   touch-action: pan-y;
