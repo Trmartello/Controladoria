@@ -124,11 +124,13 @@ const SecaoProjetos = {
     el.querySelectorAll('[data-mais]').forEach((b) => b.addEventListener('click', (ev) => {
       ev.stopPropagation();
       const chave = b.dataset.mais;
-      const alvo = el.querySelector(`[data-detalhe="${chave}"]`);
       const abrir = this.detalhesAbertos.has(chave);
       if (abrir) this.detalhesAbertos.delete(chave);
       else this.detalhesAbertos.add(chave);
-      alvo.classList.toggle('d-none', abrir);
+      // TODOS os blocos da chave: a descrição mora acima da barra de progresso
+      // e o resto do detalhe abaixo dela — a seta abre e fecha os dois juntos
+      el.querySelectorAll(`[data-detalhe="${chave}"]`).forEach((alvo) =>
+        alvo.classList.toggle('d-none', abrir));
       // O que muda é o ESTADO, não o conteúdo: quem gira a seta é o CSS pelo
       // `aria-expanded`. Trocar o texto do botão apagaria o `<svg>` de dentro.
       const rotulo = abrir ? 'Mostrar detalhes' : 'Recolher detalhes';
@@ -500,9 +502,12 @@ const SecaoProjetos = {
           ${this.botaoMais(chave, detalhado)}
         </span>
       </div>
+      <!-- Com a seta aberta, a leitura é: descrição da frente e, logo abaixo
+           dela, a barra de progresso — ordem pedida pelo cliente -->
+      ${ini.descricao ? `<div class="detalhe-item small text-muted mt-1 ${detalhado ? '' : 'd-none'}"
+        data-detalhe="${chave}">${Modal.esc(ini.descricao)}</div>` : ''}
       ${panorama}
       <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
-        ${ini.descricao ? `<div class="small text-muted mt-1">${Modal.esc(ini.descricao)}</div>` : ''}
         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
           <span class="badge text-bg-light border" title="Ações concluídas">${feitas}/${acoes.length} ações</span>
           ${App.podeEditar() ? `
@@ -694,10 +699,13 @@ const SecaoProjetos = {
             </div>
             ${this.botaoMais(chave, detalhado)}
           </div>
+          <!-- Com a seta aberta: descrição do projeto e, logo abaixo dela, a
+               barra de progresso — ordem pedida pelo cliente -->
+          ${p.descricao ? `<div class="detalhe-item ${detalhado ? '' : 'd-none'}"
+            data-detalhe="${chave}">${descricao}</div>` : ''}
           ${this.panorama(acoes, 'data-media-projeto', 'data-barra-projeto', 'panorama-projeto',
             'Progresso médio das ações do projeto')}
           <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
-            ${descricao}
             ${detalhes ? `<div class="small text-muted mt-1">${detalhes}</div>` : ''}
             <div class="small text-muted mt-1">${(p.iniciativas || []).length} iniciativa(s) ·
               ${concluidas}/${acoes.length} ações concluídas</div>
