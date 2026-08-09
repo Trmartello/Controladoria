@@ -170,11 +170,6 @@ garantirColuna($pdo, 'desdobramento', 'concluido_em',
 garantirColuna($pdo, 'desdobramento', 'progresso_anterior',
     'ALTER TABLE desdobramento ADD COLUMN progresso_anterior TINYINT NULL AFTER progresso');
 
-// Repetição mensal em vários dias do mês (CSV, ex.: "5,20"). `recorrencia_dia`
-// segue gravado com o primeiro dia: é o fallback das ações criadas antes daqui.
-garantirColuna($pdo, 'desdobramento', 'recorrencia_dias',
-    'ALTER TABLE desdobramento ADD COLUMN recorrencia_dias VARCHAR(100) NULL AFTER recorrencia_dia');
-
 // Status manuais novos (pausada e aguardando validação) nas ações já existentes
 $tipoStatus = $pdo->query(
     "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
@@ -425,6 +420,13 @@ garantirColuna($pdo, 'desdobramento', 'recorrencia_dia',
     'ALTER TABLE desdobramento ADD COLUMN recorrencia_dia TINYINT NULL AFTER recorrencia');
 garantirColuna($pdo, 'desdobramento', 'recorrencia_ate',
     'ALTER TABLE desdobramento ADD COLUMN recorrencia_ate DATE NULL AFTER recorrencia_dia');
+// Repetição mensal em vários dias do mês (CSV, ex.: "5,20"). `recorrencia_dia`
+// segue gravado com o primeiro dia: é o fallback das ações criadas antes daqui.
+// Fica AQUI, e não lá em cima, porque o `AFTER recorrencia_dia` exige a coluna
+// que as duas linhas acima acabam de garantir — numa base anterior à
+// recorrência, o ALTER morria com "Unknown column" e derrubava o deploy.
+garantirColuna($pdo, 'desdobramento', 'recorrencia_dias',
+    'ALTER TABLE desdobramento ADD COLUMN recorrencia_dias VARCHAR(100) NULL AFTER recorrencia_dia');
 // Casa o nome digitado em "Quem?" com o usuário cadastrado de mesmo nome
 $pdo->exec(
     'UPDATE desdobramento d

@@ -279,9 +279,13 @@ class ProjetoController
                     ? 'Escolha o dia da semana da repetição.'
                     : 'Escolha ao menos um dia do mês para a repetição.');
             }
-            // A ação recorrente que já está em dia mantém o vencimento que tem:
-            // salvar uma correção de texto não pode empurrar o prazo dela. Só
-            // recalcula quando a data venceu, sumiu, ou saiu da grade nova.
+            // A ação recorrente MANTÉM o vencimento que tem enquanto a grade não
+            // muda: salvar uma correção de texto não pode mexer no prazo dela —
+            // inclusive quando a ocorrência já venceu. Avançar a grade é gesto
+            // da CONCLUSÃO (`Recorrencia::reagendar`), não do salvamento: sem
+            // esta guarda, editar o "Como?" de uma ação atrasada devolvia o
+            // status para "No prazo" e a ocorrência perdida sumia do painel sem
+            // ninguém ter feito nada.
             $venceEm = $anteriorRec = null;
             if ($id) {
                 $anteriorRec = Database::um(
@@ -290,21 +294,32 @@ class ProjetoController
                     [$id]
                 );
             }
-            if ($anteriorRec !== null
+            $mesmaGrade = $anteriorRec !== null
                 && $anteriorRec['data_fim'] !== null
-                && $anteriorRec['data_fim'] >= date('Y-m-d')
                 && $anteriorRec['recorrencia'] === $recorrencia
                 && Recorrencia::dias($anteriorRec) === $recDias
-                && ($recAte === null || $anteriorRec['data_fim'] <= $recAte)
-            ) {
+                && ($recAte === null || $anteriorRec['data_fim'] <= $recAte);
+            if ($mesmaGrade) {
                 $venceEm = $anteriorRec['data_fim'];
                 $inicio = $anteriorRec['data_inicio'];
             } else {
                 $venceEm = Recorrencia::primeiraOcorrencia($recDias, $recorrencia, $recAte);
                 if ($venceEm === null) {
-                    Json::erro('A repetição termina antes da próxima ocorrência — ajuste o "Repetir até".');
+                    // A repetição já acabou. Numa ação que existe, isso não pode
+                    // travar o salvamento: quem só quer corrigir o responsável
+                    // (ou cancelá-la) ficava sem saída, e a única saída que a
+                    // mensagem oferecia — esticar o "Repetir até" — ressuscitava
+                    // a ação. Mantém as datas como estão; recusa só na criação,
+                    // onde não há o que preservar.
+                    if ($anteriorRec !== null && $anteriorRec['data_fim'] !== null) {
+                        $venceEm = $anteriorRec['data_fim'];
+                        $inicio = $anteriorRec['data_inicio'];
+                    } else {
+                        Json::erro('A repetição termina antes da próxima ocorrência — ajuste o "Repetir até".');
+                    }
+                } else {
+                    $inicio = date('Y-m-d');
                 }
-                $inicio = date('Y-m-d');
             }
             $fim = $venceEm;
             if ($inicio > $fim) {

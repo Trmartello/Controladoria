@@ -384,6 +384,9 @@ const Modal = {
    * O ouvinte de rolagem é ligado UMA vez: o corpo do modal é o mesmo elemento
    * em todos os formulários, e religá-lo a cada abertura empilharia uma cópia
    * por modal aberto na sessão.
+   *
+   * O aviso não é clicável (`pointer-events: none` no CSS): flutuando sobre o
+   * conteúdo, ele engolia o toque do que estivesse embaixo.
    */
   ligarAvisoRolagem(corpo) {
     const aviso = document.getElementById('modal-mais');
@@ -392,9 +395,6 @@ const Modal = {
       'd-none', corpo.scrollHeight - corpo.clientHeight - corpo.scrollTop <= 8);
     if (!corpo.dataset.avisoLigado) {
       corpo.addEventListener('scroll', medir);
-      aviso.addEventListener('click', () => corpo.scrollTo({
-        top: corpo.scrollTop + corpo.clientHeight * 0.8, behavior: 'smooth',
-      }));
       corpo.dataset.avisoLigado = '1';
     }
     medir();
@@ -426,10 +426,15 @@ const Modal = {
   },
 
   /**
-   * O campo de texto acompanha o que está sendo escrito: cresce e ENCOLHE
-   * conforme o texto, até o teto de linhas do campo (`maxLinhas`, padrão 60%
-   * da altura da tela). No teto ele para de crescer e rola por dentro — senão
-   * o botão Salvar sairia do alcance.
+   * O campo de texto acompanha o que está sendo escrito.
+   *
+   * São DOIS comportamentos, e a diferença importa: o campo com `maxLinhas`
+   * (o "O quê?" e o "Como?" do plano de ação) tem a altura mandada por aqui —
+   * cresce e ENCOLHE com o texto até o teto de linhas, e ali passa a rolar por
+   * dentro. O campo sem teto continua como sempre foi: só `min-height`, subindo
+   * até 60% da tela, com a rolagem nativa. Mexer no `height` e no `overflow`
+   * dele quebraria o que o flex do modal já resolve — esticado pelo flex, um
+   * `overflow: hidden` calculado aqui cortaria o texto sem barra de rolagem.
    *
    * Encolher exige zerar a altura antes de medir: `scrollHeight` nunca diminui
    * enquanto o elemento estiver esticado por uma altura anterior, e apagar
@@ -438,9 +443,14 @@ const Modal = {
    */
   crescerTextarea(t) {
     if (t.dataset.ajustado) return;
-    const teto = t.dataset.maxLinhas
-      ? Math.round(Number(t.dataset.maxLinhas) * this.alturaLinha(t) + this.bordasVerticais(t))
-      : Math.round(window.innerHeight * 0.6);
+    if (!t.dataset.maxLinhas) {
+      const teto = Math.round(window.innerHeight * 0.6);
+      if (t.scrollHeight <= t.clientHeight + 1) return;
+      const alvo = Math.min(t.scrollHeight + 2, teto);
+      if (alvo > t.clientHeight) t.style.minHeight = `${alvo}px`;
+      return;
+    }
+    const teto = Math.round(Number(t.dataset.maxLinhas) * this.alturaLinha(t) + this.bordasVerticais(t));
     const anterior = t.style.height;
     t.style.height = 'auto';
     const alvo = Math.min(t.scrollHeight + 2, teto);

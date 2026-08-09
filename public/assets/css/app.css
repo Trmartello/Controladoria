@@ -338,13 +338,26 @@ input[type=range].faixa-verde:focus-visible {
    para uma mínima só separar as duas — e no celular a coluna de 170px espremia
    o seletor do dia da semana. */
 .grade-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0 .75rem; }
+/* Linha com TODOS os campos escondidos some por inteiro: a `d-none` zera a
+   altura dos filhos, mas a margem da linha continua lá e vira um buraco no meio
+   do formulário — visível entre "Repetição" e "Quando?" enquanto a ação não se
+   repete. */
+.grade-campos:not(:has(> :not(.d-none))) { display: none; }
+/* "Quem?" e "Repetição" dividem a linha, mas não em partes iguais: o
+   responsável é um nome (com busca dentro do campo) e a repetição é um seletor
+   de três opções curtas. Três contra dois, e não dois contra um: a fatia menor
+   ainda precisa caber "Não se repete" antes da seta do seletor. */
+.grade-linha-quem-repeticao { grid-template-columns: 3fr 2fr; }
 @media (max-width: 575.98px) {
   .grade-campos { grid-template-columns: 1fr; }
-  /* Pares do formulário da ação que o celular MANTÉM lado a lado (Prioridade
-     + Status, Repetição + Custo): empilhados, cada campo curto custava uma
-     faixa de tela — e otimizar esse espaço foi pedido do cliente */
-  .grade-linha-prioridade-status,
-  .grade-linha-repeticao-custo { grid-template-columns: 1fr 1fr; }
+  /* Pares do formulário da ação que o celular MANTÉM lado a lado (Prioridade +
+     Status, Quem + Repetição): empilhados, cada campo curto custava uma faixa
+     de tela — e otimizar esse espaço foi pedido do cliente. O par "quem +
+     repetição" fica em 4 contra 3 (e não 3 contra 2) porque na largura do
+     celular a fatia menor precisa dos ~140px de "Não se repete": com 3fr 2fr
+     faltavam dois pixels e o texto encostava na seta. */
+  .grade-linha-prioridade-status { grid-template-columns: 1fr 1fr; }
+  .grade-linha-quem-repeticao { grid-template-columns: 4fr 3fr; }
 }
 .sub-rotulo {
   display: block;
@@ -1156,9 +1169,15 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
    do rodapé muda com o botão extra, e um deslocamento fixo erraria o alvo em
    metade dos formulários. Ele ocupa uma linha no fim do conteúdo, e por isso
    só aparece quando há mesmo o que rolar. */
+/* AVISO, não controle: ele flutua grudado no fundo da área visível e passa por
+   cima do que estiver ali. Clicável, engolia o toque do que ficasse embaixo —
+   com a grade de dias da repetição, o dia 31 simplesmente não podia ser
+   marcado no celular. `pointer-events: none` devolve o toque ao conteúdo; quem
+   quer descer, rola. */
 .aviso-rolagem {
   position: sticky;
   bottom: 0;
+  pointer-events: none;
   display: block;
   margin: .25rem auto 0;
   border: 1px solid #dde3e0;
@@ -1171,7 +1190,6 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   min-height: 1.6rem;
   box-shadow: 0 .25rem .4rem -.2rem rgba(0, 0, 0, .25);
 }
-.aviso-rolagem:hover { background: #e3e8e5; }
 
 /* Cabeçalho da Matriz GUT grudado abaixo da topbar, e o `<thead>` grudado
    abaixo dele. Rolando o ranking, os títulos saíam de vista e as quatro
@@ -2070,7 +2088,11 @@ tr.card-destacado > td { background: #e8f5ee; }
   grid-template-columns: repeat(7, 1fr);
   gap: .25rem;
 }
-.btn-dia {
+/* Duas classes no seletor, e o :hover declarado: o `.btn:hover` do Bootstrap
+   tem mais especificidade que uma classe só e zera cor, fundo e borda — o dia
+   não marcado sumia justamente sob o cursor. Mesma armadilha já paga em
+   `.grupo-botoes .btn-opcao` e `.btn-add-cat`. */
+.grade-dias .btn-dia {
   --bs-btn-focus-shadow-rgb: 0, 122, 69;
   display: flex;
   align-items: center;
@@ -2084,12 +2106,18 @@ tr.card-destacado > td { background: #e8f5ee; }
   border: 1px solid var(--verde-coperdia);
   border-radius: .375rem;
 }
-.btn-check:checked + .btn-dia {
+.grade-dias .btn-dia:hover {
+  color: #fff;
+  background: var(--verde-escuro, #005c34);
+  border-color: var(--verde-escuro, #005c34);
+}
+.grade-dias .btn-check:checked + .btn-dia,
+.grade-dias .btn-check:checked + .btn-dia:hover {
   color: #fff;
   background: var(--verde-coperdia);
   border-color: var(--verde-coperdia);
 }
-.btn-check:focus-visible + .btn-dia {
+.grade-dias .btn-check:focus-visible + .btn-dia {
   box-shadow: 0 0 0 .25rem rgba(0, 122, 69, .25);
 }
 
@@ -2170,6 +2198,11 @@ tr.card-destacado > td { background: #e8f5ee; }
   z-index: 4;
 }
 .campo-voz > .btn-ditar:hover { color: #343a40; background: #e9ecef; }
+/* No campo que pode ser esticado à mão, o microfone SOBE: a alça de
+   redimensionar do navegador mora no canto inferior direito, com ~16px, e o
+   botão (28px, z-index acima) cobria justamente ela — arrastar o canto ligava o
+   ditado em vez de aumentar o campo. */
+.campo-voz:has(> textarea[data-max-linhas]) > .btn-ditar { bottom: 1.6rem; }
 .btn-ditar.gravando,
 .campo-voz > .btn-ditar.gravando {
   color: #fff;

@@ -1338,11 +1338,13 @@ const SecaoProjetos = {
    * o serviço. Escritos separados, os dois formulários voltariam a divergir no
    * primeiro campo novo.
    *
-   * Ordem pedida: o quê, como, quem, quando, prioridade, a linha da repetição,
-   * a linha de status e custo, e o progresso. "Quem?" fica logo depois do
-   * "Como?" — ele não estava na ordem pedida, mas é ele que amarra a ação a uma
-   * pessoa: é de `quem_usuario_id` que saem os avisos por e-mail e o filtro de
-   * "minhas ações". Tirá-lo do formulário deixaria a ação sem dono.
+   * Ordem: o quê, como, a linha "quem + repetição", os detalhes da repetição,
+   * o quando, a linha "prioridade + status" e, por último, o custo. Duas regras
+   * dessa ordem não são estéticas: a repetição vem ANTES do quando porque é ela
+   * que decide se o quando existe (decidir primeiro, preencher depois), e o
+   * custo — único campo opcional — fica por último, no caminho do Salvar.
+   * "Quem?" é o que amarra a ação a uma pessoa: é de `quem_usuario_id` que saem
+   * os avisos por e-mail e o filtro de "minhas ações".
    */
   camposAcao(dd = null) {
     return [
@@ -1357,14 +1359,36 @@ const SecaoProjetos = {
         maxLinhas: 5, exemplo: 'Ex.: Contratar projeto executivo dos silos' },
       { nome: 'como', rotulo: 'Como?', obrigatorio: true, tipo: 'textarea', linhas: 2,
         maxLinhas: 5, exemplo: 'Ex.: Concorrência entre três projetistas' },
+      // "Quem?" e "Repetição" dividem uma linha, com o responsável ocupando o
+      // dobro: o nome é o texto longo (e tem busca), e a repetição é um seletor
+      // de três opções curtas. A REPETIÇÃO vem antes do "Quando?" porque é ela
+      // que decide se o "Quando?" existe: quem responde "repete?" primeiro
+      // entende por que o período apareceu (ou não). Na ordem inversa, o campo
+      // do prazo sumia da tela depois de já ter sido lido — parecia defeito.
       { nome: 'quem', rotulo: 'Quem?', tipo: 'selecao_livre', opcoes: this.responsaveis,
-        obrigatorio: true, vazio: '(selecione o responsável)',
+        obrigatorio: true, vazio: '(selecione o responsável)', linha: 'quem-repeticao',
         ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
+      { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', linha: 'quem-repeticao', opcoes: [
+        { valor: 'NENHUMA', rotulo: 'Não se repete' },
+        { valor: 'SEMANAL', rotulo: 'Toda semana' },
+        { valor: 'MENSAL', rotulo: 'Todo mês' },
+      ], ajuda: 'Ao concluir, reabre na próxima data.' },
       { nome: 'quando_', rotulo: '', tipo: 'hidden' },
+      // Mensal aceita mais de um dia (ex.: todo dia 5 e 20) e por isso a grade
+      // ocupa a largura inteira, fora da linha compartilhada
+      { nome: 'recorrencia_dias_mes', rotulo: 'Repete nos dias', tipo: 'dias_mes',
+        visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
+        ajuda: 'Marque um ou mais dias. Em meses curtos, cai no último dia do mês.' },
+      { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select', linha: 'repeticao-detalhe',
+        visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
+        opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo })) },
+      { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date', linha: 'repeticao-detalhe',
+        visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
+        ajuda: 'Opcional — depois dela, encerra.' },
       // "Quando?" só existe para a ação que NÃO se repete: quando ela repete,
-      // quem diz a data de vencimento é a grade da repetição (o dia da semana,
-      // ou os dias do mês), e o servidor a calcula. Ter os dois na tela fazia
-      // o usuário digitar um "fim previsto" que a primeira conclusão descartava.
+      // quem diz a data de vencimento é a grade acima, e o servidor a calcula.
+      // Ter os dois na tela fazia o usuário digitar um "fim previsto" que a
+      // primeira conclusão descartava.
       { nome: 'quando_periodo', rotulo: 'Quando?', tipo: 'periodo', obrigatorio: true,
         visivelSe: { campo: 'recorrencia', valores: ['NENHUMA'] },
         campos: [
@@ -1380,26 +1404,11 @@ const SecaoProjetos = {
       { nome: 'status', rotulo: 'Status', tipo: 'select', linha: 'prioridade-status',
         opcoes: this.opcoesStatusAcao(dd?.status),
         ajuda: '“No prazo” e “Atrasada” saem da data de fim.' },
-      // Repetição e custo na linha de baixo; os detalhes da repetição (dia e
-      // limite) só aparecem quando a ação se repete, numa linha própria
-      { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', linha: 'repeticao-custo', opcoes: [
-        { valor: 'NENHUMA', rotulo: 'Não se repete' },
-        { valor: 'SEMANAL', rotulo: 'Toda semana' },
-        { valor: 'MENSAL', rotulo: 'Todo mês' },
-      ], ajuda: 'Ao concluir, reabre na próxima data.' },
+      // O custo é o ÚLTIMO campo antes do Salvar: é o único opcional da lista e
+      // o que menos gente preenche — quem só descreve a ação chega ao botão sem
+      // passar por ele.
       { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number', min: 0,
-        linha: 'repeticao-custo', ajuda: 'Só números.' },
-      // Mensal aceita mais de um dia (ex.: todo dia 5 e 20) e por isso a grade
-      // ocupa a largura inteira, fora da linha compartilhada
-      { nome: 'recorrencia_dias_mes', rotulo: 'Repete nos dias', tipo: 'dias_mes',
-        visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
-        ajuda: 'Marque um ou mais dias. Em meses curtos, cai no último dia do mês.' },
-      { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select', linha: 'repeticao-detalhe',
-        visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
-        opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo })) },
-      { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date', linha: 'repeticao-detalhe',
-        visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
-        ajuda: 'Opcional — depois dela, encerra.' },
+        ajuda: 'Só números.' },
       // O progresso NÃO é campo deste formulário: ele evolui pela barra do
       // próprio cartão, e pop-up só existe nas fronteiras dos 100% (concluir /
       // sair da conclusão). O hidden preserva o valor atual na edição — sem

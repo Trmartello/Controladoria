@@ -163,7 +163,7 @@
                nunca soube que havia mais. Fica por último de propósito: como é
                `position: sticky; bottom: 0`, ele acompanha o fim da área
                visível enquanto sobrar campo, e só sai quando a rolagem acaba. -->
-          <button type="button" id="modal-mais" class="aviso-rolagem d-none">mais campos abaixo ↓</button>
+          <div id="modal-mais" class="aviso-rolagem d-none" role="status" aria-live="polite">mais campos abaixo ↓</div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline-danger btn-sm me-auto d-none" id="modal-extra"></button>
