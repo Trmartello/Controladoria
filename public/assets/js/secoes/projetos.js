@@ -255,12 +255,79 @@ const SecaoProjetos = {
       .filter(([, n]) => n > 0)
       .map(([st, n]) => {
         const [rot] = STATUS_ACAO[st] || [st];
-        const cor = CORES_STATUS[st] || '#6c757d';
         const pct = Math.round((n * 100) / total);
-        return `<span class="selo-resumo" style="--cor:${cor};background:${cor}14;border-color:${cor}45"
+        // A cor vem por CLASSE (`st-…`), nunca por `style`: o mesmo selo é
+        // desenhado dentro do popover, cujo conteúdo passa pelo sanitizador do
+        // Bootstrap — ele descarta `style`, e as cores sumiriam só de lá.
+        return `<span class="selo-resumo st-${st}"
           title="${Modal.esc(rot)}: ${n} de ${total} ação(ões)">
           <span class="ponto-resumo"></span>${Modal.esc(rot)}: ${n} (${pct}%)</span>`;
       }).join('');
+  },
+
+  /**
+   * O conteúdo do popover de resumo: uma linha por situação, com o NOME à
+   * esquerda e a contagem com o percentual à direita.
+   *
+   * Vale para o projeto e para a frente — a diferença é só o conjunto de ações
+   * que entra. Aqui aparecem TODAS as situações presentes, inclusive no
+   * projeto, onde o cabeçalho mostra só o atraso: o selo responde "tem atraso?"
+   * de relance e o popover responde "e o resto?" para quem parar em cima.
+   *
+   * Alinhado em coluna de propósito: em linha corrida, o olho procurava o
+   * número no meio do texto de cada situação, e os números são justamente o que
+   * se compara entre as linhas.
+   */
+  conteudoPopover(acoes) {
+    const total = (acoes || []).length;
+    if (!total) return '<div class="text-muted small">Nenhuma ação nesta frente ainda.</div>';
+    const linhas = ORDEM_RESUMO
+      .map((st) => [st, acoes.filter((a) => a.status === st).length])
+      .filter(([, n]) => n > 0)
+      .map(([st, n]) => {
+        const [rot] = STATUS_ACAO[st] || [st];
+        const pct = Math.round((n * 100) / total);
+        return `<div class="linha-resumo st-${st}">
+          <span class="nome-status"><span class="ponto-resumo"></span>${Modal.esc(rot)}</span>
+          <span class="qtd-status">${n} (${pct}%)</span>
+        </div>`;
+      }).join('');
+    return `${linhas}<div class="total-resumo"><span>Total</span><span>${total} ação(ões)</span></div>`;
+  },
+
+  /**
+   * Liga os popovers do resumo, um por título (projeto e frente).
+   *
+   * O conteúdo é montado AQUI e passado por opção, não por `data-bs-content`:
+   * no atributo ele precisaria ser escapado duas vezes (é HTML dentro de HTML),
+   * e a primeira aspa de um título com aspas quebraria a marcação.
+   *
+   * As instâncias antigas são DESCARTADAS a cada pintura: a seção se repinta e
+   * os elementos antigos saem do documento, mas o balão que o Bootstrap pendura
+   * no `<body>` fica — sem o `dispose`, uma tarde de uso deixa dezenas deles
+   * empilhados fora da tela.
+   */
+  popoversResumo: [],
+
+  ligarPopoversResumo(el, conteudos) {
+    this.popoversResumo.forEach((p) => p.dispose());
+    this.popoversResumo = [];
+    if (!window.bootstrap?.Popover) return;
+    el.querySelectorAll('[data-popover-resumo]').forEach((alvo) => {
+      const html = conteudos.get(alvo.dataset.popoverResumo);
+      if (!html) return;
+      this.popoversResumo.push(new bootstrap.Popover(alvo, {
+        content: html,
+        html: true,
+        // `focus` junto do `hover` para quem navega por teclado — e `container:
+        // body` porque o cartão do projeto tem `overflow` próprio, que cortaria
+        // o balão pela metade.
+        trigger: 'hover focus',
+        placement: 'bottom',
+        container: 'body',
+        customClass: 'popover-resumo',
+      }));
+    });
   },
 
   // Período escolhido no calendário; textos antigos (prazo/quando_) seguem valendo
@@ -293,7 +360,8 @@ const SecaoProjetos = {
     return `<div class="iniciativa mb-2" data-iniciativa="${ini.id}">
       <div class="d-flex align-items-center gap-2 flex-wrap iniciativa-cabeca" data-abrir-ini="${ini.id}">
         <span class="seta-iniciativa">${aberta ? '▾' : '▸'}</span>
-        <strong class="small">${Modal.esc(ini.titulo)}</strong>
+        <strong class="small" data-popover-resumo="ini-${ini.id}"
+          title="Situação das ações desta frente">${Modal.esc(ini.titulo)}</strong>
         <!-- O resumo vem logo DEPOIS do nome, como no projeto um nível acima.
              O ms-auto passou para o grupo da direita justamente para o título
              deixar de esticar e empurrar os selos para longe do nome que eles
@@ -429,6 +497,16 @@ const SecaoProjetos = {
     this.responsaveis = responsaveis;
     this.projetos = projetos;   // guardado para o seletor de iniciativa ao converter ideias
 
+    // O conteúdo de cada popover, montado ANTES da pintura e guardado por
+    // chave: o balão do projeto resume as ações de TODAS as frentes, e o de
+    // cada frente, as dela — a mesma regra do selo do cabeçalho.
+    const conteudos = new Map();
+    projetos.forEach((p) => {
+      conteudos.set(`proj-${p.id}`, this.conteudoPopover(p.desdobramentos || []));
+      (p.iniciativas || []).forEach((ini) =>
+        conteudos.set(`ini-${ini.id}`, this.conteudoPopover(ini.acoes || [])));
+    });
+
     const cartoes = projetos.map((p) => {
       // O prazo é consequência das ações: menor início e maior fim entre elas
       const detalhes = [
@@ -459,7 +537,8 @@ const SecaoProjetos = {
           <div class="d-flex align-items-center gap-2 flex-wrap">
             <div class="projeto-cabeca flex-grow-1" data-abrir-proj="${p.id}" role="button" tabindex="0">
               <span class="seta-projeto">${aberto ? '▾' : '▸'}</span>
-              <strong>${Modal.esc(p.titulo)}</strong>
+              <strong data-popover-resumo="proj-${p.id}"
+                title="Situação das ações deste projeto">${Modal.esc(p.titulo)}</strong>
               ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning ms-1">Prioritário</span>' : ''}
               <!-- UM selo, e é o do atraso: quantas ações estão fora do prazo e
                    quanto isso é do total criado (todas as frentes somadas). O
@@ -559,6 +638,7 @@ const SecaoProjetos = {
     });
 
     this.ligarBotoesMais(el);
+    this.ligarPopoversResumo(el, conteudos);
     this.aplicarDestaqueAcao(el);
 
     el.querySelectorAll('[data-comentarios]').forEach((b) => b.addEventListener('click', () => {

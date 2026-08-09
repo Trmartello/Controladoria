@@ -976,6 +976,16 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   nenhum selo**; a ausência é a boa notícia, e um "Atrasada: 0 (0%)" em toda
   linha treinaria o olho a pular justamente o selo que importa. O percentual é arredondado e pode
   somar 99% ou 101%: a contagem é que manda, e o `title` traz "N de T ações".
+  **O título do projeto e o da frente abrem um popover** com a distribuição
+  inteira (`conteudoPopover` + `ligarPopoversResumo`, Popover do Bootstrap):
+  nome da situação à ESQUERDA e contagem com percentual à DIREITA, em coluna —
+  em linha corrida o olho procurava o número no meio do texto, e os números são
+  o que se compara entre linhas. Duas armadilhas pagas: o sanitizador do
+  Bootstrap **descarta `style`** do conteúdo, então a cor de cada situação vem
+  por CLASSE (`.st-ATRASADO` e irmãs, no CSS) — de estilo em linha ela sumiria
+  só dentro do balão; e as instâncias são **descartadas a cada pintura**, porque
+  o balão mora no `<body>` e sobrevive à troca do `innerHTML` — sem o `dispose`,
+  uma tarde de uso empilha dezenas deles fora da tela.
   A cor sai de `CORES_STATUS`, que é a MESMA leitura de `STATUS_ACAO` em hexa —
   a regra da GUT (a cor junta, a forma separa): o selo do cartão é sólido, o do
   resumo é claro com um ponto, porque vários sólidos lado a lado viram parede.

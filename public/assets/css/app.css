@@ -1447,6 +1447,20 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
 .linha-acao-topo .faixa-progresso { min-width: 3rem; }
 .detalhe-item { border-top: 1px dashed #dee2e6; margin-top: .4rem; padding-top: .4rem; }
 
+/* A cor de cada situação, por CLASSE e não por estilo em linha: o conteúdo do
+   popover passa pelo sanitizador do Bootstrap, que descarta `style` — as cores
+   sumiriam lá e continuariam aqui, e as duas leituras divergiriam sem aviso.
+   Três valores por situação em vez de um `color-mix`: explícito, e funciona em
+   qualquer navegador que abra o sistema. A tinta é a mesma de `STATUS_ACAO`
+   (ver `CORES_STATUS`, que continua sendo a lista de referência no JS). */
+.st-ATRASADO             { --cor: #b3261e; --fundo: #fbeceb; --borda: #eec5c2; }
+.st-EM_ANDAMENTO         { --cor: #0d6efd; --fundo: #eaf1ff; --borda: #c3d8ff; }
+.st-AGUARDANDO_VALIDACAO { --cor: #5d6b64; --fundo: #eef1ef; --borda: #d2dad6; }
+.st-PAUSADO              { --cor: #b08d4f; --fundo: #f8f2e7; --borda: #e6d6b8; }
+.st-NAO_INICIADO         { --cor: #0a8ea0; --fundo: #e7f5f7; --borda: #bde0e6; }
+.st-CONCLUIDO            { --cor: #007a45; --fundo: #e6f3ed; --borda: #b9ddcc; }
+.st-CANCELADO            { --cor: #6c757d; --fundo: #f0f1f2; --borda: #d6d9db; }
+
 /* Resumo por situação no cabeçalho do projeto e da frente de trabalho.
    Selo CLARO, não sólido: são vários lado a lado e uma fila de badges cheios
    vira parede — a cor continua sendo a mesma da situação (ver CORES_STATUS),
@@ -1461,10 +1475,41 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   line-height: 1.4;
   padding: .1rem .5rem;
   border-radius: 999px;
-  border: 1px solid transparent;
   color: var(--cor);
+  background: var(--fundo);
+  border: 1px solid var(--borda);
   white-space: nowrap;
 }
+
+/* Popover do resumo: uma linha por situação, NOME à esquerda e a contagem com o
+   percentual à direita, alinhados em coluna. Em linha corrida, o olho tinha de
+   procurar o número no meio do texto de cada situação — e os números são o que
+   se compara entre linhas. */
+.popover-resumo { --bs-popover-max-width: 17rem; }
+.popover-resumo .popover-body { padding: .5rem .6rem; }
+.linha-resumo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  font-size: .78rem;
+  padding: .12rem 0;
+}
+.linha-resumo + .linha-resumo { border-top: 1px solid #f0f3f1; }
+.linha-resumo .nome-status { display: inline-flex; align-items: center; gap: .35rem; color: var(--cor); }
+.linha-resumo .qtd-status { font-weight: 700; white-space: nowrap; color: var(--cor); }
+.total-resumo {
+  border-top: 1px solid #dee2e6;
+  margin-top: .3rem;
+  padding-top: .3rem;
+  font-size: .72rem;
+  color: #6a6a6a;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+/* O título gruda o cursor de ajuda: sem isso nada diz que ali tem algo a ver. */
+[data-popover-resumo] { cursor: help; }
 .ponto-resumo {
   width: .45rem;
   height: .45rem;

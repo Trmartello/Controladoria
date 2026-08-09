@@ -456,6 +456,107 @@ async function provasResumoStatus(page, largura) {
 }
 
 /**
+ * O popover de resumo nos títulos — do projeto e da frente.
+ *
+ * Duas coisas guardadas aqui. A primeira é o ALINHAMENTO em coluna: nome à
+ * esquerda, contagem à direita, o mesmo x em todas as linhas — é o que faz os
+ * números serem comparáveis de relance, e é o que se perde numa edição
+ * distraída sem quebrar nada.
+ *
+ * A segunda é o `dispose`. O balão do Bootstrap mora no `<body>`, fora da
+ * seção: sem descartar as instâncias a cada pintura, uma tarde de uso deixa
+ * dezenas deles empilhados — e o defeito não aparece na tela, só na memória.
+ */
+async function provasPopoverResumo(page, largura) {
+  const ids = await page.evaluate(async () => {
+    const pr = await App.api('/api/projetos',
+      { planejamento_id: 1, titulo: 'Projeto do popover', ano: 2027, responsavel: 'QA', descricao: '' });
+    const ini = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: pr.id, titulo: 'Frente pop' });
+    const mk = (o, st, fim) => App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: pr.id, iniciativa_id: ini.id, o_que: o, como: 'x', quem: 'QA',
+      quem_usuario_id: 1, prioridade: 'MEDIA', status: st, progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2026-01-01', data_fim: fim,
+    });
+    await mk('atrasada', 'NAO_INICIADO', '2026-06-01');
+    await mk('aguardando', 'AGUARDANDO_VALIDACAO', '2027-12-31');
+    await mk('no prazo', 'NAO_INICIADO', '2027-12-31');
+    return { pr: pr.id, ini: ini.id };
+  });
+
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  const alvoProj = `[data-popover-resumo="proj-${ids.pr}"]`;
+  await esperar(page, `!!document.querySelector('${alvoProj}')`);
+  // `scrollIntoViewIfNeeded` para o elemento no TOPO da janela — que agora é
+  // onde mora o cabeçalho fixo. O alvo fica debaixo dele, o hover bate no
+  // cabeçalho e a espera nunca termina. Subir a rolagem tira o alvo de baixo:
+  // é a mesma coisa que acontece com quem clica num link âncora.
+  const mostrar = async (sel) => {
+    await page.locator(sel).scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollBy(0, -140));
+  };
+  await mostrar(alvoProj);
+  await page.hover(alvoProj);
+  const abriu = await esperar(page, "!!document.querySelector('.popover-resumo')");
+  t(`[${largura}] o título do projeto abre o popover`, abriu);
+
+  if (abriu) {
+    const m = await page.evaluate(() => {
+      const linhas = [...document.querySelectorAll('.popover-resumo .linha-resumo')];
+      const r = (el) => el.getBoundingClientRect();
+      return {
+        conteudo: linhas.map((l) => `${l.querySelector('.nome-status').textContent.trim()}=${
+          l.querySelector('.qtd-status').textContent.trim()}`),
+        // Coluna: um x só para os nomes, um x só para os números.
+        esquerdas: [...new Set(linhas.map((l) => Math.round(r(l.querySelector('.nome-status')).left)))].length,
+        direitas: [...new Set(linhas.map((l) => Math.round(r(l.querySelector('.qtd-status')).right)))].length,
+        // O ponto colorido prova que a CLASSE sobreviveu ao sanitizador do
+        // Bootstrap — com `style` ela teria sido descartada e o ponto sairia
+        // preto, sem ninguém notar.
+        pontoPintado: getComputedStyle(linhas[0].querySelector('.ponto-resumo')).backgroundColor,
+        total: !!document.querySelector('.popover-resumo .total-resumo'),
+      };
+    });
+    t(`[${largura}] o popover do projeto lista todas as situações`,
+      m.conteudo.join(' | ') === 'Atrasada=1 (33%) | Aguardando validação=1 (33%) | No prazo=1 (33%)',
+      JSON.stringify(m.conteudo));
+    t(`[${largura}] nome à esquerda e número à direita, em coluna`,
+      m.esquerdas === 1 && m.direitas === 1, `esquerdas=${m.esquerdas} direitas=${m.direitas}`);
+    t(`[${largura}] a cor da situação sobrevive ao sanitizador`,
+      m.pontoPintado === 'rgb(179, 38, 30)', m.pontoPintado);
+    t(`[${largura}] e o popover fecha com o total`, m.total);
+  }
+
+  // O mesmo balão na frente de trabalho. O do projeto precisa SAIR antes: ele
+  // abre para baixo e cobre o título da frente — o clique/hover seguinte bate
+  // no balão, não no título, e a espera nunca termina. Tirar o mouse não basta
+  // (o ponteiro fica onde estava); quem fecha é o `hide()`.
+  await page.evaluate(() => document.querySelectorAll('[data-popover-resumo]')
+    .forEach((el) => bootstrap.Popover.getInstance(el)?.hide()));
+  await esperar(page, "!document.querySelector('.popover')");
+  // O ponteiro sai para o MEIO da tela, nunca para (0,0): encostar na borda
+  // esquerda é o gesto que abre o menu lateral no computador, e ele cobriria
+  // justamente o título da frente que vem a seguir.
+  await page.mouse.move(700, 400);
+  const alvoIni = `[data-popover-resumo="ini-${ids.ini}"]`;
+  await esperar(page, `!!document.querySelector('${alvoIni}')`);
+  await mostrar(alvoIni);
+  await page.hover(alvoIni);
+  t(`[${largura}] o título da frente abre o mesmo popover`,
+    await esperar(page, "!!document.querySelector('.popover-resumo .linha-resumo')"));
+
+  // Repinta três vezes e conta os balões pendurados no body.
+  for (let i = 0; i < 3; i++) await page.evaluate(() => App.recarregarSecaoAtiva());
+  await esperar(page, `!!document.querySelector('${alvoProj}')`);
+  t(`[${largura}] repintar não empilha popovers no body`,
+    await page.evaluate(() => document.querySelectorAll('body > .popover').length <= 1),
+    await page.evaluate(() => `${document.querySelectorAll('body > .popover').length} pendurado(s)`));
+
+  await page.evaluate(async (id) => {
+    await App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 });
+  }, ids.pr);
+}
+
+/**
  * O cabeçalho de Projetos grudado abaixo da topbar.
  *
  * Os três botões de nível (Ações · Frentes · Projetos) são o controle que se usa
@@ -697,6 +798,7 @@ async function provasAcao(page) {
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
   await provasCabecalhoProjetos(page, 'desktop');
+  await provasPopoverResumo(page, 'desktop');
   await provasGut(page);
   await provasAcao(page);
 
