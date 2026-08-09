@@ -498,12 +498,9 @@ input[type=range].faixa-verde:focus-visible {
    A linha do tempo do acompanhamento: inicial do autor, nome, data e o texto,
    com os anexos em MINIATURA embaixo. A miniatura é o ponto: numa lista de
    nomes de arquivo, ninguém sabe qual foto é qual sem abrir uma por uma. */
-.novo-comentario {
-  border: 1px solid #dee2e6;
-  border-radius: .5rem;
-  padding: .6rem;
-  background: #fff;
-}
+/* O formulário do novo comentário mora num MODAL (`modalComentario`), aberto
+   pelo "+" ao lado do título: o botão "Comentários" mostra só o que já existe.
+   A antiga caixa `.novo-comentario`, acima da lista, saiu junto com a regra. */
 .comentario { padding: .5rem 0; border-top: 1px solid #e9ecef; }
 .comentario:first-of-type { border-top: 0; }
 .texto-comentario { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1384,47 +1381,67 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   border-radius: 50%;
 }
 
-/* Plano de ação em três níveis: projeto → iniciativa → ação */
-.iniciativa {
+/* Plano de ação em três níveis: projeto → iniciativa → ação.
+   O filete verde e o recuo moram no CONTAINER das frentes, e a `.iniciativa`
+   vira `display: contents` de propósito: `position: sticky` só se move dentro
+   do bloco PAI, e com a caixa da frente no meio cada cabeçalho grudava apenas
+   enquanto o próprio bloco estava na tela — a pilha pedida pelo cliente (as
+   frentes percorridas acumuladas até o fim do projeto) exige que o limite de
+   cada cabeçalho seja o bloco INTEIRO de frentes. O elemento continua no DOM
+   (os seletores `[data-iniciativa]` e o duplo clique seguem valendo); só a
+   caixa dele deixa de existir — e com ela o `mb-2`, então o respiro entre
+   frentes passou para o último bloco visível de cada uma, nunca para o
+   cabeçalho: margem em elemento sticky vira fresta transparente na pilha. */
+.iniciativas-projeto:has(> .iniciativa) {
   border-left: 3px solid var(--verde-coperdia);
   padding-left: .6rem;
 }
+.iniciativa { display: contents; }
+.iniciativa > .acoes-iniciativa { margin-bottom: .5rem; }
+/* Frente recolhida (ações em d-none, que não gera caixa nem margem): o respiro
+   vem do panorama, o último bloco que sobra visível. */
+.iniciativa:has(> .acoes-iniciativa.d-none) > .panorama-execucao { margin-bottom: .5rem; }
 /* A PILHA de cabeçalhos, de cima para baixo:
-     topbar (52px) → cabeçalho de Projetos → cabeçalho do projeto → da frente.
-   Cada degrau soma a altura do anterior, e as duas alturas variáveis são
-   medidas no JS: `--altura-cabecalho` (o bloco de Projetos, uma por seção) e
+     topbar (52px) → cabeçalho de Projetos → cabeçalho do projeto → as frentes
+     JÁ PERCORRIDAS do projeto, empilhadas.
+   Cada degrau soma a altura do anterior, e as alturas variáveis são medidas no
+   JS: `--altura-cabecalho` (o bloco de Projetos, uma por seção),
    `--altura-projeto` (por CARTÃO, porque o selo de atraso e o nome que quebra
-   mudam a altura de um projeto para o outro).
+   mudam a altura de um projeto para o outro) e `--desloca-frente` (por FRENTE,
+   a soma dos cabeçalhos de frente acima dela — `medirCabecalhosProjeto`).
 
-   O z-index desce conforme se desce na pilha — Projetos 3, projeto 2, frente 1
-   — para que cada um passe POR BAIXO do de cima ao se encontrarem. Invertido, a
-   frente cobriria o nome do projeto justamente no momento da troca.
+   Decisão do cliente: dentro de um projeto as frentes ACUMULAM — a pilha só é
+   varrida quando o bloco do projeto acaba e o projeto seguinte toma o lugar.
+   Projeto NÃO empilha embaixo de projeto: todos os cabeçalhos de projeto usam
+   o mesmo `top` e cada um é limitado ao próprio cartão, então o novo substitui
+   o anterior na mesma linha. O custo assumido: projeto de muitas frentes gasta
+   uma faixa de tela por frente percorrida.
 
-   Enquanto uma frente rola para fora, a seguinte toma o lugar dela sob o
-   projeto: elas são blocos IRMÃOS, então cada cabeçalho só gruda enquanto o
-   bloco dele está na tela. É o que faz a leitura ser sempre "este projeto,
-   esta frente" em vez de uma pilha que cresce sem fim — num projeto de oito
-   frentes, acumular todas comeria a tela inteira. */
+   O z-index desce conforme se desce na pilha — Projetos 20, projeto 15 e as
+   frentes de 14 para baixo (em linha, pelo JS, com piso 1: sempre acima dos
+   cartões) — para que cada um passe POR BAIXO do de cima ao se encontrarem.
+   Invertido, no fim do bloco a frente que sai cobriria a de cima em vez de
+   deslizar por baixo dela. */
 .projeto-cabeca-fixa {
   position: sticky;
   top: calc(var(--topo-app) + var(--altura-cabecalho, 0px));
-  z-index: 2;
+  z-index: 15;
   background: #fff;
   margin: 0 -1rem;
   padding: .3rem 1rem;
   box-shadow: 0 .3rem .3rem -.3rem rgba(0, 0, 0, .18);
 }
 
-/* O cabeçalho da frente é o TERCEIRO degrau: gruda abaixo do do projeto, cuja
-   altura é medida no JS (`--altura-projeto`).
+/* O cabeçalho da frente é o TERCEIRO degrau: gruda abaixo do do projeto
+   (`--altura-projeto`) e das frentes empilhadas acima dele (`--desloca-frente`).
    Três cuidados que fazem a diferença entre "grudado" e "vazando":
    • fundo 100% OPACO e igual ao do cartão (branco). Translúcido, os cartões de
      ação apareceriam através dele enquanto passam por baixo;
    • margens negativas cobrindo o recuo do bloco, senão sobra uma faixa
-     transparente à esquerda (onde mora o padding da `.iniciativa`) e o texto
-     das ações passa por ali;
-   • `z-index: 2` — acima dos cartões, abaixo do cabeçalho de Projetos (3), que
-     é quem tem de ficar por cima quando os dois se encontram.
+     transparente à esquerda (onde mora o padding do container das frentes) e o
+     texto das ações passa por ali;
+   • o z-index em linha (14, 13, …) — acima dos cartões, abaixo do cabeçalho do
+     projeto (15), que é quem fica por cima quando os degraus se encontram.
    O que NÃO se deve fazer aqui é pôr `overflow: hidden` em algum ancestral para
    "cortar" o conteúdo: qualquer ancestral com overflow vira o scrollport do
    sticky, e o cabeçalho passa a grudar numa caixa que não rola — ou seja,
@@ -1432,7 +1449,7 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
 .iniciativa-cabeca {
   cursor: pointer;
   position: sticky;
-  top: calc(var(--topo-app) + var(--altura-cabecalho, 0px) + var(--altura-projeto, 0px));
+  top: calc(var(--topo-app) + var(--altura-cabecalho, 0px) + var(--altura-projeto, 0px) + var(--desloca-frente, 0px));
   z-index: 1;
   background: #fff;
   margin: 0 -.6rem;
@@ -1460,8 +1477,9 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
    ou não chega, ou chega depois da espera de 300ms. `manipulation` tira só o
    zoom por duplo toque: rolar e pinçar continuam valendo, e a barra de
    progresso segue arrastando como antes. */
-#secao-projetos .card,
-#secao-projetos .iniciativa { touch-action: manipulation; }
+/* Só o cartão: a `.iniciativa` é `display: contents` (não gera caixa), e o
+   toque nos filhos dela já herda a regra do cartão que os contém. */
+#secao-projetos .card { touch-action: manipulation; }
 
 /* "mostrar mais": o detalhe fica escondido até o usuário pedir */
 /* Expandir/recolher o detalhe de um item. É uma SETA, não texto: na linha do
@@ -1581,18 +1599,29 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
    As margens negativas cobrem a sarjeta do container: sem elas, a lista aparece
    pelas beiradas do bloco fixo enquanto rola. A sombra é o que faz o corte ser
    lido como "tem mais coisa acima" em vez de cartão quebrado.
-   `z-index: 3`: acima dos cartões e do cabeçalho de coluna das análises (2),
-   abaixo da topbar (1035) e do modal. */
+   `z-index: 20`: o topo da pilha de Projetos (projeto 15, frentes 14 para
+   baixo — a pilha das frentes precisou de faixa própria de camadas), abaixo da
+   topbar (1035) e do modal. */
 .cabecalho-projetos {
   position: sticky;
   top: var(--topo-app);
-  z-index: 3;
+  z-index: 20;
   background: #f4f6f5;
   margin: 0 -.75rem;
   padding: .4rem .75rem;
   box-shadow: 0 .35rem .35rem -.3rem rgba(0, 0, 0, .22);
 }
 .cabecalho-projetos h1 { margin-bottom: 0; }
+/* Pesquisa do plano de ação: compacta no cabeçalho fixo — o campo tem largura
+   de uma palavra e a situação fica no natural do texto; tamanho -sm para
+   alinhar com os botões de nível ao lado. No celular a dupla toma a linha
+   inteira e o campo estica no que sobrar — campo minúsculo é o que torna a
+   pesquisa bonita no papel e inutilizável no dedo. */
+.filtro-acoes [data-filtro-texto] { width: 11rem; }
+@media (max-width: 575.98px) {
+  .filtro-acoes { flex: 1 1 100%; }
+  .filtro-acoes [data-filtro-texto] { width: auto; flex: 1 1 auto; }
+}
 
 /* Fila de "Aguardando plano de ação": texto à esquerda, selo de origem e botão
    agrupados à direita. A mínima do texto é o que decide QUANDO o grupo desce:

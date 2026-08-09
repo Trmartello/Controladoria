@@ -178,6 +178,73 @@ const SecaoProjetos = {
   },
 
   /**
+   * Pesquisa do plano de ação (pedido do cliente): palavra e situação, lado a
+   * lado no cabeçalho fixo. A palavra casa com o TEXTO do cartão da ação e
+   * também com o título da frente e do projeto — procurar o nome de uma frente
+   * deve trazê-la inteira — e o resultado mostra sempre os três níveis juntos:
+   * a ação, a frente e o projeto dela. A situação casa pelo código
+   * (`data-status` do cartão), nunca pelo rótulo, que é refém da redação.
+   *
+   * É filtro de DOM, não recarga: esconder com `d-none` preserva o foco de quem
+   * digita (repintar a seção mataria o campo no meio da palavra), e o estado
+   * (`filtroTexto`/`filtroStatus`) mora na seção, então sobrevive às repinturas
+   * do `carregar()` — que reaplica o filtro ao terminar. Com filtro ativo os
+   * acordeões abrem À FORÇA (ação encontrada dentro de frente recolhida é
+   * resultado invisível); ao limpar, o recolhimento volta dos conjuntos
+   * (`projetosFechados`/`iniciativasFechadas`), que o filtro nunca altera.
+   * A pilha de cabeçalhos se reacomoda sozinha: esconder uma frente zera a
+   * altura do cabeçalho dela e o ResizeObserver de `medirCabecalhosProjeto`
+   * reempilha as que ficaram.
+   */
+  filtroTexto: '',
+  filtroStatus: '',
+
+  normalizar(s) {
+    return s.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  },
+
+  aplicarFiltro(el) {
+    const texto = this.normalizar(this.filtroTexto.trim());
+    const status = this.filtroStatus;
+    const ativo = !!(texto || status);
+    let algum = false;
+    el.querySelectorAll('[data-projeto]').forEach((cartao) => {
+      const projId = parseInt(cartao.dataset.projeto, 10);
+      const tituloProj = this.normalizar(
+        cartao.querySelector('.projeto-cabeca strong')?.textContent || '');
+      let temNoProjeto = false;
+      cartao.querySelectorAll('[data-iniciativa]').forEach((bloco) => {
+        const iniId = parseInt(bloco.dataset.iniciativa, 10);
+        const tituloIni = this.normalizar(
+          bloco.querySelector('.iniciativa-cabeca strong')?.textContent || '');
+        let temNaFrente = false;
+        bloco.querySelectorAll('[data-card-acao]').forEach((card) => {
+          const bate = (!status || card.dataset.status === status)
+            && (!texto || this.normalizar(card.textContent).includes(texto)
+              || tituloIni.includes(texto) || tituloProj.includes(texto));
+          card.classList.toggle('d-none', ativo && !bate);
+          if (bate) temNaFrente = true;
+        });
+        // `d-none` vence o `display: contents` da frente (é !important): a
+        // frente sem resultado some inteira, cabeçalho junto.
+        bloco.classList.toggle('d-none', ativo && !temNaFrente);
+        const fechadoIni = ativo ? !temNaFrente : this.iniciativasFechadas.has(iniId);
+        bloco.querySelector('.acoes-iniciativa')?.classList.toggle('d-none', fechadoIni);
+        const setaIni = bloco.querySelector('.seta-iniciativa');
+        if (setaIni) setaIni.textContent = fechadoIni ? '▸' : '▾';
+        if (temNaFrente) temNoProjeto = true;
+      });
+      cartao.classList.toggle('d-none', ativo && !temNoProjeto);
+      const fechadoProj = ativo ? !temNoProjeto : this.projetosFechados.has(projId);
+      cartao.querySelector('.iniciativas-projeto')?.classList.toggle('d-none', fechadoProj);
+      const setaProj = cartao.querySelector('.seta-projeto');
+      if (setaProj) setaProj.textContent = fechadoProj ? '▸' : '▾';
+      if (temNoProjeto) algum = true;
+    });
+    el.querySelector('[data-filtro-vazio]')?.classList.toggle('d-none', !ativo || algum);
+  },
+
+  /**
    * Abre/recolhe a tela inteira até o nível pedido. Sempre parte do zero (os
    * dois conjuntos limpos), senão um item recolhido à mão antes sobreviveria ao
    * clique e o nível escolhido não seria o que a tela mostra.
@@ -313,13 +380,21 @@ const SecaoProjetos = {
    * empilhados fora da tela.
    */
   /**
-   * A pilha de cabeçalhos: app → Projetos → projeto → frente.
+   * A pilha de cabeçalhos: app → Projetos → projeto → as frentes percorridas.
    *
    * Cada degrau precisa saber a altura do de cima, e a do PROJETO varia entre
    * cartões (o selo de atraso, o "Prioritário", o nome que quebra em duas
    * linhas no celular) — por isso a medida é POR CARTÃO, guardada numa variável
    * do próprio cartão, e não uma só para a seção. Uma média erraria em todos os
    * cartões menos num.
+   *
+   * As frentes EMPILHAM (decisão do cliente): dentro do projeto, cada cabeçalho
+   * de frente fica grudado até o bloco do projeto acabar, deslocado pela soma
+   * dos cabeçalhos de frente acima dele (`--desloca-frente`, por frente). Quem
+   * permite isso é o `display: contents` da `.iniciativa` no CSS — o limite do
+   * sticky passa a ser o bloco inteiro de frentes, não a caixa de cada uma. O
+   * projeto seguinte varre a pilha: o cabeçalho dele é limitado ao próprio
+   * cartão e usa o mesmo `top` dos demais, então substitui em vez de empilhar.
    *
    * O observador é trocado a cada pintura: o cartão anterior já saiu do
    * documento, e observá-lo seria medir o que ninguém vê.
@@ -332,15 +407,28 @@ const SecaoProjetos = {
     el.querySelectorAll('[data-projeto]').forEach((cartao) => {
       const cab = cartao.querySelector('.projeto-cabeca-fixa');
       if (!cab) return;
+      const frentes = [...cartao.querySelectorAll('.iniciativa-cabeca')];
       const medir = () => {
         // Cartão recolhido ou seção escondida medem zero, e zero aqui empilharia
         // o cabeçalho da frente por cima do do projeto.
         const h = Math.round(cab.getBoundingClientRect().height);
         if (h) cartao.style.setProperty('--altura-projeto', `${h}px`);
+        // O z-index DESCE a cada frente (14, 13, …) para a que sai no fim do
+        // bloco deslizar por BAIXO das de cima — sempre abaixo do cabeçalho do
+        // projeto (15) e, com o piso 1, sempre acima dos cartões de ação.
+        let soma = 0;
+        frentes.forEach((f, i) => {
+          f.style.setProperty('--desloca-frente', `${soma}px`);
+          f.style.zIndex = String(Math.max(1, 14 - i));
+          soma += Math.round(f.getBoundingClientRect().height);
+        });
       };
       medir();
       const ro = new ResizeObserver(medir);
       ro.observe(cab);
+      // A altura de cada frente também varia (nome que quebra, selo de atraso):
+      // mudou uma, as de baixo reempilham.
+      frentes.forEach((f) => ro.observe(f));
       this.observadoresProjeto.push(ro);
     });
   },
@@ -466,7 +554,8 @@ const SecaoProjetos = {
       repeticao && `<strong>Repete:</strong> ${repeticao}`,
       detalhes,
     ].filter(Boolean).join(' · ');
-    return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}">
+    return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}"
+      data-status="${a.status}">
       <div class="card-body py-2 px-2">
         <!-- Linha 1: situação, progresso e o expandir. O selo e o chevron não
              encolhem (flex-shrink-0); quem cede largura é a barra, que é a
@@ -648,7 +737,23 @@ const SecaoProjetos = {
       <div class="cabecalho-projetos d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>Projetos — ${Modal.esc(App.rotuloContexto())}</h1>
         <div class="d-flex gap-2 align-items-center flex-wrap">
-          ${projetos.length ? `<span class="small text-muted d-none d-sm-inline">Mostrar até</span>
+          ${projetos.length ? `
+          <!-- Pesquisa: enxuta de propósito — mora no cabeçalho fixo, e cada
+               rem aqui é tela roubada da lista o tempo todo. Palavra à
+               esquerda, situação ao lado; \`type=search\` traz o ✕ de limpar
+               de graça. -->
+          <div class="filtro-acoes d-flex gap-2 align-items-center">
+            <input type="search" class="form-control form-control-sm" data-filtro-texto
+              value="${Modal.esc(this.filtroTexto)}" placeholder="Pesquisar palavra…"
+              aria-label="Pesquisar ações por palavra">
+            <select class="form-select form-select-sm w-auto" data-filtro-status
+              aria-label="Filtrar por situação">
+              <option value="">Todas as situações</option>
+              ${Object.entries(STATUS_ACAO).map(([v, [rotulo]]) =>
+                `<option value="${v}" ${this.filtroStatus === v ? 'selected' : ''}>${rotulo}</option>`).join('')}
+            </select>
+          </div>
+          <span class="small text-muted d-none d-sm-inline">Mostrar até</span>
           <div class="btn-group btn-group-sm niveis-visao" role="group" aria-label="Mostrar até">
             ${botaoNivel('ACOES', 'Ações', 'Abre tudo: projetos, frentes e as ações de cada uma')}
             ${botaoNivel('FRENTES', 'Frentes', 'Recolhe as ações — projetos e frentes continuam à vista, com o percentual de cada um')}
@@ -660,13 +765,28 @@ const SecaoProjetos = {
       <p class="text-muted">Toque no título para recolher e expandir um item; use a seta (⌄) para
         ver o detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>
       ${this.cartaoIdeiasAcao(pendentes)}
-      <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>`;
+      <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>
+      <div class="text-muted d-none" data-filtro-vazio>Nenhuma ação encontrada com a pesquisa atual.</div>`;
 
     el.querySelectorAll('[data-virar-acao]').forEach((b) => b.addEventListener('click', () =>
       this.modalConverterAcao(pendentes.find((p) => p.chave === b.dataset.virarAcao))));
 
     el.querySelectorAll('[data-nivel]').forEach((b) =>
       b.addEventListener('click', () => this.aplicarNivel(b.dataset.nivel, projetos)));
+
+    // A pesquisa filtra o DOM a cada tecla (sem recarga, que mataria o foco) e
+    // é reaplicada aqui porque a repintura acabou de redesenhar tudo visível.
+    const campoFiltro = el.querySelector('[data-filtro-texto]');
+    campoFiltro?.addEventListener('input', () => {
+      this.filtroTexto = campoFiltro.value;
+      this.aplicarFiltro(el);
+    });
+    const selFiltro = el.querySelector('[data-filtro-status]');
+    selFiltro?.addEventListener('change', () => {
+      this.filtroStatus = selFiltro.value;
+      this.aplicarFiltro(el);
+    });
+    this.aplicarFiltro(el);
 
     // Acordeão do projeto (clicar no cabeçalho abre/fecha as iniciativas)
     el.querySelectorAll('[data-abrir-proj]').forEach((c) => {
@@ -1353,31 +1473,27 @@ const SecaoProjetos = {
       </div>`;
     }).join('');
 
-    const formulario = App.podeEditar() ? `
-      <div class="novo-comentario mb-3">
-        <div class="rotulo-secao">Novo comentário</div>
-        <textarea class="form-control" id="texto-comentario" rows="3"
-          placeholder="Descreva o andamento, bloqueios ou próximos passos..."></textarea>
-        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mt-2">
-          <div>
-            <label class="btn btn-sm btn-outline-secondary mb-0" for="arquivos-comentario">📎 Anexar</label>
-            <input type="file" id="arquivos-comentario" class="d-none" multiple
-              accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt">
-            <span class="small text-muted ms-2" id="lista-escolhidos"></span>
-          </div>
-          <button class="btn btn-sm btn-verde" id="btn-enviar-comentario">Enviar</button>
-        </div>
-        <div class="form-text">Até 5 arquivos por comentário, 5 MB cada — imagem, PDF, Word, Excel, PowerPoint, CSV ou TXT.</div>
-      </div>` : '';
+    // Abrir os comentários mostra o que JÁ EXISTE (pedido do cliente): o
+    // formulário saiu da frente da lista — quem clicava em "Comentários"
+    // queria ler, e a caixa de novo comentário empurrava os registros para
+    // baixo da dobra. Escrever é o gesto do "+" ao lado do título, que abre o
+    // formulário em modal (`modalComentario`) — e ali o textarea já vem com o
+    // ditado por voz e o crescer-com-o-texto de todo formulário do sistema.
+    const btnNovo = App.podeEditar()
+      ? `<button class="btn btn-sm btn-verde px-2 py-0" data-novo-comentario
+          title="Novo comentário" aria-label="Novo comentário">+</button>` : '';
 
     alvo.innerHTML = `<div class="card bg-light"><div class="card-body py-2">
-      <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="d-flex align-items-center gap-2 mb-2">
         <strong class="small text-uppercase">Comentários</strong>
-        <span class="small text-muted">${lista.length} registro(s)</span>
+        ${btnNovo}
+        <span class="small text-muted ms-auto">${lista.length} registro(s)</span>
       </div>
-      ${formulario}
       ${itens || '<div class="text-muted small">Nenhum comentário ainda.</div>'}
     </div></div>`;
+
+    alvo.querySelector('[data-novo-comentario]')
+      ?.addEventListener('click', () => this.modalComentario(refTipo, refId));
 
     alvo.querySelectorAll('[data-excluir-comentario]').forEach((b) =>
       b.addEventListener('click', async () => {
@@ -1390,53 +1506,51 @@ const SecaoProjetos = {
         }
         this.renderComentarios();
       }));
+  },
 
-    if (!App.podeEditar()) return;
-    const campo = alvo.querySelector('#texto-comentario');
-    Modal.crescerTextarea(campo);
-    const entrada = alvo.querySelector('#arquivos-comentario');
-    const escolhidos = alvo.querySelector('#lista-escolhidos');
-    entrada.addEventListener('change', () => {
-      const nomes = [...entrada.files].map((f) => f.name);
-      escolhidos.textContent = nomes.length
-        ? `${nomes.length} arquivo(s): ${nomes.join(', ')}` : '';
-    });
-
-    alvo.querySelector('#btn-enviar-comentario').addEventListener('click', async (ev) => {
-      const botao = ev.currentTarget;
-      const texto = campo.value.trim();
-      if (!texto && !entrada.files.length) {
-        alert('Escreva o comentário ou anexe um arquivo.');
-        return;
-      }
-      // O corpo é multipart porque leva arquivo: `App.api` fala JSON, então o
-      // envio é `fetch` na mão — com o mesmo header de CSRF, que é o que a
-      // rota confere.
-      const dados = new FormData();
-      dados.append('planejamento_id', this.plan.id);
-      dados.append('ref_tipo', refTipo);
-      dados.append('ref_id', refId);
-      dados.append('texto', texto);
-      for (const arquivo of entrada.files) dados.append('arquivos[]', arquivo);
-      botao.disabled = true;
-      botao.textContent = 'Enviando...';
-      try {
+  /**
+   * O formulário do novo comentário, em modal — texto e anexos.
+   *
+   * É a fábrica de sempre (`Modal.abrir`), com `enviar` próprio: o corpo é
+   * multipart porque leva arquivo, e `App.api` só fala JSON — este é o único
+   * `fetch` na mão do sistema, com o mesmo header de CSRF, que é o que a rota
+   * confere. Os arquivos não passam por `coletar()` (arquivo não viaja em
+   * JSON): o `enviar` os lê direto do campo, por `Modal.arquivosDe`.
+   */
+  modalComentario(refTipo, refId) {
+    Modal.abrir({
+      titulo: 'Novo comentário',
+      campos: [
+        { nome: 'texto', rotulo: 'Comentário', tipo: 'textarea', linhas: 4,
+          exemplo: 'Descreva o andamento, bloqueios ou próximos passos...' },
+        { nome: 'arquivos', rotulo: 'Anexos', tipo: 'arquivos', multiplo: true,
+          aceita: '.jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt',
+          ajuda: 'Até 5 arquivos por comentário, 5 MB cada — imagem, PDF, Word, Excel, PowerPoint, CSV ou TXT.' },
+      ],
+      enviar: async (corpo) => {
+        const texto = (corpo.texto || '').trim();
+        const arquivos = Modal.arquivosDe('arquivos');
+        // A recusa acontece AQUI, não no clique: lançada, ela aparece no aviso
+        // do modal (`mostrarErro`), que é onde quem acabou de salvar está olhando.
+        if (!texto && !arquivos.length) throw new Error('Escreva o comentário ou anexe um arquivo.');
+        const dados = new FormData();
+        dados.append('planejamento_id', this.plan.id);
+        dados.append('ref_tipo', refTipo);
+        dados.append('ref_id', refId);
+        dados.append('texto', texto);
+        for (const arquivo of arquivos) dados.append('arquivos[]', arquivo);
         const resposta = await fetch('/api/comentarios', {
           method: 'POST',
           headers: { 'X-CSRF-Token': App.csrf },
           body: dados,
         });
-        const corpo = await resposta.json().catch(() => ({}));
-        if (!resposta.ok || corpo.ok === false) {
-          throw new Error(corpo.erro || 'Não foi possível enviar o comentário.');
+        const json = await resposta.json().catch(() => ({}));
+        if (!resposta.ok || json.ok === false) {
+          throw new Error(json.erro || 'Não foi possível enviar o comentário.');
         }
-        this.renderComentarios();
-      } catch (e) {
-        alert(e.message);
-      } finally {
-        botao.disabled = false;
-        botao.textContent = 'Enviar';
-      }
+        return json;
+      },
+      aoSalvar: () => this.renderComentarios(),
     });
   },
 };

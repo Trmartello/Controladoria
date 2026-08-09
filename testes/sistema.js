@@ -591,7 +591,10 @@ async function provasCabecalhoProjetos(page, largura) {
       for (const q of ['a', 'b', 'c', 'd', 'e', 'f']) {
         await App.api('/api/desdobramentos', {
           planejamento_id: 1, projeto_id: pr.id, iniciativa_id: q < 'd' ? ini.id : ini2.id, o_que: `${nome} ${q}`,
-          como: 'x', quem: 'QA', quem_usuario_id: 1, prioridade: 'MEDIA', status: 'NAO_INICIADO',
+          como: 'x', quem: 'QA', quem_usuario_id: 1, prioridade: 'MEDIA',
+          // Uma concluída por projeto: é o que a prova da pesquisa por situação
+          // usa para separar o joio do trigo.
+          status: q === 'f' ? 'CONCLUIDO' : 'NAO_INICIADO',
           progresso: 50, recorrencia: 'NENHUMA', data_inicio: '2026-01-01', data_fim: '2027-12-31',
         });
       }
@@ -656,6 +659,107 @@ async function provasCabecalhoProjetos(page, largura) {
   t(`[${largura}] os botões de nível seguem à vista ao rolar`, m.controlesVisiveis);
   t(`[${largura}] o cabeçalho fixo é opaco e fica acima dos cartões`, m.opaco && m.z >= 2,
     JSON.stringify(m));
+
+  // As frentes EMPILHAM (decisão do cliente): lendo a última ação do projeto,
+  // TODAS as frentes percorridas continuam à vista, uma sob a outra, até o
+  // bloco do projeto acabar. É o degrau novo que quebra em silêncio: com o
+  // sticky limitado à caixa da própria frente (o que era), a segunda toma o
+  // lugar da primeira e a prova de "encosta no do projeto" continua passando.
+  const empilha = await page.evaluate((pid) => {
+    const cartao = document.querySelector(`[data-projeto="${pid}"]`);
+    const acoes = cartao.querySelectorAll('[data-card-acao]');
+    acoes[acoes.length - 1].scrollIntoView({ block: 'center' });
+    const r = (el) => el.getBoundingClientRect();
+    const [f1, f2] = cartao.querySelectorAll('.iniciativa-cabeca');
+    const proj = cartao.querySelector('.projeto-cabeca-fixa');
+    const z = (el) => Number(getComputedStyle(el).zIndex);
+    return {
+      primeiraEncosta: Math.abs(r(f1).top - r(proj).bottom) <= 1,
+      segundaEmpilha: Math.abs(r(f2).top - r(f1).bottom) <= 1,
+      // A frente de baixo desliza por BAIXO da de cima no fim do bloco.
+      zDesce: z(f1) > z(f2) && z(proj) > z(f1),
+    };
+  }, ids[0]);
+  t(`[${largura}] as frentes percorridas empilham sob o projeto`,
+    empilha.primeiraEncosta && empilha.segundaEmpilha, JSON.stringify(empilha));
+  t(`[${largura}] na pilha das frentes o z-index desce`, empilha.zDesce);
+
+  // Projeto NÃO empilha embaixo de projeto: chegando ao segundo, o cabeçalho
+  // dele toma a MESMA linha e o primeiro sai junto com as frentes dele.
+  const troca = await page.evaluate((alvos) => {
+    const [a, b] = alvos.map((id) => document.querySelector(`[data-projeto="${id}"]`));
+    // A ÚLTIMA ação do segundo projeto: na primeira, o cartão mal entrou e o
+    // cabeçalho dele ainda nem grudou — a prova mediria rolagem de menos.
+    const acoesB = b.querySelectorAll('[data-card-acao]');
+    acoesB[acoesB.length - 1].scrollIntoView({ block: 'center' });
+    const r = (el) => el.getBoundingClientRect();
+    const sec = document.querySelector('.cabecalho-projetos');
+    const some = (el) => r(el).bottom <= r(sec).bottom + 1;
+    return {
+      novoEncosta: Math.abs(r(b.querySelector('.projeto-cabeca-fixa')).top - r(sec).bottom) <= 1,
+      anteriorSumiu: some(a.querySelector('.projeto-cabeca-fixa'))
+        && [...a.querySelectorAll('.iniciativa-cabeca')].every(some),
+    };
+  }, ids);
+  t(`[${largura}] o projeto novo substitui o anterior — nada empilha entre projetos`,
+    troca.novoEncosta && troca.anteriorSumiu, JSON.stringify(troca));
+
+  // ---- Pesquisa do plano de ação (palavra + situação) ----
+  // A palavra seleciona a ação junto com a frente e o projeto dela; o resto
+  // some — projetos e frentes sem resultado inclusive. As asserções ficam nos
+  // DOIS cartões da prova: a instância pode ter outros projetos com massa real.
+  await page.evaluate(() => {
+    const campo = document.querySelector('[data-filtro-texto]');
+    campo.value = 'rolagem A e';
+    campo.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const filtro = await page.evaluate((alvos) => {
+    const [a, b] = alvos.map((id) => document.querySelector(`[data-projeto="${id}"]`));
+    const visiveis = [...a.querySelectorAll('[data-card-acao]')].filter((c) => !c.classList.contains('d-none'));
+    const frentes = [...a.querySelectorAll('[data-iniciativa]')];
+    return {
+      projetoA: !a.classList.contains('d-none'),
+      projetoBSumiu: b.classList.contains('d-none'),
+      soAcaoCerta: visiveis.length === 1 && visiveis[0].textContent.includes('rolagem A e'),
+      frenteDaAcao: !frentes[1].classList.contains('d-none'),
+      outraFrenteSumiu: frentes[0].classList.contains('d-none'),
+    };
+  }, ids);
+  t(`[${largura}] a palavra seleciona ação, frente e projeto juntos`,
+    filtro.projetoA && filtro.soAcaoCerta && filtro.frenteDaAcao
+    && filtro.outraFrenteSumiu && filtro.projetoBSumiu, JSON.stringify(filtro));
+
+  // Situação sozinha: só as concluídas dos dois cartões ficam — e o casamento
+  // é pelo data-status, nunca pelo rótulo.
+  await page.evaluate(() => {
+    const campo = document.querySelector('[data-filtro-texto]');
+    campo.value = '';
+    campo.dispatchEvent(new Event('input', { bubbles: true }));
+    const sel = document.querySelector('[data-filtro-status]');
+    sel.value = 'CONCLUIDO';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  const porStatus = await page.evaluate((alvos) => {
+    const visiveis = alvos.flatMap((id) =>
+      [...document.querySelectorAll(`[data-projeto="${id}"] [data-card-acao]`)]
+        .filter((c) => !c.classList.contains('d-none')));
+    return { total: visiveis.length, batem: visiveis.every((c) => c.dataset.status === 'CONCLUIDO') };
+  }, ids);
+  t(`[${largura}] a situação filtra sozinha (só as concluídas ficam)`,
+    porStatus.total === 2 && porStatus.batem, JSON.stringify(porStatus));
+
+  // Limpar devolve tudo — inclusive o recolhimento que o usuário tinha.
+  await page.evaluate(() => {
+    const sel = document.querySelector('[data-filtro-status]');
+    sel.value = '';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  t(`[${largura}] limpar a pesquisa devolve tudo`,
+    await page.evaluate((pid) => {
+      const a = document.querySelector(`[data-projeto="${pid}"]`);
+      return !a.classList.contains('d-none')
+        && ![...a.querySelectorAll('[data-card-acao]')].some((c) => c.classList.contains('d-none'));
+    }, ids[0]));
 
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.evaluate(async (alvos) => {

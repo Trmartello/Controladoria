@@ -287,6 +287,14 @@ const Modal = {
             aria-label="Mostrar senha" title="Mostrar senha">${this.iconeOlho}</button>
         </div>`;
         break;
+      case 'arquivos':
+        // Entrada de arquivos para formulário cujo envio é multipart (o
+        // comentário com anexos). `coletar()` a pula — arquivo não viaja em
+        // JSON; quem envia lê os arquivos direto do campo, por
+        // `Modal.arquivosDe(nome)`, dentro do `enviar`.
+        controle = `<input type="file" class="form-control" id="${id}"
+          ${c.multiplo ? 'multiple' : ''}${c.aceita ? ` accept="${this.esc(c.aceita)}"` : ''}>`;
+        break;
       default: {
         // Com `sugestoes`, o campo vira lista de escolha que aceita digitar
         // um nome fora da lista (ex.: responsável que não é usuário do sistema)
@@ -315,6 +323,11 @@ const Modal = {
   botaoDitar(id) {
     return `<button class="btn btn-ditar" type="button" data-alvo="${id}"
       title="Ditar por voz" aria-label="Ditar por voz">${this.iconeMic}</button>`;
+  },
+
+  /** Arquivos escolhidos num campo `arquivos` do formulário aberto. */
+  arquivosDe(nome) {
+    return [...(document.getElementById(`campo-${nome}`)?.files || [])];
   },
 
   // Estado dos comboboxes pesquisáveis do formulário aberto (id → opções)
@@ -627,6 +640,7 @@ const Modal = {
     }
     this.pararDitado();
     const campo = document.getElementById(botao.dataset.alvo);
+    if (!campo) return;
     const Reconhecedor = window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new Reconhecedor();
     rec.lang = 'pt-BR';
@@ -636,7 +650,13 @@ const Modal = {
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         if (ev.results[i].isFinal) {
           const texto = ev.results[i][0].transcript.trim();
-          if (texto) campo.value = campo.value ? `${campo.value.replace(/\s+$/, '')} ${texto}` : texto;
+          if (texto) {
+            campo.value = campo.value ? `${campo.value.replace(/\s+$/, '')} ${texto}` : texto;
+            // Atribuir `.value` por script não dispara 'input': sem este evento
+            // o campo não cresce durante o ditado (`ligarTextareasElasticas`) e
+            // a frase ditada some para fora da vista no meio do parágrafo.
+            campo.dispatchEvent(new Event('input', { bubbles: true }));
+          }
         }
       }
     };
@@ -695,8 +715,9 @@ const Modal = {
         continue;
       }
       // `info` é bloco de leitura: tem id (para ser reescrito por `aoMudar`)
-      // mas não tem valor, e sem esta saída ele entraria no corpo como `undefined`
-      if (c.tipo === 'info') continue;
+      // mas não tem valor, e sem esta saída ele entraria no corpo como `undefined`.
+      // `arquivos` não viaja em JSON — o `enviar` os lê por `arquivosDe()`.
+      if (c.tipo === 'info' || c.tipo === 'arquivos') continue;
       const el = document.getElementById(`campo-${c.nome}`);
       if (!el) continue;
       if (c.tipo === 'checkbox') dados[c.nome] = el.checked;

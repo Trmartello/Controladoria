@@ -81,11 +81,14 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `checkbox`, `password`, `number`, `date`, `hidden`, `periodo` (duas datas),
   `info` (bloco só de leitura, com barra colorida opcional), `botoes` (option
   buttons), `quadrantes` (matriz SWOT 2×2), `selecao_livre` (combobox com
-  busca que aceita nome novo), `faixa` (slider) e `lista_marcavel` (itens
+  busca que aceita nome novo), `faixa` (slider), `lista_marcavel` (itens
   marcáveis com selos coloridos, descrição cortada em 3 linhas com “ver mais”,
   pesquisa acima de 5 itens e contador — usar sempre que o usuário precise ler
   o item antes de marcar; `multiselect` só serve para listas curtas e não
-  funciona no celular, onde não existe tecla Ctrl). Opções auxiliares:
+  funciona no celular, onde não existe tecla Ctrl) e `arquivos` (input de
+  arquivo para formulário cujo envio é multipart — `coletar()` o pula, arquivo
+  não viaja em JSON, e o `enviar` do formulário lê os escolhidos por
+  `Modal.arquivosDe(nome)`; opções `multiplo` e `aceita`). Opções auxiliares:
   `obrigatorio`, `visivelSe: {campo, valores}`, `exemplo`, `ajuda`, `nota`,
   `sufixo`, `passo`, `unico` (no `lista_marcavel`: escolhe UM item, os quadrados
   viram redondos e o campo devolve o valor em vez da lista) e `linha` (campos
@@ -821,6 +824,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `conteudo` fica numa tabela à parte para o SELECT da lista não arrastar
   megabytes que a tela não usa — a miniatura busca cada arquivo por
   `GET /api/anexos/{id}`.
+  Na tela (pedido do cliente): o botão **Comentários** abre só a LISTA do que
+  já existe; escrever é o **+** ao lado do título, que abre o formulário em
+  **modal** (`modalComentario`, via `Modal.abrir` com `enviar` próprio) — texto
+  com ditado por voz e o campo `arquivos` do modal (tipo novo: `coletar()` o
+  pula, e o `enviar` lê os arquivos por `Modal.arquivosDe`).
   O envio é **multipart** (`POST /api/comentarios`), não JSON com base64: base64
   infla 33% e carrega o arquivo duas vezes na memória. O CSRF continua valendo —
   ele é o header, não o tipo do corpo — mas `App.api` só fala JSON, então este é
@@ -942,21 +950,34 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   antiga sem "como" ou sem datas passa a exigir os dois na próxima vez que
   alguém abrir e salvar.
 - **A PILHA de cabeçalhos**, de cima para baixo: topbar → cabeçalho de Projetos
-  → cabeçalho do **projeto** (`.projeto-cabeca-fixa`) → cabeçalho da **frente**
-  (`.iniciativa-cabeca`). Cada degrau soma a altura do anterior, e as duas
-  alturas variáveis são **medidas**: `--altura-cabecalho` por seção
+  → cabeçalho do **projeto** (`.projeto-cabeca-fixa`) → as **frentes já
+  percorridas** (`.iniciativa-cabeca`), **empilhadas**. Cada degrau soma a
+  altura do anterior, e as alturas variáveis são **medidas**
+  (`medirCabecalhosProjeto`): `--altura-cabecalho` por seção
   (`Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos')` — o helper das análises
-  ganhou o seletor como parâmetro) e `--altura-projeto` **por cartão**
-  (`medirCabecalhosProjeto`), porque o selo de atraso, o "Prioritário" e o nome
-  que quebra mudam a altura de um projeto para o outro; uma média só erraria em
-  todos menos num.
-  Lendo a lista, o que fica à vista é sempre **este projeto, esta frente**: as
-  frentes são blocos IRMÃOS, então cada cabeçalho gruda só enquanto o bloco dele
-  está na tela e o seguinte toma o lugar dele. Acumular todas as frentes comeria
-  a tela num projeto de oito.
-  O **`z-index` desce conforme se desce na pilha** — Projetos 3, projeto 2,
-  frente 1 —, para cada um passar POR BAIXO do de cima ao se encontrarem;
-  invertido, a frente cobriria o nome do projeto justamente na troca.
+  ganhou o seletor como parâmetro), `--altura-projeto` **por cartão** (o selo de
+  atraso, o "Prioritário" e o nome que quebra mudam a altura de um projeto para
+  o outro; uma média só erraria em todos menos num) e `--desloca-frente` **por
+  frente** — a soma dos cabeçalhos de frente acima dela.
+  **Dentro do projeto as frentes ACUMULAM** (decisão do cliente, revertendo o
+  "uma frente por vez" anterior): cada cabeçalho de frente fica grudado até o
+  bloco do projeto acabar, e só o projeto seguinte varre a pilha. **Projeto não
+  empilha embaixo de projeto**: todos usam o mesmo `top` e cada um é limitado ao
+  próprio cartão, então o novo substitui o anterior na mesma linha. O custo é
+  assumido: projeto de muitas frentes gasta uma faixa de tela por frente
+  percorrida. Quem permite a pilha é a `.iniciativa` com **`display: contents`**
+  — sticky só se move dentro do bloco PAI, e com a caixa da frente no meio cada
+  cabeçalho grudava apenas enquanto o próprio bloco estava na tela; sem a caixa,
+  o limite passa a ser `.iniciativas-projeto` inteiro. O elemento segue no DOM
+  (`[data-iniciativa]`, duplo clique e `closest()` continuam valendo), mas
+  filete verde/recuo foram para o container e o respiro entre frentes para o
+  último bloco visível de cada uma — **nunca margem no cabeçalho sticky**, que
+  viraria fresta transparente na pilha.
+  O **`z-index` desce conforme se desce na pilha** — Projetos 20, projeto 15,
+  frentes de 14 para baixo (em linha, pelo JS, piso 1: sempre acima dos cartões)
+  —, para cada um passar POR BAIXO do de cima ao se encontrarem; invertido, a
+  frente que sai no fim do bloco cobriria a de cima em vez de deslizar por
+  baixo dela.
   Três cuidados separam "grudado" de "vazando": fundo **opaco** e igual ao do
   cartão, margens negativas cobrindo o recuo do bloco (senão sobra faixa
   transparente à esquerda e o texto das ações passa por ali) e a ordem de
@@ -965,13 +986,25 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   sticky, e o cabeçalho passa a grudar numa caixa que não rola — ou seja, nunca.
   Quem esconde o que passa por baixo é o fundo opaco.
 - **O cabeçalho de Projetos gruda** abaixo da topbar (`.cabecalho-projetos`,
-  `top: var(--topo-app)`, fundo sólido e `z-index: 3`, o mesmo mecanismo do
+  `top: var(--topo-app)`, fundo sólido e `z-index: 20`, o mesmo mecanismo do
   cabeçalho da GUT): os três botões de nível são o controle que se usa LENDO a
   lista, e trocar de visão no quinto projeto obrigava a subir a página inteira.
   O parágrafo de instruções fica **fora** do bloco fixo de propósito — ele se lê
   uma vez, e grudado custaria uma faixa de tela em toda rolagem, para sempre.
   As margens negativas cobrem a sarjeta do container, senão a lista aparece
   pelas beiradas ao passar por baixo.
+- **Pesquisa do plano de ação** (`.filtro-acoes`, no cabeçalho fixo): palavra e
+  situação. A palavra casa com o texto do cartão da ação **e com os títulos da
+  frente e do projeto**, e o resultado mostra os três níveis juntos; a situação
+  casa pelo código (`data-status`), nunca pelo rótulo. É **filtro de DOM, não
+  recarga** (`aplicarFiltro`): repintar mataria o foco de quem digita. O estado
+  (`filtroTexto`/`filtroStatus`) mora na seção e o `carregar()` reaplica ao
+  terminar. Com filtro ativo os acordeões **abrem à força** (resultado dentro de
+  frente recolhida é resultado invisível) e, ao limpar, o recolhimento volta dos
+  conjuntos, que o filtro nunca altera. Frente escondida zera o cabeçalho e o
+  ResizeObserver reempilha a pilha sozinho. O campo é enxuto de propósito
+  (11rem; no celular a dupla toma a linha inteira) — mora no cabeçalho fixo, e
+  cada rem ali é tela roubada da lista o tempo todo.
 - **Três níveis de recolhimento** (`nivelAtual` / `aplicarNivel` /
   `pintarNiveis`): **Ações · Frentes · Projetos**, no lugar do "Recolher tudo"
   que só tinha os extremos. "Frentes" é o nível que faltava — esconde as ações e
