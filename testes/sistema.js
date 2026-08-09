@@ -453,10 +453,15 @@ async function provasResumoStatus(page, largura) {
   t(`[${largura}] projeto sem atraso não mostra selo nenhum`,
     await page.evaluate((id) =>
       !document.querySelector(`[data-projeto="${id}"] .projeto-cabeca .selo-resumo`), limpo));
-  // E a frente dele continua com o resumo — o ajuste foi só no nível de cima.
-  t(`[${largura}] mas a frente dele continua resumida`,
+  // A frente dele também não tem selo (nada atrasado ali), mas continua com o
+  // POPOVER: é ele que carrega a distribuição desde que o cabeçalho passou a
+  // mostrar só o atraso.
+  t(`[${largura}] a frente sem atraso também fica sem selo`,
     await page.evaluate((id) =>
-      !!document.querySelector(`[data-projeto="${id}"] .iniciativa-cabeca .selo-resumo`), limpo));
+      !document.querySelector(`[data-projeto="${id}"] .iniciativa-cabeca .selo-resumo`), limpo));
+  t(`[${largura}] mas ela mantém o popover com o resto`,
+    await page.evaluate((id) =>
+      !!document.querySelector(`[data-projeto="${id}"] .iniciativa-cabeca [data-popover-resumo]`), limpo));
 
   // Um argumento só: `page.evaluate` não aceita dois (a mensagem de erro é
   // clara, mas só aparece quando a prova já rodou inteira).
@@ -582,9 +587,10 @@ async function provasCabecalhoProjetos(page, largura) {
       const pr = await App.api('/api/projetos',
         { planejamento_id: 1, titulo: nome, ano: 2027, responsavel: 'QA', descricao: '' });
       const ini = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: pr.id, titulo: 'Frente' });
+      const ini2 = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: pr.id, titulo: 'Frente 2' });
       for (const q of ['a', 'b', 'c', 'd', 'e', 'f']) {
         await App.api('/api/desdobramentos', {
-          planejamento_id: 1, projeto_id: pr.id, iniciativa_id: ini.id, o_que: `${nome} ${q}`,
+          planejamento_id: 1, projeto_id: pr.id, iniciativa_id: q < 'd' ? ini.id : ini2.id, o_que: `${nome} ${q}`,
           como: 'x', quem: 'QA', quem_usuario_id: 1, prioridade: 'MEDIA', status: 'NAO_INICIADO',
           progresso: 50, recorrencia: 'NENHUMA', data_inicio: '2026-01-01', data_fim: '2027-12-31',
         });
@@ -616,6 +622,36 @@ async function provasCabecalhoProjetos(page, largura) {
   });
 
   t(`[${largura}] a página rola o bastante para provar o cabeçalho fixo`, m.rolou);
+
+  // A PILHA: topbar → Projetos → projeto → frente, cada um encostado no de
+  // cima. É o degrau que quebra em silêncio quando alguém mexe numa altura: as
+  // barras continuam grudando, só que sobrepostas, e o nome do projeto some
+  // atrás do da frente.
+  const pilha = await page.evaluate(() => {
+    const r = (el) => el.getBoundingClientRect();
+    const sec = document.querySelector('.cabecalho-projetos');
+    const proj = [...document.querySelectorAll('.projeto-cabeca-fixa')]
+      .find((e) => Math.abs(r(e).top - r(sec).bottom) <= 1);
+    if (!proj) return { achou: false };
+    const frente = [...proj.closest('[data-projeto]').querySelectorAll('.iniciativa-cabeca')]
+      .find((e) => Math.abs(r(e).top - r(proj).bottom) <= 1);
+    const z = (el) => Number(getComputedStyle(el).zIndex);
+    return {
+      achou: true,
+      frenteEncaixada: !!frente,
+      // Quem está mais acima na pilha tem de ficar por CIMA: invertido, a
+      // frente cobriria o nome do projeto no momento da troca.
+      ordemZ: z(sec) > z(proj) && z(proj) > z(frente || proj),
+      opacos: [sec, proj, frente].filter(Boolean)
+        .every((e) => !/rgba\(.*,\s*0\)/.test(getComputedStyle(e).backgroundColor)),
+    };
+  });
+  t(`[${largura}] o cabeçalho do projeto encosta no de Projetos`, pilha.achou);
+  if (pilha.achou) {
+    t(`[${largura}] o da frente encosta no do projeto`, pilha.frenteEncaixada);
+    t(`[${largura}] a pilha respeita a ordem de camadas`, pilha.ordemZ, JSON.stringify(pilha));
+    t(`[${largura}] os três degraus são opacos`, pilha.opacos);
+  }
   t(`[${largura}] o cabeçalho de Projetos gruda abaixo da topbar`, m.folga === 0, `folga ${m.folga}px`);
   t(`[${largura}] os botões de nível seguem à vista ao rolar`, m.controlesVisiveis);
   t(`[${largura}] o cabeçalho fixo é opaco e fica acima dos cartões`, m.opaco && m.z >= 2,

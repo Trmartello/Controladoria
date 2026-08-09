@@ -312,6 +312,39 @@ const SecaoProjetos = {
    * no `<body>` fica — sem o `dispose`, uma tarde de uso deixa dezenas deles
    * empilhados fora da tela.
    */
+  /**
+   * A pilha de cabeçalhos: app → Projetos → projeto → frente.
+   *
+   * Cada degrau precisa saber a altura do de cima, e a do PROJETO varia entre
+   * cartões (o selo de atraso, o "Prioritário", o nome que quebra em duas
+   * linhas no celular) — por isso a medida é POR CARTÃO, guardada numa variável
+   * do próprio cartão, e não uma só para a seção. Uma média erraria em todos os
+   * cartões menos num.
+   *
+   * O observador é trocado a cada pintura: o cartão anterior já saiu do
+   * documento, e observá-lo seria medir o que ninguém vê.
+   */
+  observadoresProjeto: [],
+
+  medirCabecalhosProjeto(el) {
+    this.observadoresProjeto.forEach((o) => o.disconnect());
+    this.observadoresProjeto = [];
+    el.querySelectorAll('[data-projeto]').forEach((cartao) => {
+      const cab = cartao.querySelector('.projeto-cabeca-fixa');
+      if (!cab) return;
+      const medir = () => {
+        // Cartão recolhido ou seção escondida medem zero, e zero aqui empilharia
+        // o cabeçalho da frente por cima do do projeto.
+        const h = Math.round(cab.getBoundingClientRect().height);
+        if (h) cartao.style.setProperty('--altura-projeto', `${h}px`);
+      };
+      medir();
+      const ro = new ResizeObserver(medir);
+      ro.observe(cab);
+      this.observadoresProjeto.push(ro);
+    });
+  },
+
   popoversResumo: [],
 
   ligarPopoversResumo(el, conteudos) {
@@ -549,7 +582,11 @@ const SecaoProjetos = {
       const detalhado = this.detalhesAbertos.has(chave);
       return `<div class="card mb-3" data-projeto="${p.id}">
         <div class="card-body">
-          <div class="d-flex align-items-center gap-2 flex-wrap">
+          <!-- A linha do título GRUDA, um degrau abaixo do cabeçalho de
+               Projetos: é ela que diz de qual projeto são as frentes e as ações
+               que estão passando. Sem isso, três telas de rolagem adiante o
+               nome do projeto já tinha ido embora. -->
+          <div class="d-flex align-items-center gap-2 flex-wrap projeto-cabeca-fixa">
             <div class="projeto-cabeca flex-grow-1" data-abrir-proj="${p.id}" role="button" tabindex="0">
               <span class="seta-projeto">${aberto ? '▾' : '▸'}</span>
               <strong data-popover-resumo="proj-${p.id}"
@@ -658,6 +695,7 @@ const SecaoProjetos = {
     // porque o bloco quebra em duas ou três linhas conforme a largura. Um
     // palpite em `rem` curto demais deixaria um cabeçalho por cima do outro.
     Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos');
+    this.medirCabecalhosProjeto(el);
     this.ligarPopoversResumo(el, conteudos);
     this.aplicarDestaqueAcao(el);
 

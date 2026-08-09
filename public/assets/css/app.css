@@ -1389,8 +1389,34 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   border-left: 3px solid var(--verde-coperdia);
   padding-left: .6rem;
 }
-/* O cabeçalho da frente é o SEGUNDO degrau: gruda logo abaixo do cabeçalho de
-   Projetos, cuja altura é medida no JS (`--altura-cabecalho`).
+/* A PILHA de cabeçalhos, de cima para baixo:
+     topbar (52px) → cabeçalho de Projetos → cabeçalho do projeto → da frente.
+   Cada degrau soma a altura do anterior, e as duas alturas variáveis são
+   medidas no JS: `--altura-cabecalho` (o bloco de Projetos, uma por seção) e
+   `--altura-projeto` (por CARTÃO, porque o selo de atraso e o nome que quebra
+   mudam a altura de um projeto para o outro).
+
+   O z-index desce conforme se desce na pilha — Projetos 3, projeto 2, frente 1
+   — para que cada um passe POR BAIXO do de cima ao se encontrarem. Invertido, a
+   frente cobriria o nome do projeto justamente no momento da troca.
+
+   Enquanto uma frente rola para fora, a seguinte toma o lugar dela sob o
+   projeto: elas são blocos IRMÃOS, então cada cabeçalho só gruda enquanto o
+   bloco dele está na tela. É o que faz a leitura ser sempre "este projeto,
+   esta frente" em vez de uma pilha que cresce sem fim — num projeto de oito
+   frentes, acumular todas comeria a tela inteira. */
+.projeto-cabeca-fixa {
+  position: sticky;
+  top: calc(var(--topo-app) + var(--altura-cabecalho, 0px));
+  z-index: 2;
+  background: #fff;
+  margin: 0 -1rem;
+  padding: .3rem 1rem;
+  box-shadow: 0 .3rem .3rem -.3rem rgba(0, 0, 0, .18);
+}
+
+/* O cabeçalho da frente é o TERCEIRO degrau: gruda abaixo do do projeto, cuja
+   altura é medida no JS (`--altura-projeto`).
    Três cuidados que fazem a diferença entre "grudado" e "vazando":
    • fundo 100% OPACO e igual ao do cartão (branco). Translúcido, os cartões de
      ação apareceriam através dele enquanto passam por baixo;
@@ -1406,8 +1432,8 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
 .iniciativa-cabeca {
   cursor: pointer;
   position: sticky;
-  top: calc(var(--topo-app) + var(--altura-cabecalho, 0px));
-  z-index: 2;
+  top: calc(var(--topo-app) + var(--altura-cabecalho, 0px) + var(--altura-projeto, 0px));
+  z-index: 1;
   background: #fff;
   margin: 0 -.6rem;
   padding: .25rem .6rem;

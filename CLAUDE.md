@@ -941,15 +941,27 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   automático, os avisos e o painel. Consequência para quem for mexer: ação
   antiga sem "como" ou sem datas passa a exigir os dois na próxima vez que
   alguém abrir e salvar.
-- **O cabeçalho da FRENTE é o segundo degrau**: gruda logo abaixo do de
-  Projetos (`top: calc(var(--topo-app) + var(--altura-cabecalho))`, com a altura
-  do primeiro medida por `Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos')` —
-  o helper das análises ganhou o seletor como parâmetro). Três cuidados separam
-  "grudado" de "vazando": fundo **opaco** e igual ao do cartão (branco), margens
-  negativas cobrindo o recuo do bloco (senão sobra faixa transparente à esquerda
-  e o texto das ações passa por ali) e `z-index: 2`, abaixo do cabeçalho de
-  Projetos (3). O que **não** se faz é pôr `overflow: hidden` num ancestral para
-  "cortar" o conteúdo: qualquer ancestral com overflow vira o scrollport do
+- **A PILHA de cabeçalhos**, de cima para baixo: topbar → cabeçalho de Projetos
+  → cabeçalho do **projeto** (`.projeto-cabeca-fixa`) → cabeçalho da **frente**
+  (`.iniciativa-cabeca`). Cada degrau soma a altura do anterior, e as duas
+  alturas variáveis são **medidas**: `--altura-cabecalho` por seção
+  (`Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos')` — o helper das análises
+  ganhou o seletor como parâmetro) e `--altura-projeto` **por cartão**
+  (`medirCabecalhosProjeto`), porque o selo de atraso, o "Prioritário" e o nome
+  que quebra mudam a altura de um projeto para o outro; uma média só erraria em
+  todos menos num.
+  Lendo a lista, o que fica à vista é sempre **este projeto, esta frente**: as
+  frentes são blocos IRMÃOS, então cada cabeçalho gruda só enquanto o bloco dele
+  está na tela e o seguinte toma o lugar dele. Acumular todas as frentes comeria
+  a tela num projeto de oito.
+  O **`z-index` desce conforme se desce na pilha** — Projetos 3, projeto 2,
+  frente 1 —, para cada um passar POR BAIXO do de cima ao se encontrarem;
+  invertido, a frente cobriria o nome do projeto justamente na troca.
+  Três cuidados separam "grudado" de "vazando": fundo **opaco** e igual ao do
+  cartão, margens negativas cobrindo o recuo do bloco (senão sobra faixa
+  transparente à esquerda e o texto das ações passa por ali) e a ordem de
+  camadas acima. O que **não** se faz é pôr `overflow: hidden` num ancestral
+  para "cortar" o conteúdo: qualquer ancestral com overflow vira o scrollport do
   sticky, e o cabeçalho passa a grudar numa caixa que não rola — ou seja, nunca.
   Quem esconde o que passa por baixo é o fundo opaco.
 - **O cabeçalho de Projetos gruda** abaixo da topbar (`.cabecalho-projetos`,
