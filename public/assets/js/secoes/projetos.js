@@ -948,12 +948,15 @@ const SecaoProjetos = {
       r.addEventListener('change', async () => {
         const anterior = r.dataset.salvo ?? r.defaultValue;
         const status = r.closest('[data-status]')?.dataset.status;
-        // Tirar dos 100% uma ação CONCLUÍDA reabre a decisão do status: o
-        // pop-up pergunta em que situação ela fica. Fechado sem salvar, o
-        // gesto é desfeito — a barra volta ao valor do servidor.
-        if (Number(r.value) < 100 && status === 'CONCLUIDO') {
+        // As fronteiras dos 100% abrem o pop-up de status (chegar: a ação está
+        // concluída?; sair: em que situação ela fica?). Fechado sem salvar, o
+        // gesto é desfeito — a barra volta ao valor do servidor. No meio do
+        // caminho é só evolução: salva direto, sem interromper ninguém.
+        const cruzouParaCem = Number(r.value) === 100 && status !== 'CONCLUIDO';
+        const saiuDeCem = Number(r.value) < 100 && status === 'CONCLUIDO';
+        if (cruzouParaCem || saiuDeCem) {
           let gravou = false;
-          this.modalStatusAcao(id, Number(r.value), () => { gravou = true; });
+          this.modalStatusAcao(id, Number(r.value), status, () => { gravou = true; });
           document.getElementById('modal-form').addEventListener('hidden.bs.modal', () => {
             if (!gravou) {
               r.value = anterior;
@@ -962,20 +965,10 @@ const SecaoProjetos = {
           }, { once: true });
           return;
         }
-        // Arrastar até 100% pergunta pela conclusão, como o pop-up do modal —
-        // o status do cartão está no data-status do próprio card da ação
-        const corpo = this.confirmarConclusao(
-          { planejamento_id: this.plan.id, progresso: Number(r.value) }, status
-        );
         try {
-          const resposta = await App.api(`/api/desdobramentos/${id}/progresso`, corpo);
-          if (corpo.concluir) {
-            // Concluiu (ou reagendou a recorrente): o selo do cartão mudou de
-            // verdade — recarrega em vez de remendar a tela
-            this.avisarReagendamento(resposta);
-            App.recarregarSecaoAtiva();
-            return;
-          }
+          await App.api(`/api/desdobramentos/${id}/progresso`, {
+            planejamento_id: this.plan.id, progresso: Number(r.value),
+          });
           r.dataset.salvo = r.value;
           this.atualizarMedias(el, r);
         } catch (e) {
@@ -1421,33 +1414,29 @@ const SecaoProjetos = {
     });
   },
 
-  /** 100% pergunta pela conclusão; a resposta vira (ou não) o `concluir`. */
-  confirmarConclusao(corpo, statusAtual) {
-    if (Number(corpo.progresso) === 100 && statusAtual !== 'CONCLUIDO'
-      && confirm('Progresso em 100%. Marcar a ação como CONCLUÍDA?\n\n'
-        + 'OK conclui a ação; Cancelar grava só o percentual — o status você '
-        + 'ajusta na edição, se precisar.')) {
-      return { ...corpo, concluir: 1 };
-    }
-    return corpo;
-  },
-
   /**
-   * Tirar dos 100% uma ação CONCLUÍDA pela barra do cartão: o pop-up pergunta
-   * em que status ela fica — o percentual já vai junto, escondido. Fechar sem
-   * salvar desfaz o gesto (quem chama devolve a barra ao valor do servidor).
+   * As fronteiras dos 100% na barra do cartão: chegar (a ação está concluída?)
+   * e sair (em que status ela fica?). É um MODAL do sistema, nunca `confirm()`:
+   * o navegador oferece "bloquear caixas de diálogo" e, bloqueadas, o usuário
+   * punha 100% e a conclusão simplesmente não acontecia — sem erro nenhum.
+   * O percentual já vai junto, escondido; fechar sem salvar desfaz o ajuste
+   * (quem chama devolve a barra ao valor do servidor).
    */
-  modalStatusAcao(acaoId, progresso, aoGravar) {
+  modalStatusAcao(acaoId, progresso, statusAtual, aoGravar) {
+    const chegou = Number(progresso) === 100;
     Modal.abrir({
-      titulo: 'A ação saiu dos 100%',
+      titulo: chegou ? 'A ação chegou aos 100%' : 'A ação saiu dos 100%',
       url: `/api/desdobramentos/${acaoId}/progresso`,
-      valores: { planejamento_id: this.plan.id, progresso, status: 'EM_ANDAMENTO' },
+      valores: { planejamento_id: this.plan.id, progresso,
+        status: chegou ? 'CONCLUIDO' : 'EM_ANDAMENTO' },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'progresso', rotulo: '', tipo: 'hidden' },
         { nome: 'status', rotulo: `Com ${progresso}%, em que status a ação fica?`,
-          tipo: 'select', opcoes: this.opcoesStatusAcao('CONCLUIDO'),
-          ajuda: 'Ela estava concluída. Fechar sem salvar mantém tudo como estava.' },
+          tipo: 'select', opcoes: this.opcoesStatusAcao(statusAtual),
+          ajuda: chegou
+            ? 'Concluída encerra a ação (a recorrente reabre na próxima data). Fechar sem salvar desfaz o ajuste da barra.'
+            : 'Ela estava concluída. Fechar sem salvar mantém tudo como estava.' },
       ],
       aoSalvar: (r) => {
         if (aoGravar) aoGravar();
