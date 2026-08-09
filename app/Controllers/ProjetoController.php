@@ -456,6 +456,37 @@ class ProjetoController
             Json::erro('Informe o progresso.');
         }
         $progresso = $this->arredondarProgresso((int)$d['progresso']);
+
+        // 100% com `concluir` marca a ação como CONCLUÍDA pelo MESMO caminho do
+        // formulário: concluido_em e, na recorrente, o reagendamento. Um UPDATE
+        // cru de status aqui pularia a regra da repetição — a ação "concluía"
+        // e nunca mais reabria. A confirmação é da tela; sem ela, grava só o
+        // percentual e o status fica como está.
+        $acao = Database::um('SELECT * FROM desdobramento WHERE id = ?', [$id]);
+        if (!empty($d['concluir']) && $progresso === 100 && $acao['status'] !== 'CONCLUIDO') {
+            if (($acao['recorrencia'] ?? 'NENHUMA') !== 'NENHUMA') {
+                $reagendou = Recorrencia::reagendar(
+                    $acao['data_inicio'], $acao['recorrencia'],
+                    (int)$acao['recorrencia_dia'], $acao['recorrencia_ate'], $acao['data_fim']
+                );
+                if ($reagendou !== null) {
+                    Database::executar(
+                        'UPDATE desdobramento SET data_inicio = ?, data_fim = ?, status = ?,
+                           progresso = 0, concluido_em = NULL WHERE id = ?',
+                        [$reagendou['data_inicio'], $reagendou['data_fim'],
+                         $this->resolverStatus('NAO_INICIADO', $reagendou['data_fim']), $id]
+                    );
+                    Json::ok(['progresso' => 0, 'reagendada_para' => $reagendou['data_fim']]);
+                }
+            }
+            Database::executar(
+                "UPDATE desdobramento SET status = 'CONCLUIDO', progresso = 100,
+                   concluido_em = COALESCE(concluido_em, NOW()) WHERE id = ?",
+                [$id]
+            );
+            Json::ok(['progresso' => 100, 'concluida' => true]);
+        }
+
         Database::executar('UPDATE desdobramento SET progresso = ? WHERE id = ?', [$progresso, $id]);
         Json::ok(['progresso' => $progresso]);
     }

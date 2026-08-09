@@ -947,10 +947,21 @@ const SecaoProjetos = {
       r.addEventListener('input', () => pintar(r.value));
       r.addEventListener('change', async () => {
         const anterior = r.dataset.salvo ?? r.defaultValue;
+        // Arrastar até 100% pergunta pela conclusão, como o pop-up do modal —
+        // o status do cartão está no data-status do próprio card da ação
+        const corpo = this.confirmarConclusao(
+          { planejamento_id: this.plan.id, progresso: Number(r.value) },
+          r.closest('[data-status]')?.dataset.status
+        );
         try {
-          await App.api(`/api/desdobramentos/${id}/progresso`, {
-            planejamento_id: this.plan.id, progresso: Number(r.value),
-          });
+          const resposta = await App.api(`/api/desdobramentos/${id}/progresso`, corpo);
+          if (corpo.concluir) {
+            // Concluiu (ou reagendou a recorrente): o selo do cartão mudou de
+            // verdade — recarrega em vez de remendar a tela
+            this.avisarReagendamento(resposta);
+            App.recarregarSecaoAtiva();
+            return;
+          }
           r.dataset.salvo = r.value;
           this.atualizarMedias(el, r);
         } catch (e) {
@@ -1316,34 +1327,37 @@ const SecaoProjetos = {
           { nome: 'data_fim', rotulo: 'Fim previsto' },
         ],
         ajuda: 'Toque no campo para abrir o calendário.' },
-      { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', opcoes:
+      // Prioridade e Status dividem UMA linha (também no celular): as opções
+      // da prioridade empilhadas na vertical para os rótulos não espremerem
+      { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', vertical: true,
+        linha: 'prioridade-status', opcoes:
         Object.entries(PRIORIDADES).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
-      // As três decisões da repetição numa linha só: repetir? em que dia? até
-      // quando? Empilhadas, custavam três faixas de tela para a ação que NÃO se
-      // repete, que é a maioria — e as duas últimas nem aparecem nesse caso.
-      { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', linha: 'repeticao', opcoes: [
+      { nome: 'status', rotulo: 'Status', tipo: 'select', linha: 'prioridade-status',
+        opcoes: this.opcoesStatusAcao(dd?.status),
+        ajuda: '“No prazo” e “Atrasada” saem da data de fim.' },
+      // Repetição e custo na linha de baixo; os detalhes da repetição (dia e
+      // limite) só aparecem quando a ação se repete, numa linha própria
+      { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', linha: 'repeticao-custo', opcoes: [
         { valor: 'NENHUMA', rotulo: 'Não se repete' },
         { valor: 'SEMANAL', rotulo: 'Toda semana' },
         { valor: 'MENSAL', rotulo: 'Todo mês' },
       ], ajuda: 'Ao concluir, reabre na próxima data.' },
-      { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select', linha: 'repeticao',
+      { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number', min: 0,
+        linha: 'repeticao-custo', ajuda: 'Só números.' },
+      { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select', linha: 'repeticao-detalhe',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
         opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo })) },
-      { nome: 'recorrencia_dia_mes', rotulo: 'Repete todo dia', tipo: 'select', linha: 'repeticao',
+      { nome: 'recorrencia_dia_mes', rotulo: 'Repete todo dia', tipo: 'select', linha: 'repeticao-detalhe',
         visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
         opcoes: Array.from({ length: 31 }, (_, i) => ({ valor: i + 1, rotulo: String(i + 1) })),
         ajuda: 'Em meses curtos, cai no último dia.' },
-      { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date', linha: 'repeticao',
+      { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date', linha: 'repeticao-detalhe',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
         ajuda: 'Opcional — depois dela, encerra.' },
-      { nome: 'status', rotulo: 'Status', tipo: 'select', linha: 'situacao',
-        opcoes: this.opcoesStatusAcao(dd?.status),
-        ajuda: '“No prazo” e “Atrasada” saem da data de fim.' },
-      { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number', linha: 'situacao' },
-      // O progresso anda de 5 em 5 — aqui, na barra do cartão e no servidor
-      // (que arredonda ao gravar): os três no mesmo passo, senão o range do
-      // navegador "encaixa" o valor e a tela diverge do banco.
-      { nome: 'progresso', rotulo: 'Progresso', tipo: 'faixa', min: 0, max: 100, passo: 5, sufixo: '%' },
+      // O progresso NÃO é campo deste formulário: ele mora no pop-up que abre
+      // depois do salvar (modalProgresso). O hidden preserva o valor atual na
+      // edição — sem ele, o UPDATE zeraria o percentual a cada ajuste de texto.
+      { nome: 'progresso', rotulo: '', tipo: 'hidden' },
     ];
   },
 
@@ -1366,6 +1380,9 @@ const SecaoProjetos = {
   },
 
   modalDesdobramento(projetoId, dd, iniciativaId = null) {
+    // O status que o formulário GRAVOU: decide se o pop-up de progresso ainda
+    // pergunta pela conclusão nos 100% (numa ação já concluída, não pergunta)
+    let statusSalvo = dd?.status ?? 'NAO_INICIADO';
     Modal.abrir({
       titulo: dd ? 'Editar ação' : 'Nova ação',
       url: dd ? `/api/desdobramentos/${dd.id}` : '/api/desdobramentos',
@@ -1378,7 +1395,10 @@ const SecaoProjetos = {
             recorrencia_dia_mes: dd.recorrencia === 'MENSAL' ? dd.recorrencia_dia : 1 }
         : { planejamento_id: this.plan.id, projeto_id: projetoId, iniciativa_id: iniciativaId,
             ...this.valoresNovaAcao() },
-      transformar: (dados) => this.transformarAcao(dados),
+      transformar: (dados) => {
+        statusSalvo = dados.status || statusSalvo;
+        return this.transformarAcao(dados);
+      },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'projeto_id', rotulo: '', tipo: 'hidden' },
@@ -1388,8 +1408,67 @@ const SecaoProjetos = {
       aoSalvar: (r) => {
         this.avisarReagendamento(r);
         App.recarregarSecaoAtiva();
+        // Salvou a ação → abre o passo 2, só com a barra: qual o percentual de
+        // atingimento? Fechar sem salvar mantém o atual (0 na ação nova). A
+        // recorrente recém-reagendada não pergunta: o progresso acabou de
+        // voltar a zero de propósito.
+        if (r?.id && !r?.reagendada_para) {
+          this.aposFecharModal(() =>
+            this.modalProgresso(r.id, dd?.progresso ?? 0, statusSalvo));
+        }
       },
     });
+  },
+
+  /**
+   * Executa depois que o modal atual terminar de fechar — abrir outro no meio
+   * da animação de saída faz o Bootstrap engolir um dos dois.
+   */
+  aposFecharModal(fn) {
+    const raiz = document.getElementById('modal-form');
+    if (!raiz || !raiz.classList.contains('show')) {
+      fn();
+      return;
+    }
+    raiz.addEventListener('hidden.bs.modal', () => fn(), { once: true });
+  },
+
+  /**
+   * Passo 2 do salvar da ação: dimensionar o atingimento. Só a barra, de 5 em
+   * 5; fechar sem salvar não grava nada. Nos 100%, pergunta se a ação está
+   * CONCLUÍDA — confirmando, o servidor conclui pelo mesmo caminho do
+   * formulário (concluido_em e reagendamento da recorrente); recusando, grava
+   * só o percentual e o status fica para o usuário ajustar na edição.
+   */
+  modalProgresso(acaoId, atual, statusAtual) {
+    Modal.abrir({
+      titulo: 'Progresso da ação',
+      url: `/api/desdobramentos/${acaoId}/progresso`,
+      valores: { planejamento_id: this.plan.id, progresso: atual ?? 0 },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'progresso', rotulo: 'Qual o percentual de atingimento?', tipo: 'faixa',
+          min: 0, max: 100, passo: 5, sufixo: '%',
+          ajuda: 'Fechar sem salvar mantém o progresso como está.' },
+      ],
+      enviar: (corpo) => App.api(`/api/desdobramentos/${acaoId}/progresso`,
+        this.confirmarConclusao(corpo, statusAtual)),
+      aoSalvar: (r) => {
+        this.avisarReagendamento(r);
+        App.recarregarSecaoAtiva();
+      },
+    });
+  },
+
+  /** 100% pergunta pela conclusão; a resposta vira (ou não) o `concluir`. */
+  confirmarConclusao(corpo, statusAtual) {
+    if (Number(corpo.progresso) === 100 && statusAtual !== 'CONCLUIDO'
+      && confirm('Progresso em 100%. Marcar a ação como CONCLUÍDA?\n\n'
+        + 'OK conclui a ação; Cancelar grava só o percentual — o status você '
+        + 'ajusta na edição, se precisar.')) {
+      return { ...corpo, concluir: 1 };
+    }
+    return corpo;
   },
 
   /**

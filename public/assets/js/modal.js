@@ -101,7 +101,10 @@ const Modal = {
       grupo.itens.push(html);
     }
     return partes
-      .map((p) => (typeof p === 'string' ? p : `<div class="grade-campos">${p.itens.join('')}</div>`))
+      // O nome da linha vira classe (`grade-linha-…`): é o gancho para o CSS
+      // manter um par lado a lado até no celular, onde a grade padrão empilha
+      .map((p) => (typeof p === 'string' ? p
+        : `<div class="grade-campos grade-linha-${this.esc(p.linha)}">${p.itens.join('')}</div>`))
       .join('');
   },
 
@@ -244,13 +247,15 @@ const Modal = {
         break;
       }
       case 'botoes': {
-        // Grupo de botões exclusivos (option buttons): um clique escolhe o valor
+        // Grupo de botões exclusivos (option buttons): um clique escolhe o
+        // valor. `vertical` empilha as opções — serve para o grupo dividir uma
+        // linha com outro campo sem espremer os rótulos.
         const botoes = (c.opcoes || []).map((o) => `
           <input type="radio" class="btn-check" name="${id}" id="${id}-${this.esc(o.valor)}"
             value="${this.esc(o.valor)}" ${String(o.valor) === String(v) ? 'checked' : ''}>
           <label class="btn btn-opcao" for="${id}-${this.esc(o.valor)}">${this.esc(o.rotulo)}</label>`).join('');
-        controle = `<div class="btn-group w-100 grupo-botoes" role="group" id="${id}"
-          aria-label="${this.esc(c.rotulo)}">${botoes}</div>`;
+        controle = `<div class="btn-group${c.vertical ? '-vertical' : ''} w-100 grupo-botoes"
+          role="group" id="${id}" aria-label="${this.esc(c.rotulo)}">${botoes}</div>`;
         break;
       }
       case 'info': {
@@ -302,7 +307,11 @@ const Modal = {
         const datalist = lista
           ? `<datalist id="${id}-lista">${c.sugestoes.map((s) => `<option value="${this.esc(s)}"></option>`).join('')}</datalist>`
           : '';
-        const input = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}"${exemplo}${lista}>${datalist}`;
+        // `min`/`max` valem para number e date: o teclado numérico do celular
+        // não impede um sinal de menos — o limite no campo impede
+        const limites = `${c.min !== undefined ? ` min="${this.esc(c.min)}"` : ''}${
+          c.max !== undefined ? ` max="${this.esc(c.max)}"` : ''}`;
+        const input = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}"${exemplo}${lista}${limites}>${datalist}`;
         controle = (c.tipo || 'text') === 'text' && this.suporteVoz
           ? `<div class="campo-voz">${input}${this.botaoDitar(id)}</div>`
           : input;
