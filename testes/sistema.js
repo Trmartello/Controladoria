@@ -326,6 +326,105 @@ async function provasCartaoAcao(page, largura) {
 }
 
 /**
+ * O resumo por situação no cabeçalho do projeto e no de cada frente.
+ *
+ * O que se guarda aqui é a BASE do percentual: no projeto ele é sobre todas as
+ * ações (as frentes somadas) e na frente é sobre as dela. Trocar a base é o
+ * tipo de defeito que ninguém vê — os dois selos continuam existindo, com
+ * números plausíveis, dizendo coisas diferentes do que dizem.
+ */
+async function provasResumoStatus(page, largura) {
+  const ids = await page.evaluate(async () => {
+    const pr = await App.api('/api/projetos',
+      { planejamento_id: 1, titulo: 'Projeto do resumo', ano: 2027, responsavel: 'QA', descricao: '' });
+    const i1 = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: pr.id, titulo: 'Frente A' });
+    const i2 = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: pr.id, titulo: 'Frente B' });
+    // ATRASADO e NAO_INICIADO são AUTOMÁTICOS: quem decide é a data-limite,
+    // reconciliada na leitura. Um "ATRASADO" com prazo futuro volta como "No
+    // prazo" — a massa atrasada precisa de prazo VENCIDO, senão a prova mede
+    // outra coisa e passa por acaso.
+    const mk = (ini, o_que, status, fim) => App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: pr.id, iniciativa_id: ini, o_que, como: 'x', quem: 'QA',
+      quem_usuario_id: 1, prioridade: 'MEDIA', status, progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2026-01-01', data_fim: fim,
+    });
+    await mk(i1.id, 'atrasada 1', 'NAO_INICIADO', '2026-06-01');
+    await mk(i1.id, 'atrasada 2', 'NAO_INICIADO', '2026-06-01');
+    await mk(i1.id, 'no prazo 1', 'NAO_INICIADO', '2027-12-31');
+    await mk(i2.id, 'no prazo 2', 'NAO_INICIADO', '2027-12-31');
+    await mk(i2.id, 'andamento', 'EM_ANDAMENTO', '2027-12-31');
+    await mk(i2.id, 'concluida', 'CONCLUIDO', '2027-12-31');
+    return { pr: pr.id };
+  });
+
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  const sel = `[data-projeto="${ids.pr}"]`;
+  const pintou = await esperar(page, `!!document.querySelector('${sel} .selo-resumo')`);
+  t(`[${largura}] o cabeçalho do projeto traz o resumo por situação`, pintou);
+
+  if (pintou) {
+    const m = await page.evaluate((s) => {
+      const c = document.querySelector(s);
+      const textos = (raiz) => [...raiz.querySelectorAll('.selo-resumo')].map((x) => x.textContent.trim());
+      const cabeca = c.querySelector('.projeto-cabeca');
+      const frentes = [...c.querySelectorAll('.iniciativa-cabeca')].map((h) => ({
+        nome: h.querySelector('strong').textContent.trim(), selos: textos(h),
+      }));
+      const titulo = cabeca.querySelector('strong').getBoundingClientRect();
+      const primeiro = cabeca.querySelector('.selo-resumo').getBoundingClientRect();
+      return {
+        projeto: textos(cabeca),
+        frentes,
+        // "ao lado do título" = mesma linha, e depois dele. A medida é a
+        // SOBREPOSIÇÃO vertical dos dois retângulos, não a distância entre os
+        // centros: o cabeçalho do projeto alinha por linha de base, e peças de
+        // tamanhos diferentes na mesma linha têm centros diferentes — a
+        // primeira versão desta prova reprovava o celular por isso.
+        naLinhaDoTitulo: Math.min(titulo.bottom, primeiro.bottom) - Math.max(titulo.top, primeiro.top) > 0
+          && primeiro.left > titulo.left,
+        // No celular o cabeçalho é estreito e a fila QUEBRA para a linha
+        // seguinte — comportamento correto, não defeito. O que importa ali é
+        // outra coisa: o resumo continua dentro do cabeçalho, acima da barra de
+        // progresso, e não desceu para o meio do conteúdo do projeto.
+        dentroDoCabecalho: !!c.querySelector('.projeto-cabeca .selo-resumo'),
+        acimaDaBarra: primeiro.bottom
+          <= c.querySelector('.panorama-projeto').getBoundingClientRect().top + 1,
+        rolagemH: document.documentElement.scrollWidth > window.innerWidth + 1,
+      };
+    }, sel);
+
+    // 6 ações no projeto: 2 atrasadas (33%), 1 em andamento (17%), 2 no prazo
+    // (33%) e 1 concluída (17%).
+    t(`[${largura}] o percentual do projeto é sobre TODAS as ações dele`,
+      m.projeto.join(' | ') === 'Atrasada: 2 (33%) | Em andamento: 1 (17%) | No prazo: 2 (33%) | Concluída: 1 (17%)',
+      JSON.stringify(m.projeto));
+    // Frente A tem 3: 2 atrasadas (67%) e 1 no prazo (33%).
+    const a = m.frentes.find((f) => f.nome === 'Frente A');
+    t(`[${largura}] o percentual da frente é sobre as ações DELA`,
+      a && a.selos.join(' | ') === 'Atrasada: 2 (67%) | No prazo: 1 (33%)', JSON.stringify(a));
+    const bb = m.frentes.find((f) => f.nome === 'Frente B');
+    t(`[${largura}] cada frente conta a própria carteira`,
+      bb && bb.selos.join(' | ') === 'Em andamento: 1 (33%) | No prazo: 1 (33%) | Concluída: 1 (33%)',
+      JSON.stringify(bb));
+    // Situação sem nenhuma ação não vira selo com zero: numa fila de sete, seis
+    // zerados, o que importa se perde no meio.
+    t(`[${largura}] situação sem ação nenhuma não aparece`,
+      !m.projeto.some((x) => / 0 \(/.test(x)) && m.projeto.length === 4, JSON.stringify(m.projeto));
+    if (largura === 'desktop') {
+      t(`[${largura}] o resumo fica ao lado do título`, m.naLinhaDoTitulo);
+    } else {
+      t(`[${largura}] o resumo fica no cabeçalho, acima da barra`,
+        m.dentroDoCabecalho && m.acimaDaBarra, JSON.stringify(m.naLinhaDoTitulo));
+    }
+    t(`[${largura}] o resumo não rola a página na horizontal`, !m.rolagemH);
+  }
+
+  await page.evaluate(async (ids) => {
+    await App.api(`/api/projetos/${ids.pr}/excluir`, { planejamento_id: 1 });
+  }, ids);
+}
+
+/**
  * Duas invariantes da Matriz GUT que já custaram defeito e não aparecem no
  * "a seção pinta": o cabeçalho que precisa GRUDAR ao rolar (sem ele as quatro
  * colunas de número viram números anônimos) e o aviso de campo abaixo da dobra
@@ -437,6 +536,7 @@ async function provasAcao(page) {
   await provasCiclo(page, 'desktop');
   await provasCartaoCruzamento(page);
   await provasCartaoAcao(page, 'desktop');
+  await provasResumoStatus(page, 'desktop');
   await provasGut(page);
   await provasAcao(page);
 
@@ -448,6 +548,7 @@ async function provasAcao(page) {
   await provasAtalhoCadastros(pageM, 'celular');
   await provasCiclo(pageM, 'celular');
   await provasCartaoAcao(pageM, 'celular');
+  await provasResumoStatus(pageM, 'celular');
 
   await browser.close();
   process.exit(relatar(ok, bad, erros));

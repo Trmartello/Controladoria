@@ -1447,6 +1447,38 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
 .linha-acao-topo .faixa-progresso { min-width: 3rem; }
 .detalhe-item { border-top: 1px dashed #dee2e6; margin-top: .4rem; padding-top: .4rem; }
 
+/* Resumo por situação no cabeçalho do projeto e da frente de trabalho.
+   Selo CLARO, não sólido: são vários lado a lado e uma fila de badges cheios
+   vira parede — a cor continua sendo a mesma da situação (ver CORES_STATUS),
+   só o tratamento muda. O ponto é o que carrega a cor quando o selo é lido de
+   longe; o texto carrega o resto, para a informação não depender só dela. */
+.selo-resumo {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .72rem;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: .1rem .5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--cor);
+  white-space: nowrap;
+}
+.ponto-resumo {
+  width: .45rem;
+  height: .45rem;
+  border-radius: 50%;
+  background: var(--cor);
+  flex: 0 0 auto;
+}
+/* No celular o cabeçalho já é estreito: o selo perde o ponto e encolhe, para a
+   fila caber sem quebrar o nome do projeto para longe do resumo dele. */
+@media (max-width: 575.98px) {
+  .selo-resumo { font-size: .68rem; padding: .1rem .4rem; }
+  .ponto-resumo { display: none; }
+}
+
 .selo-prioridade {
   font-size: .65rem;
   font-weight: 800;

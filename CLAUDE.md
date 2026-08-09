@@ -941,8 +941,20 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   botão fica aceso** — melhor que um botão mentindo. Os acordeões chamam
   `pintarNiveis`: eles mexem no DOM sem recarregar a seção, e sem isso o grupo
   seguiria marcando "Ações" com as ações já escondidas.
-- **Panorama de execução** (`panorama()`): barra da média + percentual +
-  “N atrasada(s)”. É o **mesmo bloco** no projeto e na iniciativa — escritos
+- **Resumo por situação** (`resumoStatus()`): no cabeçalho do projeto **e** no
+  de cada frente, um selo por situação PRESENTE, com a contagem e o percentual.
+  A base do percentual é o nível em que ele está — no projeto, todas as ações
+  (as frentes somadas); na frente, as dela. Trocar a base é defeito invisível:
+  os selos continuam plausíveis dizendo outra coisa, e é o que a bateria guarda.
+  Situação **sem nenhuma ação não vira selo com zero** — numa fila de sete, seis
+  zerados, o que importa se perde no meio. O percentual é arredondado e pode
+  somar 99% ou 101%: a contagem é que manda, e o `title` traz "N de T ações".
+  A cor sai de `CORES_STATUS`, que é a MESMA leitura de `STATUS_ACAO` em hexa —
+  a regra da GUT (a cor junta, a forma separa): o selo do cartão é sólido, o do
+  resumo é claro com um ponto, porque vários sólidos lado a lado viram parede.
+  O `"N atrasada(s)"` saiu do panorama por isso: o resumo diz o mesmo com o
+  percentual junto, e dizer duas vezes obrigava a conferir se batiam.
+- **Panorama de execução** (`panorama()`): barra da média + percentual. É o **mesmo bloco** no projeto e na iniciativa — escritos
   separados, os dois níveis divergiriam na primeira mudança de regra.
   `atualizarMedias()` recalcula os **dois** níveis ao arrastar a barra de uma
   ação, lendo os valores que estão na tela (a ação recém-arrastada precisa

@@ -21,6 +21,33 @@ const STATUS_ACAO = {
   AGUARDANDO_VALIDACAO: ['Aguardando validação', 'text-bg-light border'],
 };
 const STATUS_MANUAIS = ['EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO', 'PAUSADO', 'AGUARDANDO_VALIDACAO'];
+
+/**
+ * A cor de cada situação como VALOR, para o selo do resumo pintar o ponto, o
+ * fundo e a borda.
+ *
+ * É a mesma leitura de cor dos selos das ações (`STATUS_ACAO`), só que em hexa:
+ * a classe do Bootstrap serve ao selo sólido do cartão, e aqui o selo é claro,
+ * porque são vários lado a lado e uma fila de badges sólidos vira parede.
+ * A regra é a da matriz GUT — **a cor junta, a forma separa**: mesma cor para a
+ * mesma situação, tratamento diferente conforme o lugar. Duas paletas para o
+ * mesmo estado divergiriam na primeira revisão.
+ */
+const CORES_STATUS = {
+  NAO_INICIADO: '#0a8ea0',
+  EM_ANDAMENTO: '#0d6efd',
+  ATRASADO: '#b3261e',
+  CONCLUIDO: '#007a45',
+  PAUSADO: '#b08d4f',
+  AGUARDANDO_VALIDACAO: '#5d6b64',
+  CANCELADO: '#6c757d',
+};
+
+// Ordem do resumo: o que pede atenção primeiro. Não é a ordem do ENUM nem a
+// alfabética — quem olha o cabeçalho de um projeto quer saber do atraso antes
+// de saber do que já está pronto.
+const ORDEM_RESUMO = ['ATRASADO', 'EM_ANDAMENTO', 'AGUARDANDO_VALIDACAO', 'PAUSADO',
+  'NAO_INICIADO', 'CONCLUIDO', 'CANCELADO'];
 const PRIORIDADES = {
   ALTA: ['Alta', '#b3261e'], MEDIA: ['Média', '#b08d4f'], BAIXA: ['Baixa', '#2c7fb8'],
 };
@@ -181,14 +208,48 @@ const SecaoProjetos = {
     const media = acoes.length
       ? Math.round(acoes.reduce((s, a) => s + Number(a.progresso), 0) / acoes.length)
       : 0;
-    const atrasadas = acoes.filter((a) => a.status === 'ATRASADO').length;
+    // O antigo "N atrasada(s)" saiu daqui: o resumo por situação, no cabeçalho,
+    // diz a mesma coisa com o percentual junto — e dizer duas vezes obrigava a
+    // conferir se os dois números batiam.
     return `<div class="d-flex align-items-center gap-2 mt-1 panorama-execucao ${classe}">
       <div class="faixa-progresso flex-grow-1" title="${Modal.esc(titulo)}">
         <span ${marcaBarra} style="width:${media}%"></span>
       </div>
       <span class="valor-progresso" ${marcaMedia}>${media}%</span>
-      ${atrasadas ? `<span class="badge text-bg-danger">${atrasadas} atrasada(s)</span>` : ''}
     </div>`;
+  },
+
+  /**
+   * Resumo por situação: um selo por situação PRESENTE, com a contagem e o
+   * percentual sobre o total de ações daquele nível.
+   *
+   * Vai no cabeçalho do projeto e no da frente de trabalho, com o mesmo código:
+   * a pergunta é a mesma nos dois — "como está a execução daqui?" —, e escritos
+   * separados os dois níveis divergiriam na primeira mudança de regra, como já
+   * aconteceu com o panorama antes de ele virar um bloco só.
+   *
+   * A situação que não aparece **não é mostrada com zero**: numa fila de sete
+   * selos, seis deles em zero, o único que importa fica escondido no meio.
+   *
+   * O percentual é arredondado e por isso pode somar 99% ou 101% — a contagem é
+   * que manda, e o `title` traz "N de T ações" para quem precisa do número
+   * exato. Fingir uma soma redonda exigiria distribuir sobra entre as fatias, o
+   * que faria um selo mostrar um percentual que não é o dele.
+   */
+  resumoStatus(acoes) {
+    const total = (acoes || []).length;
+    if (!total) return '';
+    return ORDEM_RESUMO
+      .map((st) => [st, acoes.filter((a) => a.status === st).length])
+      .filter(([, n]) => n > 0)
+      .map(([st, n]) => {
+        const [rot] = STATUS_ACAO[st] || [st];
+        const cor = CORES_STATUS[st] || '#6c757d';
+        const pct = Math.round((n * 100) / total);
+        return `<span class="selo-resumo" style="--cor:${cor};background:${cor}14;border-color:${cor}45"
+          title="${Modal.esc(rot)}: ${n} de ${total} ação(ões)">
+          <span class="ponto-resumo"></span>${Modal.esc(rot)}: ${n} (${pct}%)</span>`;
+      }).join('');
   },
 
   // Período escolhido no calendário; textos antigos (prazo/quando_) seguem valendo
@@ -221,9 +282,16 @@ const SecaoProjetos = {
     return `<div class="iniciativa mb-2" data-iniciativa="${ini.id}">
       <div class="d-flex align-items-center gap-2 flex-wrap iniciativa-cabeca" data-abrir-ini="${ini.id}">
         <span class="seta-iniciativa">${aberta ? '▾' : '▸'}</span>
-        <strong class="small flex-grow-1">${Modal.esc(ini.titulo)}</strong>
-        <span class="badge ${classeIni}">${rotIni}</span>
-        ${this.botaoMais(chave, detalhado)}
+        <strong class="small">${Modal.esc(ini.titulo)}</strong>
+        <!-- O resumo vem logo DEPOIS do nome, como no projeto um nível acima.
+             O ms-auto passou para o grupo da direita justamente para o título
+             deixar de esticar e empurrar os selos para longe do nome que eles
+             resumem. -->
+        ${this.resumoStatus(acoes)}
+        <span class="ms-auto d-flex align-items-center gap-2">
+          <span class="badge ${classeIni}">${rotIni}</span>
+          ${this.botaoMais(chave, detalhado)}
+        </span>
       </div>
       ${panorama}
       <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
@@ -388,6 +456,12 @@ const SecaoProjetos = {
               <strong>${Modal.esc(p.titulo)}</strong>
               ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning ms-1">Prioritário</span>' : ''}
               ${badge(p.status)}
+              <!-- Resumo por situação das ações do projeto INTEIRO (todas as
+                   frentes somadas). O mesmo bloco aparece em cada frente, com o
+                   total dela — o percentual é sempre sobre o nível em que ele
+                   está, senão dois números iguais na tela diriam coisas
+                   diferentes sem avisar. -->
+              ${this.resumoStatus(acoes)}
             </div>
             ${this.botaoMais(chave, detalhado)}
           </div>
