@@ -429,11 +429,6 @@ const SecaoProjetos = {
     this.responsaveis = responsaveis;
     this.projetos = projetos;   // guardado para o seletor de iniciativa ao converter ideias
 
-    const badge = (status) => {
-      const [rotulo, classe] = STATUS_ROTULOS[status] || [status, 'text-bg-light'];
-      return `<span class="badge ${classe}">${rotulo}</span>`;
-    };
-
     const cartoes = projetos.map((p) => {
       // O prazo é consequência das ações: menor início e maior fim entre elas
       const detalhes = [
@@ -466,13 +461,14 @@ const SecaoProjetos = {
               <span class="seta-projeto">${aberto ? '▾' : '▸'}</span>
               <strong>${Modal.esc(p.titulo)}</strong>
               ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning ms-1">Prioritário</span>' : ''}
-              ${badge(p.status)}
-              <!-- No projeto vai SÓ o atraso: quantas ações estão fora do prazo
-                   e quanto isso é do total criado (todas as frentes somadas).
+              <!-- UM selo, e é o do atraso: quantas ações estão fora do prazo e
+                   quanto isso é do total criado (todas as frentes somadas). O
+                   selo de situação do projeto saiu daqui — ele dizia "Atrasado"
+                   ao lado de "Atrasada: 1 (20%)", a mesma notícia duas vezes,
+                   uma delas sem o tamanho. A situação agregada continua no
+                   cadastro do projeto e a média, na barra logo abaixo.
                    A distribuição inteira fica na frente de trabalho, onde ela
-                   cabe num punhado de ações e ainda se lê — sete selos por
-                   projeto numa tela com vários viraria ruído, e o que se
-                   pergunta no nível de cima é uma coisa só.
+                   cabe num punhado de ações e ainda se lê.
                    Sem ação atrasada, nenhum selo: a ausência é a boa notícia. -->
               ${this.resumoStatus(acoes, ['ATRASADO'])}
             </div>
@@ -512,7 +508,13 @@ const SecaoProjetos = {
         data-nivel="${valor}" title="${Modal.esc(dica)}"
         aria-pressed="${nivel === valor}">${rotulo}</button>`;
     el.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <!-- O cabeçalho GRUDA abaixo da topbar: os três botões de nível são o
+           controle que se usa lendo a lista, e rolar até o quinto projeto para
+           trocar de visão obrigava a subir a página inteira de volta.
+           O parágrafo de instruções fica FORA do bloco fixo, de propósito: ele
+           se lê uma vez, e grudado custaria uma faixa de tela em toda rolagem,
+           para sempre. Quem precisa dele está no começo, onde ele está. -->
+      <div class="cabecalho-projetos d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>Projetos — ${Modal.esc(App.rotuloContexto())}</h1>
         <div class="d-flex gap-2 align-items-center flex-wrap">
           ${projetos.length ? `<span class="small text-muted d-none d-sm-inline">Mostrar até</span>

@@ -1479,6 +1479,27 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   .ponto-resumo { display: none; }
 }
 
+/* Cabeçalho da tela de Projetos, grudado abaixo da topbar.
+   O mesmo mecanismo do cabeçalho da GUT: `top: var(--topo-app)` (a altura da
+   .topbar, declarada uma vez em `:root` — número solto aqui erraria no dia em
+   que a barra mudasse de altura) e fundo SÓLIDO, igual ao do body, senão os
+   cartões apareceriam através dele ao passar por baixo.
+   As margens negativas cobrem a sarjeta do container: sem elas, a lista aparece
+   pelas beiradas do bloco fixo enquanto rola. A sombra é o que faz o corte ser
+   lido como "tem mais coisa acima" em vez de cartão quebrado.
+   `z-index: 3`: acima dos cartões e do cabeçalho de coluna das análises (2),
+   abaixo da topbar (1035) e do modal. */
+.cabecalho-projetos {
+  position: sticky;
+  top: var(--topo-app);
+  z-index: 3;
+  background: #f4f6f5;
+  margin: 0 -.75rem;
+  padding: .4rem .75rem;
+  box-shadow: 0 .35rem .35rem -.3rem rgba(0, 0, 0, .22);
+}
+.cabecalho-projetos h1 { margin-bottom: 0; }
+
 /* Fila de "Aguardando plano de ação": texto à esquerda, selo de origem e botão
    agrupados à direita. A mínima do texto é o que decide QUANDO o grupo desce:
    acima dela os dois convivem na linha; abaixo, o grupo inteiro vai para a

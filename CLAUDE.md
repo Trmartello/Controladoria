@@ -941,6 +941,14 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   automático, os avisos e o painel. Consequência para quem for mexer: ação
   antiga sem "como" ou sem datas passa a exigir os dois na próxima vez que
   alguém abrir e salvar.
+- **O cabeçalho de Projetos gruda** abaixo da topbar (`.cabecalho-projetos`,
+  `top: var(--topo-app)`, fundo sólido e `z-index: 3`, o mesmo mecanismo do
+  cabeçalho da GUT): os três botões de nível são o controle que se usa LENDO a
+  lista, e trocar de visão no quinto projeto obrigava a subir a página inteira.
+  O parágrafo de instruções fica **fora** do bloco fixo de propósito — ele se lê
+  uma vez, e grudado custaria uma faixa de tela em toda rolagem, para sempre.
+  As margens negativas cobrem a sarjeta do container, senão a lista aparece
+  pelas beiradas ao passar por baixo.
 - **Três níveis de recolhimento** (`nivelAtual` / `aplicarNivel` /
   `pintarNiveis`): **Ações · Frentes · Projetos**, no lugar do "Recolher tudo"
   que só tinha os extremos. "Frentes" é o nível que faltava — esconde as ações e
@@ -959,6 +967,10 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   A base do percentual é o nível em que ele está — no projeto, todas as ações
   (as frentes somadas); na frente, as dela. Trocar a base é defeito invisível:
   os selos continuam plausíveis dizendo outra coisa, e é o que a bateria guarda.
+  No cabeçalho do projeto esse é o **único** selo: o de situação agregada saiu
+  de lá, porque dizia "Atrasado" ao lado de "Atrasada: 1 (20%)" — a mesma
+  notícia duas vezes, uma delas sem o tamanho. A média continua na barra logo
+  abaixo.
   Situação **sem nenhuma ação não vira selo com zero** — numa fila de sete, seis
   zerados, o que importa se perde no meio. Vale para o projeto: **sem atraso,
   nenhum selo**; a ausência é a boa notícia, e um "Atrasada: 0 (0%)" em toda

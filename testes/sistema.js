@@ -375,6 +375,7 @@ async function provasResumoStatus(page, largura) {
       return {
         projeto: textos(cabeca),
         frentes,
+        selosNoCabecalho: cabeca.querySelectorAll('.badge, .selo-resumo').length,
         // "ao lado do título" = mesma linha, e depois dele. A medida é a
         // SOBREPOSIÇÃO vertical dos dois retângulos, não a distância entre os
         // centros: o cabeçalho do projeto alinha por linha de base, e peças de
@@ -397,6 +398,11 @@ async function provasResumoStatus(page, largura) {
     // 6 ações = 33%. O denominador não é "as atrasadas" nem "as abertas".
     t(`[${largura}] o projeto aponta só o atraso, sobre o total de ações`,
       m.projeto.join(' | ') === 'Atrasada: 2 (33%)', JSON.stringify(m.projeto));
+    // UM selo, não dois: o de situação do projeto saiu do cabeçalho porque
+    // dizia "Atrasado" ao lado de "Atrasada: 2 (33%)" — a mesma notícia duas
+    // vezes, uma delas sem o tamanho.
+    t(`[${largura}] o cabeçalho do projeto tem UM selo só`, m.selosNoCabecalho === 1,
+      `${m.selosNoCabecalho}`);
     // Frente A tem 3: 2 atrasadas (67%) e 1 no prazo (33%).
     const a = m.frentes.find((f) => f.nome === 'Frente A');
     t(`[${largura}] o percentual da frente é sobre as ações DELA`,
@@ -447,6 +453,67 @@ async function provasResumoStatus(page, largura) {
   await page.evaluate(async (alvos) => {
     for (const id of alvos) await App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 });
   }, [ids.pr, limpo]);
+}
+
+/**
+ * O cabeçalho de Projetos grudado abaixo da topbar.
+ *
+ * Os três botões de nível (Ações · Frentes · Projetos) são o controle que se usa
+ * LENDO a lista: sem o cabeçalho fixo, trocar de visão no quinto projeto obriga
+ * a subir a página inteira. A prova rola de verdade e confere onde o bloco
+ * parou — `position: sticky` é fácil de quebrar sem querer, porque basta um
+ * `overflow` num ancestral para ele virar estático e ninguém percebe.
+ */
+async function provasCabecalhoProjetos(page, largura) {
+  const ids = await page.evaluate(async () => {
+    const feitos = [];
+    for (const nome of ['Projeto rolagem A', 'Projeto rolagem B']) {
+      const pr = await App.api('/api/projetos',
+        { planejamento_id: 1, titulo: nome, ano: 2027, responsavel: 'QA', descricao: '' });
+      const ini = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: pr.id, titulo: 'Frente' });
+      for (const q of ['a', 'b', 'c', 'd', 'e', 'f']) {
+        await App.api('/api/desdobramentos', {
+          planejamento_id: 1, projeto_id: pr.id, iniciativa_id: ini.id, o_que: `${nome} ${q}`,
+          como: 'x', quem: 'QA', quem_usuario_id: 1, prioridade: 'MEDIA', status: 'NAO_INICIADO',
+          progresso: 50, recorrencia: 'NENHUMA', data_inicio: '2026-01-01', data_fim: '2027-12-31',
+        });
+      }
+      feitos.push(pr.id);
+    }
+    return feitos;
+  });
+
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  await esperar(page, "!!document.querySelector('.cabecalho-projetos [data-nivel]')");
+  await page.evaluate(() => window.scrollTo(0, 700));
+  const m = await page.evaluate(() => {
+    const cab = document.querySelector('.cabecalho-projetos');
+    const r = cab.getBoundingClientRect();
+    const barra = document.querySelector('.topbar').getBoundingClientRect();
+    const cs = getComputedStyle(cab);
+    return {
+      rolou: Math.round(window.scrollY) > 0,
+      // Grudado EXATAMENTE embaixo da topbar: a folga é zero.
+      folga: Math.round(r.top - barra.bottom),
+      // Os controles seguem clicáveis, não escondidos atrás da barra verde.
+      controlesVisiveis: [...document.querySelectorAll('.cabecalho-projetos [data-nivel]')]
+        .every((b) => b.getBoundingClientRect().top >= barra.bottom - 1),
+      // Fundo sólido: transparente deixaria os cartões aparecerem através dele.
+      opaco: !/rgba\(.*,\s*0\)/.test(cs.backgroundColor) && cs.backgroundColor !== 'transparent',
+      z: Number(cs.zIndex),
+    };
+  });
+
+  t(`[${largura}] a página rola o bastante para provar o cabeçalho fixo`, m.rolou);
+  t(`[${largura}] o cabeçalho de Projetos gruda abaixo da topbar`, m.folga === 0, `folga ${m.folga}px`);
+  t(`[${largura}] os botões de nível seguem à vista ao rolar`, m.controlesVisiveis);
+  t(`[${largura}] o cabeçalho fixo é opaco e fica acima dos cartões`, m.opaco && m.z >= 2,
+    JSON.stringify(m));
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.evaluate(async (alvos) => {
+    for (const id of alvos) await App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 });
+  }, ids);
 }
 
 /**
@@ -629,6 +696,7 @@ async function provasAcao(page) {
   await provasCartaoAcao(page, 'desktop');
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
+  await provasCabecalhoProjetos(page, 'desktop');
   await provasGut(page);
   await provasAcao(page);
 
@@ -642,6 +710,7 @@ async function provasAcao(page) {
   await provasCartaoAcao(pageM, 'celular');
   await provasResumoStatus(pageM, 'celular');
   await provasFilaAcao(pageM, 'celular');
+  await provasCabecalhoProjetos(pageM, 'celular');
 
   await browser.close();
   process.exit(relatar(ok, bad, erros));
