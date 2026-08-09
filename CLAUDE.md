@@ -703,6 +703,15 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   projeto — desfazer ali deixaria a ação órfã. O `excluir()` apaga junto o fator
   (com os promovidos a partir dele) ou o item de cenário, e solta
   `dividido_de_id`/`agrupado_em_id`, que **não têm chave estrangeira**.
+  Na fila de "Aguardando plano de ação", o **selo de origem e o botão são um
+  bloco só**, encostado à direita (`.acoes-pendencia`, com `ms-auto`): soltos,
+  eles quebravam em lugares diferentes conforme o tamanho de cada pendência. A
+  linha é `flex-wrap flex-sm-nowrap` — num flex que quebra, **o navegador quebra
+  a linha antes de encolher o item**, então com `flex-wrap` no computador um
+  texto longo empurrava o grupo para baixo mesmo sobrando espaço depois de ele
+  se acomodar em duas linhas. No celular a quebra continua ligada (os dois não
+  cabem em 390px) e o `ms-auto` mantém o grupo à direita, porque margem
+  automática vale por LINHA.
   Ideia cadastrada **manualmente** enquanto uma tempestade está aberta herda o
   `rodada_id` da rodada aberta (validado no back-end) e cai na nuvem, em vez de
   sumir. Listagens que juntam ideias da tempestade (autor_id NULL) usam
@@ -941,13 +950,19 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   botão fica aceso** — melhor que um botão mentindo. Os acordeões chamam
   `pintarNiveis`: eles mexem no DOM sem recarregar a seção, e sem isso o grupo
   seguiria marcando "Ações" com as ações já escondidas.
-- **Resumo por situação** (`resumoStatus()`): no cabeçalho do projeto **e** no
-  de cada frente, um selo por situação PRESENTE, com a contagem e o percentual.
+- **Resumo por situação** (`resumoStatus(acoes, apenas)`): no cabeçalho de cada
+  frente, um selo por situação PRESENTE, com a contagem e o percentual. No
+  **projeto** vai só o **atraso** (`apenas: ['ATRASADO']`): no nível de cima a
+  pergunta é uma — o que está fora do prazo e quanto isso é do total criado —, e
+  sete selos por projeto numa tela com vários viraria ruído. O denominador é
+  sempre o TOTAL do nível, mesmo com `apenas`.
   A base do percentual é o nível em que ele está — no projeto, todas as ações
   (as frentes somadas); na frente, as dela. Trocar a base é defeito invisível:
   os selos continuam plausíveis dizendo outra coisa, e é o que a bateria guarda.
   Situação **sem nenhuma ação não vira selo com zero** — numa fila de sete, seis
-  zerados, o que importa se perde no meio. O percentual é arredondado e pode
+  zerados, o que importa se perde no meio. Vale para o projeto: **sem atraso,
+  nenhum selo**; a ausência é a boa notícia, e um "Atrasada: 0 (0%)" em toda
+  linha treinaria o olho a pular justamente o selo que importa. O percentual é arredondado e pode
   somar 99% ou 101%: a contagem é que manda, e o `title` traz "N de T ações".
   A cor sai de `CORES_STATUS`, que é a MESMA leitura de `STATUS_ACAO` em hexa —
   a regra da GUT (a cor junta, a forma separa): o selo do cartão é sólido, o do

@@ -229,17 +229,28 @@ const SecaoProjetos = {
    * aconteceu com o panorama antes de ele virar um bloco só.
    *
    * A situação que não aparece **não é mostrada com zero**: numa fila de sete
-   * selos, seis deles em zero, o único que importa fica escondido no meio.
+   * selos, seis deles em zero, o único que importa fica escondido no meio. Vale
+   * também para o projeto com `apenas`: sem ação atrasada, nenhum selo — a
+   * ausência é a boa notícia, e um "Atrasada: 0 (0%)" em toda linha treinaria o
+   * olho a pular justamente o selo que importa quando ele deixar de ser zero.
+   *
+   * `apenas` limita quais situações entram. O PROJETO usa isso para mostrar só
+   * o atraso: no nível de cima a pergunta é uma — "o que está fora do prazo, e
+   * quanto isso é do todo?". A distribuição inteira é da frente de trabalho,
+   * onde ela cabe num punhado de ações e ainda se lê.
    *
    * O percentual é arredondado e por isso pode somar 99% ou 101% — a contagem é
    * que manda, e o `title` traz "N de T ações" para quem precisa do número
    * exato. Fingir uma soma redonda exigiria distribuir sobra entre as fatias, o
-   * que faria um selo mostrar um percentual que não é o dele.
+   * que faria um selo mostrar um percentual que não é o dele. O denominador é
+   * sempre o TOTAL do nível, mesmo com `apenas`: o percentual do atraso é sobre
+   * todas as ações criadas, não sobre as que sobraram do filtro.
    */
-  resumoStatus(acoes) {
+  resumoStatus(acoes, apenas = null) {
     const total = (acoes || []).length;
     if (!total) return '';
     return ORDEM_RESUMO
+      .filter((st) => !apenas || apenas.includes(st))
       .map((st) => [st, acoes.filter((a) => a.status === st).length])
       .filter(([, n]) => n > 0)
       .map(([st, n]) => {
@@ -456,12 +467,14 @@ const SecaoProjetos = {
               <strong>${Modal.esc(p.titulo)}</strong>
               ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning ms-1">Prioritário</span>' : ''}
               ${badge(p.status)}
-              <!-- Resumo por situação das ações do projeto INTEIRO (todas as
-                   frentes somadas). O mesmo bloco aparece em cada frente, com o
-                   total dela — o percentual é sempre sobre o nível em que ele
-                   está, senão dois números iguais na tela diriam coisas
-                   diferentes sem avisar. -->
-              ${this.resumoStatus(acoes)}
+              <!-- No projeto vai SÓ o atraso: quantas ações estão fora do prazo
+                   e quanto isso é do total criado (todas as frentes somadas).
+                   A distribuição inteira fica na frente de trabalho, onde ela
+                   cabe num punhado de ações e ainda se lê — sete selos por
+                   projeto numa tela com vários viraria ruído, e o que se
+                   pergunta no nível de cima é uma coisa só.
+                   Sem ação atrasada, nenhum selo: a ausência é a boa notícia. -->
+              ${this.resumoStatus(acoes, ['ATRASADO'])}
             </div>
             ${this.botaoMais(chave, detalhado)}
           </div>
@@ -835,13 +848,29 @@ const SecaoProjetos = {
       }
       return `<span class="badge text-bg-light border">Coleta · ${Modal.esc(p.autor)}</span>`;
     };
+    // O selo e o botão são UM bloco, encostado à direita. Soltos como irmãos do
+    // texto, os três disputavam a mesma linha: com a pendência longa o selo
+    // descia sozinho para baixo do texto e o botão ficava em cima, e cada linha
+    // da fila quebrava num lugar diferente.
+    //
+    // `flex-sm-nowrap` é o que faz o grupo FICAR na linha do texto no
+    // computador, e não é detalhe: num flex que quebra, o navegador quebra a
+    // linha ANTES de encolher o item — então, com `flex-wrap`, um texto longo
+    // empurrava o grupo para baixo mesmo havendo espaço de sobra depois de o
+    // texto se acomodar em duas linhas. Sem a quebra, ele encolhe e o parágrafo
+    // se ajeita sozinho ao lado dos botões.
+    // No celular a quebra continua ligada (os dois não cabem em 390px), e ali o
+    // `ms-auto` é que mantém o grupo à direita: margem automática vale por LINHA
+    // no flex que quebra.
     const linhas = pendentes.map((p) => `
-      <div class="d-flex align-items-center gap-2 flex-wrap ideia-acao" data-ideia-acao="${p.chave}">
-        <span class="small flex-grow-1">${Modal.esc(p.texto_tratado || p.texto)}
+      <div class="d-flex align-items-center gap-2 flex-wrap flex-sm-nowrap ideia-acao" data-ideia-acao="${p.chave}">
+        <span class="small flex-grow-1 texto-pendencia">${Modal.esc(p.texto_tratado || p.texto)}
           <span class="text-muted">${p.votos ? ` · ★ ${p.votos}` : ''}</span></span>
-        ${selo(p)}
-        ${podeConverter ? `<button class="btn btn-sm btn-verde flex-shrink-0"
-          data-virar-acao="${p.chave}">Transformar em ação</button>` : ''}
+        <span class="ms-auto d-flex align-items-center gap-2 flex-shrink-0 acoes-pendencia">
+          ${selo(p)}
+          ${podeConverter ? `<button class="btn btn-sm btn-verde"
+            data-virar-acao="${p.chave}">Transformar em ação</button>` : ''}
+        </span>
       </div>`).join('');
     return `<div class="card mb-3 card-ideias-acao"><div class="card-body py-2 px-3">
       <div class="rotulo-secao">Aguardando plano de ação (${pendentes.length})</div>

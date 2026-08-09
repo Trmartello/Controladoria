@@ -393,11 +393,10 @@ async function provasResumoStatus(page, largura) {
       };
     }, sel);
 
-    // 6 ações no projeto: 2 atrasadas (33%), 1 em andamento (17%), 2 no prazo
-    // (33%) e 1 concluída (17%).
-    t(`[${largura}] o percentual do projeto é sobre TODAS as ações dele`,
-      m.projeto.join(' | ') === 'Atrasada: 2 (33%) | Em andamento: 1 (17%) | No prazo: 2 (33%) | Concluída: 1 (17%)',
-      JSON.stringify(m.projeto));
+    // No projeto vai SÓ o atraso, e o percentual é sobre o TOTAL criado: 2 de
+    // 6 ações = 33%. O denominador não é "as atrasadas" nem "as abertas".
+    t(`[${largura}] o projeto aponta só o atraso, sobre o total de ações`,
+      m.projeto.join(' | ') === 'Atrasada: 2 (33%)', JSON.stringify(m.projeto));
     // Frente A tem 3: 2 atrasadas (67%) e 1 no prazo (33%).
     const a = m.frentes.find((f) => f.nome === 'Frente A');
     t(`[${largura}] o percentual da frente é sobre as ações DELA`,
@@ -409,7 +408,7 @@ async function provasResumoStatus(page, largura) {
     // Situação sem nenhuma ação não vira selo com zero: numa fila de sete, seis
     // zerados, o que importa se perde no meio.
     t(`[${largura}] situação sem ação nenhuma não aparece`,
-      !m.projeto.some((x) => / 0 \(/.test(x)) && m.projeto.length === 4, JSON.stringify(m.projeto));
+      !m.frentes.some((f) => f.selos.some((x) => / 0 \(/.test(x))), JSON.stringify(m.frentes));
     if (largura === 'desktop') {
       t(`[${largura}] o resumo fica ao lado do título`, m.naLinhaDoTitulo);
     } else {
@@ -419,8 +418,100 @@ async function provasResumoStatus(page, largura) {
     t(`[${largura}] o resumo não rola a página na horizontal`, !m.rolagemH);
   }
 
-  await page.evaluate(async (ids) => {
-    await App.api(`/api/projetos/${ids.pr}/excluir`, { planejamento_id: 1 });
+  // Projeto SEM atraso não ganha selo nenhum no cabeçalho: a ausência é a boa
+  // notícia. Sem esta prova, um "Atrasada: 0 (0%)" em toda linha passaria — e é
+  // justamente o que treina o olho a pular o selo quando ele deixa de ser zero.
+  const limpo = await page.evaluate(async () => {
+    const pr = await App.api('/api/projetos',
+      { planejamento_id: 1, titulo: 'Projeto em dia', ano: 2027, responsavel: 'QA', descricao: '' });
+    const ini = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: pr.id, titulo: 'Frente C' });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: pr.id, iniciativa_id: ini.id, o_que: 'no prazo', como: 'x',
+      quem: 'QA', quem_usuario_id: 1, prioridade: 'MEDIA', status: 'NAO_INICIADO', progresso: 0,
+      recorrencia: 'NENHUMA', data_inicio: '2027-01-01', data_fim: '2027-12-31',
+    });
+    return pr.id;
+  });
+  await page.evaluate(() => App.recarregarSecaoAtiva());
+  await esperar(page, `!!document.querySelector('[data-projeto="${limpo}"] .projeto-cabeca')`);
+  t(`[${largura}] projeto sem atraso não mostra selo nenhum`,
+    await page.evaluate((id) =>
+      !document.querySelector(`[data-projeto="${id}"] .projeto-cabeca .selo-resumo`), limpo));
+  // E a frente dele continua com o resumo — o ajuste foi só no nível de cima.
+  t(`[${largura}] mas a frente dele continua resumida`,
+    await page.evaluate((id) =>
+      !!document.querySelector(`[data-projeto="${id}"] .iniciativa-cabeca .selo-resumo`), limpo));
+
+  // Um argumento só: `page.evaluate` não aceita dois (a mensagem de erro é
+  // clara, mas só aparece quando a prova já rodou inteira).
+  await page.evaluate(async (alvos) => {
+    for (const id of alvos) await App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 });
+  }, [ids.pr, limpo]);
+}
+
+/**
+ * A fila de "Aguardando plano de ação": texto à esquerda, selo de origem e
+ * botão agrupados à direita.
+ *
+ * O que se guarda é o AGRUPAMENTO. Soltos, o selo e o botão quebravam em
+ * lugares diferentes conforme o tamanho do texto de cada pendência, e a fila
+ * saía com cada linha montada de um jeito. É defeito que só aparece com massa
+ * real — texto curto e texto longo na mesma lista.
+ */
+async function provasFilaAcao(page, largura) {
+  const ids = await page.evaluate(async () => {
+    const cria = async (desc) => {
+      const f = await App.api('/api/fatores',
+        { planejamento_id: 1, etapa: 'SWOT', categoria: 'FRAQUEZA', descricao: desc, ano: 2026 });
+      await App.api(`/api/fatores/${f.id}/plano-acao`, { planejamento_id: 1 });
+      return f.id;
+    };
+    // Um curto e um longo de propósito: é a diferença entre eles que fazia cada
+    // linha da fila quebrar num lugar.
+    return [await cria('Curto'), await cria('Pendência longa o bastante para ocupar a '
+      + 'largura toda da linha e disputar espaço com o selo de origem e com o botão de '
+      + 'transformar em ação, que é quando o defeito aparecia.')];
+  });
+
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  const pintou = await esperar(page, "!!document.querySelector('.card-ideias-acao .acoes-pendencia')");
+  t(`[${largura}] a fila de aguardando plano de ação pinta`, pintou);
+
+  if (pintou) {
+    const m = await page.evaluate(() => {
+      const linhas = [...document.querySelectorAll('.card-ideias-acao .ideia-acao')];
+      const r = (el) => el.getBoundingClientRect();
+      const sobrepoe = (a, b) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0;
+      return {
+        // Encostado à direita: a folga entre o fim do grupo e o fim da linha é
+        // zero em TODAS as linhas — um valor só no conjunto.
+        folgas: [...new Set(linhas.map((l) => Math.round(r(l).right - r(l.querySelector('.acoes-pendencia')).right)))],
+        // O selo e o botão nunca se separam.
+        grupoInteiro: linhas.every((l) => {
+          const bt = l.querySelector('[data-virar-acao]');
+          return !bt || sobrepoe(r(l.querySelector('.badge')), r(bt));
+        }),
+        // No computador o grupo divide a linha com o texto; no celular ele desce.
+        naLinhaDoTexto: linhas.every((l) =>
+          sobrepoe(r(l.querySelector('.texto-pendencia')), r(l.querySelector('.acoes-pendencia')))),
+        rolagemH: document.documentElement.scrollWidth > window.innerWidth + 1,
+      };
+    });
+
+    t(`[${largura}] o grupo fica encostado à direita em todas as linhas`,
+      m.folgas.length === 1 && m.folgas[0] === 0, JSON.stringify(m.folgas));
+    t(`[${largura}] selo e botão nunca se separam`, m.grupoInteiro);
+    if (largura === 'desktop') {
+      // Num flex que quebra, o navegador quebra a linha ANTES de encolher o
+      // item: com `flex-wrap`, o texto longo empurrava o grupo para baixo mesmo
+      // sobrando espaço depois de ele se acomodar em duas linhas.
+      t(`[${largura}] o grupo fica na MESMA linha do texto, mesmo no item longo`, m.naLinhaDoTexto);
+    }
+    t(`[${largura}] a fila não rola a página na horizontal`, !m.rolagemH);
+  }
+
+  await page.evaluate(async (alvos) => {
+    for (const id of alvos) await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: 1 });
   }, ids);
 }
 
@@ -537,6 +628,7 @@ async function provasAcao(page) {
   await provasCartaoCruzamento(page);
   await provasCartaoAcao(page, 'desktop');
   await provasResumoStatus(page, 'desktop');
+  await provasFilaAcao(page, 'desktop');
   await provasGut(page);
   await provasAcao(page);
 
@@ -549,6 +641,7 @@ async function provasAcao(page) {
   await provasCiclo(pageM, 'celular');
   await provasCartaoAcao(pageM, 'celular');
   await provasResumoStatus(pageM, 'celular');
+  await provasFilaAcao(pageM, 'celular');
 
   await browser.close();
   process.exit(relatar(ok, bad, erros));

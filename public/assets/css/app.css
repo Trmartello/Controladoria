@@ -1479,6 +1479,24 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   .ponto-resumo { display: none; }
 }
 
+/* Fila de "Aguardando plano de ação": texto à esquerda, selo de origem e botão
+   agrupados à direita. A mínima do texto é o que decide QUANDO o grupo desce:
+   acima dela os dois convivem na linha; abaixo, o grupo inteiro vai para a
+   linha de baixo, ainda encostado à direita. Sem a mínima, o texto encolhia até
+   virar uma coluna de duas letras antes de qualquer quebra. */
+.texto-pendencia {
+  min-width: 12rem;
+  /* Com a linha sem quebra, palavra que não cabe empurraria a página inteira
+     para a direita — a mínima de conteúdo de um item de flex sobe até o
+     `<main>`. É o mesmo defeito que o selo do cruzamento já custou. */
+  overflow-wrap: anywhere;
+}
+@media (max-width: 575.98px) {
+  /* No celular a linha não comporta os dois: o grupo desce sempre, e a mínima
+     alta só serviria para espremer o texto antes disso. */
+  .texto-pendencia { min-width: 100%; }
+}
+
 .selo-prioridade {
   font-size: .65rem;
   font-weight: 800;
