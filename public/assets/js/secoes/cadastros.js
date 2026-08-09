@@ -74,9 +74,9 @@ const SecaoCadastros = {
         <td>${n.ativo == 1 ? 'Ativo' : 'Inativo'}</td>
         <td class="text-nowrap">${administra ? `<button class="btn btn-sm btn-outline-secondary" data-editar="${n.id}"
           title="Editar" aria-label="Editar">✎</button>
-          ${n.ativo == 1 ? '' : `<button class="btn btn-sm btn-outline-danger ms-1"
-            data-excluir="${n.id}" title="Excluir do cadastro"
-            aria-label="Excluir ${Modal.esc(n.nome)} do cadastro">✕</button>`}` : ''}</td>
+          ${Number(n.excluivel) ? `<button class="btn btn-sm btn-outline-danger ms-1"
+            data-excluir="${n.id}" title="Excluir do cadastro (ainda sem uso em nenhum cadastro)"
+            aria-label="Excluir ${Modal.esc(n.nome)} do cadastro">✕</button>` : ''}` : ''}</td>
       </tr>`).join('');
 
     alvo.innerHTML = `
@@ -109,15 +109,15 @@ const SecaoCadastros = {
     alvo.querySelectorAll('[data-editar]').forEach((b) => {
       b.addEventListener('click', () => abrirModal(lista.find((n) => n.id == b.dataset.editar)));
     });
-    // Excluir só aparece em negócio INATIVO: tirar do cadastro é o passo
-    // seguinte a desativar, nunca um atalho a partir de quem está em uso. As
-    // recusas (planejamento vinculado, código da lista oficial) vêm do
-    // servidor, que é quem sabe — o front só mostra a mensagem.
+    // Excluir só aparece em negócio ainda SEM uso em cadastro nenhum (sem
+    // planejamento, sem escopo de usuário e fora da lista oficial) — quem já
+    // foi atribuído em algum lugar só se desativa. O `excluivel` vem do
+    // servidor, que é quem sabe, e o excluir() reconfere as mesmas guardas.
     alvo.querySelectorAll('[data-excluir]').forEach((b) => {
       b.addEventListener('click', async () => {
         const n = lista.find((x) => x.id == b.dataset.excluir);
         if (!confirm(`Excluir «${n.cod_negocio} — ${n.nome}» do cadastro?\n\n`
-          + 'A linha some da lista e os vínculos de usuário com ela também. '
+          + 'Ele ainda não foi usado em nenhum cadastro; a linha some da lista. '
           + 'Não há desfazer.')) return;
         try {
           await App.api(`/api/negocios/${n.id}/excluir`, { confirmar: true });

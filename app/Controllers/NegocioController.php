@@ -17,7 +17,9 @@ class NegocioController
                         FROM usuario_negocio un
                         JOIN usuario ug ON ug.id = un.usuario_id
                         WHERE un.negocio_id = n.id AND ug.ativo = 1 AND ug.perfil = 'GESTOR')
-                       AS gestores_vinculados
+                       AS gestores_vinculados,
+                       (SELECT COUNT(*) FROM planejamento p WHERE p.negocio_id = n.id) AS planejamentos,
+                       (SELECT COUNT(*) FROM usuario_negocio un2 WHERE un2.negocio_id = n.id) AS escopos
                 FROM negocio n LEFT JOIN usuario u ON u.id = n.gestor_id";
         $escopo = Auth::escopoNegocios($u);
         if ($escopo !== null) {
@@ -39,6 +41,13 @@ class NegocioController
             }
             $n['gestores'] = $gestores;
             unset($n['gestores_vinculados']);
+            // Excluível = ainda não atribuído em NENHUM cadastro (nem
+            // planejamento, nem escopo de usuário) e fora da lista oficial
+            // (que a sincronização recriaria). Caso contrário, o caminho é
+            // desativar. A decisão mora aqui, no servidor — o front só mostra
+            // (ou não) o botão; o excluir() reconfere as mesmas guardas.
+            $n['excluivel'] = (int)(!$n['planejamentos'] && !$n['escopos']
+                && !QlikSync::estaNaFonte((string)$n['cod_negocio']));
         }
         Json::ok($negocios);
     }
@@ -79,20 +88,21 @@ class NegocioController
     }
 
     /**
-     * Tira o negócio do cadastro de vez. Desativar esconde do seletor mas deixa
-     * a linha na lista de Cadastros; excluir é para o resto de carga antiga que
-     * não representa nada.
+     * Tira o negócio do cadastro de vez. A regra é uma só: excluir vale apenas
+     * para quem ainda NÃO foi atribuído em nenhum cadastro — de resto, o
+     * caminho é desativar (esconde do seletor e preserva tudo).
      *
-     * Duas recusas, ambas para não iludir quem clica:
+     * Três recusas, todas para não iludir quem clica:
      * - **planejamento vinculado**: a FK é RESTRICT, então o DELETE morreria com
      *   erro do banco. Some junto o diagnóstico, a cascata, os projetos e as
      *   metas daquele negócio — quem quiser mesmo apaga o planejamento antes.
+     * - **escopo de usuário** (`usuario_negocio`): alguém foi configurado para
+     *   trabalhar neste negócio. O CASCADE apagaria o vínculo em silêncio e o
+     *   usuário perderia o escopo sem ninguém decidir isso — remova o vínculo
+     *   em Usuários (ou desative o negócio) antes.
      * - **código da lista oficial**: a sincronização (e o passo do migrate)
      *   recriaria a linha no deploy seguinte. Excluir ali é trabalho perdido, e
      *   o certo é desativar — ou tirar o código de `QlikSync::NEGOCIOS_FONTE`.
-     *
-     * Os vínculos de escopo (`usuario_negocio`) vão junto por CASCADE: sem o
-     * negócio, eles não significam mais nada.
      */
     public function excluir(int $id): void
     {
@@ -108,6 +118,14 @@ class NegocioController
         if ($planos > 0) {
             Json::erro("«{$negocio['nome']}» tem {$planos} planejamento(s) e não pode ser excluído. "
                 . 'Desative o negócio para tirá-lo das seleções sem perder o que já foi planejado.');
+        }
+        $escopos = (int)Database::um(
+            'SELECT COUNT(*) AS n FROM usuario_negocio WHERE negocio_id = ?',
+            [$id]
+        )['n'];
+        if ($escopos > 0) {
+            Json::erro("«{$negocio['nome']}» está no escopo de {$escopos} usuário(s). "
+                . 'Remova o vínculo na aba Usuários — ou desative o negócio — antes de excluir.');
         }
         if (QlikSync::estaNaFonte((string)$negocio['cod_negocio'])) {
             Json::erro("O código {$negocio['cod_negocio']} está na lista oficial do Comercial Global: "
