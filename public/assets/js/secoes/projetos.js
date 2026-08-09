@@ -1368,9 +1368,10 @@ const SecaoProjetos = {
       { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date', linha: 'repeticao-detalhe',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
         ajuda: 'Opcional — depois dela, encerra.' },
-      // O progresso NÃO é campo deste formulário: ele mora no pop-up que abre
-      // depois do salvar (modalProgresso). O hidden preserva o valor atual na
-      // edição — sem ele, o UPDATE zeraria o percentual a cada ajuste de texto.
+      // O progresso NÃO é campo deste formulário: ele evolui pela barra do
+      // próprio cartão, e pop-up só existe nas fronteiras dos 100% (concluir /
+      // sair da conclusão). O hidden preserva o valor atual na edição — sem
+      // ele, o UPDATE zeraria o percentual a cada ajuste de texto.
       { nome: 'progresso', rotulo: '', tipo: 'hidden' },
     ];
   },
@@ -1394,9 +1395,6 @@ const SecaoProjetos = {
   },
 
   modalDesdobramento(projetoId, dd, iniciativaId = null) {
-    // O status que o formulário GRAVOU: decide se o pop-up de progresso ainda
-    // pergunta pela conclusão nos 100% (numa ação já concluída, não pergunta)
-    let statusSalvo = dd?.status ?? 'NAO_INICIADO';
     Modal.abrir({
       titulo: dd ? 'Editar ação' : 'Nova ação',
       url: dd ? `/api/desdobramentos/${dd.id}` : '/api/desdobramentos',
@@ -1409,80 +1407,13 @@ const SecaoProjetos = {
             recorrencia_dia_mes: dd.recorrencia === 'MENSAL' ? dd.recorrencia_dia : 1 }
         : { planejamento_id: this.plan.id, projeto_id: projetoId, iniciativa_id: iniciativaId,
             ...this.valoresNovaAcao() },
-      transformar: (dados) => {
-        statusSalvo = dados.status || statusSalvo;
-        return this.transformarAcao(dados);
-      },
+      transformar: (dados) => this.transformarAcao(dados),
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'projeto_id', rotulo: '', tipo: 'hidden' },
         { nome: 'iniciativa_id', rotulo: '', tipo: 'hidden' },
         ...this.camposAcao(dd),
       ],
-      aoSalvar: (r) => {
-        this.avisarReagendamento(r);
-        App.recarregarSecaoAtiva();
-        // Salvou a ação → abre o passo 2, só com a barra: qual o percentual de
-        // atingimento? Fechar sem salvar mantém o atual (0 na ação nova). A
-        // recorrente recém-reagendada não pergunta: o progresso acabou de
-        // voltar a zero de propósito.
-        if (r?.id && !r?.reagendada_para) {
-          this.aposFecharModal(() =>
-            this.modalProgresso(r.id, dd?.progresso ?? 0, statusSalvo));
-        }
-      },
-    });
-  },
-
-  /**
-   * Executa depois que o modal atual terminar de fechar — abrir outro no meio
-   * da animação de saída faz o Bootstrap engolir um dos dois.
-   */
-  aposFecharModal(fn) {
-    const raiz = document.getElementById('modal-form');
-    if (!raiz || !raiz.classList.contains('show')) {
-      fn();
-      return;
-    }
-    raiz.addEventListener('hidden.bs.modal', () => fn(), { once: true });
-  },
-
-  /**
-   * Passo 2 do salvar da ação: dimensionar o atingimento. Só a barra, de 5 em
-   * 5; fechar sem salvar não grava nada. Nos 100%, pergunta se a ação está
-   * CONCLUÍDA — confirmando, o servidor conclui pelo mesmo caminho do
-   * formulário (concluido_em e reagendamento da recorrente); recusando, grava
-   * só o percentual e o status fica para o usuário ajustar na edição.
-   */
-  modalProgresso(acaoId, atual, statusAtual) {
-    const concluida = statusAtual === 'CONCLUIDO';
-    Modal.abrir({
-      titulo: 'Progresso da ação',
-      url: `/api/desdobramentos/${acaoId}/progresso`,
-      valores: { planejamento_id: this.plan.id, progresso: atual ?? 0,
-        ...(concluida ? { status: 'EM_ANDAMENTO' } : {}) },
-      campos: [
-        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'progresso', rotulo: 'Qual o percentual de atingimento?', tipo: 'faixa',
-          min: 0, max: 100, passo: 5, sufixo: '%',
-          ajuda: 'Fechar sem salvar mantém o progresso como está.' },
-        // Ação CONCLUÍDA saindo dos 100%: o gesto reabre a decisão do status,
-        // e a escolha mora aqui mesmo. Mantido em 100%, o campo é ignorado.
-        ...(concluida ? [
-          { nome: 'status', rotulo: 'Se sair de 100%, em que status a ação fica?',
-            tipo: 'select', opcoes: this.opcoesStatusAcao(statusAtual),
-            ajuda: 'Só vale se o progresso deixar os 100%.' },
-        ] : []),
-      ],
-      enviar: (corpo) => {
-        let c = this.confirmarConclusao(corpo, statusAtual);
-        // Continuou em 100%: segue concluída — o status escolhido não se aplica
-        if (concluida && Number(c.progresso) === 100) {
-          const { status, ...resto } = c;
-          c = resto;
-        }
-        return App.api(`/api/desdobramentos/${acaoId}/progresso`, c);
-      },
       aoSalvar: (r) => {
         this.avisarReagendamento(r);
         App.recarregarSecaoAtiva();
