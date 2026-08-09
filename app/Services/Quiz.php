@@ -654,8 +654,11 @@ class Quiz
         // botão desenhado para isso), o rótulo cai para a ÚLTIMA pergunta da
         // rodada — onde o encontro parou. Um genérico "Planejamento" mandava o
         // condutor procurar uma tela que não existe.
+        // A etapa vem junto: `telaDe` a lê quando o alvo é FATOR, e sem a
+        // coluna o fallback estourava warning de chave indefinida e rotulava
+        // a sala de "Diagnóstico" — que não é uma aba do menu.
         $p = self::ativa((int)$r['id']) ?: Database::um(
-            'SELECT alvo_tipo FROM quiz_pergunta WHERE rodada_id = ?
+            'SELECT alvo_tipo, etapa FROM quiz_pergunta WHERE rodada_id = ?
              ORDER BY aberta_em IS NULL, aberta_em DESC, id DESC',
             [(int)$r['id']]
         );
