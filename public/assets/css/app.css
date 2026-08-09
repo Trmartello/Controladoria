@@ -343,21 +343,12 @@ input[type=range].faixa-verde:focus-visible {
    do formulário — visível entre "Repetição" e "Quando?" enquanto a ação não se
    repete. */
 .grade-campos:not(:has(> :not(.d-none))) { display: none; }
-/* "Quem?" e "Repetição" dividem a linha, mas não em partes iguais: o
-   responsável é um nome (com busca dentro do campo) e a repetição é um seletor
-   de três opções curtas. Três contra dois, e não dois contra um: a fatia menor
-   ainda precisa caber "Não se repete" antes da seta do seletor. */
-.grade-linha-quem-repeticao { grid-template-columns: 3fr 2fr; }
 @media (max-width: 575.98px) {
   .grade-campos { grid-template-columns: 1fr; }
-  /* Pares do formulário da ação que o celular MANTÉM lado a lado (Prioridade +
-     Status, Quem + Repetição): empilhados, cada campo curto custava uma faixa
-     de tela — e otimizar esse espaço foi pedido do cliente. O par "quem +
-     repetição" fica em 4 contra 3 (e não 3 contra 2) porque na largura do
-     celular a fatia menor precisa dos ~140px de "Não se repete": com 3fr 2fr
-     faltavam dois pixels e o texto encostava na seta. */
+  /* Par do formulário da ação que o celular MANTÉM lado a lado (Prioridade +
+     Status): empilhados, cada campo curto custava uma faixa de tela — e
+     otimizar esse espaço foi pedido do cliente. */
   .grade-linha-prioridade-status { grid-template-columns: 1fr 1fr; }
-  .grade-linha-quem-repeticao { grid-template-columns: 4fr 3fr; }
 }
 .sub-rotulo {
   display: block;
@@ -2066,9 +2057,16 @@ tr.card-destacado > td { background: #e8f5ee; }
    dentro. Por isso ele sai do flex-grow — esticado pelo flex, a medida do JS
    não teria efeito nenhum. `resize: vertical` mantém a alça do canto inferior
    direito para quem quiser um pouco mais de espaço; a partir do arraste, o
-   tamanho é de quem escreve e o JS para de mexer. */
+   tamanho é de quem escreve e o JS para de mexer.
+   O microfone e o ver mais/ver menos dele NÃO ficam dentro do campo: moram na
+   linha do rótulo (`.linha-rotulo`). Flutuando sobre o texto, eles exigiriam
+   um `padding-right` reservado — e o recuo do parágrafo vale para TODAS as
+   linhas, não só para a que passa atrás do ícone: num campo de uma linha no
+   celular, os dois botões comeriam um sexto do que se consegue ler.
+   O segundo seletor abaixo existe por especificidade: o `:has(textarea)` da
+   regra anterior soma um tipo a mais e venceria o `[data-max-linhas]` sozinho,
+   devolvendo o `flex: 1 1 auto` que o cálculo do JS não consegue vencer. */
 #modal-form #modal-campos textarea[data-max-linhas],
-#modal-form #modal-campos > div:has(textarea[data-max-linhas]) > .campo-voz,
 #modal-form #modal-campos > div:has(textarea[data-max-linhas]) > textarea[data-max-linhas] {
   flex: 0 0 auto;
   min-height: 0;
@@ -2079,6 +2077,79 @@ tr.card-destacado > td { background: #e8f5ee; }
 }
 #modal-form #modal-campos > div:has(textarea[data-max-linhas]) { flex: 0 0 auto; }
 
+/* Rótulo com ferramentas encostadas à direita (o par ditar + ver mais dos
+   campos de texto compactos). O rótulo perde a margem de baixo para os botões
+   ficarem alinhados com ELE, e não com o espaço em branco embaixo dele. */
+.linha-rotulo {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .5rem;
+}
+.linha-rotulo > .form-label { margin-bottom: 0; }
+.campo-ferramentas {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: .1rem;
+  flex-shrink: 0;
+}
+.btn-ferramenta {
+  --bs-btn-focus-shadow-rgb: 0, 122, 69;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  color: #8a939b;
+  background: transparent;
+}
+/* Duas classes e o :hover declarado: o `.btn:hover` do Bootstrap tem mais
+   especificidade que uma classe só e zeraria cor e fundo. Mesma armadilha já
+   paga em `.btn-dia` e em `.grupo-botoes .btn-opcao`. */
+.campo-ferramentas .btn-ferramenta:hover { color: #343a40; background: #e9ecef; }
+/* No dedo os dois botões crescem por DIMENSÃO REAL, nunca por um `::after`
+   sobreposto: eles são vizinhos, e áreas invisíveis que se cobrem mandam o
+   toque da fronteira para o botão errado — aqui, ditar em vez de expandir. */
+@media (max-width: 991.98px) {
+  .btn-ferramenta { width: 2.25rem; height: 2.25rem; }
+}
+
+/* ===== Caixa de campos (a opção `caixa` de Modal.abrir) =====
+   Um painel em volta de uma decisão e de tudo que ela revela — hoje, a
+   repetição da ação: o seletor e, conforme a escolha, a grade de dias da
+   semana, a do mês ou o prazo de execução. Soltos no formulário, os campos
+   revelados pareciam pertencer ao resto dele.
+   Sem padding embaixo de propósito: quem dá o respiro final é a margem do
+   último campo (`.mb-3`). Um padding fixo aqui somaria à margem e, pior,
+   sobraria sozinho quando o último campo estivesse escondido pelo `visivelSe`
+   — e qual é o último MUDA a cada escolha da repetição. */
+.caixa-campos {
+  border: 1px solid #dde3e0;
+  border-radius: .65rem;
+  background: #f8faf9;
+  padding: .9rem .9rem 0;
+  margin-bottom: 1rem;
+}
+/* Filete que separa duas perguntas dentro da mesma caixa ("que dias" e "até
+   quando"). Margem negativa para o traço atravessar a caixa inteira, de borda
+   a borda: recuado, ele lia como sublinhado do campo, não como divisão.
+   O seletor é ancorado NA CAIXA porque a margem negativa é medida a partir do
+   padding dela: solto no formulário, o mesmo campo sangraria .9rem para fora
+   dos dois lados. */
+.caixa-campos > .campo-separado {
+  border-top: 1px solid #e3e8e6;
+  margin-left: -.9rem;
+  margin-right: -.9rem;
+  padding: .85rem .9rem 0;
+}
+/* A ajuda dentro da caixa é uma instrução de uso, não um rótulo: em itálico
+   ela se distingue do texto dos campos sem pedir mais uma cor. */
+.caixa-campos .form-text { font-style: italic; }
+
 /* Dias do mês da repetição: grade de 7 colunas, como um calendário. O toque
    cresce por dimensão real (nunca por ::after sobreposto) — no celular os
    quadrados vizinhos se cobririam e o toque na fronteira iria para o dia
@@ -2087,6 +2158,22 @@ tr.card-destacado > td { background: #e8f5ee; }
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: .25rem;
+}
+/* Dias da SEMANA: sete NOMES, não sete números. Em colunas iguais, a célula
+   teria de caber "Segunda" e sobraria metade dela vazia em "Terça"; aqui as
+   fichas têm a largura do próprio nome e quebram a linha quando não cabem —
+   no celular elas descem para duas ou três fileiras em vez de cortar o texto.
+   `grid-template-columns` precisa ser desfeito à mão: a regra acima casa por
+   `.grade-dias`, que esta classe acompanha. */
+.grade-dias-semana {
+  display: flex;
+  flex-wrap: wrap;
+  grid-template-columns: none;
+}
+.grade-dias-semana .btn-dia {
+  flex: 0 1 auto;
+  min-width: 4.75rem;
+  padding: 0 .6rem;
 }
 /* Duas classes no seletor, e o :hover declarado: o `.btn:hover` do Bootstrap
    tem mais especificidade que uma classe só e zera cor, fundo e borda — o dia
@@ -2103,7 +2190,11 @@ tr.card-destacado > td { background: #e8f5ee; }
   font-weight: 600;
   color: var(--verde-coperdia);
   background: #fff;
-  border: 1px solid var(--verde-coperdia);
+  /* Borda CINZA, não verde: são 31 fichas lado a lado, e trinta e uma bordas
+     na cor da marca viravam uma parede que competia com a ficha marcada — que
+     é a única informação da grade. O verde fica no texto e no preenchimento
+     de quem está escolhido. */
+  border: 1px solid #d4dbd8;
   border-radius: .375rem;
 }
 .grade-dias .btn-dia:hover {
@@ -2198,11 +2289,11 @@ tr.card-destacado > td { background: #e8f5ee; }
   z-index: 4;
 }
 .campo-voz > .btn-ditar:hover { color: #343a40; background: #e9ecef; }
-/* No campo que pode ser esticado à mão, o microfone SOBE: a alça de
-   redimensionar do navegador mora no canto inferior direito, com ~16px, e o
-   botão (28px, z-index acima) cobria justamente ela — arrastar o canto ligava o
-   ditado em vez de aumentar o campo. */
-.campo-voz:has(> textarea[data-max-linhas]) > .btn-ditar { bottom: 1.6rem; }
+/* O campo com teto de linhas NÃO passa por aqui: o microfone dele mora na
+   linha do rótulo, junto do ver mais. Foi essa mudança que resolveu de vez a
+   disputa antiga pelo canto inferior direito — ali fica a alça de
+   redimensionar do navegador (~16px), e o botão de ditado, maior e por cima,
+   engolia o arraste que aumentaria o campo. */
 .btn-ditar.gravando,
 .campo-voz > .btn-ditar.gravando {
   color: #fff;

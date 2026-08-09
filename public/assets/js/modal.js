@@ -16,6 +16,14 @@ const Modal = {
     + '<path d="M5 3a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V3z"/>'
     + '<path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z"/></svg>',
 
+  // Seta BIDIRECIONAL (Bootstrap Icons `arrows-expand`/`arrows-collapse`, MIT):
+  // ela diz num desenho só que o campo cresce e volta. Uma seta única diria
+  // metade, e o mesmo botão faz as duas coisas.
+  iconeExpandir: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
+    + '<path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 8zM7.646.146a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8 1.207 6.354 2.854a.5.5 0 1 1-.708-.708l2-2zM8 6a.5.5 0 0 0 .5-.5V3a.5.5 0 0 0-1 0v2.5A.5.5 0 0 0 8 6zm-.354 9.854a.5.5 0 0 0 .708 0l2-2a.5.5 0 0 0-.708-.708L8 14.793l-1.646-1.647a.5.5 0 0 0-.708.708l2 2zM8 10a.5.5 0 0 1 .5.5V13a.5.5 0 0 1-1 0v-2.5A.5.5 0 0 1 8 10z"/></svg>',
+  iconeRecolher: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
+    + '<path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 8zm7-8a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L7.5 4.293V.5A.5.5 0 0 1 8 0zm-.5 11.707-1.146 1.147a.5.5 0 0 1-.708-.708l2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 11.707V15.5a.5.5 0 0 1-1 0v-3.793z"/></svg>',
+
   iconeOlhoRiscado: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
     + '<path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/>'
     + '<path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/>'
@@ -48,6 +56,8 @@ const Modal = {
     form.innerHTML = this.renderCampos(campos, valores);
     this.ligarBotoesSenha(form);
     this.ligarBotoesDitado(form);
+    this.ligarFerramentasTexto(form);
+    this.ligarMoedas(form);
     this.ligarSelecaoLivre(form);
     this.ligarListasMarcaveis(form);
     this.ligarDatasBr(form);
@@ -72,19 +82,48 @@ const Modal = {
   },
 
   /**
-   * Monta a lista de campos, juntando numa MESMA LINHA os que declaram a mesma
-   * `linha` (ex.: `linha: 'repeticao'` nos três campos da repetição da ação).
+   * Monta a lista de campos em DUAS camadas de agrupamento, as duas por
+   * vizinhança — só campos CONSECUTIVOS com o mesmo nome entram no mesmo
+   * grupo. Juntar campos distantes reordenaria o formulário por baixo do pano,
+   * e a ordem é decisão de quem escreveu a lista.
    *
-   * Campo curto ocupando a largura inteira do modal custa uma faixa de tela
-   * cada, e o formulário da ação passou a ter nove — o Salvar mora no rodapé
-   * fixo, então o que sobra de altura é rolagem. Agrupar é o que devolve a
-   * decisão inteira (repetir? quando? até quando?) a um olhar só.
-   *
-   * O agrupamento é por vizinhança: só campos CONSECUTIVOS com a mesma `linha`
-   * entram na mesma caixa. Juntar campos distantes reordenaria o formulário por
-   * baixo do pano, e a ordem é decisão de quem escreveu a lista.
+   * `caixa` é um PAINEL em volta de uma decisão e de tudo que ela revela: o
+   * caso real é a repetição da ação, que mostra a grade de dias da semana, a do
+   * mês ou o prazo de execução conforme a escolha. Soltos no formulário, os
+   * campos revelados pareciam pertencer ao resto dele, e trocar "todo mês" por
+   * "não se repete" trocava blocos aparentemente sem relação entre si — dentro
+   * da caixa fica visível que um está no lugar do outro.
    */
   renderCampos(campos, valores) {
+    // O que está FORA de caixa nenhuma também vira bloco — um bloco só, com
+    // todos os vizinhos soltos juntos. Um bloco por campo solto (o que era)
+    // entregava a `renderLinhas` um campo de cada vez, e ela nunca via dois
+    // vizinhos para juntar: Prioridade e Status, que dividem uma fileira,
+    // caíam em fileiras separadas sem nada na tela denunciando o motivo.
+    const blocos = [];
+    let atual = null;
+    for (const c of campos) {
+      const nome = c.caixa || null;
+      if (!atual || atual.nome !== nome) {
+        atual = { nome, itens: [] };
+        blocos.push(atual);
+      }
+      atual.itens.push(c);
+    }
+    return blocos.map((b) => {
+      const html = this.renderLinhas(b.itens, valores);
+      return b.nome ? `<div class="caixa-campos caixa-${this.esc(b.nome)}">${html}</div>` : html;
+    }).join('');
+  },
+
+  /**
+   * A camada de dentro: campos que declaram a mesma `linha` dividem uma fileira
+   * (ex.: `linha: 'prioridade-status'`).
+   *
+   * Campo curto ocupando a largura inteira do modal custa uma faixa de tela
+   * cada — o Salvar mora no rodapé fixo, então o que sobra de altura é rolagem.
+   */
+  renderLinhas(campos, valores) {
     const partes = [];
     let grupo = null;
     for (const c of campos) {
@@ -113,6 +152,10 @@ const Modal = {
     const id = `campo-${c.nome}`;
     const exemplo = c.exemplo ? ` placeholder="${this.esc(c.exemplo)}"` : '';
     let controle;
+    // Botões que moram na LINHA DO RÓTULO, encostados à direita (ver
+    // `linha-rotulo` no CSS). Hoje só o campo de texto com teto de linhas os
+    // usa: o microfone e o ver mais/ver menos do "O quê?" e do "Como?".
+    let ferramentas = '';
     switch (c.tipo) {
       case 'periodo': {
         // Duas datas lado a lado (início e fim), cada uma com seu calendário
@@ -133,21 +176,57 @@ const Modal = {
         // rola por dentro e a alça do canto continua disponível para esticar
         const teto = c.maxLinhas ? ` data-max-linhas="${Number(c.maxLinhas)}"` : '';
         const area = `<textarea class="form-control campo-elastico" id="${id}" rows="${c.linhas || 3}"${teto}${exemplo}>${this.esc(v)}</textarea>`;
+        if (c.maxLinhas) {
+          // O campo com teto nasce COMPACTO, e por isso ganha o par de botões
+          // no alto: o microfone (ditar) e a seta bidirecional, que abre o
+          // texto inteiro e volta. Eles ficam na linha do rótulo e não
+          // flutuando dentro do campo — dentro, o espaço reservado para eles
+          // encurtaria TODAS as linhas do parágrafo, não só a primeira.
+          ferramentas = `<span class="campo-ferramentas">
+            ${this.suporteVoz ? this.botaoDitar(id, 'btn-ferramenta') : ''}
+            ${this.botaoExpandir(id)}</span>`;
+          controle = area;
+          break;
+        }
         controle = this.suporteVoz ? `<div class="campo-voz">${area}${this.botaoDitar(id)}</div>` : area;
         break;
       }
-      case 'dias_mes': {
-        // Grade de 31 dias marcáveis: no mensal a ação pode vencer em mais de
-        // um dia. Grade, e não multiselect — a lista suspensa não tem Ctrl no
-        // celular, e 31 itens em coluna não cabem na tela.
+      case 'dias': {
+        // Fichas marcáveis para escolher os dias da repetição: os 31 do mês, ou
+        // os 7 da semana. Fichas, e não multiselect — a lista suspensa não tem
+        // Ctrl no celular, e 31 itens em coluna não cabem na tela. A escolha é
+        // MÚLTIPLA nas duas: "toda segunda e quinta" e "todo dia 5 e 20" são
+        // rotinas comuns, e com um dia só a pessoa cadastrava a mesma tarefa
+        // duas vezes para descrever uma.
         const marcados = new Set((Array.isArray(v) ? v : String(v || '').split(','))
           .map((x) => Number(x)).filter(Boolean));
-        const dias = Array.from({ length: 31 }, (_, i) => i + 1).map((dia) => `
+        const fichas = (c.opcoes || []).map((o) => {
+          const dia = Number(o.valor);
+          return `
           <input type="checkbox" class="btn-check" id="${id}-${dia}" value="${dia}"
             ${marcados.has(dia) ? 'checked' : ''}>
-          <label class="btn btn-dia" for="${id}-${dia}">${dia}</label>`).join('');
-        controle = `<div class="grade-dias" id="${id}" role="group"
-          aria-label="${this.esc(c.rotulo)}">${dias}</div>`;
+          <label class="btn btn-dia" for="${id}-${dia}">${this.esc(o.rotulo)}</label>`;
+        }).join('');
+        // A grade do mês é um calendário (sete colunas iguais); a da semana são
+        // nomes de largura desigual, que fluem e quebram a linha
+        const grade = c.grade === 'semana' ? 'grade-dias grade-dias-semana' : 'grade-dias';
+        controle = `<div class="${grade}" id="${id}" role="group"
+          aria-label="${this.esc(c.rotulo)}">${fichas}</div>`;
+        break;
+      }
+      case 'moeda': {
+        // Campo de dinheiro: entra número e só número.
+        //
+        // `type=text` e não `type=number`, apesar de o valor ser numérico. O
+        // campo numérico do navegador ACEITA `e`, `E`, `+` e `-` (notação
+        // científica) e, com qualquer um deles dentro, devolve `.value` VAZIO —
+        // o formulário mandava null para um campo que a pessoa preencheu, sem
+        // nada na tela dizendo isso. Pior: ele não expõe `selectionStart`, então
+        // não há como recusar UM caractere sem apagar o que já estava escrito.
+        // Com `type=text` o filtro trabalha no cursor (`ligarMoedas`), e
+        // `inputmode=decimal` mantém o teclado numérico do celular.
+        controle = `<input type="text" class="form-control campo-moeda" id="${id}"
+          value="${this.esc(this.moedaBr(v))}" inputmode="decimal" autocomplete="off"${exemplo}>`;
         break;
       }
       case 'select': {
@@ -346,12 +425,34 @@ const Modal = {
     const valorFaixa = c.tipo === 'faixa'
       ? `<span class="valor-faixa" id="${id}-valor">${v === '' || v === null || v === undefined ? (c.min ?? 0) : this.esc(v)}${this.esc(c.sufixo || '')}</span>`
       : '';
-    return `<div class="mb-3"><label class="form-label"${alvo}>${this.esc(c.rotulo)}${obrigatorio}${valorFaixa}</label>${controle}${ajuda}${nota}</div>`;
+    const rotulo = `<label class="form-label"${alvo}>${this.esc(c.rotulo)}${obrigatorio}${valorFaixa}</label>`;
+    // Com ferramentas, o rótulo divide uma linha com elas; sem, fica como sempre
+    const cabeca = ferramentas ? `<div class="linha-rotulo">${rotulo}${ferramentas}</div>` : rotulo;
+    // `separador` desenha um filete acima do campo: dentro de uma caixa, ele
+    // separa a escolha (que dias) do prazo dela (até quando)
+    const classe = `mb-3${c.separador ? ' campo-separado' : ''}`;
+    return `<div class="${classe}">${cabeca}${controle}${ajuda}${nota}</div>`;
   },
 
-  botaoDitar(id) {
-    return `<button class="btn btn-ditar" type="button" data-alvo="${id}"
+  botaoDitar(id, classe = '') {
+    return `<button class="btn btn-ditar${classe ? ` ${classe}` : ''}" type="button" data-alvo="${id}"
       title="Ditar por voz" aria-label="Ditar por voz">${this.iconeMic}</button>`;
+  },
+
+  botaoExpandir(id) {
+    return `<button class="btn btn-ferramenta btn-expandir" type="button" data-alvo="${id}"
+      aria-controls="${id}" aria-expanded="false"
+      title="Ver o texto inteiro" aria-label="Ver o texto inteiro">${this.iconeExpandir}</button>`;
+  },
+
+  /**
+   * O valor guardado (`1500.00`) escrito como se escreve dinheiro em português.
+   * Sem isso, o campo reabria com o ponto que a digitação recusa — e a primeira
+   * tecla apagava um número que estava certo.
+   */
+  moedaBr(v) {
+    if (v === null || v === undefined || v === '') return '';
+    return String(v).replace('.', ',');
   },
 
   /** Arquivos escolhidos num campo `arquivos` do formulário aberto. */
@@ -440,17 +541,23 @@ const Modal = {
    * enquanto o elemento estiver esticado por uma altura anterior, e apagar
    * texto deixava o campo grande para sempre. Quem arrastou a alça manda: a
    * altura escolhida à mão (`data-ajustado`) não é mais recalculada.
+   *
+   * O botão de ver mais não muda a altura: ele muda o TETO (`data-expandido`),
+   * e o cálculo continua sendo este. Escrever a altura direto no botão deixaria
+   * duas fontes para a mesma medida, e a tecla seguinte desfaria a expansão.
    */
   crescerTextarea(t) {
     if (t.dataset.ajustado) return;
+    const tetoTela = Math.round(window.innerHeight * 0.6);
     if (!t.dataset.maxLinhas) {
-      const teto = Math.round(window.innerHeight * 0.6);
       if (t.scrollHeight <= t.clientHeight + 1) return;
-      const alvo = Math.min(t.scrollHeight + 2, teto);
+      const alvo = Math.min(t.scrollHeight + 2, tetoTela);
       if (alvo > t.clientHeight) t.style.minHeight = `${alvo}px`;
       return;
     }
-    const teto = Math.round(Number(t.dataset.maxLinhas) * this.alturaLinha(t) + this.bordasVerticais(t));
+    const teto = t.dataset.expandido === '1'
+      ? tetoTela
+      : Math.round(Number(t.dataset.maxLinhas) * this.alturaLinha(t) + this.bordasVerticais(t));
     const anterior = t.style.height;
     t.style.height = 'auto';
     const alvo = Math.min(t.scrollHeight + 2, teto);
@@ -504,6 +611,98 @@ const Modal = {
           () => obs.disconnect(), { once: true });
       }
     });
+  },
+
+  /**
+   * O ver mais / ver menos do campo de texto compacto.
+   *
+   * Ele alterna o TETO do crescimento automático: compacto, o campo para nas
+   * `maxLinhas` declaradas e rola por dentro; aberto, ele acompanha o texto até
+   * 60% da tela. Quem já tinha esticado o campo pela alça volta a ser servido
+   * pelo cálculo (`data-ajustado` sai) — o botão é uma decisão NOVA sobre o
+   * tamanho, e mantendo o congelamento ele não teria efeito nenhum justamente
+   * em quem mais mexe no campo.
+   */
+  ligarFerramentasTexto(raiz) {
+    raiz.querySelectorAll('.btn-expandir').forEach((b) => b.addEventListener('click', () => {
+      const campo = document.getElementById(b.dataset.alvo);
+      if (!campo) return;
+      const aberto = campo.dataset.expandido !== '1';
+      if (aberto) campo.dataset.expandido = '1';
+      else delete campo.dataset.expandido;
+      delete campo.dataset.ajustado;
+      campo.style.height = '';
+      this.crescerTextarea(campo);
+      b.innerHTML = aberto ? this.iconeRecolher : this.iconeExpandir;
+      b.setAttribute('aria-expanded', String(aberto));
+      b.title = aberto ? 'Voltar ao tamanho compacto' : 'Ver o texto inteiro';
+      b.setAttribute('aria-label', b.title);
+    }));
+  },
+
+  /**
+   * O campo de dinheiro aceita número e só número.
+   *
+   * O filtro trabalha no `beforeinput` porque ele é o único que alcança TODAS
+   * as formas de entrar texto — teclado, colar, arrastar — antes de o valor
+   * mudar. Um `input` que limpasse depois já teria mexido no cursor.
+   *
+   * A vírgula é o separador que se digita em português e o ponto é o que o
+   * servidor entende: aqui o ponto vira vírgula na tela, e `coletar()` faz o
+   * caminho de volta. Aceitar os dois e mostrar um só evita o campo que recusa
+   * exatamente a tecla que a pessoa aprendeu a usar para centavos.
+   */
+  ligarMoedas(raiz) {
+    raiz.querySelectorAll('.campo-moeda').forEach((inp) => {
+      inp.addEventListener('beforeinput', (ev) => {
+        const bruto = ev.data ?? ev.dataTransfer?.getData('text') ?? '';
+        if (bruto === '') {
+          // Apagar, desfazer e mover o cursor passam — eles não trazem texto
+          // novo. Mas uma INSERÇÃO cuja origem não conseguimos ler (o
+          // arrastar-e-soltar não expõe o `dataTransfer` em todo navegador) é
+          // recusada: seria o único caminho por onde texto sem filtro entraria
+          // no campo, e o buraco só apareceria em quem arrasta.
+          if (String(ev.inputType || '').startsWith('insert')) ev.preventDefault();
+          return;
+        }
+        const pedaco = this.pedacoMoeda(bruto);
+        const ini = inp.selectionStart ?? inp.value.length;
+        const fim = inp.selectionEnd ?? inp.value.length;
+        const candidato = inp.value.slice(0, ini) + pedaco + inp.value.slice(fim);
+        // Sempre recusa a entrada original: ou ela era inválida, ou o pedaço
+        // limpo é diferente dela (o ponto virou vírgula) e precisa ser inserido
+        // por aqui. Deixar passar o original escreveria o caractere cru.
+        ev.preventDefault();
+        // Uma vírgula só, no máximo dois centavos e nada de sinal
+        if (pedaco === '' || !/^\d*(,\d{0,2})?$/.test(candidato)) return;
+        inp.setRangeText(pedaco, ini, fim, 'end');
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    });
+  },
+
+  /**
+   * Um pedaço de texto que entra no campo de dinheiro, reduzido a número
+   * escrito em português. Vale tanto para a tecla solta quanto para o que se
+   * COLA de uma planilha, que chega inteiro: "R$ 1.234,56", com símbolo,
+   * separador de milhar e centavos.
+   *
+   * Sobrando mais de um separador, o ÚLTIMO é o decimal e os outros são de
+   * milhar — é o que distingue "1.234,56" de "1,50". Sem essa leitura, colar um
+   * valor formatado deixava o campo vazio, sem dizer por quê.
+   *
+   * O sinal de menos não é enfeite como o "R$": ele é parte do número. Por isso
+   * o texto que o contém é recusado INTEIRO, em vez de entrar sem o sinal —
+   * colar "-99" e ver 99 seria o campo mentindo sobre o que recebeu.
+   */
+  pedacoMoeda(bruto) {
+    const texto = String(bruto);
+    if (texto.includes('-')) return '';
+    const cru = texto.replace(/[^0-9.,]/g, '');
+    const partes = cru.split(/[.,]/);
+    if (partes.length <= 1) return cru;
+    const decimais = partes.pop();
+    return `${partes.join('')},${decimais}`;
   },
 
   /** Pesquisa e contador das listas marcáveis. */
@@ -820,8 +1019,15 @@ const Modal = {
         dados[c.nome] = marcado ? (marcado.value === '' || isNaN(marcado.value) ? marcado.value : Number(marcado.value)) : null;
       }
       else if (c.tipo === 'multiselect') dados[c.nome] = Array.from(el.selectedOptions).map((o) => o.value);
-      else if (c.tipo === 'dias_mes') {
+      else if (c.tipo === 'dias') {
         dados[c.nome] = [...el.querySelectorAll('input:checked')].map((ch) => Number(ch.value));
+      }
+      else if (c.tipo === 'moeda') {
+        // O caminho de volta de `moedaBr`: a vírgula da tela vira o ponto que o
+        // servidor entende. Vazio é null, não zero — "não informado" e "zero"
+        // são respostas diferentes.
+        const bruto = el.value.trim().replace(',', '.');
+        dados[c.nome] = bruto === '' ? null : Number(bruto);
       }
       else if (c.tipo === 'lista_marcavel') {
         const marcados = [...el.querySelectorAll('input:checked')].map((ch) => ch.value);

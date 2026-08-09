@@ -85,23 +85,57 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   marcáveis com selos coloridos, descrição cortada em 3 linhas com “ver mais”,
   pesquisa acima de 5 itens e contador — usar sempre que o usuário precise ler
   o item antes de marcar; `multiselect` só serve para listas curtas e não
-  funciona no celular, onde não existe tecla Ctrl) e `arquivos` (input de
-  arquivo para formulário cujo envio é multipart — `coletar()` o pula, arquivo
-  não viaja em JSON, e o `enviar` do formulário lê os escolhidos por
-  `Modal.arquivosDe(nome)`; opções `multiplo` e `aceita`). Opções auxiliares:
-  `obrigatorio`, `visivelSe: {campo, valores}`, `exemplo`, `ajuda`, `nota`,
-  `sufixo`, `passo`, `unico` (no `lista_marcavel`: escolhe UM item, os quadrados
-  viram redondos e o campo devolve o valor em vez da lista) e `linha` (campos
-  **consecutivos** com a mesma `linha` dividem uma fileira — `.grade-campos`,
-  montada por `Modal.renderCampos`). Campo curto ocupando a largura inteira
-  custa uma faixa de tela cada, e o Salvar mora no rodapé fixo: o que sobra de
-  altura é rolagem. Duas cautelas: o agrupamento é **por vizinhança** (juntar
+  funciona no celular, onde não existe tecla Ctrl), `dias` (fichas marcáveis
+  para os dias de uma repetição: `grade: 'mes'` são 31 números em sete colunas,
+  como um calendário, e `grade: 'semana'` são os sete nomes, que fluem e quebram
+  a linha — a escolha é MÚLTIPLA nas duas), `moeda` (dinheiro; ver abaixo) e
+  `arquivos` (input de arquivo para formulário cujo envio é multipart —
+  `coletar()` o pula, arquivo não viaja em JSON, e o `enviar` do formulário lê
+  os escolhidos por `Modal.arquivosDe(nome)`; opções `multiplo` e `aceita`).
+  Opções auxiliares: `obrigatorio`, `visivelSe: {campo, valores}`, `exemplo`,
+  `ajuda`, `nota`, `sufixo`, `passo`, `separador` (desenha um filete acima do
+  campo, para separar duas perguntas dentro de uma caixa), `unico` (no
+  `lista_marcavel`: escolhe UM item, os quadrados viram redondos e o campo
+  devolve o valor em vez da lista), `linha` (campos **consecutivos** com a mesma
+  `linha` dividem uma fileira — `.grade-campos`) e `caixa` (campos
+  **consecutivos** com a mesma `caixa` ficam dentro de um painel —
+  `.caixa-campos`). As duas são montadas por `Modal.renderCampos`, que agrupa em
+  DUAS camadas: primeiro a caixa, depois as linhas de dentro. Campo curto
+  ocupando a largura inteira custa uma faixa de tela cada, e o Salvar mora no
+  rodapé fixo: o que sobra de altura é rolagem.
+  A **caixa** é para uma decisão e tudo o que ela revela — a repetição da ação,
+  que mostra a grade da semana, a do mês ou o prazo de execução conforme a
+  escolha. Soltos, os campos revelados pareciam pertencer ao resto do
+  formulário, e trocar "todo mês" por "não se repete" trocava blocos sem relação
+  aparente. Ela não leva padding embaixo: o respiro é a margem do último campo,
+  porque **qual é o último muda** com o `visivelSe` — um padding fixo sobraria
+  sozinho quando o último estivesse escondido.
+  Três cautelas: o agrupamento é **por vizinhança** nas duas camadas (juntar
   campos distantes reordenaria o formulário por baixo do pano, e a ordem é
-  decisão de quem escreveu a lista) e a grade é `auto-fit`, nunca coluna fixa —
-  na fileira da repetição há campo que some com o `visivelSe`, e coluna fixa
-  deixaria buraco no lugar do escondido. **`obrigatorio` desenha o asterisco,
-  não recusa o envio**: quem valida é o servidor, e marcar um campo na tela sem
-  a guarda lá deixa o formulário mentindo.
+  decisão de quem escreveu a lista) — por isso os `hidden` do formulário da ação
+  vão todos juntos no topo, senão um deles no meio cortaria a vizinhança; a
+  grade da linha é `auto-fit`, nunca coluna fixa, porque há campo que some com o
+  `visivelSe` e coluna fixa deixaria buraco no lugar do escondido; e o que está
+  FORA de caixa nenhuma também é um bloco **só** — um bloco por campo solto
+  entregava um campo de cada vez ao agrupador de linhas, que nunca via dois
+  vizinhos para juntar. **`obrigatorio` desenha o asterisco, não recusa o
+  envio**: quem valida é o servidor, e marcar um campo na tela sem a guarda lá
+  deixa o formulário mentindo.
+- **Campo de dinheiro** (`moeda`, `Modal.ligarMoedas`): é `type=text`, e isso é
+  decisão. O `type=number` do navegador ACEITA `e`, `E`, `+` e `-` e, com
+  qualquer um deles dentro, devolve `.value` **vazio** — o formulário mandava
+  `null` para um campo preenchido, sem nada na tela dizendo isso. Pior: ele não
+  expõe `selectionStart`, então não há como recusar UM caractere sem apagar o
+  resto. O filtro roda no `beforeinput`, o único evento que alcança teclado,
+  colar e arrastar antes de o valor mudar. `Modal.pedacoMoeda` normaliza o que
+  entra: sobrando mais de um separador, o **último** é o decimal e os outros são
+  de milhar (é o que distingue `1.234,56` de `1,50`, e sem isso colar um valor
+  de planilha esvaziava o campo); o sinal de menos recusa o texto **inteiro**,
+  porque ele é parte do número e não enfeite como o "R$" — colar `-99` e ver
+  `99` seria o campo mentindo sobre o que recebeu. A tela é pt-BR (vírgula) e
+  `coletar()` devolve número; vazio é `null`, nunca zero. No cartão, o valor sai
+  sempre com **dois centavos** (`minimumFractionDigits: 2`): `toLocaleString`
+  sozinho corta o zero à direita, e `R$ 1.500,50` aparecia como `R$ 1.500,5`.
   `Modal.abrir` aceita ainda `aoMudar(dados, raiz)`, chamado ao abrir e a cada
   mudança de campo, para formulário cujo TEXTO depende do que já foi escolhido —
   o bloco do cruzamento da SWOT, que depende de DOIS campos e por isso não cabe
@@ -116,6 +150,27 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   dentro (`crescerTextarea`). Medida que depende de layout (o que transborda,
   quanto o texto ocupa) vai em `Modal.aoAparecer`, disparada no
   `shown.bs.modal` — com o modal escondido toda altura vale zero.
+  Com **`maxLinhas`** o campo nasce COMPACTO (as `rows` declaradas), cresce até
+  esse teto e ali passa a rolar; e é `maxLinhas` que lhe dá o par de botões do
+  alto — o microfone e a **seta bidirecional** de ver mais/ver menos, que troca
+  o teto pelas mesmas 60% da tela. Eles ficam na **linha do rótulo**
+  (`.linha-rotulo` / `.campo-ferramentas`), nunca flutuando dentro do campo:
+  dentro, o espaço reservado para eles encurtaria TODAS as linhas do parágrafo,
+  não só a que passa atrás do ícone — num campo de uma linha no celular, dois
+  botões comem um sexto do que se lê. Sair de dentro resolveu de quebra a
+  disputa antiga pelo canto inferior direito, onde mora a alça de
+  redimensionar. O botão muda o TETO, nunca a altura: escrevê-la direto criaria
+  duas fontes para a mesma medida e a tecla seguinte desfaria a expansão. E ele
+  limpa o `data-ajustado`, senão não teria efeito nenhum em quem já esticou o
+  campo pela alça — que é justamente quem mais mexe nele.
+  Duas armadilhas de medida já pagas: o Chrome conta o texto de **exemplo** no
+  `scrollHeight`, então o campo nasce com duas linhas quando o exemplo quebra
+  (é o certo — com o piso rígido, a segunda linha do exemplo ficaria escondida
+  atrás de uma barra de rolagem no campo VAZIO); e a regra genérica
+  `> div:has(textarea) > textarea.form-control` **vence** um
+  `textarea[data-max-linhas]` sozinho na especificidade (o `:has` soma um tipo),
+  por isso existe o seletor longo repetindo o atributo nos dois lados — sem ele
+  o campo nascia com o dobro do tamanho, que ninguém chama de erro.
   **Campo abaixo da dobra é anunciado** (`Modal.ligarAvisoRolagem`, o botão
   `#modal-mais` em `shell.php`): o corpo do modal sempre rolou, mas nada dizia
   isso, e o Salvar mora no rodapé FIXO, sempre visível. Numa janela de
@@ -812,7 +867,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   modal **não tem campo de status** — um valor digitado seria sobrescrito na
   primeira leitura. Frente sem ação (ou só com canceladas) volta a "Aberta".
   Não existe frente "Atrasada": o atraso aparece no panorama e no projeto.
-- **Recorrência** (`recorrencia` NENHUMA/SEMANAL/MENSAL + `recorrencia_dia` +
+- **Recorrência** (`recorrencia` NENHUMA/SEMANAL/MENSAL + `recorrencia_dias` +
   `recorrencia_ate`): concluir uma ocorrência não encerra a ação — ela reabre
   na próxima data prevista e a conclusão vira um comentário automático — a
   ação volta a NAO_INICIADO e, sem esse registro, não sobraria rastro nenhum de
@@ -820,6 +875,23 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   reagendamento avança ocorrência a ocorrência até passar de hoje, e o caminho
   que conclui uma ação é **um só**: o cadastro (era dois — o diário de bordo era
   o outro, e sumiu com ele).
+  **Os DOIS tipos aceitam vários dias** (CSV em `recorrencia_dias`): "toda
+  segunda e quinta" e "todo dia 5 e 20" são UMA rotina, e enquanto o semanal
+  guardava um dia só quem precisava de dois cadastrava a mesma tarefa duas
+  vezes — duas cobranças, dois cartões, dois relatórios para a mesma coisa.
+  `recorrencia_dia` (singular) segue gravado com o **primeiro** dia e é o
+  fallback das ações anteriores à coluna nova; ninguém mais decide por ele.
+  A ação que se repete **não tem período digitado**: quem diz quando ela vence é
+  a grade, e o servidor DERIVA `data_inicio`/`data_fim` dela — o atraso
+  automático, os avisos por e-mail e o prazo consolidado do projeto leem as
+  colunas, não a regra. Editar uma recorrente em dia não empurra o vencimento:
+  ele só é recalculado quando a grade muda, porque avançar a grade é gesto da
+  CONCLUSÃO, não do salvamento.
+  **`recorrencia_ate` é obrigatória** (pedido do cliente): repetição sem
+  término é repetição que ninguém encerra, e ela seguia reabrindo depois de o
+  motivo dela ter acabado. Consequência para quem for mexer: ação recorrente
+  antiga, cadastrada sem essa data, passa a exigi-la na próxima vez que alguém
+  abrir e salvar.
 - **Comentários com anexos** (`comentario` + `comentario_anexo`): sucederam o
   Diário de Bordo, que saiu do código. O registro continua datado e nunca
   sobrescrito; o que mudou é que agora carrega arquivo. O que o diário fazia
@@ -947,17 +1019,28 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   separados, divergiram: o direcionamento pedia só o quê/quem/prioridade e
   criava a ação sem como, prazo, repetição, custo nem status, obrigando a
   reabri-la no cadastro para completá-la.
-  Ordem (pedido do cliente): **o quê, como, quem, quando, prioridade**, a
-  **linha** da repetição (repetição · repete toda · repetir até), a **linha** de
-  status e custo, e o progresso. "Quem?" não estava na ordem pedida e ficou
-  assim mesmo, logo depois do "Como?": é de `quem_usuario_id` que saem os avisos
-  por e-mail e o filtro de "minhas ações" — sem ele a ação não tem dono.
-  **Obrigatórios: o quê, como, quem e o período** — os quatro recusados em
-  `ProjetoController::salvarDesdobramento`, não só marcados na tela. Ação sem
-  caminho e sem prazo não é plano, e o prazo é o que alimenta o atraso
-  automático, os avisos e o painel. Consequência para quem for mexer: ação
-  antiga sem "como" ou sem datas passa a exigir os dois na próxima vez que
-  alguém abrir e salvar.
+  Ordem (pedido do cliente, com mockup): **o quê, como, quem**, a **caixa da
+  repetição**, a **linha** de prioridade e status e, por último, os **ganhos
+  previstos**. "Quem?" não estava na ordem pedida originalmente e ficou logo
+  depois do "Como?": é de `quem_usuario_id` que saem os avisos por e-mail e o
+  filtro de "minhas ações" — sem ele a ação não tem dono. Os ganhos vão por
+  último por serem o único campo opcional: quem só descreve a ação chega ao
+  Salvar sem passar por ele.
+  **O prazo mora DENTRO da caixa da repetição**, e não é arrumação: é a
+  repetição que decide QUAL prazo existe. Sem repetição aparece "Quando? (Prazo
+  de Execução)", com início e fim previsto; toda semana ou todo mês, aparecem as
+  fichas dos dias e a data fim da repetição. Ter os dois na tela fazia o usuário
+  preencher um "fim previsto" que a primeira conclusão descartava.
+  **Obrigatórios: o quê, como, quem, o período e — na rotina — a data fim da
+  repetição** — todos recusados em `ProjetoController::salvarDesdobramento`, não
+  só marcados na tela. Ação sem caminho e sem prazo não é plano, e o prazo é o
+  que alimenta o atraso automático, os avisos e o painel. Consequência para quem
+  for mexer: ação antiga sem "como", sem datas ou sem fim de repetição passa a
+  exigi-los na próxima vez que alguém abrir e salvar.
+  **"Quanto custa?" virou "Ganhos previstos (R$)"** (pedido do cliente). A
+  coluna continua sendo `quanto`: renomeá-la seria migração com alcance em todo
+  o plano de ação para uma mudança de rótulo. Fica o aviso de que o SENTIDO
+  mudou — os valores já cadastrados foram digitados como custo.
 - **A PILHA de cabeçalhos**, de cima para baixo: topbar → cabeçalho de Projetos
   → cabeçalho do **projeto** (`.projeto-cabeca-fixa`) → as **frentes já
   percorridas** (`.iniciativa-cabeca`), **empilhadas**. Cada degrau soma a

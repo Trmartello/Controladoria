@@ -90,6 +90,63 @@ afirma "recusa ação sem fim previsto" 'Quando' "$R"
 R=$(get "/api/projetos?planejamento_id=1")
 afirma "projeto aparece com período consolidado das ações" '2027-01-01|01/01/2027' "$R"
 
+# --- Repetição: a grade decide o prazo, e ela aceita MAIS DE UM dia ---
+# "Toda segunda e quinta" é UMA rotina. Enquanto o semanal aceitava um dia só,
+# quem precisava de dois cadastrava a mesma tarefa duas vezes — e as duas
+# cobravam a mesma pessoa, em relatórios separados.
+BASE_REP="\"planejamento_id\":1,\"projeto_id\":$PRJ,\"iniciativa_id\":$INI,\"quem\":\"QA\",\"prioridade\":\"MEDIA\",\"status\":\"NAO_INICIADO\",\"progresso\":0"
+R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Rotina semanal\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[1,4],\"recorrencia_ate\":\"2027-12-31\"}")
+afirma "cria ação semanal com DOIS dias" '"ok":true' "$R"
+REP=$(echo "$R" | id_de)
+R=$(get "/api/projetos?planejamento_id=1")
+afirma "os dois dias da semana voltam na listagem" '"recorrencia_dias":"1,4"' "$R"
+# A data de vencimento é DERIVADA da grade: sem ela gravada, o atraso
+# automático, os avisos por e-mail e o prazo do projeto não teriam o que ler.
+afirma "a semanal ganha data_fim derivada da grade" '"data_fim":"20[0-9][0-9]-[0-9]{2}-[0-9]{2}"' "$R"
+R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Rotina mensal\",\"como\":\"x\",\"recorrencia\":\"MENSAL\",\"recorrencia_dias\":[5,20],\"recorrencia_ate\":\"2027-12-31\"}")
+afirma "cria ação mensal com dois dias" '"ok":true' "$R"
+# Concluir uma ocorrência reabre na PRÓXIMA data da grade — e com dois dias
+# marcados a próxima é a mais perto deles, não "daqui a uma semana". Era isso
+# que o corte para um dia só impedia de acontecer, e é o que faz "toda segunda
+# e quinta" ser uma rotina em vez de duas ações.
+VENCE=$(python3 -c "
+import json,sys,datetime
+p=json.load(sys.stdin)['dados']
+a=[x for pr in p for i in pr['iniciativas'] for x in i['acoes'] if x['id']==$REP][0]
+print(a['data_fim'])" <<< "$(get "/api/projetos?planejamento_id=1")")
+R=$(post /api/desdobramentos/$REP "{$BASE_REP,\"o_que\":\"Rotina semanal\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[1,4],\"recorrencia_ate\":\"2027-12-31\",\"status\":\"CONCLUIDO\"}")
+PROX=$(python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('reagendada_para') or '')" <<< "$R")
+afirma "concluir a semanal reabre na próxima data" '20[0-9][0-9]-' "$PROX"
+# Segunda (1) e quinta (4) nunca distam sete dias uma da outra: o salto de uma
+# semana é a assinatura do bug de guardar um dia só.
+AVANCO=$(python3 -c "
+import datetime
+a=datetime.date.fromisoformat('$VENCE'); b=datetime.date.fromisoformat('$PROX')
+print((b-a).days)" 2>/dev/null)
+afirma "a próxima ocorrência cai no OUTRO dia da grade, não sete dias depois" '^(3|4)$' "$AVANCO"
+# O fim da repetição é OBRIGATÓRIO (pedido do cliente): rotina sem término é
+# rotina que ninguém encerra. O asterisco na tela não recusa nada — quem recusa
+# é o servidor, e este mesmo endpoint recebe o direcionamento de uma ideia.
+R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Sem fim\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[2],\"recorrencia_ate\":\"\"}")
+afirma "recusa repetição sem data fim" 'data fim da repetição' "$R"
+R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Sem dia\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[],\"recorrencia_ate\":\"2027-12-31\"}")
+afirma "recusa semanal sem nenhum dia marcado" 'ao menos um dia da semana' "$R"
+R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Dia inválido\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[9],\"recorrencia_ate\":\"2027-12-31\"}")
+afirma "recusa dia da semana fora de 1..7" 'ao menos um dia da semana' "$R"
+
+# --- Ganhos previstos: número e só número ---
+# `(float)` cego transformava qualquer texto num silencioso R$ 0,00 — o campo
+# ficava preenchido com um valor que ninguém digitou.
+R=$(post /api/desdobramentos "{$BASE_ACAO,\"o_que\":\"Com ganhos\",\"como\":\"x\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\",\"quanto\":1500.5}")
+afirma "aceita ganhos previstos com centavos" '"ok":true' "$R"
+GAN=$(echo "$R" | id_de)
+R=$(get "/api/projetos?planejamento_id=1")
+afirma "os ganhos voltam com os centavos" '"quanto":"1500.50"' "$R"
+R=$(post /api/desdobramentos "{$BASE_ACAO,\"o_que\":\"Ganho torto\",\"como\":\"x\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\",\"quanto\":\"mil reais\"}")
+afirma "recusa ganhos que não são número" 'apenas números' "$R"
+R=$(post /api/desdobramentos "{$BASE_ACAO,\"o_que\":\"Ganho negativo\",\"como\":\"x\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\",\"quanto\":-50}")
+afirma "recusa ganhos negativos" 'negativo' "$R"
+
 echo "### 4. Investimentos — a máquina de estados"
 R=$(post /api/investimentos '{"planejamento_id":1,"descricao":"Investimento de teste","valor":1000,"ano":2027,"situacao":"PROPOSTO"}')
 afirma "cria investimento PROPOSTO" '"ok":true' "$R"

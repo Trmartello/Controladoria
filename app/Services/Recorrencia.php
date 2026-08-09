@@ -10,7 +10,8 @@ namespace App\Services;
  * bordo — os dois caminhos que marcam uma ação como concluída.
  *
  * A ação que se repete NÃO tem período digitado: quem diz quando ela vence é a
- * grade (o dia da semana, ou um ou mais dias do mês), e as datas saem daqui.
+ * grade (um ou mais dias da semana, ou um ou mais dias do mês), e as datas saem
+ * daqui.
  * Gravar `data_fim` mesmo assim é o que mantém a recorrente dentro do atraso
  * automático, dos avisos por e-mail e do prazo consolidado do projeto — os três
  * leem a coluna, não a regra.
@@ -20,9 +21,11 @@ class Recorrencia
     public const TIPOS = ['NENHUMA', 'SEMANAL', 'MENSAL'];
 
     /**
-     * Os dias da grade de uma ação, em ordem. O mensal aceita vários (CSV em
-     * `recorrencia_dias`); o semanal é sempre um. `recorrencia_dia` continua
-     * gravado com o primeiro dia e é o fallback das ações anteriores à coluna.
+     * Os dias da grade de uma ação, em ordem. Os dois tipos aceitam vários dias
+     * (CSV em `recorrencia_dias`): "toda segunda e quinta" e "todo dia 5 e 20"
+     * são uma rotina só, e com um dia por ação a mesma rotina virava duas.
+     * `recorrencia_dia` continua gravado com o primeiro dia e é o fallback das
+     * ações anteriores à coluna.
      *
      * @param array $acao linha de `desdobramento`
      * @return int[]
@@ -58,10 +61,7 @@ class Recorrencia
             }
         }
         ksort($limpos);
-        $limpos = array_values($limpos);
-        // Semanal é um dia só: o formulário não oferece mais de um, e aceitar
-        // vários aqui faria a tela e o cálculo discordarem
-        return $recorrencia === 'SEMANAL' ? array_slice($limpos, 0, 1) : $limpos;
+        return array_values($limpos);
     }
 
     /**

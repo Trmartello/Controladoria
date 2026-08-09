@@ -537,17 +537,26 @@ const SecaoProjetos = {
     const detalhes = [
       a.onde && `Onde: ${a.onde}`,
       a.por_que && `Por quê: ${a.por_que}`,
-      a.quanto !== null && a.quanto !== undefined && `Quanto: R$ ${Number(a.quanto).toLocaleString('pt-BR')}`,
+      // Sempre com os DOIS centavos: `toLocaleString` sozinho corta o zero à
+      // direita e R$ 1.500,50 aparecia como "R$ 1.500,5", que não é como se
+      // escreve dinheiro — e ainda parecia valor truncado.
+      a.quanto !== null && a.quanto !== undefined
+        && `Ganhos previstos: R$ ${Number(a.quanto).toLocaleString('pt-BR',
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     ].filter(Boolean).map(Modal.esc).join(' · ');
     const timeline = this.comentariosAbertos?.refTipo === 'DESDOBRAMENTO' && this.comentariosAbertos?.refId === a.id
       ? `<div id="comentarios-DESDOBRAMENTO-${a.id}" class="mt-2"></div>` : '';
-    // A mensal pode vencer em vários dias ("todo dia 5 e 20")
-    const diasMes = this.diasDaAcao(a);
-    const repeticao = a.recorrencia === 'SEMANAL'
-      ? `toda ${(DIAS_SEMANA.find(([v]) => v == a.recorrencia_dia) || [, ''])[1].toLowerCase()}`
-      : a.recorrencia === 'MENSAL' && diasMes.length
-        ? `todo dia ${diasMes.slice(0, -1).join(', ')}${diasMes.length > 1 ? ' e ' : ''}${diasMes.at(-1)}`
-        : '';
+    // As DUAS grades podem vencer em vários dias ("toda segunda e quinta",
+    // "todo dia 5 e 20"), e por isso a montagem da frase é a mesma nas duas
+    const diasGrade = this.diasDaAcao(a);
+    const enumerar = (lista) => (lista.length > 1
+      ? `${lista.slice(0, -1).join(', ')} e ${lista.at(-1)}`
+      : String(lista[0] ?? ''));
+    const repeticao = !diasGrade.length ? ''
+      : a.recorrencia === 'SEMANAL'
+        ? `toda ${enumerar(diasGrade.map(
+          (d) => (DIAS_SEMANA.find(([v]) => v === d) || [, ''])[1].toLowerCase()))}`
+        : a.recorrencia === 'MENSAL' ? `todo dia ${enumerar(diasGrade)}` : '';
     // Cinco linhas: situação+progresso+seta, o quê, como, metadados e o rodapé
     // de botões. As três últimas ficam atrás da seta.
     const chave = `acao-${a.id}`;
@@ -1338,64 +1347,82 @@ const SecaoProjetos = {
    * o serviço. Escritos separados, os dois formulários voltariam a divergir no
    * primeiro campo novo.
    *
-   * Ordem: o quê, como, a linha "quem + repetição", os detalhes da repetição,
-   * o quando, a linha "prioridade + status" e, por último, o custo. Duas regras
-   * dessa ordem não são estéticas: a repetição vem ANTES do quando porque é ela
-   * que decide se o quando existe (decidir primeiro, preencher depois), e o
-   * custo — único campo opcional — fica por último, no caminho do Salvar.
-   * "Quem?" é o que amarra a ação a uma pessoa: é de `quem_usuario_id` que saem
-   * os avisos por e-mail e o filtro de "minhas ações".
+   * Ordem: o quê, como, quem, a CAIXA da repetição e, por último, a linha
+   * "prioridade + status" e os ganhos previstos. Duas regras dessa ordem não
+   * são estéticas: o prazo mora DENTRO da caixa da repetição porque é a
+   * repetição que decide qual prazo existe — a grade de dias ou o período de
+   * execução —, e os ganhos, único campo opcional, ficam por último, no caminho
+   * do Salvar. "Quem?" é o que amarra a ação a uma pessoa: é de
+   * `quem_usuario_id` que saem os avisos por e-mail e o filtro de "minhas
+   * ações".
    */
   camposAcao(dd = null) {
     return [
-      // "Por quê?" e "Onde?" saíram do formulário; os valores dos registros
-      // antigos seguem preservados nos campos ocultos
+      // "Por quê?", "Onde?" e o "Quando?" em texto livre saíram do formulário;
+      // os valores dos registros antigos seguem preservados nos campos ocultos.
+      // Eles vêm todos JUNTOS no topo de propósito: um hidden no meio da lista
+      // cortaria a vizinhança de que a caixa e a linha dependem para agrupar.
       { nome: 'por_que', rotulo: '', tipo: 'hidden' },
       { nome: 'onde', rotulo: '', tipo: 'hidden' },
-      // Os dois campos de texto da ação crescem com o que está sendo escrito
-      // até 5 linhas; passando disso rolam por dentro, e a alça do canto
-      // estica quando a pessoa quiser mais espaço
-      { nome: 'o_que', rotulo: 'O quê?', obrigatorio: true, tipo: 'textarea', linhas: 2,
-        maxLinhas: 5, exemplo: 'Ex.: Contratar projeto executivo dos silos' },
-      { nome: 'como', rotulo: 'Como?', obrigatorio: true, tipo: 'textarea', linhas: 2,
-        maxLinhas: 5, exemplo: 'Ex.: Concorrência entre três projetistas' },
-      // "Quem?" e "Repetição" dividem uma linha, com o responsável ocupando o
-      // dobro: o nome é o texto longo (e tem busca), e a repetição é um seletor
-      // de três opções curtas. A REPETIÇÃO vem antes do "Quando?" porque é ela
-      // que decide se o "Quando?" existe: quem responde "repete?" primeiro
-      // entende por que o período apareceu (ou não). Na ordem inversa, o campo
-      // do prazo sumia da tela depois de já ter sido lido — parecia defeito.
-      { nome: 'quem', rotulo: 'Quem?', tipo: 'selecao_livre', opcoes: this.responsaveis,
-        obrigatorio: true, vazio: '(selecione o responsável)', linha: 'quem-repeticao',
-        ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
-      { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', linha: 'quem-repeticao', opcoes: [
-        { valor: 'NENHUMA', rotulo: 'Não se repete' },
-        { valor: 'SEMANAL', rotulo: 'Toda semana' },
-        { valor: 'MENSAL', rotulo: 'Todo mês' },
-      ], ajuda: 'Ao concluir, reabre na próxima data.' },
       { nome: 'quando_', rotulo: '', tipo: 'hidden' },
-      // Mensal aceita mais de um dia (ex.: todo dia 5 e 20) e por isso a grade
-      // ocupa a largura inteira, fora da linha compartilhada
-      { nome: 'recorrencia_dias_mes', rotulo: 'Repete nos dias', tipo: 'dias_mes',
-        visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
-        ajuda: 'Marque um ou mais dias. Em meses curtos, cai no último dia do mês.' },
-      { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select', linha: 'repeticao-detalhe',
+      // O progresso NÃO é campo deste formulário: ele evolui pela barra do
+      // próprio cartão, e pop-up só existe nas fronteiras dos 100% (concluir /
+      // sair da conclusão). O hidden preserva o valor atual na edição — sem
+      // ele, o UPDATE zeraria o percentual a cada ajuste de texto.
+      { nome: 'progresso', rotulo: '', tipo: 'hidden' },
+      // Os dois campos de texto da ação nascem com UMA linha e crescem com o
+      // que está sendo escrito até cinco; passando disso rolam por dentro, e a
+      // alça do canto estica quando a pessoa quiser mais espaço. `maxLinhas` é
+      // também o que lhes dá o par de botões do alto (ditar e ver mais).
+      { nome: 'o_que', rotulo: 'O quê?', obrigatorio: true, tipo: 'textarea', linhas: 1,
+        maxLinhas: 5, exemplo: 'Ex.: Contratar projeto executivo dos silos' },
+      { nome: 'como', rotulo: 'Como?', obrigatorio: true, tipo: 'textarea', linhas: 1,
+        maxLinhas: 5, exemplo: 'Descreva como executar...' },
+      { nome: 'quem', rotulo: 'Quem?', tipo: 'selecao_livre', opcoes: this.responsaveis,
+        obrigatorio: true, vazio: '(selecione o responsável)',
+        ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
+      // ─── A CAIXA DA REPETIÇÃO ───────────────────────────────────────────
+      // A escolha e tudo que ela revela ficam dentro de um painel só: os
+      // campos que aparecem aqui NÃO são do formulário, são desta decisão.
+      // Soltos, trocar "todo mês" por "não se repete" trocava blocos que
+      // pareciam não ter relação um com o outro.
+      { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', caixa: 'repeticao', opcoes: [
+        { valor: 'NENHUMA', rotulo: 'Não se repete' },
+        { valor: 'SEMANAL', rotulo: 'Repetir toda semana' },
+        { valor: 'MENSAL', rotulo: 'Repetir todo mês' },
+      ] },
+      // Semanal e mensal aceitam MAIS DE UM dia ("toda segunda e quinta",
+      // "todo dia 5 e 20"): com um dia só, a mesma rotina virava duas ações.
+      { nome: 'recorrencia_dias_semana', rotulo: 'Selecione o dia da semana para repetir:',
+        tipo: 'dias', grade: 'semana', caixa: 'repeticao',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
-        opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo })) },
-      { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date', linha: 'repeticao-detalhe',
+        opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo: rotulo.replace('-feira', '') })),
+        ajuda: 'A ação se renovará automaticamente nos dias selecionados de cada semana.' },
+      { nome: 'recorrencia_dias_mes', rotulo: 'Selecione o dia ou dias do mês em que haverá repetição:',
+        tipo: 'dias', grade: 'mes', caixa: 'repeticao',
+        visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
+        opcoes: Array.from({ length: 31 }, (_, i) => ({ valor: i + 1, rotulo: String(i + 1) })),
+        ajuda: 'Clique nos números desejados para marcar os dias fixos de repetição mensal.' },
+      // O fim da repetição é OBRIGATÓRIO (pedido do cliente): rotina sem data
+      // de término é rotina que ninguém encerra, e ela seguia reabrindo depois
+      // de o motivo dela ter acabado. O filete acima separa "que dias" de "até
+      // quando" — são duas perguntas, e emendadas viravam uma lista só.
+      { nome: 'recorrencia_ate', rotulo: 'Data fim da repetição', tipo: 'date',
+        caixa: 'repeticao', obrigatorio: true, separador: true,
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
-        ajuda: 'Opcional — depois dela, encerra.' },
-      // "Quando?" só existe para a ação que NÃO se repete: quando ela repete,
-      // quem diz a data de vencimento é a grade acima, e o servidor a calcula.
-      // Ter os dois na tela fazia o usuário digitar um "fim previsto" que a
-      // primeira conclusão descartava.
-      { nome: 'quando_periodo', rotulo: 'Quando?', tipo: 'periodo', obrigatorio: true,
+        ajuda: 'Até quando esta rotina de repetição deve continuar ocorrendo.' },
+      // O período digitado só existe para a ação que NÃO se repete: quando ela
+      // repete, quem diz a data de vencimento é a grade acima, e o servidor a
+      // calcula. Ter os dois na tela fazia o usuário digitar um "fim previsto"
+      // que a primeira conclusão descartava.
+      { nome: 'quando_periodo', rotulo: 'Quando? (Prazo de Execução)', tipo: 'periodo',
+        obrigatorio: true, caixa: 'repeticao',
         visivelSe: { campo: 'recorrencia', valores: ['NENHUMA'] },
         campos: [
           { nome: 'data_inicio', rotulo: 'Início' },
           { nome: 'data_fim', rotulo: 'Fim previsto' },
-        ],
-        ajuda: 'Toque no campo para abrir o calendário.' },
+        ] },
+      // ─── fim da caixa ───────────────────────────────────────────────────
       // Prioridade e Status dividem UMA linha (também no celular): as opções
       // da prioridade empilhadas na vertical para os rótulos não espremerem
       { nome: 'prioridade', rotulo: 'Prioridade', tipo: 'botoes', vertical: true,
@@ -1404,16 +1431,11 @@ const SecaoProjetos = {
       { nome: 'status', rotulo: 'Status', tipo: 'select', linha: 'prioridade-status',
         opcoes: this.opcoesStatusAcao(dd?.status),
         ajuda: '“No prazo” e “Atrasada” saem da data de fim.' },
-      // O custo é o ÚLTIMO campo antes do Salvar: é o único opcional da lista e
-      // o que menos gente preenche — quem só descreve a ação chega ao botão sem
-      // passar por ele.
-      { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number', min: 0,
-        ajuda: 'Só números.' },
-      // O progresso NÃO é campo deste formulário: ele evolui pela barra do
-      // próprio cartão, e pop-up só existe nas fronteiras dos 100% (concluir /
-      // sair da conclusão). O hidden preserva o valor atual na edição — sem
-      // ele, o UPDATE zeraria o percentual a cada ajuste de texto.
-      { nome: 'progresso', rotulo: '', tipo: 'hidden' },
+      // Os ganhos são o ÚLTIMO campo antes do Salvar: é o único opcional da
+      // lista e o que menos gente preenche — quem só descreve a ação chega ao
+      // botão sem passar por ele.
+      { nome: 'quanto', rotulo: 'Ganhos previstos (R$)', tipo: 'moeda',
+        exemplo: 'R$ 0,00', ajuda: 'Apenas números (ex.: 1500,00).' },
     ];
   },
 
@@ -1429,25 +1451,31 @@ const SecaoProjetos = {
     return dd?.recorrencia_dia ? [Number(dd.recorrencia_dia)] : [];
   },
 
-  /** Valores iniciais de uma ação que ainda não existe. */
+  /**
+   * Valores iniciais de uma ação que ainda não existe. As duas grades nascem
+   * VAZIAS: pré-marcar um dia gravaria uma rotina que ninguém escolheu, e a
+   * grade é justamente o que decide quando a ação vence.
+   */
   valoresNovaAcao() {
     return {
       progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO', recorrencia: 'NENHUMA',
-      recorrencia_dia_semana: 1, recorrencia_dias_mes: [],
+      recorrencia_dias_semana: [], recorrencia_dias_mes: [],
     };
   },
 
   /**
-   * A grade de dias enviada depende do tipo de repetição: um dia da semana, um
-   * ou mais dias do mês, ou nenhum. As datas da ação que se repete NÃO vão no
-   * corpo — quem as calcula é o servidor, a partir da grade; mandá-las daqui
-   * gravaria o período escondido do formulário, que é justamente o que não vale
-   * mais para ela.
+   * A grade de dias enviada depende do tipo de repetição: os dias da semana, os
+   * do mês, ou nenhum. As datas da ação que se repete NÃO vão no corpo — quem
+   * as calcula é o servidor, a partir da grade; mandá-las daqui gravaria o
+   * período escondido do formulário, que é justamente o que não vale mais para
+   * ela. As DUAS grades saem do payload nos dois casos: o formulário guarda a
+   * que está escondida (para a troca de opção não apagar o que já foi marcado),
+   * e o servidor só conhece `recorrencia_dias`.
    */
   transformarAcao(dados) {
-    const { recorrencia_dia_semana: sem, recorrencia_dias_mes: mes, ...resto } = dados;
+    const { recorrencia_dias_semana: sem, recorrencia_dias_mes: mes, ...resto } = dados;
     if (resto.recorrencia === 'SEMANAL') {
-      return { ...resto, data_inicio: '', data_fim: '', recorrencia_dias: [Number(sem)] };
+      return { ...resto, data_inicio: '', data_fim: '', recorrencia_dias: (sem || []).map(Number) };
     }
     if (resto.recorrencia === 'MENSAL') {
       return { ...resto, data_inicio: '', data_fim: '', recorrencia_dias: (mes || []).map(Number) };
@@ -1464,7 +1492,7 @@ const SecaoProjetos = {
             iniciativa_id: dd.iniciativa_id ?? iniciativaId,
             recorrencia: dd.recorrencia || 'NENHUMA',
             recorrencia_ate: dd.recorrencia_ate ?? '',
-            recorrencia_dia_semana: dd.recorrencia === 'SEMANAL' ? dd.recorrencia_dia : 1,
+            recorrencia_dias_semana: dd.recorrencia === 'SEMANAL' ? this.diasDaAcao(dd) : [],
             recorrencia_dias_mes: dd.recorrencia === 'MENSAL' ? this.diasDaAcao(dd) : [] }
         : { planejamento_id: this.plan.id, projeto_id: projetoId, iniciativa_id: iniciativaId,
             ...this.valoresNovaAcao() },

@@ -246,16 +246,40 @@ class ProjetoController
             Json::erro('Prioridade inválida.');
         }
         $progresso = $this->arredondarProgresso((int)($d['progresso'] ?? 0));
-        $quanto = ($d['quanto'] ?? '') !== '' && $d['quanto'] !== null ? (float)$d['quanto'] : null;
+        // Ganhos previstos: opcional, mas quando vem tem de ser número. A tela
+        // já filtra o que se digita; a guarda mora aqui porque este mesmo
+        // endpoint recebe o direcionamento de uma ideia da Coleta, e um
+        // `(float)` cego transformava qualquer texto num silencioso R$ 0,00.
+        $quanto = null;
+        if (($d['quanto'] ?? null) !== null && $d['quanto'] !== '') {
+            if (!is_numeric($d['quanto'])) {
+                Json::erro('Ganhos previstos: informe apenas números.');
+            }
+            $quanto = (float)$d['quanto'];
+            if ($quanto < 0) {
+                Json::erro('Ganhos previstos não pode ser negativo.');
+            }
+        }
 
-        // Repetição da ação (ex.: toda segunda-feira, ou todo dia 5 e 20)
+        // Repetição da ação (ex.: toda segunda e quinta, ou todo dia 5 e 20)
         $recorrencia = $d['recorrencia'] ?? 'NENHUMA';
         if (!in_array($recorrencia, self::RECORRENCIAS, true)) {
             Json::erro('Repetição inválida.');
         }
         $recAte = null;
-        if ($recorrencia !== 'NENHUMA' && trim((string)($d['recorrencia_ate'] ?? '')) !== '') {
+        if ($recorrencia !== 'NENHUMA') {
+            // A data de término é OBRIGATÓRIA na rotina (pedido do cliente):
+            // repetição sem fim é repetição que ninguém encerra, e ela seguia
+            // reabrindo depois de o motivo dela ter acabado. Consequência para
+            // quem for mexer: ação recorrente antiga, cadastrada sem essa data,
+            // passa a exigi-la na próxima vez que alguém abrir e salvar.
+            if (trim((string)($d['recorrencia_ate'] ?? '')) === '') {
+                Json::erro('Informe a data fim da repetição.');
+            }
             [$recAte] = $this->periodo(['data_inicio' => $d['recorrencia_ate']]);
+            if ($recAte === null) {
+                Json::erro('Data fim da repetição inválida.');
+            }
         }
 
         // Quem manda no prazo depende da repetição, e é por isso que o
@@ -276,7 +300,7 @@ class ProjetoController
             );
             if (!$recDias) {
                 Json::erro($recorrencia === 'SEMANAL'
-                    ? 'Escolha o dia da semana da repetição.'
+                    ? 'Escolha ao menos um dia da semana para a repetição.'
                     : 'Escolha ao menos um dia do mês para a repetição.');
             }
             // A ação recorrente MANTÉM o vencimento que tem enquanto a grade não

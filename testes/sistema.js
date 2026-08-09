@@ -9,6 +9,35 @@ const { chromiumExec, playwright, esperar, entrar, relatar } = require('./comum'
 const ok = [], bad = [], erros = [];
 const t = (nome, cond, extra = '') => (cond ? ok : bad).push(nome + (extra ? ` — ${extra}` : ''));
 
+/**
+ * Fecha o modal e só volta quando ele saiu MESMO da tela.
+ *
+ * Duas armadilhas, as duas já pagas nesta bateria:
+ *
+ * `Escape` depende de quem está com o foco, e formulário tem campo que engole a
+ * tecla (o combobox do "Quem?" fecha o próprio painel e para a propagação ali).
+ *
+ * E o `hide()` do Bootstrap é um NO-OP enquanto a abertura ainda transiciona —
+ * ele desiste calado se `_isTransitioning`. Pedir uma vez só deixava o modal de
+ * pé; por isso o laço insiste até a classe `show` sair. Modal esquecido aberto
+ * é invisível para a prova que o abriu e FATAL para a seguinte: o backdrop
+ * intercepta o ponteiro, e o vermelho que aparece é um `hover` que não completa
+ * numa tela que nem é a do defeito.
+ */
+async function fecharModal(page) {
+  const ate = Date.now() + 8000;
+  while (Date.now() < ate) {
+    const fechado = await page.evaluate(() => {
+      if (!document.getElementById('modal-form').classList.contains('show')) return true;
+      Modal.bsModal?.hide();
+      return false;
+    });
+    if (fechado) return true;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return false;
+}
+
 // Cada seção com a PROVA de que ela terminou de carregar: um seletor que só
 // existe depois da carga. Esperar pelo `<section>` não serve — ele já está no
 // shell, vazio, desde o começo.
@@ -262,7 +291,16 @@ async function provasCartaoAcao(page, largura) {
       quem_usuario_id: 1, prioridade: 'MEDIA', status: 'EM_ANDAMENTO', progresso: 86,
       recorrencia: 'NENHUMA', data_inicio: '2027-01-01', data_fim: '2027-12-31',
     });
-    return { pr: pr.id, ac: ac.id };
+    // Uma rotina de DOIS dias, com ganhos previstos: é no cartão que a grade
+    // volta a virar frase, e é a frase que o condutor lê na reunião.
+    const rot = await App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: pr.id, iniciativa_id: ini.id,
+      o_que: 'Rotina do cartão', como: 'x', quem: 'Fulana de Tal', quem_usuario_id: 1,
+      prioridade: 'MEDIA', status: 'NAO_INICIADO', progresso: 0,
+      recorrencia: 'SEMANAL', recorrencia_dias: [3, 6], recorrencia_ate: '2027-12-31',
+      quanto: 1500.5,
+    });
+    return { pr: pr.id, ac: ac.id, rot: rot.id };
   });
 
   await page.evaluate(() => App.mostrarSecao('projetos'));
@@ -318,6 +356,19 @@ async function provasCartaoAcao(page, largura) {
     t(`[${largura}] linha 5: Comentários à esquerda, ✎ e × à direita, na mesma linha`,
       m.rodapeMesmaLinha && m.comentariosEsquerda, JSON.stringify(m));
     t(`[${largura}] o cartão aberto não rola na horizontal`, !m.rolagemH);
+
+    // A grade volta a virar FRASE, e o dinheiro volta a ter dois centavos.
+    // `toLocaleString` sozinho corta o zero à direita: R$ 1.500,50 saía como
+    // "R$ 1.500,5", que parece valor truncado.
+    const rot = await page.evaluate((id) => {
+      const c = document.querySelector(`[data-card-acao="${id}"]`);
+      c.querySelector('.btn-mais').click();
+      return c.innerText.replace(/\s+/g, ' ');
+    }, ids.rot);
+    t(`[${largura}] a rotina de dois dias vira frase no cartão`,
+      rot.includes('Repete: toda quarta-feira e sábado'), rot.slice(0, 180));
+    t(`[${largura}] os ganhos previstos aparecem com os dois centavos`,
+      rot.includes('Ganhos previstos: R$ 1.500,50'), rot.slice(0, 220));
   }
 
   await page.evaluate(async (ids) => {
@@ -604,7 +655,13 @@ async function provasCabecalhoProjetos(page, largura) {
   });
 
   await page.evaluate(() => App.mostrarSecao('projetos'));
-  await esperar(page, "!!document.querySelector('.cabecalho-projetos [data-nivel]')");
+  // Esperar por um seletor GENÉRICO não serve aqui: a prova anterior já deixou
+  // Projetos pintada, e `mostrarSecao` recarrega de forma assíncrona — o
+  // `.cabecalho-projetos` da pintura VELHA satisfazia a espera na hora, e a
+  // prova media a lista sem os projetos que ela acabou de criar (o cartão do
+  // primeiro nem existia: `null.querySelectorAll` derrubava a bateria inteira,
+  // antes de imprimir uma linha sequer). A espera é pelo PRÓPRIO projeto.
+  await esperar(page, `!!document.querySelector('[data-projeto="${ids[0]}"] .projeto-cabeca-fixa')`);
   await page.evaluate(() => window.scrollTo(0, 700));
   const m = await page.evaluate(() => {
     const cab = document.querySelector('.cabecalho-projetos');
@@ -826,6 +883,39 @@ async function provasFilaAcao(page, largura) {
       t(`[${largura}] o grupo fica na MESMA linha do texto, mesmo no item longo`, m.naLinhaDoTexto);
     }
     t(`[${largura}] a fila não rola a página na horizontal`, !m.rolagemH);
+
+    // O "Transformar em ação" é o SEGUNDO formulário que escreve uma ação, e a
+    // razão de `camposAcao` existir é que os dois não divirjam: já divergiram
+    // uma vez, e quem direcionava criava a ação sem como, sem prazo e sem
+    // repetição, tendo de reabri-la no cadastro para completá-la. A prova é
+    // pelo que ele TEM em comum com o cadastro — a caixa da repetição e os
+    // campos que só existem lá dentro.
+    await page.evaluate(() => document.querySelector('[data-virar-acao]').click());
+    const abriu = await esperar(page, "!!document.getElementById('campo-o_que')", 15000);
+    t(`[${largura}] o "transformar em ação" abre o formulário da ação`, abriu);
+    if (abriu) {
+      // (o fechamento fica FORA deste bloco — ver o porquê logo abaixo)
+      const igual = await page.evaluate(() => {
+        const caixa = document.querySelector('#modal-campos .caixa-repeticao');
+        return {
+          caixa: !!caixa,
+          campos: ['recorrencia', 'recorrencia_dias_semana', 'recorrencia_dias_mes',
+            'recorrencia_ate', 'quando_periodo'].every((n) => !!caixa?.querySelector(`#campo-${n}`)),
+          ganhos: document.querySelector('#campo-quanto')?.classList.contains('campo-moeda'),
+          // E o que é só DELE continua lá: o destino da ideia
+          destino: !!document.getElementById('campo-destino'),
+        };
+      });
+      t(`[${largura}] direcionar uma ideia usa a MESMA lista de campos do cadastro`,
+        igual.caixa && igual.campos && igual.ganhos && igual.destino, JSON.stringify(igual));
+    }
+    // O fechamento fica FORA do `if (abriu)`, e isso não é estilo: quando a
+    // espera estourava, a prova pulava o fechamento junto com a medição — e o
+    // modal, que abria logo depois, ficava de pé para a prova SEGUINTE. Foi
+    // uma falha intermitente, que só aparecia com o banco cheio: o vermelho
+    // saía no popover, três provas adiante, e não dizia nada sobre isto aqui.
+    // Provado, e não presumido, pelo mesmo motivo.
+    t(`[${largura}] o formulário fecha e libera a tela`, await fecharModal(page));
   }
 
   await page.evaluate(async (alvos) => {
@@ -875,15 +965,29 @@ async function provasGut(page) {
 }
 
 /**
- * O formulário da AÇÃO: a ordem dos campos e as duas linhas agrupadas.
+ * O formulário da AÇÃO: a ordem dos campos, a caixa da repetição e os dois
+ * campos de texto compactos.
  *
- * A ordem é pedido do cliente, e a agrupada é medida — "na mesma linha" só é
- * verdade se os três campos dividirem o mesmo topo. Com a mínima da coluna em
- * 12rem eles couberam DOIS por fileira no modal (~465px por dentro) e o
- * "Repetir até" desceu sozinho: passava numa conferência de olho, que vê três
- * campos agrupados, e falhava no que foi pedido.
+ * O que esta prova guarda, e que quebra em silêncio:
+ *
+ * - **A repetição é que decide qual prazo existe.** Sem repetição vale o
+ *   período digitado; com repetição, a grade de dias. Os dois na tela ao mesmo
+ *   tempo faziam o usuário preencher um "fim previsto" que a primeira
+ *   conclusão descartava — e nenhum dos dois é conferência de olho: um
+ *   `visivelSe` que pare de casar deixa os dois visíveis, ou nenhum.
+ * - **"Na mesma caixa" e "na mesma linha" são medidas.** A caixa é um retângulo
+ *   com bordas, e o campo que escapa dela continua plausível na tela.
+ * - **As duas grades aceitam VÁRIOS dias.** É a regra nova; um `select` de
+ *   volta no lugar das fichas passaria despercebido numa leitura.
+ * - **O campo de texto nasce compacto.** A altura é calculada em JS a partir de
+ *   uma disputa de especificidade no CSS (o `:has()` da regra genérica vence o
+ *   `[data-max-linhas]` sozinho) — já quebrou uma vez, e o defeito era o campo
+ *   nascer com o dobro do tamanho, o que ninguém chama de erro.
+ * - **O campo de dinheiro recusa o que não é número.** `type=number` deixava
+ *   passar `e`, `+` e `-` e depois devolvia vazio.
  */
-async function provasAcao(page) {
+async function provasAcao(page, largura) {
+  const l = `[${largura}]`;
   const prj = await page.evaluate(async () => {
     const p = await App.api('/api/projetos', {
       planejamento_id: 1, titulo: 'Projeto prova ação', ano: 2027, responsavel: 'QA', descricao: 'x',
@@ -893,39 +997,318 @@ async function provasAcao(page) {
   });
   await page.evaluate(() => App.mostrarSecao('projetos'));
   await esperar(page, "!document.getElementById('secao-projetos').classList.contains('d-none')", 15000);
-  const temBotao = await esperar(page, "!!document.querySelector('[data-nova-acao]')", 15000);
-  t('[desktop] Iniciativa oferece "+ Ação"', temBotao);
-  if (temBotao) {
-    // O botão mora no acordeão recolhido; o formulário é o mesmo do clique.
-    await page.evaluate(() => {
-      const b = document.querySelector('[data-nova-acao]');
+  // Pelo PROJETO desta prova, nunca por um `[data-nova-acao]` qualquer: a
+  // pintura anterior continua na tela enquanto a recarga não volta, e o botão
+  // dela aponta para uma frente de outro projeto (já apagado).
+  const temBotao = await esperar(
+    page, `!!document.querySelector('[data-projeto="${prj}"] [data-nova-acao]')`, 15000);
+  t(`${l} Iniciativa oferece "+ Ação"`, temBotao);
+  const abrirModal = async () => {
+    await page.evaluate((id) => {
+      const b = document.querySelector(`[data-projeto="${id}"] [data-nova-acao]`);
       SecaoProjetos.modalDesdobramento(parseInt(b.dataset.proj, 10), null, parseInt(b.dataset.novaAcao, 10));
-    });
-    const abriu = await esperar(page, "!!document.getElementById('campo-o_que')", 8000);
-    t('[desktop] Modal da ação abre', abriu);
+    }, prj);
+    return esperar(page, "!!document.getElementById('campo-o_que')", 8000);
+  };
+
+  if (temBotao) {
+    const abriu = await abrirModal();
+    t(`${l} Modal da ação abre`, abriu);
     if (abriu) {
+      await new Promise((r) => setTimeout(r, 300));
       const ordem = await page.evaluate(() => [...document.querySelectorAll('#modal-campos .form-label')]
-        .map((l) => l.textContent.trim().replace(/0%$/, '')));
-      const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Quando? *', 'Prioridade', 'Repetição',
-        'Repete toda', 'Repete todo dia', 'Repetir até', 'Status', 'Quanto custa? (R$)', 'Progresso'];
-      t('[desktop] Campos da ação na ordem pedida',
+        .map((x) => x.textContent.trim()));
+      const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Repetição',
+        'Selecione o dia da semana para repetir:',
+        'Selecione o dia ou dias do mês em que haverá repetição:',
+        'Data fim da repetição *', 'Quando? (Prazo de Execução) *',
+        'Prioridade', 'Status', 'Ganhos previstos (R$)'];
+      t(`${l} Campos da ação na ordem pedida`,
         JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
 
-      await page.selectOption('#campo-recorrencia', 'SEMANAL');
-      await new Promise((r) => setTimeout(r, 200));
+      // ── A caixa da repetição ────────────────────────────────────────────
+      // Todo campo da decisão mora DENTRO do painel; nenhum outro entra nele.
+      const naCaixa = await page.evaluate(() => {
+        const caixa = document.querySelector('#modal-campos .caixa-repeticao');
+        if (!caixa) return null;
+        const dentro = (id) => !!caixa.querySelector(`#campo-${id}`);
+        return {
+          existe: true,
+          todos: ['recorrencia', 'recorrencia_dias_semana', 'recorrencia_dias_mes',
+            'recorrencia_ate', 'quando_periodo'].every(dentro),
+          // O que NÃO é da decisão fica de fora: senão a caixa deixa de
+          // significar "isto depende da escolha acima"
+          semIntrusos: !dentro('quem') && !dentro('status') && !dentro('quanto'),
+        };
+      });
+      t(`${l} a repetição e o prazo moram numa caixa só`,
+        !!naCaixa?.existe && naCaixa.todos, JSON.stringify(naCaixa));
+      t(`${l} nenhum campo alheio entra na caixa da repetição`, !!naCaixa?.semIntrusos);
+
+      // ── Um prazo OU o outro, nunca os dois ──────────────────────────────
+      const visivel = (id) => page.evaluate((n) => {
+        const bloco = document.getElementById(`campo-${n}`)?.closest('.mb-3');
+        return !!bloco && !bloco.classList.contains('d-none');
+      }, id);
+      const trocar = async (modo) => {
+        await page.selectOption('#campo-recorrencia', modo);
+        await new Promise((r) => setTimeout(r, 250));
+        return {
+          periodo: await visivel('quando_periodo'),
+          semana: await visivel('recorrencia_dias_semana'),
+          mes: await visivel('recorrencia_dias_mes'),
+          ate: await visivel('recorrencia_ate'),
+        };
+      };
+      const nenhuma = await trocar('NENHUMA');
+      t(`${l} sem repetição, só o período de execução aparece`,
+        nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate, JSON.stringify(nenhuma));
+      const semanal = await trocar('SEMANAL');
+      t(`${l} toda semana troca o período pelos dias da semana`,
+        !semanal.periodo && semanal.semana && !semanal.mes && semanal.ate, JSON.stringify(semanal));
+
+      // ── As fichas dos dias, e a marcação MÚLTIPLA ───────────────────────
+      const semana = await page.evaluate(() => {
+        const g = document.getElementById('campo-recorrencia_dias_semana');
+        const fichas = [...g.querySelectorAll('input[type=checkbox]')];
+        fichas[0].click();
+        fichas[3].click();
+        return {
+          quantas: fichas.length,
+          rotulos: [...g.querySelectorAll('label')].map((x) => x.textContent.trim()),
+          marcadas: fichas.filter((c) => c.checked).map((c) => Number(c.value)),
+          // A grade nasce vazia: pré-marcar gravaria uma rotina que ninguém escolheu
+          coletado: Modal.coletar().recorrencia_dias_semana,
+        };
+      });
+      t(`${l} são sete fichas, de Segunda a Domingo`, semana.quantas === 7
+        && semana.rotulos[0] === 'Segunda' && semana.rotulos[6] === 'Domingo',
+      JSON.stringify(semana.rotulos));
+      t(`${l} dá para marcar MAIS DE UM dia da semana`,
+        JSON.stringify(semana.marcadas) === '[1,4]'
+        && JSON.stringify(semana.coletado) === '[1,4]', JSON.stringify(semana));
+
+      const mensal = await trocar('MENSAL');
+      t(`${l} todo mês troca a semana pela grade do mês`,
+        !mensal.periodo && !mensal.semana && mensal.mes && mensal.ate, JSON.stringify(mensal));
+      const mes = await page.evaluate(() => {
+        const g = document.getElementById('campo-recorrencia_dias_mes');
+        const fichas = [...g.querySelectorAll('input[type=checkbox]')];
+        fichas[4].click();
+        fichas[19].click();
+        return { quantas: fichas.length, coletado: Modal.coletar().recorrencia_dias_mes };
+      });
+      t(`${l} a grade do mês tem 31 dias e aceita vários`,
+        mes.quantas === 31 && JSON.stringify(mes.coletado) === '[5,20]', JSON.stringify(mes));
+
+      // ── Prioridade e Status na mesma fileira ────────────────────────────
       const linhas = await page.evaluate(() =>
         [...document.querySelectorAll('#modal-campos .grade-campos')].map((g) =>
           [...g.querySelectorAll('.mb-3')].filter((b) => !b.classList.contains('d-none'))
             .map((b) => ({ rotulo: b.querySelector('.form-label')?.textContent.trim(),
               topo: Math.round(b.getBoundingClientRect().top) }))));
-      const mesmaLinha = (l) => l.length > 1 && l.every((c) => c.topo === l[0].topo);
-      t('[desktop] Repetição, Repete toda e Repetir até na MESMA linha',
-        !!linhas[0] && linhas[0].length === 3 && mesmaLinha(linhas[0]), JSON.stringify(linhas[0]));
-      t('[desktop] Status e Quanto custa na MESMA linha',
-        !!linhas[1] && linhas[1].length === 2 && mesmaLinha(linhas[1]), JSON.stringify(linhas[1]));
+      const par = linhas.find((x) => x.length === 2);
+      t(`${l} Prioridade e Status na MESMA linha`,
+        !!par && par.every((c) => c.topo === par[0].topo), JSON.stringify(linhas));
+
+      // ── Os campos de texto: compactos, com as ferramentas no alto ───────
+      const texto = await page.evaluate(() => {
+        const t1 = document.getElementById('campo-o_que');
+        const cabeca = t1.closest('.mb-3').querySelector('.linha-rotulo');
+        const fer = cabeca?.querySelector('.campo-ferramentas');
+        const r = (el) => el.getBoundingClientRect();
+        const alturaLinha = Modal.alturaLinha(t1);
+        return {
+          compacto: Math.round(r(t1).height),
+          umaLinha: Math.round(Modal.alturaMinima(t1)),
+          alturaLinha: Math.round(alturaLinha),
+          teto5: Math.round(5 * alturaLinha + Modal.bordasVerticais(t1)),
+          rolando: t1.scrollHeight > t1.clientHeight + 1,
+          mic: !!fer?.querySelector('.btn-ditar'),
+          expandir: !!fer?.querySelector('.btn-expandir'),
+          // "Canto superior direito": à direita do rótulo e acima do campo
+          aDireita: !!fer && r(fer).right > r(cabeca.querySelector('.form-label')).right,
+          acima: !!fer && r(fer).bottom <= r(t1).top + 1,
+          // A alça de redimensionar continua livre — o microfone saiu do canto
+          resize: getComputedStyle(t1).resize,
+        };
+      });
+      // "Compacto" é medido, e a medida tem duas pontas. Piso: nunca menos que
+      // as `rows` declaradas. Teto: nunca já nascer no limite de cinco linhas,
+      // que é o que tornaria a palavra "compacto" mentira.
+      // Entre as duas pontas há UMA linha de folga, e ela existe por um motivo
+      // real: o Chrome conta o texto de exemplo no `scrollHeight`, então o
+      // campo nasce com duas linhas quando o exemplo quebra — no celular, onde
+      // a largura é um terço da do computador, é o que acontece. É o
+      // comportamento certo: com o piso rígido, a segunda linha do exemplo
+      // ficaria escondida atrás de uma barra de rolagem no campo VAZIO.
+      t(`${l} "O quê?" nasce compacto, sem rolagem e longe do teto`,
+        texto.compacto >= texto.umaLinha
+        && texto.compacto <= texto.umaLinha + texto.alturaLinha
+        && texto.compacto < texto.teto5 && !texto.rolando, JSON.stringify(texto));
+      t(`${l} microfone e ver mais ficam no canto superior direito do campo`,
+        texto.mic && texto.expandir && texto.aDireita && texto.acima, JSON.stringify(texto));
+      t(`${l} o campo mantém a alça de redimensionar`, texto.resize === 'vertical');
+
+      // O microfone MUDOU DE LUGAR (era um botão flutuando dentro do campo,
+      // agora mora na barra do rótulo). Existir na tela não prova que ele
+      // continua ligado no ditado: a prova é o toque acender e apagar.
+      const ditado = await page.evaluate(() => {
+        const b = document.querySelector('.campo-ferramentas .btn-ditar[data-alvo="campo-o_que"]');
+        b.click();
+        const ligado = b.classList.contains('gravando') && Modal.botaoGravando === b;
+        b.click();
+        return { ligado, desligado: !b.classList.contains('gravando') && !Modal.botaoGravando };
+      });
+      t(`${l} o microfone continua ligado no ditado depois de mudar de lugar`,
+        ditado.ligado && ditado.desligado, JSON.stringify(ditado));
+
+      // Cresce com o texto até o teto de cinco linhas, e ali passa a rolar
+      const crescer = await page.evaluate(async () => {
+        const t1 = document.getElementById('campo-o_que');
+        const antes = Math.round(t1.getBoundingClientRect().height);
+        t1.value = Array.from({ length: 12 }, (_, i) => `linha ${i} do texto`).join('\n');
+        t1.dispatchEvent(new Event('input', { bubbles: true }));
+        const cheio = Math.round(t1.getBoundingClientRect().height);
+        const rola = t1.style.overflowY;
+        document.querySelector('.btn-expandir[data-alvo="campo-o_que"]').click();
+        const aberto = Math.round(t1.getBoundingClientRect().height);
+        const rotulo = document.querySelector('.btn-expandir[data-alvo="campo-o_que"]')
+          .getAttribute('aria-expanded');
+        document.querySelector('.btn-expandir[data-alvo="campo-o_que"]').click();
+        return { antes, cheio, aberto, rola, rotulo,
+          voltou: Math.round(t1.getBoundingClientRect().height) };
+      });
+      t(`${l} o campo cresce com o texto e para no teto de linhas`,
+        crescer.cheio > crescer.antes && crescer.rola === 'auto', JSON.stringify(crescer));
+      t(`${l} o ver mais abre além do teto e o ver menos devolve`,
+        crescer.aberto > crescer.cheio && crescer.rotulo === 'true'
+        && crescer.voltou === crescer.cheio, JSON.stringify(crescer));
+
+      // ── Ganhos previstos: número e só número ────────────────────────────
+      // Digitação de verdade (`type`), não `.value =`: é o `beforeinput` que
+      // filtra, e atribuir o valor por script passaria por cima dele — a prova
+      // ficaria verde com o filtro desligado.
+      await page.click('#campo-quanto');
+      await page.type('#campo-quanto', '1e5-00abc');
+      const dinheiro1 = await page.inputValue('#campo-quanto');
+      await page.fill('#campo-quanto', '');
+      await page.type('#campo-quanto', '1500.50');
+      const dinheiro2 = await page.inputValue('#campo-quanto');
+      const coletado = await page.evaluate(() => Modal.coletar().quanto);
+      t(`${l} o campo de ganhos recusa letra, sinal e notação científica`,
+        dinheiro1 === '1500', dinheiro1);
+      t(`${l} o ponto vira vírgula e o valor sai como número`,
+        dinheiro2 === '1500,50' && coletado === 1500.5, `${dinheiro2} → ${coletado}`);
+
+      // COLAR é outro caminho, e o mais provável na vida real: o valor vem de
+      // uma planilha, formatado. O filtro precisa ler "R$ 1.234,56" como
+      // 1234,56 — recusar por causa do ponto de milhar esvaziava o campo sem
+      // dizer por quê. E precisa recusar o negativo INTEIRO: colar "-99" e ver
+      // 99 seria o campo mentindo sobre o que recebeu.
+      const colar = [];
+      for (const bruto of ['R$ 1.234,56 reais', '-99', '12.3456']) {
+        await page.evaluate((txt) => {
+          const i = document.getElementById('campo-quanto');
+          i.value = '';
+          i.focus();
+          return navigator.clipboard.writeText(txt);
+        }, bruto);
+        await page.keyboard.press('Control+V');
+        await new Promise((r) => setTimeout(r, 120));
+        colar.push(await page.inputValue('#campo-quanto'));
+      }
+      t(`${l} colar um valor de planilha entra como número em português`,
+        colar[0] === '1234,56', JSON.stringify(colar));
+      t(`${l} colar negativo ou com mais de dois centavos é recusado`,
+        colar[1] === '' && colar[2] === '', JSON.stringify(colar));
+
+      // Com o modal aberto, a página não pode passar a rolar na horizontal
+      const rolaH = await page.evaluate(() =>
+        document.documentElement.scrollWidth > window.innerWidth + 1);
+      t(`${l} o formulário da ação não rola a página na horizontal`, !rolaH);
+
+      // ── O caminho de verdade: preencher e clicar em Salvar ──────────────
+      // Tudo acima mede o formulário PARADO. Esta é a única prova que passa
+      // por `transformarAcao`, que é quem traduz as duas grades da tela na
+      // única `recorrencia_dias` que o servidor conhece. Escrevendo direto na
+      // API (o que o resto da bateria faz), essa tradução nunca é exercitada —
+      // e ela é justamente a peça que este trabalho reescreveu.
+      const salvou = await page.evaluate(async () => {
+        const pv = (id, v) => {
+          const el = document.getElementById(`campo-${id}`);
+          el.value = v;
+          // O "Quem?" guarda o nome num hidden, que não emite evento sozinho
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        pv('o_que', 'Ação salva pela tela');
+        pv('como', 'Pelo formulário, como um usuário faria');
+        pv('quem', 'QA da bateria');
+        document.getElementById('campo-recorrencia').value = 'SEMANAL';
+        document.getElementById('campo-recorrencia')
+          .dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 150));
+        const g = document.getElementById('campo-recorrencia_dias_semana');
+        [...g.querySelectorAll('input')].filter((c) => c.checked).forEach((c) => c.click());
+        g.querySelector('input[value="3"]').click();
+        g.querySelector('input[value="6"]').click();
+        pv('recorrencia_ate', '2027-12-31');
+        document.getElementById('modal-salvar').click();
+        return true;
+      });
+      t(`${l} o Salvar do formulário responde`, salvou);
+      const fechouSozinho = await esperar(
+        page, "!document.getElementById('modal-form').classList.contains('show')", 8000);
+      const erro = await page.evaluate(() => {
+        const e = document.getElementById('modal-erro');
+        return e.classList.contains('d-none') ? '' : e.textContent.trim();
+      });
+      t(`${l} salvar pela tela é aceito pelo servidor`, fechouSozinho && erro === '', erro);
+      const gravada = await page.evaluate(async (id) => {
+        const projetos = await App.api('/api/projetos?planejamento_id=1');
+        const p = projetos.find((x) => x.id === id);
+        const a = (p?.iniciativas[0].acoes || []).find((x) => x.o_que === 'Ação salva pela tela');
+        return a ? { dias: a.recorrencia_dias, tipo: a.recorrencia, fim: a.data_fim } : null;
+      }, prj);
+      t(`${l} as duas fichas marcadas na tela chegam inteiras ao banco`,
+        gravada?.dias === '3,6' && gravada.tipo === 'SEMANAL', JSON.stringify(gravada));
     }
-    await page.keyboard.press('Escape');
+    await fecharModal(page);
   }
+
+  // ── O vaivém completo: gravar uma rotina de dois dias e reabri-la ───────
+  // O ida-e-volta é o que prova que a grade sobrevive ao banco: o servidor
+  // guarda um CSV e devolve `recorrencia_dias`, e a tela precisa remarcar as
+  // fichas a partir dele. Sem esta prova, salvar dois dias e reabrir com um
+  // só passaria despercebido até alguém reclamar do prazo errado.
+  const acao = await page.evaluate(async (id) => {
+    const projetos = await App.api(`/api/projetos?planejamento_id=1`);
+    const p = projetos.find((x) => x.id === id);
+    return App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: id, iniciativa_id: p.iniciativas[0].id,
+      o_que: 'Rotina de duas pontas', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'SEMANAL',
+      recorrencia_dias: [2, 5], recorrencia_ate: '2027-12-31',
+    });
+  }, prj);
+  const voltou = await page.evaluate(async (ids) => {
+    const projetos = await App.api(`/api/projetos?planejamento_id=1`);
+    const p = projetos.find((x) => x.id === ids.prj);
+    const dd = p.iniciativas[0].acoes.find((a) => a.id === ids.acao);
+    SecaoProjetos.modalDesdobramento(ids.prj, dd, p.iniciativas[0].id);
+    return dd;
+  }, { prj, acao: acao.id });
+  await esperar(page, "!!document.getElementById('campo-recorrencia_dias_semana')");
+  await new Promise((r) => setTimeout(r, 300));
+  const remarcou = await page.evaluate(() => Modal.coletar().recorrencia_dias_semana);
+  t(`${l} a rotina de dois dias volta com as duas fichas marcadas`,
+    JSON.stringify(remarcou) === '[2,5]', `${JSON.stringify(remarcou)} — ${voltou.recorrencia_dias}`);
+  // A data de vencimento é DERIVADA da grade e gravada: é dela que vivem o
+  // atraso automático, os avisos por e-mail e o prazo consolidado do projeto.
+  t(`${l} o servidor deriva a data de vencimento da grade`,
+    /^\d{4}-\d{2}-\d{2}$/.test(String(voltou.data_fim || '')), String(voltou.data_fim));
+  await fecharModal(page);
+
   await page.evaluate((id) => App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 }), prj);
 }
 
@@ -950,7 +1333,6 @@ async function provasAcao(page) {
   await provasCabecalhoProjetos(page, 'desktop');
   await provasPopoverResumo(page, 'desktop');
   await provasGut(page);
-  await provasAcao(page);
 
   const ctxM = await browser.newContext({
     viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true,
@@ -963,6 +1345,37 @@ async function provasAcao(page) {
   await provasResumoStatus(pageM, 'celular');
   await provasFilaAcao(pageM, 'celular');
   await provasCabecalhoProjetos(pageM, 'celular');
+
+  // O formulário da ação corre em contexto PRÓPRIO, nas duas larguras.
+  //
+  // Próprio porque a Web Speech API não existe no headless e o microfone só é
+  // desenhado se o navegador a expuser: sem simulá-la, a prova das ferramentas
+  // do campo de texto ficaria verde por ausência do que ela mede. Simular as
+  // DUAS (`SpeechRecognition` e a `webkit`) porque o headless define a nativa,
+  // que não fala, e o código prefere ela. E em contexto separado, não nos de
+  // cima, para não trocar o layout das outras provas — todo textarea do sistema
+  // ganharia um botão que hoje elas medem sem.
+  //
+  // Nas duas larguras porque as fichas dos dias são o caso em que o celular
+  // difere de verdade: sete nomes numa fileira só cabem no computador.
+  for (const [rot, vp] of [['desktop', { width: 1500, height: 700 }],
+    ['celular', { width: 390, height: 844 }]]) {
+    const ctxV = await browser.newContext({
+      ...vp && { viewport: vp }, reducedMotion: 'reduce',
+      isMobile: rot === 'celular', hasTouch: rot === 'celular',
+    });
+    // Sem a permissão, `clipboard.writeText` falha calado e o Ctrl+V não cola
+    // nada: a prova de colar ficaria verde medindo um campo que ninguém tocou.
+    await ctxV.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await ctxV.addInitScript(() => {
+      class Reconhecedor { start() {} stop() {} }
+      window.SpeechRecognition = Reconhecedor;
+      window.webkitSpeechRecognition = Reconhecedor;
+    });
+    const pageV = await entrar(ctxV, rot, erros);
+    await provasAcao(pageV, rot);
+    await ctxV.close();
+  }
 
   await browser.close();
   process.exit(relatar(ok, bad, erros));
