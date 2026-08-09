@@ -243,6 +243,89 @@ async function provasCartaoCruzamento(page) {
 }
 
 /**
+ * O cartão de ação, em cinco linhas: situação + progresso + seta, o quê, como,
+ * metadados e o rodapé de botões.
+ *
+ * O que estas provas guardam é a HIERARQUIA — a ordem das linhas e o que divide
+ * linha com o quê. É o tipo de coisa que uma edição distraída desfaz sem
+ * quebrar nada: o cartão continua pintando, só que ilegível.
+ */
+async function provasCartaoAcao(page, largura) {
+  const ids = await page.evaluate(async () => {
+    const pr = await App.api('/api/projetos',
+      { planejamento_id: 1, titulo: 'Projeto do cartão de ação', ano: 2027, responsavel: 'QA', descricao: 'x' });
+    const ini = await App.api('/api/iniciativas',
+      { planejamento_id: 1, projeto_id: pr.id, titulo: 'Frente do cartão' });
+    const ac = await App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: pr.id, iniciativa_id: ini.id,
+      o_que: 'Ação de teste do cartão', como: 'Do jeito descrito aqui', quem: 'Fulana de Tal',
+      quem_usuario_id: 1, prioridade: 'MEDIA', status: 'EM_ANDAMENTO', progresso: 86,
+      recorrencia: 'NENHUMA', data_inicio: '2027-01-01', data_fim: '2027-12-31',
+    });
+    return { pr: pr.id, ac: ac.id };
+  });
+
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  const sel = `[data-card-acao="${ids.ac}"]`;
+  const pintou = await esperar(page, `!!document.querySelector('${sel} .btn-mais')`);
+  t(`[${largura}] cartão de ação pinta`, pintou);
+
+  if (pintou) {
+    // A seta começa recolhida e o detalhe está escondido.
+    t(`[${largura}] a seta começa recolhida`,
+      await page.evaluate((s) => document.querySelector(`${s} .btn-mais`).getAttribute('aria-expanded') === 'false', sel));
+    await page.click(`${sel} .btn-mais`);
+
+    const m = await page.evaluate((s) => {
+      const c = document.querySelector(s);
+      const meio = (el) => { const r = el.getBoundingClientRect(); return Math.round(r.top + r.height / 2); };
+      const topo = c.querySelector('.linha-acao-topo');
+      const pecas = [...topo.children];
+      const titulo = c.querySelector('.fw-bold');
+      const detalhe = c.querySelector('.detalhe-item');
+      const linhas = [...detalhe.children];
+      const rodape = detalhe.querySelector('.justify-content-between');
+      const com = rodape.querySelector('[data-comentarios]');
+      const acoes = rodape.querySelector('.ms-auto');
+      return {
+        // `align-items: center` alinha os CENTROS, não os topos: peças de
+        // alturas diferentes na mesma linha têm `top` diferente e centro igual.
+        centrosLinha1: [...new Set(pecas.map(meio))].length,
+        pecasLinha1: pecas.length,
+        temBarra: !!topo.querySelector('.faixa-verde, .faixa-progresso'),
+        temSeta: !!topo.querySelector('.btn-mais'),
+        setaAberta: c.querySelector('.btn-mais').getAttribute('aria-expanded'),
+        // A ordem das linhas, de cima para baixo.
+        tituloAbaixoDoTopo: titulo.getBoundingClientRect().top > topo.getBoundingClientRect().bottom - 1,
+        detalheAbaixoDoTitulo: detalhe.getBoundingClientRect().top > titulo.getBoundingClientRect().bottom - 1,
+        primeiraDoDetalhe: (linhas[0]?.textContent || '').trim().slice(0, 5),
+        // Prazo → Quem → Prioridade, nessa ordem.
+        ordemMeta: (detalhe.querySelector('.text-muted')?.textContent || '')
+          .replace(/\s+/g, ' ').match(/Prazo:.*Quem:.*Prioridade:/) !== null,
+        rodapeMesmaLinha: Math.abs(meio(com) - meio(acoes)) <= 4,
+        comentariosEsquerda: com.getBoundingClientRect().left < acoes.getBoundingClientRect().left,
+        rolagemH: document.documentElement.scrollWidth > window.innerWidth + 1,
+      };
+    }, sel);
+
+    t(`[${largura}] linha 1: situação, barra e seta alinhadas`,
+      m.centrosLinha1 === 1 && m.temBarra && m.temSeta, JSON.stringify(m));
+    t(`[${largura}] a seta abre o detalhe`, m.setaAberta === 'true');
+    t(`[${largura}] linha 2 é o "o quê", abaixo da linha 1`, m.tituloAbaixoDoTopo);
+    t(`[${largura}] linha 3 é o "Como"`, m.primeiraDoDetalhe === 'Como:' && m.detalheAbaixoDoTitulo,
+      m.primeiraDoDetalhe);
+    t(`[${largura}] linha 4 traz Prazo, Quem e Prioridade nessa ordem`, m.ordemMeta);
+    t(`[${largura}] linha 5: Comentários à esquerda, ✎ e × à direita, na mesma linha`,
+      m.rodapeMesmaLinha && m.comentariosEsquerda, JSON.stringify(m));
+    t(`[${largura}] o cartão aberto não rola na horizontal`, !m.rolagemH);
+  }
+
+  await page.evaluate(async (ids) => {
+    await App.api(`/api/projetos/${ids.pr}/excluir`, { planejamento_id: 1 });
+  }, ids);
+}
+
+/**
  * Duas invariantes da Matriz GUT que já custaram defeito e não aparecem no
  * "a seção pinta": o cabeçalho que precisa GRUDAR ao rolar (sem ele as quatro
  * colunas de número viram números anônimos) e o aviso de campo abaixo da dobra
@@ -353,6 +436,7 @@ async function provasAcao(page) {
   await provasAtalhoCadastros(page, 'desktop');
   await provasCiclo(page, 'desktop');
   await provasCartaoCruzamento(page);
+  await provasCartaoAcao(page, 'desktop');
   await provasGut(page);
   await provasAcao(page);
 
@@ -363,6 +447,7 @@ async function provasAcao(page) {
   await percorrer(pageM, 'celular');
   await provasAtalhoCadastros(pageM, 'celular');
   await provasCiclo(pageM, 'celular');
+  await provasCartaoAcao(pageM, 'celular');
 
   await browser.close();
   process.exit(relatar(ok, bad, erros));

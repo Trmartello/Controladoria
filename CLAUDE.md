@@ -886,7 +886,22 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   procurar em log do provedor uma informação que já vinha na resposta, e as
   causas prováveis pedem providências opostas.
 - Cartões de projeto/iniciativa/ação mostram só título e situação; o resto vai
-  atrás de **“mostrar mais”**. As barras de progresso usam sempre o mesmo
+  atrás de uma **seta** (`botaoMais`, um chevron que gira com o `aria-expanded`;
+  o significado fica no `aria-label`/`title`). Era o texto "mostrar mais", que
+  na linha do cartão de ação disputava largura com o selo de situação e a barra
+  de progresso — doze caracteres ali saíam da barra, que é a peça que se lê de
+  relance. O mesmo botão serve aos três níveis: dois jeitos de expandir na mesma
+  tela seriam duas coisas para aprender.
+- **O cartão de ação tem cinco linhas**, nessa ordem: (1) situação, barra de
+  progresso e a seta, alinhadas pelo centro; (2) o **quê**; (3) o **como**;
+  (4) os metadados — **Prazo · Quem · Prioridade**, e depois o que houver de
+  repetição, onde, por quê e quanto; (5) o rodapé, com **Comentários à
+  esquerda** e **✎ ×  à direita**. Da linha 3 em diante fica atrás da seta.
+  O "como" saiu do amontoado de metadados e ganhou linha própria porque ele e o
+  "o quê" **são** a ação — o que se faz e por onde —, e no meio de sete campos
+  separados por ponto o caminho virava rodapé. Na linha 1, quem cede largura é a
+  **barra** (`flex-grow`), nunca o selo nem a seta: ela é a única peça que se lê
+  por proporção, e as outras duas viram texto cortado. As barras de progresso usam sempre o mesmo
   estilo (`.faixa-progresso` para leitura, `input[type=range].faixa-verde`
   para ajuste) com **passo 1** — passo maior faria o valor divergir do
   servidor.

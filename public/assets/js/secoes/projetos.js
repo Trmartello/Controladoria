@@ -44,7 +44,7 @@ const SecaoProjetos = {
   // abertos e a escolha do usuário sobrevive aos recarregamentos da seção
   iniciativasFechadas: new Set(),
   projetosFechados: new Set(),
-  detalhesAbertos: new Set(), // quem está com o "mostrar mais" aberto
+  detalhesAbertos: new Set(), // quem está com o detalhe (a seta) aberto
   // id da ação que a seção deve realçar ao abrir (vindo do "Virou ação ↗")
   destacarAcao: null,
 
@@ -71,11 +71,26 @@ const SecaoProjetos = {
     setTimeout(() => card.classList.remove('card-destacado'), 2600);
   },
 
-  /** Alternador de detalhe de um item (projeto, iniciativa ou ação). */
+  /**
+   * Alternador de detalhe de um item (projeto, iniciativa ou ação).
+   *
+   * É um CHEVRON, não as palavras "mostrar mais"/"mostrar menos" que estavam
+   * aqui: na linha do cartão de ação ele divide espaço com o selo de situação e
+   * a barra de progresso, e doze caracteres de texto ali custavam à barra
+   * justamente a largura que ela usa para ser lida de relance. A seta gira com
+   * o estado e o significado continua dito — em `aria-label`, para quem usa
+   * leitor de tela, e em `title`, para quem passa o mouse.
+   *
+   * O mesmo botão serve aos três níveis: dois jeitos de expandir na mesma tela
+   * seriam duas coisas para aprender.
+   */
   botaoMais(chave, aberto) {
+    const rotulo = aberto ? 'Recolher detalhes' : 'Mostrar detalhes';
     return `<button type="button" class="btn-mais" data-mais="${chave}"
-      aria-expanded="${aberto}" aria-controls="detalhe-${chave}">
-      ${aberto ? 'mostrar menos' : 'mostrar mais'}</button>`;
+      aria-expanded="${aberto}" aria-controls="detalhe-${chave}"
+      aria-label="${rotulo}" title="${rotulo}">
+      <svg width="16" height="16" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg>
+    </button>`;
   },
 
   ligarBotoesMais(el) {
@@ -87,8 +102,12 @@ const SecaoProjetos = {
       if (abrir) this.detalhesAbertos.delete(chave);
       else this.detalhesAbertos.add(chave);
       alvo.classList.toggle('d-none', abrir);
-      b.textContent = abrir ? 'mostrar mais' : 'mostrar menos';
+      // O que muda é o ESTADO, não o conteúdo: quem gira a seta é o CSS pelo
+      // `aria-expanded`. Trocar o texto do botão apagaria o `<svg>` de dentro.
+      const rotulo = abrir ? 'Mostrar detalhes' : 'Recolher detalhes';
       b.setAttribute('aria-expanded', String(!abrir));
+      b.setAttribute('aria-label', rotulo);
+      b.setAttribute('title', rotulo);
     }));
   },
 
@@ -190,7 +209,7 @@ const SecaoProjetos = {
     const [rotIni, classeIni] = STATUS_INICIATIVA[ini.status] || [ini.status, 'text-bg-light'];
     const aberta = !this.iniciativasFechadas.has(ini.id);
     const cartoes = acoes.map((a) => this.cartaoAcao(p, ini, a)).join('');
-    // Recolhida mostra só título e situação; o resto vai no "mostrar mais"
+    // Recolhida mostra só título e situação; o resto vai atrás da seta
     const chave = `ini-${ini.id}`;
     const detalhado = this.detalhesAbertos.has(chave);
     // Panorama da frente de trabalho, o mesmo do projeto um nível acima: média
@@ -229,10 +248,11 @@ const SecaoProjetos = {
     const [rotulo, classe] = STATUS_ACAO[a.status] || [a.status, 'text-bg-light'];
     const [rotPrio, corPrio] = PRIORIDADES[a.prioridade] || PRIORIDADES.MEDIA;
     const prazo = this.periodo(a.data_inicio, a.data_fim, a.quando_);
+    // O "Como" sai daqui: ele ganhou linha própria, logo abaixo do "o quê".
+    // Os dois juntos são a ação — o que se faz e por onde —, e espremidos no
+    // meio de sete metadados separados por ponto o caminho virava rodapé.
     const detalhes = [
-      a.quem && `Quem: ${a.quem}`,
       a.onde && `Onde: ${a.onde}`,
-      a.como && `Como: ${a.como}`,
       a.por_que && `Por quê: ${a.por_que}`,
       a.quanto !== null && a.quanto !== undefined && `Quanto: R$ ${Number(a.quanto).toLocaleString('pt-BR')}`,
     ].filter(Boolean).map(Modal.esc).join(' · ');
@@ -241,22 +261,28 @@ const SecaoProjetos = {
     const repeticao = a.recorrencia === 'SEMANAL'
       ? `toda ${(DIAS_SEMANA.find(([v]) => v == a.recorrencia_dia) || [, ''])[1].toLowerCase()}`
       : a.recorrencia === 'MENSAL' ? `todo dia ${a.recorrencia_dia}` : '';
-    // Visível: o que é, como está e o progresso. O resto fica no "mostrar mais".
+    // Cinco linhas: situação+progresso+seta, o quê, como, metadados e o rodapé
+    // de botões. As três últimas ficam atrás da seta.
     const chave = `acao-${a.id}`;
     const detalhado = this.detalhesAbertos.has(chave);
+    // Prazo → Quem → Prioridade, nessa ordem: são as três perguntas que se faz
+    // de um cartão de ação, e nessa sequência. O que sobra (repetição, onde,
+    // por quê, quanto) segue na mesma linha, depois — tirá-los da tela para
+    // cumprir a ordem seria perder informação que alguém digitou.
     const extras = [
       prazo && `<strong>Prazo:</strong> ${Modal.esc(prazo)}`,
+      a.quem && `<strong>Quem:</strong> ${Modal.esc(a.quem)}`,
       `<strong>Prioridade:</strong> ${rotPrio}`,
       repeticao && `<strong>Repete:</strong> ${repeticao}`,
       detalhes,
     ].filter(Boolean).join(' · ');
     return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}">
       <div class="card-body py-2 px-2">
-        <div class="d-flex align-items-center gap-1 flex-wrap">
-          <span class="badge ${classe}">${rotulo}</span>
-          <span class="small flex-grow-1">${Modal.esc(a.o_que)}</span>
-        </div>
-        <div class="d-flex align-items-center gap-2 mt-2">
+        <!-- Linha 1: situação, progresso e o expandir. O selo e o chevron não
+             encolhem (flex-shrink-0); quem cede largura é a barra, que é a
+             única peça aqui que se lê por proporção e não por texto. -->
+        <div class="d-flex align-items-center gap-2 linha-acao-topo">
+          <span class="badge ${classe} flex-shrink-0">${rotulo}</span>
           ${App.podeEditar() ? `
           <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="1"
             style="--pct:${a.progresso}%" value="${a.progresso}"
@@ -269,16 +295,26 @@ const SecaoProjetos = {
           <span class="valor-progresso">${a.progresso}%</span>`}
           ${this.botaoMais(chave, detalhado)}
         </div>
+        <!-- Linha 2: o quê -->
+        <div class="small fw-bold mt-2">${Modal.esc(a.o_que)}</div>
         <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
-          ${extras ? `<div class="small text-muted mt-2">${extras}</div>` : ''}
-          <span class="d-flex gap-1 flex-wrap mt-2">
+          <!-- Linha 3: como -->
+          ${a.como ? `<div class="small"><strong>Como:</strong> ${Modal.esc(a.como)}</div>` : ''}
+          <!-- Linha 4: metadados -->
+          ${extras ? `<div class="small text-muted mt-1">${extras}</div>` : ''}
+          <!-- Linha 5: rodapé — conversa à esquerda, edição à direita. O
+               ms-auto é o que segura a direita quando o grupo da esquerda é só
+               um botão, e sobrevive à quebra de linha no celular. -->
+          <div class="d-flex justify-content-between align-items-center gap-1 flex-wrap mt-2">
             <button class="btn btn-sm btn-outline-success" data-comentarios="DESDOBRAMENTO:${a.id}">Comentários</button>
             ${App.podeEditar() ? `
-              <button class="btn btn-sm btn-outline-secondary" data-editar-desd="${a.id}" data-proj="${p.id}"
-                title="Editar ação" aria-label="Editar ação">✎</button>
-              <button class="btn btn-sm btn-outline-danger" data-excluir-desd="${a.id}"
-                title="Excluir ação" aria-label="Excluir ação">×</button>` : ''}
-          </span>
+              <span class="ms-auto d-flex gap-1">
+                <button class="btn btn-sm btn-outline-secondary" data-editar-desd="${a.id}" data-proj="${p.id}"
+                  title="Editar ação" aria-label="Editar ação">✎</button>
+                <button class="btn btn-sm btn-outline-danger" data-excluir-desd="${a.id}"
+                  title="Excluir ação" aria-label="Excluir ação">×</button>
+              </span>` : ''}
+          </div>
         </div>
         ${timeline}
       </div>
@@ -341,7 +377,7 @@ const SecaoProjetos = {
       const concluidas = acoes.filter((a) => a.status === 'CONCLUIDO').length;
       const aberto = !this.projetosFechados.has(p.id);
 
-      // Recolhido mostra só título, situação e a barra; o resto no "mostrar mais"
+      // Recolhido mostra só título, situação e a barra; o resto atrás da seta
       const chave = `proj-${p.id}`;
       const detalhado = this.detalhesAbertos.has(chave);
       return `<div class="card mb-3" data-projeto="${p.id}">
@@ -401,7 +437,7 @@ const SecaoProjetos = {
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-proj">+ Novo projeto</button>' : ''}
         </div>
       </div>
-      <p class="text-muted">Toque no título para recolher e expandir um item; use “mostrar mais” para
+      <p class="text-muted">Toque no título para recolher e expandir um item; use a seta (⌄) para
         ver o detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>
       ${this.cartaoIdeiasAcao(pendentes)}
       <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>`;
@@ -491,7 +527,7 @@ const SecaoProjetos = {
     }));
 
     // Duplo clique (duplo toque no celular) abre a edição do cartão sob o
-    // cursor — o mesmo que o ✎, sem precisar abrir o "mostrar mais" para
+    // cursor — o mesmo que o ✎, sem precisar abrir o detalhe para
     // alcançá-lo. Os botões continuam onde estavam: são o caminho de quem usa
     // teclado, que não tem duplo clique.
     //

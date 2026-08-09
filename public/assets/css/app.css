@@ -1415,17 +1415,36 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
 #secao-projetos .iniciativa { touch-action: manipulation; }
 
 /* "mostrar mais": o detalhe fica escondido até o usuário pedir */
+/* Expandir/recolher o detalhe de um item. É uma SETA, não texto: na linha do
+   cartão de ação ela divide espaço com o selo de situação e a barra de
+   progresso, e "mostrar menos" custava à barra a largura que ela usa para ser
+   lida de relance. 28px de lado por dimensão real — alvo de toque não se faz
+   com área invisível sobreposta, que cobre a do vizinho. */
 .btn-mais {
   border: 0;
   background: none;
   padding: 0;
   color: var(--verde-coperdia);
-  font-size: .72rem;
-  font-weight: 600;
-  white-space: nowrap;
-  text-decoration: underline;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  line-height: 1;
 }
-.btn-mais:hover { color: #005c34; }
+.btn-mais:hover { color: #005c34; background: rgba(0, 122, 69, .08); }
+.btn-mais svg { transition: transform .18s ease; }
+.btn-mais[aria-expanded="true"] svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .btn-mais svg { transition: none; }
+}
+/* A barra é a única peça da linha que se lê por proporção: quando a largura
+   aperta, é ela que cede — e precisa poder encolher abaixo do conteúdo, que o
+   padrão do flex (`min-width: auto`) não permite. */
+.linha-acao-topo .faixa-verde,
+.linha-acao-topo .faixa-progresso { min-width: 3rem; }
 .detalhe-item { border-top: 1px dashed #dee2e6; margin-top: .4rem; padding-top: .4rem; }
 
 .selo-prioridade {
