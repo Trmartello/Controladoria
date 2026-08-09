@@ -956,23 +956,41 @@ const SecaoProjetos = {
       r.addEventListener('change', async () => {
         const anterior = r.dataset.salvo ?? r.defaultValue;
         const status = r.closest('[data-status]')?.dataset.status;
-        // As fronteiras dos 100% abrem o pop-up de status (chegar: a ação está
-        // concluída?; sair: em que situação ela fica?). Fechado sem salvar, o
-        // gesto é desfeito — a barra volta ao valor do servidor. No meio do
-        // caminho é só evolução: salva direto, sem interromper ninguém.
-        const cruzouParaCem = Number(r.value) === 100 && status !== 'CONCLUIDO';
-        const saiuDeCem = Number(r.value) < 100 && status === 'CONCLUIDO';
-        if (cruzouParaCem || saiuDeCem) {
+        const voltar = () => { r.value = anterior; pintar(anterior); };
+
+        // Chegar aos 100% CONCLUI, sem perguntar — a pergunta virava mais um
+        // clique no gesto mais comum da tela. Exceção: a cancelada não é
+        // concluída por arraste; a barra volta ao que estava, em silêncio.
+        if (Number(r.value) === 100 && status !== 'CONCLUIDO') {
+          if (status === 'CANCELADO') { voltar(); return; }
+          try {
+            const resp = await App.api(`/api/desdobramentos/${id}/progresso`, {
+              planejamento_id: this.plan.id, progresso: 100, concluir: true,
+            });
+            // O salvo muda antes da recarga: se ela falhar, o próximo arraste
+            // ainda parte do valor que o servidor tem de fato
+            r.dataset.salvo = String(resp.progresso);
+            this.avisarReagendamento(resp);
+            App.recarregarSecaoAtiva();
+          } catch (e) {
+            voltar();
+            if (e.codigo !== 'ACAO_CANCELADA') alert(e.message);
+          }
+          return;
+        }
+
+        // Sair dos 100% abre o pop-up: a ação estava concluída, e alguém
+        // precisa dizer em que situação ela fica. Fechado sem salvar, o gesto
+        // é desfeito — a barra volta ao valor do servidor.
+        if (Number(r.value) < 100 && status === 'CONCLUIDO') {
           let gravou = false;
           this.modalStatusAcao(id, Number(r.value), status, () => { gravou = true; });
           document.getElementById('modal-form').addEventListener('hidden.bs.modal', () => {
-            if (!gravou) {
-              r.value = anterior;
-              pintar(anterior);
-            }
+            if (!gravou) voltar();
           }, { once: true });
           return;
         }
+
         try {
           await App.api(`/api/desdobramentos/${id}/progresso`, {
             planejamento_id: this.plan.id, progresso: Number(r.value),
@@ -981,8 +999,7 @@ const SecaoProjetos = {
           this.atualizarMedias(el, r);
         } catch (e) {
           // Falhou: devolve a barra ao valor que está no servidor
-          r.value = anterior;
-          pintar(anterior);
+          voltar();
           alert(e.message);
         }
       });
@@ -1423,28 +1440,26 @@ const SecaoProjetos = {
   },
 
   /**
-   * As fronteiras dos 100% na barra do cartão: chegar (a ação está concluída?)
-   * e sair (em que status ela fica?). É um MODAL do sistema, nunca `confirm()`:
-   * o navegador oferece "bloquear caixas de diálogo" e, bloqueadas, o usuário
-   * punha 100% e a conclusão simplesmente não acontecia — sem erro nenhum.
-   * O percentual já vai junto, escondido; fechar sem salvar desfaz o ajuste
-   * (quem chama devolve a barra ao valor do servidor).
+   * A saída dos 100% na barra do cartão: a ação estava concluída e alguém
+   * precisa dizer em que status ela fica. (Chegar aos 100% não passa mais por
+   * aqui: conclui direto, sem perguntar.) É um MODAL do sistema, nunca
+   * `confirm()`: o navegador oferece "bloquear caixas de diálogo" e,
+   * bloqueadas, o gesto simplesmente não acontecia — sem erro nenhum.
+   * O percentual já vai junto, escondido; escolher "Concluída" devolve a
+   * barra aos 100% (o servidor ignora o percentual rebaixado); fechar sem
+   * salvar desfaz o ajuste (quem chama devolve a barra ao valor do servidor).
    */
   modalStatusAcao(acaoId, progresso, statusAtual, aoGravar) {
-    const chegou = Number(progresso) === 100;
     Modal.abrir({
-      titulo: chegou ? 'A ação chegou aos 100%' : 'A ação saiu dos 100%',
+      titulo: 'A ação saiu dos 100%',
       url: `/api/desdobramentos/${acaoId}/progresso`,
-      valores: { planejamento_id: this.plan.id, progresso,
-        status: chegou ? 'CONCLUIDO' : 'EM_ANDAMENTO' },
+      valores: { planejamento_id: this.plan.id, progresso, status: 'EM_ANDAMENTO' },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'progresso', rotulo: '', tipo: 'hidden' },
         { nome: 'status', rotulo: `Com ${progresso}%, em que status a ação fica?`,
           tipo: 'select', opcoes: this.opcoesStatusAcao(statusAtual),
-          ajuda: chegou
-            ? 'Concluída encerra a ação (a recorrente reabre na próxima data). Fechar sem salvar desfaz o ajuste da barra.'
-            : 'Ela estava concluída. Fechar sem salvar mantém tudo como estava.' },
+          ajuda: 'Ela estava concluída. Escolher "Concluída" mantém os 100%; fechar sem salvar mantém tudo como estava.' },
       ],
       aoSalvar: (r) => {
         if (aoGravar) aoGravar();

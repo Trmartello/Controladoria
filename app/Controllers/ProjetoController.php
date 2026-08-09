@@ -278,6 +278,26 @@ class ProjetoController
 
         // Marca (ou limpa) a conclusão conforme o status final
         $anterior = $id ? Database::um('SELECT * FROM desdobramento WHERE id = ?', [$id]) : null;
+
+        // Concluída é 100%: escolher o status Concluído leva a barra junto,
+        // guardando a posição de onde ela saiu. Cancelar uma ação que está em
+        // 100% devolve a barra a essa posição, sem perguntar nada — cancelada
+        // exibindo 100% parece concluída, e não é.
+        $progressoAnterior = $anterior !== null && $anterior['progresso_anterior'] !== null
+            ? (int)$anterior['progresso_anterior'] : null;
+        if ($status === 'CONCLUIDO') {
+            if ($anterior !== null && (int)$anterior['progresso'] < 100) {
+                $progressoAnterior = (int)$anterior['progresso'];
+            }
+            $progresso = 100;
+        } elseif ($status === 'CANCELADO' && $progresso === 100) {
+            if ($progressoAnterior !== null) {
+                $progresso = $progressoAnterior;
+            }
+            $progressoAnterior = null;
+        } else {
+            $progressoAnterior = null;
+        }
         $concluidoEm = $status === 'CONCLUIDO'
             ? ($anterior['concluido_em'] ?? null) ?: date('Y-m-d H:i:s')
             : null;
@@ -292,6 +312,7 @@ class ProjetoController
                 $fim = $reagendou['data_fim'];
                 $status = $this->resolverStatus('NAO_INICIADO', $fim);
                 $progresso = 0;
+                $progressoAnterior = null;
                 $concluidoEm = null;
             }
         }
@@ -342,7 +363,7 @@ class ProjetoController
             $inicio, $fim,
             mb_substr(trim($d['onde'] ?? ''), 0, 120),
             $como,
-            $quanto, $status, $prioridade, $progresso, $concluidoEm, (int)($d['ordem'] ?? 0),
+            $quanto, $status, $prioridade, $progresso, $progressoAnterior, $concluidoEm, (int)($d['ordem'] ?? 0),
         ];
         if ($id) {
             $this->exigirDesdobramento($id, $planId);
@@ -350,7 +371,8 @@ class ProjetoController
                 'UPDATE desdobramento SET projeto_id = ?, iniciativa_id = ?, o_que = ?, por_que = ?, quem = ?,
                    quem_usuario_id = ?, recorrencia = ?, recorrencia_dia = ?, recorrencia_ate = ?,
                    quando_ = ?, data_inicio = ?, data_fim = ?, onde = ?, como = ?,
-                   quanto = ?, status = ?, prioridade = ?, progresso = ?, concluido_em = ?, ordem = ?
+                   quanto = ?, status = ?, prioridade = ?, progresso = ?, progresso_anterior = ?,
+                   concluido_em = ?, ordem = ?
                  WHERE id = ?',
                 [...$params, $id]
             );
@@ -358,8 +380,9 @@ class ProjetoController
             $id = (int)Database::executar(
                 'INSERT INTO desdobramento (projeto_id, iniciativa_id, o_que, por_que, quem, quem_usuario_id,
                    recorrencia, recorrencia_dia, recorrencia_ate, quando_,
-                   data_inicio, data_fim, onde, como, quanto, status, prioridade, progresso, concluido_em, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                   data_inicio, data_fim, onde, como, quanto, status, prioridade, progresso,
+                   progresso_anterior, concluido_em, ordem)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 $params
             );
             // Ação criada a partir de uma ideia da coleta ("Plano de ação"):
@@ -458,6 +481,13 @@ class ProjetoController
         $progresso = $this->arredondarProgresso((int)$d['progresso']);
         $acao = Database::um('SELECT * FROM desdobramento WHERE id = ?', [$id]);
 
+        // A barra não conclui ação cancelada: chegar aos 100% nela é devolvido
+        // em silêncio pela tela, e esta recusa é o espelho no servidor —
+        // por código, para a tela DECIDIR sem casar texto.
+        if (!empty($d['concluir']) && $acao['status'] === 'CANCELADO') {
+            Json::erro('Ação cancelada não é concluída pela barra.', 409, 'ACAO_CANCELADA');
+        }
+
         // `status` opcional: é o pop-up de quem TIRA uma ação concluída dos
         // 100% — o gesto reabre a decisão do status, e a tela pergunta qual.
         // O automático passa pelo resolverStatus (a data-limite decide entre
@@ -473,8 +503,11 @@ class ProjetoController
         // Concluir — pelo `concluir` dos 100% ou por um status escolhido —
         // segue o MESMO caminho do formulário: concluido_em e, na recorrente,
         // o reagendamento. Um UPDATE cru de status pularia a regra da
-        // repetição: a ação "concluía" e nunca mais reabria. A confirmação é
-        // da tela; sem ela, grava só o percentual e o status fica como está.
+        // repetição: a ação "concluía" e nunca mais reabria.
+        // Os UPDATEs repetem a condição no WHERE (reserva atômica, como na
+        // Coleta): dois pedidos simultâneos de conclusão passariam ambos pelo
+        // SELECT lá de cima, e o segundo concluiria de novo — na recorrente,
+        // pulando uma ocorrência.
         $concluir = (!empty($d['concluir']) && $progresso === 100) || $statusNovo === 'CONCLUIDO';
         if ($concluir && $acao['status'] !== 'CONCLUIDO') {
             if (($acao['recorrencia'] ?? 'NENHUMA') !== 'NENHUMA') {
@@ -483,29 +516,47 @@ class ProjetoController
                     (int)$acao['recorrencia_dia'], $acao['recorrencia_ate'], $acao['data_fim']
                 );
                 if ($reagendou !== null) {
-                    Database::executar(
-                        'UPDATE desdobramento SET data_inicio = ?, data_fim = ?, status = ?,
-                           progresso = 0, concluido_em = NULL WHERE id = ?',
+                    if (Database::afetadas(
+                        "UPDATE desdobramento SET data_inicio = ?, data_fim = ?, status = ?,
+                           progresso = 0, progresso_anterior = NULL, concluido_em = NULL
+                         WHERE id = ? AND status <> 'CONCLUIDO' AND data_fim <=> ?",
                         [$reagendou['data_inicio'], $reagendou['data_fim'],
-                         $this->resolverStatus('NAO_INICIADO', $reagendou['data_fim']), $id]
-                    );
+                         $this->resolverStatus('NAO_INICIADO', $reagendou['data_fim']),
+                         $id, $acao['data_fim']]
+                    ) === 0) {
+                        Json::erro('A ação acabou de mudar por outra pessoa — recarregue a tela.', 409, 'ACAO_MUDOU');
+                    }
                     Json::ok(['progresso' => 0, 'reagendada_para' => $reagendou['data_fim']]);
                 }
             }
-            Database::executar(
-                "UPDATE desdobramento SET status = 'CONCLUIDO', progresso = ?,
-                   concluido_em = COALESCE(concluido_em, NOW()) WHERE id = ?",
-                [$progresso, $id]
-            );
-            Json::ok(['progresso' => $progresso, 'concluida' => true]);
+            // Concluída é 100% — inclusive quando a escolha veio do pop-up de
+            // saída (a barra volta aos 100). A posição de onde a barra saiu
+            // fica guardada: é para ela que um cancelamento devolve depois.
+            if (Database::afetadas(
+                "UPDATE desdobramento SET status = 'CONCLUIDO', progresso = 100,
+                   progresso_anterior = ?, concluido_em = COALESCE(concluido_em, NOW())
+                 WHERE id = ? AND status <> 'CONCLUIDO'",
+                [(int)$acao['progresso'] < 100 ? (int)$acao['progresso'] : $acao['progresso_anterior'], $id]
+            ) === 0) {
+                Json::erro('A ação acabou de mudar por outra pessoa — recarregue a tela.', 409, 'ACAO_MUDOU');
+            }
+            Json::ok(['progresso' => 100, 'concluida' => true]);
         }
 
-        if ($statusNovo !== null && $statusNovo !== 'CONCLUIDO') {
+        if ($statusNovo === 'CONCLUIDO') {
+            // Escolheu Concluído no pop-up, mas a ação JÁ está concluída: nada
+            // muda — e a resposta devolve os 100 para a barra voltar ao lugar.
+            Json::ok(['progresso' => 100, 'concluida' => true]);
+        }
+
+        if ($statusNovo !== null) {
             // Saiu da conclusão (ou trocou de situação): a marca de concluída
             // cai junto — concluído com data e status "Em andamento" é registro
-            // que mente para o relatório
+            // que mente para o relatório. A posição guardada também cai: quem
+            // escolheu o status acabou de escolher a posição da barra.
             Database::executar(
-                'UPDATE desdobramento SET progresso = ?, status = ?, concluido_em = NULL WHERE id = ?',
+                'UPDATE desdobramento SET progresso = ?, progresso_anterior = NULL,
+                   status = ?, concluido_em = NULL WHERE id = ?',
                 [$progresso, $statusNovo, $id]
             );
             Json::ok(['progresso' => $progresso, 'status' => $statusNovo]);

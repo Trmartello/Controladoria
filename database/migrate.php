@@ -165,6 +165,10 @@ garantirColuna($pdo, 'desdobramento', 'prioridade',
      ENUM('ALTA','MEDIA','BAIXA') NOT NULL DEFAULT 'MEDIA' AFTER status");
 garantirColuna($pdo, 'desdobramento', 'concluido_em',
     'ALTER TABLE desdobramento ADD COLUMN concluido_em DATETIME NULL AFTER progresso');
+// A barra em 100% conclui a ação e guarda aqui a posição de onde saiu;
+// cancelar depois devolve a barra a essa posição, sem perguntar nada
+garantirColuna($pdo, 'desdobramento', 'progresso_anterior',
+    'ALTER TABLE desdobramento ADD COLUMN progresso_anterior TINYINT NULL AFTER progresso');
 
 // Status manuais novos (pausada e aguardando validação) nas ações já existentes
 $tipoStatus = $pdo->query(
