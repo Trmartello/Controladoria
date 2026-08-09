@@ -8,38 +8,117 @@ namespace App\Services;
  * Concluir uma ocorrência não encerra a ação: ela reabre na próxima data
  * prevista. A regra é compartilhada pelo cadastro da ação e pelo diário de
  * bordo — os dois caminhos que marcam uma ação como concluída.
+ *
+ * A ação que se repete NÃO tem período digitado: quem diz quando ela vence é a
+ * grade (o dia da semana, ou um ou mais dias do mês), e as datas saem daqui.
+ * Gravar `data_fim` mesmo assim é o que mantém a recorrente dentro do atraso
+ * automático, dos avisos por e-mail e do prazo consolidado do projeto — os três
+ * leem a coluna, não a regra.
  */
 class Recorrencia
 {
     public const TIPOS = ['NENHUMA', 'SEMANAL', 'MENSAL'];
 
-    /** Próxima data depois de $base, seguindo o dia da semana/mês escolhido. */
-    public static function proxima(string $base, string $recorrencia, int $dia): ?string
+    /**
+     * Os dias da grade de uma ação, em ordem. O mensal aceita vários (CSV em
+     * `recorrencia_dias`); o semanal é sempre um. `recorrencia_dia` continua
+     * gravado com o primeiro dia e é o fallback das ações anteriores à coluna.
+     *
+     * @param array $acao linha de `desdobramento`
+     * @return int[]
+     */
+    public static function dias(array $acao): array
+    {
+        $csv = trim((string)($acao['recorrencia_dias'] ?? ''));
+        $recorrencia = (string)($acao['recorrencia'] ?? 'NENHUMA');
+        if ($csv !== '') {
+            return self::normalizarDias(array_map('intval', explode(',', $csv)), $recorrencia);
+        }
+        return ($acao['recorrencia_dia'] ?? null) !== null
+            ? self::normalizarDias([(int)$acao['recorrencia_dia']], $recorrencia)
+            : [];
+    }
+
+    /**
+     * Limpa a lista de dias: dentro da faixa do tipo, sem repetidos e em ordem.
+     * Ordenar importa — `proxima()` compara as datas candidatas e a lista ordenada
+     * mantém previsível o que é gravado no CSV.
+     *
+     * @param int[] $dias
+     * @return int[]
+     */
+    public static function normalizarDias(array $dias, string $recorrencia): array
+    {
+        $limite = $recorrencia === 'SEMANAL' ? 7 : 31;
+        $limpos = [];
+        foreach ($dias as $d) {
+            $d = (int)$d;
+            if ($d >= 1 && $d <= $limite) {
+                $limpos[$d] = $d;
+            }
+        }
+        ksort($limpos);
+        $limpos = array_values($limpos);
+        // Semanal é um dia só: o formulário não oferece mais de um, e aceitar
+        // vários aqui faria a tela e o cálculo discordarem
+        return $recorrencia === 'SEMANAL' ? array_slice($limpos, 0, 1) : $limpos;
+    }
+
+    /**
+     * Primeira ocorrência DEPOIS de $base, entre os dias da grade.
+     *
+     * @param int[] $dias
+     */
+    public static function proxima(string $base, string $recorrencia, array $dias): ?string
     {
         $d = \DateTimeImmutable::createFromFormat('!Y-m-d', $base);
-        if (!$d) {
+        $dias = self::normalizarDias($dias, $recorrencia);
+        if (!$d || !$dias) {
             return null;
         }
-        if ($recorrencia === 'SEMANAL') {
-            $alvo = max(1, min(7, $dia));
-            $atual = (int)$d->format('N');
-            $somar = ($alvo - $atual + 7) % 7;
-            return $d->modify('+' . ($somar === 0 ? 7 : $somar) . ' days')->format('Y-m-d');
-        }
-        if ($recorrencia === 'MENSAL') {
-            $alvo = max(1, min(31, $dia));
-            // O dia escolhido ainda pode estar à frente no próprio mês da base;
-            // só quando já passou é que a ocorrência cai no mês seguinte
-            $noMes = $d->setDate((int)$d->format('Y'), (int)$d->format('n'), min($alvo, (int)$d->format('t')));
-            if ($noMes > $d) {
-                return $noMes->format('Y-m-d');
+        $candidatas = [];
+        foreach ($dias as $dia) {
+            if ($recorrencia === 'SEMANAL') {
+                $somar = ($dia - (int)$d->format('N') + 7) % 7;
+                $candidatas[] = $d->modify('+' . ($somar === 0 ? 7 : $somar) . ' days')->format('Y-m-d');
+                continue;
             }
-            $mes = $d->modify('first day of next month');
-            $ultimo = (int)$mes->format('t');
-            return $mes->setDate((int)$mes->format('Y'), (int)$mes->format('n'), min($alvo, $ultimo))
-                ->format('Y-m-d');
+            if ($recorrencia === 'MENSAL') {
+                // O dia escolhido ainda pode estar à frente no próprio mês da
+                // base; só quando já passou é que a ocorrência cai no mês
+                // seguinte. Em mês curto, encosta no último dia.
+                $noMes = $d->setDate((int)$d->format('Y'), (int)$d->format('n'), min($dia, (int)$d->format('t')));
+                if ($noMes > $d) {
+                    $candidatas[] = $noMes->format('Y-m-d');
+                    continue;
+                }
+                $mes = $d->modify('first day of next month');
+                $candidatas[] = $mes
+                    ->setDate((int)$mes->format('Y'), (int)$mes->format('n'), min($dia, (int)$mes->format('t')))
+                    ->format('Y-m-d');
+            }
         }
-        return null;
+        if (!$candidatas) {
+            return null;
+        }
+        sort($candidatas);
+        return $candidatas[0]; // a mais próxima entre os dias marcados
+    }
+
+    /**
+     * A data de vencimento de uma ação que se repete: a primeira ocorrência que
+     * ainda não passou — contada a partir de ontem, para o dia de hoje valer.
+     * Devolve null quando a grade já ultrapassou o limite de `recorrencia_ate`.
+     *
+     * @param int[] $dias
+     */
+    public static function primeiraOcorrencia(array $dias, string $recorrencia, ?string $ate): ?string
+    {
+        $proxima = self::proxima(date('Y-m-d', strtotime('-1 day')), $recorrencia, $dias);
+        if ($proxima === null || ($ate !== null && $proxima > $ate)) {
+            return null;
+        }
+        return $proxima;
     }
 
     /**
@@ -47,34 +126,32 @@ class Recorrencia
      * Devolve null quando não há recorrência ou o limite (`recorrencia_ate`)
      * foi atingido — nesses casos a ação encerra de vez.
      *
-     * A ação pode estar atrasada há vários ciclos; por isso avança ocorrência
-     * a ocorrência até passar de hoje, senão reabriria já vencida.
+     * A ação pode estar atrasada há vários ciclos; por isso ancora na data mais
+     * recente entre o fim da ocorrência atual e hoje, senão reabriria vencida.
+     *
+     * @param int[] $dias
      */
     public static function reagendar(
         ?string $dataInicio,
         string $recorrencia,
-        ?int $dia,
+        array $dias,
         ?string $ate,
         ?string $fim
     ): ?array {
-        if ($recorrencia === 'NENHUMA' || !$dia) {
+        if ($recorrencia === 'NENHUMA' || !self::normalizarDias($dias, $recorrencia)) {
             return null;
         }
         $hoje = date('Y-m-d');
         $base = $fim ?: $hoje;
-        // As ocorrências formam uma grade fixa (dia da semana ou dia do mês),
-        // então a primeira que ainda não passou sai de uma conta só: basta
-        // ancorar na data mais recente entre o fim da ocorrência atual e hoje.
-        // Uma ação parada há anos reabre já na próxima data válida.
-        $proxima = self::proxima(max($base, $hoje), $recorrencia, $dia);
+        $proxima = self::proxima(max($base, $hoje), $recorrencia, $dias);
         if ($proxima === null || ($ate !== null && $proxima > $ate)) {
             return null;
         }
         // Mantém a mesma janela entre início e fim na próxima ocorrência
         $novoInicio = null;
         if ($dataInicio && $fim) {
-            $dias = (int)((new \DateTimeImmutable($fim))->diff(new \DateTimeImmutable($dataInicio))->days);
-            $novoInicio = (new \DateTimeImmutable($proxima))->modify("-{$dias} days")->format('Y-m-d');
+            $janela = (int)((new \DateTimeImmutable($fim))->diff(new \DateTimeImmutable($dataInicio))->days);
+            $novoInicio = (new \DateTimeImmutable($proxima))->modify("-{$janela} days")->format('Y-m-d');
         }
         return ['data_inicio' => $novoInicio, 'data_fim' => $proxima];
     }

@@ -541,9 +541,13 @@ const SecaoProjetos = {
     ].filter(Boolean).map(Modal.esc).join(' · ');
     const timeline = this.comentariosAbertos?.refTipo === 'DESDOBRAMENTO' && this.comentariosAbertos?.refId === a.id
       ? `<div id="comentarios-DESDOBRAMENTO-${a.id}" class="mt-2"></div>` : '';
+    // A mensal pode vencer em vários dias ("todo dia 5 e 20")
+    const diasMes = this.diasDaAcao(a);
     const repeticao = a.recorrencia === 'SEMANAL'
       ? `toda ${(DIAS_SEMANA.find(([v]) => v == a.recorrencia_dia) || [, ''])[1].toLowerCase()}`
-      : a.recorrencia === 'MENSAL' ? `todo dia ${a.recorrencia_dia}` : '';
+      : a.recorrencia === 'MENSAL' && diasMes.length
+        ? `todo dia ${diasMes.slice(0, -1).join(', ')}${diasMes.length > 1 ? ' e ' : ''}${diasMes.at(-1)}`
+        : '';
     // Cinco linhas: situação+progresso+seta, o quê, como, metadados e o rodapé
     // de botões. As três últimas ficam atrás da seta.
     const chave = `acao-${a.id}`;
@@ -1346,14 +1350,23 @@ const SecaoProjetos = {
       // antigos seguem preservados nos campos ocultos
       { nome: 'por_que', rotulo: '', tipo: 'hidden' },
       { nome: 'onde', rotulo: '', tipo: 'hidden' },
+      // Os dois campos de texto da ação crescem com o que está sendo escrito
+      // até 5 linhas; passando disso rolam por dentro, e a alça do canto
+      // estica quando a pessoa quiser mais espaço
       { nome: 'o_que', rotulo: 'O quê?', obrigatorio: true, tipo: 'textarea', linhas: 2,
-        exemplo: 'Ex.: Contratar projeto executivo dos silos' },
-      { nome: 'como', rotulo: 'Como?', obrigatorio: true },
+        maxLinhas: 5, exemplo: 'Ex.: Contratar projeto executivo dos silos' },
+      { nome: 'como', rotulo: 'Como?', obrigatorio: true, tipo: 'textarea', linhas: 2,
+        maxLinhas: 5, exemplo: 'Ex.: Concorrência entre três projetistas' },
       { nome: 'quem', rotulo: 'Quem?', tipo: 'selecao_livre', opcoes: this.responsaveis,
         obrigatorio: true, vazio: '(selecione o responsável)',
         ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
       { nome: 'quando_', rotulo: '', tipo: 'hidden' },
+      // "Quando?" só existe para a ação que NÃO se repete: quando ela repete,
+      // quem diz a data de vencimento é a grade da repetição (o dia da semana,
+      // ou os dias do mês), e o servidor a calcula. Ter os dois na tela fazia
+      // o usuário digitar um "fim previsto" que a primeira conclusão descartava.
       { nome: 'quando_periodo', rotulo: 'Quando?', tipo: 'periodo', obrigatorio: true,
+        visivelSe: { campo: 'recorrencia', valores: ['NENHUMA'] },
         campos: [
           { nome: 'data_inicio', rotulo: 'Início' },
           { nome: 'data_fim', rotulo: 'Fim previsto' },
@@ -1376,13 +1389,14 @@ const SecaoProjetos = {
       ], ajuda: 'Ao concluir, reabre na próxima data.' },
       { nome: 'quanto', rotulo: 'Quanto custa? (R$)', tipo: 'number', min: 0,
         linha: 'repeticao-custo', ajuda: 'Só números.' },
+      // Mensal aceita mais de um dia (ex.: todo dia 5 e 20) e por isso a grade
+      // ocupa a largura inteira, fora da linha compartilhada
+      { nome: 'recorrencia_dias_mes', rotulo: 'Repete nos dias', tipo: 'dias_mes',
+        visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
+        ajuda: 'Marque um ou mais dias. Em meses curtos, cai no último dia do mês.' },
       { nome: 'recorrencia_dia_semana', rotulo: 'Repete toda', tipo: 'select', linha: 'repeticao-detalhe',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
         opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo })) },
-      { nome: 'recorrencia_dia_mes', rotulo: 'Repete todo dia', tipo: 'select', linha: 'repeticao-detalhe',
-        visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
-        opcoes: Array.from({ length: 31 }, (_, i) => ({ valor: i + 1, rotulo: String(i + 1) })),
-        ajuda: 'Em meses curtos, cai no último dia.' },
       { nome: 'recorrencia_ate', rotulo: 'Repetir até', tipo: 'date', linha: 'repeticao-detalhe',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
         ajuda: 'Opcional — depois dela, encerra.' },
@@ -1394,22 +1408,42 @@ const SecaoProjetos = {
     ];
   },
 
+  /**
+   * Os dias da grade de repetição de uma ação. `recorrencia_dias` é o CSV do
+   * mensal com vários dias; `recorrencia_dia` é o fallback das ações criadas
+   * antes de a coluna existir — sem ele, editar uma ação mensal antiga abriria
+   * o formulário com nenhum dia marcado e o salvamento seria recusado.
+   */
+  diasDaAcao(dd) {
+    const csv = String(dd?.recorrencia_dias ?? '').trim();
+    if (csv) return csv.split(',').map(Number).filter(Boolean);
+    return dd?.recorrencia_dia ? [Number(dd.recorrencia_dia)] : [];
+  },
+
   /** Valores iniciais de uma ação que ainda não existe. */
   valoresNovaAcao() {
     return {
       progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO', recorrencia: 'NENHUMA',
-      recorrencia_dia_semana: 1, recorrencia_dia_mes: 1,
+      recorrencia_dia_semana: 1, recorrencia_dias_mes: [],
     };
   },
 
-  /** O dia enviado depende do tipo de repetição escolhido. */
+  /**
+   * A grade de dias enviada depende do tipo de repetição: um dia da semana, um
+   * ou mais dias do mês, ou nenhum. As datas da ação que se repete NÃO vão no
+   * corpo — quem as calcula é o servidor, a partir da grade; mandá-las daqui
+   * gravaria o período escondido do formulário, que é justamente o que não vale
+   * mais para ela.
+   */
   transformarAcao(dados) {
-    const { recorrencia_dia_semana: sem, recorrencia_dia_mes: mes, ...resto } = dados;
-    return {
-      ...resto,
-      recorrencia_dia: resto.recorrencia === 'SEMANAL' ? Number(sem)
-        : resto.recorrencia === 'MENSAL' ? Number(mes) : null,
-    };
+    const { recorrencia_dia_semana: sem, recorrencia_dias_mes: mes, ...resto } = dados;
+    if (resto.recorrencia === 'SEMANAL') {
+      return { ...resto, data_inicio: '', data_fim: '', recorrencia_dias: [Number(sem)] };
+    }
+    if (resto.recorrencia === 'MENSAL') {
+      return { ...resto, data_inicio: '', data_fim: '', recorrencia_dias: (mes || []).map(Number) };
+    }
+    return { ...resto, recorrencia_dias: [], recorrencia_ate: '' };
   },
 
   modalDesdobramento(projetoId, dd, iniciativaId = null) {
@@ -1422,7 +1456,7 @@ const SecaoProjetos = {
             recorrencia: dd.recorrencia || 'NENHUMA',
             recorrencia_ate: dd.recorrencia_ate ?? '',
             recorrencia_dia_semana: dd.recorrencia === 'SEMANAL' ? dd.recorrencia_dia : 1,
-            recorrencia_dia_mes: dd.recorrencia === 'MENSAL' ? dd.recorrencia_dia : 1 }
+            recorrencia_dias_mes: dd.recorrencia === 'MENSAL' ? this.diasDaAcao(dd) : [] }
         : { planejamento_id: this.plan.id, projeto_id: projetoId, iniciativa_id: iniciativaId,
             ...this.valoresNovaAcao() },
       transformar: (dados) => this.transformarAcao(dados),

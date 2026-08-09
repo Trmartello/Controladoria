@@ -167,11 +167,12 @@ CREATE TABLE IF NOT EXISTS swot_cruzamento (
   CONSTRAINT fk_cruz_interno FOREIGN KEY (fator_interno_id) REFERENCES fator(id) ON DELETE CASCADE,
   CONSTRAINT fk_cruz_externo FOREIGN KEY (fator_externo_id) REFERENCES fator(id) ON DELETE CASCADE,
   CONSTRAINT fk_cruz_autor FOREIGN KEY (criado_por) REFERENCES usuario(id),
-  CONSTRAINT fk_cruz_acao_por FOREIGN KEY (acao_por) REFERENCES usuario(id),
-  -- SET NULL, como no fator: apagada a ação, o cruzamento volta sozinho para a
-  -- fila de "aguardando plano de ação" em vez de apontar para o que não existe.
-  CONSTRAINT fk_cruz_desdobramento FOREIGN KEY (desdobramento_id)
-    REFERENCES desdobramento(id) ON DELETE SET NULL
+  CONSTRAINT fk_cruz_acao_por FOREIGN KEY (acao_por) REFERENCES usuario(id)
+  -- A FK de `desdobramento_id` (SET NULL, como no fator: apagada a ação, o
+  -- cruzamento volta sozinho para a fila de "aguardando plano de ação") mora no
+  -- migrate, em `garantirFk`. Aqui ela quebrava a instalação NOVA: `desdobramento`
+  -- só é criada mais abaixo neste arquivo, e o CREATE TABLE morria com
+  -- "Foreign key constraint is incorrectly formed" antes de chegar lá.
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS cascata_escolha (
@@ -270,6 +271,7 @@ CREATE TABLE IF NOT EXISTS desdobramento (
   quem_usuario_id INT NULL,
   recorrencia     ENUM('NENHUMA','SEMANAL','MENSAL') NOT NULL DEFAULT 'NENHUMA',
   recorrencia_dia TINYINT NULL,
+  recorrencia_dias VARCHAR(100) NULL,
   recorrencia_ate DATE NULL,
   status       ENUM('NAO_INICIADO','EM_ANDAMENTO','CONCLUIDO','ATRASADO','CANCELADO','PAUSADO','AGUARDANDO_VALIDACAO') NOT NULL DEFAULT 'NAO_INICIADO',
   prioridade   ENUM('ALTA','MEDIA','BAIXA') NOT NULL DEFAULT 'MEDIA',

@@ -248,33 +248,71 @@ class ProjetoController
         $progresso = $this->arredondarProgresso((int)($d['progresso'] ?? 0));
         $quanto = ($d['quanto'] ?? '') !== '' && $d['quanto'] !== null ? (float)$d['quanto'] : null;
 
-        [$inicio, $fim] = $this->periodo($d);
-        if ($inicio === null || $fim === null) {
-            Json::erro('Informe o período da ação (Quando?) — início e fim previsto.');
-        }
-        $status = $this->resolverStatus($status, $fim);
-
-        // Repetição da ação (ex.: toda segunda-feira, ou todo dia 5)
+        // Repetição da ação (ex.: toda segunda-feira, ou todo dia 5 e 20)
         $recorrencia = $d['recorrencia'] ?? 'NENHUMA';
         if (!in_array($recorrencia, self::RECORRENCIAS, true)) {
             Json::erro('Repetição inválida.');
-        }
-        $recDia = $recorrencia === 'NENHUMA' ? null : (int)($d['recorrencia_dia'] ?? 0);
-        if ($recorrencia !== 'NENHUMA') {
-            $limite = $recorrencia === 'SEMANAL' ? 7 : 31;
-            if ($recDia < 1 || $recDia > $limite) {
-                Json::erro($recorrencia === 'SEMANAL'
-                    ? 'Escolha o dia da semana da repetição.'
-                    : 'Escolha o dia do mês da repetição.');
-            }
-            if ($fim === null) {
-                Json::erro('Ação que se repete precisa de uma data de fim — é dela que sai a próxima data.');
-            }
         }
         $recAte = null;
         if ($recorrencia !== 'NENHUMA' && trim((string)($d['recorrencia_ate'] ?? '')) !== '') {
             [$recAte] = $this->periodo(['data_inicio' => $d['recorrencia_ate']]);
         }
+
+        // Quem manda no prazo depende da repetição, e é por isso que o
+        // formulário mostra um OU outro: sem repetição, o período é digitado e
+        // obrigatório; com repetição, quem diz quando a ação vence é a grade de
+        // dias, e o período sai dela — pedir as duas coisas deixaria a tela
+        // aceitar um "fim previsto" que a primeira conclusão jogaria fora.
+        $recDias = [];
+        [$inicio, $fim] = $this->periodo($d);
+        if ($recorrencia === 'NENHUMA') {
+            if ($inicio === null || $fim === null) {
+                Json::erro('Informe o período da ação (Quando?) — início e fim previsto.');
+            }
+        } else {
+            $recDias = Recorrencia::normalizarDias(
+                is_array($d['recorrencia_dias'] ?? null) ? $d['recorrencia_dias'] : [$d['recorrencia_dia'] ?? 0],
+                $recorrencia
+            );
+            if (!$recDias) {
+                Json::erro($recorrencia === 'SEMANAL'
+                    ? 'Escolha o dia da semana da repetição.'
+                    : 'Escolha ao menos um dia do mês para a repetição.');
+            }
+            // A ação recorrente que já está em dia mantém o vencimento que tem:
+            // salvar uma correção de texto não pode empurrar o prazo dela. Só
+            // recalcula quando a data venceu, sumiu, ou saiu da grade nova.
+            $venceEm = $anteriorRec = null;
+            if ($id) {
+                $anteriorRec = Database::um(
+                    'SELECT data_inicio, data_fim, recorrencia, recorrencia_dia, recorrencia_dias
+                     FROM desdobramento WHERE id = ?',
+                    [$id]
+                );
+            }
+            if ($anteriorRec !== null
+                && $anteriorRec['data_fim'] !== null
+                && $anteriorRec['data_fim'] >= date('Y-m-d')
+                && $anteriorRec['recorrencia'] === $recorrencia
+                && Recorrencia::dias($anteriorRec) === $recDias
+                && ($recAte === null || $anteriorRec['data_fim'] <= $recAte)
+            ) {
+                $venceEm = $anteriorRec['data_fim'];
+                $inicio = $anteriorRec['data_inicio'];
+            } else {
+                $venceEm = Recorrencia::primeiraOcorrencia($recDias, $recorrencia, $recAte);
+                if ($venceEm === null) {
+                    Json::erro('A repetição termina antes da próxima ocorrência — ajuste o "Repetir até".');
+                }
+                $inicio = date('Y-m-d');
+            }
+            $fim = $venceEm;
+            if ($inicio > $fim) {
+                $inicio = $fim;
+            }
+        }
+        $recDia = $recDias ? $recDias[0] : null;
+        $status = $this->resolverStatus($status, $fim);
 
         // Marca (ou limpa) a conclusão conforme o status final
         $anterior = $id ? Database::um('SELECT * FROM desdobramento WHERE id = ?', [$id]) : null;
@@ -306,7 +344,7 @@ class ProjetoController
         $reagendou = null;
         if ($status === 'CONCLUIDO' && $recorrencia !== 'NENHUMA'
             && ($anterior === null || $anterior['status'] !== 'CONCLUIDO')) {
-            $reagendou = Recorrencia::reagendar($inicio, $recorrencia, $recDia, $recAte, $fim);
+            $reagendou = Recorrencia::reagendar($inicio, $recorrencia, $recDias, $recAte, $fim);
             if ($reagendou !== null) {
                 $inicio = $reagendou['data_inicio'];
                 $fim = $reagendou['data_fim'];
@@ -358,7 +396,7 @@ class ProjetoController
         $params = [
             $projetoId, $iniciativaId, $oQue, trim($d['por_que'] ?? ''),
             $quem, $this->usuarioPorNome($quem, $plan),
-            $recorrencia, $recDia, $recAte,
+            $recorrencia, $recDia, $recDias ? implode(',', $recDias) : null, $recAte,
             mb_substr(trim($d['quando_'] ?? ''), 0, 60),
             $inicio, $fim,
             mb_substr(trim($d['onde'] ?? ''), 0, 120),
@@ -369,8 +407,8 @@ class ProjetoController
             $this->exigirDesdobramento($id, $planId);
             Database::executar(
                 'UPDATE desdobramento SET projeto_id = ?, iniciativa_id = ?, o_que = ?, por_que = ?, quem = ?,
-                   quem_usuario_id = ?, recorrencia = ?, recorrencia_dia = ?, recorrencia_ate = ?,
-                   quando_ = ?, data_inicio = ?, data_fim = ?, onde = ?, como = ?,
+                   quem_usuario_id = ?, recorrencia = ?, recorrencia_dia = ?, recorrencia_dias = ?,
+                   recorrencia_ate = ?, quando_ = ?, data_inicio = ?, data_fim = ?, onde = ?, como = ?,
                    quanto = ?, status = ?, prioridade = ?, progresso = ?, progresso_anterior = ?,
                    concluido_em = ?, ordem = ?
                  WHERE id = ?',
@@ -379,10 +417,10 @@ class ProjetoController
         } else {
             $id = (int)Database::executar(
                 'INSERT INTO desdobramento (projeto_id, iniciativa_id, o_que, por_que, quem, quem_usuario_id,
-                   recorrencia, recorrencia_dia, recorrencia_ate, quando_,
+                   recorrencia, recorrencia_dia, recorrencia_dias, recorrencia_ate, quando_,
                    data_inicio, data_fim, onde, como, quanto, status, prioridade, progresso,
                    progresso_anterior, concluido_em, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 $params
             );
             // Ação criada a partir de uma ideia da coleta ("Plano de ação"):
@@ -513,7 +551,7 @@ class ProjetoController
             if (($acao['recorrencia'] ?? 'NENHUMA') !== 'NENHUMA') {
                 $reagendou = Recorrencia::reagendar(
                     $acao['data_inicio'], $acao['recorrencia'],
-                    (int)$acao['recorrencia_dia'], $acao['recorrencia_ate'], $acao['data_fim']
+                    Recorrencia::dias($acao), $acao['recorrencia_ate'], $acao['data_fim']
                 );
                 if ($reagendou !== null) {
                     if (Database::afetadas(

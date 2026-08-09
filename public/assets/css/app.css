@@ -2043,6 +2043,56 @@ tr.card-destacado > td { background: #e8f5ee; }
 }
 #modal-form #modal-campos textarea.form-control { min-height: 5rem; }
 
+/* Campo de texto com teto de linhas (o "O quê?" e o "Como?" do plano de ação):
+   a altura é do JS, que a recalcula a cada tecla até o teto e depois rola por
+   dentro. Por isso ele sai do flex-grow — esticado pelo flex, a medida do JS
+   não teria efeito nenhum. `resize: vertical` mantém a alça do canto inferior
+   direito para quem quiser um pouco mais de espaço; a partir do arraste, o
+   tamanho é de quem escreve e o JS para de mexer. */
+#modal-form #modal-campos textarea[data-max-linhas],
+#modal-form #modal-campos > div:has(textarea[data-max-linhas]) > .campo-voz,
+#modal-form #modal-campos > div:has(textarea[data-max-linhas]) > textarea[data-max-linhas] {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+#modal-form #modal-campos textarea[data-max-linhas] {
+  resize: vertical;
+  overflow-y: hidden;
+}
+#modal-form #modal-campos > div:has(textarea[data-max-linhas]) { flex: 0 0 auto; }
+
+/* Dias do mês da repetição: grade de 7 colunas, como um calendário. O toque
+   cresce por dimensão real (nunca por ::after sobreposto) — no celular os
+   quadrados vizinhos se cobririam e o toque na fronteira iria para o dia
+   errado. */
+.grade-dias {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: .25rem;
+}
+.btn-dia {
+  --bs-btn-focus-shadow-rgb: 0, 122, 69;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0;
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--verde-coperdia);
+  background: #fff;
+  border: 1px solid var(--verde-coperdia);
+  border-radius: .375rem;
+}
+.btn-check:checked + .btn-dia {
+  color: #fff;
+  background: var(--verde-coperdia);
+  border-color: var(--verde-coperdia);
+}
+.btn-check:focus-visible + .btn-dia {
+  box-shadow: 0 0 0 .25rem rgba(0, 122, 69, .25);
+}
+
 /* No celular todo modal ocupa a tela inteira; o campo de texto ou o bloco
    informativo cresce para preencher o espaço que sobrar */
 @media (max-width: 991.98px) {

@@ -122,12 +122,32 @@ const Modal = {
             <input type="date" class="form-control" id="campo-${s.nome}"
               value="${this.esc(valores[s.nome] ?? '')}">
           </div>`).join('');
-        controle = `<div class="grade-datas">${colunas}</div>`;
+        // O id vai no grupo (e não num dos dois campos) para o `visivelSe`
+        // alcançar o período inteiro: sem ele, esconder "Quando?" escondia só
+        // o rótulo e as duas datas continuavam na tela
+        controle = `<div class="grade-datas" id="${id}">${colunas}</div>`;
         break;
       }
       case 'textarea': {
-        const area = `<textarea class="form-control" id="${id}" rows="${c.linhas || 3}"${exemplo}>${this.esc(v)}</textarea>`;
+        // `maxLinhas` limita o crescimento automático; depois dele o texto
+        // rola por dentro e a alça do canto continua disponível para esticar
+        const teto = c.maxLinhas ? ` data-max-linhas="${Number(c.maxLinhas)}"` : '';
+        const area = `<textarea class="form-control campo-elastico" id="${id}" rows="${c.linhas || 3}"${teto}${exemplo}>${this.esc(v)}</textarea>`;
         controle = this.suporteVoz ? `<div class="campo-voz">${area}${this.botaoDitar(id)}</div>` : area;
+        break;
+      }
+      case 'dias_mes': {
+        // Grade de 31 dias marcáveis: no mensal a ação pode vencer em mais de
+        // um dia. Grade, e não multiselect — a lista suspensa não tem Ctrl no
+        // celular, e 31 itens em coluna não cabem na tela.
+        const marcados = new Set((Array.isArray(v) ? v : String(v || '').split(','))
+          .map((x) => Number(x)).filter(Boolean));
+        const dias = Array.from({ length: 31 }, (_, i) => i + 1).map((dia) => `
+          <input type="checkbox" class="btn-check" id="${id}-${dia}" value="${dia}"
+            ${marcados.has(dia) ? 'checked' : ''}>
+          <label class="btn btn-dia" for="${id}-${dia}">${dia}</label>`).join('');
+        controle = `<div class="grade-dias" id="${id}" role="group"
+          aria-label="${this.esc(c.rotulo)}">${dias}</div>`;
         break;
       }
       case 'select': {
@@ -406,20 +426,74 @@ const Modal = {
   },
 
   /**
-   * O campo de texto acompanha o que está sendo escrito: cresce conforme o
-   * texto, até o teto de 60% da altura da tela. Passando disso, ele para de
-   * crescer e rola por dentro — senão o botão Salvar sairia do alcance.
+   * O campo de texto acompanha o que está sendo escrito: cresce e ENCOLHE
+   * conforme o texto, até o teto de linhas do campo (`maxLinhas`, padrão 60%
+   * da altura da tela). No teto ele para de crescer e rola por dentro — senão
+   * o botão Salvar sairia do alcance.
+   *
+   * Encolher exige zerar a altura antes de medir: `scrollHeight` nunca diminui
+   * enquanto o elemento estiver esticado por uma altura anterior, e apagar
+   * texto deixava o campo grande para sempre. Quem arrastou a alça manda: a
+   * altura escolhida à mão (`data-ajustado`) não é mais recalculada.
    */
   crescerTextarea(t) {
-    const teto = Math.round(window.innerHeight * 0.6);
-    if (t.scrollHeight <= t.clientHeight + 1) return;
+    if (t.dataset.ajustado) return;
+    const teto = t.dataset.maxLinhas
+      ? Math.round(Number(t.dataset.maxLinhas) * this.alturaLinha(t) + this.bordasVerticais(t))
+      : Math.round(window.innerHeight * 0.6);
+    const anterior = t.style.height;
+    t.style.height = 'auto';
     const alvo = Math.min(t.scrollHeight + 2, teto);
-    if (alvo > t.clientHeight) t.style.minHeight = `${alvo}px`;
+    t.style.height = anterior;
+    // Piso: a altura das `rows` declaradas, para o campo vazio não encolher
+    // abaixo do tamanho com que nasceu
+    t.style.height = `${Math.max(alvo, this.alturaMinima(t))}px`;
+    t.style.overflowY = t.scrollHeight > alvo + 1 ? 'auto' : 'hidden';
+    // A altura que o ajuste automático acabou de aplicar. É ela que o
+    // observador compara para saber se a mudança seguinte veio da alça (de
+    // quem escreve) ou daqui — sem esse registro, o próprio crescimento era
+    // lido como arraste e o campo congelava na primeira tecla.
+    t.dataset.hAuto = String(Math.round(t.getBoundingClientRect().height));
   },
 
+  alturaLinha(t) {
+    const lh = parseFloat(getComputedStyle(t).lineHeight);
+    return Number.isFinite(lh) ? lh : 20;
+  },
+
+  bordasVerticais(t) {
+    const c = getComputedStyle(t);
+    return parseFloat(c.paddingTop) + parseFloat(c.paddingBottom)
+      + parseFloat(c.borderTopWidth) + parseFloat(c.borderBottomWidth);
+  },
+
+  alturaMinima(t) {
+    return Math.round((Number(t.rows) || 1) * this.alturaLinha(t) + this.bordasVerticais(t));
+  },
+
+  /**
+   * Além de crescer sozinho, o campo pode ser esticado pela alça do canto
+   * inferior direito (o `resize` nativo do textarea). Arrastar a alça é uma
+   * decisão de quem escreve: a partir dela o campo para de se ajustar sozinho,
+   * senão a próxima tecla digitada desfaria o tamanho escolhido.
+   */
   ligarTextareasElasticas(raiz) {
-    raiz.querySelectorAll('textarea').forEach((t) =>
-      t.addEventListener('input', () => this.crescerTextarea(t)));
+    raiz.querySelectorAll('textarea').forEach((t) => {
+      t.addEventListener('input', () => this.crescerTextarea(t));
+      // O arraste da alça muda a altura sem disparar evento próprio; o
+      // observador é o único jeito de saber que ela mexeu. Altura diferente da
+      // que `crescerTextarea` registrou em `hAuto` só pode ter vindo da alça.
+      if (typeof ResizeObserver === 'function') {
+        const obs = new ResizeObserver(() => {
+          const esperada = Number(t.dataset.hAuto || 0);
+          const h = Math.round(t.getBoundingClientRect().height);
+          if (esperada && Math.abs(h - esperada) > 2) t.dataset.ajustado = '1';
+        });
+        obs.observe(t);
+        document.getElementById('modal-form')?.addEventListener('hidden.bs.modal',
+          () => obs.disconnect(), { once: true });
+      }
+    });
   },
 
   /** Pesquisa e contador das listas marcáveis. */
@@ -736,6 +810,9 @@ const Modal = {
         dados[c.nome] = marcado ? (marcado.value === '' || isNaN(marcado.value) ? marcado.value : Number(marcado.value)) : null;
       }
       else if (c.tipo === 'multiselect') dados[c.nome] = Array.from(el.selectedOptions).map((o) => o.value);
+      else if (c.tipo === 'dias_mes') {
+        dados[c.nome] = [...el.querySelectorAll('input:checked')].map((ch) => Number(ch.value));
+      }
       else if (c.tipo === 'lista_marcavel') {
         const marcados = [...el.querySelectorAll('input:checked')].map((ch) => ch.value);
         // `unico` devolve o valor, não a lista de um: quem consome é campo de

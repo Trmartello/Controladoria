@@ -170,6 +170,11 @@ garantirColuna($pdo, 'desdobramento', 'concluido_em',
 garantirColuna($pdo, 'desdobramento', 'progresso_anterior',
     'ALTER TABLE desdobramento ADD COLUMN progresso_anterior TINYINT NULL AFTER progresso');
 
+// Repetição mensal em vários dias do mês (CSV, ex.: "5,20"). `recorrencia_dia`
+// segue gravado com o primeiro dia: é o fallback das ações criadas antes daqui.
+garantirColuna($pdo, 'desdobramento', 'recorrencia_dias',
+    'ALTER TABLE desdobramento ADD COLUMN recorrencia_dias VARCHAR(100) NULL AFTER recorrencia_dia');
+
 // Status manuais novos (pausada e aguardando validação) nas ações já existentes
 $tipoStatus = $pdo->query(
     "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
