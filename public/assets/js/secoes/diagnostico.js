@@ -120,11 +120,14 @@ const Diag = {
    */
   observadoresCabecalho: {},
 
-  ligarCabecalhoFixo(el) {
+  ligarCabecalhoFixo(el, seletor = '[data-cabecalho-analise]') {
     // Mede o que GRUDA — no papel o cabeçalho vira `<thead>`, e na tela é ele
     // quem carrega o recuo e a sombra; medir só o bloco de dentro deixaria o
     // cabeçalho da coluna dez pixels alto demais, por cima do da análise.
-    const bloco = el.querySelector('[data-cabecalho-analise]');
+    // O seletor é parâmetro porque a tela de Projetos usa o mesmo mecanismo com
+    // outro bloco: quem gruda embaixo precisa saber a altura de quem está em
+    // cima, e essa altura só se sabe medindo.
+    const bloco = el.querySelector(seletor);
     const cab = bloco?.closest('thead') || bloco;
     if (!cab) return;
     const medir = () => {

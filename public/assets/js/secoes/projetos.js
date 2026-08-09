@@ -278,9 +278,14 @@ const SecaoProjetos = {
    * número no meio do texto de cada situação, e os números são justamente o que
    * se compara entre as linhas.
    */
-  conteudoPopover(acoes) {
+  conteudoPopover(acoes, extra = null) {
+    const linhaExtra = extra
+      ? `<div class="total-resumo"><span>${Modal.esc(extra[0])}</span><span>${Modal.esc(extra[1])}</span></div>`
+      : '';
     const total = (acoes || []).length;
-    if (!total) return '<div class="text-muted small">Nenhuma ação nesta frente ainda.</div>';
+    if (!total) {
+      return `<div class="text-muted small">Nenhuma ação aqui ainda.</div>${linhaExtra}`;
+    }
     const linhas = ORDEM_RESUMO
       .map((st) => [st, acoes.filter((a) => a.status === st).length])
       .filter(([, n]) => n > 0)
@@ -292,7 +297,7 @@ const SecaoProjetos = {
           <span class="qtd-status">${n} (${pct}%)</span>
         </div>`;
       }).join('');
-    return `${linhas}<div class="total-resumo"><span>Total</span><span>${total} ação(ões)</span></div>`;
+    return `${linhas}<div class="total-resumo"><span>Total</span><span>${total} ação(ões)</span></div>${linhaExtra}`;
   },
 
   /**
@@ -345,7 +350,6 @@ const SecaoProjetos = {
   blocoIniciativa(p, ini) {
     const acoes = ini.acoes || [];
     const feitas = acoes.filter((a) => a.status === 'CONCLUIDO').length;
-    const [rotIni, classeIni] = STATUS_INICIATIVA[ini.status] || [ini.status, 'text-bg-light'];
     const aberta = !this.iniciativasFechadas.has(ini.id);
     const cartoes = acoes.map((a) => this.cartaoAcao(p, ini, a)).join('');
     // Recolhida mostra só título e situação; o resto vai atrás da seta
@@ -362,13 +366,16 @@ const SecaoProjetos = {
         <span class="seta-iniciativa">${aberta ? '▾' : '▸'}</span>
         <strong class="small" data-popover-resumo="ini-${ini.id}"
           title="Situação das ações desta frente">${Modal.esc(ini.titulo)}</strong>
-        <!-- O resumo vem logo DEPOIS do nome, como no projeto um nível acima.
-             O ms-auto passou para o grupo da direita justamente para o título
-             deixar de esticar e empurrar os selos para longe do nome que eles
-             resumem. -->
-        ${this.resumoStatus(acoes)}
+        <!-- Só o ATRASO, como no projeto: a pergunta é a mesma nos dois níveis
+             e a distribuição inteira mora no popover do título, a um passar de
+             mouse. Cinco selos por frente numa tela com várias viravam parede.
+             O ms-auto está no grupo da direita para o título não esticar e
+             empurrar o selo para longe do nome que ele resume.
+             O selo de situação da frente ("Aberta") saiu daqui: a seta ao lado
+             do nome já diz se ela está aberta ou recolhida, e a situação
+             cadastrada segue no popover e no formulário de edição. -->
+        ${this.resumoStatus(acoes, ['ATRASADO'])}
         <span class="ms-auto d-flex align-items-center gap-2">
-          <span class="badge ${classeIni}">${rotIni}</span>
           ${this.botaoMais(chave, detalhado)}
         </span>
       </div>
@@ -385,7 +392,10 @@ const SecaoProjetos = {
               title="Excluir iniciativa" aria-label="Excluir iniciativa">×</button>` : ''}
         </div>
       </div>
-      <div class="acoes-iniciativa ${aberta ? '' : 'd-none'}">
+      <!-- O respiro no topo é para o primeiro cartão não nascer colado no
+           cabeçalho grudado — sem ele, o cartão e o título dividem a mesma
+           linha visual no instante em que a barra trava. -->
+      <div class="acoes-iniciativa pt-1 ${aberta ? '' : 'd-none'}">
         ${cartoes || '<div class="text-muted small">Nenhuma ação nesta iniciativa.</div>'}
       </div>
     </div>`;
@@ -503,8 +513,13 @@ const SecaoProjetos = {
     const conteudos = new Map();
     projetos.forEach((p) => {
       conteudos.set(`proj-${p.id}`, this.conteudoPopover(p.desdobramentos || []));
-      (p.iniciativas || []).forEach((ini) =>
-        conteudos.set(`ini-${ini.id}`, this.conteudoPopover(ini.acoes || [])));
+      (p.iniciativas || []).forEach((ini) => {
+        // A situação cadastrada da frente vem no rodapé do balão dela: saiu do
+        // cabeçalho a pedido, e sem lugar nenhum ela deixaria de existir na
+        // tela — só no formulário de edição.
+        const [rot] = STATUS_INICIATIVA[ini.status] || [ini.status];
+        conteudos.set(`ini-${ini.id}`, this.conteudoPopover(ini.acoes || [], ['Frente', rot]));
+      });
     });
 
     const cartoes = projetos.map((p) => {
@@ -638,6 +653,11 @@ const SecaoProjetos = {
     });
 
     this.ligarBotoesMais(el);
+    // O cabeçalho da FRENTE gruda logo abaixo do de Projetos, e para isso
+    // precisa saber a altura dele — medida a cada pintura, com ResizeObserver,
+    // porque o bloco quebra em duas ou três linhas conforme a largura. Um
+    // palpite em `rem` curto demais deixaria um cabeçalho por cima do outro.
+    Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos');
     this.ligarPopoversResumo(el, conteudos);
     this.aplicarDestaqueAcao(el);
 

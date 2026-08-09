@@ -941,6 +941,17 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   automático, os avisos e o painel. Consequência para quem for mexer: ação
   antiga sem "como" ou sem datas passa a exigir os dois na próxima vez que
   alguém abrir e salvar.
+- **O cabeçalho da FRENTE é o segundo degrau**: gruda logo abaixo do de
+  Projetos (`top: calc(var(--topo-app) + var(--altura-cabecalho))`, com a altura
+  do primeiro medida por `Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos')` —
+  o helper das análises ganhou o seletor como parâmetro). Três cuidados separam
+  "grudado" de "vazando": fundo **opaco** e igual ao do cartão (branco), margens
+  negativas cobrindo o recuo do bloco (senão sobra faixa transparente à esquerda
+  e o texto das ações passa por ali) e `z-index: 2`, abaixo do cabeçalho de
+  Projetos (3). O que **não** se faz é pôr `overflow: hidden` num ancestral para
+  "cortar" o conteúdo: qualquer ancestral com overflow vira o scrollport do
+  sticky, e o cabeçalho passa a grudar numa caixa que não rola — ou seja, nunca.
+  Quem esconde o que passa por baixo é o fundo opaco.
 - **O cabeçalho de Projetos gruda** abaixo da topbar (`.cabecalho-projetos`,
   `top: var(--topo-app)`, fundo sólido e `z-index: 3`, o mesmo mecanismo do
   cabeçalho da GUT): os três botões de nível são o controle que se usa LENDO a
@@ -958,12 +969,18 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   botão fica aceso** — melhor que um botão mentindo. Os acordeões chamam
   `pintarNiveis`: eles mexem no DOM sem recarregar a seção, e sem isso o grupo
   seguiria marcando "Ações" com as ações já escondidas.
-- **Resumo por situação** (`resumoStatus(acoes, apenas)`): no cabeçalho de cada
-  frente, um selo por situação PRESENTE, com a contagem e o percentual. No
-  **projeto** vai só o **atraso** (`apenas: ['ATRASADO']`): no nível de cima a
-  pergunta é uma — o que está fora do prazo e quanto isso é do total criado —, e
-  sete selos por projeto numa tela com vários viraria ruído. O denominador é
-  sempre o TOTAL do nível, mesmo com `apenas`.
+- **Resumo por situação** (`resumoStatus(acoes, apenas)`): nos cabeçalhos do
+  projeto **e** da frente vai só o **atraso** (`apenas: ['ATRASADO']`) — quantas
+  ações estão fora do prazo e quanto isso é do total daquele nível. A pergunta
+  do cabeçalho é uma só; a distribuição inteira mora no **popover do título**, a
+  um passar de mouse. O denominador é sempre o TOTAL do nível, mesmo com
+  `apenas`: no projeto, todas as ações (as frentes somadas); na frente, as dela
+  — as mesmas 2 atrasadas dão 33% num e 67% no outro, e trocar a base é defeito
+  invisível.
+  O cabeçalho da frente **não tem mais o selo de situação** ("Aberta"): a seta
+  ao lado do nome já diz se ela está aberta ou recolhida, e a situação cadastrada
+  passou para o rodapé do popover dela — tirada de lá, ela só existiria no
+  formulário de edição.
   A base do percentual é o nível em que ele está — no projeto, todas as ações
   (as frentes somadas); na frente, as dela. Trocar a base é defeito invisível:
   os selos continuam plausíveis dizendo outra coisa, e é o que a bateria guarda.

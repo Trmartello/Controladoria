@@ -368,7 +368,9 @@ async function provasResumoStatus(page, largura) {
       const textos = (raiz) => [...raiz.querySelectorAll('.selo-resumo')].map((x) => x.textContent.trim());
       const cabeca = c.querySelector('.projeto-cabeca');
       const frentes = [...c.querySelectorAll('.iniciativa-cabeca')].map((h) => ({
-        nome: h.querySelector('strong').textContent.trim(), selos: textos(h),
+        nome: h.querySelector('strong').textContent.trim(),
+        selos: textos(h),
+        badges: [...h.querySelectorAll('.badge')].map((x) => x.textContent.trim()),
       }));
       const titulo = cabeca.querySelector('strong').getBoundingClientRect();
       const primeiro = cabeca.querySelector('.selo-resumo').getBoundingClientRect();
@@ -403,18 +405,26 @@ async function provasResumoStatus(page, largura) {
     // vezes, uma delas sem o tamanho.
     t(`[${largura}] o cabeçalho do projeto tem UM selo só`, m.selosNoCabecalho === 1,
       `${m.selosNoCabecalho}`);
-    // Frente A tem 3: 2 atrasadas (67%) e 1 no prazo (33%).
+    // A frente mostra só o atraso, e o percentual é sobre as ações DELA:
+    // Frente A tem 3, 2 atrasadas = 67% (no projeto as mesmas 2 dão 33%).
     const a = m.frentes.find((f) => f.nome === 'Frente A');
     t(`[${largura}] o percentual da frente é sobre as ações DELA`,
-      a && a.selos.join(' | ') === 'Atrasada: 2 (67%) | No prazo: 1 (33%)', JSON.stringify(a));
+      a && a.selos.join(' | ') === 'Atrasada: 2 (67%)', JSON.stringify(a));
+    // Frente B não tem atraso nenhum: nenhum selo, e nem por isso ela some.
     const bb = m.frentes.find((f) => f.nome === 'Frente B');
-    t(`[${largura}] cada frente conta a própria carteira`,
-      bb && bb.selos.join(' | ') === 'Em andamento: 1 (33%) | No prazo: 1 (33%) | Concluída: 1 (33%)',
-      JSON.stringify(bb));
+    t(`[${largura}] frente sem atraso não mostra selo`, bb && bb.selos.length === 0, JSON.stringify(bb));
+    // A palavra "Aberta" saiu do cabeçalho: a seta ao lado do nome já diz se a
+    // frente está aberta ou recolhida.
+    t(`[${largura}] o cabeçalho da frente não tem mais o selo de situação`,
+      m.frentes.every((f) => f.badges.length === 0), JSON.stringify(m.frentes.map((f) => f.badges)));
     // Situação sem nenhuma ação não vira selo com zero: numa fila de sete, seis
     // zerados, o que importa se perde no meio.
     t(`[${largura}] situação sem ação nenhuma não aparece`,
       !m.frentes.some((f) => f.selos.some((x) => / 0 \(/.test(x))), JSON.stringify(m.frentes));
+    // O balão da frente é onde a distribuição inteira e a situação dela vivem
+    // agora — o cabeçalho ficou com uma informação só.
+    t(`[${largura}] a frente ainda tem popover com o resto`,
+      await page.evaluate((s2) => !!document.querySelector(`${s2} .iniciativa-cabeca [data-popover-resumo]`), sel));
     if (largura === 'desktop') {
       t(`[${largura}] o resumo fica ao lado do título`, m.naLinhaDoTitulo);
     } else {

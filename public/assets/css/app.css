@@ -1389,7 +1389,30 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   border-left: 3px solid var(--verde-coperdia);
   padding-left: .6rem;
 }
-.iniciativa-cabeca { cursor: pointer; padding: .15rem 0; }
+/* O cabeçalho da frente é o SEGUNDO degrau: gruda logo abaixo do cabeçalho de
+   Projetos, cuja altura é medida no JS (`--altura-cabecalho`).
+   Três cuidados que fazem a diferença entre "grudado" e "vazando":
+   • fundo 100% OPACO e igual ao do cartão (branco). Translúcido, os cartões de
+     ação apareceriam através dele enquanto passam por baixo;
+   • margens negativas cobrindo o recuo do bloco, senão sobra uma faixa
+     transparente à esquerda (onde mora o padding da `.iniciativa`) e o texto
+     das ações passa por ali;
+   • `z-index: 2` — acima dos cartões, abaixo do cabeçalho de Projetos (3), que
+     é quem tem de ficar por cima quando os dois se encontram.
+   O que NÃO se deve fazer aqui é pôr `overflow: hidden` em algum ancestral para
+   "cortar" o conteúdo: qualquer ancestral com overflow vira o scrollport do
+   sticky, e o cabeçalho passa a grudar numa caixa que não rola — ou seja,
+   nunca. Quem esconde o que passa por baixo é o fundo opaco. */
+.iniciativa-cabeca {
+  cursor: pointer;
+  position: sticky;
+  top: calc(var(--topo-app) + var(--altura-cabecalho, 0px));
+  z-index: 2;
+  background: #fff;
+  margin: 0 -.6rem;
+  padding: .25rem .6rem;
+  box-shadow: 0 .3rem .3rem -.3rem rgba(0, 0, 0, .18);
+}
 .projeto-cabeca { cursor: pointer; min-width: 0; }
 .seta-projeto { color: var(--verde-coperdia); font-weight: 700; margin-right: .15rem; }
 /* Panorama de execução (mesmo bloco no projeto e na iniciativa): a barra tem
