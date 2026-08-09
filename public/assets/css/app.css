@@ -1634,8 +1634,13 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
    pesquisa bonita no papel e inutilizável no dedo. */
 .filtro-acoes [data-filtro-texto] { width: 11rem; }
 @media (max-width: 575.98px) {
-  .filtro-acoes { flex: 1 1 100%; }
-  .filtro-acoes [data-filtro-texto] { width: auto; flex: 1 1 auto; }
+  /* A corrente inteira precisa poder encolher: a linha do cabeçalho é item
+     flex (min-width:auto trava no conteúdo) e o input, com base `auto`,
+     contribui com a largura intrínseca de ~20 caracteres — juntos empurravam
+     a tela 29px para o lado no celular. Base 0 + min-width 0 resolvem. */
+  .cabecalho-projetos > .d-flex { min-width: 0; }
+  .filtro-acoes { flex: 1 1 100%; min-width: 0; }
+  .filtro-acoes [data-filtro-texto] { width: auto; flex: 1 1 0; min-width: 0; }
 }
 
 /* Fila de "Aguardando plano de ação": texto à esquerda, selo de origem e botão
