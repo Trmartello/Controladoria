@@ -151,18 +151,24 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   quanto o texto ocupa) vai em `Modal.aoAparecer`, disparada no
   `shown.bs.modal` — com o modal escondido toda altura vale zero.
   Com **`maxLinhas`** o campo nasce COMPACTO (as `rows` declaradas), cresce até
-  esse teto e ali passa a rolar; e é `maxLinhas` que lhe dá o par de botões do
-  alto — o microfone e a **seta bidirecional** de ver mais/ver menos, que troca
-  o teto pelas mesmas 60% da tela. Eles ficam na **linha do rótulo**
-  (`.linha-rotulo` / `.campo-ferramentas`), nunca flutuando dentro do campo:
-  dentro, o espaço reservado para eles encurtaria TODAS as linhas do parágrafo,
-  não só a que passa atrás do ícone — num campo de uma linha no celular, dois
-  botões comem um sexto do que se lê. Sair de dentro resolveu de quebra a
-  disputa antiga pelo canto inferior direito, onde mora a alça de
-  redimensionar. O botão muda o TETO, nunca a altura: escrevê-la direto criaria
-  duas fontes para a mesma medida e a tecla seguinte desfaria a expansão. E ele
-  limpa o `data-ajustado`, senão não teria efeito nenhum em quem já esticou o
-  campo pela alça — que é justamente quem mais mexe nele.
+  esse teto e ali passa a rolar; e é `maxLinhas` que lhe dá a **seta de aumentar
+  o campo** (`.linha-rotulo` / `.campo-ferramentas`, no canto superior direito),
+  que troca o teto pelas mesmas 60% da tela. A seta é o MESMO caractere `▾`/`▴`
+  com que as frentes de trabalho e os projetos abrem e fecham um bloco
+  (`.seta-projeto`) — ícone próprio aqui ensinaria um segundo vocabulário para o
+  gesto que o sistema inteiro já escreve assim; e ela VIRA ao abrir, senão o
+  mesmo desenho diria as duas coisas.
+  O **microfone não sobe** com ela: fica dentro da caixa, no canto inferior
+  direito, como em todo campo de texto do sistema (decisão do cliente; um lugar
+  só neste formulário seria um segundo padrão). Ele desvia da alça de
+  redimensionar **pelo lado** (`right: 1.5rem`), não pela altura: subir era o que
+  se fazia antes e quebrou quando o campo passou a nascer com UMA linha — 1.6rem
+  de fundo mais 1.75rem de botão passam da altura inteira, e o microfone saía
+  por cima da borda.
+  O botão muda o TETO, nunca a altura: escrevê-la direto criaria duas fontes
+  para a mesma medida e a tecla seguinte desfaria a expansão. E ele limpa o
+  `data-ajustado`, senão não teria efeito nenhum em quem já esticou o campo pela
+  alça — que é justamente quem mais mexe nele.
   Duas armadilhas de medida já pagas: o Chrome conta o texto de **exemplo** no
   `scrollHeight`, então o campo nasce com duas linhas quando o exemplo quebra
   (é o certo — com o piso rígido, a segunda linha do exemplo ficaria escondida
@@ -887,11 +893,13 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   colunas, não a regra. Editar uma recorrente em dia não empurra o vencimento:
   ele só é recalculado quando a grade muda, porque avançar a grade é gesto da
   CONCLUSÃO, não do salvamento.
-  **`recorrencia_ate` é obrigatória** (pedido do cliente): repetição sem
-  término é repetição que ninguém encerra, e ela seguia reabrindo depois de o
-  motivo dela ter acabado. Consequência para quem for mexer: ação recorrente
-  antiga, cadastrada sem essa data, passa a exigi-la na próxima vez que alguém
-  abrir e salvar.
+  **`recorrencia_ate` é OPCIONAL** (decisão do cliente): em branco, a rotina é
+  por tempo INDETERMINADO — segue reabrindo até alguém encerrá-la. `null` é
+  exatamente o que `Recorrencia` lê como "sem limite", então a ausência não
+  precisa de tratamento em lugar nenhum. Data **escrita**, porém, continua tendo
+  de ser data: quem recusa é o `periodo()` do controller, e sem essa recusa um
+  texto que não parseia viraria um null silencioso — a rotina que alguém quis
+  limitar passaria a não acabar nunca, que é justamente o significado do vazio.
 - **Comentários com anexos** (`comentario` + `comentario_anexo`): sucederam o
   Diário de Bordo, que saiu do código. O registro continua datado e nunca
   sobrescrito; o que mudou é que agora carrega arquivo. O que o diário fazia
@@ -1031,12 +1039,13 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   de Execução)", com início e fim previsto; toda semana ou todo mês, aparecem as
   fichas dos dias e a data fim da repetição. Ter os dois na tela fazia o usuário
   preencher um "fim previsto" que a primeira conclusão descartava.
-  **Obrigatórios: o quê, como, quem, o período e — na rotina — a data fim da
-  repetição** — todos recusados em `ProjetoController::salvarDesdobramento`, não
-  só marcados na tela. Ação sem caminho e sem prazo não é plano, e o prazo é o
-  que alimenta o atraso automático, os avisos e o painel. Consequência para quem
-  for mexer: ação antiga sem "como", sem datas ou sem fim de repetição passa a
-  exigi-los na próxima vez que alguém abrir e salvar.
+  **Obrigatórios: o quê, como, quem e o período** — os quatro recusados em
+  `ProjetoController::salvarDesdobramento`, não só marcados na tela. Ação sem
+  caminho e sem prazo não é plano, e o prazo é o que alimenta o atraso
+  automático, os avisos e o painel. A data fim da repetição NÃO entra nessa
+  lista: em branco ela significa "sem prazo para terminar". Consequência para
+  quem for mexer: ação antiga sem "como" ou sem datas passa a exigi-los na
+  próxima vez que alguém abrir e salvar.
   **"Quanto custa?" virou "Ganhos previstos (R$)"** (pedido do cliente). A
   coluna continua sendo `quanto`: renomeá-la seria migração com alcance em todo
   o plano de ação para uma mudança de rótulo. Fica o aviso de que o SENTIDO

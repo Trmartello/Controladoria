@@ -124,11 +124,20 @@ import datetime
 a=datetime.date.fromisoformat('$VENCE'); b=datetime.date.fromisoformat('$PROX')
 print((b-a).days)" 2>/dev/null)
 afirma "a próxima ocorrência cai no OUTRO dia da grade, não sete dias depois" '^(3|4)$' "$AVANCO"
-# O fim da repetição é OBRIGATÓRIO (pedido do cliente): rotina sem término é
-# rotina que ninguém encerra. O asterisco na tela não recusa nada — quem recusa
-# é o servidor, e este mesmo endpoint recebe o direcionamento de uma ideia.
-R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Sem fim\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[2],\"recorrencia_ate\":\"\"}")
-afirma "recusa repetição sem data fim" 'data fim da repetição' "$R"
+# O fim da repetição é OPCIONAL (decisão do cliente): em branco, a rotina é por
+# tempo INDETERMINADO. A prova é o par — ela entra, e entra com `recorrencia_ate`
+# NULO. Gravar uma data qualquer no lugar do vazio (hoje, ou o fim do ciclo)
+# encerraria sozinha uma rotina que ninguém mandou encerrar.
+R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Rotina sem prazo\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[2],\"recorrencia_ate\":\"\"}")
+afirma "aceita repetição sem data fim" '"ok":true' "$R"
+SEMFIM=$(echo "$R" | id_de)
+R=$(get "/api/projetos?planejamento_id=1")
+afirma "a rotina sem prazo fica com recorrencia_ate nulo" "\"id\":$SEMFIM,.*\"recorrencia_ate\":null" "$R"
+# Mas data ESCRITA tem de ser data: sem esta recusa, um texto que não parseia
+# viraria um null silencioso — e a rotina que alguém quis limitar passaria a
+# não acabar nunca, que é justamente o significado do campo em branco.
+R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Fim torto\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[2],\"recorrencia_ate\":\"amanhã\"}")
+afirma "recusa data fim que não é data" 'Data inválida' "$R"
 R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Sem dia\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[],\"recorrencia_ate\":\"2027-12-31\"}")
 afirma "recusa semanal sem nenhum dia marcado" 'ao menos um dia da semana' "$R"
 R=$(post /api/desdobramentos "{$BASE_REP,\"o_que\":\"Dia inválido\",\"como\":\"x\",\"recorrencia\":\"SEMANAL\",\"recorrencia_dias\":[9],\"recorrencia_ate\":\"2027-12-31\"}")

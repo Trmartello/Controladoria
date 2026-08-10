@@ -2058,15 +2058,15 @@ tr.card-destacado > td { background: #e8f5ee; }
    não teria efeito nenhum. `resize: vertical` mantém a alça do canto inferior
    direito para quem quiser um pouco mais de espaço; a partir do arraste, o
    tamanho é de quem escreve e o JS para de mexer.
-   O microfone e o ver mais/ver menos dele NÃO ficam dentro do campo: moram na
-   linha do rótulo (`.linha-rotulo`). Flutuando sobre o texto, eles exigiriam
-   um `padding-right` reservado — e o recuo do parágrafo vale para TODAS as
-   linhas, não só para a que passa atrás do ícone: num campo de uma linha no
-   celular, os dois botões comeriam um sexto do que se consegue ler.
-   O segundo seletor abaixo existe por especificidade: o `:has(textarea)` da
-   regra anterior soma um tipo a mais e venceria o `[data-max-linhas]` sozinho,
-   devolvendo o `flex: 1 1 auto` que o cálculo do JS não consegue vencer. */
+   A seta de aumentar o campo mora na linha do rótulo (`.linha-rotulo`); o
+   MICROFONE não sobe com ela — ele fica dentro da caixa, no canto inferior
+   direito, como em todo campo de texto do sistema.
+   Os seletores repetidos abaixo existem por especificidade: o `:has(textarea)`
+   das regras anteriores soma um tipo a mais e venceria o `[data-max-linhas]`
+   sozinho, devolvendo o `flex: 1 1 auto` que o cálculo do JS não consegue
+   vencer. */
 #modal-form #modal-campos textarea[data-max-linhas],
+#modal-form #modal-campos > div:has(textarea[data-max-linhas]) > .campo-voz,
 #modal-form #modal-campos > div:has(textarea[data-max-linhas]) > textarea[data-max-linhas] {
   flex: 0 0 auto;
   min-height: 0;
@@ -2091,10 +2091,11 @@ tr.card-destacado > td { background: #e8f5ee; }
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: .1rem;
   flex-shrink: 0;
 }
-.btn-ferramenta {
+/* A seta usa a cor e o peso das setas de recolher do plano de ação
+   (`.seta-projeto`), e não um cinza de ícone: ela é o mesmo controle. */
+.campo-ferramentas .btn-expandir {
   --bs-btn-focus-shadow-rgb: 0, 122, 69;
   width: 1.75rem;
   height: 1.75rem;
@@ -2103,19 +2104,20 @@ tr.card-destacado > td { background: #e8f5ee; }
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 50%;
-  color: #8a939b;
+  border-radius: .25rem;
+  line-height: 1;
+  font-size: .9rem;
+  color: var(--verde-coperdia);
   background: transparent;
 }
 /* Duas classes e o :hover declarado: o `.btn:hover` do Bootstrap tem mais
    especificidade que uma classe só e zeraria cor e fundo. Mesma armadilha já
    paga em `.btn-dia` e em `.grupo-botoes .btn-opcao`. */
-.campo-ferramentas .btn-ferramenta:hover { color: #343a40; background: #e9ecef; }
-/* No dedo os dois botões crescem por DIMENSÃO REAL, nunca por um `::after`
-   sobreposto: eles são vizinhos, e áreas invisíveis que se cobrem mandam o
-   toque da fronteira para o botão errado — aqui, ditar em vez de expandir. */
+.campo-ferramentas .btn-expandir:hover { color: #005c34; background: #e9ecef; }
+/* No dedo o alvo cresce por DIMENSÃO REAL, nunca por um `::after` sobreposto:
+   área invisível sobre o campo de texto roubaria o toque de quem quer escrever. */
 @media (max-width: 991.98px) {
-  .btn-ferramenta { width: 2.25rem; height: 2.25rem; }
+  .campo-ferramentas .btn-expandir { width: 2.25rem; height: 2.25rem; font-size: 1rem; }
 }
 
 /* ===== Caixa de campos (a opção `caixa` de Modal.abrir) =====
@@ -2289,11 +2291,18 @@ tr.card-destacado > td { background: #e8f5ee; }
   z-index: 4;
 }
 .campo-voz > .btn-ditar:hover { color: #343a40; background: #e9ecef; }
-/* O campo com teto de linhas NÃO passa por aqui: o microfone dele mora na
-   linha do rótulo, junto do ver mais. Foi essa mudança que resolveu de vez a
-   disputa antiga pelo canto inferior direito — ali fica a alça de
-   redimensionar do navegador (~16px), e o botão de ditado, maior e por cima,
-   engolia o arraste que aumentaria o campo. */
+/* No campo que pode ser esticado à mão, o microfone desvia da alça PELO LADO,
+   e não subindo. A alça de redimensionar do navegador mora nos ~16px do canto
+   inferior direito, e o botão (28px, z-index acima) cobria justamente ela —
+   arrastar o canto ligava o ditado em vez de aumentar o campo.
+   Subir era o que se fazia antes, e quebrou quando o campo passou a nascer com
+   UMA linha: 1.6rem de fundo mais 1.75rem de botão dão mais que a altura
+   inteira do campo, e o microfone saía por cima da borda. Deslocado para a
+   esquerda ele continua no canto de baixo, em campo de qualquer altura. */
+.campo-voz:has(> textarea[data-max-linhas]) > .btn-ditar { right: 1.5rem; }
+/* O recuo do texto acompanha o botão deslocado, senão a última linha passa por
+   baixo dele. */
+.campo-voz > textarea[data-max-linhas].form-control { padding-right: 3.6rem; }
 .btn-ditar.gravando,
 .campo-voz > .btn-ditar.gravando {
   color: #fff;

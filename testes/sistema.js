@@ -26,13 +26,19 @@ const t = (nome, cond, extra = '') => (cond ? ok : bad).push(nome + (extra ? ` �
  */
 async function fecharModal(page) {
   const ate = Date.now() + 8000;
+  let quieto = 0;
   while (Date.now() < ate) {
-    const fechado = await page.evaluate(() => {
-      if (!document.getElementById('modal-form').classList.contains('show')) return true;
+    const aberto = await page.evaluate(() => {
+      if (!document.getElementById('modal-form').classList.contains('show')) return false;
       Modal.bsModal?.hide();
-      return false;
+      return true;
     });
-    if (fechado) return true;
+    // Fechado precisa PERMANECER fechado por alguns ciclos. Aceitar o primeiro
+    // "não está aberto" era a terceira armadilha: quando a espera pelo campo
+    // estourava, o modal ainda não tinha SUBIDO, o fechamento respondia "já
+    // está fechado" — e ele aparecia logo depois, para a prova seguinte.
+    quieto = aberto ? 0 : quieto + 1;
+    if (quieto >= 3) return true;
     await new Promise((r) => setTimeout(r, 150));
   }
   return false;
@@ -1021,7 +1027,7 @@ async function provasAcao(page, largura) {
       const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Repetição',
         'Selecione o dia da semana para repetir:',
         'Selecione o dia ou dias do mês em que haverá repetição:',
-        'Data fim da repetição *', 'Quando? (Prazo de Execução) *',
+        'Data fim da repetição', 'Quando? (Prazo de Execução) *',
         'Prioridade', 'Status', 'Ganhos previstos (R$)'];
       t(`${l} Campos da ação na ordem pedida`,
         JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
@@ -1124,12 +1130,37 @@ async function provasAcao(page, largura) {
           alturaLinha: Math.round(alturaLinha),
           teto5: Math.round(5 * alturaLinha + Modal.bordasVerticais(t1)),
           rolando: t1.scrollHeight > t1.clientHeight + 1,
-          mic: !!fer?.querySelector('.btn-ditar'),
-          expandir: !!fer?.querySelector('.btn-expandir'),
-          // "Canto superior direito": à direita do rótulo e acima do campo
-          aDireita: !!fer && r(fer).right > r(cabeca.querySelector('.form-label')).right,
-          acima: !!fer && r(fer).bottom <= r(t1).top + 1,
-          // A alça de redimensionar continua livre — o microfone saiu do canto
+          // A SETA fica na linha do rótulo, encostada à direita e acima do campo
+          seta: fer?.querySelector('.btn-expandir')?.textContent.trim(),
+          setaADireita: !!fer && r(fer).right > r(cabeca.querySelector('.form-label')).right,
+          setaAcima: !!fer && r(fer).bottom <= r(t1).top + 1,
+          // O MICROFONE fica DENTRO da caixa de texto, no canto inferior
+          // direito — o padrão de todo campo de texto do sistema. Nada de
+          // microfone na barra do rótulo.
+          micNaCaixa: !!t1.closest('.campo-voz')?.querySelector('.btn-ditar'),
+          micNaBarra: !!fer?.querySelector('.btn-ditar'),
+          micEmBaixo: (() => {
+            const b = t1.closest('.campo-voz')?.querySelector('.btn-ditar');
+            return !!b && r(b).bottom > r(t1).top + r(t1).height / 2
+              && r(b).right <= r(t1).right + 1;
+          })(),
+          // E NÃO cobre a alça de redimensionar, que mora nos ~16px do canto
+          // inferior direito: coberta, arrastar o canto ligava o ditado. A
+          // prova é a NÃO-sobreposição com esse quadrado — desviar dele pelo
+          // lado ou por cima serve igual, e amarrar a prova a um dos dois
+          // caminhos reprovaria o outro sem defeito nenhum na tela.
+          alcaLivre: (() => {
+            const b = t1.closest('.campo-voz')?.querySelector('.btn-ditar');
+            if (!b) return false;
+            const c = r(t1), a = { esq: c.right - 16, topo: c.bottom - 16 };
+            return r(b).right <= a.esq || r(b).bottom <= a.topo;
+          })(),
+          // E cabe INTEIRO dentro da caixa: elevá-lo num campo de uma linha o
+          // fazia transbordar por cima da borda de cima.
+          micDentro: (() => {
+            const b = t1.closest('.campo-voz')?.querySelector('.btn-ditar');
+            return !!b && r(b).top >= r(t1).top - 1 && r(b).bottom <= r(t1).bottom + 1;
+          })(),
           resize: getComputedStyle(t1).resize,
         };
       });
@@ -1146,21 +1177,28 @@ async function provasAcao(page, largura) {
         texto.compacto >= texto.umaLinha
         && texto.compacto <= texto.umaLinha + texto.alturaLinha
         && texto.compacto < texto.teto5 && !texto.rolando, JSON.stringify(texto));
-      t(`${l} microfone e ver mais ficam no canto superior direito do campo`,
-        texto.mic && texto.expandir && texto.aDireita && texto.acima, JSON.stringify(texto));
-      t(`${l} o campo mantém a alça de redimensionar`, texto.resize === 'vertical');
+      // A seta de aumentar o campo é a MESMA das frentes e dos projetos (▾/▴),
+      // e fica no canto superior direito, na linha do rótulo.
+      t(`${l} a seta de aumentar o campo fica no canto superior direito`,
+        texto.seta === '▾' && texto.setaADireita && texto.setaAcima, JSON.stringify(texto));
+      // O microfone é o padrão do sistema: DENTRO da caixa, no canto inferior
+      // direito. Foi de lá que ele saiu por engano, e é para lá que voltou.
+      t(`${l} o microfone fica dentro da caixa de texto, embaixo à direita`,
+        texto.micNaCaixa && !texto.micNaBarra && texto.micEmBaixo && texto.micDentro,
+        JSON.stringify(texto));
+      t(`${l} o microfone não cobre a alça de redimensionar`,
+        texto.alcaLivre && texto.resize === 'vertical', JSON.stringify(texto));
 
-      // O microfone MUDOU DE LUGAR (era um botão flutuando dentro do campo,
-      // agora mora na barra do rótulo). Existir na tela não prova que ele
-      // continua ligado no ditado: a prova é o toque acender e apagar.
+      // Existir na tela não prova que o botão continua ligado no ditado: a
+      // prova é o toque acender e apagar.
       const ditado = await page.evaluate(() => {
-        const b = document.querySelector('.campo-ferramentas .btn-ditar[data-alvo="campo-o_que"]');
+        const b = document.querySelector('.campo-voz .btn-ditar[data-alvo="campo-o_que"]');
         b.click();
         const ligado = b.classList.contains('gravando') && Modal.botaoGravando === b;
         b.click();
         return { ligado, desligado: !b.classList.contains('gravando') && !Modal.botaoGravando };
       });
-      t(`${l} o microfone continua ligado no ditado depois de mudar de lugar`,
+      t(`${l} o microfone dentro do campo liga e desliga o ditado`,
         ditado.ligado && ditado.desligado, JSON.stringify(ditado));
 
       // Cresce com o texto até o teto de cinco linhas, e ali passa a rolar
@@ -1171,19 +1209,25 @@ async function provasAcao(page, largura) {
         t1.dispatchEvent(new Event('input', { bubbles: true }));
         const cheio = Math.round(t1.getBoundingClientRect().height);
         const rola = t1.style.overflowY;
-        document.querySelector('.btn-expandir[data-alvo="campo-o_que"]').click();
+        const btn = document.querySelector('.btn-expandir[data-alvo="campo-o_que"]');
+        btn.click();
         const aberto = Math.round(t1.getBoundingClientRect().height);
-        const rotulo = document.querySelector('.btn-expandir[data-alvo="campo-o_que"]')
-          .getAttribute('aria-expanded');
-        document.querySelector('.btn-expandir[data-alvo="campo-o_que"]').click();
-        return { antes, cheio, aberto, rola, rotulo,
+        const marca = btn.getAttribute('aria-expanded');
+        const setaAberta = btn.textContent.trim();
+        btn.click();
+        return { antes, cheio, aberto, rola, marca, setaAberta,
+          setaFechada: btn.textContent.trim(),
           voltou: Math.round(t1.getBoundingClientRect().height) };
       });
       t(`${l} o campo cresce com o texto e para no teto de linhas`,
         crescer.cheio > crescer.antes && crescer.rola === 'auto', JSON.stringify(crescer));
-      t(`${l} o ver mais abre além do teto e o ver menos devolve`,
-        crescer.aberto > crescer.cheio && crescer.rotulo === 'true'
+      t(`${l} a seta aumenta o campo além do teto e devolve ao compacto`,
+        crescer.aberto > crescer.cheio && crescer.marca === 'true'
         && crescer.voltou === crescer.cheio, JSON.stringify(crescer));
+      // A seta VIRA ao aumentar: apontando para baixo ela cresce, para cima
+      // encolhe. Sem virar, o mesmo desenho diria as duas coisas.
+      t(`${l} a seta vira para cima com o campo aberto`,
+        crescer.setaAberta === '▴' && crescer.setaFechada === '▾', JSON.stringify(crescer));
 
       // ── Ganhos previstos: número e só número ────────────────────────────
       // Digitação de verdade (`type`), não `.value =`: é o `beforeinput` que

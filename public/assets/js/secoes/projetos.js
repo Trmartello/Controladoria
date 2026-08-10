@@ -1403,14 +1403,14 @@ const SecaoProjetos = {
         visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
         opcoes: Array.from({ length: 31 }, (_, i) => ({ valor: i + 1, rotulo: String(i + 1) })),
         ajuda: 'Clique nos números desejados para marcar os dias fixos de repetição mensal.' },
-      // O fim da repetição é OBRIGATÓRIO (pedido do cliente): rotina sem data
-      // de término é rotina que ninguém encerra, e ela seguia reabrindo depois
-      // de o motivo dela ter acabado. O filete acima separa "que dias" de "até
-      // quando" — são duas perguntas, e emendadas viravam uma lista só.
+      // O fim da repetição é OPCIONAL: em branco, a rotina não tem prazo para
+      // terminar — segue reabrindo até alguém encerrá-la. O filete acima separa
+      // "que dias" de "até quando": são duas perguntas, e emendadas viravam
+      // uma lista só.
       { nome: 'recorrencia_ate', rotulo: 'Data fim da repetição', tipo: 'date',
-        caixa: 'repeticao', obrigatorio: true, separador: true,
+        caixa: 'repeticao', separador: true,
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
-        ajuda: 'Até quando esta rotina de repetição deve continuar ocorrendo.' },
+        ajuda: 'Opcional — em branco, a repetição fica por tempo indeterminado.' },
       // O período digitado só existe para a ação que NÃO se repete: quando ela
       // repete, quem diz a data de vencimento é a grade acima, e o servidor a
       // calcula. Ter os dois na tela fazia o usuário digitar um "fim previsto"

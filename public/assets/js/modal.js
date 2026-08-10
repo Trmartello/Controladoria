@@ -16,13 +16,12 @@ const Modal = {
     + '<path d="M5 3a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V3z"/>'
     + '<path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z"/></svg>',
 
-  // Seta BIDIRECIONAL (Bootstrap Icons `arrows-expand`/`arrows-collapse`, MIT):
-  // ela diz num desenho só que o campo cresce e volta. Uma seta única diria
-  // metade, e o mesmo botão faz as duas coisas.
-  iconeExpandir: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
-    + '<path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 8zM7.646.146a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8 1.207 6.354 2.854a.5.5 0 1 1-.708-.708l2-2zM8 6a.5.5 0 0 0 .5-.5V3a.5.5 0 0 0-1 0v2.5A.5.5 0 0 0 8 6zm-.354 9.854a.5.5 0 0 0 .708 0l2-2a.5.5 0 0 0-.708-.708L8 14.793l-1.646-1.647a.5.5 0 0 0-.708.708l2 2zM8 10a.5.5 0 0 1 .5.5V13a.5.5 0 0 1-1 0v-2.5A.5.5 0 0 1 8 10z"/></svg>',
-  iconeRecolher: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
-    + '<path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 8zm7-8a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L7.5 4.293V.5A.5.5 0 0 1 8 0zm-.5 11.707-1.146 1.147a.5.5 0 0 1-.708-.708l2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 11.707V15.5a.5.5 0 0 1-1 0v-3.793z"/></svg>',
+  // Seta de aumentar/diminuir o campo: o MESMO caractere com que as frentes de
+  // trabalho e os projetos abrem e fecham um bloco (`.seta-projeto`,
+  // `.seta-iniciativa`). Um ícone próprio aqui ensinaria um segundo vocabulário
+  // para um gesto que o sistema inteiro já escreve assim.
+  setaExpandir: '▾',
+  setaRecolher: '▴',
 
   iconeOlhoRiscado: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
     + '<path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/>'
@@ -176,18 +175,13 @@ const Modal = {
         // rola por dentro e a alça do canto continua disponível para esticar
         const teto = c.maxLinhas ? ` data-max-linhas="${Number(c.maxLinhas)}"` : '';
         const area = `<textarea class="form-control campo-elastico" id="${id}" rows="${c.linhas || 3}"${teto}${exemplo}>${this.esc(v)}</textarea>`;
-        if (c.maxLinhas) {
-          // O campo com teto nasce COMPACTO, e por isso ganha o par de botões
-          // no alto: o microfone (ditar) e a seta bidirecional, que abre o
-          // texto inteiro e volta. Eles ficam na linha do rótulo e não
-          // flutuando dentro do campo — dentro, o espaço reservado para eles
-          // encurtaria TODAS as linhas do parágrafo, não só a primeira.
-          ferramentas = `<span class="campo-ferramentas">
-            ${this.suporteVoz ? this.botaoDitar(id, 'btn-ferramenta') : ''}
-            ${this.botaoExpandir(id)}</span>`;
-          controle = area;
-          break;
-        }
+        // O campo com teto nasce COMPACTO, e por isso ganha a seta de expandir
+        // na linha do rótulo — a MESMA seta com que as frentes de trabalho e os
+        // projetos abrem e fecham um bloco. O microfone NÃO sobe para lá: ele
+        // fica onde está em todo campo de texto do sistema, dentro da caixa e
+        // no canto inferior direito. Trocar o lugar dele só neste formulário
+        // ensinaria dois vocabulários para o mesmo gesto.
+        if (c.maxLinhas) ferramentas = `<span class="campo-ferramentas">${this.botaoExpandir(id)}</span>`;
         controle = this.suporteVoz ? `<div class="campo-voz">${area}${this.botaoDitar(id)}</div>` : area;
         break;
       }
@@ -434,15 +428,15 @@ const Modal = {
     return `<div class="${classe}">${cabeca}${controle}${ajuda}${nota}</div>`;
   },
 
-  botaoDitar(id, classe = '') {
-    return `<button class="btn btn-ditar${classe ? ` ${classe}` : ''}" type="button" data-alvo="${id}"
+  botaoDitar(id) {
+    return `<button class="btn btn-ditar" type="button" data-alvo="${id}"
       title="Ditar por voz" aria-label="Ditar por voz">${this.iconeMic}</button>`;
   },
 
   botaoExpandir(id) {
-    return `<button class="btn btn-ferramenta btn-expandir" type="button" data-alvo="${id}"
+    return `<button class="btn btn-expandir" type="button" data-alvo="${id}"
       aria-controls="${id}" aria-expanded="false"
-      title="Ver o texto inteiro" aria-label="Ver o texto inteiro">${this.iconeExpandir}</button>`;
+      title="Aumentar o campo" aria-label="Aumentar o campo">${this.setaExpandir}</button>`;
   },
 
   /**
@@ -633,9 +627,9 @@ const Modal = {
       delete campo.dataset.ajustado;
       campo.style.height = '';
       this.crescerTextarea(campo);
-      b.innerHTML = aberto ? this.iconeRecolher : this.iconeExpandir;
+      b.textContent = aberto ? this.setaRecolher : this.setaExpandir;
       b.setAttribute('aria-expanded', String(aberto));
-      b.title = aberto ? 'Voltar ao tamanho compacto' : 'Ver o texto inteiro';
+      b.title = aberto ? 'Diminuir o campo' : 'Aumentar o campo';
       b.setAttribute('aria-label', b.title);
     }));
   },

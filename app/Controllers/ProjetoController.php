@@ -266,20 +266,15 @@ class ProjetoController
         if (!in_array($recorrencia, self::RECORRENCIAS, true)) {
             Json::erro('Repetição inválida.');
         }
+        // A data de término é OPCIONAL (decisão do cliente): sem ela, a rotina é
+        // por tempo INDETERMINADO — segue reabrindo até alguém encerrá-la. Null
+        // é justamente o que `Recorrencia` lê como "sem limite", então a
+        // ausência não precisa de tratamento em lugar nenhum além deste `if`.
+        // Data ESCRITA continua tendo de ser data: quem recusa é o `periodo()`,
+        // com a mesma mensagem dos outros campos de data do formulário.
         $recAte = null;
-        if ($recorrencia !== 'NENHUMA') {
-            // A data de término é OBRIGATÓRIA na rotina (pedido do cliente):
-            // repetição sem fim é repetição que ninguém encerra, e ela seguia
-            // reabrindo depois de o motivo dela ter acabado. Consequência para
-            // quem for mexer: ação recorrente antiga, cadastrada sem essa data,
-            // passa a exigi-la na próxima vez que alguém abrir e salvar.
-            if (trim((string)($d['recorrencia_ate'] ?? '')) === '') {
-                Json::erro('Informe a data fim da repetição.');
-            }
+        if ($recorrencia !== 'NENHUMA' && trim((string)($d['recorrencia_ate'] ?? '')) !== '') {
             [$recAte] = $this->periodo(['data_inicio' => $d['recorrencia_ate']]);
-            if ($recAte === null) {
-                Json::erro('Data fim da repetição inválida.');
-            }
         }
 
         // Quem manda no prazo depende da repetição, e é por isso que o
