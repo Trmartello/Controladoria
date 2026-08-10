@@ -733,15 +733,25 @@ const Participante = {
   blocoVotacao() {
     const v = this.votacao;
     const restam = v.max_votos - v.meus_votos;
+    // A fase da ★ chega quando a condução FECHA a sala: o campo de escrever
+    // some e no lugar dele entra a lista inteira do encontro, para cada pessoa
+    // eleger as mais importantes. As suas próprias vêm marcadas — quem mandou
+    // três ideias precisa reconhecê-las na lista para decidir quais defender.
     return `
       <div class="mt-3">
-        <div class="alert alert-warning py-2 small">Escolha as ideias mais importantes.
-          Restam <strong>${restam}</strong> voto(s). Toque de novo para desmarcar.</div>
+        <div class="alert alert-warning py-2 small mb-2">
+          <strong>A sala foi fechada.</strong> Agora escolha as ideias mais importantes:
+          toque na ★ das que você quer priorizar. ${restam > 1
+            ? `Restam <strong>${restam}</strong> estrelas.`
+            : restam === 1
+              ? 'Resta <strong>1</strong> estrela.'
+              : 'Suas estrelas acabaram — toque numa marcada para trocar.'}</div>
         ${v.itens.map((i) => `
           <button type="button" class="ideia-votavel ${Number(i.votei) ? 'votada' : ''}"
             data-votar="${i.id}">
             <span class="voto-marca">${Number(i.votei) ? '★' : '☆'}</span>
-            <span>${this.esc(i.texto)}</span>
+            <span>${this.esc(i.texto)}${Number(i.minha)
+              ? '<span class="selo-minha">sua</span>' : ''}</span>
           </button>`).join('') || '<p class="text-muted small">Nenhuma ideia para votar ainda.</p>'}
         <div id="aviso-voto" class="small mt-2"></div>
       </div>`;

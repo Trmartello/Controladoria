@@ -521,6 +521,23 @@ input[type=range].faixa-verde:focus-visible {
   font-weight: 600;
 }
 .voto-marca { color: var(--dourado); font-size: 1.1rem; line-height: 1; }
+/* "sua" na lista da fase da ★: o participante precisa reconhecer as próprias
+   ideias no meio das da sala. Vem depois do texto, e não antes, para não
+   empurrar a leitura da ideia — que é o que decide o voto. */
+.selo-minha {
+  display: inline-block;
+  margin-left: .35rem;
+  padding: .05rem .35rem;
+  border: 1px solid var(--verde-coperdia);
+  border-radius: 999px;
+  color: var(--verde-coperdia);
+  background: #fff;
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  vertical-align: middle;
+}
 
 /* ===== Comentários com anexos (sucederam o diário de bordo) =====
    A linha do tempo do acompanhamento: inicial do autor, nome, data e o texto,

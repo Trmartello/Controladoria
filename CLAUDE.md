@@ -705,6 +705,27 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   (verde, primeiro lado) e `.lado-danger` (vermelho, segundo) —, os mesmos do
   par de botões: tudo verde obrigava a ler o selo para saber de que lado era
   cada uma, e o selo é justamente o que se quer parar de ler.
+  **A sala tem duas fases, e a chave é uma só** (`coleta_rodada.votacao`):
+  *aberta · recolhendo ideias* e *fechada · escolhendo com ★*. Fechar a sala
+  tira o campo de escrever do celular de todo mundo e põe no lugar a lista do
+  encontro para cada pessoa eleger as mais importantes — as **suas próprias vêm
+  marcadas** ("sua", via `minha` em `paraVotar()`, com `<=>` porque a ideia
+  cadastrada pela condução tem token NULL). O botão mora no painel da **Coleta**
+  (é onde quem conduz está, vendo a nuvem) e também na aba Sala, com o MESMO par
+  de rótulos nos dois: "Fechar a sala" / "Reabrir a sala". Ele só aparece **com
+  alguém conectado** (`participantes > 0`), como o ✎ da pergunta: sem sala não há
+  fase para trocar. No corpo da requisição a fase continua sendo `votacao`
+  (`abrir: true` = abre as ★ = fecha a sala) — o rótulo fala do gesto, a rodada
+  guarda o estado.
+  Fechada, o servidor **recusa escrita** (`exigirSalaRecolhendo` em `ideia()` e
+  `editarIdeia()`): sem isso um celular que ainda não bateu o polling seguia
+  gravando ideia com a sala inteira já votando. A recusa repete a condição da
+  tela — **fechada com a lista vazia não é fase nenhuma**: sem nada para votar o
+  celular volta a recolher (senão seria um beco: não dá para escrever nem para
+  votar), e recusar ali transformaria o contorno em erro na cara de quem digita.
+  O polling da Coleta compara também o **retrato da rodada** (fase, pergunta,
+  participantes): só as ideias no retrato deixavam o painel do outro condutor
+  dizendo "sala aberta" com a sala já fechada.
   Vozes iguais são agrupadas na nuvem e tratadas **em grupo**: N ideias
   apontam para UM destino. Por isso `FatorController`/`CenarioController`
   fazem o JOIN pelo `MIN(id)` — juntar direto multiplicaria o card.

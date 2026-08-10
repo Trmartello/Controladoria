@@ -105,21 +105,23 @@ const SecaoSala = {
     const selos = [
       `<span class="badge text-bg-light border">${r.participantes} participante(s)</span>`,
       `<span class="badge text-bg-light border">${r.ideias} ideia(s)</span>`,
+      // Mesmo par de rótulos da Coleta: é a MESMA fase, e duas redações para
+      // ela fariam o condutor procurar duas chaves onde só existe uma.
       votacaoAberta
-        ? '<span class="badge text-bg-warning">votação aberta · a sala não envia mais ideias</span>'
-        : '<span class="badge text-bg-light border">recolhendo ideias</span>',
+        ? '<span class="badge text-bg-warning">sala fechada · escolhendo com ★</span>'
+        : '<span class="badge text-bg-light border">sala aberta · recolhendo ideias</span>',
     ].join('');
     // Votação aberta sem nenhuma ideia é o beco: não há o que votar e não dá
     // para escrever. O celular contorna (volta a recolher), mas quem conduz
     // precisa saber que a fase está no lugar errado.
     const aviso = votacaoAberta && !Number(r.ideias) && podeConduzir
-      ? `<div class="alert alert-warning py-2 small mt-2 mb-0">A votação está aberta e ainda não
-         há nenhuma ideia. Feche a votação para a sala voltar a enviar — enquanto ela estiver
-         aberta, o celular só mostra a lista para votar.</div>`
+      ? `<div class="alert alert-warning py-2 small mt-2 mb-0">A sala está fechada e ainda não
+         há nenhuma ideia para escolher. Reabra a sala para os celulares voltarem a escrever —
+         enquanto não houver ideia na lista, eles seguem recolhendo.</div>`
       : '';
     const acoes = podeConduzir ? `
-      <button class="btn btn-sm btn-outline-secondary" id="btn-votacao">
-        ${r.votacao === 'ABERTA' ? 'Fechar votação' : 'Abrir votação'}</button>
+      <button class="btn btn-sm ${votacaoAberta ? 'btn-verde' : 'btn-outline-secondary'}" id="btn-votacao">
+        ${votacaoAberta ? 'Reabrir a sala' : 'Fechar a sala (ir para as ★)'}</button>
       <button class="btn btn-sm btn-outline-danger" id="btn-encerrar-rodada">Encerrar tempestade</button>` : '';
 
     return `

@@ -220,11 +220,23 @@ const SecaoColeta = {
         const retrato = (l) => JSON.stringify(l.map((i) => [i.id, i.situacao, i.votos,
           i.impacto, i.esforco, i.adiado, i.destino_tipo, i.destino_id,
           i.texto_tratado, i.agrupado_em_id]));
+        // A RODADA também entra no retrato: a fase da sala (recolhendo × ★), a
+        // pergunta e o contador de participantes mudam sem que nenhuma ideia
+        // mude — e o painel do outro condutor (ou o telão) seguia mostrando
+        // "sala aberta" com a sala já fechada, com o botão errado no meio da
+        // oficina.
+        const retratoRodada = (l) => {
+          const a = l.find((x) => x.situacao === 'ABERTA');
+          return a ? JSON.stringify([a.id, a.tema, a.votacao, a.participantes, a.ideias]) : 'sem-rodada';
+        };
         const antes = retrato(this.itens);
+        const antesRodada = retratoRodada(this.rodadas);
         this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
         this.rodadas = (await App.api(`/api/rodadas?planejamento_id=${this.plan.id}&ano=${ano}`))
           .filter((r) => r.modo !== 'QUIZ');
-        if (antes !== retrato(this.itens)) this.carregar();
+        if (antes !== retrato(this.itens) || antesRodada !== retratoRodada(this.rodadas)) {
+          this.carregar();
+        }
       } catch (e) { /* rede instável na oficina: tenta de novo no próximo ciclo */ }
     }, 3000);
   },
@@ -316,17 +328,41 @@ const SecaoColeta = {
     // mexe no PIN nem no QR, então não há motivo para atravessar o sistema.
     // Só com alguém conectado: antes disso a pergunta se ajusta no formulário
     // que abre a rodada, e um botão a mais na tela vazia é ruído.
+    //
+    // O mesmo vale para FECHAR A SALA: é o gesto que troca a fase do encontro —
+    // o celular para de escrever e passa a escolher com ★ — e ele pertence a
+    // quem está aqui vendo a nuvem, não à tela de projeção. Sem ninguém
+    // conectado não há fase nenhuma para trocar.
     const temSala = Number(r.participantes) > 0;
-    const editar = temSala && App.podeEditar()
+    const podeConduzir = temSala && App.podeEditar();
+    const votando = r.votacao === 'ABERTA';
+    const editar = podeConduzir
       ? '<button class="btn btn-sm btn-outline-secondary" data-editar-pergunta>✎ Editar pergunta</button>'
+      : '';
+    // O selo diz a FASE, não o estado de uma chave: "votação aberta" não
+    // contava que era ele quem tinha tirado o campo de escrever dos celulares.
+    const fase = votando
+      ? '<span class="badge text-bg-warning">sala fechada · escolhendo com ★</span>'
+      : '<span class="badge text-bg-light border">sala aberta · recolhendo ideias</span>';
+    const botaoFase = podeConduzir
+      ? `<button class="btn btn-sm ${votando ? 'btn-verde' : 'btn-outline-secondary'}"
+          data-fase-sala="${votando ? 'abrir' : 'fechar'}">${
+        votando ? 'Reabrir a sala' : 'Fechar a sala'}</button>`
+      : '';
+    const dicaFase = podeConduzir
+      ? `<div class="small text-muted mt-1">${votando
+        ? 'A sala está escolhendo as mais importantes com ★. Reabrir devolve o campo de escrever aos celulares.'
+        : 'Fechar a sala tira o campo de escrever dos celulares e abre as ★ para a sala eleger as ideias mais importantes.'
+      }</div>`
       : '';
     return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <strong class="small text-uppercase">Tempestade aberta</strong>
         <span class="badge text-bg-light border">${r.participantes} participante(s)</span>
         <span class="badge text-bg-light border">${r.ideias} ideia(s)</span>
-        ${r.votacao === 'ABERTA' ? '<span class="badge text-bg-warning">votação aberta</span>' : ''}
+        ${fase}
         <span class="small text-muted flex-grow-1"></span>
+        ${botaoFase}
         <button class="btn btn-sm btn-outline-secondary" data-ir-sala>PIN e QR na Sala</button>
       </div>
       <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
@@ -334,6 +370,7 @@ const SecaoColeta = {
         <span class="small flex-grow-1">${Modal.esc(r.tema)}</span>
         ${editar}
       </div>
+      ${dicaFase}
     </div></div>`;
   },
 
@@ -847,6 +884,26 @@ const SecaoColeta = {
     // o campo, o rótulo e a ajuda, em qualquer tela que edite a pergunta.
     el.querySelector('[data-editar-pergunta]')?.addEventListener('click', () =>
       QuizSala.modalPergunta(this.plan.id, this.rodadaAberta, () => this.carregar()));
+
+    // Fecha (ou reabre) a sala. No servidor isto é a FASE DE VOTAÇÃO: `abrir`
+    // ali quer dizer "abrir as ★", que é exatamente o que fechar a sala faz —
+    // o celular deixa de escrever e passa a escolher. O rótulo fala da sala
+    // porque é assim que quem conduz pensa o gesto; o corpo fala da votação
+    // porque é assim que a rodada guarda a fase.
+    // Sem confirmação de propósito: é reversível no mesmo botão, e a dica ao
+    // lado já diz a consequência antes do clique.
+    el.querySelector('[data-fase-sala]')?.addEventListener('click', async (ev) => {
+      const b = ev.currentTarget;
+      const fechar = b.dataset.faseSala === 'fechar';
+      b.disabled = true;
+      try {
+        await App.api(`/api/rodadas/${this.rodadaAberta.id}/votacao`,
+          { planejamento_id: this.plan.id, abrir: fechar });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.carregar();
+    });
 
     el.querySelectorAll('[data-selecionar]').forEach((b) => this.ativarBotao(b, () => {
       // Um arraste que terminou em cima de outra ficha não é um toque

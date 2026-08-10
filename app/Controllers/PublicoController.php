@@ -176,6 +176,7 @@ class PublicoController
         if ($r['modo'] !== 'TEMPESTADE') {
             Json::erro('Esta sala é uma sessão de quiz — responda pela tela da pergunta.');
         }
+        $this->exigirSalaRecolhendo($r);
         $p = $this->participante($r, $d);
 
         $texto = mb_substr(trim(is_string($d['texto'] ?? null) ? $d['texto'] : ''), 0, self::MAX_TEXTO);
@@ -217,6 +218,10 @@ class PublicoController
     {
         $d = $this->corpo();
         $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
+        // Sala fechada não recebe escrita nenhuma — nem ideia nova, nem correção
+        // de uma já enviada. Enquanto a sala escolhe com ★, o texto está debaixo
+        // do voto de outra pessoa: reescrevê-lo mudaria o que já foi votado.
+        $this->exigirSalaRecolhendo($r);
         $p = $this->participante($r, $d);
 
         // A autoria é conferida por SELECT, não pelo número de linhas do UPDATE:
@@ -310,13 +315,19 @@ class PublicoController
         if ($r['situacao'] !== 'ABERTA' || $r['votacao'] !== 'ABERTA' || $r['modo'] !== 'TEMPESTADE') {
             Json::ok(['votacao' => 'FECHADA', 'itens' => [], 'meus_votos' => 0]);
         }
+        // `minha` marca as ideias do próprio participante na lista: quem escreve
+        // três ideias e vota em três precisa reconhecer as suas para decidir
+        // quais defender. `<=>` e não `=`: a ideia cadastrada pela condução tem
+        // token NULL, e `=` devolveria NULL (nem verdadeiro nem falso) — o selo
+        // sumiria de todo mundo assim que uma dessas entrasse na lista.
         $itens = Database::todos(
-            "SELECT i.id, i.texto, (v.id IS NOT NULL) AS votei
+            "SELECT i.id, i.texto, (v.id IS NOT NULL) AS votei,
+                    (i.participante_token <=> ?) AS minha
              FROM coleta_item i
              LEFT JOIN coleta_voto v ON v.item_id = i.id AND v.participante_token = ?
              WHERE i.rodada_id = ? AND i.situacao = 'NOVO'
              ORDER BY i.id",
-            [$p['token'], (int)$r['id']]
+            [$p['token'], $p['token'], (int)$r['id']]
         );
         // Só contam os votos em ideias ainda na lista: tratada uma ideia, o
         // voto dela sairia da tela mas continuaria consumindo o teto, e não
@@ -569,6 +580,32 @@ class PublicoController
             Json::erro('Entre na rodada antes de participar.', 403);
         }
         return $p;
+    }
+
+    /**
+     * A sala está recolhendo ideias? Fechá-la (a fase da ★) tira o campo de
+     * escrever do celular, e essa recusa é o espelho da tela: sem ela, um
+     * aparelho que ainda não bateu o polling — ou um pedido montado à mão —
+     * continuava gravando ideia com a sala inteira já votando, e a ideia nova
+     * entrava numa lista que ninguém mais ia ler.
+     *
+     * A condição repete a da tela de propósito: **fechada com a lista vazia não
+     * é fase nenhuma**. Sem nada para votar o celular volta a recolher (senão o
+     * participante ficaria numa tela onde não dá para escrever nem para votar),
+     * e recusar aqui transformaria esse contorno em erro na cara de quem digita.
+     */
+    private function exigirSalaRecolhendo(array $r): void
+    {
+        if ($r['modo'] !== 'TEMPESTADE' || $r['votacao'] !== 'ABERTA') {
+            return;
+        }
+        $paraVotar = (int)(Database::um(
+            "SELECT COUNT(*) AS n FROM coleta_item WHERE rodada_id = ? AND situacao = 'NOVO'",
+            [(int)$r['id']]
+        )['n'] ?? 0);
+        if ($paraVotar > 0) {
+            Json::erro('A sala foi fechada: agora é a vez de escolher com ★ as ideias mais importantes.');
+        }
     }
 
     /** Escrita só em rodada aberta. */
