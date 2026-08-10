@@ -215,6 +215,17 @@ if ($tipoEnvio && !str_contains((string)$tipoEnvio, 'RESUMO')) {
     echo "migrate: envio_email.tipo agora aceita RESUMO (relatório do disparo).\n";
 }
 
+// Ação cancelada não tem avanço: o percentual dela é zero. A gravação já
+// garante isso (formulário e barra do cartão), mas as ações canceladas ANTES
+// da regra ficaram com o percentual antigo — e o relatório, que tira a média
+// no servidor, leria esse número. Idempotente por natureza: na segunda
+// execução não há mais linha a corrigir.
+$zeradas = $pdo->exec("UPDATE desdobramento SET progresso = 0, progresso_anterior = NULL
+                        WHERE status = 'CANCELADO' AND (progresso <> 0 OR progresso_anterior IS NOT NULL)");
+if ($zeradas) {
+    echo "migrate: progresso zerado em {$zeradas} ação(ões) cancelada(s).\n";
+}
+
 // A ideia da coleta pode ir para um plano de ação (vira desdobramento depois),
 // além de Cenário/fator do diagnóstico
 $tipoDestinoCi = $pdo->query(

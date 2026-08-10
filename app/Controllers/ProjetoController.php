@@ -352,9 +352,13 @@ class ProjetoController
         $anterior = $id ? Database::um('SELECT * FROM desdobramento WHERE id = ?', [$id]) : null;
 
         // Concluída é 100%: escolher o status Concluído leva a barra junto,
-        // guardando a posição de onde ela saiu. Cancelar uma ação que está em
-        // 100% devolve a barra a essa posição, sem perguntar nada — cancelada
-        // exibindo 100% parece concluída, e não é.
+        // guardando a posição de onde ela saiu.
+        //
+        // Cancelada é 0%, sempre. Cancelar é dizer que aquele trabalho não será
+        // feito — e a ação sai das médias da frente e do projeto (`panorama()`
+        // na tela, o AVG do relatório). Guardar o percentual antigo produzia
+        // número fantasma: a ação exibia 70% no cartão sem entrar em conta
+        // nenhuma, contradizendo o percentual logo acima dela.
         $progressoAnterior = $anterior !== null && $anterior['progresso_anterior'] !== null
             ? (int)$anterior['progresso_anterior'] : null;
         if ($status === 'CONCLUIDO') {
@@ -362,10 +366,8 @@ class ProjetoController
                 $progressoAnterior = (int)$anterior['progresso'];
             }
             $progresso = 100;
-        } elseif ($status === 'CANCELADO' && $progresso === 100) {
-            if ($progressoAnterior !== null) {
-                $progresso = $progressoAnterior;
-            }
+        } elseif ($status === 'CANCELADO') {
+            $progresso = 0;
             $progressoAnterior = null;
         } else {
             $progressoAnterior = null;
@@ -570,6 +572,20 @@ class ProjetoController
                 Json::erro('Status inválido.');
             }
             $statusNovo = $this->resolverStatus($d['status'], $acao['data_fim']);
+        }
+
+        // Ação cancelada não tem percentual: ela vale 0 e fica fora das médias.
+        // A barra dela sai inativa na tela, e esta é a mesma recusa do
+        // `concluir` acima — por código, para a tela DECIDIR. Sem ela, um
+        // arraste iniciado antes de outra pessoa cancelar a ação (ou um pedido
+        // direto à rota) a devolveria às médias com um percentual qualquer.
+        // Escolher "Cancelada" no pop-up de saída dos 100% continua valendo:
+        // aí o status está mudando, e o percentual vai a zero junto.
+        if ($statusNovo === 'CANCELADO') {
+            $progresso = 0;
+        } elseif ($statusNovo === null && $acao['status'] === 'CANCELADO') {
+            Json::erro('Ação cancelada não tem progresso — reative a ação para voltar a medi-lo.',
+                409, 'ACAO_CANCELADA');
         }
 
         // Concluir — pelo `concluir` dos 100% ou por um status escolhido —

@@ -868,6 +868,20 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   o projeto herda o H1/H2/H3 pelo ano. Não existe mais ação plurianual × anual.
 - Status `NAO_INICIADO` e `ATRASADO` são **automáticos** (derivados da
   data-limite, reconciliados em `sincronizarAtrasos()`); os demais são manuais.
+- **Ação CANCELADA não tem progresso.** O percentual dela vai a **zero** na
+  gravação (`salvarDesdobramento` e o pop-up de status da barra) e ela fica
+  **fora das médias** da frente e do projeto — no numerador *e* no denominador
+  (`panorama()` na tela, `AVG(CASE WHEN d.status <> 'CANCELADO' …)` no
+  relatório). Contá-la afundava o percentual por trabalho que ninguém vai
+  fazer; guardar o valor antigo produzia número fantasma (a ação exibia 70% sem
+  entrar em conta nenhuma). É a mesma regra que a `Consolidacao` já aplica ao
+  status e ao prazo do projeto e da frente. Na tela a barra sai **inativa**
+  (`.faixa-progresso.inativa`, sem controle para arrastar) e **sem**
+  `data-progresso` — por isso some sozinha de `atualizarMedias`. A rota do
+  ajuste rápido **recusa** ação cancelada com o código `ACAO_CANCELADA` (a
+  barra inativa é conforto de tela, não autorização) e a tela recarrega ao
+  receber esse código: o cartão estava velho. Um passo do migrate zera o
+  percentual das canceladas anteriores à regra.
 - O status da **frente** (iniciativa) é **todo derivado** das ações dela
   (`consolidarIniciativas()`): todas concluídas fecham a frente sozinha, e o
   modal **não tem campo de status** — um valor digitado seria sobrescrito na

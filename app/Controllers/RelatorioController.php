@@ -253,7 +253,11 @@ class RelatorioController
                       p.prazo, ''
                     ) AS prazo,
                     h.nome AS horizonte_nome,
-                    COALESCE(ROUND(AVG(d.progresso)), 0) AS progresso,
+                    -- Ação cancelada fica fora da média (a mesma regra da tela
+                    -- Projetos): contá-la como 0% puxava o percentual do projeto
+                    -- para baixo por trabalho que ninguém vai fazer. Sem ação
+                    -- viva o AVG é NULL e o COALESCE devolve 0.
+                    COALESCE(ROUND(AVG(CASE WHEN d.status <> 'CANCELADO' THEN d.progresso END)), 0) AS progresso,
                     SUM(d.status = 'ATRASADO') AS desdobramentos_atrasados
              FROM projeto p
              LEFT JOIN horizonte h ON h.id = p.horizonte_id

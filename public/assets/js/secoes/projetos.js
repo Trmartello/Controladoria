@@ -272,10 +272,17 @@ const SecaoProjetos = {
    * "atrasada(s)" do projeto já contava por status, e a iniciativa não contava
    * nada). A média é aritmética simples entre as ações, como sempre foi no
    * projeto: ponderar por esforço exigiria um peso que o cadastro não tem.
+   *
+   * Ação CANCELADA fica fora da conta — no numerador E no denominador. Ela não
+   * é trabalho parado em 0%: é trabalho que não será feito, e contá-la afundava
+   * o percentual da frente por algo que ninguém vai executar (com uma ação
+   * pronta e outra cancelada, a frente mostrava 50%). É a mesma regra que a
+   * Consolidacao já aplica ao status e ao prazo do projeto e da frente.
    */
   panorama(acoes, marcaMedia, marcaBarra, classe = '', titulo = 'Progresso médio das ações') {
-    const media = acoes.length
-      ? Math.round(acoes.reduce((s, a) => s + Number(a.progresso), 0) / acoes.length)
+    const contam = acoes.filter((a) => a.status !== 'CANCELADO');
+    const media = contam.length
+      ? Math.round(contam.reduce((s, a) => s + Number(a.progresso), 0) / contam.length)
       : 0;
     // O antigo "N atrasada(s)" saiu daqui: o resumo por situação, no cabeçalho,
     // diz a mesma coisa com o percentual junto — e dizer duas vezes obrigava a
@@ -557,6 +564,13 @@ const SecaoProjetos = {
         ? `toda ${enumerar(diasGrade.map(
           (d) => (DIAS_SEMANA.find(([v]) => v === d) || [, ''])[1].toLowerCase()))}`
         : a.recorrencia === 'MENSAL' ? `todo dia ${enumerar(diasGrade)}` : '';
+    // Ação cancelada não tem progresso: 0% numa barra inativa, sem controle
+    // para arrastar. Mesmo que o banco ainda guarde um valor antigo (linha
+    // anterior à regra, corrigida pelo migrate), a tela mostra 0 — a ação está
+    // fora das médias, e um "70%" ali contradizia o percentual da frente logo
+    // acima. Sem o `data-progresso`, ela sai sozinha de `atualizarMedias`.
+    const cancelada = a.status === 'CANCELADO';
+    const pct = cancelada ? 0 : a.progresso;
     // Cinco linhas: situação+progresso+seta, o quê, como, metadados e o rodapé
     // de botões. As três últimas ficam atrás da seta.
     const chave = `acao-${a.id}`;
@@ -580,16 +594,17 @@ const SecaoProjetos = {
              única peça aqui que se lê por proporção e não por texto. -->
         <div class="d-flex align-items-center gap-2 linha-acao-topo">
           <span class="badge ${classe} flex-shrink-0">${rotulo}</span>
-          ${App.podeEditar() ? `
+          ${App.podeEditar() && !cancelada ? `
           <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="5"
-            style="--pct:${a.progresso}%" value="${a.progresso}"
+            style="--pct:${pct}%" value="${pct}"
             data-progresso="${a.id}" data-proj="${p.id}"
             title="Arraste para ajustar o progresso" aria-label="Progresso da ação">
-          <span class="valor-progresso" data-rotulo="${a.id}">${a.progresso}%</span>` : `
-          <div class="faixa-progresso flex-grow-1" title="${a.progresso}%">
-            <span style="width:${a.progresso}%"></span>
+          <span class="valor-progresso" data-rotulo="${a.id}">${pct}%</span>` : `
+          <div class="faixa-progresso flex-grow-1 ${cancelada ? 'inativa' : ''}"
+            title="${cancelada ? 'Ação cancelada — sem progresso e fora da média' : `${pct}%`}">
+            <span style="width:${pct}%"></span>
           </div>
-          <span class="valor-progresso">${a.progresso}%</span>`}
+          <span class="valor-progresso ${cancelada ? 'inativo' : ''}">${pct}%</span>`}
           ${this.botaoMais(chave, detalhado)}
         </div>
         <!-- Linha 2: o quê -->
@@ -1013,6 +1028,13 @@ const SecaoProjetos = {
         } catch (e) {
           // Falhou: devolve a barra ao valor que está no servidor
           voltar();
+          // A ação foi cancelada por outra pessoa depois que este cartão foi
+          // desenhado: a barra aqui não deveria mais existir. Recarregar é o
+          // que a troca em `alert` não faria — a tela volta com a faixa inativa.
+          if (e.codigo === 'ACAO_CANCELADA') {
+            App.recarregarSecaoAtiva();
+            return;
+          }
           alert(e.message);
         }
       });
@@ -1026,7 +1048,9 @@ const SecaoProjetos = {
    * frente da ação que acabou de mudar.
    *
    * A média sai dos valores que estão na TELA (as barras), não dos dados da
-   * carga: é a ação recém-arrastada que precisa entrar na conta.
+   * carga: é a ação recém-arrastada que precisa entrar na conta. Ação cancelada
+   * não tem barra com `data-progresso` (o cartão dela desenha uma faixa
+   * inativa), então fica de fora daqui pelo mesmo caminho de `panorama`.
    */
   atualizarMedias(el, barra) {
     const niveis = [

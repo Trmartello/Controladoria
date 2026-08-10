@@ -181,6 +181,14 @@ table.tabela-cadastro td { vertical-align: middle; }
 }
 .faixa-progresso.cheia > span { background: var(--dourado); }
 .faixa-progresso.alerta > span { background: #8f3b3b; }
+/* Ação cancelada: barra desligada — trilho apagado, sem preenchimento verde e
+   sem controle para arrastar. O percentual dela é sempre 0 e não entra nas
+   médias da frente nem do projeto. */
+.faixa-progresso.inativa {
+  background: #e2e5e4;
+  opacity: .55;
+}
+.faixa-progresso.inativa > span { background: #adb5bd; }
 .valor-progresso {
   font-weight: 700;
   font-size: .78rem;
@@ -188,6 +196,7 @@ table.tabela-cadastro td { vertical-align: middle; }
   min-width: 2.6rem;
   text-align: right;
 }
+.valor-progresso.inativo { color: #8a908d; font-weight: 600; }
 
 input[type=range].faixa-verde {
   -webkit-appearance: none;
