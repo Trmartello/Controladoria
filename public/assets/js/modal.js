@@ -175,14 +175,22 @@ const Modal = {
         // rola por dentro e a alça do canto continua disponível para esticar
         const teto = c.maxLinhas ? ` data-max-linhas="${Number(c.maxLinhas)}"` : '';
         const area = `<textarea class="form-control campo-elastico" id="${id}" rows="${c.linhas || 3}"${teto}${exemplo}>${this.esc(v)}</textarea>`;
-        // O campo com teto nasce COMPACTO, e por isso ganha a seta de expandir
-        // na linha do rótulo — a MESMA seta com que as frentes de trabalho e os
-        // projetos abrem e fecham um bloco. O microfone NÃO sobe para lá: ele
-        // fica onde está em todo campo de texto do sistema, dentro da caixa e
-        // no canto inferior direito. Trocar o lugar dele só neste formulário
-        // ensinaria dois vocabulários para o mesmo gesto.
-        if (c.maxLinhas) ferramentas = `<span class="campo-ferramentas">${this.botaoExpandir(id)}</span>`;
-        controle = this.suporteVoz ? `<div class="campo-voz">${area}${this.botaoDitar(id)}</div>` : area;
+        // TODO campo de texto do modal traz o mesmo par de controles: a seta de
+        // ver mais/ver menos na linha do rótulo — a MESMA seta com que as
+        // frentes de trabalho e os projetos abrem e fecham um bloco — e a alça
+        // do canto inferior direito para arrastar a altura. Antes só o campo com
+        // `maxLinhas` os tinha, e o campo sem teto (a estratégia do cruzamento,
+        // por exemplo) ficava sem nenhum jeito de crescer no celular.
+        // O microfone NÃO sobe para a linha do rótulo: ele fica onde está em
+        // todo campo de texto do sistema, dentro da caixa e no canto inferior
+        // direito, desviando da alça pelo lado.
+        ferramentas = `<span class="campo-ferramentas">${this.botaoExpandir(id)}</span>`;
+        // A caixa é sempre a mesma (`.campo-voz`), com ou sem microfone: é ela
+        // que dá o `position: relative` de que a alça precisa para se ancorar no
+        // canto. Sem o embrulho, a alça de um navegador sem ditado ficaria
+        // posicionada em relação ao modal inteiro.
+        controle = `<div class="campo-voz">${area}${
+          this.suporteVoz ? this.botaoDitar(id) : ''}${this.alcaCampo(id)}</div>`;
         break;
       }
       case 'dias': {
@@ -385,9 +393,25 @@ const Modal = {
         // segunda caixa aparecia pela metade, e ler o par exigia descobrir que
         // aquela área tinha rolagem própria.
         const classeCorpo = Array.isArray(c.itens) && c.itens.length ? ' info-itens' : '';
+        // O bloco de leitura recebe o MESMO par de controles do campo de texto:
+        // a seta de ver mais/ver menos na linha do rótulo e a alça de arrastar a
+        // altura no canto. Ele é cortado por altura (no celular, sempre; no
+        // computador, a partir de ~10 linhas), e até aqui o único jeito de ler o
+        // resto era descobrir que aquela área rolava por dentro.
+        // A seta nasce escondida e só aparece se o conteúdo REALMENTE não
+        // couber — quem mede é `marcarInfoRolavel`, com o modal já na tela.
+        // Sem rótulo não há linha de rótulo onde pendurá-la; nesse caso fica
+        // só a alça, que mora dentro do próprio cartão.
+        const ferramentasInfo = c.rotulo
+          ? `<span class="campo-ferramentas d-none">${this.botaoExpandirInfo(id)}</span>` : '';
+        const cabecaInfo = c.rotulo
+          ? `<div class="linha-rotulo"><label class="form-label rotulo-info">${
+            this.esc(c.rotulo)}</label>${ferramentasInfo}</div>`
+          : '';
         return `<div class="mb-3" id="${id}">
-          ${c.rotulo ? `<label class="form-label rotulo-info">${this.esc(c.rotulo)}</label>` : ''}
-          <div class="card card-info-modal">${barra}<div class="card-body py-2 px-3 small${classeCorpo}">${corpo}</div></div>
+          ${cabecaInfo}
+          <div class="card card-info-modal">${barra}<div class="card-body py-2 px-3 small${
+            classeCorpo}">${corpo}</div>${this.alcaInfo(id)}</div>
         </div>`;
       }
       case 'hidden':
@@ -460,6 +484,40 @@ const Modal = {
   },
 
   /**
+   * A mesma seta, para o bloco de leitura. O alvo é declarado noutro atributo
+   * (`data-alvo-info`) porque o que ela faz é outro: no campo de texto muda o
+   * TETO do crescimento; aqui abre o cartão para mostrar o conteúdo inteiro.
+   * Um atributo só obrigaria o ouvinte a adivinhar o tipo do alvo.
+   */
+  botaoExpandirInfo(id) {
+    return `<button class="btn btn-expandir" type="button" data-alvo-info="${id}"
+      aria-controls="${id}" aria-expanded="false"
+      title="Ver o conteúdo inteiro" aria-label="Ver o conteúdo inteiro">${this.setaExpandir}</button>`;
+  },
+
+  /**
+   * A alça do canto inferior direito — três riscos na diagonal, o desenho que
+   * todo mundo já conhece do canto de um campo de texto.
+   *
+   * Ela existe porque a nativa (`resize: vertical`) **não funciona no celular**:
+   * o iOS não a desenha nem responde ao arraste, e era justamente lá que o campo
+   * ficava pequeno demais. Esta é feita de eventos de ponteiro (`ligarAlcas`),
+   * que valem para o dedo e para o mouse.
+   */
+  alcaCampo(id) {
+    return `<span class="alca-campo" data-alca="${id}" role="separator"
+      aria-orientation="horizontal" title="Arraste para mudar a altura"
+      aria-label="Arraste para mudar a altura do campo"></span>`;
+  },
+
+  /** A mesma alça, ancorada no cartão do bloco de leitura. */
+  alcaInfo(id) {
+    return `<span class="alca-campo alca-info" data-alca-info="${id}" role="separator"
+      aria-orientation="horizontal" title="Arraste para mudar a altura"
+      aria-label="Arraste para mudar a altura do bloco"></span>`;
+  },
+
+  /**
    * O valor guardado (`1500.00`) escrito como se escreve dinheiro em português.
    * Sem isso, o campo reabria com o ponto que a digitação recusa — e a primeira
    * tecla apagava um número que estava certo.
@@ -502,8 +560,18 @@ const Modal = {
     raiz.querySelectorAll('.card-info-modal').forEach((card) => {
       const corpo = card.querySelector('.card-body');
       if (!corpo) return;
-      const medir = () => card.classList.toggle(
-        'info-tem-mais', corpo.scrollHeight - corpo.clientHeight - corpo.scrollTop > 8);
+      const bloco = card.closest('.mb-3');
+      const ferramentas = bloco?.querySelector('.campo-ferramentas');
+      const medir = () => {
+        const sobra = corpo.scrollHeight - corpo.clientHeight - corpo.scrollTop > 8;
+        card.classList.toggle('info-tem-mais', sobra);
+        // A seta só aparece onde há mesmo conteúdo escondido — ou onde ela já
+        // abriu o bloco, senão sumiria justamente o botão que o recolhe. Seta
+        // que não faz nada em bloco curto ensina a ignorar a seta.
+        const aberto = card.classList.contains('info-aberto');
+        const cortado = corpo.scrollHeight - corpo.clientHeight > 8;
+        ferramentas?.classList.toggle('d-none', !(cortado || aberto));
+      };
       if (!corpo.dataset.rolagemLigada) {
         corpo.addEventListener('scroll', medir);
         corpo.dataset.rolagemLigada = '1';
@@ -589,6 +657,15 @@ const Modal = {
     if (t.dataset.ajustado) return;
     const tetoTela = Math.round(window.innerHeight * 0.6);
     if (!t.dataset.maxLinhas) {
+      // Aberto pela seta, o campo sem teto declarado passa a ocupar até 60% da
+      // tela mesmo com pouco texto: quem toca em "ver mais" quer ESPAÇO para
+      // escrever, e um campo que só cresce com o que já foi digitado não daria
+      // nenhum. Fechado, ele volta a acompanhar o texto, como sempre foi.
+      if (t.dataset.expandido === '1') {
+        t.style.minHeight = `${tetoTela}px`;
+        t.closest('.mb-3')?.classList.add('altura-manual');
+        return;
+      }
       if (t.scrollHeight <= t.clientHeight + 1) return;
       const alvo = Math.min(t.scrollHeight + 2, tetoTela);
       if (alvo > t.clientHeight) t.style.minHeight = `${alvo}px`;
@@ -663,7 +740,7 @@ const Modal = {
    * em quem mais mexe no campo.
    */
   ligarFerramentasTexto(raiz) {
-    raiz.querySelectorAll('.btn-expandir').forEach((b) => b.addEventListener('click', () => {
+    raiz.querySelectorAll('.btn-expandir[data-alvo]').forEach((b) => b.addEventListener('click', () => {
       const campo = document.getElementById(b.dataset.alvo);
       if (!campo) return;
       const aberto = campo.dataset.expandido !== '1';
@@ -671,12 +748,105 @@ const Modal = {
       else delete campo.dataset.expandido;
       delete campo.dataset.ajustado;
       campo.style.height = '';
+      // Ver menos devolve o campo ao PADRÃO: a altura escrita à mão (pela alça
+      // ou pela abertura anterior) sai junto, senão "recolher" não recolhia
+      // nada em quem já tinha esticado o campo — que é quem mais usa o botão.
+      if (!aberto) {
+        campo.style.minHeight = '';
+        campo.closest('.mb-3')?.classList.remove('altura-manual');
+      }
       this.crescerTextarea(campo);
-      b.textContent = aberto ? this.setaRecolher : this.setaExpandir;
-      b.setAttribute('aria-expanded', String(aberto));
-      b.title = aberto ? 'Diminuir o campo' : 'Aumentar o campo';
-      b.setAttribute('aria-label', b.title);
+      this.pintarBotaoExpandir(b, aberto);
     }));
+    this.ligarFerramentasInfo(raiz);
+    this.ligarAlcas(raiz);
+  },
+
+  /** Estado visual da seta: o mesmo par em todos os lugares que a usam. */
+  pintarBotaoExpandir(b, aberto, rotulos = ['Aumentar o campo', 'Diminuir o campo']) {
+    b.textContent = aberto ? this.setaRecolher : this.setaExpandir;
+    b.setAttribute('aria-expanded', String(aberto));
+    b.title = aberto ? rotulos[1] : rotulos[0];
+    b.setAttribute('aria-label', b.title);
+  },
+
+  /**
+   * Ver mais / ver menos do bloco de leitura: aberto, o cartão mostra o
+   * conteúdo inteiro; recolhido, volta ao corte de sempre (e a altura arrastada
+   * na alça sai junto — recolher tem de recolher).
+   */
+  ligarFerramentasInfo(raiz) {
+    raiz.querySelectorAll('.btn-expandir[data-alvo-info]').forEach((b) => b.addEventListener('click', () => {
+      const bloco = document.getElementById(b.dataset.alvoInfo);
+      const cartao = bloco?.querySelector('.card-info-modal');
+      if (!cartao) return;
+      const aberto = cartao.classList.toggle('info-aberto');
+      bloco.classList.toggle('altura-manual', aberto);
+      // Nos DOIS sentidos a altura arrastada na alça sai: a seta é uma decisão
+      // NOVA sobre o tamanho. Mantendo-a, "ver mais" não abria nada em quem
+      // tinha acabado de esticar o bloco à mão — que é justamente quem já
+      // estava tentando ler o conteúdo inteiro.
+      const corpo = cartao.querySelector('.card-body');
+      if (corpo) corpo.style.height = '';
+      cartao.classList.remove('info-altura-manual');
+      this.pintarBotaoExpandir(b, aberto, ['Ver o conteúdo inteiro', 'Recolher o bloco']);
+      this.marcarInfoRolavel(raiz);
+    }));
+  },
+
+  /**
+   * Arrastar a altura pela alça do canto — no dedo e no mouse.
+   *
+   * Eventos de PONTEIRO, e não de mouse: no celular é onde o campo aperta, e a
+   * API de arrastar do HTML não existe no toque. O `setPointerCapture` mantém o
+   * gesto na alça mesmo quando o dedo sai dela (arrastar rápido sempre sai), e
+   * o `touch-action: none` do CSS é o que impede a página de rolar junto.
+   *
+   * A altura escolhida à mão MANDA a partir daí: o bloco ganha `altura-manual`
+   * (que desliga o esticamento do flex do modal) e o campo de texto para de se
+   * ajustar sozinho — senão a próxima tecla desfaria o tamanho escolhido.
+   */
+  ligarAlcas(raiz) {
+    raiz.querySelectorAll('.alca-campo').forEach((alca) => {
+      const paraTexto = !!alca.dataset.alca;
+      const bloco = paraTexto
+        ? document.getElementById(alca.dataset.alca)?.closest('.mb-3')
+        : document.getElementById(alca.dataset.alcaInfo);
+      const alvo = paraTexto
+        ? document.getElementById(alca.dataset.alca)
+        : bloco?.querySelector('.card-info-modal .card-body');
+      if (!alvo || !bloco) return;
+
+      let inicioY = 0;
+      let inicioH = 0;
+      const piso = () => (paraTexto ? this.alturaMinima(alvo) : 48);
+      const mover = (ev) => {
+        const teto = Math.round(window.innerHeight * 0.85);
+        const h = Math.max(piso(), Math.min(teto, inicioH + (ev.clientY - inicioY)));
+        alvo.style.height = `${h}px`;
+        if (paraTexto) {
+          alvo.style.minHeight = `${h}px`;
+          alvo.dataset.ajustado = '1';
+        }
+      };
+      const soltar = (ev) => {
+        alca.removeEventListener('pointermove', mover);
+        if (alca.hasPointerCapture?.(ev.pointerId)) alca.releasePointerCapture(ev.pointerId);
+      };
+      alca.addEventListener('pointerdown', (ev) => {
+        // Sem o preventDefault o navegador começa a selecionar texto (mouse) ou
+        // a rolar a página (dedo) no mesmo gesto.
+        ev.preventDefault();
+        inicioY = ev.clientY;
+        inicioH = alvo.getBoundingClientRect().height;
+        bloco.classList.add('altura-manual');
+        if (!paraTexto) bloco.querySelector('.card-info-modal').classList.add('info-altura-manual');
+        alca.setPointerCapture?.(ev.pointerId);
+        alca.addEventListener('pointermove', mover);
+        alca.addEventListener('pointerup', soltar, { once: true });
+        alca.addEventListener('pointercancel', soltar, { once: true });
+      });
+    });
   },
 
   /**

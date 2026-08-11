@@ -1169,16 +1169,26 @@ async function provasAcao(page, largura) {
             return !!b && r(b).bottom > r(t1).top + r(t1).height / 2
               && r(b).right <= r(t1).right + 1;
           })(),
-          // E NÃO cobre a alça de redimensionar, que mora nos ~16px do canto
-          // inferior direito: coberta, arrastar o canto ligava o ditado. A
-          // prova é a NÃO-sobreposição com esse quadrado — desviar dele pelo
-          // lado ou por cima serve igual, e amarrar a prova a um dos dois
-          // caminhos reprovaria o outro sem defeito nenhum na tela.
+          // E NÃO cobre a ALÇA de arrastar a altura, que mora no canto inferior
+          // direito da caixa: coberta, o toque ligava o ditado em vez de
+          // esticar o campo — foi assim que ela nasceu quebrada. A prova é a
+          // NÃO-sobreposição com o retângulo REAL da alça (ela cresce no
+          // celular, e um quadrado fixo de 16px reprovaria o tamanho certo).
           alcaLivre: (() => {
             const b = t1.closest('.campo-voz')?.querySelector('.btn-ditar');
-            if (!b) return false;
-            const c = r(t1), a = { esq: c.right - 16, topo: c.bottom - 16 };
-            return r(b).right <= a.esq || r(b).bottom <= a.topo;
+            const a = t1.closest('.campo-voz')?.querySelector('.alca-campo');
+            if (!b || !a) return false;
+            const rb = r(b), ra = r(a);
+            return rb.right < ra.left || rb.left > ra.right
+              || rb.bottom < ra.top || rb.top > ra.bottom;
+          })(),
+          // A alça existe e está no canto de baixo à direita da caixa.
+          alcaNoCanto: (() => {
+            const a = t1.closest('.campo-voz')?.querySelector('.alca-campo');
+            if (!a) return false;
+            const c = r(t1), ra = r(a);
+            return ra.right <= c.right + 2 && ra.right > c.right - 40
+              && ra.bottom <= c.bottom + 2 && ra.bottom > c.bottom - 40;
           })(),
           // E cabe INTEIRO dentro da caixa: elevá-lo num campo de uma linha o
           // fazia transbordar por cima da borda de cima.
@@ -1211,8 +1221,45 @@ async function provasAcao(page, largura) {
       t(`${l} o microfone fica dentro da caixa de texto, embaixo à direita`,
         texto.micNaCaixa && !texto.micNaBarra && texto.micEmBaixo && texto.micDentro,
         JSON.stringify(texto));
-      t(`${l} o microfone não cobre a alça de redimensionar`,
-        texto.alcaLivre && texto.resize === 'vertical', JSON.stringify(texto));
+      // A alça é NOSSA (`.alca-campo`), movida por eventos de ponteiro: a
+      // nativa (`resize: vertical`) não existe no celular — o iOS não a desenha
+      // nem responde ao arraste —, e por isso ela fica desligada. Duas alças no
+      // mesmo canto deixariam a de baixo inalcançável.
+      t(`${l} a alça de altura fica no canto, sem o microfone por cima`,
+        texto.alcaNoCanto && texto.alcaLivre && texto.resize === 'none', JSON.stringify(texto));
+
+      // Existir no canto não prova que ela ESTICA o campo: o arraste é o
+      // comportamento, e ele quebra em silêncio (basta o flex do modal voltar a
+      // mandar na altura, ou o `pointerdown` cair noutro elemento).
+      const alcaCampo = await page.evaluate(() => {
+        const t1 = document.getElementById('campo-o_que');
+        const a = t1.closest('.campo-voz').querySelector('.alca-campo');
+        const r = a.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2,
+          antes: Math.round(t1.getBoundingClientRect().height) };
+      });
+      await page.mouse.move(alcaCampo.x, alcaCampo.y);
+      await page.mouse.down();
+      for (let i = 1; i <= 6; i++) await page.mouse.move(alcaCampo.x, alcaCampo.y + (60 * i) / 6);
+      await page.mouse.up();
+      await new Promise((r) => setTimeout(r, 250));
+      const depoisDaAlca = await page.evaluate(() =>
+        Math.round(document.getElementById('campo-o_que').getBoundingClientRect().height));
+      t(`${l} arrastar a alça estica o campo de texto`,
+        depoisDaAlca >= alcaCampo.antes + 50, `${alcaCampo.antes} → ${depoisDaAlca}`);
+
+      // E o "ver menos" DESFAZ a altura arrastada: é a única saída de quem
+      // esticou demais, e sem ela o botão não tinha efeito nenhum justamente em
+      // quem mais mexe no campo. (Também devolve o campo ao automático para as
+      // provas seguintes, que medem o crescimento com o texto.)
+      await page.click(`[data-alvo="campo-o_que"]`);
+      await new Promise((r) => setTimeout(r, 200));
+      await page.click(`[data-alvo="campo-o_que"]`);
+      await new Promise((r) => setTimeout(r, 200));
+      const depoisDoRecolher = await page.evaluate(() =>
+        Math.round(document.getElementById('campo-o_que').getBoundingClientRect().height));
+      t(`${l} "ver menos" devolve o campo à altura padrão`,
+        depoisDoRecolher === alcaCampo.antes, `${depoisDaAlca} → ${depoisDoRecolher} (padrão ${alcaCampo.antes})`);
 
       // Existir na tela não prova que o botão continua ligado no ditado: a
       // prova é o toque acender e apagar.

@@ -156,10 +156,27 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   dentro (`crescerTextarea`). Medida que depende de layout (o que transborda,
   quanto o texto ocupa) vai em `Modal.aoAparecer`, disparada no
   `shown.bs.modal` — com o modal escondido toda altura vale zero.
+  **Todo campo de texto do modal tem o mesmo par de controles**: a **seta** de
+  ver mais/ver menos no canto superior direito (`.linha-rotulo` /
+  `.campo-ferramentas`) e a **alça** de arrastar a altura no canto inferior
+  direito (`.alca-campo`, `Modal.ligarAlcas`). A alça é NOSSA, movida por
+  eventos de ponteiro: a nativa (`resize: vertical`) **não existe no celular** —
+  o iOS não a desenha nem responde ao arraste —, e era justamente lá que o campo
+  apertava. Por isso o `resize` nativo fica **desligado**: duas alças no mesmo
+  canto deixariam a de baixo inalcançável. A altura arrastada MANDA a partir
+  dali (`data-ajustado`, mais `altura-manual` no bloco, que desliga o
+  esticamento do flex do modal), e **"ver menos" a desfaz** — é a única saída de
+  quem esticou demais.
+  O mesmo par vale para o **bloco de leitura** (`info`): a seta abre o cartão
+  inteiro (`.info-aberto`) e a alça arrasta a altura do corpo. Lá a seta só
+  aparece quando o conteúdo **realmente** não cabe (medido em
+  `marcarInfoRolavel`, com o modal já na tela) ou quando ela própria abriu o
+  bloco — seta que não faz nada ensina a ignorar a seta.
   Com **`maxLinhas`** o campo nasce COMPACTO (as `rows` declaradas), cresce até
-  esse teto e ali passa a rolar; e é `maxLinhas` que lhe dá a **seta de aumentar
-  o campo** (`.linha-rotulo` / `.campo-ferramentas`, no canto superior direito),
-  que troca o teto pelas mesmas 60% da tela. A seta é o MESMO caractere `▾`/`▴`
+  esse teto e ali passa a rolar; a seta troca o teto pelas mesmas 60% da tela.
+  Sem `maxLinhas`, a seta leva o campo direto às 60% (quem a toca quer espaço
+  para escrever, e um campo que só cresce com o que já foi digitado não daria
+  nenhum) e "ver menos" devolve o padrão do CSS. A seta é o MESMO caractere `▾`/`▴`
   com que as frentes de trabalho e os projetos abrem e fecham um bloco
   (`.seta-projeto`) — ícone próprio aqui ensinaria um segundo vocabulário para o
   gesto que o sistema inteiro já escreve assim; e ela VIRA ao abrir, senão o

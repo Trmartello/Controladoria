@@ -2130,8 +2130,11 @@ tr.card-destacado > td { background: #e8f5ee; }
   flex: 0 0 auto;
   min-height: 0;
 }
+/* `resize: none` porque a alça agora é NOSSA (`.alca-campo`): a nativa não
+   existe no celular, e mantê-la no computador colocaria duas alças no mesmo
+   canto — a de baixo inalcançável, escondida sob a que funciona nos dois. */
 #modal-form #modal-campos textarea[data-max-linhas] {
-  resize: vertical;
+  resize: none;
   overflow-y: hidden;
 }
 #modal-form #modal-campos > div:has(textarea[data-max-linhas]) { flex: 0 0 auto; }
@@ -2178,6 +2181,49 @@ tr.card-destacado > td { background: #e8f5ee; }
 @media (max-width: 991.98px) {
   .campo-ferramentas .btn-expandir { width: 2.25rem; height: 2.25rem; font-size: 1rem; }
 }
+
+/* ===== A alça de arrastar a altura (canto inferior direito) =====
+   Os três riscos na diagonal que todo mundo conhece do canto de um campo de
+   texto — só que desenhados por nós e movidos por eventos de PONTEIRO
+   (`Modal.ligarAlcas`). A alça nativa (`resize: vertical`) não existe no
+   celular: o iOS não a desenha nem responde ao arraste, e era justamente lá que
+   o campo ficava pequeno demais para o que se estava escrevendo.
+   `touch-action: none` é o que impede a página de rolar durante o gesto. */
+.alca-campo {
+  position: absolute;
+  right: .15rem;
+  bottom: .15rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 3;
+  background:
+    linear-gradient(135deg, transparent 46%, #adb5bd 46%, #adb5bd 58%, transparent 58%) no-repeat,
+    linear-gradient(135deg, transparent 66%, #adb5bd 66%, #adb5bd 78%, transparent 78%) no-repeat,
+    linear-gradient(135deg, transparent 86%, #adb5bd 86%, #adb5bd 98%, transparent 98%) no-repeat;
+}
+.alca-campo:hover { filter: brightness(.75); }
+/* No dedo a alça cresce de verdade — e junto com ela a área de toque. Abaixo de
+   ~1,8rem o gesto compete com o teclado do celular, que aparece ao tocar no
+   campo de texto logo ao lado. */
+@media (max-width: 991.98px) {
+  .alca-campo { width: 1.8rem; height: 1.8rem; right: .1rem; bottom: .1rem; }
+}
+/* A alça do bloco de leitura fica ancorada no cartão, que é quem tem a borda —
+   o corpo rola por dentro e levaria a alça embora na primeira rolagem. */
+.alca-info { right: .2rem; bottom: .2rem; }
+
+/* Altura escolhida à MÃO (arrastada na alça, ou aberta pela seta): o bloco sai
+   do esticamento do flex do modal, senão a medida escrita pelo JS seria
+   ignorada — é a mesma armadilha documentada no campo com teto de linhas. */
+#modal-form #modal-campos > div.altura-manual,
+#modal-form #modal-campos > div.altura-manual > .campo-voz {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+.card-info-modal.info-aberto .card-body { max-height: none; }
+.card-info-modal.info-altura-manual .card-body { max-height: none; flex: 0 0 auto; }
 
 /* ===== Caixa de campos (a opção `caixa` de Modal.abrir) =====
    Um painel em volta de uma decisão e de tudo que ela revela — hoje, a
@@ -2330,6 +2376,14 @@ tr.card-destacado > td { background: #e8f5ee; }
     max-height: none;
     flex: 1 1 auto;
   }
+  /* Aberto pela seta ou arrastado na alça, o bloco manda na própria altura: sai
+     do encolhimento que o deixa caber na tela junto com o formulário. As regras
+     acima têm dois ids e venceriam as genéricas lá de cima — por isso o
+     override precisa morar aqui dentro também. */
+  #modal-form #modal-campos > div.altura-manual { flex: 0 0 auto; min-height: 0; }
+  #modal-form #modal-campos > div.altura-manual .card-info-modal.info-altura-manual .card-body {
+    flex: 0 0 auto;
+  }
 }
 
 /* Microfone de ditado por voz — ícone discreto flutuando no canto inferior
@@ -2361,11 +2415,27 @@ tr.card-destacado > td { background: #e8f5ee; }
    Subir era o que se fazia antes, e quebrou quando o campo passou a nascer com
    UMA linha: 1.6rem de fundo mais 1.75rem de botão dão mais que a altura
    inteira do campo, e o microfone saía por cima da borda. Deslocado para a
-   esquerda ele continua no canto de baixo, em campo de qualquer altura. */
-.campo-voz:has(> textarea[data-max-linhas]) > .btn-ditar { right: 1.5rem; }
+   esquerda ele continua no canto de baixo, em campo de qualquer altura.
+   Agora TODO campo de texto do modal tem alça (a nossa, que funciona no dedo),
+   então o desvio vale para todos: o gatilho passou a ser a presença da alça, e
+   não mais o teto de linhas. A folga acompanha o TAMANHO da alça, que cresce no
+   celular — foi ela que o microfone cobriu na primeira medição, e o toque
+   ligava o ditado em vez de arrastar. */
+.campo-voz:has(> .alca-campo) > .btn-ditar { right: 1.6rem; }
+@media (max-width: 991.98px) {
+  .campo-voz:has(> .alca-campo) > .btn-ditar { right: 2.2rem; }
+}
 /* O recuo do texto acompanha o botão deslocado, senão a última linha passa por
    baixo dele. */
-.campo-voz > textarea[data-max-linhas].form-control { padding-right: 3.6rem; }
+/* O `#modal-campos .form-control` lá de cima tem um id e venceria uma regra só
+   de classes — por isso o recuo do campo dentro do modal repete o id. Sem ele o
+   `padding-right` não chegava, e a última linha do texto passava por baixo do
+   microfone e da alça. */
+.campo-voz:has(> .alca-campo) > textarea.form-control,
+#modal-campos .campo-voz:has(> .alca-campo) > textarea.form-control { padding-right: 3.8rem; }
+@media (max-width: 991.98px) {
+  #modal-campos .campo-voz:has(> .alca-campo) > textarea.form-control { padding-right: 4.4rem; }
+}
 .btn-ditar.gravando,
 .campo-voz > .btn-ditar.gravando {
   color: #fff;
