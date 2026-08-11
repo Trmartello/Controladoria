@@ -184,10 +184,16 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   O **microfone não sobe** com ela: fica dentro da caixa, no canto inferior
   direito, como em todo campo de texto do sistema (decisão do cliente; um lugar
   só neste formulário seria um segundo padrão). Ele desvia da alça de
-  redimensionar **pelo lado** (`right: 1.5rem`), não pela altura: subir era o que
-  se fazia antes e quebrou quando o campo passou a nascer com UMA linha — 1.6rem
-  de fundo mais 1.75rem de botão passam da altura inteira, e o microfone saía
-  por cima da borda.
+  redimensionar **pelo lado** (`right: 1.6rem`, 2.2rem no celular, onde a alça é
+  maior), não pela altura: subir era o que se fazia antes e quebrou quando o
+  campo passou a nascer com UMA linha — 1.6rem de fundo mais 1.75rem de botão
+  passam da altura inteira, e o microfone saía por cima da borda. O desvio e o
+  recuo do texto são condicionados a `:has(> .alca-campo)`: campo sem alça
+  (a tela do participante) não pode perder essa faixa à toa. E o recuo repete o
+  id — `#modal-campos .campo-voz:has(> .alca-campo) > textarea.form-control` —
+  porque `#modal-campos .form-control` tem um id e vence qualquer regra só de
+  classes: sem repeti-lo, a última linha digitada passava por baixo do
+  microfone dentro do modal, e só ali.
   O botão muda o TETO, nunca a altura: escrevê-la direto criaria duas fontes
   para a mesma medida e a tecla seguinte desfaria a expansão. E ele limpa o
   `data-ajustado`, senão não teria efeito nenhum em quem já esticou o campo pela
@@ -359,7 +365,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   O cabeçalho da seção (`.cabecalho-gut`) e o `<thead>` da tabela **grudam**
   abaixo da topbar, em degraus: `--topo-app` e `--altura-cabecalho`, medida por
   `Diag.ligarCabecalhoFixo` (o mesmo helper das análises). Rolando o ranking,
-  G, U, T, Score e Esforço saíam de vista e viravam cinco números anônimos.
+  G, U, T, Score e Prioridade saíam de vista e viravam cinco colunas anônimas.
   A tabela **não** usa `.table-responsive`: `overflow-x: auto` faria da própria
   caixa o scrollport do `sticky`, e o cabeçalho grudaria numa caixa que nunca
   rola na vertical — ou seja, nunca. Ela só aparece a partir de `md`, onde
