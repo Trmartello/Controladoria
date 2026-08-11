@@ -40,6 +40,16 @@ login() {
 get()  { curl -s -b $J -H "X-CSRF-Token: $CSRF" "$BASE$1"; }
 post() { curl -s -b $J -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' -X POST "$BASE$1" -d "$2"; }
 id_de(){ python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('id',''))" 2>/dev/null; }
+# campo_de <id> <campo> — de uma LISTAGEM na entrada, o valor de um campo de UM
+# registro, em JSON. Afirmar contra a resposta inteira não serve para valor que
+# se repete: `"esforco":null` casa com qualquer outro fator sem estimativa (e
+# são quase todos), e a prova passaria verde sem provar nada.
+campo_de(){ python3 -c "
+import sys, json
+alvo, campo = sys.argv[1], sys.argv[2]
+linhas = json.load(sys.stdin)['dados']
+print(json.dumps(next((l.get(campo) for l in linhas if str(l.get('id')) == alvo), '__ausente__')))
+" "$1" "$2" 2>/dev/null; }
 
 login
 P=1  # planejamento corporativo
@@ -67,8 +77,17 @@ afirma "esforço volta na listagem" '"esforco":"PEQUENO"' "$R"
 # array_key_exists, o `?? ''` vira NULL e o UPDATE limpa a coluna calado.
 R=$(post /api/fatores/$PROM/gut '{"planejamento_id":1,"gravidade":4,"urgencia":4,"tendencia":4}')
 afirma "reavalia sem mandar esforço" '"score":64' "$R"
-R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026")
-afirma "esforço antigo sobrevive à reavaliação" '"esforco":"PEQUENO"' "$R"
+R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026" | campo_de $PROM esforco)
+afirma "esforço antigo sobrevive à reavaliação" '^"PEQUENO"$' "$R"
+# A outra metade da mesma guarda, e é ela que impede a correção virar uma coluna
+# congelada: DECLARADO vazio, o esforço apaga. É o "não estimado" de quem chama
+# a rota com o campo na mão — sem esta prova, trocar o array_key_exists por um
+# `if ($esforco !== '')` passaria verde e deixaria a estimativa presa para
+# sempre, sem nenhuma tela por onde limpá-la.
+R=$(post /api/fatores/$PROM/gut '{"planejamento_id":1,"gravidade":4,"urgencia":4,"tendencia":4,"esforco":""}')
+afirma "esforço declarado vazio é aceito" '"score":64' "$R"
+R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026" | campo_de $PROM esforco)
+afirma "esforço declarado vazio limpa a estimativa" '^null$' "$R"
 
 echo "### 2. Cenário"
 R=$(post /api/cenario '{"planejamento_id":1,"tipo":"TENDENCIA","descricao":"Item de teste","ano":2026}')
