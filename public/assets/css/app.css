@@ -1327,6 +1327,22 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+/* Esmaecido no rodapé enquanto houver texto abaixo do corte (a classe vem de
+   `Modal.marcarInfoRolavel`, medida com o modal já na tela). É o que diferencia
+   "isto rola" de "isto está quebrado" — sem ele, o corte no meio de uma frase
+   parecia defeito, ainda mais com o bloco em caixas coloridas, onde a caixa de
+   baixo aparecia pela metade. Não recebe toque: flutua sobre o conteúdo. */
+.card-info-modal.info-tem-mais::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.6rem;
+  pointer-events: none;
+  background: linear-gradient(rgba(248, 250, 249, 0), #f8faf9 85%);
 }
 .card-info-modal .card-body {
   max-height: 15em; /* ~10 linhas de texto small */
@@ -1356,6 +1372,23 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   text-transform: none;
   opacity: .8;
 }
+/* Cada peça do bloco de leitura na sua caixa (o `itens` do campo `info`): as
+   duas pontas de um cruzamento da SWOT, com a cor do quadrante de cada uma.
+   Emendadas num parágrafo só, liam-se como uma frase — e a decisão que se vai
+   escrever logo abaixo depende de enxergar os dois lados separados. */
+.info-item {
+  border-radius: .4rem;
+  padding: .4rem .6rem;
+  margin-bottom: .35rem;
+  overflow-wrap: anywhere;
+}
+.info-item:last-child { margin-bottom: 0; }
+/* Sem o teto de ~10 linhas quando o bloco tem itens: as peças aparecem
+   inteiras e quem rola é o corpo do modal (já `modal-dialog-scrollable`).
+   Com o teto, a segunda caixa vinha cortada no meio da frase — o problema que
+   o `itens` veio resolver. A rolagem do cartão continua ligada: no celular ela
+   é quem segura um par longo dentro da tela (ver a regra do @media). */
+.card-info-modal .card-body.info-itens { max-height: none; }
 
 /* Matriz GUT no celular: cartões tocáveis com ranking, notas e score */
 .gut-card {
@@ -2284,6 +2317,10 @@ tr.card-destacado > td { background: #e8f5ee; }
        do textarea logo acima documenta. */
     min-height: 5.5rem;
   }
+  /* Bloco de PEÇAS (o par do cruzamento) ganha piso maior: com 5.5rem a
+     segunda caixa ficava fora de vista e o par — que é justamente o que se
+     precisa ler para escrever a estratégia — parecia ter uma ponta só. */
+  #modal-form #modal-campos > div:has(.info-itens) { min-height: 11rem; }
   #modal-form #modal-campos > div:has(.card-info-modal) .card-info-modal {
     /* Preenche o bloco e encolhe dentro dele: quem rola é o corpo do cartão */
     flex: 1 1 auto;

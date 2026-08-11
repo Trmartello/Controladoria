@@ -389,9 +389,21 @@ const SecaoCruzamentos = {
           // servidor o lê da linha. Trocar o par é outro cruzamento — some o
           // formulário, fica o registro do que está sendo editado.
           ...(c ? [
+            // As duas pontas em caixas SEPARADAS, com a cor do quadrante de
+            // cada uma — o mesmo desenho dos selos do cartão. Emendadas num
+            // parágrafo só (o que era), as duas descrições liam-se como um
+            // texto único e ninguém achava onde uma acabava e a outra começava
+            // — justamente no formulário em que se escreve a decisão sobre o
+            // par. Aqui elas vêm inteiras, sem o corte de linha do cartão.
             { nome: 'par', rotulo: 'Cruzamento', tipo: 'info',
-              texto: `${Diag.QUADRANTES[c.interno_categoria]}: ${c.interno_descricao}\n\n`
-                + `${Diag.QUADRANTES[c.externo_categoria]}: ${c.externo_descricao}`,
+              itens: [
+                { rotulo: Diag.QUADRANTES[c.interno_categoria] || c.interno_categoria,
+                  texto: c.interno_descricao,
+                  cor: Diag.CORES_QUADRANTE[c.interno_categoria] },
+                { rotulo: Diag.QUADRANTES[c.externo_categoria] || c.externo_categoria,
+                  texto: c.externo_descricao,
+                  cor: Diag.CORES_QUADRANTE[c.externo_categoria] },
+              ],
               barra: { titulo: this.bloco(c.tipo)?.rotulo || c.tipo,
                 cor: this.bloco(c.tipo)?.cor || '#007a45',
                 origem: `Para trocar o par, crie outro cruzamento` } },

@@ -79,7 +79,13 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   bloqueados no ambiente de execução — nunca referencie CDN).
 - **Tipos de campo do modal**: `text`, `textarea`, `select`, `multiselect`,
   `checkbox`, `password`, `number`, `date`, `hidden`, `periodo` (duas datas),
-  `info` (bloco só de leitura, com barra colorida opcional), `botoes` (option
+  `info` (bloco só de leitura, com barra colorida opcional; com `itens:
+  [{rotulo, texto, cor}]` mostra PEÇAS distintas, cada uma na sua caixa
+  colorida, e o bloco perde o teto de ~10 linhas — dois registros emendados num
+  parágrafo só, como era o par de um cruzamento da SWOT, liam-se como uma frase
+  única. Transbordando, `Modal.marcarInfoRolavel` acende o esmaecido do rodapé
+  (`.info-tem-mais`): sem ele o corte no meio da frase parecia defeito, e no
+  celular é ali que um par longo é segurado dentro da tela), `botoes` (option
   buttons), `quadrantes` (matriz SWOT 2×2), `selecao_livre` (combobox com
   busca que aceita nome novo), `faixa` (slider), `lista_marcavel` (itens
   marcáveis com selos coloridos, descrição cortada em 3 linhas com “ver mais”,

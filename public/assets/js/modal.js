@@ -362,12 +362,32 @@ const Modal = {
                ${c.barra.origem ? `<span class="info-barra-origem">${this.esc(c.barra.origem)}</span>` : ''}
              </div>`
           : '';
+        // `itens` mostra PEÇAS distintas, cada uma na sua caixa colorida, em vez
+        // de um texto corrido: dois registros emendados num parágrafo só (o par
+        // de um cruzamento da SWOT) liam-se como uma frase única, e ninguém
+        // achava onde um acabava e o outro começava. É o mesmo desenho dos selos
+        // do cartão — cor do quadrante, "Rótulo: descrição" —, só que INTEIRO:
+        // aqui não há corte de linha, porque este bloco existe para ser lido.
+        const corpo = Array.isArray(c.itens) && c.itens.length
+          ? c.itens.map((it) => {
+            const ci = /^#[0-9a-f]{6}$/i.test(it.cor || '') ? it.cor : '#5d6b64';
+            return `<div class="info-item" style="color:${ci};background:${ci}1f">
+                ${it.rotulo ? `<strong>${this.esc(it.rotulo)}:</strong> ` : ''}${this.esc(it.texto)}
+              </div>`;
+          }).join('')
+          : this.esc(c.texto ?? v);
         // O id vai no bloco inteiro: `info` não tem controle, e é por ele que
         // um `aoMudar` alcança o texto para reescrevê-lo (o bloco do
         // cruzamento da SWOT, que só se conhece depois de escolhido o par).
+        // Com `itens` o bloco não rola por dentro: as peças aparecem INTEIRAS e
+        // quem rola é o corpo do modal (que já é `modal-dialog-scrollable`).
+        // Cortar aqui devolvia o problema que o `itens` veio resolver — a
+        // segunda caixa aparecia pela metade, e ler o par exigia descobrir que
+        // aquela área tinha rolagem própria.
+        const classeCorpo = Array.isArray(c.itens) && c.itens.length ? ' info-itens' : '';
         return `<div class="mb-3" id="${id}">
           ${c.rotulo ? `<label class="form-label rotulo-info">${this.esc(c.rotulo)}</label>` : ''}
-          <div class="card card-info-modal">${barra}<div class="card-body py-2 px-3 small">${this.esc(c.texto ?? v)}</div></div>
+          <div class="card card-info-modal">${barra}<div class="card-body py-2 px-3 small${classeCorpo}">${corpo}</div></div>
         </div>`;
       }
       case 'hidden':
@@ -465,6 +485,31 @@ const Modal = {
     this.aplicarVerMais(raiz);
     raiz.querySelectorAll('textarea').forEach((t) => this.crescerTextarea(t));
     this.ligarAvisoRolagem(raiz.closest('.modal-body'));
+    this.marcarInfoRolavel(raiz);
+  },
+
+  /**
+   * Bloco de leitura que não coube: acende o esmaecido do rodapé.
+   *
+   * No celular o bloco encolhe para o formulário caber na tela e rola por
+   * dentro — mas o corte batia no meio de uma frase (ou de uma das caixas do
+   * par de um cruzamento) e parecia defeito, não rolagem. A marca é medida com
+   * o modal JÁ na tela: escondido, toda altura vale zero e nada transborda.
+   * Sem transbordo não há esmaecido — um degradê permanente no rodapé de um
+   * bloco inteiro à vista mentiria que ainda há texto embaixo.
+   */
+  marcarInfoRolavel(raiz) {
+    raiz.querySelectorAll('.card-info-modal').forEach((card) => {
+      const corpo = card.querySelector('.card-body');
+      if (!corpo) return;
+      const medir = () => card.classList.toggle(
+        'info-tem-mais', corpo.scrollHeight - corpo.clientHeight - corpo.scrollTop > 8);
+      if (!corpo.dataset.rolagemLigada) {
+        corpo.addEventListener('scroll', medir);
+        corpo.dataset.rolagemLigada = '1';
+      }
+      medir();
+    });
   },
 
   /**
