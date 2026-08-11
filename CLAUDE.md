@@ -307,34 +307,32 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   agora), com a legenda distribuída na barra da matriz (`.gut-legenda-barra`).
   O botão **Redefinir** (`extra.manterAberto`) zera os valores **sem fechar** o
   modal, para continuar editando.
-  Cada ameaça também recebe um **esforço** (`gut.esforco`, ENUM
-  PEQUENO/MEDIO/GRANDE, nulo = não estimado). Ele fica **fora** do produto
-  G×U×T de propósito: o score mede o tamanho do problema e o esforço o da
-  resposta — multiplicá-los faria uma ameaça gravíssima e cara despencar na
-  fila só por ser cara. Ele entra apenas como **desempate** na ordenação
-  (`pesoEsforco`, sem estimativa vai para o fim), e a estimativa é **opcional**:
-  chutar "médio" ao reabrir o modal gravaria uma medida que ninguém fez.
-  Na tela ele é **uma letra** (P/M/G), nunca a palavra — e as faixas do score
-  aparecem como letra também, na barra da legenda: escrever "Pequeno/Médio/
-  Grande" ali deixava a mesma linha dizendo "grande" para *prioridade alta* e
-  para *caro de resolver*, que são coisas opostas. Quem separa as duas leituras
-  na barra é o **número entre parênteses** (`< 27`, `27–63`, `≥ 64`), que fica.
-  **A cor é uma paleta só** (`SecaoGut.FAIXAS` → `corScore` e `corLetra`): P
-  verde, M dourado, G vermelho, no score e no esforço. Foi decisão do cliente,
-  pedida duas vezes — o padrão de cor vale mais que a ambiguidade —, e o que a
-  cor junta é a **forma** que separa: o selo do esforço é **redondo**
-  (`.esforco-selo`, `border-radius: 50%`) e o do score é retangular
-  (`.gut-score`). Duas listas de cor divergiriam na primeira revisão de paleta,
-  e a legenda passaria a explicar uma cor que a tabela não usa. **Sem estimativa
-  não se pinta nada**: fica o traço (`.esforco-selo.vazio`), porque cor ali
-  afirmaria uma medida que ninguém fez.
+  **A avaliação é G, U e T — e nada mais.** A quarta pergunta, o *esforço* de
+  enfrentar a ameaça (`gut.esforco`, ENUM PEQUENO/MEDIO/GRANDE), **saiu** por
+  decisão do cliente: quase ninguém estimava — a coluna vivia de traços —, a
+  pergunta alongava um formulário que existe para ser respondido em segundos, e
+  P/M/G aparecia na mesma tela com dois sentidos opostos (vermelho no score é
+  "tratar agora"; no esforço era "caro de resolver"). Hoje a tela tem **uma
+  leitura só**.
+  A coluna virou **Prioridade**: a LETRA da faixa do score (`seloFaixa`,
+  `.selo-faixa`, selo redondo), sempre preenchida quando há avaliação — P (<27,
+  verde), M (27–63, dourado), G (≥64, vermelho), exatamente as faixas da barra
+  da legenda. Quem produz a letra, a cor e o corte é **uma fonte só**
+  (`SecaoGut.FAIXAS` → `faixaDoScore`): escritos separados, o selo e a legenda
+  divergiriam na primeira revisão de paleta ou de limite, e a legenda passaria a
+  explicar uma cor que a tabela não usa. **Sem avaliação não se pinta nada**:
+  fica o traço (`.selo-faixa.vazio`), porque cor ali afirmaria uma prioridade
+  que ninguém deu. A ordenação é só por score — o desempate por esforço
+  (`pesoEsforco`) saiu junto com a estimativa.
+  A coluna do banco **fica onde está, com as estimativas antigas**: nada foi
+  apagado, e `FatorController::gut` só toca em `esforco` quando o corpo
+  **declara** o campo (`array_key_exists`). Sem essa guarda, reabrir e salvar
+  uma avaliação já feita apagaria calado o que tinha sido estimado antes — o
+  `?? ''` vira NULL e `VALUES(esforco)` o grava.
   O que cada letra significa mora no **ⓘ** da legenda (chave `PMG`,
   `Diag.ligarOrientacoes`, o mesmo padrão das análises) e no `title` de cada
   selo — não num parágrafo acima da tabela, que custava uma faixa inteira da
-  tela. O ⓘ explica **as duas leituras**, uma embaixo da outra, e é o único
-  lugar que diz que o esforço mede a resposta e não o problema. A antiga
-  etiqueta `Esforço P · M · G` saiu da barra por ser a terceira repetição da
-  mesma informação.
+  tela.
   **Ponto aberto medido, não resolvido**: sobre branco, o verde `#007a45` dá
   5,43:1 e o vermelho `#8f3b3b` 7,35:1, mas o dourado `#b08d4f` dá **3,10:1** —
   abaixo do 4,5:1 da WCAG AA para texto pequeno. Hoje a letra e a faixa

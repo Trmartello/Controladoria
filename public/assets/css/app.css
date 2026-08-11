@@ -1406,14 +1406,14 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   border-radius: 20px;
 }
 .gut-acao { margin-left: auto; font-size: .7rem; font-weight: 600; color: #adb5bd; }
-/* Esforço: uma LETRA (P/M/G) num selo REDONDO, pintado na cor da letra pelo JS
-   (mesma paleta das faixas do score — P/M/G é um padrão de cor só).
-   O redondo é o que separa esta leitura da do score, que é retangular: as duas
-   colunas usam as mesmas três cores para dizer coisas diferentes (vermelho no
-   score é "tratar agora"; aqui é "caro de resolver"), e sem a diferença de
-   forma nada distinguiria uma da outra à distância.
+/* Prioridade: a LETRA da faixa do score (P/M/G) num selo REDONDO, pintado pelo
+   JS na cor da faixa — a mesma da legenda. O redondo diferencia do selo do
+   score, que é retangular e traz o número: são a mesma leitura em duas formas,
+   a letra para bater o olho e o número para comparar.
+   (Esta coluna já foi o esforço estimado à mão; a estimativa saiu da avaliação
+   e a letra passou a ser consequência do score.)
    Tamanho fixo nos dois eixos, senão a letra estica o círculo em elipse. */
-.esforco-selo {
+.selo-faixa {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1425,9 +1425,9 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   background: #5d6b64;
   border-radius: 50%;
 }
-/* Sem estimativa não se pinta nada: o traço é ausência de medida, não uma
-   medida "neutra". */
-.esforco-selo.vazio { color: #a9b3ad; background: none; }
+/* Sem avaliação não se pinta nada: o traço é ausência de nota, não uma
+   prioridade "neutra". */
+.selo-faixa.vazio { color: #a9b3ad; background: none; }
 .gut-chave {
   font-size: .6rem;
   font-weight: 700;

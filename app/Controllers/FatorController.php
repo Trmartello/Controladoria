@@ -345,11 +345,15 @@ class FatorController
                 Json::erro('As notas G, U e T devem estar entre 1 e 5.');
             }
         }
-        // Esforço é opcional: quem só quer priorizar (G/U/T) não fica preso a
-        // uma estimativa que talvez ainda não exista. Vazio grava NULL, e a
-        // tela mostra "—" em vez de fingir um tamanho.
+        // O esforço saiu da avaliação: a tela pergunta G, U e T e mais nada, e
+        // a letra P/M/G da tabela passou a vir da faixa do score. A coluna
+        // continua aqui com as estimativas antigas — e é por isso que o UPDATE
+        // só a toca quando o corpo DECLARA o campo: sem essa guarda, reabrir e
+        // salvar uma avaliação já feita apagaria calado o esforço registrado
+        // antes da mudança (o `?? ''` vira NULL, e VALUES(esforco) o grava).
+        $temEsforco = array_key_exists('esforco', $d);
         $esforco = trim((string)($d['esforco'] ?? ''));
-        if ($esforco !== '' && !in_array($esforco, self::ESFORCOS, true)) {
+        if ($temEsforco && $esforco !== '' && !in_array($esforco, self::ESFORCOS, true)) {
             Json::erro('Esforço inválido.');
         }
         Database::executar(
@@ -357,8 +361,8 @@ class FatorController
              ON DUPLICATE KEY UPDATE gravidade = VALUES(gravidade),
                                      urgencia = VALUES(urgencia),
                                      tendencia = VALUES(tendencia),
-                                     esforco = VALUES(esforco)',
-            [$fatorId, $g, $u, $t, $esforco !== '' ? $esforco : null]
+                                     esforco = ' . ($temEsforco ? 'VALUES(esforco)' : 'esforco'),
+            [$fatorId, $g, $u, $t, $temEsforco && $esforco !== '' ? $esforco : null]
         );
         Json::ok(['score' => $g * $u * $t]);
     }

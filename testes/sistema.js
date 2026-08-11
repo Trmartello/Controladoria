@@ -930,10 +930,18 @@ async function provasFilaAcao(page, largura) {
 }
 
 /**
- * Duas invariantes da Matriz GUT que já custaram defeito e não aparecem no
- * "a seção pinta": o cabeçalho que precisa GRUDAR ao rolar (sem ele as quatro
- * colunas de número viram números anônimos) e o aviso de campo abaixo da dobra
- * no modal (sem ele o Esforço ficava "não estimado" sem ninguém escolher isso).
+ * Invariantes da Matriz GUT que não aparecem no "a seção pinta":
+ *
+ * - o cabeçalho precisa **grudar** ao rolar; sem ele as quatro colunas de
+ *   número viram números anônimos;
+ * - a avaliação é **G, U e T e nada mais** — a pergunta do esforço saiu, e um
+ *   campo a mais voltando de uma refatoração passaria por "detalhe";
+ * - a coluna **Prioridade** traz a LETRA da faixa do score, sempre preenchida
+ *   quando há avaliação. É a prova que segura o corte: trocar `>=` por `>` num
+ *   piso da faixa deixa a tabela plausível e a legenda mentindo;
+ * - o aviso de campo abaixo da dobra continua casando com o transbordo REAL do
+ *   modal (`sobra === aviso`), nas duas direções — anunciar o que não existe
+ *   ensina a ignorar o aviso.
  */
 async function provasGut(page) {
   await page.evaluate(() => App.mostrarSecao('gut'));
@@ -955,10 +963,27 @@ async function provasGut(page) {
     !!fixo && fixo.th > fixo.cab, JSON.stringify(fixo));
 
   await page.evaluate(() => window.scrollTo(0, 0));
+  // A letra da coluna Prioridade sai da faixa do score: confere linha a linha
+  // contra os mesmos cortes da legenda (<27, 27–63, ≥64). Linha sem avaliação
+  // não tem letra nenhuma — cor ali afirmaria uma prioridade que ninguém deu.
+  const faixas = await page.evaluate(() => [...document.querySelectorAll('#secao-gut tbody tr')]
+    .map((tr) => {
+      const td = [...tr.querySelectorAll('td')];
+      const score = parseInt(td[6]?.textContent.trim(), 10);
+      return { score: Number.isNaN(score) ? null : score,
+        letra: tr.querySelector('.selo-faixa')?.textContent.trim() || null };
+    }));
+  const esperada = (s) => (s === null ? '—' : s >= 64 ? 'G' : s >= 27 ? 'M' : 'P');
+  const erradas = faixas.filter((f) => f.letra !== esperada(f.score));
+  t('[desktop] Coluna Prioridade traz a letra da faixa do score',
+    faixas.length > 0 && erradas.length === 0, JSON.stringify(erradas.slice(0, 3)));
+
   await page.click('#secao-gut tbody tr:first-child [data-avaliar]');
-  const abriu = await esperar(page, "!!document.getElementById('campo-esforco')", 8000);
-  t('[desktop] Modal da GUT traz o campo de esforço', abriu);
+  const abriu = await esperar(page, "!!document.getElementById('campo-gravidade')", 8000);
+  t('[desktop] Modal da GUT abre com as notas', abriu);
   if (!abriu) return;
+  t('[desktop] Avaliação da GUT não pergunta esforço',
+    !(await page.evaluate(() => !!document.getElementById('campo-esforco'))));
   await new Promise((r) => setTimeout(r, 400));
   const dobra = await page.evaluate(() => {
     const c = document.querySelector('.modal-body');

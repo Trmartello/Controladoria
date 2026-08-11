@@ -1327,64 +1327,53 @@ const SecaoSwot = {
 };
 
 const SecaoGut = {
-  // As três faixas do score (1–125). Na barra da legenda elas aparecem como
-  // LETRA, não por extenso: ao lado mora o esforço, que também é P/M/G, e as
-  // duas leituras escritas deixavam "Grande" a um palmo de "G" significando
-  // coisas opostas (prioridade alta × caro de resolver). O que separa uma
-  // leitura da outra na tela é o número entre parênteses, que fica; o que cada
-  // letra quer dizer mora no ⓘ da barra e no title de cada faixa.
+  // As três faixas do score (1–125). Elas aparecem por LETRA na barra da
+  // legenda e na coluna "Prioridade" da tabela — o número entre parênteses é o
+  // que diz de onde a letra vem.
   FAIXAS: [
     { letra: 'P', rotulo: 'pequena', piso: 1,  faixa: '&lt; 27', extenso: 'abaixo de 27', cor: '#007a45' },
     { letra: 'M', rotulo: 'média',   piso: 27, faixa: '27–63',   extenso: 'de 27 a 63',   cor: '#b08d4f' },
     { letra: 'G', rotulo: 'grande',  piso: 64, faixa: '≥ 64',    extenso: '64 ou mais',   cor: '#8f3b3b' },
   ],
-  // Severidade do score colore o selo: alta, média ou baixa prioridade. Sai da
-  // MESMA lista da legenda — a cor do selo e a do quadradinho escritas
-  // separadas divergiriam na primeira revisão de paleta, e aí a legenda
-  // passaria a explicar uma cor que a tabela não usa.
+  /**
+   * A faixa de um score, ou null se ele ainda não foi avaliado.
+   *
+   * É a fonte única do P/M/G da tela: a barra da legenda, a cor do selo do
+   * score e a letra da coluna "Prioridade" saem todos daqui. Escritos
+   * separados, divergiriam na primeira revisão de paleta ou de corte, e a
+   * legenda passaria a explicar uma cor (ou um limite) que a tabela não usa.
+   */
+  faixaDoScore(score) {
+    let faixa = null;
+    this.FAIXAS.forEach((f) => { if (score >= f.piso) faixa = f; });
+    return faixa;
+  },
+  // Severidade do score colore o selo: alta, média ou baixa prioridade.
   corScore(score) {
-    let cor = this.FAIXAS[0].cor;
-    this.FAIXAS.forEach((f) => { if (score >= f.piso) cor = f.cor; });
-    return cor;
+    return (this.faixaDoScore(score) || this.FAIXAS[0]).cor;
   },
 
-  // Tamanho do enfrentamento, como UMA LETRA num selo redondo pintado na cor da
-  // letra — P verde, M dourado, G vermelho, a mesma paleta das faixas do score
-  // (corLetra), porque P/M/G é UM padrão de cor no sistema inteiro.
-  // Atenção a quem for mexer: aqui a cor NÃO quer dizer a mesma coisa que na
-  // coluna do score. Vermelho no score é "prioridade alta, tratar agora";
-  // vermelho aqui é "caro de resolver". As duas leituras convivem lado a lado
-  // por decisão do cliente (o padrão de cor vale mais que a ambiguidade), e é
-  // por isso que o selo é REDONDO e o do score é retangular: a forma separa o
-  // que a cor junta. O significado mora no ⓘ da legenda e no title do selo.
-  ESFORCOS: {
-    PEQUENO: { letra: 'P', rotulo: 'pequeno', ajuda: 'a equipe resolve com o que já tem' },
-    MEDIO:   { letra: 'M', rotulo: 'médio', ajuda: 'exige remanejar time, verba ou prazo' },
-    GRANDE:  { letra: 'G', rotulo: 'grande', ajuda: 'precisa de projeto, investimento ou decisão da direção' },
-  },
-  // Ordem de desempate: entre ameaças de prioridade parecida, começa a que
-  // custa menos. Sem estimativa vai para o fim — não se compara com o que foi
-  // medido, e fingir "pequeno" mandaria a fila para o lugar errado.
-  pesoEsforco(esforco) {
-    return { PEQUENO: 1, MEDIO: 2, GRANDE: 3 }[esforco] || 9;
-  },
-  // A cor de uma letra P/M/G — uma paleta só para as duas leituras da tela.
-  // Duas listas de cor divergiriam na primeira revisão, e aí o verde do esforço
-  // deixaria de ser o verde da legenda que o explica.
-  corLetra(letra) {
-    const f = this.FAIXAS.find((x) => x.letra === letra);
-    return f ? f.cor : '#5d6b64';
-  },
-
-  seloEsforco(esforco) {
-    const e = this.ESFORCOS[esforco];
-    // Estimar o esforço é OPCIONAL: quem avaliou G/U/T e não mediu o
-    // enfrentamento fica com o traço, e o traço não se pinta — cor aqui
-    // afirmaria uma medida que ninguém fez.
-    if (!e) return '<span class="esforco-selo vazio" title="Esforço não estimado">—</span>';
-    const dica = `Esforço ${e.rotulo} — ${e.ajuda}`;
-    return `<span class="esforco-selo" style="background:${this.corLetra(e.letra)}"
-      title="${dica}" aria-label="${dica}">${e.letra}</span>`;
+  /**
+   * A faixa como UMA LETRA num selo redondo, na cor da faixa — P verde, M
+   * dourado, G vermelho, a mesma paleta da legenda.
+   *
+   * Esta coluna já foi o **esforço** de enfrentar o fator, estimado à mão numa
+   * quarta pergunta da avaliação. Ela saiu: quase ninguém estimava (a coluna
+   * vivia de traços), a pergunta alongava um formulário que existe para ser
+   * respondido em segundos, e P/M/G aparecia na mesma tela com dois
+   * significados opostos — vermelho no score é "tratar agora", vermelho no
+   * esforço era "caro de resolver". Agora a letra é consequência do score, e a
+   * tela tem uma leitura só. A coluna `gut.esforco` continua no banco com as
+   * estimativas antigas: nada foi apagado.
+   */
+  seloFaixa(score) {
+    const f = this.faixaDoScore(score);
+    // Sem nota não há faixa — e o traço não se pinta: cor aqui afirmaria uma
+    // prioridade que ninguém avaliou.
+    if (!f) return '<span class="selo-faixa vazio" title="Ainda sem avaliação">—</span>';
+    const dica = `Prioridade ${f.rotulo} — score ${f.extenso}`;
+    return `<span class="selo-faixa" style="background:${f.cor}"
+      title="${dica}" aria-label="${dica}">${f.letra}</span>`;
   },
 
   async carregar() {
@@ -1392,9 +1381,10 @@ const SecaoGut = {
     if (!base) return;
     const { el, plan, ano } = base;
     const fatores = await App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT&ano=${ano}`);
-    const ordenados = [...fatores].sort((a, b) =>
-      (b.score || 0) - (a.score || 0)
-      || this.pesoEsforco(a.esforco) - this.pesoEsforco(b.esforco));
+    // Só o score ordena: o desempate por esforço saiu junto com a estimativa
+    // manual. Empate mantém a ordem que veio do servidor (categoria e id), que
+    // é estável entre recargas — sortear ali faria a fila dançar sozinha.
+    const ordenados = [...fatores].sort((a, b) => (b.score || 0) - (a.score || 0));
     const editar = App.podeEditar();
 
     // Celular: cartões tocáveis. Computador: a tabela de ranking de sempre.
@@ -1412,7 +1402,7 @@ const SecaoGut = {
           <div class="d-flex align-items-center gap-2 mb-1">
             <span class="gut-rank ${avaliado ? '' : 'text-black-50'}">${avaliado ? `${idx + 1}º` : '—'}</span>
             <span class="badge gut-tag" style="color:${cor};background:${cor}1f">${Diag.QUADRANTES[f.categoria]}</span>
-            ${avaliado ? this.seloEsforco(f.esforco) : ''}
+            ${avaliado ? this.seloFaixa(f.score) : ''}
             ${editar ? '<span class="ms-auto gut-acao">avaliar ✎</span>' : ''}
           </div>
           <div class="small texto-fator mb-2">${Modal.esc(f.descricao)}</div>
@@ -1438,7 +1428,7 @@ const SecaoGut = {
         <td class="text-center">${f.tendencia ?? '—'}</td>
         <td class="text-center">${f.score
           ? `<span class="badge gut-score" style="background:${this.corScore(f.score)}">${f.score}</span>` : '—'}</td>
-        <td class="text-center">${f.score ? this.seloEsforco(f.esforco) : '—'}</td>
+        <td class="text-center">${this.seloFaixa(f.score)}</td>
         <td>${editar ? `<button class="btn btn-sm btn-outline-secondary" data-avaliar="${f.id}">Avaliar</button>` : ''}</td>
       </tr>`;
     }).join('');
@@ -1467,13 +1457,11 @@ const SecaoGut = {
       </div>
       <div class="orientacao-categoria small d-none mb-3" data-orientacao-alvo="PMG"
         style="--cor-cat:#5d6b64">
-        <b>P</b>, <b>M</b> e <b>G</b> aparecem em duas leituras diferentes desta tela.<br>
-        Na <strong>prioridade</strong> (o score) são as faixas:
+        <b>P</b>, <b>M</b> e <b>G</b> são as faixas da <strong>prioridade</strong> — a letra sai do
+        score (G × U × T), não de uma estimativa à parte:
         ${this.FAIXAS.map((f) => `<b>${f.letra}</b> = ${f.rotulo} (${f.faixa})`).join(' · ')}.<br>
-        No <strong>esforço</strong> são o tamanho da resposta:
-        ${Object.values(this.ESFORCOS).map((e) => `<b>${e.letra}</b> = ${e.rotulo} (${e.ajuda})`).join(' · ')}.
-        O esforço mede o tamanho da <strong>resposta</strong>, não o do problema: não entra no score,
-        só desempata por onde começar entre ameaças de prioridade parecida.
+        É a mesma letra da coluna <strong>Prioridade</strong> da tabela: quem lê a fila enxerga a
+        faixa sem precisar decorar onde cada corte do score começa.
       </div>
 
       <div class="d-md-none">
@@ -1489,7 +1477,9 @@ const SecaoGut = {
           <thead><tr>
             <th>Ranking</th><th>Quadrante</th><th>Fator</th>
             <th class="text-center">G</th><th class="text-center">U</th><th class="text-center">T</th>
-            <th class="text-center">Score</th><th class="text-center">Esforço</th><th></th>
+            <th class="text-center">Score</th>
+            <th class="text-center" title="Faixa do score: P (menos de 27) · M (27 a 63) · G (64 ou mais)">Prioridade</th>
+            <th></th>
           </tr></thead>
           <tbody>${linhas || `<tr><td colspan="9" class="text-muted">${vazio}</td></tr>`}</tbody>
         </table>
@@ -1512,10 +1502,6 @@ const SecaoGut = {
       valores: {
         planejamento_id: plan.id,
         gravidade: f.gravidade || 3, urgencia: f.urgencia || 3, tendencia: f.tendencia || 3,
-        // Sem padrão: esforço não estimado tem que continuar não estimado ao
-        // reabrir o modal. Chutar "médio" gravaria uma estimativa que ninguém
-        // fez, e ela entraria na ordem da fila como se fosse medida.
-        esforco: f.esforco || '',
       },
       campos: [
         { nome: 'fator_info', rotulo: 'Fator avaliado', tipo: 'info', texto: f.descricao,
@@ -1531,19 +1517,10 @@ const SecaoGut = {
           ajuda: '1 = pode esperar · 5 = agir já. Qual o prazo para agir e o quanto adiar pressiona o cronograma ou gera perdas imediatas?' },
         { nome: 'tendencia', rotulo: 'Tendência — "Se nada for feito, isso vira uma bola de neve?"', tipo: 'botoes', opcoes: escala,
           ajuda: '1 = estável · 5 = piora rápido. O problema tende a continuar do mesmo tamanho ou piorar rapidamente? (velocidade de deterioração)' },
-        // Fora do produto G×U×T de propósito: o score mede o tamanho do
-        // problema, e o esforço mede o tamanho da resposta. Multiplicá-los
-        // faria uma ameaça gravíssima e cara despencar na fila só por ser cara.
-        { nome: 'esforco', rotulo: 'Esforço — "Quanto custa enfrentar isso?"', tipo: 'botoes',
-          opcoes: [
-            { valor: 'PEQUENO', rotulo: 'Pequeno' },
-            { valor: 'MEDIO', rotulo: 'Médio' },
-            { valor: 'GRANDE', rotulo: 'Grande' },
-            { valor: '', rotulo: 'Não estimado' },
-          ],
-          ajuda: 'Pequeno = a equipe resolve com o que já tem · Médio = exige remanejar time, verba ou prazo · '
-            + 'Grande = precisa de projeto, investimento ou decisão da direção. Não entra no score: '
-            + 'ele só desempata quem tratar primeiro entre ameaças de prioridade parecida.' },
+        // A avaliação é a GUT e só ela: três perguntas. A quarta — o esforço de
+        // enfrentar — saiu, e a letra P/M/G da tabela passou a vir da faixa do
+        // score (ver `seloFaixa`). O corpo não manda mais `esforco`, e o
+        // servidor preserva o que já estava gravado em vez de apagá-lo.
       ],
       // Só há o que redefinir se o fator já tiver notas registradas. Redefinir
       // zera a avaliação e volta os botões ao padrão SEM fechar o modal, para
@@ -1558,11 +1535,6 @@ const SecaoGut = {
             const alvo = document.querySelector(`#campo-${nome} input[value="3"]`);
             if (alvo) alvo.checked = true;
           });
-          // `limpar` apaga a linha inteira do GUT, esforço incluído: deixar o
-          // botão anterior aceso mostraria na tela um valor que o banco não
-          // tem mais, e o próximo salvamento o regravaria sem ninguém pedir.
-          const semEsforco = document.querySelector('#campo-esforco input[value=""]');
-          if (semEsforco) semEsforco.checked = true;
         },
       } : null,
     });

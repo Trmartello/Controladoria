@@ -62,6 +62,13 @@ R=$(post /api/fatores/$PROM/gut '{"planejamento_id":1,"gravidade":5,"urgencia":5
 afirma "recusa esforço inválido" 'Esforço inválido' "$R"
 R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026")
 afirma "esforço volta na listagem" '"esforco":"PEQUENO"' "$R"
+# A tela não pergunta mais o esforço: ela manda G, U e T e MAIS NADA. Salvar
+# assim não pode apagar a estimativa que já estava gravada — sem a guarda do
+# array_key_exists, o `?? ''` vira NULL e o UPDATE limpa a coluna calado.
+R=$(post /api/fatores/$PROM/gut '{"planejamento_id":1,"gravidade":4,"urgencia":4,"tendencia":4}')
+afirma "reavalia sem mandar esforço" '"score":64' "$R"
+R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026")
+afirma "esforço antigo sobrevive à reavaliação" '"esforco":"PEQUENO"' "$R"
 
 echo "### 2. Cenário"
 R=$(post /api/cenario '{"planejamento_id":1,"tipo":"TENDENCIA","descricao":"Item de teste","ano":2026}')
