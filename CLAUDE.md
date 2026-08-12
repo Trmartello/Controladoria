@@ -1239,6 +1239,47 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   ResizeObserver reempilha a pilha sozinho. O campo é enxuto de propósito
   (11rem; no celular a dupla toma a linha inteira) — mora no cabeçalho fixo, e
   cada rem ali é tela roubada da lista o tempo todo.
+  **A pessoa entra por DOIS caminhos, e eles não são redundantes.** A palavra
+  passou a casar também com o **nome e o e-mail** de quem responde pela ação: é
+  o caminho largo, e quem digita "Ana" acha as ações dela sem saber onde o nome
+  aparece na tela. O preço é o falso positivo — "ana" está dentro de "semana", e
+  a reunião semanal de outra pessoa vem junto. O **responsável**
+  (`filtroResponsavel`, `[data-filtro-responsavel]`) é o caminho exato: casa SÓ
+  contra quem responde, nunca contra o texto da ação. Quem "simplificar" fazendo
+  os dois compartilharem o mesmo casamento deixa a tela funcionando e a precisão
+  some — é o que a bateria guarda.
+  O controle é `<input type="search" list=…>` com `<datalist>`: dá para escolher
+  da lista **ou digitar parte do nome**, que é o que se faz sem lembrar a
+  grafia. `<select>` fechado obrigaria a caçar a pessoa numa lista longa; texto
+  puro não diria quem existe. Ele escuta **`input`, não `change`** — escolher da
+  lista dispara os dois, mas digitar só dispara `input`, e com `change` quem
+  digita ficava sem filtro até sair do campo.
+  A lista (`pessoasParaFiltro`) soma DUAS fontes: quem **tem ação no plano**
+  (única que traz o e-mail, e que inclui quem já foi desativado mas ainda
+  carrega ação — justamente as que precisam ser reatribuídas) e os
+  **responsáveis ativos** de `/api/responsaveis` (só nomes), para quem ainda não
+  recebeu nada aparecer e a escolha devolver tela vazia, que é a resposta certa.
+  A chave é o nome NORMALIZADO: as duas fontes escrevem a mesma pessoa com
+  acentuação diferente, e sem normalizar ela entrava duas vezes.
+  **«Sem usuário» é a primeira opção**, fixa (`ROTULO_SEM_DONO`): a ação órfã
+  não é cobrada de ninguém. O rótulo é a mesma constante que o compara — a caixa
+  é de texto livre, o item escreve nela o que volta para o filtro, e um rótulo
+  escrito num lugar e comparado em outro deixaria de casar na primeira revisão
+  de redação. Ele casa pelo rótulo INTEIRO, não por pedaço, senão digitar "sem"
+  trocaria o sentido do filtro no meio da palavra.
+  O que o filtro compara é o **`data-quem` do cartão** (`chaveQuem`: nome e
+  e-mail normalizados, vazio quando não há dono) — o e-mail não está escrito na
+  tela, então lê-lo do texto visível nunca o encontraria. O e-mail vem do
+  servidor em `desdobramento.quem_email` (LEFT JOIN em `ProjetoController`), e
+  não de `/api/usuarios`: aquela rota é exclusiva de ADMIN, e o gestor que
+  precisa do mapeamento não a alcança.
+  O placeholder da palavra é curto ("Palavra ou pessoa…") porque em 11rem o
+  texto é cortado no meio: "Pesquisar palavra, pessoa ou e-mail…" morria em
+  "pessoa ou e-", que promete pior do que não prometer. O resto mora no `title`.
+  Armadilha da bateria já paga: **`page.fill(campo, '')` é NO-OP** num campo que
+  já tem texto — o Chromium não apaga a seleção quando o texto inserido é vazio.
+  A prova seguia com o filtro anterior de pé e ficava verde pelo motivo errado.
+  Limpar é `ControlOrMeta+A` + `Backspace`, que é o que o usuário faz.
 - **Três níveis de recolhimento** (`nivelAtual` / `aplicarNivel` /
   `pintarNiveis`): **Ações · Frentes · Projetos**, no lugar do "Recolher tudo"
   que só tinha os extremos. "Frentes" é o nível que faltava — esconde as ações e

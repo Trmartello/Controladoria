@@ -1018,6 +1018,154 @@ async function provasGut(page) {
  *   passar `e`, `+` e `-` e depois devolvia vazio.
  */
 /**
+ * A pesquisa do plano de ação achando as ações de uma PESSOA.
+ *
+ * São dois caminhos, e a prova guarda o que distingue um do outro — porque os
+ * dois continuam plausíveis quando um deles quebra:
+ *
+ * - a **palavra** é o caminho largo: casa com o texto da ação, com os títulos
+ *   acima dela e também com o nome e o **e-mail** de quem responde. O e-mail é
+ *   o que não está escrito na tela: sem o `data-quem` no cartão ele deixa de
+ *   ser encontrado, e a busca por e-mail passa a devolver nada — silenciosa,
+ *   porque "não achou" é uma resposta que parece legítima;
+ * - o **responsável** é o caminho exato: casa SÓ contra quem responde. É esta
+ *   prova que segura a diferença: "ana" ali não pode trazer "toda semana"
+ *   junto. Se alguém "simplificar" fazendo os dois campos compartilharem o
+ *   mesmo casamento, a tela continua funcionando e a precisão some.
+ *
+ * E o «Sem usuário», que é escolha e não busca por pedaço: ele acha a ação
+ * órfã — a de quem saiu do cadastro sem que ninguém assumisse — e NÃO pode
+ * trazer junto ação que tem dono.
+ */
+async function provasFiltroResponsavel(page) {
+  // Nenhuma prova pode depender da limpeza da anterior: um modal que tenha
+  // ficado aberto captura TODO clique da página seguinte (o `.modal-body`
+  // intercepta o ponteiro), e o vermelho aparece aqui, longe de onde nasceu.
+  // Fecha pela API do Bootstrap, não por Escape — Escape depende de foco, e o
+  // foco é justamente o que um modal órfão já perdeu.
+  await page.evaluate(() => {
+    document.querySelectorAll('.modal.show').forEach((m) => {
+      window.bootstrap?.Modal.getInstance(m)?.hide();
+    });
+  });
+  await esperar(page, "!document.querySelector('.modal.show')", 4000);
+
+  const ids = await page.evaluate(async () => {
+    const ana = await App.api('/api/usuarios', { nome: 'Ana Prova Filtro',
+      email: 'ana.filtro@teste.local', senha: 'trocar123', perfil: 'CONTROLADORIA', negocios: [] });
+    const sai = await App.api('/api/usuarios', { nome: 'Carlos Prova Filtro',
+      email: 'carlos.filtro@teste.local', senha: 'trocar123', perfil: 'CONTROLADORIA', negocios: [] });
+    const p = await App.api('/api/projetos', { planejamento_id: 1, titulo: 'Projeto filtro pessoa',
+      ano: 2027, responsavel: 'QA', descricao: 'x' });
+    const i = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id,
+      titulo: 'Frente filtro pessoa' });
+    const base = { planejamento_id: 1, projeto_id: p.id, iniciativa_id: i.id, como: 'x',
+      prioridade: 'MEDIA', status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31' };
+    await App.api('/api/desdobramentos', { ...base, o_que: 'Revisar contratos', quem: 'Ana Prova Filtro' });
+    // A armadilha do caminho largo: "ana" está dentro de "semana", e esta ação
+    // é de OUTRA pessoa. O filtro de responsável não pode trazê-la.
+    await App.api('/api/desdobramentos', { ...base, o_que: 'Reuniao toda semana', quem: 'Administrador' });
+    await App.api('/api/desdobramentos', { ...base, o_que: 'Acao que ficou orfa', quem: 'Carlos Prova Filtro' });
+    // Ação órfã só nasce de um jeito: o dono sai e ninguém assume.
+    await App.api(`/api/usuarios/${sai.id}/excluir`, { sem_responsavel: true });
+    return { ana: ana.id, projeto: p.id };
+  });
+
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  await esperar(page, "!document.getElementById('secao-projetos').classList.contains('d-none')", 15000);
+  await esperar(page, "document.querySelectorAll('#secao-projetos [data-card-acao]').length >= 3", 10000);
+
+  const visiveis = () => page.evaluate(() =>
+    [...document.querySelectorAll('#secao-projetos [data-card-acao]')]
+      .filter((c) => !c.classList.contains('d-none'))
+      .map((c) => c.querySelector('.fw-bold')?.textContent.trim()).sort());
+
+  /**
+   * Escreve num dos campos e SÓ VOLTA quando o estado da seção acompanhou.
+   *
+   * O estado (`filtroTexto`/`filtroResponsavel`) é a fonte da verdade e
+   * sobrevive às repinturas — um `carregar()` que termine no meio do teste
+   * redesenha o cabeçalho e reescreve os inputs a partir dele. Sem esta espera,
+   * a tecla digitada era desfeita por uma repintura tardia e a prova lia o
+   * resultado do filtro ANTERIOR: verde pelo motivo errado num caso, vermelho
+   * sem defeito nenhum no outro.
+   */
+  const definir = async (campo, valor) => {
+    const sel = `#secao-projetos [data-filtro-${campo === 'filtroTexto' ? 'texto' : 'responsavel'}]`;
+    for (let tentativa = 0; tentativa < 4; tentativa += 1) {
+      if (valor === '') {
+        // `fill(sel, '')` é NO-OP num campo que já tem texto: o Chromium não
+        // apaga a seleção quando o texto inserido é vazio, e a prova seguia com
+        // o filtro anterior de pé — verde pelo motivo errado num caso, vermelho
+        // sem defeito nenhum no outro. Limpar pelo teclado é o que o usuário
+        // faz, e é o único caminho que dispara o `input` de verdade.
+        await page.click(sel);
+        await page.keyboard.press('ControlOrMeta+A');
+        await page.keyboard.press('Backspace');
+      } else {
+        await page.fill(sel, valor);
+      }
+      const ok = await esperar(page,
+        `SecaoProjetos.${campo} === ${JSON.stringify(valor)}`, 1500);
+      if (ok) return true;
+    }
+    return false;
+  };
+  const porPalavra = async (q) => {
+    await definir('filtroResponsavel', '');
+    await definir('filtroTexto', q);
+    await new Promise((r) => setTimeout(r, 250));
+    return visiveis();
+  };
+  const porResp = async (q) => {
+    await definir('filtroTexto', '');
+    await definir('filtroResponsavel', q);
+    await new Promise((r) => setTimeout(r, 250));
+    return visiveis();
+  };
+
+  const lista = await page.evaluate(() =>
+    [...document.querySelectorAll('#lista-responsaveis-acoes option')].map((o) => o.value));
+  t('[desktop] «Sem usuário» é a PRIMEIRA opção da lista de responsáveis',
+    lista[0] === 'Sem usuário', JSON.stringify(lista));
+  t('[desktop] A lista traz quem tem ação no plano',
+    lista.includes('Ana Prova Filtro'), JSON.stringify(lista));
+
+  const porEmail = await porPalavra('ana.filtro@teste.local');
+  t('[desktop] A palavra acha pelo E-MAIL do responsável',
+    porEmail.length === 1 && porEmail[0] === 'Revisar contratos', JSON.stringify(porEmail));
+
+  const respParcial = await porResp('ana');
+  t('[desktop] O responsável casa por PARTE do nome, sem o nome inteiro',
+    respParcial.length === 1 && respParcial[0] === 'Revisar contratos', JSON.stringify(respParcial));
+  t('[desktop] E não traz a ação de outro só porque o texto contém "ana"',
+    !respParcial.includes('Reuniao toda semana'), JSON.stringify(respParcial));
+
+  const respEmail = await porResp('carlos.filtro@teste.local');
+  t('[desktop] O responsável casa pelo e-mail — e o de quem SAIU não acha mais nada',
+    respEmail.length === 0, JSON.stringify(respEmail));
+
+  const orfas = await porResp('Sem usuário');
+  t('[desktop] «Sem usuário» acha a ação órfã',
+    orfas.includes('Acao que ficou orfa'), JSON.stringify(orfas));
+  t('[desktop] «Sem usuário» não traz ação que tem dono',
+    !orfas.includes('Revisar contratos') && !orfas.includes('Reuniao toda semana'),
+    JSON.stringify(orfas));
+
+  await definir('filtroResponsavel', '');
+  await definir('filtroTexto', '');
+  await new Promise((r) => setTimeout(r, 250));
+  const todas = await visiveis();
+  t('[desktop] Limpar os filtros devolve as três ações', todas.length === 3, JSON.stringify(todas));
+
+  await page.evaluate(async (ids) => {
+    await App.api(`/api/projetos/${ids.projeto}/excluir`, { planejamento_id: 1 });
+    await App.api(`/api/usuarios/${ids.ana}/excluir`, { sem_responsavel: true }).catch(() => {});
+  }, ids);
+}
+
+/**
  * Excluir um usuário: o formulário que PERGUNTA antes de apagar.
  *
  * O que esta prova segura não aparece em "a seção pinta", e cada item já é um
@@ -1562,6 +1710,7 @@ async function provasAcao(page, largura) {
   await provasPopoverResumo(page, 'desktop');
   await provasGut(page);
   await provasExcluirUsuario(page);
+  await provasFiltroResponsavel(page);
 
   const ctxM = await browser.newContext({
     viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true,

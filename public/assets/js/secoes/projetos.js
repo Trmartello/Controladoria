@@ -197,18 +197,114 @@ const SecaoProjetos = {
    * A pilha de cabeçalhos se reacomoda sozinha: esconder uma frente zera a
    * altura do cabeçalho dela e o ResizeObserver de `medirCabecalhosProjeto`
    * reempilha as que ficaram.
+   *
+   * **A pessoa entra por dois caminhos, e eles não são redundantes.**
+   *
+   * A PALAVRA passou a casar também com o nome e o e-mail de quem responde pela
+   * ação. É o caminho largo: quem digita "Ana" acha as ações dela sem saber onde
+   * o nome aparece na tela. O preço é o falso positivo — "ana" também está
+   * dentro de "semana", e uma reunião semanal de outra pessoa vem junto.
+   *
+   * O RESPONSÁVEL é o caminho exato: casa SÓ contra o nome e o e-mail de quem
+   * responde, nunca contra o texto da ação, e por isso "ana" ali devolve as
+   * ações da Ana e nada mais. Ele é uma caixa de texto com lista
+   * (`<datalist>`): dá para escolher da lista ou digitar parte do nome, que é o
+   * que se faz quando não se lembra da grafia. Um `<select>` fechado obrigaria
+   * a achar a pessoa numa lista longa, e um campo de texto puro não diria quem
+   * existe.
+   *
+   * A lista é montada com quem TEM ação no plano — que é exatamente o conjunto
+   * capaz de devolver resultado —, e inclui quem já foi desativado mas ainda
+   * carrega ação: são justamente as que precisam ser reatribuídas, e deixá-las
+   * fora do mapeamento seria esconder o problema. **«Sem usuário» é a primeira
+   * opção**, fixa: a ação órfã não é cobrada de ninguém, e é a fila que mais
+   * precisa ser vista.
+   *
+   * Os três filtros são E, não OU: palavra e responsável e situação. Somados,
+   * respondem "o que a Ana tem de atrasado com a palavra contrato".
    */
   filtroTexto: '',
   filtroStatus: '',
+  filtroResponsavel: '',
+
+  /**
+   * O rótulo do «Sem usuário» no filtro de pessoa — e, ao mesmo tempo, o valor
+   * que o compara. Uma constante só de propósito: a caixa é de texto livre, o
+   * que este item escreve nela é o que volta para o filtro, e um rótulo escrito
+   * na lista e comparado à mão em outro lugar deixaria de casar na primeira vez
+   * que alguém revisasse a redação — em silêncio, devolvendo tela vazia.
+   */
+  ROTULO_SEM_DONO: 'Sem usuário',
 
   normalizar(s) {
     return s.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[̀-ͯ]/g, '');
   },
 
+  /**
+   * O que o filtro de pessoa compara: nome e e-mail de quem responde pela ação,
+   * já normalizados, num texto só. Sai do `data-quem` que o cartão carrega —
+   * ler do texto visível não serviria, porque o e-mail não aparece na tela e o
+   * nome está no meio de seis outros metadados.
+   */
+  quemDoCartao(card) {
+    return card.dataset.quem || '';
+  },
+
+  /**
+   * A chave de busca de quem responde por uma ação: nome e e-mail juntos, já
+   * normalizados. Vazia quando não há dono — e é esse vazio, não um rótulo, que
+   * o filtro «Sem usuário» procura.
+   *
+   * Uma fonte só para o `data-quem` do cartão e para a lista do cabeçalho:
+   * escritas separadas, um acento tratado de um jeito aqui e de outro ali faria
+   * a pessoa aparecer na lista e a escolha dela não devolver nada.
+   */
+  chaveQuem(a) {
+    return a.quem ? this.normalizar(`${a.quem} ${a.quem_email || ''}`.trim()) : '';
+  },
+
+  /**
+   * Quem aparece na lista do filtro de pessoa, em ordem alfabética e sem
+   * repetir. São DUAS fontes, e nenhuma delas basta sozinha:
+   *
+   * - **quem tem ação neste plano** (das próprias ações carregadas): é o
+   *   conjunto que consegue devolver resultado, e o único que traz o e-mail.
+   *   Inclui quem já foi desativado mas ainda carrega ação — justamente as que
+   *   precisam ser reatribuídas, e deixá-las fora esconderia o problema;
+   * - **os responsáveis ativos** (`/api/responsaveis`, os mesmos nomes que o
+   *   formulário da ação oferece): quem ainda não recebeu nada aparece na
+   *   lista, e escolher a pessoa devolve tela vazia — que é a resposta certa
+   *   para "o que fulano tem?" quando fulano não tem nada. Essa rota devolve
+   *   só nomes, então essas entradas ficam sem e-mail.
+   *
+   * A chave é o NOME normalizado, não o nome cru: as duas fontes escrevem a
+   * mesma pessoa com acentuação e caixa diferentes, e sem normalizar ela
+   * entrava duas vezes na lista. Quem veio das ações tem precedência, porque
+   * carrega o e-mail.
+   */
+  pessoasParaFiltro(projetos, ativos) {
+    const porChave = new Map();
+    (projetos || []).forEach((p) => (p.desdobramentos || []).forEach((a) => {
+      if (!a.quem) return;
+      const chave = this.normalizar(a.quem);
+      if (!porChave.has(chave)) porChave.set(chave, { nome: a.quem, email: a.quem_email || '' });
+    }));
+    (ativos || []).forEach((nome) => {
+      const chave = this.normalizar(String(nome));
+      if (chave && !porChave.has(chave)) porChave.set(chave, { nome: String(nome), email: '' });
+    });
+    return [...porChave.values()].sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR'));
+  },
+
   aplicarFiltro(el) {
     const texto = this.normalizar(this.filtroTexto.trim());
     const status = this.filtroStatus;
-    const ativo = !!(texto || status);
+    const resp = this.filtroResponsavel.trim();
+    // «Sem usuário» é ESCOLHA, não busca por pedaço: só o rótulo inteiro vale,
+    // senão digitar "sem" mudaria o sentido do filtro no meio da palavra.
+    const semDono = this.normalizar(resp) === this.normalizar(this.ROTULO_SEM_DONO);
+    const respTexto = semDono ? '' : this.normalizar(resp);
+    const ativo = !!(texto || status || resp);
     let algum = false;
     el.querySelectorAll('[data-projeto]').forEach((cartao) => {
       const projId = parseInt(cartao.dataset.projeto, 10);
@@ -221,8 +317,17 @@ const SecaoProjetos = {
           bloco.querySelector('.iniciativa-cabeca strong')?.textContent || '');
         let temNaFrente = false;
         bloco.querySelectorAll('[data-card-acao]').forEach((card) => {
+          const quem = this.quemDoCartao(card);
+          // O `data-quem` do cartão é vazio quando ninguém responde pela ação —
+          // é o mesmo vazio que desenha o selo «Sem usuário».
+          const casaResp = !resp || (semDono ? quem === '' : quem.includes(respTexto));
           const bate = (!status || card.dataset.status === status)
+            && casaResp
+            // A palavra alcança o texto do cartão, os títulos acima dele e
+            // TAMBÉM quem responde: o e-mail não está escrito na tela, então
+            // sem o `data-quem` ele nunca seria encontrado por aqui.
             && (!texto || this.normalizar(card.textContent).includes(texto)
+              || quem.includes(texto)
               || tituloIni.includes(texto) || tituloProj.includes(texto));
           card.classList.toggle('d-none', ativo && !bate);
           if (bate) temNaFrente = true;
@@ -596,7 +701,7 @@ const SecaoProjetos = {
       detalhes,
     ].filter(Boolean).join(' · ');
     return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}"
-      data-status="${a.status}">
+      data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
       <div class="card-body py-2 px-2">
         <!-- Linha 1: situação, progresso e o expandir. O selo e o chevron não
              encolhem (flex-shrink-0); quem cede largura é a barra, que é a
@@ -768,6 +873,9 @@ const SecaoProjetos = {
     // justamente o meio: recolher as AÇÕES e ficar com o retrato dos projetos e
     // das suas frentes, que é como se lê o plano numa reunião.
     const nivel = this.nivelAtual(projetos);
+    // A lista do filtro de pessoa: quem tem ação (com e-mail) mais os
+    // responsáveis ativos que ainda não receberam nenhuma.
+    const pessoasFiltro = this.pessoasParaFiltro(projetos, responsaveis);
     const botaoNivel = (valor, rotulo, dica) =>
       `<button type="button" class="btn ${nivel === valor ? 'btn-verde' : 'btn-outline-secondary'}"
         data-nivel="${valor}" title="${Modal.esc(dica)}"
@@ -788,9 +896,31 @@ const SecaoProjetos = {
                esquerda, situação ao lado; \`type=search\` traz o ✕ de limpar
                de graça. -->
           <div class="filtro-acoes d-flex gap-2 align-items-center">
+            <!-- O placeholder é CURTO porque o campo tem 11rem e o texto é
+                 cortado no meio: "Pesquisar palavra, pessoa ou e-mail…" morria
+                 em "pessoa ou e-", que é pior que não prometer nada. O que ele
+                 não cabe dizer vai no title e no aria-label, e o campo ao lado
+                 já anuncia o caminho exato da pessoa. -->
             <input type="search" class="form-control form-control-sm" data-filtro-texto
-              value="${Modal.esc(this.filtroTexto)}" placeholder="Pesquisar palavra…"
-              aria-label="Pesquisar ações por palavra">
+              value="${Modal.esc(this.filtroTexto)}" placeholder="Palavra ou pessoa…"
+              title="Procura no texto da ação, no título da frente e do projeto e também no nome e no e-mail de quem responde pela ação"
+              aria-label="Pesquisar ações por palavra, nome ou e-mail do responsável">
+            <!-- Caixa de texto COM lista: dá para escolher da lista ou digitar
+                 parte do nome. Um <select> fechado obrigaria a achar a pessoa
+                 numa lista longa; um texto puro não diria quem existe.
+                 O type=search traz o ✕ de limpar de graça, como o campo ao
+                 lado. -->
+            <input type="search" list="lista-responsaveis-acoes" data-filtro-responsavel
+              class="form-control form-control-sm campo-responsavel"
+              value="${Modal.esc(this.filtroResponsavel)}" placeholder="Responsável…"
+              aria-label="Filtrar pelo responsável da ação — escolha na lista ou digite parte do nome">
+            <datalist id="lista-responsaveis-acoes">
+              <!-- Primeira da lista, por pedido: a ação órfã não é cobrada de
+                   ninguém, e é a fila que mais precisa ser vista. -->
+              <option value="${Modal.esc(this.ROTULO_SEM_DONO)}">ações sem responsável</option>
+              ${pessoasFiltro.map((r) =>
+                `<option value="${Modal.esc(r.nome)}">${Modal.esc(r.email || 'sem e-mail')}</option>`).join('')}
+            </datalist>
             <select class="form-select form-select-sm w-auto" data-filtro-status
               aria-label="Filtrar por situação">
               <option value="">Todas as situações</option>
@@ -824,6 +954,16 @@ const SecaoProjetos = {
     const campoFiltro = el.querySelector('[data-filtro-texto]');
     campoFiltro?.addEventListener('input', () => {
       this.filtroTexto = campoFiltro.value;
+      this.aplicarFiltro(el);
+    });
+    // O responsável escuta `input`, não `change`: a caixa é de texto com lista,
+    // e escolher um item da lista dispara os DOIS — mas digitar parte do nome
+    // só dispara `input`. Com `change`, quem digitasse ficaria sem filtro
+    // nenhum até sair do campo, que é justamente o uso que este campo existe
+    // para atender.
+    const campoResp = el.querySelector('[data-filtro-responsavel]');
+    campoResp?.addEventListener('input', () => {
+      this.filtroResponsavel = campoResp.value;
       this.aplicarFiltro(el);
     });
     const selFiltro = el.querySelector('[data-filtro-status]');

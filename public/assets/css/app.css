@@ -1701,14 +1701,25 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
    inteira e o campo estica no que sobrar — campo minúsculo é o que torna a
    pesquisa bonita no papel e inutilizável no dedo. */
 .filtro-acoes [data-filtro-texto] { width: 11rem; }
+/* O filtro de PESSOA é mais estreito que o de palavra: nele se digita um nome
+   ou se escolhe da lista, não uma frase. Cada rem no cabeçalho fixo é tela
+   roubada da lista o tempo todo. */
+.filtro-acoes [data-filtro-responsavel] { width: 9rem; }
 @media (max-width: 575.98px) {
   /* A corrente inteira precisa poder encolher: a linha do cabeçalho é item
      flex (min-width:auto trava no conteúdo) e o input, com base `auto`,
      contribui com a largura intrínseca de ~20 caracteres — juntos empurravam
      a tela 29px para o lado no celular. Base 0 + min-width 0 resolvem. */
   .cabecalho-projetos > .d-flex { min-width: 0; }
-  .filtro-acoes { flex: 1 1 100%; min-width: 0; }
-  .filtro-acoes [data-filtro-texto] { width: auto; flex: 1 1 0; min-width: 0; }
+  /* Três controles não cabem em 390px: a linha QUEBRA em vez de espremer os
+     três até nenhum deles caber um nome inteiro. Sem o `flex-wrap`, o navegador
+     encolhe todos juntos e o campo de pessoa fica com espaço para quatro
+     letras — que é menos do que qualquer nome próprio. */
+  .filtro-acoes { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; }
+  .filtro-acoes [data-filtro-texto] { width: auto; flex: 1 1 100%; min-width: 0; }
+  /* Na segunda linha, pessoa e situação dividem a largura. */
+  .filtro-acoes [data-filtro-responsavel] { width: auto; flex: 1 1 0; min-width: 0; }
+  .filtro-acoes [data-filtro-status] { flex: 1 1 0; min-width: 0; }
 }
 
 /* Fila de "Aguardando plano de ação": texto à esquerda, selo de origem e botão

@@ -38,8 +38,18 @@ class ProjetoController
                 'SELECT * FROM iniciativa WHERE projeto_id = ? ORDER BY ordem, id',
                 [$p['id']]
             );
+            // O e-mail do responsável vem junto para a PESQUISA da tela poder
+            // mapear as ações de uma pessoa sem depender do nome: nome se
+            // escreve de várias formas e se repete, e-mail é único. Sai daqui,
+            // e não de `/api/usuarios`, porque aquela rota é exclusiva de ADMIN
+            // — o gestor que precisa do mapeamento não a alcança.
+            // LEFT JOIN: ação sem dono (a que sobrou de um usuário excluído)
+            // continua na lista, com o e-mail nulo.
             $p['desdobramentos'] = Database::todos(
-                'SELECT * FROM desdobramento WHERE projeto_id = ? ORDER BY ordem, id',
+                'SELECT d.*, u.email AS quem_email
+                   FROM desdobramento d
+                   LEFT JOIN usuario u ON u.id = d.quem_usuario_id
+                  WHERE d.projeto_id = ? ORDER BY d.ordem, d.id',
                 [$p['id']]
             );
             foreach ($p['iniciativas'] as &$i) {
