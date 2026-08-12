@@ -27,7 +27,11 @@ class RodadaController
         Auth::exigirAcessoPlanejamento($planId);
         $ano = (int)($_GET['ano'] ?? 0);
         $filtro = $ano ? ' AND r.ano = ?' : '';
-        $params = $ano ? [$planId, $ano] : [$planId];
+        // O rótulo do autor removido é o PRIMEIRO parâmetro: o `?` dele está
+        // no SELECT, antes do WHERE — e a lista muda de tamanho com o filtro
+        // de ano, então ele entra aqui e não no fim.
+        $params = $ano ? [UsuarioController::SEM_USUARIO, $planId, $ano]
+                       : [UsuarioController::SEM_USUARIO, $planId];
         // O PIN é a credencial de escrita da rodada: quem não pode editar o
         // planejamento não o recebe. Sem isso, um perfil LEITURA — barrado em
         // POST /api/coleta — lia o PIN aqui e gravava ideias pela porta pública.
@@ -35,7 +39,7 @@ class RodadaController
         $colunas = $podeEditar ? 'r.*' : 'r.id, r.planejamento_id, r.ano, r.tema, r.situacao, r.modo,
                     r.votacao, r.max_ideias, r.max_votos, r.criado_por, r.criado_em, r.encerrada_em';
         Json::ok(Database::todos(
-            "SELECT {$colunas}, u.nome AS autor,
+            "SELECT {$colunas}, COALESCE(u.nome, ?) AS autor,
                     (SELECT COUNT(*) FROM coleta_item i WHERE i.rodada_id = r.id) AS ideias,
                     -- Participante é quem ENTROU (escaneou o QR e se identificou),
                     -- não quem já enviou ideia: contar por `coleta_item` deixava
@@ -44,7 +48,7 @@ class RodadaController
                     -- precisa saber se pode começar.
                     (SELECT COUNT(*) FROM coleta_participante cp
                       WHERE cp.rodada_id = r.id) AS participantes
-             FROM coleta_rodada r JOIN usuario u ON u.id = r.criado_por
+             FROM coleta_rodada r LEFT JOIN usuario u ON u.id = r.criado_por
              WHERE r.planejamento_id = ?{$filtro}
              ORDER BY r.situacao = 'ABERTA' DESC, r.criado_em DESC",
             $params

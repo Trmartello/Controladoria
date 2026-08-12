@@ -155,7 +155,10 @@ CREATE TABLE IF NOT EXISTS swot_cruzamento (
   tipo             ENUM('ATACAR','DEFENDER','REFORCAR','PROTEGER') NOT NULL,
   rotulo           VARCHAR(120) NOT NULL,
   estrategia       TEXT NOT NULL,
-  criado_por       INT NOT NULL,
+  -- Anulável de propósito: excluir um usuário não pode levar junto o que ele
+  -- escreveu. Na exclusão o registro vai para a pessoa indicada, ou fica sem
+  -- vínculo e a tela mostra «Sem usuário» (ver UsuarioController::excluir).
+  criado_por       INT NULL,
   criado_em        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   acao_em          DATETIME NULL,
   acao_por         INT NULL,
@@ -280,7 +283,11 @@ CREATE TABLE IF NOT EXISTS desdobramento (
   concluido_em DATETIME NULL,
   ordem        SMALLINT NOT NULL DEFAULT 0,
   CONSTRAINT fk_desd_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id) ON DELETE CASCADE,
-  CONSTRAINT fk_desd_iniciativa FOREIGN KEY (iniciativa_id) REFERENCES iniciativa(id) ON DELETE CASCADE
+  CONSTRAINT fk_desd_iniciativa FOREIGN KEY (iniciativa_id) REFERENCES iniciativa(id) ON DELETE CASCADE,
+  -- O dono da ação: é daqui que saem as cobranças por e-mail. Sem chave, excluir
+  -- o usuário deixava a ação com um responsável que não existe — listada, sem
+  -- dono e sem nada na tela dizendo isso. Ver a nota de fk_ci_unido_por.
+  CONSTRAINT fk_desd_quem FOREIGN KEY (quem_usuario_id) REFERENCES usuario(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS envelope_capital (
@@ -333,7 +340,10 @@ CREATE TABLE IF NOT EXISTS diario_bordo (
   ref_tipo     ENUM('PROJETO','DESDOBRAMENTO','INVESTIMENTO','CASCATA') NOT NULL,
   ref_id       INT NOT NULL,
   data_reg     DATE NOT NULL,
-  autor_id     INT NOT NULL,
+  -- Anulável de propósito: excluir um usuário não pode levar junto o que ele
+  -- escreveu. Na exclusão o registro vai para a pessoa indicada, ou fica sem
+  -- vínculo e a tela mostra «Sem usuário» (ver UsuarioController::excluir).
+  autor_id     INT NULL,
   texto        TEXT NOT NULL,
   status_atual ENUM('NAO_INICIADO','EM_ANDAMENTO','CONCLUIDO','ATRASADO','CANCELADO') NULL,
   progresso    TINYINT NULL,
@@ -349,7 +359,10 @@ CREATE TABLE IF NOT EXISTS comentario (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   ref_tipo     ENUM('PROJETO','DESDOBRAMENTO','INVESTIMENTO','CASCATA') NOT NULL,
   ref_id       INT NOT NULL,
-  autor_id     INT NOT NULL,
+  -- Anulável de propósito: excluir um usuário não pode levar junto o que ele
+  -- escreveu. Na exclusão o registro vai para a pessoa indicada, ou fica sem
+  -- vínculo e a tela mostra «Sem usuário» (ver UsuarioController::excluir).
+  autor_id     INT NULL,
   texto        TEXT NOT NULL,
   criado_em    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_ref (ref_tipo, ref_id, criado_em),
@@ -382,7 +395,10 @@ CREATE TABLE IF NOT EXISTS reuniao (
   participantes   TEXT NULL,
   decisoes        TEXT NULL,
   proximos_passos TEXT NULL,
-  autor_id        INT NOT NULL,
+  -- Anulável de propósito: excluir um usuário não pode levar junto o que ele
+  -- escreveu. Na exclusão o registro vai para a pessoa indicada, ou fica sem
+  -- vínculo e a tela mostra «Sem usuário» (ver UsuarioController::excluir).
+  autor_id        INT NULL,
   criado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_reu_plan (planejamento_id, data_reuniao),
   CONSTRAINT fk_reu_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
@@ -440,7 +456,12 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   KEY idx_ci_part (rodada_id, participante_token),
   KEY idx_ci_grupo (agrupado_em_id),
   CONSTRAINT fk_ci_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
-  CONSTRAINT fk_ci_autor FOREIGN KEY (autor_id) REFERENCES usuario(id)
+  CONSTRAINT fk_ci_autor FOREIGN KEY (autor_id) REFERENCES usuario(id),
+  -- Sem esta chave, excluir o usuário deixava `unido_por` apontando para um id
+  -- que não existe mais, em silêncio. RESTRICT de propósito: quem decide o
+  -- destino é o UsuarioController, e a chave é a rede que faz o DELETE falhar
+  -- se ele esquecer a coluna — nulo silencioso a rede não pega.
+  CONSTRAINT fk_ci_unido_por FOREIGN KEY (unido_por) REFERENCES usuario(id)
   -- fk_ci_rodada e fk_ci_triador ficam no migrate (garantirFk): coleta_rodada
   -- é criada DEPOIS desta tabela, e a FK aqui quebraria a instalação nova
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -464,7 +485,10 @@ CREATE TABLE IF NOT EXISTS coleta_rodada (
   max_ideias      TINYINT NOT NULL DEFAULT 5,
   max_votos       TINYINT NOT NULL DEFAULT 3,
   modo            ENUM('TEMPESTADE','QUIZ') NOT NULL DEFAULT 'TEMPESTADE',
-  criado_por      INT NOT NULL,
+  -- Anulável de propósito: excluir um usuário não pode levar junto o que ele
+  -- escreveu. Na exclusão o registro vai para a pessoa indicada, ou fica sem
+  -- vínculo e a tela mostra «Sem usuário» (ver UsuarioController::excluir).
+  criado_por      INT NULL,
   criado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   encerrada_em    DATETIME NULL,
   UNIQUE KEY uk_rodada_pin (pin),

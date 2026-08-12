@@ -39,10 +39,24 @@ const Modal = {
   // a linha caiu depois de salvar. `visivelSe` não resolve — ele olha UM campo,
   // e aqui a resposta depende de dois.
   abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null, extra = null,
-          enviar = null, aoMudar = null }) {
+          enviar = null, aoMudar = null, salvar = null }) {
     this.config = { campos, url, aoSalvar, transformar, extra, enviar };
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-erro').classList.add('d-none');
+
+    // O rótulo do botão pertence ao FORMULÁRIO: "Salvar" descreve mal o gesto
+    // que exclui uma pessoa do cadastro, e o verde diz "siga em frente" bem na
+    // hora de parar para ler. Com `salvar: {rotulo, perigo}` o formulário
+    // escolhe as duas coisas.
+    //
+    // O botão é o MESMO elemento em todos os modais — como o `modal-extra`
+    // abaixo — então ele é REPOSTO ao padrão a cada abertura. Sem essa
+    // reposição o primeiro formulário destrutivo deixaria "Excluir", em
+    // vermelho, no rodapé de todos os formulários seguintes da sessão.
+    const btnSalvar = document.getElementById('modal-salvar');
+    btnSalvar.textContent = salvar?.rotulo || 'Salvar';
+    btnSalvar.classList.toggle('btn-verde', !salvar?.perigo);
+    btnSalvar.classList.toggle('btn-danger', !!salvar?.perigo);
 
     // Botão opcional à esquerda do rodapé (ex.: redefinir a avaliação)
     const btnExtra = document.getElementById('modal-extra');

@@ -320,7 +320,73 @@ R=$(get "/api/cruzamentos?planejamento_id=1&ano=2026")
 nega "excluir o fator leva o cruzamento junto" "\"id\":$CRUZ," "$R"
 afirma "e não leva os outros cruzamentos" "\"id\":$CRUZ2," "$R"
 
+echo "### 9c. Excluir usuário — validação, transferência e o que fica sem dono"
+# Excluir alguém é o gesto que mexe em treze colunas de uma vez. O que estas
+# provas seguram é justamente o que a tela NÃO mostra: se a carteira some em
+# silêncio, o cartão da ação continua plausível, com um nome antigo escrito nele
+# e cobrança nenhuma saindo — e ninguém descobre até a pessoa cobrada reclamar.
+U_SAI=$(post /api/usuarios '{"nome":"Zeca da Prova","email":"zeca.prova@teste.local","senha":"trocar123","perfil":"CONTROLADORIA","negocios":[]}' | id_de)
+U_FICA=$(post /api/usuarios '{"nome":"Ana da Prova","email":"ana.prova@teste.local","senha":"trocar123","perfil":"CONTROLADORIA","negocios":[]}' | id_de)
+U_OFF=$(post /api/usuarios '{"nome":"Inativo da Prova","email":"off.prova@teste.local","senha":"trocar123","perfil":"CONTROLADORIA","ativo":false,"negocios":[]}' | id_de)
+UPRJ=$(post /api/projetos '{"planejamento_id":1,"titulo":"Projeto da exclusão","ano":2027,"responsavel":"QA","descricao":"x"}' | id_de)
+UINI=$(post /api/iniciativas "{\"planejamento_id\":1,\"projeto_id\":$UPRJ,\"titulo\":\"Frente da exclusão\"}" | id_de)
+ACAO_BASE="\"planejamento_id\":1,\"projeto_id\":$UPRJ,\"iniciativa_id\":$UINI,\"como\":\"x\",\"prioridade\":\"MEDIA\",\"status\":\"NAO_INICIADO\",\"progresso\":0,\"recorrencia\":\"NENHUMA\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\""
+UACAO=$(post /api/desdobramentos "{$ACAO_BASE,\"o_que\":\"Ação do Zeca\",\"quem\":\"Zeca da Prova\"}" | id_de)
+
+R=$(get "/api/usuarios/$U_SAI/vinculos")
+afirma "vínculos contam a ação do plano" '"chave":"desdobramento.quem_usuario_id","rotulo":"ação do plano","total":1' "$R"
+afirma "vínculos separam a carteira do resto" '"carteira":1' "$R"
+nega "quem sai não aparece como destino de si mesmo" "\"valor\":$U_SAI," "$R"
+nega "inativo não entra na lista de quem pode receber" "\"valor\":$U_OFF," "$R"
+# Sem destino declarado a rota RECUSA. É a guarda central: o caminho mais curto
+# (só o id na URL) seria justamente o que apaga o dono de toda a carteira sem
+# ninguém ter escolhido isso, e "não respondi" viraria uma resposta.
+R=$(post /api/usuarios/$U_SAI/excluir '{}')
+afirma "recusa excluir sem dizer para quem vai" 'DESTINO_OBRIGATORIO' "$R"
+R=$(get /api/usuarios | campo_de $U_SAI nome)
+afirma "e a recusa não excluiu ninguém" '^"Zeca da Prova"$' "$R"
+R=$(post /api/usuarios/$U_SAI/excluir "{\"transferir_para\":$U_OFF}")
+afirma "recusa transferir para quem está inativo" 'inativo' "$R"
+R=$(post /api/usuarios/$U_SAI/excluir "{\"transferir_para\":$U_SAI}")
+afirma "recusa transferir para quem está saindo" 'não dá para transferir' "$R"
+
+R=$(post /api/usuarios/$U_SAI/excluir "{\"transferir_para\":$U_FICA}")
+afirma "exclui transferindo a carteira" '"transferido":"Ana da Prova"' "$R"
+R=$(get /api/usuarios | campo_de $U_SAI nome)
+afirma "o usuário saiu do cadastro" '^"__ausente__"$' "$R"
+# O NOME escrito na ação anda junto com o id. Atualizar só o id deixaria o
+# cartão exibindo quem já saiu enquanto a cobrança ia para outra pessoa — duas
+# verdades na mesma linha, e a errada é a que se lê.
+R=$(get "/api/projetos?planejamento_id=1" | python3 -c "
+import sys, json
+a = [a for p in json.load(sys.stdin)['dados'] for i in p['iniciativas'] for a in i['acoes'] if a['id'] == $UACAO]
+print(json.dumps({'quem': a[0]['quem'], 'id': a[0]['quem_usuario_id']} if a else {}))")
+afirma "a ação passou para quem recebeu — nome e id juntos" "\"quem\": \"Ana da Prova\", \"id\": $U_FICA" "$R"
+
+# A outra saída: ninguém assume. A ação FICA (não se apaga trabalho porque uma
+# pessoa saiu), mas fica sem dono e sem nome — é o vazio que a tela lê como
+# «Sem usuário». Gravar ali o nome de quem saiu seria a mentira mais fácil.
+R=$(post /api/usuarios/$U_FICA/excluir '{"sem_responsavel":true}')
+afirma "exclui deixando sem responsável" '"transferido":null' "$R"
+R=$(get "/api/projetos?planejamento_id=1" | python3 -c "
+import sys, json
+a = [a for p in json.load(sys.stdin)['dados'] for i in p['iniciativas'] for a in i['acoes'] if a['id'] == $UACAO]
+print(json.dumps({'quem': a[0]['quem'], 'id': a[0]['quem_usuario_id']} if a else {}))")
+afirma "a ação continua no plano, agora sem dono" '"quem": "", "id": null' "$R"
+
+# Os dois impedimentos que transferência nenhuma resolve. Sem eles o sistema
+# fica sem saída: ninguém para criar usuário, nem para chegar de novo a esta
+# tela — o conserto seria no banco, à mão.
+EU=$(get /api/usuarios | python3 -c "import sys,json;print([u['id'] for u in json.load(sys.stdin)['dados'] if u['email']=='$EMAIL'][0])")
+R=$(post /api/usuarios/$EU/excluir '{"sem_responsavel":true}')
+afirma "recusa excluir a própria conta" 'própria conta' "$R"
+R=$(get /api/usuarios | campo_de $EU excluivel)
+afirma "e o ✕ dele nem aparece na tela" '^0$' "$R"
+R=$(post /api/usuarios/$U_OFF/excluir '{"sem_responsavel":true}')
+afirma "exclui usuário sem vínculo nenhum" '"ok":true' "$R"
+
 echo "### 10. Limpeza"
+[ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${REU:-}" ]  && post /api/reunioes/$REU/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${ACAO:-}" ] && post /api/desdobramentos/$ACAO/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${INI:-}" ]  && post /api/iniciativas/$INI/excluir '{"planejamento_id":1}' >/dev/null

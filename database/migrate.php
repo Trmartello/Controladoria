@@ -807,6 +807,63 @@ if ($temDiario && !App\Services\CargaConteudo::jaAplicada($pdo, 'migracao_diario
     echo "migrate: {$migrados} registro(s) do diário migrados para comentários.\n";
 }
 
+// ---------------------------------------------------------------------------
+// Excluir usuário: as colunas que apontam para uma PESSOA passam a aceitar nulo
+// ---------------------------------------------------------------------------
+// Excluir alguém do cadastro esbarrava em treze colunas apontando para
+// `usuario.id`. O que a pessoa segura tem duas naturezas, e as duas precisam de
+// saída:
+//
+// - **carteira** (`desdobramento.quem_usuario_id`, `fator.acao_por`,
+//   `swot_cruzamento.acao_por`, `negocio.gestor_id`) — trabalho que alguém tem
+//   de assumir; é daqui que saem as cobranças por e-mail;
+// - **autoria** (`comentario`, `reuniao`, `coleta_item`, `coleta_rodada`,
+//   `swot_cruzamento.criado_por`) — quem escreveu o quê.
+//
+// Na exclusão, as duas vão para a pessoa INDICADA — ou ficam pendentes, sem
+// responsável, que é a outra saída oferecida na tela. A pendência é o motivo
+// desta migração: cinco dessas colunas eram NOT NULL, e sem nulo a única
+// alternativa a transferir seria apagar o registro junto com a pessoa —
+// perder a ata da reunião porque quem a escreveu saiu da empresa.
+//
+// Anular NÃO é apagar: o texto, a data e os anexos continuam lá. O que some é o
+// vínculo com a pessoa, e a tela passa a mostrar «Sem usuário».
+function tornarAnulavel(PDO $pdo, string $tabela, string $coluna, string $tipo, string $porque): void
+{
+    $nulo = $pdo->prepare(
+        'SELECT IS_NULLABLE FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+    );
+    $nulo->execute([$tabela, $coluna]);
+    if ($nulo->fetchColumn() === 'NO') {
+        $pdo->exec("ALTER TABLE {$tabela} MODIFY COLUMN {$coluna} {$tipo} NULL");
+        echo "migrate: {$tabela}.{$coluna} passou a aceitar nulo ({$porque}).\n";
+    }
+}
+tornarAnulavel($pdo, 'comentario', 'autor_id', 'INT', 'o comentário sobrevive a quem o escreveu');
+tornarAnulavel($pdo, 'reuniao', 'autor_id', 'INT', 'a ata sobrevive a quem a registrou');
+tornarAnulavel($pdo, 'coleta_rodada', 'criado_por', 'INT', 'a rodada sobrevive a quem a abriu');
+tornarAnulavel($pdo, 'swot_cruzamento', 'criado_por', 'INT', 'o cruzamento sobrevive a quem o redigiu');
+tornarAnulavel($pdo, 'diario_bordo', 'autor_id', 'INT', 'arquivo da migração, mas a FK ainda prende');
+
+// As duas colunas de pessoa que nunca tiveram chave estrangeira. Sem ela, o
+// DELETE do usuário passava e deixava as duas apontando para um id que não
+// existe mais — em silêncio, que é o pior jeito de perder um dado: a ação
+// continuava listada, com responsável nenhum e sem nada na tela dizendo isso.
+// RESTRICT de propósito, não SET NULL: quem decide o destino da carteira é o
+// UsuarioController, e a chave aqui é a rede de segurança que faz o DELETE
+// FALHAR se algum dia ele esquecer uma delas. Nulo silencioso a rede não pega.
+$pdo->exec('UPDATE desdobramento SET quem_usuario_id = NULL WHERE quem_usuario_id IS NOT NULL
+            AND quem_usuario_id NOT IN (SELECT id FROM (SELECT id FROM usuario) u)');
+garantirFk($pdo, 'desdobramento', 'fk_desd_quem',
+    'ALTER TABLE desdobramento ADD CONSTRAINT fk_desd_quem
+     FOREIGN KEY (quem_usuario_id) REFERENCES usuario(id)');
+$pdo->exec('UPDATE coleta_item SET unido_por = NULL WHERE unido_por IS NOT NULL
+            AND unido_por NOT IN (SELECT id FROM (SELECT id FROM usuario) u)');
+garantirFk($pdo, 'coleta_item', 'fk_ci_unido_por',
+    'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_unido_por
+     FOREIGN KEY (unido_por) REFERENCES usuario(id)');
+
 // O progresso das ações anda de 5 em 5 (barra, modal e servidor). Valores
 // legados fora da grade seriam "encaixados" pelo range do navegador e cada
 // salvamento gravaria outro número — normaliza uma vez; o WHERE torna o passo

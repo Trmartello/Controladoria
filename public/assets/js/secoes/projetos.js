@@ -581,7 +581,16 @@ const SecaoProjetos = {
     // cumprir a ordem seria perder informação que alguém digitou.
     const extras = [
       prazo && `<strong>Prazo:</strong> ${Modal.esc(prazo)}`,
-      a.quem && `<strong>Quem:</strong> ${Modal.esc(a.quem)}`,
+      // Ação sem dono é DITA, nunca omitida. Enquanto a linha só aparecia com
+      // `quem` preenchido, a ação órfã — a de quem saiu do cadastro sem que
+      // ninguém assumisse a carteira — ficava visualmente idêntica a uma ação
+      // bem atribuída, com o "Quem:" simplesmente ausente no meio de outros
+      // seis metadados. Ela não é cobrada por e-mail de ninguém, e é
+      // exatamente por isso que precisa gritar na tela.
+      a.quem
+        ? `<strong>Quem:</strong> ${Modal.esc(a.quem)}`
+        : '<span class="selo-sem-usuario" title="Ninguém responde por esta ação:'
+          + ' ela não entra em cobrança nenhuma">Sem usuário</span>',
       `<strong>Prioridade:</strong> ${rotPrio}`,
       repeticao && `<strong>Repete:</strong> ${repeticao}`,
       detalhes,

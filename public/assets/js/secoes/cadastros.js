@@ -383,6 +383,8 @@ const SecaoCadastros = {
               ${u.ativo == 1 ? '' : '<span class="badge text-bg-secondary">Inativo</span>'}
               <button class="btn btn-sm btn-outline-secondary ms-auto" data-editar="${u.id}"
                 title="Editar" aria-label="Editar">✎</button>
+              ${Number(u.excluivel) ? `<button class="btn btn-sm btn-outline-danger" data-excluir="${u.id}"
+                title="Excluir do cadastro" aria-label="Excluir ${Modal.esc(u.nome)}">✕</button>` : ''}
             </div>
             <div class="small text-muted">${Modal.esc(u.email)}</div>
             <div class="d-flex align-items-center gap-2 mt-1">
@@ -428,6 +430,9 @@ const SecaoCadastros = {
     alvo.querySelectorAll('[data-editar]').forEach((b) => {
       b.addEventListener('click', () => abrirModal(lista.find((u) => u.id == b.dataset.editar)));
     });
+    alvo.querySelectorAll('[data-excluir]').forEach((b) => {
+      b.addEventListener('click', () => this.excluirUsuario(lista.find((u) => u.id == b.dataset.excluir)));
+    });
 
     // Pesquisa (aparece com mais de 5 usuários): filtra por nome/e-mail ao digitar
     const busca = document.getElementById('busca-usuario');
@@ -437,6 +442,116 @@ const SecaoCadastros = {
       document.querySelectorAll('#lista-usuarios [data-busca]').forEach((col) => {
         col.classList.toggle('d-none', q !== '' && !norm(col.dataset.busca).includes(q));
       });
+    });
+  },
+
+  /**
+   * Excluir um usuário — o gesto que precisa PERGUNTAR antes, porque o que ele
+   * apaga não é a pessoa, é o vínculo dela com o que ficou para trás.
+   *
+   * São três telas possíveis, e quem decide qual é o servidor (`/vinculos`),
+   * não esta função: ele é que sabe contar. Perguntar ao banco antes de abrir
+   * qualquer coisa evita o pior desenho possível aqui — abrir um formulário de
+   * transferência para alguém que não tem nada, ou pior, um `confirm()` seco
+   * para quem tem trinta ações penduradas.
+   *
+   * 1. **Não pode** (é você mesmo, ou o último administrador ativo): mostra o
+   *    porquê e para. Não há formulário para uma decisão que não existe.
+   * 2. **Não tem nada apontando para ela**: um `confirm` basta — não há destino
+   *    a escolher, e um modal de duas perguntas em branco só faria pensar que
+   *    alguma coisa foi esquecida.
+   * 3. **Tem carteira ou autoria**: o formulário. Mostra o que ela segura,
+   *    separado pelas duas naturezas, e obriga a escolher entre passar para
+   *    alguém ou deixar sem responsável.
+   *
+   * A contagem aparece ANTES da escolha, e é ela que dá sentido à pergunta:
+   * "8 ações do plano" e "1 comentário" pedem decisões diferentes, e sem o
+   * número a tela estaria pedindo uma assinatura em branco.
+   */
+  async excluirUsuario(u) {
+    if (!u) return;
+    let info;
+    try {
+      info = await App.api(`/api/usuarios/${u.id}/vinculos`);
+    } catch (e) {
+      alert(e.message);
+      return;
+    }
+
+    if (!info.pode_excluir) {
+      alert(`Não é possível excluir «${u.nome}».\n\n${info.impedimentos.join('\n\n')}`);
+      return;
+    }
+
+    if (!info.vinculos.length) {
+      if (!confirm(`Excluir «${u.nome}» do cadastro?\n\n`
+        + 'Não há nada no sistema apontando para esta pessoa. Não há desfazer.')) return;
+      try {
+        await App.api(`/api/usuarios/${u.id}/excluir`, { sem_responsavel: true });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.carregar();
+      return;
+    }
+
+    // As duas naturezas em caixas de cor diferente, cada uma na sua peça (é o
+    // que o `itens` do campo `info` faz). Emendadas num parágrafo só, "3 ações
+    // do plano" e "1 ata de reunião" liam-se como uma lista de coisas
+    // equivalentes — e não são: a primeira é trabalho que alguém precisa
+    // assumir amanhã, a segunda é registro do que já passou.
+    const pecas = [];
+    const carteira = info.vinculos.filter((v) => v.grupo === 'carteira');
+    const autoria = info.vinculos.filter((v) => v.grupo === 'autoria');
+    const soma = (vs) => vs.map((v) => `${v.total} ${v.rotulo}`).join(' · ');
+    if (carteira.length) {
+      pecas.push({ rotulo: 'Trabalho sob responsabilidade dela', texto: soma(carteira),
+        cor: '#8f3b3b' });
+    }
+    if (autoria.length) {
+      pecas.push({ rotulo: 'Registros que ela escreveu', texto: soma(autoria), cor: '#5d6b64' });
+    }
+
+    Modal.abrir({
+      titulo: `Excluir usuário ${u.nome}`,
+      url: `/api/usuarios/${u.id}/excluir`,
+      salvar: { rotulo: 'Excluir usuário', perigo: true },
+      valores: { destino: 'TRANSFERIR' },
+      campos: [
+        { nome: 'oque_tem', rotulo: 'O que sai do nome desta pessoa', tipo: 'info', texto: '',
+          itens: pecas,
+          barra: { titulo: `${u.nome} — ${u.email}`, cor: '#8f3b3b' } },
+        // A decisão e o que ela revela moram na MESMA caixa: solto, o seletor de
+        // quem recebe parecia um campo independente, e trocar para "sem
+        // responsável" fazia sumir um bloco sem relação aparente com o clique.
+        { nome: 'destino', rotulo: 'Para quem vai tudo isso?', tipo: 'botoes', caixa: 'destino',
+          opcoes: [
+            { valor: 'TRANSFERIR', rotulo: 'Passar para outra pessoa' },
+            { valor: 'SEM_RESPONSAVEL', rotulo: 'Deixar sem responsável' },
+          ],
+          ajuda: 'Sem responsável, os registros continuam no sistema — as ações ficam '
+            + 'marcadas como «Sem usuário» e param de ser cobradas de alguém por e-mail.' },
+        { nome: 'transferir_para', rotulo: 'Quem assume', tipo: 'lista_marcavel', unico: true,
+          obrigatorio: true, caixa: 'destino', visivelSe: { campo: 'destino', valores: ['TRANSFERIR'] },
+          // Nome e e-mail no MESMO texto: o `lista_marcavel` não tem campo de
+          // descrição, e o e-mail no `selo2` sairia antes do nome (os selos
+          // vêm primeiro no corpo do item). Junto, ele também entra na busca.
+          opcoes: info.destinos.map((d) => ({ valor: d.valor, texto: `${d.texto} · ${d.descricao}` })),
+          ajuda: 'Só entram pessoas ativas: quem está inativo não receberia as cobranças.' },
+      ],
+      // O corpo é montado aqui porque a tela tem DOIS campos para uma decisão
+      // que o servidor lê como uma: ou vem quem recebe, ou vem a confirmação de
+      // que ninguém recebe. Mandar os dois deixaria a rota escolhendo por conta
+      // própria qual obedecer.
+      enviar: (corpo) => App.api(`/api/usuarios/${u.id}/excluir`, corpo.destino === 'SEM_RESPONSAVEL'
+        ? { sem_responsavel: true }
+        : { transferir_para: corpo.transferir_para }),
+      aoSalvar: (r) => {
+        alert(r.transferido
+          ? `«${r.nome}» foi excluído. Os registros passaram para ${r.transferido}.`
+          : `«${r.nome}» foi excluído. Os registros ficaram sem responsável.`);
+        this.carregar();
+      },
     });
   },
 };

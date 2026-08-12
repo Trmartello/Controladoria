@@ -230,6 +230,12 @@ try {
         case $rota === 'GET /api/usuarios':        (new UsuarioController())->listar(); break;
         case $rota === 'GET /api/responsaveis':    (new UsuarioController())->responsaveis(); break;
         case $rota === 'POST /api/usuarios':       (new UsuarioController())->salvar(); break;
+        // O que a pessoa segura hoje, para a tela perguntar antes de excluir
+        case (bool)preg_match('#^GET /api/usuarios/(\d+)/vinculos$#', $rota, $m):
+            (new UsuarioController())->vinculos((int)$m[1]); break;
+        // A específica antes da genérica: /api/usuarios/7/excluir cairia nela
+        case (bool)preg_match('#^POST /api/usuarios/(\d+)/excluir$#', $rota, $m):
+            (new UsuarioController())->excluir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/usuarios/(\d+)$#', $rota, $m):
             (new UsuarioController())->salvar((int)$m[1]); break;
 

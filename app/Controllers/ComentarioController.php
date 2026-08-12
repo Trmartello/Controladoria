@@ -65,11 +65,11 @@ class ComentarioController
         $this->validarRef($refTipo, $refId, $planId);
 
         $comentarios = Database::todos(
-            'SELECT c.id, c.texto, c.criado_em, u.nome AS autor, c.autor_id
-               FROM comentario c JOIN usuario u ON u.id = c.autor_id
+            'SELECT c.id, c.texto, c.criado_em, COALESCE(u.nome, ?) AS autor, c.autor_id
+               FROM comentario c LEFT JOIN usuario u ON u.id = c.autor_id
               WHERE c.ref_tipo = ? AND c.ref_id = ?
               ORDER BY c.criado_em DESC, c.id DESC',
-            [$refTipo, $refId]
+            [UsuarioController::SEM_USUARIO, $refTipo, $refId]
         );
         if (!$comentarios) {
             Json::ok([]);

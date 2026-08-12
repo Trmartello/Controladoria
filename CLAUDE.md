@@ -1002,6 +1002,77 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `carga_conteudo`, com `data_reg` virando `criado_em` ao meio-dia e status/
   progresso virando texto). A tabela `diario_bordo` fica no banco como arquivo
   da migração, sem código nenhum lendo dela.
+- **Excluir usuário** (`UsuarioController::vinculos`/`excluir`, o ✕ na aba
+  Usuários): ao contrário do negócio, aqui **excluir não exige estar sem uso** —
+  o que a rota faz é dar DESTINO ao que a pessoa segurava. `UsuarioController::
+  VINCULOS` é a lista das treze colunas que apontam para `usuario.id`, com as
+  duas naturezas que a tela lê separadas: **carteira** (`desdobramento.
+  quem_usuario_id`, `fator.acao_por`, `swot_cruzamento.acao_por`,
+  `negocio.gestor_id`) — trabalho que alguém precisa assumir, de onde saem as
+  cobranças por e-mail — e **autoria** (comentário, ata, ideia, rodada,
+  cruzamento redigido), que é registro do passado. Uma lista só porque ela serve
+  a TRÊS leituras (o que a tela mostra, o que a transferência move, a conferência
+  final): escritas separadas, uma coluna nova entraria em duas e a terceira só
+  apareceria como erro de chave estrangeira, no dia em que alguém tentasse
+  excluir alguém.
+  A tela **pergunta antes**: `GET /api/usuarios/{id}/vinculos` conta o que a
+  pessoa segura, e a contagem chega ANTES da escolha — sem "1 ação do plano" na
+  frente, o formulário estaria pedindo assinatura em branco. São dois destinos,
+  e **um deles é obrigatório sempre que houver vínculo**: `transferir_para` (id
+  de quem assume) ou `sem_responsavel: true`. Sem essa exigência (409/
+  `DESTINO_OBRIGATORIO`) o caminho mais curto — só o id na URL — seria
+  justamente o que apaga o dono de toda a carteira em silêncio, e "não escolhi"
+  viraria escolha por omissão.
+  Cinco colunas de autor eram **NOT NULL**, e é isso que a migração muda: sem
+  nulo, a única alternativa a transferir seria apagar o registro junto com a
+  pessoa — perder a ata porque quem a escreveu saiu da empresa. **Anular não é
+  apagar**: texto, data e anexos ficam, e as quatro consultas que mostram autoria
+  viraram `LEFT JOIN` com `COALESCE(u.nome, ?)` — com o `JOIN` fechado, o
+  comentário sumia da lista junto com o autor. O rótulo tem **uma fonte só**
+  (`UsuarioController::SEM_USUARIO`), e não se confunde com o
+  `— sem responsável —` de `Avisos::carteira`: aquele agrupa ação sem dono num
+  relatório de cobrança, este diz que quem escreveu não está mais no cadastro.
+  `desdobramento.quem_usuario_id` e `coleta_item.unido_por` **ganharam chave
+  estrangeira** (RESTRICT): sem ela o DELETE passava e deixava as duas apontando
+  para um id que não existe — a ação seguia listada, sem dono e sem nada na tela
+  dizendo isso. RESTRICT de propósito, não SET NULL: quem decide o destino é o
+  controller, e a chave é a rede que faz o DELETE **falhar** se ele esquecer uma
+  coluna; nulo silencioso a rede não pega.
+  A conferência final (`referenciasRestantes`) lê as colunas do
+  **information_schema**, nunca da constante — é essa a graça: uma tabela criada
+  daqui a um ano com `REFERENCES usuario(id)` entra sozinha, e quem esquecer de
+  somá-la a VINCULOS recebe uma recusa nomeando a tabela em vez de um erro cru de
+  chave. Conferir contra a própria constante não provaria nada: ela é justamente
+  o que pode estar incompleto.
+  O **nome escrito na ação anda junto com o id** (`desdobramento.quem`), e o
+  UPDATE dele roda **antes** do laço de transferência — depois, essas linhas já
+  são de quem recebeu e não haveria como distingui-las das que ele já tinha.
+  Sem destino ele fica **vazio**, nunca com o nome de quem saiu, e o cartão passa
+  a mostrar o selo **«Sem usuário»** (`.selo-sem-usuario`): enquanto a linha
+  "Quem:" só aparecia com o campo preenchido, a ação órfã ficava idêntica a uma
+  bem atribuída, com o metadado apenas ausente no meio de outros seis.
+  Dois impedimentos que transferência nenhuma resolve, e por isso o ✕ nem aparece
+  (`excluivel` no `listar()`, como no cadastro de negócios): **você mesmo** (a
+  sessão cai no meio do gesto) e o **último ADMIN ativo** (sem administrador não
+  há quem crie usuário nem quem chegue de novo a esta tela — o conserto seria no
+  banco, à mão). Quem recebe precisa estar **ativo**: inativo não recebe cobrança
+  nenhuma, e transferir para lá é o mesmo sumiço de "sem responsável", só que com
+  um nome na tela dizendo que alguém está cuidando disso.
+  **A autoria transferida passa a ser de quem recebe** — uma ata passa a constar
+  como escrita por quem não estava lá. Foi decisão do cliente, e a alternativa
+  está a um clique.
+  Nada roda em transação (o repositório não usa `beginTransaction` e
+  `Json::erro()` encerra a execução), então a ordem é **UPDATE → conferência →
+  DELETE**: interrompida no meio, a pior sobra é uma pessoa sem nada apontando
+  para ela, que a tela mostra e deixa excluir de novo. Ao contrário, ficaria a
+  linha apagada com registros pendurados nela.
+- **Rótulo do Salvar** (`Modal.abrir({salvar: {rotulo, perigo}})`): "Salvar"
+  descreve mal o gesto que exclui alguém, e o verde diz "siga em frente" bem na
+  hora de parar para ler. O `#modal-salvar` é o MESMO elemento em todos os
+  modais — como o `#modal-extra` —, então ele é **reposto ao padrão a cada
+  abertura**: sem isso o primeiro formulário destrutivo deixaria "Excluir", em
+  vermelho, no rodapé de todos os seguintes da sessão. O defeito só aparece no
+  modal de DEPOIS, e a bateria o guarda abrindo um segundo formulário.
 - **Avisos por e-mail** (`App\Services\Avisos` + `App\Core\Email`): relatório
   semanal na segunda e pendências do dia. `envio_email` é a trava contra
   duplicidade — só conta como enviado o registro com `erro IS NULL`, para uma

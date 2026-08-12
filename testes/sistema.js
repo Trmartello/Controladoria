@@ -1017,6 +1017,118 @@ async function provasGut(page) {
  * - **O campo de dinheiro recusa o que não é número.** `type=number` deixava
  *   passar `e`, `+` e `-` e depois devolvia vazio.
  */
+/**
+ * Excluir um usuário: o formulário que PERGUNTA antes de apagar.
+ *
+ * O que esta prova segura não aparece em "a seção pinta", e cada item já é um
+ * jeito conhecido de perder trabalho em silêncio:
+ *
+ * - **a contagem chega antes da escolha.** É ela que dá sentido à pergunta:
+ *   sem "1 ação do plano" na tela, o formulário está pedindo uma assinatura em
+ *   branco. Um `vinculos` que pare de contar deixa o modal plausível e vazio.
+ * - **quem sai não aparece como destino de si mesmo**, e inativo também não —
+ *   transferir para um inativo é o mesmo sumiço de "sem responsável", só que
+ *   com um nome na tela dizendo que alguém está cuidando disso.
+ * - **a decisão revela o que lhe pertence**: "deixar sem responsável" esconde a
+ *   lista de quem assume. Um `visivelSe` que pare de casar deixa as duas
+ *   perguntas na tela ao mesmo tempo, e aí não há resposta certa.
+ * - **o botão do rodapé volta ao padrão no formulário SEGUINTE.** O
+ *   `#modal-salvar` é o mesmo elemento em todos os modais: sem a reposição,
+ *   um "Excluir usuário" vermelho fica no rodapé do cadastro de projeto pelo
+ *   resto da sessão. É o defeito mais barato de introduzir e o mais difícil de
+ *   enxergar, porque só aparece no modal de DEPOIS.
+ */
+async function provasExcluirUsuario(page) {
+  const ids = await page.evaluate(async () => {
+    const sai = await App.api('/api/usuarios', { nome: 'Zeca da Prova Visual',
+      email: 'zeca.visual@teste.local', senha: 'trocar123', perfil: 'CONTROLADORIA', negocios: [] });
+    const off = await App.api('/api/usuarios', { nome: 'Inativo da Prova Visual',
+      email: 'off.visual@teste.local', senha: 'trocar123', perfil: 'CONTROLADORIA',
+      ativo: false, negocios: [] });
+    const p = await App.api('/api/projetos', { planejamento_id: 1, titulo: 'Projeto prova exclusão',
+      ano: 2027, responsavel: 'QA', descricao: 'x' });
+    const i = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id,
+      titulo: 'Frente prova exclusão' });
+    await App.api('/api/desdobramentos', { planejamento_id: 1, projeto_id: p.id, iniciativa_id: i.id,
+      o_que: 'Ação do Zeca visual', como: 'x', quem: 'Zeca da Prova Visual', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31' });
+    return { sai: sai.id, off: off.id, projeto: p.id };
+  });
+
+  await page.evaluate(() => App.mostrarSecao('cadastros'));
+  await esperar(page, "!document.getElementById('secao-cadastros').classList.contains('d-none')", 15000);
+  await page.click('[data-aba="usuarios"]');
+  // O seletor é ESCOPADO à lista de usuários: as seções não são destruídas ao
+  // navegar (só ganham `d-none`), e `[data-excluir]` também é o ✕ do cadastro de
+  // negócios — sem o escopo, a prova casava com um botão escondido de outra aba
+  // e ficava esperando por um clique que nunca acontece.
+  const alvoBotao = `#lista-usuarios [data-excluir="${ids.sai}"]`;
+  const temBotao = await esperar(page, `!!document.querySelector('${alvoBotao}')`, 8000);
+  t('[desktop] Usuário excluível traz o ✕ no cartão', temBotao);
+  if (temBotao) {
+    await page.click(alvoBotao);
+    const abriu = await esperar(page, "!!document.getElementById('campo-destino')", 8000);
+    t('[desktop] O ✕ abre o formulário de exclusão', abriu);
+    if (abriu) {
+      await new Promise((r) => setTimeout(r, 400));
+      const visto = await page.evaluate((ids) => ({
+        conta: document.querySelector('.modal-body').textContent.includes('1 ação do plano'),
+        temLista: !!document.getElementById('campo-transferir_para'),
+        eleMesmo: !!document.querySelector(`#campo-transferir_para input[value="${ids.sai}"]`),
+        inativo: !!document.querySelector(`#campo-transferir_para input[value="${ids.off}"]`),
+        botao: document.getElementById('modal-salvar').textContent.trim(),
+        perigo: document.getElementById('modal-salvar').classList.contains('btn-danger'),
+      }), ids);
+      t('[desktop] O formulário conta a carteira antes de perguntar', visto.conta, JSON.stringify(visto));
+      t('[desktop] Transferir mostra a lista de quem assume', visto.temLista);
+      t('[desktop] Quem está saindo não é destino de si mesmo', !visto.eleMesmo);
+      t('[desktop] Usuário inativo não entra como destino', !visto.inativo);
+      t('[desktop] O botão do rodapé diz que vai EXCLUIR, em vermelho',
+        visto.botao === 'Excluir usuário' && visto.perigo, JSON.stringify(visto));
+
+      await page.click('label[for="campo-destino-SEM_RESPONSAVEL"]');
+      await new Promise((r) => setTimeout(r, 300));
+      // ESCONDE, não remove: o `visivelSe` desliga a exibição e o elemento
+      // continua no DOM. Afirmar a ausência dele reprovaria o comportamento
+      // certo — o que importa é que ninguém consegue mais responder a pergunta
+      // que deixou de valer.
+      t('[desktop] "Sem responsável" esconde a lista de quem assume',
+        await page.evaluate(() => {
+          const el = document.getElementById('campo-transferir_para');
+          return !el || el.offsetParent === null;
+        }));
+      await page.keyboard.press('Escape');
+      await esperar(page, "!document.querySelector('.modal.show')", 4000);
+    }
+  }
+
+  // O rodapé do formulário SEGUINTE: é aqui que a falta de reposição aparece.
+  await page.evaluate(() => App.mostrarSecao('cadastros'));
+  await page.click('[data-aba="usuarios"]');
+  await esperar(page, "!!document.getElementById('btn-novo-usuario')", 8000);
+  await page.click('#btn-novo-usuario');
+  const abriuNovo = await esperar(page, "!!document.getElementById('campo-nome')", 8000);
+  if (abriuNovo) {
+    const rodape = await page.evaluate(() => {
+      const b = document.getElementById('modal-salvar');
+      return { texto: b.textContent.trim(), verde: b.classList.contains('btn-verde'),
+        perigo: b.classList.contains('btn-danger') };
+    });
+    t('[desktop] O formulário seguinte volta a "Salvar", em verde',
+      rodape.texto === 'Salvar' && rodape.verde && !rodape.perigo, JSON.stringify(rodape));
+    await page.keyboard.press('Escape');
+    await esperar(page, "!document.querySelector('.modal.show')", 4000);
+  }
+
+  await page.evaluate(async (ids) => {
+    await App.api(`/api/projetos/${ids.projeto}/excluir`, { planejamento_id: 1 });
+    for (const id of [ids.sai, ids.off]) {
+      await App.api(`/api/usuarios/${id}/excluir`, { sem_responsavel: true }).catch(() => {});
+    }
+  }, ids);
+}
+
 async function provasAcao(page, largura) {
   const l = `[${largura}]`;
   const prj = await page.evaluate(async () => {
@@ -1449,6 +1561,7 @@ async function provasAcao(page, largura) {
   await provasCabecalhoProjetos(page, 'desktop');
   await provasPopoverResumo(page, 'desktop');
   await provasGut(page);
+  await provasExcluirUsuario(page);
 
   const ctxM = await browser.newContext({
     viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true,

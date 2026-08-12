@@ -2922,3 +2922,21 @@ body.menu-aberto .menu-lateral {
   align-items: center;
   padding-inline: .4rem !important;
 }
+
+/* Ação sem responsável — a que sobrou de um usuário excluído sem que ninguém
+   assumisse a carteira. Fica no meio dos metadados do cartão, onde estaria o
+   "Quem:", e por isso NÃO usa a cor cheia de um `.badge`: ali ela competiria
+   com o selo de situação da linha de cima, que é a peça que se lê primeiro.
+   O contorno vermelho diz "falta alguém" sem virar um segundo alarme.
+   Contraste medido sobre branco: #8f3b3b dá 7,35:1, bem acima do 4,5:1 da
+   WCAG AA. E o aviso não depende só da cor — o texto diz o que é. */
+.selo-sem-usuario {
+  display: inline-block;
+  font-size: .72rem;
+  font-weight: 700;
+  line-height: 1.1;
+  padding: .1rem .4rem;
+  color: #8f3b3b;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+}

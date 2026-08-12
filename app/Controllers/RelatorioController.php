@@ -295,7 +295,8 @@ class RelatorioController
         // senão tudo que foi comentado depois da meia-noite da data final
         // ficava de fora do relatório.
         $comentarios = Database::todos(
-            "SELECT DATE(c.criado_em) AS data_reg, c.texto, u.nome AS autor,
+            "SELECT DATE(c.criado_em) AS data_reg, c.texto,
+                    COALESCE(u.nome, ?) AS autor,
                     (SELECT COUNT(*) FROM comentario_anexo a WHERE a.comentario_id = c.id) AS anexos,
                     CASE c.ref_tipo
                       WHEN 'PROJETO' THEN CONCAT('Projeto: ', COALESCE(p.titulo, '?'))
@@ -305,7 +306,7 @@ class RelatorioController
                       ELSE c.ref_tipo
                     END AS referencia
              FROM comentario c
-             JOIN usuario u ON u.id = c.autor_id
+             LEFT JOIN usuario u ON u.id = c.autor_id
              LEFT JOIN projeto p ON c.ref_tipo = 'PROJETO' AND p.id = c.ref_id
              LEFT JOIN desdobramento dd ON c.ref_tipo = 'DESDOBRAMENTO' AND dd.id = c.ref_id
              LEFT JOIN projeto pd ON pd.id = dd.projeto_id
@@ -319,7 +320,9 @@ class RelatorioController
                  OR (c.ref_tipo = 'CASCATA' AND ce.planejamento_id = ?)
                )
              ORDER BY c.criado_em DESC, c.id DESC",
-            [$de, $ate, $planId, $planId, $planId, $planId]
+            // O rótulo do autor removido vem primeiro: o `?` dele está no
+            // SELECT, antes de todos os do WHERE.
+            [UsuarioController::SEM_USUARIO, $de, $ate, $planId, $planId, $planId, $planId]
         );
 
         return [
@@ -370,12 +373,12 @@ class RelatorioController
         $planId = (int)($_GET['planejamento_id'] ?? 0);
         Auth::exigirAcessoPlanejamento($planId);
         Json::ok(Database::todos(
-            'SELECT r.*, u.nome AS autor
-             FROM reuniao r JOIN usuario u ON u.id = r.autor_id
+            'SELECT r.*, COALESCE(u.nome, ?) AS autor
+             FROM reuniao r LEFT JOIN usuario u ON u.id = r.autor_id
              WHERE r.planejamento_id = ?
              ORDER BY r.data_reuniao DESC, r.id DESC
              LIMIT 20',
-            [$planId]
+            [UsuarioController::SEM_USUARIO, $planId]
         ));
     }
 
