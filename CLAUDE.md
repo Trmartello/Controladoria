@@ -1408,6 +1408,27 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 - Login local de teste: `admin@coperdia.com.br` / `trocar123` (em produção a
   senha inicial vem de `ADMIN_SENHA`; sem ela o migrate gera uma aleatória e
   imprime uma única vez no log).
+- **Senha perdida** (`cli/senha.php listar` / `trocar <e-mail> [senha]
+  [--ativar]`): é o caminho de quando NINGUÉM mais entra. A senha é bcrypt e
+  não tem volta — nem o sistema, nem um ADMIN, nem o dono do banco leem a
+  original. E **`ADMIN_SENHA` não resolve**: o passo do migrate que cria o admin
+  só roda quando não existe nenhum (`WHERE perfil = 'ADMIN'` com contagem zero),
+  então reimplantar com a variável definida não toca em quem já está lá — quem
+  tentar por aí perde o deploy inteiro para descobrir isso.
+  Não é buraco novo de segurança: quem executa já tem o shell do servidor e,
+  com ele, o `config/config.php` e o banco — poderia escrever o hash à mão. O
+  que a CLI acrescenta é fazer certo, com o mesmo `password_hash` e o mesmo
+  mínimo de 8 caracteres da tela (duplicar a regra com outro número deixaria a
+  CLI gravando o que o formulário recusa).
+  Três decisões: a senha **sorteada é o padrão** (senha passada como argumento
+  fica no `history` e é legível no `ps` enquanto o comando roda); **reativar é
+  explícito** (`--ativar`) — devolver a senha de quem foi desativado de propósito
+  e reativá-lo junto, calado, desfaria decisão de outra pessoa; e sem a opção a
+  CLI **avisa** que o acesso segue bloqueado, porque `Auth::exigirLogin` relê
+  `ativo` a cada requisição e a pessoa levaria "e-mail ou senha inválidos"
+  concluindo que a redefinição falhou. Falha de conexão vira UMA linha, não um
+  `stack trace`: a ferramenta é usada no pior momento possível, e uma pilha de
+  exceção faz parecer que ela é que está quebrada.
 - Validação visual: Playwright com Chromium pré-instalado
   (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`,
   `require('/opt/node22/lib/node_modules/playwright')`), testar desktop

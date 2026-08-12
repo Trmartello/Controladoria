@@ -64,6 +64,36 @@ URL `https://<nome>.up.railway.app`.
 5. Em **Cadastros → Usuários**, crie os gestores (perfil GESTOR + vínculo ao
    negócio) e os perfis de Controladoria/Direção.
 
+### Perdi a senha do admin — e ninguém mais entra
+
+A senha é guardada como **bcrypt**: não existe em lugar nenhum em texto, e
+ninguém consegue lê-la de volta — nem você, nem o dono do banco.
+
+**Redefinir `ADMIN_SENHA` e reimplantar NÃO resolve.** O passo que cria o admin
+só roda quando não existe nenhum ADMIN no banco; com um já cadastrado, o migrate
+passa direto e a senha continua a mesma. Você perde o deploy inteiro para
+descobrir isso.
+
+O caminho é a linha de comando do serviço (no Railway, aba **Deployments →
+Shell**, ou um **one-off command**):
+
+```bash
+php cli/senha.php listar                       # quem está cadastrado
+php cli/senha.php trocar admin@coperdia.com.br # sorteia uma senha e a mostra
+```
+
+A senha sorteada aparece **uma única vez** na saída do comando — anote antes de
+fechar a janela, entre com ela e troque pelo menu lateral.
+
+Duas observações:
+
+- para escolher a senha em vez de sortear, passe-a como terceiro argumento
+  (`... trocar <e-mail> <senha>`). Ela fica no histórico do shell, então troque
+  no primeiro acesso;
+- se a conta estiver **inativa**, a senha nova não faz entrar — o sistema
+  confere `ativo` a cada requisição. O comando avisa e você repete com
+  `--ativar` para reativá-la junto.
+
 ## 6. Avisos por e-mail — passo a passo
 
 O sistema sabe quem tem ação atrasada e quem tem prazo hoje. O que falta é ele
