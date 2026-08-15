@@ -404,11 +404,30 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 - Excluir um fator de PESTEL/Porter/SWOT remove também o promovido para a SWOT
   e a linha correspondente na matriz GUT (`FatorController::excluir`).
 - **Pesquisa dentro da análise** (`Diag.campoBusca` / `Diag.ligarBusca`): campo
-  no cabeçalho fixo de SWOT, PESTEL e Porter, que esconde os cartões que não
-  casam com o texto digitado. **São dois lugares para ligar**, não um: a SWOT
-  tem renderizador próprio (`SecaoSwot.carregar`) e PESTEL/Porter compartilham
-  `Diag.etapaFatores` — mexer em um e esquecer o outro é o defeito natural aqui,
-  e foi cometido na primeira tentativa. O que não pode mudar sem motivo:
+  no cabeçalho fixo das **seis** telas do diagnóstico — Cenário, PESTEL,
+  Porter, SWOT, Matriz GUT e Cruzamentos —, que esconde os itens que não casam
+  com o texto digitado. **São quatro renderizadores para ligar**, não um:
+  `Diag.etapaFatores` (PESTEL e Porter), `SecaoSwot`, `SecaoCenario`,
+  `SecaoGut` e `SecaoCruzamentos`. Mexer em um e esquecer o outro é o defeito
+  natural aqui, e foi cometido na primeira tentativa — PESTEL e Porter ganharam
+  o campo e a SWOT, que era o pedido, não. O motor é um só, parametrizado:
+  - `itens`: o seletor da unidade pesquisável (`[data-card-fator]` por padrão,
+    `[data-card-cruzamento]` nos Cruzamentos);
+  - `aposFiltrar`: gancho para quem tem "ver mais" PRÓPRIO — os Cruzamentos
+    expandem o cartão inteiro por um botão só, que o helper genérico não
+    alcança, e caixa escondida mede zero;
+  - `Diag.textoBusca` decide o que é varrido: `[data-busca-texto]` primeiro (a
+    LINHA da Matriz GUT marca só a descrição — varrer a linha inteira faria "5"
+    casar com nota, score e ranking), depois `.texto-fator` e
+    `.selo-cruz-texto` (nos Cruzamentos são os DOIS lados do par mais a
+    estratégia), e o texto do item como último recurso;
+  - a contagem é por **id do registro**, não por nó: a GUT desenha a mesma
+    avaliação duas vezes (tabela no computador, cartões no celular, com o mesmo
+    `data-card-fator`), e contar nós diria "12 de 48" onde há 24 fatores;
+  - sem colunas para contar (a GUT), o vazio é anunciado por
+    `[data-busca-vazio-geral]`; com colunas, por `[data-busca-vazio]` em cada.
+
+  O que não pode mudar sem motivo:
   - filtra a TELA, não o dado. O relatório (`RelatorioAnalise`) é montado a
     partir de `fatores`, e continua saindo com a análise inteira: ele é o
     documento da análise, não a vista de quem está procurando;

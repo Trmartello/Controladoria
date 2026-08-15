@@ -255,6 +255,8 @@ const SecaoCruzamentos = {
             </div>`,
             corpo: `<div class="corpo-coluna">
               ${cartoes || '<div class="text-muted small">Nenhum cruzamento.</div>'}
+              <div class="text-muted small fst-italic d-none d-print-none" data-busca-vazio>
+                Nada neste bloco com esse termo.</div>
             </div>`,
           })}
         </div>
@@ -279,6 +281,7 @@ const SecaoCruzamentos = {
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <h1 class="mb-0">Cruzamentos — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
           <div class="d-flex align-items-center gap-2 flex-wrap">
+            ${Diag.campoBusca('CRUZAMENTOS')}
             ${Diag.seletorAno('cruzamentos')}
             ${editar && podeCruzar
               ? '<button class="btn btn-verde btn-sm" data-novo-cruzamento>+ Novo cruzamento</button>' : ''}
@@ -300,6 +303,15 @@ const SecaoCruzamentos = {
     // `data-ver-mais`, então ele não encosta neles — quem os expande é o botão
     // único do rodapé, ligado aqui.
     this.ligarVerMaisCartao(el);
+    // A pesquisa varre os TRÊS textos do cartão (os dois lados do par e a
+    // estratégia): quem procura "dólar" quer o cruzamento que o cita em
+    // qualquer um deles, não só na estratégia redigida. E religa o "ver mais"
+    // do cartão a cada filtragem, pelo mesmo motivo do filtro de categoria —
+    // caixa escondida mede zero.
+    Diag.ligarBusca(el, 'CRUZAMENTOS', {
+      itens: '[data-card-cruzamento]',
+      aposFiltrar: () => this.ligarVerMaisCartao(el),
+    });
     // O filtro do celular mostra UMA categoria por vez com `d-none`, e caixa
     // escondida mede zero: o cartão que aparece depois nunca teria ganhado o
     // botão, porque na primeira passagem nada parecia cortado. O seletor já

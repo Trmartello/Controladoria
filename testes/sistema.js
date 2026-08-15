@@ -963,12 +963,58 @@ async function provasFilaAcao(page, largura) {
 async function provasBuscaAnalise(page, largura) {
   const semAcento = (s) => s.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-  for (const [secao, nome] of [['swot', 'SWOT'], ['pestel', 'PESTEL'], ['porter', 'Porter']]) {
+  // As SEIS telas do diagnóstico. São QUATRO renderizadores diferentes —
+  // `etapaFatores` (PESTEL, Porter), `SecaoSwot`, `SecaoCenario`, `SecaoGut` e
+  // `SecaoCruzamentos` —, e é por isso que a prova percorre todas: acertar um e
+  // esquecer o outro é o defeito natural aqui, e já aconteceu uma vez.
+  // A GUT usa `.cabecalho-gut` no lugar de `.cabecalho-analise`; as duas
+  // carregam `data-cabecalho-analise`, que é o que de fato gruda no topo.
+  for (const [secao, nome] of [['swot', 'SWOT'], ['pestel', 'PESTEL'], ['porter', 'Porter'],
+    ['cenario', 'Análise de Cenário'], ['gut', 'Matriz GUT'], ['cruzamentos', 'Cruzamentos']]) {
     await page.evaluate((s) => App.mostrarSecao(s), secao);
     const tem = await esperar(page, `!!document.querySelector('#secao-${secao} [data-busca-analise]')`, 15000);
     t(`[${largura}] ${nome} tem a pesquisa no cabeçalho fixo`,
       tem && await page.evaluate((s) =>
-        !!document.querySelector(`#secao-${s} .cabecalho-analise [data-busca-analise]`), secao));
+        !!document.querySelector(`#secao-${s} [data-cabecalho-analise] [data-busca-analise]`), secao));
+  }
+
+  // A Matriz GUT desenha o MESMO registro duas vezes — cartões no celular e
+  // linhas no computador, com o mesmo `data-card-fator`. Duas provas que só ela
+  // pode dar: o contador conta REGISTROS (senão diria "12 de 48" onde há 24
+  // fatores) e a busca não varre as NOTAS (senão "5" casaria com G, U, T e
+  // score, e o usuário veria um filtro que não sabe explicar).
+  await page.evaluate(() => App.mostrarSecao('gut'));
+  if (await esperar(page, "!!document.querySelector('#secao-gut [data-busca-analise]')", 15000)) {
+    const gut = await page.evaluate(() => {
+      const raiz = document.querySelector('#secao-gut');
+      const nos = [...raiz.querySelectorAll('[data-card-fator]')];
+      const c = raiz.querySelector('[data-busca-analise]');
+      c.value = '5';
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+      const vis = [...raiz.querySelectorAll('[data-card-fator]:not(.d-none)')];
+      const comCinco = vis.filter((x) => {
+        const p = x.querySelector('[data-busca-texto], .texto-fator');
+        return (p ? p.textContent : '').includes('5');
+      });
+      const aviso = raiz.querySelector('[data-busca-resultado]')?.textContent.trim() || '';
+      c.value = '';
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+      return {
+        nos: nos.length,
+        registros: new Set(nos.map((x) => x.dataset.cardFator)).size,
+        visiveis: vis.length,
+        comCinco: comCinco.length,
+        aviso,
+      };
+    });
+    if (gut.registros) {
+      t(`[${largura}] GUT: o contador conta registros, não nós repetidos`,
+        !/\d+ de \d+/.test(gut.aviso) || Number(gut.aviso.split(' de ')[1]) === gut.registros,
+        `${gut.nos} nós · ${gut.registros} registros · aviso "${gut.aviso}"`);
+      t(`[${largura}] GUT: buscar "5" não casa por nota nem score`,
+        gut.visiveis === gut.comCinco,
+        `${gut.visiveis} visíveis, ${gut.comCinco} com "5" na descrição`);
+    }
   }
 
   // O resto é medido na SWOT, que é a de renderizador próprio
@@ -1032,7 +1078,9 @@ async function provasBuscaAnalise(page, largura) {
 
   const nada = await digitar('zzzznaoexisteisso');
   t(`[${largura}] termo sem resultado avisa, em vez de esvaziar calado`,
-    nada.visiveis === 0 && /nenhum/i.test(nada.aviso), nada.aviso);
+    // "nada encontrado", e não "nenhum fator": o mesmo aviso serve aos
+    // Cruzamentos, onde o item é um par, não um fator
+    nada.visiveis === 0 && /nada encontrado/i.test(nada.aviso), nada.aviso);
   t(`[${largura}] e cada quadrante vazio diz por quê`,
     await page.evaluate(() => [...document.querySelectorAll('#secao-swot [data-busca-vazio]')]
       .filter((v) => !v.classList.contains('d-none')).length > 0));

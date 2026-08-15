@@ -93,6 +93,28 @@ const Diag = {
   },
 
   /**
+   * O texto que a busca varre num item, por ordem de precisão:
+   *
+   * 1. `[data-busca-texto]` — a marca explícita. É o caso da LINHA da Matriz
+   *    GUT: varrer a linha inteira faria a busca por "5" casar com nota,
+   *    score e posição no ranking;
+   * 2. `.texto-fator` e `.selo-cruz-texto` — a descrição dos cartões. Nos
+   *    Cruzamentos são os DOIS lados do par mais a estratégia: quem procura
+   *    "dólar" quer o cruzamento que cita dólar em qualquer um dos três;
+   * 3. o texto do item, quando nada acima existe.
+   *
+   * Nunca o item inteiro quando há marcação: os selos (GUT 64, "Virou ação",
+   * "Coleta") entrariam na varredura, e buscar "gut" casaria com todo cartão
+   * que tem score — resultado plausível e errado, o pior tipo.
+   */
+  textoBusca(item) {
+    const partes = item.querySelectorAll('[data-busca-texto], .texto-fator, .selo-cruz-texto');
+    return partes.length
+      ? [...partes].map((n) => n.textContent).join(' ')
+      : (item.textContent || '');
+  },
+
+  /**
    * Liga a pesquisa. Três cuidados que não são detalhe:
    *
    * - o texto de cada cartão é lido UMA vez, na ligação. Reler o DOM a cada
@@ -106,30 +128,37 @@ const Diag = {
    *   zero, então cartão que reaparece precisa ser medido outra vez — senão o
    *   texto longo volta cortado e sem o botão de expandir.
    */
-  ligarBusca(el, chave) {
+  ligarBusca(el, chave, { itens = '[data-card-fator]', aposFiltrar = null } = {}) {
     const campo = el.querySelector('[data-busca-analise]');
     if (!campo) return;
     const aviso = el.querySelector('[data-busca-resultado]');
-    const alvos = [...el.querySelectorAll('[data-card-fator]')].map((card) => ({
-      card,
-      texto: this.norm(card.querySelector('.texto-fator')?.textContent || ''),
+    const alvos = [...el.querySelectorAll(itens)].map((item) => ({
+      item,
+      // A CHAVE é o id do registro, não o nó: a Matriz GUT desenha a mesma
+      // avaliação duas vezes — tabela no computador, cartões no celular, com o
+      // mesmo `data-card-fator`. Contando nós, ela diria "12 de 48" onde há 24
+      // fatores, e o número do topo é justamente o que se olha para confiar.
+      chaveItem: item.dataset.cardFator || item.dataset.cardCruzamento || item,
+      texto: this.norm(this.textoBusca(item)),
     }));
+    const totalItens = new Set(alvos.map((a) => a.chaveItem)).size;
 
     const aplicar = () => {
       const termo = campo.value.trim();
       const q = this.norm(termo);
       this.busca[chave] = campo.value;
 
-      let achados = 0;
+      const casados = new Set();
       alvos.forEach((a) => {
         const casa = q === '' || a.texto.includes(q);
-        a.card.classList.toggle('d-none', !casa);
-        if (casa) achados++;
+        a.item.classList.toggle('d-none', !casa);
+        if (casa) casados.add(a.chaveItem);
       });
+      const achados = casados.size;
 
       el.querySelectorAll('[data-coluna-categoria]').forEach((col) => {
-        const todos = col.querySelectorAll('[data-card-fator]').length;
-        const visiveis = col.querySelectorAll('[data-card-fator]:not(.d-none)').length;
+        const todos = col.querySelectorAll(itens).length;
+        const visiveis = col.querySelectorAll(`${itens}:not(.d-none)`).length;
         // O contador passa a dizer o que a coluna MOSTRA sobre o que ela TEM:
         // só o número dos visíveis faria parecer que fatores sumiram do plano
         const contador = col.querySelector('.contador-cards');
@@ -147,10 +176,16 @@ const Diag = {
         aviso.textContent = q === ''
           ? ''
           : achados === 0
-            ? 'nenhum fator encontrado'
-            : `${achados} de ${alvos.length}`;
+            ? 'nada encontrado'
+            : `${achados} de ${totalItens}`;
       }
+      // Aviso de tela inteira vazia — para quem não tem colunas (a GUT)
+      const vazioGeral = el.querySelector('[data-busca-vazio-geral]');
+      if (vazioGeral) vazioGeral.classList.toggle('d-none', !(q !== '' && achados === 0));
       this.ligarVerMais(el);
+      // Gancho para quem tem "ver mais" PRÓPRIO — os Cruzamentos expandem o
+      // cartão inteiro por um botão só, e o helper genérico não o alcança
+      if (aposFiltrar) aposFiltrar();
     };
 
     campo.addEventListener('input', aplicar);
@@ -923,6 +958,8 @@ const SecaoCenario = {
             corpo: `<div class="corpo-coluna">
               ${Diag.painelOrientacao(tipo, cor)}
               ${linhas || '<div class="text-muted small">Nenhum item.</div>'}
+              <div class="text-muted small fst-italic d-none d-print-none" data-busca-vazio>
+                Nada nesta coluna com esse termo.</div>
             </div>`,
           })}
         </div>
@@ -944,6 +981,7 @@ const SecaoCenario = {
               id="selo-quiz-cenario">${QuizSala.selo(this, 'cenario', this.salaNesteAno(ano))}</div>
           </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
+            ${Diag.campoBusca('CENARIO')}
             ${Diag.seletorAno('cenario')}
             ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
               { ativo: this.perguntaDoAno()?.situacao === 'ATIVA',
@@ -985,6 +1023,7 @@ const SecaoCenario = {
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CENARIO');
     Diag.ligarVerMais(el);
+    Diag.ligarBusca(el, 'CENARIO');
     Diag.aplicarDestaque(el, 'cenario');
     Diag.ligarSeloColeta(el, 'Análise de Cenário');
     Diag.ligarOrientacoes(el);
@@ -1543,7 +1582,7 @@ const SecaoGut = {
       return `<tr data-card-fator="${f.id}">
         <td>${f.score ? `<strong>${idx + 1}º</strong>` : '—'}</td>
         <td><span class="badge gut-tag" style="color:${cor};background:${cor}1f">${Diag.QUADRANTES[f.categoria]}</span></td>
-        <td class="small">${Modal.esc(f.descricao)}</td>
+        <td class="small" data-busca-texto>${Modal.esc(f.descricao)}</td>
         <td class="text-center">${f.gravidade ?? '—'}</td>
         <td class="text-center">${f.urgencia ?? '—'}</td>
         <td class="text-center">${f.tendencia ?? '—'}</td>
@@ -1559,8 +1598,14 @@ const SecaoGut = {
       <div class="cabecalho-gut" data-cabecalho-analise>
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <h1 class="mb-0">Matriz GUT — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
-          ${Diag.seletorAno('gut')}
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            ${Diag.campoBusca('GUT')}
+            ${Diag.seletorAno('gut')}
+          </div>
         </div>
+      </div>
+      <div class="alert alert-secondary py-2 d-none d-print-none" data-busca-vazio-geral>
+        Nenhum fator desta matriz casa com o termo pesquisado.
       </div>
       <div class="gut-legenda-barra small mb-3">
         <span class="gl-titulo">Prioridade =
@@ -1608,6 +1653,11 @@ const SecaoGut = {
 
     Diag.ligarSeletorAno(el);
     Diag.ligarVerMais(el);
+    // A GUT desenha a MESMA avaliação duas vezes — cartões no celular, linhas
+    // no computador —, com o mesmo `data-card-fator`. O `ligarBusca` conta por
+    // id justamente por isso; esconder os dois é o certo, porque só um dos
+    // blocos está visível de cada vez e o outro reaparece ao girar a tela.
+    Diag.ligarBusca(el, 'GUT');
     Diag.ligarOrientacoes(el);
     // Mede `--altura-cabecalho` para o `<thead>` grudar logo ABAIXO do título,
     // e não por cima dele. É o mesmo helper das outras análises de propósito:
