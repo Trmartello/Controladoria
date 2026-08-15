@@ -62,6 +62,109 @@ const Diag = {
   // categoria por vez (no computador todas as colunas seguem visíveis)
   filtroMovel: {},
 
+  /**
+   * Pesquisa dentro da análise — achar o fator pelo que ele DIZ.
+   *
+   * O estado é por ETAPA (como o `filtroMovel`), e não global: sair da SWOT
+   * para o PESTEL não pode levar junto o termo digitado na outra, ou a análise
+   * vizinha abre com metade dos cartões escondidos e nenhuma explicação à vista.
+   *
+   * Filtra a TELA, não o dado: o relatório continua saindo com a análise
+   * inteira, porque ele é o documento da análise e não a vista de quem procura.
+   */
+  busca: {},
+
+  /** Minúsculas sem acento — "logistica" tem de achar "logística". */
+  norm(s) {
+    return String(s || '')
+      .toLocaleLowerCase('pt-BR')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '');
+  },
+
+  campoBusca(chave) {
+    const v = this.busca[chave] || '';
+    return `<div class="campo-busca-analise d-print-none">
+      <input type="search" class="form-control form-control-sm" data-busca-analise
+        value="${Modal.esc(v)}" placeholder="Pesquisar nesta análise…"
+        aria-label="Pesquisar um fator desta análise" autocomplete="off">
+      <span class="small text-muted text-nowrap" data-busca-resultado aria-live="polite"></span>
+    </div>`;
+  },
+
+  /**
+   * Liga a pesquisa. Três cuidados que não são detalhe:
+   *
+   * - o texto de cada cartão é lido UMA vez, na ligação. Reler o DOM a cada
+   *   tecla passaria a varrer também os selos e o "ver mais", e a busca por
+   *   "gut" casaria com todo cartão que tem score — resultado plausível e
+   *   errado, que é o pior tipo;
+   * - o `d-none` daqui vai no CARTÃO; o do filtro de categoria do celular vai na
+   *   COLUNA. São elementos diferentes de propósito: no mesmo, um desfaria o
+   *   outro a cada troca;
+   * - `ligarVerMais` roda de novo no fim. `scrollHeight` de elemento escondido é
+   *   zero, então cartão que reaparece precisa ser medido outra vez — senão o
+   *   texto longo volta cortado e sem o botão de expandir.
+   */
+  ligarBusca(el, chave) {
+    const campo = el.querySelector('[data-busca-analise]');
+    if (!campo) return;
+    const aviso = el.querySelector('[data-busca-resultado]');
+    const alvos = [...el.querySelectorAll('[data-card-fator]')].map((card) => ({
+      card,
+      texto: this.norm(card.querySelector('.texto-fator')?.textContent || ''),
+    }));
+
+    const aplicar = () => {
+      const termo = campo.value.trim();
+      const q = this.norm(termo);
+      this.busca[chave] = campo.value;
+
+      let achados = 0;
+      alvos.forEach((a) => {
+        const casa = q === '' || a.texto.includes(q);
+        a.card.classList.toggle('d-none', !casa);
+        if (casa) achados++;
+      });
+
+      el.querySelectorAll('[data-coluna-categoria]').forEach((col) => {
+        const todos = col.querySelectorAll('[data-card-fator]').length;
+        const visiveis = col.querySelectorAll('[data-card-fator]:not(.d-none)').length;
+        // O contador passa a dizer o que a coluna MOSTRA sobre o que ela TEM:
+        // só o número dos visíveis faria parecer que fatores sumiram do plano
+        const contador = col.querySelector('.contador-cards');
+        if (contador) {
+          contador.textContent = q === '' ? todos : `${visiveis}/${todos}`;
+          contador.title = q === ''
+            ? `${todos} card(s) nesta categoria`
+            : `${visiveis} de ${todos} card(s) desta categoria casam com a pesquisa`;
+        }
+        const vazio = col.querySelector('[data-busca-vazio]');
+        if (vazio) vazio.classList.toggle('d-none', !(q !== '' && todos > 0 && visiveis === 0));
+      });
+
+      if (aviso) {
+        aviso.textContent = q === ''
+          ? ''
+          : achados === 0
+            ? 'nenhum fator encontrado'
+            : `${achados} de ${alvos.length}`;
+      }
+      this.ligarVerMais(el);
+    };
+
+    campo.addEventListener('input', aplicar);
+    // Esc limpa sem tirar a mão do teclado. O `type="search"` já traz o ✕ do
+    // navegador, mas ele não existe em todos e não é alcançável por teclado.
+    campo.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Escape' || campo.value === '') return;
+      ev.stopPropagation(); // senão o Esc sobe e fecha algo atrás
+      campo.value = '';
+      aplicar();
+    });
+    aplicar();
+  },
+
   seletorCategoriaMovel(chave, opcoes, contagens) {
     const atual = this.filtroMovel[chave] || 'TODAS';
     const ops = [['TODAS', 'Todas as categorias'], ...opcoes]
@@ -289,6 +392,11 @@ const Diag = {
     this.destaque = { secao, fatorId: String(fatorId) };
     // Garante que o card não fique escondido pelo filtro de categoria do celular
     if (chaveFiltro && categoria) this.filtroMovel[chaveFiltro] = categoria;
+    // Nem por uma pesquisa deixada em outra análise. Quem foi MANDADO a um card
+    // específico tem de vê-lo; chegar numa tela que só diz "nenhum fator
+    // encontrado" pareceria registro apagado. Limpa todas porque `chaveFiltro` é
+    // opcional, e o custo é só um termo digitado que ninguém está mais olhando.
+    this.busca = {};
     App.mostrarSecao(secao);
   },
 
@@ -588,6 +696,8 @@ const Diag = {
             corpo: `<div class="corpo-coluna">
               ${this.painelOrientacao(cat, cor)}
               ${cartoes || '<div class="text-muted small">—</div>'}
+              <div class="text-muted small fst-italic d-none d-print-none" data-busca-vazio>
+                Nada nesta categoria com esse termo.</div>
             </div>`,
           })}
         </div>
@@ -610,6 +720,7 @@ const Diag = {
                 this.salaNestaEtapa(dono, etapa, ano))}</div>
           </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
+            ${this.campoBusca(etapa)}
             ${this.seletorAno(etapa)}
             ${RelatorioAnalise.botao()}
             ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
@@ -641,6 +752,10 @@ const Diag = {
     this.ligarSeletorAno(el);
     this.ligarSeletorCategoriaMovel(el, etapa);
     this.ligarVerMais(el);
+    // Depois do filtro de categoria e do "ver mais", antes do destaque: a busca
+    // recompõe os dois (ela mede o "ver mais" de novo) e o destaque precisa
+    // rolar até um card que já esteja na posição final
+    this.ligarBusca(el, etapa);
     this.aplicarDestaque(el, idSecao.replace('secao-', ''));
     this.ligarSeloColeta(el, ({ PESTEL: 'PESTEL', PORTER: 'Porter', SWOT: 'SWOT' })[etapa] || etapa);
     this.ligarOrientacoes(el);
@@ -1185,6 +1300,8 @@ const SecaoSwot = {
             corpo: `<div class="corpo-coluna">
               ${Diag.painelOrientacao(cat, cor)}
               ${cartoes || '<div class="text-muted small">Nenhum fator.</div>'}
+              <div class="text-muted small fst-italic d-none d-print-none" data-busca-vazio>
+                Nada neste quadrante com esse termo.</div>
             </div>`,
           })}
         </div>
@@ -1204,6 +1321,7 @@ const SecaoSwot = {
               data-selo-quiz>${QuizSala.selo(this, 'swot', Diag.salaNestaEtapa(this, 'SWOT', ano))}</div>
           </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
+            ${Diag.campoBusca('SWOT')}
             ${Diag.seletorAno('swot')}
             ${RelatorioAnalise.botao()}
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
@@ -1241,6 +1359,9 @@ const SecaoSwot = {
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'SWOT');
     Diag.ligarVerMais(el);
+    // Antes do destaque: a busca remede o "ver mais" e reposiciona os cartões,
+    // e o destaque precisa rolar até um card que já esteja no lugar final
+    Diag.ligarBusca(el, 'SWOT');
     Diag.aplicarDestaque(el, 'swot');
     Diag.ligarSeloColeta(el, 'SWOT');
     Diag.ligarOrientacoes(el);

@@ -403,6 +403,27 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   dos inativos que sobraram de carga antiga, com as mesmas guardas.
 - Excluir um fator de PESTEL/Porter/SWOT remove também o promovido para a SWOT
   e a linha correspondente na matriz GUT (`FatorController::excluir`).
+- **Pesquisa dentro da análise** (`Diag.campoBusca` / `Diag.ligarBusca`): campo
+  no cabeçalho fixo de SWOT, PESTEL e Porter, que esconde os cartões que não
+  casam com o texto digitado. **São dois lugares para ligar**, não um: a SWOT
+  tem renderizador próprio (`SecaoSwot.carregar`) e PESTEL/Porter compartilham
+  `Diag.etapaFatores` — mexer em um e esquecer o outro é o defeito natural aqui,
+  e foi cometido na primeira tentativa. O que não pode mudar sem motivo:
+  - filtra a TELA, não o dado. O relatório (`RelatorioAnalise`) é montado a
+    partir de `fatores`, e continua saindo com a análise inteira: ele é o
+    documento da análise, não a vista de quem está procurando;
+  - o texto de cada cartão é lido UMA vez, na ligação. Reler o DOM a cada tecla
+    varreria também os selos, e buscar "gut" casaria com todo cartão que tem
+    score — resultado plausível e errado;
+  - o `d-none` da busca vai no **cartão**; o do filtro de categoria do celular
+    vai na **coluna**. No mesmo elemento, um desfaria o outro;
+  - `ligarVerMais` roda de novo ao fim de cada filtragem: `scrollHeight` de
+    elemento escondido é zero, e o cartão que reaparece precisa ser remedido;
+  - o estado é por etapa (`Diag.busca`, como `filtroMovel`), e `irParaFator` o
+    limpa — quem foi MANDADO a um card tem de vê-lo, e cair num "nenhum fator
+    encontrado" pareceria registro apagado;
+  - o contador do quadrante vira `visíveis/total` durante a busca. Só o número
+    dos visíveis faria parecer que fatores sumiram do plano.
 - **Cruzamentos da SWOT (TOWS)** (`swot_cruzamento`, `CruzamentoController`,
   `secoes/cruzamentos.js`): o par de um fator INTERNO com um EXTERNO e a
   estratégia que nasce dele — a quinta análise, entre a GUT e a Cascata. O

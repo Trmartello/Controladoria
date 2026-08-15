@@ -2045,6 +2045,24 @@ tr.card-destacado > td { background: #e8f5ee; }
 }
 .cabecalho-analise h1 { margin-bottom: 0; }
 
+/* Pesquisa dentro da análise. No computador acompanha os outros controles do
+   cabeçalho; no celular ocupa a linha inteira — campo de texto espremido ao
+   lado do seletor de ano não recebe mais que duas letras por vez. */
+.campo-busca-analise { display: flex; align-items: center; gap: .4rem; }
+.campo-busca-analise input { min-width: 210px; }
+/* Respiro à direita: com o mesmo espaçamento do resto do cabeçalho, o "6 de 24"
+   encostava em "Ano da análise" e as duas informações liam-se como uma frase só. */
+.campo-busca-analise [data-busca-resultado] { margin-right: .5rem; }
+.campo-busca-analise [data-busca-resultado]:empty { margin-right: 0; }
+/* O ✕ nativo do WebKit some quando o campo está vazio, e a altura muda junto;
+   fixar a altura evita o cabeçalho pular de tamanho ao digitar a 1ª letra —
+   e ele é medido por `ligarCabecalhoFixo` para posicionar o das colunas. */
+.campo-busca-analise input[type="search"] { height: 31px; }
+@media (max-width: 575.98px) {
+  .campo-busca-analise { width: 100%; }
+  .campo-busca-analise input { min-width: 0; flex: 1 1 auto; }
+}
+
 .cabecalho-coluna {
   position: sticky;
   top: calc(var(--topo-app) + var(--altura-cabecalho, 0px));

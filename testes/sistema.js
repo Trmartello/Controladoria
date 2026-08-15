@@ -943,6 +943,125 @@ async function provasFilaAcao(page, largura) {
  *   modal (`sobra === aviso`), nas duas direções — anunciar o que não existe
  *   ensina a ignorar o aviso.
  */
+/**
+ * A **pesquisa dentro da análise** — achar o fator pelo que ele diz.
+ *
+ * O que estas provas seguram:
+ * - o campo existe no cabeçalho FIXO das três análises (SWOT, PESTEL, Porter).
+ *   A SWOT tem renderizador próprio e as outras duas compartilham
+ *   `etapaFatores`: são dois lugares, e é exatamente por isso que a prova
+ *   confere os três — corrigir um e esquecer o outro é o defeito natural aqui;
+ * - filtrar de verdade: todo cartão que sobra CONTÉM o termo. Um filtro que
+ *   esconde demais é visível; um que esconde de menos passa por bom;
+ * - acento e caixa não contam — em português, exigir "logística" para achar
+ *   "logistica" é o mesmo que não ter busca;
+ * - o contador do quadrante vira `visíveis/total`, e volta ao número puro ao
+ *   limpar: só o número dos visíveis faria parecer que fatores foram apagados;
+ * - o termo NÃO vaza entre análises. O estado é por etapa, e a análise vizinha
+ *   abrindo com metade dos cartões escondidos não teria explicação na tela.
+ */
+async function provasBuscaAnalise(page, largura) {
+  const semAcento = (s) => s.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  for (const [secao, nome] of [['swot', 'SWOT'], ['pestel', 'PESTEL'], ['porter', 'Porter']]) {
+    await page.evaluate((s) => App.mostrarSecao(s), secao);
+    const tem = await esperar(page, `!!document.querySelector('#secao-${secao} [data-busca-analise]')`, 15000);
+    t(`[${largura}] ${nome} tem a pesquisa no cabeçalho fixo`,
+      tem && await page.evaluate((s) =>
+        !!document.querySelector(`#secao-${s} .cabecalho-analise [data-busca-analise]`), secao));
+  }
+
+  // O resto é medido na SWOT, que é a de renderizador próprio
+  await page.evaluate(() => App.mostrarSecao('swot'));
+  await esperar(page, "!!document.querySelector('#secao-swot [data-busca-analise]')", 15000);
+  const digitar = async (q) => {
+    await page.evaluate((termo) => {
+      const c = document.querySelector('#secao-swot [data-busca-analise]');
+      c.value = termo;
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+    }, q);
+    await new Promise((r) => setTimeout(r, 120));
+    return page.evaluate(() => ({
+      total: document.querySelectorAll('#secao-swot [data-card-fator]').length,
+      visiveis: document.querySelectorAll('#secao-swot [data-card-fator]:not(.d-none)').length,
+      aviso: document.querySelector('#secao-swot [data-busca-resultado]')?.textContent.trim() || '',
+      contadores: [...document.querySelectorAll('#secao-swot .contador-cards')].map((c) => c.textContent.trim()),
+      textos: [...document.querySelectorAll('#secao-swot [data-card-fator]:not(.d-none) .texto-fator')]
+        .map((x) => x.textContent.trim()),
+    }));
+  };
+
+  const base = await digitar('');
+  if (!base.total) { t(`[${largura}] SWOT tem fatores para pesquisar`, false, 'nenhum cartão'); return; }
+
+  // Os termos saem dos PRÓPRIOS cartões, não de palavras fixas: com termo
+  // escolhido à mão, ou a prova quebra quando alguém revisa o conteúdo da
+  // carga, ou — pior — cai numa palavra que casa com tudo (buscar "a" achava
+  // 24 de 24) e seguiria verde com o filtro quebrado.
+  const palavras = base.textos.join(' ').split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 7);
+  const raro = palavras.find((w) =>
+    base.textos.filter((x) => semAcento(x).includes(semAcento(w))).length < base.total);
+
+  if (!raro) {
+    t(`[${largura}] havia termo capaz de separar os cartões da SWOT`, false, 'nenhum encontrado');
+  } else {
+    const achou = await digitar(raro);
+    t(`[${largura}] a pesquisa filtra os cartões da SWOT`,
+      achou.visiveis > 0 && achou.visiveis < base.total,
+      `"${raro}" → ${achou.visiveis} de ${base.total}`);
+    const intrusos = achou.textos.filter((x) => !semAcento(x).includes(semAcento(raro)));
+    t(`[${largura}] todo cartão que sobra contém mesmo o termo`, intrusos.length === 0,
+      intrusos.length ? intrusos[0].slice(0, 60) : `${achou.textos.length} conferidos`);
+    t(`[${largura}] o contador do quadrante vira visíveis/total`,
+      achou.contadores.some((c) => c.includes('/')), JSON.stringify(achou.contadores));
+  }
+
+  // Acento: uma palavra ACENTUADA dos próprios cartões tem de ser achada
+  // digitada sem acento. Em português, exigir o acento é não ter busca.
+  const acentuada = palavras.find((w) => semAcento(w) !== w.toLocaleLowerCase('pt-BR'));
+  if (acentuada) {
+    const comAc = await digitar(acentuada);
+    const semAc = await digitar(semAcento(acentuada));
+    const alta = await digitar(acentuada.toLocaleUpperCase('pt-BR'));
+    t(`[${largura}] a pesquisa ignora acento`,
+      comAc.visiveis === semAc.visiveis && comAc.visiveis > 0,
+      `"${acentuada}"=${comAc.visiveis} · sem acento=${semAc.visiveis}`);
+    t(`[${largura}] a pesquisa ignora maiúsculas`,
+      alta.visiveis === comAc.visiveis && alta.visiveis > 0, `${alta.visiveis}`);
+  }
+
+  const nada = await digitar('zzzznaoexisteisso');
+  t(`[${largura}] termo sem resultado avisa, em vez de esvaziar calado`,
+    nada.visiveis === 0 && /nenhum/i.test(nada.aviso), nada.aviso);
+  t(`[${largura}] e cada quadrante vazio diz por quê`,
+    await page.evaluate(() => [...document.querySelectorAll('#secao-swot [data-busca-vazio]')]
+      .filter((v) => !v.classList.contains('d-none')).length > 0));
+
+  const limpo = await digitar('');
+  t(`[${largura}] limpar devolve todos os cartões`, limpo.visiveis === base.total,
+    `${limpo.visiveis}/${base.total}`);
+  t(`[${largura}] e os contadores voltam ao número puro`,
+    limpo.contadores.every((c) => !c.includes('/')), JSON.stringify(limpo.contadores));
+  t(`[${largura}] a SWOT com a pesquisa não rola a página na horizontal`,
+    await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth <= 1));
+
+  // Isolamento entre análises
+  await page.evaluate(() => App.mostrarSecao('porter'));
+  await esperar(page, "!!document.querySelector('#secao-porter [data-busca-analise]')", 15000);
+  await page.evaluate(() => {
+    const c = document.querySelector('#secao-porter [data-busca-analise]');
+    c.value = 'zzzznaoexisteisso';
+    c.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.evaluate(() => App.mostrarSecao('swot'));
+  await esperar(page, "!!document.querySelector('#secao-swot [data-busca-analise]')", 15000);
+  t(`[${largura}] a pesquisa do Porter não vaza para a SWOT`,
+    await page.evaluate(() =>
+      document.querySelector('#secao-swot [data-busca-analise]').value === ''
+      && document.querySelectorAll('#secao-swot [data-card-fator]:not(.d-none)').length > 0));
+}
+
 async function provasGut(page) {
   await page.evaluate(() => App.mostrarSecao('gut'));
   await esperar(page, "!document.getElementById('secao-gut').classList.contains('d-none')", 15000);
@@ -1708,6 +1827,7 @@ async function provasAcao(page, largura) {
   await provasFilaAcao(page, 'desktop');
   await provasCabecalhoProjetos(page, 'desktop');
   await provasPopoverResumo(page, 'desktop');
+  await provasBuscaAnalise(page, 'desktop');
   await provasGut(page);
   await provasExcluirUsuario(page);
   await provasFiltroResponsavel(page);
@@ -1723,6 +1843,7 @@ async function provasAcao(page, largura) {
   await provasResumoStatus(pageM, 'celular');
   await provasFilaAcao(pageM, 'celular');
   await provasCabecalhoProjetos(pageM, 'celular');
+  await provasBuscaAnalise(pageM, 'celular');
 
   // O formulário da ação corre em contexto PRÓPRIO, nas duas larguras.
   //
