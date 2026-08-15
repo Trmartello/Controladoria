@@ -50,6 +50,78 @@ class CascataController
             );
         }
 
+        // ---- Matriz de Execução: o que MEDE e o que EXECUTA cada escolha.
+        //
+        // Três queries agregadas para o planejamento inteiro, e o cruzamento em
+        // PHP. Pendurar isso no laço acima seria N+1 sobre N+1 (escolha →
+        // indicadores → série plurianual), e a cascata tem uma linha por
+        // driver × horizonte × eixo — dezenas de células num ciclo cheio.
+        unset($e);
+
+        $indicadores = Database::todos(
+            'SELECT ic.cascata_id, i.id, i.nome, i.unidade, i.sentido, i.metrica_ancora
+             FROM indicador_cascata ic
+             JOIN indicador i ON i.id = ic.indicador_id
+             WHERE i.planejamento_id = ?
+             ORDER BY i.metrica_ancora DESC, i.nome',
+            [$planId]
+        );
+
+        // Metas na versão mais recente de cada ano (revisão antiga não pode
+        // reaparecer) + todos os reais. A leitura de meta × real é a mesma de
+        // `metas.js` e é montada no front, com esta série.
+        $serie = [];
+        foreach (Database::todos(
+            // `EXISTS`, e não um JOIN com `indicador_cascata`: o vínculo é N:N,
+            // e o indicador amarrado a três escolhas traria a série TRÊS vezes
+            // — o front somaria a mesma meta como se fossem anos distintos.
+            "SELECT v.indicador_id, v.ano, v.tipo, v.valor
+             FROM indicador_valor v
+             JOIN indicador i ON i.id = v.indicador_id
+             WHERE i.planejamento_id = ?
+               AND EXISTS (SELECT 1 FROM indicador_cascata ic
+                           WHERE ic.indicador_id = v.indicador_id)
+               AND (v.tipo = 'REAL' OR v.versao_meta = (
+                     SELECT MAX(v2.versao_meta) FROM indicador_valor v2
+                     WHERE v2.indicador_id = v.indicador_id AND v2.ano = v.ano
+                       AND v2.tipo = 'META'))
+             ORDER BY v.indicador_id, v.tipo, v.ano",
+            [$planId]
+        ) as $v) {
+            $chave = $v['tipo'] === 'REAL' ? 'reais' : 'metas';
+            $serie[(int)$v['indicador_id']][$chave][] = [
+                'ano'   => (int)$v['ano'],
+                'valor' => $v['valor'],
+            ];
+        }
+
+        $projetos = Database::todos(
+            'SELECT id, cascata_id, titulo, status, ano
+             FROM projeto
+             WHERE planejamento_id = ? AND cascata_id IS NOT NULL
+             ORDER BY ano, id',
+            [$planId]
+        );
+
+        $porEscolhaInd = [];
+        foreach ($indicadores as $ind) {
+            $cascataId = (int)$ind['cascata_id'];
+            $id = (int)$ind['id'];
+            unset($ind['cascata_id']);
+            $ind['metas'] = $serie[$id]['metas'] ?? [];
+            $ind['reais'] = $serie[$id]['reais'] ?? [];
+            $porEscolhaInd[$cascataId][] = $ind;
+        }
+        $porEscolhaProj = [];
+        foreach ($projetos as $p) {
+            $porEscolhaProj[(int)$p['cascata_id']][] = $p;
+        }
+        foreach ($escolhas as &$e) {
+            $e['indicadores'] = $porEscolhaInd[(int)$e['id']] ?? [];
+            $e['projetos']    = $porEscolhaProj[(int)$e['id']] ?? [];
+        }
+        unset($e);
+
         Json::ok([
             'horizontes' => $horizontes,
             'drivers'    => $drivers,

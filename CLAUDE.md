@@ -373,6 +373,30 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   gruda (o título quebra em duas linhas e custaria um quinto da tela).
 - Metas plurianuais versionadas: `indicador_valor` única por
   (indicador, ano, tipo, versão); leitura usa a MAIOR versão de cada ano.
+- **Matriz de Execução** — segunda aba da Cascata (`SecaoCascata.aba`, valores
+  `matriz` e `execucao`), agrupada por EIXO. Fecha o triângulo da célula: ela já
+  sabia o que a **fundamenta** (`cascata_fator`, os fatores SWOT/GUT) e o que a
+  **executa** (`projeto.cascata_id`); `indicador_cascata` acrescenta o que a
+  **mede**. Não é um mapa Kaplan/Norton e não deve ser apresentado como tal — as
+  raias são os eixos já cadastrados, e o valor de controladoria está no contador
+  **"sem medida"** (escolha sem indicador nenhum), não em setas de causa-e-efeito.
+  Três decisões que não devem ser desfeitas sem motivo:
+  - o vínculo se edita no modal do **indicador** (`metas.js`), por
+    `lista_marcavel` — o texto de uma escolha é uma frase inteira, e
+    `multiselect` não funciona no celular. A leitura mora na Cascata, ao lado
+    da decisão; a escrita, junto da medida;
+  - `IndicadorController::salvar` só mexe no conjunto quando o corpo TRAZ
+    `cascatas` (`array_key_exists`): quem chama a API sem o campo não pode
+    perder os vínculos como efeito colateral de renomear o indicador. E valida
+    cada `cascata_id` contra o planejamento — `exigirEdicaoPlanejamento` valida
+    o plano, não os filhos (mesma guarda de IDOR de `ProjetoController`);
+  - a fonte de dados são **três queries agregadas** no fim de
+    `CascataController::listar`, cruzadas em PHP. Pendurar no laço das escolhas
+    seria N+1 sobre N+1. A série usa `EXISTS`, não JOIN com `indicador_cascata`:
+    indicador amarrado a três escolhas traria a série três vezes.
+  - meta × real repete a regra de `metas.js` (último real; na falta dele, a
+    primeira meta futura). **Não** é "meta do ano corrente": o ciclo é 2027–2035
+    e, com o ano corrente, em 2026 a matriz inteira mostraria "—".
 - Investimentos decididos nunca voltam a PROPOSTO; APROVADO só avança para
   EXECUTADO.
 - Negócios vêm do Qlik (`FlagFilialNegocio`, códigos oficiais em

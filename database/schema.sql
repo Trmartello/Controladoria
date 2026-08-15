@@ -225,6 +225,24 @@ CREATE TABLE IF NOT EXISTS indicador_valor (
   CONSTRAINT fk_iv_indicador FOREIGN KEY (indicador_id) REFERENCES indicador(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Que escolhas da cascata cada indicador MEDE. Clone literal de `cascata_fator`:
+-- o vínculo é N:N e não tem atributo próprio. É o que fecha a Matriz de
+-- Execução — a escolha já sabia o que a FUNDAMENTA (`cascata_fator`) e o que a
+-- EXECUTA (`projeto.cascata_id`); faltava o que a MEDE.
+--
+-- Vem depois de `indicador` de propósito: a FK exige a tabela referenciada já
+-- criada, e declarar isto junto de `cascata_fator` mataria a instalação nova
+-- com "Foreign key constraint is incorrectly formed" — a mesma armadilha que o
+-- comentário de `cruzamento` registra acima.
+CREATE TABLE IF NOT EXISTS indicador_cascata (
+  indicador_id INT NOT NULL,
+  cascata_id   INT NOT NULL,
+  PRIMARY KEY (indicador_id, cascata_id),
+  KEY idx_ic_cascata (cascata_id),
+  CONSTRAINT fk_ic_ind FOREIGN KEY (indicador_id) REFERENCES indicador(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ic_cas FOREIGN KEY (cascata_id) REFERENCES cascata_escolha(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS projeto (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,

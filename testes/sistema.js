@@ -1110,6 +1110,100 @@ async function provasBuscaAnalise(page, largura) {
       && document.querySelectorAll('#secao-swot [data-card-fator]:not(.d-none)').length > 0));
 }
 
+/**
+ * A **Matriz de Execução** — a aba de leitura da Cascata.
+ *
+ * O que ela promete e o que estas provas seguram:
+ * - a Cascata passou a ter DUAS abas, e a de escolhas continua sendo a padrão.
+ *   Nascer na aba de leitura mandaria para o consolidado quem veio decidir;
+ * - as cinco colunas do backlog, na ordem — a matriz é a leitura que a direção
+ *   pede no trimestral, e coluna faltando vira reunião sem o dado;
+ * - meta × real usa a versão MAIS RECENTE da meta e a regra do último real (a
+ *   mesma de `metas.js`): com "meta do ano corrente", em 2026 a matriz inteira
+ *   mostraria "—" e a tela nasceria parecendo quebrada;
+ * - o vínculo se edita no modal do indicador por `lista_marcavel` e volta
+ *   MARCADO. Um `multiselect` aqui não teria Ctrl no celular, e o texto de uma
+ *   escolha é uma frase inteira — precisa ser lido antes de marcado;
+ * - a tabela é larga e rola DENTRO do contêiner: a página não rola na
+ *   horizontal em 390px.
+ */
+async function provasMatrizExecucao(page, largura) {
+  await page.evaluate(() => App.mostrarSecao('cascata'));
+  const temAbas = await esperar(page, "!!document.querySelector('#abas-cascata')", 15000);
+  t(`[${largura}] Cascata tem a barra de abas`, temAbas);
+  if (!temAbas) return;
+
+  t(`[${largura}] as duas abas da Cascata, na ordem`,
+    await page.evaluate(() => [...document.querySelectorAll('#abas-cascata a')]
+      .map((a) => a.textContent.trim()).join(' | ') === 'Matriz de Escolhas | Matriz de Execução'));
+  t(`[${largura}] a Cascata nasce na Matriz de Escolhas`,
+    await page.evaluate(() => !!document.querySelector('.tabela-cascata')));
+
+  await page.evaluate(() => document.querySelector('[data-aba-cascata="execucao"]').click());
+  const pintou = await esperar(page, "!!document.querySelector('.tabela-execucao')", 15000);
+  t(`[${largura}] Matriz de Execução pinta`, pintou);
+  if (!pintou) return;
+
+  const cabecalhos = await page.evaluate(() =>
+    [...document.querySelectorAll('.tabela-execucao thead th')].map((x) => x.textContent.trim()));
+  t(`[${largura}] Matriz de Execução traz as cinco colunas do backlog`,
+    JSON.stringify(cabecalhos) === JSON.stringify(
+      ['Eixo', 'Escolha (e a renúncia)', 'Indicadores', 'Meta / Real', 'Iniciativas (projetos)']),
+    JSON.stringify(cabecalhos));
+
+  // Escolha sem indicador é o achado de controladoria da tela: o contador
+  // precisa bater com o que a coluna mostra, senão ele vira enfeite
+  const conta = await page.evaluate(() => {
+    const linhas = [...document.querySelectorAll('.tabela-execucao tbody tr')];
+    const sem = linhas.filter((tr) => tr.textContent.includes('— sem indicador —')).length;
+    const selo = document.body.textContent.match(/(\d+) sem medida/);
+    return { linhas: linhas.length, sem, selo: selo ? Number(selo[1]) : null };
+  });
+  t(`[${largura}] o contador "sem medida" bate com as linhas sem indicador`,
+    conta.linhas > 0 && conta.sem === conta.selo, JSON.stringify(conta));
+
+  t(`[${largura}] Matriz de Execução não rola a página na horizontal`,
+    await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth <= 1));
+
+  await page.evaluate(() => document.querySelector('[data-aba-cascata="matriz"]').click());
+  t(`[${largura}] a aba volta para a Matriz de Escolhas`,
+    await esperar(page, "!!document.querySelector('.tabela-cascata')", 10000));
+
+  // O outro lado do vínculo: o campo no modal do indicador
+  await page.evaluate(() => App.mostrarSecao('metas'));
+  const temMetas = await esperar(page, "!!document.querySelector('[data-editar]')", 15000);
+  t(`[${largura}] Metas lista indicadores`, temMetas);
+  if (!temMetas) return;
+
+  // O indicador VINCULADO, não o primeiro da lista: a lista ordena por âncora e
+  // nome, e o primeiro pode não ter vínculo nenhum — a prova passaria vazia
+  const temVinculo = await page.evaluate(() =>
+    !!SecaoMetas.dados.indicadores.find((i) => (i.cascatas || []).length));
+  await page.evaluate(() => SecaoMetas.modalIndicador(
+    SecaoMetas.dados.indicadores.find((i) => (i.cascatas || []).length)
+    || SecaoMetas.dados.indicadores[0]));
+  await esperar(page, "!!document.querySelector('.modal.show')", 10000);
+
+  const campo = await page.evaluate(() => ({
+    rotulo: [...document.querySelectorAll('.modal.show label, .modal.show .form-label')]
+      .some((l) => l.textContent.includes('Escolhas que este indicador mede')),
+    marcavel: !!document.querySelector('.modal.show .lista-marcavel'),
+    marcados: [...document.querySelectorAll('.modal.show .lista-marcavel input:checked')].length,
+  }));
+  t(`[${largura}] o modal do indicador tem o campo das escolhas da cascata`, campo.rotulo);
+  t(`[${largura}] e o controle é lista_marcavel (o multiselect não tem Ctrl no celular)`,
+    campo.marcavel);
+  if (temVinculo) {
+    t(`[${largura}] as escolhas já vinculadas voltam marcadas`,
+      campo.marcados >= 1, `${campo.marcados} marcada(s)`);
+  }
+  t(`[${largura}] o modal do indicador não rola a página na horizontal`,
+    await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth <= 1));
+  await fecharModal(page);
+}
+
 async function provasGut(page) {
   await page.evaluate(() => App.mostrarSecao('gut'));
   await esperar(page, "!document.getElementById('secao-gut').classList.contains('d-none')", 15000);
@@ -1876,6 +1970,7 @@ async function provasAcao(page, largura) {
   await provasCabecalhoProjetos(page, 'desktop');
   await provasPopoverResumo(page, 'desktop');
   await provasBuscaAnalise(page, 'desktop');
+  await provasMatrizExecucao(page, 'desktop');
   await provasGut(page);
   await provasExcluirUsuario(page);
   await provasFiltroResponsavel(page);
@@ -1892,6 +1987,7 @@ async function provasAcao(page, largura) {
   await provasFilaAcao(pageM, 'celular');
   await provasCabecalhoProjetos(pageM, 'celular');
   await provasBuscaAnalise(pageM, 'celular');
+  await provasMatrizExecucao(pageM, 'celular');
 
   // O formulário da ação corre em contexto PRÓPRIO, nas duas larguras.
   //

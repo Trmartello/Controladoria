@@ -11,6 +11,10 @@ const SecaoCascata = {
   dados: null,
   plan: null,
   celulaAberta: null, // { horizonteId, driverId }
+  // Aba visível: 'matriz' (a cascata em si) ou 'execucao' (a leitura do que
+  // cada escolha virou). A leitura mora AO LADO da decisão, e não numa seção
+  // própria: quem discute a escolha é quem pergunta o que ela mede.
+  aba: 'matriz',
   quiz: null,         // estado da sessão do quiz (ou {sessao:null})
   relogioQuiz: null,
   assinaturaQuiz: null,
@@ -40,12 +44,49 @@ const SecaoCascata = {
     if (vindo) {
       this.perguntaFoco = vindo.perguntaId;
       this.aoNavegar(vindo.pergunta);
+      // Quem chega da sala vem para conduzir, não para ler o consolidado
+      this.aba = 'matriz';
     }
     this.plan = await App.planejamento();
     [this.dados, this.quiz] = await Promise.all([
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
       QuizSala.estado(this.plan.id, this.perguntaFoco),
     ]);
+
+    const abas = [['matriz', 'Matriz de Escolhas'], ['execucao', 'Matriz de Execução']];
+    el.innerHTML = `
+      <h1>Cascata de Escolhas — ${Modal.esc(App.rotuloContexto())}</h1>
+      <ul class="nav nav-tabs mt-3" id="abas-cascata">
+        ${abas.map(([id, rotulo]) =>
+          `<li class="nav-item"><a class="nav-link ${id === this.aba ? 'active' : ''}"
+            href="#" data-aba-cascata="${id}">${rotulo}</a></li>`).join('')}
+      </ul>
+      <div id="conteudo-cascata" class="pt-3"></div>`;
+
+    el.querySelectorAll('[data-aba-cascata]').forEach((a) => {
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        this.aba = a.dataset.abaCascata;
+        this.carregar();
+      });
+    });
+
+    if (this.aba === 'execucao') {
+      // Fora da matriz não há painel ao vivo nem célula aberta para repintar:
+      // deixar o relógio batendo faria `aoBater` procurar um `#detalhe-celula`
+      // que não existe a cada dois segundos
+      clearInterval(this.relogioQuiz);
+      this.relogioQuiz = null;
+      this.renderExecucao();
+      return;
+    }
+    this.renderMatriz();
+  },
+
+  /** A cascata em si: a grade driver × horizonte e o detalhe da célula. */
+  renderMatriz() {
+    const el = document.getElementById('secao-cascata');
+    const alvoAba = document.getElementById('conteudo-cascata');
     const { horizontes, drivers, eixos, escolhas } = this.dados;
 
     const totalAberturas = horizontes.length * drivers.length * eixos.length;
@@ -73,9 +114,8 @@ const SecaoCascata = {
       return `<tr><th class="celula-driver">${Modal.esc(d.nome)}</th>${celulas}</tr>`;
     }).join('');
 
-    el.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h1>Cascata de Escolhas — ${Modal.esc(App.rotuloContexto())}</h1>
+    alvoAba.innerHTML = `
+      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
         <div class="d-flex gap-2">
           <span class="badge text-bg-success fs-6">Aberturas ${feitasAberturas}/${totalAberturas}</span>
           <span class="badge badge-horizonte fs-6">Sínteses ${feitasSinteses}/${totalSinteses}</span>
@@ -206,9 +246,159 @@ const SecaoCascata = {
       && Number(p.horizonte_id) === Number(this.celulaAberta.horizonteId) ? p : null;
   },
 
+  // ---- Matriz de Execução -------------------------------------------------
+  /**
+   * Meta × real de um indicador, na MESMA regra de `metas.js`: o último real
+   * lançado e, na falta dele, a primeira meta futura.
+   *
+   * Não é "meta do ano corrente": o ciclo semeado é 2027–2035 e as metas
+   * começam em 2027 — com o ano corrente, em 2026 a matriz inteira nasceria
+   * mostrando "—" e a tela pareceria quebrada.
+   */
+  metaReal(i) {
+    const reais = i.reais || [];
+    const metas = i.metas || [];
+    const ultimoReal = reais[reais.length - 1] || null;
+    const anoRef = ultimoReal ? ultimoReal.ano : (metas[0] || {}).ano;
+    const meta = metas.find((m) => m.ano == anoRef);
+    if (!ultimoReal && !meta) return '<span class="text-muted">—</span>';
+    const atingiu = ultimoReal && meta
+      ? (i.sentido === 'MENOR_MELHOR'
+          ? Number(ultimoReal.valor) <= Number(meta.valor)
+          : Number(ultimoReal.valor) >= Number(meta.valor))
+      : null;
+    const classe = atingiu === null ? 'text-muted' : atingiu ? 'text-success fw-bold' : 'text-danger fw-bold';
+    return `<span class="text-nowrap small ${classe}">
+      ${ultimoReal
+        ? `${SecaoMetas.fmt(ultimoReal.valor)} <span class="text-muted">(${ultimoReal.ano})</span>`
+        : '<span class="text-muted">sem real</span>'}
+      ${meta ? ` / meta ${SecaoMetas.fmt(meta.valor)}` : ''}
+    </span>`;
+  },
+
+  /**
+   * A leitura que a direção pede no trimestral: por eixo, o que foi escolhido
+   * (com a renúncia), o que MEDE aquilo e o que EXECUTA aquilo.
+   *
+   * Não é um mapa Kaplan/Norton e não se apresenta como tal: as raias são os
+   * eixos que já estão cadastrados, e o valor de controladoria está em ver
+   * qual escolha ficou sem medida — não em desenhar setas de causa-e-efeito.
+   */
+  renderExecucao() {
+    const alvoAba = document.getElementById('conteudo-cascata');
+    const { horizontes, drivers, eixos, escolhas } = this.dados;
+    const nomeH = (id) => horizontes.find((h) => h.id == id)?.nome || '?';
+    const nomeD = (id) => drivers.find((d) => d.id == id)?.nome || '?';
+
+    // Grupos na ordem da tela: a síntese da célula primeiro (é o texto que a
+    // matriz publica), depois os eixos na ordem em que foram cadastrados
+    const grupos = [{ id: null, nome: 'Síntese da célula' }]
+      .concat(eixos.map((x) => ({ id: x.id, nome: x.nome })));
+
+    const ordem = (e) => {
+      const h = horizontes.findIndex((x) => x.id == e.horizonte_id);
+      const d = drivers.findIndex((x) => x.id == e.driver_id);
+      return [h < 0 ? 99 : h, d < 0 ? 99 : d];
+    };
+
+    let semMedida = 0;
+    const corpo = grupos.map((g) => {
+      const doGrupo = escolhas
+        .filter((e) => (g.id === null ? !e.eixo_id : e.eixo_id == g.id))
+        .sort((a, b) => {
+          const [ha, da] = ordem(a);
+          const [hb, db] = ordem(b);
+          return ha - hb || da - db;
+        });
+      if (!doGrupo.length) return '';
+
+      return doGrupo.map((e, idx) => {
+        const inds = e.indicadores || [];
+        const projs = e.projetos || [];
+        if (!inds.length) semMedida++;
+
+        // Indicadores e Meta/Real são colunas distintas, mas leem-se em par:
+        // uma linha por indicador nas DUAS, na mesma ordem
+        const colInds = inds.length
+          ? inds.map((i) => `<div class="linha-exec small">
+              ${Modal.esc(i.nome)}
+              ${Number(i.metrica_ancora) ? '<span class="badge badge-ancora ms-1">âncora</span>' : ''}
+              <span class="text-muted">(${Modal.esc(i.unidade)})</span>
+            </div>`).join('')
+          : '<span class="text-muted small">— sem indicador —</span>';
+        const colValores = inds.length
+          ? inds.map((i) => `<div class="linha-exec">${this.metaReal(i)}</div>`).join('')
+          : '<span class="text-muted small">—</span>';
+        const colProjs = projs.length
+          ? projs.map((p) => {
+            const [rotulo, classe] = (typeof STATUS_ROTULOS !== 'undefined'
+              && STATUS_ROTULOS[p.status]) || [p.status, 'text-bg-light border'];
+            return `<div class="linha-exec small">
+              ${Modal.esc(p.titulo)}
+              <span class="badge ${classe} ms-1">${Modal.esc(rotulo)}</span>
+              ${p.ano ? `<span class="text-muted"> · ${p.ano}</span>` : ''}
+            </div>`;
+          }).join('')
+          : '<span class="text-muted small">— sem projeto —</span>';
+
+        return `<tr>
+          ${idx === 0 ? `<th rowspan="${doGrupo.length}" class="align-top celula-eixo">${Modal.esc(g.nome)}</th>` : ''}
+          <td>
+            <div class="small text-muted">${Modal.esc(nomeH(e.horizonte_id))} · ${Modal.esc(nomeD(e.driver_id))}</div>
+            <div class="texto-celula">${Modal.esc(e.escolha)}</div>
+            ${e.renuncia
+              ? `<div class="small text-muted mt-1 texto-celula"><strong>Renúncia:</strong> ${Modal.esc(e.renuncia)}</div>`
+              : ''}
+          </td>
+          <td>${colInds}</td>
+          <td>${colValores}</td>
+          <td>${colProjs}</td>
+        </tr>`;
+      }).join('');
+    }).join('');
+
+    const total = escolhas.length;
+    alvoAba.innerHTML = `
+      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+        <span class="badge ${semMedida ? 'text-bg-warning' : 'text-bg-success'} fs-6"
+          title="Escolhas sem nenhum indicador vinculado">${semMedida} sem medida</span>
+        <span class="badge badge-horizonte fs-6">${total} escolha${total === 1 ? '' : 's'}</span>
+      </div>
+      <p class="text-muted">O que cada escolha da cascata <strong>mede</strong> (indicadores) e
+      <strong>executa</strong> (projetos), agrupado por eixo. O vínculo do indicador se edita em
+      <em>Metas · Indicadores</em>; o do projeto, em <em>Projetos</em>. Escolha sem indicador é
+      decisão que ninguém acompanha — é isso que o contador acima cobra.</p>
+      ${total ? `<div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle tabela-execucao">
+          <thead><tr>
+            <th style="min-width:120px">Eixo</th>
+            <th style="min-width:240px">Escolha (e a renúncia)</th>
+            <th style="min-width:180px">Indicadores</th>
+            <th style="min-width:150px">Meta / Real</th>
+            <th style="min-width:200px">Iniciativas (projetos)</th>
+          </tr></thead>
+          <tbody>${corpo}</tbody>
+        </table>
+      </div>`
+      : `<div class="alert alert-info">Nenhuma escolha definida ainda nesta cascata.
+         Preencha a <a href="#" data-aba-cascata="matriz">Matriz de Escolhas</a> primeiro.</div>`}`;
+
+    alvoAba.querySelectorAll('[data-aba-cascata]').forEach((a) => {
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        this.aba = a.dataset.abaCascata;
+        this.carregar();
+      });
+    });
+  },
+
   renderDetalhe() {
     const { horizontes, drivers, eixos, escolhas } = this.dados;
     const alvo = document.getElementById('detalhe-celula');
+    // A aba de execução não desenha o detalhe. `aoBater` chega aqui pelo
+    // relógio do quiz, e sem esta linha uma batida no meio da troca de aba
+    // estouraria em `alvo.innerHTML` de null, derrubando a seção inteira.
+    if (!alvo || !this.celulaAberta) return;
     const { driverId, horizonteId } = this.celulaAberta;
     const driver = drivers.find((d) => d.id == driverId);
     const horizonte = horizontes.find((h) => h.id == horizonteId);

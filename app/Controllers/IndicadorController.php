@@ -30,7 +30,23 @@ class IndicadorController
             [$planId]
         );
 
+        // Escolhas da cascata que cada indicador mede. Uma query agregada para
+        // TODOS eles, não uma por indicador: o laço abaixo já custa duas
+        // consultas por linha, e a terceira é a que o modal precisa só para
+        // marcar as caixas.
+        $vinculos = [];
+        foreach (Database::todos(
+            'SELECT ic.indicador_id, ic.cascata_id
+             FROM indicador_cascata ic
+             JOIN indicador i ON i.id = ic.indicador_id
+             WHERE i.planejamento_id = ?',
+            [$planId]
+        ) as $v) {
+            $vinculos[(int)$v['indicador_id']][] = (int)$v['cascata_id'];
+        }
+
         foreach ($indicadores as &$ind) {
+            $ind['cascatas'] = $vinculos[(int)$ind['id']] ?? [];
             // Metas na versão mais recente de cada ano; anos com revisão ganham marcador
             $ind['metas'] = Database::todos(
                 'SELECT v.ano, v.valor, v.versao_meta
@@ -91,6 +107,32 @@ class IndicadorController
                  VALUES (?, ?, ?, ?, ?, ?)',
                 [$planId, $nome, $unidade, $sentido, $ancora, $horizonteId]
             );
+        }
+
+        // Escolhas da cascata que este indicador mede — substitui o conjunto,
+        // como `CascataController::salvar` faz com `cascata_fator`.
+        //
+        // O campo só entra no corpo quando o formulário o traz: quem chama a
+        // API sem ele (outra tela, um teste) não pode ter os vínculos apagados
+        // como efeito colateral de renomear o indicador.
+        if (array_key_exists('cascatas', $d)) {
+            $cascatas = array_values(array_unique(array_map('intval', (array)$d['cascatas'])));
+            Database::executar('DELETE FROM indicador_cascata WHERE indicador_id = ?', [$id]);
+            foreach ($cascatas as $cascataId) {
+                // `exigirEdicaoPlanejamento` valida o PLANEJAMENTO, não os
+                // filhos: sem conferir a escolha aqui, um GESTOR amarraria o
+                // indicador dele a uma escolha de outro negócio passando o id.
+                // Mesma guarda de `ProjetoController::salvar` para `cascata_id`.
+                if (Database::um(
+                    'SELECT id FROM cascata_escolha WHERE id = ? AND planejamento_id = ?',
+                    [$cascataId, $planId]
+                )) {
+                    Database::executar(
+                        'INSERT INTO indicador_cascata (indicador_id, cascata_id) VALUES (?, ?)',
+                        [$id, $cascataId]
+                    );
+                }
+            }
         }
         Json::ok(['id' => $id]);
     }

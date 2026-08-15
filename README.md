@@ -17,7 +17,10 @@ em [`docs/PLANEJAMENTO-SISTEMA.md`](docs/PLANEJAMENTO-SISTEMA.md).
   registram a estratégia que nasce do par, no bloco que o próprio par define
   (atacar, defender, reforçar, proteger)
 - **Fase 3 — Cascata de Escolhas**: matriz drivers × horizontes com aberturas
-  por eixo, renúncias e vínculo com os fatores da GUT
+  por eixo, renúncias e vínculo com os fatores da GUT. Segunda aba, **Matriz de
+  Execução**: por eixo, o que cada escolha *mede* (indicadores, com meta × real)
+  e *executa* (projetos), mais o contador de escolhas **sem medida**. O vínculo
+  do indicador se edita em *Metas · Indicadores*; o do projeto, em *Projetos*
 - **Fase 4 — Execução**: projetos, desdobramentos 5W2H e diário de bordo
 - **Fase 5 — Capital**: envelope → papel → ranking por taxa de retorno →
   decisão com critério registrado → auditoria +12M

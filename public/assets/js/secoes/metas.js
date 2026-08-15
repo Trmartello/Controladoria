@@ -3,6 +3,7 @@
 const SecaoMetas = {
   plan: null,
   dados: null,
+  cascata: null,
 
   fmt(v) {
     return v === null || v === undefined || v === ''
@@ -17,7 +18,12 @@ const SecaoMetas = {
       return;
     }
     this.plan = await App.planejamento();
-    this.dados = await App.api(`/api/indicadores?planejamento_id=${this.plan.id}`);
+    // A cascata vem junto só para o modal saber quais escolhas existem — o
+    // vínculo é editado aqui e LIDO na Matriz de Execução, do outro lado
+    [this.dados, this.cascata] = await Promise.all([
+      App.api(`/api/indicadores?planejamento_id=${this.plan.id}`),
+      App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
+    ]);
     const { ciclo, horizontes, indicadores } = this.dados;
     const anos = [];
     for (let a = Number(ciclo.ano_base); a <= Number(ciclo.ano_fim); a++) anos.push(a);
@@ -118,13 +124,32 @@ const SecaoMetas = {
   modalIndicador(ind) {
     const opcoesHorizonte = [{ valor: '', rotulo: '(sem horizonte)' }].concat(
       this.dados.horizontes.map((h) => ({ valor: h.id, rotulo: `${h.nome} · ${h.tema}` })));
+
+    // Escolhas que este indicador mede. O texto da escolha vai INTEIRO — quem
+    // amarra a medida à decisão precisa ler a decisão toda, e é por isso que o
+    // controle é `lista_marcavel` e não `multiselect` (que não tem Ctrl no
+    // celular). O selo carrega a coordenada da célula, que é o que distingue
+    // duas escolhas de texto parecido em horizontes diferentes.
+    const { horizontes = [], drivers = [], eixos = [], escolhas = [] } = this.cascata || {};
+    const nomeH = (id) => horizontes.find((h) => h.id == id)?.nome || '?';
+    const nomeD = (id) => drivers.find((d) => d.id == id)?.nome || '?';
+    const nomeE = (id) => (id ? eixos.find((e) => e.id == id)?.nome : 'Síntese') || 'Síntese';
+    const opcoesCascata = escolhas
+      .map((e) => ({
+        valor: e.id,
+        texto: String(e.escolha).replace(/\s+/g, ' '),
+        selo: `${nomeH(e.horizonte_id)} · ${nomeD(e.driver_id)}`,
+        selo2: nomeE(e.eixo_id),
+      }))
+      .sort((a, b) => `${a.selo} ${a.selo2}`.localeCompare(`${b.selo} ${b.selo2}`, 'pt-BR'));
+
     Modal.abrir({
       titulo: ind ? 'Editar indicador' : 'Novo indicador',
       url: ind ? `/api/indicadores/${ind.id}` : '/api/indicadores',
       valores: ind
         ? { ...ind, horizonte_id: ind.horizonte_id ?? '', metrica_ancora: Number(ind.metrica_ancora),
-            planejamento_id: this.plan.id }
-        : { planejamento_id: this.plan.id, unidade: 'R$ mil' },
+            cascatas: (ind.cascatas || []).map(String), planejamento_id: this.plan.id }
+        : { planejamento_id: this.plan.id, unidade: 'R$ mil', cascatas: [] },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'nome', rotulo: 'Indicador', ajuda: 'Ex.: Margem bruta, Cobertura de juros, Armazenagem própria' },
@@ -135,6 +160,13 @@ const SecaoMetas = {
         ]},
         { nome: 'horizonte_id', rotulo: 'Horizonte de referência', tipo: 'select', opcoes: opcoesHorizonte },
         { nome: 'metrica_ancora', rotulo: 'Métrica-âncora (destaque no painel do horizonte)', tipo: 'checkbox' },
+        ...(opcoesCascata.length ? [{
+          nome: 'cascatas', rotulo: 'Escolhas que este indicador mede',
+          tipo: 'lista_marcavel', opcoes: opcoesCascata,
+          ajuda: 'Marque as escolhas da Cascata que esta medida acompanha. '
+            + 'É o que preenche a coluna Indicadores da Matriz de Execução — e o que '
+            + 'permite ver, lá, qual escolha ficou sem medida nenhuma.',
+        }] : []),
       ],
     });
   },

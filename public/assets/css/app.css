@@ -160,6 +160,17 @@ table.tabela-cadastro td { vertical-align: middle; }
 .tabela-metas tr.linha-real td { color: #555; background: #fafcfb; }
 .badge-ancora { background: var(--dourado); }
 
+/* Matriz de Execução (aba da Cascata) — Indicadores e Meta/Real são colunas
+   distintas que se leem EM PAR: uma linha por indicador nas duas, alinhadas
+   pela mesma altura. Sem o filete, três indicadores viravam um bloco só e a
+   segunda coluna deixava de dizer de quem era cada número. */
+.tabela-execucao .linha-exec + .linha-exec {
+  border-top: 1px solid #f0f2f1;
+  margin-top: .25rem;
+  padding-top: .25rem;
+}
+.tabela-execucao th.celula-eixo { background: #fafcfb; white-space: normal; }
+
 /* Painel consolidado */
 .tabela-painel td, .tabela-painel th { white-space: nowrap; }
 /* ===== Barras de progresso — um desenho só em todo o sistema =====

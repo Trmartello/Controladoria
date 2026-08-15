@@ -643,7 +643,18 @@ texto simples. Fecha a página do participante — não sobra ressalva ali.
 
 ## 3. Mapa Estratégico BSC e as 4 perspectivas
 
-### Veredito: **NÃO CONSTRUIR o mapa** / **CONSTRUIR SIMPLIFICADO a Matriz de Execução** (esforço P)
+### Veredito: **NÃO CONSTRUIR o mapa** / **CONSTRUIR SIMPLIFICADO a Matriz de Execução** (esforço P) — **ENTREGUE**
+
+> **Entregue.** `indicador_cascata` no `schema.sql`, o campo `lista_marcavel`
+> "Escolhas que este indicador mede" no modal de `metas.js` (com a guarda de
+> escopo em `IndicadorController::salvar`), as três queries agregadas no fim de
+> `CascataController::listar` e a aba **Matriz de Execução** em `cascata.js`,
+> agrupada por eixo. O contador **"sem medida"** responde, na tela, a pergunta
+> que motivou o tema: *quais escolhas estão sem KPI?*
+>
+> O mapa com raias e setas continua **não construído**, e de propósito — o texto
+> abaixo é o registro do porquê. A entrega é a matriz, não um mapa Kaplan/Norton.
+> Cobertura em `testes/sistema.js` (`provasMatrizExecucao`), nas duas larguras.
 
 O que falta de verdade não é o desenho das 4 raias — é o **vínculo entre
 indicador e projeto**, que não existe no banco (`projeto` só tem `cascata_id`,
@@ -757,10 +768,10 @@ usa), dentro de `.table-responsive`:
    `ProjetoController::salvar`~~ — **feito** (item 3b).
 4. Ampliação de `CascataController::listar` + aba "Matriz de Execução" em `cascata.js`.
 
-Sobraram os passos 1, 2 e 4. O passo 2 deve usar `lista_marcavel` (com
-`obrigatorio` opcional), não `multiselect`: o texto de uma escolha da cascata é
-uma frase inteira, e o `multiselect` não funciona no celular, onde não há Ctrl
-(ver CLAUDE.md). O controle já existe e agora também tem modo de escolha única.
+~~Sobraram os passos 1, 2 e 4.~~ **Todos entregues.** O passo 2 usa
+`lista_marcavel`, não `multiselect`: o texto de uma escolha da cascata é uma
+frase inteira, e o `multiselect` não funciona no celular, onde não há Ctrl
+(ver CLAUDE.md).
 
 ### O que ficou de fora (cortes adotados)
 
@@ -963,10 +974,11 @@ O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro*
 depois o que se alimenta delas. Construir conteúdo (matriz, mapa, coleta) antes de
 existir um fórum que consome esse conteúdo é como o sistema morre.
 
-> **Estado da fila.** Os passos 1, 2 e 5 abaixo foram entregues (registro de
-> reunião, `projeto.cascata_id`, Coleta & Triagem). O que resta como *código* é
-> o passo 3 (Matriz de Execução) e o 4 (Matriz de Impacto, travada na decisão 1);
-> o que resta como *operação* são os passos 0 e 0-bis, que continuam no topo.
+> **Estado da fila.** Os passos 1, 2, 3 e 5 abaixo foram entregues (registro de
+> reunião, `projeto.cascata_id`, Matriz de Execução, Coleta & Triagem). O que
+> resta como *código* é só o passo 4 (Matriz de Impacto, travada na decisão 1);
+> o que resta como *operação* são os passos 0 e 0-bis, que continuam no topo —
+> e que agora são, sozinhos, o topo da fila.
 
 **0. Ligar o que já existe (horas, zero código).** SMTP + cron diário do Railway
 para `cli/notificar.php`. Um módulo pronto que não roda é a melhor relação
@@ -987,10 +999,11 @@ execução não é discutida.
 e a exibição já existiam; era a correção mais barata do repositório e é
 pré-requisito da coluna "Iniciativas".
 
-**3. Matriz de Execução — resto (P).** `indicador_cascata` + escolha múltipla no
-modal de indicador + aba na Cascata. O passo 2 já está feito, então a coluna de
-iniciativas já tem de onde sair; é a leitura que a direção pede no trimestral.
-**É o próximo item de código da fila.**
+**3. Matriz de Execução — resto (P). ✔ ENTREGUE.** `indicador_cascata` + escolha
+múltipla (`lista_marcavel`) no modal de indicador + aba "Matriz de Execução" na
+Cascata, agrupada por eixo, com o contador "sem medida". A leitura que a direção
+pede no trimestral está de pé. **O próximo item de código da fila passa a ser o
+4 (Matriz de Impacto), que segue travado na decisão 1.**
 
 **4. Matriz de Impacto por Negócio (P).** Independente de tudo, mas depende de a
 SWOT/GUT **corporativa** do ano estar preenchida — por isso vem depois de o ciclo
@@ -1018,11 +1031,12 @@ nota de impacto, e não convém passar a atribuir.
 
 | | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
 |---|---|---|
-| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 4b Cruzamentos: a ponte (fatia 3) |
+| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 1 Matriz de Impacto | **Planejar** — 4b Cruzamentos: a ponte (fatia 3) |
 | **Impacto baixo** | — | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
 
-Saíram do quadro por estarem entregues: 5 (registro de reunião), 3b (vínculo com
-a Cascata), 2 e 2.1 (Coleta e Tempestade) e as fatias 1–2 dos Cruzamentos.
+Saíram do quadro por estarem entregues: 5 (registro de reunião), 3a e 3b (Matriz
+de Execução e o vínculo com a Cascata), 2 e 2.1 (Coleta e Tempestade) e as
+fatias 1–2 dos Cruzamentos.
 
 **O que essa leitura mostra — e o que ela não decide.** O que sobrou no "fazer
 agora" é quase tudo **operação, não desenvolvimento**: dois dos quatro itens (0 e
@@ -1041,7 +1055,7 @@ discutir a dependência, não o quadrante.
 |---|------|----------|---------|-------|
 | 6 | **Ligar o backup no Railway** (Volume + cron; código entregue em `cli/backup.sh`) | Executar | — | 0 |
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
-| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 1 |
+| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | **Entregue** | P | ✔ |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 2 (trava: decisão 1) |
 | 4b | Cruzamentos da SWOT — a ponte, a síntese e o relatório (fatias 3–5) | Construir | M | 3 (ver `docs/CRUZAMENTOS-SWOT.md`) |
 | 4a | Cruzamentos da SWOT — tabela, API, tela, cadastro (fatias 1–2) | **Entregue** | M | ✔ |
@@ -1052,11 +1066,12 @@ discutir a dependência, não o quadrante.
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |
 
-**Por que 3a antes de 1.** Não é impacto, é dependência e trava: a Matriz de
-Impacto (item 1) esbarra na **decisão 1** abaixo — se o GESTOR pode ler
-descrições do diagnóstico corporativo —, que é mudança do modelo de acesso e
-não detalhe de controller. A Matriz de Execução não depende de decisão nenhuma
-e, com o 3b entregue, já tem metade da fonte de dados preenchível.
+**Por que 3a veio antes de 1.** Não foi impacto, foi dependência e trava: a
+Matriz de Impacto (item 1) esbarra na **decisão 1** abaixo — se o GESTOR pode
+ler descrições do diagnóstico corporativo —, que é mudança do modelo de acesso e
+não detalhe de controller. A Matriz de Execução não dependia de decisão nenhuma
+e, com o 3b já entregue, tinha metade da fonte de dados preenchível. Entregue
+ela, **a fila de código está toda atrás da decisão 1**.
 
 **Nota de manutenção.** Esta tabela ficou desatualizada uma vez (o 3b constava
 como "Construir" já estando entregue, e por pouco não guiou a escolha do
