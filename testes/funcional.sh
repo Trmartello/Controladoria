@@ -385,7 +385,58 @@ afirma "e o ✕ dele nem aparece na tela" '^0$' "$R"
 R=$(post /api/usuarios/$U_OFF/excluir '{"sem_responsavel":true}')
 afirma "exclui usuário sem vínculo nenhum" '"ok":true' "$R"
 
+echo "### 9d. Comentários — remover UM anexo sem perder o comentário"
+# O comentário é o único envio multipart da API (o anexo não viaja em JSON),
+# então este bloco tem o `post` próprio.
+postm(){ curl -s -b $J -H "X-CSRF-Token: $CSRF" -X POST "$BASE$1" "${@:2}"; }
+# Os ids dos anexos de UM comentário, na ordem — a listagem não os traz soltos.
+anexos_de(){ python3 -c "
+import sys, json
+alvo = sys.argv[1]
+c = next((c for c in json.load(sys.stdin)['dados'] if str(c['id']) == alvo), None)
+print(' '.join(str(a['id']) for a in (c or {}).get('anexos', [])))
+" "$1" 2>/dev/null; }
+LISTA_COM="/api/comentarios?planejamento_id=1&ref_tipo=PROJETO&ref_id=${PRJ:-0}"
+# PNG de 1×1 de verdade: o servidor confere a imagem com `getimagesize`, e um
+# arquivo qualquer renomeado para .png é recusado — como deve ser.
+PNG=/tmp/fa1.png
+printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' \
+  | base64 -d > $PNG
+
+R=$(postm /api/comentarios -F "planejamento_id=1" -F "ref_tipo=PROJETO" -F "ref_id=${PRJ:-0}" \
+  -F "texto=Comentário com dois anexos" -F "arquivos[]=@$PNG" -F "arquivos[]=@$PNG;filename=segundo.png")
+afirma "cria comentário com 2 anexos" '"anexos":2' "$R"
+COM=$(echo "$R" | id_de)
+IDS=$(get "$LISTA_COM" | anexos_de "$COM")
+A1=$(echo $IDS | cut -d' ' -f1); A2=$(echo $IDS | cut -d' ' -f2)
+
+R=$(post /api/anexos/$A1/excluir '{"planejamento_id":1}')
+afirma "remove um anexo" '"comentario_excluido":false' "$R"
+L=$(get "$LISTA_COM")
+afirma "o comentário continua lá" "\"id\":$COM," "$L"
+RESTA=$(echo "$L" | anexos_de "$COM")
+afirma "sobrou exatamente o outro anexo" "^$A2\$" "$RESTA"
+# O anexo removido não desce mais: a rota de download é a prova, não a listagem.
+R=$(get "/api/anexos/$A1?planejamento_id=1")
+afirma "o anexo removido não baixa mais" 'não encontrado' "$R"
+
+# Comentário sem texto é só o arquivo: tirar o único anexo o esvazia, e
+# comentário vazio não existe — a regra é a mesma que `criar` aplica na entrada.
+R=$(postm /api/comentarios -F "planejamento_id=1" -F "ref_tipo=PROJETO" -F "ref_id=${PRJ:-0}" \
+  -F "texto=" -F "arquivos[]=@$PNG")
+afirma "cria comentário só com anexo" '"anexos":1' "$R"
+SOANEXO=$(echo "$R" | id_de)
+A3=$(get "$LISTA_COM" | anexos_de "$SOANEXO")
+R=$(post /api/anexos/$A3/excluir '{"planejamento_id":1}')
+afirma "último anexo sem texto leva o comentário" '"comentario_excluido":true' "$R"
+nega "e o comentário sumiu da lista" "\"id\":$SOANEXO," "$(get "$LISTA_COM")"
+
+R=$(post /api/anexos/99999999/excluir '{"planejamento_id":1}')
+afirma "recusa anexo inexistente" 'não encontrado' "$R"
+rm -f $PNG
+
 echo "### 10. Limpeza"
+[ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${REU:-}" ]  && post /api/reunioes/$REU/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${ACAO:-}" ] && post /api/desdobramentos/$ACAO/excluir '{"planejamento_id":1}' >/dev/null

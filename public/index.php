@@ -400,6 +400,9 @@ try {
         // Devolve BYTES (não JSON): a rota escreve os próprios cabeçalhos.
         case (bool)preg_match('#^GET /api/anexos/(\d+)$#', $rota, $m):
             (new ComentarioController())->baixar((int)$m[1]); break;
+        // Remove UM anexo sem apagar o comentário que o carrega.
+        case (bool)preg_match('#^POST /api/anexos/(\d+)/excluir$#', $rota, $m):
+            (new ComentarioController())->excluirAnexo((int)$m[1]); break;
 
         case $rota === 'GET /api/investimentos':    (new InvestimentoController())->listar(); break;
         case $rota === 'POST /api/investimentos':   (new InvestimentoController())->salvar(); break;

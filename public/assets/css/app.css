@@ -573,6 +573,35 @@ input[type=range].faixa-verde:focus-visible {
   gap: .5rem;
   margin-top: .4rem;
 }
+/* O × de remover fica SOBRE a miniatura, e por isso o par (link + botão) mora
+   num contêiner posicionado. Em tela de toque não há hover: o botão fica
+   sempre visível, senão o gesto de remover só existiria no mouse. */
+.anexo-item { position: relative; display: block; }
+.anexo-excluir {
+  position: absolute;
+  top: .15rem;
+  right: .15rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  line-height: 1;
+  padding: 0;
+  border: 1px solid #dee2e6;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .92);
+  color: #b02a37;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s ease-in;
+}
+.anexo-item:hover .anexo-excluir,
+.anexo-excluir:focus-visible { opacity: 1; }
+.anexo-excluir:hover { background: #b02a37; border-color: #b02a37; color: #fff; }
+@media (hover: none) {
+  .anexo-excluir { opacity: 1; }
+}
+
 .anexo-mini {
   display: block;
   border: 1px solid #dee2e6;

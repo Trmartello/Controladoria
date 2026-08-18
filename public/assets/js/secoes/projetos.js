@@ -1747,20 +1747,30 @@ const SecaoProjetos = {
    * A imagem é a original, encolhida por CSS: não há GD na imagem do PHP para
    * gerar miniatura no servidor, e o teto de 5 MB por arquivo segura o peso.
    */
-  miniaturaAnexo(a) {
+  miniaturaAnexo(a, podeApagar = false, ultimoSemTexto = false) {
     const url = `/api/anexos/${a.id}?planejamento_id=${this.plan.id}`;
     const ext = (a.nome.split('.').pop() || '').toUpperCase().slice(0, 4);
     const corpo = a.imagem
       ? `<img src="${url}" alt="${Modal.esc(a.nome)}" loading="lazy">`
       : `<span class="selo-ext selo-ext-${ext.toLowerCase()}">${Modal.esc(ext)}</span>`;
+    // O × é IRMÃO do link, nunca filho: botão dentro de <a> é HTML inválido, e
+    // o clique acabaria abrindo o anexo em vez de removê-lo.
+    const excluir = podeApagar
+      ? `<button type="button" class="anexo-excluir" data-excluir-anexo="${a.id}"
+          data-anexo-nome="${Modal.esc(a.nome)}"${ultimoSemTexto ? ' data-ultimo="1"' : ''}
+          title="Remover este anexo" aria-label="Remover o anexo ${Modal.esc(a.nome)}">×</button>`
+      : '';
     // `download` no link do documento: ele já desce como anexo pelo servidor, e
     // o atributo evita a aba em branco que o navegador abre antes de baixar.
-    return `<a class="anexo-mini" href="${url}" target="_blank" rel="noopener"
-        ${a.imagem ? '' : 'download'} title="${Modal.esc(a.nome)}">
-      <span class="anexo-face">${corpo}</span>
-      <span class="anexo-nome">${Modal.esc(a.nome)}</span>
-      <span class="anexo-tamanho">(${this.tamanho(a.tamanho)})</span>
-    </a>`;
+    return `<span class="anexo-item">
+      <a class="anexo-mini" href="${url}" target="_blank" rel="noopener"
+          ${a.imagem ? '' : 'download'} title="${Modal.esc(a.nome)}">
+        <span class="anexo-face">${corpo}</span>
+        <span class="anexo-nome">${Modal.esc(a.nome)}</span>
+        <span class="anexo-tamanho">(${this.tamanho(a.tamanho)})</span>
+      </a>
+      ${excluir}
+    </span>`;
   },
 
   /**
@@ -1778,9 +1788,14 @@ const SecaoProjetos = {
 
     const itens = lista.map((c) => {
       const inicial = (c.autor || '?').trim().charAt(0).toUpperCase();
-      const anexos = (c.anexos || []).length
-        ? `<div class="grade-anexos">${c.anexos.map((a) => this.miniaturaAnexo(a)).join('')}</div>` : '';
       const podeApagar = Number(c.autor_id) === Number(eu.id) || eu.perfil === 'ADMIN';
+      // Remover o único anexo de um comentário sem texto apaga o comentário —
+      // é a regra do servidor. A tela precisa saber disso ANTES de perguntar,
+      // para avisar do que vai acontecer em vez de só relatar depois.
+      const ultimoSemTexto = (c.anexos || []).length === 1 && !(c.texto || '').trim();
+      const anexos = (c.anexos || []).length
+        ? `<div class="grade-anexos">${c.anexos
+            .map((a) => this.miniaturaAnexo(a, podeApagar, ultimoSemTexto)).join('')}</div>` : '';
       return `<div class="comentario d-flex gap-2">
         <span class="avatar-inicial" aria-hidden="true">${Modal.esc(inicial)}</span>
         <div class="flex-grow-1 min-w-0">
@@ -1824,6 +1839,25 @@ const SecaoProjetos = {
         if (!confirm('Excluir este comentário? Os anexos dele saem junto.')) return;
         try {
           await App.api(`/api/comentarios/${b.dataset.excluirComentario}/excluir`,
+            { planejamento_id: this.plan.id });
+        } catch (e) {
+          alert(e.message);
+        }
+        this.renderComentarios();
+      }));
+
+    // Remover UM anexo. Antes disso, tirar o arquivo errado custava o
+    // comentário inteiro — apagar tudo e reescrever, com o texto junto.
+    alvo.querySelectorAll('[data-excluir-anexo]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const nome = b.dataset.anexoNome || 'este anexo';
+        const pergunta = b.dataset.ultimo
+          ? `Remover “${nome}”? É o único anexo e o comentário não tem texto — `
+            + 'o comentário sai junto.'
+          : `Remover o anexo “${nome}”? O comentário e os demais anexos ficam.`;
+        if (!confirm(pergunta)) return;
+        try {
+          await App.api(`/api/anexos/${b.dataset.excluirAnexo}/excluir`,
             { planejamento_id: this.plan.id });
         } catch (e) {
           alert(e.message);
