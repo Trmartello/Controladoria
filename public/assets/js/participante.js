@@ -1,6 +1,7 @@
 // Tela do participante da tempestade de ideias.
 // Roda sem sessão: a identidade é o token devolvido ao entrar com o PIN, e
-// vive só no sessionStorage desta aba. Nada aqui fala com o resto do sistema.
+// vive no localStorage deste navegador, por PIN. Nada aqui fala com o resto do
+// sistema.
 
 const Participante = {
   pin: '',
@@ -48,20 +49,76 @@ const Participante = {
       : { headers: this.token ? { 'X-Participante': this.token } : {} });
     // Mesmo envelope do resto da API: { ok, dados } ou { ok:false, erro }
     const json = await r.json().catch(() => ({}));
-    if (!r.ok || !json.ok) throw new Error(json.erro || 'Falha na comunicação.');
+    if (!r.ok || !json.ok) {
+      // O status viaja junto: só o 403 ("Entre na rodada antes de participar")
+      // significa identidade inválida, e só ele autoriza descartá-la. Queda de
+      // rede não pode custar o lugar de quem está participando de casa.
+      const erro = new Error(json.erro || 'Falha na comunicação.');
+      erro.status = r.status;
+      throw erro;
+    }
     return json.dados;
+  },
+
+  // ---- Identidade ----
+  /**
+   * Onde mora o token que identifica a pessoa nesta rodada.
+   *
+   * Era o `sessionStorage`, que morre com a ABA. Quem voltava pelo link — QR
+   * escaneado de novo, mensagem reaberta, aba reciclada pelo celular — entrava
+   * como OUTRA pessoa: as estrelas apareciam apagadas, o teto zerava e os votos
+   * antigos continuavam contando. Uma pessoa pesava dobrado no ranking, sem
+   * sinal nenhum na tela — e o ranking é justamente o produto da fase da ★.
+   *
+   * Com o encontro à distância isso deixa de ser exceção: cada um entra do seu
+   * aparelho, de casa ou do departamento, e volta à sala quantas vezes precisar.
+   *
+   * O `localStorage` atravessa aba e navegador. A chave leva o PIN para que um
+   * encontro não herde a identidade do anterior.
+   */
+  chave() {
+    return `tempestade:${this.pin}`;
+  },
+
+  identidadeGuardada() {
+    try {
+      // A chave antiga é lida uma última vez: quem já estava na sala no momento
+      // da atualização não pode perder o lugar por causa dela.
+      const bruto = localStorage.getItem(this.chave()) || sessionStorage.getItem('tempestade');
+      const g = bruto ? JSON.parse(bruto) : null;
+      return g && g.pin === this.pin && g.token ? g : null;
+    } catch {
+      // Armazenamento bloqueado ou conteúdo corrompido: entra como quem chega.
+      return null;
+    }
+  },
+
+  guardarIdentidade(dados) {
+    try {
+      localStorage.setItem(this.chave(), JSON.stringify(dados));
+      sessionStorage.removeItem('tempestade');
+    } catch {
+      // Modo privativo com armazenamento negado: a identidade vale só enquanto
+      // esta página estiver aberta, que é o comportamento de antes.
+    }
+  },
+
+  esquecerIdentidade() {
+    this.token = '';
+    try {
+      localStorage.removeItem(this.chave());
+      sessionStorage.removeItem('tempestade');
+    } catch {
+      // Nada guardado para limpar.
+    }
   },
 
   iniciar() {
     this.pin = this.tela.dataset.pin || '';
-    // A sessão da aba guarda a entrada: recarregar a página não perde o lugar
-    const guardado = sessionStorage.getItem('tempestade');
-    if (guardado) {
-      const g = JSON.parse(guardado);
-      if (g.pin === this.pin) {
-        this.token = g.token;
-        this.nome = g.nome;
-      }
+    const g = this.identidadeGuardada();
+    if (g) {
+      this.token = g.token;
+      this.nome = g.nome;
     }
     if (this.pin && this.token) this.entrarNaSala();
     else this.telaEntrada();
@@ -90,7 +147,7 @@ const Participante = {
         this.pin = pin;
         this.token = r.token;
         this.nome = r.nome;
-        sessionStorage.setItem('tempestade', JSON.stringify({ pin, token: r.token, nome: r.nome }));
+        this.guardarIdentidade({ pin, token: r.token, nome: r.nome });
         this.entrarNaSala();
       } catch (e) {
         this.telaEntrada(e.message);
@@ -99,6 +156,37 @@ const Participante = {
     document.getElementById('btn-entrar').addEventListener('click', entrar);
     document.getElementById('campo-nome').addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') entrar();
+    });
+  },
+
+  /**
+   * PIN e quem você é — o mesmo cabeçalho nos dois ritos.
+   *
+   * O "não é você?" existe por causa do `localStorage`: a identidade passou a
+   * sobreviver ao fechamento do navegador, que é o objetivo, mas num computador
+   * de departamento a segunda pessoa a sentar herdaria a primeira e votaria no
+   * lugar dela sem perceber. É a única porta de saída — e ela precisa estar à
+   * vista, porque quem a procura já está confuso.
+   */
+  cabecalhoIdentidade() {
+    return `
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="badge text-bg-light border">PIN ${this.esc(this.pin)}</span>
+        <span class="small text-muted flex-grow-1">${this.esc(this.nome)}</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none flex-shrink-0"
+          id="btn-trocar-pessoa">não é você?</button>
+      </div>`;
+  },
+
+  ligarIdentidade() {
+    document.getElementById('btn-trocar-pessoa')?.addEventListener('click', () => {
+      const pergunta = `Sair como ${this.nome} e entrar com outro nome? As ideias e as estrelas `
+        + 'já registradas continuam valendo para quem as enviou.';
+      if (!confirm(pergunta)) return;
+      this.pararRelogio();
+      this.esquecerIdentidade();
+      this.nome = '';
+      this.telaEntrada();
     });
   },
 
@@ -174,6 +262,16 @@ const Participante = {
         this.votacao = await this.api(`/api/publico/votar?pin=${this.pin}`);
       }
     } catch (e) {
+      // Identidade recusada (rodada encerrada e reaberta, base restaurada): o
+      // token guardado nunca mais vai valer, e mantê-lo deixaria a tela presa
+      // no erro. Qualquer outra falha é rede — e rede cai o tempo todo em
+      // encontro à distância, então ali a identidade fica de pé.
+      if (e.status === 403) {
+        this.pararRelogio();
+        this.esquecerIdentidade();
+        this.telaEntrada(e.message);
+        return;
+      }
       if (!silencioso) this.telaEntrada(e.message);
       return;
     }
@@ -212,10 +310,7 @@ const Participante = {
 
     this.tela.innerHTML = `
       <div class="cartao-participante">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <span class="badge text-bg-light border">PIN ${this.esc(this.pin)}</span>
-          <span class="small text-muted flex-grow-1">${this.esc(this.nome)}</span>
-        </div>
+        ${this.cabecalhoIdentidade()}
         <h1 class="h5 tema-rodada">${this.esc(r.tema || 'Tempestade de ideias')}</h1>
 
         ${encerrada
@@ -247,6 +342,7 @@ const Participante = {
     }
     if (this.minhas.length && !votando) this.ligarEdicaoIdeias();
     if (votando) this.ligarVotacao();
+    this.ligarIdentidade();
     this.ligarDitado();
   },
 
@@ -274,10 +370,7 @@ const Participante = {
 
     this.tela.innerHTML = `
       <div class="cartao-participante">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <span class="badge text-bg-light border">PIN ${this.esc(this.pin)}</span>
-          <span class="small text-muted flex-grow-1">${this.esc(this.nome)}</span>
-        </div>
+        ${this.cabecalhoIdentidade()}
         ${encerrada
           ? '<div class="alert alert-secondary py-2 small mt-3">Esta sessão foi encerrada. Obrigado por participar!</div>'
           : p ? this.blocoQuiz(p, minhasDaPergunta)
@@ -297,6 +390,7 @@ const Participante = {
       if (minhasDaPergunta.length) this.ligarEdicaoIdeias();
     }
     if (!encerrada && !p && this.estrelas?.fase === 'ESTRELAS') this.ligarEstrelas();
+    this.ligarIdentidade();
     this.ligarDitado();
   },
 

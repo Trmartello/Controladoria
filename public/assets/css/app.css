@@ -473,6 +473,14 @@ input[type=range].faixa-verde:focus-visible {
   max-width: 34rem;
   align-self: flex-start;
 }
+/* Alvo de toque de 2,25rem, o padrão do sistema. O "não é você?" é a ÚNICA
+   saída da identidade guardada no navegador — sair dela num celular, ou num
+   computador que outra pessoa acabou de usar, não pode depender de mira. */
+#btn-trocar-pessoa {
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+}
 .campo-pin {
   letter-spacing: .5em;
   text-align: center;

@@ -396,6 +396,12 @@ alvo = sys.argv[1]
 c = next((c for c in json.load(sys.stdin)['dados'] if str(c['id']) == alvo), None)
 print(' '.join(str(a['id']) for a in (c or {}).get('anexos', [])))
 " "$1" 2>/dev/null; }
+# Os ids dos COMENTÁRIOS da listagem. Afirmar com regex sobre o corpo cru não
+# serve aqui: comentário e anexo dividem o espaço de ids, e `"id":7` casa com o
+# anexo 7 dentro do comentário 6 — a prova passava (ou falhava) por sorteio.
+ids_com(){ python3 -c "
+import sys, json
+print(' '.join(str(c['id']) for c in json.load(sys.stdin)['dados']))" 2>/dev/null; }
 LISTA_COM="/api/comentarios?planejamento_id=1&ref_tipo=PROJETO&ref_id=${PRJ:-0}"
 # PNG de 1×1 de verdade: o servidor confere a imagem com `getimagesize`, e um
 # arquivo qualquer renomeado para .png é recusado — como deve ser.
@@ -413,7 +419,7 @@ A1=$(echo $IDS | cut -d' ' -f1); A2=$(echo $IDS | cut -d' ' -f2)
 R=$(post /api/anexos/$A1/excluir '{"planejamento_id":1}')
 afirma "remove um anexo" '"comentario_excluido":false' "$R"
 L=$(get "$LISTA_COM")
-afirma "o comentário continua lá" "\"id\":$COM," "$L"
+afirma "o comentário continua lá" "(^| )$COM( |\$)" "$(echo "$L" | ids_com)"
 RESTA=$(echo "$L" | anexos_de "$COM")
 afirma "sobrou exatamente o outro anexo" "^$A2\$" "$RESTA"
 # O anexo removido não desce mais: a rota de download é a prova, não a listagem.
@@ -429,7 +435,7 @@ SOANEXO=$(echo "$R" | id_de)
 A3=$(get "$LISTA_COM" | anexos_de "$SOANEXO")
 R=$(post /api/anexos/$A3/excluir '{"planejamento_id":1}')
 afirma "último anexo sem texto leva o comentário" '"comentario_excluido":true' "$R"
-nega "e o comentário sumiu da lista" "\"id\":$SOANEXO," "$(get "$LISTA_COM")"
+nega "e o comentário sumiu da lista" "(^| )$SOANEXO( |\$)" "$(get "$LISTA_COM" | ids_com)"
 
 R=$(post /api/anexos/99999999/excluir '{"planejamento_id":1}')
 afirma "recusa anexo inexistente" 'não encontrado' "$R"
