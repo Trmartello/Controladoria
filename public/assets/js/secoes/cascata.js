@@ -298,6 +298,42 @@ const SecaoCascata = {
    * Recarregar a seção aqui custaria uma ida ao servidor por clique e ainda
    * derrubaria o detalhe que estivesse aberto na outra aba.
    */
+  /**
+   * O que sai junto com uma escolha da cascata — a célula é a ponta de quatro
+   * vínculos, e nenhum deles aparecia antes do clique.
+   *
+   * Os números saem do que a tela JÁ carregou (`this.dados`): os projetos e os
+   * indicadores vieram com a Matriz de Execução, as vozes vêm na própria
+   * escolha e os comentários são um campo agregado da listagem. Nenhuma
+   * consulta nova, nenhuma chamada por cartão.
+   *
+   * A distinção entre "sai" e "continua sem o vínculo" não é enfeite: o projeto
+   * e o indicador SOBREVIVEM (as FKs deles não apagam nada — o projeto perde
+   * `cascata_id`, o indicador perde a linha de `indicador_cascata`), enquanto o
+   * comentário some de vez. Juntar as duas coisas na mesma frase faria quem lê
+   * hesitar em apagar uma célula que não custa nada, ou apagar sem saber que a
+   * discussão ia junto.
+   */
+  avisoExcluirCelula(id) {
+    const { escolhas, indicadores, projetos } = this.dados;
+    const e = escolhas.find((x) => x.id == id);
+    const q = (n, s, p) => Vinculos.quantos(n, s, p);
+    const vozes = q((e?.sugestoes || []).length, 'voz da sala', 'vozes da sala');
+    return Vinculos.aviso('Excluir esta escolha da cascata?', {
+      some: [q((e?.comentarios) || 0, 'comentário', 'comentários')],
+      solta: [
+        q((projetos || []).filter((p) => p.cascata_id == id).length, 'projeto', 'projetos'),
+        q((indicadores || []).filter((i) => (i.cascatas || []).some((c) => c == id)).length,
+          'indicador', 'indicadores'),
+        // A voz não some nem fica solta no vazio: ela VOLTA para a fila da
+        // Coleta, editável de novo — dizer só "sem o vínculo" faria parecer
+        // perda, e é o contrário.
+        vozes ? `${vozes}, que ${vozes.startsWith('1 ') ? 'volta' : 'voltam'} à fila da Coleta` : '',
+      ],
+      nota: 'Não dá para desfazer.',
+    });
+  },
+
   ligarAbas(el) {
     const mostrar = () => {
       el.querySelectorAll('[data-painel-cascata]').forEach((p) =>
@@ -661,7 +697,7 @@ const SecaoCascata = {
     }));
 
     alvo.querySelectorAll('[data-excluir-celula]').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Excluir esta escolha?')) return;
+      if (!confirm(this.avisoExcluirCelula(Number(b.dataset.excluirCelula)))) return;
       try {
         await App.api(`/api/cascata/${b.dataset.excluirCelula}/excluir`, { planejamento_id: this.plan.id });
       } catch (e) {

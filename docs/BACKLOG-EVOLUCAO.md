@@ -1096,7 +1096,13 @@ bateria.
 
 ## 8. Excluir o que já está amarrado noutra tela
 
-### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço P)
+### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço P) — **ENTREGUE**
+
+> **Entregue.** `Fatores::acoesQuePrendem` (a regra da trava, agora uma só, usada
+> pela recusa E pela tela), `acao_trava` na listagem de fatores, o × desabilitado
+> com o motivo em Fatores/Cruzamentos/Coleta, as contagens nas listagens de
+> cascata, projetos e investimentos, e `public/assets/js/vinculos.js`, que monta
+> a frase. O que mudou em relação ao previsto está em *Como ficou*, no fim.
 
 O sistema todo é feito de vínculos — o fator vira cruzamento, o cruzamento vira
 ação, a escolha da cascata vira projeto, a ideia da coleta vira fator. Apagar
@@ -1110,17 +1116,24 @@ O levantamento, controller a controller:
 | `CruzamentoController::excluir` | **recusa** com mensagem, se já virou ação |
 | `ColetaController::excluir` | **recusa** com mensagem, se já virou ação |
 | `NegocioController`, `UsuarioController` | **recusam** com mensagem e contagem |
-| `FatorController::excluir` | **apaga em cascata** o fator promovido à SWOT e a avaliação GUT — sem avisar |
+| `FatorController::excluir` | **recusa** se o fator (ou o promovido dele, ou um cruzamento que o cita) virou ação; fora disso, **apaga em cascata** o promovido e a avaliação GUT |
 | `CascataController::excluir` | o projeto originado **perde o vínculo** — sem avisar |
 | `ProjetoController::excluir` | os investimentos **perdem o vínculo** — sem avisar |
 | `IndicadorController::excluir` | apaga direto, sem guarda nenhuma |
 
 Nenhum desses comportamentos está errado isoladamente; o problema é o conjunto.
-São três regras diferentes (recusar, cascatear, soltar o vínculo) e **nenhuma
-delas aparece antes do clique**: o botão × tem a mesma cara nos sete casos, o
-`confirm()` diz sempre a mesma frase, e o usuário só descobre a diferença depois
-— por um erro vermelho ou, pior, por não descobrir nada, porque a cascata é
-silenciosa.
+São três regras diferentes (recusar, cascatear, soltar o vínculo) e **quase
+nenhuma delas aparecia antes do clique**: o botão × tinha a mesma cara nos sete
+casos, o `confirm()` dizia quase sempre a mesma frase, e o usuário só descobria a
+diferença depois — por um erro vermelho ou, pior, por não descobrir nada, porque
+a cascata é silenciosa.
+
+> **Correção do levantamento.** Duas telas já faziam o certo e serviram de
+> modelo: a **SWOT** já montava a frase item a item (`f.score` e `f.cruzamentos`
+> vindos da listagem — "Também será apagado: a avaliação dele na Matriz GUT e 2
+> cruzamento(s) da SWOT") e a **Coleta** já dizia o tamanho da caixa e o destino.
+> O que faltava não era inventar o padrão: era estendê-lo, e acrescentar a parte
+> que nenhuma delas tinha — o botão marcado.
 
 ### A entrega mínima — três coisas, nesta ordem
 
@@ -1159,6 +1172,60 @@ silenciosas.
   pintura; entre ela e o clique, alguém pode ter criado o vínculo. O servidor
   continua sendo quem decide — este tema melhora o aviso, não substitui a guarda.
 
+### Como ficou
+
+Os três pontos da entrega mínima foram feitos, e o corte principal continua de
+pé: **uniformizou-se o aviso, não a regra**. Recusar, cascatear e soltar o
+vínculo seguem sendo respostas diferentes para relações diferentes.
+
+**O ponto 3 saiu maior do que "marcar o botão", e por um motivo que só apareceu
+no código.** A trava do fator nasce de **três** caminhos — o fator virou ação, um
+**promovido** dele virou, ou um **cruzamento** que o cita virou —, e os dois
+últimos são os mais comuns (o PESTEL não vai direto ao plano: passa pela SWOT).
+Uma tela que decidisse por conta própria erraria exatamente aí, e mentiria nos
+dois sentidos: × morto onde dava para apagar, × vivo onde o servidor recusa. A
+saída foi extrair a consulta da recusa para **`Fatores::acoesQuePrendem`** e
+servi-la à listagem como `acao_trava`. `exigirSemAcao` passou a chamá-la — há uma
+única definição de "está preso", e a tela e o servidor não podem discordar.
+
+**Uma armadilha de CSS que quase anulou a entrega.** O Bootstrap põe
+`pointer-events: none` em todo `.btn:disabled`, e sem ponteiro o navegador não
+mostra `title` nenhum — o botão ficaria cinzento e **mudo**, que é meio caminho
+para o defeito original. A regra `.btn[aria-disabled="true"] { pointer-events:
+auto }` devolve o ponteiro sem destravar coisa alguma: quem bloqueia o clique é o
+atributo `disabled`, que continua lá. A bateria mede isso (`pointerEvents ===
+'auto'`), porque é o tipo de coisa que uma atualização do Bootstrap desfaz em
+silêncio.
+
+**A frase virou `public/assets/js/vinculos.js`.** `Vinculos.aviso()` separa duas
+listas — o que **sai junto** e o que **continua existindo, sem o vínculo** —, e a
+distinção não é enfeite: perder a discussão de uma célula não é o mesmo que um
+investimento ficar sem projeto. `Vinculos.quantos()` devolve string vazia no
+zero, para o chamador despejar tudo na lista sem contar antes. O primeiro defeito
+que a bateria pegou foi justamente aqui: um registro sem vínculo nenhum ganhava a
+frase **"Sai junto: ."** — pior que não dizer nada, porque parecia informação.
+
+**Onde as contagens entram, sem consulta nova por cartão:** os projetos e os
+indicadores da escolha já vinham no payload da Matriz de Execução (tema 3a); os
+comentários por escolha, os investimentos e os comentários por projeto e os
+comentários por investimento entraram como **consultas agregadas** nas listagens
+que a tela já busca.
+
+**Um vínculo que este tema tornou visível é recente e meu:** excluir uma escolha
+da cascata agora também apaga as linhas de `indicador_cascata` (tema 3a). Ele
+aparece no aviso como "1 indicador continua existindo, sem o vínculo" — a
+escolha some, a medida fica.
+
+### O que ficou de fora (além dos cortes já listados)
+
+- **A trava por GRUPO na Coleta** é indexada pela chave de agrupamento
+  (`agrupado_em_id || id`), a mesma de `montarGrupos`, porque a guarda do
+  servidor olha a caixa inteira. É um mapa montado numa passada por carga da
+  lista — perguntar por cartão faria uma varredura por botão.
+- **Cenário e Indicador não ganharam trava**, só frase: nenhum dos dois tem
+  recusa no servidor. O indicador ganhou a contagem dos vínculos com a cascata,
+  que é o que ninguém espera perder.
+
 ---
 
 ## Ordem de implementação recomendada
@@ -1167,12 +1234,16 @@ O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro*
 depois o que se alimenta delas. Construir conteúdo (matriz, mapa, coleta) antes de
 existir um fórum que consome esse conteúdo é como o sistema morre.
 
-> **Estado da fila.** Os passos 1, 2, 2-bis, 3 e 5 abaixo foram entregues
+> **Estado da fila.** Os passos 1, 2, 2-bis, 3, 3-bis e 5 abaixo foram entregues
 > (registro de reunião, `projeto.cascata_id`, o **Dossiê do plano**, a **Matriz
-> de Execução** e a Coleta & Triagem). O que resta como *código* é o passo 3-bis
-> (tema 8, aviso na exclusão com vínculo) e o 4 (Matriz de Impacto, travada na
-> decisão 1); o que resta como *operação* são os passos 0 e 0-bis, que continuam
-> no topo — e que **já são os únicos itens de valor alto sem código a escrever**.
+> de Execução**, o **aviso na exclusão com vínculo** e a Coleta & Triagem).
+>
+> O que resta como *código* é o passo 4 (Matriz de Impacto, **travada na decisão
+> 1**) e a síntese dos Cruzamentos (4c). O que resta como *operação* são os
+> passos 0 e 0-bis, que continuam no topo — e que, entregue o 3-bis, são **tudo
+> o que sobrou de valor alto e esforço pequeno**. A fila de construção chegou ao
+> fim sem que eles fossem ligados: daqui em diante, adiá-los não é mais escolher
+> entre trabalhos, é deixar a única coisa pendente parada.
 
 **0. Ligar o que já existe (horas, zero código).** SMTP + cron diário do Railway
 para `cli/notificar.php`. Um módulo pronto que não roda é a melhor relação
@@ -1203,10 +1274,8 @@ marcável no modal de indicador + a aba na Cascata. O passo 2 já estava feito,
 então a coluna de iniciativas já tinha de onde sair; é a leitura que a direção
 pede no trimestral.
 
-**3-bis. Aviso na exclusão com vínculo (P).** Tema 8. Dizer no `confirm()` o que
-sai junto, e desabilitar o × onde o servidor vai recusar. Independente de tudo;
-fica aqui porque é entendimento, não defeito. **É o próximo item de código da
-fila.**
+**3-bis. Aviso na exclusão com vínculo (P). ✔ ENTREGUE.** Tema 8. Dizer no
+`confirm()` o que sai junto, e desabilitar o × onde o servidor vai recusar.
 
 **4. Matriz de Impacto por Negócio (P).** Independente de tudo, mas depende de a
 SWOT/GUT **corporativa** do ano estar preenchida — por isso vem depois de o ciclo
@@ -1235,10 +1304,10 @@ nota de impacto, e não convém passar a atribuir.
 | | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
 |---|---|---|
 | **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 1 Matriz de Impacto | **Planejar** — 4c Cruzamentos: a síntese |
-| **Impacto baixo** | 8 exclusão com vínculo (aviso) | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
+| **Impacto baixo** | — | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
 
 Saíram do quadro por estarem entregues: 5 (registro de reunião), 3a (Matriz de
-Execução), 3b (vínculo com a Cascata), 2 e 2.1 (Coleta e Tempestade), as fatias
+Execução), 8 (aviso na exclusão), 3b (vínculo com a Cascata), 2 e 2.1 (Coleta e Tempestade), as fatias
 1–3 dos Cruzamentos com o relatório (§7), o ⤓ Relatório da Cascata e o 7 (Dossiê
 do plano).
 
@@ -1270,9 +1339,9 @@ discutir a dependência, não o quadrante.
 |---|------|----------|---------|-------|
 | 6 | **Ligar o backup no Railway** (Volume + cron; código entregue em `cli/backup.sh`) | Executar | — | 0 |
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
-| 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | Construir simplificado | P | 1 |
-| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 2 (trava: decisão 1) |
-| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 3 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 1 (trava: decisão 1) |
+| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 2 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | **Entregue** | P | ✔ |
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | **Entregue** | P | ✔ |
 | 7 | **Dossiê do plano: as abas em sequência, por negócio** | **Entregue** | M | ✔ (urgente, antecipado) |
 | 4b | Cruzamentos da SWOT — a ponte (fatia 3) e o ⤓ Relatório (§7) | **Entregue** | M | ✔ |

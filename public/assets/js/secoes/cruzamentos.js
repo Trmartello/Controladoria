@@ -190,6 +190,25 @@ const SecaoCruzamentos = {
     return n;
   },
 
+  /**
+   * O × do cruzamento — desabilitado depois que ele virou ação.
+   *
+   * O selo "Virou ação ↗" já dizia que existe vínculo, mas o × ao lado
+   * continuava com cara de quem funciona: quem clicava descobria a regra pelo
+   * erro vermelho do servidor. A recusa continua sendo dele
+   * (`CruzamentoController::excluir`); isto é o aviso ANTES dela, não no lugar
+   * dela.
+   */
+  botaoExcluir(c) {
+    if (c.desdobramento_id) {
+      return `<button class="btn btn-sm btn-outline-danger" ${Vinculos.travado(
+        'Já virou ação no plano. Exclua a ação em Projetos antes de excluir '
+        + 'este cruzamento.')} aria-label="Excluir (bloqueado: virou ação)">×</button>`;
+    }
+    return `<button class="btn btn-sm btn-outline-danger" data-excluir-cruz="${c.id}"
+      title="Excluir" aria-label="Excluir">×</button>`;
+  },
+
   /** O bloco que nasce de um par de categorias (o mesmo cálculo do servidor). */
   blocoDoPar(catInterna, catExterna) {
     return this.BLOCOS.find((b) => b.interno === catInterna && b.externo === catExterna) || null;
@@ -251,8 +270,7 @@ const SecaoCruzamentos = {
                 ${this.seloAcao(c)}
                 ${editar ? `<button class="btn btn-sm btn-outline-secondary" data-editar-cruz="${c.id}"
                   title="Editar" aria-label="Editar">✎</button>
-                <button class="btn btn-sm btn-outline-danger" data-excluir-cruz="${c.id}"
-                  title="Excluir" aria-label="Excluir">×</button>` : ''}
+                ${this.botaoExcluir(c)}` : ''}
               </span>
             </div>
           </div>

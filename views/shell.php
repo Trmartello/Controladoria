@@ -188,6 +188,9 @@
        que conduz um encontro: carregam antes das seções, que as consomem -->
   <script src="<?= versao_asset('/assets/js/quiz.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/relatorio-analise.js') ?>"></script>
+  <!-- O aviso de exclusão é o mesmo em toda tela que apaga algo com vínculo:
+       carrega antes das seções, que o consomem -->
+  <script src="<?= versao_asset('/assets/js/vinculos.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/painel.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cadastros.js') ?>"></script>

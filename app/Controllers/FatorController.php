@@ -38,7 +38,7 @@ class FatorController
         $ano = (int)($_GET['ano'] ?? 0);
         $filtroAno = $ano ? ' AND f.ano = ?' : '';
         $params = $ano ? [$planId, $etapa, $ano] : [$planId, $etapa];
-        Json::ok(Database::todos(
+        $fatores = Database::todos(
             "SELECT f.*, g.gravidade, g.urgencia, g.tendencia, g.score, g.esforco,
                     o.etapa AS origem_etapa, o.categoria AS origem_categoria,
                     (pr.id IS NOT NULL) AS promovido,
@@ -84,7 +84,19 @@ class FatorController
              WHERE f.planejamento_id = ? AND f.etapa = ?{$filtroAno}
              ORDER BY f.categoria, f.id",
             $params
-        ));
+        );
+
+        // `acao_trava` é o que a tela usa para desabilitar o × ANTES do clique.
+        // Sai da MESMA consulta com que o servidor recusa a exclusão
+        // (`Fatores::acoesQuePrendem`), e por isso as duas nunca discordam.
+        // `acao_titulo`, acima, não serve para isso: ele só enxerga o vínculo
+        // direto e deixaria passar o promovido e o cruzamento — que são os dois
+        // caminhos pelos quais a recusa mais acontece.
+        $presos = Fatores::acoesQuePrendem(array_column($fatores, 'id'));
+        foreach ($fatores as &$f) {
+            $f['acao_trava'] = $presos[(int)$f['id']] ?? null;
+        }
+        Json::ok($fatores);
     }
 
     public function salvar(?int $id = null): void

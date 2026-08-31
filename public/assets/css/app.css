@@ -154,6 +154,22 @@ table.tabela-cadastro td { vertical-align: middle; }
   .tabela-cascata th.celula-driver { width: 120px; }
 }
 
+/* ===== Botão travado: o × que o servidor vai recusar =====
+   O motivo da trava mora no `title` — é ele que diz o que FAZER ("exclua a ação
+   em Projetos antes"). O Bootstrap põe `pointer-events: none` em todo
+   `.btn:disabled`, e sem ponteiro o navegador não mostra `title` nenhum: o botão
+   ficaria cinzento sem dizer por quê, que é exatamente o defeito que este aviso
+   existe para corrigir.
+   Devolver o ponteiro NÃO destrava nada: quem bloqueia o clique é o atributo
+   `disabled` do `<button>`, e ele continua lá. O gancho é o `aria-disabled`, que
+   só `Vinculos.travado` escreve. */
+.btn[aria-disabled="true"],
+.fpm-item[aria-disabled="true"] {
+  pointer-events: auto;
+  cursor: not-allowed;
+  opacity: .5;
+}
+
 /* Matriz de Execução (aba da Cascata): por eixo, a escolha, o que a mede e quem
    a executa. A coluna do eixo é a "raia" — o que num mapa BSC seria uma faixa
    com setas é aqui a primeira coluna, com `rowspan`. */

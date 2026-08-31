@@ -125,7 +125,19 @@ const SecaoMetas = {
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       this.modalIndicador(indicadores.find((i) => i.id == b.dataset.editar))));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Excluir este indicador e todos os seus valores?')) return;
+      // O vínculo com a cascata é recente (Matriz de Execução) e é justamente o
+      // que ninguém espera perder: some a linha da matriz que dizia que aquela
+      // escolha era medida. A escolha em si fica — quem sai é a medida.
+      const i = indicadores.find((x) => x.id == b.dataset.excluir);
+      const anos = (i?.metas || []).length + (i?.reais || []).length;
+      if (!confirm(Vinculos.aviso(`Excluir o indicador «${i?.nome || ''}»?`, {
+        some: [
+          Vinculos.quantos(anos, 'valor lançado (meta ou real)', 'valores lançados (metas e reais)'),
+          Vinculos.quantos((i?.cascatas || []).length,
+            'vínculo com escolha da cascata', 'vínculos com escolhas da cascata'),
+        ],
+        nota: 'Não dá para desfazer.',
+      }))) return;
       await App.api(`/api/indicadores/${b.dataset.excluir}/excluir`, { planejamento_id: this.plan.id });
       this.carregar();
     }));

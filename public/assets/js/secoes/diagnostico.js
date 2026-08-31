@@ -556,6 +556,29 @@ const Diag = {
       title="Encaminhar para o plano de ação">→ Plano de ação</button>`;
   },
 
+  /**
+   * O × do fator — desabilitado quando o servidor VAI recusar a exclusão.
+   *
+   * `acao_trava` chega da MESMA consulta com que o servidor recusa
+   * (`Fatores::acoesQuePrendem`), e não de uma regra remontada aqui: a trava
+   * nasce de três caminhos (o fator virou ação, um promovido dele virou, ou um
+   * cruzamento que o cita virou) e reescrevê-la na tela erraria justamente nos
+   * dois últimos, que são os mais comuns.
+   *
+   * Sem `data-excluir` quando travado: o botão não fica só cinzento, ele não
+   * tem ação nenhuma pendurada. E o `title` diz o que FAZER — apagar a ação em
+   * Projetos —, não apenas que não pode.
+   */
+  botaoExcluirFator(f) {
+    if (f.acao_trava) {
+      return `<button class="btn btn-sm btn-outline-danger" ${Vinculos.travado(
+        `Já virou a ação “${f.acao_trava}” no plano. Exclua a ação em Projetos `
+        + 'antes de excluir este fator.')} aria-label="Excluir (bloqueado: virou ação)">×</button>`;
+    }
+    return `<button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}"
+      title="Excluir" aria-label="Excluir">×</button>`;
+  },
+
   // Botões compactos abaixo do texto: SWOT à esquerda, editar/excluir à direita.
   // Depois de promovido, o botão mostra a categoria atribuída e reabre a edição.
   botoesFator(f, planId, comPromocao, selos = '') {
@@ -579,7 +602,7 @@ const Diag = {
       ${selos}${swot}
       <span class="ms-auto d-flex gap-1">
         <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
-        <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}" title="Excluir" aria-label="Excluir">×</button>
+        ${this.botaoExcluirFator(f)}
       </span>
     </div>`;
   },
@@ -1319,7 +1342,7 @@ const SecaoSwot = {
             ${Diag.selosOrigem(f)}${origem}${gut}${acao}
             ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
               <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
-              <button class="btn btn-sm btn-outline-danger" data-excluir="${f.id}" title="Excluir" aria-label="Excluir">×</button>
+              ${Diag.botaoExcluirFator(f)}
             </span>` : ''}
           </div>
         </div></div>`;

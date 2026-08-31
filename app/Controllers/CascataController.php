@@ -27,7 +27,23 @@ class CascataController
             'SELECT * FROM cascata_escolha WHERE planejamento_id = ?',
             [$planId]
         );
+        // Comentários por escolha, numa consulta só: a tela precisa deles para
+        // dizer, ANTES do clique, o que a exclusão leva junto. O comentário é
+        // polimórfico (`ref_tipo`/`ref_id`) e não tem FK — quem o apaga é o
+        // `excluir` daqui, em silêncio até agora.
+        $comentarios = [];
+        foreach (Database::todos(
+            "SELECT c.ref_id, COUNT(*) AS n
+             FROM comentario c
+             JOIN cascata_escolha ce ON ce.id = c.ref_id
+             WHERE c.ref_tipo = 'CASCATA' AND ce.planejamento_id = ?
+             GROUP BY c.ref_id",
+            [$planId]
+        ) as $c) {
+            $comentarios[(int)$c['ref_id']] = (int)$c['n'];
+        }
         foreach ($escolhas as &$e) {
+            $e['comentarios'] = $comentarios[(int)$e['id']] ?? 0;
             $e['fatores'] = Database::todos(
                 'SELECT f.id, f.categoria, f.descricao, g.score
                  FROM cascata_fator cf

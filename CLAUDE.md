@@ -23,7 +23,11 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `ColetaController`: excluir um fator (ou a ideia que virou fator) apaga junto
   o promovido à SWOT, e é ele que pode carregar o `desdobramento_id` — a guarda
   confere `f.id IN (…) OR f.promovido_de_id IN (…)`, senão a ação ficava no
-  plano sem origem nenhuma. Autoload PSR-4 caseiro em `public/index.php`
+  plano sem origem nenhuma. Ela é uma casca sobre **`Fatores::acoesQuePrendem`**,
+  que devolve `[fator => ação]` para uma lista inteira: é a MESMA consulta que
+  alimenta o `acao_trava` da listagem, com que a tela desabilita o × antes do
+  clique. Uma definição só de "está preso" — a tela e o servidor não podem
+  discordar. Autoload PSR-4 caseiro em `public/index.php`
   (`App\` → `app/`);
   **não há Composer nem `vendor/`** — nada de dependência externa em PHP.
 - **Contexto: ciclo × negócio.** O **negócio** é seletor do menu lateral — troca
@@ -541,6 +545,24 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   virou ação, ela ficaria no plano sem origem. Por isso `Fatores::exigirSemAcao`
   olha também os cruzamentos dos fatores pedidos **e dos promovidos a partir
   deles**.
+- **Excluir o que está amarrado: o aviso vem ANTES do clique.** O × fica
+  **desabilitado** onde o servidor vai recusar (fator, cruzamento e ideia da
+  Coleta que viraram ação), com o motivo e o que fazer no `title`, e sem o
+  `data-excluir` pendurado. Quem decide continua sendo o servidor — isto é o
+  aviso, não a guarda. Duas armadilhas medidas: a marcação **tem de sair da
+  mesma consulta da recusa** (`Fatores::acoesQuePrendem`), senão erra no
+  promovido e no cruzamento, que são os casos comuns; e o Bootstrap põe
+  `pointer-events: none` em todo `.btn:disabled`, o que esconderia o `title` —
+  `.btn[aria-disabled="true"]` devolve o ponteiro sem destravar o clique, que
+  continua bloqueado pelo atributo `disabled`.
+  O `confirm()` diz **o que sai junto, com números**, montado por
+  `public/assets/js/vinculos.js`: `Vinculos.aviso()` separa o que **some** do que
+  **continua existindo sem o vínculo** (o comentário some; o investimento sem
+  projeto continua sendo um investimento), e `Vinculos.quantos()` devolve vazio
+  no zero — sem isso a frase saía "Sai junto: .". Os números vêm de contagens
+  agregadas nas listagens que a tela já busca, **nunca de uma chamada por
+  cartão**. Uniformizou-se o **aviso**, não a regra: recusar, cascatear e soltar
+  o vínculo continuam sendo respostas diferentes para relações diferentes.
 - **Quiz — a sala do PROJETO** (`coleta_rodada.modo = 'QUIZ'`): a MESMA sala da
   tempestade — PIN, token, tetos, trava de força bruta — servindo a TODAS as
   análises. **Um PIN para o encontro inteiro**: o participante escaneia uma vez

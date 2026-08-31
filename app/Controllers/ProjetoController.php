@@ -33,7 +33,36 @@ class ProjetoController
              ORDER BY p.ano, p.id',
             [$planId]
         );
+        // O que a exclusão do projeto mexe fora dele, para a tela poder dizer
+        // isso ANTES do clique. Duas consultas agregadas, FORA do laço: uma por
+        // projeto faria dezenas numa tela que já lista dezenas.
+        // As duas consequências são diferentes e a frase precisa distinguir: o
+        // investimento NÃO some — perde o vínculo (a FK não tem ON DELETE) e
+        // continua sendo um investimento; o comentário some mesmo, porque é
+        // polimórfico e quem o apaga é o `excluir` daqui.
+        $solta = [];
+        foreach (Database::todos(
+            'SELECT projeto_id, COUNT(*) AS n FROM investimento
+             WHERE planejamento_id = ? AND projeto_id IS NOT NULL
+             GROUP BY projeto_id',
+            [$planId]
+        ) as $x) {
+            $solta[(int)$x['projeto_id']] = (int)$x['n'];
+        }
+        $comentarios = [];
+        foreach (Database::todos(
+            "SELECT c.ref_id, COUNT(*) AS n FROM comentario c
+             JOIN projeto p ON p.id = c.ref_id
+             WHERE c.ref_tipo = 'PROJETO' AND p.planejamento_id = ?
+             GROUP BY c.ref_id",
+            [$planId]
+        ) as $x) {
+            $comentarios[(int)$x['ref_id']] = (int)$x['n'];
+        }
+
         foreach ($projetos as &$p) {
+            $p['investimentos_vinculados'] = $solta[(int)$p['id']] ?? 0;
+            $p['comentarios'] = $comentarios[(int)$p['id']] ?? 0;
             $p['iniciativas'] = Database::todos(
                 'SELECT * FROM iniciativa WHERE projeto_id = ? ORDER BY ordem, id',
                 [$p['id']]

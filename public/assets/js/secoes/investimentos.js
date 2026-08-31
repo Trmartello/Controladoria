@@ -128,7 +128,11 @@ const SecaoInvestimentos = {
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       this.modalInvestimento(lista.find((i) => i.id == b.dataset.editar))));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Excluir este investimento?')) return;
+      const i = lista.find((x) => x.id == b.dataset.excluir);
+      if (!confirm(Vinculos.aviso(`Excluir o investimento «${i?.descricao || ''}»?`, {
+        some: [Vinculos.quantos(i?.comentarios, 'comentário', 'comentários')],
+        nota: 'Não dá para desfazer.',
+      }))) return;
       await App.api(`/api/investimentos/${b.dataset.excluir}/excluir`, { planejamento_id: this.plan.id });
       this.carregar();
     }));

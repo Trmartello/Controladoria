@@ -1019,7 +1019,23 @@ const SecaoProjetos = {
     el.querySelectorAll('[data-editar-proj]').forEach((b) => b.addEventListener('click', () =>
       this.modalProjeto(projetos.find((p) => p.id == b.dataset.editarProj), projetos)));
     el.querySelectorAll('[data-excluir-proj]').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Excluir o projeto e todos os seus desdobramentos?')) return;
+      // O projeto é ponta de quatro vínculos, e só um deles aparecia na frase
+      // antiga ("e todos os seus desdobramentos"). O investimento é o que mais
+      // surpreende: ele NÃO some — a FK não tem ON DELETE e ele volta a ser um
+      // investimento sem projeto —, mas quem apaga precisa saber que o vínculo
+      // que ele montou vai embora.
+      const p = projetos.find((x) => x.id == b.dataset.excluirProj);
+      const q = (n, s, pl) => Vinculos.quantos(n, s, pl);
+      const acoes = (p?.desdobramentos || []).length;
+      if (!confirm(Vinculos.aviso(`Excluir o projeto «${p?.titulo || ''}»?`, {
+        some: [
+          q(acoes, 'ação 5W2H', 'ações 5W2H'),
+          q((p?.iniciativas || []).length, 'iniciativa', 'iniciativas'),
+          q(p?.comentarios, 'comentário', 'comentários'),
+        ],
+        solta: [q(p?.investimentos_vinculados, 'investimento', 'investimentos')],
+        nota: 'Não dá para desfazer.',
+      }))) return;
       try {
         await App.api(`/api/projetos/${b.dataset.excluirProj}/excluir`, { planejamento_id: this.plan.id });
       } catch (e) {

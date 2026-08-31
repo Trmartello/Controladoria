@@ -2166,6 +2166,136 @@ async function provasMatrizExecucao(page) {
   }, massa);
 }
 
+/**
+ * Excluir o que já está amarrado noutra tela — o aviso ANTES do clique.
+ *
+ * O que esta prova mede é a TELA. A recusa em si é regra de servidor e já tem
+ * bateria própria em `funcional.sh` ("recusa excluir o fator do par que virou
+ * ação"); repeti-la aqui só encheria o console de 400 deliberados, que o
+ * `vigiar` conta como erro de página.
+ *
+ * A massa monta o caminho da trava que a tela sozinha NÃO enxergaria: um fator
+ * do PESTEL promovido à SWOT, encaminhado e virado ação. Quem olhasse só o
+ * `desdobramento_id` do fator pedido acharia os dois livres — e é justamente
+ * esse o caso mais comum, porque o PESTEL não vai direto ao plano.
+ */
+async function provasExclusaoComVinculo(page) {
+  const l = '[desktop] Exclusão com vínculo:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const pestel = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+      categoria: 'ECONOMICO', descricao: 'Fator PESTEL de prova (vínculo)', ano });
+    const prom = await App.api(`/api/fatores/${pestel.id}/promover`,
+      { planejamento_id: plan.id, quadrante: 'AMEACA' });
+    const solto = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'SWOT',
+      categoria: 'FORCA', descricao: 'Fator SWOT solto de prova (vínculo)', ano });
+    const prj = await App.api('/api/projetos', { planejamento_id: plan.id, tipo: 'ESTRATEGICO',
+      titulo: 'Projeto de prova (vínculo)', ano: 2027, responsavel: 'QA' });
+    await App.api(`/api/fatores/${prom.id}/plano-acao`, { planejamento_id: plan.id, marcar: true });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: plan.id, projeto_id: prj.id, iniciativa_nova: 'Frente de prova (vínculo)',
+      o_que: 'Ação de prova (vínculo)', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31', fator_id: prom.id,
+    });
+    return { plan: plan.id, ano, pestel: pestel.id, prom: prom.id, solto: solto.id, prj: prj.id };
+  });
+
+  // A trava sai da mesma consulta da recusa, e cobre o promovido E a origem.
+  const trava = await page.evaluate(async (m) => {
+    const pestel = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=PESTEL&ano=${m.ano}`);
+    const swot = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=SWOT&ano=${m.ano}`);
+    const acha = (lista, id) => lista.find((f) => f.id == id) || {};
+    return {
+      promovido: acha(swot, m.prom).acao_trava,
+      origem: acha(pestel, m.pestel).acao_trava,
+      solto: acha(swot, m.solto).acao_trava,
+    };
+  }, massa);
+  t(`${l} o fator promovido que virou ação vem travado`,
+    /Ação de prova \(vínculo\)/.test(trava.promovido || ''), String(trava.promovido));
+  t(`${l} a ORIGEM no PESTEL também — o DELETE dela leva o promovido`,
+    /Ação de prova \(vínculo\)/.test(trava.origem || ''), String(trava.origem));
+  t(`${l} fator sem ação NÃO vem travado`, !trava.solto, String(trava.solto));
+
+  // A tela obedece à trava: desabilita, tira a ação do botão e diz o porquê.
+  for (const [secao, alvo, rotulo] of [['swot', 'prom', 'SWOT'], ['pestel', 'pestel', 'PESTEL']]) {
+    await page.evaluate((s) => App.mostrarSecao(s), secao);
+    // Espera o CARTÃO da massa, não um cartão qualquer: `percorrer` já pintou
+    // estas seções no início da bateria, e um seletor genérico casaria com a
+    // pintura velha — de antes de o fator existir.
+    await esperar(page,
+      `!!document.querySelector('#secao-${secao} [data-card-fator="${massa[alvo]}"]')`, 15000);
+    const b = await page.evaluate((x) => {
+      const btn = document.querySelector(
+        `#secao-${x.secao} [data-card-fator="${x.id}"] .btn-outline-danger`);
+      if (!btn) return null;
+      return {
+        off: btn.disabled,
+        semAcao: !btn.hasAttribute('data-excluir'),
+        motivo: /Exclua a ação em Projetos/.test(btn.title),
+        // Sem ponteiro o navegador não mostra `title` nenhum, e o Bootstrap o
+        // desliga em todo `.btn:disabled` — o botão ficaria cinzento e mudo.
+        ponteiro: getComputedStyle(btn).pointerEvents,
+      };
+    }, { secao, id: massa[alvo] });
+    t(`${l} ${rotulo} desabilita o × travado, sem ação pendurada`,
+      !!b && b.off === true && b.semAcao === true, JSON.stringify(b));
+    t(`${l} ${rotulo} diz o motivo e o que fazer, com o ponteiro alcançando`,
+      !!b && b.motivo === true && b.ponteiro === 'auto', JSON.stringify(b));
+  }
+  const controle = await page.evaluate((m) => {
+    const btn = document.querySelector(`#secao-swot [data-card-fator="${m.solto}"] .btn-outline-danger`);
+    return btn ? !btn.disabled && btn.hasAttribute('data-excluir') : null;
+  }, massa);
+  t(`${l} o × do fator sem vínculo continua ativo`, controle === true, String(controle));
+
+  // As contagens que alimentam o `confirm()` vêm das listagens que já existem.
+  const contagens = await page.evaluate(async (m) => {
+    const c = await App.api(`/api/cascata?planejamento_id=${m.plan}`);
+    const p = await App.api(`/api/projetos?planejamento_id=${m.plan}`);
+    const i = await App.api(`/api/investimentos?planejamento_id=${m.plan}`);
+    const proj = p.find((x) => x.id == m.prj) || {};
+    return {
+      escolha: c.escolhas.length ? 'comentarios' in c.escolhas[0] : null,
+      projeto: 'investimentos_vinculados' in proj && 'comentarios' in proj,
+      acoes: (proj.desdobramentos || []).length,
+      invest: i.investimentos.length ? 'comentarios' in i.investimentos[0] : null,
+    };
+  }, massa);
+  t(`${l} a escolha da cascata traz os comentários`, contagens.escolha !== false);
+  t(`${l} o projeto traz investimentos soltos e comentários`, contagens.projeto === true);
+  t(`${l} o projeto traz as ações que saem junto`, contagens.acoes === 1, `${contagens.acoes}`);
+  t(`${l} o investimento traz os comentários`, contagens.invest !== false);
+
+  // A frase: separa o que SAI do que fica sem o vínculo, e some quando não há
+  // vínculo nenhum — "Sai junto: ." é pior que não dizer nada.
+  const frases = await page.evaluate(() => ({
+    vazia: Vinculos.aviso('Excluir?', { some: [Vinculos.quantos(0, 'comentário', 'comentários')] }),
+    cheia: Vinculos.aviso('Excluir?', {
+      some: [Vinculos.quantos(3, 'comentário', 'comentários'), Vinculos.quantos(2, 'ação', 'ações')],
+      solta: [Vinculos.quantos(1, 'investimento', 'investimentos')],
+    }),
+    singular: Vinculos.quantos(1, 'voz da sala', 'vozes da sala'),
+  }));
+  t(`${l} sem vínculo a frase é só a pergunta`, frases.vazia === 'Excluir?', frases.vazia);
+  t(`${l} separa o que sai do que fica sem o vínculo`,
+    /Sai junto: 3 comentários e 2 ações\./.test(frases.cheia)
+    && /Continua existindo, sem o vínculo: 1 investimento\./.test(frases.cheia), frases.cheia);
+  t(`${l} o singular é respeitado`, frases.singular === '1 voz da sala', frases.singular);
+
+  // Limpeza, nesta ordem: a ação é quem trava o resto.
+  await page.evaluate(async (m) => {
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    for (const id of [m.pestel, m.solto]) {
+      await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    }
+    App.mostrarSecao('painel');
+  }, massa);
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -2191,6 +2321,7 @@ async function provasMatrizExecucao(page) {
   await provasExcluirUsuario(page);
   await provasFiltroResponsavel(page);
   await provasMatrizExecucao(page);
+  await provasExclusaoComVinculo(page);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.
