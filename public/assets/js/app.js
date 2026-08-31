@@ -184,6 +184,23 @@ const App = {
 
   secaoAtiva: null,
 
+  /**
+   * Modo "só desenho": o Dossiê está pintando uma seção DE LADO, para tirar a
+   * foto do papel dela, e não para alguém olhar.
+   *
+   * Quem lê esta bandeira são os relógios de consulta periódica. Eles já param
+   * sozinhos quando a seção está com `d-none` — mas só na primeira batida, 4
+   * segundos depois: montar um dossiê de onze negócios armaria dezenas de
+   * temporizadores para eles se desarmarem um a um, cada um custando uma
+   * chamada à API pelo caminho. Aqui eles nem chegam a nascer.
+   *
+   * É bandeira, e não um parâmetro de `carregar()`, porque quem precisa dela
+   * está três chamadas abaixo (`QuizSala.armarRelogio`) e passá-la de mão em
+   * mão obrigaria a mudar a assinatura de toda seção — inclusive das que não
+   * têm relógio nenhum.
+   */
+  modoDossie: false,
+
   mostrarSecao(nome) {
     this.secaoAtiva = nome;
     document.querySelectorAll('.secao').forEach((s) => s.classList.add('d-none'));
@@ -233,7 +250,7 @@ const App = {
       swot: SecaoSwot, gut: SecaoGut, cruzamentos: SecaoCruzamentos,
       cascata: SecaoCascata,
       projetos: SecaoProjetos, investimentos: SecaoInvestimentos,
-      metas: SecaoMetas, relatorio: SecaoRelatorio,
+      metas: SecaoMetas, relatorio: SecaoRelatorio, dossie: SecaoDossie,
       sala: SecaoSala,
     };
     const secao = secoes[this.secaoAtiva];

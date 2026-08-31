@@ -965,67 +965,86 @@ um banco sem cópia — e o custo de adiar não tem teto.
 
 ## 7. Dossiê: imprimir as abas em sequência, por negócio
 
-### Veredito: **CONSTRUIR** (esforço P–M) — **pedido do cliente, urgente**
+### Veredito: **CONSTRUIR** (esforço P–M) — **ENTREGUE**
 
-Hoje cada análise imprime a si mesma. Quem prepara a reunião do Conselho abre
-seção por seção, manda imprimir, e junta as folhas à mão — trocando de negócio no
-menu e repetindo a volta inteira. O pedido é uma saída só: **o plano do negócio
-escolhido, todas as etapas em sequência, num documento**.
+Hoje cada análise imprime a si mesma. Quem prepara a reunião do Conselho abria
+seção por seção, mandava imprimir, e juntava as folhas à mão — trocando de
+negócio no menu e repetindo a volta inteira. O pedido era uma saída só: **o plano
+do negócio escolhido, todas as etapas em sequência, num documento**.
 
 Isto **não é** um relatório novo. Cada seção já sabe se desenhar em papel — é a
 `RelatorioAnalise` com `canvas`/`bloco`, e o `@media print` já abre as colunas e
-repete os cabeçalhos. O que falta é **quem manda todas se desenharem de uma vez**.
+repete os cabeçalhos. O que faltava é **quem manda todas se desenharem de uma
+vez**: `public/assets/js/secoes/dossie.js`, seção **Dossiê do plano**, no menu ao
+lado do Relatório de Status.
 
-### Onde encaixa
+### O desenho — e o que a execução mudou
 
-Menu, ao lado de **Relatório de Status** — que é o documento da *reunião*,
-enquanto este é o documento do *plano*. São peças diferentes da mesma pasta e o
-menu deve deixar isso claro; o nome sugerido é **Dossiê do plano**.
-
-### O desenho, e o que ele custa
-
-O caro não é imprimir: é que hoje **só existe na tela a seção ativa**. As seções
+O caro não é imprimir: é que **só existe na tela a seção ativa**. As seções
 pintam sob demanda (`App.recarregarSecaoAtiva`), e a `#secao-X` das outras está
-vazia — mandar imprimir agora produziria uma folha.
+vazia — mandar imprimir produziria uma folha.
 
-Duas saídas, e a diferença entre elas é a razão de o esforço ser P *ou* M:
+Eram duas saídas: **(1)** pintar todas e imprimir, reaproveitando cada seção como
+ela é, ao custo dos efeitos colaterais; **(2)** uma tela que busca os dados e
+desenha o documento do zero, sem efeito colateral e com uma segunda cópia do
+desenho de cada análise — a cópia que diverge na primeira revisão, e que a
+`RelatorioAnalise` existe para evitar.
 
-1. **Pintar todas e imprimir** (P). Um laço que chama `carregar()` de cada seção
-   escolhida, tira o `d-none` de todas, chama `window.print()` e devolve a tela ao
-   estado anterior. Reaproveita cada seção como ela é. O risco é o efeito
-   colateral: várias seções armam relógios de polling (`QuizSala.armarRelogio`) e
-   guardam estado no próprio objeto (`celulaAberta`, `expandidos`, `destacarAcao`)
-   — pintá-las todas de lado mexe nesse estado e deixa relógios batendo em telas
-   que ninguém está vendo. Precisa de um modo “só desenho”.
-2. **Uma tela de dossiê** (M) que busca os dados das etapas e monta o documento do
-   zero. Sem efeito colateral nenhum, mas duplica o desenho de cada análise — e
-   essa cópia diverge na primeira revisão, que é exatamente o que a
-   `RelatorioAnalise` foi criada para evitar (o comentário no topo dela conta essa
-   história).
+**Foi a 1, com uma correção que mudou o desenho**: em vez de tirar o `d-none` de
+todas as seções e imprimir a tela, o dossiê **fotografa** o `innerHTML` de cada
+uma e monta um documento próprio. Três coisas saíram de graça daí:
 
-**A recomendação é a 1**, com o modo “só desenho” explícito, justamente para não
-criar a segunda cópia. Se o modo se mostrar caro de manter, a 2 continua no
-bolso.
+- A foto é **inerte por construção** — atribuir `innerHTML` não carrega ouvinte
+  nenhum. A cópia não pode agir, e a tela viva fica intocada.
+- Cabem **onze negócios** no mesmo dossiê. As seções são dezessete elementos
+  FIXOS no shell; a saída original, que revelava os elementos, só conseguiria
+  imprimir um negócio por vez.
+- O documento ganha **capa, sumário e ordem própria**, que a tela revelada não
+  teria.
 
-### Entrega mínima
+O “modo só desenho” virou `App.modoDossie`, e é menor do que se previa: os
+relógios de polling já param sozinhos quando a seção tem `d-none`, mas só na
+batida seguinte — a bandeira evita que nasçam, e é lida em `QuizSala.armarRelogio`.
 
-- Seleção do que entra: quais etapas (padrão: todas as preenchidas) e qual
-  **negócio** — incluindo “o corporativo e todos os negócios, um após o outro”,
-  que é o pedido literal.
-- Uma capa: negócio, ciclo, ano, data de geração.
-- Quebra de página **entre** etapas, e o cabeçalho de cada uma repetido nas
-  folhas dela (a `RelatorioAnalise` já faz isso dentro de uma etapa).
-- ⤓ Word do dossiê inteiro pelo mesmo caminho das análises, se sair barato.
+**O que o plano não previa e a execução encontrou:** os filtros moram na seção e
+sobrevivem à repintura (`Diag.busca`, `SecaoProjetos.filtroStatus`,
+`projetosFechados`, `Diag.filtroMovel`). Sem zerá-los, quem tivesse “atrasado” no
+filtro de Projetos levaria ao Conselho um plano em que só existem projetos
+atrasados — e **nada na folha diria que houve filtro**. O dossiê monta com a
+vista limpa e devolve a de quem clicou no `finally`. É a prova mais importante da
+bateria.
 
-### Riscos
+### O que ficou de fora (cortes adotados)
 
-- **Volume.** Onze negócios × sete etapas é um documento que ninguém lê inteiro.
-  A seleção não é conveniência: é o que separa um dossiê de uma resma.
-- **Etapa vazia.** Precisa sair como “não preenchida”, não sumir calada — num
-  documento de prestação de contas, a lacuna é informação.
-- **Trocar de negócio recarrega o mundo.** Gerar o dossiê de todos os negócios
-  significa percorrer o seletor de contexto N vezes. É o ponto onde a saída 1
-  pode ficar lenta o bastante para justificar a 2.
+- **⤓ Word do dossiê.** O plano dizia “se sair barato”, e não sai: a foto é HTML
+  com classes do Bootstrap, e sem a folha de estilo o Word renderiza uma pilha de
+  `<div>`. Fazê-lo direito seria montar o documento a partir do modelo de dados
+  de cada etapa — a saída 2, com a cópia que se quis evitar. O PDF pela impressão
+  é o que o cliente pediu; o ⤓ Word por análise continua onde está.
+- **Coleta e Tempestade não é etapa do dossiê.** `SecaoColeta.filtro` casa uma
+  `situacao` exata e não há visão “todas”: qualquer página dela seria uma fatia
+  arbitrária do material da oficina, apresentada como se fosse a etapa inteira.
+  Entra quando tiver uma visão de leitura própria.
+- **Painel e Hub também não.** São do ciclo inteiro, não de um negócio — repetidos
+  por negócio, imprimiriam a mesma folha onze vezes.
+- **O documento não aparece na tela.** Ele é `d-none d-print-block`, e quem
+  confere usa a pré-visualização da caixa de impressão. Mostrá-lo na tela traria
+  de volta os comandos mortos e os `id` duplicados que a foto justamente remove.
+
+### Riscos — e o que se fez com cada um
+
+- **Volume.** Doze negócios × dez etapas são 120 documentos. A tela conta a
+  seleção enquanto se marca e pede confirmação acima de 40; a montagem mostra
+  barra de progresso e aceita cancelamento no meio.
+- **Etapa vazia.** Sai como a própria seção a desenha (“Nenhum fator.”), e etapa
+  que **falha** ao carregar entra dizendo isso, em vermelho: sumir com ela
+  deixaria um documento que parece completo e não é.
+- **Trocar de negócio recarrega o mundo.** Continua verdade — é o custo da saída
+  1, e é o que a barra de progresso torna suportável.
+- **`/api/contexto` cria o planejamento que não existe.** Um dossiê de “todos”
+  cria a linha vazia dos negócios que ninguém abriu — o mesmo que visitar a aba
+  deles já fazia, só que de uma vez. Benigno, mas é escrita: está declarado no
+  comentário do laço.
 
 ---
 
@@ -1102,12 +1121,11 @@ O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro*
 depois o que se alimenta delas. Construir conteúdo (matriz, mapa, coleta) antes de
 existir um fórum que consome esse conteúdo é como o sistema morre.
 
-> **Estado da fila.** Os passos 1, 2 e 5 abaixo foram entregues (registro de
-> reunião, `projeto.cascata_id`, Coleta & Triagem). O que resta como *código* é
-> o passo 2-bis (o **dossiê**, tema 7 — entrou na frente por pedido urgente do
-> cliente), o passo 3 (Matriz de Execução), o tema 8 (aviso na exclusão com
-> vínculo) e o 4 (Matriz de Impacto, travada na decisão 1); o que resta como
-> *operação* são os passos 0 e 0-bis, que continuam no topo.
+> **Estado da fila.** Os passos 1, 2, 2-bis e 5 abaixo foram entregues (registro
+> de reunião, `projeto.cascata_id`, o **Dossiê do plano** e a Coleta & Triagem).
+> O que resta como *código* é o passo 3 (Matriz de Execução), o tema 8 (aviso na
+> exclusão com vínculo) e o 4 (Matriz de Impacto, travada na decisão 1); o que
+> resta como *operação* são os passos 0 e 0-bis, que continuam no topo.
 
 **0. Ligar o que já existe (horas, zero código).** SMTP + cron diário do Railway
 para `cli/notificar.php`. Um módulo pronto que não roda é a melhor relação
@@ -1128,14 +1146,15 @@ execução não é discutida.
 e a exibição já existiam; era a correção mais barata do repositório e é
 pré-requisito da coluna "Iniciativas".
 
-**2-bis. Dossiê do plano — imprimir as abas em sequência (P–M).** Tema 7. Não
-nasceu desta lista e não é pré-requisito de nada: **entrou aqui por pedido
-urgente do cliente**, e por ser o custo que se paga toda vez que alguém monta a
-pasta de uma reunião à mão. **É o próximo item de código da fila.**
+**2-bis. Dossiê do plano — as abas em sequência (M). ✔ ENTREGUE.** Tema 7. Não
+nasceu desta lista e não era pré-requisito de nada: entrou por pedido urgente do
+cliente, e por ser o custo que se pagava toda vez que alguém montava a pasta de
+uma reunião à mão.
 
 **3. Matriz de Execução — resto (P).** `indicador_cascata` + escolha múltipla no
 modal de indicador + aba na Cascata. O passo 2 já está feito, então a coluna de
 iniciativas já tem de onde sair; é a leitura que a direção pede no trimestral.
+**É o próximo item de código da fila.**
 
 **3-bis. Aviso na exclusão com vínculo (P).** Tema 8. Dizer no `confirm()` o que
 sai junto, e desabilitar o × onde o servidor vai recusar. Independente de tudo;
@@ -1167,17 +1186,17 @@ nota de impacto, e não convém passar a atribuir.
 
 | | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
 |---|---|---|
-| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 7 Dossiê do plano · 4c Cruzamentos: a síntese |
+| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 4c Cruzamentos: a síntese |
 | **Impacto baixo** | 8 exclusão com vínculo (aviso) | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
 
 Saíram do quadro por estarem entregues: 5 (registro de reunião), 3b (vínculo com
 a Cascata), 2 e 2.1 (Coleta e Tempestade), as fatias 1–3 dos Cruzamentos com o
-relatório (§7) e o ⤓ Relatório da Cascata.
+relatório (§7), o ⤓ Relatório da Cascata e o 7 (Dossiê do plano).
 
-**O 7 no “planejar” e mesmo assim em primeiro na fila** é a contradição aparente
-deste quadro, e ela é o limite dele: a leitura por esforço não sabe que o item
-foi pedido como urgente. Quando o quadrante e a fila discordarem, vale a fila —
-e o motivo está escrito ao lado dela.
+**O 7 esteve no “planejar” e mesmo assim foi o primeiro da fila** — a contradição
+aparente que mostra o limite deste quadro: a leitura por esforço não sabe que um
+item foi pedido como urgente. Quando o quadrante e a fila discordarem, vale a
+fila, e o motivo fica escrito ao lado dela.
 
 **O que essa leitura mostra — e o que ela não decide.** O que sobrou no "fazer
 agora" é quase tudo **operação, não desenvolvimento**: dois dos quatro itens (0 e
@@ -1196,11 +1215,11 @@ discutir a dependência, não o quadrante.
 |---|------|----------|---------|-------|
 | 6 | **Ligar o backup no Railway** (Volume + cron; código entregue em `cli/backup.sh`) | Executar | — | 0 |
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
-| 7 | **Dossiê: imprimir as abas em sequência, por negócio** | Construir | P–M | **1 (urgente — pedido do cliente)** |
-| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 2 |
-| 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | Construir simplificado | P | 3 |
-| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 4 (trava: decisão 1) |
-| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 5 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 1 |
+| 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | Construir simplificado | P | 2 |
+| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 3 (trava: decisão 1) |
+| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 4 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 7 | **Dossiê do plano: as abas em sequência, por negócio** | **Entregue** | M | ✔ (urgente, antecipado) |
 | 4b | Cruzamentos da SWOT — a ponte (fatia 3) e o ⤓ Relatório (§7) | **Entregue** | M | ✔ |
 | 4a | Cruzamentos da SWOT — tabela, API, tela, cadastro (fatias 1–2) | **Entregue** | M | ✔ |
 | 7a | ⤓ Relatório na Cascata de Escolhas (Word + papel do preenchido) | **Entregue** | P | ✔ |
@@ -1217,13 +1236,12 @@ descrições do diagnóstico corporativo —, que é mudança do modelo de acess
 não detalhe de controller. A Matriz de Execução não depende de decisão nenhuma
 e, com o 3b entregue, já tem metade da fonte de dados preenchível.
 
-**Por que o 7 furou a fila.** Esta é a primeira vez que a ordem não sai da
-dependência, e vale dizer por quê: o dossiê **não** é pré-requisito de nada e
-nada depende dele. Ele entrou na frente porque foi pedido como urgente pelo
-cliente, e porque o custo de não tê-lo é pago toda vez que alguém prepara uma
-reunião — juntando folhas à mão, negócio por negócio. Quem for reordenar a fila
-depois deve tratá-lo como o que ele é: prioridade de *uso*, não de arquitetura.
-Os demais itens só desceram um degrau; a ordem relativa entre eles não mudou.
+**Por que o 7 furou a fila — e como terminou.** Foi a primeira vez que a ordem
+não saiu da dependência: o dossiê não era pré-requisito de nada e nada dependia
+dele. Entrou na frente por pedido urgente do cliente, e porque o custo de não
+tê-lo era pago toda vez que alguém preparava uma reunião. **Entregue**, e os
+demais voltaram ao degrau em que estavam. Quem for reordenar a fila de novo deve
+tratar um caso desses pelo que ele é: prioridade de *uso*, não de arquitetura.
 
 **Por que o 8 depois do 3a.** É melhoria de aviso, não correção de defeito: as
 regras de exclusão que recusam já recusam, e as que cascateiam fazem o que

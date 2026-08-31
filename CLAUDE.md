@@ -36,7 +36,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   as telas, e estado desses em seção que se repinta some no primeiro redesenho.
   O rótulo tem uma fonte só (`App.rotuloCiclo`), usada pelo menu e pela topbar.
   O cabeçalho do menu é **espaço tirado da navegação** — ele empurra as
-  dezesseis seções para baixo. Por isso rótulo, valor e o ⚙ dividem UMA linha,
+  dezessete seções para baixo. Por isso rótulo, valor e o ⚙ dividem UMA linha,
   o subtítulo "Planejamento Estratégico" só aparece onde a topbar o esconde
   (`d-sm-none`, abaixo de 576px) e no menu vai só o NOME do ciclo, com o
   ano-base no `title`: numa linha só, "2027–2035 (base 2026)" era cortado
@@ -48,7 +48,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   destino".
 - **Atalho ⚙ na topbar** (`#btn-cadastros`, ao lado do ☰): abre os Cadastros —
   a tela de AJUSTAR o sistema, que não faz parte do percurso do planejamento e
-  se procurava no meio de dezesseis seções. É um `<a data-secao>`, o mesmo
+  se procurava no meio de dezessete seções. É um `<a data-secao>`, o mesmo
   contrato dos itens do menu, e por isso o ouvinte de navegação casa por
   `[data-secao]` sem prefixo de container (ele não alcança o
   `data-secao-pergunta` do quiz: seletor de atributo casa por nome exato). O
@@ -282,7 +282,37 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   desliga menu, topbar, botões, `position: sticky` e **o corte de três linhas
   dos cartões** — conforto de tela que no papel viraria relatório truncado.
   `montar()` só roda no clique: montado a cada pintura, o relatório seria
-  refeito a cada batida do polling.
+  refeito a cada batida do polling. Uma seção pode pedir **tabela em vez de
+  lista** declarando `colunas` (e `detalhe` no item): é o que os Cruzamentos
+  usam, porque o item ali são dois lados de peso igual — o par e a estratégia.
+- **Dossiê do plano** (`public/assets/js/secoes/dossie.js`): as etapas em
+  sequência, por negócio, num documento só. O caro nunca foi imprimir — é que
+  **só existe na tela a seção ativa**: as outras `#secao-X` estão vazias até
+  alguém abri-las. O dossiê pinta cada etapa **de lado** e tira a **foto** do
+  `innerHTML` dela. A foto é inerte por construção (atribuir `innerHTML` não
+  carrega ouvinte), então a cópia não age e a tela viva fica intocada; e é o que
+  permite onze negócios no mesmo documento, já que as seções são elementos FIXOS
+  no shell. **Não** se montou uma tela que desenha o documento do zero: seria a
+  segunda cópia do desenho de cada análise, que é o que `RelatorioAnalise`
+  existe para evitar. Três coisas que a pintura de lado exige:
+  - **`App.modoDossie`** — bandeira lida por `QuizSala.armarRelogio`, para que a
+    pintura não arme relógio de polling que só se desarmaria na batida seguinte.
+  - **A vista é zerada e devolvida.** Filtros e recolhimentos moram na seção e
+    sobrevivem à repintura (`Diag.busca`, `Diag.filtroMovel`,
+    `SecaoProjetos.filtroStatus`, `projetosFechados`). Sem zerá-los, quem
+    tivesse "atrasado" no filtro de Projetos levaria ao Conselho um plano em que
+    só existem projetos atrasados — **e nada na folha diria que houve filtro**.
+    O `finally` devolve a vista de quem clicou, e o contexto do menu junto.
+  - **Os `id` saem da foto.** Ela duplicaria todo id da seção, e a partir daí um
+    `getElementById` poderia cair na cópia morta — defeito que só apareceria
+    depois, longe dali.
+  No papel, dentro de `.dossie-doc` a regra é a **geral** ("comando nenhum"),
+  com duas exceções declaradas que são conteúdo desenhado como botão: o par do
+  cruzamento e o "Virou ação ↗". A lista por atributo do `@media print` nomeia
+  as telas uma a uma e por isso fica atrás de cada tela nova; ali, onde tudo é
+  cópia inerte, a regra pode ser a larga. Ficam de fora do dossiê a Coleta
+  (mostra uma `situacao` por vez, sem visão "todas"), o Painel e o Hub (são do
+  ciclo, não do negócio) e o Relatório de Status (é o outro documento).
 - **Cabeçalho fixo das análises** (PESTEL, Porter, SWOT, Cenário): título, ano,
   "+ Novo" e o selo da sala moram num bloco só (`.cabecalho-analise`,
   `data-cabecalho-analise`) que fica **fixo abaixo da topbar** — o condutor
@@ -1500,7 +1530,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | Bateria | Cobre | Falha quando |
 |---|---|---|
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As 16 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
+| `sistema.js` | As 17 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 | `email.sh` | O envio por API de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |

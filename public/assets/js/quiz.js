@@ -761,6 +761,9 @@ const QuizSala = {
   armarRelogio(dono) {
     clearInterval(dono.relogioQuiz);
     dono.relogioQuiz = null;
+    // Pintura de lado, para o Dossiê: ninguém está olhando esta tela, e o
+    // relógio só existiria para descobrir isso na batida seguinte
+    if (App.modoDossie) return;
     if (!dono.quiz?.sessao) return;
     dono.relogioQuiz = setInterval(async () => {
       const el = document.getElementById(dono.secaoId);

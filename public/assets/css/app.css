@@ -2721,6 +2721,100 @@ body.menu-aberto .menu-lateral {
   }
 }
 
+/* ===== Dossiê do plano =====
+   A tela de montagem (escolher negócios, etapas e ano) e o documento montado.
+   O documento é uma sequência de FOTOS das seções — HTML copiado, sem ouvinte
+   nenhum —, e vive escondido na tela: o que ele é, é papel. */
+.dossie-caixa {
+  border: 1px solid #d9dee2;
+  border-radius: .5rem;
+  padding: .75rem;
+  height: 100%;
+  background: #fff;
+}
+.dossie-caixa-titulo {
+  font-weight: 600;
+  font-size: .875rem;
+  margin-bottom: .5rem;
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+}
+.dossie-caixa-titulo .btn-link { font-size: .8125rem; }
+.dossie-caixa-titulo .btn-link:first-of-type { margin-left: auto; }
+/* Duas colunas no computador, uma no celular: onze negócios em coluna única
+   empurravam o botão "Montar" para fora da primeira tela. */
+.dossie-lista {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .15rem .75rem;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+@media (min-width: 576px) {
+  .dossie-lista { grid-template-columns: 1fr 1fr; }
+}
+.dossie-item {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .15rem .1rem;
+  font-size: .9rem;
+  cursor: pointer;
+}
+.dossie-item input { flex: 0 0 auto; margin: 0; }
+.dossie-resumo { list-style: none; padding: 0; }
+.dossie-resumo li { margin-bottom: .1rem; }
+
+/* --- O documento montado ---
+   Comando nenhum vai para o papel. A lista por atributo do `@media print`
+   (`[data-editar]`, `[data-excluir]`, …) nomeia as telas uma a uma, e por isso
+   fica atrás de cada tela nova — foi o que aconteceu com os Cruzamentos. Aqui,
+   onde TUDO é cópia inerte, a regra pode ser a geral: nada que se clica.
+   O escopo é `.dossie-doc` de propósito: mudar a regra das outras telas para a
+   forma geral mexeria no papel de quem já o usa. */
+.dossie-doc button,
+.dossie-doc a.btn,
+.dossie-doc .dropdown,
+.dossie-doc input,
+.dossie-doc textarea,
+.dossie-doc .campo-busca-analise { display: none !important; }
+/* As duas exceções são CONTEÚDO desenhado como botão: o par do cruzamento (os
+   dois fatores que a estratégia liga) e o "Virou ação ↗" (estado, não gesto). */
+.dossie-doc .selo-cruz-fator { display: block !important; }
+.dossie-doc [data-ir-acao] {
+  display: inline-block !important;
+  background: none !important;
+  color: #06432a !important;
+  border: 1pt solid #adb5bd;
+}
+/* O `<select>` não some: ele é o ANO da análise, que é contexto do documento.
+   Vira texto, como o `@media print` já faz com o do cabeçalho — a caixa e a
+   setinha é que são comando. */
+.dossie-doc select {
+  border: 0 !important;
+  background-image: none !important;
+  padding: 0 !important;
+  width: auto !important;
+  font-size: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.dossie-capa { padding: 2rem 0 1rem; }
+.dossie-capa-marca {
+  font-size: .8rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #6c757d;
+}
+.dossie-capa-titulo { font-size: 2rem; color: var(--verde-escuro); margin: .3rem 0 .2rem; }
+.dossie-capa-sub { color: #6c757d; }
+.dossie-sumario { margin: 1.2rem 0 0 1.2rem; color: #212529; }
+.dossie-sumario li { margin-bottom: .15rem; }
+.dossie-capa-pe { margin-top: 1.5rem; font-size: .8rem; color: #6c757d; }
+.dossie-falha { color: #b3261e; font-style: italic; }
+
 @media print {
   /* ===== Impressão: o PDF do relatório =====
      O botão "PDF" chama a caixa de impressão do navegador — é ela que salva o
@@ -2968,6 +3062,25 @@ body.menu-aberto .menu-lateral {
   .coluna-categoria,
   .caixa-coluna,
   .corpo-coluna { break-inside: auto; page-break-inside: auto; }
+
+  /* --- Dossiê: onde cada peça começa ---
+     Etapa nova, folha nova. Sem isso a Cascata continuava no pé da página da
+     SWOT e ninguém achava onde uma acabava — que é justamente o trabalho que
+     este documento veio poupar de fazer com as folhas na mão.
+     A capa também abre a folha da primeira etapa (`break-after`), e as duas
+     quebras forçadas que se encontram ali valem por UMA: quebras forçadas
+     adjacentes não somam folha em branco. */
+  .dossie-etapa { break-before: page; page-break-before: always; }
+  .dossie-negocio + .dossie-negocio { break-before: page; page-break-before: always; }
+  .dossie-capa {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: page;
+    page-break-after: always;
+  }
+  /* A montagem é comando; o documento é o que sai. Na tela é o contrário — as
+     duas metades trocam de lugar aqui, e é a única regra que as separa. */
+  .dossie-montagem { display: none !important; }
 }
 
 /* Fase da estrela: as respostas em BLOCOS, um por lado da pergunta (escolhas

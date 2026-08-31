@@ -1,4 +1,4 @@
-// Bateria de sistema: percorre as 16 seções em desktop e celular e afirma que
+// Bateria de sistema: percorre as 17 seções em desktop e celular e afirma que
 // cada uma PINTA de verdade — não só que a casca do shell existe. Registra todo
 // erro de página e de console: um `pageerror` numa seção é falha, mesmo que a
 // tela pareça certa.
@@ -63,6 +63,7 @@ const SECOES = [
   { id: 'investimentos', nome: 'Investimentos', prova: '#secao-investimentos h1' },
   { id: 'metas', nome: 'Metas · Indicadores', prova: '#secao-metas h1' },
   { id: 'relatorio', nome: 'Relatório de Status', prova: '#secao-relatorio h1' },
+  { id: 'dossie', nome: 'Dossiê do plano', prova: '#secao-dossie [data-dossie-montar], #secao-dossie .alert' },
   { id: 'sala', nome: 'Sala · PIN e QR', prova: '#secao-sala h1' },
 ];
 
@@ -1855,6 +1856,145 @@ async function provasAcao(page, largura) {
   await page.evaluate((id) => App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 }), prj);
 }
 
+/**
+ * Dossiê do plano — as etapas em sequência, por negócio.
+ *
+ * Ele pinta as outras seções DE LADO para fotografá-las, e é isso que precisa
+ * de prova: pintar de lado mexe no contexto do aplicativo e nos filtros de cada
+ * seção, que moram no objeto dela e sobrevivem à repintura. Se algum ficar para
+ * trás, o defeito não aparece aqui — aparece na tela seguinte que a pessoa
+ * abrir, com o negócio errado ou com um filtro que ela não pôs.
+ *
+ * As três coisas que a prova mede, nesta ordem de importância:
+ *
+ *  1. o que a pessoa tinha na tela VOLTA (contexto, ano, filtros, recolhidos);
+ *  2. o filtro de quem clicou NÃO vai para o papel — o documento é o plano
+ *     inteiro, e um dossiê filtrado em silêncio é o pior resultado possível
+ *     numa prestação de contas;
+ *  3. a pintura de lado não arma relógio de polling nenhum (`App.modoDossie`).
+ */
+async function provasDossie(page) {
+  const l = '[desktop] Dossiê:';
+  await page.evaluate(() => {
+    window.__timers = 0;
+    const orig = window.setInterval;
+    window.setInterval = function (...a) { window.__timers += 1; return orig.apply(this, a); };
+  });
+  await page.evaluate(() => App.mostrarSecao('dossie'));
+  await esperar(page, "!!document.querySelector('#secao-dossie [data-dossie-montar]')", 15000);
+
+  // Sujeira de propósito, nos três lugares que guardam vista: a busca da SWOT,
+  // o filtro de Projetos e os projetos recolhidos.
+  const antes = await page.evaluate(() => {
+    Diag.busca.SWOT = 'zzz-nao-existe';
+    SecaoProjetos.filtroStatus = 'CONCLUIDO';
+    SecaoProjetos.projetosFechados = new Set([1, 2]);
+    return { ctx: JSON.stringify(App.contexto), ano: Diag.anoSelecionado, timers: window.__timers };
+  });
+
+  const doc = await page.evaluate(async () => {
+    const el = document.getElementById('secao-dossie');
+    const marcar = (nome, valores) => el.querySelectorAll(`[data-dossie-${nome}]`).forEach((c) => {
+      c.checked = valores.includes(c.value);
+      c.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    // Dois negócios, para provar a troca de contexto; duas etapas, para provar
+    // a quebra entre elas. Mais que isso é tempo de bateria sem prova nova.
+    const alvos = [...el.querySelectorAll('[data-dossie-alvo]')].map((c) => c.value).slice(0, 2);
+    marcar('alvo', alvos);
+    marcar('etapa', ['swot', 'cascata']);
+    el.querySelector('[data-dossie-montar]').click();
+    for (let i = 0; i < 400; i++) {
+      if (el.querySelector('[data-dossie-imprimir]')) break;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    const d = el.querySelector('[data-dossie-documento]');
+    const cards = d.querySelectorAll('[data-card-fator]');
+    return {
+      pronto: !!el.querySelector('[data-dossie-imprimir]'),
+      negocios: d.querySelectorAll('.dossie-negocio').length,
+      capas: d.querySelectorAll('.dossie-capa').length,
+      etapas: d.querySelectorAll('.dossie-etapa').length,
+      falhas: d.querySelectorAll('.dossie-falha').length,
+      ids: d.querySelectorAll('[id]').length,
+      cards: cards.length,
+      escondidos: [...cards].filter((c) => c.classList.contains('d-none')).length,
+    };
+  });
+  t(`${l} monta o documento`, doc.pronto);
+  t(`${l} um bloco e uma capa por negócio`, doc.negocios === 2 && doc.capas === 2,
+    `${doc.negocios} blocos, ${doc.capas} capas`);
+  t(`${l} negócios × etapas`, doc.etapas === 4, `${doc.etapas}`);
+  t(`${l} nenhuma etapa falhou`, doc.falhas === 0, `${doc.falhas}`);
+  // A foto duplicaria todo `id` da seção. A partir daí `getElementById` pode
+  // cair na cópia morta em vez do elemento vivo — defeito que só apareceria
+  // depois, longe daqui, e sem sintoma que aponte para o dossiê.
+  t(`${l} a foto não duplica id nenhum`, doc.ids === 0, `${doc.ids} ids`);
+  t(`${l} o filtro de quem clicou não filtrou o documento`,
+    doc.cards > 0 && doc.escondidos === 0, `${doc.cards} cartões, ${doc.escondidos} escondidos`);
+
+  const depois = await page.evaluate(() => ({
+    ctx: JSON.stringify(App.contexto),
+    modo: App.modoDossie,
+    busca: Diag.busca.SWOT,
+    ano: Diag.anoSelecionado,
+    projStatus: SecaoProjetos.filtroStatus,
+    projFechados: [...SecaoProjetos.projetosFechados].join(','),
+    timers: window.__timers,
+  }));
+  t(`${l} o contexto do menu volta`, depois.ctx === antes.ctx, `${antes.ctx} → ${depois.ctx}`);
+  t(`${l} o modo "só desenho" fica desligado`, depois.modo === false);
+  t(`${l} a busca da SWOT volta`, depois.busca === 'zzz-nao-existe', String(depois.busca));
+  t(`${l} o ano do diagnóstico volta`, depois.ano === antes.ano, `${antes.ano} → ${depois.ano}`);
+  t(`${l} o filtro de Projetos volta`, depois.projStatus === 'CONCLUIDO', String(depois.projStatus));
+  t(`${l} os projetos recolhidos voltam`, depois.projFechados === '1,2', depois.projFechados);
+  t(`${l} a pintura de lado não arma relógio`, depois.timers === antes.timers,
+    `${antes.timers} → ${depois.timers}`);
+
+  // No papel: a montagem é comando e sai; o documento entra; e comando nenhum
+  // sobra — com as DUAS exceções declaradas, que são conteúdo desenhado como
+  // botão (o par do cruzamento e o "Virou ação ↗").
+  await page.emulateMedia({ media: 'print' });
+  const papel = await page.evaluate(() => {
+    const el = document.getElementById('secao-dossie');
+    const d = el.querySelector('[data-dossie-documento]');
+    // Um filho de `display:none` devolve o display DELE em `getComputedStyle`,
+    // não "none": sem subir a árvore, tudo dentro de um bloco oculto contaria
+    // como visível.
+    const vis = (n) => {
+      if (!n) return false;
+      for (let p = n; p && p !== document.body; p = p.parentElement) {
+        if (getComputedStyle(p).display === 'none') return false;
+      }
+      return true;
+    };
+    const conteudo = (b) => b.classList.contains('selo-cruz-fator') || b.hasAttribute('data-ir-acao');
+    return {
+      montagem: vis(el.querySelector('.dossie-montagem')),
+      documento: vis(d),
+      capa: vis(d.querySelector('.dossie-capa')),
+      comandos: [...d.querySelectorAll('button')].filter((b) => vis(b) && !conteudo(b))
+        .map((b) => b.className).slice(0, 5),
+      quebra: getComputedStyle(d.querySelector('.dossie-etapa')).breakBefore,
+    };
+  });
+  await page.emulateMedia({ media: 'screen' });
+  t(`${l} a tela de montagem não vai ao papel`, !papel.montagem);
+  t(`${l} o documento e a capa vão`, papel.documento && papel.capa);
+  t(`${l} comando nenhum sobra no documento`, papel.comandos.length === 0,
+    JSON.stringify(papel.comandos));
+  t(`${l} cada etapa abre uma folha`, papel.quebra === 'page', papel.quebra);
+
+  // Devolve a vista limpa: a sujeira acima é desta prova, e as seguintes medem
+  // busca e filtro de verdade.
+  await page.evaluate(() => {
+    Diag.busca = {};
+    SecaoProjetos.filtroStatus = '';
+    SecaoProjetos.projetosFechados = new Set();
+    App.mostrarSecao('painel');
+  });
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -1879,6 +2019,10 @@ async function provasAcao(page, largura) {
   await provasGut(page);
   await provasExcluirUsuario(page);
   await provasFiltroResponsavel(page);
+  // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
+  // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
+  // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.
+  await provasDossie(page);
 
   const ctxM = await browser.newContext({
     viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true,
