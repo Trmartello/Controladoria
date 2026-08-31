@@ -21,7 +21,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   atraso até alguém abrir a seção, e os números mudavam sozinhos depois.
   `Fatores::exigirSemAcao` é a guarda **compartilhada** por `FatorController` e
   `ColetaController`: excluir um fator (ou a ideia que virou fator) apaga junto
-  o promovido à SWOT, e é ele que pode carregar o `desdobramento_id` — a guarda
+  o promovido à SWOT, e ele também pode carregar o `desdobramento_id` — a guarda
   confere `f.id IN (…) OR f.promovido_de_id IN (…)`, senão a ação ficava no
   plano sem origem nenhuma. Ela é uma casca sobre **`Fatores::acoesQuePrendem`**,
   que devolve `[fator => ação]` para uma lista inteira: é a MESMA consulta que
@@ -1002,7 +1002,8 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 
 - **Fila de "Aguardando plano de ação"**: o card de Projetos junta TRÊS origens
   — ideia da Coleta (`coleta_item.destino_tipo='ACAO'` com `destino_id` NULL),
-  **fator da SWOT** (`fator.acao_em` preenchido com `desdobramento_id` NULL) e
+  **fator do diagnóstico** (`fator.acao_em` preenchido com `desdobramento_id`
+  NULL — PESTEL, Porter **ou** SWOT) e
   **cruzamento (TOWS)**, com as mesmas três colunas do fator. O cruzamento vai
   **direto ao plano, sem passar pela cascata**: ele já é a estratégia que nasce
   do par, e a cascata decide outra coisa (em que horizonte cada driver aposta).
@@ -1011,9 +1012,22 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `coleta_item_id` **ou** `fator_id`, nunca os dois, e o
   `salvarDesdobramento` fecha o vínculo com a mesma guarda no WHERE (só o que
   ainda está na fila), para pedido repetido não sequestrar vínculo alheio.
-  Só a **SWOT** vai direto ao plano: PESTEL e Porter descrevem o ambiente e
-  passam antes pela promoção a um quadrante — sem isso pulariam a síntese que a
-  SWOT existe para fazer. `fator.desdobramento_id` tem FK **ON DELETE SET
+  **Qualquer etapa vai direto ao plano** — PESTEL, Porter e SWOT. Até 2026-08
+  só a SWOT podia, para não pular a síntese que ela existe para fazer; a regra
+  foi **revogada por decisão do cliente (2026-08-31)**, porque há fator do
+  PESTEL e do Porter que já nasce com dono e prazo (uma lei com data marcada,
+  um fornecedor que vai sair) e obrigá-lo a inventar um quadrante produzia SWOT
+  de fachada. A promoção continua existindo e continua sendo o caminho
+  recomendado quando o fator PRECISA de síntese — o que mudou é que ela deixou
+  de ser obrigatória. As três etapas são a **mesma tabela** e fecham pelo
+  **mesmo `fator_id`**; o que muda é só o CATÁLOGO do rótulo, lido num lugar só
+  (`SecaoProjetos.categoriaDoFator`, que conhece os quadrantes da SWOT e as
+  tuplas de `Diag.CATEGORIAS_ETAPA`). A fila devolve `origem = f.etapa`, e é
+  por isso que o selo escreve "PESTEL · Legal" sem um `if` por tela. O selo de
+  três estados (**→ Plano de ação · Aguardando ação · Virou ação ↗**) e os três
+  ouvintes dele vivem em `Diag.seloPlanoAcao` / `Diag.ligarPlanoAcao`, chamados
+  tanto por `carregarEtapa` (PESTEL/Porter) quanto pela SWOT.
+  `fator.desdobramento_id` tem FK **ON DELETE SET
   NULL**: apagada a ação, o fator volta sozinho para a fila. A ideia da Coleta
   não tem FK (o destino é polimórfico) e por isso `excluirDesdobramento` limpa
   o `destino_id` dela à mão — sem essa linha a ideia sumia da fila para sempre,

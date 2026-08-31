@@ -214,7 +214,8 @@ class FatorController
     }
 
     /**
-     * Fatores da SWOT encaminhados ao plano de ação e ainda sem ação criada.
+     * Fatores encaminhados ao plano de ação e ainda sem ação criada — de
+     * QUALQUER etapa (PESTEL, Porter ou SWOT).
      *
      * Espelha ColetaController::aguardandoAcao(): é a mesma fila, lida pela
      * mesma tela de Projetos, e por isso devolve as mesmas chaves que o card
@@ -224,12 +225,16 @@ class FatorController
     {
         $planId = (int)($_GET['planejamento_id'] ?? 0);
         Auth::exigirAcessoPlanejamento($planId);
+        // `origem` é a ETAPA, e não mais o literal 'SWOT': a fila passou a
+        // receber fator de qualquer análise, e é a etapa que decide o selo na
+        // tela de Projetos. O campo que fecha o vínculo continua sendo um só
+        // (`fator_id`), porque a linha é a mesma tabela.
         Json::ok(Database::todos(
-            "SELECT f.id, f.ano, f.categoria, f.descricao AS texto, f.acao_em,
-                    COALESCE(u.nome, 'Diagnóstico') AS autor, 'SWOT' AS origem
+            "SELECT f.id, f.ano, f.etapa, f.categoria, f.descricao AS texto, f.acao_em,
+                    COALESCE(u.nome, 'Diagnóstico') AS autor, f.etapa AS origem
              FROM fator f
              LEFT JOIN usuario u ON u.id = f.acao_por
-             WHERE f.planejamento_id = ? AND f.etapa = 'SWOT'
+             WHERE f.planejamento_id = ?
                AND f.acao_em IS NOT NULL AND f.desdobramento_id IS NULL
              ORDER BY f.acao_em, f.id",
             [$planId]
@@ -237,11 +242,24 @@ class FatorController
     }
 
     /**
-     * Marca (ou desmarca) um fator da SWOT como destino "Plano de ação".
+     * Marca (ou desmarca) um fator como destino "Plano de ação".
      *
-     * Só a SWOT: PESTEL e Porter descrevem o ambiente e o caminho deles para o
-     * plano é a promoção para um quadrante primeiro — deixar que virassem ação
-     * direto pularia a síntese que a SWOT existe para fazer.
+     * **Qualquer etapa — PESTEL, Porter ou SWOT.** Até aqui só a SWOT ia ao
+     * plano, e a razão era de método: PESTEL e Porter descrevem o ambiente, e
+     * obrigá-los a passar pela promoção a um quadrante forçava a síntese que a
+     * SWOT existe para fazer.
+     *
+     * **A regra foi revogada por decisão do cliente** (2026-08-31): na prática,
+     * há fator do PESTEL e do Porter que já nasce com dono e prazo — uma
+     * mudança de lei com data marcada, um fornecedor que vai sair —, e mandar
+     * inventar um quadrante só para poder agir produzia SWOT de fachada. A
+     * promoção continua existindo e continua sendo o caminho recomendado quando
+     * o fator PRECISA de síntese; o que mudou é que ela deixou de ser
+     * obrigatória.
+     *
+     * O que NÃO mudou: a ação órfã continua proibida. Um fator que virou ação
+     * segue travado para exclusão (`Fatores::acoesQuePrendem`), e desmarcar
+     * depois de a ação existir continua recusado logo abaixo.
      */
     public function planoAcao(int $id): void
     {
@@ -250,10 +268,6 @@ class FatorController
         Auth::exigirEdicaoPlanejamento($planId);
         $u = Auth::exigirLogin();
         $fator = $this->exigirFator($id, $planId);
-        if ($fator['etapa'] !== 'SWOT') {
-            Json::erro('Só um fator da SWOT vai direto para o plano de ação. '
-                . 'Promova-o para um quadrante primeiro.');
-        }
         // `marcar` ausente vale como true: o botão da tela só envia o false
         $marcar = !array_key_exists('marcar', $d) || (bool)$d['marcar'];
 
@@ -289,9 +303,10 @@ class FatorController
         $this->exigirFator($id, $planId);
         // A guarda olha o fator E os promovidos a partir dele: o DELETE logo
         // abaixo leva o promovido junto, e é ELE quem costuma carregar o
-        // vínculo com a ação (o PESTEL não vai direto ao plano — passa pela
-        // promoção à SWOT primeiro). Conferir só `$fator['desdobramento_id']`
-        // deixava passar justamente o caso mais comum.
+        // vínculo com a ação — mesmo agora que o PESTEL e o Porter também vão
+        // direto ao plano, a promoção à SWOT continua sendo o caminho mais
+        // andado. Conferir só `$fator['desdobramento_id']` deixava passar
+        // justamente o caso mais comum.
         Fatores::exigirSemAcao([$id], 'Este fator já virou uma ação no plano. '
             . 'Exclua a ação em Projetos antes de excluir o fator.');
         // Solta o vínculo da Coleta (deste fator e do promovido) antes de

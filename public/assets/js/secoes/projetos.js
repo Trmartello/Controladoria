@@ -61,6 +61,15 @@ const STATUS_INICIATIVA = {
   EM_ANDAMENTO: ['Em andamento', 'text-bg-primary'],
   CONCLUIDA: ['Concluída', 'text-bg-success'],
 };
+// Origens que vivem na tabela `fator` e por isso fecham o vínculo pelo MESMO
+// campo (`fator_id`). Até 2026-08 só a SWOT chegava aqui, porque só ela podia
+// encaminhar ao plano; com PESTEL e Porter indo direto (decisão do cliente,
+// ver `FatorController::planoAcao`), a fila passou a trazer as três etapas e o
+// que muda de uma para a outra é só o CATÁLOGO de categorias.
+const ORIGENS_FATOR = ['PESTEL', 'PORTER', 'SWOT'];
+// Nome da etapa como se escreve na tela: 'PORTER' é sigla de ninguém, é um
+// sobrenome. O selo e os títulos dos modais leem daqui.
+const ROTULOS_ETAPA = { PESTEL: 'PESTEL', PORTER: 'Porter', SWOT: 'SWOT' };
 
 const SecaoProjetos = {
   plan: null,
@@ -1332,9 +1341,44 @@ const SecaoProjetos = {
     return opcoes;
   },
 
+  /**
+   * Rótulo, nome da categoria e cor de um fator, seja ele de que etapa for.
+   *
+   * A fila do plano de ação recebe PESTEL, Porter e SWOT pela mesma porta, mas
+   * o vocabulário de cada um mora num lugar diferente: a SWOT tem quadrantes
+   * (`Diag.QUADRANTES`) e as outras duas têm categorias em tuplas
+   * (`Diag.CATEGORIAS_ETAPA`, no formato `[valor, rótulo, cor, dica]`). Ler os
+   * dois formatos aqui, e só aqui, evita que a fila e o modal de conversão
+   * repitam o `if (origem === 'SWOT')` cada um do seu jeito — foi assim que a
+   * Coleta acabou mostrando rótulos com outra caixa dos da seção.
+   *
+   * O fallback é o próprio valor cru: categoria desconhecida (etapa nova, dado
+   * antigo) aparece feia, mas aparece — sumir do selo seria pior.
+   */
+  rotuloEtapa(origem) {
+    return ROTULOS_ETAPA[origem] || origem || '';
+  },
+
+  categoriaDoFator(origem, categoria) {
+    if (origem === 'SWOT') {
+      return { rotulo: Diag.QUADRANTES[categoria] || categoria || 'SWOT',
+        cor: Diag.CORES_QUADRANTE[categoria] || '#007a45' };
+    }
+    const achado = (Diag.CATEGORIAS_ETAPA[origem] || []).find(([v]) => v === categoria);
+    return { rotulo: achado ? achado[1] : (categoria || ''), cor: achado ? achado[2] : '#5a3e2b' };
+  },
+
+  rotuloCategoria(origem, categoria) {
+    return this.categoriaDoFator(origem, categoria).rotulo;
+  },
+
+  corCategoria(origem, categoria) {
+    return this.categoriaDoFator(origem, categoria).cor;
+  },
+
   // Pendências encaminhadas ao plano de ação e ainda sem ação criada: ideias da
-  // coleta, fatores da SWOT e cruzamentos (TOWS), na mesma fila. O selo diz de
-  // onde cada uma veio.
+  // coleta, fatores do PESTEL/Porter/SWOT e cruzamentos (TOWS), na mesma fila.
+  // O selo diz de onde cada uma veio.
   cartaoIdeiasAcao(pendentes) {
     if (!pendentes || !pendentes.length) return '';
     const podeConverter = App.podeEditar();
@@ -1347,10 +1391,13 @@ const SecaoProjetos = {
         return `<span class="badge text-bg-light border" title="Cruzamento da SWOT · ${
           Modal.esc(b?.rotulo || p.categoria)}">TOWS · ${Modal.esc(b?.verbo || p.categoria)}</span>`;
       }
-      if (p.origem === 'SWOT') {
-        return `<span class="badge text-bg-light border" title="Fator da SWOT · ${Modal.esc(
-          Diag.QUADRANTES[p.categoria] || p.categoria)}">SWOT · ${Modal.esc(
-          Diag.QUADRANTES[p.categoria] || p.categoria)}</span>`;
+      // PESTEL, Porter e SWOT são a mesma tabela e o mesmo campo de vínculo; o
+      // que muda é o rótulo da categoria, que vive num catálogo por etapa.
+      if (ORIGENS_FATOR.includes(p.origem)) {
+        const cat = SecaoProjetos.rotuloCategoria(p.origem, p.categoria);
+        const etapa = SecaoProjetos.rotuloEtapa(p.origem);
+        return `<span class="badge text-bg-light border" title="Fator do ${Modal.esc(etapa)} · ${
+          Modal.esc(cat)}">${Modal.esc(etapa)} · ${Modal.esc(cat)}</span>`;
       }
       return `<span class="badge text-bg-light border">Coleta · ${Modal.esc(p.autor)}</span>`;
     };
@@ -1389,11 +1436,13 @@ const SecaoProjetos = {
   // guardando o vínculo com a origem — a ideia da coleta ou o fator da SWOT.
   modalConverterAcao(ideia) {
     if (!ideia) return;
-    const daSwot = ideia.origem === 'SWOT';
+    // O vínculo é por TABELA, não por análise: PESTEL, Porter e SWOT são todos
+    // `fator`, e fecham pelo mesmo `fator_id`.
+    const deFator = ORIGENS_FATOR.includes(ideia.origem);
     const doCruzamento = ideia.origem === 'TOWS';
     // O campo que fecha o vínculo, um por origem. Mandar mais de um faria o
     // servidor fechar um vínculo que ninguém pediu.
-    const campoOrigem = doCruzamento ? 'cruzamento_id' : (daSwot ? 'fator_id' : 'coleta_item_id');
+    const campoOrigem = doCruzamento ? 'cruzamento_id' : (deFator ? 'fator_id' : 'coleta_item_id');
     const blocoCruz = doCruzamento ? SecaoCruzamentos.bloco(ideia.categoria) : null;
     const projetos = this.projetos || [];
     const comIniciativas = projetos.filter((p) => (p.iniciativas || []).length);
@@ -1438,7 +1487,8 @@ const SecaoProjetos = {
     const nomeIdeia = ideia.texto_tratado || ideia.texto;
     Modal.abrir({
       titulo: doCruzamento ? 'Transformar cruzamento em ação'
-        : (daSwot ? 'Transformar fator da SWOT em ação' : 'Transformar ideia em ação'),
+        : (deFator ? `Transformar fator do ${SecaoProjetos.rotuloEtapa(ideia.origem)} em ação`
+          : 'Transformar ideia em ação'),
       url: '/api/desdobramentos',
       valores: {
         planejamento_id: this.plan.id,
@@ -1461,7 +1511,7 @@ const SecaoProjetos = {
         { nome: campoOrigem, rotulo: '', tipo: 'hidden' },
         { nome: 'ideia',
           rotulo: doCruzamento ? 'Cruzamento da SWOT'
-            : (daSwot ? 'Fator da SWOT' : 'Ideia da coleta'),
+            : (deFator ? `Fator do ${SecaoProjetos.rotuloEtapa(ideia.origem)}` : 'Ideia da coleta'),
           tipo: 'info',
           // No cruzamento o texto é a ESTRATÉGIA e o rótulo do par vai na barra:
           // é a estratégia que descreve o que fazer, e é dela que sai o "o quê".
@@ -1469,13 +1519,13 @@ const SecaoProjetos = {
           barra: doCruzamento
             ? { cor: blocoCruz?.cor || '#007a45',
                 titulo: `${blocoCruz?.verbo || 'cruzamento'} — ${ideia.rotulo || ''}` }
-            : (daSwot
-              ? { cor: Diag.CORES_QUADRANTE[ideia.categoria] || '#007a45',
-                  titulo: Diag.QUADRANTES[ideia.categoria] || 'SWOT' }
+            : (deFator
+              ? { cor: SecaoProjetos.corCategoria(ideia.origem, ideia.categoria),
+                  titulo: SecaoProjetos.rotuloCategoria(ideia.origem, ideia.categoria) }
               : { cor: '#5a3e2b', titulo: ideia.autor }) },
         { nome: 'destino',
           rotulo: doCruzamento ? 'Onde este cruzamento vira ação?'
-            : (daSwot ? 'Onde este fator vira ação?' : 'Onde esta ideia vira ação?'),
+            : (deFator ? 'Onde este fator vira ação?' : 'Onde esta ideia vira ação?'),
           tipo: 'botoes', opcoes: destinos,
           ajuda: 'A ação sempre entra numa iniciativa, e toda iniciativa vive dentro de um projeto.' },
         { nome: 'iniciativa_alvo', rotulo: 'Em qual iniciativa?', tipo: 'select',

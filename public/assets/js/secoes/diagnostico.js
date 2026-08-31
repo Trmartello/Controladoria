@@ -542,6 +542,40 @@ const Diag = {
    * ação, e desfazer aqui a deixaria no plano sem nenhuma origem. O servidor
    * recusa do mesmo jeito — este é o aviso antes da recusa, não no lugar dela.
    */
+  /**
+   * Liga os três estados do selo do plano de ação, numa tela qualquer do
+   * diagnóstico.
+   *
+   * Vive aqui, e não em cada seção, porque PESTEL, Porter e SWOT passaram a
+   * usar o MESMO caminho: com o gesto duplicado em duas telas, o "tirar da
+   * fila" ganharia confirmação numa e não na outra na primeira revisão.
+   *
+   * O "Virou ação ↗" é ligado ANTES da saída por `podeEditar`: o caminho de
+   * volta até a ação é leitura, não edição — quem só acompanha o plano também
+   * precisa dele.
+   */
+  ligarPlanoAcao(el, planId) {
+    el.querySelectorAll('[data-ir-acao]').forEach((b) => b.addEventListener('click', () => {
+      SecaoProjetos.destacarAcao = b.dataset.irAcao;
+      App.mostrarSecao('projetos');
+    }));
+    if (!App.podeEditar()) return;
+    const encaminhar = async (id, marcar) => {
+      try {
+        await App.api(`/api/fatores/${id}/plano-acao`, { planejamento_id: planId, marcar });
+        App.recarregarSecaoAtiva();
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+    el.querySelectorAll('[data-plano-acao]').forEach((b) => b.addEventListener('click', () =>
+      encaminhar(b.dataset.planoAcao, true)));
+    el.querySelectorAll('[data-tirar-acao]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Tirar este fator da fila do plano de ação?')) return;
+      encaminhar(b.dataset.tirarAcao, false);
+    }));
+  },
+
   seloPlanoAcao(f) {
     if (f.desdobramento_id) {
       return `<button type="button" class="badge selo-link text-bg-success" data-ir-acao="${f.desdobramento_id}"
@@ -598,8 +632,12 @@ const Diag = {
              data-cat-swot="${f.promovido_categoria}" title="Abrir este fator na análise SWOT">Ver na SWOT ↗</button>`
         : `<button class="btn btn-sm btn-outline-success" data-promover="${f.id}" title="Promover para a SWOT">→ SWOT</button>`;
     }
+    // O caminho para o plano vale em TODA análise, não só na SWOT: o mesmo
+    // selo de três estados (encaminhar · aguardando · virou ação) que a SWOT
+    // usa. Ele vem depois do botão da promoção porque os dois convivem — a
+    // promoção continua sendo o caminho de quem quer a síntese antes de agir.
     return `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
-      ${selos}${swot}
+      ${selos}${swot}${this.seloPlanoAcao(f)}
       <span class="ms-auto d-flex gap-1">
         <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
         ${this.botaoExcluirFator(f)}
@@ -876,6 +914,10 @@ const Diag = {
     // de categoria do celular ajustado para o quadrante dele
     el.querySelectorAll('[data-ir-swot]').forEach((b) => b.addEventListener('click', () =>
       this.irParaFator('swot', b.dataset.irSwot, 'SWOT', b.dataset.catSwot)));
+
+    // PESTEL e Porter agora vão DIRETO ao plano de ação, sem passar pela
+    // promoção à SWOT — o mesmo selo e o mesmo gesto da SWOT.
+    this.ligarPlanoAcao(el, plan.id);
 
     // Botão da SWOT (promover ou trocar categoria): abre a matriz 2×2 embaixo
     // do próprio card, sem modal — um toque no quadrante já aplica a escolha
@@ -1436,31 +1478,14 @@ const SecaoSwot = {
     }));
     el.querySelectorAll('[data-ir-gut]').forEach((b) => b.addEventListener('click', () =>
       Diag.irParaFator('gut', b.dataset.irGut)));
-    // O selo "Virou ação" existe também para quem só lê, e por isso este
-    // listener fica ANTES da saída por podeEditar()
-    el.querySelectorAll('[data-ir-acao]').forEach((b) => b.addEventListener('click', () => {
-      SecaoProjetos.destacarAcao = b.dataset.irAcao;
-      App.mostrarSecao('projetos');
-    }));
+    // Os três estados do selo do plano — o mesmo helper que PESTEL e Porter
+    // usam. Ele já trata o "Virou ação ↗" antes da saída por `podeEditar`.
+    Diag.ligarPlanoAcao(el, plan.id);
 
     if (!App.podeEditar()) {
       QuizSala.ligarSelo(el);
       return;
     }
-    const encaminharAcao = async (id, marcar) => {
-      try {
-        await App.api(`/api/fatores/${id}/plano-acao`, { planejamento_id: plan.id, marcar });
-        App.recarregarSecaoAtiva();
-      } catch (e) {
-        alert(e.message);
-      }
-    };
-    el.querySelectorAll('[data-plano-acao]').forEach((b) => b.addEventListener('click', () =>
-      encaminharAcao(b.dataset.planoAcao, true)));
-    el.querySelectorAll('[data-tirar-acao]').forEach((b) => b.addEventListener('click', () => {
-      if (!confirm('Tirar este fator da fila do plano de ação?')) return;
-      encaminharAcao(b.dataset.tirarAcao, false);
-    }));
     const modalFator = (f = null, categoria = null, sugestao = null) => Modal.abrir({
       titulo: sugestao ? `Aceitar sugestão da sala · ${ano}`
         : f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,

@@ -2296,6 +2296,109 @@ async function provasExclusaoComVinculo(page) {
   }, massa);
 }
 
+/**
+ * PESTEL e Porter indo DIRETO ao plano de ação.
+ *
+ * Até 2026-08 o servidor recusava com "só fatores da SWOT vão ao plano de
+ * ação", e a fila só sabia dizer `origem: 'SWOT'`. A regra caiu por decisão do
+ * cliente, e o que precisa ficar provado é a corrente inteira: o encaminhamento
+ * é aceito, a fila declara a ETAPA (para o selo saber o rótulo), a ação criada
+ * FECHA o vínculo pelo mesmo `fator_id` — e as duas recusas que não mudaram
+ * (desmarcar e excluir depois da ação) continuam de pé.
+ *
+ * O fechamento do vínculo é o ponto que mais importa: era ele que o filtro
+ * `etapa = 'SWOT'` do ProjetoController deixava passar em silêncio. Sem ele o
+ * fator ficaria "aguardando ação" para sempre numa fila da qual já saiu.
+ */
+async function provasPlanoDiretoAnalise(page) {
+  const l = '[desktop] Plano de ação direto:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const pestel = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+      categoria: 'LEGAL', descricao: 'Fator PESTEL de prova (direto)', ano });
+    const porter = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PORTER',
+      categoria: 'SUBSTITUTOS', descricao: 'Fator Porter de prova (direto)', ano });
+    // Sem promoção à SWOT no meio: é exatamente isso que se quer provar.
+    const ida = await App.api(`/api/fatores/${pestel.id}/plano-acao`,
+      { planejamento_id: plan.id, marcar: true }).then(() => true).catch((e) => e.message);
+    await App.api(`/api/fatores/${porter.id}/plano-acao`, { planejamento_id: plan.id, marcar: true });
+    return { plan: plan.id, ano, pestel: pestel.id, porter: porter.id, ida };
+  });
+  t(`${l} o PESTEL é aceito no plano sem passar pela SWOT`, massa.ida === true, String(massa.ida));
+
+  const fila = await page.evaluate(async (m) => {
+    const linhas = await App.api(`/api/fatores/aguardando-acao?planejamento_id=${m.plan}`);
+    const acha = (id) => linhas.find((x) => x.id == id) || {};
+    return { pestel: acha(m.pestel).origem, porter: acha(m.porter).origem };
+  }, massa);
+  t(`${l} a fila declara a etapa, não o literal SWOT`,
+    fila.pestel === 'PESTEL' && fila.porter === 'PORTER', JSON.stringify(fila));
+
+  // O selo do card lê o catálogo da etapa: PESTEL/Porter têm categorias em
+  // tuplas e a SWOT tem quadrantes. Um `if` a mais em cada tela era o caminho
+  // para os rótulos divergirem, como já aconteceu com a Coleta.
+  const selos = await page.evaluate(() => ({
+    pestel: SecaoProjetos.rotuloCategoria('PESTEL', 'LEGAL'),
+    porter: SecaoProjetos.rotuloCategoria('PORTER', 'PODER_CLIENTES'),
+    swot: SecaoProjetos.rotuloCategoria('SWOT', 'AMEACA'),
+    etapa: SecaoProjetos.rotuloEtapa('PORTER'),
+    cor: SecaoProjetos.corCategoria('SWOT', 'FORCA'),
+  }));
+  t(`${l} o rótulo da categoria sai do catálogo de cada etapa`,
+    selos.pestel === 'Legal' && selos.porter === 'Poder dos Clientes' && selos.swot === 'Ameaça',
+    JSON.stringify(selos));
+  t(`${l} Porter é sobrenome, não sigla, e a cor acompanha`,
+    selos.etapa === 'Porter' && selos.cor === '#007a45', JSON.stringify(selos));
+
+  // O botão do card do PESTEL — é a porta pela qual o usuário passa.
+  await page.evaluate(() => App.mostrarSecao('pestel'));
+  await esperar(page,
+    `!!document.querySelector('#secao-pestel [data-card-fator="${massa.pestel}"]')`, 15000);
+  const botao = await page.evaluate((id) => {
+    const card = document.querySelector(`#secao-pestel [data-card-fator="${id}"]`);
+    return card ? !!card.querySelector('[data-tirar-acao]') : null;
+  }, massa.pestel);
+  t(`${l} o card do PESTEL mostra o selo "Aguardando ação"`, botao === true, String(botao));
+
+  // A ação criada fecha o vínculo — o filtro por etapa saiu do ProjetoController.
+  const vinculo = await page.evaluate(async (m) => {
+    const prj = await App.api('/api/projetos', { planejamento_id: m.plan, tipo: 'ESTRATEGICO',
+      titulo: 'Projeto de prova (direto)', ano: 2027, responsavel: 'QA' });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: m.plan, projeto_id: prj.id, iniciativa_nova: 'Frente de prova (direto)',
+      o_que: 'Ação de prova (direto)', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31', fator_id: m.pestel,
+    });
+    const lista = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=PESTEL&ano=${m.ano}`);
+    const f = lista.find((x) => x.id == m.pestel) || {};
+    const fila = await App.api(`/api/fatores/aguardando-acao?planejamento_id=${m.plan}`);
+    const desmarcar = await App.api(`/api/fatores/${m.pestel}/plano-acao`,
+      { planejamento_id: m.plan, marcar: false }).then(() => 'passou').catch((e) => e.message);
+    const excluir = await App.api(`/api/fatores/${m.pestel}/excluir`,
+      { planejamento_id: m.plan }).then(() => 'passou').catch((e) => e.message);
+    return { prj: prj.id, ligou: f.desdobramento_id, titulo: f.acao_titulo, trava: f.acao_trava,
+      naFila: fila.some((x) => x.id == m.pestel), desmarcar, excluir };
+  }, massa);
+  t(`${l} a ação fecha o vínculo do fator do PESTEL`,
+    !!vinculo.ligou && vinculo.titulo === 'Ação de prova (direto)', JSON.stringify(vinculo));
+  t(`${l} e ele sai da fila de aguardando`, vinculo.naFila === false, String(vinculo.naFila));
+  t(`${l} desmarcar depois da ação continua recusado`,
+    /já virou uma ação/.test(vinculo.desmarcar), vinculo.desmarcar);
+  t(`${l} excluir o fator preso continua recusado, dizendo a ação`,
+    /Ação de prova \(direto\)/.test(vinculo.excluir), vinculo.excluir);
+
+  await page.evaluate(async (m) => {
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    for (const id of [m.pestel, m.porter]) {
+      await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    }
+    App.mostrarSecao('painel');
+  }, { ...massa, prj: vinculo.prj });
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -2322,6 +2425,7 @@ async function provasExclusaoComVinculo(page) {
   await provasFiltroResponsavel(page);
   await provasMatrizExecucao(page);
   await provasExclusaoComVinculo(page);
+  await provasPlanoDiretoAnalise(page);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.

@@ -1228,6 +1228,110 @@ escolha some, a medida fica.
 
 ---
 
+## 9. Levar qualquer item ao plano de ação (e mover entre análises)
+
+### Veredito: **CONSTRUIR** (esforço P por fatia) — **fatia A ENTREGUE**
+
+O pedido do cliente: *"poder levar qualquer item do Porter, PESTEL, análise de
+cenário para o plano de ação, ou até mesmo mover o item para outra análise"*.
+São **três coisas diferentes** num pedido só, e a ordem importa porque a segunda
+depende da primeira ter fixado o vocabulário.
+
+| Fatia | O quê | Estado |
+|---|---|---|
+| **A** | PESTEL e Porter vão **direto** ao plano de ação | **ENTREGUE** |
+| **B** | Item da **Análise de Cenário** vai ao plano de ação | a fazer |
+| **C** | **Mover** um item de uma análise para outra | a fazer |
+
+### Fatia A — a regra de método que caiu
+
+Até 2026-08 o servidor recusava com *"só fatores da SWOT vão ao plano de ação"*,
+e a razão era boa: PESTEL e Porter **descrevem o ambiente**, e obrigá-los a
+passar pela promoção a um quadrante forçava a síntese que a SWOT existe para
+fazer. Agir sobre um item do PESTEL sem dizer se ele é oportunidade ou ameaça é
+agir sem ter lido o próprio diagnóstico.
+
+**A regra foi revogada por decisão do cliente (2026-08-31.)** O argumento de
+quem usa: há fator do PESTEL e do Porter que **já nasce com dono e prazo** — uma
+mudança de lei com data marcada, um fornecedor que avisou que vai sair — e
+mandar inventar um quadrante só para poder agir produzia **SWOT de fachada**,
+quadrantes preenchidos por obrigação processual, que sujam a análise em vez de
+enriquecê-la. Entre uma SWOT honesta e menor e uma SWOT completa e falsa, a
+primeira é melhor.
+
+**O que a revogação NÃO tocou**, e isso é o que impede a mudança de virar
+regressão:
+
+- A **promoção continua existindo** e continua sendo o caminho recomendado
+  quando o fator precisa de síntese. Ela deixou de ser obrigatória, não de ser
+  a boa prática.
+- A **ação órfã continua proibida**. Um fator que virou ação segue travado para
+  exclusão (`Fatores::acoesQuePrendem`), e desmarcar o encaminhamento depois de
+  a ação existir continua recusado. Foi tentador tratar isso como parte da
+  mesma regra — não é: uma é de método, a outra é de integridade.
+
+### Como ficou
+
+**Um lugar só decide o rótulo.** As três etapas são a **mesma tabela** e fecham
+o vínculo pelo **mesmo campo** (`fator_id`); o que muda é o catálogo do nome da
+categoria — a SWOT tem quadrantes (`Diag.QUADRANTES`), PESTEL e Porter têm
+tuplas (`Diag.CATEGORIAS_ETAPA`). Ler os dois formatos ficou em
+`SecaoProjetos.categoriaDoFator`, e a fila e o modal de conversão só perguntam.
+Espalhar um `if (origem === 'SWOT')` por tela é exatamente como a Coleta acabou
+mostrando rótulos com outra caixa dos que a seção mostrava.
+
+**A fila passou a declarar a etapa.** `FatorController::aguardandoAcao` devolve
+`origem = f.etapa` em vez do literal `'SWOT'`, e o selo escreve "PESTEL · Legal"
+sem saber de nada.
+
+**O defeito que quase passou em silêncio** foi o terceiro lugar, não os dois
+óbvios. Tirar a recusa do `planoAcao` e generalizar a fila deixava o fator
+aparecer, ser encaminhado e virar ação — mas o `ProjetoController` fechava o
+vínculo com um `AND etapa = 'SWOT'` no WHERE. A ação nascia **sem fechar o
+vínculo**: o fator ficava "aguardando" para sempre numa fila da qual já tinha
+saído, e o "Virou ação ↗" apontava para lugar nenhum. Sem erro, sem vermelho.
+
+**O selo é um só, em duas telas.** `Diag.seloPlanoAcao` (três estados: →
+Plano de ação · Aguardando ação · Virou ação ↗) e `Diag.ligarPlanoAcao` (os três
+ouvintes) passaram a ser chamados tanto por `carregarEtapa` (PESTEL/Porter)
+quanto pela SWOT, que antes tinha a sua cópia.
+
+A bateria prova a corrente inteira (`provasPlanoDiretoAnalise`), incluindo as
+duas recusas que **não** mudaram — porque num tema cuja entrega é "tirar uma
+guarda", o que precisa de prova é o que continuou de pé.
+
+### Fatia B — o item de cenário (a fazer)
+
+O cenário **não é fator**: `cenario_item` é outra tabela e não tem `acao_em`,
+`acao_por` nem `desdobramento_id`. Precisa das três colunas (via `garantirColuna`
+no `migrate.php`, como as outras evoluções de esquema), de `planoAcao` +
+`aguardandoAcao` no `CenarioController`, das rotas, do `cenario_item_id` como
+quarto campo de vínculo no `salvarDesdobramento` e da guarda de exclusão. É o
+mesmo desenho, **não o mesmo código** — e é justamente por isso que a fatia A
+veio antes: ela fixou o vocabulário que a B vai copiar.
+
+### Fatia C — mover entre análises (a fazer)
+
+A parte com mais armadilha do pedido. Mover um fator de PESTEL para Porter (ou
+para a SWOT) troca a **etapa** e obriga a **remapear a categoria** — as listas
+não se correspondem. E o item pode já estar preso: avaliado na GUT, citado num
+cruzamento, promovido, ou já virado ação. Cada um desses é uma decisão de
+produto, não de código:
+
+- **GUT**: a nota acompanha? (a GUT é da SWOT; um fator que sai da SWOT levaria
+  a nota para uma tela onde ela não existe)
+- **Cruzamento**: um par que cita o fator como "interno" continua válido se ele
+  virar externo?
+- **Promoção**: mover a ORIGEM de um promovido move o promovido junto?
+- **Ação**: mover um fator que já virou ação muda a origem da ação no relatório.
+
+Enquanto essas quatro não estiverem respondidas, o certo é **recusar** o
+movimento nesses casos com uma mensagem que diga o que desfazer primeiro — o
+mesmo padrão do tema 8. Mover um item limpo é fácil; mover um item amarrado é o
+tema inteiro.
+
+---
+
 ## Ordem de implementação recomendada
 
 O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro**, e
@@ -1341,6 +1445,9 @@ discutir a dependência, não o quadrante.
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 1 (trava: decisão 1) |
 | 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 2 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 9b | Item da Análise de Cenário ao plano de ação | Construir | P | 3 (copia o desenho de 9a) |
+| 9c | Mover um item de uma análise para outra | Construir | P–M | 4 (trava: decisões 13 a 15) |
+| 9a | PESTEL e Porter **direto** ao plano de ação | **Entregue** | P | ✔ (decisão do cliente) |
 | 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | **Entregue** | P | ✔ |
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | **Entregue** | P | ✔ |
 | 7 | **Dossiê do plano: as abas em sequência, por negócio** | **Entregue** | M | ✔ (urgente, antecipado) |
@@ -1420,3 +1527,19 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
 11. ~~As três perguntas dos Cruzamentos da SWOT~~ (carga inicial dos 12, nome da
    seção no menu, conduzir em oficina) — **respondidas** e registradas no §9 de
    `docs/CRUZAMENTOS-SWOT.md`: sem carga, menu "Cruzamentos", sala adiada.
+12. ~~PESTEL e Porter vão ao plano de ação pela SWOT ou direto?~~ **Respondida
+   pelo cliente (2026-08-31): direto.** Registrada no tema 9, fatia A, com o que
+   a revogação não tocou. A promoção continua sendo a recomendação de método —
+   deixou de ser obrigação do sistema.
+13. **Mover um fator entre etapas: o que acontece com a nota da GUT?** A GUT é da
+   SWOT. Um fator que sai da SWOT leva a nota para uma tela onde ela não existe,
+   ou a nota se perde? (trava a fatia 9c)
+14. **Mover um fator citado num cruzamento: o par sobrevive?** Um cruzamento
+   escolhe um fator INTERNO e um EXTERNO; mover o fator pode inverter o lado e
+   deixar o par sem sentido. Apagar o cruzamento, recusar o movimento, ou deixar
+   o par inválido visível para alguém decidir? (trava a fatia 9c)
+15. **Mover a ORIGEM de um fator promovido move o promovido junto?** E mover um
+   fator que **já virou ação** — a origem da ação muda no relatório, ou o
+   movimento é recusado? A proposta é recusar os dois enquanto 13 e 14 não
+   estiverem respondidas: mover item limpo é fácil, mover item amarrado é o
+   tema inteiro. (trava a fatia 9c)

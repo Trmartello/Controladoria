@@ -501,15 +501,20 @@ class ProjetoController
             // Ação criada a partir de uma ideia da coleta ("Plano de ação"):
             // fecha o vínculo para a ideia deixar de ficar pendente e apontar
             // para o desdobramento que nasceu dela
-            // Fator da SWOT encaminhado ao plano: mesmo fechamento de vínculo,
-            // e a mesma guarda no WHERE — só fecha o que estava mesmo na fila,
-            // para um pedido repetido não sequestrar o vínculo de outra ação.
+            // Fator encaminhado ao plano: mesmo fechamento de vínculo, e a
+            // mesma guarda no WHERE — só fecha o que estava mesmo na fila, para
+            // um pedido repetido não sequestrar o vínculo de outra ação.
+            // Sem filtro de ETAPA: PESTEL e Porter passaram a ir direto ao
+            // plano (ver `FatorController::planoAcao`), e manter `etapa =
+            // 'SWOT'` aqui deixaria a ação criada sem fechar o vínculo — o
+            // fator ficaria eternamente "aguardando" numa fila que ele já
+            // saiu, e o caminho de volta apontaria para lugar nenhum.
             $fatorId = (int)($d['fator_id'] ?? 0);
             if ($fatorId) {
                 Database::executar(
-                    "UPDATE fator SET desdobramento_id = ?
-                     WHERE id = ? AND planejamento_id = ? AND etapa = 'SWOT'
-                       AND acao_em IS NOT NULL AND desdobramento_id IS NULL",
+                    'UPDATE fator SET desdobramento_id = ?
+                     WHERE id = ? AND planejamento_id = ?
+                       AND acao_em IS NOT NULL AND desdobramento_id IS NULL',
                     [$id, $fatorId, $planId]
                 );
             }
