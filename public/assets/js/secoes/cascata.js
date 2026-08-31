@@ -28,6 +28,111 @@ const SecaoCascata = {
   // a marca de um segundo condutor (que chega pelo polling) sumir da tela.
   usoQuiz: {},
 
+  /**
+   * Uma cor por horizonte, para o relatório separar as fases de relance. A
+   * matriz da tela não precisa disso — ali o horizonte é a COLUNA, e a posição
+   * já diz qual é. No documento as fases viram seções empilhadas, e sem cor
+   * nenhuma três blocos iguais se leem como um só.
+   */
+  CORES_HORIZONTE: ['#007a45', '#2c7fb8', '#b08d4f', '#8f3b3b'],
+
+  /**
+   * O que já foi PREENCHIDO, agrupado por horizonte — a matéria-prima do
+   * relatório nos dois formatos (o `.doc` e o papel).
+   *
+   * Célula vazia não entra. O pedido é o relatório do que já foi decidido, e uma
+   * lista de "— definir síntese —" no meio das decisões esconderia justamente o
+   * que existe. Quanto FALTA já está dito nos dois contadores do cabeçalho, que
+   * vão no contexto do documento.
+   *
+   * Lê `this.dados` a cada chamada, nunca uma cópia: numa oficina a matriz muda
+   * embaixo da tela a cada batida do polling, e um relatório montado na pintura
+   * sairia com o texto de dez minutos atrás.
+   */
+  relatorioSecoes() {
+    const { horizontes, drivers, eixos, escolhas } = this.dados || {};
+    if (!horizontes) return [];
+    return horizontes.map((h, i) => {
+      const itens = [];
+      drivers.forEach((d) => {
+        const daCelula = (eixoId) => escolhas.find((e) =>
+          e.driver_id == d.id && e.horizonte_id == h.id
+          && (eixoId ? e.eixo_id == eixoId : !e.eixo_id));
+        // A síntese primeiro, as aberturas depois — a ordem em que a célula é
+        // lida na tela, e a ordem em que a decisão foi tomada.
+        [{ rotulo: 'Síntese da célula', registro: daCelula(null) },
+          ...eixos.map((x) => ({ rotulo: `Eixo · ${x.nome}`, registro: daCelula(x.id) }))]
+          .filter((p) => p.registro && String(p.registro.escolha || '').trim())
+          .forEach((p) => itens.push({ driver: d.nome, rotulo: p.rotulo, registro: p.registro }));
+      });
+      return { horizonte: h, cor: this.CORES_HORIZONTE[i % this.CORES_HORIZONTE.length], itens };
+    }).filter((s) => s.itens.length);
+  },
+
+  /**
+   * As notas de uma escolha: a renúncia e as evidências da SWOT que a
+   * fundamentam. A renúncia é o que esta análise tem de próprio — uma escolha
+   * publicada sem ela é só uma intenção — e por isso vai no documento mesmo
+   * quando o cartão da tela a mostra recolhida.
+   */
+  notasEscolha(reg) {
+    const n = [];
+    if (String(reg.renuncia || '').trim()) n.push(`Renúncia: ${reg.renuncia}`);
+    const fatores = (reg.fatores || []).map((f) =>
+      `${Diag.QUADRANTES[f.categoria] || f.categoria}: ${f.descricao}${
+        f.score ? ` (GUT ${f.score})` : ''}`);
+    if (fatores.length) n.push(`Fundamenta (SWOT): ${fatores.join('; ')}`);
+    return n;
+  },
+
+  /**
+   * O documento no PAPEL — a outra metade do botão "Relatório", já que o PDF é
+   * a impressão da própria tela.
+   *
+   * Ele existe porque a tela NÃO serve de documento aqui: a matriz mostra só as
+   * sínteses, cortadas na largura da célula, e as aberturas por eixo só aparecem
+   * na célula que estiver aberta. Imprimir o que está à vista publicaria uma
+   * fração do preenchido. Este bloco é o preenchimento inteiro, escondido na
+   * tela (`d-none`) e revelado só na impressão (`d-print-block`).
+   *
+   * A estrutura é a das colunas do diagnóstico de propósito — `caixa-coluna`,
+   * `cabecalho-coluna`, `corpo-coluna` dentro de `RelatorioAnalise.bloco` —
+   * porque é essa marcação que o `@media print` já sabe abrir em documento
+   * vertical, com o título da seção repetido no topo de cada folha.
+   */
+  renderImpressao() {
+    const alvo = document.getElementById('documento-cascata');
+    if (!alvo) return;
+    const secoes = this.relatorioSecoes();
+    if (!secoes.length) {
+      alvo.innerHTML = '<p class="fst-italic">Nenhuma escolha preenchida até aqui.</p>';
+      return;
+    }
+    const cartao = (it) => `
+      <div class="card mb-2"><div class="card-body py-2 px-3">
+        <div class="fw-bold small">${Modal.esc(it.driver)} · ${Modal.esc(it.rotulo)}</div>
+        <div class="small texto-fator texto-celula mt-1">${Modal.esc(it.registro.escolha)}</div>
+        ${this.notasEscolha(it.registro).map((n) =>
+          `<div class="small text-muted texto-fator mt-1">${Modal.esc(n)}</div>`).join('')}
+      </div></div>`;
+
+    alvo.innerHTML = `<div class="row g-3">${secoes.map((s) => `
+      <div class="col-md-6" data-coluna-categoria="H${s.horizonte.id}">
+        <div class="p-2 rounded caixa-coluna"
+          style="--tinta-coluna:${s.cor}18; border-top: 3px solid ${s.cor}">
+          ${RelatorioAnalise.bloco({
+            cabecalho: `<div class="cabecalho-coluna d-flex align-items-center mb-2">
+              <span class="fw-bold small text-uppercase" style="color:${s.cor}">${
+                Modal.esc(s.horizonte.nome)} · ${s.horizonte.ano_inicio}–${s.horizonte.ano_fim}
+                <span class="fw-normal fst-italic text-lowercase">“${
+                  Modal.esc(s.horizonte.tema)}”</span></span>
+            </div>`,
+            corpo: `<div class="corpo-coluna">${s.itens.map(cartao).join('')}</div>`,
+          })}
+        </div>
+      </div>`).join('')}</div>`;
+  },
+
   async carregar() {
     const el = document.getElementById('secao-cascata');
     const params = App.contextoParams();
@@ -76,14 +181,15 @@ const SecaoCascata = {
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>Cascata de Escolhas — ${Modal.esc(App.rotuloContexto())}</h1>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 align-items-center">
           <span class="badge text-bg-success fs-6">Aberturas ${feitasAberturas}/${totalAberturas}</span>
           <span class="badge badge-horizonte fs-6">Sínteses ${feitasSinteses}/${totalSinteses}</span>
+          ${RelatorioAnalise.botao()}
         </div>
       </div>
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2 d-print-none"
         id="selo-quiz">${QuizSala.selo(this, 'cascata')}</div>
-      <p class="text-muted">Cada célula <em>driver × horizonte</em> tem uma síntese e ${eixos.length}
+      <p class="text-muted d-print-none">Cada célula <em>driver × horizonte</em> tem uma síntese e ${eixos.length}
       aberturas por eixo — cada escolha declara também a sua renúncia. Clique na célula para detalhar.</p>
       <div class="table-responsive">
         <table class="table table-bordered tabela-cascata">
@@ -91,7 +197,31 @@ const SecaoCascata = {
           <tbody>${linhas}</tbody>
         </table>
       </div>
-      <div id="detalhe-celula"></div>`;
+      <!-- No papel a matriz acima é o SUMÁRIO (só as sínteses, como na tela) e
+           este bloco é o documento: todas as células preenchidas, com as
+           aberturas por eixo e as renúncias. O detalhe interativo não vai —
+           é a célula que alguém deixou aberta, não uma escolha do relatório. -->
+      <div class="d-none d-print-block" id="documento-cascata"></div>
+      <div id="detalhe-celula" class="d-print-none"></div>`;
+
+    this.renderImpressao();
+    // O documento sai da MESMA fonte do bloco impresso (`relatorioSecoes`), para
+    // que o `.doc` e o papel nunca discordem sobre o que já foi preenchido.
+    RelatorioAnalise.ligar(el, () => ({
+      titulo: `Cascata de Escolhas — ${App.rotuloContexto()}`,
+      contexto: `Sínteses ${this.dados.escolhas.filter((e) => !e.eixo_id).length}/${totalSinteses}`
+        + ` · aberturas ${this.dados.escolhas.filter((e) => e.eixo_id).length}/${totalAberturas}`
+        + ' — o relatório traz só o que já foi preenchido',
+      secoes: this.relatorioSecoes().map((s) => ({
+        rotulo: `${s.horizonte.nome} · ${s.horizonte.ano_inicio}–${s.horizonte.ano_fim}`,
+        cor: s.cor,
+        dica: `“${s.horizonte.tema}”`,
+        itens: s.itens.map((it) => ({
+          texto: `${it.driver} · ${it.rotulo}: ${it.registro.escolha}`,
+          notas: this.notasEscolha(it.registro),
+        })),
+      })),
+    }));
 
     el.querySelectorAll('.celula-cascata').forEach((td) => {
       td.addEventListener('click', () => {
@@ -176,6 +306,10 @@ const SecaoCascata = {
       clearInterval(this.relogioQuiz);
       this.relogioQuiz = null;
     }
+    // O bloco impresso acompanha a matriz. Ele é invisível na tela, então nada
+    // denunciaria que ficou para trás: quem mandasse imprimir no fim da oficina
+    // levaria para o papel a cascata de antes da última célula salva.
+    this.renderImpressao();
     if (this.celulaAberta) this.renderDetalhe();
   },
 

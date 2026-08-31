@@ -2757,8 +2757,27 @@ body.menu-aberto .menu-lateral {
   [data-desvincular],
   [data-promover],
   [data-ir-swot],
+  /* Os comandos dos Cruzamentos, pelo mesmo motivo dos de cima: editar, excluir
+     e encaminhar ao plano são gestos da TELA. No papel eles não fazem nada e
+     ainda pediam uma linha de rodapé em cada cartão. */
+  [data-novo-cruzamento],
+  [data-editar-cruz],
+  [data-excluir-cruz],
+  [data-plano-acao-cruz],
+  [data-tirar-acao-cruz],
+  [data-ir-swot-vazio],
   #btn-novo-swot,
   #btn-novo-cenario { display: none !important; }
+
+  /* "Virou ação ↗" NÃO é comando: é o estado do cruzamento, e o documento perde
+     informação sem ele. Vira texto com contorno porque o fundo de impressão vem
+     desligado por padrão — o branco sobre verde sairia branco sobre branco. */
+  [data-ir-acao] {
+    background: none !important;
+    color: #06432a !important;
+    border: 1pt solid #adb5bd;
+    font-weight: 600;
+  }
 
   body { background: #fff; }
   .conteudo { padding: 0 !important; }
@@ -2892,8 +2911,48 @@ body.menu-aberto .menu-lateral {
     page-break-after: avoid;
   }
 
+  /* --- a matriz da Cascata é o SUMÁRIO do documento ---
+     O detalhe do preenchimento vem logo abaixo dela (`#documento-cascata`);
+     aqui a tabela serve para ler a cascata inteira de uma olhada.
+     O `min-width` das células é conforto de TELA — ali sobra rolagem
+     horizontal para acomodá-lo. No papel não há para onde rolar: com três
+     horizontes a tabela passava da margem e a última coluna saía cortada. */
+  .table-responsive { overflow: visible !important; }
+  .tabela-cascata {
+    font-size: 8pt;
+    table-layout: fixed;
+    width: 100% !important;
+  }
+  .tabela-cascata td.celula-cascata,
+  .tabela-cascata th.celula-driver {
+    min-width: 0 !important;
+    width: auto !important;
+  }
+  /* Fundo de impressão é opcional no navegador e vem DESLIGADO por padrão: o
+     branco sobre verde-escuro do cabeçalho do horizonte sairia branco sobre
+     branco. A tinta vai para o texto, que é o que precisa ser lido. */
+  .tabela-cascata th.celula-horizonte {
+    background: none !important;
+    color: #06432a !important;
+  }
+  .celula-cascata.ativa { outline: 0 !important; }
+
+  /* Nos Cruzamentos o selo do par NÃO é comando: é o CONTEÚDO do cartão — o
+     fator interno e o externo que a estratégia liga. Ele carrega `data-ir-swot`
+     só porque também leva de volta à SWOT, e a regra acima esconde esse atributo
+     por ser navegação na SWOT e no PESTEL. Sem esta exceção, o papel publicava a
+     estratégia sem dizer de que encontro ela nasceu. */
+  .selo-cruz-fator {
+    display: block !important;
+    background: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
   /* O texto do cartão vai INTEIRO: o corte de três linhas é conforto de tela e
-     no papel viraria documento truncado. */
+     no papel viraria documento truncado. O selo do par é cortado em UMA linha e
+     entra na mesma regra pelo mesmo motivo. */
+  .selo-cruz-texto,
   .texto-fator,
   .texto-voz {
     display: block !important;

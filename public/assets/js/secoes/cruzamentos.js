@@ -170,6 +170,26 @@ const SecaoCruzamentos = {
       title="Encaminhar para o plano de ação">→ Plano de ação</button>`;
   },
 
+  /**
+   * As notas de um cruzamento no relatório — o mesmo papel de `Diag.notasFator`
+   * na SWOT: a linha miúda embaixo do item, com o que não cabe no texto dele.
+   *
+   * O PAR vem primeiro e sempre. No cartão ele são dois selos coloridos; no
+   * documento não há cor que diga "isto é uma força", então o quadrante entra
+   * escrito. Sem o par, o relatório publicaria a estratégia sem dizer de que
+   * encontro ela nasceu — que é a única coisa que esta análise acrescenta.
+   */
+  notasCruzamento(c) {
+    const lado = (cat, desc) => `${Diag.QUADRANTES[cat] || cat}: ${desc}`;
+    const n = [
+      lado(c.interno_categoria, c.interno_descricao),
+      lado(c.externo_categoria, c.externo_descricao),
+    ];
+    if (c.desdobramento_id) n.push('Virou ação no plano');
+    else if (c.acao_em) n.push('Aguardando plano de ação');
+    return n;
+  },
+
   /** O bloco que nasce de um par de categorias (o mesmo cálculo do servidor). */
   blocoDoPar(catInterna, catExterna) {
     return this.BLOCOS.find((b) => b.interno === catInterna && b.externo === catExterna) || null;
@@ -283,6 +303,7 @@ const SecaoCruzamentos = {
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.campoBusca('CRUZAMENTOS')}
             ${Diag.seletorAno('cruzamentos')}
+            ${RelatorioAnalise.botao()}
             ${editar && podeCruzar
               ? '<button class="btn btn-verde btn-sm" data-novo-cruzamento>+ Novo cruzamento</button>' : ''}
           </div>
@@ -296,6 +317,31 @@ const SecaoCruzamentos = {
     });
 
     Diag.ligarCabecalhoFixo(el);
+    // O documento sai dos MESMOS quatro blocos da tela, na mesma ordem: quem
+    // leu a análise reconhece o relatório.
+    //
+    // Em TABELA de duas colunas — cruzamento | estratégia —, e não na lista
+    // numerada das outras análises: é o formato do material do cliente
+    // (`docs/CRUZAMENTOS-SWOT.md` §7), e aqui ele é o certo pelo mesmo motivo
+    // que a lista é certa lá. O item da SWOT é UM texto; o cruzamento são dois
+    // lados de peso igual — de um lado o par que se encontrou, do outro o que
+    // se decidiu fazer com ele — e emendá-los num parágrafo só devolve
+    // exatamente a leitura que a tabela existe para separar.
+    RelatorioAnalise.ligar(el, () => ({
+      titulo: `Cruzamentos da SWOT — ${App.rotuloContexto()} · ${ano}`,
+      contexto: `Diagnóstico · análise de ${ano} · ${cruzamentos.length} cruzamento(s)`,
+      secoes: this.BLOCOS.map((b) => ({
+        rotulo: b.rotulo,
+        cor: b.cor,
+        dica: b.verbo,
+        colunas: ['Cruzamento', 'Estratégia'],
+        itens: cruzamentos.filter((c) => c.tipo === b.tipo).map((c) => ({
+          texto: c.rotulo,
+          notas: this.notasCruzamento(c),
+          detalhe: c.estrategia,
+        })),
+      })),
+    }));
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CRUZAMENTOS');
     Diag.ligarVerMais(el);

@@ -3,10 +3,11 @@
 Plano para trazer ao sistema o material “Cruzando os quadrantes: as quatro
 estratégias” e a síntese “O que a SWOT diz ao planejamento”.
 
-> **Situação: fatias 1 e 2 ENTREGUES** (tabela, API, tela das quatro colunas,
-> cadastro, edição e a cascata de exclusão a partir do fator). Faltam a ponte
-> (§5), a síntese e o relatório (§6 e §7) e a sala (§8, fatia 5). O §8 traz o
-> que mudou em relação ao planejado e o §9, as decisões já tomadas.
+> **Situação: fatias 1, 2 e 3 ENTREGUES** (tabela, API, tela das quatro colunas,
+> cadastro, edição, a cascata de exclusão a partir do fator e a ponte com o plano
+> de ação — §10), **mais o relatório (§7)**. Da fatia 4 falta só a **síntese**
+> (§6); falta a sala (§8, fatia 5). O §8 traz o que mudou em relação ao planejado
+> e o §9, as decisões já tomadas.
 
 > A frase que fecha o material é a especificação inteira em uma linha:
 > **“Uma boa SWOT não descreve a empresa — descreve o que ela precisa decidir.”**
@@ -168,15 +169,28 @@ análises dentro do ⓘ em vez de virar parágrafo fixo.
 
 ---
 
-## 7. Relatório
+## 7. Relatório — **entregue**
 
-O ⤓ Relatório da etapa sai de graça: `RelatorioAnalise` já entrega Word e PDF, e
-a paginação já repete o cabeçalho do bloco em toda folha. O que precisa ser
-escrito é o `montar()` da seção — quatro blocos, cada item com rótulo, o par de
-fatores e a estratégia, e a síntese antes deles.
+O ⤓ Relatório da etapa saiu de graça, como previsto: `RelatorioAnalise` já
+entregava Word e PDF, e a paginação já repetia o cabeçalho do bloco em toda
+folha. O que se escreveu foi o `montar()` da seção — quatro blocos, cada item com
+rótulo, o par de fatores e a estratégia. **A síntese ainda não entra**: ela é o §6,
+que continua pendente.
 
-No papel o cruzamento deve sair **em tabela de duas colunas**, como no material
-(cruzamento | estratégia): é o formato que o cliente já usa e reconhece.
+No papel o cruzamento sai **em tabela de duas colunas**, como no material
+(cruzamento | estratégia): é o formato que o cliente já usa e reconhece. Isso
+custou uma capacidade nova em `RelatorioAnalise.baixarWord` — uma seção que
+declara `colunas` vira tabela em vez de lista numerada, e o item ganha `detalhe`
+para a segunda coluna. É *opt-in*: as demais análises não passam `colunas` e
+seguem na lista, que é o certo para elas — o fator da SWOT é UM texto, o
+cruzamento são dois lados de peso igual.
+
+**Duas coisas que a impressão exigiu e não estavam no plano.** O selo do par
+carrega `data-ir-swot`, que o `@media print` escondia por ser navegação na SWOT e
+no PESTEL — aqui ele é o conteúdo, e o papel saía com a estratégia sem o
+encontro que a gerou. E os comandos do cartão (editar, excluir, encaminhar ao
+plano) não estavam na lista de coisas que não vão ao papel, porque essa lista
+nomeia os atributos das outras telas, um a um.
 
 ---
 
@@ -188,8 +202,10 @@ Cada fatia é entregável sozinha:
    (listar/salvar/excluir com o tipo derivado no servidor), as quatro colunas.
 2. ✅ **Cadastro e edição** — o modal com o par, o `info` que antecipa o bloco, a
    cascata de exclusão a partir do fator.
-3. **A ponte** — botão de destino, vínculo nos dois sentidos, selos, “desmarcar”.
-4. **Síntese e relatório** — os campos de texto e o `montar()` da etapa.
+3. ✅ **A ponte** — botão de destino, vínculo nos dois sentidos, selos,
+   “desmarcar” (§10: o destino é o plano de ação, não a cascata).
+4. **Síntese e relatório** — ✅ o `montar()` da etapa (§7); falta a **síntese**,
+   os campos de texto do §6.
 5. **A sala** — 🎤 por bloco, para a oficina propor cruzamentos pelo celular
    (reaproveita `QuizSala` inteiro; o alvo novo entra em `Quiz::PERGUNTA_CATEGORIA`).
 
