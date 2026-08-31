@@ -242,6 +242,50 @@ if [ -n "$PIN" ]; then
   afirma "teto de 3 ideias é aplicado no 4º envio" '"ok":false' "$R"
 fi
 
+echo "### 8b. Reentrada do participante — o aparelho, o nome e o dono ativo"
+# Cunhar um token novo a cada entrada fazia de quem voltava OUTRA pessoa: as
+# estrelas apareciam apagadas, o teto zerava e os votos antigos seguiam
+# contando. O desenho aqui é o do Quiz Copérdia (`POST /api/rooms/:pin/join`).
+#
+# A janela de ausência é encurtada por ambiente para a prova do "dono calado"
+# não custar os 45 s do padrão. Ela vale no SERVIDOR — rodá-la contra uma
+# instância subida sem SALA_AUSENTE_SEG deixa essas duas provas em vermelho.
+if [ -n "${PIN:-}" ]; then
+  pub(){ curl -s -X POST $BASE/api/publico/$1 -H 'Content-Type: application/json' -d "$2"; }
+  token_de(){ python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('token',''))" 2>/dev/null; }
+  APAR="aparelho-qa-$$"
+
+  R=$(pub entrar "{\"pin\":\"$PIN\",\"nome\":\"Fulano QA\",\"dispositivo\":\"$APAR\"}")
+  afirma "entra com nome e aparelho" '"token"' "$R"
+  T1=$(echo "$R" | token_de)
+
+  # 1. O aparelho volta como a MESMA pessoa, sem digitar nada.
+  R=$(pub entrar "{\"pin\":\"$PIN\",\"dispositivo\":\"$APAR\"}")
+  afirma "o mesmo aparelho volta sem informar nome" '"voltou":true' "$R"
+  afirma "e volta com o MESMO token" "^$T1\$" "$(echo "$R" | token_de)"
+
+  # 2. Com o dono ATIVO (as chamadas acima acabaram de marcar presença), o nome
+  #    não devolve a identidade: seria entregar a credencial de quem está lá.
+  R=$(pub entrar "{\"pin\":\"$PIN\",\"nome\":\"Fulano QA\",\"dispositivo\":\"outro-$$\"}")
+  afirma "nome de quem está na sala agora é recusado" 'Já há alguém com esse nome' "$R"
+
+  # 3. Calado o dono, o mesmo nome o traz de volta — é ele trocando de aparelho.
+  sleep "${SALA_AUSENTE_SEG:-45}"
+  R=$(pub entrar "{\"pin\":\"$PIN\",\"nome\":\"Fulano QA\",\"dispositivo\":\"outro-$$\"}")
+  afirma "dono calado: o nome devolve a identidade" '"voltou":true' "$R"
+  afirma "e é o mesmo token de antes" "^$T1\$" "$(echo "$R" | token_de)"
+
+  # 4. "Não é você?" solta o aparelho: a próxima pessoa nesta máquina entra como
+  #    ela mesma, em vez de herdar a anterior.
+  R=$(pub esquecer "{\"pin\":\"$PIN\",\"dispositivo\":\"$APAR\"}")
+  afirma "esquecer o aparelho responde ok" '"ok":true' "$R"
+  # Pedido só com aparelho é a PERGUNTA "me conhece?" — aparelho solto responde
+  # "não" sem erro, para não encher o console de quem chega pela primeira vez.
+  R=$(pub entrar "{\"pin\":\"$PIN\",\"dispositivo\":\"$APAR\"}")
+  afirma "e o aparelho solto não devolve mais ninguém" '"conhecido":false' "$R"
+  nega "sem devolver token de ninguém" '"token"' "$R"
+fi
+
 echo "### 9. Cruzamentos da SWOT (TOWS)"
 # O bloco é DERIVADO do par, nunca escolhido: é a regra que este trecho guarda.
 # A massa é própria — quatro fatores da SWOT criados e apagados aqui — porque a

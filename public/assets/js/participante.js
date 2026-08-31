@@ -80,6 +80,38 @@ const Participante = {
     return `tempestade:${this.pin}`;
   },
 
+  /**
+   * Identificador do APARELHO — o `qc_device` do Quiz Copérdia.
+   *
+   * Diferente do token, ele não pertence a rodada nenhuma: é deste navegador,
+   * para sempre. Serve para o servidor DEVOLVER a identidade a quem já entrou,
+   * mesmo quando a identidade local se perdeu (armazenamento limpo, navegador
+   * anônimo que virou normal, aparelho que apagou o site). Sem ele, a única
+   * pista seria o nome — e nome não é credencial.
+   */
+  dispositivo() {
+    try {
+      let id = localStorage.getItem('tempestade:dispositivo');
+      if (!id) {
+        id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem('tempestade:dispositivo', id);
+      }
+      return id;
+    } catch {
+      // Armazenamento negado: sem aparelho reconhecível, resta o nome.
+      return '';
+    }
+  },
+
+  /** O aparelho já batizado, sem criar um — quem nunca entrou não tem o que perguntar. */
+  dispositivoConhecido() {
+    try {
+      return localStorage.getItem('tempestade:dispositivo') || '';
+    } catch {
+      return '';
+    }
+  },
+
   identidadeGuardada() {
     try {
       // A chave antiga é lida uma última vez: quem já estava na sala no momento
@@ -113,12 +145,35 @@ const Participante = {
     }
   },
 
-  iniciar() {
+  /**
+   * Reentrada silenciosa pelo aparelho, quando a identidade local se perdeu
+   * (armazenamento limpo, site apagado pelo navegador). O servidor reconhece o
+   * aparelho e devolve o token — ninguém digita nada.
+   */
+  async reentrarPeloAparelho() {
+    const dispositivo = this.dispositivoConhecido();
+    if (!dispositivo) return false;
+    try {
+      const r = await this.api('/api/publico/entrar', { pin: this.pin, dispositivo });
+      if (!r.token) return false;
+      this.token = r.token;
+      this.nome = r.nome;
+      this.guardarIdentidade({ pin: this.pin, token: r.token, nome: r.nome });
+      return true;
+    } catch {
+      // Rodada encerrada, ou rede fora: cai na tela de entrada.
+      return false;
+    }
+  },
+
+  async iniciar() {
     this.pin = this.tela.dataset.pin || '';
     const g = this.identidadeGuardada();
     if (g) {
       this.token = g.token;
       this.nome = g.nome;
+    } else if (this.pin) {
+      await this.reentrarPeloAparelho();
     }
     if (this.pin && this.token) this.entrarNaSala();
     else this.telaEntrada();
@@ -143,7 +198,8 @@ const Participante = {
       const pin = document.getElementById('campo-pin').value.trim();
       const nome = document.getElementById('campo-nome').value.trim();
       try {
-        const r = await this.api('/api/publico/entrar', { pin, nome });
+        const r = await this.api('/api/publico/entrar',
+          { pin, nome, dispositivo: this.dispositivo() });
         this.pin = pin;
         this.token = r.token;
         this.nome = r.nome;
@@ -179,11 +235,18 @@ const Participante = {
   },
 
   ligarIdentidade() {
-    document.getElementById('btn-trocar-pessoa')?.addEventListener('click', () => {
+    document.getElementById('btn-trocar-pessoa')?.addEventListener('click', async () => {
       const pergunta = `Sair como ${this.nome} e entrar com outro nome? As ideias e as estrelas `
         + 'já registradas continuam valendo para quem as enviou.';
       if (!confirm(pergunta)) return;
       this.pararRelogio();
+      // Solta o APARELHO no servidor também: só limpar aqui faria a reentrada
+      // silenciosa devolver a pessoa anterior no primeiro carregamento.
+      try {
+        await this.api('/api/publico/esquecer', { pin: this.pin, dispositivo: this.dispositivo() });
+      } catch {
+        // Rodada encerrada ou rede fora: a limpeza local já tira daqui.
+      }
       this.esquecerIdentidade();
       this.nome = '';
       this.telaEntrada();

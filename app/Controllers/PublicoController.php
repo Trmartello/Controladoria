@@ -41,6 +41,28 @@ class PublicoController
     // quem erra o PIN — quem acerta entra mesmo com os baldes cheios.
     private const MAX_TENTATIVAS_GLOBAL = 300;
     private const JANELA_MIN = 5;
+    /**
+     * Silêncio que conta como "saiu da sala", na reentrada pelo nome.
+     *
+     * Faz o papel do `isConnected` do Quiz Copérdia, onde a conexão SSE diz quem
+     * está on-line. Aqui a tela consulta de 4 em 4 segundos, então 45 s são umas
+     * dez consultas perdidas — tempo de sobra para a rede oscilar sem que a
+     * pessoa seja dada como ausente, e curto o bastante para quem realmente
+     * saiu não bloquear o próprio nome.
+     *
+     * Ajustável por ambiente (`SALA_AUSENTE_SEG`): num encontro à distância com
+     * rede ruim vale alargar, e a bateria funcional a encurta para não passar
+     * quarenta e cinco segundos parada provando uma espera.
+     */
+    private const AUSENTE_SEG_PADRAO = 45;
+    /** Só reescreve `visto_em` quando ele já envelheceu: o polling é de 4 s. */
+    private const VISTO_FRESCO_SEG = 10;
+
+    private static function ausenteSeg(): int
+    {
+        return max(5, (int)(function_exists('env') ? env('SALA_AUSENTE_SEG', null) : null)
+            ?: self::AUSENTE_SEG_PADRAO);
+    }
 
     /**
      * Dados públicos da rodada. Encerrada, só devolve que encerrou: o tema é a
@@ -73,28 +95,148 @@ class PublicoController
         ]);
     }
 
-    /** Entra na rodada com um nome; registra e devolve o token da pessoa. */
+    /**
+     * Entra na rodada — ou VOLTA para ela. Três caminhos, na ordem, portados do
+     * Quiz Copérdia (`server.js`, `POST /api/rooms/:pin/join`), onde o desenho
+     * já rodou em encontro de verdade.
+     *
+     * O problema que eles resolvem: cunhar um token novo a cada entrada fazia de
+     * quem voltava OUTRA pessoa. As estrelas apareciam apagadas, o teto zerava e
+     * os votos antigos seguiam contando — a mesma pessoa pesando duas vezes num
+     * ranking que existe para priorizar, sem sinal nenhum na tela. Com o
+     * encontro à distância, voltar à sala é o gesto comum, não a exceção.
+     *
+     *  1. **Pelo aparelho.** O navegador guarda um identificador só dele e o
+     *     apresenta na entrada. Bate com alguém desta rodada? É essa pessoa. É o
+     *     caminho silencioso e sem risco: o identificador é secreto, não se
+     *     adivinha e não vale em rodada nenhuma além desta.
+     *  2. **Pelo nome, se o dono estiver calado.** Trocar de aparelho (do
+     *     celular para o computador) perde o identificador, e aí só resta o
+     *     nome. Devolver a identidade por ele é entregar a credencial de alguém,
+     *     então vale só quando o dono não fala com o servidor há
+     *     `AUSENTE_SEG` — a regra do Quiz: "desconectado é a mesma pessoa
+     *     voltando; conectado, não é". Com o dono ativo, o nome é recusado.
+     *  3. **Alguém novo.** Token novo, como sempre foi.
+     */
     public function entrar(): void
     {
         $d = $this->corpo();
         $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
+        $dispositivo = mb_substr(trim(is_string($d['dispositivo'] ?? null) ? $d['dispositivo'] : ''), 0, 80);
+
+        if ($dispositivo !== '') {
+            $p = Database::um(
+                'SELECT token, nome FROM coleta_participante
+                  WHERE rodada_id = ? AND dispositivo = ? ORDER BY id LIMIT 1',
+                [(int)$r['id'], $dispositivo]
+            );
+            if ($p) {
+                $this->marcarVisto((int)$r['id'], (string)$p['token'], true);
+                Json::ok($this->credencial($r, (string)$p['token'], (string)$p['nome'], true));
+            }
+        }
+
         $nome = mb_substr(trim(is_string($d['nome'] ?? null) ? $d['nome'] : ''), 0, self::MAX_NOME);
         if ($nome === '') {
+            // Pedido só com o aparelho é uma PERGUNTA ("me conhece?"), feita
+            // pela tela antes de mostrar o formulário. Aparelho novo é a
+            // resposta "não" — não é falha, e responder com erro encheria o
+            // console de todo participante que chega pela primeira vez.
+            if ($dispositivo !== '') {
+                Json::ok(['conhecido' => false]);
+            }
             Json::erro('Digite seu nome para entrar.');
         }
+
+        // A comparação é a da collation da coluna (utf8mb4_unicode_ci): ignora
+        // caixa e acento, então "João" e "joao" são a mesma pessoa voltando —
+        // que é o que se quer de quem redigita o próprio nome no outro aparelho.
+        $homonimo = Database::um(
+            'SELECT token, nome,
+                    (visto_em IS NOT NULL AND visto_em > (NOW() - INTERVAL ? SECOND)) AS ativo
+               FROM coleta_participante
+              WHERE rodada_id = ? AND nome = ? ORDER BY id LIMIT 1',
+            [self::ausenteSeg(), (int)$r['id'], $nome]
+        );
+        if ($homonimo) {
+            if ((int)$homonimo['ativo']) {
+                Json::erro('Já há alguém com esse nome na sala agora. Use outro nome — ou, '
+                    . 'se for você em outro aparelho, feche a aba que ficou aberta e tente de novo.', 409);
+            }
+            // O aparelho novo passa a ser o dela: da próxima vez o caminho 1
+            // resolve sozinho, sem depender do nome.
+            Database::executar(
+                'UPDATE coleta_participante SET dispositivo = ?, visto_em = NOW()
+                  WHERE rodada_id = ? AND token = ?',
+                [$dispositivo !== '' ? $dispositivo : null, (int)$r['id'], $homonimo['token']]
+            );
+            Json::ok($this->credencial($r, (string)$homonimo['token'], (string)$homonimo['nome'], true));
+        }
+
         $token = bin2hex(random_bytes(16));
         Database::executar(
-            'INSERT INTO coleta_participante (rodada_id, token, nome) VALUES (?, ?, ?)',
-            [(int)$r['id'], $token, $nome]
+            'INSERT INTO coleta_participante (rodada_id, token, nome, dispositivo, visto_em)
+             VALUES (?, ?, ?, ?, NOW())',
+            [(int)$r['id'], $token, $nome, $dispositivo !== '' ? $dispositivo : null]
         );
-        Json::ok([
+        Json::ok($this->credencial($r, $token, $nome, false));
+    }
+
+    /**
+     * "Não é você?" — solta o aparelho da pessoa anterior para que a próxima a
+     * usar esta máquina entre como ela mesma. Sem isto, o caminho 1 devolveria
+     * para sempre a primeira identidade no computador do departamento.
+     *
+     * Não apaga o participante: as ideias e as estrelas dele continuam valendo.
+     * Também não exige o token — quem tem o aparelho na mão já provou o que
+     * precisava, e o pedido só desfaz um vínculo.
+     */
+    public function esquecer(): void
+    {
+        $d = $this->corpo();
+        $r = $this->rodadaPorPin((string)($d['pin'] ?? ''));
+        $dispositivo = mb_substr(trim(is_string($d['dispositivo'] ?? null) ? $d['dispositivo'] : ''), 0, 80);
+        if ($dispositivo !== '') {
+            Database::executar(
+                'UPDATE coleta_participante SET dispositivo = NULL
+                  WHERE rodada_id = ? AND dispositivo = ?',
+                [(int)$r['id'], $dispositivo]
+            );
+        }
+        Json::ok();
+    }
+
+    /** A resposta da entrada, uma só para os três caminhos. */
+    private function credencial(array $r, string $token, string $nome, bool $voltou): array
+    {
+        return [
             'token' => $token,
             'nome' => $nome,
+            'voltou' => $voltou,
             'tema' => $r['tema'],
             'modo' => $r['modo'],
             'max_ideias' => (int)$r['max_ideias'],
             'max_votos' => (int)$r['max_votos'],
-        ]);
+        ];
+    }
+
+    /**
+     * Registra que a pessoa está viva do outro lado. É o sinal que decide se o
+     * nome dela pode ser reaproveitado por quem chega.
+     *
+     * Só escreve quando o registro já envelheceu: o polling bate de 4 em 4
+     * segundos por participante, e reescrever a cada consulta transformaria uma
+     * oficina de trinta pessoas num UPDATE a cada 130 ms sem ganho nenhum.
+     */
+    private function marcarVisto(int $rodadaId, string $token, bool $agora = false): void
+    {
+        Database::executar(
+            'UPDATE coleta_participante SET visto_em = NOW()
+              WHERE rodada_id = ? AND token = ?'
+              . ($agora ? '' : ' AND (visto_em IS NULL OR visto_em < (NOW() - INTERVAL '
+                  . self::VISTO_FRESCO_SEG . ' SECOND))'),
+            [$rodadaId, $token]
+        );
     }
 
     /**
@@ -579,6 +721,9 @@ class PublicoController
         if (!$p) {
             Json::erro('Entre na rodada antes de participar.', 403);
         }
+        // Toda chamada autenticada é sinal de presença: é ela que impede o nome
+        // de quem está na sala de ser reaproveitado por quem chega.
+        $this->marcarVisto((int)$rodada['id'], (string)$p['token']);
         return $p;
     }
 

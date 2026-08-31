@@ -286,6 +286,15 @@ garantirColuna($pdo, 'quiz_pergunta', 'etapa',
     "ALTER TABLE quiz_pergunta ADD COLUMN etapa ENUM('PESTEL','PORTER','SWOT') NULL AFTER ano");
 garantirColuna($pdo, 'quiz_pergunta', 'categoria',
     'ALTER TABLE quiz_pergunta ADD COLUMN categoria VARCHAR(40) NULL AFTER etapa');
+
+// Reentrada do participante (padrão trazido do Quiz Copérdia): o aparelho volta
+// como a MESMA pessoa, e o nome só devolve a identidade de quem está calado.
+garantirColuna($pdo, 'coleta_participante', 'dispositivo',
+    'ALTER TABLE coleta_participante ADD COLUMN dispositivo VARCHAR(80) NULL AFTER nome');
+garantirColuna($pdo, 'coleta_participante', 'visto_em',
+    'ALTER TABLE coleta_participante ADD COLUMN visto_em DATETIME NULL AFTER dispositivo');
+garantirIndice($pdo, 'coleta_participante', 'idx_part_disp',
+    'ALTER TABLE coleta_participante ADD INDEX idx_part_disp (rodada_id, dispositivo)');
 foreach (['horizonte_id', 'driver_id'] as $colunaCelula) {
     $obrigatoria = $pdo->query(
         "SELECT IS_NULLABLE FROM information_schema.COLUMNS

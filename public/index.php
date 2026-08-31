@@ -161,6 +161,7 @@ if (!str_starts_with($caminho, '/api/')) {
 // /api/publico/ perderia a proteção em silêncio.
 $semCsrf = $caminho === '/api/login'
     || $caminho === '/api/publico/entrar'
+    || $caminho === '/api/publico/esquecer'
     || $caminho === '/api/publico/ideia'
     || (bool)preg_match('#^/api/publico/ideia/\\d+$#', $caminho)
     || $caminho === '/api/publico/resposta'
@@ -252,6 +253,8 @@ try {
         case (bool)preg_match('#^POST /api/publico/estrela/(\\d+)$#', $rota, $m):
             (new PublicoController())->estrela((int)$m[1]); break;
         case $rota === 'POST /api/publico/entrar': (new PublicoController())->entrar(); break;
+        // "Não é você?": solta o aparelho da pessoa anterior, sem apagá-la.
+        case $rota === 'POST /api/publico/esquecer': (new PublicoController())->esquecer(); break;
         case $rota === 'POST /api/publico/ideia':  (new PublicoController())->ideia(); break;
         // Resposta do quiz da cascata (escolha ou renúncia da pergunta ativa)
         case $rota === 'POST /api/publico/resposta': (new PublicoController())->resposta(); break;

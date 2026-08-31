@@ -562,8 +562,19 @@ CREATE TABLE IF NOT EXISTS coleta_participante (
   rodada_id  INT NOT NULL,
   token      CHAR(32) NOT NULL,
   nome       VARCHAR(120) NOT NULL,
+  -- Identificador do APARELHO, gerado e guardado pelo navegador — o `qc_device`
+  -- do Quiz Copérdia. O token é a credencial da rodada; o dispositivo é o que
+  -- permite DEVOLVER essa credencial a quem já entrou, sem pedir nada e sem
+  -- ter de confiar no nome digitado.
+  dispositivo VARCHAR(80) NULL,
+  -- Última vez que este participante falou com o servidor. Faz o papel da
+  -- conexão viva do Quiz (lá o SSE diz quem está on-line; aqui a tela consulta
+  -- de 4 em 4 segundos) e é o que autoriza devolver a identidade pelo NOME:
+  -- dono calado há tempo é a mesma pessoa voltando; dono ativo, não é.
+  visto_em   DATETIME NULL,
   criado_em  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_part (rodada_id, token),
+  KEY idx_part_disp (rodada_id, dispositivo),
   CONSTRAINT fk_part_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

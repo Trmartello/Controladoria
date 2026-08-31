@@ -91,6 +91,18 @@ const t = (n, c, e = '') => (c ? ok : bad).push(n + (e ? ` — ${e}` : ''));
     seguiuDentro && (await aba2.evaluate(() => Participante.token)) === meuToken);
   await aba2.close();
 
+  // Identidade local apagada, mas o APARELHO continua conhecido pelo servidor:
+  // ele devolve o token sem pedir nada. É a rede de segurança de quem limpa os
+  // dados do site no meio do encontro — ou de quem entra de casa por um
+  // navegador que descarta armazenamento sozinho.
+  await page.evaluate((p) => localStorage.removeItem(`tempestade:${p}`), pin);
+  await page.reload();
+  const voltouSozinho = await esperar(page,
+    "!!document.querySelector('#campo-ideia, [data-votar], .tema-rodada')", 12000);
+  t('Identidade apagada: o aparelho conhecido traz a pessoa de volta sozinho', voltouSozinho);
+  t('E de volta com o mesmo token',
+    voltouSozinho && (await page.evaluate(() => Participante.token)) === meuToken);
+
   // A contrapartida do armazenamento que persiste: num computador de
   // departamento, a segunda pessoa a sentar precisa conseguir sair da primeira.
   page.once('dialog', (d) => d.accept());
