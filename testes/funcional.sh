@@ -270,10 +270,18 @@ if [ -n "${PIN:-}" ]; then
   afirma "nome de quem está na sala agora é recusado" 'Já há alguém com esse nome' "$R"
 
   # 3. Calado o dono, o mesmo nome o traz de volta — é ele trocando de aparelho.
-  sleep "${SALA_AUSENTE_SEG:-45}"
-  R=$(pub entrar "{\"pin\":\"$PIN\",\"nome\":\"Fulano QA\",\"dispositivo\":\"outro-$$\"}")
-  afirma "dono calado: o nome devolve a identidade" '"voltou":true' "$R"
-  afirma "e é o mesmo token de antes" "^$T1\$" "$(echo "$R" | token_de)"
+  #    A espera é a janela REAL do servidor, e o padrão são 5 minutos: parar a
+  #    bateria por isso não paga. Estas duas só rodam quando a janela foi
+  #    encurtada de propósito — no servidor E aqui, com a mesma variável.
+  if [ -n "${SALA_AUSENTE_SEG:-}" ]; then
+    sleep "$SALA_AUSENTE_SEG"
+    R=$(pub entrar "{\"pin\":\"$PIN\",\"nome\":\"Fulano QA\",\"dispositivo\":\"outro-$$\"}")
+    afirma "dono calado: o nome devolve a identidade" '"voltou":true' "$R"
+    afirma "e é o mesmo token de antes" "^$T1\$" "$(echo "$R" | token_de)"
+  else
+    echo "  … 'dono calado' fora desta rodada: suba o servidor e rode a bateria"
+    echo "    com SALA_AUSENTE_SEG=6 para provar a reentrada pelo nome."
+  fi
 
   # 4. "Não é você?" solta o aparelho: a próxima pessoa nesta máquina entra como
   #    ela mesma, em vez de herdar a anterior.

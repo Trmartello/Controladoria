@@ -45,16 +45,19 @@ class PublicoController
      * Silêncio que conta como "saiu da sala", na reentrada pelo nome.
      *
      * Faz o papel do `isConnected` do Quiz Copérdia, onde a conexão SSE diz quem
-     * está on-line. Aqui a tela consulta de 4 em 4 segundos, então 45 s são umas
-     * dez consultas perdidas — tempo de sobra para a rede oscilar sem que a
-     * pessoa seja dada como ausente, e curto o bastante para quem realmente
-     * saiu não bloquear o próprio nome.
+     * está on-line. Aqui a tela consulta de 4 em 4 segundos, então cinco minutos
+     * são setenta e cinco consultas perdidas: quem está na sala não é dado como
+     * ausente por causa de rede ruim, elevador, celular que bloqueou ou uma
+     * chamada que entrou por cima.
      *
-     * Ajustável por ambiente (`SALA_AUSENTE_SEG`): num encontro à distância com
-     * rede ruim vale alargar, e a bateria funcional a encurta para não passar
-     * quarenta e cinco segundos parada provando uma espera.
+     * A janela é conservadora de propósito. Errar para o lado curto entrega o
+     * nome de quem ainda está lá a quem chega digitando o mesmo nome; errar para
+     * o lado longo só faz quem TROCA de aparelho esperar — e mesmo esse caso é
+     * raro, porque o caminho do aparelho devolve a identidade na hora.
+     *
+     * Ajustável por ambiente (`SALA_AUSENTE_SEG`), em segundos.
      */
-    private const AUSENTE_SEG_PADRAO = 45;
+    private const AUSENTE_SEG_PADRAO = 300;
     /** Só reescreve `visto_em` quando ele já envelheceu: o polling é de 4 s. */
     private const VISTO_FRESCO_SEG = 10;
 

@@ -40,7 +40,7 @@ E estas variáveis simples (valores seus):
 | `ADMIN_SENHA` | *(senha forte)* | senha inicial do admin — troque no 1º acesso |
 | `APP_URL` | `https://<nome>.up.railway.app` | usada no botão dos e-mails de aviso |
 | `QLIK_API_KEY` | *(opcional)* | só quando formos ativar a conectividade Qlik |
-| `SALA_AUSENTE_SEG` | *(opcional; padrão `45`)* | silêncio que faz a sala dar o participante como ausente. Só então o nome dele volta a ser aceito por quem entra de outro aparelho — alargue em encontro à distância com rede instável |
+| `SALA_AUSENTE_SEG` | *(opcional; padrão `300` = 5 min)* | silêncio que faz a sala dar o participante como ausente. Só então o nome dele volta a ser aceito por quem entra de outro aparelho. Encurtar acelera a troca de aparelho, mas aproxima o risco de alguém assumir o nome de quem ainda está na sala |
 
 ### Avisos por e-mail (opcional)
 

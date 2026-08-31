@@ -25,8 +25,11 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
   ADMIN_SENHA=trocar123 php database/migrate.php
 
 # 3. Servidor — o argumento router (public/index.php) é OBRIGATÓRIO
+#    SALA_AUSENTE_SEG encurta a janela de ausência da sala (padrão: 300 s). Sem
+#    ela, a funcional pula as duas provas da reentrada pelo NOME em vez de
+#    ficar cinco minutos parada esperando o "dono calado".
 DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
-  php -S 127.0.0.1:8099 -t public public/index.php
+  SALA_AUSENTE_SEG=6 php -S 127.0.0.1:8099 -t public public/index.php
 ```
 
 ## Rodando
@@ -34,6 +37,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 ```bash
 ./testes/rodar.sh                 # as quatro, em sequência
 ./testes/funcional.sh             # só a funcional
+SALA_AUSENTE_SEG=6 ./testes/funcional.sh   # inclui a reentrada pelo nome
 node testes/sistema.js            # só a de sistema
 node testes/participante.js 123456   # precisa do PIN de uma rodada ABERTA
 ./testes/backup.sh                # backup/restauração (cria e derruba bancos descartáveis)
