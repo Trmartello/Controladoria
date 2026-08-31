@@ -92,9 +92,19 @@ class FatorController
         // `acao_titulo`, acima, não serve para isso: ele só enxerga o vínculo
         // direto e deixaria passar o promovido e o cruzamento — que são os dois
         // caminhos pelos quais a recusa mais acontece.
-        $presos = Fatores::acoesQuePrendem(array_column($fatores, 'id'));
+        $ids = array_column($fatores, 'id');
+        $presos = Fatores::acoesQuePrendem($ids);
+        // `mover_trava` é a MESMA lista de motivos que `mover()` usa para
+        // recusar, e chega junto pelo mesmo motivo de `acao_trava`: o botão
+        // precisa saber ANTES do clique, e uma regra remontada na tela erraria
+        // nos casos difíceis. Vem como ARRAY porque as amarras se acumulam —
+        // um fator promovido e citado num cruzamento tem duas coisas a desfazer,
+        // e mostrar só a primeira faria a segunda parecer um erro novo.
+        $mover = $this->travasDeMover($ids);
         foreach ($fatores as &$f) {
-            $f['acao_trava'] = $presos[(int)$f['id']] ?? null;
+            $id = (int)$f['id'];
+            $f['acao_trava'] = $presos[$id] ?? null;
+            $f['mover_trava'] = array_values(array_unique($mover[$id] ?? []));
         }
         Json::ok($fatores);
     }
@@ -352,6 +362,134 @@ class FatorController
             [$planId, $fator['ano'], $quadrante, $fator['descricao'], $id]
         );
         Json::ok(['id' => $novoId]);
+    }
+
+    /**
+     * Move um fator de uma análise para outra (PESTEL ⇄ Porter ⇄ SWOT).
+     *
+     * Pedido do cliente junto com o "levar direto ao plano": a análise em que
+     * um fator foi escrito nem sempre é aquela a que ele pertence — o que
+     * entrou como "Poder dos Clientes" no Porter às vezes é, lido de novo, uma
+     * tendência Social do PESTEL. Hoje o conserto é apagar e reescrever, o que
+     * custa as vozes da sala amarradas a ele.
+     *
+     * **A etapa e a categoria andam juntas, sempre.** As listas não se
+     * correspondem — `LEGAL` não existe no Porter, `RIVALIDADE` não existe na
+     * SWOT — e por isso a categoria nova é OBRIGATÓRIA e conferida contra o
+     * catálogo do DESTINO. Deixar a antiga seria repetir o defeito que o
+     * `salvar()` já corrigiu: fator com categoria de outra etapa some das duas
+     * telas (a SWOT filtra por categoria dela, o PESTEL por etapa) e vira órfão
+     * invisível segurando vozes que ninguém mais consegue desvincular.
+     *
+     * **O que é RECUSADO, e por quê.** Mover um fator limpo é trivial; mover um
+     * fator amarrado é o tema inteiro, e cada amarra levanta uma pergunta de
+     * processo que ninguém respondeu ainda (backlog, decisões 13 a 15). Até lá,
+     * a resposta segura é recusar dizendo o que desfazer primeiro — o mesmo
+     * padrão do tema 8. Um movimento que se recusa é um aborrecimento; um que
+     * apaga a nota da GUT ou invalida um cruzamento em silêncio é um dado
+     * perdido que ninguém vai notar a tempo.
+     *
+     * As quatro amarras:
+     * - **virou ação** (o próprio, um promovido dele ou um cruzamento que o
+     *   cita) — a origem da ação mudaria de análise no relatório;
+     * - **promoção** nos dois sentidos — mover a origem deixaria o promovido
+     *   apontando para uma linha de outra análise, e mover o promovido o
+     *   tiraria da SWOT sem tirar a marca de promovido;
+     * - **nota da GUT** — a matriz é da SWOT; sair de lá levaria a nota para
+     *   uma tela onde ela não existe;
+     * - **citado num cruzamento** — o par escolhe um fator INTERNO e um
+     *   EXTERNO por quadrante, e mover o fator pode inverter o lado.
+     */
+    public function mover(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $fator = $this->exigirFator($id, $planId);
+
+        $etapa = (string)($d['etapa'] ?? '');
+        $categoria = (string)($d['categoria'] ?? '');
+        if (!isset(self::CATEGORIAS[$etapa])) {
+            Json::erro('Informe a análise de destino.');
+        }
+        if ($etapa === $fator['etapa']) {
+            Json::erro('O fator já está nesta análise — escolha outra.');
+        }
+        if (!in_array($categoria, self::CATEGORIAS[$etapa], true)) {
+            Json::erro('Informe a categoria no destino: as listas das análises não se correspondem.');
+        }
+
+        // A trava da ação é a MESMA de excluir: as duas perguntam "esta linha
+        // sustenta uma ação no plano?", e responder de dois jeitos faria a tela
+        // liberar um gesto e o servidor recusar o outro sem motivo aparente.
+        Fatores::exigirSemAcao([$id], 'Este fator já virou uma ação no plano. '
+            . 'Mudá-lo de análise trocaria a origem da ação no relatório — '
+            . 'exclua a ação em Projetos antes de mover o fator.');
+
+        foreach ($this->travasDeMover([$id])[$id] ?? [] as $motivo) {
+            Json::erro($motivo);
+        }
+
+        Database::executar(
+            'UPDATE fator SET etapa = ?, categoria = ? WHERE id = ? AND planejamento_id = ?',
+            [$etapa, $categoria, $id, $planId]
+        );
+        // A redação guardada para a sala segue o fator: ela é indexada por
+        // ('FATOR', id), que não muda — nada a fazer aqui, e é de propósito que
+        // esta linha seja um comentário e não código.
+        Json::ok(['etapa' => $etapa, 'categoria' => $categoria]);
+    }
+
+    /**
+     * Por que cada fator pedido NÃO pode mudar de análise — uma frase por
+     * amarra, ou nenhuma entrada se ele está livre.
+     *
+     * Existe pelo mesmo motivo de `Fatores::acoesQuePrendem`: é a tela que
+     * desabilita o botão ANTES do clique, e ela não pode remontar a regra por
+     * conta própria — erraria justamente nos casos difíceis. Uma consulta para
+     * a lista inteira, não uma por cartão.
+     *
+     * A trava da AÇÃO não entra aqui: ela já tem a sua consulta
+     * (`acoesQuePrendem`), compartilhada com a exclusão, e duplicá-la seria
+     * criar a segunda definição de "está preso" que o tema 8 acabou de extirpar.
+     *
+     * @param  int[] $ids
+     * @return array<int,string[]> `[id => [motivos]]`
+     */
+    private function travasDeMover(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (!$ids) {
+            return [];
+        }
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        $travas = [];
+        $anotar = static function (array $linhas, string $frase) use (&$travas): void {
+            foreach ($linhas as $l) {
+                $travas[(int)$l['id']][] = $frase;
+            }
+        };
+        // Promoção nos DOIS sentidos, numa consulta só: `promovido_de_id` diz
+        // que ele é o promovido, e o EXISTS diz que ele é a origem de um.
+        $anotar(Database::todos(
+            "SELECT id FROM fator
+             WHERE id IN ({$marcas})
+               AND (promovido_de_id IS NOT NULL
+                    OR EXISTS (SELECT 1 FROM (SELECT promovido_de_id FROM fator) p
+                               WHERE p.promovido_de_id = fator.id))",
+            $ids
+        ), 'Este fator está ligado a uma promoção para a SWOT. Desfaça a promoção antes de movê-lo.');
+        $anotar(Database::todos(
+            "SELECT fator_id AS id FROM gut WHERE fator_id IN ({$marcas})",
+            $ids
+        ), 'Este fator tem nota na Matriz GUT, que é da SWOT. Limpe a nota antes de movê-lo.');
+        $anotar(Database::todos(
+            "SELECT fator_interno_id AS id FROM swot_cruzamento WHERE fator_interno_id IN ({$marcas})
+             UNION
+             SELECT fator_externo_id FROM swot_cruzamento WHERE fator_externo_id IN ({$marcas})",
+            array_merge($ids, $ids)
+        ), 'Este fator é citado num cruzamento da SWOT. Exclua o cruzamento antes de movê-lo.');
+        return $travas;
     }
 
     /** Registra/atualiza as notas GUT de um fator da SWOT. */

@@ -1230,7 +1230,7 @@ escolha some, a medida fica.
 
 ## 9. Levar qualquer item ao plano de ação (e mover entre análises)
 
-### Veredito: **CONSTRUIR** (esforço P por fatia) — **fatias A e B ENTREGUES**
+### Veredito: **CONSTRUIR** (esforço P por fatia) — **A, B e C ENTREGUES**
 
 O pedido do cliente: *"poder levar qualquer item do Porter, PESTEL, análise de
 cenário para o plano de ação, ou até mesmo mover o item para outra análise"*.
@@ -1241,7 +1241,8 @@ depende da primeira ter fixado o vocabulário.
 |---|---|---|
 | **A** | PESTEL e Porter vão **direto** ao plano de ação | **ENTREGUE** |
 | **B** | Item da **Análise de Cenário** vai ao plano de ação | **ENTREGUE** |
-| **C** | **Mover** um item de uma análise para outra | a fazer |
+| **C** | **Mover** um fator entre PESTEL ⇄ Porter ⇄ SWOT | **ENTREGUE** |
+| **C-bis** | Mover entre TABELAS (Cenário ⇄ fator) | a fazer |
 
 ### Fatia A — a regra de método que caiu
 
@@ -1336,25 +1337,63 @@ cenário (rótulo e cor) viraram `SecaoCenario.TIPOS`, que já eliminou uma
 duplicação existente: o modal de "aceitar sugestão da sala" escolhia o par
 `'#8f3b3b'`/`'Tendência'` à mão.
 
-### Fatia C — mover entre análises (a fazer)
+### Fatia C — mover entre análises (fator ⇄ fator **ENTREGUE**)
 
 A parte com mais armadilha do pedido. Mover um fator de PESTEL para Porter (ou
 para a SWOT) troca a **etapa** e obriga a **remapear a categoria** — as listas
-não se correspondem. E o item pode já estar preso: avaliado na GUT, citado num
-cruzamento, promovido, ou já virado ação. Cada um desses é uma decisão de
-produto, não de código:
+não se correspondem. E o fator pode já estar preso: avaliado na GUT, citado num
+cruzamento, promovido, ou já virado ação.
 
-- **GUT**: a nota acompanha? (a GUT é da SWOT; um fator que sai da SWOT levaria
-  a nota para uma tela onde ela não existe)
-- **Cruzamento**: um par que cita o fator como "interno" continua válido se ele
-  virar externo?
-- **Promoção**: mover a ORIGEM de um promovido move o promovido junto?
-- **Ação**: mover um fator que já virou ação muda a origem da ação no relatório.
+**A categoria é a metade do movimento, não um detalhe.** `LEGAL` não existe no
+Porter, `RIVALIDADE` não existe na SWOT. Herdar a antiga produziria um fator que
+some das DUAS telas — a SWOT filtra por categoria dela, o PESTEL por etapa — e
+vira órfão invisível segurando vozes da sala que ninguém mais consegue
+desvincular. É literalmente o defeito que o `salvar()` já teve de corrigir por
+outro caminho (aceitar `etapa` do corpo na edição), e por isso ele veio primeiro
+na cabeça de quem escreveu isto e primeiro na bateria.
 
-Enquanto essas quatro não estiverem respondidas, o certo é **recusar** o
-movimento nesses casos com uma mensagem que diga o que desfazer primeiro — o
-mesmo padrão do tema 8. Mover um item limpo é fácil; mover um item amarrado é o
-tema inteiro.
+**As quatro amarras RECUSAM**, cada uma dizendo o que desfazer primeiro:
+
+| Amarra | Por que recusa |
+|---|---|
+| já virou ação | mudaria a origem da ação no relatório |
+| promoção (nos **dois** sentidos) | mover a origem deixaria o promovido apontando para outra análise; mover o promovido o tiraria da SWOT sem tirar a marca |
+| nota na Matriz GUT | a GUT é da SWOT — sair de lá levaria a nota para uma tela onde ela não existe |
+| citado num cruzamento | o par escolhe um fator INTERNO e um EXTERNO por quadrante, e mover pode inverter o lado |
+
+Cada uma delas é uma decisão de **processo**, não de código (decisões 13 a 15
+abaixo). Enquanto não houver resposta, recusar é a saída segura: um movimento
+recusado é um aborrecimento, um movimento que apaga a nota da GUT ou invalida um
+cruzamento em silêncio é dado perdido que ninguém nota a tempo. Quando as
+respostas vierem, cada linha da tabela vira um comportamento — e a bateria já
+tem o teste do estado atual para virar do avesso.
+
+**A trava da ação NÃO ganhou consulta nova.** Ela é a mesma
+`Fatores::acoesQuePrendem` da exclusão — "esta linha sustenta uma ação no
+plano?" é uma pergunta só, e respondê-la de dois jeitos faria a tela liberar um
+gesto e o servidor recusar o outro sem motivo aparente. As outras três moram em
+`FatorController::travasDeMover`, que alimenta a recusa **e** o `mover_trava` da
+listagem, do mesmo jeito e pela mesma razão do tema 8. `mover_trava` é um
+**array**: as amarras se acumulam, e um fator promovido *e* citado num cruzamento
+tem duas coisas a desfazer — mostrar só a primeira faria a segunda parecer um
+erro novo depois de o usuário já ter trabalhado.
+
+**Promover ≠ mover**, e as duas continuam existindo lado a lado: promover
+**copia** (a origem fica no PESTEL, o par visível nas duas telas), mover
+**transfere**. São gestos diferentes e ambos legítimos; o que não pode é fazer os
+dois no mesmo fator — daí a promoção travar o `⇄`.
+
+### Fatia C-bis — mover ENTRE TABELAS (a fazer)
+
+O que ficou de fora: mover um item da **Análise de Cenário** para PESTEL/Porter/
+SWOT, e o inverso. Não é o mesmo trabalho — `cenario_item` e `fator` são tabelas
+distintas, então "mover" ali é criar-e-apagar, carregando à mão o que o id
+sustenta: as vozes da Coleta (`destino_tipo`/`destino_id`, par polimórfico, sem
+FK), a redação guardada para a sala, e o encaminhamento ao plano. Um id que
+morre com vínculos pendurados é exatamente o beco sem saída que o
+`excluirDesdobramento` teve de aprender a evitar. Vale fazer depois, com o
+mesmo padrão de recusas, e **não** aproveitando o `mover` atual: o `UPDATE
+fator SET etapa` de hoje é seguro justamente por não mexer em id nenhum.
 
 ---
 
@@ -1471,7 +1510,8 @@ discutir a dependência, não o quadrante.
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 1 (trava: decisão 1) |
 | 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 2 (ver `docs/CRUZAMENTOS-SWOT.md`) |
-| 9c | Mover um item de uma análise para outra | Construir | P–M | 3 (trava: decisões 13 a 15) |
+| 9d | Mover entre TABELAS (Cenário ⇄ fator) | Construir | M | 3 |
+| 9c | Mover um fator entre PESTEL ⇄ Porter ⇄ SWOT | **Entregue** | P | ✔ (amarras recusam; decisões 13–15 em aberto) |
 | 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |
 | 9a | PESTEL e Porter **direto** ao plano de ação | **Entregue** | P | ✔ (decisão do cliente) |
 | 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | **Entregue** | P | ✔ |
@@ -1559,13 +1599,15 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
    deixou de ser obrigação do sistema.
 13. **Mover um fator entre etapas: o que acontece com a nota da GUT?** A GUT é da
    SWOT. Um fator que sai da SWOT leva a nota para uma tela onde ela não existe,
-   ou a nota se perde? (trava a fatia 9c)
+   ou a nota se perde? **Hoje o sistema recusa o movimento** e manda limpar a
+   nota antes — não trava mais a entrega, mas responder isto transformaria uma
+   recusa em comportamento.
 14. **Mover um fator citado num cruzamento: o par sobrevive?** Um cruzamento
    escolhe um fator INTERNO e um EXTERNO; mover o fator pode inverter o lado e
    deixar o par sem sentido. Apagar o cruzamento, recusar o movimento, ou deixar
-   o par inválido visível para alguém decidir? (trava a fatia 9c)
+   o par inválido visível para alguém decidir? **Hoje recusa.**
 15. **Mover a ORIGEM de um fator promovido move o promovido junto?** E mover um
    fator que **já virou ação** — a origem da ação muda no relatório, ou o
-   movimento é recusado? A proposta é recusar os dois enquanto 13 e 14 não
-   estiverem respondidas: mover item limpo é fácil, mover item amarrado é o
-   tema inteiro. (trava a fatia 9c)
+   movimento é recusado? **Hoje recusa os dois**, que era a proposta: mover
+   fator limpo é fácil, mover fator amarrado é o tema inteiro. Cada resposta que
+   vier vira uma linha da tabela de amarras na fatia 9c.

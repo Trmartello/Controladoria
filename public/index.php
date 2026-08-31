@@ -328,6 +328,8 @@ try {
             (new FatorController())->excluir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/promover$#', $rota, $m):
             (new FatorController())->promover((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/fatores/(\d+)/mover$#', $rota, $m):
+            (new FatorController())->mover((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/gut$#', $rota, $m):
             (new FatorController())->avaliarGut((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/gut/limpar$#', $rota, $m):

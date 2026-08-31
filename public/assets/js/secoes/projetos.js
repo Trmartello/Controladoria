@@ -66,10 +66,11 @@ const STATUS_INICIATIVA = {
 // encaminhar ao plano; com PESTEL e Porter indo direto (decisão do cliente,
 // ver `FatorController::planoAcao`), a fila passou a trazer as três etapas e o
 // que muda de uma para a outra é só o CATÁLOGO de categorias.
-const ORIGENS_FATOR = ['PESTEL', 'PORTER', 'SWOT'];
-// Nome da etapa como se escreve na tela: 'PORTER' é sigla de ninguém, é um
-// sobrenome. O selo e os títulos dos modais leem daqui.
-const ROTULOS_ETAPA = { PESTEL: 'PESTEL', PORTER: 'Porter', SWOT: 'SWOT' };
+//
+// A lista e os nomes de tela saem de `Diag.ROTULO_ETAPA`, que é o catálogo
+// único — o "⇄ Mover" do diagnóstico monta os destinos a partir dele, e duas
+// listas de etapas divergiriam na primeira análise nova.
+const ORIGENS_FATOR = Object.keys(Diag.ROTULO_ETAPA);
 
 const SecaoProjetos = {
   plan: null,
@@ -1362,7 +1363,7 @@ const SecaoProjetos = {
    * antigo) aparece feia, mas aparece — sumir do selo seria pior.
    */
   rotuloEtapa(origem) {
-    return ROTULOS_ETAPA[origem] || origem || '';
+    return Diag.ROTULO_ETAPA[origem] || origem || '';
   },
 
   categoriaDoFator(origem, categoria) {

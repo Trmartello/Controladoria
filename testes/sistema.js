@@ -2519,6 +2519,167 @@ async function provasCenarioPlanoAcao(page) {
   }, massa);
 }
 
+/**
+ * Mover um fator de uma análise para outra (PESTEL ⇄ Porter ⇄ SWOT).
+ *
+ * Mover um fator LIMPO é trivial; o tema é o fator amarrado, e por isso quase
+ * toda esta bateria prova RECUSAS. Cada amarra levanta uma pergunta de processo
+ * ainda em aberto (backlog, decisões 13 a 15), e enquanto elas não têm resposta
+ * a única saída segura é recusar dizendo o que desfazer primeiro. Um movimento
+ * recusado é um aborrecimento; um que apaga a nota da GUT ou invalida um
+ * cruzamento em silêncio é dado perdido que ninguém nota a tempo.
+ *
+ * A prova mais importante é a da CATEGORIA: as listas das três análises não se
+ * correspondem, e aceitar a antiga produziria um fator invisível nas duas telas
+ * — o defeito que o `salvar()` já corrigiu uma vez, por outro caminho.
+ */
+async function provasMoverAnalise(page) {
+  const l = '[desktop] Mover de análise:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const novo = (etapa, categoria, descricao) => App.api('/api/fatores',
+      { planejamento_id: plan.id, etapa, categoria, descricao, ano });
+    const limpo = await novo('PESTEL', 'LEGAL', 'Fator limpo de prova (mover)');
+    const promovido = await novo('PESTEL', 'SOCIAL', 'Fator promovido de prova (mover)');
+    const comGut = await novo('SWOT', 'FORCA', 'Fator com GUT de prova (mover)');
+    const interno = await novo('SWOT', 'FORCA', 'Fator interno de prova (mover)');
+    const externo = await novo('SWOT', 'AMEACA', 'Fator externo de prova (mover)');
+    await App.api(`/api/fatores/${promovido.id}/promover`,
+      { planejamento_id: plan.id, quadrante: 'OPORTUNIDADE' });
+    await App.api(`/api/fatores/${comGut.id}/gut`,
+      { planejamento_id: plan.id, gravidade: 5, urgencia: 4, tendencia: 3 });
+    const cruz = await App.api('/api/cruzamentos', { planejamento_id: plan.id, ano,
+      tipo: 'ATACAR', fator_interno_id: interno.id, fator_externo_id: externo.id,
+      rotulo: 'Par de prova (mover)', estrategia: 'Estratégia de prova (mover)' });
+    return { plan: plan.id, ano, limpo: limpo.id, promovido: promovido.id,
+      comGut: comGut.id, interno: interno.id, externo: externo.id, cruz: cruz.id };
+  });
+
+  const mover = (id, etapa, categoria) => page.evaluate(
+    (a) => App.api(`/api/fatores/${a.id}/mover`,
+      { planejamento_id: a.plan, etapa: a.etapa, categoria: a.categoria })
+      .then(() => 'passou').catch((e) => e.message),
+    { id, etapa, categoria, plan: massa.plan });
+
+  // O caminho feliz, e a categoria trocada junto com a etapa.
+  t(`${l} um fator limpo vai do PESTEL para o Porter`,
+    (await mover(massa.limpo, 'PORTER', 'SUBSTITUTOS')) === 'passou');
+  const depois = await page.evaluate(async (m) => {
+    const lista = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=PORTER&ano=${m.ano}`);
+    const f = lista.find((x) => x.id == m.limpo) || {};
+    return { etapa: f.etapa, categoria: f.categoria, trava: f.mover_trava };
+  }, massa);
+  t(`${l} ele chega com a etapa E a categoria do destino`,
+    depois.etapa === 'PORTER' && depois.categoria === 'SUBSTITUTOS', JSON.stringify(depois));
+  t(`${l} e sem trava nenhuma, porque nada o prende`,
+    Array.isArray(depois.trava) && depois.trava.length === 0, JSON.stringify(depois.trava));
+
+  // Categoria da etapa ERRADA: é o defeito que produziria o fator invisível.
+  t(`${l} categoria de outra análise é recusada`,
+    /listas das análises não se correspondem/.test(await mover(massa.limpo, 'SWOT', 'LEGAL')));
+  t(`${l} mover para a análise em que já está é recusado`,
+    /já está nesta análise/.test(await mover(massa.limpo, 'PORTER', 'RIVALIDADE')));
+  t(`${l} e o Porter vai para a SWOT com um quadrante`,
+    (await mover(massa.limpo, 'SWOT', 'AMEACA')) === 'passou');
+
+  // As três amarras que recusam, cada uma com a sua frase.
+  t(`${l} a ORIGEM de uma promoção é recusada`,
+    /Desfaça a promoção/.test(await mover(massa.promovido, 'PORTER', 'RIVALIDADE')));
+  const promId = await page.evaluate(async (m) => {
+    const swot = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=SWOT&ano=${m.ano}`);
+    return (swot.find((f) => f.promovido_de_id == m.promovido) || {}).id;
+  }, massa);
+  t(`${l} e o PROMOVIDO também — a amarra tem dois lados`,
+    /Desfaça a promoção/.test(await mover(promId, 'PESTEL', 'SOCIAL')));
+  t(`${l} fator com nota na GUT é recusado`,
+    /Matriz GUT/.test(await mover(massa.comGut, 'PESTEL', 'SOCIAL')));
+  t(`${l} fator citado num cruzamento é recusado`,
+    /cruzamento da SWOT/.test(await mover(massa.interno, 'PESTEL', 'SOCIAL')));
+  t(`${l} pelos DOIS lados do par, não só o interno`,
+    /cruzamento da SWOT/.test(await mover(massa.externo, 'PESTEL', 'SOCIAL')));
+
+  // Fator que já virou ação: a trava é a MESMA da exclusão, não uma segunda.
+  const comAcao = await page.evaluate(async (m) => {
+    const f = await App.api('/api/fatores', { planejamento_id: m.plan, etapa: 'PESTEL',
+      categoria: 'ECONOMICO', descricao: 'Fator com ação de prova (mover)', ano: m.ano });
+    await App.api(`/api/fatores/${f.id}/plano-acao`, { planejamento_id: m.plan, marcar: true });
+    const prj = await App.api('/api/projetos', { planejamento_id: m.plan, tipo: 'ESTRATEGICO',
+      titulo: 'Projeto de prova (mover)', ano: 2027, responsavel: 'QA' });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: m.plan, projeto_id: prj.id, iniciativa_nova: 'Frente de prova (mover)',
+      o_que: 'Ação de prova (mover)', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31', fator_id: f.id,
+    });
+    const recusa = await App.api(`/api/fatores/${f.id}/mover`,
+      { planejamento_id: m.plan, etapa: 'PORTER', categoria: 'RIVALIDADE' })
+      .then(() => 'passou').catch((e) => e.message);
+    return { fator: f.id, prj: prj.id, recusa };
+  }, massa);
+  t(`${l} fator que já virou ação é recusado, dizendo qual ação`,
+    /Ação de prova \(mover\)/.test(comAcao.recusa) && /origem da ação/.test(comAcao.recusa),
+    comAcao.recusa);
+
+  // A tela obedece: ⇄ desabilitado, sem ação pendurada, com TODOS os motivos.
+  await page.evaluate(() => App.mostrarSecao('swot'));
+  await esperar(page,
+    `!!document.querySelector('#secao-swot [data-card-fator="${massa.comGut}"]')`, 15000);
+  const botao = await page.evaluate((m) => {
+    const ver = (id) => {
+      const b = document.querySelector(
+        `#secao-swot [data-card-fator="${id}"] [aria-label^="Mover"]`);
+      return b ? { off: b.disabled, semAcao: !b.hasAttribute('data-mover'), motivo: b.title,
+        ponteiro: getComputedStyle(b).pointerEvents } : null;
+    };
+    return { gut: ver(m.comGut), interno: ver(m.interno) };
+  }, massa);
+  t(`${l} o ⇄ do fator travado fica desabilitado e sem ação pendurada`,
+    !!botao.gut && botao.gut.off === true && botao.gut.semAcao === true, JSON.stringify(botao.gut));
+  t(`${l} e o motivo alcançável diz o que desfazer`,
+    !!botao.gut && /Matriz GUT/.test(botao.gut.motivo) && botao.gut.ponteiro === 'auto',
+    JSON.stringify(botao.gut));
+  t(`${l} o fator do cruzamento também trava, com a frase dele`,
+    !!botao.interno && botao.interno.off === true && /cruzamento/.test(botao.interno.motivo),
+    JSON.stringify(botao.interno));
+
+  // O modal pergunta a categoria do DESTINO, um campo por análise: com um campo
+  // só, repintado, trocar de destino e voltar perdia a escolha já feita.
+  await page.evaluate(() => App.mostrarSecao('pestel'));
+  await esperar(page,
+    `!!document.querySelector('#secao-pestel [data-mover="${massa.promovido}"], `
+    + `#secao-pestel [data-card-fator="${massa.promovido}"]')`, 15000);
+  const modal = await page.evaluate(async (m) => {
+    const lista = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=SWOT&ano=${m.ano}`);
+    Diag.modalMoverFator(lista.find((f) => f.id == m.limpo), m.plan);
+    await new Promise((r) => setTimeout(r, 300));
+    const rotulos = [...document.querySelectorAll('#campo-etapa input')].map(
+      (i) => i.closest('label')?.textContent.trim() || i.value);
+    return {
+      destinos: rotulos,
+      camposCategoria: ['PESTEL', 'PORTER', 'SWOT']
+        .filter((e) => document.getElementById(`campo-categoria_${e}`)),
+      titulo: document.querySelector('.modal.show .modal-title')?.textContent.trim(),
+    };
+  }, massa);
+  t(`${l} o modal oferece só as OUTRAS análises`,
+    modal.destinos.length === 2 && !modal.destinos.includes('SWOT'), JSON.stringify(modal.destinos));
+  t(`${l} e um campo de categoria por destino, não um repintado`,
+    modal.camposCategoria.length === 2 && !modal.camposCategoria.includes('SWOT'),
+    JSON.stringify(modal.camposCategoria));
+
+  await page.evaluate(async (m) => {
+    window.bootstrap?.Modal.getInstance(document.querySelector('.modal.show'))?.hide();
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    await App.api(`/api/cruzamentos/${m.cruz}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    for (const id of [m.limpo, m.promovido, m.comGut, m.interno, m.externo, m.comAcao]) {
+      await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    }
+    App.mostrarSecao('painel');
+  }, { ...massa, prj: comAcao.prj, comAcao: comAcao.fator });
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -2547,6 +2708,7 @@ async function provasCenarioPlanoAcao(page) {
   await provasExclusaoComVinculo(page);
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);
+  await provasMoverAnalise(page);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.

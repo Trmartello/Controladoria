@@ -551,6 +551,19 @@ const Diag = {
    * volta até a ação é leitura, não edição — quem só acompanha o plano também
    * precisa dele.
    */
+  /**
+   * Liga o "⇄ Mover" numa tela de fatores. Vive aqui pelo mesmo motivo do selo
+   * do plano de ação: PESTEL, Porter e SWOT usam o gesto idêntico, e duplicá-lo
+   * faria as três divergirem no primeiro ajuste.
+   */
+  ligarMoverFator(el, fatores, planId) {
+    if (!App.podeEditar()) return;
+    el.querySelectorAll('[data-mover]').forEach((b) => b.addEventListener('click', () => {
+      const f = fatores.find((x) => x.id == b.dataset.mover);
+      if (f) this.modalMoverFator(f, planId);
+    }));
+  },
+
   ligarPlanoAcao(el, planId, recurso = 'fatores', substantivo = 'fator') {
     el.querySelectorAll('[data-ir-acao]').forEach((b) => b.addEventListener('click', () => {
       SecaoProjetos.destacarAcao = b.dataset.irAcao;
@@ -609,6 +622,87 @@ const Diag = {
    * tem ação nenhuma pendurada. E o `title` diz o que FAZER — apagar a ação em
    * Projetos —, não apenas que não pode.
    */
+  // Como cada análise se chama na tela. 'PORTER' é sobrenome, não sigla.
+  ROTULO_ETAPA: { PESTEL: 'PESTEL', PORTER: 'Porter', SWOT: 'SWOT' },
+
+  /**
+   * O botão "⇄" que muda o fator de análise — desabilitado, com o motivo, onde
+   * o servidor VAI recusar.
+   *
+   * `mover_trava` chega da MESMA consulta com que `FatorController::mover`
+   * recusa (`travasDeMover`), somada à trava da ação (`acao_trava`), que é
+   * compartilhada com a exclusão. Remontar qualquer uma das duas aqui erraria
+   * nos casos difíceis — a promoção, o cruzamento — que são justamente os
+   * comuns.
+   *
+   * Os motivos entram TODOS no `title`, um por linha: um fator promovido e
+   * citado num cruzamento tem duas coisas a desfazer, e mostrar só a primeira
+   * faria a segunda parecer um erro novo depois de o usuário já ter trabalhado.
+   */
+  botaoMoverFator(f) {
+    const motivos = [...(f.mover_trava || [])];
+    if (f.acao_trava) {
+      motivos.unshift(`Já virou a ação “${f.acao_trava}” no plano. `
+        + 'Exclua a ação em Projetos antes de mover este fator.');
+    }
+    if (motivos.length) {
+      return `<button class="btn btn-sm btn-outline-secondary" ${Vinculos.travado(motivos.join('\n'))}
+        aria-label="Mover de análise (bloqueado)">⇄</button>`;
+    }
+    return `<button class="btn btn-sm btn-outline-secondary" data-mover="${f.id}"
+      title="Mover para outra análise" aria-label="Mover para outra análise">⇄</button>`;
+  },
+
+  /**
+   * Modal do "⇄": para onde vai, e em que categoria lá.
+   *
+   * A categoria é perguntada SEMPRE, e o campo se repinta quando a análise de
+   * destino muda: as listas não se correspondem (`LEGAL` não existe no Porter,
+   * `RIVALIDADE` não existe na SWOT), e um valor herdado do PESTEL viraria uma
+   * categoria que a tela de destino não sabe desenhar — o fator sumiria das
+   * duas. O servidor recusa do mesmo jeito; aqui é o campo que impede.
+   *
+   * A SWOT entra como destino de pleno direito, ao lado da promoção: promover
+   * COPIA (a origem fica no PESTEL, com o par visível nas duas telas), mover
+   * TRANSFERE. São gestos diferentes e ambos legítimos — o que não pode é
+   * fazer os dois no mesmo fator, e é por isso que a promoção trava o ⇄.
+   */
+  modalMoverFator(f, planId) {
+    const destinos = Object.keys(this.ROTULO_ETAPA).filter((e) => e !== f.etapa);
+    const primeiro = destinos[0];
+    const campoDe = (etapa) => (etapa === 'SWOT'
+      ? { nome: 'categoria', rotulo: 'Quadrante na SWOT', tipo: 'quadrantes',
+          opcoes: Object.entries(this.QUADRANTES).map(([valor, rot]) => ({
+            valor, rotulo: rot, cor: this.CORES_QUADRANTE[valor], dica: this.DICAS_QUADRANTE[valor],
+          })) }
+      : this.campoCategoria(etapa, 'categoria', `Categoria no ${this.ROTULO_ETAPA[etapa]}`));
+    Modal.abrir({
+      titulo: 'Mover para outra análise',
+      url: `/api/fatores/${f.id}/mover`,
+      valores: { planejamento_id: planId, etapa: primeiro, categoria: '' },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'fator', rotulo: `Fator do ${this.ROTULO_ETAPA[f.etapa] || f.etapa}`, tipo: 'info',
+          texto: f.descricao,
+          barra: { cor: SecaoProjetos.corCategoria(f.etapa, f.categoria),
+            titulo: SecaoProjetos.rotuloCategoria(f.etapa, f.categoria) } },
+        { nome: 'etapa', rotulo: 'Para qual análise?', tipo: 'botoes',
+          opcoes: destinos.map((e) => ({ valor: e, rotulo: this.ROTULO_ETAPA[e] })),
+          ajuda: 'O texto e as vozes da sala vão junto; só a análise e a categoria mudam.' },
+        // Um campo por destino, revelado pelo `visivelSe`: o formulário não
+        // remonta opções no meio do preenchimento, e o valor de cada lista fica
+        // guardado no campo dela. Com UM campo repintado, trocar de destino e
+        // voltar perdia a escolha já feita.
+        ...destinos.map((e) => ({ ...campoDe(e), nome: `categoria_${e}`,
+          visivelSe: { campo: 'etapa', valores: [e] } })),
+      ],
+      // O servidor recebe UMA categoria, a do destino escolhido: mandar as três
+      // deixaria a validação passar pela lista errada.
+      transformar: (d) => ({ planejamento_id: d.planejamento_id, etapa: d.etapa,
+        categoria: d[`categoria_${d.etapa}`] || '' }),
+    });
+  },
+
   botaoExcluirFator(f) {
     if (f.acao_trava) {
       return `<button class="btn btn-sm btn-outline-danger" ${Vinculos.travado(
@@ -646,6 +740,7 @@ const Diag = {
       ${selos}${swot}${this.seloPlanoAcao(f)}
       <span class="ms-auto d-flex gap-1">
         <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
+        ${this.botaoMoverFator(f)}
         ${this.botaoExcluirFator(f)}
       </span>
     </div>`;
@@ -924,6 +1019,7 @@ const Diag = {
     // PESTEL e Porter agora vão DIRETO ao plano de ação, sem passar pela
     // promoção à SWOT — o mesmo selo e o mesmo gesto da SWOT.
     this.ligarPlanoAcao(el, plan.id);
+    this.ligarMoverFator(el, fatores, plan.id);
 
     // Botão da SWOT (promover ou trocar categoria): abre a matriz 2×2 embaixo
     // do próprio card, sem modal — um toque no quadrante já aplica a escolha
@@ -1431,6 +1527,7 @@ const SecaoSwot = {
             ${Diag.selosOrigem(f)}${origem}${gut}${acao}
             ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
               <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
+              ${Diag.botaoMoverFator(f)}
               ${Diag.botaoExcluirFator(f)}
             </span>` : ''}
           </div>
@@ -1528,6 +1625,7 @@ const SecaoSwot = {
     // Os três estados do selo do plano — o mesmo helper que PESTEL e Porter
     // usam. Ele já trata o "Virou ação ↗" antes da saída por `podeEditar`.
     Diag.ligarPlanoAcao(el, plan.id);
+    Diag.ligarMoverFator(el, fatores, plan.id);
 
     if (!App.podeEditar()) {
       QuizSala.ligarSelo(el);

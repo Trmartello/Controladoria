@@ -255,6 +255,25 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `diagnostico.js` (`Diag`), limitado a [ano_base, ano_fim] do ciclo.
 - Promoção PESTEL/Porter → SWOT copia o `ano`; o botão do fator promovido
   mostra a categoria SWOT na cor do quadrante e reabre a edição.
+- **Mover um fator de análise** (`⇄`, `FatorController::mover`): PESTEL ⇄ Porter
+  ⇄ SWOT. **A etapa e a categoria andam juntas, sempre** — as listas não se
+  correspondem, e herdar a antiga produziria um fator invisível nas duas telas
+  (a SWOT filtra por categoria dela, o PESTEL por etapa), que é o mesmo defeito
+  que o `salvar()` já corrigiu por outro caminho. O modal tem **um campo de
+  categoria por destino**, revelado por `visivelSe`: com um campo repintado,
+  trocar de destino e voltar perdia a escolha já feita.
+  **Quatro amarras RECUSAM o movimento**, cada uma dizendo o que desfazer: já
+  virou ação (a mesma `Fatores::acoesQuePrendem` da exclusão — uma definição só
+  de "está preso"), promoção nos **dois** sentidos, nota na Matriz GUT (que é da
+  SWOT) e citação num cruzamento (o par escolhe interno × externo por
+  quadrante). Cada uma levanta uma pergunta de processo em aberto (backlog,
+  decisões 13–15); até haver resposta, recusar é a saída segura — movimento
+  recusado é aborrecimento, movimento que apaga a nota da GUT em silêncio é dado
+  perdido. Os motivos chegam à tela em `mover_trava` (array — as amarras se
+  acumulam) pela **mesma** consulta da recusa, e o `⇄` já nasce desabilitado com
+  todos eles no `title`. **Promover ≠ mover:** promover COPIA (a origem fica no
+  PESTEL, o par visível nas duas telas), mover TRANSFERE; os dois são legítimos,
+  mas não no mesmo fator — e é por isso que a promoção trava o `⇄`.
 - **Orientações do diagnóstico**: cada categoria (PESTEL, Porter, SWOT, Cenário)
   tem uma dica curta num ícone **ⓘ** ao lado do título, não em texto de topo —
   `Diag.ORIENTACOES_CATEGORIA` (mapa por código) + `iconeOrientacao` /
