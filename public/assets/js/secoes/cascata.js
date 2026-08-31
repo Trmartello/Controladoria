@@ -159,6 +159,47 @@ const SecaoCascata = {
    * cascata inteira daria mais de cem linhas numa tabela só — e a pergunta que
    * se faz no trimestral é sempre sobre uma fase.
    */
+  /**
+   * Como se preenchem as três colunas da direita — a pergunta que a tela
+   * levantava e não respondia.
+   *
+   * A frase "o indicador se amarra na tela Metas · Indicadores" já estava aqui,
+   * e mesmo assim a pergunta veio: um parágrafo cinzento no meio de uma tabela
+   * grande é lido como legenda, não como instrução, e ainda deixava o trabalho
+   * de ACHAR a tela e o campo com quem lê. Aqui o caminho vira botão: diz o
+   * campo exato e leva até ele.
+   *
+   * Os dois vínculos são gravados na tela de ORIGEM, não aqui, e é de propósito
+   * — um indicador mede escolhas de vários horizontes e um projeto executa uma
+   * só, então a pergunta natural ("o que este indicador mede?") é feita de lá
+   * para cá. Editar daqui exigiria repetir os dois formulários na matriz, e
+   * duas telas gravando o mesmo vínculo divergem na primeira mudança.
+   *
+   * `semVinculo` é o único número que muda de estado: indicador que não mede
+   * escolha nenhuma NÃO aparece na tabela, e some sem dizer por quê — por isso
+   * ele vira aviso, e não linha de rodapé.
+   */
+  comoAmarrar(semVinculo) {
+    return `<div class="alert alert-secondary py-2 small d-print-none como-amarrar">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span><strong>Indicadores</strong> e <strong>Meta / Real</strong>: abra o indicador em
+          Metas e marque a escolha no campo <em>“Escolhas da cascata que este indicador
+          mede”</em>.</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap"
+          data-ir="metas">Ir para Metas · Indicadores ↗</button>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+        <span><strong>Iniciativas</strong>: edite o projeto e escolha a célula no campo
+          <em>“Escolha da Cascata que este projeto executa”</em>.</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap"
+          data-ir="projetos">Ir para Projetos ↗</button>
+      </div>
+      ${semVinculo ? `<div class="mt-2 pt-2 border-top">
+        <strong>${semVinculo} indicador(es)</strong> ainda não medem escolha nenhuma — e por isso
+        não aparecem na tabela abaixo.</div>` : ''}
+    </div>`;
+  },
+
   matrizExecucao() {
     const { horizontes, drivers, eixos, escolhas, indicadores, projetos } = this.dados;
     if (!horizontes.length) {
@@ -263,8 +304,8 @@ const SecaoCascata = {
     return `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
         <p class="text-muted mb-0">Por eixo: o que foi decidido, o que mede a decisão e quem a
-        executa. O indicador se amarra à escolha na tela <strong>Metas · Indicadores</strong>;
-        o projeto, no campo <em>Escolha da Cascata</em> do próprio projeto.</p>
+        executa. As três colunas da direita <strong>não se preenchem aqui</strong> — esta aba é
+        leitura. O vínculo se faz na tela de origem, e os dois atalhos abaixo levam a ela.</p>
         <div class="d-flex align-items-center gap-2">
           <label class="small text-muted text-nowrap" for="sel-horizonte-matriz">Horizonte</label>
           <select id="sel-horizonte-matriz" class="form-select form-select-sm" style="width:auto">
@@ -273,11 +314,8 @@ const SecaoCascata = {
           </select>
         </div>
       </div>
-      ${semVinculo ? `<div class="alert alert-secondary py-2 small d-print-none">
-        ${semVinculo} indicador(es) ainda não medem escolha nenhuma — eles não aparecem aqui.
-        Amarre-os em <strong>Metas · Indicadores</strong>, no campo “Escolhas da cascata que este
-        indicador mede”.</div>` : ''}
-      <div class="table-responsive">
+      ${this.comoAmarrar(semVinculo)}
+      <div class="table-responsive caixa-execucao">
         <table class="table table-sm table-bordered align-middle tabela-execucao">
           <thead><tr>
             <th style="min-width:120px">Eixo</th>
@@ -361,6 +399,12 @@ const SecaoCascata = {
       this.horizonteMatriz = parseInt(ev.target.value, 10) || null;
       this.renderExecucao(el);
     });
+    // Os atalhos do "como amarrar". Ficam no mesmo lugar do seletor porque o
+    // painel inteiro é repintado a cada troca de horizonte — e um ouvinte
+    // pendurado no nó antigo fica mudo na segunda vez, que foi o defeito que
+    // esta função existe para não repetir.
+    el.querySelectorAll('.como-amarrar [data-ir]').forEach((b) => b.addEventListener('click',
+      () => App.mostrarSecao(b.dataset.ir)));
   },
 
   renderExecucao(el) {

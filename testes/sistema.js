@@ -2158,6 +2158,53 @@ async function provasMatrizExecucao(page) {
   t(`${l} tem seletor de horizonte`, matriz.seletor);
   t(`${l} a regra vem de SecaoMetas.metaReal`, matriz.regra === '2027|80|true', matriz.regra);
 
+  // O cabeçalho grudado. A prova é feita ROLADA até o fim: parada no topo, uma
+  // tabela qualquer parece ter cabeçalho fixo, e o defeito só aparece depois de
+  // umas centenas de pixels — que foi exatamente como ele chegou.
+  const fixo = await page.evaluate(async () => {
+    window.scrollTo(0, document.body.scrollHeight);
+    await new Promise((r) => setTimeout(r, 200));
+    const th = document.querySelector('.tabela-execucao thead th');
+    const caixa = document.querySelector('.caixa-execucao');
+    const tab = document.querySelector('.tabela-execucao');
+    return {
+      rolou: Math.round(window.scrollY),
+      topoTh: Math.round(th.getBoundingClientRect().top),
+      baseTopbar: Math.round(document.querySelector('.topbar').getBoundingClientRect().bottom),
+      // Se a caixa voltar a rolar sozinha, o `sticky` gruda no topo DELA — que
+      // sai da tela junto com a página — e o cabeçalho some sem erro nenhum.
+      caixaRola: getComputedStyle(caixa).overflowY !== 'visible',
+      // `separate` é o que torna o cabeçalho opaco: com `collapse` o texto das
+      // células passa POR CIMA do fundo dele.
+      colapso: getComputedStyle(tab).borderCollapse,
+      rolaHorizontal: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    };
+  });
+  t(`${l} a página rolou de verdade antes de medir`, fixo.rolou > 300, `${fixo.rolou}`);
+  t(`${l} o cabeçalho fica grudado logo abaixo da topbar`,
+    fixo.topoTh === fixo.baseTopbar, JSON.stringify(fixo));
+  t(`${l} a caixa não rola sozinha — senão o grudado sai com ela`,
+    fixo.caixaRola === false, JSON.stringify(fixo));
+  t(`${l} bordas separadas, para o cabeçalho ser opaco`,
+    fixo.colapso === 'separate', fixo.colapso);
+  t(`${l} e a página continua sem rolagem horizontal`, fixo.rolaHorizontal === false);
+
+  // Os dois atalhos: a tabela é leitura, e o vínculo se faz na tela de origem.
+  const atalhos = await page.evaluate(() => {
+    const bs = [...document.querySelectorAll('#secao-cascata .como-amarrar [data-ir]')];
+    return { alvos: bs.map((b) => b.dataset.ir),
+      texto: document.querySelector('#secao-cascata .como-amarrar').textContent.replace(/\s+/g, ' ') };
+  });
+  t(`${l} o aviso leva às duas telas onde o vínculo se faz`,
+    atalhos.alvos.join() === 'metas,projetos', JSON.stringify(atalhos.alvos));
+  t(`${l} e nomeia os campos exatos dos dois formulários`,
+    /Escolhas da cascata que este indicador mede/.test(atalhos.texto)
+    && /Escolha da Cascata que este projeto executa/.test(atalhos.texto), atalhos.texto.slice(0, 200));
+  await page.evaluate(() =>
+    document.querySelector('#secao-cascata .como-amarrar [data-ir="metas"]').click());
+  await esperar(page, "!document.getElementById('secao-metas').classList.contains('d-none')", 10000);
+  t(`${l} o atalho de Metas abre mesmo a tela de Metas`, true);
+
   await page.evaluate(async (m) => {
     await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
     await App.api(`/api/indicadores/${m.ind}/excluir`, { planejamento_id: m.plan }).catch(() => {});
@@ -2176,8 +2223,9 @@ async function provasMatrizExecucao(page) {
  *
  * A massa monta o caminho da trava que a tela sozinha NÃO enxergaria: um fator
  * do PESTEL promovido à SWOT, encaminhado e virado ação. Quem olhasse só o
- * `desdobramento_id` do fator pedido acharia os dois livres — e é justamente
- * esse o caso mais comum, porque o PESTEL não vai direto ao plano.
+ * `desdobramento_id` do fator pedido acharia os dois livres — e a promoção
+ * continua sendo o caminho mais andado, mesmo depois de o PESTEL passar a
+ * poder ir direto ao plano.
  */
 async function provasExclusaoComVinculo(page) {
   const l = '[desktop] Exclusão com vínculo:';

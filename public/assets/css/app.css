@@ -182,6 +182,68 @@ table.tabela-cadastro td { vertical-align: middle; }
   color: var(--verde-escuro);
   vertical-align: middle;
 }
+/* O cabeçalho da matriz gruda abaixo da topbar, como o de Projetos e o das
+   análises (`top: var(--topo-app)`, a altura da .topbar declarada uma vez em
+   `:root`). Sem ele, uma tabela de cinco colunas largas é lida às cegas: da
+   terceira linha em diante ninguém sabe mais se a coluna do meio é o indicador
+   ou a meta.
+
+   O motivo de isto precisar de uma media query: `.table-responsive` é um
+   CONTAINER DE ROLAGEM. `overflow-x: auto` faz o `overflow-y` computar `auto`
+   junto, e um `sticky` ali gruda no topo de uma caixa que tem exatamente a
+   altura da tabela — ele não tem para onde se mover e some com a página, que é
+   quem rola de verdade. Onde a tabela CABE na largura, o container deixa de
+   rolar e o `sticky` passa a valer contra a página.
+
+   O corte é 992px (o `lg` do Bootstrap), e o número saiu de MEDIR, não de
+   somar os `min-width` das colunas: a largura intrínseca da tabela é 911px, e
+   a 992 a caixa útil fica em 944 — 33px de folga. Abaixo disso ela vaza, e a
+   PÁGINA passaria a rolar na horizontal, que é o defeito que o
+   `.table-responsive` existe para evitar; então ali o container volta a rolar
+   sozinho e o cabeçalho não gruda. No celular a tabela já é percorrida de
+   lado, e cabeçalho fixo roubaria altura de tela sem resolver nada.
+
+   `border-collapse: separate` é o que faz o cabeçalho grudado ser OPACO. Com
+   `collapse`, as bordas (e os fundos) pertencem à TABELA, não às células: o
+   fundo do `<th>` é pintado na camada da tabela e o TEXTO das `<td>` que
+   passam por baixo aparece por cima dele — `z-index` na célula não resolve,
+   porque tabela colapsada não respeita camada por célula. Medido, não
+   deduzido: a cauda de "…ligado a esta escolha." aparecia atravessada no meio
+   do título "Iniciativas".
+   O preço de `separate` é ter de redesenhar a grade do `table-bordered` à mão
+   — cada célula fica com a borda da DIREITA e a de BAIXO, e a tabela com a de
+   cima e a da esquerda —, senão as bordas vizinhas se somam e a grade
+   engrossa. `border-spacing: 0` mantém as células encostadas. */
+.tabela-execucao {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 0;
+  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  border-left: 1px solid var(--bs-border-color, #dee2e6);
+}
+.tabela-execucao > * > tr > * {
+  border: 0;
+  border-right: 1px solid var(--bs-border-color, #dee2e6);
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+@media (min-width: 992px) {
+  .caixa-execucao { overflow: visible; }
+  .tabela-execucao thead th {
+    position: sticky;
+    top: var(--topo-app);
+    z-index: 3;
+    background: #f4f6f5;
+    /* A sombra é o "tem mais coisa acima" dos outros cabeçalhos fixos do
+       sistema; sem ela o corte é lido como linha quebrada. */
+    box-shadow: 0 .35rem .35rem -.3rem rgba(0, 0, 0, .22);
+  }
+}
+/* No papel não há rolagem: grudado, o cabeçalho viraria uma faixa cinzenta
+   sobreposta à tabela na primeira página. */
+@media print {
+  .caixa-execucao { overflow: visible; }
+  .tabela-execucao thead th { position: static; box-shadow: none; }
+}
 
 /* Metas — tabela plurianual */
 .tabela-metas th.col-ano { min-width: 84px; text-align: center; }

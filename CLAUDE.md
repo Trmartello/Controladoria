@@ -446,6 +446,22 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   planejamento — `Auth::exigirEdicaoPlanejamento` valida o planejamento, não os
   filhos —, e só toca a tabela quando a chave `cascatas` vem no corpo: tratar a
   ausência como "lista vazia" apagaria vínculos que ninguém mandou apagar.
+  **A aba é LEITURA**: as três colunas da direita não se preenchem ali, e o
+  bloco `.como-amarrar` (`SecaoCascata.comoAmarrar`) diz o campo exato de cada
+  uma e leva à tela — a frase solta que existia antes era lida como legenda, e a
+  pergunta "como eu amarro isto?" veio mesmo com ela na tela. Editar daqui
+  exigiria repetir os dois formulários na matriz, e duas telas gravando o mesmo
+  vínculo divergem na primeira mudança.
+  **Cabeçalho grudado** (`top: var(--topo-app)`, como Projetos e as análises),
+  com duas condições que não são detalhe: (1) `.caixa-execucao` só deixa de
+  rolar acima de 992px — `overflow-x: auto` faz o `overflow-y` computar `auto`
+  junto, e um `sticky` dentro de um container de rolagem gruda no topo DELE, que
+  sai da tela com a página; o corte de 992 saiu de medir (a tabela tem 911px
+  intrínsecos, a caixa fica em 944), não de somar os `min-width`. (2) a tabela
+  usa `border-collapse: separate` — com `collapse` os fundos pertencem à tabela
+  e o TEXTO das `<td>` atravessa o cabeçalho grudado, e `z-index` na célula não
+  resolve; o preço é redesenhar a grade do `table-bordered` com borda direita e
+  de baixo por célula.
 - Investimentos decididos nunca voltam a PROPOSTO; APROVADO só avança para
   EXECUTADO.
 - Negócios vêm do Qlik (`FlagFilialNegocio`, códigos oficiais em
