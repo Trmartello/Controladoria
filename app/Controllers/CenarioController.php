@@ -23,9 +23,15 @@ class CenarioController
         // Coleta, e a resposta de quiz não mora lá — o clique cairia numa lista
         // que não a contém. As vozes da sala vêm em `quiz_vozes`, contadas à
         // parte e exibidas como selo próprio.
+        // `acao_titulo` alimenta o selo "Virou ação ↗" e a trava do ×. No
+        // cenário os dois saem do MESMO vínculo direto — diferente do fator,
+        // onde a trava também nasce do promovido e do cruzamento e por isso
+        // precisa de consulta própria (`Fatores::acoesQuePrendem`). Aqui só
+        // existe um caminho: o item virou ação, ou não virou.
         $sql = "SELECT c.*, ci.id AS coleta_item_id, ca.nome AS coleta_autor, co.n AS coleta_vozes,
-                       COALESCE(qz.n, 0) AS quiz_vozes
+                       COALESCE(qz.n, 0) AS quiz_vozes, ds.o_que AS acao_titulo
                 FROM cenario_item c
+                LEFT JOIN desdobramento ds ON ds.id = c.desdobramento_id
                 -- Uma ideia só por item: com vozes agrupadas na oficina, várias
                 -- ideias apontam para o mesmo registro e o JOIN duplicaria a linha
                 LEFT JOIN coleta_item ci ON ci.id = (
@@ -141,12 +147,100 @@ class CenarioController
         );
     }
 
+    /**
+     * Itens do cenário encaminhados ao plano de ação e ainda sem ação criada.
+     *
+     * Espelha `FatorController::aguardandoAcao()` e o do cruzamento: é a MESMA
+     * fila, lida pela mesma tela de Projetos, e por isso devolve as mesmas
+     * chaves que o card de lá consome (`texto`, `autor`, `origem`). A pergunta
+     * que a fila responde continua sendo uma só — "o que ainda não virou
+     * ação?" —, e o que muda por origem é o selo e o campo que fecha o vínculo.
+     *
+     * `categoria` carrega o TIPO (situação atual · tendência), que é o que o
+     * selo mostra: sem ele a pendência do cenário chegaria à fila sem dizer se
+     * descreve o hoje ou a aposta sobre o amanhã.
+     */
+    public function aguardandoAcao(): void
+    {
+        $planId = (int)($_GET['planejamento_id'] ?? 0);
+        Auth::exigirAcessoPlanejamento($planId);
+        Json::ok(Database::todos(
+            "SELECT c.id, c.ano, c.tipo AS categoria, c.descricao AS texto, c.acao_em,
+                    COALESCE(u.nome, 'Diagnóstico') AS autor, 'CENARIO' AS origem
+             FROM cenario_item c
+             LEFT JOIN usuario u ON u.id = c.acao_por
+             WHERE c.planejamento_id = ?
+               AND c.acao_em IS NOT NULL AND c.desdobramento_id IS NULL
+             ORDER BY c.acao_em, c.id",
+            [$planId]
+        ));
+    }
+
+    /**
+     * Marca (ou desmarca) um item do cenário como destino "Plano de ação".
+     *
+     * O cenário descreve o ambiente — é a análise que menos "pede ação" das
+     * quatro, e por isso foi a última a ganhar este caminho. Mas a tendência
+     * com data ("o frete sobe em janeiro") é exatamente o tipo de leitura que
+     * já nasce sabendo o que fazer, e obrigá-la a virar fator antes só para
+     * poder virar ação era o mesmo atrito que fez a regra da SWOT cair.
+     *
+     * Desmarcar depois de a ação existir continua recusado, pelo mesmo motivo
+     * das outras três origens: deixaria a ação no plano sem origem nenhuma.
+     * Quem quiser desfazer apaga a ação — a FK ON DELETE SET NULL devolve o
+     * item para a fila sozinho.
+     */
+    public function planoAcao(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $u = Auth::exigirLogin();
+        $item = $this->exigirItem($id, $planId);
+        // `marcar` ausente vale como true: o botão da tela só envia o false
+        $marcar = !array_key_exists('marcar', $d) || (bool)$d['marcar'];
+
+        if ($item['desdobramento_id']) {
+            Json::erro('Este item já virou uma ação no plano. '
+                . 'Exclua a ação em Projetos para desfazer o encaminhamento.');
+        }
+        if (!$marcar) {
+            Database::executar(
+                'UPDATE cenario_item SET acao_em = NULL, acao_por = NULL
+                 WHERE id = ? AND desdobramento_id IS NULL',
+                [$id]
+            );
+            Json::ok(['acao_em' => null]);
+        }
+        if ($item['acao_em']) {
+            Json::ok(['acao_em' => $item['acao_em']]); // já estava na fila
+        }
+        Database::executar(
+            'UPDATE cenario_item SET acao_em = NOW(), acao_por = ?
+             WHERE id = ? AND desdobramento_id IS NULL',
+            [(int)$u['id'], $id]
+        );
+        Json::ok();
+    }
+
     public function excluir(int $id): void
     {
         $d = Json::corpo();
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
-        $this->exigirItem($id, $planId);
+        $item = $this->exigirItem($id, $planId);
+        // Excluir um item que já virou ação é recusado, como no fator e no
+        // cruzamento: a ação continuaria viva no plano sem origem nenhuma, e o
+        // caminho de volta apontaria para uma linha morta. A FK do
+        // `desdobramento_id` é SET NULL e não impediria o DELETE — a recusa
+        // aqui é a regra, não uma consequência do banco.
+        if ($item['desdobramento_id']) {
+            $acao = Database::um('SELECT o_que FROM desdobramento WHERE id = ?',
+                [(int)$item['desdobramento_id']]);
+            Json::erro('Este item já virou uma ação no plano. '
+                . 'Exclua a ação em Projetos antes de excluir o item.'
+                . ($acao ? ' (ação: “' . $acao['o_que'] . '”)' : ''));
+        }
         // Solta o vínculo da Coleta antes de apagar: sem isso a ideia ficaria
         // apontando para um id morto e o rastreio exibiria link quebrado.
         // Volta a SELECIONADO, como o "Desmarcar" (ColetaController::reabrir):
@@ -156,14 +250,23 @@ class CenarioController
         Json::ok();
     }
 
-    private function exigirItem(int $id, int $planId): void
+    /**
+     * O item, conferido contra o planejamento do pedido.
+     *
+     * Devolve a LINHA inteira (era `SELECT id` e `void`): quem confere já
+     * precisa dos campos do encaminhamento — `acao_em` e `desdobramento_id` —,
+     * e uma segunda consulta para lê-los abriria a janela em que a primeira
+     * autoriza e a segunda lê outra coisa.
+     */
+    private function exigirItem(int $id, int $planId): array
     {
         $item = Database::um(
-            'SELECT id FROM cenario_item WHERE id = ? AND planejamento_id = ?',
+            'SELECT * FROM cenario_item WHERE id = ? AND planejamento_id = ?',
             [$id, $planId]
         );
         if (!$item) {
             Json::erro('Item não encontrado neste planejamento.', 404);
         }
+        return $item;
     }
 }

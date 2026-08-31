@@ -202,6 +202,30 @@ garantirFk($pdo, 'swot_cruzamento', 'fk_cruz_desdobramento',
     'ALTER TABLE swot_cruzamento ADD CONSTRAINT fk_cruz_desdobramento
      FOREIGN KEY (desdobramento_id) REFERENCES desdobramento(id) ON DELETE SET NULL');
 
+// O item da Análise de Cenário também vai ao plano de ação (decisão do cliente
+// 2026-08-31, junto com PESTEL e Porter). Mesmas três colunas do fator e do
+// cruzamento, de novo: é a QUARTA origem da mesma fila, e o que a torna uma
+// fila só é justamente os quatro terem o mesmo par "marcado / já virou ação".
+garantirColuna($pdo, 'cenario_item', 'acao_em',
+    'ALTER TABLE cenario_item ADD COLUMN acao_em DATETIME NULL AFTER descricao');
+garantirColuna($pdo, 'cenario_item', 'acao_por',
+    'ALTER TABLE cenario_item ADD COLUMN acao_por INT NULL AFTER acao_em');
+garantirColuna($pdo, 'cenario_item', 'desdobramento_id',
+    'ALTER TABLE cenario_item ADD COLUMN desdobramento_id INT NULL AFTER acao_por');
+// Referência morta impediria o ALTER e derrubaria o start do container — a
+// mesma faxina que o fator faz antes das dele.
+$pdo->exec('UPDATE cenario_item SET acao_por = NULL WHERE acao_por IS NOT NULL
+            AND acao_por NOT IN (SELECT id FROM usuario)');
+$pdo->exec('UPDATE cenario_item SET desdobramento_id = NULL WHERE desdobramento_id IS NOT NULL
+            AND desdobramento_id NOT IN (SELECT id FROM desdobramento)');
+garantirFk($pdo, 'cenario_item', 'fk_cenario_acao_por',
+    'ALTER TABLE cenario_item ADD CONSTRAINT fk_cenario_acao_por
+     FOREIGN KEY (acao_por) REFERENCES usuario(id) ON DELETE SET NULL');
+// SET NULL: apagada a ação, o item volta sozinho para a fila.
+garantirFk($pdo, 'cenario_item', 'fk_cenario_desdobramento',
+    'ALTER TABLE cenario_item ADD CONSTRAINT fk_cenario_desdobramento
+     FOREIGN KEY (desdobramento_id) REFERENCES desdobramento(id) ON DELETE SET NULL');
+
 // O relatório do disparo, que vai para quem administra depois de cada rodada de
 // avisos. Ele entra em `envio_email` como os outros para herdar a trava de
 // duplicidade — sem um tipo próprio, ele colidiria com o aviso do próprio

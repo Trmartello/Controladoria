@@ -1230,7 +1230,7 @@ escolha some, a medida fica.
 
 ## 9. Levar qualquer item ao plano de ação (e mover entre análises)
 
-### Veredito: **CONSTRUIR** (esforço P por fatia) — **fatia A ENTREGUE**
+### Veredito: **CONSTRUIR** (esforço P por fatia) — **fatias A e B ENTREGUES**
 
 O pedido do cliente: *"poder levar qualquer item do Porter, PESTEL, análise de
 cenário para o plano de ação, ou até mesmo mover o item para outra análise"*.
@@ -1240,7 +1240,7 @@ depende da primeira ter fixado o vocabulário.
 | Fatia | O quê | Estado |
 |---|---|---|
 | **A** | PESTEL e Porter vão **direto** ao plano de ação | **ENTREGUE** |
-| **B** | Item da **Análise de Cenário** vai ao plano de ação | a fazer |
+| **B** | Item da **Análise de Cenário** vai ao plano de ação | **ENTREGUE** |
 | **C** | **Mover** um item de uma análise para outra | a fazer |
 
 ### Fatia A — a regra de método que caiu
@@ -1300,15 +1300,41 @@ A bateria prova a corrente inteira (`provasPlanoDiretoAnalise`), incluindo as
 duas recusas que **não** mudaram — porque num tema cuja entrega é "tirar uma
 guarda", o que precisa de prova é o que continuou de pé.
 
-### Fatia B — o item de cenário (a fazer)
+### Fatia B — o item de cenário
 
-O cenário **não é fator**: `cenario_item` é outra tabela e não tem `acao_em`,
-`acao_por` nem `desdobramento_id`. Precisa das três colunas (via `garantirColuna`
-no `migrate.php`, como as outras evoluções de esquema), de `planoAcao` +
-`aguardandoAcao` no `CenarioController`, das rotas, do `cenario_item_id` como
-quarto campo de vínculo no `salvarDesdobramento` e da guarda de exclusão. É o
-mesmo desenho, **não o mesmo código** — e é justamente por isso que a fatia A
-veio antes: ela fixou o vocabulário que a B vai copiar.
+O cenário **não é fator**: `cenario_item` é outra tabela, e por isso ganhou as
+suas próprias `acao_em`/`acao_por`/`desdobramento_id` (migrate,
+`garantirColuna` + `garantirFk` com SET NULL), `planoAcao` + `aguardandoAcao`
+no `CenarioController`, as rotas, o `cenario_item_id` como **quarto** campo de
+vínculo no `salvarDesdobramento` e a guarda de exclusão. Mesmo desenho, **não o
+mesmo código** — e é por isso que a fatia A veio antes: ela fixou o vocabulário
+que a B copiou.
+
+**Três colunas repetidas numa quarta tabela é a decisão do tema**, e é
+deliberada. A alternativa — uma tabela de encaminhamentos polimórfica
+(`origem_tipo`, `origem_id`, `acao_em`, …) — trocaria três colunas por uma
+junção a mais em **toda leitura das quatro telas**, e por uma FK a menos: hoje
+o `ON DELETE SET NULL` é o que devolve a origem à fila sozinha quando a ação é
+apagada, sem uma linha de PHP. Par polimórfico não tem FK que o carregue junto
+— é exatamente o que obriga a ideia da Coleta a ser limpa à mão em
+`excluirDesdobramento`, e o defeito que essa limpeza corrige (a ideia sumindo
+da fila para sempre) é o argumento mais forte contra estender o padrão.
+
+**O que quase deu errado** foi a chave da fila, não o servidor. As quatro
+origens numeram separado, e a fila as junta numa lista só: sem prefixo por
+origem (`c…`/`f…`/`x…`/`n…`), um item de cenário e um fator de mesmo id
+ocupariam a mesma linha e o "Transformar em ação" abriria a pendência errada —
+sem erro, sem vermelho. A bateria prova a chave (`data-virar-acao="n<id>"`),
+não só a rota.
+
+**Uma limpeza que o tema tornou barata:** os quatro rótulos que o modal de
+conversão muda por origem (título, nome do campo, pergunta do destino e barra
+colorida) estavam em ternários aninhados, repetidos em quatro lugares do
+formulário. Com a quarta origem eles teriam de ser encaixados em todos, na
+mesma ordem — viraram um objeto `falas`, uma chave por origem. Os tipos do
+cenário (rótulo e cor) viraram `SecaoCenario.TIPOS`, que já eliminou uma
+duplicação existente: o modal de "aceitar sugestão da sala" escolhia o par
+`'#8f3b3b'`/`'Tendência'` à mão.
 
 ### Fatia C — mover entre análises (a fazer)
 
@@ -1445,8 +1471,8 @@ discutir a dependência, não o quadrante.
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 1 (trava: decisão 1) |
 | 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 2 (ver `docs/CRUZAMENTOS-SWOT.md`) |
-| 9b | Item da Análise de Cenário ao plano de ação | Construir | P | 3 (copia o desenho de 9a) |
-| 9c | Mover um item de uma análise para outra | Construir | P–M | 4 (trava: decisões 13 a 15) |
+| 9c | Mover um item de uma análise para outra | Construir | P–M | 3 (trava: decisões 13 a 15) |
+| 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |
 | 9a | PESTEL e Porter **direto** ao plano de ação | **Entregue** | P | ✔ (decisão do cliente) |
 | 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | **Entregue** | P | ✔ |
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | **Entregue** | P | ✔ |

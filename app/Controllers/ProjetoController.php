@@ -529,6 +529,17 @@ class ProjetoController
                     [$id, $cruzamentoId, $planId]
                 );
             }
+            // Item da Análise de Cenário: quarta origem da mesma fila, mesmo
+            // fechamento e mesma guarda no WHERE.
+            $cenarioId = (int)($d['cenario_item_id'] ?? 0);
+            if ($cenarioId) {
+                Database::executar(
+                    'UPDATE cenario_item SET desdobramento_id = ?
+                     WHERE id = ? AND planejamento_id = ?
+                       AND acao_em IS NOT NULL AND desdobramento_id IS NULL',
+                    [$id, $cenarioId, $planId]
+                );
+            }
             $coletaId = (int)($d['coleta_item_id'] ?? 0);
             if ($coletaId) {
                 Database::executar(
@@ -735,8 +746,9 @@ class ProjetoController
      * isso. Só `excluirDesdobramento` fazia a limpeza — apagar o PROJETO ou a
      * INICIATIVA derruba as ações por CASCADE sem passar por lá.
      *
-     * O fator da SWOT não precisa de linha nenhuma: a FK dele é
-     * ON DELETE SET NULL e o banco o devolve para a fila sozinho.
+     * O fator, o cruzamento e o item do cenário não precisam de linha nenhuma:
+     * a FK dos três é ON DELETE SET NULL e o banco os devolve para a fila
+     * sozinho. A ideia da Coleta é a exceção justamente por não ter FK.
      *
      * @param string $onde   condição sobre `desdobramento`, literal do código
      * @param array  $params os valores dessa condição

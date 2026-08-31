@@ -534,27 +534,24 @@ const Diag = {
   },
 
   /**
-   * Estado do fator da SWOT em relação ao plano de ação, nos mesmos três
-   * estados da ideia da Coleta: fora da fila (botão que encaminha), na fila
-   * (selo que desfaz) e já convertida (selo que leva à ação em Projetos).
-   *
-   * O selo "Virou ação" NÃO oferece desfazer: a partir dali quem manda é a
-   * ação, e desfazer aqui a deixaria no plano sem nenhuma origem. O servidor
-   * recusa do mesmo jeito — este é o aviso antes da recusa, não no lugar dela.
-   */
-  /**
    * Liga os três estados do selo do plano de ação, numa tela qualquer do
    * diagnóstico.
    *
-   * Vive aqui, e não em cada seção, porque PESTEL, Porter e SWOT passaram a
-   * usar o MESMO caminho: com o gesto duplicado em duas telas, o "tirar da
-   * fila" ganharia confirmação numa e não na outra na primeira revisão.
+   * Vive aqui, e não em cada seção, porque PESTEL, Porter, SWOT e a Análise de
+   * Cenário passaram a usar o MESMO caminho: com o gesto duplicado em quatro
+   * telas, o "tirar da fila" ganharia confirmação numa e não nas outras na
+   * primeira revisão.
+   *
+   * `recurso` é o único parâmetro que muda entre elas — `fatores` ou `cenario`
+   * —, porque as tabelas são diferentes e cada uma tem a sua rota. O SELO é
+   * idêntico nas quatro, e é isso que faz o gesto ser reconhecível: quem
+   * aprendeu a encaminhar no PESTEL já sabe encaminhar no cenário.
    *
    * O "Virou ação ↗" é ligado ANTES da saída por `podeEditar`: o caminho de
    * volta até a ação é leitura, não edição — quem só acompanha o plano também
    * precisa dele.
    */
-  ligarPlanoAcao(el, planId) {
+  ligarPlanoAcao(el, planId, recurso = 'fatores', substantivo = 'fator') {
     el.querySelectorAll('[data-ir-acao]').forEach((b) => b.addEventListener('click', () => {
       SecaoProjetos.destacarAcao = b.dataset.irAcao;
       App.mostrarSecao('projetos');
@@ -562,7 +559,7 @@ const Diag = {
     if (!App.podeEditar()) return;
     const encaminhar = async (id, marcar) => {
       try {
-        await App.api(`/api/fatores/${id}/plano-acao`, { planejamento_id: planId, marcar });
+        await App.api(`/api/${recurso}/${id}/plano-acao`, { planejamento_id: planId, marcar });
         App.recarregarSecaoAtiva();
       } catch (e) {
         alert(e.message);
@@ -571,11 +568,20 @@ const Diag = {
     el.querySelectorAll('[data-plano-acao]').forEach((b) => b.addEventListener('click', () =>
       encaminhar(b.dataset.planoAcao, true)));
     el.querySelectorAll('[data-tirar-acao]').forEach((b) => b.addEventListener('click', () => {
-      if (!confirm('Tirar este fator da fila do plano de ação?')) return;
+      if (!confirm(`Tirar este ${substantivo} da fila do plano de ação?`)) return;
       encaminhar(b.dataset.tirarAcao, false);
     }));
   },
 
+  /**
+   * Estado de um item do diagnóstico em relação ao plano de ação, nos mesmos
+   * três estados da ideia da Coleta: fora da fila (botão que encaminha), na
+   * fila (selo que desfaz) e já convertido (selo que leva à ação em Projetos).
+   *
+   * O selo "Virou ação" NÃO oferece desfazer: a partir dali quem manda é a
+   * ação, e desfazer aqui a deixaria no plano sem nenhuma origem. O servidor
+   * recusa do mesmo jeito — este é o aviso antes da recusa, não no lugar dela.
+   */
   seloPlanoAcao(f) {
     if (f.desdobramento_id) {
       return `<button type="button" class="badge selo-link text-bg-success" data-ir-acao="${f.desdobramento_id}"
@@ -968,6 +974,43 @@ const Diag = {
 // sala responde por lado (situação atual / tendência) e o texto que vira item
 // é o que ELE redige ao aceitar — as vozes ficam registradas como origem.
 const SecaoCenario = {
+  /**
+   * Os dois tipos do cenário, com rótulo e cor — catálogo único.
+   *
+   * Nasceu de uma duplicação real: o modal de "aceitar sugestão da sala" já
+   * escolhia `'#8f3b3b'`/`'Tendência'` à mão, e a fila do plano de ação em
+   * Projetos precisaria da mesma escolha. Duas cópias do mesmo par é como o
+   * verde da situação atual vira outro verde na terceira tela.
+   *
+   * O rótulo aqui é o SINGULAR ("Tendência"): ele serve ao selo de um item.
+   * As colunas da seção usam o plural ("Tendências"), que é outra coisa — o
+   * título de um grupo — e por isso continua escrito onde a coluna é montada.
+   */
+  TIPOS: {
+    SITUACAO_ATUAL: { rotulo: 'Situação atual', cor: '#007a45' },
+    TENDENCIA: { rotulo: 'Tendência', cor: '#8f3b3b' },
+  },
+
+  /**
+   * O × do item — desabilitado quando o servidor VAI recusar a exclusão.
+   *
+   * Mesmo padrão do `Diag.botaoExcluirFator`, com uma regra bem mais simples
+   * atrás dele: no cenário o vínculo com a ação é DIRETO e único, e por isso
+   * `acao_titulo` (que já vem da listagem) basta — não há promovido nem
+   * cruzamento a consultar, que é o que obriga o fator a ter consulta própria.
+   * Sem `data-excluir` quando travado: o botão não fica só cinzento, ele não
+   * tem ação nenhuma pendurada.
+   */
+  botaoExcluir(i) {
+    if (i.desdobramento_id) {
+      return `<button class="btn btn-sm btn-outline-danger" ${Vinculos.travado(
+        `Já virou a ação “${i.acao_titulo || ''}” no plano. Exclua a ação em Projetos `
+        + 'antes de excluir este item.')} aria-label="Excluir (bloqueado: virou ação)">×</button>`;
+    }
+    return `<button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}"
+      title="Excluir" aria-label="Excluir">×</button>`;
+  },
+
   plan: null,
   quiz: null,
   relogioQuiz: null,
@@ -1002,12 +1045,12 @@ const SecaoCenario = {
       const linhas = lista.map((i, idx) => `
         <div class="card mb-2" data-card-fator="${i.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
-          ${Diag.selosOrigem(i) || App.podeEditar()
+          ${Diag.selosOrigem(i) || Diag.seloPlanoAcao(i) || App.podeEditar()
             ? `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
-                ${Diag.selosOrigem(i)}
+                ${Diag.selosOrigem(i)}${Diag.seloPlanoAcao(i)}
                 ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
                   <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
-                  <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir" aria-label="Excluir">×</button>
+                  ${SecaoCenario.botaoExcluir(i)}
                 </span>` : ''}
               </div>` : ''}
         </div></div>`).join('');
@@ -1092,6 +1135,9 @@ const SecaoCenario = {
     Diag.aplicarDestaque(el, 'cenario');
     Diag.ligarSeloColeta(el, 'Análise de Cenário');
     Diag.ligarOrientacoes(el);
+    // O cenário vai direto ao plano de ação, como PESTEL, Porter e SWOT — mesmo
+    // selo, mesmo gesto, outra rota (é outra tabela).
+    Diag.ligarPlanoAcao(el, plan.id, 'cenario', 'item');
     if (!App.podeEditar()) return;
     // `sugestao` chega do painel da sala: o texto entra como RASCUNHO (o
     // condutor redige antes de salvar) e o id viaja em `sugestoes`, que é o
@@ -1114,8 +1160,9 @@ const SecaoCenario = {
         ...(sugestao ? [
           { nome: 'origem_sala', rotulo: '', tipo: 'info',
             texto: `${sugestao.autor}: “${sugestao.texto}”`,
-            barra: { cor: sugestao.tipo_resposta === 'TENDENCIA' ? '#8f3b3b' : '#007a45',
-                     titulo: sugestao.tipo_resposta === 'TENDENCIA' ? 'Tendência' : 'Situação atual' } },
+            barra: { cor: (SecaoCenario.TIPOS[sugestao.tipo_resposta] || SecaoCenario.TIPOS.SITUACAO_ATUAL).cor,
+                     titulo: (SecaoCenario.TIPOS[sugestao.tipo_resposta]
+                       || SecaoCenario.TIPOS.SITUACAO_ATUAL).rotulo } },
         ] : []),
         { nome: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: [
           { valor: 'SITUACAO_ATUAL', rotulo: 'Situação atual' },

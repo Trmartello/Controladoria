@@ -2399,6 +2399,126 @@ async function provasPlanoDiretoAnalise(page) {
   }, { ...massa, prj: vinculo.prj });
 }
 
+/**
+ * A Análise de Cenário indo ao plano de ação — a quarta origem da mesma fila.
+ *
+ * O cenário NÃO é fator: `cenario_item` é outra tabela, com colunas de
+ * encaminhamento próprias e rota própria. O que se prova aqui é que, apesar
+ * disso, o comportamento visível é o mesmo das outras três — mesmo selo, mesma
+ * fila, mesmas recusas — porque é isso que faz o gesto ser aprendido uma vez só.
+ *
+ * O ponto mais frágil é a CHAVE da fila: `cenario_item` e `fator` numeram
+ * separado, e sem prefixo por origem dois registros diferentes ocupariam a
+ * mesma linha — o "Virar ação" abriria a pendência errada, sem erro nenhum.
+ */
+async function provasCenarioPlanoAcao(page) {
+  const l = '[desktop] Cenário no plano de ação:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const item = await App.api('/api/cenario', { planejamento_id: plan.id, ano,
+      tipo: 'TENDENCIA', ordem: 0, descricao: 'Item de cenário de prova (plano)' });
+    const ida = await App.api(`/api/cenario/${item.id}/plano-acao`,
+      { planejamento_id: plan.id, marcar: true }).then(() => true).catch((e) => e.message);
+    return { plan: plan.id, ano, item: item.id, ida };
+  });
+  t(`${l} o item é aceito no plano de ação`, massa.ida === true, String(massa.ida));
+
+  const fila = await page.evaluate(async (m) => {
+    const linhas = await App.api(`/api/cenario/aguardando-acao?planejamento_id=${m.plan}`);
+    const meu = linhas.find((x) => x.id == m.item) || {};
+    return { origem: meu.origem, categoria: meu.categoria, texto: meu.texto };
+  }, massa);
+  t(`${l} a fila declara a origem e o tipo`,
+    fila.origem === 'CENARIO' && fila.categoria === 'TENDENCIA', JSON.stringify(fila));
+
+  // A chave por origem: sem o prefixo, item de cenário e fator de mesmo id
+  // disputariam a mesma linha da fila.
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  await esperar(page,
+    `!!document.querySelector('#secao-projetos [data-virar-acao="n${massa.item}"]')`, 15000);
+  const naFila = await page.evaluate((m) => {
+    const b = document.querySelector(`#secao-projetos [data-virar-acao="n${m.item}"]`);
+    const linha = b?.closest('.d-flex')?.parentElement || b?.parentElement;
+    return { achou: !!b, selo: /Cenário · Tendência/.test(linha?.textContent || '') };
+  }, massa);
+  t(`${l} a pendência entra na fila com chave própria da origem`, naFila.achou === true);
+  t(`${l} e o selo diz "Cenário · Tendência"`, naFila.selo === true, JSON.stringify(naFila));
+
+  // O selo do card, na própria seção do cenário.
+  await page.evaluate(() => App.mostrarSecao('cenario'));
+  await esperar(page,
+    `!!document.querySelector('#secao-cenario [data-card-fator="${massa.item}"]')`, 15000);
+  const card = await page.evaluate((m) => {
+    const c = document.querySelector(`#secao-cenario [data-card-fator="${m.item}"]`);
+    return c ? !!c.querySelector('[data-tirar-acao]') : null;
+  }, massa);
+  t(`${l} o card do cenário mostra o selo "Aguardando ação"`, card === true, String(card));
+
+  // A ação fecha o vínculo pelo `cenario_item_id`, e as duas recusas valem.
+  const vinculo = await page.evaluate(async (m) => {
+    const prj = await App.api('/api/projetos', { planejamento_id: m.plan, tipo: 'ESTRATEGICO',
+      titulo: 'Projeto de prova (cenário)', ano: 2027, responsavel: 'QA' });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: m.plan, projeto_id: prj.id, iniciativa_nova: 'Frente de prova (cenário)',
+      o_que: 'Ação de prova (cenário)', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31', cenario_item_id: m.item,
+    });
+    const lista = await App.api(`/api/cenario?planejamento_id=${m.plan}&ano=${m.ano}`);
+    const i = lista.find((x) => x.id == m.item) || {};
+    const fila = await App.api(`/api/cenario/aguardando-acao?planejamento_id=${m.plan}`);
+    const desmarcar = await App.api(`/api/cenario/${m.item}/plano-acao`,
+      { planejamento_id: m.plan, marcar: false }).then(() => 'passou').catch((e) => e.message);
+    const excluir = await App.api(`/api/cenario/${m.item}/excluir`,
+      { planejamento_id: m.plan }).then(() => 'passou').catch((e) => e.message);
+    return { prj: prj.id, ligou: i.desdobramento_id, titulo: i.acao_titulo,
+      naFila: fila.some((x) => x.id == m.item), desmarcar, excluir };
+  }, massa);
+  t(`${l} a ação fecha o vínculo pelo cenario_item_id`,
+    !!vinculo.ligou && vinculo.titulo === 'Ação de prova (cenário)', JSON.stringify(vinculo));
+  t(`${l} e o item sai da fila de aguardando`, vinculo.naFila === false, String(vinculo.naFila));
+  t(`${l} desmarcar depois da ação é recusado`,
+    /já virou uma ação/.test(vinculo.desmarcar), vinculo.desmarcar);
+  t(`${l} excluir o item preso é recusado, dizendo a ação`,
+    /Ação de prova \(cenário\)/.test(vinculo.excluir), vinculo.excluir);
+
+  // A tela obedece à trava, como no fator: × desabilitado e sem ação pendurada.
+  await page.evaluate(() => App.mostrarSecao('cenario'));
+  await esperar(page,
+    `!!document.querySelector('#secao-cenario [data-card-fator="${massa.item}"] [data-ir-acao]')`,
+    15000);
+  const x = await page.evaluate((m) => {
+    const btn = document.querySelector(
+      `#secao-cenario [data-card-fator="${m.item}"] .btn-outline-danger`);
+    return btn ? { off: btn.disabled, semAcao: !btn.hasAttribute('data-excluir'),
+      motivo: /Exclua a ação em Projetos/.test(btn.title),
+      ponteiro: getComputedStyle(btn).pointerEvents } : null;
+  }, massa);
+  t(`${l} o × travado fica desabilitado e sem ação pendurada`,
+    !!x && x.off === true && x.semAcao === true, JSON.stringify(x));
+  t(`${l} e diz o motivo com o ponteiro alcançando`,
+    !!x && x.motivo === true && x.ponteiro === 'auto', JSON.stringify(x));
+
+  // Apagada a ação, a FK SET NULL devolve o item para a fila sozinho — é o que
+  // torna o "exclua a ação em Projetos" um conselho que funciona de verdade.
+  const voltou = await page.evaluate(async (m) => {
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan });
+    const lista = await App.api(`/api/cenario?planejamento_id=${m.plan}&ano=${m.ano}`);
+    const i = lista.find((x) => x.id == m.item) || {};
+    const fila = await App.api(`/api/cenario/aguardando-acao?planejamento_id=${m.plan}`);
+    return { ligou: i.desdobramento_id, naFila: fila.some((x) => x.id == m.item) };
+  }, { ...massa, prj: vinculo.prj });
+  t(`${l} apagada a ação, o item volta sozinho para a fila`,
+    !voltou.ligou && voltou.naFila === true, JSON.stringify(voltou));
+
+  await page.evaluate(async (m) => {
+    await App.api(`/api/cenario/${m.item}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    App.mostrarSecao('painel');
+  }, massa);
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -2426,6 +2546,7 @@ async function provasPlanoDiretoAnalise(page) {
   await provasMatrizExecucao(page);
   await provasExclusaoComVinculo(page);
   await provasPlanoDiretoAnalise(page);
+  await provasCenarioPlanoAcao(page);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.

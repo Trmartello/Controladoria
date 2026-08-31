@@ -304,6 +304,12 @@ try {
             (new ColetaController())->salvar((int)$m[1]); break;
 
         case $rota === 'GET /api/cenario':         (new CenarioController())->listar(); break;
+        // Antes das rotas com {id}: "aguardando-acao" não é um número, mas a
+        // rota literal precisa vir primeiro para o leitor não ter de conferir
+        case $rota === 'GET /api/cenario/aguardando-acao':
+            (new CenarioController())->aguardandoAcao(); break;
+        case (bool)preg_match('#^POST /api/cenario/(\d+)/plano-acao$#', $rota, $m):
+            (new CenarioController())->planoAcao((int)$m[1]); break;
         case $rota === 'POST /api/cenario':        (new CenarioController())->salvar(); break;
         case (bool)preg_match('#^POST /api/cenario/(\d+)/excluir$#', $rota, $m):
             (new CenarioController())->excluir((int)$m[1]); break;

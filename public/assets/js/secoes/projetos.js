@@ -764,13 +764,15 @@ const SecaoProjetos = {
       return;
     }
     this.plan = await App.planejamento();
-    const [projetos, cascata, responsaveis, ideiasAcao, fatoresAcao, cruzamentosAcao] = await Promise.all([
+    const [projetos, cascata, responsaveis, ideiasAcao, fatoresAcao, cruzamentosAcao,
+      cenarioAcao] = await Promise.all([
       App.api(`/api/projetos?planejamento_id=${this.plan.id}`),
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
       App.api(`/api/responsaveis?planejamento_id=${this.plan.id}`),
       App.api(`/api/coleta/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
       App.api(`/api/fatores/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
       App.api(`/api/cruzamentos/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
+      App.api(`/api/cenario/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
     ]);
     // Uma fila só: a origem muda o selo e o campo que fecha o vínculo, não o
     // lugar onde a pendência aparece. Duas listas separadas fariam quem
@@ -780,6 +782,10 @@ const SecaoProjetos = {
       ...ideiasAcao.map((i) => ({ ...i, origem: 'COLETA', chave: `c${i.id}` })),
       ...fatoresAcao.map((f) => ({ ...f, chave: `f${f.id}` })),
       ...cruzamentosAcao.map((c) => ({ ...c, chave: `x${c.id}` })),
+      // A chave é por ORIGEM, não pelo id: `cenario_item` e `fator` numeram
+      // separado, e sem o prefixo dois registros diferentes disputariam a
+      // mesma linha da fila — o "Virar ação" abriria a pendência errada.
+      ...cenarioAcao.map((c) => ({ ...c, chave: `n${c.id}` })),
     ];
     this.cascata = cascata;
     this.responsaveis = responsaveis;
@@ -1377,12 +1383,12 @@ const SecaoProjetos = {
   },
 
   // Pendências encaminhadas ao plano de ação e ainda sem ação criada: ideias da
-  // coleta, fatores do PESTEL/Porter/SWOT e cruzamentos (TOWS), na mesma fila.
-  // O selo diz de onde cada uma veio.
+  // coleta, fatores do PESTEL/Porter/SWOT, cruzamentos (TOWS) e itens da Análise
+  // de Cenário, na mesma fila. O selo diz de onde cada uma veio.
   cartaoIdeiasAcao(pendentes) {
     if (!pendentes || !pendentes.length) return '';
     const podeConverter = App.podeEditar();
-    // Três origens, um selo cada. O do cruzamento mostra o BLOCO (atacar,
+    // Quatro origens, um selo cada. O do cruzamento mostra o BLOCO (atacar,
     // defender…), que é o que diz de que leitura da SWOT a estratégia nasceu —
     // o rótulo do par já vai no texto.
     const selo = (p) => {
@@ -1390,6 +1396,14 @@ const SecaoProjetos = {
         const b = SecaoCruzamentos.bloco(p.categoria);
         return `<span class="badge text-bg-light border" title="Cruzamento da SWOT · ${
           Modal.esc(b?.rotulo || p.categoria)}">TOWS · ${Modal.esc(b?.verbo || p.categoria)}</span>`;
+      }
+      // O cenário mostra o TIPO — situação atual ou tendência —, que é o que
+      // muda a leitura da pendência: uma descreve o hoje, a outra é aposta.
+      if (p.origem === 'CENARIO') {
+        const t = SecaoCenario.TIPOS[p.categoria];
+        return `<span class="badge text-bg-light border" title="Análise de Cenário · ${
+          Modal.esc(t?.rotulo || p.categoria)}">Cenário · ${
+          Modal.esc(t?.rotulo || p.categoria)}</span>`;
       }
       // PESTEL, Porter e SWOT são a mesma tabela e o mesmo campo de vínculo; o
       // que muda é o rótulo da categoria, que vive num catálogo por etapa.
@@ -1433,17 +1447,64 @@ const SecaoProjetos = {
   },
 
   // Transforma uma pendência numa ação (desdobramento) de uma iniciativa,
-  // guardando o vínculo com a origem — a ideia da coleta ou o fator da SWOT.
+  // guardando o vínculo com a origem — a ideia da coleta, o fator do
+  // diagnóstico, o cruzamento da SWOT ou o item da Análise de Cenário.
   modalConverterAcao(ideia) {
     if (!ideia) return;
     // O vínculo é por TABELA, não por análise: PESTEL, Porter e SWOT são todos
-    // `fator`, e fecham pelo mesmo `fator_id`.
+    // `fator`, e fecham pelo mesmo `fator_id`. O cenário é outra tabela e por
+    // isso é outro campo, embora o gesto do usuário seja o mesmo.
     const deFator = ORIGENS_FATOR.includes(ideia.origem);
     const doCruzamento = ideia.origem === 'TOWS';
+    const doCenario = ideia.origem === 'CENARIO';
     // O campo que fecha o vínculo, um por origem. Mandar mais de um faria o
     // servidor fechar um vínculo que ninguém pediu.
-    const campoOrigem = doCruzamento ? 'cruzamento_id' : (deFator ? 'fator_id' : 'coleta_item_id');
+    const campoOrigem = doCruzamento ? 'cruzamento_id'
+      : (deFator ? 'fator_id' : (doCenario ? 'cenario_item_id' : 'coleta_item_id'));
     const blocoCruz = doCruzamento ? SecaoCruzamentos.bloco(ideia.categoria) : null;
+    const tipoCen = doCenario ? SecaoCenario.TIPOS[ideia.categoria] : null;
+
+    /**
+     * As quatro frases que o modal muda conforme a origem: o título, o rótulo
+     * do campo que mostra a pendência, a pergunta do destino e a barra colorida
+     * ao lado do texto.
+     *
+     * Um objeto por origem, e não ternários aninhados: com três origens os
+     * ternários já ocupavam quatro linhas cada, repetidos em quatro lugares do
+     * formulário — e a quarta origem teria de ser encaixada em todos eles, na
+     * mesma ordem, sem esquecer nenhum. Aqui a origem nova é uma chave a mais.
+     */
+    const falas = {
+      TOWS: {
+        titulo: 'Transformar cruzamento em ação',
+        rotulo: 'Cruzamento da SWOT',
+        pergunta: 'Onde este cruzamento vira ação?',
+        // No cruzamento o texto é a ESTRATÉGIA e o rótulo do par vai na barra:
+        // é a estratégia que descreve o que fazer, e é dela que sai o "o quê".
+        barra: { cor: blocoCruz?.cor || '#007a45',
+          titulo: `${blocoCruz?.verbo || 'cruzamento'} — ${ideia.rotulo || ''}` },
+      },
+      FATOR: {
+        titulo: `Transformar fator do ${SecaoProjetos.rotuloEtapa(ideia.origem)} em ação`,
+        rotulo: `Fator do ${SecaoProjetos.rotuloEtapa(ideia.origem)}`,
+        pergunta: 'Onde este fator vira ação?',
+        barra: { cor: SecaoProjetos.corCategoria(ideia.origem, ideia.categoria),
+          titulo: SecaoProjetos.rotuloCategoria(ideia.origem, ideia.categoria) },
+      },
+      CENARIO: {
+        titulo: 'Transformar item do cenário em ação',
+        rotulo: 'Item da Análise de Cenário',
+        pergunta: 'Onde este item vira ação?',
+        barra: { cor: tipoCen?.cor || '#007a45', titulo: tipoCen?.rotulo || ideia.categoria || '' },
+      },
+      COLETA: {
+        titulo: 'Transformar ideia em ação',
+        rotulo: 'Ideia da coleta',
+        pergunta: 'Onde esta ideia vira ação?',
+        barra: { cor: '#5a3e2b', titulo: ideia.autor },
+      },
+    };
+    const fala = falas[doCruzamento ? 'TOWS' : (deFator ? 'FATOR' : (doCenario ? 'CENARIO' : 'COLETA'))];
     const projetos = this.projetos || [];
     const comIniciativas = projetos.filter((p) => (p.iniciativas || []).length);
 
@@ -1486,9 +1547,7 @@ const SecaoProjetos = {
 
     const nomeIdeia = ideia.texto_tratado || ideia.texto;
     Modal.abrir({
-      titulo: doCruzamento ? 'Transformar cruzamento em ação'
-        : (deFator ? `Transformar fator do ${SecaoProjetos.rotuloEtapa(ideia.origem)} em ação`
-          : 'Transformar ideia em ação'),
+      titulo: fala.titulo,
       url: '/api/desdobramentos',
       valores: {
         planejamento_id: this.plan.id,
@@ -1509,23 +1568,9 @@ const SecaoProjetos = {
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: campoOrigem, rotulo: '', tipo: 'hidden' },
-        { nome: 'ideia',
-          rotulo: doCruzamento ? 'Cruzamento da SWOT'
-            : (deFator ? `Fator do ${SecaoProjetos.rotuloEtapa(ideia.origem)}` : 'Ideia da coleta'),
-          tipo: 'info',
-          // No cruzamento o texto é a ESTRATÉGIA e o rótulo do par vai na barra:
-          // é a estratégia que descreve o que fazer, e é dela que sai o "o quê".
-          texto: ideia.texto,
-          barra: doCruzamento
-            ? { cor: blocoCruz?.cor || '#007a45',
-                titulo: `${blocoCruz?.verbo || 'cruzamento'} — ${ideia.rotulo || ''}` }
-            : (deFator
-              ? { cor: SecaoProjetos.corCategoria(ideia.origem, ideia.categoria),
-                  titulo: SecaoProjetos.rotuloCategoria(ideia.origem, ideia.categoria) }
-              : { cor: '#5a3e2b', titulo: ideia.autor }) },
-        { nome: 'destino',
-          rotulo: doCruzamento ? 'Onde este cruzamento vira ação?'
-            : (deFator ? 'Onde este fator vira ação?' : 'Onde esta ideia vira ação?'),
+        { nome: 'ideia', rotulo: fala.rotulo, tipo: 'info',
+          texto: ideia.texto, barra: fala.barra },
+        { nome: 'destino', rotulo: fala.pergunta,
           tipo: 'botoes', opcoes: destinos,
           ajuda: 'A ação sempre entra numa iniciativa, e toda iniciativa vive dentro de um projeto.' },
         { nome: 'iniciativa_alvo', rotulo: 'Em qual iniciativa?', tipo: 'select',

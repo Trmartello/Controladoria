@@ -51,9 +51,9 @@ class Fatores
      * recusa.
      *
      * As três origens da trava, todas com FK `ON DELETE CASCADE` a partir do
-     * fator: o próprio fator virou ação; um **promovido** dele virou (o caso
-     * mais comum — o PESTEL não vai direto ao plano, passa pela SWOT); ou um
-     * **cruzamento** que o cita virou. Em qualquer uma, apagar deixaria a ação
+     * fator: o próprio fator virou ação; um **promovido** dele virou (ainda o
+     * caso mais comum, mesmo depois de PESTEL e Porter passarem a ir direto ao
+     * plano); ou um **cruzamento** que o cita virou. Apagar deixaria a ação
      * viva no plano sem origem nenhuma.
      *
      * Uma consulta para a lista inteira: a tela chama isto com todos os fatores

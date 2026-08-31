@@ -1000,18 +1000,26 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 
 ### Plano de ação (três níveis)
 
-- **Fila de "Aguardando plano de ação"**: o card de Projetos junta TRÊS origens
-  — ideia da Coleta (`coleta_item.destino_tipo='ACAO'` com `destino_id` NULL),
-  **fator do diagnóstico** (`fator.acao_em` preenchido com `desdobramento_id`
-  NULL — PESTEL, Porter **ou** SWOT) e
+- **Fila de "Aguardando plano de ação"**: o card de Projetos junta QUATRO
+  origens — ideia da Coleta (`coleta_item.destino_tipo='ACAO'` com `destino_id`
+  NULL), **fator do diagnóstico** (`fator.acao_em` preenchido com
+  `desdobramento_id` NULL — PESTEL, Porter **ou** SWOT), **item da Análise de
+  Cenário** (`cenario_item`, as mesmas três colunas) e
   **cruzamento (TOWS)**, com as mesmas três colunas do fator. O cruzamento vai
   **direto ao plano, sem passar pela cascata**: ele já é a estratégia que nasce
   do par, e a cascata decide outra coisa (em que horizonte cada driver aposta).
   Uma fila só de propósito: a origem muda o selo e o campo que fecha o vínculo,
-  não a pergunta "o que ainda não virou ação?". O `modalConverterAcao` manda
-  `coleta_item_id` **ou** `fator_id`, nunca os dois, e o
-  `salvarDesdobramento` fecha o vínculo com a mesma guarda no WHERE (só o que
-  ainda está na fila), para pedido repetido não sequestrar vínculo alheio.
+  não a pergunta "o que ainda não virou ação?". A **chave da linha é por
+  origem** (`c…`/`f…`/`x…`/`n…`), não o id: as quatro tabelas numeram separado e
+  sem o prefixo dois registros disputariam a mesma linha — o "Transformar em
+  ação" abriria a pendência errada, sem erro nenhum. O `modalConverterAcao`
+  manda `coleta_item_id`, `fator_id`, `cruzamento_id` **ou** `cenario_item_id`,
+  nunca mais de um, e o `salvarDesdobramento` fecha o vínculo com a mesma guarda
+  no WHERE (só o que ainda está na fila), para pedido repetido não sequestrar
+  vínculo alheio. As frases que mudam por origem (título, rótulo, pergunta e a
+  barra colorida) vivem no objeto `falas` do `modalConverterAcao`, uma chave por
+  origem — com ternário aninhado, a quarta origem teria de ser encaixada em
+  quatro lugares do formulário, na mesma ordem, sem esquecer nenhum.
   **Qualquer etapa vai direto ao plano** — PESTEL, Porter e SWOT. Até 2026-08
   só a SWOT podia, para não pular a síntese que ela existe para fazer; a regra
   foi **revogada por decisão do cliente (2026-08-31)**, porque há fator do
@@ -1026,13 +1034,27 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   por isso que o selo escreve "PESTEL · Legal" sem um `if` por tela. O selo de
   três estados (**→ Plano de ação · Aguardando ação · Virou ação ↗**) e os três
   ouvintes dele vivem em `Diag.seloPlanoAcao` / `Diag.ligarPlanoAcao`, chamados
-  tanto por `carregarEtapa` (PESTEL/Porter) quanto pela SWOT.
-  `fator.desdobramento_id` tem FK **ON DELETE SET
-  NULL**: apagada a ação, o fator volta sozinho para a fila. A ideia da Coleta
+  por `carregarEtapa` (PESTEL/Porter), pela SWOT e pelo Cenário —
+  `ligarPlanoAcao` recebe o **recurso** (`fatores`/`cenario`) porque as tabelas
+  e as rotas diferem; o selo, não.
+  **A Análise de Cenário também vai ao plano** (mesma decisão): `cenario_item`
+  ganhou `acao_em`/`acao_por`/`desdobramento_id` (migrate, `garantirColuna` +
+  `garantirFk`), `CenarioController::planoAcao` e `::aguardandoAcao`
+  (`origem = 'CENARIO'`, `categoria` = o tipo), e o vínculo fecha por
+  `cenario_item_id`. É **outra tabela**, não o mesmo código — o que se
+  compartilha é o desenho. Os rótulos e cores dos dois tipos moram em
+  `SecaoCenario.TIPOS`, catálogo único lido pelo selo da fila e pelo modal de
+  "aceitar sugestão da sala".
+  `fator.desdobramento_id`, `swot_cruzamento.desdobramento_id` e
+  `cenario_item.desdobramento_id` têm FK **ON DELETE SET
+  NULL**: apagada a ação, a origem volta sozinha para a fila. A ideia da Coleta
   não tem FK (o destino é polimórfico) e por isso `excluirDesdobramento` limpa
   o `destino_id` dela à mão — sem essa linha a ideia sumia da fila para sempre,
-  apontando para um desdobramento que não existe mais. Excluir um fator que já
-  virou ação é **recusado**: deixaria a ação no plano sem origem nenhuma.
+  apontando para um desdobramento que não existe mais. Excluir um fator ou item
+  de cenário que já virou ação é **recusado**: deixaria a ação no plano sem
+  origem nenhuma. No cenário a trava sai direto de `acao_titulo` (o vínculo é
+  único); no fator ela precisa de `Fatores::acoesQuePrendem`, porque lá também
+  nasce do promovido e do cruzamento.
 
 - **projeto → iniciativa → ação**, espelhando o projeto BSC. O cadastro do
   projeto tem só ano, título, descrição e responsável; **início e fim são

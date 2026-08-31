@@ -92,7 +92,19 @@ CREATE TABLE IF NOT EXISTS cenario_item (
   tipo             ENUM('SITUACAO_ATUAL','TENDENCIA') NOT NULL,
   ordem            SMALLINT NOT NULL DEFAULT 0,
   descricao        TEXT NOT NULL,
+  -- Encaminhamento ao plano de ação, na MESMA regra do fator e do cruzamento:
+  -- `acao_em` marca o envio e `desdobramento_id` guarda a ação que nasceu dele;
+  -- os dois juntos definem "aguardando alocação". Três tabelas com os mesmos
+  -- três campos é repetição de propósito — o que elas compartilham é a REGRA,
+  -- não a linha, e uma tabela de encaminhamentos polimórfica trocaria três
+  -- colunas por uma junção a mais em toda leitura das três telas.
+  acao_em          DATETIME NULL,
+  acao_por         INT NULL,
+  desdobramento_id INT NULL,
   CONSTRAINT fk_cenario_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE
+  -- As FKs de `acao_por` e `desdobramento_id` moram no migrate (`garantirFk`),
+  -- como as do fator: aqui a segunda quebraria a instalação NOVA, porque
+  -- `desdobramento` só é criada mais abaixo neste mesmo arquivo.
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS fator (
