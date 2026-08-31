@@ -646,7 +646,13 @@ texto simples. Fecha a página do participante — não sobra ressalva ali.
 
 ## 3. Mapa Estratégico BSC e as 4 perspectivas
 
-### Veredito: **NÃO CONSTRUIR o mapa** / **CONSTRUIR SIMPLIFICADO a Matriz de Execução** (esforço P)
+### Veredito: **NÃO CONSTRUIR o mapa** / a Matriz de Execução está **ENTREGUE** (esforço P)
+
+> **Entregue.** `indicador_cascata` no `schema.sql`, o campo “Escolhas da cascata
+> que este indicador mede” no modal de indicador (`metas.js` +
+> `IndicadorController::gravarCascatas`, com a guarda de IDOR), a ampliação de
+> `CascataController::listar` e a aba **Matriz de Execução** na Cascata. O que
+> mudou em relação ao previsto está em *Como ficou*, no fim desta seção.
 
 O que falta de verdade não é o desenho das 4 raias — é o **vínculo entre
 indicador e projeto**, que não existe no banco (`projeto` só tem `cascata_id`,
@@ -796,6 +802,46 @@ uma frase inteira, e o `multiselect` não funciona no celular, onde não há Ctr
 - **Texto longo na caixa:** `cascata_escolha` é textarea. Se ficar ilegível como
   rótulo, a evolução barata é `garantirColuna cascata_escolha.titulo VARCHAR(120) NULL`
   — uma coluna, não uma tabela.
+
+### Como ficou
+
+Os quatro passos da entrega mínima foram feitos, e nenhum corte foi reaberto: a
+caixa continua sendo a `cascata_escolha`, as raias continuam sendo os eixos, e
+não há `objetivo_estrategico`, `perspectiva`, controller novo, rota nova nem item
+de menu. **A entrega é a matriz, não um mapa Kaplan/Norton** — e a tela diz isso
+de si mesma.
+
+Três decisões que a execução acrescentou ao previsto:
+
+- **A linha é o INDICADOR, não a escolha.** O plano falava em quatro colunas com
+  `rowspan` na primeira; na prática, com "Indicadores" e "Meta / Real" em colunas
+  separadas, dois KPIs na mesma escolha desalinhavam o nome do número na primeira
+  quebra de linha. A escolha e as iniciativas é que ganham `rowspan` sobre os
+  indicadores dela. São cinco colunas — Eixo | Escolha (e a renúncia) |
+  Indicadores | Meta / Real | Iniciativas —, e o KPI fica sempre na mesma linha
+  do número dele.
+- **Um horizonte por vez, com seletor.** Seis drivers × sete células × três
+  horizontes passariam de cem linhas numa tabela só, e a pergunta do trimestral é
+  sempre sobre uma fase.
+- **A regra do par meta × real virou função** (`SecaoMetas.metaReal`), chamada
+  pela tela de Metas e pela matriz. Era o risco mais concreto do tema: escrita
+  duas vezes, as duas telas passariam a dizer números diferentes do mesmo
+  indicador — e a matriz fica ao lado da tela que os cadastra.
+
+Duas coisas que a tela declara em vez de esconder: a escolha sem KPI diz *"Sem
+indicador que meça esta escolha"* (é a pergunta de controladoria que a matriz
+existe para responder), e um aviso conta quantos indicadores ainda não medem
+escolha nenhuma, com o caminho para amarrá-los.
+
+**A raia "Síntese da célula" vem primeiro.** A síntese não tem eixo — ela é o
+texto que a matriz publica, e as aberturas por eixo detalham o que ela resume;
+lê-las antes dela seria ler o detalhe sem o todo.
+
+**O que sobrou como dívida conhecida:** `CascataController::listar` já tinha um
+N+1 (fatores e sugestões por escolha) e ele ficou como estava. O que este tema
+acrescentou não repete o problema — são quatro consultas agregadas para o
+conjunto todo —, mas o laço antigo passou a ser chamado mais vezes desde o
+Dossiê, que percorre `/api/cascata` uma vez por negócio.
 
 ---
 
@@ -1121,11 +1167,12 @@ O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro*
 depois o que se alimenta delas. Construir conteúdo (matriz, mapa, coleta) antes de
 existir um fórum que consome esse conteúdo é como o sistema morre.
 
-> **Estado da fila.** Os passos 1, 2, 2-bis e 5 abaixo foram entregues (registro
-> de reunião, `projeto.cascata_id`, o **Dossiê do plano** e a Coleta & Triagem).
-> O que resta como *código* é o passo 3 (Matriz de Execução), o tema 8 (aviso na
-> exclusão com vínculo) e o 4 (Matriz de Impacto, travada na decisão 1); o que
-> resta como *operação* são os passos 0 e 0-bis, que continuam no topo.
+> **Estado da fila.** Os passos 1, 2, 2-bis, 3 e 5 abaixo foram entregues
+> (registro de reunião, `projeto.cascata_id`, o **Dossiê do plano**, a **Matriz
+> de Execução** e a Coleta & Triagem). O que resta como *código* é o passo 3-bis
+> (tema 8, aviso na exclusão com vínculo) e o 4 (Matriz de Impacto, travada na
+> decisão 1); o que resta como *operação* são os passos 0 e 0-bis, que continuam
+> no topo — e que **já são os únicos itens de valor alto sem código a escrever**.
 
 **0. Ligar o que já existe (horas, zero código).** SMTP + cron diário do Railway
 para `cli/notificar.php`. Um módulo pronto que não roda é a melhor relação
@@ -1151,14 +1198,15 @@ nasceu desta lista e não era pré-requisito de nada: entrou por pedido urgente 
 cliente, e por ser o custo que se pagava toda vez que alguém montava a pasta de
 uma reunião à mão.
 
-**3. Matriz de Execução — resto (P).** `indicador_cascata` + escolha múltipla no
-modal de indicador + aba na Cascata. O passo 2 já está feito, então a coluna de
-iniciativas já tem de onde sair; é a leitura que a direção pede no trimestral.
-**É o próximo item de código da fila.**
+**3. Matriz de Execução — resto (P). ✔ ENTREGUE.** `indicador_cascata` + a lista
+marcável no modal de indicador + a aba na Cascata. O passo 2 já estava feito,
+então a coluna de iniciativas já tinha de onde sair; é a leitura que a direção
+pede no trimestral.
 
 **3-bis. Aviso na exclusão com vínculo (P).** Tema 8. Dizer no `confirm()` o que
 sai junto, e desabilitar o × onde o servidor vai recusar. Independente de tudo;
-fica aqui porque é entendimento, não defeito.
+fica aqui porque é entendimento, não defeito. **É o próximo item de código da
+fila.**
 
 **4. Matriz de Impacto por Negócio (P).** Independente de tudo, mas depende de a
 SWOT/GUT **corporativa** do ano estar preenchida — por isso vem depois de o ciclo
@@ -1186,12 +1234,19 @@ nota de impacto, e não convém passar a atribuir.
 
 | | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
 |---|---|---|
-| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 4c Cruzamentos: a síntese |
+| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 1 Matriz de Impacto | **Planejar** — 4c Cruzamentos: a síntese |
 | **Impacto baixo** | 8 exclusão com vínculo (aviso) | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
 
-Saíram do quadro por estarem entregues: 5 (registro de reunião), 3b (vínculo com
-a Cascata), 2 e 2.1 (Coleta e Tempestade), as fatias 1–3 dos Cruzamentos com o
-relatório (§7), o ⤓ Relatório da Cascata e o 7 (Dossiê do plano).
+Saíram do quadro por estarem entregues: 5 (registro de reunião), 3a (Matriz de
+Execução), 3b (vínculo com a Cascata), 2 e 2.1 (Coleta e Tempestade), as fatias
+1–3 dos Cruzamentos com o relatório (§7), o ⤓ Relatório da Cascata e o 7 (Dossiê
+do plano).
+
+**O “fazer agora” virou só operação.** Depois do 3a, os dois itens de valor alto
+e esforço pequeno que sobraram (0 e 6) não têm linha de código a escrever: são
+configuração no Railway de código que já existe. O 1 está travado numa decisão de
+processo. É o retrato de um backlog no fim da fila de construção — e o motivo de
+os passos 0 e 0-bis não poderem continuar sendo adiados.
 
 **O 7 esteve no “planejar” e mesmo assim foi o primeiro da fila** — a contradição
 aparente que mostra o limite deste quadro: a leitura por esforço não sabe que um
@@ -1215,10 +1270,10 @@ discutir a dependência, não o quadrante.
 |---|------|----------|---------|-------|
 | 6 | **Ligar o backup no Railway** (Volume + cron; código entregue em `cli/backup.sh`) | Executar | — | 0 |
 | 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
-| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 1 |
-| 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | Construir simplificado | P | 2 |
-| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 3 (trava: decisão 1) |
-| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 4 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | Construir simplificado | P | 1 |
+| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 2 (trava: decisão 1) |
+| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 3 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | **Entregue** | P | ✔ |
 | 7 | **Dossiê do plano: as abas em sequência, por negócio** | **Entregue** | M | ✔ (urgente, antecipado) |
 | 4b | Cruzamentos da SWOT — a ponte (fatia 3) e o ⤓ Relatório (§7) | **Entregue** | M | ✔ |
 | 4a | Cruzamentos da SWOT — tabela, API, tela, cadastro (fatias 1–2) | **Entregue** | M | ✔ |
@@ -1230,11 +1285,13 @@ discutir a dependência, não o quadrante.
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |
 
-**Por que 3a antes de 1.** Não é impacto, é dependência e trava: a Matriz de
-Impacto (item 1) esbarra na **decisão 1** abaixo — se o GESTOR pode ler
-descrições do diagnóstico corporativo —, que é mudança do modelo de acesso e
-não detalhe de controller. A Matriz de Execução não depende de decisão nenhuma
-e, com o 3b entregue, já tem metade da fonte de dados preenchível.
+**Por que 3a veio antes de 1 — e por que fechou rápido.** Não era impacto, era
+dependência e trava: a Matriz de Impacto (item 1) esbarra na **decisão 1**
+abaixo — se o GESTOR pode ler descrições do diagnóstico corporativo —, que é
+mudança do modelo de acesso e não detalhe de controller. A Matriz de Execução não
+dependia de decisão nenhuma e, com o 3b já entregue, metade da fonte de dados
+(`projeto.cascata_id`) estava preenchível: sobrou uma tabela, um campo e uma aba.
+**Entregue.**
 
 **Por que o 7 furou a fila — e como terminou.** Foi a primeira vez que a ordem
 não saiu da dependência: o dossiê não era pré-requisito de nada e nada dependia

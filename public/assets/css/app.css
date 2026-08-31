@@ -154,6 +154,19 @@ table.tabela-cadastro td { vertical-align: middle; }
   .tabela-cascata th.celula-driver { width: 120px; }
 }
 
+/* Matriz de Execução (aba da Cascata): por eixo, a escolha, o que a mede e quem
+   a executa. A coluna do eixo é a "raia" — o que num mapa BSC seria uma faixa
+   com setas é aqui a primeira coluna, com `rowspan`. */
+.tabela-execucao td { vertical-align: top; }
+.tabela-execucao .celula-raia {
+  background: #e8f1ec;
+  font-weight: 600;
+  font-size: .8rem;
+  text-transform: uppercase;
+  color: var(--verde-escuro);
+  vertical-align: middle;
+}
+
 /* Metas — tabela plurianual */
 .tabela-metas th.col-ano { min-width: 84px; text-align: center; }
 .tabela-metas td.valor { text-align: right; white-space: nowrap; }

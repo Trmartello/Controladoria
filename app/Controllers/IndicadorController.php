@@ -30,7 +30,22 @@ class IndicadorController
             [$planId]
         );
 
+        // Escolhas da cascata que cada indicador mede. Numa consulta só, e não
+        // no laço abaixo: ele já faz duas por indicador, e o modal precisa
+        // apenas dos ids para marcar a lista.
+        $vinculos = [];
+        foreach (Database::todos(
+            'SELECT ic.indicador_id, ic.cascata_id
+             FROM indicador_cascata ic
+             JOIN indicador i ON i.id = ic.indicador_id
+             WHERE i.planejamento_id = ?',
+            [$planId]
+        ) as $v) {
+            $vinculos[(int)$v['indicador_id']][] = (int)$v['cascata_id'];
+        }
+
         foreach ($indicadores as &$ind) {
+            $ind['cascatas'] = $vinculos[(int)$ind['id']] ?? [];
             // Metas na versão mais recente de cada ano; anos com revisão ganham marcador
             $ind['metas'] = Database::todos(
                 'SELECT v.ano, v.valor, v.versao_meta
@@ -92,7 +107,46 @@ class IndicadorController
                 [$planId, $nome, $unidade, $sentido, $ancora, $horizonteId]
             );
         }
+        $this->gravarCascatas($id, $planId, $d);
         Json::ok(['id' => $id]);
+    }
+
+    /**
+     * As escolhas da cascata que este indicador mede — o conjunto substitui o
+     * anterior, como `CascataController` faz com `cascata_fator`.
+     *
+     * A chave só é tocada quando vem no corpo: `salvar` é chamado por um modal
+     * que pode não ter o campo (e um dia por outro que não o tenha), e tratar a
+     * ausência como "lista vazia" apagaria vínculos que ninguém pediu para
+     * apagar. É a mesma disciplina do `array_key_exists('sugestoes', $d)` da
+     * cascata.
+     *
+     * A guarda é de IDOR, e é o motivo de a escolha ser conferida uma a uma:
+     * `Auth::exigirEdicaoPlanejamento` valida o PLANEJAMENTO, não os filhos.
+     * Sem ela, quem edita o indicador de um negócio amarra escolhas de outro
+     * passando o id — o mesmo defeito que a guarda de `cascata_fator` fecha.
+     * Id que não passa é ignorado calado: o front só oferece escolhas deste
+     * planejamento, então um id de fora não é engano de quem clicou.
+     */
+    private function gravarCascatas(int $id, int $planId, array $d): void
+    {
+        if (!array_key_exists('cascatas', $d)) {
+            return;
+        }
+        $cascatas = array_unique(array_map('intval', (array)$d['cascatas']));
+        Database::executar('DELETE FROM indicador_cascata WHERE indicador_id = ?', [$id]);
+        foreach ($cascatas as $cascataId) {
+            $dela = Database::um(
+                'SELECT id FROM cascata_escolha WHERE id = ? AND planejamento_id = ?',
+                [$cascataId, $planId]
+            );
+            if ($dela) {
+                Database::executar(
+                    'INSERT INTO indicador_cascata (indicador_id, cascata_id) VALUES (?, ?)',
+                    [$id, $cascataId]
+                );
+            }
+        }
     }
 
     /**

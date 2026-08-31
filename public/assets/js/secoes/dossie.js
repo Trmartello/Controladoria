@@ -88,6 +88,7 @@ const SecaoDossie = {
       projResp: SecaoProjetos.filtroResponsavel,
       projFechados: new Set(SecaoProjetos.projetosFechados),
       iniFechadas: new Set(SecaoProjetos.iniciativasFechadas),
+      abaCascata: SecaoCascata.aba,
     };
   },
 
@@ -100,6 +101,7 @@ const SecaoDossie = {
     SecaoProjetos.filtroResponsavel = v.projResp;
     SecaoProjetos.projetosFechados = v.projFechados;
     SecaoProjetos.iniciativasFechadas = v.iniFechadas;
+    SecaoCascata.aba = v.abaCascata;
   },
 
   /** A vista do documento: sem filtro, sem recolhido, no ano pedido. */
@@ -113,6 +115,11 @@ const SecaoDossie = {
       projResp: '',
       projFechados: new Set(),
       iniFechadas: new Set(),
+      // A Cascata tem duas abas, e a foto pegaria a que estivesse aberta: o
+      // dossiê de ontem sairia diferente do de hoje sem ninguém ter mudado o
+      // plano. A etapa "Cascata de Escolhas" é a matriz de decisão — a Matriz
+      // de Execução é leitura de acompanhamento, e teria de ser etapa própria.
+      abaCascata: 'escolhas',
     };
   },
 

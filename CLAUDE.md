@@ -403,6 +403,26 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   gruda (o título quebra em duas linhas e custaria um quinto da tela).
 - Metas plurianuais versionadas: `indicador_valor` única por
   (indicador, ano, tipo, versão); leitura usa a MAIOR versão de cada ano.
+- **Qual par meta × real se mostra** é `SecaoMetas.metaReal`, e existe **uma vez
+  só**: o ano de referência é o do ÚLTIMO real lançado e, sem real nenhum, o da
+  PRIMEIRA meta. Não é "o ano corrente" — o ciclo semeado vai de 2027 a 2035 e as
+  metas começam em 2027, então em 2026 a regra do ano corrente deixaria toda linha
+  em "—". A Matriz de Execução chama a mesma função: duplicá-la faria duas telas
+  vizinhas dizerem números diferentes do mesmo indicador.
+- **Matriz de Execução** (aba da Cascata): por eixo, a escolha com a renúncia, os
+  indicadores que a medem, o par meta × real de cada um e os projetos que a
+  executam. Os dois lados do vínculo são `indicador_cascata` (N:N, clone de
+  `cascata_fator`) e `projeto.cascata_id`. **Não é um mapa estratégico**: não há
+  raias com setas nem `objetivo_estrategico` — a caixa é a própria
+  `cascata_escolha`, que já traz a renúncia (que o BSC não tem) e os fatores
+  SWOT/GUT que a fundamentam; as raias são os eixos já cadastrados. A linha da
+  tabela é o INDICADOR (a escolha e as iniciativas ganham `rowspan` sobre ele),
+  senão o nome do KPI e o número dele desalinham na primeira quebra de linha.
+  Um horizonte por vez, com seletor: os três dariam mais de cem linhas.
+  `IndicadorController::gravarCascatas` confere **cada escolha** contra o
+  planejamento — `Auth::exigirEdicaoPlanejamento` valida o planejamento, não os
+  filhos —, e só toca a tabela quando a chave `cascatas` vem no corpo: tratar a
+  ausência como "lista vazia" apagaria vínculos que ninguém mandou apagar.
 - Investimentos decididos nunca voltam a PROPOSTO; APROVADO só avança para
   EXECUTADO.
 - Negócios vêm do Qlik (`FlagFilialNegocio`, códigos oficiais em

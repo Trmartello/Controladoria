@@ -225,6 +225,23 @@ CREATE TABLE IF NOT EXISTS indicador_valor (
   CONSTRAINT fk_iv_indicador FOREIGN KEY (indicador_id) REFERENCES indicador(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Que escolha da cascata este indicador MEDE. É o vínculo que faltava entre a
+-- decisão e a medida; o outro lado do vão — decisão × execução — já é
+-- `projeto.cascata_id`. Com os dois, a Matriz de Execução se lê da cascata sem
+-- entidade nova: escolha, o que a mede, e o que a executa.
+-- Clone literal de `cascata_fator`: N:N, chave composta e `ON DELETE CASCADE`
+-- nos dois lados, porque o vínculo não sobrevive a nenhuma das pontas. O índice
+-- avulso em `cascata_id` existe porque a leitura da matriz entra POR ELE (a
+-- chave composta só serve a quem começa pelo indicador).
+CREATE TABLE IF NOT EXISTS indicador_cascata (
+  indicador_id INT NOT NULL,
+  cascata_id   INT NOT NULL,
+  PRIMARY KEY (indicador_id, cascata_id),
+  KEY idx_ic_cascata (cascata_id),
+  CONSTRAINT fk_ic_ind FOREIGN KEY (indicador_id) REFERENCES indicador(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ic_cas FOREIGN KEY (cascata_id) REFERENCES cascata_escolha(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS projeto (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,

@@ -10,6 +10,32 @@ const SecaoMetas = {
       : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
   },
 
+  /**
+   * Qual par meta × real de um indicador se mostra — e se ele foi atingido.
+   *
+   * Mora aqui, numa função só, porque a **Matriz de Execução** (na Cascata) lê
+   * pela mesma regra: escrita duas vezes, ela divergiria, e as duas telas
+   * passariam a dizer números diferentes do mesmo indicador.
+   *
+   * O ano de referência é o do ÚLTIMO real lançado; sem real nenhum, o da
+   * PRIMEIRA meta. Não é "o ano corrente", e a diferença não é teórica: o ciclo
+   * semeado vai de 2027 a 2035 e as metas começam em 2027 — pela regra do ano
+   * corrente, em 2026 toda linha mostraria "—" e as duas telas nasceriam vazias.
+   */
+  metaReal(i) {
+    const reais = i.reais || [];
+    const metas = i.metas || [];
+    const real = reais[reais.length - 1] || null;
+    const ano = real ? real.ano : (metas[0] || {}).ano ?? null;
+    const meta = metas.find((m) => m.ano == ano) || null;
+    const atingiu = real && meta
+      ? (i.sentido === 'MENOR_MELHOR'
+          ? Number(real.valor) <= Number(meta.valor)
+          : Number(real.valor) >= Number(meta.valor))
+      : null;
+    return { real, meta, ano, atingiu };
+  },
+
   async carregar() {
     const el = document.getElementById('secao-metas');
     if (!App.contextoParams()) {
@@ -26,19 +52,11 @@ const SecaoMetas = {
     const cartoes = horizontes.map((h) => {
       const ancoras = indicadores.filter((i) => Number(i.metrica_ancora) && i.horizonte_id == h.id);
       const itens = ancoras.map((i) => {
-        // Último real lançado × meta do mesmo ano (ou a 1ª meta futura)
-        const ultimoReal = i.reais[i.reais.length - 1] || null;
-        const anoRef = ultimoReal ? ultimoReal.ano : (i.metas[0] || {}).ano;
-        const meta = i.metas.find((m) => m.ano == anoRef);
-        const atingiu = ultimoReal && meta
-          ? (i.sentido === 'MENOR_MELHOR'
-              ? Number(ultimoReal.valor) <= Number(meta.valor)
-              : Number(ultimoReal.valor) >= Number(meta.valor))
-          : null;
+        const { real, meta, atingiu } = this.metaReal(i);
         return `<div class="d-flex justify-content-between align-items-baseline gap-2 mt-1">
           <span class="small">${Modal.esc(i.nome)} <span class="text-muted">(${Modal.esc(i.unidade)})</span></span>
           <span class="text-nowrap small ${atingiu === null ? 'text-muted' : atingiu ? 'text-success fw-bold' : 'text-danger fw-bold'}">
-            ${ultimoReal ? `${this.fmt(ultimoReal.valor)} <span class="text-muted">(${ultimoReal.ano})</span>` : 'sem real'}
+            ${real ? `${this.fmt(real.valor)} <span class="text-muted">(${real.ano})</span>` : 'sem real'}
             ${meta ? ` / meta ${this.fmt(meta.valor)}` : ''}
           </span>
         </div>`;
@@ -115,16 +133,55 @@ const SecaoMetas = {
       this.modalValores(indicadores.find((i) => i.id == b.dataset.valores), b.dataset.tipo, anos)));
   },
 
-  modalIndicador(ind) {
+  /**
+   * As escolhas da cascata como itens marcáveis: selo com a célula
+   * (driver × horizonte, e o eixo quando é abertura) e o texto da escolha
+   * inteiro.
+   *
+   * `lista_marcavel` e não `multiselect`: a escolha da cascata é uma frase, não
+   * um rótulo — precisa ser LIDA antes de marcada —, e o `multiselect` do
+   * navegador exige Ctrl, que não existe no celular (ver CLAUDE.md).
+   */
+  opcoesCascata(cascata) {
+    const { horizontes, drivers, eixos, escolhas } = cascata;
+    const nome = (lista, id) => lista.find((x) => x.id == id)?.nome || '';
+    return escolhas
+      // A ordem é a da matriz — horizonte, depois driver —, não a do banco:
+      // quem vem marcar já leu a cascata nessa ordem na tela ao lado.
+      .slice()
+      .sort((a, b) => (horizontes.findIndex((h) => h.id == a.horizonte_id)
+          - horizontes.findIndex((h) => h.id == b.horizonte_id))
+        || (drivers.findIndex((d) => d.id == a.driver_id)
+          - drivers.findIndex((d) => d.id == b.driver_id))
+        || Number(a.eixo_id || 0) - Number(b.eixo_id || 0))
+      .map((e) => ({
+        valor: String(e.id),
+        texto: e.escolha,
+        selo: `${nome(drivers, e.driver_id)} × ${nome(horizontes, e.horizonte_id)}`,
+        selo2: e.eixo_id ? `Eixo · ${nome(eixos, e.eixo_id)}` : 'Síntese',
+      }));
+  },
+
+  /**
+   * O modal é `async` porque a cascata é buscada AQUI, no clique, e não junto da
+   * seção: quem abre Metas para conferir uma série não precisa da cascata
+   * inteira no caminho. É o mesmo desenho de `SecaoCascata.abrirModalCelula`,
+   * que busca os fatores da SWOT ao abrir.
+   */
+  async modalIndicador(ind) {
     const opcoesHorizonte = [{ valor: '', rotulo: '(sem horizonte)' }].concat(
       this.dados.horizontes.map((h) => ({ valor: h.id, rotulo: `${h.nome} · ${h.tema}` })));
+    // Cascata vazia não é erro: o indicador continua cadastrável sem vínculo —
+    // o campo é que some, em vez de aparecer como uma lista sem nada dentro.
+    const cascata = await App.api(`/api/cascata?planejamento_id=${this.plan.id}`).catch(() => null);
+    const opcoesCascata = cascata ? this.opcoesCascata(cascata) : [];
     Modal.abrir({
       titulo: ind ? 'Editar indicador' : 'Novo indicador',
       url: ind ? `/api/indicadores/${ind.id}` : '/api/indicadores',
       valores: ind
         ? { ...ind, horizonte_id: ind.horizonte_id ?? '', metrica_ancora: Number(ind.metrica_ancora),
-            planejamento_id: this.plan.id }
-        : { planejamento_id: this.plan.id, unidade: 'R$ mil' },
+            cascatas: (ind.cascatas || []).map(String), planejamento_id: this.plan.id }
+        : { planejamento_id: this.plan.id, unidade: 'R$ mil', cascatas: [] },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'nome', rotulo: 'Indicador', ajuda: 'Ex.: Margem bruta, Cobertura de juros, Armazenagem própria' },
@@ -135,7 +192,14 @@ const SecaoMetas = {
         ]},
         { nome: 'horizonte_id', rotulo: 'Horizonte de referência', tipo: 'select', opcoes: opcoesHorizonte },
         { nome: 'metrica_ancora', rotulo: 'Métrica-âncora (destaque no painel do horizonte)', tipo: 'checkbox' },
+        ...(opcoesCascata.length ? [{
+          nome: 'cascatas', rotulo: 'Escolhas da cascata que este indicador mede',
+          tipo: 'lista_marcavel', opcoes: opcoesCascata,
+          ajuda: 'É o que liga a MEDIDA à DECISÃO: marcadas aqui, a escolha e o indicador '
+            + 'aparecem na mesma linha da Matriz de Execução, na Cascata. Pode ficar em branco.',
+        }] : []),
       ],
+      aoSalvar: () => this.carregar(),
     });
   },
 

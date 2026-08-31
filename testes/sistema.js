@@ -1995,6 +1995,177 @@ async function provasDossie(page) {
   });
 }
 
+/**
+ * Matriz de Execução — a aba da Cascata que liga a DECISÃO ao que a mede e ao
+ * que a executa (`indicador_cascata` + `projeto.cascata_id`).
+ *
+ * O que a prova mede, além de "a tabela pinta":
+ *
+ *  1. **A guarda de IDOR.** `Auth::exigirEdicaoPlanejamento` valida o
+ *     planejamento, não os filhos: sem conferir cada escolha, quem edita o
+ *     indicador de um negócio amarra escolhas de OUTRO passando o id. A prova
+ *     cria uma escolha num segundo planejamento e tenta amarrá-la.
+ *  2. **Salvar sem o campo não apaga o conjunto.** `salvar` é chamado por um
+ *     modal que pode não ter a lista; tratar a ausência como "vazio" apagaria
+ *     vínculos que ninguém mandou apagar.
+ *  3. **O par meta × real sai da MESMA função da tela de Metas**
+ *     (`SecaoMetas.metaReal`). Duas cópias diriam números diferentes do mesmo
+ *     indicador em telas vizinhas.
+ */
+async function provasMatrizExecucao(page) {
+  const l = '[desktop] Matriz de Execução:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const c = await App.api(`/api/cascata?planejamento_id=${plan.id}`);
+    const abertura = c.escolhas.find((e) => e.eixo_id);
+    const sintese = c.escolhas.find((e) => !e.eixo_id);
+    if (!abertura || !sintese) return { semCascata: true };
+    const ind = await App.api('/api/indicadores', {
+      planejamento_id: plan.id, nome: 'KPI de prova (matriz)', unidade: '%',
+      sentido: 'MAIOR_MELHOR', metrica_ancora: 1, horizonte_id: '',
+      cascatas: [String(abertura.id), String(sintese.id)],
+    });
+    await App.api(`/api/indicadores/${ind.id}/valores`, {
+      planejamento_id: plan.id, tipo: 'META', valores: { 2027: 80 },
+    });
+    await App.api(`/api/indicadores/${ind.id}/valores`, {
+      planejamento_id: plan.id, tipo: 'REAL', valores: { 2027: 85 },
+    });
+    const prj = await App.api('/api/projetos', {
+      planejamento_id: plan.id, tipo: 'ESTRATEGICO', titulo: 'Projeto de prova (matriz)',
+      ano: Number(c.horizontes[0].ano_inicio), responsavel: 'QA',
+      cascata_id: abertura.id, classificacao: 'NORMAL',
+    });
+    return { plan: plan.id, ind: ind.id, prj: prj.id, abertura: abertura.id, sintese: sintese.id,
+      horizonte: abertura.horizonte_id };
+  });
+  if (massa.semCascata) {
+    ok.push(`${l} pulada — a base não tem escolhas da cascata`);
+    return;
+  }
+
+  const fonte = await page.evaluate(async (m) => {
+    const c = await App.api(`/api/cascata?planejamento_id=${m.plan}`);
+    const i = (c.indicadores || []).find((x) => x.id == m.ind);
+    const p = (c.projetos || []).find((x) => x.id == m.prj);
+    return {
+      cascatas: ((i || {}).cascatas || []).length,
+      metas: ((i || {}).metas || []).length,
+      reais: ((i || {}).reais || []).length,
+      projetoNaEscolha: p ? Number(p.cascata_id) === Number(m.abertura) : false,
+      soComEscolha: (c.projetos || []).every((x) => x.cascata_id),
+    };
+  }, massa);
+  t(`${l} o indicador volta com as duas escolhas e as séries`,
+    fonte.cascatas === 2 && fonte.metas === 1 && fonte.reais === 1,
+    `${fonte.cascatas} escolhas, ${fonte.metas} metas, ${fonte.reais} reais`);
+  t(`${l} o projeto vem na escolha que executa`, fonte.projetoNaEscolha);
+  t(`${l} projeto sem escolha fica fora da fonte`, fonte.soComEscolha);
+
+  // 1. IDOR: uma escolha de outro planejamento não pode ser amarrada aqui.
+  const idor = await page.evaluate(async (m) => {
+    const outro = await App.api('/api/contexto?ciclo_id=' + App.contexto.cicloId
+      + '&negocio_id=' + (App.sessao.negocios[0] || {}).id).catch(() => null);
+    if (!outro || !outro.planejamento || outro.planejamento.id == m.plan) return { pulada: true };
+    const alheia = await App.api('/api/cascata', {
+      planejamento_id: outro.planejamento.id,
+      horizonte_id: (await App.api(`/api/cascata?planejamento_id=${outro.planejamento.id}`)).horizontes[0].id,
+      driver_id: (await App.api(`/api/cascata?planejamento_id=${outro.planejamento.id}`)).drivers[0].id,
+      eixo_id: '', escolha: 'Escolha de prova de outro negócio', renuncia: '',
+    }).catch(() => null);
+    if (!alheia) return { pulada: true };
+    await App.api(`/api/indicadores/${m.ind}`, {
+      planejamento_id: m.plan, nome: 'KPI de prova (matriz)', unidade: '%',
+      sentido: 'MAIOR_MELHOR', metrica_ancora: 1, horizonte_id: '',
+      cascatas: [String(m.abertura), String(m.sintese), String(alheia.id)],
+    });
+    const d = await App.api(`/api/indicadores?planejamento_id=${m.plan}`);
+    const gravados = (d.indicadores.find((x) => x.id == m.ind).cascatas || []).map(Number);
+    await App.api(`/api/cascata/${alheia.id}/excluir`, { planejamento_id: outro.planejamento.id })
+      .catch(() => {});
+    return { intruso: Number(alheia.id), gravados };
+  }, massa);
+  if (idor.pulada) {
+    ok.push(`${l} IDOR pulada — não há um segundo planejamento com cascata`);
+  } else {
+    t(`${l} escolha de outro planejamento NÃO é amarrada`,
+      !idor.gravados.includes(idor.intruso), `intruso ${idor.intruso} em [${idor.gravados}]`);
+    t(`${l} as escolhas legítimas continuam amarradas`, idor.gravados.length === 2,
+      `${idor.gravados.length}`);
+  }
+
+  // 2. Salvar sem a chave `cascatas` não pode limpar o conjunto.
+  const semChave = await page.evaluate(async (m) => {
+    await App.api(`/api/indicadores/${m.ind}`, {
+      planejamento_id: m.plan, nome: 'KPI de prova (matriz)', unidade: '%',
+      sentido: 'MAIOR_MELHOR', metrica_ancora: 1, horizonte_id: '',
+    });
+    const d = await App.api(`/api/indicadores?planejamento_id=${m.plan}`);
+    return (d.indicadores.find((x) => x.id == m.ind).cascatas || []).length;
+  }, massa);
+  t(`${l} salvar sem o campo não apaga os vínculos`, semChave === 2, `${semChave}`);
+
+  // 3. A tabela, e a regra do par meta × real.
+  //
+  // O horizonte é FIXADO no da escolha semeada, e não deixado no padrão: a
+  // matriz mostra um horizonte por vez, e depender de qual abre por padrão
+  // faria esta prova depender do estado que as anteriores deixaram — ela
+  // ficaria vermelha por causa de outra tela.
+  await page.evaluate((m) => {
+    SecaoCascata.horizonteMatriz = Number(m.horizonte);
+    App.mostrarSecao('cascata');
+  }, massa);
+  // A espera é pelo DADO, não pelo nó: `percorrer` já pintou esta seção no
+  // início da bateria, e a aba de execução existe naquela pintura velha —
+  // esperar por ela devolveria na hora, e a prova leria a tela de antes da massa.
+  await esperar(page,
+    "!!(SecaoCascata.dados && (SecaoCascata.dados.indicadores || [])"
+    + ".some((x) => x.nome === 'KPI de prova (matriz)'))", 15000);
+  await page.evaluate(() => document.querySelector('[data-aba-cascata="execucao"]').click());
+  await esperar(page,
+    "document.querySelector('#secao-cascata [data-painel-cascata=\"escolhas\"]').classList.contains('d-none')",
+    10000);
+
+  const matriz = await page.evaluate(() => {
+    const el = document.getElementById('secao-cascata');
+    const tab = el.querySelector('.tabela-execucao');
+    const texto = tab.textContent.replace(/\s+/g, ' ');
+    return {
+      colunas: tab.querySelectorAll('thead th').length,
+      raia1: (tab.querySelector('.celula-raia') || {}).textContent?.trim(),
+      temKpi: texto.includes('KPI de prova (matriz)'),
+      temProjeto: texto.includes('Projeto de prova (matriz)'),
+      // Último real (85, de 2027) contra a meta do MESMO ano (80) — a regra de
+      // `SecaoMetas.metaReal`, e não "a meta do ano corrente"
+      temPar: /85(,00)? \(2027\) \/ meta 80/.test(texto),
+      atingiu: !!tab.querySelector('.text-success.fw-bold'),
+      seletor: !!el.querySelector('#sel-horizonte-matriz'),
+      regra: (() => {
+        const r = SecaoMetas.metaReal({
+          sentido: 'MAIOR_MELHOR', metas: [{ ano: 2027, valor: 80 }], reais: [{ ano: 2027, valor: 85 }],
+        });
+        return `${r.ano}|${Number(r.meta.valor)}|${r.atingiu}`;
+      })(),
+    };
+  });
+  t(`${l} a tabela tem as cinco colunas`, matriz.colunas === 5, `${matriz.colunas}`);
+  t(`${l} a síntese é a primeira raia`, matriz.raia1 === 'Síntese da célula', String(matriz.raia1));
+  t(`${l} mostra o indicador amarrado`, matriz.temKpi);
+  t(`${l} mostra o projeto que executa`, matriz.temProjeto);
+  t(`${l} o par meta × real segue a regra da tela de Metas`, matriz.temPar);
+  t(`${l} meta batida sai em verde`, matriz.atingiu);
+  t(`${l} tem seletor de horizonte`, matriz.seletor);
+  t(`${l} a regra vem de SecaoMetas.metaReal`, matriz.regra === '2027|80|true', matriz.regra);
+
+  await page.evaluate(async (m) => {
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    await App.api(`/api/indicadores/${m.ind}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    SecaoCascata.aba = 'escolhas';
+    App.mostrarSecao('painel');
+  }, massa);
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -2019,6 +2190,7 @@ async function provasDossie(page) {
   await provasGut(page);
   await provasExcluirUsuario(page);
   await provasFiltroResponsavel(page);
+  await provasMatrizExecucao(page);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.
