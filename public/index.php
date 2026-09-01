@@ -181,6 +181,7 @@ use App\Controllers\ComentarioController;
 use App\Controllers\CruzamentoController;
 use App\Controllers\DriverEixoController;
 use App\Controllers\FatorController;
+use App\Controllers\ImpactoController;
 use App\Controllers\IndicadorController;
 use App\Controllers\InvestimentoController;
 use App\Controllers\NegocioController;
@@ -336,6 +337,13 @@ try {
             (new FatorController())->limparGut((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)$#', $rota, $m):
             (new FatorController())->salvar((int)$m[1]); break;
+
+        // Matriz de Impacto: as duas rotas NÃO recebem `planejamento_id`, e sim
+        // `ciclo_id`. O plano corporativo é resolvido no servidor a partir dele —
+        // aceitar o id pronto do cliente deixaria a tela escolher em que plano
+        // grava, que é justamente o que a autorização por negócio evita.
+        case $rota === 'GET /api/impacto':          (new ImpactoController())->listar(); break;
+        case $rota === 'POST /api/impacto':         (new ImpactoController())->salvar(); break;
 
         // Cruzamentos da SWOT (TOWS): o par interno × externo e a estratégia
         case $rota === 'GET /api/cruzamentos':     (new CruzamentoController())->listar(); break;

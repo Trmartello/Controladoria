@@ -245,6 +245,83 @@ table.tabela-cadastro td { vertical-align: middle; }
   .tabela-execucao thead th { position: static; box-shadow: none; }
 }
 
+/* ===== Matriz de Impacto por Negócio =====
+   Grade fator × negócio. A coluna do fator fica PRESA à esquerda: com doze
+   negócios a tabela rola de lado, e sem ela quem rola perde de vista a linha
+   que está lendo — o mesmo defeito que o cabeçalho da Matriz de Execução tinha.
+   `border-collapse: separate` pela MESMA razão de lá: com `collapse` os fundos
+   pertencem à tabela, e o texto das células passaria por cima da coluna presa.
+   A grade do `table-bordered` é redesenhada célula a célula por causa disso. */
+.tabela-impacto {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 0;
+  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  border-left: 1px solid var(--bs-border-color, #dee2e6);
+}
+.tabela-impacto > * > tr > * {
+  border: 0;
+  border-right: 1px solid var(--bs-border-color, #dee2e6);
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+.tabela-impacto .col-fator {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  min-width: 240px;
+  max-width: 340px;
+  text-align: left;
+  font-weight: 400;
+  vertical-align: top;
+}
+/* O cabeçalho gruda, e aqui a solução da Matriz de Execução NÃO serve: lá a
+   caixa podia parar de rolar porque a tabela cabia na largura; esta precisa
+   mesmo de ~1450px (doze negócios), então soltar o `overflow` jogaria a rolagem
+   horizontal para a PÁGINA. Então a caixa é que ganha altura limitada e vira o
+   container de rolagem — e o `sticky` gruda no topo DELA, que agora tem para
+   onde se mover. Sem isso, doze colunas de código numérico viram ilegíveis a
+   partir da terceira linha: ninguém sabe mais se está lendo o negócio 6 ou o 11.
+   `top: 0`, e não `--topo-app`: o topo aqui é o da caixa, não o da página. */
+.caixa-impacto { max-height: calc(100vh - var(--topo-app) - 4rem); }
+.tabela-impacto thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f4f6f5;
+  box-shadow: 0 .35rem .35rem -.3rem rgba(0, 0, 0, .22);
+}
+/* A quina: presa nos DOIS eixos, e acima de ambos — senão a coluna do fator
+   passa por cima do cabeçalho num sentido e o cabeçalho por cima dela no outro. */
+.tabela-impacto thead .col-fator { z-index: 4; background: #f4f6f5; }
+@media print {
+  .caixa-impacto { max-height: none; overflow: visible; }
+  .tabela-impacto thead th,
+  .tabela-impacto .col-fator { position: static; box-shadow: none; }
+}
+/* 64px por negócio: doze colunas mais a do fator cabem em 1500px sem rolagem.
+   Com os 170px da proposta original dava ~1900px — e a validação em 1500×800 é
+   justamente o que o CLAUDE.md exige. */
+.tabela-impacto .col-negocio {
+  width: 64px;
+  min-width: 64px;
+  text-align: center;
+  background: #f4f6f5;
+  font-size: .82rem;
+}
+.celula-impacto {
+  text-align: center;
+  font-size: 1.1rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.celula-impacto:hover { background: #eef4f1; }
+/* O glifo carrega o sinal junto com a cor: cor sozinha não sobrevive ao
+   daltonismo nem à impressão em preto e branco, e esta tela nasceu para ir
+   impressa à reunião. */
+.glifo-impacto { font-size: 1.3rem; line-height: 1.2; }
+.chip-impacto { border: 0; font-weight: 600; }
+
 /* Metas — tabela plurianual */
 .tabela-metas th.col-ano { min-width: 84px; text-align: center; }
 .tabela-metas td.valor { text-align: right; white-space: nowrap; }

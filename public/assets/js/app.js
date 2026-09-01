@@ -247,7 +247,7 @@ const App = {
       painel: SecaoPainel, hub: SecaoHub, cadastros: SecaoCadastros,
       coleta: SecaoColeta,
       cenario: SecaoCenario, pestel: SecaoPestel, porter: SecaoPorter,
-      swot: SecaoSwot, gut: SecaoGut, cruzamentos: SecaoCruzamentos,
+      swot: SecaoSwot, gut: SecaoGut, impacto: SecaoImpacto, cruzamentos: SecaoCruzamentos,
       cascata: SecaoCascata,
       projetos: SecaoProjetos, investimentos: SecaoInvestimentos,
       metas: SecaoMetas, relatorio: SecaoRelatorio, dossie: SecaoDossie,

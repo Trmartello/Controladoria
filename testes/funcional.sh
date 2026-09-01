@@ -493,6 +493,102 @@ R=$(post /api/anexos/99999999/excluir '{"planejamento_id":1}')
 afirma "recusa anexo inexistente" 'não encontrado' "$R"
 rm -f $PNG
 
+# ─────────────────────────────────────────────────────────────────────────────
+echo "### 9e. Matriz de Impacto — a autorização, que é o tema inteiro"
+#
+# Aqui mora a única exceção ao modelo de acesso do sistema (PLANEJAMENTO-SISTEMA
+# §5): o GESTOR passa a LER descrição de fator do plano corporativo e a GRAVAR a
+# célula do negócio dele. Toda a prova abaixo é sobre o LIMITE dessa exceção —
+# não sobre a tela, que é a parte fácil.
+#
+# A sessão do gestor é OUTRA: `login` sobrescreve $J e $CSRF, então o admin é
+# reautenticado antes da limpeza. Sem isso, tudo o que viesse depois rodaria
+# como gestor e falharia por um motivo que nada tem a ver com o que se mede.
+#
+# E as credenciais do admin são GUARDADAS antes de trocar, não relidas de $EMAIL:
+# em bash, `VAR=valor funcao` deixa a atribuição valendo DEPOIS que a função
+# retorna (ao contrário do que acontece com um comando externo). Um `login` seco
+# no fim reentraria como gestor — e a limpeza falharia em silêncio, deixando
+# usuário de prova no banco para a próxima execução tropeçar.
+IMP_ADM_EMAIL=$EMAIL
+IMP_ADM_SENHA=$SENHA
+admin_de_volta() { EMAIL=$IMP_ADM_EMAIL; SENHA=$IMP_ADM_SENHA; login; }
+
+IMP_N1=$(get "/api/negocios" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'][0]['id'])" 2>/dev/null)
+IMP_N2=$(get "/api/negocios" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'][1]['id'])" 2>/dev/null)
+IMP_F=$(get "/api/impacto?ciclo_id=1&ano=2026" | python3 -c "
+import sys, json
+f = json.load(sys.stdin)['dados']['fatores']
+print(f[0]['id'] if f else '')" 2>/dev/null)
+
+if [ -z "${IMP_F:-}" ] || [ -z "${IMP_N1:-}" ]; then
+  ok
+  echo "  (pulada: sem SWOT corporativa de 2026 ou sem negócio ativo)"
+else
+  R=$(get "/api/impacto?ciclo_id=1&ano=2026")
+  afirma "admin recebe a grade com o score da GUT" '"score"' "$R"
+
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"NEGATIVO\",\"texto\":\"Aperta a margem (prova)\"}")
+  afirma "admin grava uma célula" '"ok":true' "$R"
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N2,\"sinal\":\"POSITIVO\"}")
+  afirma "admin grava a célula de outro negócio" '"ok":true' "$R"
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"TALVEZ\"}")
+  afirma "recusa sinal fora da lista" 'Sinal inválido' "$R"
+
+  post /api/usuarios "{\"nome\":\"Gestor Prova Impacto\",\"email\":\"gestor.impacto@teste.local\",\"senha\":\"trocar123\",\"perfil\":\"GESTOR\",\"negocios\":[$IMP_N1]}" >/dev/null
+  post /api/usuarios "{\"nome\":\"Leitor Prova Impacto\",\"email\":\"leitor.impacto@teste.local\",\"senha\":\"trocar123\",\"perfil\":\"LEITURA\",\"negocios\":[$IMP_N1]}" >/dev/null
+
+  EMAIL=gestor.impacto@teste.local SENHA=trocar123 login
+  R=$(get "/api/impacto?ciclo_id=1&ano=2026")
+  afirma "gestor LÊ a descrição do fator corporativo" '"descricao"' "$R"
+  # O score é o que a decisão de acesso manteve fora do alcance dele: é a
+  # priorização, não o fato. Sai do PAYLOAD, não só da tela.
+  nega "e o score da GUT NÃO vaza para o gestor" '"score"' "$R"
+  VISTOS=$(echo "$R" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+print(','.join(str(n['id']) for n in d['negocios']))" 2>/dev/null)
+  afirma "gestor vê só o negócio dele" "^$IMP_N1\$" "$VISTOS"
+  CELS=$(echo "$R" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+print(','.join(str(c['negocio_id']) for c in d['celulas']))" 2>/dev/null)
+  nega "e não recebe a célula do negócio alheio" "(^|,)$IMP_N2(,|\$)" "$CELS"
+
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"NEGATIVO\",\"texto\":\"Escrito pelo gestor\"}")
+  afirma "gestor GRAVA a célula do negócio dele" '"ok":true' "$R"
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N2,\"sinal\":\"POSITIVO\"}")
+  afirma "gestor é recusado na célula alheia" 'Sem acesso a este negócio' "$R"
+  # A linha é conferida contra o plano corporativo: sem isso um id qualquer de
+  # fator viraria linha nova pela borda, invisível na grade e eterna na tabela.
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":${FAT:-0},\"negocio_id\":$IMP_N1,\"sinal\":\"POSITIVO\"}")
+  afirma "gestor não inventa linha com fator de fora da matriz" 'não é uma linha da matriz' "$R"
+
+  EMAIL=leitor.impacto@teste.local SENHA=trocar123 login
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"POSITIVO\"}")
+  afirma "LEITURA nunca grava" 'somente leitura' "$R"
+  R=$(get "/api/impacto?ciclo_id=1&ano=2026")
+  afirma "LEITURA lê, com pode_editar falso" '"pode_editar":false' "$R"
+
+  admin_de_volta   # para a limpeza e para o resto do arquivo
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"\"}")
+  afirma "sinal vazio apaga a célula" '"apagada":true' "$R"
+  R=$(get "/api/impacto?ciclo_id=1&ano=2026")
+  nega "e ela não volta na listagem" 'Escrito pelo gestor' "$R"
+  post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N2,\"sinal\":\"\"}" >/dev/null
+
+  # `IMP_UID`, e não `UID`: em bash `UID` é SOMENTE LEITURA (o id do usuário do
+  # sistema), e a atribuição morre com "readonly variable" — a limpeza não
+  # rodava e os usuários de prova ficavam no banco, fazendo a execução seguinte
+  # falhar ao criar o mesmo e-mail.
+  for E in gestor.impacto@teste.local leitor.impacto@teste.local; do
+    IMP_UID=$(get "/api/usuarios" | python3 -c "
+import sys, json
+print(next((u['id'] for u in json.load(sys.stdin)['dados'] if u['email'] == '$E'), ''))" 2>/dev/null)
+    [ -n "$IMP_UID" ] && post /api/usuarios/$IMP_UID/excluir '{"sem_responsavel":true}' >/dev/null
+  done
+fi
+
 echo "### 10. Limpeza"
 [ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null

@@ -391,6 +391,30 @@ sem build step.
   na interface.
 - GESTOR edita seus negócios; LEITURA só visualiza; o corporativo é editável
   apenas por ADMIN/CONTROLADORIA/DIRECAO.
+- **Exceção única: a Matriz de Impacto por Negócio** (`impacto_negocio`,
+  `ImpactoController`). Decisão do cliente em 2026-09-01, tomada com a regra
+  acima à vista.
+  - **Leitura.** GESTOR e LEITURA recebem, do plano corporativo, apenas a
+    **descrição** dos fatores da SWOT do ano e as células **dos negócios do
+    escopo deles** — nunca o registro do fator, que carrega o score da GUT, a
+    origem, a promoção e o encaminhamento ao plano de ação. O `score` é
+    removido do payload explicitamente, e não só omitido da tela: a priorização
+    e o julgamento por trás dela continuam fora do alcance de quem não vê o
+    corporativo. O que passa a ser visível é o que o gestor ouviria na própria
+    reunião — sem isso a matriz seria um slide que só a controladoria abre, e o
+    item não teria razão de existir.
+  - **Escrita.** GESTOR grava a célula dos negócios dele; quem vê tudo grava
+    qualquer uma; LEITURA nunca. É a primeira escrita do sistema numa linha que
+    cita o plano corporativo, e ela é segura por uma razão de modelagem, não por
+    exceção: **a célula não pertence ao plano corporativo, pertence à matriz**,
+    e apenas cita um fator. Por isso a autorização é a do NEGÓCIO — "você mexe
+    na célula de um negócio que você já mexe" — e não a do planejamento.
+    `Auth::exigirEdicaoPlanejamento` no corporativo devolveria 403 ao gestor, e
+    usá-la aqui obrigaria a controladoria a escrever por dez pessoas.
+  - **O limite.** O gestor escolhe o SINAL e o TEXTO; nunca a linha. O
+    `fator_id` é conferido contra o plano corporativo do ciclo (SWOT,
+    oportunidade ou ameaça), então ninguém cria linha de matriz pela borda nem
+    pendura célula num fator que não é da matriz.
 - Prepared statements em 100% das queries.
 
 ---

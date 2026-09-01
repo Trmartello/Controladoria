@@ -254,6 +254,39 @@ CREATE TABLE IF NOT EXISTS indicador_cascata (
   CONSTRAINT fk_ic_cas FOREIGN KEY (cascata_id) REFERENCES cascata_escolha(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+/*
+ * Matriz de Impacto por Negócio: o que o diagnóstico CORPORATIVO faz com cada
+ * negócio. Linha = ameaça ou oportunidade da SWOT corporativa do ano; coluna =
+ * negócio; célula = o sinal e o como.
+ *
+ * **Sem `planejamento_id` e sem `ano`**, de propósito: os dois vêm do `fator`
+ * apontado, e guardá-los aqui criaria uma segunda verdade — a célula podia
+ * dizer 2027 com o fator dela em 2026, e nenhuma tela mostraria a divergência.
+ *
+ * **Não reusa `fator.promovido_de_id`** para o vínculo. `FatorController::listar`
+ * faz `LEFT JOIN fator pr ON pr.promovido_de_id = f.id`: reusar o campo
+ * multiplicaria a linha do fator corporativo por negócio impactado, duplicando
+ * cards na tela do PESTEL — longe daqui, e sem ninguém ligar as duas coisas.
+ *
+ * A FK do fator é ON DELETE CASCADE (some o fator, some a linha da matriz); a
+ * do negócio NÃO é: negócio não se apaga, se desativa (`NegocioController`
+ * recusa com contagem), e um CASCADE ali só esconderia a recusa.
+ */
+CREATE TABLE IF NOT EXISTS impacto_negocio (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  fator_id      INT NOT NULL,
+  negocio_id    INT NOT NULL,
+  sinal         ENUM('POSITIVO','NEGATIVO') NOT NULL,
+  texto         TEXT NULL,
+  atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  -- Uma célula por par: é o que faz o `salvar` ser um upsert e não uma pilha
+  -- de opiniões sobre o mesmo cruzamento.
+  UNIQUE KEY uk_impacto (fator_id, negocio_id),
+  KEY idx_imp_negocio (negocio_id),
+  CONSTRAINT fk_imp_fator   FOREIGN KEY (fator_id)   REFERENCES fator(id) ON DELETE CASCADE,
+  CONSTRAINT fk_imp_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS projeto (
   id               INT AUTO_INCREMENT PRIMARY KEY,
   planejamento_id  INT NOT NULL,

@@ -2728,6 +2728,145 @@ async function provasMoverAnalise(page) {
   }, { ...massa, prj: comAcao.prj, comAcao: comAcao.fator });
 }
 
+/**
+ * Matriz de Impacto por Negócio — as DUAS leituras da mesma tabela.
+ *
+ * A autorização, que é o coração do tema, tem bateria própria em `funcional.sh`
+ * (§9e): ela precisa de três sessões diferentes, e repeti-la aqui só encheria o
+ * console de 403 deliberados, que o `vigiar` conta como erro de página.
+ *
+ * O que se mede AQUI é o que só o navegador responde: a grade cabe na tela sem
+ * empurrar a página de lado, o cabeçalho e a coluna do fator ficam presos ao
+ * rolar, e trocar o contexto de Corporativo para um negócio troca a GRADE pela
+ * LISTA — que é a leitura que faz a tela valer para quem não é controladoria.
+ */
+async function provasImpactoNegocio(page) {
+  const l = '[desktop] Impacto por Negócio:';
+
+  const massa = await page.evaluate(async () => {
+    const ciclo = App.contexto.cicloId;
+    const ano = Diag.ano();
+    const d = await App.api(`/api/impacto?ciclo_id=${ciclo}&ano=${ano}`);
+    if (!d.fatores.length || d.negocios.length < 2) return { sem: true };
+    const [f1, f2] = d.fatores;
+    const [n1, n2] = d.negocios;
+    const grava = (fator_id, negocio_id, sinal, texto) =>
+      App.api('/api/impacto', { ciclo_id: ciclo, fator_id, negocio_id, sinal, texto });
+    await grava(f1.id, n1.id, 'NEGATIVO', 'Aperta a margem de prova');
+    await grava(f1.id, n2.id, 'POSITIVO', 'Abre espaço de prova');
+    if (f2) await grava(f2.id, n1.id, 'POSITIVO', 'Segunda linha de prova');
+    return { ciclo, ano, f1: f1.id, f2: f2?.id ?? null, n1: n1.id, n2: n2.id,
+      fatores: d.fatores.length, negocios: d.negocios.length };
+  });
+  if (massa.sem) {
+    ok.push(`${l} pulada — sem SWOT corporativa do ano ou com menos de dois negócios`);
+    return;
+  }
+
+  await page.evaluate(() => App.mostrarSecao('impacto'));
+  // Espera pelo DADO, não pelo nó: `percorrer` já pintou as seções no início da
+  // bateria, e um seletor genérico casaria com a pintura de antes da massa.
+  await esperar(page,
+    "!!(SecaoImpacto.dados && SecaoImpacto.dados.celulas.some("
+    + "(c) => (c.texto || '').includes('de prova')))", 15000);
+
+  const grade = await page.evaluate((m) => {
+    const t = document.querySelector('#secao-impacto .tabela-impacto');
+    if (!t) return null;
+    return {
+      colunas: t.querySelectorAll('thead th').length,
+      linhas: t.querySelectorAll('tbody tr').length,
+      glifos: [...t.querySelectorAll('.celula-impacto span[aria-hidden]')].map((s) => s.textContent.trim()),
+      // Cada coluna leva o rótulo completo em `title` e uma cópia para leitor de
+      // tela: o cabeçalho mostra só o código, que sozinho não identifica nada.
+      cabecalhoComRotulo: [...t.querySelectorAll('thead .col-negocio')]
+        .every((th) => (th.getAttribute('title') || '').includes(' - ')),
+      rolaPagina: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      esperadoColunas: m.negocios + 1,
+    };
+  }, massa);
+  t(`${l} a grade tem uma coluna por negócio, mais a do fator`,
+    !!grade && grade.colunas === grade.esperadoColunas, JSON.stringify(grade));
+  t(`${l} uma linha por ameaça/oportunidade da SWOT corporativa`,
+    !!grade && grade.linhas === massa.fatores, `${grade?.linhas} de ${massa.fatores}`);
+  t(`${l} o sinal é FORMA, não só cor — ▲ e ▼ desenhados`,
+    !!grade && grade.glifos.includes('▲') && grade.glifos.includes('▼'),
+    JSON.stringify(grade?.glifos));
+  t(`${l} o cabeçalho leva o nome inteiro do negócio, não só o código`,
+    grade?.cabecalhoComRotulo === true);
+  t(`${l} e a página não rola de lado`, grade?.rolaPagina === false);
+
+  // O cabeçalho e a coluna do fator presos: numa grade de códigos numéricos,
+  // perder o cabeçalho na rolagem torna as células ilegíveis.
+  const fixo = await page.evaluate(async () => {
+    const caixa = document.querySelector('#secao-impacto .caixa-impacto');
+    caixa.scrollTop = caixa.scrollHeight;
+    await new Promise((r) => setTimeout(r, 200));
+    const cx = caixa.getBoundingClientRect();
+    const th = caixa.querySelector('thead .col-negocio');
+    const quina = caixa.querySelector('thead .col-fator');
+    return {
+      rolou: Math.round(caixa.scrollTop),
+      thNoTopo: Math.round(th.getBoundingClientRect().top - cx.top),
+      quinaNoTopo: Math.round(quina.getBoundingClientRect().top - cx.top),
+      colunaPresa: getComputedStyle(caixa.querySelector('tbody .col-fator')).position,
+      colapso: getComputedStyle(caixa.querySelector('.tabela-impacto')).borderCollapse,
+    };
+  });
+  t(`${l} a caixa rolou de verdade antes de medir`, fixo.rolou > 100, `${fixo.rolou}`);
+  t(`${l} o cabeçalho fica grudado no topo da caixa`,
+    fixo.thNoTopo === 0 && fixo.quinaNoTopo === 0, JSON.stringify(fixo));
+  t(`${l} a coluna do fator fica presa à esquerda`, fixo.colunaPresa === 'sticky', fixo.colunaPresa);
+  t(`${l} bordas separadas, para o grudado ser opaco`, fixo.colapso === 'separate', fixo.colapso);
+
+  // A outra leitura: no contexto de um NEGÓCIO a grade dá lugar à lista.
+  const antes = await page.evaluate((m) => {
+    const ctx = App.contexto;
+    window.__ctxAntes = { ...ctx };
+    App.contexto = { ...ctx, corporativo: false, negocioId: m.n1 };
+    return true;
+  }, massa);
+  await page.evaluate(() => App.mostrarSecao('impacto'));
+  await esperar(page,
+    "!!document.querySelector('#secao-impacto [data-card-impacto], #secao-impacto .alert')", 15000);
+  const lista = await page.evaluate(() => {
+    const el = document.getElementById('secao-impacto');
+    return {
+      cards: el.querySelectorAll('[data-card-impacto]').length,
+      temGrade: !!el.querySelector('.tabela-impacto'),
+      texto: el.textContent.replace(/\s+/g, ' '),
+    };
+  });
+  t(`${l} no contexto de um negócio a grade some e vira lista`,
+    lista.temGrade === false && lista.cards > 0, JSON.stringify({ ...lista, texto: undefined }));
+  t(`${l} a lista traz só o que impacta ESTE negócio, com a contagem`,
+    /\d+ de \d+ fatores do diagnóstico corporativo/.test(lista.texto)
+    && lista.texto.includes('Aperta a margem de prova')
+    && !lista.texto.includes('Abre espaço de prova'),
+    lista.texto.slice(0, 220));
+
+  // A limpeza APAGA a massa e devolve o contexto — nesta ordem, e esperando a
+  // repintura terminar. Esta prova é a única que troca `App.contexto`, e o
+  // Dossiê, que roda logo depois, o troca dezenas de vezes: devolver o contexto
+  // e sair com um `carregar()` ainda no ar deixa uma pintura órfã correndo
+  // contra o contexto que a próxima prova já está mudando — exatamente o tipo
+  // de corrida que produziu os falsos-negativos de pintura velha nesta bateria.
+  await page.evaluate(async (m) => {
+    for (const [f, n] of [[m.f1, m.n1], [m.f1, m.n2], [m.f2, m.n1]]) {
+      if (f) {
+        await App.api('/api/impacto',
+          { ciclo_id: m.ciclo, fator_id: f, negocio_id: n, sinal: '' }).catch(() => {});
+      }
+    }
+    App.contexto = window.__ctxAntes;
+    delete window.__ctxAntes;
+    App.mostrarSecao('painel');
+  }, massa);
+  await esperar(page, "!document.getElementById('secao-painel').classList.contains('d-none')", 10000);
+  await esperar(page, "!!document.querySelector('#secao-painel *')", 10000);
+  void antes;
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -2757,6 +2896,7 @@ async function provasMoverAnalise(page) {
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);
   await provasMoverAnalise(page);
+  await provasImpactoNegocio(page);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.

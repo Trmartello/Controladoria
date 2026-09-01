@@ -33,7 +33,14 @@ como primeira versão, não como conclusão revisada.
 
 ## 1. Matriz de Impacto por Negócio
 
-### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço P)
+### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço P) — **ENTREGUE**
+
+> **Entregue** em 2026-09-01, destravado pela **decisão 1** (o gestor lê o que o
+> corporativo diz que o impacta) e pela **decisão 7** (controladoria **e** gestor
+> preenchem). `impacto_negocio`, `ImpactoController` com dois métodos, duas
+> rotas, `public/assets/js/secoes/impacto.js` e a exceção de acesso escrita em
+> `PLANEJAMENTO-SISTEMA.md §5`. O que mudou em relação ao previsto está em *Como
+> ficou*, no fim desta seção.
 
 É a única leitura transversal que o método promete e nunca entregou — hoje um
 fator do PESTEL corporativo morre no PESTEL corporativo — e custa uma tabela,
@@ -186,6 +193,61 @@ Validar em 1500×800 e 390×844, como manda o `CLAUDE.md`.
 - **Sobreposição conceitual com a Cascata:** a matriz é diagnóstico (o que o
   ambiente faz com a gente); a cascata é escolha. Se a célula ganhar campos de
   "ação" ou "resposta", as duas telas viram a mesma coisa mal feita.
+
+### Como ficou
+
+**A decisão 7 saiu diferente das três opções oferecidas.** A proposta era
+"controladoria preenche, gestor lê"; a resposta do cliente foi **os dois
+preenchem** — controladoria em qualquer célula, gestor na coluna dele. Isso
+parecia caro (escrita cross-planejamento, a primeira do sistema) e acabou sendo
+o contrário, por uma razão de modelagem que só ficou clara ao escrever:
+
+> **A célula não pertence ao plano corporativo. Ela pertence à matriz, e apenas
+> CITA um fator.**
+
+Com isso a autorização de escrita não é "pode mexer no corporativo?" — que seria
+mesmo indefensável para um gestor — e sim **"pode mexer neste negócio?"**, que é
+a pergunta que o sistema já responde em todo lugar. O gestor escolhe o sinal e o
+texto; a LINHA nunca, porque o `fator_id` é conferido contra o plano corporativo
+do ciclo. Ninguém cria linha de matriz pela borda.
+
+**O que a decisão 1 comprou, e o que ela não comprou.** O gestor passou a receber
+a **descrição** do fator — e o `score` da GUT é removido do payload
+explicitamente, não apenas omitido da tela. A diferença importa: descrição é o
+fato, que ele ouviria na reunião de qualquer jeito; score é a **priorização**,
+que é julgamento da controladoria. A bateria funcional prova as duas metades
+(`nega` no score, `afirma` na descrição), porque uma regra de acesso que só a
+tela respeita não é regra.
+
+**Duas telas, uma tabela.** No contexto corporativo, a grade; no contexto de um
+negócio, a lista da coluna dele com a contagem ("2 de 12 fatores do diagnóstico
+corporativo impactam este negócio"). A segunda era o item inegociável da
+especificação, e continua sendo o motivo de a tela existir.
+
+**O cabeçalho grudado precisou de outra solução que a Matriz de Execução.** Lá a
+caixa podia parar de rolar acima de 992px porque a tabela cabia; aqui ela precisa
+de ~1450px com doze negócios, e soltar o `overflow` jogaria a rolagem horizontal
+para a página. Então a CAIXA ganha altura limitada e vira o container de rolagem,
+e o `sticky` gruda no topo dela (`top: 0`, não `--topo-app`). A coluna do fator
+fica presa à esquerda pelo mesmo motivo: doze colunas de código numérico ficam
+ilegíveis a partir da terceira linha se a linha sair de vista. `border-collapse:
+separate` de novo — com `collapse` o texto das células atravessa o grudado.
+
+**O sinal é forma, não só cor.** ▲/▼ com `aria-label` e o texto no `title`. Cor
+sozinha não sobrevive ao daltonismo nem à impressão em preto e branco, e esta é
+uma tela feita para ir impressa à reunião.
+
+**Um caso que parecia defeito e é o desenho funcionando:** uma AMEAÇA corporativa
+marcada como "ajuda este negócio". É legítimo — uma ameaça à cooperativa pode ser
+oportunidade para um negócio específico —, e é exatamente por isso que o sinal é
+por CÉLULA e não herdado da categoria da linha.
+
+**Um defeito que a bateria pegou em si mesma:** `UID` é variável somente-leitura
+no bash, e a limpeza dos usuários de prova morria com "readonly variable" sem
+falhar o teste — deixando usuário no banco para a execução seguinte tropeçar ao
+recriar o mesmo e-mail. E `VAR=valor funcao` em bash deixa a atribuição valendo
+DEPOIS que a função retorna: um `login` seco no fim reentraria como gestor, não
+como admin.
 
 ---
 
@@ -1059,7 +1121,7 @@ uma e monta um documento próprio. Três coisas saíram de graça daí:
 
 - A foto é **inerte por construção** — atribuir `innerHTML` não carrega ouvinte
   nenhum. A cópia não pode agir, e a tela viva fica intocada.
-- Cabem **onze negócios** no mesmo dossiê. As seções são dezessete elementos
+- Cabem **onze negócios** no mesmo dossiê. As seções são dezoito elementos
   FIXOS no shell; a saída original, que revelava os elementos, só conseguiria
   imprimir um negócio por vez.
 - O documento ganha **capa, sumário e ordem própria**, que a tela revelada não
@@ -1430,10 +1492,13 @@ existir um fórum que consome esse conteúdo é como o sistema morre.
 > trabalhos". Não são mais pendência — viraram **conferência periódica**, com o
 > que olhar registrado no tema 6.
 >
-> O que resta como *código* é o passo 4 (Matriz de Impacto, **travada na decisão
-> 1**), a síntese dos Cruzamentos (4c) e o mover entre tabelas (9d). Com a
-> operação de pé, a fila volta a ser escolha entre trabalhos — e a única trava
-> que sobrou é de **decisão**, não de esforço.
+> **O passo 4 saiu junto:** as decisões 1 e 7 foram respondidas em 2026-09-01 e a
+> **Matriz de Impacto** foi entregue no mesmo dia. Era o último item que estava
+> parado por decisão, e não por esforço.
+>
+> O que resta como *código* é a síntese dos Cruzamentos (4c) e o mover entre
+> tabelas (9d) — os dois livres, sem trava nenhuma. Pela primeira vez desde o
+> começo, a fila não tem item bloqueado: o que sobrou é só escolher a ordem.
 
 **0. Ligar o que já existe (horas, zero código).** SMTP + cron diário do Railway
 para `cli/notificar.php`. Um módulo pronto que não roda é a melhor relação
@@ -1493,7 +1558,7 @@ nota de impacto, e não convém passar a atribuir.
 
 | | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
 |---|---|---|
-| **Impacto alto** | **Fazer agora** — 1 Matriz de Impacto (travada na decisão 1) | **Planejar** — 4c Cruzamentos: a síntese · 9d mover entre tabelas |
+| **Impacto alto** | — | **Planejar** — 4c Cruzamentos: a síntese · 9d mover entre tabelas |
 | **Impacto baixo** | — | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
 
 Saíram do quadro por estarem entregues: 5 (registro de reunião), 3a (Matriz de
@@ -1502,12 +1567,15 @@ Execução), 8 (aviso na exclusão), 3b (vínculo com a Cascata), 2 e 2.1 (Colet
 do plano) e o 9a–9c (ir ao plano de ação e mover entre análises). Saíram por
 estarem **ligados**: 0 (SMTP+cron) e 6 (backup).
 
-**O "fazer agora" ficou com um item só, e ele não espera esforço — espera
-resposta.** Enquanto a operação estava desligada, ela era o argumento da fila:
-havia trabalho de valor alto que ninguém precisava decidir, só executar. Com o 0
-e o 6 ligados (2026-09-01), sobrou o 1 — e ele está parado na **decisão 1**, não
-por falta de braço. É a primeira vez neste backlog que a fila está travada em
-processo, e não em construção.
+**O "fazer agora" esvaziou.** Ele teve, em sequência, três ocupantes e três
+saídas diferentes: 0 e 6 saíram por serem **ligados** em produção; 1 saiu por ser
+**entregue**, no dia em que as decisões 1 e 7 foram respondidas. Sobrou o
+quadrante "planejar", com dois itens de esforço médio e nenhuma trava.
+
+Vale registrar o que isso significa para quem for reordenar: **o gargalo deste
+backlog nunca foi capacidade de construir — foi decisão de processo.** O item 1
+esperou meses por duas perguntas que levaram um dia para responder e um dia para
+implementar.
 
 **O 7 esteve no “planejar” e mesmo assim foi o primeiro da fila** — a contradição
 aparente que mostra o limite deste quadro: a leitura por esforço não sabe que um
@@ -1529,12 +1597,12 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 1 (trava: decisão 1) |
-| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 2 (ver `docs/CRUZAMENTOS-SWOT.md`) |
-| 9d | Mover entre TABELAS (Cenário ⇄ fator) | Construir | M | 3 |
+| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 1 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 9d | Mover entre TABELAS (Cenário ⇄ fator) | Construir | M | 2 |
 | 9c | Mover um fator entre PESTEL ⇄ Porter ⇄ SWOT | **Entregue** | P | ✔ (amarras recusam; decisões 13–15 em aberto) |
 | 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |
 | 9a | PESTEL e Porter **direto** ao plano de ação | **Entregue** | P | ✔ (decisão do cliente) |
+| 1 | **Matriz de Impacto por Negócio** | **Entregue** | P | ✔ (decisões 1 e 7) |
 | 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | **Entregue** | P | ✔ |
 | 6 | Backup do banco no Railway (Volume + cron) | **Ligado** | — | ✔ (cliente, 2026-09-01) |
 | 0 | SMTP + cron dos avisos | **Ligado** | — | ✔ (cliente, 2026-09-01) |
@@ -1581,11 +1649,13 @@ o índice que se consulta para decidir o que vem depois.
 
 Perguntas que nenhuma análise de código responde — só o dono do processo.
 
-1. **Acesso do gestor ao diagnóstico corporativo.** A Matriz de Impacto faz o
-   GESTOR ler descrições de fatores do plano corporativo. Hoje a regra é dura
-   (`docs/PLANEJAMENTO-SISTEMA.md` §5). Flexibiliza? Se sim, o payload do gestor
-   traz **só** descrição do fator + sinal + texto da célula, e o §5 precisa ser
-   reescrito na mesma PR.
+1. ~~Acesso do gestor ao diagnóstico corporativo.~~ **Respondida pelo cliente
+   (2026-09-01): flexibiliza, estreito.** O gestor recebe **só** a descrição do
+   fator, o sinal e o texto da célula, e apenas dos negócios do escopo dele; o
+   `score` da GUT sai do payload explicitamente. O §5 de
+   `docs/PLANEJAMENTO-SISTEMA.md` foi reescrito na mesma entrega, e a bateria
+   funcional (§9e) prova as duas metades — que a descrição chega e que o score
+   não. Destravou o tema 1.
 2. **Perfil LEITURA pode gravar ideia na Coleta?** Seria a primeira escrita por
    LEITURA em todo o sistema. É o que permite brainstorm amplo sem inflar perfis —
    mas é mudança do modelo de segurança, não detalhe de controller.
@@ -1600,9 +1670,13 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
    como proposto? Quem conduz? A reunião mensal é por negócio ou agrupa negócios?
 6. **Existe (ou existirá) real com granularidade mensal vindo do Qlik?** Se sim,
    meta × real deixa de ser assunto só anual e muda a pauta do ritual.
-7. **Quem é o dono da Matriz de Impacto:** a controladoria preenche a grade inteira,
-   ou cada gestor preenche a coluna dele? A versão proposta assume a primeira
-   (gestor só lê) — é o mais simples e o mais defensável, mas é decisão de processo.
+7. ~~Quem é o dono da Matriz de Impacto?~~ **Respondida pelo cliente
+   (2026-09-01): os DOIS preenchem** — controladoria em qualquer célula, gestor
+   na coluna dele. Não era nenhuma das opções oferecidas, e saiu mais barata do
+   que a análise previa: a célula não pertence ao plano corporativo, pertence à
+   matriz e apenas cita um fator, então a autorização é a do NEGÓCIO (que o
+   sistema já sabe responder) e não a do planejamento. O gestor escolhe o sinal
+   e o texto; a linha nunca.
 8. ~~SMTP, cron e backup já estão configurados em produção?~~ **Respondida pelo
    cliente (2026-09-01): os dois estão ligados.** Era a única "decisão" que não
    dependia de opinião, e a resposta tirou os passos 0 e 0-bis da fila. O que

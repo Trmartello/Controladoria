@@ -40,7 +40,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   as telas, e estado desses em seção que se repinta some no primeiro redesenho.
   O rótulo tem uma fonte só (`App.rotuloCiclo`), usada pelo menu e pela topbar.
   O cabeçalho do menu é **espaço tirado da navegação** — ele empurra as
-  dezessete seções para baixo. Por isso rótulo, valor e o ⚙ dividem UMA linha,
+  dezoito seções para baixo. Por isso rótulo, valor e o ⚙ dividem UMA linha,
   o subtítulo "Planejamento Estratégico" só aparece onde a topbar o esconde
   (`d-sm-none`, abaixo de 576px) e no menu vai só o NOME do ciclo, com o
   ano-base no `title`: numa linha só, "2027–2035 (base 2026)" era cortado
@@ -52,7 +52,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   destino".
 - **Atalho ⚙ na topbar** (`#btn-cadastros`, ao lado do ☰): abre os Cadastros —
   a tela de AJUSTAR o sistema, que não faz parte do percurso do planejamento e
-  se procurava no meio de dezessete seções. É um `<a data-secao>`, o mesmo
+  se procurava no meio de dezoito seções. É um `<a data-secao>`, o mesmo
   contrato dos itens do menu, e por isso o ouvinte de navegação casa por
   `[data-secao]` sem prefixo de container (ele não alcança o
   `data-secao-pergunta` do quiz: seletor de atributo casa por nome exato). O
@@ -255,6 +255,34 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `diagnostico.js` (`Diag`), limitado a [ano_base, ano_fim] do ciclo.
 - Promoção PESTEL/Porter → SWOT copia o `ano`; o botão do fator promovido
   mostra a categoria SWOT na cor do quadrante e reabre a edição.
+- **Matriz de Impacto por Negócio** (`impacto_negocio`, `ImpactoController`,
+  `secoes/impacto.js`): o que o diagnóstico CORPORATIVO faz com cada negócio.
+  Linha = ameaça/oportunidade da SWOT corporativa do ano, **sem curadoria
+  própria** (a SWOT já é a lista curada e o GUT já é a priorização, então a
+  ordem é `ORDER BY g.score DESC`); coluna = negócio; célula = sinal + como.
+  A tabela **não tem `planejamento_id` nem `ano`** — os dois vêm do fator, e
+  guardá-los criaria uma célula que discorda da própria linha.
+  **Duas telas, uma tabela:** contexto Corporativo → grade; contexto de um
+  negócio → a lista da coluna dele, com a contagem. A segunda é o motivo de a
+  tela existir.
+  **A autorização é a exceção única do sistema** (decisão do cliente 2026-09-01,
+  escrita em `PLANEJAMENTO-SISTEMA.md §5`): GESTOR **lê** a descrição dos fatores
+  corporativos e as células dos negócios dele — com o `score` da GUT removido do
+  payload, não só da tela — e **grava** a célula dos negócios dele. Isso é seguro
+  por modelagem, não por exceção: **a célula pertence à MATRIZ, não ao plano
+  corporativo**, e só cita um fator. Por isso a regra é a do NEGÓCIO ("você mexe
+  na célula de um negócio que você já mexe"), e o `fator_id` é conferido contra o
+  plano corporativo do ciclo — ninguém cria linha pela borda. Nenhum dos dois
+  métodos usa `exigirAcessoPlanejamento` no corporativo: ele devolve 403 ao
+  gestor, que é justamente quem mais precisa da coluna dele.
+  **Sinal é FORMA (▲/▼), não só cor** — cor sozinha não sobrevive ao daltonismo
+  nem à impressão em P&B, e a tela vai impressa à reunião. Célula ausente já
+  significa "sem impacto relevante": não existe `NEUTRO`, e `sinal` vazio apaga.
+  **Cabeçalho grudado com outra solução que a Matriz de Execução:** aqui a tabela
+  precisa de ~1450px, então a caixa não pode parar de rolar — ela ganha
+  `max-height` e vira o container, e o `sticky` usa `top: 0` (o topo da caixa).
+  A coluna do fator é `sticky left`, e a quina precisa de `z-index` acima das
+  duas. `border-collapse: separate` pelo mesmo motivo da outra grade.
 - **Mover um fator de análise** (`⇄`, `FatorController::mover`): PESTEL ⇄ Porter
   ⇄ SWOT. **A etapa e a categoria andam juntas, sempre** — as listas não se
   correspondem, e herdar a antiga produziria um fator invisível nas duas telas
@@ -1643,7 +1671,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | Bateria | Cobre | Falha quando |
 |---|---|---|
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As 17 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
+| `sistema.js` | As 18 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 | `email.sh` | O envio por API de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |
