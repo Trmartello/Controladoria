@@ -17,9 +17,54 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 - **Front controller**: `public/index.php` — tabela de rotas em `switch (true)`.
   Todo método de controller termina em `Json::ok()`/`Json::erro()` (ambos
   encerram a execução), mas cada `case` ainda leva `break;` defensivo.
+  Ele também **serve os assets** ele mesmo, por um mapa de extensão→MIME no
+  topo do arquivo. Isso tem uma consequência prática: **tipo de asset novo que
+  não esteja no mapa vira 404**, não arquivo entregue — é uma linha a
+  acrescentar, mas quem não souber vai procurar o defeito no HTML. A forma
+  antiga (devolver `false` e deixar o servidor embutido resolver) foi
+  abandonada por duas medições: o arquivo saía sem `Content-Type`, sem cache e
+  sem `nosniff`; e o `php -S` respondia a esse `false` **incluindo o
+  `index.php` de novo na mesma requisição**, onde a redeclaração de
+  `versao_asset()` derrubava o pedido com erro fatal — bastava um robô pedir
+  `/index.php`. Por isso os cabeçalhos de segurança aparecem **duas vezes** no
+  arquivo: este bloco sai antes do bloco geral, e sem repeti-los `/index.php` e
+  `/.htaccess` respondiam sem CSP nenhuma.
+- **Cabeçalhos de segurança**, no topo do front controller e **antes de abrir a
+  sessão**: `X-Content-Type-Options`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: same-origin`, `Content-Security-Policy`, HSTS quando a
+  requisição chegou por HTTPS, e `header_remove('X-Powered-By')`. A ordem é
+  deliberada e custou um defeito: o handler de sessão consulta o MySQL, e uma
+  queda do banco estourava a exceção **antes** dessas linhas — a resposta 500
+  saía sem CSP, sem `X-Frame-Options` e com a versão do PHP à mostra,
+  justamente nas rotas autenticadas.
+  A CSP é `default-src 'self'` com `style-src` liberando `'unsafe-inline'` e
+  mais nada. Ela não é decoração: é o que **proíbe**, na aplicação inteira,
+  `<script>` embutido no HTML, `onclick=` no atributo e qualquer `eval` — hoje
+  não existe uma única ocorrência dos três, e código novo que use qualquer um
+  deles simplesmente não roda no navegador. É também a razão de fundo das
+  bibliotecas vendoradas: sem `script-src` para um CDN, referenciar um CDN é
+  código morto, não escolha de estilo. E é o que faz a bateria de sistema não
+  poder usar `page.waitForFunction` (ele avalia string como JS) — está anotado
+  em `testes/README.md`, mas a causa é esta linha.
+- **Fuso horário — o servidor e o banco precisam concordar.** O contêiner roda
+  em UTC e a cooperativa trabalha em UTC−3, então das 21h à meia-noite o
+  servidor já estava no dia seguinte. Isso marcava como ATRASADA a ação que só
+  vence amanhã, podia disparar o relatório semanal num domingo à noite e
+  gravava `data_reg` do dia errado no diário. `config/config.php` resolve com
+  `date_default_timezone_set(env('TZ_APP', 'America/Sao_Paulo'))`, e o arquivo é
+  carregado por **todos** os pontos de entrada — front controller, migração e
+  CLI de avisos —, então o fuso vale para os três.
+  Só que metade das decisões de data é tomada no **SQL**, não no PHP:
+  `Avisos::despachar` usa `date('Y-m-d')`, `Consolidacao::sincronizarAtrasos`
+  usa `CURDATE()`, e os dois decidem a mesma coisa. Por isso o `Database`
+  manda `SET time_zone` na abertura da conexão, com o **deslocamento**
+  (`date('P')`, e não o nome da zona: nome exige as tabelas de fuso carregadas
+  no MySQL, o que nem sempre acontece). Data nova, venha de `NOW()` ou de
+  `date()`, já nasce concordando — mas só porque essa linha existe.
 - **Core** (`app/Core/`): `Auth` (sessão, perfis ADMIN/CONTROLADORIA/DIRECAO/
   GESTOR/LEITURA, escopo usuário×negócio, CSRF via header `X-CSRF-Token`),
-  `Database` (PDO, sempre prepared statements), `Json`, `SessaoBanco`
+  `Database` (PDO, sempre prepared statements; é ele que acerta o fuso da
+  conexão — ver o bullet do fuso horário), `Json`, `SessaoBanco`
   (sessões em MySQL na tabela `sessao` — sobrevivem a deploys; cookie 30 dias),
   `Versao` (o **pulso**: um contador por planejamento que sobe a cada escrita,
   marcado DENTRO de `Auth::exigirEdicaoPlanejamento()` para que endpoint novo
@@ -120,7 +165,9 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   precisa DECIDIR (e não só mostrar) vem por código, nunca por texto.
   Bootstrap 5.3.3 e o `qrcode.js` (o QR da sala) são as duas ÚNICAS
   bibliotecas de terceiros, **vendoradas** em `public/assets/vendor/` — CDNs
-  são bloqueados no ambiente de execução, então nunca referencie CDN.
+  são bloqueados no ambiente de execução E pela CSP da própria aplicação
+  (`default-src 'self'`), então nunca referencie CDN: não é preferência, é
+  código que não carrega.
 - **Tipos de campo do modal**: `text`, `textarea`, `select`, `multiselect`,
   `checkbox`, `password`, `number`, `date`, `hidden`, `periodo` (duas datas),
   `info` (bloco só de leitura, com barra colorida opcional; com `itens:
