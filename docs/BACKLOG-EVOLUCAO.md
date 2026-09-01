@@ -1562,6 +1562,167 @@ até alguém iterar as chaves.
 
 ---
 
+## 11. Um item por vez: bloqueio de edição
+
+### Veredito: **CONSTRUIR** (esforço P–M) — **planejado, não construído**
+
+Continuação direta do tema 10. Com o pulso entregue, duas telas se acompanham —
+mas nada impede que **duas pessoas abram o mesmo item** e a segunda a salvar
+apague o trabalho da primeira.
+
+### O que foi medido (2026-09-01), antes de desenhar
+
+| Caso | Hoje |
+|---|---|
+| B cria item novo enquanto A edita outro | ✅ ids distintos, os dois sobrevivem, e o pulso mostra o novo a A |
+| **A e B editam o MESMO item** | ⚠️ **A sobrescreve B e o servidor responde `ok:true`** |
+| A salva um item que B já apagou | ⚠️ *"Fator não encontrado neste planejamento"* |
+
+O primeiro caso é o que o cliente descreveu, e **já está resolvido** — vale
+registrar para ninguém reconstruir o que existe. O segundo é o que perde
+trabalho, e em silêncio: quem foi sobrescrito não recebe sinal nenhum. O
+terceiro é só uma mensagem ruim, mas cai no mesmo tema.
+
+### A decisão do cliente: BLOQUEAR, não reconciliar
+
+Havia três caminhos — recusar o salvamento velho comparando versões, avisar sem
+impedir, ou não fazer nada. O cliente escolheu um quarto, e o argumento dele é
+o melhor da lista: **se ninguém mais pode abrir o item, não existe base de
+comparação a manter.** Sem bloqueio, seria preciso versionar o registro,
+carregar essa versão no formulário e reconciliar dois textos na recusa. Com
+bloqueio, nada disso existe.
+
+**O bloqueio é do ITEM, não do campo** — ajuste sobre o pedido original, e a
+razão é concreta: o formulário edita o REGISTRO INTEIRO. Dois admins em campos
+diferentes do mesmo item salvariam o registro inteiro cada um, e o segundo
+apagaria o primeiro exatamente como hoje. Travar campo a campo só ajudaria se a
+tela editasse campo a campo — e ela não edita. O item é a unidade que
+corresponde à vida do formulário, que é o que dá ao bloqueio um começo e um fim
+óbvios.
+
+**Criar item novo não pede bloqueio nenhum**, e isso é consequência do
+raciocínio do cliente: não há registro a disputar e os ids não colidem.
+
+### O risco que decide o desenho: o cadeado esquecido
+
+Todo bloqueio pessimista tem o mesmo modo de falha, e ele é pior que o problema
+original: **alguém abre o formulário e vai embora.** Fecha o notebook, perde o
+wi-fi, o navegador cai. O item fica travado para sempre — e numa reunião com a
+direção, um item que ninguém consegue editar custa mais caro que uma
+sobrescrita.
+
+Quatro defesas, e nenhuma delas é opcional:
+
+1. **Validade curta** (~2 min). O cadeado morre sozinho.
+2. **Renovação enquanto o formulário está aberto.** O relógio do tema 10 já bate
+   a cada 4s e já sabe se há modal aberto — é ele que renova, sem relógio novo.
+3. **Soltar ao fechar** — salvar, cancelar, Esc. O caminho normal libera na hora.
+4. **Soltar ao sair da página** (`sendBeacon` no `pagehide`), como melhor
+   esforço para o fechar-a-aba.
+
+**E, acima de tudo, falhar ABERTO.** Se a rota do bloqueio der erro, a edição
+prossegue. Um sistema de cadeados capaz de impedir todo mundo de trabalhar é
+pior que o conflito que ele previne — e essa é a diferença entre isto reduzir
+colisões a quase zero na prática e isto virar o problema.
+
+### Modelo de dados
+
+```sql
+CREATE TABLE IF NOT EXISTS edicao_bloqueio (
+  recurso     VARCHAR(40) NOT NULL,   -- 'fator', 'cascata_escolha', 'desdobramento', ...
+  registro_id INT NOT NULL,
+  usuario_id  INT NOT NULL,
+  expira_em   DATETIME NOT NULL,
+  PRIMARY KEY (recurso, registro_id),
+  KEY idx_bloqueio_expira (expira_em)
+) ENGINE=InnoDB;
+```
+
+A chave primária composta é o que torna a tomada **atômica**: um `INSERT … ON
+DUPLICATE KEY UPDATE` com a condição de expiração dentro do `IF()` pega ou não
+pega numa instrução só, sem transação e sem janela entre "conferir" e "tomar" —
+que é justamente onde dois cliques simultâneos passariam os dois.
+
+```sql
+INSERT INTO edicao_bloqueio (recurso, registro_id, usuario_id, expira_em)
+VALUES (?, ?, ?, NOW() + INTERVAL 120 SECOND)
+ON DUPLICATE KEY UPDATE
+  usuario_id = IF(expira_em < NOW() OR usuario_id = VALUES(usuario_id),
+                  VALUES(usuario_id), usuario_id),
+  expira_em  = IF(expira_em < NOW() OR usuario_id = VALUES(usuario_id),
+                  VALUES(expira_em), expira_em);
+```
+Lê-se de volta quem ficou com ele: sou eu → abriu; é outro → recusa dizendo o
+nome. Sem FK para `usuario`: a linha é efêmera e some por validade.
+
+### Onde a trava é conferida — e por que nos dois lugares
+
+**Na tela**, o ✎ de um item travado aparece apagado com "Maria está editando".
+É esta metade que de fato evita a colisão, porque a pessoa **não chega a
+começar**. Os cadeados vão junto no **pulso** (tema 10), que já roda a cada 4s e
+já é o canal do "o que está acontecendo agora" — sem rota nova e sem relógio
+novo.
+
+**No servidor**, `salvar()` e `excluir()` recusam quando o cadeado é de outro.
+Sem esta metade o bloqueio é teatro: uma tela velha, aberta antes do cadeado,
+salvaria assim mesmo. Ela também conserta o terceiro caso medido — apagar um
+item que alguém está editando passa a dizer *quem* está editando, em vez de
+deixar o outro com "não encontrado" na cara.
+
+Um helper compartilhado (`Bloqueio::exigirMeu($recurso, $id)`), pelo mesmo
+motivo de `Fatores::acoesQuePrendem`: a regra tem de ser uma só, senão a tela
+apaga o botão onde o servidor aceita, ou o contrário.
+
+### Alcance (decidido pelo cliente): as telas disputadas de verdade
+
+`cascata_escolha` (a célula que todos preenchem juntos), `fator`
+(PESTEL/Porter/SWOT — cobre a nota da GUT, que é do fator), `cenario_item`,
+`desdobramento` (a ação) e `projeto`. São os registros que duas pessoas
+realmente abrem ao mesmo tempo numa reunião.
+
+Fora por ora: investimentos, metas, indicadores, cruzamentos, matriz de impacto
+e comentários. Não por serem menos importantes — por não serem disputados. Se
+o padrão se provar numa reunião real, ampliar é acrescentar um nome de recurso
+e uma linha de guarda.
+
+### Entrega mínima
+
+1. `edicao_bloqueio` no `schema.sql`.
+2. `App\Services\Bloqueio`: `tomar`, `soltar`, `exigirMeu`, `doCiclo` (para o pulso).
+3. Duas rotas: `POST /api/bloqueio` (tomar/renovar) e `POST /api/bloqueio/soltar`.
+4. Cadeados no payload do pulso.
+5. `Modal.abrir` ganha `bloqueio: { recurso, id }`: toma ao abrir, solta ao
+   fechar, renova pelo relógio. Um lugar só — as seções passam o par e não
+   cuidam de ciclo de vida nenhum.
+6. `exigirMeu` nos cinco `salvar()`/`excluir()`.
+7. Provas com DUAS sessões, como o tema 10: B não abre o que A tem aberto;
+   o cadeado expira e libera; A fechando solta na hora; e a **falha aberta** —
+   com a rota do bloqueio fora do ar, a edição continua possível.
+
+### Riscos
+
+- **O cadeado esquecido** — tratado acima; é o risco número um e a razão de
+  metade do desenho.
+- **Latência no ✎.** Abrir o formulário passa a depender de uma ida ao servidor.
+  É uma chamada minúscula, mas o botão precisa de estado de espera para não
+  parecer travado no clique.
+- **Duas abas da mesma pessoa.** O `usuario_id` igual renova em vez de recusar —
+  senão alguém se autobloqueia e não entende por quê.
+- **Sensação de "travado" sem explicação.** O texto tem de dizer QUEM e oferecer
+  saída: com o cadeado expirado, um "assumir a edição" explícito.
+- **Não é garantia dura.** Falhando aberto, o bloqueio é melhor esforço. Reduz
+  colisão a quase zero entre pessoas numa sala; não substituiria um controle de
+  concorrência num sistema com centenas de editores anônimos — que não é este.
+
+### Decisões em aberto deste tema
+
+- **Validade de 2 minutos** é chute informado (quatro batidas do relógio de
+  folga). Uma reunião real diz se é pouco.
+- **"Assumir a edição"** de um cadeado expirado: livre para qualquer admin, ou
+  só para quem administra?
+
+---
+
 ## Ordem de implementação recomendada
 
 O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro**, e
@@ -1683,8 +1844,9 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 1 (ver `docs/CRUZAMENTOS-SWOT.md`) |
-| 9d | Mover entre TABELAS (Cenário ⇄ fator) | Construir | M | 2 |
+| 11 | **Um item por vez: bloqueio de edição** | Construir | P–M | 1 (planejado; continua o 10) |
+| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 2 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 9d | Mover entre TABELAS (Cenário ⇄ fator) | Construir | M | 3 |
 | 9c | Mover um fator entre PESTEL ⇄ Porter ⇄ SWOT | **Entregue** | P | ✔ (amarras recusam; decisões 13–15 em aberto) |
 | 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |
 | 9a | PESTEL e Porter **direto** ao plano de ação | **Entregue** | P | ✔ (decisão do cliente) |
