@@ -115,7 +115,14 @@ class Auth
         if ($u['perfil'] === 'LEITURA') {
             Json::erro('Perfil somente leitura.', 403);
         }
-        return self::exigirAcessoPlanejamento($planejamentoId);
+        $plan = self::exigirAcessoPlanejamento($planejamentoId);
+        // Metade da marcação do pulso (`App\Core\Versao`): este é o portão por
+        // onde passa toda escrita de conteúdo do plano, então quem chega aqui
+        // está prestes a gravar. Marcar o ALVO não grava nada — quem diz que
+        // houve mudança é `Database::executar`, e o contador só sobe quando as
+        // duas coisas acontecem na mesma requisição.
+        Versao::alvo($planejamentoId);
+        return $plan;
     }
 
     /**

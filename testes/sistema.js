@@ -2867,6 +2867,106 @@ async function provasImpactoNegocio(page) {
   void antes;
 }
 
+/**
+ * Duas telas abertas ao mesmo tempo — o "mais de um ADMIN preenchendo junto".
+ *
+ * É a única prova da bateria que precisa de DUAS sessões de navegador, e não dá
+ * para ser de outro jeito: o que se mede é justamente o que a segunda tela faz
+ * sozinha quando a primeira grava. Uma sessão só provaria o pulso do servidor,
+ * que já tem prova própria em `funcional.sh`.
+ *
+ * A segunda tela NÃO é tocada depois de aberta: nada de clique, nada de
+ * recarregar. Se o texto aparecer nela, apareceu pelo relógio.
+ */
+async function provasDuasTelas(browser) {
+  const l = '[duas telas] Preenchimento simultâneo:';
+  const ctxB = await browser.newContext({ viewport: { width: 1400, height: 800 }, reducedMotion: 'reduce' });
+  const ctxA = await browser.newContext({ viewport: { width: 1400, height: 800 }, reducedMotion: 'reduce' });
+  const A = await entrar(ctxA, 'A', []);
+  const B = await entrar(ctxB, 'B', []);
+  const TEXTO = 'Fator escrito pela outra tela (prova)';
+  const TEXTO2 = 'Fator escrito com modal aberto (prova)';
+  const criados = [];
+
+  try {
+    for (const p of [A, B]) {
+      await p.evaluate(() => App.mostrarSecao('pestel'));
+      await esperar(p, "!!document.querySelector('#secao-pestel .coluna-categoria')", 15000);
+    }
+    // O relógio é armado depois da pintura, no `recarregarSecaoAtiva`.
+    await esperar(B, '!!Vivo.relogio', 8000);
+    t(`${l} a segunda tela arma o relógio sozinha ao abrir a seção`, true);
+
+    const antes = await B.evaluate((x) =>
+      document.getElementById('secao-pestel').textContent.includes(x), TEXTO);
+    t(`${l} e não mostra o que ainda não foi escrito`, antes === false);
+
+    criados.push(await A.evaluate(async (x) => {
+      const plan = await App.planejamento();
+      const f = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+        categoria: 'ECONOMICO', descricao: x, ano: Diag.ano() });
+      return f.id;
+    }, TEXTO));
+
+    let refletiu = true;
+    const t0 = Date.now();
+    await esperar(B,
+      `document.getElementById('secao-pestel').textContent.includes(${JSON.stringify(TEXTO)})`,
+      15000).catch(() => { refletiu = false; });
+    t(`${l} o que uma escreve aparece na outra sem ninguém atualizar`,
+      refletiu, refletiu ? `${Date.now() - t0}ms` : 'não apareceu em 15s');
+
+    // A guarda que mais importa: repintar com um formulário aberto jogaria fora
+    // o que a pessoa está escrevendo. Vale mais que a atualização em si.
+    await B.evaluate(() => Modal.abrir({ titulo: 'Prova da guarda', url: '/api/nada',
+      valores: { x: '' }, campos: [{ nome: 'x', rotulo: 'Campo' }] }));
+    await esperar(B, "!!document.querySelector('.modal.show')", 5000);
+    criados.push(await A.evaluate(async (x) => {
+      const plan = await App.planejamento();
+      const f = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+        categoria: 'SOCIAL', descricao: x, ano: Diag.ano() });
+      return f.id;
+    }, TEXTO2));
+    // Duas batidas do relógio (4s cada) com folga: se fosse repintar, repintaria.
+    await new Promise((r) => setTimeout(r, 9500));
+    const comModal = await B.evaluate((x) => ({
+      aberto: !!document.querySelector('.modal.show'),
+      repintou: document.getElementById('secao-pestel').textContent.includes(x),
+    }), TEXTO2);
+    t(`${l} com um formulário aberto, NÃO repinta por baixo dele`,
+      comModal.aberto === true && comModal.repintou === false, JSON.stringify(comModal));
+
+    // E a atualização não se perde: fechado o formulário, a próxima batida traz.
+    await B.evaluate(() => {
+      window.bootstrap?.Modal.getInstance(document.querySelector('.modal.show'))?.hide();
+    });
+    await esperar(B, "!document.querySelector('.modal.show')", 5000);
+    let veioDepois = true;
+    await esperar(B,
+      `document.getElementById('secao-pestel').textContent.includes(${JSON.stringify(TEXTO2)})`,
+      15000).catch(() => { veioDepois = false; });
+    t(`${l} e o que ficou represado chega assim que o formulário fecha`, veioDepois);
+
+    // Ao sair da seção o relógio se desarma: as seções não são destruídas ao
+    // navegar, só ganham `d-none`, e um relógio por tela visitada ficaria batendo.
+    await B.evaluate(() => App.mostrarSecao('painel'));
+    await esperar(B, "!document.getElementById('secao-painel').classList.contains('d-none')", 10000);
+    await new Promise((r) => setTimeout(r, 5000));
+    const noPainel = await B.evaluate(() => Vivo.secaoId);
+    t(`${l} ao trocar de seção o relógio passa a vigiar a nova`,
+      noPainel === 'secao-painel', String(noPainel));
+  } finally {
+    await A.evaluate(async (ids) => {
+      const plan = await App.planejamento();
+      for (const i of ids) {
+        await App.api(`/api/fatores/${i}/excluir`, { planejamento_id: plan.id }).catch(() => {});
+      }
+    }, criados).catch(() => {});
+    await ctxA.close();
+    await ctxB.close();
+  }
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -2897,6 +2997,7 @@ async function provasImpactoNegocio(page) {
   await provasCenarioPlanoAcao(page);
   await provasMoverAnalise(page);
   await provasImpactoNegocio(page);
+  await provasDuasTelas(browser);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.

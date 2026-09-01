@@ -589,6 +589,54 @@ print(next((u['id'] for u in json.load(sys.stdin)['dados'] if u['email'] == '$E'
   done
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+echo "### 9f. Pulso — o contador que faz duas telas se acompanharem"
+#
+# A marcação é montada em DUAS metades, cada uma num ponto de passagem
+# obrigatório (`Auth::exigirEdicaoPlanejamento` diz o alvo, `Database::executar`
+# diz que houve escrita). O que estas provas medem é justamente que nenhuma das
+# duas depende de alguém ter lembrado: leitura não sobe, escrita sobe, e escrita
+# recusada antes de tocar o banco não sobe.
+
+pulso() { get "/api/pulso?ciclo_id=1" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+print(d.get('1', 0) if isinstance(d, dict) else 0)" 2>/dev/null; }
+
+P0=$(pulso)
+get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" >/dev/null
+get "/api/projetos?planejamento_id=1" >/dev/null
+get "/api/cascata?planejamento_id=1" >/dev/null
+P1=$(pulso)
+afirma "três LEITURAS não mexem no pulso" "^$P0\$" "$P1"
+
+R=$(post /api/fatores '{"planejamento_id":1,"etapa":"PESTEL","categoria":"SOCIAL","descricao":"Fator do pulso","ano":2026}')
+PULSO_F=$(echo "$R" | id_de)
+P2=$(pulso)
+afirma "INSERT sobe o pulso" "^$((P1 + 1))\$" "$P2"
+
+post /api/fatores/$PULSO_F '{"planejamento_id":1,"categoria":"LEGAL","descricao":"Fator do pulso (editado)"}' >/dev/null
+P3=$(pulso)
+afirma "UPDATE sobe o pulso" "^$((P2 + 1))\$" "$P3"
+
+# O DELETE é o que nenhum "MAX(atualizado_em)" pegaria: apagar não deixa carimbo
+# em lugar nenhum, e a outra tela seguiria mostrando o que já não existe.
+post /api/fatores/$PULSO_F/excluir '{"planejamento_id":1}' >/dev/null
+P4=$(pulso)
+afirma "DELETE sobe o pulso" "^$((P3 + 1))\$" "$P4"
+
+R=$(post /api/fatores '{"planejamento_id":1,"etapa":"PESTEL","categoria":"NAO_EXISTE","descricao":"x","ano":2026}')
+afirma "a escrita inválida é recusada" '"ok":false' "$R"
+P5=$(pulso)
+afirma "e recusada antes do banco, não sobe o pulso" "^$P4\$" "$P5"
+
+# A rota é chamada a cada poucos segundos por admin: um ciclo sem escrita
+# nenhuma tem de devolver OBJETO vazio, não lista — a tela indexa por id.
+R=$(get "/api/pulso?ciclo_id=99999")
+afirma "ciclo sem escrita devolve objeto vazio, não lista" '"dados":\{\}' "$R"
+R=$(get "/api/pulso")
+afirma "pulso sem ciclo é recusado" 'Informe o ciclo' "$R"
+
 echo "### 10. Limpeza"
 [ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null

@@ -18,6 +18,17 @@
 const SecaoImpacto = {
   dados: null,
   ciclo: null,
+  planCorporativo: null,
+
+  /**
+   * O relógio do "duas telas juntas" vigia DOIS planos aqui, e é a única seção
+   * assim: a matriz é lida no contexto de um negócio, mas as linhas dela são a
+   * SWOT do plano CORPORATIVO. Vigiando só o do contexto, o gestor não veria a
+   * controladoria preenchendo a coluna dele — que é o caso de uso da tela.
+   */
+  planosVigiados() {
+    return [App.planAtual?.id, this.planCorporativo].filter(Boolean);
+  },
 
   // Glifo, cor e rótulo de cada sinal — catálogo único, lido pela grade, pela
   // lista e pelo modal. Sinal é COR **e** forma: cor sozinha não sobrevive nem
@@ -41,6 +52,7 @@ const SecaoImpacto = {
     this.ciclo = ctx.cicloId;
     const ano = Diag.ano();
     this.dados = await App.api(`/api/impacto?ciclo_id=${ctx.cicloId}&ano=${ano}`);
+    this.planCorporativo = this.dados.planejamento_id || null;
 
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">

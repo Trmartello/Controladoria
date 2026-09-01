@@ -255,6 +255,43 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `diagnostico.js` (`Diag`), limitado a [ano_base, ano_fim] do ciclo.
 - Promoção PESTEL/Porter → SWOT copia o `ano`; o botão do fator promovido
   mostra a categoria SWOT na cor do quadrante e reabre a edição.
+- **Duas telas juntas** (`planejamento_versao`, `App\Core\Versao`,
+  `public/assets/js/vivo.js`): mais de um ADMIN preenchendo ao mesmo tempo, e o
+  que um grava aparece no outro em ~4s sem ninguém apertar F5. Nasceu do custo
+  real de uma reunião com a direção, onde "atualiza aí" se repete dezenas de
+  vezes.
+  **O pulso é um contador por planejamento**, não `MAX(atualizado_em)`: a maioria
+  das tabelas não tem carimbo, e as que têm não registram DELETE — apagar um
+  fator não mexeria em carimbo nenhum e a outra tela seguiria mostrando o que já
+  não existe. `GET /api/pulso?ciclo_id=` devolve `{planejamento_id: versao}` e é
+  **a rota mais chamada do sistema** quando há gente preenchendo junto: por isso
+  lê uma tabela de duas colunas e nada mais.
+  **A marcação tem duas metades, cada uma num ponto de passagem obrigatório**, e
+  é isso que a torna impossível de esquecer: `Auth::exigirEdicaoPlanejamento`
+  diz QUAL plano (é o portão de toda escrita de conteúdo) e `Database::executar`
+  diz que HOUVE escrita (é o único caminho de INSERT/UPDATE/DELETE). O contador
+  sobe uma vez por requisição, num `register_shutdown_function` — o fim do
+  switch nunca é alcançado, porque `Json::ok()` termina com `exit`. Chamar
+  `bumpar()` em cada endpoint foi rejeitado: esquecer um não quebra nada
+  visível, a pessoa aperta F5 e o defeito fica.
+  **A exceção é uma só e é explícita:** `ImpactoController::salvar` chama
+  `Versao::alvo()` na mão, porque autoriza pelo NEGÓCIO da célula e não pelo
+  planejamento. Os cadastros (ciclo, negócio, usuário, driver, eixo) ficam fora
+  de propósito — mudam a moldura, não o conteúdo de um plano.
+  **`Vivo.armar` é chamado num lugar só**, em `App.recarregarSecaoAtiva`, DEPOIS
+  de `carregar()` resolver: armar antes capturaria a referência com a tela ainda
+  lendo, e uma escrita nesse intervalo passaria por "já vista". Um relógio só em
+  todo o sistema — há uma seção visível por vez, e um por seção deixaria batendo
+  o da tela que esqueceu de desarmar.
+  **As guardas são o coração disso** e vieram do relógio da Sala, que já rodou em
+  oficina: não repinta com **modal aberto** (descartaria o formulário) nem com o
+  **foco num campo**; desarma quando a seção ganha `d-none`; nem arma em
+  `App.modoDossie`; e ignora a batida se a rede piscar. Represar não perde a
+  atualização: a versão de referência só avança quando a repintura acontece, e a
+  batida seguinte à liberação traz o que ficou. Seções com relógio próprio
+  (`coleta`, `sala`) e o `dossie` declaram `planosVigiados() { return []; }`;
+  a `impacto` declara DOIS planos, porque é lida no contexto de um negócio e o
+  conteúdo dela vive no corporativo.
 - **Matriz de Impacto por Negócio** (`impacto_negocio`, `ImpactoController`,
   `secoes/impacto.js`): o que o diagnóstico CORPORATIVO faz com cada negócio.
   Linha = ameaça/oportunidade da SWOT corporativa do ano, **sem curadoria
@@ -1671,7 +1708,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | Bateria | Cobre | Falha quando |
 |---|---|---|
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As 18 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
+| `sistema.js` | As 18 seções em 1500×700 e 390×844, mais DUAS sessões no preenchimento simultâneo | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 | `email.sh` | O envio por API de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |

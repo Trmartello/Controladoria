@@ -1476,6 +1476,92 @@ fator SET etapa` de hoje é seguro justamente por não mexer em id nenhum.
 
 ---
 
+## 10. Duas telas juntas: preenchimento simultâneo
+
+### Veredito: **CONSTRUIR** (esforço P) — **ENTREGUE**
+
+Pedido do cliente: com mais de um ADMIN conectado, o que um altera precisa
+aparecer no outro **sem atualizar a tela**, para que duas pessoas possam
+preencher juntas. A justificativa é de processo, não de conforto: *"quando
+tivermos com a direção o tempo é escasso, e determinante para maior
+engajamento"*. Numa reunião de uma hora, "atualiza aí" se repete dezenas de
+vezes, e cada repetição é um pedaço da atenção da direção.
+
+### Por que um contador, e não a comparação do conteúdo
+
+A alternativa direta seria cada tela reler o próprio conteúdo a cada poucos
+segundos e comparar. Funciona e não precisa de servidor nenhum — mas faria cada
+admin baixar o payload inteiro de Projetos a cada batida para quase sempre
+concluir que nada mudou. O custo cresce com o dado e com o número de pessoas,
+justo nos dois eixos em que se quer crescer.
+
+O contador inverte isso: o caminho **frequente** custa um inteiro
+(`GET /api/pulso`, uma tabela de duas colunas), e o caminho **caro** — reler o
+conteúdo — só acontece quando houve mudança de verdade.
+
+E por que não `MAX(atualizado_em)` das tabelas, que dispensaria tabela nova: a
+maioria delas não tem carimbo de tempo, e **as que têm não registram DELETE**.
+Apagar um fator não mexeria em carimbo nenhum, e a outra tela seguiria mostrando
+o que já não existe — o pior tipo de dessincronia, porque parece certa.
+
+### A decisão que sustenta o resto: onde a marcação mora
+
+Chamar um `bumpar()` no fim de cada endpoint que grava tem um modo de falha
+ruim: **esquecer um não quebra nada visível.** O sistema segue funcionando e só
+aquela ação some do outro monitor. Ninguém relata "a exclusão de investimento
+não propaga" — a pessoa aperta F5 e segue. Defeito que se contorna sozinho é
+defeito que fica.
+
+Então a marcação foi montada com duas metades, cada uma num ponto por onde tudo
+já passa, e nenhuma delas dependendo de lembrança:
+
+| Metade | Onde | Por que ali |
+|---|---|---|
+| Qual plano | `Auth::exigirEdicaoPlanejamento` | é o portão de toda escrita de conteúdo — 52 chamadas nos controllers |
+| Houve escrita | `Database::executar` | é o único caminho de INSERT/UPDATE/DELETE |
+
+O contador sobe quando as duas aconteceram, uma vez por requisição, num
+`register_shutdown_function` — o fim do `switch` do roteador nunca é alcançado,
+porque `Json::ok()` termina o script com `exit`.
+
+**Uma exceção, explícita:** `ImpactoController::salvar` chama `Versao::alvo()`
+na mão, porque autoriza pelo negócio da célula e não pelo planejamento (§5 do
+`PLANEJAMENTO-SISTEMA.md`). Os cadastros ficam de fora de propósito: mudam a
+moldura, não o conteúdo de um plano.
+
+### As guardas valem mais que a atualização
+
+Repintar na hora errada é pior que não repintar — perde-se o que a pessoa estava
+escrevendo. Todas as guardas vieram do relógio da Sala, que já rodou em oficina;
+o `vivo.js` existe para que valham em TODA seção e não só lá: modal aberto, foco
+num campo, seção escondida, modo Dossiê, rede piscando.
+
+**Represar não perde a atualização.** A versão de referência só avança quando a
+repintura acontece de fato, então a batida seguinte à liberação traz o que ficou.
+A bateria prova as duas metades disso: que não repinta sob o formulário aberto, e
+que o represado chega quando ele fecha.
+
+### Como ficou
+
+`Vivo.armar` é chamado **num lugar só** (`App.recarregarSecaoAtiva`), depois de
+`carregar()` resolver — armar antes capturaria a referência com a tela ainda
+lendo, e uma escrita nesse intervalo passaria por "já vista". Um relógio só em
+todo o sistema: há uma seção visível por vez, e um por seção deixaria batendo o
+da tela que esquecesse de desarmar.
+
+Quem depende de outro plano **declara isso em si mesma** (`planosVigiados()`),
+em vez de uma lista de exceções no `app.js` que envelheceria calada: a Matriz de
+Impacto vigia dois planos, e `coleta`/`sala`/`dossie` devolvem lista vazia.
+
+**Um defeito achado pela prova, não pela leitura:** mapa associativo vazio vira
+`[]` em JSON, não `{}`. Um ciclo em que ninguém escreveu devolvia uma lista, e a
+tela indexando por id funcionava **por acidente** (`undefined` lido como zero) —
+até alguém iterar as chaves.
+
+**Medido:** a segunda tela reflete em ~4 segundos, uma batida do relógio.
+
+---
+
 ## Ordem de implementação recomendada
 
 O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro**, e
@@ -1602,6 +1688,7 @@ fila deve discutir a dependência, não o quadrante.
 | 9c | Mover um fator entre PESTEL ⇄ Porter ⇄ SWOT | **Entregue** | P | ✔ (amarras recusam; decisões 13–15 em aberto) |
 | 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |
 | 9a | PESTEL e Porter **direto** ao plano de ação | **Entregue** | P | ✔ (decisão do cliente) |
+| 10 | **Duas telas juntas: preenchimento simultâneo** | **Entregue** | P | ✔ (pedido do cliente) |
 | 1 | **Matriz de Impacto por Negócio** | **Entregue** | P | ✔ (decisões 1 e 7) |
 | 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | **Entregue** | P | ✔ |
 | 6 | Backup do banco no Railway (Volume + cron) | **Ligado** | — | ✔ (cliente, 2026-09-01) |

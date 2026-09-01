@@ -52,6 +52,11 @@ class Database
     {
         $stmt = self::conn()->prepare($sql);
         $stmt->execute($params);
+        // Metade da marcação do pulso (`App\Core\Versao`): este é o único
+        // caminho de escrita do sistema, e marcar aqui é o que dispensa lembrar
+        // de marcar em cada endpoint. A outra metade — QUAL planejamento — vem
+        // do portão de autorização.
+        Versao::marcarEscrita();
         return self::conn()->lastInsertId();
     }
 

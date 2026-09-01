@@ -272,6 +272,32 @@ CREATE TABLE IF NOT EXISTS indicador_cascata (
  * do negócio NÃO é: negócio não se apaga, se desativa (`NegocioController`
  * recusa com contagem), e um CASCADE ali só esconderia a recusa.
  */
+/*
+ * Versão do conteúdo de um planejamento — o "pulso" que faz duas telas abertas
+ * ao mesmo tempo se acompanharem.
+ *
+ * Uma linha por planejamento, um inteiro que só cresce. É o MENOR estado
+ * possível que responde "mudou alguma coisa desde a última vez que olhei?", e
+ * essa pequenez é o requisito: a rota que a lê roda a cada poucos segundos por
+ * admin conectado, e uma consulta cara ali viraria carga permanente.
+ *
+ * Por que um contador e não `MAX(atualizado_em)` das tabelas: a maioria delas
+ * não tem carimbo de tempo, e as que têm não registram DELETE — apagar um fator
+ * não mexeria em carimbo nenhum, e a outra tela seguiria mostrando o que já não
+ * existe. O contador não tem esse buraco porque quem o incrementa é a ESCRITA,
+ * qualquer que seja ela.
+ *
+ * Sem FK para `planejamento`: a linha é cache de sincronização, não dado do
+ * plano. Um plano apagado deixa aqui uma linha órfã de 16 bytes que ninguém
+ * lê — e uma FK CASCADE só acrescentaria trabalho ao DELETE para economizar
+ * isso.
+ */
+CREATE TABLE IF NOT EXISTS planejamento_versao (
+  planejamento_id INT PRIMARY KEY,
+  versao          BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  em              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS impacto_negocio (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   fator_id      INT NOT NULL,

@@ -52,6 +52,14 @@ const SITUACOES = {
 };
 
 const SecaoColeta = {
+  /**
+   * Fora do relógio compartilhado: a Coleta tem o seu, com as regras da oficina
+   * (rodada aberta, voto, ficha sendo arrastada). Dois relógios na mesma tela
+   * repintariam um por cima do outro, e o desta seção é o que sabe não tirar a
+   * ficha da mão de quem a segura.
+   */
+  planosVigiados() { return []; },
+
   plan: null,
   itens: [],
   filtro: 'NOVO',

@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Core\Versao;
 
 /**
  * Matriz de Impacto por Negócio — o que o diagnóstico CORPORATIVO faz com cada
@@ -133,6 +134,12 @@ class ImpactoController
             // aceita, e as duas versões seriam descobertas por acidente.
             'pode_editar' => $u['perfil'] !== 'LEITURA',
             've_tudo' => $veTudo,
+            // O id do plano CORPORATIVO vai junto para o relógio do "duas telas
+            // juntas" saber o que vigiar: esta tela é aberta no contexto de um
+            // negócio e o conteúdo dela mora aqui. É só um id — o gestor já
+            // sabe que o plano corporativo existe, e nada do conteúdo dele
+            // atravessa por esta chave.
+            'planejamento_id' => $planId,
         ]);
     }
 
@@ -190,6 +197,20 @@ class ImpactoController
         );
         if (!$fator) {
             Json::erro('Este fator não é uma linha da matriz deste ciclo.', 404);
+        }
+
+        // A exceção explícita do pulso (`App\Core\Versao`): esta é a única
+        // escrita de conteúdo que NÃO passa por `exigirEdicaoPlanejamento` —
+        // ela autoriza pelo negócio da célula, não pelo planejamento. Sem esta
+        // linha a marcação ficaria sem alvo, e a grade aberta noutro monitor não
+        // acompanharia. O plano é o corporativo, que é onde a linha da matriz
+        // mora; `$fator` acabou de confirmar que é dele.
+        $plan = Database::um(
+            "SELECT id FROM planejamento WHERE ciclo_id = ? AND escopo = 'CORPORATIVO'",
+            [$cicloId]
+        );
+        if ($plan) {
+            Versao::alvo((int)$plan['id']);
         }
 
         if ($sinal === '') {

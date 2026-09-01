@@ -21,6 +21,10 @@
 // tabela de etapas aponta para cada objeto `Secao*`.
 
 const SecaoDossie = {
+  // Fora do relógio compartilhado: o Dossiê é um documento montado de uma vez
+  // para ir ao papel. Repintá-lo no meio da impressão trocaria as páginas.
+  planosVigiados() { return []; },
+
   secaoId: 'secao-dossie',
 
   /**

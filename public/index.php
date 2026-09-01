@@ -114,6 +114,13 @@ function versao_asset(string $caminho): string
 
 use App\Core\Auth;
 use App\Core\Json;
+use App\Core\Versao;
+
+// O pulso é fechado no ENCERRAMENTO, não no fim do switch: `Json::ok()` e
+// `Json::erro()` terminam o script com `exit`, e o fim do switch nunca é
+// alcançado numa requisição normal. Aqui pega os dois caminhos — inclusive o do
+// endpoint que gravou e depois recusou por regra.
+register_shutdown_function([Versao::class, 'registrar']);
 
 // Corpo grande só faz sentido em rota autenticada; na pública o texto é curto
 if ($rotaPublica && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 65536) {
@@ -242,6 +249,12 @@ try {
             (new UsuarioController())->salvar((int)$m[1]); break;
 
         case $rota === 'GET /api/contexto':        (new PlanejamentoController())->contexto(); break;
+
+        // O pulso: `[planejamento_id => versao]` dos planos visíveis do ciclo.
+        // É a rota mais chamada do sistema quando há gente preenchendo junto —
+        // uma por admin a cada poucos segundos —, e por isso ela lê UMA tabela
+        // de duas colunas e não toca em nada do conteúdo.
+        case $rota === 'GET /api/pulso':           (new PlanejamentoController())->pulso(); break;
 
         // Rotas públicas da tempestade: sem sessão, guardadas pelo token
         case (bool)preg_match('#^GET /api/publico/rodada/(\\d{6})$#', $rota, $m):
