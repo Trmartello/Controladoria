@@ -5,13 +5,22 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 
 ## Arquitetura
 
+- **Onde fica o quê**: `app/` (Core, Controllers, Services), `views/` na RAIZ —
+  não em `app/Views/` — com as três telas que existem (`shell.php`, o one-page
+  atrás do login, com as 18 `<section class="secao d-none">`; `login.php`; e
+  `participante.php`, a do celular sem login), `public/` (front controller e
+  assets), `database/`, `cli/`, `config/`, `testes/`, `docs/`.
 - **Front controller**: `public/index.php` — tabela de rotas em `switch (true)`.
   Todo método de controller termina em `Json::ok()`/`Json::erro()` (ambos
   encerram a execução), mas cada `case` ainda leva `break;` defensivo.
 - **Core** (`app/Core/`): `Auth` (sessão, perfis ADMIN/CONTROLADORIA/DIRECAO/
   GESTOR/LEITURA, escopo usuário×negócio, CSRF via header `X-CSRF-Token`),
   `Database` (PDO, sempre prepared statements), `Json`, `SessaoBanco`
-  (sessões em MySQL na tabela `sessao` — sobrevivem a deploys; cookie 30 dias).
+  (sessões em MySQL na tabela `sessao` — sobrevivem a deploys; cookie 30 dias),
+  `Versao` (o **pulso**: um contador por planejamento que sobe a cada escrita,
+  marcado DENTRO de `Auth::exigirEdicaoPlanejamento()` para que endpoint novo
+  não precise lembrar de marcá-lo — ver "Duas telas juntas") e `Email` (cliente
+  SMTP/API escrito à mão: sem Composer, não há biblioteca para isso).
 - **Serviços** (`app/Services/`): `QlikSync`, `Recorrencia` (repetição das
   ações — usada pelo cadastro), `Avisos` (e-mails do plano
   de ação), `Consolidacao` (reconciliação do que é *consequência*: atraso da
@@ -27,7 +36,19 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   que devolve `[fator => ação]` para uma lista inteira: é a MESMA consulta que
   alimenta o `acao_trava` da listagem, com que a tela desabilita o × antes do
   clique. Uma definição só de "está preso" — a tela e o servidor não podem
-  discordar. Autoload PSR-4 caseiro em `public/index.php`
+  discordar.
+  Os quatro serviços mais novos existem pelo MESMO motivo do `Fatores`: uma
+  regra que passou a ter **dois chamadores**. `Quiz` (o que cada alvo de
+  pergunta significa — o lado da resposta, o limite de texto, o contexto que
+  desce ao celular: nasceu repartido entre controller e tela), `Cruzamentos`
+  (a regra do par da TOWS, pedida pela tela autenticada **e pela rota
+  pública**), `Bloqueio` (o cadeado de edição, com as guardas que o servidor
+  aplica) e `CargaConteudo` (texto redigido fora do sistema, aplicado pelo
+  migrate e pela CLI). Serviço aqui não é camada por gosto: é onde a regra fica
+  escrita **uma vez**, para que a segunda cópia — que na prática é a frouxa, e
+  no caso do `Cruzamentos` seria a exposta sem login — não chegue a existir.
+  Cada um está explicado na sua seção de regra de negócio, abaixo.
+  Autoload PSR-4 caseiro em `public/index.php`
   (`App\` → `app/`);
   **não há Composer nem `vendor/`** — nada de dependência externa em PHP.
 - **Contexto: ciclo × negócio.** O **negócio** é seletor do menu lateral — troca
@@ -73,10 +94,24 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   outra e procurar um botão inexistente — `null.addEventListener`, e a tela
   inteira virava alerta vermelho. Formulários via
   fábrica declarativa `Modal.abrir({campos, url, valores, transformar, extra,
-  aoSalvar, enviar})` (`modal.js`) — `enviar` substitui o POST padrão quando
+  aoSalvar, enviar, aoMudar, bloqueio})` (`modal.js`) — `bloqueio:
+  {recurso, registro_id, planejamento_id}` é tudo o que um formulário precisa
+  dizer para ganhar o cadeado de edição; `enviar` substitui o POST padrão quando
   salvar exige mais de uma chamada (o 409 de sala aberta virando confirmação).
-  Componentes usados por VÁRIAS seções ficam soltos em `public/assets/js/`
-  (`quiz.js`) e carregam antes das seções no `shell.php`.
+  Componentes usados por VÁRIAS seções ficam soltos em `public/assets/js/` e
+  carregam antes das seções no `shell.php`: `quiz.js` (`QuizSala`, a condução
+  do 🎤 — cascata, coleta, cruzamentos, diagnóstico e sala), `vinculos.js`
+  (`Vinculos.aviso()`, o que some junto ao excluir), `relatorio-analise.js`
+  (`RelatorioAnalise`, o corpo comum do relatório de uma análise), `vivo.js`
+  (`Vivo`, o relógio de 4s que lê o pulso) e `cadeado.js` (`Cadeado`, o
+  contador do item travado).
+  Os dois últimos ninguém liga na seção: `App.recarregarSecaoAtiva()` arma e
+  para o `Vivo` (depois de a pintura terminar — armar antes tomaria a versão de
+  referência com a tela ainda lendo, e uma escrita nesse intervalo passaria por
+  "já vista"), e o `Modal.abrir` toma e solta o `Cadeado` sozinho, a partir do
+  `bloqueio:` do formulário. É a mesma escolha do `Versao::alvo()` no servidor —
+  seção nova que esquecesse de chamá-los não quebraria nada visível, e defeito
+  que se contorna com F5 é defeito que fica.
   `App.api` põe `codigo` e `status` no `Error` que lança: erro que a tela
   precisa DECIDIR (e não só mostrar) vem por código, nunca por texto.
   Bootstrap 5.3.3 **vendorado** em `public/assets/vendor/` (CDNs são
