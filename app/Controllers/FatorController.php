@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Bloqueio;
 use App\Services\Fatores;
 use App\Services\Quiz;
 
@@ -118,6 +119,10 @@ class FatorController
         $categoria = $d['categoria'] ?? '';
         $descricao = trim($d['descricao'] ?? '');
         $fator = $id ? $this->exigirFator($id, $planId) : null;
+        // Cadeado: criar não disputa nada (não há registro), editar sim.
+        if ($id) {
+            Bloqueio::exigirMeu('fator', $id, (int)Auth::exigirLogin()['id'], 'este fator');
+        }
         // Na edição, a ETAPA e o ANO saem da LINHA, nunca do corpo: eles são a
         // identidade do fator, não campos do formulário. Aceitando-os do corpo,
         // um pedido forjado gravava categoria de PESTEL numa linha SWOT — o
@@ -311,6 +316,7 @@ class FatorController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirFator($id, $planId);
+        Bloqueio::exigirMeu('fator', $id, (int)Auth::exigirLogin()['id'], 'este fator');
         // A guarda olha o fator E os promovidos a partir dele: o DELETE logo
         // abaixo leva o promovido junto, e é ELE quem costuma carregar o
         // vínculo com a ação — mesmo agora que o PESTEL e o Porter também vão

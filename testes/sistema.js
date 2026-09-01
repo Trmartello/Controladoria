@@ -4,7 +4,7 @@
 // tela pareça certa.
 //
 //   node testes/sistema.js
-const { chromiumExec, playwright, esperar, entrar, relatar } = require('./comum');
+const { BASE, chromiumExec, playwright, esperar, entrar, relatar } = require('./comum');
 
 const ok = [], bad = [], erros = [];
 const t = (nome, cond, extra = '') => (cond ? ok : bad).push(nome + (extra ? ` — ${extra}` : ''));
@@ -2967,6 +2967,122 @@ async function provasDuasTelas(browser) {
   }
 }
 
+/**
+ * O cadeado de edição, a duas sessões e com DOIS usuários.
+ *
+ * Dois usuários é o ponto: com a mesma conta nos dois navegadores todo cadeado
+ * é "meu", todas as guardas passam e a prova ficaria verde medindo nada. Por
+ * isso ela cria um segundo admin pela própria rota e o apaga no fim.
+ *
+ * O que se mede aqui é o que só existe no navegador — o contador dentro do
+ * formulário, o "+1 minuto" e o nome de quem edita aparecendo sozinho no
+ * cartão do outro. A regra propriamente dita (quem grava e quem é recusado) é
+ * do servidor, e está provada na `funcional.sh`, seção 9g.
+ */
+async function provasCadeado(browser) {
+  const l = '[cadeado] Edição de um por vez:';
+  const ctxA = await browser.newContext({ viewport: { width: 1400, height: 800 }, reducedMotion: 'reduce' });
+  const ctxB = await browser.newContext({ viewport: { width: 1400, height: 800 }, reducedMotion: 'reduce' });
+  const A = await entrar(ctxA, 'A', []);
+  const EMAIL_B = 'bruna.cadeado@teste.local';
+  let fator = null, segundo = null;
+
+  try {
+    segundo = await A.evaluate((email) => App.api('/api/usuarios', {
+      nome: 'Bruna do Cadeado', email, senha: 'trocar123', perfil: 'ADMIN', negocios: [],
+    }).then((r) => r.id).catch(() => null), EMAIL_B);
+    if (!segundo) { t(`${l} cria o segundo admin da prova`, false); return; }
+
+    const B = await ctxB.newPage();
+    await B.goto(`${BASE}/login`);
+    await B.fill('#email', EMAIL_B);
+    await B.fill('#senha', 'trocar123');
+    await B.click('#form-login button[type=submit]');
+    await esperar(B, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+    await B.evaluate(() => {
+      App.contexto.cicloId = 1; App.contexto.negocioId = null; App.contexto.corporativo = true;
+    });
+
+    fator = await A.evaluate(async () => {
+      const plan = await App.planejamento();
+      const f = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'SWOT',
+        categoria: 'FORCA', descricao: 'Fator do cadeado (prova)', ano: Diag.ano() });
+      return f.id;
+    });
+    for (const p of [A, B]) {
+      await p.evaluate(() => App.mostrarSecao('swot'));
+      await esperar(p, `!!document.querySelector('#secao-swot [data-card-fator="${fator}"]')`, 15000);
+    }
+
+    // 1. Quem abre primeiro vê quanto tempo tem.
+    await A.click(`#secao-swot [data-card-fator="${fator}"] [data-editar="${fator}"]`);
+    const abriu = await esperar(A, "!!document.querySelector('.modal.show')"
+      + " && !document.getElementById('modal-cadeado').classList.contains('d-none')", 8000);
+    const tempo = await A.evaluate(() => document.querySelector('.tempo-cadeado')?.textContent || '');
+    t(`${l} quem abre o item vê o contador do tempo que tem`,
+      abriu && /^0[45]:\d\d$/.test(tempo), tempo || 'sem contador');
+
+    // 2. O segundo NEM ABRE o formulário — e o aviso diz de quem é o item.
+    //    Recusar só no salvar seria pior que não recusar: a pessoa escreveria
+    //    o parágrafo inteiro para descobrir no fim que ele não ia entrar.
+    let aviso = null;
+    B.once('dialog', async (d) => { aviso = d.message(); await d.dismiss(); });
+    await B.click(`#secao-swot [data-card-fator="${fator}"] [data-editar="${fator}"]`);
+    await new Promise((r) => setTimeout(r, 1500));
+    const abriuB = await B.evaluate(() => !!document.querySelector('.modal.show'));
+    t(`${l} o segundo admin não consegue abrir o mesmo item`,
+      abriuB === false && (aviso || '').includes('Administrador'), JSON.stringify(aviso));
+
+    // 3. E o nome aparece no cartão dele SEM ele tocar em nada: é o pulso de 4s
+    //    trazendo os cadeados junto com as versões.
+    const pintou = await esperar(B,
+      `!!document.querySelector('#secao-swot [data-cadeado="fator:${fator}"] .selo-editando')`, 14000);
+    const selo = await B.evaluate((f) => document.querySelector(
+      `#secao-swot [data-cadeado="fator:${f}"] .selo-editando`)?.textContent || '', fator);
+    t(`${l} o cartão do outro mostra sozinho quem está editando`,
+      pintou && selo.includes('Administrador'), JSON.stringify(selo));
+
+    // 4. O "+1 minuto" ESTENDE. Escrito da forma óbvia (`NOW() + 60`) ele
+    //    ENCURTARIA um cadeado recém-tomado — o botão de ganhar tempo tirando
+    //    tempo de quem clicou nele.
+    const antes = await A.evaluate(() => Cadeado.restam);
+    await A.click('#modal-cadeado [data-mais-tempo]');
+    await esperar(A, `Cadeado.restam > ${antes}`, 6000);
+    const depois = await A.evaluate(() => Cadeado.restam);
+    t(`${l} o +1 minuto estende em vez de encurtar`, depois > antes, `${antes} → ${depois}`);
+
+    // 5. Fechado o formulário, o item volta a ser de todos — e a tela do outro
+    //    avisa sozinha, que é o que evita o "já pode?" repetido na reunião.
+    await fecharModal(A);
+    const soltou = await esperar(B,
+      `!document.querySelector('#secao-swot [data-cadeado="fator:${fator}"] .selo-editando')`, 14000);
+    t(`${l} fechar solta o item e o aviso some da tela do outro`, soltou);
+
+    await B.click(`#secao-swot [data-card-fator="${fator}"] [data-editar="${fator}"]`);
+    const abriuAgora = await esperar(B, "!!document.querySelector('.modal.show')", 8000);
+    t(`${l} e aí o segundo admin abre normalmente`, abriuAgora);
+    await fecharModal(B);
+    // O `soltar` do fechamento é assíncrono: a limpeza abaixo é feita por A, e
+    // sem esperar o cadeado de B cair ela seria recusada pela própria guarda —
+    // o fator ficaria para trás sujando a análise das rodadas seguintes.
+    await esperar(B, 'Cadeado.atual === null', 5000);
+    await new Promise((r) => setTimeout(r, 800));
+  } finally {
+    if (fator) {
+      await A.evaluate(async (f) => {
+        const plan = await App.planejamento();
+        await App.api(`/api/fatores/${f}/excluir`, { planejamento_id: plan.id }).catch(() => {});
+      }, fator).catch(() => {});
+    }
+    if (segundo) {
+      await A.evaluate((u) => App.api(`/api/usuarios/${u}/excluir`,
+        { transferir_para: 1 }).catch(() => {}), segundo).catch(() => {});
+    }
+    await ctxA.close();
+    await ctxB.close();
+  }
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -2998,6 +3114,7 @@ async function provasDuasTelas(browser) {
   await provasMoverAnalise(page);
   await provasImpactoNegocio(page);
   await provasDuasTelas(browser);
+  await provasCadeado(browser);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.

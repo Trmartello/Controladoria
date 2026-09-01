@@ -18,6 +18,14 @@
  * cada batida, de cada admin conectado, para quase sempre concluir que nada
  * mudou.
  *
+ * ## Os cadeados vêm na mesma batida
+ *
+ * A resposta do pulso é `{versoes, bloqueios}`. O segundo campo diz quais itens
+ * estão abertos por alguém AGORA, com o nome de quem está editando, e é o que
+ * pinta o aviso em cima do cartão. Vem junto porque responde à mesma pergunta
+ * no mesmo relógio: uma rota própria dobraria o tráfego da consulta mais
+ * chamada do sistema.
+ *
  * ## As guardas, que são o coração disto
  *
  * Repintar na hora errada é pior que não repintar: perde-se o que a pessoa
@@ -32,6 +40,12 @@
  *   pessoa está preenchendo.
  * - **foco num campo** → não repinta. Vale para a busca da análise e, no
  *   celular, para o teclado aberto.
+ *
+ * As duas últimas guardam a REPINTURA, não a batida: o pulso continua sendo
+ * lido e os cadeados continuam sendo pintados. Quem está com um campo de busca
+ * em foco precisa ver que alguém acabou de abrir um cartão — e a versão nova
+ * fica guardada para a primeira batida em que repintar for seguro, em vez de
+ * ser perdida entre duas leituras.
  * - **modo Dossiê** → nem arma. Ali a seção é pintada de lado, para tirar foto
  *   do papel; ninguém está olhando.
  * - **rede piscou** → ignora a batida. A próxima tenta de novo, e um erro de
@@ -73,7 +87,11 @@ const Vivo = {
     // o que o servidor disser a partir daqui é novidade. Sem esta primeira
     // leitura, a batida seguinte veria "mudou" para tudo e repintaria à toa.
     this.versoes = null;
-    this.ler(ciclo).then((v) => { this.versoes = v; });
+    this.ler(ciclo).then((p) => {
+      if (!p) return;
+      this.versoes = p.versoes;
+      this.pintarCadeados(p.bloqueios);
+    });
 
     this.relogio = setInterval(async () => {
       const el = document.getElementById(secaoId);
@@ -81,12 +99,17 @@ const Vivo = {
         this.parar();
         return;
       }
+
+      const pulso = await this.ler(ciclo);
+      if (!pulso) return;
+      this.pintarCadeados(pulso.bloqueios);
+
       if (document.querySelector('.modal.show')) return;
       const ativo = document.activeElement;
       if (ativo && (ativo.tagName === 'TEXTAREA' || ativo.tagName === 'INPUT'
         || ativo.isContentEditable)) return;
 
-      const novas = await this.ler(ciclo);
+      const novas = pulso.versoes;
       if (!novas || !this.versoes) {
         if (novas) this.versoes = novas;
         return;
@@ -107,6 +130,43 @@ const Vivo = {
     } catch (e) {
       return null; // rede piscou; a próxima batida tenta de novo
     }
+  },
+
+  /**
+   * O nome de quem está editando, em cima do próprio item.
+   *
+   * O alvo é marcado no HTML da seção com `data-cadeado="recurso:id"` — e não
+   * deduzido dos `data-card-fator`/`data-projeto` que já existem, porque esses
+   * carregam só o id: um item de cenário nº 5 e um fator nº 5 casariam com o
+   * mesmo seletor, e a tela mostraria "Maria está editando" no cartão errado.
+   * O atributo diz o RECURSO junto, que é o que o cadeado usa como chave.
+   *
+   * É `~=` (lista de palavras) porque uma célula da Cascata pode guardar mais
+   * de uma escolha — uma por eixo — no mesmo `<td>`.
+   *
+   * O próprio cadeado (`meu`) não é pintado: quem está com o formulário aberto
+   * já vê o contador dentro dele, e repetir o aviso atrás do modal só sujaria a
+   * tela de quem volta.
+   */
+  pintarCadeados(lista) {
+    const el = document.getElementById(this.secaoId);
+    if (!el) return;
+    el.querySelectorAll('.selo-editando').forEach((s) => s.remove());
+    el.querySelectorAll('.editando-agora').forEach((c) => c.classList.remove('editando-agora'));
+    (lista || []).filter((b) => !b.meu).forEach((b) => {
+      el.querySelectorAll(`[data-cadeado~="${b.recurso}:${b.registro_id}"]`).forEach((alvo) => {
+        alvo.classList.add('editando-agora');
+        const selo = document.createElement('span');
+        selo.className = 'selo-editando badge';
+        selo.textContent = `✎ ${b.usuario} está editando`;
+        // Numa linha de tabela o selo não pode ser filho do `<tr>` (o navegador
+        // o joga para fora da tabela); vai na primeira célula.
+        const dentro = alvo.matches('tr')
+          ? alvo.querySelector('td')
+          : (alvo.querySelector('.card-body') || alvo);
+        dentro?.prepend(selo);
+      });
+    });
   },
 
   parar() {

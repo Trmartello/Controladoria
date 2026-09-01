@@ -6,6 +6,7 @@ use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
 use App\Core\Versao;
+use App\Services\Bloqueio;
 
 class PlanejamentoController
 {
@@ -29,11 +30,18 @@ class PlanejamentoController
         if (!$cicloId) {
             Json::erro('Informe o ciclo.');
         }
-        // `(object)` porque array associativo VAZIO vira `[]` em JSON, não `{}`:
-        // um ciclo em que ninguém escreveu ainda devolveria uma lista, e a tela
-        // faria `mapa[id]` num array. Funciona por acidente (dá `undefined`, que
-        // é lido como zero) e quebra na primeira vez que alguém iterar as chaves.
-        Json::ok((object)Versao::doCiclo($cicloId, Auth::escopoNegocios($u)));
+        Json::ok([
+            // `(object)` porque array associativo VAZIO vira `[]` em JSON, não
+            // `{}`: um ciclo em que ninguém escreveu devolveria uma lista, e a
+            // tela faria `mapa[id]` num array. Funciona por acidente (dá
+            // `undefined`, lido como zero) e quebra ao iterar as chaves.
+            'versoes' => (object)Versao::doCiclo($cicloId, Auth::escopoNegocios($u)),
+            // Os cadeados viajam JUNTO com as versões porque respondem à mesma
+            // pergunta — "o que está acontecendo agora?" — no mesmo relógio de
+            // 4s. Uma rota própria dobraria o tráfego da consulta mais chamada
+            // do sistema para responder metade do que a tela precisa saber.
+            'bloqueios' => Bloqueio::doCiclo($cicloId, (int)$u['id']),
+        ]);
     }
 
     /**

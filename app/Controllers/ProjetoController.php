@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Bloqueio;
 use App\Services\Consolidacao;
 use App\Services\Recorrencia;
 
@@ -213,6 +214,7 @@ class ProjetoController
         // preservado como está nos projetos antigos
         if ($id) {
             $this->exigirProjeto($id, $planId);
+            Bloqueio::exigirMeu('projeto', $id, (int)Auth::exigirLogin()['id'], 'este projeto');
             Database::executar(
                 'UPDATE projeto SET tipo = ?, ano = ?, titulo = ?, descricao = ?,
                    responsavel = ?, horizonte_id = ?, cascata_id = ? WHERE id = ?',
@@ -235,6 +237,7 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirProjeto($id, $planId);
+        Bloqueio::exigirMeu('projeto', $id, (int)Auth::exigirLogin()['id'], 'este projeto');
         // Investimentos vinculados perdem o vínculo (a FK não tem ON DELETE)
         Database::executar('UPDATE investimento SET projeto_id = NULL WHERE projeto_id = ?', [$id]);
         // Comentários do projeto (ref_tipo/ref_id é polimórfico e não tem FK
@@ -480,6 +483,7 @@ class ProjetoController
         ];
         if ($id) {
             $this->exigirDesdobramento($id, $planId);
+            Bloqueio::exigirMeu('desdobramento', $id, (int)Auth::exigirLogin()['id'], 'esta ação');
             Database::executar(
                 'UPDATE desdobramento SET projeto_id = ?, iniciativa_id = ?, o_que = ?, por_que = ?, quem = ?,
                    quem_usuario_id = ?, recorrencia = ?, recorrencia_dia = ?, recorrencia_dias = ?,
@@ -726,6 +730,7 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirDesdobramento($id, $planId);
+        Bloqueio::exigirMeu('desdobramento', $id, (int)Auth::exigirLogin()['id'], 'esta ação');
         $this->soltarAcoes('id = ?', [$id]);
         Database::executar('DELETE FROM desdobramento WHERE id = ?', [$id]);
         Json::ok();

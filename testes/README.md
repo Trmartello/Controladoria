@@ -6,7 +6,7 @@ leitura do código — cobrem o que a leitura não pega: regressão silenciosa.
 | Bateria | O que cobre | Como falha |
 |---|---|---|
 | `funcional.sh` | Os caminhos de **escrita** de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As **17 seções** em 1500×900 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
+| `sistema.js` | As **18 seções** em 1500×900 e 390×844, mais duas sessões no preenchimento simultâneo e no cadeado de edição | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
 | `participante.js` | A tela **pública** da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | O vaivém de `cli/backup.sh` — gerar, verificar, restaurar | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 | `email.sh` | O envio por **API** de `App\Core\Email`, contra um serviço de mentira | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, ou a chave passou a vazar na mensagem de erro |
@@ -90,4 +90,15 @@ Dito de propósito, para ninguém confundir verde com completo:
 - O arraste da matriz de prioridade e o agrupamento por gesto.
 - A exportação `.xls` e a folha de impressão do relatório.
 - O envio de e-mail (`cli/notificar.php`) e a sincronização com o Qlik.
-- Concorrência de verdade: dois condutores agindo ao mesmo tempo.
+
+A concorrência **saiu desta lista**: dois navegadores, com duas contas
+diferentes, provam o preenchimento simultâneo (`provasDuasTelas`) e o cadeado de
+edição (`provasCadeado`); a seção 9g da `funcional.sh` prova as guardas do
+servidor, que são o que de fato impede a sobrescrita. O que continua fora é a
+**condução ao vivo** do quiz e da sala a duas telas.
+
+Uma armadilha própria destas duas: elas dependem de o banco local estar
+**limpo**. Massa deixada por uma execução interrompida empurra os projetos da
+prova tela abaixo, e as medições de rolagem (o cabeçalho fixo de Projetos)
+falham por posição, não por defeito. Antes de investigar um vermelho ali,
+confira se sobrou lixo de prova no banco.

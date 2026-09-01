@@ -1564,7 +1564,7 @@ até alguém iterar as chaves.
 
 ## 11. Um item por vez: bloqueio de edição
 
-### Veredito: **CONSTRUIR** (esforço P–M) — **planejado, não construído**
+### Veredito: **CONSTRUIR** (esforço P–M) — **ENTREGUE**
 
 Continuação direta do tema 10. Com o pulso entregue, duas telas se acompanham —
 mas nada impede que **duas pessoas abram o mesmo item** e a segunda a salvar
@@ -1787,14 +1787,57 @@ e uma linha de guarda.
   colisão a quase zero entre pessoas numa sala; não substituiria um controle de
   concorrência num sistema com centenas de editores anônimos — que não é este.
 
-### Decisões em aberto deste tema
-
-- **"Assumir a edição"** de um cadeado expirado: livre para qualquer admin, ou
-  só para quem administra? (a única que resta antes de construir)
+### Decisões do tema — todas respondidas
 
 Respondidas pelo cliente em 2026-09-01: validade de **5 minutos**; contador
-visível; renovação **manual** de +1 minuto, sem teto; e o **nome de quem edita**
-no lugar do item para os demais.
+visível; renovação **manual** de +1 minuto, sem teto; o **nome de quem edita**
+no lugar do item para os demais; e um cadeado expirado pode ser assumido por
+**qualquer admin** — não só por quem o tinha.
+
+### Como ficou
+
+**O ciclo de vida do cadeado mora num lugar só** (`Modal.abrir`, com
+`bloqueio: { recurso, registro_id, planejamento_id }`). As seções passam o par
+e não cuidam de tomar, renovar nem soltar — quem esquecesse de soltar deixaria
+um item preso por cinco minutos sem ninguém entender por quê.
+
+**O `Versao::ignorar()` é o detalhe que salva o tema 10.** Tomar e renovar
+escrevem no banco, e o pulso marca escrita na infraestrutura (`Database::executar`)
+justamente para não depender de ninguém lembrar. Sem a exceção, cada renovação
+subiria a versão do plano e **todas as telas se repintariam a cada 4 segundos** —
+o oposto exato do que o pulso existe para fazer. A prova disso está na
+`funcional.sh` ("cadeado não conta como mudança do plano").
+
+**O `+1 minuto` é `GREATEST(expira_em, NOW()) + 60`, não `NOW() + 60`.** Escrito
+da forma óbvia, o botão de ganhar tempo **encurtaria** um cadeado recém-tomado,
+de 300 para 60 segundos. Está medido nas duas baterias (297 → 356).
+
+**Aos 0:00 o cadeado cai, o texto não.** `Bloqueio::exigirMeu` volta calado
+quando o item está `livre` — quem perdeu o cadeado ainda grava, desde que
+ninguém tenha assumido. Sem isso, quem estivesse escrevendo aos 4:59 perderia o
+parágrafo, e o recurso feito para não perder trabalho passaria a perder
+trabalho.
+
+**O nome de quem edita não é deduzido dos `data-card-fator`/`data-projeto` que
+já existiam** — eles carregam só o id, e um item de cenário nº 5 casaria com o
+seletor do fator nº 5. O marcador é `data-cadeado="recurso:id"`, com o recurso
+junto, que é a chave que o cadeado usa. Na célula da Cascata ele leva a lista de
+ids (síntese + eixos), casada por palavra.
+
+**`sendBeacon` não serve para soltar ao fechar a aba:** ele não carrega
+cabeçalho, e o CSRF do sistema só é aceito em `X-CSRF-Token` — o pedido morreria
+com 419 sem soltar nada. `fetch(..., { keepalive: true })` faz o mesmo papel
+mantendo o contrato de CSRF inteiro.
+
+**Provado a duas sessões e com dois usuários** (`sistema.js`, `provasCadeado`):
+com a mesma conta nos dois navegadores todo cadeado é "meu" e a prova ficaria
+verde medindo nada. Seis provas de navegador e dezoito de servidor
+(`funcional.sh`, seção 9g), incluindo a guarda valendo igual em fator, ação e
+projeto.
+
+**Fora do alcance, de propósito:** o arraste do progresso da ação. Ele não é
+formulário — é um gesto de um toque, e trancar um item por cinco minutos porque
+alguém arrastou uma barra seria pior que a colisão que evitaria.
 
 ---
 
@@ -1919,9 +1962,9 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 11 | **Um item por vez: bloqueio de edição** | Construir | P–M | 1 (planejado; continua o 10) |
-| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 2 (ver `docs/CRUZAMENTOS-SWOT.md`) |
-| 9d | Mover entre TABELAS (Cenário ⇄ fator) | Construir | M | 3 |
+| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 1 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 9d | Mover entre TABELAS (Cenário ⇄ fator) | Construir | M | 2 |
+| 11 | **Um item por vez: bloqueio de edição** | **Entregue** | P–M | ✔ (pedido do cliente; continua o 10) |
 | 9c | Mover um fator entre PESTEL ⇄ Porter ⇄ SWOT | **Entregue** | P | ✔ (amarras recusam; decisões 13–15 em aberto) |
 | 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |
 | 9a | PESTEL e Porter **direto** ao plano de ação | **Entregue** | P | ✔ (decisão do cliente) |

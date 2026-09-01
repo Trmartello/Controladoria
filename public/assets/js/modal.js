@@ -38,8 +38,23 @@ const Modal = {
   // consequência do par, e sem esse aviso o usuário só descobria em que quadro
   // a linha caiu depois de salvar. `visivelSe` não resolve — ele olha UM campo,
   // e aqui a resposta depende de dois.
-  abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null, extra = null,
-          enviar = null, aoMudar = null, salvar = null }) {
+  async abrir({ titulo, campos, valores = {}, url, aoSalvar = null, transformar = null, extra = null,
+          enviar = null, aoMudar = null, salvar = null, bloqueio = null }) {
+    // O cadeado vem ANTES de qualquer pintura: se o item é de outro, o
+    // formulário nem chega a existir. Abrir e fechar em seguida piscaria uma
+    // tela que a pessoa não pode usar.
+    if (bloqueio) {
+      const b = await Cadeado.tomar(bloqueio);
+      if (!b.pode) {
+        alert(`${b.usuario} está editando este item agora.\n\n`
+          + 'A edição fica liberada em pouco tempo — a tela avisa sozinha quando '
+          + 'ele terminar.');
+        return;
+      }
+      this.bloqueioPendente = { alvo: bloqueio, restam: b.restam };
+    } else {
+      this.bloqueioPendente = null;
+    }
     this.config = { campos, url, aoSalvar, transformar, extra, enviar };
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-erro').classList.add('d-none');
@@ -86,12 +101,24 @@ const Modal = {
         ev.preventDefault();
         this.salvar();
       });
-      document.getElementById('modal-form').addEventListener('hidden.bs.modal', () => this.pararDitado());
+      document.getElementById('modal-form').addEventListener('hidden.bs.modal', () => {
+        this.pararDitado();
+        // Fechar por qualquer caminho — salvar, cancelar, Esc, clique fora —
+        // solta o cadeado. Um lugar só: `hidden.bs.modal` é o funil por onde
+        // todos eles passam, e amarrar em cada botão deixaria um de fora.
+        Cadeado.soltar();
+      });
       // Só com o modal na tela dá para medir o que transborda
       document.getElementById('modal-form').addEventListener('shown.bs.modal', () =>
         this.aoAparecer(document.getElementById('modal-campos')));
     }
     this.bsModal.show();
+    if (this.bloqueioPendente) {
+      Cadeado.iniciar(this.bloqueioPendente.alvo, this.bloqueioPendente.restam);
+      this.bloqueioPendente = null;
+    } else {
+      Cadeado.pintar();
+    }
   },
 
   /**

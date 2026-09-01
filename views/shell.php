@@ -167,6 +167,9 @@
             aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
+          <!-- Cadeado de edição: fica ACIMA dos campos, porque o tempo restante é
+               a primeira coisa a saber ao abrir o formulário. -->
+          <div id="modal-cadeado" class="d-none" role="status"></div>
           <form id="modal-campos"></form>
           <div id="modal-erro" class="alert alert-danger d-none py-2 mt-2" role="alert"></div>
           <!-- O corpo do modal rola, mas nada dizia isso: numa janela baixa o
@@ -197,6 +200,7 @@
        carrega antes das seções, que o consomem -->
   <script src="<?= versao_asset('/assets/js/vinculos.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/vivo.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/cadeado.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/painel.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cadastros.js') ?>"></script>

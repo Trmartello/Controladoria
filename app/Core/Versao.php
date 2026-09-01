@@ -47,6 +47,28 @@ class Versao
     /** Já gravamos? O encerramento pode ser chamado mais de uma vez. */
     private static bool $gravado = false;
 
+    /** Esta requisição escreve, mas não é mudança de CONTEÚDO. */
+    private static bool $ignorar = false;
+
+    /**
+     * Esta requisição não conta como mudança, mesmo gravando.
+     *
+     * Existe por causa do cadeado de edição (`Bloqueio`), que escreve numa
+     * tabela a cada tomada e a cada "+1 minuto". Sem isto, renovar um cadeado
+     * subiria a versão do planejamento — e **todas as telas abertas
+     * repintariam a cada renovação**, que é o oposto exato do que o pulso
+     * existe para fazer.
+     *
+     * Regra para quem for acrescentar chamadas aqui: só serve para escrita que
+     * não muda nada do que as outras telas mostram do PLANO. Cadeado é estado
+     * de quem está mexendo, não conteúdo — a mudança dele viaja pela lista de
+     * cadeados do próprio pulso, e não pela versão.
+     */
+    public static function ignorar(): void
+    {
+        self::$ignorar = true;
+    }
+
     /** Quem esta requisição está mexendo. Chamado pelo portão de escrita. */
     public static function alvo(int $planejamentoId): void
     {
@@ -73,7 +95,7 @@ class Versao
      */
     public static function registrar(): void
     {
-        if (self::$gravado || !self::$escreveu || self::$alvo === null) {
+        if (self::$gravado || self::$ignorar || !self::$escreveu || self::$alvo === null) {
             return;
         }
         self::$gravado = true;

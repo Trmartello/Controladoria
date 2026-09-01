@@ -912,6 +912,9 @@ if ($fora) {
 // o formulário precisa do token CSRF. Aqui a limpeza é determinística: acontece
 // em todo deploy (e de novo no cron diário, em cli/notificar.php).
 $sessoes = $pdo->exec("DELETE FROM sessao WHERE atualizado_em < (NOW() - INTERVAL 30 DAY)");
+// Cadeados de edição vencidos: a tabela só cresce se ninguém varrer, e um
+// cadeado vencido nunca mais é lido — todas as consultas filtram por validade.
+$pdo->exec("DELETE FROM edicao_bloqueio WHERE expira_em < (NOW() - INTERVAL 1 DAY)");
 $tentativas = $pdo->exec("DELETE FROM coleta_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY)")
     + $pdo->exec("DELETE FROM login_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY)");
 if ($sessoes || $tentativas) {

@@ -600,8 +600,8 @@ echo "### 9f. Pulso — o contador que faz duas telas se acompanharem"
 
 pulso() { get "/api/pulso?ciclo_id=1" | python3 -c "
 import sys, json
-d = json.load(sys.stdin)['dados']
-print(d.get('1', 0) if isinstance(d, dict) else 0)" 2>/dev/null; }
+v = json.load(sys.stdin)['dados'].get('versoes', {})
+print(v.get('1', 0) if isinstance(v, dict) else 0)" 2>/dev/null; }
 
 P0=$(pulso)
 get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" >/dev/null
@@ -633,9 +633,124 @@ afirma "e recusada antes do banco, não sobe o pulso" "^$P4\$" "$P5"
 # A rota é chamada a cada poucos segundos por admin: um ciclo sem escrita
 # nenhuma tem de devolver OBJETO vazio, não lista — a tela indexa por id.
 R=$(get "/api/pulso?ciclo_id=99999")
-afirma "ciclo sem escrita devolve objeto vazio, não lista" '"dados":\{\}' "$R"
+afirma "ciclo sem escrita devolve objeto vazio, não lista" '"versoes":\{\}' "$R"
 R=$(get "/api/pulso")
 afirma "pulso sem ciclo é recusado" 'Informe o ciclo' "$R"
+
+echo "### 9g. Cadeado de edição — um item aberto por vez"
+#
+# A regra em uma frase: enquanto um admin tem o item aberto, ninguém mais
+# GRAVA nele. Quem prova isso é o servidor, não a tela — a tela só evita o
+# atrito de abrir um formulário que já ia ser recusado.
+#
+# Duas sessões de verdade, cada uma com seu cookie e seu CSRF. Sem isso não há
+# o que provar: com uma sessão só, todo cadeado é "meu" e todas as guardas
+# passam por engano.
+JB=/tmp/fj-b.txt; rm -f $JB
+post /api/usuarios '{"nome":"Bruna do Cadeado","email":"bruna.cadeado@teste.local","senha":"trocar123","perfil":"CONTROLADORIA","negocios":[]}' >/dev/null
+curl -s -c $JB -o /dev/null $BASE/login
+curl -s -b $JB -c $JB -X POST $BASE/api/login -H 'Content-Type: application/json' \
+  -d '{"email":"bruna.cadeado@teste.local","senha":"trocar123"}' -o /dev/null
+CSRF_B=$(curl -s -b $JB $BASE/ | grep -o 'name="csrf" content="[^"]*"' | sed 's/.*content="//;s/"//')
+postb() { curl -s -b $JB -H "X-CSRF-Token: $CSRF_B" -H 'Content-Type: application/json' -X POST "$BASE$1" -d "$2"; }
+getb()  { curl -s -b $JB -H "X-CSRF-Token: $CSRF_B" "$BASE$1"; }
+
+CAD_F=$(post /api/fatores '{"planejamento_id":1,"etapa":"PESTEL","categoria":"SOCIAL","descricao":"Item disputado","ano":2026}' | id_de)
+CAD_B="{\"recurso\":\"fator\",\"registro_id\":$CAD_F,\"planejamento_id\":1}"
+
+R=$(post /api/bloqueio "$CAD_B")
+afirma "quem chega primeiro fica com o item" '"meu":true' "$R"
+afirma "e recebe os 5 minutos combinados" '"restam":(29[0-9]|300)' "$R"
+R=$(postb /api/bloqueio "$CAD_B")
+afirma "o segundo vê que o item é de outro" '"meu":false' "$R"
+afirma "com o NOME de quem está editando" '"usuario":"Administrador"' "$R"
+
+# O coração da coisa. A tela do segundo admin nem abre o formulário, mas a
+# prova tem de ser feita por baixo dela: é o servidor que não pode deixar a
+# gravação passar, porque quem chama a API não é obrigado a ser a tela.
+R=$(postb /api/fatores/$CAD_F '{"planejamento_id":1,"categoria":"LEGAL","descricao":"passei por cima"}')
+afirma "o segundo NÃO grava por cima" 'está editando' "$R"
+R=$(get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" | campo_de $CAD_F descricao)
+afirma "e o texto do primeiro continua inteiro" '^"Item disputado"$' "$R"
+R=$(postb /api/fatores/$CAD_F/excluir '{"planejamento_id":1}')
+afirma "nem exclui o item que o outro está editando" 'está editando' "$R"
+R=$(post /api/fatores/$CAD_F '{"planejamento_id":1,"categoria":"SOCIAL","descricao":"Item disputado (dono salvou)"}')
+afirma "quem tem o cadeado grava normalmente" '"ok":true' "$R"
+
+# O "+1 minuto" ESTENDE. Escrito como `expira_em = NOW() + 60` ele ENCURTARIA
+# um cadeado recém-tomado (de 300 para 60) — o botão de ganhar tempo tirando
+# tempo de quem clicou. Por isso o `GREATEST(expira_em, NOW()) + 60`.
+restam_de(){ python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['restam'])" 2>/dev/null; }
+ANTES=$(post /api/bloqueio/renovar "$CAD_B" | restam_de)
+R=$(post /api/bloqueio/renovar "$CAD_B" | restam_de)
+afirma "o +1 minuto estende em vez de encurtar" "^(3[5-9][0-9]|4[0-2][0-9])$" "$R"
+[ "$R" -gt "$ANTES" ] && ok || falha "cada +1 minuto soma sobre o anterior" ">$ANTES" "$R"
+
+R=$(get "/api/pulso?ciclo_id=1")
+afirma "o pulso conta o cadeado para as outras telas" "\"recurso\":\"fator\",\"registro_id\":$CAD_F" "$R"
+afirma "e leva o nome, que é o que aparece no cartão" '"usuario":"Administrador"' "$R"
+R=$(getb "/api/pulso?ciclo_id=1" | python3 -c "
+import sys, json
+b = [x for x in json.load(sys.stdin)['dados']['bloqueios'] if x['registro_id'] == $CAD_F]
+print(json.dumps(b[0]['meu'] if b else None))")
+afirma "o 'meu' é de quem pergunta, não do dono do cadeado" '^false$' "$R"
+
+# O que acontece aos 0:00, que foi a decisão mais delicada do desenho: soltar o
+# cadeado NÃO invalida o texto de quem estava escrevendo. Enquanto ninguém
+# assumir o item, a gravação dele ainda passa — sem isso, quem estivesse
+# redigindo aos 4:59 perderia o parágrafo, e o recurso feito para não perder
+# trabalho passaria a perder trabalho. O `soltar` aqui faz o papel do relógio
+# chegando a zero: nos dois casos o item fica LIVRE.
+post /api/bloqueio/soltar "$CAD_B" >/dev/null
+R=$(post /api/fatores/$CAD_F '{"planejamento_id":1,"categoria":"SOCIAL","descricao":"O texto sobreviveu ao 0:00"}')
+afirma "sem cadeado e sem ninguém no lugar, a gravação passa" '"ok":true' "$R"
+R=$(get "/api/pulso?ciclo_id=1")
+nega "cadeado solto some do pulso na hora" "\"registro_id\":$CAD_F" "$R"
+
+# E a outra metade: se ALGUÉM assumiu no intervalo, aí sim a gravação é
+# recusada — com a mensagem que manda copiar o texto antes de fechar.
+postb /api/bloqueio "$CAD_B" >/dev/null
+R=$(post /api/fatores/$CAD_F '{"planejamento_id":1,"categoria":"SOCIAL","descricao":"tarde demais"}')
+afirma "mas se alguém assumiu, a gravação é recusada" 'Bruna do Cadeado está editando' "$R"
+afirma "e a recusa diz o que fazer com o texto" 'copie o que você escreveu' "$R"
+postb /api/bloqueio/soltar "$CAD_B" >/dev/null
+
+# Recurso fora do catálogo é recusado na entrada: a rota recebe o nome da
+# tabela vindo do navegador, e sem a lista fechada `RECURSOS` ela viraria uma
+# chave livre para encher a tabela de cadeados que nada solta.
+R=$(post /api/bloqueio '{"recurso":"usuario","registro_id":1,"planejamento_id":1}')
+afirma "recusa recurso fora do catálogo" '"ok":false' "$R"
+
+# As mesmas guardas nos outros recursos — o valor de ter uma regra só é ela
+# valer igual em todos, e é isso que estas duas medem.
+if [ -n "${ACAO:-}" ]; then
+  postb /api/bloqueio "{\"recurso\":\"desdobramento\",\"registro_id\":$ACAO,\"planejamento_id\":1}" >/dev/null
+  R=$(post /api/desdobramentos/$ACAO "{\"planejamento_id\":1,\"projeto_id\":$PRJ,\"iniciativa_id\":$INI,\"o_que\":\"por cima\",\"quem\":\"QA\",\"como\":\"x\",\"prioridade\":\"MEDIA\",\"status\":\"NAO_INICIADO\",\"progresso\":0,\"recorrencia\":\"NENHUMA\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\"}")
+  afirma "a mesma guarda vale para a ação do plano" 'está editando' "$R"
+  postb /api/bloqueio/soltar "{\"recurso\":\"desdobramento\",\"registro_id\":$ACAO,\"planejamento_id\":1}" >/dev/null
+fi
+if [ -n "${PRJ:-}" ]; then
+  postb /api/bloqueio "{\"recurso\":\"projeto\",\"registro_id\":$PRJ,\"planejamento_id\":1}" >/dev/null
+  R=$(post /api/projetos/$PRJ '{"planejamento_id":1,"titulo":"por cima","ano":2027,"responsavel":"x","descricao":"x"}')
+  afirma "e para o projeto" 'está editando' "$R"
+  postb /api/bloqueio/soltar "{\"recurso\":\"projeto\",\"registro_id\":$PRJ,\"planejamento_id\":1}" >/dev/null
+fi
+
+# Tomar e renovar ESCREVEM no banco, mas não podem contar como mudança do
+# plano: a cada renovação as outras telas se repintariam inteiras, que é o
+# oposto exato do que o pulso existe para fazer. Daí o `Versao::ignorar()`.
+PC0=$(pulso)
+post /api/bloqueio "$CAD_B" >/dev/null
+post /api/bloqueio/renovar "$CAD_B" >/dev/null
+post /api/bloqueio/soltar "$CAD_B" >/dev/null
+afirma "cadeado não conta como mudança do plano" "^$PC0\$" "$(pulso)"
+
+post /api/fatores/$CAD_F/excluir '{"planejamento_id":1}' >/dev/null
+CAD_U=$(get "/api/usuarios" | python3 -c "
+import sys, json
+print(next((u['id'] for u in json.load(sys.stdin)['dados'] if u['email'] == 'bruna.cadeado@teste.local'), ''))" 2>/dev/null)
+[ -n "$CAD_U" ] && post /api/usuarios/$CAD_U/excluir "{\"transferir_para\":1}" >/dev/null
+rm -f $JB
 
 echo "### 10. Limpeza"
 [ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null

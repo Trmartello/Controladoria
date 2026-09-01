@@ -868,7 +868,7 @@ const Diag = {
     const colunas = categorias.map(([cat, rotulo, cor]) => {
       const itens = fatores.filter((f) => f.categoria === cat);
       const cartoes = itens.map((f) => `
-        <div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-2">
+        <div class="card mb-2" data-card-fator="${f.id}" data-cadeado="fator:${f.id}"><div class="card-body py-2 px-2">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
           ${this.botoesFator(f, plan.id, comPromocao, this.selosOrigem(f))}
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
@@ -974,6 +974,8 @@ const Diag = {
       titulo: sugestao ? `Aceitar sugestão da sala · ${ano}`
         : f ? `Editar fator (${f.ano || ano})` : `Novo fator — ${titulo} · ${ano}`,
       url: f ? `/api/fatores/${f.id}` : '/api/fatores',
+      // Cadeado só na EDIÇÃO: item novo não é disputado por ninguém.
+      bloqueio: f ? { recurso: 'fator', registro_id: f.id, planejamento_id: plan.id } : null,
       valores: f
         ? { ...f, planejamento_id: plan.id }
         : {
@@ -1139,7 +1141,7 @@ const SecaoCenario = {
       const lista = itens.filter((i) => i.tipo === tipo);
       // data-card-fator é o que permite chegar aqui vindo da Coleta
       const linhas = lista.map((i, idx) => `
-        <div class="card mb-2" data-card-fator="${i.id}"><div class="card-body py-2 px-3">
+        <div class="card mb-2" data-card-fator="${i.id}" data-cadeado="cenario_item:${i.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
           ${Diag.selosOrigem(i) || Diag.seloPlanoAcao(i) || App.podeEditar()
             ? `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
@@ -1243,6 +1245,7 @@ const SecaoCenario = {
       titulo: sugestao ? `Aceitar sugestão da sala · ${ano}`
         : i ? `Editar item do cenário (${i.ano || ano})` : `Novo item do cenário · ${ano}`,
       url: i ? `/api/cenario/${i.id}` : '/api/cenario',
+      bloqueio: i ? { recurso: 'cenario_item', registro_id: i.id, planejamento_id: plan.id } : null,
       valores: i
         ? { ...i, planejamento_id: plan.id }
         : {
@@ -1521,7 +1524,7 @@ const SecaoSwot = {
         // Caminho do fator até o plano de ação, nos mesmos três estados da
         // ideia da Coleta: fora da fila, na fila e já convertido em ação.
         const acao = Diag.seloPlanoAcao(f);
-        return `<div class="card mb-2" data-card-fator="${f.id}"><div class="card-body py-2 px-3">
+        return `<div class="card mb-2" data-card-fator="${f.id}" data-cadeado="fator:${f.id}"><div class="card-body py-2 px-3">
           <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
           <div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
             ${Diag.selosOrigem(f)}${origem}${gut}${acao}
@@ -1635,6 +1638,8 @@ const SecaoSwot = {
       titulo: sugestao ? `Aceitar sugestão da sala · ${ano}`
         : f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,
       url: f ? `/api/fatores/${f.id}` : '/api/fatores',
+      // Cadeado só na EDIÇÃO: item novo não é disputado por ninguém.
+      bloqueio: f ? { recurso: 'fator', registro_id: f.id, planejamento_id: plan.id } : null,
       valores: f
         ? { ...f, planejamento_id: plan.id }
         : {
@@ -1750,7 +1755,8 @@ const SecaoGut = {
           <div class="gut-nota ${avaliado ? '' : 'text-black-50'}">${v ?? '—'}</div>
         </div>`).join('');
       return `<div class="card gut-card mb-2 ${avaliado ? '' : 'sem-nota'}" style="--cor-quad:${cor}"
-        data-card-fator="${f.id}" ${editar ? `data-avaliar="${f.id}" role="button" tabindex="0"` : ''}>
+        data-card-fator="${f.id}" data-cadeado="fator:${f.id}"
+        ${editar ? `data-avaliar="${f.id}" role="button" tabindex="0"` : ''}>
         <div class="card-body py-2 px-3">
           <div class="d-flex align-items-center gap-2 mb-1">
             <span class="gut-rank ${avaliado ? '' : 'text-black-50'}">${avaliado ? `${idx + 1}º` : '—'}</span>
@@ -1772,7 +1778,7 @@ const SecaoGut = {
 
     const linhas = ordenados.map((f, idx) => {
       const cor = Diag.CORES_QUADRANTE[f.categoria] || '#007a45';
-      return `<tr data-card-fator="${f.id}">
+      return `<tr data-card-fator="${f.id}" data-cadeado="fator:${f.id}">
         <td>${f.score ? `<strong>${idx + 1}º</strong>` : '—'}</td>
         <td><span class="badge gut-tag" style="color:${cor};background:${cor}1f">${Diag.QUADRANTES[f.categoria]}</span></td>
         <td class="small" data-busca-texto>${Modal.esc(f.descricao)}</td>

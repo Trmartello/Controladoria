@@ -263,7 +263,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   **O pulso é um contador por planejamento**, não `MAX(atualizado_em)`: a maioria
   das tabelas não tem carimbo, e as que têm não registram DELETE — apagar um
   fator não mexeria em carimbo nenhum e a outra tela seguiria mostrando o que já
-  não existe. `GET /api/pulso?ciclo_id=` devolve `{planejamento_id: versao}` e é
+  não existe. `GET /api/pulso?ciclo_id=` devolve `{versoes, bloqueios}` e é
   **a rota mais chamada do sistema** quando há gente preenchendo junto: por isso
   lê uma tabela de duas colunas e nada mais.
   **A marcação tem duas metades, cada uma num ponto de passagem obrigatório**, e
@@ -292,6 +292,34 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   (`coleta`, `sala`) e o `dossie` declaram `planosVigiados() { return []; }`;
   a `impacto` declara DOIS planos, porque é lida no contexto de um negócio e o
   conteúdo dela vive no corporativo.
+- **Um item por vez: o cadeado de edição** (`edicao_bloqueio`,
+  `App\Services\Bloqueio`, `public/assets/js/cadeado.js`). Continuação do
+  pulso: duas telas se acompanharem não impede duas pessoas de abrirem o MESMO
+  item e a segunda a salvar apagar o trabalho da primeira. Enquanto um admin tem
+  o item aberto, ninguém mais grava nele. **5 minutos**, contador dentro do
+  formulário e **"+1 minuto" manual, sem teto** — a renovação automática foi
+  descartada porque *um batimento prova que o navegador está aberto, não que
+  existe uma pessoa ali*: uma aba esquecida renovaria para sempre, que é o caso
+  que o batimento deveria cobrir.
+  **O ciclo de vida mora num lugar só:** `Modal.abrir({ bloqueio: { recurso,
+  registro_id, planejamento_id } })` toma antes de pintar, solta no
+  `hidden.bs.modal` e desenha a faixa. As seções passam o par e não cuidam de
+  nada — quem esquecesse de soltar prenderia o item por cinco minutos.
+  **`Versao::ignorar()` nas rotas do cadeado, e é obrigatório:** tomar e renovar
+  escrevem, e o pulso marca escrita na infraestrutura; sem a exceção, cada
+  renovação subiria a versão e todas as telas repintariam a cada 4 s.
+  **`GREATEST(expira_em, NOW()) + 60`, nunca `NOW() + 60`:** o segundo
+  ENCURTARIA um cadeado recém-tomado — o botão de ganhar tempo tirando tempo.
+  **Aos 0:00 o cadeado cai, o texto não:** `exigirMeu` volta calado quando o
+  item está `livre`, então quem perdeu o cadeado ainda grava se ninguém assumiu.
+  Um cadeado vencido pode ser assumido por **qualquer admin** (decisão do
+  cliente). **Falha ABERTA em todo o caminho do navegador**: um sistema de
+  cadeados capaz de impedir todo mundo de trabalhar é pior que a sobrescrita que
+  ele previne. Alcance: `fator`, `cenario_item`, `cascata_escolha`, `projeto` e
+  `desdobramento` — os disputados de verdade numa reunião. O nome de quem edita
+  aparece no item dos outros via `data-cadeado="recurso:id"` + `Vivo`; o
+  atributo leva o RECURSO junto porque `data-card-fator` sozinho casaria um item
+  de cenário nº 5 com o fator nº 5.
 - **Matriz de Impacto por Negócio** (`impacto_negocio`, `ImpactoController`,
   `secoes/impacto.js`): o que o diagnóstico CORPORATIVO faz com cada negócio.
   Linha = ameaça/oportunidade da SWOT corporativa do ano, **sem curadoria
@@ -1708,7 +1736,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | Bateria | Cobre | Falha quando |
 |---|---|---|
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As 18 seções em 1500×700 e 390×844, mais DUAS sessões no preenchimento simultâneo | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
+| `sistema.js` | As 18 seções em 1500×700 e 390×844, mais DUAS sessões no preenchimento simultâneo e no cadeado de edição (com dois usuários) | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 | `email.sh` | O envio por API de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |

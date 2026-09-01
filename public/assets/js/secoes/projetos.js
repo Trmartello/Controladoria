@@ -711,6 +711,7 @@ const SecaoProjetos = {
       detalhes,
     ].filter(Boolean).join(' · ');
     return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}"
+      data-cadeado="desdobramento:${a.id}"
       data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
       <div class="card-body py-2 px-2">
         <!-- Linha 1: situação, progresso e o expandir. O selo e o chevron não
@@ -832,7 +833,7 @@ const SecaoProjetos = {
       // Recolhido mostra só título, situação e a barra; o resto atrás da seta
       const chave = `proj-${p.id}`;
       const detalhado = this.detalhesAbertos.has(chave);
-      return `<div class="card mb-3" data-projeto="${p.id}">
+      return `<div class="card mb-3" data-projeto="${p.id}" data-cadeado="projeto:${p.id}">
         <div class="card-body">
           <!-- A linha do título GRUDA, um degrau abaixo do cabeçalho de
                Projetos: é ela que diz de qual projeto são as frentes e as ações
@@ -1288,6 +1289,7 @@ const SecaoProjetos = {
     Modal.abrir({
       titulo: p ? 'Editar projeto' : 'Novo projeto',
       url: p ? `/api/projetos/${p.id}` : '/api/projetos',
+      bloqueio: p ? { recurso: 'projeto', registro_id: p.id, planejamento_id: this.plan.id } : null,
       valores: p
         ? { ...p, cascata_id: p.cascata_id ?? '', impacto: p.impacto ?? '', planejamento_id: this.plan.id }
         : { planejamento_id: this.plan.id, ano: anoPadrao },
@@ -1772,6 +1774,7 @@ const SecaoProjetos = {
     Modal.abrir({
       titulo: dd ? 'Editar ação' : 'Nova ação',
       url: dd ? `/api/desdobramentos/${dd.id}` : '/api/desdobramentos',
+      bloqueio: dd ? { recurso: 'desdobramento', registro_id: dd.id, planejamento_id: this.plan.id } : null,
       valores: dd
         ? { ...dd, quanto: dd.quanto ?? '', planejamento_id: this.plan.id, projeto_id: projetoId,
             iniciativa_id: dd.iniciativa_id ?? iniciativaId,

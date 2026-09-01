@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Bloqueio;
 use App\Services\Quiz;
 
 /** Cascata de escolhas: células driver × horizonte com síntese e aberturas por eixo. */
@@ -210,6 +211,8 @@ class CascataController
 
         if ($existente) {
             $id = (int)$existente['id'];
+            // Cadeado só na EDIÇÃO: a célula que ainda não existe não é disputada.
+            Bloqueio::exigirMeu('cascata_escolha', $id, (int)$u['id'], 'esta célula');
             Database::executar(
                 'UPDATE cascata_escolha SET escolha = ?, renuncia = ? WHERE id = ?',
                 [$escolha, $renuncia, $id]

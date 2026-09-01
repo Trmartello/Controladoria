@@ -179,6 +179,7 @@ if ($metodo !== 'GET' && !$semCsrf) {
 }
 
 use App\Controllers\AuthController;
+use App\Controllers\BloqueioController;
 use App\Controllers\CascataController;
 use App\Controllers\QuizController;
 use App\Controllers\CenarioController;
@@ -255,6 +256,13 @@ try {
         // uma por admin a cada poucos segundos —, e por isso ela lê UMA tabela
         // de duas colunas e não toca em nada do conteúdo.
         case $rota === 'GET /api/pulso':           (new PlanejamentoController())->pulso(); break;
+
+        // O cadeado de edição. As três exigem edição do planejamento: pedir
+        // cadeado é declarar intenção de gravar, e quem não grava também não
+        // pode travar o item para os outros.
+        case $rota === 'POST /api/bloqueio':        (new BloqueioController())->tomar(); break;
+        case $rota === 'POST /api/bloqueio/renovar':(new BloqueioController())->renovar(); break;
+        case $rota === 'POST /api/bloqueio/soltar': (new BloqueioController())->soltar(); break;
 
         // Rotas públicas da tempestade: sem sessão, guardadas pelo token
         case (bool)preg_match('#^GET /api/publico/rodada/(\\d{6})$#', $rota, $m):

@@ -298,6 +298,39 @@ CREATE TABLE IF NOT EXISTS planejamento_versao (
   em              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+/*
+ * Um item por vez: o cadeado de edição.
+ *
+ * Enquanto alguém tem o formulário de um item aberto, ninguém mais o abre — e a
+ * tela dos outros mostra o NOME de quem está editando. É o que evita a
+ * sobrescrita silenciosa (medida em 2026-09-01: o segundo a salvar apagava o
+ * primeiro, e o servidor respondia `ok:true`).
+ *
+ * **A chave primária composta é o que torna a tomada atômica.** Um
+ * `INSERT … ON DUPLICATE KEY UPDATE` com a condição de expiração dentro do
+ * `IF()` pega ou não pega numa instrução só — sem transação, e sem a janela
+ * entre "conferir se está livre" e "tomar" por onde dois cliques simultâneos
+ * passariam os dois.
+ *
+ * `planejamento_id` é redundante com o registro apontado (dá para chegar nele
+ * por cinco caminhos diferentes, um por recurso) e está aqui de propósito: o
+ * pulso precisa listar os cadeados de um ciclo, e sem esta coluna isso seria
+ * uma união de cinco JOINs numa rota que roda a cada 4s por admin.
+ *
+ * Linha efêmera: morre por validade, sem FK para `usuario` nem para o registro
+ * apontado. Um cadeado de um item apagado é lixo de 30 bytes que nunca mais é
+ * lido — e uma FK por recurso exigiria uma tabela de cadeado por recurso.
+ */
+CREATE TABLE IF NOT EXISTS edicao_bloqueio (
+  recurso         VARCHAR(40) NOT NULL,
+  registro_id     INT NOT NULL,
+  planejamento_id INT NOT NULL,
+  usuario_id      INT NOT NULL,
+  expira_em       DATETIME NOT NULL,
+  PRIMARY KEY (recurso, registro_id),
+  KEY idx_bloqueio_plan (planejamento_id, expira_em)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS impacto_negocio (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   fator_id      INT NOT NULL,

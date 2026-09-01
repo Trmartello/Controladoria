@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Bloqueio;
 use App\Services\Quiz;
 
 class CenarioController
@@ -75,6 +76,7 @@ class CenarioController
 
         if ($id) {
             $this->exigirItem($id, $planId);
+            Bloqueio::exigirMeu('cenario_item', $id, (int)Auth::exigirLogin()['id'], 'este item');
             Database::executar(
                 'UPDATE cenario_item SET tipo = ?, ordem = ?, descricao = ?, ano = ? WHERE id = ?',
                 [$tipo, $ordem, $descricao, $ano, $id]
@@ -229,6 +231,7 @@ class CenarioController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $item = $this->exigirItem($id, $planId);
+        Bloqueio::exigirMeu('cenario_item', $id, (int)Auth::exigirLogin()['id'], 'este item');
         // Excluir um item que já virou ação é recusado, como no fator e no
         // cruzamento: a ação continuaria viva no plano sem origem nenhuma, e o
         // caminho de volta apontaria para uma linha morta. A FK do

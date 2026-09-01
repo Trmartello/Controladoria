@@ -2089,6 +2089,29 @@ tr.card-destacado > td { background: #e8f5ee; }
   50% { box-shadow: 0 0 0 6px rgba(0, 122, 69, .18); }
 }
 
+/* "Fulano está editando": o item que outro admin abriu agora (App Vivo).
+   Âmbar e não vermelho de propósito — não é erro nem bloqueio de quem olha,
+   é aviso de que aquele item vai mudar daqui a pouco. A borda existe porque
+   numa coluna cheia de cartões o selo sozinho se perde. */
+.editando-agora {
+  box-shadow: 0 0 0 2px rgba(214, 158, 46, .65);
+}
+td.editando-agora { background: #fff8e6; }
+.selo-editando {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: .25rem;
+  background: #fff3cd;
+  color: #6b4d00;
+  border: 1px solid #f0d68a;
+  font-weight: 600;
+  white-space: normal;
+  text-align: left;
+}
+/* Fora do papel: o dossiê é a foto do plano, não de quem estava digitando */
+@media print { .selo-editando { display: none; } }
+
 /* Matriz 2×2 da SWOT: escolha do quadrante por toque, no card ou no modal */
 .painel-quadrantes {
   margin-top: .5rem;

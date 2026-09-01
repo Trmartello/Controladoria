@@ -451,7 +451,15 @@ const SecaoCascata = {
         const aberturas = escolhas.filter((e) => e.driver_id == d.id && e.horizonte_id == h.id && e.eixo_id).length;
         const ativa = this.celulaAberta
           && this.celulaAberta.driverId == d.id && this.celulaAberta.horizonteId == h.id;
-        return `<td class="celula-cascata ${ativa ? 'ativa' : ''}" data-driver="${d.id}" data-horizonte="${h.id}">
+        // A célula guarda a síntese E as aberturas dos eixos — todas escolhas
+        // da mesma cruz. O aviso de "alguém está editando" tem de acender para
+        // qualquer uma delas, então o atributo leva a LISTA de ids: a marcação
+        // do cadeado casa por palavra (`~=`), não pelo valor inteiro.
+        const cadeados = escolhas
+          .filter((e) => e.driver_id == d.id && e.horizonte_id == h.id)
+          .map((e) => `cascata_escolha:${e.id}`).join(' ');
+        return `<td class="celula-cascata ${ativa ? 'ativa' : ''}" data-driver="${d.id}" data-horizonte="${h.id}"
+          data-cadeado="${cadeados}">
           <div class="small texto-celula">${sintese ? Modal.esc(sintese.escolha) : '<span class="text-muted">— definir síntese —</span>'}</div>
           <span class="badge ${aberturas === eixos.length ? 'text-bg-success' : 'text-bg-light border'} mt-1">${aberturas}/${eixos.length} eixos</span>
         </td>`;
@@ -1047,6 +1055,14 @@ const SecaoCascata = {
     Modal.abrir({
       titulo: `${driver.nome} × ${horizonte.nome}${eixoNome ? ` · Eixo ${eixoNome}` : ' · Síntese'}`,
       url: '/api/cascata',
+      // Só há o que trancar quando a célula JÁ EXISTE: a rota grava por
+      // (driver, horizonte, eixo), e enquanto ninguém escreveu não há registro
+      // para dois admins disputarem — o primeiro a salvar cria, e a partir daí
+      // o cadeado vale. É o mesmo desenho do servidor, que só cobra
+      // `Bloqueio::exigirMeu` no caminho de atualização.
+      bloqueio: registro?.id
+        ? { recurso: 'cascata_escolha', registro_id: registro.id, planejamento_id: this.plan.id }
+        : null,
       valores: {
         planejamento_id: this.plan.id,
         horizonte_id: horizonteId,
