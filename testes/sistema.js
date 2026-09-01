@@ -2711,8 +2711,14 @@ async function provasMoverAnalise(page) {
       titulo: document.querySelector('.modal.show .modal-title')?.textContent.trim(),
     };
   }, massa);
-  t(`${l} o modal oferece só as OUTRAS análises`,
-    modal.destinos.length === 2 && !modal.destinos.includes('SWOT'), JSON.stringify(modal.destinos));
+  t(`${l} a análise em que o fator JÁ está não é oferecida`,
+    !modal.destinos.includes('SWOT'), JSON.stringify(modal.destinos));
+  // A Análise de Cenário entrou como quarto destino (fatia C-bis). Ela está
+  // aqui, e não só na prova própria, porque é o mesmo campo: quem mexer nos
+  // destinos tem de ver as duas coisas quebrarem juntas.
+  t(`${l} e a Análise de Cenário entra como destino, ao lado das outras`,
+    modal.destinos.includes('CENARIO') && modal.destinos.length === 3,
+    JSON.stringify(modal.destinos));
   t(`${l} e um campo de categoria por destino, não um repintado`,
     modal.camposCategoria.length === 2 && !modal.camposCategoria.includes('SWOT'),
     JSON.stringify(modal.camposCategoria));
@@ -2726,6 +2732,111 @@ async function provasMoverAnalise(page) {
     }
     App.mostrarSecao('painel');
   }, { ...massa, prj: comAcao.prj, comAcao: comAcao.fator });
+}
+
+/**
+ * O `⇄` que ATRAVESSA a tabela: análise → Cenário e de volta.
+ *
+ * As regras (o que viaja, o que é recusado, as vozes que acompanham) são do
+ * servidor e estão na `funcional.sh` §9h. O que só o navegador responde é o
+ * que esta prova mede: o formulário troca de pergunta conforme o destino — no
+ * Cenário não existe categoria, existe TIPO —, e depois de salvar a pessoa é
+ * LEVADA à tela nova.
+ *
+ * Esse último ponto não é enfeite. O item some da análise de origem, e um
+ * cartão que desaparece sem nada dizendo para onde foi é indistinguível de um
+ * cartão excluído — no meio de uma reunião, é o tipo de dúvida que para a
+ * conversa.
+ */
+async function provasMoverEntreTabelas(page) {
+  const l = '[desktop] Mover entre tabelas:';
+  const TEXTO = 'Item que atravessa (prova)';
+  const rotulos = () => page.evaluate(() =>
+    [...document.querySelectorAll('.modal.show .grupo-botoes label')].map((b) => b.textContent.trim()));
+  // Os grupos de escolha do modal são `<label>` sobre um radio escondido, não
+  // `<button>`: clicar no texto é o que a pessoa faz, e é o que funciona.
+  //
+  // A busca é em TODO `label` do modal, não só nos `.grupo-botoes`: o quadrante
+  // da SWOT é o campo `quadrantes` (a matriz 2×2), com marcação própria. Preso
+  // ao grupo de botões, o clique em "Ameaça" não achava nada e a prova falhava
+  // no passo seguinte, longe da causa.
+  const escolher = (texto) => page.evaluate((t) => {
+    const alvo = [...document.querySelectorAll('.modal.show label')]
+      .find((x) => x.textContent.trim() === t || x.textContent.trim().startsWith(t));
+    if (alvo) alvo.click();
+    return !!alvo;
+  }, texto);
+
+  const fator = await page.evaluate(async (texto) => {
+    const plan = await App.planejamento();
+    const f = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+      categoria: 'SOCIAL', descricao: texto, ano: Diag.ano() });
+    return f.id;
+  }, TEXTO);
+  let final = null;
+
+  try {
+    await page.evaluate(() => App.mostrarSecao('pestel'));
+    await esperar(page, `!!document.querySelector('#secao-pestel [data-card-fator="${fator}"]')`, 15000);
+    await page.click(`#secao-pestel [data-card-fator="${fator}"] [data-mover="${fator}"]`);
+    await esperar(page, "!!document.querySelector('.modal.show')", 8000);
+    const destinos = await rotulos();
+    t(`${l} a Análise de Cenário é um destino do ⇄, como as outras`,
+      destinos.includes('Análise de Cenário'), JSON.stringify(destinos));
+
+    await escolher('Análise de Cenário');
+    await new Promise((r) => setTimeout(r, 400));
+    const pediuTipo = await page.evaluate(() =>
+      document.querySelector('.modal.show').textContent.includes('Entra como'));
+    t(`${l} escolhido o Cenário, o formulário pede o TIPO e não a categoria`, pediuTipo);
+    await escolher('Tendência');
+    await page.click('#modal-salvar');
+
+    const levou = await esperar(page,
+      "!document.getElementById('secao-cenario').classList.contains('d-none')", 12000);
+    t(`${l} salvar LEVA quem moveu até a tela nova`, levou);
+    const chegou = await esperar(page,
+      `document.getElementById('secao-cenario').textContent.includes(${JSON.stringify(TEXTO)})`, 12000);
+    t(`${l} e o item está lá, com o texto inteiro`, chegou);
+
+    const noCenario = await page.evaluate((texto) => {
+      const c = [...document.querySelectorAll('#secao-cenario [data-card-fator]')]
+        .find((x) => x.textContent.includes(texto));
+      return c ? Number(c.dataset.cardFator) : null;
+    }, TEXTO);
+
+    await page.click(`#secao-cenario [data-card-fator="${noCenario}"] [data-mover="${noCenario}"]`);
+    await esperar(page, "!!document.querySelector('.modal.show')", 8000);
+    const volta = await rotulos();
+    t(`${l} o ⇄ do Cenário oferece as três análises, e não a si mesmo`,
+      ['PESTEL', 'Porter', 'SWOT'].every((e) => volta.includes(e))
+      && !volta.includes('Análise de Cenário'), JSON.stringify(volta));
+    await escolher('SWOT');
+    await new Promise((r) => setTimeout(r, 400));
+    await escolher('Ameaça');
+    await page.click('#modal-salvar');
+
+    const naSwot = await esperar(page,
+      `!document.getElementById('secao-swot').classList.contains('d-none')
+       && document.getElementById('secao-swot').textContent.includes(${JSON.stringify(TEXTO)})`, 12000);
+    t(`${l} e a volta cai na SWOT, no quadrante escolhido`, naSwot);
+    final = await page.evaluate((texto) => {
+      const c = [...document.querySelectorAll('#secao-swot [data-card-fator]')]
+        .find((x) => x.textContent.includes(texto));
+      return c ? Number(c.dataset.cardFator) : null;
+    }, TEXTO);
+  } finally {
+    // Um id só, e não os dois: a travessia CONSUMIU o fator de origem, e pedir
+    // a exclusão dele devolveria 404 — que o `vigiar` registra como erro de
+    // página e que, sendo deliberado, ensinaria a ignorar erro de verdade.
+    // O `fator` original só sobrevive se a prova morreu antes de mover.
+    await page.evaluate(async (id) => {
+      if (!id) return;
+      const plan = await App.planejamento();
+      await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: plan.id }).catch(() => {});
+      App.mostrarSecao('painel');
+    }, final || fator).catch(() => {});
+  }
 }
 
 /**
@@ -3112,6 +3223,7 @@ async function provasCadeado(browser) {
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);
   await provasMoverAnalise(page);
+  await provasMoverEntreTabelas(page);
   await provasImpactoNegocio(page);
   await provasDuasTelas(browser);
   await provasCadeado(browser);

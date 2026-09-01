@@ -335,6 +335,9 @@ try {
         case $rota === 'POST /api/cenario':        (new CenarioController())->salvar(); break;
         case (bool)preg_match('#^POST /api/cenario/(\d+)/excluir$#', $rota, $m):
             (new CenarioController())->excluir((int)$m[1]); break;
+        // A específica antes da genérica: /api/cenario/7/mover cairia nela
+        case (bool)preg_match('#^POST /api/cenario/(\d+)/mover$#', $rota, $m):
+            (new CenarioController())->mover((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/cenario/(\d+)$#', $rota, $m):
             (new CenarioController())->salvar((int)$m[1]); break;
 

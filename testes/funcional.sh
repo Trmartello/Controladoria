@@ -752,6 +752,101 @@ print(next((u['id'] for u in json.load(sys.stdin)['dados'] if u['email'] == 'bru
 [ -n "$CAD_U" ] && post /api/usuarios/$CAD_U/excluir "{\"transferir_para\":1}" >/dev/null
 rm -f $JB
 
+echo "### 9h. Mudar de análise ATRAVESSANDO a tabela (Cenário ⇄ fator)"
+#
+# Entre análises, mover é `UPDATE fator SET etapa`: o id não muda e nada mais
+# precisa mudar. Para a Análise de Cenário o id MORRE — é outra tabela —, e o
+# que estas provas medem é justamente o que o id sustentava: o texto, o ano, a
+# marca do plano de ação e, sobretudo, as VOZES DA SALA.
+MV_F=$(post /api/fatores '{"planejamento_id":1,"etapa":"PESTEL","categoria":"SOCIAL","descricao":"Item que atravessa","ano":2026}' | id_de)
+R=$(post /api/fatores/$MV_F/mover '{"planejamento_id":1,"etapa":"CENARIO"}')
+afirma "sem dizer o tipo, o destino Cenário é recusado" 'situação atual ou como tendência' "$R"
+R=$(post /api/fatores/$MV_F/mover '{"planejamento_id":1,"etapa":"CENARIO","tipo":"NAO_EXISTE"}')
+afirma "tipo inventado é recusado" 'situação atual ou como tendência' "$R"
+R=$(post /api/fatores/$MV_F/mover '{"planejamento_id":1,"etapa":"CENARIO","tipo":"TENDENCIA"}')
+afirma "move o fator para a Análise de Cenário" '"destino":"CENARIO"' "$R"
+MV_C=$(echo "$R" | id_de)
+R=$(get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" | campo_de $MV_F descricao)
+afirma "e ele sai do PESTEL" '^"__ausente__"$' "$R"
+R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_C descricao)
+afirma "com o texto inteiro do outro lado" '^"Item que atravessa"$' "$R"
+R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_C tipo)
+afirma "e no tipo pedido" '^"TENDENCIA"$' "$R"
+
+R=$(post /api/cenario/$MV_C/mover '{"planejamento_id":1,"etapa":"SWOT","categoria":"SITUACAO_ATUAL"}')
+afirma "recusa categoria de outro catálogo" 'não se correspondem' "$R"
+R=$(post /api/cenario/$MV_C/mover '{"planejamento_id":1,"etapa":"NAO_EXISTE","categoria":"AMEACA"}')
+afirma "recusa análise que não existe" 'análise de destino' "$R"
+R=$(post /api/cenario/$MV_C/mover '{"planejamento_id":1,"etapa":"SWOT","categoria":"AMEACA"}')
+afirma "e volta, virando fator da SWOT" '"destino":"SWOT"' "$R"
+MV_F2=$(echo "$R" | id_de)
+R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_C descricao)
+afirma "o item sai da Análise de Cenário" '^"__ausente__"$' "$R"
+R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026" | campo_de $MV_F2 categoria)
+afirma "e chega na categoria escolhida" '^"AMEACA"$' "$R"
+post /api/fatores/$MV_F2/excluir '{"planejamento_id":1}' >/dev/null
+
+# A ideia da COLETA acompanha o item. Sem isso ela ficaria apontando para um id
+# morto — o rastreio da tela exibiria vínculo quebrado e a ideia ficaria presa
+# em ACEITO sobre um registro que não existe mais.
+MV_ID=$(post /api/coleta '{"planejamento_id":1,"texto":"Ideia que atravessa","ano":2026}' | id_de)
+post /api/coleta/$MV_ID/encaminhar '{"planejamento_id":1,"destino":"SWOT","categoria":"AMEACA"}' >/dev/null
+MV_FC=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $MV_ID destino_id | tr -d '"')
+R=$(post /api/fatores/$MV_FC/mover '{"planejamento_id":1,"etapa":"CENARIO","tipo":"SITUACAO_ATUAL"}')
+MV_CC=$(echo "$R" | id_de)
+R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $MV_ID destino_tipo)
+afirma "a ideia da Coleta segue o item para a outra tabela" '^"CENARIO"$' "$R"
+R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $MV_ID destino_id)
+afirma "apontando para o registro NOVO" "^$MV_CC\$" "$R"
+R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_CC coleta_vozes)
+afirma "e o item novo já nasce mostrando a voz que o originou" '^1$' "$R"
+
+# A voz do QUIZ é o caso difícil, e o que ela mede é uma guarda que não existia:
+# ela vem de uma pergunta cujo ALVO era o Cenário, e depois da travessia mora
+# num fator. O "solta quem saiu do conjunto" do `vincularSugestoes` alcançava
+# QUALQUER voz do quiz amarrada ao registro — então a primeira edição do fator
+# soltava, calada, exatamente a voz que a travessia acabou de preservar.
+#
+# `confirmar_encerrar` porque a seção 8 deixou uma tempestade aberta e a sala é
+# UMA por projeto: sem ele a rota devolve SALA_ABERTA/409 pedindo confirmação, e
+# este bloco inteiro era pulado — verde por não ter rodado, que é o pior jeito
+# de uma prova passar.
+R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"CENARIO","ano":2026,"tema":"Prova da travessia","max_ideias":3,"confirmar_encerrar":true}')
+MV_PIN=$(echo "$R" | python3 -c "import sys,json
+try: print(json.load(sys.stdin)['dados'].get('pin',''))
+except: print('')" 2>/dev/null)
+MV_PERG=$(echo "$R" | python3 -c "import sys,json
+try: print(json.load(sys.stdin)['dados'].get('pergunta_id') or '')
+except: print('')" 2>/dev/null)
+if [ -n "$MV_PIN" ] && [ -n "$MV_PERG" ]; then
+  MV_TOK=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$MV_PIN\",\"nome\":\"Voz da travessia\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['token'])" 2>/dev/null)
+  curl -s -X POST $BASE/api/publico/resposta -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$MV_PIN\",\"token\":\"$MV_TOK\",\"pergunta_id\":$MV_PERG,\"tipo\":\"TENDENCIA\",\"texto\":\"Voz que atravessa\"}" >/dev/null
+  MV_SUG=$(get "/api/quiz?planejamento_id=1&pergunta_id=$MV_PERG" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+print(next((s['id'] for s in d.get('sugestoes', []) if s['texto'] == 'Voz que atravessa'), ''))" 2>/dev/null)
+  R=$(post /api/cenario "{\"planejamento_id\":1,\"ano\":2026,\"tipo\":\"TENDENCIA\",\"descricao\":\"Item com voz do quiz\",\"sugestoes\":[$MV_SUG]}")
+  MV_CQ=$(echo "$R" | id_de)
+  R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_CQ quiz_vozes)
+  afirma "a voz do quiz fica amarrada ao item do cenário" '^1$' "$R"
+
+  R=$(post /api/cenario/$MV_CQ/mover '{"planejamento_id":1,"etapa":"PORTER","categoria":"RIVALIDADE"}')
+  MV_FQ=$(echo "$R" | id_de)
+  R=$(get "/api/fatores?planejamento_id=1&etapa=PORTER&ano=2026" | campo_de $MV_FQ quiz_vozes)
+  afirma "e atravessa junto com ele" '^1$' "$R"
+  # O golpe: editar o fator MANDANDO o conjunto de vozes que o painel dele
+  # conhece — que é vazio, porque a pergunta era de outro alvo.
+  post /api/fatores/$MV_FQ "{\"planejamento_id\":1,\"etapa\":\"PORTER\",\"categoria\":\"RIVALIDADE\",\"ano\":2026,\"descricao\":\"Item com voz do quiz (editado)\",\"sugestoes\":[]}" >/dev/null
+  R=$(get "/api/fatores?planejamento_id=1&etapa=PORTER&ano=2026" | campo_de $MV_FQ quiz_vozes)
+  afirma "e a primeira edição NÃO solta a voz que atravessou" '^1$' "$R"
+  post /api/fatores/$MV_FQ/excluir '{"planejamento_id":1}' >/dev/null
+  post /api/quiz/encerrar '{"planejamento_id":1}' >/dev/null
+fi
+post /api/coleta/$MV_ID/excluir '{"planejamento_id":1}' >/dev/null
+
 echo "### 10. Limpeza"
 [ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null

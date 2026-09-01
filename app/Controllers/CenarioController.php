@@ -6,12 +6,16 @@ use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
 use App\Services\Bloqueio;
+use App\Services\Fatores;
 use App\Services\Quiz;
 
 class CenarioController
 {
     /** Teto de vozes num pedido de vínculo — ver FatorController. */
     private const MAX_SUGESTOES = 500;
+
+    /** O mesmo catálogo do fator, porque o `⇄` daqui cria um fator. */
+    private const CATEGORIAS = Fatores::CATEGORIAS;
 
     public function listar(): void
     {
@@ -54,7 +58,22 @@ class CenarioController
             $sql .= ' AND c.ano = ?';
             $params[] = $ano;
         }
-        Json::ok(Database::todos("$sql ORDER BY c.tipo, c.ordem, c.id", $params));
+        // `mover_trava` é a MESMA lista de motivos que `mover()` usa para
+        // recusar, e sai da MESMA fonte — aqui, do vínculo com a ação que a
+        // consulta acima já trouxe. É o padrão do tema 8: a tela desabilita o
+        // botão antes do clique, e não pode remontar a regra por conta própria.
+        //
+        // Deste lado a lista tem no máximo um motivo, e isso é o desenho, não
+        // uma simplificação: o item de cenário não tem GUT, cruzamento,
+        // Cascata, Impacto nem promoção. Continua sendo um ARRAY, como o do
+        // fator, para a tela ter um formato só a tratar.
+        Json::ok(array_map(static function (array $c): array {
+            $c['mover_trava'] = $c['acao_titulo']
+                ? ['Já virou a ação “' . $c['acao_titulo'] . '” no plano. '
+                   . 'Exclua a ação em Projetos antes de mover este item.']
+                : [];
+            return $c;
+        }, Database::todos("$sql ORDER BY c.tipo, c.ordem, c.id", $params)));
     }
 
     public function salvar(?int $id = null): void
@@ -118,14 +137,21 @@ class CenarioController
             Json::erro('Sugestões demais num pedido só.');
         }
         $marcas = $sugestoes ? implode(',', array_fill(0, count($sugestoes), '?')) : '';
-        // Solta quem saiu do conjunto: volta a NOVO, editável de novo pelo autor
+        // Solta quem saiu do conjunto: volta a NOVO, editável de novo pelo autor.
+        // O `JOIN quiz_pergunta` restringe o soltar ao que o painel poderia ter
+        // oferecido — ver a nota gêmea em `FatorController::vincularSugestoes`:
+        // sem ele, a primeira edição soltava calada as vozes que o `⇄` tinha
+        // acabado de trazer de um fator.
         Database::executar(
-            "UPDATE coleta_item SET destino_tipo = NULL, destino_id = NULL,
-               situacao = 'NOVO', triado_por = NULL, triado_em = NULL
-             WHERE destino_tipo = 'CENARIO' AND destino_id = ? AND origem = 'QUIZ'
-               AND planejamento_id = ?"
-            . ($marcas ? " AND id NOT IN ({$marcas})" : ''),
-            array_merge([$id, $planId], $sugestoes)
+            "UPDATE coleta_item ci
+             JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
+             SET ci.destino_tipo = NULL, ci.destino_id = NULL,
+                 ci.situacao = 'NOVO', ci.triado_por = NULL, ci.triado_em = NULL
+             WHERE ci.destino_tipo = 'CENARIO' AND ci.destino_id = ? AND ci.origem = 'QUIZ'
+               AND ci.planejamento_id = ?
+               AND qp.alvo_tipo = 'CENARIO' AND qp.ano = ?"
+            . ($marcas ? " AND ci.id NOT IN ({$marcas})" : ''),
+            array_merge([$id, $planId, $ano], $sugestoes)
         );
         if (!$sugestoes) {
             return;
@@ -223,6 +249,63 @@ class CenarioController
             [(int)$u['id'], $id]
         );
         Json::ok();
+    }
+
+    /**
+     * O `⇄` do item de cenário: leva o item para o PESTEL, o Porter ou a SWOT.
+     *
+     * Espelha `FatorController::mover`, e é a metade mais simples do par: o
+     * item de cenário sustenta bem menos que um fator — as vozes da sala e a
+     * marca do plano de ação, e nada mais aponta para ele por chave. Não há
+     * GUT, cruzamento, Cascata, Matriz de Impacto nem promoção deste lado, e
+     * por isso a única recusa é a que vale em todo o sistema: **já virou ação**.
+     *
+     * A CATEGORIA é obrigatória pelo mesmo motivo do outro lado: as listas não
+     * se correspondem, e "situação atual" não é categoria de análise nenhuma.
+     * Sem escolher no destino, o item nasceria com uma categoria que a tela de
+     * lá não sabe desenhar e sumiria das duas.
+     *
+     * Ordem: cria, leva as vozes, apaga — a mesma de `moverParaCenario`, e pelo
+     * mesmo motivo (o pior caso vira registro repetido, nunca voz órfã).
+     */
+    public function mover(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $item = $this->exigirItem($id, $planId);
+        Bloqueio::exigirMeu('cenario_item', $id, (int)Auth::exigirLogin()['id'], 'este item');
+
+        $etapa = (string)($d['etapa'] ?? '');
+        $categoria = (string)($d['categoria'] ?? '');
+        if (!isset(self::CATEGORIAS[$etapa])) {
+            Json::erro('Informe a análise de destino.');
+        }
+        if (!in_array($categoria, self::CATEGORIAS[$etapa], true)) {
+            Json::erro('Informe a categoria no destino: as listas das análises não se correspondem.');
+        }
+        $ano = (int)($item['ano'] ?? 0);
+        if ($ano <= 0) {
+            Json::erro('Este item não tem ano definido: edite o ano antes de movê-lo.');
+        }
+        if ($item['desdobramento_id']) {
+            $acao = Database::um('SELECT o_que FROM desdobramento WHERE id = ?',
+                [(int)$item['desdobramento_id']]);
+            Json::erro('Este item já virou uma ação no plano. '
+                . 'Mudá-lo de análise trocaria a origem da ação no relatório — '
+                . 'exclua a ação em Projetos antes de movê-lo.'
+                . ($acao ? ' (ação: “' . $acao['o_que'] . '”)' : ''));
+        }
+
+        $novo = (int)Database::executar(
+            'INSERT INTO fator (planejamento_id, ano, etapa, categoria, descricao, acao_em, acao_por)
+             VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [$planId, $ano, $etapa, $categoria, (string)$item['descricao'],
+             $item['acao_em'], $item['acao_por']]
+        );
+        Quiz::mudarDestino('CENARIO', $id, 'FATOR', $novo);
+        Database::executar('DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$id, $planId]);
+        Json::ok(['id' => $novo, 'destino' => $etapa, 'categoria' => $categoria, 'ano' => $ano]);
     }
 
     public function excluir(int $id): void

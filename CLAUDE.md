@@ -355,18 +355,40 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   que o `salvar()` já corrigiu por outro caminho. O modal tem **um campo de
   categoria por destino**, revelado por `visivelSe`: com um campo repintado,
   trocar de destino e voltar perdia a escolha já feita.
-  **Quatro amarras RECUSAM o movimento**, cada uma dizendo o que desfazer: já
+  **SEIS amarras RECUSAM o movimento**, cada uma dizendo o que desfazer: já
   virou ação (a mesma `Fatores::acoesQuePrendem` da exclusão — uma definição só
   de "está preso"), promoção nos **dois** sentidos, nota na Matriz GUT (que é da
-  SWOT) e citação num cruzamento (o par escolhe interno × externo por
-  quadrante). Cada uma levanta uma pergunta de processo em aberto (backlog,
-  decisões 13–15); até haver resposta, recusar é a saída segura — movimento
-  recusado é aborrecimento, movimento que apaga a nota da GUT em silêncio é dado
-  perdido. Os motivos chegam à tela em `mover_trava` (array — as amarras se
-  acumulam) pela **mesma** consulta da recusa, e o `⇄` já nasce desabilitado com
-  todos eles no `title`. **Promover ≠ mover:** promover COPIA (a origem fica no
-  PESTEL, o par visível nas duas telas), mover TRANSFERE; os dois são legítimos,
-  mas não no mesmo fator — e é por isso que a promoção trava o `⇄`.
+  SWOT), citação num cruzamento (o par escolhe interno × externo por quadrante),
+  **célula na Matriz de Impacto** e **vínculo com a Cascata**. As duas últimas
+  entraram depois e não por simetria: elas perdiam dado **em silêncio**. Saindo
+  da SWOT, as células do Impacto continuam no banco e somem da grade (ninguém
+  apaga nada e ninguém consegue mais ler); o vínculo da Cascata é pior porque
+  demora — a célula segue exibindo o fator, mas o `salvar` dela só reinsere
+  fatores da SWOT, então o **próximo salvamento da mesma célula**, feito por
+  outra pessoa e por outro motivo, derruba o vínculo. Os motivos chegam à tela
+  em `mover_trava` (array — as amarras se acumulam) pela **mesma** consulta da
+  recusa, e o `⇄` já nasce desabilitado com todos eles no `title`.
+  **Promover ≠ mover:** promover COPIA (a origem fica no PESTEL, o par visível
+  nas duas telas), mover TRANSFERE; os dois são legítimos, mas não no mesmo
+  fator — e é por isso que a promoção trava o `⇄`.
+- **Mover ATRAVESSANDO a tabela** (Cenário ⇄ fator): o quarto destino do `⇄`,
+  e o `⇄` novo no cartão do Cenário (`CenarioController::mover`). Entre análises
+  mover é `UPDATE fator SET etapa` — o id não muda, e por isso nada mais precisa
+  mudar. Para o Cenário o **id morre**: é outra tabela, e o que ele sustentava
+  vai à mão. **A ordem é a garantia, no lugar da transação** (o repositório não
+  usa `beginTransaction`): cria o destino, leva as vozes (`Quiz::mudarDestino`),
+  e só então apaga a origem — morrendo no meio, o pior caso é registro repetido,
+  visível e apagável, e nunca voz apontando para id morto.
+  **As vozes da sala VIAJAM** em vez de voltarem à fila: o item já existe no
+  destino, e triar a ideia de novo criaria um segundo registro dizendo a mesma
+  coisa. Isso obrigou a apertar o "solta quem saiu do conjunto" dos dois
+  `vincularSugestoes` com um `JOIN quiz_pergunta`: a voz carregada veio de uma
+  pergunta de outro alvo, nunca aparece no painel do destino, e a primeira
+  edição do item a soltava calada — perdendo exatamente o que a travessia
+  preservou. O catálogo de categorias mudou de casa por causa disto
+  (`FatorController` → `Fatores::CATEGORIAS`): duas telas criam fator agora.
+  Salvando, a tela **leva a pessoa até o item novo** (`Diag.irParaFator`) —
+  cartão que some sem dizer para onde foi é indistinguível de cartão excluído.
 - **Orientações do diagnóstico**: cada categoria (PESTEL, Porter, SWOT, Cenário)
   tem uma dica curta num ícone **ⓘ** ao lado do título, não em texto de topo —
   `Diag.ORIENTACOES_CATEGORIA` (mapa por código) + `iconeOrientacao` /

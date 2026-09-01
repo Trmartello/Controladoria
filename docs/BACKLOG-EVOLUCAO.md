@@ -1462,17 +1462,73 @@ erro novo depois de o usuário já ter trabalhado.
 **transfere**. São gestos diferentes e ambos legítimos; o que não pode é fazer os
 dois no mesmo fator — daí a promoção travar o `⇄`.
 
-### Fatia C-bis — mover ENTRE TABELAS (a fazer)
+### Fatia C-bis — mover ENTRE TABELAS (**ENTREGUE**)
 
-O que ficou de fora: mover um item da **Análise de Cenário** para PESTEL/Porter/
-SWOT, e o inverso. Não é o mesmo trabalho — `cenario_item` e `fator` são tabelas
-distintas, então "mover" ali é criar-e-apagar, carregando à mão o que o id
-sustenta: as vozes da Coleta (`destino_tipo`/`destino_id`, par polimórfico, sem
-FK), a redação guardada para a sala, e o encaminhamento ao plano. Um id que
-morre com vínculos pendurados é exatamente o beco sem saída que o
-`excluirDesdobramento` teve de aprender a evitar. Vale fazer depois, com o
-mesmo padrão de recusas, e **não** aproveitando o `mover` atual: o `UPDATE
-fator SET etapa` de hoje é seguro justamente por não mexer em id nenhum.
+Mover um item da **Análise de Cenário** para PESTEL/Porter/SWOT, e o inverso.
+Não é o mesmo trabalho — `cenario_item` e `fator` são tabelas distintas, então
+"mover" ali é criar-e-apagar, carregando à mão o que o id sustenta: as vozes da
+Coleta (`destino_tipo`/`destino_id`, par polimórfico, sem FK), a redação
+guardada para a sala, e o encaminhamento ao plano. Um id que morre com vínculos
+pendurados é exatamente o beco sem saída que o `excluirDesdobramento` teve de
+aprender a evitar. **Não** aproveitou o `mover` atual: o `UPDATE fator SET
+etapa` de hoje é seguro justamente por não mexer em id nenhum.
+
+#### O que foi medido antes de escrever
+
+Duas descobertas mudaram o desenho, e nenhuma estava no plano original:
+
+**A Coleta já movia entre tabelas** — `ColetaController::reclassificar` apaga o
+registro no destino e devolve a ideia à fila, e o condutor tria de novo. Meio
+caminho, não o caminho: só vale para item **nascido na sala** (precisa de um
+`coleta_item` apontando para ele), e a redação feita depois, na análise, se
+perde. Ficou como está; o `⇄` é o caminho de quem já tem o item.
+
+**Duas amarras da SWOT sumiam em silêncio no `mover` que já existia** — e essa
+é a parte que valia mais que a fatia inteira:
+
+| Amarra | O que acontecia | Agora |
+|---|---|---|
+| célula na **Matriz de Impacto** | o fator sai da SWOT, as células continuam no banco e somem da grade: ninguém apaga nada e ninguém consegue mais ler | recusa, dizendo o que limpar |
+| vínculo com a **Cascata** | a célula continua exibindo o fator, mas o `salvar` dela só reinsere fatores da SWOT — o próximo salvamento, feito por outra pessoa e por outro motivo, derruba o vínculo | recusa, dizendo o que desfazer |
+
+A segunda é a pior das duas: o dado não some na hora do movimento, some depois,
+num salvamento sem relação nenhuma com ele.
+
+#### As decisões do cliente
+
+- **As vozes da sala VIAJAM com o item** (`Quiz::mudarDestino`). Devolvê-las à
+  fila criaria duplicata: o item já existe no destino, e triar a ideia de novo
+  produziria um segundo registro dizendo a mesma coisa.
+- **Fator → Cenário com GUT, cruzamento, Cascata ou Impacto: recusa**, como as
+  travas que já existiam. Na prática, o sentido "de volta" vale para fator novo
+  — e é o desenho, não uma limitação: o que está preso está preso porque
+  alguém amarrou.
+
+#### Como ficou
+
+**A ordem é a garantia, no lugar da transação.** O repositório não usa
+`beginTransaction` (e `Json::erro` encerra a execução), então: cria o destino,
+leva as vozes, e só então apaga a origem. Morrendo no meio, o pior caso é um
+registro repetido — visível e apagável. Na ordem inversa seria voz apontando
+para id morto: invisível.
+
+**A guarda que a travessia obrigou a apertar.** O "solta quem saiu do conjunto"
+dos dois `vincularSugestoes` alcançava qualquer voz do quiz amarrada ao
+registro. Depois da travessia, as vozes carregadas vêm de uma pergunta de outro
+alvo, nunca aparecem no painel do destino — e a **primeira edição do item as
+soltava caladas**, perdendo exatamente o que a travessia acabou de preservar.
+Agora o `UPDATE` faz `JOIN quiz_pergunta` e só alcança o que o painel poderia
+ter oferecido. A prova disso na `funcional.sh` foi verificada ao contrário:
+revertida a guarda, ela fica vermelha (`quiz_vozes` cai de 1 para 0).
+
+**O catálogo de categorias mudou de casa** (`FatorController` → `Fatores`):
+duas telas passaram a criar fator, e duas cópias divergiriam na primeira
+categoria nova.
+
+**Na tela é só mais um botão.** O `⇄` do fator ganhou o quarto destino, e o
+cartão do Cenário ganhou o `⇄` que não tinha. Salvando, a pessoa é **levada à
+tela nova** com o cartão destacado: o item some da análise de origem, e cartão
+que desaparece sem dizer para onde foi é indistinguível de cartão excluído.
 
 ---
 
@@ -1963,7 +2019,7 @@ fila deve discutir a dependência, não o quadrante.
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
 | 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 1 (ver `docs/CRUZAMENTOS-SWOT.md`) |
-| 9d | Mover entre TABELAS (Cenário ⇄ fator) | Construir | M | 2 |
+| 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |
 | 11 | **Um item por vez: bloqueio de edição** | **Entregue** | P–M | ✔ (pedido do cliente; continua o 10) |
 | 9c | Mover um fator entre PESTEL ⇄ Porter ⇄ SWOT | **Entregue** | P | ✔ (amarras recusam; decisões 13–15 em aberto) |
 | 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |

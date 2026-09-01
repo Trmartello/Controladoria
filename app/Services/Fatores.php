@@ -17,6 +17,23 @@ use App\Core\Json;
 class Fatores
 {
     /**
+     * As categorias de cada análise: o catálogo que decide o que é fator
+     * válido.
+     *
+     * Mora aqui, e não no controller, porque **duas telas passaram a criar
+     * fator**: a das análises e o `⇄` do item de cenário, que cria um ao
+     * atravessar de tabela. Duas cópias divergiriam na primeira categoria nova,
+     * e a divergência produziria o defeito mais caro deste módulo — fator com
+     * categoria que a tela de destino não sabe desenhar, invisível nas duas
+     * análises e segurando vozes que ninguém consegue desamarrar.
+     */
+    public const CATEGORIAS = [
+        'PESTEL' => ['POLITICO', 'ECONOMICO', 'SOCIAL', 'TECNOLOGICO', 'ECOLOGICO', 'LEGAL'],
+        'PORTER' => ['RIVALIDADE', 'NOVOS_ENTRANTES', 'SUBSTITUTOS', 'PODER_FORNECEDORES', 'PODER_CLIENTES'],
+        'SWOT'   => ['FORCA', 'FRAQUEZA', 'OPORTUNIDADE', 'AMEACA'],
+    ];
+
+    /**
      * Recusa apagar fator que já virou ação no plano.
      *
      * Apagar deixaria a ação viva no plano sem origem nenhuma: ninguém saberia

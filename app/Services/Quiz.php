@@ -817,6 +817,39 @@ class Quiz
     }
 
     /**
+     * Leva as vozes de um registro para OUTRO — a mudança de análise que troca
+     * de tabela (item de cenário ⇄ fator).
+     *
+     * É o contrário do `soltarVozes`, e a diferença é de propósito: ali o
+     * registro morre e não há para onde levar as vozes; aqui o registro morre
+     * mas o conteúdo dele CONTINUA, com outro id, noutra tabela. Devolvê-las à
+     * fila neste caso seria pior que não fazer nada: o item já existe no
+     * destino, e triar a ideia de novo criaria um SEGUNDO registro dizendo a
+     * mesma coisa — duplicata que ninguém pediu, no meio de uma reunião.
+     *
+     * Nada de `situacao` muda: a voz continua ACEITA, com a mesma redação
+     * (`texto_tratado` viaja na própria linha) e o mesmo autor. O que muda é
+     * apenas para ONDE ela aponta.
+     *
+     * **A voz do quiz atravessa mesmo tendo vindo de uma pergunta de outro
+     * alvo.** A guarda de `alvo_tipo` do `vincularSugestoes` existe para
+     * impedir que alguém amarre ao seu item uma voz que é de outro — aqui não
+     * há escolha nenhuma sendo feita: viajam exatamente as vozes que JÁ eram
+     * deste registro. É por isso, porém, que o "solta quem saiu" dos dois
+     * `vincularSugestoes` precisou ser apertado para só alcançar o que o painel
+     * poderia ter oferecido: sem isso, a primeira edição do registro no destino
+     * soltaria calada as vozes que acabaram de chegar.
+     */
+    public static function mudarDestino(string $deTipo, int $deId, string $paraTipo, int $paraId): void
+    {
+        Database::executar(
+            'UPDATE coleta_item SET destino_tipo = ?, destino_id = ?
+              WHERE destino_tipo = ? AND destino_id = ?',
+            [$paraTipo, $paraId, $deTipo, $deId]
+        );
+    }
+
+    /**
      * Guarda no vínculo a redação ATUAL do registro, para a voz voltar refinada
      * ao painel se ele for apagado (`soltarVozes` promove este campo).
      *

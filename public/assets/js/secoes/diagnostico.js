@@ -666,19 +666,39 @@ const Diag = {
    * COPIA (a origem fica no PESTEL, com o par visível nas duas telas), mover
    * TRANSFERE. São gestos diferentes e ambos legítimos — o que não pode é
    * fazer os dois no mesmo fator, e é por isso que a promoção trava o ⇄.
+   *
+   * A **Análise de Cenário** é o quarto destino, e para quem usa a tela é só
+   * mais um botão na mesma fileira. Por baixo é outra coisa: lá não existe
+   * categoria — existe TIPO (situação atual ou tendência) —, e o registro muda
+   * de tabela, o que faz o id morrer. O formulário esconde essa diferença de
+   * propósito: quem move um item não deveria precisar saber em quantas tabelas
+   * o sistema guarda diagnóstico.
    */
   modalMoverFator(f, planId) {
-    const destinos = Object.keys(this.ROTULO_ETAPA).filter((e) => e !== f.etapa);
+    const destinos = [...Object.keys(this.ROTULO_ETAPA).filter((e) => e !== f.etapa), 'CENARIO'];
     const primeiro = destinos[0];
-    const campoDe = (etapa) => (etapa === 'SWOT'
-      ? { nome: 'categoria', rotulo: 'Quadrante na SWOT', tipo: 'quadrantes',
-          opcoes: Object.entries(this.QUADRANTES).map(([valor, rot]) => ({
-            valor, rotulo: rot, cor: this.CORES_QUADRANTE[valor], dica: this.DICAS_QUADRANTE[valor],
-          })) }
-      : this.campoCategoria(etapa, 'categoria', `Categoria no ${this.ROTULO_ETAPA[etapa]}`));
+    const rotulo = (e) => this.ROTULO_ETAPA[e] || 'Análise de Cenário';
+    const campoDe = (etapa) => {
+      if (etapa === 'CENARIO') {
+        return { nome: 'tipo', rotulo: 'Entra como', tipo: 'botoes',
+          opcoes: Object.entries(SecaoCenario.TIPOS).map(([valor, t]) => ({ valor, rotulo: t.rotulo })),
+          ajuda: 'A Análise de Cenário não tem categorias: tem situação atual e tendência.' };
+      }
+      return etapa === 'SWOT'
+        ? { nome: 'categoria', rotulo: 'Quadrante na SWOT', tipo: 'quadrantes',
+            opcoes: Object.entries(this.QUADRANTES).map(([valor, rot]) => ({
+              valor, rotulo: rot, cor: this.CORES_QUADRANTE[valor], dica: this.DICAS_QUADRANTE[valor],
+            })) }
+        : this.campoCategoria(etapa, 'categoria', `Categoria no ${this.ROTULO_ETAPA[etapa]}`);
+    };
     Modal.abrir({
       titulo: 'Mover para outra análise',
       url: `/api/fatores/${f.id}/mover`,
+      // O cadeado do tema 11 vale aqui como no ✎: mover DESTRÓI a linha quando
+      // o destino é o Cenário, e fazer isso debaixo de quem está editando o
+      // mesmo item seria a pior versão da colisão que o cadeado existe para
+      // evitar — a pessoa perderia o texto sem nem ver o item sumir.
+      bloqueio: { recurso: 'fator', registro_id: f.id, planejamento_id: planId },
       valores: { planejamento_id: planId, etapa: primeiro, categoria: '' },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
@@ -687,7 +707,7 @@ const Diag = {
           barra: { cor: SecaoProjetos.corCategoria(f.etapa, f.categoria),
             titulo: SecaoProjetos.rotuloCategoria(f.etapa, f.categoria) } },
         { nome: 'etapa', rotulo: 'Para qual análise?', tipo: 'botoes',
-          opcoes: destinos.map((e) => ({ valor: e, rotulo: this.ROTULO_ETAPA[e] })),
+          opcoes: destinos.map((e) => ({ valor: e, rotulo: rotulo(e) })),
           ajuda: 'O texto e as vozes da sala vão junto; só a análise e a categoria mudam.' },
         // Um campo por destino, revelado pelo `visivelSe`: o formulário não
         // remonta opções no meio do preenchimento, e o valor de cada lista fica
@@ -697,9 +717,29 @@ const Diag = {
           visivelSe: { campo: 'etapa', valores: [e] } })),
       ],
       // O servidor recebe UMA categoria, a do destino escolhido: mandar as três
-      // deixaria a validação passar pela lista errada.
-      transformar: (d) => ({ planejamento_id: d.planejamento_id, etapa: d.etapa,
-        categoria: d[`categoria_${d.etapa}`] || '' }),
+      // deixaria a validação passar pela lista errada. E para o Cenário o campo
+      // escolhido não é categoria nenhuma — vai como `tipo`.
+      transformar: (d) => ({
+        planejamento_id: d.planejamento_id,
+        etapa: d.etapa,
+        ...(d.etapa === 'CENARIO'
+          ? { tipo: d.categoria_CENARIO || '' }
+          : { categoria: d[`categoria_${d.etapa}`] || '' }),
+      }),
+      // Indo para o Cenário o item MUDA DE TELA, e some desta. Levar quem
+      // moveu até lá, com o cartão destacado, é o que fecha o gesto: só
+      // recarregar a análise de origem deixaria o cartão sumindo sem nada
+      // dizendo para onde foi — que é indistinguível de exclusão.
+      //
+      // Entre análises não há para onde ir: `mover` mantém o id e a tela de
+      // origem já se recarrega sozinha, com o cartão fora dela.
+      aoSalvar: (r) => {
+        if (r?.destino === 'CENARIO' && r.id) {
+          Diag.irParaFator('cenario', r.id);
+          return;
+        }
+        App.recarregarSecaoAtiva();
+      },
     });
   },
 
@@ -1109,6 +1149,73 @@ const SecaoCenario = {
       title="Excluir" aria-label="Excluir">×</button>`;
   },
 
+  /**
+   * O `⇄` do item — o mesmo gesto do fator, na direção contrária.
+   *
+   * `mover_trava` vem do servidor pela MESMA fonte que a recusa usa, como em
+   * toda trava deste sistema: a tela não remonta a regra por conta própria, ela
+   * exibe a que o servidor já respondeu. Deste lado a lista tem no máximo um
+   * motivo (o item de cenário não tem GUT, cruzamento, Cascata nem Impacto),
+   * mas continua sendo lista para o formato ser um só.
+   */
+  botaoMover(i) {
+    const motivos = i.mover_trava || [];
+    if (motivos.length) {
+      return `<button class="btn btn-sm btn-outline-secondary" ${Vinculos.travado(motivos.join('\n'))}
+        aria-label="Mover de análise (bloqueado)">⇄</button>`;
+    }
+    return `<button class="btn btn-sm btn-outline-secondary" data-mover="${i.id}"
+      title="Mover para outra análise" aria-label="Mover para outra análise">⇄</button>`;
+  },
+
+  /**
+   * Modal do `⇄` daqui: para qual análise, e em que categoria lá.
+   *
+   * Espelha `Diag.modalMoverFator` de propósito, campo por campo — é o mesmo
+   * gesto, e duas telas com formulários diferentes para a mesma coisa fariam
+   * quem conduz hesitar no meio da reunião. O que muda é só a direção: aqui
+   * não se pergunta o tipo (o item está saindo do Cenário), pergunta-se a
+   * categoria no destino.
+   */
+  modalMover(i, planId) {
+    const destinos = Object.keys(Diag.ROTULO_ETAPA);
+    const campoDe = (etapa) => (etapa === 'SWOT'
+      ? { nome: 'categoria', rotulo: 'Quadrante na SWOT', tipo: 'quadrantes',
+          opcoes: Object.entries(Diag.QUADRANTES).map(([valor, rot]) => ({
+            valor, rotulo: rot, cor: Diag.CORES_QUADRANTE[valor], dica: Diag.DICAS_QUADRANTE[valor],
+          })) }
+      : Diag.campoCategoria(etapa, 'categoria', `Categoria no ${Diag.ROTULO_ETAPA[etapa]}`));
+    Modal.abrir({
+      titulo: 'Mover para outra análise',
+      url: `/api/cenario/${i.id}/mover`,
+      bloqueio: { recurso: 'cenario_item', registro_id: i.id, planejamento_id: planId },
+      valores: { planejamento_id: planId, etapa: destinos[0] },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'item', rotulo: 'Item da Análise de Cenário', tipo: 'info',
+          texto: i.descricao,
+          barra: { cor: (this.TIPOS[i.tipo] || this.TIPOS.SITUACAO_ATUAL).cor,
+            titulo: (this.TIPOS[i.tipo] || this.TIPOS.SITUACAO_ATUAL).rotulo } },
+        { nome: 'etapa', rotulo: 'Para qual análise?', tipo: 'botoes',
+          opcoes: destinos.map((e) => ({ valor: e, rotulo: Diag.ROTULO_ETAPA[e] })),
+          ajuda: 'O texto e as vozes da sala vão junto; muda a análise e a categoria.' },
+        ...destinos.map((e) => ({ ...campoDe(e), nome: `categoria_${e}`,
+          visivelSe: { campo: 'etapa', valores: [e] } })),
+      ],
+      transformar: (d) => ({ planejamento_id: d.planejamento_id, etapa: d.etapa,
+        categoria: d[`categoria_${d.etapa}`] || '' }),
+      // Some daqui e nasce lá: leva quem moveu até o cartão novo, pelo mesmo
+      // caminho que o `⇄` do fator usa na direção contrária.
+      aoSalvar: (r) => {
+        // A categoria vai junto: no celular a análise mostra uma coluna por
+        // vez, e sem trocar o filtro o cartão recém-criado ficaria escondido —
+        // a tela pareceria não ter feito nada.
+        if (r?.id) Diag.irParaFator(String(r.destino).toLowerCase(), r.id, r.destino, r.categoria);
+        else App.recarregarSecaoAtiva();
+      },
+    });
+  },
+
   plan: null,
   quiz: null,
   relogioQuiz: null,
@@ -1148,6 +1255,7 @@ const SecaoCenario = {
                 ${Diag.selosOrigem(i)}${Diag.seloPlanoAcao(i)}
                 ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
                   <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
+                  ${SecaoCenario.botaoMover(i)}
                   ${SecaoCenario.botaoExcluir(i)}
                 </span>` : ''}
               </div>` : ''}
@@ -1282,6 +1390,10 @@ const SecaoCenario = {
       modalItem(null, b.dataset.addCategoria)));
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       modalItem(itens.find((i) => i.id == b.dataset.editar))));
+    el.querySelectorAll('[data-mover]').forEach((b) => b.addEventListener('click', () => {
+      const item = itens.find((i) => i.id == b.dataset.mover);
+      if (item) this.modalMover(item, plan.id);
+    }));
     el.querySelectorAll('[data-excluir]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Excluir este item?')) return;
       await App.api(`/api/cenario/${b.dataset.excluir}/excluir`, { planejamento_id: plan.id });
