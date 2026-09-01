@@ -5,6 +5,8 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Cruzamentos;
+use App\Services\Quiz;
 
 /**
  * Cruzamentos da SWOT (TOWS): o par de um fator interno com um externo e a
@@ -18,13 +20,10 @@ use App\Core\Json;
  */
 class CruzamentoController
 {
-    /** O bloco que nasce de cada par [categoria interna][categoria externa]. */
-    private const TIPOS = [
-        'FORCA'    => ['OPORTUNIDADE' => 'ATACAR',   'AMEACA' => 'DEFENDER'],
-        'FRAQUEZA' => ['OPORTUNIDADE' => 'REFORCAR', 'AMEACA' => 'PROTEGER'],
-    ];
-
     private const MAX_ROTULO = 120;
+
+    /** Teto de vozes num pedido de vínculo — ver FatorController. */
+    private const MAX_SUGESTOES = 500;
 
     public function listar(): void
     {
@@ -39,8 +38,15 @@ class CruzamentoController
             "SELECT c.*,
                     fi.descricao AS interno_descricao, fi.categoria AS interno_categoria,
                     fe.descricao AS externo_descricao, fe.categoria AS externo_categoria,
-                    u.nome AS autor
+                    u.nome AS autor,
+                    -- Quantas vozes da sala sustentam este cruzamento: o mesmo
+                    -- selo 🎤 que o fator e o item de cenário já mostram.
+                    COALESCE(qz.n, 0) AS quiz_vozes
              FROM swot_cruzamento c
+             LEFT JOIN (
+               SELECT destino_id, COUNT(*) AS n FROM coleta_item
+               WHERE destino_tipo = 'CRUZAMENTO' AND origem = 'QUIZ'
+               GROUP BY destino_id) qz ON qz.destino_id = c.id
              JOIN fator fi ON fi.id = c.fator_interno_id
              JOIN fator fe ON fe.id = c.fator_externo_id
              LEFT JOIN usuario u ON u.id = c.criado_por
@@ -85,26 +91,16 @@ class CruzamentoController
             Json::ok(['id' => (int)$atual['id'], 'tipo' => $atual['tipo']]);
         }
 
-        $interno = $this->exigirFatorSwot((int)($d['fator_interno_id'] ?? 0), $planId);
-        $externo = $this->exigirFatorSwot((int)($d['fator_externo_id'] ?? 0), $planId);
-
-        $tipo = self::TIPOS[$interno['categoria']][$externo['categoria']] ?? null;
-        if ($tipo === null) {
-            // Cobre os dois erros possíveis de uma vez: dois internos, dois
-            // externos, ou o par invertido. A mensagem diz o que fazer, não o
-            // que o servidor viu.
-            Json::erro('O cruzamento liga um fator INTERNO (força ou fraqueza) a um '
-                . 'fator EXTERNO (oportunidade ou ameaça). Reveja o par escolhido.');
-        }
-        // O ano sai dos FATORES, não do corpo: cruzamento é leitura da SWOT de
-        // um ano, e um par de anos diferentes não é leitura de ano nenhum.
-        if ((int)$interno['ano'] !== (int)$externo['ano']) {
-            Json::erro('Os dois fatores precisam ser do mesmo ano da análise.');
-        }
-        $ano = (int)$interno['ano'];
-        if ($ano <= 0) {
-            Json::erro('Os fatores escolhidos não têm ano de análise definido.');
-        }
+        // A conferência do par mora em `Services\Cruzamentos` desde que a sala
+        // do encontro passou a montar cruzamento pelo celular: a MESMA regra
+        // roda aqui, com login, e lá, sem. Duas escritas divergiriam, e a
+        // frouxa seria a exposta.
+        ['interno' => $interno, 'externo' => $externo, 'tipo' => $tipo, 'ano' => $ano] =
+            Cruzamentos::parValidado(
+                (int)($d['fator_interno_id'] ?? 0),
+                (int)($d['fator_externo_id'] ?? 0),
+                $planId
+            );
 
         // O par é único por ano. A conferência é antes, para a mensagem ser
         // legível; o catch é o que segura a corrida de dois envios simultâneos,
@@ -127,7 +123,48 @@ class CruzamentoController
         } catch (\PDOException $e) {
             Json::erro('Este par já foi cruzado neste ano. Edite o cruzamento existente.');
         }
+        $this->vincularSugestoes($d, $novoId, $planId, $tipo, $ano);
+        Quiz::guardarRedacao('CRUZAMENTO', $novoId, $estrategia);
         Json::ok(['id' => $novoId, 'tipo' => $tipo]);
+    }
+
+    /**
+     * Vozes da sala amarradas a este cruzamento — o espelho do que a Análise de
+     * Cenário e o fator já fazem, com uma diferença que vale registrar: aqui a
+     * voz trouxe o PAR junto, e o par já virou a identidade do registro. O que
+     * o vínculo guarda é a autoria — quem, na oficina, propôs este encontro.
+     *
+     * Só no INSERT: o par é a identidade do cruzamento e não muda na edição,
+     * então também não há vínculo a refazer.
+     */
+    private function vincularSugestoes(array $d, int $id, int $planId, string $tipo, int $ano): void
+    {
+        if (!array_key_exists('sugestoes', $d)) {
+            return;
+        }
+        $u = Auth::exigirLogin();
+        $sugestoes = array_values(array_unique(array_map('intval', (array)$d['sugestoes'])));
+        if (!$sugestoes) {
+            return;
+        }
+        if (count($sugestoes) > self::MAX_SUGESTOES) {
+            Json::erro('Sugestões demais num pedido só.');
+        }
+        $marcas = implode(',', array_fill(0, count($sugestoes), '?'));
+        // A guarda é o ALVO da pergunta, como nas outras telas: recusa voz de
+        // outro bloco, de outro ano, de outro plano, que não seja do quiz, ou
+        // que já esteja amarrada a OUTRO registro — roubar o vínculo faria o
+        // registro de origem perder vozes sem ninguém tocar nele.
+        Database::executar(
+            "UPDATE coleta_item ci
+             JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
+             SET ci.destino_tipo = 'CRUZAMENTO', ci.destino_id = ?,
+                 ci.situacao = 'ACEITO', ci.triado_por = ?, ci.triado_em = NOW()
+             WHERE ci.id IN ({$marcas}) AND ci.planejamento_id = ? AND ci.origem = 'QUIZ'
+               AND qp.alvo_tipo = 'CRUZAMENTO' AND qp.categoria = ? AND qp.ano = ?
+               AND ci.destino_id IS NULL",
+            array_merge([$id, (int)$u['id']], $sugestoes, [$planId, $tipo, $ano])
+        );
     }
 
     public function excluir(int $id): void
@@ -145,6 +182,11 @@ class CruzamentoController
             Json::erro('Este cruzamento já virou ação no plano e não pode ser excluído'
                 . ($acao ? ' (ação: “' . $acao['o_que'] . '”)' : '') . '.');
         }
+        // Solta as vozes antes de apagar: sem isto elas ficariam ACEITAS em
+        // cima de um id morto — congeladas para o autor e "usadas" para o
+        // condutor. É a mesma regra dos outros quatro caminhos que apagam um
+        // registro nascido da sala.
+        Quiz::soltarVozes('CRUZAMENTO', [$id]);
         Database::executar('DELETE FROM swot_cruzamento WHERE id = ?', [$id]);
         Json::ok();
     }
@@ -229,21 +271,4 @@ class CruzamentoController
         return $linha;
     }
 
-    /**
-     * Um fator da SWOT deste planejamento. A guarda confere a ETAPA além do
-     * planejamento: sem ela, um id de fator do PESTEL entraria no par e o
-     * cruzamento citaria algo que a tela da SWOT nem mostra.
-     */
-    private function exigirFatorSwot(int $id, int $planId): array
-    {
-        $f = Database::um(
-            "SELECT id, ano, categoria FROM fator
-             WHERE id = ? AND planejamento_id = ? AND etapa = 'SWOT'",
-            [$id, $planId]
-        );
-        if (!$f) {
-            Json::erro('Escolha dois fatores da SWOT deste planejamento.');
-        }
-        return $f;
-    }
 }

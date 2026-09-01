@@ -423,6 +423,15 @@ const Participante = {
     // guardado quando o campo não existia (lado com o teto esgotado)
     const rascunho = this.rascunhoPendente ?? (document.getElementById('campo-ideia')?.value ?? '');
     this.rascunhoPendente = null;
+    // O par escolhido sobrevive ao redesenho pela mesma razão do rascunho, e
+    // com mais motivo: escolher dois fatores numa lista de vinte, no celular,
+    // custa mais que digitar a frase. Perdê-lo a cada batida do polling faria a
+    // tela ser impossível de usar numa sala com sinal ruim.
+    const par = this.parPendente ?? {
+      interno: document.getElementById('par-interno')?.value || '',
+      externo: document.getElementById('par-externo')?.value || '',
+    };
+    this.parPendente = null;
     const p = r.pergunta;
     const rotulo = document.getElementById('topo-rotulo');
     // O cabeçalho acompanha a tela que a condução abriu: a sala é do projeto,
@@ -436,7 +445,7 @@ const Participante = {
         ${this.cabecalhoIdentidade()}
         ${encerrada
           ? '<div class="alert alert-secondary py-2 small mt-3">Esta sessão foi encerrada. Obrigado por participar!</div>'
-          : p ? this.blocoQuiz(p, minhasDaPergunta)
+          : p ? this.blocoQuiz(p, minhasDaPergunta, par)
             : this.estrelas?.fase === 'ESTRELAS' ? this.blocoEstrelas()
             : `
             <h1 class="h5 tema-rodada">${this.esc(r.tema || 'Planejamento estratégico')}</h1>
@@ -449,6 +458,11 @@ const Participante = {
       if (campo && rascunho) campo.value = rascunho;
       // Sem campo neste lado (teto esgotado), o rascunho espera o lado voltar
       else if (!campo && rascunho) this.rascunhoPendente = rascunho;
+      // O par idem: sem os seletores na tela (teto esgotado, ou a condução
+      // trocou para uma pergunta de outro alvo), a escolha fica guardada.
+      if (!document.getElementById('par-interno') && (par.interno || par.externo)) {
+        this.parPendente = par;
+      }
       this.ligarQuiz(p);
       if (minhasDaPergunta.length) this.ligarEdicaoIdeias();
     }
@@ -552,7 +566,38 @@ const Participante = {
     return lados.some((l) => l.valor === this.tipoResposta) ? this.tipoResposta : lados[0].valor;
   },
 
-  blocoQuiz(p, minhas) {
+  /**
+   * Os dois seletores do CRUZAMENTO — a única pergunta em que o celular
+   * ESCOLHE registros em vez de só escrever.
+   *
+   * `<select>` nativo, e não uma lista de cartões marcáveis: no celular ele
+   * abre a roleta do próprio sistema, que rola com o polegar e busca por
+   * digitação, e não ocupa a tela toda enquanto se lê. Uma lista de vinte
+   * fatores em cartões empurraria o campo de texto para fora da primeira dobra
+   * — e o texto é o que a pergunta de fato quer.
+   *
+   * A descrição inteira vai na `<option>`: cortá-la faria duas frases
+   * parecidas virarem a mesma opção, e quem escolhe não teria como distinguir.
+   */
+  seletoresPar(p, par) {
+    if (!p.pares) return '';
+    const lista = (chave, id, valor) => `
+      <div class="col-12 col-sm-6">
+        <label class="form-label small" for="${id}">${this.esc(p.pares[chave].rotulo)}</label>
+        <select class="form-select" id="${id}">
+          <option value="">— escolha —</option>
+          ${p.pares[chave].itens.map((f) => `
+            <option value="${f.id}" ${String(f.id) === String(valor) ? 'selected' : ''}
+              >${this.esc(f.descricao)}</option>`).join('')}
+        </select>
+      </div>`;
+    return `<div class="row g-2 mb-3">
+      ${lista('interno', 'par-interno', par.interno)}
+      ${lista('externo', 'par-externo', par.externo)}
+    </div>`;
+  },
+
+  blocoQuiz(p, minhas, par = { interno: '', externo: '' }) {
     const prog = this.rodada?.progresso;
     const lados = p.lados || [];
     const lado = this.ladoAtual(p);
@@ -598,8 +643,10 @@ const Participante = {
              sugestões${lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''} desta pergunta.
              ${outrosAbertos.length ? `Ainda pode sugerir ${this.esc(outrosAbertos.join(' e '))}.` : ''}</div>`
         : `<div class="mt-3">
-          <label class="form-label small" for="campo-ideia">Sua sugestão${
-            lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''}</label>
+          ${this.seletoresPar(p, par)}
+          <label class="form-label small" for="campo-ideia">${
+            p.pares ? 'O que fazer com este encontro' : `Sua sugestão${
+              lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''}`}</label>
           ${this.comVoz(area, 'campo-ideia')}
           <div class="d-flex align-items-center gap-2 mt-2">
             <span class="small text-muted" id="contador-resposta" data-max="${maxTexto}">0/${maxTexto}</span>
@@ -649,6 +696,17 @@ const Participante = {
         this.atualizarContador();
       }));
 
+    // Trocar o par NÃO redesenha — redesenhar fecharia o teclado, a regra de
+    // ouro desta tela. A escolha é só guardada, para atravessar a batida
+    // seguinte do polling.
+    ['par-interno', 'par-externo'].forEach((id) => document.getElementById(id)
+      ?.addEventListener('change', () => {
+        this.parPendente = {
+          interno: document.getElementById('par-interno')?.value || '',
+          externo: document.getElementById('par-externo')?.value || '',
+        };
+      }));
+
     const campo = document.getElementById('campo-ideia');
     const btn = document.getElementById('btn-enviar');
     if (!campo || !btn) return;
@@ -661,6 +719,19 @@ const Participante = {
       this.pararDitado();
       const texto = campo.value.trim();
       if (!texto) return;
+      const interno = document.getElementById('par-interno')?.value || '';
+      const externo = document.getElementById('par-externo')?.value || '';
+      // Conferência de CONFORTO, não guarda: quem manda na regra do par é o
+      // servidor (`Cruzamentos::parValidado`). O que ela evita é a ida à rede
+      // para voltar com um erro que a própria tela já sabia.
+      if (p.pares && (!interno || !externo)) {
+        const falta = document.getElementById('aviso-envio');
+        if (falta) {
+          falta.className = 'small mt-2 text-danger';
+          falta.textContent = 'Escolha um item de cada lado antes de enviar.';
+        }
+        return;
+      }
       btn.disabled = true;
       try {
         // pergunta_id diz o que a pessoa estava VENDO: se a condução avançou
@@ -670,8 +741,19 @@ const Participante = {
         await this.api('/api/publico/resposta', {
           pin: this.pin, token: this.token, pergunta_id: p.id,
           tipo: this.ladoAtual(p), texto,
+          ...(p.pares ? { fator_interno_id: interno, fator_externo_id: externo } : {}),
         });
         campo.value = '';
+        // O par volta ao vazio junto com o texto, e os DOIS SELETORES são
+        // limpos à mão: zerar só o `parPendente` não bastava, porque o
+        // redesenho seguinte lê o valor que ainda está no `<select>`. Sem isso
+        // o próximo envio repetia o mesmo cruzamento com outra frase — trabalho
+        // que sobraria para o condutor desfazer.
+        ['par-interno', 'par-externo'].forEach((id) => {
+          const s = document.getElementById(id);
+          if (s) s.value = '';
+        });
+        this.parPendente = null;
         await this.atualizar(true);
         const novo = document.getElementById('aviso-envio');
         if (novo) {

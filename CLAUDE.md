@@ -664,6 +664,15 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   junto. **Não existe grade 4×4 clicável**, e é decisão: com seis fatores por
   quadrante seriam 36 células por bloco, e na prática se escolhem três — a grade
   convidaria a preencher tudo.
+  **A etapa tem sala** (o 🎤 por bloco, `alvo_tipo = 'CRUZAMENTO'`): a direção
+  propõe o PAR pelo celular e o condutor aceita. O "Usar" abre o formulário com
+  o par JÁ escolhido pela pessoa e a estratégia dela como rascunho — aceitar é
+  ato de quem conduz, e o texto final é dele. A voz fica amarrada por
+  `destino_tipo = 'CRUZAMENTO'`, com a mesma guarda de alvo das outras telas, e
+  volta ao painel se o cruzamento for apagado (`Quiz::soltarVozes`). O cartão
+  ganha o selo 🎤 com quantas vozes o sustentam. A ficha do painel mostra o
+  **par** acima do texto (`QuizSala.parDaVoz`), que é o que o condutor lê para
+  decidir; o lado cujo fator foi excluído aparece como tal em vez de sumir.
   **O cartão tem UM "ver mais" para o cartão inteiro**
   (`SecaoCruzamentos.ligarVerMaisCartao`), não um por texto como o
   `Diag.ligarVerMais` do resto do diagnóstico: são três caixas cortadas (os dois
@@ -721,10 +730,27 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   "pergunta ativa" na rodada).
   A pergunta tem **alvo polimórfico** (`quiz_pergunta.alvo_tipo`):
   `CASCATA` (célula driver×horizonte×eixo), `CENARIO` (ano), `FATOR` (ano +
-  etapa + categoria) e `LIVRE` (a tempestade dentro do roteiro). Colunas nulas
+  etapa + categoria), `CRUZAMENTO` (ano + o BLOCO do TOWS, guardado em
+  `categoria`) e `LIVRE` (a tempestade dentro do roteiro). Colunas nulas
   por tipo — e por isso a unicidade é a coluna gerada `alvo_chave`, que junta
   todas elas: NULL nunca colide com NULL num UNIQUE comum, e a mesma célula
   entraria duas vezes no roteiro.
+  **O alvo `CRUZAMENTO` é o único em que o celular ESCOLHE registros**, e não
+  só escreve: a pessoa marca dois fatores da SWOT (um de cada lado do bloco) e
+  escreve a estratégia do encontro. Foi decisão do cliente — a alternativa era
+  a sala escrever a estratégia de um par montado pela condução, que reaproveita
+  tudo e não mexe na rota pública. Como a escolhida faz a **única escrita sem
+  login do sistema aceitar ids de registro**, três coisas passaram a valer:
+  a regra do par mora em **`App\Services\Cruzamentos::parValidado`** e é a
+  MESMA dos dois lados (com login e sem — duas escritas divergiriam, e a frouxa
+  seria a exposta); o `planejamento_id` vem da RODADA, nunca do corpo; e o
+  bloco derivado do par tem de ser o bloco PERGUNTADO, senão a pergunta "Forças
+  × Oportunidades" aceitaria força com ameaça e o painel encheria de resposta
+  fora do assunto. O par viaja em `coleta_item.fator_interno_id`/
+  `fator_externo_id` (FK **SET NULL**: apagar um fator não pode apagar o que
+  alguém escreveu na oficina), e as duas listas descem ao celular por
+  `Cruzamentos::doQuadrante`, que devolve só id e descrição — a decisão do que
+  expor numa tela sem login mora num lugar só.
   O que cada alvo SIGNIFICA (o lado da resposta, o limite de texto, o rótulo, o
   contexto que o celular lê) mora em **`App\Services\Quiz`** — cinco telas
   reescrevendo isso divergiriam na primeira análise nova.
@@ -1758,7 +1784,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | Bateria | Cobre | Falha quando |
 |---|---|---|
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As 18 seções em 1500×700 e 390×844, mais DUAS sessões no preenchimento simultâneo e no cadeado de edição (com dois usuários) | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
+| `sistema.js` | As 18 seções em 1500×700 e 390×844, mais DUAS sessões no preenchimento simultâneo, no cadeado de edição (com dois usuários) e na oficina de Cruzamentos (computador + celular) | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 | `email.sh` | O envio por API de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |

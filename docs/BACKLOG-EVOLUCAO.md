@@ -2018,8 +2018,9 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 1 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |
+| 4c | Cruzamentos da SWOT — **a sala** (fatia 5) | **Entregue** | M | ✔ (decisão do cliente: a sala propõe o PAR) |
 | 11 | **Um item por vez: bloqueio de edição** | **Entregue** | P–M | ✔ (pedido do cliente; continua o 10) |
 | 9c | Mover um fator entre PESTEL ⇄ Porter ⇄ SWOT | **Entregue** | P | ✔ (amarras recusam; decisões 13–15 em aberto) |
 | 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |

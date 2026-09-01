@@ -556,6 +556,15 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   origem           ENUM('TEMPESTADE','QUIZ') NOT NULL DEFAULT 'TEMPESTADE',
   pergunta_id      INT NULL,
   tipo_resposta    ENUM('ESCOLHA','RENUNCIA','SITUACAO_ATUAL','TENDENCIA') NULL,
+  -- O par do CRUZAMENTO (TOWS), quando a pergunta é desse alvo: é a única
+  -- resposta da sala que não é só texto — a pessoa ESCOLHE dois fatores da SWOT
+  -- e escreve a estratégia do encontro deles. Nulos em todos os outros alvos.
+  --
+  -- `SET NULL` e não `CASCADE`: apagar um fator da SWOT não pode apagar o que
+  -- alguém escreveu na oficina. O par se desfaz, a voz fica — e a condução vê
+  -- que o fator saiu, em vez de ver a resposta sumir sem explicação.
+  fator_interno_id INT NULL,
+  fator_externo_id INT NULL,
   texto            TEXT NOT NULL,
   texto_tratado    TEXT NULL,
   destino_sugerido ENUM('CENARIO','PESTEL','PORTER','SWOT','NAO_SEI') NOT NULL DEFAULT 'NAO_SEI',
@@ -563,7 +572,7 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   impacto          ENUM('ALTO','BAIXO') NULL,
   esforco          ENUM('BAIXO','ALTO') NULL,
   votos            SMALLINT NOT NULL DEFAULT 0,
-  destino_tipo     ENUM('CENARIO','FATOR','ACAO','CASCATA') NULL,
+  destino_tipo     ENUM('CENARIO','FATOR','ACAO','CASCATA','CRUZAMENTO') NULL,
   destino_id       INT NULL,
   motivo           TEXT NULL,
   triado_por       INT NULL,
@@ -633,17 +642,21 @@ CREATE TABLE IF NOT EXISTS coleta_rodada (
 CREATE TABLE IF NOT EXISTS quiz_pergunta (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   rodada_id    INT NOT NULL,
-  alvo_tipo    ENUM('CASCATA','CENARIO','FATOR','LIVRE') NOT NULL DEFAULT 'CASCATA',
+  alvo_tipo    ENUM('CASCATA','CENARIO','FATOR','CRUZAMENTO','LIVRE') NOT NULL DEFAULT 'CASCATA',
   -- a pergunta nas palavras do condutor (o padrão vem do alvo, em App\Services\Quiz)
   enunciado    VARCHAR(255) NULL,
   -- CASCATA: a célula (driver x horizonte x eixo). Nulos nos demais alvos.
   horizonte_id INT NULL,
   driver_id    INT NULL,
   eixo_id      INT NULL,
-  -- CENARIO e FATOR: a análise de diagnóstico é anual
+  -- CENARIO, FATOR e CRUZAMENTO: a análise de diagnóstico é anual
   ano          SMALLINT NULL,
   -- FATOR: qual coluna do PESTEL/Porter/SWOT
   etapa        ENUM('PESTEL','PORTER','SWOT') NULL,
+  -- FATOR: o quadrante. CRUZAMENTO: o BLOCO do TOWS (ATACAR, DEFENDER,
+  -- REFORCAR, PROTEGER) — a mesma coluna porque a pergunta é a mesma coisa nos
+  -- dois casos, "qual recorte desta análise estamos perguntando". `alvo_chave`
+  -- já carrega o `alvo_tipo`, então os dois usos não colidem no UNIQUE.
   categoria    VARCHAR(40) NULL,
   ordem        SMALLINT NOT NULL DEFAULT 0,
   situacao     ENUM('PENDENTE','ATIVA','ENCERRADA') NOT NULL DEFAULT 'PENDENTE',

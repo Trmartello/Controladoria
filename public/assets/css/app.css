@@ -2810,6 +2810,32 @@ body.menu-aberto .menu-lateral {
   flex-direction: column;
   gap: .15rem;
 }
+/* O PAR proposto pela sala, acima do texto da estratégia (alvo CRUZAMENTO).
+   Empilha em vez de dividir a linha: são duas descrições inteiras de fator, e
+   lado a lado cada uma ficava com meia dúzia de caracteres por linha. O × fica
+   entre elas, dizendo que é encontro e não lista. */
+.par-voz {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .1rem;
+  margin-bottom: .1rem;
+}
+.par-voz-lado {
+  border-radius: .25rem;
+  padding: .05rem .3rem;
+  font-size: .72rem;
+  line-height: 1.25;
+  /* Duas linhas no máximo: a ficha é a fila de trabalho do condutor, e um
+     fator de quatro linhas empurraria a estratégia — que é o que ele lê para
+     decidir — para fora do cartão. O texto inteiro está no `title` e no 👁. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.par-voz-lado.vazio { color: #8a8f8c; font-style: italic; }
+.par-voz-x { color: #8a8f8c; font-size: .7rem; line-height: 1; }
 /* Cartão marcado como "Usado" (a síntese da célula): fica onde está, em verde.
    A borda é reforçada por sombra interna, e não por `border-width`: um pixel a
    mais mudaria a altura da ficha, e é dela que sai a conta das duas fileiras

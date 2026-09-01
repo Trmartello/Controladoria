@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Cruzamentos;
 use App\Services\Quiz;
 
 /**
@@ -90,7 +91,7 @@ class PublicoController
             'modo' => $r['modo'],
             'max_ideias' => (int)$r['max_ideias'],
             'max_votos' => (int)$r['max_votos'],
-            'pergunta' => $ativa ? Quiz::paraSala($ativa) : null,
+            'pergunta' => $ativa ? Quiz::paraSala($ativa, (int)$r['planejamento_id']) : null,
             // Progresso enxuto: o roteiro completo é do condutor. Esta rota
             // roda a cada 4s por participante.
             'progresso' => $r['modo'] === 'QUIZ'
@@ -284,20 +285,55 @@ class PublicoController
             Json::erro('Escreva a sugestão antes de enviar.');
         }
 
+        // O PAR do cruzamento é a única coisa que esta rota aceita que não é
+        // texto: dois ids de registro, vindos de uma tela sem login. Três
+        // guardas, e nenhuma delas confia no corpo para nada além dos dois
+        // números:
+        //
+        //  1. `Cruzamentos::parValidado` é a MESMA conferência da tela de
+        //     dentro — os dois fatores existem, são da SWOT DESTE planejamento
+        //     (o da rodada, não o do corpo), são de anos iguais, e formam um
+        //     par interno × externo de verdade;
+        //  2. o ANO tem de ser o da pergunta ativa, senão a sala responderia a
+        //     SWOT de outro exercício sem ninguém perceber;
+        //  3. o BLOCO derivado do par tem de ser o bloco PERGUNTADO. Sem esta,
+        //     a pergunta "Forças × Oportunidades" aceitaria um par de fraqueza
+        //     com ameaça, e o painel do condutor encheria de resposta fora do
+        //     assunto — a pergunta viraria decoração.
+        $internoId = null;
+        $externoId = null;
+        if ($alvoTipo === 'CRUZAMENTO') {
+            $par = Cruzamentos::parValidado(
+                (int)($d['fator_interno_id'] ?? 0),
+                (int)($d['fator_externo_id'] ?? 0),
+                (int)$r['planejamento_id'],
+                (int)$ativa['ano']
+            );
+            if ($par['tipo'] !== (string)$ativa['categoria']) {
+                $bloco = Cruzamentos::BLOCOS[(string)$ativa['categoria']] ?? null;
+                Json::erro('Esta pergunta é do bloco '
+                    . ($bloco['rotulo'] ?? 'escolhido')
+                    . '. Escolha um fator de cada lado deste bloco.');
+            }
+            $internoId = (int)$par['interno']['id'];
+            $externoId = (int)$par['externo']['id'];
+        }
+
         // Teto dentro do INSERT, por (pergunta, tipo): dois envios simultâneos
         // não furam a contagem. O <=> compara com NULL (alvo sem lado), onde o
         // `=` devolveria NULL e a contagem sairia sempre zero — o teto virava
         // decoração justamente nas telas que não têm lado.
         $gravadas = Database::afetadas(
             "INSERT INTO coleta_item (planejamento_id, rodada_id, origem, pergunta_id, tipo_resposta,
-               ano, autor_id, autor_nome, participante_token, texto)
-             SELECT ?, ?, 'QUIZ', ?, ?, ?, NULL, ?, ?, ?
+               ano, autor_id, autor_nome, participante_token, texto,
+               fator_interno_id, fator_externo_id)
+             SELECT ?, ?, 'QUIZ', ?, ?, ?, NULL, ?, ?, ?, ?, ?
              FROM DUAL WHERE (SELECT COUNT(*) FROM coleta_item x
                               WHERE x.pergunta_id = ? AND x.participante_token = ?
                                 AND x.tipo_resposta <=> ?) < ?",
             [
                 (int)$r['planejamento_id'], (int)$r['id'], (int)$ativa['id'], $tipo,
-                (int)$r['ano'], $p['nome'], $p['token'], $texto,
+                (int)$r['ano'], $p['nome'], $p['token'], $texto, $internoId, $externoId,
                 (int)$ativa['id'], $p['token'], $tipo, (int)$r['max_ideias'],
             ]
         );
@@ -557,6 +593,9 @@ class PublicoController
         );
         Json::ok([
             'fase' => 'ESTRELAS',
+            // Sem `planejamento_id`, de propósito: nesta fase já não se responde
+            // — as listas do par do cruzamento seriam peso na rede e exposição
+            // de conteúdo para nada.
             'pergunta' => Quiz::paraSala($pergunta),
             'itens' => $itens,
             'meus_votos' => $this->estrelasUsadas((int)$pergunta['id'], $p['token']),

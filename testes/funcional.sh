@@ -847,6 +847,104 @@ print(next((s['id'] for s in d.get('sugestoes', []) if s['texto'] == 'Voz que at
 fi
 post /api/coleta/$MV_ID/excluir '{"planejamento_id":1}' >/dev/null
 
+echo "### 9i. Cruzamentos na sala — a única resposta pública que NÃO é só texto"
+#
+# O alvo CRUZAMENTO é o primeiro em que o celular ESCOLHE registros: a pessoa
+# marca dois fatores da SWOT e escreve a estratégia. É a rota sem login
+# recebendo ids, e por isso estas provas medem sobretudo o que ela RECUSA.
+#
+# A regra do par mora em `Services\Cruzamentos` e vale igual dos dois lados —
+# com login e sem. As provas abaixo batem no lado de FORA, que é o que importa:
+# a de dentro já é exercitada pelo cadastro comum, na seção 9.
+CZ_F=$(post /api/fatores '{"planejamento_id":1,"etapa":"SWOT","categoria":"FORCA","descricao":"Forca da sala","ano":2026}' | id_de)
+CZ_O=$(post /api/fatores '{"planejamento_id":1,"etapa":"SWOT","categoria":"OPORTUNIDADE","descricao":"Oportunidade da sala","ano":2026}' | id_de)
+CZ_A=$(post /api/fatores '{"planejamento_id":1,"etapa":"SWOT","categoria":"AMEACA","descricao":"Ameaca da sala","ano":2026}' | id_de)
+R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"CRUZAMENTO","ano":2026,"alvos":["NAO_EXISTE"],"tema":"TOWS","confirmar_encerrar":true}')
+afirma "bloco inventado é recusado ao abrir a sala" 'Bloco de cruzamento inválido' "$R"
+R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"CRUZAMENTO","ano":2026,"alvos":["ATACAR"],"tema":"TOWS na sala","max_ideias":3,"confirmar_encerrar":true}')
+afirma "abre a sala num bloco do cruzamento" '"pergunta_id"' "$R"
+CZ_PIN=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('pin',''))" 2>/dev/null)
+CZ_PERG=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('pergunta_id') or '')" 2>/dev/null)
+if [ -n "$CZ_PIN" ] && [ -n "$CZ_PERG" ]; then
+  # O que DESCE para o celular. As duas listas são a novidade: é conteúdo do
+  # diagnóstico numa tela sem login, e por isso a prova mede também o que NÃO
+  # desce — o score da GUT é priorização interna e não tem por que viajar.
+  R=$(curl -s "$BASE/api/publico/rodada/$CZ_PIN" | python3 -c "
+import sys, json
+p = json.load(sys.stdin)['dados']['pergunta']
+pares = p.get('pares') or {}
+print(json.dumps({
+  'interno': pares.get('interno', {}).get('rotulo'),
+  'externo': pares.get('externo', {}).get('rotulo'),
+  'campos': sorted((pares.get('interno', {}).get('itens') or [{}])[0].keys()),
+}, ensure_ascii=False))" 2>/dev/null)
+  afirma "o celular recebe as duas listas do bloco" '"interno": "Forças", "externo": "Oportunidades"' "$R"
+  afirma "e de cada fator só o id e a descrição" '"campos": \["descricao", "id"\]' "$R"
+
+  CZ_TOK=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$CZ_PIN\",\"nome\":\"Voz do cruzamento\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['token'])" 2>/dev/null)
+  cz_resp(){ curl -s -X POST $BASE/api/publico/resposta -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$CZ_PIN\",\"token\":\"$CZ_TOK\",\"pergunta_id\":$CZ_PERG,$1\"texto\":\"Estrategia da sala\"}"; }
+
+  R=$(cz_resp '')
+  afirma "sem o par, a resposta é recusada" 'um fator interno e um externo' "$R"
+  R=$(cz_resp "\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_F,")
+  afirma "o mesmo fator dos dois lados é recusado" 'DOIS fatores diferentes' "$R"
+  R=$(cz_resp "\"fator_interno_id\":$CZ_O,\"fator_externo_id\":$CZ_F,")
+  afirma "o par invertido é recusado" 'fator INTERNO .* a um fator EXTERNO' "$R"
+  # A guarda que dá sentido à pergunta: sem ela, "Forças × Oportunidades"
+  # aceitaria força com ameaça, e o painel encheria de resposta fora do assunto.
+  R=$(cz_resp "\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_A,")
+  afirma "par de OUTRO bloco é recusado, dizendo qual é o bloco" 'Esta pergunta é do bloco Forças × Oportunidades' "$R"
+  # Id que não é da SWOT deste plano: o caso do corpo forjado, que é a razão
+  # de a rota nunca ler o planejamento do que lhe mandam.
+  R=$(cz_resp "\"fator_interno_id\":$CZ_F,\"fator_externo_id\":99999999,")
+  afirma "id de fora do planejamento é recusado" 'dois fatores da SWOT deste planejamento' "$R"
+  R=$(cz_resp "\"fator_interno_id\":$FAT,\"fator_externo_id\":$CZ_O,")
+  afirma "fator que não é da SWOT é recusado" 'dois fatores da SWOT deste planejamento' "$R"
+  R=$(cz_resp "\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_O,")
+  afirma "o par certo é aceito" '"ok":true' "$R"
+
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$CZ_PERG" | python3 -c "
+import sys, json
+s = json.load(sys.stdin)['dados']['sugestoes']
+print(json.dumps(s[0] if s else {}, ensure_ascii=False))" 2>/dev/null)
+  afirma "o painel do condutor recebe o par com as descrições" '"interno_descricao": "Forca da sala"' "$R"
+  CZ_SUG=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+
+  # O "Usar": o cruzamento nasce com o par que a sala propôs, e a voz fica
+  # amarrada a ele — é o registro de QUEM propôs aquele encontro.
+  R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_O,\"rotulo\":\"Par da sala\",\"estrategia\":\"Estrategia redigida pelo condutor\",\"sugestoes\":[$CZ_SUG]}")
+  afirma "o condutor aceita a proposta e ela vira cruzamento" '"tipo":"ATACAR"' "$R"
+  CZ_ID=$(echo "$R" | id_de)
+  R=$(get "/api/cruzamentos?planejamento_id=1&ano=2026" | campo_de $CZ_ID quiz_vozes)
+  afirma "e o cruzamento mostra a voz que o sustenta" '^1$' "$R"
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$CZ_PERG" | python3 -c "
+import sys, json
+s = [x for x in json.load(sys.stdin)['dados']['sugestoes'] if x['id'] == $CZ_SUG]
+print(json.dumps(s[0]['vinculada'] if s else None))" 2>/dev/null)
+  afirma "a voz sai do painel, porque virou registro" '^1$' "$R"
+
+  # Excluído o cruzamento, a voz VOLTA — senão ficaria ACEITA sobre um id morto,
+  # congelada para o autor e "usada" para o condutor.
+  post /api/cruzamentos/$CZ_ID/excluir '{"planejamento_id":1}' >/dev/null
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$CZ_PERG" | python3 -c "
+import sys, json
+s = [x for x in json.load(sys.stdin)['dados']['sugestoes'] if x['id'] == $CZ_SUG]
+print(json.dumps(s[0]['vinculada'] if s else None))" 2>/dev/null)
+  afirma "apagado o cruzamento, a voz volta ao painel" '^0$' "$R"
+
+  # A voz sai antes dos fatores: apagar o fator só ANULA o lado do par (a FK é
+  # SET NULL, para não perder o que alguém escreveu na oficina), e a resposta
+  # ficaria para trás a cada rodada da bateria.
+  [ -n "$CZ_SUG" ] && post /api/quiz/sugestao/$CZ_SUG/excluir '{"planejamento_id":1}' >/dev/null
+  post /api/quiz/encerrar '{"planejamento_id":1}' >/dev/null
+fi
+for F in $CZ_F $CZ_O $CZ_A; do
+  [ -n "$F" ] && post /api/fatores/$F/excluir '{"planejamento_id":1}' >/dev/null
+done
+
 echo "### 10. Limpeza"
 [ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null

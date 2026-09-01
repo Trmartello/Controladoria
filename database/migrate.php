@@ -294,6 +294,37 @@ if ($tipoDestinoCi2 && !str_contains((string)$tipoDestinoCi2, 'CASCATA')) {
     echo "migrate: coleta_item.destino_tipo agora aceita CASCATA (célula da cascata).\n";
 }
 
+// ---- A sala propõe CRUZAMENTOS (TOWS) ----
+// A resposta deste alvo não é só texto: a pessoa escolhe dois fatores da SWOT e
+// escreve a estratégia do encontro deles. Daí o par na própria linha da voz.
+garantirColuna($pdo, 'coleta_item', 'fator_interno_id',
+    'ALTER TABLE coleta_item ADD COLUMN fator_interno_id INT NULL AFTER tipo_resposta');
+garantirColuna($pdo, 'coleta_item', 'fator_externo_id',
+    'ALTER TABLE coleta_item ADD COLUMN fator_externo_id INT NULL AFTER fator_interno_id');
+// Limpa antes de amarrar, pelo mesmo motivo das FKs do encaminhamento: base
+// antiga pode ter id de fator já apagado, e a FK morreria no ALTER.
+$pdo->exec('UPDATE coleta_item ci SET fator_interno_id = NULL
+            WHERE fator_interno_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM (SELECT id FROM fator) f WHERE f.id = ci.fator_interno_id)');
+$pdo->exec('UPDATE coleta_item ci SET fator_externo_id = NULL
+            WHERE fator_externo_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM (SELECT id FROM fator) f WHERE f.id = ci.fator_externo_id)');
+garantirFk($pdo, 'coleta_item', 'fk_ci_fator_interno',
+    'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_fator_interno
+     FOREIGN KEY (fator_interno_id) REFERENCES fator(id) ON DELETE SET NULL');
+garantirFk($pdo, 'coleta_item', 'fk_ci_fator_externo',
+    'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_fator_externo
+     FOREIGN KEY (fator_externo_id) REFERENCES fator(id) ON DELETE SET NULL');
+$tipoDestinoCi3 = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'destino_tipo'"
+)->fetchColumn();
+if ($tipoDestinoCi3 && !str_contains((string)$tipoDestinoCi3, 'CRUZAMENTO')) {
+    $pdo->exec("ALTER TABLE coleta_item MODIFY COLUMN destino_tipo
+                ENUM('CENARIO','FATOR','ACAO','CASCATA','CRUZAMENTO') NULL");
+    echo "migrate: coleta_item.destino_tipo agora aceita CRUZAMENTO (TOWS).\n";
+}
+
 // ---- A sala é do PROJETO: a pergunta ganha um alvo polimórfico ----
 // O roteiro deixa de saber só de células da cascata e passa a apontar para
 // qualquer análise. As colunas do alvo entram todas nulas: linha antiga é
@@ -310,6 +341,18 @@ garantirColuna($pdo, 'quiz_pergunta', 'etapa',
     "ALTER TABLE quiz_pergunta ADD COLUMN etapa ENUM('PESTEL','PORTER','SWOT') NULL AFTER ano");
 garantirColuna($pdo, 'quiz_pergunta', 'categoria',
     'ALTER TABLE quiz_pergunta ADD COLUMN categoria VARCHAR(40) NULL AFTER etapa');
+// O alvo CRUZAMENTO (TOWS) entrou depois. A coluna `categoria` guarda o BLOCO
+// (ATACAR, DEFENDER, REFORCAR, PROTEGER) — não precisa de coluna nova, e a
+// `alvo_chave` já separa os usos porque carrega o `alvo_tipo`.
+$tipoAlvoQp = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quiz_pergunta' AND COLUMN_NAME = 'alvo_tipo'"
+)->fetchColumn();
+if ($tipoAlvoQp && !str_contains((string)$tipoAlvoQp, 'CRUZAMENTO')) {
+    $pdo->exec("ALTER TABLE quiz_pergunta MODIFY COLUMN alvo_tipo
+                ENUM('CASCATA','CENARIO','FATOR','CRUZAMENTO','LIVRE') NOT NULL DEFAULT 'CASCATA'");
+    echo "migrate: quiz_pergunta.alvo_tipo agora aceita CRUZAMENTO (TOWS).\n";
+}
 
 // Reentrada do participante (padrão trazido do Quiz Copérdia): o aparelho volta
 // como a MESMA pessoa, e o nome só devolve a identidade de quem está calado.

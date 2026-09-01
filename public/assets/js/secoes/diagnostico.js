@@ -1358,7 +1358,12 @@ const SecaoCenario = {
         ? { ...i, planejamento_id: plan.id }
         : {
             planejamento_id: plan.id, ano,
-            ...(tipoNovo ? { tipo: tipoNovo } : {}),
+            // O tipo NASCE marcado, mesmo sem vir do "+" de uma coluna: com
+            // botões, nada vem escolhido por padrão (o `select` marcava o
+            // primeiro sozinho), e o formulário abriria pedindo um campo
+            // obrigatório que a pessoa não tem por que adivinhar. Situação
+            // atual é o padrão porque é por onde a análise começa.
+            tipo: tipoNovo || 'SITUACAO_ATUAL',
             ...(sugestao ? { descricao: sugestao.texto } : {}),
           },
       campos: [
@@ -1371,10 +1376,17 @@ const SecaoCenario = {
                      titulo: (SecaoCenario.TIPOS[sugestao.tipo_resposta]
                        || SecaoCenario.TIPOS.SITUACAO_ATUAL).rotulo } },
         ] : []),
-        { nome: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: [
-          { valor: 'SITUACAO_ATUAL', rotulo: 'Situação atual' },
-          { valor: 'TENDENCIA', rotulo: 'Tendência' },
-        ]},
+        // Botões, e não um `select`: são DUAS opções, e as duas cabem lado a
+        // lado. O combobox escondia metade da escolha atrás de um toque — quem
+        // abre o formulário para lançar uma tendência tinha de abrir a lista
+        // para conferir que era isso mesmo. Com dois botões a escolha inteira
+        // está à vista, e trocá-la é um toque em vez de três.
+        //
+        // A ordem é a das colunas da tela: situação atual à esquerda,
+        // tendência à direita, como o item vai aparecer depois de salvo.
+        { nome: 'tipo', rotulo: 'Tipo', tipo: 'botoes',
+          opcoes: Object.entries(SecaoCenario.TIPOS)
+            .map(([valor, t]) => ({ valor, rotulo: t.rotulo })) },
         { nome: 'descricao', rotulo: 'Descrição', tipo: 'textarea', linhas: 4 },
         { nome: 'ordem', rotulo: 'Ordem', tipo: 'number', padrao: 0 },
       ],

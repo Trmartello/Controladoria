@@ -3079,6 +3079,176 @@ async function provasDuasTelas(browser) {
 }
 
 /**
+ * A oficina de Cruzamentos inteira: a sala propõe o PAR pelo celular e o
+ * condutor aceita.
+ *
+ * É a única pergunta da sala em que o celular escolhe REGISTROS em vez de só
+ * escrever, e por isso a prova percorre o caminho todo em vez de medir pontas:
+ * as guardas do servidor estão na `funcional.sh` §9i, e o que só o navegador
+ * responde é se o gesto FECHA — 🎤 na coluna, dois seletores no celular,
+ * proposta aparecendo sozinha no painel, e o "Usar" abrindo o formulário já
+ * com o par e a estratégia da pessoa.
+ *
+ * Dois contextos, um deles de celular de verdade (390×844): a tela pública é a
+ * que a direção usa na mão, e provar o par num viewport de computador mediria
+ * uma tela que ninguém vai ver.
+ */
+async function provasCruzamentoNaSala(browser) {
+  const l = '[oficina] Cruzamentos na sala:';
+  const ctxA = await browser.newContext({ viewport: { width: 1500, height: 900 }, reducedMotion: 'reduce' });
+  const admin = await entrar(ctxA, 'admin', []);
+  const ctxM = await browser.newContext({
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce',
+  });
+  let massa = null;
+
+  try {
+    massa = await admin.evaluate(async () => {
+      const plan = await App.planejamento();
+      const ano = Diag.ano();
+      const novo = (categoria, descricao) => App.api('/api/fatores',
+        { planejamento_id: plan.id, etapa: 'SWOT', categoria, descricao, ano });
+      const f = await novo('FORCA', 'Forca da oficina (prova)');
+      const o = await novo('OPORTUNIDADE', 'Oportunidade da oficina (prova)');
+      return { plan: plan.id, ano, f: f.id, o: o.id };
+    });
+
+    await admin.evaluate(() => App.mostrarSecao('cruzamentos'));
+    await esperar(admin,
+      "!!document.querySelector('#secao-cruzamentos [data-coluna-categoria=\"ATACAR\"]')", 15000);
+    t(`${l} cada bloco tem o 🎤, como as outras análises`, await admin.evaluate(() =>
+      !!document.querySelector('#secao-cruzamentos [data-coluna-categoria="ATACAR"] [data-mic]')));
+
+    // O 🎤 pode pedir confirmação (a sala já estar em outro rito): aceitar é o
+    // gesto do condutor, e sem tratar o diálogo o clique fica pendurado.
+    admin.once('dialog', async (d) => { await d.accept(); });
+    await admin.click('#secao-cruzamentos [data-coluna-categoria="ATACAR"] [data-mic]');
+    t(`${l} o 🎤 abre a pergunta do bloco para a sala`, await esperar(admin,
+      "!!document.querySelector('#secao-cruzamentos [data-mic-fechar]')", 15000));
+
+    const sala = await admin.evaluate(async (m) => {
+      const q = await App.api(`/api/quiz?planejamento_id=${m.plan}`);
+      return { pin: q.sessao?.pin, perg: q.pergunta?.id };
+    }, massa);
+
+    const cel = await ctxM.newPage();
+    await cel.goto(`${BASE}/entrar/${sala.pin}`);
+    await esperar(cel, "!!document.querySelector('#campo-nome')", 15000);
+    await cel.fill('#campo-nome', 'Diretoria no celular');
+    await cel.click('#btn-entrar');
+    const viuPar = await esperar(cel, "!!document.getElementById('par-interno')", 15000);
+    const rotulos = await cel.evaluate(() => ({
+      i: document.querySelector('label[for="par-interno"]')?.textContent.trim(),
+      e: document.querySelector('label[for="par-externo"]')?.textContent.trim(),
+      campo: document.querySelector('label[for="campo-ideia"]')?.textContent.trim(),
+      rola: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }));
+    t(`${l} o celular mostra os dois lados do bloco para escolher`,
+      viuPar && rotulos.i === 'Forças' && rotulos.e === 'Oportunidades', JSON.stringify(rotulos));
+    t(`${l} e o campo de texto pede a estratégia, não uma sugestão solta`,
+      rotulos.campo === 'O que fazer com este encontro', JSON.stringify(rotulos.campo));
+    t(`${l} a tela do par não rola na horizontal no celular`, rotulos.rola === false);
+
+    // Sem o par, a tela barra ANTES da rede: o servidor recusaria igual, mas a
+    // ida e volta com a frase escrita perdida é o que se evita aqui.
+    await cel.fill('#campo-ideia', 'Sem par nenhum');
+    await cel.click('#btn-enviar');
+    await new Promise((r) => setTimeout(r, 600));
+    t(`${l} sem escolher o par, a tela avisa antes de ir à rede`,
+      /Escolha um item de cada lado/.test(
+        await cel.evaluate(() => document.getElementById('aviso-envio')?.textContent || '')));
+
+    await cel.selectOption('#par-interno', String(massa.f));
+    await cel.selectOption('#par-externo', String(massa.o));
+    // Uma batida do polling (4s) com folga: escolher dois fatores numa lista
+    // custa mais que digitar, e perder isso a cada batida inutilizaria a tela.
+    await new Promise((r) => setTimeout(r, 5200));
+    const sobreviveu = await cel.evaluate(() => ({
+      i: document.getElementById('par-interno')?.value,
+      e: document.getElementById('par-externo')?.value,
+    }));
+    t(`${l} o par escolhido sobrevive à batida do polling`,
+      String(sobreviveu.i) === String(massa.f) && String(sobreviveu.e) === String(massa.o),
+      JSON.stringify(sobreviveu));
+
+    await cel.fill('#campo-ideia', 'Usar a forca para abrir o canal novo ja em H1');
+    await cel.click('#btn-enviar');
+    await esperar(cel,
+      "/enviada/i.test(document.getElementById('aviso-envio')?.textContent || '')", 10000);
+    const limpou = await cel.evaluate(() => ({
+      i: document.getElementById('par-interno')?.value,
+      e: document.getElementById('par-externo')?.value,
+    }));
+    t(`${l} enviada a proposta, os seletores voltam ao vazio`,
+      !limpou.i && !limpou.e, JSON.stringify(limpou));
+
+    // O painel do condutor anda SOZINHO: é o relógio de 4s da sala.
+    t(`${l} a proposta aparece no painel do condutor sem ninguém atualizar`,
+      await esperar(admin,
+        "!!document.querySelector('#secao-cruzamentos .ficha-sugestao .par-voz')", 15000));
+    const ficha = await admin.evaluate(() => {
+      const f = document.querySelector('#secao-cruzamentos .ficha-sugestao');
+      return f ? [...f.querySelectorAll('.par-voz-lado')].map((x) => x.textContent.trim()) : null;
+    });
+    t(`${l} e a ficha mostra o PAR proposto, que é o que se lê para decidir`,
+      ficha?.[0] === 'Forca da oficina (prova)'
+      && ficha?.[1] === 'Oportunidade da oficina (prova)', JSON.stringify(ficha));
+
+    await admin.click('#secao-cruzamentos [data-usar-sugestao]');
+    await esperar(admin, "!!document.querySelector('.modal.show')", 8000);
+    const form = await admin.evaluate(() => ({
+      titulo: document.querySelector('.modal.show .modal-title')?.textContent.trim(),
+      // Os campos do modal são `#campo-<nome>`: `[name=...]` não existe neste
+      // formulário, e o seletor errado falha longe da causa.
+      estrategia: document.getElementById('campo-estrategia')?.value,
+      marcados: [...document.querySelectorAll('.modal.show input:checked')].map((i) => i.value),
+    }));
+    t(`${l} o "Usar" abre o formulário como proposta da sala`,
+      /Aceitar cruzamento da sala/.test(form.titulo || ''), JSON.stringify(form.titulo));
+    t(`${l} com o par JÁ escolhido pela pessoa que respondeu`,
+      form.marcados.includes(String(massa.f)) && form.marcados.includes(String(massa.o)),
+      JSON.stringify(form.marcados));
+    t(`${l} e a estratégia dela como rascunho, para o condutor redigir`,
+      form.estrategia === 'Usar a forca para abrir o canal novo ja em H1',
+      JSON.stringify(form.estrategia));
+
+    await admin.fill('#campo-rotulo', 'Par da oficina (prova)');
+    await admin.click('#modal-salvar');
+    t(`${l} salvar cria o cruzamento na coluna do bloco`, await esperar(admin,
+      "document.getElementById('secao-cruzamentos').textContent.includes('Par da oficina (prova)')",
+      12000));
+    const depois = await admin.evaluate(() => {
+      const card = [...document.querySelectorAll('#secao-cruzamentos [data-card-cruzamento]')]
+        .find((c) => c.textContent.includes('Par da oficina (prova)'));
+      return {
+        selo: card ? card.textContent.includes('🎤') : null,
+        fichas: document.querySelectorAll('#secao-cruzamentos .ficha-sugestao').length,
+      };
+    });
+    t(`${l} o cartão registra a voz da sala que o sustenta`, depois.selo === true);
+    t(`${l} e a voz sai do painel, porque virou registro`, depois.fichas === 0,
+      `${depois.fichas} ficha(s)`);
+  } finally {
+    if (massa) {
+      await admin.evaluate(async (m) => {
+        const cs = await App.api(`/api/cruzamentos?planejamento_id=${m.plan}&ano=${m.ano}`)
+          .catch(() => []);
+        for (const c of cs.filter((x) => x.rotulo === 'Par da oficina (prova)')) {
+          await App.api(`/api/cruzamentos/${c.id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+        }
+        await App.api('/api/quiz/encerrar', { planejamento_id: m.plan }).catch(() => {});
+        for (const id of [m.f, m.o]) {
+          await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+        }
+        App.mostrarSecao('painel');
+      }, massa).catch(() => {});
+    }
+    await ctxA.close();
+    await ctxM.close();
+  }
+}
+
+/**
  * O cadeado de edição, a duas sessões e com DOIS usuários.
  *
  * Dois usuários é o ponto: com a mesma conta nos dois navegadores todo cadeado
@@ -3227,6 +3397,7 @@ async function provasCadeado(browser) {
   await provasImpactoNegocio(page);
   await provasDuasTelas(browser);
   await provasCadeado(browser);
+  await provasCruzamentoNaSala(browser);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.
