@@ -10,6 +10,10 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   atrás do login, com as 18 `<section class="secao d-none">`; `login.php`; e
   `participante.php`, a do celular sem login), `public/` (front controller e
   assets), `database/`, `cli/`, `config/`, `testes/`, `docs/`.
+  Qual arquivo atende qual seção **não está escrito aqui de propósito**: o mapa
+  vive em `App.recarregarSecaoAtiva()` (`app.js`), e uma segunda cópia num
+  documento é a que ninguém atualiza. Este guia cita o arquivo quando explica
+  uma regra, não como catálogo.
 - **Front controller**: `public/index.php` — tabela de rotas em `switch (true)`.
   Todo método de controller termina em `Json::ok()`/`Json::erro()` (ambos
   encerram a execução), mas cada `case` ainda leva `break;` defensivo.
@@ -114,8 +118,9 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   que se contorna com F5 é defeito que fica.
   `App.api` põe `codigo` e `status` no `Error` que lança: erro que a tela
   precisa DECIDIR (e não só mostrar) vem por código, nunca por texto.
-  Bootstrap 5.3.3 **vendorado** em `public/assets/vendor/` (CDNs são
-  bloqueados no ambiente de execução — nunca referencie CDN).
+  Bootstrap 5.3.3 e o `qrcode.js` (o QR da sala) são as duas ÚNICAS
+  bibliotecas de terceiros, **vendoradas** em `public/assets/vendor/` — CDNs
+  são bloqueados no ambiente de execução, então nunca referencie CDN.
 - **Tipos de campo do modal**: `text`, `textarea`, `select`, `multiselect`,
   `checkbox`, `password`, `number`, `date`, `hidden`, `periodo` (duas datas),
   `info` (bloco só de leitura, com barra colorida opcional; com `itens:
@@ -612,8 +617,42 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   e o TEXTO das `<td>` atravessa o cabeçalho grudado, e `z-index` na célula não
   resolve; o preço é redesenhar a grade do `table-bordered` com borda direita e
   de baixo por célula.
-- Investimentos decididos nunca voltam a PROPOSTO; APROVADO só avança para
-  EXECUTADO.
+- **Governança de investimentos** (`investimento`, `envelope_capital`,
+  `InvestimentoController`, `secoes/investimentos.js`): o funil é **envelope**
+  (quanto há) → **papel** (agrupa antes de ordenar: OBRIGATORIO, MANUTENCAO,
+  EFICIENCIA, CRESCIMENTO, ESTRATEGICO) → **ranking** por taxa de retorno →
+  **decisão** com critério escrito → **auditoria +12M** (prometido × realizado).
+  A situação nasce sozinha: com taxa de retorno informada entra `RANQUEADO`,
+  sem ela `PROPOSTO`.
+  As mudanças de situação passam por `TRANSICOES`, uma tabela explícita, e não
+  por um conjunto de estados intercambiáveis — era por ali que vazava o que a
+  regra proíbe: um PROPOSTO pulava direto a EXECUTADO sem decisão nenhuma, e um
+  EXECUTADO voltava a PROPOSTO e **sumia do comprometido do painel**. Decidir e
+  auditar têm ações próprias (`POST /api/investimentos/{id}/decidir` e
+  `/auditar`), e `decidir()` repete a guarda pela mão: sem ela um item já
+  EXECUTADO podia ser reprovado, o valor saía do comprometido e o envelope
+  mostrava folga inexistente. O critério da decisão é **obrigatório** — "a
+  cascata dá direção, não aprovação".
+  **O envelope é um por horizonte** (`planejamento_id` + `horizonte_id`), e por
+  isso `salvarEnvelope` recusa mover o envelope A para o horizonte de B: sem a
+  recusa, editar um sobrescreveria o outro em silêncio.
+  Duas coisas a saber antes de mexer: **`flex_percentual` é declarativo** — a
+  tela o mostra como `±N%` ao lado do limite, mas nada no servidor o usa, e a
+  barra satura em 100% do `valor_limite`; e **o "comprometido" está escrito em
+  três lugares** (`investimentos.js`, e duas consultas do
+  `RelatorioController`), sempre como `situacao IN ('APROVADO','EXECUTADO',
+  'AUDITADO')`. É a duplicação que este projeto normalmente extrai para um
+  serviço; ela sobreviveu porque nasceu antes da regra, e mudar o conjunto sem
+  mudar os três faz o relatório e a tela discordarem sem ninguém errar nada.
+- **Ata de reunião** (`reuniao`, `RelatorioController::listarReunioes` /
+  `salvarReuniao` / `excluirReuniao`, `/api/reunioes`): data, período coberto,
+  participantes, decisões e próximos passos, presa ao planejamento. O servidor
+  exige as três datas com `periodo_ate >= periodo_de` e **exige as decisões** —
+  ata sem o que foi decidido é lista de presença, não registro. O `autor_id` é
+  **anulável de propósito**: excluir um usuário não pode levar junto o que ele
+  escreveu, então na exclusão a ata vai para a pessoa indicada ou fica sem
+  vínculo e a tela mostra «Sem usuário» (grupo `autoria` de
+  `UsuarioController::excluir` — o mesmo contrato dos comentários).
 - Negócios vêm do Qlik (`FlagFilialNegocio`, códigos oficiais em
   `App\Services\QlikSync::NEGOCIOS_FONTE` — a fonte da verdade, que o
   `seeds.sql` e o passo "negócios oficiais" do `migrate.php` espelham); linhas
