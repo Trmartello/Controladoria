@@ -1611,14 +1611,53 @@ wi-fi, o navegador cai. O item fica travado para sempre — e numa reunião com 
 direção, um item que ninguém consegue editar custa mais caro que uma
 sobrescrita.
 
-Quatro defesas, e nenhuma delas é opcional:
+**O batimento automático foi DESCARTADO** (proposta original, revista com o
+cliente em 2026-09-01). A ideia era renovar o cadeado enquanto o formulário
+estivesse aberto, aproveitando o relógio do tema 10. O furo: **um batimento
+prova que o navegador está aberto, não que existe uma pessoa ali.** Uma aba
+esquecida numa máquina ligada renovaria para sempre — exatamente o cenário que
+o batimento deveria cobrir.
 
-1. **Validade curta** (~2 min). O cadeado morre sozinho.
-2. **Renovação enquanto o formulário está aberto.** O relógio do tema 10 já bate
-   a cada 4s e já sabe se há modal aberto — é ele que renova, sem relógio novo.
-3. **Soltar ao fechar** — salvar, cancelar, Esc. O caminho normal libera na hora.
-4. **Soltar ao sair da página** (`sendBeacon` no `pagehide`), como melhor
-   esforço para o fechar-a-aba.
+**No lugar dele: contador visível e renovação MANUAL** (desenho do cliente):
+
+1. **5 minutos** de validade, com o tempo restante à vista de quem edita.
+2. **"+1 minuto", quantas vezes forem necessárias.** Sem teto, e isso é seguro
+   justamente por ser manual: um clique é prova de vida que um batimento não é.
+3. **Aviso aos 60 segundos**, visível dentro do formulário e com o botão ali.
+   Um número decrescendo num canto não é notado por quem está escrevendo.
+4. **Soltar ao fechar** — salvar, cancelar, Esc. O caminho normal libera na hora.
+5. **Soltar ao sair da página** (`sendBeacon` no `pagehide`), melhor esforço
+   para o fechar-a-aba.
+
+As duas primeiras substituem o batimento e são estritamente melhores nele: o
+cadeado só sobrevive enquanto alguém o pedir de novo.
+
+**O contador é do SERVIDOR, não do navegador.** O pulso devolve *quantos
+segundos faltam*, e o navegador só decrementa entre as batidas. Dois relógios
+dessincronizados mostrariam contagens diferentes para o mesmo cadeado — e o
+contador que decide quem pode salvar não pode depender da hora da máquina de
+ninguém.
+
+### Aos 0:00 o cadeado cai — mas o texto NÃO
+
+Ressalva adotada sobre o pedido literal ("não permite mais editar nem salvar"):
+tomado ao pé da letra, quem estivesse escrevendo um parágrafo aos 4:59 perderia
+o texto. **O recurso que existe para não perder trabalho passaria a perder
+trabalho**, e no pior momento possível.
+
+A regra fica quase igual, com uma diferença que custa pouco:
+
+- aos 0:00 o cadeado **é liberado para os outros** — a regra do cliente,
+  cumprida: o item volta a ficar disponível;
+- o texto **continua na tela** e o Salvar continua tentando;
+- se **ninguém assumiu** o item nesse meio-tempo, o salvamento passa;
+- se **alguém assumiu**, aí sim é recusado — e a recusa mostra o texto para
+  copiar, em vez de engoli-lo.
+
+Assim o cadeado expira sempre (que é o que impede o item de ficar preso), e o
+trabalho só se perde no único caso em que perder faz sentido: alguém realmente
+tomou o lugar. De quebra resolve a corrida boba do "cliquei em Salvar aos 0:02
+e a requisição levou um segundo".
 
 **E, acima de tudo, falhar ABERTO.** Se a rota do bloqueio der erro, a edição
 prossegue. Um sistema de cadeados capaz de impedir todo mundo de trabalhar é
@@ -1645,7 +1684,7 @@ que é justamente onde dois cliques simultâneos passariam os dois.
 
 ```sql
 INSERT INTO edicao_bloqueio (recurso, registro_id, usuario_id, expira_em)
-VALUES (?, ?, ?, NOW() + INTERVAL 120 SECOND)
+VALUES (?, ?, ?, NOW() + INTERVAL 300 SECOND)
 ON DUPLICATE KEY UPDATE
   usuario_id = IF(expira_em < NOW() OR usuario_id = VALUES(usuario_id),
                   VALUES(usuario_id), usuario_id),
@@ -1655,13 +1694,39 @@ ON DUPLICATE KEY UPDATE
 Lê-se de volta quem ficou com ele: sou eu → abriu; é outro → recusa dizendo o
 nome. Sem FK para `usuario`: a linha é efêmera e some por validade.
 
+**Duas durações — e a renovação nunca ENCURTA.** Tomar dá 5 minutos; o "+1
+minuto" acrescenta 60 segundos. O detalhe que morde se ficar implícito: um
+`expira_em = NOW() + INTERVAL 60 SECOND` na renovação faria quem clicasse com
+4:00 restantes **cair para 1:00** — o botão de ganhar tempo tirando tempo. A
+conta certa é
+
+```sql
+expira_em = GREATEST(expira_em, NOW()) + INTERVAL 60 SECOND
+```
+
+que soma um minuto sobre o que resta quando ainda há tempo, e dá um minuto
+cheio a partir de agora quando já não há. Nos dois casos, nunca reduz.
+
 ### Onde a trava é conferida — e por que nos dois lugares
 
-**Na tela**, o ✎ de um item travado aparece apagado com "Maria está editando".
-É esta metade que de fato evita a colisão, porque a pessoa **não chega a
-começar**. Os cadeados vão junto no **pulso** (tema 10), que já roda a cada 4s e
-já é o canal do "o que está acontecendo agora" — sem rota nova e sem relógio
-novo.
+**Na tela**, o item travado mostra **o nome de quem está editando**, no próprio
+lugar do conteúdo — pedido explícito do cliente, e é esta metade que de fato
+evita a colisão, porque a pessoa **não chega a começar**. Onde isso aparece:
+
+| Tela | Onde o nome aparece |
+|---|---|
+| Cascata de Escolhas | na própria **célula** — ali o campo e o item coincidem |
+| PESTEL / Porter / SWOT / Cenário | no **cartão** do fator, no lugar do ✎ |
+| Projetos | na linha da **ação** ou do projeto |
+
+Não haverá trava campo a campo dentro do mesmo formulário. O motivo é o mesmo
+que fez o bloqueio ser do item: os dois salvariam o registro inteiro e o segundo
+apagaria o primeiro. Onde o "campo" do pedido é uma célula inteira — a Cascata,
+que é o caso mais disputado — trava de item e trava de campo são a mesma coisa.
+
+Os cadeados vão junto no **pulso** (tema 10), que já roda a cada 4s e já é o
+canal do "o que está acontecendo agora" — sem rota nova e sem relógio novo. É
+por ele que o nome aparece para os outros em ~4s, e some quando o cadeado cai.
 
 **No servidor**, `salvar()` e `excluir()` recusam quando o cadeado é de outro.
 Sem esta metade o bloqueio é teatro: uma tela velha, aberta antes do cadeado,
@@ -1692,17 +1757,25 @@ e uma linha de guarda.
 3. Duas rotas: `POST /api/bloqueio` (tomar/renovar) e `POST /api/bloqueio/soltar`.
 4. Cadeados no payload do pulso.
 5. `Modal.abrir` ganha `bloqueio: { recurso, id }`: toma ao abrir, solta ao
-   fechar, renova pelo relógio. Um lugar só — as seções passam o par e não
-   cuidam de ciclo de vida nenhum.
-6. `exigirMeu` nos cinco `salvar()`/`excluir()`.
-7. Provas com DUAS sessões, como o tema 10: B não abre o que A tem aberto;
-   o cadeado expira e libera; A fechando solta na hora; e a **falha aberta** —
-   com a rota do bloqueio fora do ar, a edição continua possível.
+   fechar, mostra o contador e o "+1 minuto". Um lugar só — as seções passam o
+   par e não cuidam de ciclo de vida nenhum.
+6. `exigirMeu` nos cinco `salvar()`/`excluir()`, com a regra do 0:00 (aceita se
+   ninguém assumiu).
+7. O nome de quem edita nas telas cobertas, alimentado pelo pulso.
+8. Provas com DUAS sessões, como o tema 10: B não abre o que A tem aberto e vê
+   o nome de A; o cadeado expira e libera; o "+1 minuto" estende; A fechando
+   solta na hora; **o texto sobrevive ao 0:00** quando ninguém assumiu; e a
+   **falha aberta** — com a rota do bloqueio fora do ar, a edição continua.
 
 ### Riscos
 
 - **O cadeado esquecido** — tratado acima; é o risco número um e a razão de
-  metade do desenho.
+  metade do desenho. A renovação manual o cobre melhor que o batimento que a
+  primeira versão propunha.
+- **Ser expulso do próprio formulário.** É o risco que a renovação manual cria,
+  e a razão de o texto sobreviver ao 0:00. Se numa reunião real as pessoas
+  estiverem clicando "+1 minuto" o tempo todo, a validade está curta demais —
+  é o sinal para revisar os 5 minutos, e vale medir na primeira oficina.
 - **Latência no ✎.** Abrir o formulário passa a depender de uma ida ao servidor.
   É uma chamada minúscula, mas o botão precisa de estado de espera para não
   parecer travado no clique.
@@ -1716,10 +1789,12 @@ e uma linha de guarda.
 
 ### Decisões em aberto deste tema
 
-- **Validade de 2 minutos** é chute informado (quatro batidas do relógio de
-  folga). Uma reunião real diz se é pouco.
 - **"Assumir a edição"** de um cadeado expirado: livre para qualquer admin, ou
-  só para quem administra?
+  só para quem administra? (a única que resta antes de construir)
+
+Respondidas pelo cliente em 2026-09-01: validade de **5 minutos**; contador
+visível; renovação **manual** de +1 minuto, sem teto; e o **nome de quem edita**
+no lugar do item para os demais.
 
 ---
 
