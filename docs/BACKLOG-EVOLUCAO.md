@@ -992,7 +992,11 @@ voz alta no começo da reunião.
 
 ## 6. Backup do banco (operação)
 
-### Veredito: **EXECUTAR** — o código está entregue, falta ligar
+### Veredito: **EXECUTAR** — código entregue, **ligado** (cliente, 2026-09-01)
+
+> **Ligado.** O cliente confirmou em 2026-09-01 que o backup está configurado em
+> produção, junto com o envio de e-mail. O que este tema deixa de herança não é
+> mais "falta ligar", e sim **o que confere se continua de pé** — abaixo.
 
 `cli/backup.sh` gera, verifica e restaura o dump do MySQL, com bateria própria
 (`testes/backup.sh`). Não é desenvolvimento: falta a configuração no Railway, e
@@ -1004,8 +1008,21 @@ parece backup e não é. Precisa de um **Volume** montado com `BACKUP_DIR`
 apontando para ele, mais uma cópia periódica **fora do provedor** (backup no
 mesmo lugar do banco não protege contra perder a conta).
 
-Enquanto isso não estiver de pé, todo o resto deste backlog constrói em cima de
-um banco sem cópia — e o custo de adiar não tem teto.
+**O que continua valendo depois de ligado**, porque "configurado" e "funcionando"
+não são a mesma coisa em nenhum dos dois — e as três falhas abaixo são silenciosas:
+
+| Conferir | Como | Por que passa despercebido |
+|---|---|---|
+| O arquivo sobrevive | a linha `✓` no log traz o caminho: fora do Mount Path do Volume, é efêmero | o script imprime `✓` e o arquivo morre com o contêiner |
+| A cópia fora do provedor | `B2_KEY_ID`/`B2_KEY` definidas | sem elas `remoto()` não envia nada e **não reclama**, de propósito |
+| Dá para restaurar | `./cli/backup.sh verificar <arquivo>`, e o passo 9 do deploy | backup que ninguém restaurou é hipótese |
+
+E no e-mail há uma armadilha própria do Railway: **as portas de SMTP são
+bloqueadas lá**, e quem envia de verdade é a API sobre HTTPS (`EMAIL_API_CHAVE`).
+Configurar o bloco `SMTP_*` não dá erro e não envia. `php cli/notificar.php
+diagnostico` diz, na primeira linha, qual dos dois caminhos está em uso —
+rodado **de dentro do contêiner que envia**, que é o único lugar onde a resposta
+vale (o serviço de cron não enxerga as variáveis do web).
 
 ---
 
@@ -1407,12 +1424,16 @@ existir um fórum que consome esse conteúdo é como o sistema morre.
 > (registro de reunião, `projeto.cascata_id`, o **Dossiê do plano**, a **Matriz
 > de Execução**, o **aviso na exclusão com vínculo** e a Coleta & Triagem).
 >
+> **Os passos 0 e 0-bis saíram da fila:** o cliente confirmou em 2026-09-01 que
+> o backup e o envio de e-mail estão configurados em produção. Eles eram o que
+> restava de *operação*, e eram o argumento de "adiar não é mais escolher entre
+> trabalhos". Não são mais pendência — viraram **conferência periódica**, com o
+> que olhar registrado no tema 6.
+>
 > O que resta como *código* é o passo 4 (Matriz de Impacto, **travada na decisão
-> 1**) e a síntese dos Cruzamentos (4c). O que resta como *operação* são os
-> passos 0 e 0-bis, que continuam no topo — e que, entregue o 3-bis, são **tudo
-> o que sobrou de valor alto e esforço pequeno**. A fila de construção chegou ao
-> fim sem que eles fossem ligados: daqui em diante, adiá-los não é mais escolher
-> entre trabalhos, é deixar a única coisa pendente parada.
+> 1**), a síntese dos Cruzamentos (4c) e o mover entre tabelas (9d). Com a
+> operação de pé, a fila volta a ser escolha entre trabalhos — e a única trava
+> que sobrou é de **decisão**, não de esforço.
 
 **0. Ligar o que já existe (horas, zero código).** SMTP + cron diário do Railway
 para `cli/notificar.php`. Um módulo pronto que não roda é a melhor relação
@@ -1472,42 +1493,42 @@ nota de impacto, e não convém passar a atribuir.
 
 | | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
 |---|---|---|
-| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 1 Matriz de Impacto | **Planejar** — 4c Cruzamentos: a síntese |
+| **Impacto alto** | **Fazer agora** — 1 Matriz de Impacto (travada na decisão 1) | **Planejar** — 4c Cruzamentos: a síntese · 9d mover entre tabelas |
 | **Impacto baixo** | — | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
 
 Saíram do quadro por estarem entregues: 5 (registro de reunião), 3a (Matriz de
 Execução), 8 (aviso na exclusão), 3b (vínculo com a Cascata), 2 e 2.1 (Coleta e Tempestade), as fatias
-1–3 dos Cruzamentos com o relatório (§7), o ⤓ Relatório da Cascata e o 7 (Dossiê
-do plano).
+1–3 dos Cruzamentos com o relatório (§7), o ⤓ Relatório da Cascata, o 7 (Dossiê
+do plano) e o 9a–9c (ir ao plano de ação e mover entre análises). Saíram por
+estarem **ligados**: 0 (SMTP+cron) e 6 (backup).
 
-**O “fazer agora” virou só operação.** Depois do 3a, os dois itens de valor alto
-e esforço pequeno que sobraram (0 e 6) não têm linha de código a escrever: são
-configuração no Railway de código que já existe. O 1 está travado numa decisão de
-processo. É o retrato de um backlog no fim da fila de construção — e o motivo de
-os passos 0 e 0-bis não poderem continuar sendo adiados.
+**O "fazer agora" ficou com um item só, e ele não espera esforço — espera
+resposta.** Enquanto a operação estava desligada, ela era o argumento da fila:
+havia trabalho de valor alto que ninguém precisava decidir, só executar. Com o 0
+e o 6 ligados (2026-09-01), sobrou o 1 — e ele está parado na **decisão 1**, não
+por falta de braço. É a primeira vez neste backlog que a fila está travada em
+processo, e não em construção.
 
 **O 7 esteve no “planejar” e mesmo assim foi o primeiro da fila** — a contradição
 aparente que mostra o limite deste quadro: a leitura por esforço não sabe que um
 item foi pedido como urgente. Quando o quadrante e a fila discordarem, vale a
 fila, e o motivo fica escrito ao lado dela.
 
-**O que essa leitura mostra — e o que ela não decide.** O que sobrou no "fazer
-agora" é quase tudo **operação, não desenvolvimento**: dois dos quatro itens (0 e
-6) são configuração no Railway de código que já existe. Não é falha da leitura —
-é o retrato de um backlog já podado, em que o trabalho caro e duvidoso foi
-cortado antes de entrar na lista.
+**O que essa leitura mostra — e o que ela não decide.** O quadro esvaziou por
+dois motivos diferentes, e vale não confundi-los: a maior parte saiu por ter
+sido **entregue**, e o resto do "fazer agora" saiu por ter sido **ligado**. O que
+sobra é um backlog já podado, em que o trabalho caro e duvidoso foi cortado antes
+de entrar na lista — e o que restou depende de gente, não de tempo.
 
 Por isso a coluna "Ordem" da tabela-resumo **não** sai desse cruzamento — ele
-empataria cinco itens. Ela sai da **dependência**: o que precisa existir antes
-para o item seguinte valer alguma coisa. Quem quiser reordenar a fila deve
-discutir a dependência, não o quadrante.
+empataria os itens que sobraram. Ela sai da **dependência**: o que precisa
+existir antes para o item seguinte valer alguma coisa. Quem quiser reordenar a
+fila deve discutir a dependência, não o quadrante.
 
 ## Tabela-resumo
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 6 | **Ligar o backup no Railway** (Volume + cron; código entregue em `cli/backup.sh`) | Executar | — | 0 |
-| 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
 | 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 1 (trava: decisão 1) |
 | 4c | Cruzamentos da SWOT — a síntese (fatia 4, §6) e a sala (5) | Construir | P–M | 2 (ver `docs/CRUZAMENTOS-SWOT.md`) |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | Construir | M | 3 |
@@ -1515,6 +1536,8 @@ discutir a dependência, não o quadrante.
 | 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |
 | 9a | PESTEL e Porter **direto** ao plano de ação | **Entregue** | P | ✔ (decisão do cliente) |
 | 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | **Entregue** | P | ✔ |
+| 6 | Backup do banco no Railway (Volume + cron) | **Ligado** | — | ✔ (cliente, 2026-09-01) |
+| 0 | SMTP + cron dos avisos | **Ligado** | — | ✔ (cliente, 2026-09-01) |
 | 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | **Entregue** | P | ✔ |
 | 7 | **Dossiê do plano: as abas em sequência, por negócio** | **Entregue** | M | ✔ (urgente, antecipado) |
 | 4b | Cruzamentos da SWOT — a ponte (fatia 3) e o ⤓ Relatório (§7) | **Entregue** | M | ✔ |
@@ -1580,10 +1603,16 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
 7. **Quem é o dono da Matriz de Impacto:** a controladoria preenche a grade inteira,
    ou cada gestor preenche a coluna dele? A versão proposta assume a primeira
    (gestor só lê) — é o mais simples e o mais defensável, mas é decisão de processo.
-8. **SMTP, cron e backup já estão configurados em produção?** Se não estiverem,
-   os passos 0 e 0-bis são a primeira coisa a fazer, antes de qualquer linha de
-   código deste backlog. O backup vem primeiro dos dois: um aviso que não sai
-   custa um lembrete; um banco sem cópia custa o sistema.
+8. ~~SMTP, cron e backup já estão configurados em produção?~~ **Respondida pelo
+   cliente (2026-09-01): os dois estão ligados.** Era a única "decisão" que não
+   dependia de opinião, e a resposta tirou os passos 0 e 0-bis da fila. O que
+   fica no lugar dela é **conferência periódica**, não pendência: as três
+   verificações silenciosas do backup (o arquivo sobrevive ao contêiner? há
+   cópia fora do provedor? alguém já restaurou?) e, no e-mail, qual caminho de
+   envio está de fato em uso — no Railway as portas de SMTP são bloqueadas e
+   quem envia é a API (`EMAIL_API_CHAVE`), então o bloco `SMTP_*` pode estar
+   completo sem que nada saia. Tudo tabelado no tema 6; o comando que responde é
+   `php cli/notificar.php diagnostico`, rodado de dentro do contêiner que envia.
 9. ~~Quem responde ao quiz da tempestade?~~ **Respondido e entregue:** qualquer
    pessoa, por QR ou link, sem cadastro — modelo do Quiz Copérdia. A revisão de
    segurança exigida (tema 2.1, decisão A) **foi executada** antes de subir
