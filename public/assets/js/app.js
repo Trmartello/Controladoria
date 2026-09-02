@@ -99,10 +99,13 @@ const App = {
         this.guardarGrupos();
       });
     });
+    // Só um tópico fica guardado; um navegador com a lista antiga (vários
+    // abertos) recupera o primeiro dela.
     let guardados = [];
     try { guardados = JSON.parse(localStorage.getItem('menu.grupos') || '[]'); } catch { /* sem storage */ }
+    const lembrado = Array.isArray(guardados) ? guardados[0] : null;
     menu.querySelectorAll('.grupo-menu').forEach((g) =>
-      this.abrirGrupo(g, Array.isArray(guardados) && guardados.includes(g.dataset.grupo)));
+      this.abrirGrupo(g, !!lembrado && g.dataset.grupo === lembrado));
     // Só o negócio: o ciclo saiu do menu e agora é escolhido em Cadastros.
     document.getElementById('sel-negocio').addEventListener('change', () => alternar(false));
 
@@ -130,7 +133,15 @@ const App = {
     });
   },
 
+  // Um tópico por vez (pedido do cliente, 2026-09-02): abrir um fecha os
+  // outros, como uma sanfona. Quem abre um segundo tópico está indo para lá,
+  // e o primeiro só empurraria a lista para baixo da dobra do celular.
   abrirGrupo(grupo, aberto) {
+    if (aberto) {
+      grupo.parentElement.querySelectorAll('.grupo-menu.aberto').forEach((outro) => {
+        if (outro !== grupo) this.abrirGrupo(outro, false);
+      });
+    }
     grupo.classList.toggle('aberto', aberto);
     grupo.querySelector('.cabecalho-grupo').setAttribute('aria-expanded', String(aberto));
   },

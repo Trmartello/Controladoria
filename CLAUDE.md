@@ -134,8 +134,9 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   padrão do CRM Agro): Painel, Hub e Cadastros soltos; Diagnóstico, Estratégia,
   Execução, Capital, Gestão e Encontro como tópicos com cabeçalho
   (`<button class="cabecalho-grupo">`, `aria-expanded`) e chevron. Nascem
-  fechados; `App.mostrarSecao` abre o tópico da tela ativa, e o que a pessoa
-  abriu fica em `localStorage` (`menu.grupos`). Os links continuam sendo
+  fechados e **só um fica aberto por vez** (abrir um fecha os outros, como uma
+  sanfona — segundo pedido do cliente, no mesmo dia); `App.mostrarSecao` abre o
+  tópico da tela ativa, e o aberto fica em `localStorage` (`menu.grupos`). Os links continuam sendo
   `#nav-secoes .nav-link` / `[data-secao]`: o contrato é o atributo, não a
   profundidade. Prova em `sistema.js` (`provasMenuRecolhido`).
 - **Atalho ⚙ na topbar** (`#btn-cadastros`, ao lado do ☰): abre os Cadastros —
