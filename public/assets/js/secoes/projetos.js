@@ -61,6 +61,16 @@ const STATUS_INICIATIVA = {
   EM_ANDAMENTO: ['Em andamento', 'text-bg-primary'],
   CONCLUIDA: ['Concluída', 'text-bg-success'],
 };
+// Origens que vivem na tabela `fator` e por isso fecham o vínculo pelo MESMO
+// campo (`fator_id`). Até 2026-08 só a SWOT chegava aqui, porque só ela podia
+// encaminhar ao plano; com PESTEL e Porter indo direto (decisão do cliente,
+// ver `FatorController::planoAcao`), a fila passou a trazer as três etapas e o
+// que muda de uma para a outra é só o CATÁLOGO de categorias.
+//
+// A lista e os nomes de tela saem de `Diag.ROTULO_ETAPA`, que é o catálogo
+// único — o "⇄ Mover" do diagnóstico monta os destinos a partir dele, e duas
+// listas de etapas divergiriam na primeira análise nova.
+const ORIGENS_FATOR = Object.keys(Diag.ROTULO_ETAPA);
 
 const SecaoProjetos = {
   plan: null,
@@ -701,6 +711,7 @@ const SecaoProjetos = {
       detalhes,
     ].filter(Boolean).join(' · ');
     return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}"
+      data-cadeado="desdobramento:${a.id}"
       data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
       <div class="card-body py-2 px-2">
         <!-- Linha 1: situação, progresso e o expandir. O selo e o chevron não
@@ -755,13 +766,15 @@ const SecaoProjetos = {
       return;
     }
     this.plan = await App.planejamento();
-    const [projetos, cascata, responsaveis, ideiasAcao, fatoresAcao, cruzamentosAcao] = await Promise.all([
+    const [projetos, cascata, responsaveis, ideiasAcao, fatoresAcao, cruzamentosAcao,
+      cenarioAcao] = await Promise.all([
       App.api(`/api/projetos?planejamento_id=${this.plan.id}`),
       App.api(`/api/cascata?planejamento_id=${this.plan.id}`),
       App.api(`/api/responsaveis?planejamento_id=${this.plan.id}`),
       App.api(`/api/coleta/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
       App.api(`/api/fatores/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
       App.api(`/api/cruzamentos/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
+      App.api(`/api/cenario/aguardando-acao?planejamento_id=${this.plan.id}`).catch(() => []),
     ]);
     // Uma fila só: a origem muda o selo e o campo que fecha o vínculo, não o
     // lugar onde a pendência aparece. Duas listas separadas fariam quem
@@ -771,6 +784,10 @@ const SecaoProjetos = {
       ...ideiasAcao.map((i) => ({ ...i, origem: 'COLETA', chave: `c${i.id}` })),
       ...fatoresAcao.map((f) => ({ ...f, chave: `f${f.id}` })),
       ...cruzamentosAcao.map((c) => ({ ...c, chave: `x${c.id}` })),
+      // A chave é por ORIGEM, não pelo id: `cenario_item` e `fator` numeram
+      // separado, e sem o prefixo dois registros diferentes disputariam a
+      // mesma linha da fila — o "Virar ação" abriria a pendência errada.
+      ...cenarioAcao.map((c) => ({ ...c, chave: `n${c.id}` })),
     ];
     this.cascata = cascata;
     this.responsaveis = responsaveis;
@@ -816,7 +833,7 @@ const SecaoProjetos = {
       // Recolhido mostra só título, situação e a barra; o resto atrás da seta
       const chave = `proj-${p.id}`;
       const detalhado = this.detalhesAbertos.has(chave);
-      return `<div class="card mb-3" data-projeto="${p.id}">
+      return `<div class="card mb-3" data-projeto="${p.id}" data-cadeado="projeto:${p.id}">
         <div class="card-body">
           <!-- A linha do título GRUDA, um degrau abaixo do cabeçalho de
                Projetos: é ela que diz de qual projeto são as frentes e as ações
@@ -1019,7 +1036,23 @@ const SecaoProjetos = {
     el.querySelectorAll('[data-editar-proj]').forEach((b) => b.addEventListener('click', () =>
       this.modalProjeto(projetos.find((p) => p.id == b.dataset.editarProj), projetos)));
     el.querySelectorAll('[data-excluir-proj]').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Excluir o projeto e todos os seus desdobramentos?')) return;
+      // O projeto é ponta de quatro vínculos, e só um deles aparecia na frase
+      // antiga ("e todos os seus desdobramentos"). O investimento é o que mais
+      // surpreende: ele NÃO some — a FK não tem ON DELETE e ele volta a ser um
+      // investimento sem projeto —, mas quem apaga precisa saber que o vínculo
+      // que ele montou vai embora.
+      const p = projetos.find((x) => x.id == b.dataset.excluirProj);
+      const q = (n, s, pl) => Vinculos.quantos(n, s, pl);
+      const acoes = (p?.desdobramentos || []).length;
+      if (!confirm(Vinculos.aviso(`Excluir o projeto «${p?.titulo || ''}»?`, {
+        some: [
+          q(acoes, 'ação 5W2H', 'ações 5W2H'),
+          q((p?.iniciativas || []).length, 'iniciativa', 'iniciativas'),
+          q(p?.comentarios, 'comentário', 'comentários'),
+        ],
+        solta: [q(p?.investimentos_vinculados, 'investimento', 'investimentos')],
+        nota: 'Não dá para desfazer.',
+      }))) return;
       try {
         await App.api(`/api/projetos/${b.dataset.excluirProj}/excluir`, { planejamento_id: this.plan.id });
       } catch (e) {
@@ -1256,6 +1289,7 @@ const SecaoProjetos = {
     Modal.abrir({
       titulo: p ? 'Editar projeto' : 'Novo projeto',
       url: p ? `/api/projetos/${p.id}` : '/api/projetos',
+      bloqueio: p ? { recurso: 'projeto', registro_id: p.id, planejamento_id: this.plan.id } : null,
       valores: p
         ? { ...p, cascata_id: p.cascata_id ?? '', impacto: p.impacto ?? '', planejamento_id: this.plan.id }
         : { planejamento_id: this.plan.id, ano: anoPadrao },
@@ -1316,13 +1350,48 @@ const SecaoProjetos = {
     return opcoes;
   },
 
+  /**
+   * Rótulo, nome da categoria e cor de um fator, seja ele de que etapa for.
+   *
+   * A fila do plano de ação recebe PESTEL, Porter e SWOT pela mesma porta, mas
+   * o vocabulário de cada um mora num lugar diferente: a SWOT tem quadrantes
+   * (`Diag.QUADRANTES`) e as outras duas têm categorias em tuplas
+   * (`Diag.CATEGORIAS_ETAPA`, no formato `[valor, rótulo, cor, dica]`). Ler os
+   * dois formatos aqui, e só aqui, evita que a fila e o modal de conversão
+   * repitam o `if (origem === 'SWOT')` cada um do seu jeito — foi assim que a
+   * Coleta acabou mostrando rótulos com outra caixa dos da seção.
+   *
+   * O fallback é o próprio valor cru: categoria desconhecida (etapa nova, dado
+   * antigo) aparece feia, mas aparece — sumir do selo seria pior.
+   */
+  rotuloEtapa(origem) {
+    return Diag.ROTULO_ETAPA[origem] || origem || '';
+  },
+
+  categoriaDoFator(origem, categoria) {
+    if (origem === 'SWOT') {
+      return { rotulo: Diag.QUADRANTES[categoria] || categoria || 'SWOT',
+        cor: Diag.CORES_QUADRANTE[categoria] || '#007a45' };
+    }
+    const achado = (Diag.CATEGORIAS_ETAPA[origem] || []).find(([v]) => v === categoria);
+    return { rotulo: achado ? achado[1] : (categoria || ''), cor: achado ? achado[2] : '#5a3e2b' };
+  },
+
+  rotuloCategoria(origem, categoria) {
+    return this.categoriaDoFator(origem, categoria).rotulo;
+  },
+
+  corCategoria(origem, categoria) {
+    return this.categoriaDoFator(origem, categoria).cor;
+  },
+
   // Pendências encaminhadas ao plano de ação e ainda sem ação criada: ideias da
-  // coleta, fatores da SWOT e cruzamentos (TOWS), na mesma fila. O selo diz de
-  // onde cada uma veio.
+  // coleta, fatores do PESTEL/Porter/SWOT, cruzamentos (TOWS) e itens da Análise
+  // de Cenário, na mesma fila. O selo diz de onde cada uma veio.
   cartaoIdeiasAcao(pendentes) {
     if (!pendentes || !pendentes.length) return '';
     const podeConverter = App.podeEditar();
-    // Três origens, um selo cada. O do cruzamento mostra o BLOCO (atacar,
+    // Quatro origens, um selo cada. O do cruzamento mostra o BLOCO (atacar,
     // defender…), que é o que diz de que leitura da SWOT a estratégia nasceu —
     // o rótulo do par já vai no texto.
     const selo = (p) => {
@@ -1331,10 +1400,21 @@ const SecaoProjetos = {
         return `<span class="badge text-bg-light border" title="Cruzamento da SWOT · ${
           Modal.esc(b?.rotulo || p.categoria)}">TOWS · ${Modal.esc(b?.verbo || p.categoria)}</span>`;
       }
-      if (p.origem === 'SWOT') {
-        return `<span class="badge text-bg-light border" title="Fator da SWOT · ${Modal.esc(
-          Diag.QUADRANTES[p.categoria] || p.categoria)}">SWOT · ${Modal.esc(
-          Diag.QUADRANTES[p.categoria] || p.categoria)}</span>`;
+      // O cenário mostra o TIPO — situação atual ou tendência —, que é o que
+      // muda a leitura da pendência: uma descreve o hoje, a outra é aposta.
+      if (p.origem === 'CENARIO') {
+        const t = SecaoCenario.TIPOS[p.categoria];
+        return `<span class="badge text-bg-light border" title="Análise de Cenário · ${
+          Modal.esc(t?.rotulo || p.categoria)}">Cenário · ${
+          Modal.esc(t?.rotulo || p.categoria)}</span>`;
+      }
+      // PESTEL, Porter e SWOT são a mesma tabela e o mesmo campo de vínculo; o
+      // que muda é o rótulo da categoria, que vive num catálogo por etapa.
+      if (ORIGENS_FATOR.includes(p.origem)) {
+        const cat = SecaoProjetos.rotuloCategoria(p.origem, p.categoria);
+        const etapa = SecaoProjetos.rotuloEtapa(p.origem);
+        return `<span class="badge text-bg-light border" title="Fator do ${Modal.esc(etapa)} · ${
+          Modal.esc(cat)}">${Modal.esc(etapa)} · ${Modal.esc(cat)}</span>`;
       }
       return `<span class="badge text-bg-light border">Coleta · ${Modal.esc(p.autor)}</span>`;
     };
@@ -1370,15 +1450,64 @@ const SecaoProjetos = {
   },
 
   // Transforma uma pendência numa ação (desdobramento) de uma iniciativa,
-  // guardando o vínculo com a origem — a ideia da coleta ou o fator da SWOT.
+  // guardando o vínculo com a origem — a ideia da coleta, o fator do
+  // diagnóstico, o cruzamento da SWOT ou o item da Análise de Cenário.
   modalConverterAcao(ideia) {
     if (!ideia) return;
-    const daSwot = ideia.origem === 'SWOT';
+    // O vínculo é por TABELA, não por análise: PESTEL, Porter e SWOT são todos
+    // `fator`, e fecham pelo mesmo `fator_id`. O cenário é outra tabela e por
+    // isso é outro campo, embora o gesto do usuário seja o mesmo.
+    const deFator = ORIGENS_FATOR.includes(ideia.origem);
     const doCruzamento = ideia.origem === 'TOWS';
+    const doCenario = ideia.origem === 'CENARIO';
     // O campo que fecha o vínculo, um por origem. Mandar mais de um faria o
     // servidor fechar um vínculo que ninguém pediu.
-    const campoOrigem = doCruzamento ? 'cruzamento_id' : (daSwot ? 'fator_id' : 'coleta_item_id');
+    const campoOrigem = doCruzamento ? 'cruzamento_id'
+      : (deFator ? 'fator_id' : (doCenario ? 'cenario_item_id' : 'coleta_item_id'));
     const blocoCruz = doCruzamento ? SecaoCruzamentos.bloco(ideia.categoria) : null;
+    const tipoCen = doCenario ? SecaoCenario.TIPOS[ideia.categoria] : null;
+
+    /**
+     * As quatro frases que o modal muda conforme a origem: o título, o rótulo
+     * do campo que mostra a pendência, a pergunta do destino e a barra colorida
+     * ao lado do texto.
+     *
+     * Um objeto por origem, e não ternários aninhados: com três origens os
+     * ternários já ocupavam quatro linhas cada, repetidos em quatro lugares do
+     * formulário — e a quarta origem teria de ser encaixada em todos eles, na
+     * mesma ordem, sem esquecer nenhum. Aqui a origem nova é uma chave a mais.
+     */
+    const falas = {
+      TOWS: {
+        titulo: 'Transformar cruzamento em ação',
+        rotulo: 'Cruzamento da SWOT',
+        pergunta: 'Onde este cruzamento vira ação?',
+        // No cruzamento o texto é a ESTRATÉGIA e o rótulo do par vai na barra:
+        // é a estratégia que descreve o que fazer, e é dela que sai o "o quê".
+        barra: { cor: blocoCruz?.cor || '#007a45',
+          titulo: `${blocoCruz?.verbo || 'cruzamento'} — ${ideia.rotulo || ''}` },
+      },
+      FATOR: {
+        titulo: `Transformar fator do ${SecaoProjetos.rotuloEtapa(ideia.origem)} em ação`,
+        rotulo: `Fator do ${SecaoProjetos.rotuloEtapa(ideia.origem)}`,
+        pergunta: 'Onde este fator vira ação?',
+        barra: { cor: SecaoProjetos.corCategoria(ideia.origem, ideia.categoria),
+          titulo: SecaoProjetos.rotuloCategoria(ideia.origem, ideia.categoria) },
+      },
+      CENARIO: {
+        titulo: 'Transformar item do cenário em ação',
+        rotulo: 'Item da Análise de Cenário',
+        pergunta: 'Onde este item vira ação?',
+        barra: { cor: tipoCen?.cor || '#007a45', titulo: tipoCen?.rotulo || ideia.categoria || '' },
+      },
+      COLETA: {
+        titulo: 'Transformar ideia em ação',
+        rotulo: 'Ideia da coleta',
+        pergunta: 'Onde esta ideia vira ação?',
+        barra: { cor: '#5a3e2b', titulo: ideia.autor },
+      },
+    };
+    const fala = falas[doCruzamento ? 'TOWS' : (deFator ? 'FATOR' : (doCenario ? 'CENARIO' : 'COLETA'))];
     const projetos = this.projetos || [];
     const comIniciativas = projetos.filter((p) => (p.iniciativas || []).length);
 
@@ -1421,8 +1550,7 @@ const SecaoProjetos = {
 
     const nomeIdeia = ideia.texto_tratado || ideia.texto;
     Modal.abrir({
-      titulo: doCruzamento ? 'Transformar cruzamento em ação'
-        : (daSwot ? 'Transformar fator da SWOT em ação' : 'Transformar ideia em ação'),
+      titulo: fala.titulo,
       url: '/api/desdobramentos',
       valores: {
         planejamento_id: this.plan.id,
@@ -1443,23 +1571,9 @@ const SecaoProjetos = {
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: campoOrigem, rotulo: '', tipo: 'hidden' },
-        { nome: 'ideia',
-          rotulo: doCruzamento ? 'Cruzamento da SWOT'
-            : (daSwot ? 'Fator da SWOT' : 'Ideia da coleta'),
-          tipo: 'info',
-          // No cruzamento o texto é a ESTRATÉGIA e o rótulo do par vai na barra:
-          // é a estratégia que descreve o que fazer, e é dela que sai o "o quê".
-          texto: ideia.texto,
-          barra: doCruzamento
-            ? { cor: blocoCruz?.cor || '#007a45',
-                titulo: `${blocoCruz?.verbo || 'cruzamento'} — ${ideia.rotulo || ''}` }
-            : (daSwot
-              ? { cor: Diag.CORES_QUADRANTE[ideia.categoria] || '#007a45',
-                  titulo: Diag.QUADRANTES[ideia.categoria] || 'SWOT' }
-              : { cor: '#5a3e2b', titulo: ideia.autor }) },
-        { nome: 'destino',
-          rotulo: doCruzamento ? 'Onde este cruzamento vira ação?'
-            : (daSwot ? 'Onde este fator vira ação?' : 'Onde esta ideia vira ação?'),
+        { nome: 'ideia', rotulo: fala.rotulo, tipo: 'info',
+          texto: ideia.texto, barra: fala.barra },
+        { nome: 'destino', rotulo: fala.pergunta,
           tipo: 'botoes', opcoes: destinos,
           ajuda: 'A ação sempre entra numa iniciativa, e toda iniciativa vive dentro de um projeto.' },
         { nome: 'iniciativa_alvo', rotulo: 'Em qual iniciativa?', tipo: 'select',
@@ -1660,6 +1774,7 @@ const SecaoProjetos = {
     Modal.abrir({
       titulo: dd ? 'Editar ação' : 'Nova ação',
       url: dd ? `/api/desdobramentos/${dd.id}` : '/api/desdobramentos',
+      bloqueio: dd ? { recurso: 'desdobramento', registro_id: dd.id, planejamento_id: this.plan.id } : null,
       valores: dd
         ? { ...dd, quanto: dd.quanto ?? '', planejamento_id: this.plan.id, projeto_id: projetoId,
             iniciativa_id: dd.iniciativa_id ?? iniciativaId,
@@ -1747,20 +1862,30 @@ const SecaoProjetos = {
    * A imagem é a original, encolhida por CSS: não há GD na imagem do PHP para
    * gerar miniatura no servidor, e o teto de 5 MB por arquivo segura o peso.
    */
-  miniaturaAnexo(a) {
+  miniaturaAnexo(a, podeApagar = false, ultimoSemTexto = false) {
     const url = `/api/anexos/${a.id}?planejamento_id=${this.plan.id}`;
     const ext = (a.nome.split('.').pop() || '').toUpperCase().slice(0, 4);
     const corpo = a.imagem
       ? `<img src="${url}" alt="${Modal.esc(a.nome)}" loading="lazy">`
       : `<span class="selo-ext selo-ext-${ext.toLowerCase()}">${Modal.esc(ext)}</span>`;
+    // O × é IRMÃO do link, nunca filho: botão dentro de <a> é HTML inválido, e
+    // o clique acabaria abrindo o anexo em vez de removê-lo.
+    const excluir = podeApagar
+      ? `<button type="button" class="anexo-excluir" data-excluir-anexo="${a.id}"
+          data-anexo-nome="${Modal.esc(a.nome)}"${ultimoSemTexto ? ' data-ultimo="1"' : ''}
+          title="Remover este anexo" aria-label="Remover o anexo ${Modal.esc(a.nome)}">×</button>`
+      : '';
     // `download` no link do documento: ele já desce como anexo pelo servidor, e
     // o atributo evita a aba em branco que o navegador abre antes de baixar.
-    return `<a class="anexo-mini" href="${url}" target="_blank" rel="noopener"
-        ${a.imagem ? '' : 'download'} title="${Modal.esc(a.nome)}">
-      <span class="anexo-face">${corpo}</span>
-      <span class="anexo-nome">${Modal.esc(a.nome)}</span>
-      <span class="anexo-tamanho">(${this.tamanho(a.tamanho)})</span>
-    </a>`;
+    return `<span class="anexo-item">
+      <a class="anexo-mini" href="${url}" target="_blank" rel="noopener"
+          ${a.imagem ? '' : 'download'} title="${Modal.esc(a.nome)}">
+        <span class="anexo-face">${corpo}</span>
+        <span class="anexo-nome">${Modal.esc(a.nome)}</span>
+        <span class="anexo-tamanho">(${this.tamanho(a.tamanho)})</span>
+      </a>
+      ${excluir}
+    </span>`;
   },
 
   /**
@@ -1778,9 +1903,14 @@ const SecaoProjetos = {
 
     const itens = lista.map((c) => {
       const inicial = (c.autor || '?').trim().charAt(0).toUpperCase();
-      const anexos = (c.anexos || []).length
-        ? `<div class="grade-anexos">${c.anexos.map((a) => this.miniaturaAnexo(a)).join('')}</div>` : '';
       const podeApagar = Number(c.autor_id) === Number(eu.id) || eu.perfil === 'ADMIN';
+      // Remover o único anexo de um comentário sem texto apaga o comentário —
+      // é a regra do servidor. A tela precisa saber disso ANTES de perguntar,
+      // para avisar do que vai acontecer em vez de só relatar depois.
+      const ultimoSemTexto = (c.anexos || []).length === 1 && !(c.texto || '').trim();
+      const anexos = (c.anexos || []).length
+        ? `<div class="grade-anexos">${c.anexos
+            .map((a) => this.miniaturaAnexo(a, podeApagar, ultimoSemTexto)).join('')}</div>` : '';
       return `<div class="comentario d-flex gap-2">
         <span class="avatar-inicial" aria-hidden="true">${Modal.esc(inicial)}</span>
         <div class="flex-grow-1 min-w-0">
@@ -1824,6 +1954,25 @@ const SecaoProjetos = {
         if (!confirm('Excluir este comentário? Os anexos dele saem junto.')) return;
         try {
           await App.api(`/api/comentarios/${b.dataset.excluirComentario}/excluir`,
+            { planejamento_id: this.plan.id });
+        } catch (e) {
+          alert(e.message);
+        }
+        this.renderComentarios();
+      }));
+
+    // Remover UM anexo. Antes disso, tirar o arquivo errado custava o
+    // comentário inteiro — apagar tudo e reescrever, com o texto junto.
+    alvo.querySelectorAll('[data-excluir-anexo]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const nome = b.dataset.anexoNome || 'este anexo';
+        const pergunta = b.dataset.ultimo
+          ? `Remover “${nome}”? É o único anexo e o comentário não tem texto — `
+            + 'o comentário sai junto.'
+          : `Remover o anexo “${nome}”? O comentário e os demais anexos ficam.`;
+        if (!confirm(pergunta)) return;
+        try {
+          await App.api(`/api/anexos/${b.dataset.excluirAnexo}/excluir`,
             { planejamento_id: this.plan.id });
         } catch (e) {
           alert(e.message);

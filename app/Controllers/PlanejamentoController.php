@@ -5,9 +5,45 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Core\Versao;
+use App\Services\Bloqueio;
 
 class PlanejamentoController
 {
+    /**
+     * O pulso do ciclo: `{planejamento_id: versao}`.
+     *
+     * É o que permite a duas telas abertas ao mesmo tempo se acompanharem. Roda
+     * a cada poucos segundos POR ADMIN conectado, e é por isso que ela não faz
+     * mais nada: lê uma tabela de duas colunas por chave primária e devolve
+     * inteiros. Nenhuma consulta de conteúdo, nenhuma escrita — nem para criar
+     * a linha do plano que ainda não foi escrito, que a tela lê como zero.
+     *
+     * A versão sozinha não diz O QUE mudou, e isso é de propósito: quem sabe
+     * ler o próprio conteúdo é a seção, e ela já sabe fazer isso. O pulso
+     * responde só "vale a pena reler?".
+     */
+    public function pulso(): void
+    {
+        $u = Auth::exigirLogin();
+        $cicloId = (int)($_GET['ciclo_id'] ?? 0);
+        if (!$cicloId) {
+            Json::erro('Informe o ciclo.');
+        }
+        Json::ok([
+            // `(object)` porque array associativo VAZIO vira `[]` em JSON, não
+            // `{}`: um ciclo em que ninguém escreveu devolveria uma lista, e a
+            // tela faria `mapa[id]` num array. Funciona por acidente (dá
+            // `undefined`, lido como zero) e quebra ao iterar as chaves.
+            'versoes' => (object)Versao::doCiclo($cicloId, Auth::escopoNegocios($u)),
+            // Os cadeados viajam JUNTO com as versões porque respondem à mesma
+            // pergunta — "o que está acontecendo agora?" — no mesmo relógio de
+            // 4s. Uma rota própria dobraria o tráfego da consulta mais chamada
+            // do sistema para responder metade do que a tela precisa saber.
+            'bloqueios' => Bloqueio::doCiclo($cicloId, (int)$u['id']),
+        ]);
+    }
+
     /**
      * Resolve o contexto (ciclo + negócio ou corporativo): retorna o
      * planejamento — criando-o se ainda não existir — e o checklist do método.

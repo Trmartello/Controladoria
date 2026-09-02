@@ -30,6 +30,11 @@ class Quiz
         'CASCATA' => ['ESCOLHA' => 'Escolha', 'RENUNCIA' => 'Renúncia'],
         'CENARIO' => ['SITUACAO_ATUAL' => 'Situação atual', 'TENDENCIA' => 'Tendência'],
         'FATOR'   => [],
+        // O CRUZAMENTO não tem lado, tem PAR: o que ele pede a mais da pessoa
+        // não é uma escolha entre dois rótulos, são dois fatores da SWOT. Isso
+        // viaja em campos próprios (`fator_interno_id`/`fator_externo_id`), e
+        // não aqui — lado é uma etiqueta no texto, par é o conteúdo.
+        'CRUZAMENTO' => [],
         'LIVRE'   => [],
     ];
 
@@ -42,6 +47,10 @@ class Quiz
         'CASCATA' => 255,
         'CENARIO' => 255,
         'FATOR'   => 255,
+        // A estratégia é um parágrafo do material, não uma frase de cartão:
+        // "aproveitar a janela de proteína para expandir a Fábrica de Rações,
+        // usando a força do maior negócio como âncora" já passa de 255.
+        'CRUZAMENTO' => 400,
         'LIVRE'   => 400,
     ];
 
@@ -156,6 +165,7 @@ class Quiz
         'CASCATA' => 'Cascata de Escolhas',
         'CENARIO' => 'Análise de Cenário',
         'FATOR'   => 'Diagnóstico',
+        'CRUZAMENTO' => 'Cruzamentos (SWOT)',
         'LIVRE'   => 'Tempestade de ideias',
     ];
 
@@ -174,6 +184,7 @@ class Quiz
     private const SECAO = [
         'CASCATA' => 'cascata',
         'CENARIO' => 'cenario',
+        'CRUZAMENTO' => 'cruzamentos',
         'LIVRE'   => 'coleta',
     ];
 
@@ -296,6 +307,9 @@ class Quiz
             case 'FATOR':
                 return self::rotuloCategoria((string)$p['categoria'])
                     . " · {$p['etapa']} {$p['ano']}";
+            case 'CRUZAMENTO':
+                return (Cruzamentos::BLOCOS[(string)$p['categoria']]['rotulo'] ?? 'Cruzamentos')
+                    . " · {$p['ano']}";
             case 'LIVRE':
                 return (string)($p['enunciado'] ?: 'Tempestade de ideias');
             default:
@@ -364,14 +378,40 @@ class Quiz
      * aqui que o rito da sala passa a ser DA PERGUNTA — o participante nunca
      * vê o modo da rodada, só o que está sendo perguntado agora.
      */
-    public static function paraSala(array $p): array
+    public static function paraSala(array $p, ?int $planId = null): array
     {
         $tipo = (string)($p['alvo_tipo'] ?? 'CASCATA');
         $lados = [];
         foreach (self::LADOS[$tipo] ?? [] as $valor => $rot) {
             $lados[] = ['valor' => $valor, 'rotulo' => $rot];
         }
+        // O alvo CRUZAMENTO é o único que manda REGISTROS para o celular: sem
+        // as duas listas a pessoa não tem o que escolher. Elas descem para uma
+        // tela sem login, e por isso vêm de `Cruzamentos::doQuadrante`, que
+        // devolve só id e descrição — a decisão de o que expor mora lá, num
+        // lugar só, e não espalhada em SELECTs por aí.
+        //
+        // O `planejamento_id` vem de QUEM CHAMA (a rodada), nunca da pergunta:
+        // ela não o carrega, e derivá-lo por JOIN aqui faria toda pergunta de
+        // toda análise pagar uma junção que só este alvo usa.
+        $pares = [];
+        if ($tipo === 'CRUZAMENTO' && $planId) {
+            $bloco = Cruzamentos::BLOCOS[(string)($p['categoria'] ?? '')] ?? null;
+            if ($bloco) {
+                $pares = [
+                    'interno' => [
+                        'rotulo' => self::rotuloCategoria($bloco['interno']),
+                        'itens' => Cruzamentos::doQuadrante($planId, (int)$p['ano'], $bloco['interno']),
+                    ],
+                    'externo' => [
+                        'rotulo' => self::rotuloCategoria($bloco['externo']),
+                        'itens' => Cruzamentos::doQuadrante($planId, (int)$p['ano'], $bloco['externo']),
+                    ],
+                ];
+            }
+        }
         return [
+            'pares' => $pares ?: null,
             'id' => (int)$p['id'],
             'alvo_tipo' => $tipo,
             'titulo' => self::titulo($p),
@@ -404,6 +444,11 @@ class Quiz
                     ? sprintf($modelo, (int)$p['ano'])
                     : 'O que você vê em ' . self::rotuloCategoria((string)$p['categoria'])
                         . " para {$p['ano']}?";
+            case 'CRUZAMENTO':
+                $bloco = Cruzamentos::BLOCOS[(string)$p['categoria']] ?? null;
+                return $bloco
+                    ? "Que {$bloco['pergunta']}"
+                    : 'Que cruzamento você propõe?';
             case 'LIVRE':
                 return 'Quais ideias você tem sobre este tema?';
             default:
@@ -434,6 +479,19 @@ class Quiz
                     ['rotulo' => 'Categoria',
                      'valor' => self::rotuloCategoria((string)$p['categoria'])],
                 ];
+            case 'CRUZAMENTO':
+                $bloco = Cruzamentos::BLOCOS[(string)$p['categoria']] ?? null;
+                return $bloco ? [
+                    ['rotulo' => 'Análise', 'valor' => "Cruzamentos da SWOT · {$p['ano']}"],
+                    ['rotulo' => 'Bloco', 'valor' => $bloco['rotulo']],
+                    // O verbo é o que diz à sala QUE TIPO de estratégia se
+                    // espera: com força e ameaça na mão, "defender" e "atacar"
+                    // levam a respostas diferentes, e quem responde pelo celular
+                    // não tem o material do bloco na frente.
+                    ['rotulo' => 'Como responder',
+                     'valor' => 'Escolha um fator de cada lado e escreva o que fazer — '
+                        . "neste bloco a estratégia é {$bloco['verbo']}."],
+                ] : [];
             case 'LIVRE':
                 return [];
             default:
@@ -512,6 +570,25 @@ class Quiz
                     }
                     $linhas[] = array_merge($vazio, ['ano' => $ano, 'etapa' => $etapa,
                                                      'categoria' => $categoria]);
+                }
+                return self::semRepetir($linhas);
+
+            case 'CRUZAMENTO':
+                // Um alvo por BLOCO do TOWS, guardado na coluna `categoria`
+                // (ver o esquema): a pergunta do cruzamento é sempre "deste
+                // bloco, que par vocês propõem?". Sem fallback, pela mesma
+                // razão do FATOR — adivinhar um bloco abriria para a sala algo
+                // que ninguém escolheu.
+                $ano = self::validarAno($d, $plan);
+                if (!$d['alvos']) {
+                    Json::erro('Marque pelo menos um bloco do cruzamento para perguntar.');
+                }
+                $linhas = [];
+                foreach ($d['alvos'] as $bloco) {
+                    if (!isset(Cruzamentos::BLOCOS[(string)$bloco])) {
+                        Json::erro('Bloco de cruzamento inválido.');
+                    }
+                    $linhas[] = array_merge($vazio, ['ano' => $ano, 'categoria' => (string)$bloco]);
                 }
                 return self::semRepetir($linhas);
 
@@ -813,6 +890,39 @@ class Quiz
                     destino_tipo = NULL, destino_id = NULL, triado_por = NULL, triado_em = NULL
               WHERE destino_tipo = ? AND destino_id IN ({$marcas})",
             array_merge([$destinoTipo], $ids)
+        );
+    }
+
+    /**
+     * Leva as vozes de um registro para OUTRO — a mudança de análise que troca
+     * de tabela (item de cenário ⇄ fator).
+     *
+     * É o contrário do `soltarVozes`, e a diferença é de propósito: ali o
+     * registro morre e não há para onde levar as vozes; aqui o registro morre
+     * mas o conteúdo dele CONTINUA, com outro id, noutra tabela. Devolvê-las à
+     * fila neste caso seria pior que não fazer nada: o item já existe no
+     * destino, e triar a ideia de novo criaria um SEGUNDO registro dizendo a
+     * mesma coisa — duplicata que ninguém pediu, no meio de uma reunião.
+     *
+     * Nada de `situacao` muda: a voz continua ACEITA, com a mesma redação
+     * (`texto_tratado` viaja na própria linha) e o mesmo autor. O que muda é
+     * apenas para ONDE ela aponta.
+     *
+     * **A voz do quiz atravessa mesmo tendo vindo de uma pergunta de outro
+     * alvo.** A guarda de `alvo_tipo` do `vincularSugestoes` existe para
+     * impedir que alguém amarre ao seu item uma voz que é de outro — aqui não
+     * há escolha nenhuma sendo feita: viajam exatamente as vozes que JÁ eram
+     * deste registro. É por isso, porém, que o "solta quem saiu" dos dois
+     * `vincularSugestoes` precisou ser apertado para só alcançar o que o painel
+     * poderia ter oferecido: sem isso, a primeira edição do registro no destino
+     * soltaria calada as vozes que acabaram de chegar.
+     */
+    public static function mudarDestino(string $deTipo, int $deId, string $paraTipo, int $paraId): void
+    {
+        Database::executar(
+            'UPDATE coleta_item SET destino_tipo = ?, destino_id = ?
+              WHERE destino_tipo = ? AND destino_id = ?',
+            [$paraTipo, $paraId, $deTipo, $deId]
         );
     }
 

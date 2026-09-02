@@ -47,13 +47,19 @@ class InvestimentoController
              WHERE e.planejamento_id = ?',
             [$planId]
         );
+        // `comentarios` conta o que a exclusão leva junto: o comentário é
+        // polimórfico (`ref_tipo`/`ref_id`), não tem FK, e quem o apaga é o
+        // `excluir` daqui — em silêncio, até a tela passar a dizê-lo antes.
+        // Subconsulta na listagem que já existe, não uma chamada por cartão.
         $investimentos = Database::todos(
-            'SELECT i.*, h.nome AS horizonte_nome, p.titulo AS projeto_titulo
+            "SELECT i.*, h.nome AS horizonte_nome, p.titulo AS projeto_titulo,
+                    (SELECT COUNT(*) FROM comentario c
+                      WHERE c.ref_tipo = 'INVESTIMENTO' AND c.ref_id = i.id) AS comentarios
              FROM investimento i
              LEFT JOIN horizonte h ON h.id = i.horizonte_id
              LEFT JOIN projeto p ON p.id = i.projeto_id
              WHERE i.planejamento_id = ?
-             ORDER BY i.papel, i.taxa_retorno DESC, i.id',
+             ORDER BY i.papel, i.taxa_retorno DESC, i.id",
             [$planId]
         );
 

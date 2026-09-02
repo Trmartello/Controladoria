@@ -298,13 +298,23 @@ class QuizController
             }
         }
 
+        // O par do CRUZAMENTO vem com as DESCRIÇÕES, não só com os ids: o
+        // cartão do painel precisa mostrar o que a pessoa cruzou, e o condutor
+        // decide olhando o par, não dois números. Os JOINs são LEFT porque a
+        // FK é `SET NULL` — apagado o fator, a voz continua e a tela mostra que
+        // aquele lado do par se desfez, em vez de sumir com a resposta.
         $sugestoes = $foco ? Database::todos(
             "SELECT ci.id, ci.texto, ci.tipo_resposta, ci.votos, ci.situacao,
                     ci.agrupado_em_id, ci.unido_de_id,
+                    ci.fator_interno_id, ci.fator_externo_id,
+                    fi.descricao AS interno_descricao, fi.categoria AS interno_categoria,
+                    fe.descricao AS externo_descricao, fe.categoria AS externo_categoria,
                     (ci.destino_id IS NOT NULL) AS vinculada,
                     COALESCE(u.nome, ci.autor_nome, 'Participante') AS autor
              FROM coleta_item ci
              LEFT JOIN usuario u ON u.id = ci.autor_id
+             LEFT JOIN fator fi ON fi.id = ci.fator_interno_id
+             LEFT JOIN fator fe ON fe.id = ci.fator_externo_id
              WHERE ci.pergunta_id = ?
              ORDER BY ci.votos DESC, ci.criado_em, ci.id",
             [(int)$foco['id']]

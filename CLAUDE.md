@@ -5,13 +5,71 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 
 ## Arquitetura
 
+- **Onde fica o quê**: `app/` (Core, Controllers, Services), `views/` na RAIZ —
+  não em `app/Views/` — com as três telas que existem (`shell.php`, o one-page
+  atrás do login, com as 18 `<section class="secao d-none">`; `login.php`; e
+  `participante.php`, a do celular sem login), `public/` (front controller e
+  assets), `database/`, `cli/`, `config/`, `testes/`, `docs/`.
+  Qual arquivo atende qual seção **não está escrito aqui de propósito**: o mapa
+  vive em `App.recarregarSecaoAtiva()` (`app.js`), e uma segunda cópia num
+  documento é a que ninguém atualiza. Este guia cita o arquivo quando explica
+  uma regra, não como catálogo.
 - **Front controller**: `public/index.php` — tabela de rotas em `switch (true)`.
   Todo método de controller termina em `Json::ok()`/`Json::erro()` (ambos
   encerram a execução), mas cada `case` ainda leva `break;` defensivo.
+  Ele também **serve os assets** ele mesmo, por um mapa de extensão→MIME no
+  topo do arquivo. Isso tem uma consequência prática: **tipo de asset novo que
+  não esteja no mapa vira 404**, não arquivo entregue — é uma linha a
+  acrescentar, mas quem não souber vai procurar o defeito no HTML. A forma
+  antiga (devolver `false` e deixar o servidor embutido resolver) foi
+  abandonada por duas medições: o arquivo saía sem `Content-Type`, sem cache e
+  sem `nosniff`; e o `php -S` respondia a esse `false` **incluindo o
+  `index.php` de novo na mesma requisição**, onde a redeclaração de
+  `versao_asset()` derrubava o pedido com erro fatal — bastava um robô pedir
+  `/index.php`. Por isso os cabeçalhos de segurança aparecem **duas vezes** no
+  arquivo: este bloco sai antes do bloco geral, e sem repeti-los `/index.php` e
+  `/.htaccess` respondiam sem CSP nenhuma.
+- **Cabeçalhos de segurança**, no topo do front controller e **antes de abrir a
+  sessão**: `X-Content-Type-Options`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: same-origin`, `Content-Security-Policy`, HSTS quando a
+  requisição chegou por HTTPS, e `header_remove('X-Powered-By')`. A ordem é
+  deliberada e custou um defeito: o handler de sessão consulta o MySQL, e uma
+  queda do banco estourava a exceção **antes** dessas linhas — a resposta 500
+  saía sem CSP, sem `X-Frame-Options` e com a versão do PHP à mostra,
+  justamente nas rotas autenticadas.
+  A CSP é `default-src 'self'` com `style-src` liberando `'unsafe-inline'` e
+  mais nada. Ela não é decoração: é o que **proíbe**, na aplicação inteira,
+  `<script>` embutido no HTML, `onclick=` no atributo e qualquer `eval` — hoje
+  não existe uma única ocorrência dos três, e código novo que use qualquer um
+  deles simplesmente não roda no navegador. É também a razão de fundo das
+  bibliotecas vendoradas: sem `script-src` para um CDN, referenciar um CDN é
+  código morto, não escolha de estilo. E é o que faz a bateria de sistema não
+  poder usar `page.waitForFunction` (ele avalia string como JS) — está anotado
+  em `testes/README.md`, mas a causa é esta linha.
+- **Fuso horário — o servidor e o banco precisam concordar.** O contêiner roda
+  em UTC e a cooperativa trabalha em UTC−3, então das 21h à meia-noite o
+  servidor já estava no dia seguinte. Isso marcava como ATRASADA a ação que só
+  vence amanhã, podia disparar o relatório semanal num domingo à noite e
+  gravava `data_reg` do dia errado no diário. `config/config.php` resolve com
+  `date_default_timezone_set(env('TZ_APP', 'America/Sao_Paulo'))`, e o arquivo é
+  carregado por **todos** os pontos de entrada — front controller, migração e
+  CLI de avisos —, então o fuso vale para os três.
+  Só que metade das decisões de data é tomada no **SQL**, não no PHP:
+  `Avisos::despachar` usa `date('Y-m-d')`, `Consolidacao::sincronizarAtrasos`
+  usa `CURDATE()`, e os dois decidem a mesma coisa. Por isso o `Database`
+  manda `SET time_zone` na abertura da conexão, com o **deslocamento**
+  (`date('P')`, e não o nome da zona: nome exige as tabelas de fuso carregadas
+  no MySQL, o que nem sempre acontece). Data nova, venha de `NOW()` ou de
+  `date()`, já nasce concordando — mas só porque essa linha existe.
 - **Core** (`app/Core/`): `Auth` (sessão, perfis ADMIN/CONTROLADORIA/DIRECAO/
   GESTOR/LEITURA, escopo usuário×negócio, CSRF via header `X-CSRF-Token`),
-  `Database` (PDO, sempre prepared statements), `Json`, `SessaoBanco`
-  (sessões em MySQL na tabela `sessao` — sobrevivem a deploys; cookie 30 dias).
+  `Database` (PDO, sempre prepared statements; é ele que acerta o fuso da
+  conexão — ver o bullet do fuso horário), `Json`, `SessaoBanco`
+  (sessões em MySQL na tabela `sessao` — sobrevivem a deploys; cookie 30 dias),
+  `Versao` (o **pulso**: um contador por planejamento que sobe a cada escrita,
+  marcado DENTRO de `Auth::exigirEdicaoPlanejamento()` para que endpoint novo
+  não precise lembrar de marcá-lo — ver "Duas telas juntas") e `Email` (cliente
+  SMTP/API escrito à mão: sem Composer, não há biblioteca para isso).
 - **Serviços** (`app/Services/`): `QlikSync`, `Recorrencia` (repetição das
   ações — usada pelo cadastro), `Avisos` (e-mails do plano
   de ação), `Consolidacao` (reconciliação do que é *consequência*: atraso da
@@ -21,9 +79,25 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   atraso até alguém abrir a seção, e os números mudavam sozinhos depois.
   `Fatores::exigirSemAcao` é a guarda **compartilhada** por `FatorController` e
   `ColetaController`: excluir um fator (ou a ideia que virou fator) apaga junto
-  o promovido à SWOT, e é ele que pode carregar o `desdobramento_id` — a guarda
+  o promovido à SWOT, e ele também pode carregar o `desdobramento_id` — a guarda
   confere `f.id IN (…) OR f.promovido_de_id IN (…)`, senão a ação ficava no
-  plano sem origem nenhuma. Autoload PSR-4 caseiro em `public/index.php`
+  plano sem origem nenhuma. Ela é uma casca sobre **`Fatores::acoesQuePrendem`**,
+  que devolve `[fator => ação]` para uma lista inteira: é a MESMA consulta que
+  alimenta o `acao_trava` da listagem, com que a tela desabilita o × antes do
+  clique. Uma definição só de "está preso" — a tela e o servidor não podem
+  discordar.
+  Os quatro serviços mais novos existem pelo MESMO motivo do `Fatores`: uma
+  regra que passou a ter **dois chamadores**. `Quiz` (o que cada alvo de
+  pergunta significa — o lado da resposta, o limite de texto, o contexto que
+  desce ao celular: nasceu repartido entre controller e tela), `Cruzamentos`
+  (a regra do par da TOWS, pedida pela tela autenticada **e pela rota
+  pública**), `Bloqueio` (o cadeado de edição, com as guardas que o servidor
+  aplica) e `CargaConteudo` (texto redigido fora do sistema, aplicado pelo
+  migrate e pela CLI). Serviço aqui não é camada por gosto: é onde a regra fica
+  escrita **uma vez**, para que a segunda cópia — que na prática é a frouxa, e
+  no caso do `Cruzamentos` seria a exposta sem login — não chegue a existir.
+  Cada um está explicado na sua seção de regra de negócio, abaixo.
+  Autoload PSR-4 caseiro em `public/index.php`
   (`App\` → `app/`);
   **não há Composer nem `vendor/`** — nada de dependência externa em PHP.
 - **Contexto: ciclo × negócio.** O **negócio** é seletor do menu lateral — troca
@@ -36,7 +110,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   as telas, e estado desses em seção que se repinta some no primeiro redesenho.
   O rótulo tem uma fonte só (`App.rotuloCiclo`), usada pelo menu e pela topbar.
   O cabeçalho do menu é **espaço tirado da navegação** — ele empurra as
-  dezesseis seções para baixo. Por isso rótulo, valor e o ⚙ dividem UMA linha,
+  dezoito seções para baixo. Por isso rótulo, valor e o ⚙ dividem UMA linha,
   o subtítulo "Planejamento Estratégico" só aparece onde a topbar o esconde
   (`d-sm-none`, abaixo de 576px) e no menu vai só o NOME do ciclo, com o
   ano-base no `title`: numa linha só, "2027–2035 (base 2026)" era cortado
@@ -48,7 +122,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   destino".
 - **Atalho ⚙ na topbar** (`#btn-cadastros`, ao lado do ☰): abre os Cadastros —
   a tela de AJUSTAR o sistema, que não faz parte do percurso do planejamento e
-  se procurava no meio de dezesseis seções. É um `<a data-secao>`, o mesmo
+  se procurava no meio de dezoito seções. É um `<a data-secao>`, o mesmo
   contrato dos itens do menu, e por isso o ouvinte de navegação casa por
   `[data-secao]` sem prefixo de container (ele não alcança o
   `data-secao-pergunta` do quiz: seletor de atributo casa por nome exato). O
@@ -69,14 +143,31 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   outra e procurar um botão inexistente — `null.addEventListener`, e a tela
   inteira virava alerta vermelho. Formulários via
   fábrica declarativa `Modal.abrir({campos, url, valores, transformar, extra,
-  aoSalvar, enviar})` (`modal.js`) — `enviar` substitui o POST padrão quando
+  aoSalvar, enviar, aoMudar, bloqueio})` (`modal.js`) — `bloqueio:
+  {recurso, registro_id, planejamento_id}` é tudo o que um formulário precisa
+  dizer para ganhar o cadeado de edição; `enviar` substitui o POST padrão quando
   salvar exige mais de uma chamada (o 409 de sala aberta virando confirmação).
-  Componentes usados por VÁRIAS seções ficam soltos em `public/assets/js/`
-  (`quiz.js`) e carregam antes das seções no `shell.php`.
+  Componentes usados por VÁRIAS seções ficam soltos em `public/assets/js/` e
+  carregam antes das seções no `shell.php`: `quiz.js` (`QuizSala`, a condução
+  do 🎤 — cascata, coleta, cruzamentos, diagnóstico e sala), `vinculos.js`
+  (`Vinculos.aviso()`, o que some junto ao excluir), `relatorio-analise.js`
+  (`RelatorioAnalise`, o corpo comum do relatório de uma análise), `vivo.js`
+  (`Vivo`, o relógio de 4s que lê o pulso) e `cadeado.js` (`Cadeado`, o
+  contador do item travado).
+  Os dois últimos ninguém liga na seção: `App.recarregarSecaoAtiva()` arma e
+  para o `Vivo` (depois de a pintura terminar — armar antes tomaria a versão de
+  referência com a tela ainda lendo, e uma escrita nesse intervalo passaria por
+  "já vista"), e o `Modal.abrir` toma e solta o `Cadeado` sozinho, a partir do
+  `bloqueio:` do formulário. É a mesma escolha do `Versao::alvo()` no servidor —
+  seção nova que esquecesse de chamá-los não quebraria nada visível, e defeito
+  que se contorna com F5 é defeito que fica.
   `App.api` põe `codigo` e `status` no `Error` que lança: erro que a tela
   precisa DECIDIR (e não só mostrar) vem por código, nunca por texto.
-  Bootstrap 5.3.3 **vendorado** em `public/assets/vendor/` (CDNs são
-  bloqueados no ambiente de execução — nunca referencie CDN).
+  Bootstrap 5.3.3 e o `qrcode.js` (o QR da sala) são as duas ÚNICAS
+  bibliotecas de terceiros, **vendoradas** em `public/assets/vendor/` — CDNs
+  são bloqueados no ambiente de execução E pela CSP da própria aplicação
+  (`default-src 'self'`), então nunca referencie CDN: não é preferência, é
+  código que não carrega.
 - **Tipos de campo do modal**: `text`, `textarea`, `select`, `multiselect`,
   `checkbox`, `password`, `number`, `date`, `hidden`, `periodo` (duas datas),
   `info` (bloco só de leitura, com barra colorida opcional; com `itens:
@@ -251,6 +342,140 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   `diagnostico.js` (`Diag`), limitado a [ano_base, ano_fim] do ciclo.
 - Promoção PESTEL/Porter → SWOT copia o `ano`; o botão do fator promovido
   mostra a categoria SWOT na cor do quadrante e reabre a edição.
+- **Duas telas juntas** (`planejamento_versao`, `App\Core\Versao`,
+  `public/assets/js/vivo.js`): mais de um ADMIN preenchendo ao mesmo tempo, e o
+  que um grava aparece no outro em ~4s sem ninguém apertar F5. Nasceu do custo
+  real de uma reunião com a direção, onde "atualiza aí" se repete dezenas de
+  vezes.
+  **O pulso é um contador por planejamento**, não `MAX(atualizado_em)`: a maioria
+  das tabelas não tem carimbo, e as que têm não registram DELETE — apagar um
+  fator não mexeria em carimbo nenhum e a outra tela seguiria mostrando o que já
+  não existe. `GET /api/pulso?ciclo_id=` devolve `{versoes, bloqueios}` e é
+  **a rota mais chamada do sistema** quando há gente preenchendo junto: por isso
+  lê uma tabela de duas colunas e nada mais.
+  **A marcação tem duas metades, cada uma num ponto de passagem obrigatório**, e
+  é isso que a torna impossível de esquecer: `Auth::exigirEdicaoPlanejamento`
+  diz QUAL plano (é o portão de toda escrita de conteúdo) e `Database::executar`
+  diz que HOUVE escrita (é o único caminho de INSERT/UPDATE/DELETE). O contador
+  sobe uma vez por requisição, num `register_shutdown_function` — o fim do
+  switch nunca é alcançado, porque `Json::ok()` termina com `exit`. Chamar
+  `bumpar()` em cada endpoint foi rejeitado: esquecer um não quebra nada
+  visível, a pessoa aperta F5 e o defeito fica.
+  **A exceção é uma só e é explícita:** `ImpactoController::salvar` chama
+  `Versao::alvo()` na mão, porque autoriza pelo NEGÓCIO da célula e não pelo
+  planejamento. Os cadastros (ciclo, negócio, usuário, driver, eixo) ficam fora
+  de propósito — mudam a moldura, não o conteúdo de um plano.
+  **`Vivo.armar` é chamado num lugar só**, em `App.recarregarSecaoAtiva`, DEPOIS
+  de `carregar()` resolver: armar antes capturaria a referência com a tela ainda
+  lendo, e uma escrita nesse intervalo passaria por "já vista". Um relógio só em
+  todo o sistema — há uma seção visível por vez, e um por seção deixaria batendo
+  o da tela que esqueceu de desarmar.
+  **As guardas são o coração disso** e vieram do relógio da Sala, que já rodou em
+  oficina: não repinta com **modal aberto** (descartaria o formulário) nem com o
+  **foco num campo**; desarma quando a seção ganha `d-none`; nem arma em
+  `App.modoDossie`; e ignora a batida se a rede piscar. Represar não perde a
+  atualização: a versão de referência só avança quando a repintura acontece, e a
+  batida seguinte à liberação traz o que ficou. Seções com relógio próprio
+  (`coleta`, `sala`) e o `dossie` declaram `planosVigiados() { return []; }`;
+  a `impacto` declara DOIS planos, porque é lida no contexto de um negócio e o
+  conteúdo dela vive no corporativo.
+- **Um item por vez: o cadeado de edição** (`edicao_bloqueio`,
+  `App\Services\Bloqueio`, `public/assets/js/cadeado.js`). Continuação do
+  pulso: duas telas se acompanharem não impede duas pessoas de abrirem o MESMO
+  item e a segunda a salvar apagar o trabalho da primeira. Enquanto um admin tem
+  o item aberto, ninguém mais grava nele. **5 minutos**, contador dentro do
+  formulário e **"+1 minuto" manual, sem teto** — a renovação automática foi
+  descartada porque *um batimento prova que o navegador está aberto, não que
+  existe uma pessoa ali*: uma aba esquecida renovaria para sempre, que é o caso
+  que o batimento deveria cobrir.
+  **O ciclo de vida mora num lugar só:** `Modal.abrir({ bloqueio: { recurso,
+  registro_id, planejamento_id } })` toma antes de pintar, solta no
+  `hidden.bs.modal` e desenha a faixa. As seções passam o par e não cuidam de
+  nada — quem esquecesse de soltar prenderia o item por cinco minutos.
+  **`Versao::ignorar()` nas rotas do cadeado, e é obrigatório:** tomar e renovar
+  escrevem, e o pulso marca escrita na infraestrutura; sem a exceção, cada
+  renovação subiria a versão e todas as telas repintariam a cada 4 s.
+  **`GREATEST(expira_em, NOW()) + 60`, nunca `NOW() + 60`:** o segundo
+  ENCURTARIA um cadeado recém-tomado — o botão de ganhar tempo tirando tempo.
+  **Aos 0:00 o cadeado cai, o texto não:** `exigirMeu` volta calado quando o
+  item está `livre`, então quem perdeu o cadeado ainda grava se ninguém assumiu.
+  Um cadeado vencido pode ser assumido por **qualquer admin** (decisão do
+  cliente). **Falha ABERTA em todo o caminho do navegador**: um sistema de
+  cadeados capaz de impedir todo mundo de trabalhar é pior que a sobrescrita que
+  ele previne. Alcance: `fator`, `cenario_item`, `cascata_escolha`, `projeto` e
+  `desdobramento` — os disputados de verdade numa reunião. O nome de quem edita
+  aparece no item dos outros via `data-cadeado="recurso:id"` + `Vivo`; o
+  atributo leva o RECURSO junto porque `data-card-fator` sozinho casaria um item
+  de cenário nº 5 com o fator nº 5.
+- **Matriz de Impacto por Negócio** (`impacto_negocio`, `ImpactoController`,
+  `secoes/impacto.js`): o que o diagnóstico CORPORATIVO faz com cada negócio.
+  Linha = ameaça/oportunidade da SWOT corporativa do ano, **sem curadoria
+  própria** (a SWOT já é a lista curada e o GUT já é a priorização, então a
+  ordem é `ORDER BY g.score DESC`); coluna = negócio; célula = sinal + como.
+  A tabela **não tem `planejamento_id` nem `ano`** — os dois vêm do fator, e
+  guardá-los criaria uma célula que discorda da própria linha.
+  **Duas telas, uma tabela:** contexto Corporativo → grade; contexto de um
+  negócio → a lista da coluna dele, com a contagem. A segunda é o motivo de a
+  tela existir.
+  **A autorização é a exceção única do sistema** (decisão do cliente 2026-09-01,
+  escrita em `PLANEJAMENTO-SISTEMA.md §5`): GESTOR **lê** a descrição dos fatores
+  corporativos e as células dos negócios dele — com o `score` da GUT removido do
+  payload, não só da tela — e **grava** a célula dos negócios dele. Isso é seguro
+  por modelagem, não por exceção: **a célula pertence à MATRIZ, não ao plano
+  corporativo**, e só cita um fator. Por isso a regra é a do NEGÓCIO ("você mexe
+  na célula de um negócio que você já mexe"), e o `fator_id` é conferido contra o
+  plano corporativo do ciclo — ninguém cria linha pela borda. Nenhum dos dois
+  métodos usa `exigirAcessoPlanejamento` no corporativo: ele devolve 403 ao
+  gestor, que é justamente quem mais precisa da coluna dele.
+  **Sinal é FORMA (▲/▼), não só cor** — cor sozinha não sobrevive ao daltonismo
+  nem à impressão em P&B, e a tela vai impressa à reunião. Célula ausente já
+  significa "sem impacto relevante": não existe `NEUTRO`, e `sinal` vazio apaga.
+  **Cabeçalho grudado com outra solução que a Matriz de Execução:** aqui a tabela
+  precisa de ~1450px, então a caixa não pode parar de rolar — ela ganha
+  `max-height` e vira o container, e o `sticky` usa `top: 0` (o topo da caixa).
+  A coluna do fator é `sticky left`, e a quina precisa de `z-index` acima das
+  duas. `border-collapse: separate` pelo mesmo motivo da outra grade.
+- **Mover um fator de análise** (`⇄`, `FatorController::mover`): PESTEL ⇄ Porter
+  ⇄ SWOT. **A etapa e a categoria andam juntas, sempre** — as listas não se
+  correspondem, e herdar a antiga produziria um fator invisível nas duas telas
+  (a SWOT filtra por categoria dela, o PESTEL por etapa), que é o mesmo defeito
+  que o `salvar()` já corrigiu por outro caminho. O modal tem **um campo de
+  categoria por destino**, revelado por `visivelSe`: com um campo repintado,
+  trocar de destino e voltar perdia a escolha já feita.
+  **SEIS amarras RECUSAM o movimento**, cada uma dizendo o que desfazer: já
+  virou ação (a mesma `Fatores::acoesQuePrendem` da exclusão — uma definição só
+  de "está preso"), promoção nos **dois** sentidos, nota na Matriz GUT (que é da
+  SWOT), citação num cruzamento (o par escolhe interno × externo por quadrante),
+  **célula na Matriz de Impacto** e **vínculo com a Cascata**. As duas últimas
+  entraram depois e não por simetria: elas perdiam dado **em silêncio**. Saindo
+  da SWOT, as células do Impacto continuam no banco e somem da grade (ninguém
+  apaga nada e ninguém consegue mais ler); o vínculo da Cascata é pior porque
+  demora — a célula segue exibindo o fator, mas o `salvar` dela só reinsere
+  fatores da SWOT, então o **próximo salvamento da mesma célula**, feito por
+  outra pessoa e por outro motivo, derruba o vínculo. Os motivos chegam à tela
+  em `mover_trava` (array — as amarras se acumulam) pela **mesma** consulta da
+  recusa, e o `⇄` já nasce desabilitado com todos eles no `title`.
+  **Promover ≠ mover:** promover COPIA (a origem fica no PESTEL, o par visível
+  nas duas telas), mover TRANSFERE; os dois são legítimos, mas não no mesmo
+  fator — e é por isso que a promoção trava o `⇄`.
+- **Mover ATRAVESSANDO a tabela** (Cenário ⇄ fator): o quarto destino do `⇄`,
+  e o `⇄` novo no cartão do Cenário (`CenarioController::mover`). Entre análises
+  mover é `UPDATE fator SET etapa` — o id não muda, e por isso nada mais precisa
+  mudar. Para o Cenário o **id morre**: é outra tabela, e o que ele sustentava
+  vai à mão. **A ordem é a garantia, no lugar da transação** (o repositório não
+  usa `beginTransaction`): cria o destino, leva as vozes (`Quiz::mudarDestino`),
+  e só então apaga a origem — morrendo no meio, o pior caso é registro repetido,
+  visível e apagável, e nunca voz apontando para id morto.
+  **As vozes da sala VIAJAM** em vez de voltarem à fila: o item já existe no
+  destino, e triar a ideia de novo criaria um segundo registro dizendo a mesma
+  coisa. Isso obrigou a apertar o "solta quem saiu do conjunto" dos dois
+  `vincularSugestoes` com um `JOIN quiz_pergunta`: a voz carregada veio de uma
+  pergunta de outro alvo, nunca aparece no painel do destino, e a primeira
+  edição do item a soltava calada — perdendo exatamente o que a travessia
+  preservou. O catálogo de categorias mudou de casa por causa disto
+  (`FatorController` → `Fatores::CATEGORIAS`): duas telas criam fator agora.
+  Salvando, a tela **leva a pessoa até o item novo** (`Diag.irParaFator`) —
+  cartão que some sem dizer para onde foi é indistinguível de cartão excluído.
 - **Orientações do diagnóstico**: cada categoria (PESTEL, Porter, SWOT, Cenário)
   tem uma dica curta num ícone **ⓘ** ao lado do título, não em texto de topo —
   `Diag.ORIENTACOES_CATEGORIA` (mapa por código) + `iconeOrientacao` /
@@ -282,7 +507,37 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   desliga menu, topbar, botões, `position: sticky` e **o corte de três linhas
   dos cartões** — conforto de tela que no papel viraria relatório truncado.
   `montar()` só roda no clique: montado a cada pintura, o relatório seria
-  refeito a cada batida do polling.
+  refeito a cada batida do polling. Uma seção pode pedir **tabela em vez de
+  lista** declarando `colunas` (e `detalhe` no item): é o que os Cruzamentos
+  usam, porque o item ali são dois lados de peso igual — o par e a estratégia.
+- **Dossiê do plano** (`public/assets/js/secoes/dossie.js`): as etapas em
+  sequência, por negócio, num documento só. O caro nunca foi imprimir — é que
+  **só existe na tela a seção ativa**: as outras `#secao-X` estão vazias até
+  alguém abri-las. O dossiê pinta cada etapa **de lado** e tira a **foto** do
+  `innerHTML` dela. A foto é inerte por construção (atribuir `innerHTML` não
+  carrega ouvinte), então a cópia não age e a tela viva fica intocada; e é o que
+  permite onze negócios no mesmo documento, já que as seções são elementos FIXOS
+  no shell. **Não** se montou uma tela que desenha o documento do zero: seria a
+  segunda cópia do desenho de cada análise, que é o que `RelatorioAnalise`
+  existe para evitar. Três coisas que a pintura de lado exige:
+  - **`App.modoDossie`** — bandeira lida por `QuizSala.armarRelogio`, para que a
+    pintura não arme relógio de polling que só se desarmaria na batida seguinte.
+  - **A vista é zerada e devolvida.** Filtros e recolhimentos moram na seção e
+    sobrevivem à repintura (`Diag.busca`, `Diag.filtroMovel`,
+    `SecaoProjetos.filtroStatus`, `projetosFechados`). Sem zerá-los, quem
+    tivesse "atrasado" no filtro de Projetos levaria ao Conselho um plano em que
+    só existem projetos atrasados — **e nada na folha diria que houve filtro**.
+    O `finally` devolve a vista de quem clicou, e o contexto do menu junto.
+  - **Os `id` saem da foto.** Ela duplicaria todo id da seção, e a partir daí um
+    `getElementById` poderia cair na cópia morta — defeito que só apareceria
+    depois, longe dali.
+  No papel, dentro de `.dossie-doc` a regra é a **geral** ("comando nenhum"),
+  com duas exceções declaradas que são conteúdo desenhado como botão: o par do
+  cruzamento e o "Virou ação ↗". A lista por atributo do `@media print` nomeia
+  as telas uma a uma e por isso fica atrás de cada tela nova; ali, onde tudo é
+  cópia inerte, a regra pode ser a larga. Ficam de fora do dossiê a Coleta
+  (mostra uma `situacao` por vez, sem visão "todas"), o Painel e o Hub (são do
+  ciclo, não do negócio) e o Relatório de Status (é o outro documento).
 - **Cabeçalho fixo das análises** (PESTEL, Porter, SWOT, Cenário): título, ano,
   "+ Novo" e o selo da sala moram num bloco só (`.cabecalho-analise`,
   `data-cabecalho-analise`) que fica **fixo abaixo da topbar** — o condutor
@@ -373,8 +628,78 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   gruda (o título quebra em duas linhas e custaria um quinto da tela).
 - Metas plurianuais versionadas: `indicador_valor` única por
   (indicador, ano, tipo, versão); leitura usa a MAIOR versão de cada ano.
-- Investimentos decididos nunca voltam a PROPOSTO; APROVADO só avança para
-  EXECUTADO.
+- **Qual par meta × real se mostra** é `SecaoMetas.metaReal`, e existe **uma vez
+  só**: o ano de referência é o do ÚLTIMO real lançado e, sem real nenhum, o da
+  PRIMEIRA meta. Não é "o ano corrente" — o ciclo semeado vai de 2027 a 2035 e as
+  metas começam em 2027, então em 2026 a regra do ano corrente deixaria toda linha
+  em "—". A Matriz de Execução chama a mesma função: duplicá-la faria duas telas
+  vizinhas dizerem números diferentes do mesmo indicador.
+- **Matriz de Execução** (aba da Cascata): por eixo, a escolha com a renúncia, os
+  indicadores que a medem, o par meta × real de cada um e os projetos que a
+  executam. Os dois lados do vínculo são `indicador_cascata` (N:N, clone de
+  `cascata_fator`) e `projeto.cascata_id`. **Não é um mapa estratégico**: não há
+  raias com setas nem `objetivo_estrategico` — a caixa é a própria
+  `cascata_escolha`, que já traz a renúncia (que o BSC não tem) e os fatores
+  SWOT/GUT que a fundamentam; as raias são os eixos já cadastrados. A linha da
+  tabela é o INDICADOR (a escolha e as iniciativas ganham `rowspan` sobre ele),
+  senão o nome do KPI e o número dele desalinham na primeira quebra de linha.
+  Um horizonte por vez, com seletor: os três dariam mais de cem linhas.
+  `IndicadorController::gravarCascatas` confere **cada escolha** contra o
+  planejamento — `Auth::exigirEdicaoPlanejamento` valida o planejamento, não os
+  filhos —, e só toca a tabela quando a chave `cascatas` vem no corpo: tratar a
+  ausência como "lista vazia" apagaria vínculos que ninguém mandou apagar.
+  **A aba é LEITURA**: as três colunas da direita não se preenchem ali, e o
+  bloco `.como-amarrar` (`SecaoCascata.comoAmarrar`) diz o campo exato de cada
+  uma e leva à tela — a frase solta que existia antes era lida como legenda, e a
+  pergunta "como eu amarro isto?" veio mesmo com ela na tela. Editar daqui
+  exigiria repetir os dois formulários na matriz, e duas telas gravando o mesmo
+  vínculo divergem na primeira mudança.
+  **Cabeçalho grudado** (`top: var(--topo-app)`, como Projetos e as análises),
+  com duas condições que não são detalhe: (1) `.caixa-execucao` só deixa de
+  rolar acima de 992px — `overflow-x: auto` faz o `overflow-y` computar `auto`
+  junto, e um `sticky` dentro de um container de rolagem gruda no topo DELE, que
+  sai da tela com a página; o corte de 992 saiu de medir (a tabela tem 911px
+  intrínsecos, a caixa fica em 944), não de somar os `min-width`. (2) a tabela
+  usa `border-collapse: separate` — com `collapse` os fundos pertencem à tabela
+  e o TEXTO das `<td>` atravessa o cabeçalho grudado, e `z-index` na célula não
+  resolve; o preço é redesenhar a grade do `table-bordered` com borda direita e
+  de baixo por célula.
+- **Governança de investimentos** (`investimento`, `envelope_capital`,
+  `InvestimentoController`, `secoes/investimentos.js`): o funil é **envelope**
+  (quanto há) → **papel** (agrupa antes de ordenar: OBRIGATORIO, MANUTENCAO,
+  EFICIENCIA, CRESCIMENTO, ESTRATEGICO) → **ranking** por taxa de retorno →
+  **decisão** com critério escrito → **auditoria +12M** (prometido × realizado).
+  A situação nasce sozinha: com taxa de retorno informada entra `RANQUEADO`,
+  sem ela `PROPOSTO`.
+  As mudanças de situação passam por `TRANSICOES`, uma tabela explícita, e não
+  por um conjunto de estados intercambiáveis — era por ali que vazava o que a
+  regra proíbe: um PROPOSTO pulava direto a EXECUTADO sem decisão nenhuma, e um
+  EXECUTADO voltava a PROPOSTO e **sumia do comprometido do painel**. Decidir e
+  auditar têm ações próprias (`POST /api/investimentos/{id}/decidir` e
+  `/auditar`), e `decidir()` repete a guarda pela mão: sem ela um item já
+  EXECUTADO podia ser reprovado, o valor saía do comprometido e o envelope
+  mostrava folga inexistente. O critério da decisão é **obrigatório** — "a
+  cascata dá direção, não aprovação".
+  **O envelope é um por horizonte** (`planejamento_id` + `horizonte_id`), e por
+  isso `salvarEnvelope` recusa mover o envelope A para o horizonte de B: sem a
+  recusa, editar um sobrescreveria o outro em silêncio.
+  Duas coisas a saber antes de mexer: **`flex_percentual` é declarativo** — a
+  tela o mostra como `±N%` ao lado do limite, mas nada no servidor o usa, e a
+  barra satura em 100% do `valor_limite`; e **o "comprometido" está escrito em
+  três lugares** (`investimentos.js`, e duas consultas do
+  `RelatorioController`), sempre como `situacao IN ('APROVADO','EXECUTADO',
+  'AUDITADO')`. É a duplicação que este projeto normalmente extrai para um
+  serviço; ela sobreviveu porque nasceu antes da regra, e mudar o conjunto sem
+  mudar os três faz o relatório e a tela discordarem sem ninguém errar nada.
+- **Ata de reunião** (`reuniao`, `RelatorioController::listarReunioes` /
+  `salvarReuniao` / `excluirReuniao`, `/api/reunioes`): data, período coberto,
+  participantes, decisões e próximos passos, presa ao planejamento. O servidor
+  exige as três datas com `periodo_ate >= periodo_de` e **exige as decisões** —
+  ata sem o que foi decidido é lista de presença, não registro. O `autor_id` é
+  **anulável de propósito**: excluir um usuário não pode levar junto o que ele
+  escreveu, então na exclusão a ata vai para a pessoa indicada ou fica sem
+  vínculo e a tela mostra «Sem usuário» (grupo `autoria` de
+  `UsuarioController::excluir` — o mesmo contrato dos comentários).
 - Negócios vêm do Qlik (`FlagFilialNegocio`, códigos oficiais em
   `App\Services\QlikSync::NEGOCIOS_FONTE` — a fonte da verdade, que o
   `seeds.sql` e o passo "negócios oficiais" do `migrate.php` espelham); linhas
@@ -460,6 +785,15 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   junto. **Não existe grade 4×4 clicável**, e é decisão: com seis fatores por
   quadrante seriam 36 células por bloco, e na prática se escolhem três — a grade
   convidaria a preencher tudo.
+  **A etapa tem sala** (o 🎤 por bloco, `alvo_tipo = 'CRUZAMENTO'`): a direção
+  propõe o PAR pelo celular e o condutor aceita. O "Usar" abre o formulário com
+  o par JÁ escolhido pela pessoa e a estratégia dela como rascunho — aceitar é
+  ato de quem conduz, e o texto final é dele. A voz fica amarrada por
+  `destino_tipo = 'CRUZAMENTO'`, com a mesma guarda de alvo das outras telas, e
+  volta ao painel se o cruzamento for apagado (`Quiz::soltarVozes`). O cartão
+  ganha o selo 🎤 com quantas vozes o sustentam. A ficha do painel mostra o
+  **par** acima do texto (`QuizSala.parDaVoz`), que é o que o condutor lê para
+  decidir; o lado cujo fator foi excluído aparece como tal em vez de sumir.
   **O cartão tem UM "ver mais" para o cartão inteiro**
   (`SecaoCruzamentos.ligarVerMaisCartao`), não um por texto como o
   `Diag.ligarVerMais` do resto do diagnóstico: são três caixas cortadas (os dois
@@ -491,6 +825,24 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   virou ação, ela ficaria no plano sem origem. Por isso `Fatores::exigirSemAcao`
   olha também os cruzamentos dos fatores pedidos **e dos promovidos a partir
   deles**.
+- **Excluir o que está amarrado: o aviso vem ANTES do clique.** O × fica
+  **desabilitado** onde o servidor vai recusar (fator, cruzamento e ideia da
+  Coleta que viraram ação), com o motivo e o que fazer no `title`, e sem o
+  `data-excluir` pendurado. Quem decide continua sendo o servidor — isto é o
+  aviso, não a guarda. Duas armadilhas medidas: a marcação **tem de sair da
+  mesma consulta da recusa** (`Fatores::acoesQuePrendem`), senão erra no
+  promovido e no cruzamento, que são os casos comuns; e o Bootstrap põe
+  `pointer-events: none` em todo `.btn:disabled`, o que esconderia o `title` —
+  `.btn[aria-disabled="true"]` devolve o ponteiro sem destravar o clique, que
+  continua bloqueado pelo atributo `disabled`.
+  O `confirm()` diz **o que sai junto, com números**, montado por
+  `public/assets/js/vinculos.js`: `Vinculos.aviso()` separa o que **some** do que
+  **continua existindo sem o vínculo** (o comentário some; o investimento sem
+  projeto continua sendo um investimento), e `Vinculos.quantos()` devolve vazio
+  no zero — sem isso a frase saía "Sai junto: .". Os números vêm de contagens
+  agregadas nas listagens que a tela já busca, **nunca de uma chamada por
+  cartão**. Uniformizou-se o **aviso**, não a regra: recusar, cascatear e soltar
+  o vínculo continuam sendo respostas diferentes para relações diferentes.
 - **Quiz — a sala do PROJETO** (`coleta_rodada.modo = 'QUIZ'`): a MESMA sala da
   tempestade — PIN, token, tetos, trava de força bruta — servindo a TODAS as
   análises. **Um PIN para o encontro inteiro**: o participante escaneia uma vez
@@ -499,10 +851,27 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   "pergunta ativa" na rodada).
   A pergunta tem **alvo polimórfico** (`quiz_pergunta.alvo_tipo`):
   `CASCATA` (célula driver×horizonte×eixo), `CENARIO` (ano), `FATOR` (ano +
-  etapa + categoria) e `LIVRE` (a tempestade dentro do roteiro). Colunas nulas
+  etapa + categoria), `CRUZAMENTO` (ano + o BLOCO do TOWS, guardado em
+  `categoria`) e `LIVRE` (a tempestade dentro do roteiro). Colunas nulas
   por tipo — e por isso a unicidade é a coluna gerada `alvo_chave`, que junta
   todas elas: NULL nunca colide com NULL num UNIQUE comum, e a mesma célula
   entraria duas vezes no roteiro.
+  **O alvo `CRUZAMENTO` é o único em que o celular ESCOLHE registros**, e não
+  só escreve: a pessoa marca dois fatores da SWOT (um de cada lado do bloco) e
+  escreve a estratégia do encontro. Foi decisão do cliente — a alternativa era
+  a sala escrever a estratégia de um par montado pela condução, que reaproveita
+  tudo e não mexe na rota pública. Como a escolhida faz a **única escrita sem
+  login do sistema aceitar ids de registro**, três coisas passaram a valer:
+  a regra do par mora em **`App\Services\Cruzamentos::parValidado`** e é a
+  MESMA dos dois lados (com login e sem — duas escritas divergiriam, e a frouxa
+  seria a exposta); o `planejamento_id` vem da RODADA, nunca do corpo; e o
+  bloco derivado do par tem de ser o bloco PERGUNTADO, senão a pergunta "Forças
+  × Oportunidades" aceitaria força com ameaça e o painel encheria de resposta
+  fora do assunto. O par viaja em `coleta_item.fator_interno_id`/
+  `fator_externo_id` (FK **SET NULL**: apagar um fator não pode apagar o que
+  alguém escreveu na oficina), e as duas listas descem ao celular por
+  `Cruzamentos::doQuadrante`, que devolve só id e descrição — a decisão do que
+  expor numa tela sem login mora num lugar só.
   O que cada alvo SIGNIFICA (o lado da resposta, o limite de texto, o rótulo, o
   contexto que o celular lê) mora em **`App\Services\Quiz`** — cinco telas
   reescrevendo isso divergiriam na primeira análise nova.
@@ -928,25 +1297,61 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
 
 ### Plano de ação (três níveis)
 
-- **Fila de "Aguardando plano de ação"**: o card de Projetos junta TRÊS origens
-  — ideia da Coleta (`coleta_item.destino_tipo='ACAO'` com `destino_id` NULL),
-  **fator da SWOT** (`fator.acao_em` preenchido com `desdobramento_id` NULL) e
+- **Fila de "Aguardando plano de ação"**: o card de Projetos junta QUATRO
+  origens — ideia da Coleta (`coleta_item.destino_tipo='ACAO'` com `destino_id`
+  NULL), **fator do diagnóstico** (`fator.acao_em` preenchido com
+  `desdobramento_id` NULL — PESTEL, Porter **ou** SWOT), **item da Análise de
+  Cenário** (`cenario_item`, as mesmas três colunas) e
   **cruzamento (TOWS)**, com as mesmas três colunas do fator. O cruzamento vai
   **direto ao plano, sem passar pela cascata**: ele já é a estratégia que nasce
   do par, e a cascata decide outra coisa (em que horizonte cada driver aposta).
   Uma fila só de propósito: a origem muda o selo e o campo que fecha o vínculo,
-  não a pergunta "o que ainda não virou ação?". O `modalConverterAcao` manda
-  `coleta_item_id` **ou** `fator_id`, nunca os dois, e o
-  `salvarDesdobramento` fecha o vínculo com a mesma guarda no WHERE (só o que
-  ainda está na fila), para pedido repetido não sequestrar vínculo alheio.
-  Só a **SWOT** vai direto ao plano: PESTEL e Porter descrevem o ambiente e
-  passam antes pela promoção a um quadrante — sem isso pulariam a síntese que a
-  SWOT existe para fazer. `fator.desdobramento_id` tem FK **ON DELETE SET
-  NULL**: apagada a ação, o fator volta sozinho para a fila. A ideia da Coleta
+  não a pergunta "o que ainda não virou ação?". A **chave da linha é por
+  origem** (`c…`/`f…`/`x…`/`n…`), não o id: as quatro tabelas numeram separado e
+  sem o prefixo dois registros disputariam a mesma linha — o "Transformar em
+  ação" abriria a pendência errada, sem erro nenhum. O `modalConverterAcao`
+  manda `coleta_item_id`, `fator_id`, `cruzamento_id` **ou** `cenario_item_id`,
+  nunca mais de um, e o `salvarDesdobramento` fecha o vínculo com a mesma guarda
+  no WHERE (só o que ainda está na fila), para pedido repetido não sequestrar
+  vínculo alheio. As frases que mudam por origem (título, rótulo, pergunta e a
+  barra colorida) vivem no objeto `falas` do `modalConverterAcao`, uma chave por
+  origem — com ternário aninhado, a quarta origem teria de ser encaixada em
+  quatro lugares do formulário, na mesma ordem, sem esquecer nenhum.
+  **Qualquer etapa vai direto ao plano** — PESTEL, Porter e SWOT. Até 2026-08
+  só a SWOT podia, para não pular a síntese que ela existe para fazer; a regra
+  foi **revogada por decisão do cliente (2026-08-31)**, porque há fator do
+  PESTEL e do Porter que já nasce com dono e prazo (uma lei com data marcada,
+  um fornecedor que vai sair) e obrigá-lo a inventar um quadrante produzia SWOT
+  de fachada. A promoção continua existindo e continua sendo o caminho
+  recomendado quando o fator PRECISA de síntese — o que mudou é que ela deixou
+  de ser obrigatória. As três etapas são a **mesma tabela** e fecham pelo
+  **mesmo `fator_id`**; o que muda é só o CATÁLOGO do rótulo, lido num lugar só
+  (`SecaoProjetos.categoriaDoFator`, que conhece os quadrantes da SWOT e as
+  tuplas de `Diag.CATEGORIAS_ETAPA`). A fila devolve `origem = f.etapa`, e é
+  por isso que o selo escreve "PESTEL · Legal" sem um `if` por tela. O selo de
+  três estados (**→ Plano de ação · Aguardando ação · Virou ação ↗**) e os três
+  ouvintes dele vivem em `Diag.seloPlanoAcao` / `Diag.ligarPlanoAcao`, chamados
+  por `carregarEtapa` (PESTEL/Porter), pela SWOT e pelo Cenário —
+  `ligarPlanoAcao` recebe o **recurso** (`fatores`/`cenario`) porque as tabelas
+  e as rotas diferem; o selo, não.
+  **A Análise de Cenário também vai ao plano** (mesma decisão): `cenario_item`
+  ganhou `acao_em`/`acao_por`/`desdobramento_id` (migrate, `garantirColuna` +
+  `garantirFk`), `CenarioController::planoAcao` e `::aguardandoAcao`
+  (`origem = 'CENARIO'`, `categoria` = o tipo), e o vínculo fecha por
+  `cenario_item_id`. É **outra tabela**, não o mesmo código — o que se
+  compartilha é o desenho. Os rótulos e cores dos dois tipos moram em
+  `SecaoCenario.TIPOS`, catálogo único lido pelo selo da fila e pelo modal de
+  "aceitar sugestão da sala".
+  `fator.desdobramento_id`, `swot_cruzamento.desdobramento_id` e
+  `cenario_item.desdobramento_id` têm FK **ON DELETE SET
+  NULL**: apagada a ação, a origem volta sozinha para a fila. A ideia da Coleta
   não tem FK (o destino é polimórfico) e por isso `excluirDesdobramento` limpa
   o `destino_id` dela à mão — sem essa linha a ideia sumia da fila para sempre,
-  apontando para um desdobramento que não existe mais. Excluir um fator que já
-  virou ação é **recusado**: deixaria a ação no plano sem origem nenhuma.
+  apontando para um desdobramento que não existe mais. Excluir um fator ou item
+  de cenário que já virou ação é **recusado**: deixaria a ação no plano sem
+  origem nenhuma. No cenário a trava sai direto de `acao_titulo` (o vínculo é
+  único); no fator ela precisa de `Fatores::acoesQuePrendem`, porque lá também
+  nasce do promovido e do cruzamento.
 
 - **projeto → iniciativa → ação**, espelhando o projeto BSC. O cadastro do
   projeto tem só ano, título, descrição e responsável; **início e fim são
@@ -1500,7 +1905,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 | Bateria | Cobre | Falha quando |
 |---|---|---|
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As 16 seções em 1500×700 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
+| `sistema.js` | As 18 seções em 1500×700 e 390×844, mais DUAS sessões no preenchimento simultâneo, no cadeado de edição (com dois usuários) e na oficina de Cruzamentos (computador + celular) | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 | `email.sh` | O envio por API de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |

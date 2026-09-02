@@ -1,6 +1,7 @@
 // Tela do participante da tempestade de ideias.
 // Roda sem sessão: a identidade é o token devolvido ao entrar com o PIN, e
-// vive só no sessionStorage desta aba. Nada aqui fala com o resto do sistema.
+// vive no localStorage deste navegador, por PIN. Nada aqui fala com o resto do
+// sistema.
 
 const Participante = {
   pin: '',
@@ -48,20 +49,131 @@ const Participante = {
       : { headers: this.token ? { 'X-Participante': this.token } : {} });
     // Mesmo envelope do resto da API: { ok, dados } ou { ok:false, erro }
     const json = await r.json().catch(() => ({}));
-    if (!r.ok || !json.ok) throw new Error(json.erro || 'Falha na comunicação.');
+    if (!r.ok || !json.ok) {
+      // O status viaja junto: só o 403 ("Entre na rodada antes de participar")
+      // significa identidade inválida, e só ele autoriza descartá-la. Queda de
+      // rede não pode custar o lugar de quem está participando de casa.
+      const erro = new Error(json.erro || 'Falha na comunicação.');
+      erro.status = r.status;
+      throw erro;
+    }
     return json.dados;
   },
 
-  iniciar() {
-    this.pin = this.tela.dataset.pin || '';
-    // A sessão da aba guarda a entrada: recarregar a página não perde o lugar
-    const guardado = sessionStorage.getItem('tempestade');
-    if (guardado) {
-      const g = JSON.parse(guardado);
-      if (g.pin === this.pin) {
-        this.token = g.token;
-        this.nome = g.nome;
+  // ---- Identidade ----
+  /**
+   * Onde mora o token que identifica a pessoa nesta rodada.
+   *
+   * Era o `sessionStorage`, que morre com a ABA. Quem voltava pelo link — QR
+   * escaneado de novo, mensagem reaberta, aba reciclada pelo celular — entrava
+   * como OUTRA pessoa: as estrelas apareciam apagadas, o teto zerava e os votos
+   * antigos continuavam contando. Uma pessoa pesava dobrado no ranking, sem
+   * sinal nenhum na tela — e o ranking é justamente o produto da fase da ★.
+   *
+   * Com o encontro à distância isso deixa de ser exceção: cada um entra do seu
+   * aparelho, de casa ou do departamento, e volta à sala quantas vezes precisar.
+   *
+   * O `localStorage` atravessa aba e navegador. A chave leva o PIN para que um
+   * encontro não herde a identidade do anterior.
+   */
+  chave() {
+    return `tempestade:${this.pin}`;
+  },
+
+  /**
+   * Identificador do APARELHO — o `qc_device` do Quiz Copérdia.
+   *
+   * Diferente do token, ele não pertence a rodada nenhuma: é deste navegador,
+   * para sempre. Serve para o servidor DEVOLVER a identidade a quem já entrou,
+   * mesmo quando a identidade local se perdeu (armazenamento limpo, navegador
+   * anônimo que virou normal, aparelho que apagou o site). Sem ele, a única
+   * pista seria o nome — e nome não é credencial.
+   */
+  dispositivo() {
+    try {
+      let id = localStorage.getItem('tempestade:dispositivo');
+      if (!id) {
+        id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem('tempestade:dispositivo', id);
       }
+      return id;
+    } catch {
+      // Armazenamento negado: sem aparelho reconhecível, resta o nome.
+      return '';
+    }
+  },
+
+  /** O aparelho já batizado, sem criar um — quem nunca entrou não tem o que perguntar. */
+  dispositivoConhecido() {
+    try {
+      return localStorage.getItem('tempestade:dispositivo') || '';
+    } catch {
+      return '';
+    }
+  },
+
+  identidadeGuardada() {
+    try {
+      // A chave antiga é lida uma última vez: quem já estava na sala no momento
+      // da atualização não pode perder o lugar por causa dela.
+      const bruto = localStorage.getItem(this.chave()) || sessionStorage.getItem('tempestade');
+      const g = bruto ? JSON.parse(bruto) : null;
+      return g && g.pin === this.pin && g.token ? g : null;
+    } catch {
+      // Armazenamento bloqueado ou conteúdo corrompido: entra como quem chega.
+      return null;
+    }
+  },
+
+  guardarIdentidade(dados) {
+    try {
+      localStorage.setItem(this.chave(), JSON.stringify(dados));
+      sessionStorage.removeItem('tempestade');
+    } catch {
+      // Modo privativo com armazenamento negado: a identidade vale só enquanto
+      // esta página estiver aberta, que é o comportamento de antes.
+    }
+  },
+
+  esquecerIdentidade() {
+    this.token = '';
+    try {
+      localStorage.removeItem(this.chave());
+      sessionStorage.removeItem('tempestade');
+    } catch {
+      // Nada guardado para limpar.
+    }
+  },
+
+  /**
+   * Reentrada silenciosa pelo aparelho, quando a identidade local se perdeu
+   * (armazenamento limpo, site apagado pelo navegador). O servidor reconhece o
+   * aparelho e devolve o token — ninguém digita nada.
+   */
+  async reentrarPeloAparelho() {
+    const dispositivo = this.dispositivoConhecido();
+    if (!dispositivo) return false;
+    try {
+      const r = await this.api('/api/publico/entrar', { pin: this.pin, dispositivo });
+      if (!r.token) return false;
+      this.token = r.token;
+      this.nome = r.nome;
+      this.guardarIdentidade({ pin: this.pin, token: r.token, nome: r.nome });
+      return true;
+    } catch {
+      // Rodada encerrada, ou rede fora: cai na tela de entrada.
+      return false;
+    }
+  },
+
+  async iniciar() {
+    this.pin = this.tela.dataset.pin || '';
+    const g = this.identidadeGuardada();
+    if (g) {
+      this.token = g.token;
+      this.nome = g.nome;
+    } else if (this.pin) {
+      await this.reentrarPeloAparelho();
     }
     if (this.pin && this.token) this.entrarNaSala();
     else this.telaEntrada();
@@ -86,11 +198,12 @@ const Participante = {
       const pin = document.getElementById('campo-pin').value.trim();
       const nome = document.getElementById('campo-nome').value.trim();
       try {
-        const r = await this.api('/api/publico/entrar', { pin, nome });
+        const r = await this.api('/api/publico/entrar',
+          { pin, nome, dispositivo: this.dispositivo() });
         this.pin = pin;
         this.token = r.token;
         this.nome = r.nome;
-        sessionStorage.setItem('tempestade', JSON.stringify({ pin, token: r.token, nome: r.nome }));
+        this.guardarIdentidade({ pin, token: r.token, nome: r.nome });
         this.entrarNaSala();
       } catch (e) {
         this.telaEntrada(e.message);
@@ -99,6 +212,44 @@ const Participante = {
     document.getElementById('btn-entrar').addEventListener('click', entrar);
     document.getElementById('campo-nome').addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') entrar();
+    });
+  },
+
+  /**
+   * PIN e quem você é — o mesmo cabeçalho nos dois ritos.
+   *
+   * O "não é você?" existe por causa do `localStorage`: a identidade passou a
+   * sobreviver ao fechamento do navegador, que é o objetivo, mas num computador
+   * de departamento a segunda pessoa a sentar herdaria a primeira e votaria no
+   * lugar dela sem perceber. É a única porta de saída — e ela precisa estar à
+   * vista, porque quem a procura já está confuso.
+   */
+  cabecalhoIdentidade() {
+    return `
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="badge text-bg-light border">PIN ${this.esc(this.pin)}</span>
+        <span class="small text-muted flex-grow-1">${this.esc(this.nome)}</span>
+        <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none flex-shrink-0"
+          id="btn-trocar-pessoa">não é você?</button>
+      </div>`;
+  },
+
+  ligarIdentidade() {
+    document.getElementById('btn-trocar-pessoa')?.addEventListener('click', async () => {
+      const pergunta = `Sair como ${this.nome} e entrar com outro nome? As ideias e as estrelas `
+        + 'já registradas continuam valendo para quem as enviou.';
+      if (!confirm(pergunta)) return;
+      this.pararRelogio();
+      // Solta o APARELHO no servidor também: só limpar aqui faria a reentrada
+      // silenciosa devolver a pessoa anterior no primeiro carregamento.
+      try {
+        await this.api('/api/publico/esquecer', { pin: this.pin, dispositivo: this.dispositivo() });
+      } catch {
+        // Rodada encerrada ou rede fora: a limpeza local já tira daqui.
+      }
+      this.esquecerIdentidade();
+      this.nome = '';
+      this.telaEntrada();
     });
   },
 
@@ -174,6 +325,16 @@ const Participante = {
         this.votacao = await this.api(`/api/publico/votar?pin=${this.pin}`);
       }
     } catch (e) {
+      // Identidade recusada (rodada encerrada e reaberta, base restaurada): o
+      // token guardado nunca mais vai valer, e mantê-lo deixaria a tela presa
+      // no erro. Qualquer outra falha é rede — e rede cai o tempo todo em
+      // encontro à distância, então ali a identidade fica de pé.
+      if (e.status === 403) {
+        this.pararRelogio();
+        this.esquecerIdentidade();
+        this.telaEntrada(e.message);
+        return;
+      }
       if (!silencioso) this.telaEntrada(e.message);
       return;
     }
@@ -212,10 +373,7 @@ const Participante = {
 
     this.tela.innerHTML = `
       <div class="cartao-participante">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <span class="badge text-bg-light border">PIN ${this.esc(this.pin)}</span>
-          <span class="small text-muted flex-grow-1">${this.esc(this.nome)}</span>
-        </div>
+        ${this.cabecalhoIdentidade()}
         <h1 class="h5 tema-rodada">${this.esc(r.tema || 'Tempestade de ideias')}</h1>
 
         ${encerrada
@@ -247,6 +405,7 @@ const Participante = {
     }
     if (this.minhas.length && !votando) this.ligarEdicaoIdeias();
     if (votando) this.ligarVotacao();
+    this.ligarIdentidade();
     this.ligarDitado();
   },
 
@@ -264,6 +423,15 @@ const Participante = {
     // guardado quando o campo não existia (lado com o teto esgotado)
     const rascunho = this.rascunhoPendente ?? (document.getElementById('campo-ideia')?.value ?? '');
     this.rascunhoPendente = null;
+    // O par escolhido sobrevive ao redesenho pela mesma razão do rascunho, e
+    // com mais motivo: escolher dois fatores numa lista de vinte, no celular,
+    // custa mais que digitar a frase. Perdê-lo a cada batida do polling faria a
+    // tela ser impossível de usar numa sala com sinal ruim.
+    const par = this.parPendente ?? {
+      interno: document.getElementById('par-interno')?.value || '',
+      externo: document.getElementById('par-externo')?.value || '',
+    };
+    this.parPendente = null;
     const p = r.pergunta;
     const rotulo = document.getElementById('topo-rotulo');
     // O cabeçalho acompanha a tela que a condução abriu: a sala é do projeto,
@@ -274,13 +442,10 @@ const Participante = {
 
     this.tela.innerHTML = `
       <div class="cartao-participante">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <span class="badge text-bg-light border">PIN ${this.esc(this.pin)}</span>
-          <span class="small text-muted flex-grow-1">${this.esc(this.nome)}</span>
-        </div>
+        ${this.cabecalhoIdentidade()}
         ${encerrada
           ? '<div class="alert alert-secondary py-2 small mt-3">Esta sessão foi encerrada. Obrigado por participar!</div>'
-          : p ? this.blocoQuiz(p, minhasDaPergunta)
+          : p ? this.blocoQuiz(p, minhasDaPergunta, par)
             : this.estrelas?.fase === 'ESTRELAS' ? this.blocoEstrelas()
             : `
             <h1 class="h5 tema-rodada">${this.esc(r.tema || 'Planejamento estratégico')}</h1>
@@ -293,10 +458,16 @@ const Participante = {
       if (campo && rascunho) campo.value = rascunho;
       // Sem campo neste lado (teto esgotado), o rascunho espera o lado voltar
       else if (!campo && rascunho) this.rascunhoPendente = rascunho;
+      // O par idem: sem os seletores na tela (teto esgotado, ou a condução
+      // trocou para uma pergunta de outro alvo), a escolha fica guardada.
+      if (!document.getElementById('par-interno') && (par.interno || par.externo)) {
+        this.parPendente = par;
+      }
       this.ligarQuiz(p);
       if (minhasDaPergunta.length) this.ligarEdicaoIdeias();
     }
     if (!encerrada && !p && this.estrelas?.fase === 'ESTRELAS') this.ligarEstrelas();
+    this.ligarIdentidade();
     this.ligarDitado();
   },
 
@@ -395,7 +566,38 @@ const Participante = {
     return lados.some((l) => l.valor === this.tipoResposta) ? this.tipoResposta : lados[0].valor;
   },
 
-  blocoQuiz(p, minhas) {
+  /**
+   * Os dois seletores do CRUZAMENTO — a única pergunta em que o celular
+   * ESCOLHE registros em vez de só escrever.
+   *
+   * `<select>` nativo, e não uma lista de cartões marcáveis: no celular ele
+   * abre a roleta do próprio sistema, que rola com o polegar e busca por
+   * digitação, e não ocupa a tela toda enquanto se lê. Uma lista de vinte
+   * fatores em cartões empurraria o campo de texto para fora da primeira dobra
+   * — e o texto é o que a pergunta de fato quer.
+   *
+   * A descrição inteira vai na `<option>`: cortá-la faria duas frases
+   * parecidas virarem a mesma opção, e quem escolhe não teria como distinguir.
+   */
+  seletoresPar(p, par) {
+    if (!p.pares) return '';
+    const lista = (chave, id, valor) => `
+      <div class="col-12 col-sm-6">
+        <label class="form-label small" for="${id}">${this.esc(p.pares[chave].rotulo)}</label>
+        <select class="form-select" id="${id}">
+          <option value="">— escolha —</option>
+          ${p.pares[chave].itens.map((f) => `
+            <option value="${f.id}" ${String(f.id) === String(valor) ? 'selected' : ''}
+              >${this.esc(f.descricao)}</option>`).join('')}
+        </select>
+      </div>`;
+    return `<div class="row g-2 mb-3">
+      ${lista('interno', 'par-interno', par.interno)}
+      ${lista('externo', 'par-externo', par.externo)}
+    </div>`;
+  },
+
+  blocoQuiz(p, minhas, par = { interno: '', externo: '' }) {
     const prog = this.rodada?.progresso;
     const lados = p.lados || [];
     const lado = this.ladoAtual(p);
@@ -441,8 +643,10 @@ const Participante = {
              sugestões${lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''} desta pergunta.
              ${outrosAbertos.length ? `Ainda pode sugerir ${this.esc(outrosAbertos.join(' e '))}.` : ''}</div>`
         : `<div class="mt-3">
-          <label class="form-label small" for="campo-ideia">Sua sugestão${
-            lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''}</label>
+          ${this.seletoresPar(p, par)}
+          <label class="form-label small" for="campo-ideia">${
+            p.pares ? 'O que fazer com este encontro' : `Sua sugestão${
+              lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''}`}</label>
           ${this.comVoz(area, 'campo-ideia')}
           <div class="d-flex align-items-center gap-2 mt-2">
             <span class="small text-muted" id="contador-resposta" data-max="${maxTexto}">0/${maxTexto}</span>
@@ -492,6 +696,17 @@ const Participante = {
         this.atualizarContador();
       }));
 
+    // Trocar o par NÃO redesenha — redesenhar fecharia o teclado, a regra de
+    // ouro desta tela. A escolha é só guardada, para atravessar a batida
+    // seguinte do polling.
+    ['par-interno', 'par-externo'].forEach((id) => document.getElementById(id)
+      ?.addEventListener('change', () => {
+        this.parPendente = {
+          interno: document.getElementById('par-interno')?.value || '',
+          externo: document.getElementById('par-externo')?.value || '',
+        };
+      }));
+
     const campo = document.getElementById('campo-ideia');
     const btn = document.getElementById('btn-enviar');
     if (!campo || !btn) return;
@@ -504,6 +719,19 @@ const Participante = {
       this.pararDitado();
       const texto = campo.value.trim();
       if (!texto) return;
+      const interno = document.getElementById('par-interno')?.value || '';
+      const externo = document.getElementById('par-externo')?.value || '';
+      // Conferência de CONFORTO, não guarda: quem manda na regra do par é o
+      // servidor (`Cruzamentos::parValidado`). O que ela evita é a ida à rede
+      // para voltar com um erro que a própria tela já sabia.
+      if (p.pares && (!interno || !externo)) {
+        const falta = document.getElementById('aviso-envio');
+        if (falta) {
+          falta.className = 'small mt-2 text-danger';
+          falta.textContent = 'Escolha um item de cada lado antes de enviar.';
+        }
+        return;
+      }
       btn.disabled = true;
       try {
         // pergunta_id diz o que a pessoa estava VENDO: se a condução avançou
@@ -513,8 +741,19 @@ const Participante = {
         await this.api('/api/publico/resposta', {
           pin: this.pin, token: this.token, pergunta_id: p.id,
           tipo: this.ladoAtual(p), texto,
+          ...(p.pares ? { fator_interno_id: interno, fator_externo_id: externo } : {}),
         });
         campo.value = '';
+        // O par volta ao vazio junto com o texto, e os DOIS SELETORES são
+        // limpos à mão: zerar só o `parPendente` não bastava, porque o
+        // redesenho seguinte lê o valor que ainda está no `<select>`. Sem isso
+        // o próximo envio repetia o mesmo cruzamento com outra frase — trabalho
+        // que sobraria para o condutor desfazer.
+        ['par-interno', 'par-externo'].forEach((id) => {
+          const s = document.getElementById(id);
+          if (s) s.value = '';
+        });
+        this.parPendente = null;
         await this.atualizar(true);
         const novo = document.getElementById('aviso-envio');
         if (novo) {

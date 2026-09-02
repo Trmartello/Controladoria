@@ -242,6 +242,58 @@ if [ -n "$PIN" ]; then
   afirma "teto de 3 ideias é aplicado no 4º envio" '"ok":false' "$R"
 fi
 
+echo "### 8b. Reentrada do participante — o aparelho, o nome e o dono ativo"
+# Cunhar um token novo a cada entrada fazia de quem voltava OUTRA pessoa: as
+# estrelas apareciam apagadas, o teto zerava e os votos antigos seguiam
+# contando. O desenho aqui é o do Quiz Copérdia (`POST /api/rooms/:pin/join`).
+#
+# A janela de ausência é encurtada por ambiente para a prova do "dono calado"
+# não custar os 45 s do padrão. Ela vale no SERVIDOR — rodá-la contra uma
+# instância subida sem SALA_AUSENTE_SEG deixa essas duas provas em vermelho.
+if [ -n "${PIN:-}" ]; then
+  pub(){ curl -s -X POST $BASE/api/publico/$1 -H 'Content-Type: application/json' -d "$2"; }
+  token_de(){ python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('token',''))" 2>/dev/null; }
+  APAR="aparelho-qa-$$"
+
+  R=$(pub entrar "{\"pin\":\"$PIN\",\"nome\":\"Fulano QA\",\"dispositivo\":\"$APAR\"}")
+  afirma "entra com nome e aparelho" '"token"' "$R"
+  T1=$(echo "$R" | token_de)
+
+  # 1. O aparelho volta como a MESMA pessoa, sem digitar nada.
+  R=$(pub entrar "{\"pin\":\"$PIN\",\"dispositivo\":\"$APAR\"}")
+  afirma "o mesmo aparelho volta sem informar nome" '"voltou":true' "$R"
+  afirma "e volta com o MESMO token" "^$T1\$" "$(echo "$R" | token_de)"
+
+  # 2. Com o dono ATIVO (as chamadas acima acabaram de marcar presença), o nome
+  #    não devolve a identidade: seria entregar a credencial de quem está lá.
+  R=$(pub entrar "{\"pin\":\"$PIN\",\"nome\":\"Fulano QA\",\"dispositivo\":\"outro-$$\"}")
+  afirma "nome de quem está na sala agora é recusado" 'Já há alguém com esse nome' "$R"
+
+  # 3. Calado o dono, o mesmo nome o traz de volta — é ele trocando de aparelho.
+  #    A espera é a janela REAL do servidor, e o padrão são 5 minutos: parar a
+  #    bateria por isso não paga. Estas duas só rodam quando a janela foi
+  #    encurtada de propósito — no servidor E aqui, com a mesma variável.
+  if [ -n "${SALA_AUSENTE_SEG:-}" ]; then
+    sleep "$SALA_AUSENTE_SEG"
+    R=$(pub entrar "{\"pin\":\"$PIN\",\"nome\":\"Fulano QA\",\"dispositivo\":\"outro-$$\"}")
+    afirma "dono calado: o nome devolve a identidade" '"voltou":true' "$R"
+    afirma "e é o mesmo token de antes" "^$T1\$" "$(echo "$R" | token_de)"
+  else
+    echo "  … 'dono calado' fora desta rodada: suba o servidor e rode a bateria"
+    echo "    com SALA_AUSENTE_SEG=6 para provar a reentrada pelo nome."
+  fi
+
+  # 4. "Não é você?" solta o aparelho: a próxima pessoa nesta máquina entra como
+  #    ela mesma, em vez de herdar a anterior.
+  R=$(pub esquecer "{\"pin\":\"$PIN\",\"dispositivo\":\"$APAR\"}")
+  afirma "esquecer o aparelho responde ok" '"ok":true' "$R"
+  # Pedido só com aparelho é a PERGUNTA "me conhece?" — aparelho solto responde
+  # "não" sem erro, para não encher o console de quem chega pela primeira vez.
+  R=$(pub entrar "{\"pin\":\"$PIN\",\"dispositivo\":\"$APAR\"}")
+  afirma "e o aparelho solto não devolve mais ninguém" '"conhecido":false' "$R"
+  nega "sem devolver token de ninguém" '"token"' "$R"
+fi
+
 echo "### 9. Cruzamentos da SWOT (TOWS)"
 # O bloco é DERIVADO do par, nunca escolhido: é a regra que este trecho guarda.
 # A massa é própria — quatro fatores da SWOT criados e apagados aqui — porque a
@@ -385,7 +437,516 @@ afirma "e o ✕ dele nem aparece na tela" '^0$' "$R"
 R=$(post /api/usuarios/$U_OFF/excluir '{"sem_responsavel":true}')
 afirma "exclui usuário sem vínculo nenhum" '"ok":true' "$R"
 
+echo "### 9d. Comentários — remover UM anexo sem perder o comentário"
+# O comentário é o único envio multipart da API (o anexo não viaja em JSON),
+# então este bloco tem o `post` próprio.
+postm(){ curl -s -b $J -H "X-CSRF-Token: $CSRF" -X POST "$BASE$1" "${@:2}"; }
+# Os ids dos anexos de UM comentário, na ordem — a listagem não os traz soltos.
+anexos_de(){ python3 -c "
+import sys, json
+alvo = sys.argv[1]
+c = next((c for c in json.load(sys.stdin)['dados'] if str(c['id']) == alvo), None)
+print(' '.join(str(a['id']) for a in (c or {}).get('anexos', [])))
+" "$1" 2>/dev/null; }
+# Os ids dos COMENTÁRIOS da listagem. Afirmar com regex sobre o corpo cru não
+# serve aqui: comentário e anexo dividem o espaço de ids, e `"id":7` casa com o
+# anexo 7 dentro do comentário 6 — a prova passava (ou falhava) por sorteio.
+ids_com(){ python3 -c "
+import sys, json
+print(' '.join(str(c['id']) for c in json.load(sys.stdin)['dados']))" 2>/dev/null; }
+LISTA_COM="/api/comentarios?planejamento_id=1&ref_tipo=PROJETO&ref_id=${PRJ:-0}"
+# PNG de 1×1 de verdade: o servidor confere a imagem com `getimagesize`, e um
+# arquivo qualquer renomeado para .png é recusado — como deve ser.
+PNG=/tmp/fa1.png
+printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' \
+  | base64 -d > $PNG
+
+R=$(postm /api/comentarios -F "planejamento_id=1" -F "ref_tipo=PROJETO" -F "ref_id=${PRJ:-0}" \
+  -F "texto=Comentário com dois anexos" -F "arquivos[]=@$PNG" -F "arquivos[]=@$PNG;filename=segundo.png")
+afirma "cria comentário com 2 anexos" '"anexos":2' "$R"
+COM=$(echo "$R" | id_de)
+IDS=$(get "$LISTA_COM" | anexos_de "$COM")
+A1=$(echo $IDS | cut -d' ' -f1); A2=$(echo $IDS | cut -d' ' -f2)
+
+R=$(post /api/anexos/$A1/excluir '{"planejamento_id":1}')
+afirma "remove um anexo" '"comentario_excluido":false' "$R"
+L=$(get "$LISTA_COM")
+afirma "o comentário continua lá" "(^| )$COM( |\$)" "$(echo "$L" | ids_com)"
+RESTA=$(echo "$L" | anexos_de "$COM")
+afirma "sobrou exatamente o outro anexo" "^$A2\$" "$RESTA"
+# O anexo removido não desce mais: a rota de download é a prova, não a listagem.
+R=$(get "/api/anexos/$A1?planejamento_id=1")
+afirma "o anexo removido não baixa mais" 'não encontrado' "$R"
+
+# Comentário sem texto é só o arquivo: tirar o único anexo o esvazia, e
+# comentário vazio não existe — a regra é a mesma que `criar` aplica na entrada.
+R=$(postm /api/comentarios -F "planejamento_id=1" -F "ref_tipo=PROJETO" -F "ref_id=${PRJ:-0}" \
+  -F "texto=" -F "arquivos[]=@$PNG")
+afirma "cria comentário só com anexo" '"anexos":1' "$R"
+SOANEXO=$(echo "$R" | id_de)
+A3=$(get "$LISTA_COM" | anexos_de "$SOANEXO")
+R=$(post /api/anexos/$A3/excluir '{"planejamento_id":1}')
+afirma "último anexo sem texto leva o comentário" '"comentario_excluido":true' "$R"
+nega "e o comentário sumiu da lista" "(^| )$SOANEXO( |\$)" "$(get "$LISTA_COM" | ids_com)"
+
+R=$(post /api/anexos/99999999/excluir '{"planejamento_id":1}')
+afirma "recusa anexo inexistente" 'não encontrado' "$R"
+rm -f $PNG
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "### 9e. Matriz de Impacto — a autorização, que é o tema inteiro"
+#
+# Aqui mora a única exceção ao modelo de acesso do sistema (PLANEJAMENTO-SISTEMA
+# §5): o GESTOR passa a LER descrição de fator do plano corporativo e a GRAVAR a
+# célula do negócio dele. Toda a prova abaixo é sobre o LIMITE dessa exceção —
+# não sobre a tela, que é a parte fácil.
+#
+# A sessão do gestor é OUTRA: `login` sobrescreve $J e $CSRF, então o admin é
+# reautenticado antes da limpeza. Sem isso, tudo o que viesse depois rodaria
+# como gestor e falharia por um motivo que nada tem a ver com o que se mede.
+#
+# E as credenciais do admin são GUARDADAS antes de trocar, não relidas de $EMAIL:
+# em bash, `VAR=valor funcao` deixa a atribuição valendo DEPOIS que a função
+# retorna (ao contrário do que acontece com um comando externo). Um `login` seco
+# no fim reentraria como gestor — e a limpeza falharia em silêncio, deixando
+# usuário de prova no banco para a próxima execução tropeçar.
+IMP_ADM_EMAIL=$EMAIL
+IMP_ADM_SENHA=$SENHA
+admin_de_volta() { EMAIL=$IMP_ADM_EMAIL; SENHA=$IMP_ADM_SENHA; login; }
+
+IMP_N1=$(get "/api/negocios" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'][0]['id'])" 2>/dev/null)
+IMP_N2=$(get "/api/negocios" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'][1]['id'])" 2>/dev/null)
+IMP_F=$(get "/api/impacto?ciclo_id=1&ano=2026" | python3 -c "
+import sys, json
+f = json.load(sys.stdin)['dados']['fatores']
+print(f[0]['id'] if f else '')" 2>/dev/null)
+
+if [ -z "${IMP_F:-}" ] || [ -z "${IMP_N1:-}" ]; then
+  ok
+  echo "  (pulada: sem SWOT corporativa de 2026 ou sem negócio ativo)"
+else
+  R=$(get "/api/impacto?ciclo_id=1&ano=2026")
+  afirma "admin recebe a grade com o score da GUT" '"score"' "$R"
+
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"NEGATIVO\",\"texto\":\"Aperta a margem (prova)\"}")
+  afirma "admin grava uma célula" '"ok":true' "$R"
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N2,\"sinal\":\"POSITIVO\"}")
+  afirma "admin grava a célula de outro negócio" '"ok":true' "$R"
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"TALVEZ\"}")
+  afirma "recusa sinal fora da lista" 'Sinal inválido' "$R"
+
+  post /api/usuarios "{\"nome\":\"Gestor Prova Impacto\",\"email\":\"gestor.impacto@teste.local\",\"senha\":\"trocar123\",\"perfil\":\"GESTOR\",\"negocios\":[$IMP_N1]}" >/dev/null
+  post /api/usuarios "{\"nome\":\"Leitor Prova Impacto\",\"email\":\"leitor.impacto@teste.local\",\"senha\":\"trocar123\",\"perfil\":\"LEITURA\",\"negocios\":[$IMP_N1]}" >/dev/null
+
+  EMAIL=gestor.impacto@teste.local SENHA=trocar123 login
+  R=$(get "/api/impacto?ciclo_id=1&ano=2026")
+  afirma "gestor LÊ a descrição do fator corporativo" '"descricao"' "$R"
+  # O score é o que a decisão de acesso manteve fora do alcance dele: é a
+  # priorização, não o fato. Sai do PAYLOAD, não só da tela.
+  nega "e o score da GUT NÃO vaza para o gestor" '"score"' "$R"
+  VISTOS=$(echo "$R" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+print(','.join(str(n['id']) for n in d['negocios']))" 2>/dev/null)
+  afirma "gestor vê só o negócio dele" "^$IMP_N1\$" "$VISTOS"
+  CELS=$(echo "$R" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+print(','.join(str(c['negocio_id']) for c in d['celulas']))" 2>/dev/null)
+  nega "e não recebe a célula do negócio alheio" "(^|,)$IMP_N2(,|\$)" "$CELS"
+
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"NEGATIVO\",\"texto\":\"Escrito pelo gestor\"}")
+  afirma "gestor GRAVA a célula do negócio dele" '"ok":true' "$R"
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N2,\"sinal\":\"POSITIVO\"}")
+  afirma "gestor é recusado na célula alheia" 'Sem acesso a este negócio' "$R"
+  # A linha é conferida contra o plano corporativo: sem isso um id qualquer de
+  # fator viraria linha nova pela borda, invisível na grade e eterna na tabela.
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":${FAT:-0},\"negocio_id\":$IMP_N1,\"sinal\":\"POSITIVO\"}")
+  afirma "gestor não inventa linha com fator de fora da matriz" 'não é uma linha da matriz' "$R"
+
+  EMAIL=leitor.impacto@teste.local SENHA=trocar123 login
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"POSITIVO\"}")
+  afirma "LEITURA nunca grava" 'somente leitura' "$R"
+  R=$(get "/api/impacto?ciclo_id=1&ano=2026")
+  afirma "LEITURA lê, com pode_editar falso" '"pode_editar":false' "$R"
+
+  admin_de_volta   # para a limpeza e para o resto do arquivo
+  R=$(post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N1,\"sinal\":\"\"}")
+  afirma "sinal vazio apaga a célula" '"apagada":true' "$R"
+  R=$(get "/api/impacto?ciclo_id=1&ano=2026")
+  nega "e ela não volta na listagem" 'Escrito pelo gestor' "$R"
+  post /api/impacto "{\"ciclo_id\":1,\"fator_id\":$IMP_F,\"negocio_id\":$IMP_N2,\"sinal\":\"\"}" >/dev/null
+
+  # `IMP_UID`, e não `UID`: em bash `UID` é SOMENTE LEITURA (o id do usuário do
+  # sistema), e a atribuição morre com "readonly variable" — a limpeza não
+  # rodava e os usuários de prova ficavam no banco, fazendo a execução seguinte
+  # falhar ao criar o mesmo e-mail.
+  for E in gestor.impacto@teste.local leitor.impacto@teste.local; do
+    IMP_UID=$(get "/api/usuarios" | python3 -c "
+import sys, json
+print(next((u['id'] for u in json.load(sys.stdin)['dados'] if u['email'] == '$E'), ''))" 2>/dev/null)
+    [ -n "$IMP_UID" ] && post /api/usuarios/$IMP_UID/excluir '{"sem_responsavel":true}' >/dev/null
+  done
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+echo "### 9f. Pulso — o contador que faz duas telas se acompanharem"
+#
+# A marcação é montada em DUAS metades, cada uma num ponto de passagem
+# obrigatório (`Auth::exigirEdicaoPlanejamento` diz o alvo, `Database::executar`
+# diz que houve escrita). O que estas provas medem é justamente que nenhuma das
+# duas depende de alguém ter lembrado: leitura não sobe, escrita sobe, e escrita
+# recusada antes de tocar o banco não sobe.
+
+pulso() { get "/api/pulso?ciclo_id=1" | python3 -c "
+import sys, json
+v = json.load(sys.stdin)['dados'].get('versoes', {})
+print(v.get('1', 0) if isinstance(v, dict) else 0)" 2>/dev/null; }
+
+P0=$(pulso)
+get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" >/dev/null
+get "/api/projetos?planejamento_id=1" >/dev/null
+get "/api/cascata?planejamento_id=1" >/dev/null
+P1=$(pulso)
+afirma "três LEITURAS não mexem no pulso" "^$P0\$" "$P1"
+
+R=$(post /api/fatores '{"planejamento_id":1,"etapa":"PESTEL","categoria":"SOCIAL","descricao":"Fator do pulso","ano":2026}')
+PULSO_F=$(echo "$R" | id_de)
+P2=$(pulso)
+afirma "INSERT sobe o pulso" "^$((P1 + 1))\$" "$P2"
+
+post /api/fatores/$PULSO_F '{"planejamento_id":1,"categoria":"LEGAL","descricao":"Fator do pulso (editado)"}' >/dev/null
+P3=$(pulso)
+afirma "UPDATE sobe o pulso" "^$((P2 + 1))\$" "$P3"
+
+# O DELETE é o que nenhum "MAX(atualizado_em)" pegaria: apagar não deixa carimbo
+# em lugar nenhum, e a outra tela seguiria mostrando o que já não existe.
+post /api/fatores/$PULSO_F/excluir '{"planejamento_id":1}' >/dev/null
+P4=$(pulso)
+afirma "DELETE sobe o pulso" "^$((P3 + 1))\$" "$P4"
+
+R=$(post /api/fatores '{"planejamento_id":1,"etapa":"PESTEL","categoria":"NAO_EXISTE","descricao":"x","ano":2026}')
+afirma "a escrita inválida é recusada" '"ok":false' "$R"
+P5=$(pulso)
+afirma "e recusada antes do banco, não sobe o pulso" "^$P4\$" "$P5"
+
+# A rota é chamada a cada poucos segundos por admin: um ciclo sem escrita
+# nenhuma tem de devolver OBJETO vazio, não lista — a tela indexa por id.
+R=$(get "/api/pulso?ciclo_id=99999")
+afirma "ciclo sem escrita devolve objeto vazio, não lista" '"versoes":\{\}' "$R"
+R=$(get "/api/pulso")
+afirma "pulso sem ciclo é recusado" 'Informe o ciclo' "$R"
+
+echo "### 9g. Cadeado de edição — um item aberto por vez"
+#
+# A regra em uma frase: enquanto um admin tem o item aberto, ninguém mais
+# GRAVA nele. Quem prova isso é o servidor, não a tela — a tela só evita o
+# atrito de abrir um formulário que já ia ser recusado.
+#
+# Duas sessões de verdade, cada uma com seu cookie e seu CSRF. Sem isso não há
+# o que provar: com uma sessão só, todo cadeado é "meu" e todas as guardas
+# passam por engano.
+JB=/tmp/fj-b.txt; rm -f $JB
+post /api/usuarios '{"nome":"Bruna do Cadeado","email":"bruna.cadeado@teste.local","senha":"trocar123","perfil":"CONTROLADORIA","negocios":[]}' >/dev/null
+curl -s -c $JB -o /dev/null $BASE/login
+curl -s -b $JB -c $JB -X POST $BASE/api/login -H 'Content-Type: application/json' \
+  -d '{"email":"bruna.cadeado@teste.local","senha":"trocar123"}' -o /dev/null
+CSRF_B=$(curl -s -b $JB $BASE/ | grep -o 'name="csrf" content="[^"]*"' | sed 's/.*content="//;s/"//')
+postb() { curl -s -b $JB -H "X-CSRF-Token: $CSRF_B" -H 'Content-Type: application/json' -X POST "$BASE$1" -d "$2"; }
+getb()  { curl -s -b $JB -H "X-CSRF-Token: $CSRF_B" "$BASE$1"; }
+
+CAD_F=$(post /api/fatores '{"planejamento_id":1,"etapa":"PESTEL","categoria":"SOCIAL","descricao":"Item disputado","ano":2026}' | id_de)
+CAD_B="{\"recurso\":\"fator\",\"registro_id\":$CAD_F,\"planejamento_id\":1}"
+
+R=$(post /api/bloqueio "$CAD_B")
+afirma "quem chega primeiro fica com o item" '"meu":true' "$R"
+afirma "e recebe os 5 minutos combinados" '"restam":(29[0-9]|300)' "$R"
+R=$(postb /api/bloqueio "$CAD_B")
+afirma "o segundo vê que o item é de outro" '"meu":false' "$R"
+afirma "com o NOME de quem está editando" '"usuario":"Administrador"' "$R"
+
+# O coração da coisa. A tela do segundo admin nem abre o formulário, mas a
+# prova tem de ser feita por baixo dela: é o servidor que não pode deixar a
+# gravação passar, porque quem chama a API não é obrigado a ser a tela.
+R=$(postb /api/fatores/$CAD_F '{"planejamento_id":1,"categoria":"LEGAL","descricao":"passei por cima"}')
+afirma "o segundo NÃO grava por cima" 'está editando' "$R"
+R=$(get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" | campo_de $CAD_F descricao)
+afirma "e o texto do primeiro continua inteiro" '^"Item disputado"$' "$R"
+R=$(postb /api/fatores/$CAD_F/excluir '{"planejamento_id":1}')
+afirma "nem exclui o item que o outro está editando" 'está editando' "$R"
+R=$(post /api/fatores/$CAD_F '{"planejamento_id":1,"categoria":"SOCIAL","descricao":"Item disputado (dono salvou)"}')
+afirma "quem tem o cadeado grava normalmente" '"ok":true' "$R"
+
+# O "+1 minuto" ESTENDE. Escrito como `expira_em = NOW() + 60` ele ENCURTARIA
+# um cadeado recém-tomado (de 300 para 60) — o botão de ganhar tempo tirando
+# tempo de quem clicou. Por isso o `GREATEST(expira_em, NOW()) + 60`.
+restam_de(){ python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['restam'])" 2>/dev/null; }
+ANTES=$(post /api/bloqueio/renovar "$CAD_B" | restam_de)
+R=$(post /api/bloqueio/renovar "$CAD_B" | restam_de)
+afirma "o +1 minuto estende em vez de encurtar" "^(3[5-9][0-9]|4[0-2][0-9])$" "$R"
+[ "$R" -gt "$ANTES" ] && ok || falha "cada +1 minuto soma sobre o anterior" ">$ANTES" "$R"
+
+R=$(get "/api/pulso?ciclo_id=1")
+afirma "o pulso conta o cadeado para as outras telas" "\"recurso\":\"fator\",\"registro_id\":$CAD_F" "$R"
+afirma "e leva o nome, que é o que aparece no cartão" '"usuario":"Administrador"' "$R"
+R=$(getb "/api/pulso?ciclo_id=1" | python3 -c "
+import sys, json
+b = [x for x in json.load(sys.stdin)['dados']['bloqueios'] if x['registro_id'] == $CAD_F]
+print(json.dumps(b[0]['meu'] if b else None))")
+afirma "o 'meu' é de quem pergunta, não do dono do cadeado" '^false$' "$R"
+
+# O que acontece aos 0:00, que foi a decisão mais delicada do desenho: soltar o
+# cadeado NÃO invalida o texto de quem estava escrevendo. Enquanto ninguém
+# assumir o item, a gravação dele ainda passa — sem isso, quem estivesse
+# redigindo aos 4:59 perderia o parágrafo, e o recurso feito para não perder
+# trabalho passaria a perder trabalho. O `soltar` aqui faz o papel do relógio
+# chegando a zero: nos dois casos o item fica LIVRE.
+post /api/bloqueio/soltar "$CAD_B" >/dev/null
+R=$(post /api/fatores/$CAD_F '{"planejamento_id":1,"categoria":"SOCIAL","descricao":"O texto sobreviveu ao 0:00"}')
+afirma "sem cadeado e sem ninguém no lugar, a gravação passa" '"ok":true' "$R"
+R=$(get "/api/pulso?ciclo_id=1")
+nega "cadeado solto some do pulso na hora" "\"registro_id\":$CAD_F" "$R"
+
+# E a outra metade: se ALGUÉM assumiu no intervalo, aí sim a gravação é
+# recusada — com a mensagem que manda copiar o texto antes de fechar.
+postb /api/bloqueio "$CAD_B" >/dev/null
+R=$(post /api/fatores/$CAD_F '{"planejamento_id":1,"categoria":"SOCIAL","descricao":"tarde demais"}')
+afirma "mas se alguém assumiu, a gravação é recusada" 'Bruna do Cadeado está editando' "$R"
+afirma "e a recusa diz o que fazer com o texto" 'copie o que você escreveu' "$R"
+postb /api/bloqueio/soltar "$CAD_B" >/dev/null
+
+# Recurso fora do catálogo é recusado na entrada: a rota recebe o nome da
+# tabela vindo do navegador, e sem a lista fechada `RECURSOS` ela viraria uma
+# chave livre para encher a tabela de cadeados que nada solta.
+R=$(post /api/bloqueio '{"recurso":"usuario","registro_id":1,"planejamento_id":1}')
+afirma "recusa recurso fora do catálogo" '"ok":false' "$R"
+
+# As mesmas guardas nos outros recursos — o valor de ter uma regra só é ela
+# valer igual em todos, e é isso que estas duas medem.
+if [ -n "${ACAO:-}" ]; then
+  postb /api/bloqueio "{\"recurso\":\"desdobramento\",\"registro_id\":$ACAO,\"planejamento_id\":1}" >/dev/null
+  R=$(post /api/desdobramentos/$ACAO "{\"planejamento_id\":1,\"projeto_id\":$PRJ,\"iniciativa_id\":$INI,\"o_que\":\"por cima\",\"quem\":\"QA\",\"como\":\"x\",\"prioridade\":\"MEDIA\",\"status\":\"NAO_INICIADO\",\"progresso\":0,\"recorrencia\":\"NENHUMA\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\"}")
+  afirma "a mesma guarda vale para a ação do plano" 'está editando' "$R"
+  postb /api/bloqueio/soltar "{\"recurso\":\"desdobramento\",\"registro_id\":$ACAO,\"planejamento_id\":1}" >/dev/null
+fi
+if [ -n "${PRJ:-}" ]; then
+  postb /api/bloqueio "{\"recurso\":\"projeto\",\"registro_id\":$PRJ,\"planejamento_id\":1}" >/dev/null
+  R=$(post /api/projetos/$PRJ '{"planejamento_id":1,"titulo":"por cima","ano":2027,"responsavel":"x","descricao":"x"}')
+  afirma "e para o projeto" 'está editando' "$R"
+  postb /api/bloqueio/soltar "{\"recurso\":\"projeto\",\"registro_id\":$PRJ,\"planejamento_id\":1}" >/dev/null
+fi
+
+# Tomar e renovar ESCREVEM no banco, mas não podem contar como mudança do
+# plano: a cada renovação as outras telas se repintariam inteiras, que é o
+# oposto exato do que o pulso existe para fazer. Daí o `Versao::ignorar()`.
+PC0=$(pulso)
+post /api/bloqueio "$CAD_B" >/dev/null
+post /api/bloqueio/renovar "$CAD_B" >/dev/null
+post /api/bloqueio/soltar "$CAD_B" >/dev/null
+afirma "cadeado não conta como mudança do plano" "^$PC0\$" "$(pulso)"
+
+post /api/fatores/$CAD_F/excluir '{"planejamento_id":1}' >/dev/null
+CAD_U=$(get "/api/usuarios" | python3 -c "
+import sys, json
+print(next((u['id'] for u in json.load(sys.stdin)['dados'] if u['email'] == 'bruna.cadeado@teste.local'), ''))" 2>/dev/null)
+[ -n "$CAD_U" ] && post /api/usuarios/$CAD_U/excluir "{\"transferir_para\":1}" >/dev/null
+rm -f $JB
+
+echo "### 9h. Mudar de análise ATRAVESSANDO a tabela (Cenário ⇄ fator)"
+#
+# Entre análises, mover é `UPDATE fator SET etapa`: o id não muda e nada mais
+# precisa mudar. Para a Análise de Cenário o id MORRE — é outra tabela —, e o
+# que estas provas medem é justamente o que o id sustentava: o texto, o ano, a
+# marca do plano de ação e, sobretudo, as VOZES DA SALA.
+MV_F=$(post /api/fatores '{"planejamento_id":1,"etapa":"PESTEL","categoria":"SOCIAL","descricao":"Item que atravessa","ano":2026}' | id_de)
+R=$(post /api/fatores/$MV_F/mover '{"planejamento_id":1,"etapa":"CENARIO"}')
+afirma "sem dizer o tipo, o destino Cenário é recusado" 'situação atual ou como tendência' "$R"
+R=$(post /api/fatores/$MV_F/mover '{"planejamento_id":1,"etapa":"CENARIO","tipo":"NAO_EXISTE"}')
+afirma "tipo inventado é recusado" 'situação atual ou como tendência' "$R"
+R=$(post /api/fatores/$MV_F/mover '{"planejamento_id":1,"etapa":"CENARIO","tipo":"TENDENCIA"}')
+afirma "move o fator para a Análise de Cenário" '"destino":"CENARIO"' "$R"
+MV_C=$(echo "$R" | id_de)
+R=$(get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" | campo_de $MV_F descricao)
+afirma "e ele sai do PESTEL" '^"__ausente__"$' "$R"
+R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_C descricao)
+afirma "com o texto inteiro do outro lado" '^"Item que atravessa"$' "$R"
+R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_C tipo)
+afirma "e no tipo pedido" '^"TENDENCIA"$' "$R"
+
+R=$(post /api/cenario/$MV_C/mover '{"planejamento_id":1,"etapa":"SWOT","categoria":"SITUACAO_ATUAL"}')
+afirma "recusa categoria de outro catálogo" 'não se correspondem' "$R"
+R=$(post /api/cenario/$MV_C/mover '{"planejamento_id":1,"etapa":"NAO_EXISTE","categoria":"AMEACA"}')
+afirma "recusa análise que não existe" 'análise de destino' "$R"
+R=$(post /api/cenario/$MV_C/mover '{"planejamento_id":1,"etapa":"SWOT","categoria":"AMEACA"}')
+afirma "e volta, virando fator da SWOT" '"destino":"SWOT"' "$R"
+MV_F2=$(echo "$R" | id_de)
+R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_C descricao)
+afirma "o item sai da Análise de Cenário" '^"__ausente__"$' "$R"
+R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026" | campo_de $MV_F2 categoria)
+afirma "e chega na categoria escolhida" '^"AMEACA"$' "$R"
+post /api/fatores/$MV_F2/excluir '{"planejamento_id":1}' >/dev/null
+
+# A ideia da COLETA acompanha o item. Sem isso ela ficaria apontando para um id
+# morto — o rastreio da tela exibiria vínculo quebrado e a ideia ficaria presa
+# em ACEITO sobre um registro que não existe mais.
+MV_ID=$(post /api/coleta '{"planejamento_id":1,"texto":"Ideia que atravessa","ano":2026}' | id_de)
+post /api/coleta/$MV_ID/encaminhar '{"planejamento_id":1,"destino":"SWOT","categoria":"AMEACA"}' >/dev/null
+MV_FC=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $MV_ID destino_id | tr -d '"')
+R=$(post /api/fatores/$MV_FC/mover '{"planejamento_id":1,"etapa":"CENARIO","tipo":"SITUACAO_ATUAL"}')
+MV_CC=$(echo "$R" | id_de)
+R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $MV_ID destino_tipo)
+afirma "a ideia da Coleta segue o item para a outra tabela" '^"CENARIO"$' "$R"
+R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $MV_ID destino_id)
+afirma "apontando para o registro NOVO" "^$MV_CC\$" "$R"
+R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_CC coleta_vozes)
+afirma "e o item novo já nasce mostrando a voz que o originou" '^1$' "$R"
+
+# A voz do QUIZ é o caso difícil, e o que ela mede é uma guarda que não existia:
+# ela vem de uma pergunta cujo ALVO era o Cenário, e depois da travessia mora
+# num fator. O "solta quem saiu do conjunto" do `vincularSugestoes` alcançava
+# QUALQUER voz do quiz amarrada ao registro — então a primeira edição do fator
+# soltava, calada, exatamente a voz que a travessia acabou de preservar.
+#
+# `confirmar_encerrar` porque a seção 8 deixou uma tempestade aberta e a sala é
+# UMA por projeto: sem ele a rota devolve SALA_ABERTA/409 pedindo confirmação, e
+# este bloco inteiro era pulado — verde por não ter rodado, que é o pior jeito
+# de uma prova passar.
+R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"CENARIO","ano":2026,"tema":"Prova da travessia","max_ideias":3,"confirmar_encerrar":true}')
+MV_PIN=$(echo "$R" | python3 -c "import sys,json
+try: print(json.load(sys.stdin)['dados'].get('pin',''))
+except: print('')" 2>/dev/null)
+MV_PERG=$(echo "$R" | python3 -c "import sys,json
+try: print(json.load(sys.stdin)['dados'].get('pergunta_id') or '')
+except: print('')" 2>/dev/null)
+if [ -n "$MV_PIN" ] && [ -n "$MV_PERG" ]; then
+  MV_TOK=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$MV_PIN\",\"nome\":\"Voz da travessia\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['token'])" 2>/dev/null)
+  curl -s -X POST $BASE/api/publico/resposta -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$MV_PIN\",\"token\":\"$MV_TOK\",\"pergunta_id\":$MV_PERG,\"tipo\":\"TENDENCIA\",\"texto\":\"Voz que atravessa\"}" >/dev/null
+  MV_SUG=$(get "/api/quiz?planejamento_id=1&pergunta_id=$MV_PERG" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+print(next((s['id'] for s in d.get('sugestoes', []) if s['texto'] == 'Voz que atravessa'), ''))" 2>/dev/null)
+  R=$(post /api/cenario "{\"planejamento_id\":1,\"ano\":2026,\"tipo\":\"TENDENCIA\",\"descricao\":\"Item com voz do quiz\",\"sugestoes\":[$MV_SUG]}")
+  MV_CQ=$(echo "$R" | id_de)
+  R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_CQ quiz_vozes)
+  afirma "a voz do quiz fica amarrada ao item do cenário" '^1$' "$R"
+
+  R=$(post /api/cenario/$MV_CQ/mover '{"planejamento_id":1,"etapa":"PORTER","categoria":"RIVALIDADE"}')
+  MV_FQ=$(echo "$R" | id_de)
+  R=$(get "/api/fatores?planejamento_id=1&etapa=PORTER&ano=2026" | campo_de $MV_FQ quiz_vozes)
+  afirma "e atravessa junto com ele" '^1$' "$R"
+  # O golpe: editar o fator MANDANDO o conjunto de vozes que o painel dele
+  # conhece — que é vazio, porque a pergunta era de outro alvo.
+  post /api/fatores/$MV_FQ "{\"planejamento_id\":1,\"etapa\":\"PORTER\",\"categoria\":\"RIVALIDADE\",\"ano\":2026,\"descricao\":\"Item com voz do quiz (editado)\",\"sugestoes\":[]}" >/dev/null
+  R=$(get "/api/fatores?planejamento_id=1&etapa=PORTER&ano=2026" | campo_de $MV_FQ quiz_vozes)
+  afirma "e a primeira edição NÃO solta a voz que atravessou" '^1$' "$R"
+  post /api/fatores/$MV_FQ/excluir '{"planejamento_id":1}' >/dev/null
+  post /api/quiz/encerrar '{"planejamento_id":1}' >/dev/null
+fi
+post /api/coleta/$MV_ID/excluir '{"planejamento_id":1}' >/dev/null
+
+echo "### 9i. Cruzamentos na sala — a única resposta pública que NÃO é só texto"
+#
+# O alvo CRUZAMENTO é o primeiro em que o celular ESCOLHE registros: a pessoa
+# marca dois fatores da SWOT e escreve a estratégia. É a rota sem login
+# recebendo ids, e por isso estas provas medem sobretudo o que ela RECUSA.
+#
+# A regra do par mora em `Services\Cruzamentos` e vale igual dos dois lados —
+# com login e sem. As provas abaixo batem no lado de FORA, que é o que importa:
+# a de dentro já é exercitada pelo cadastro comum, na seção 9.
+CZ_F=$(post /api/fatores '{"planejamento_id":1,"etapa":"SWOT","categoria":"FORCA","descricao":"Forca da sala","ano":2026}' | id_de)
+CZ_O=$(post /api/fatores '{"planejamento_id":1,"etapa":"SWOT","categoria":"OPORTUNIDADE","descricao":"Oportunidade da sala","ano":2026}' | id_de)
+CZ_A=$(post /api/fatores '{"planejamento_id":1,"etapa":"SWOT","categoria":"AMEACA","descricao":"Ameaca da sala","ano":2026}' | id_de)
+R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"CRUZAMENTO","ano":2026,"alvos":["NAO_EXISTE"],"tema":"TOWS","confirmar_encerrar":true}')
+afirma "bloco inventado é recusado ao abrir a sala" 'Bloco de cruzamento inválido' "$R"
+R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"CRUZAMENTO","ano":2026,"alvos":["ATACAR"],"tema":"TOWS na sala","max_ideias":3,"confirmar_encerrar":true}')
+afirma "abre a sala num bloco do cruzamento" '"pergunta_id"' "$R"
+CZ_PIN=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('pin',''))" 2>/dev/null)
+CZ_PERG=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('pergunta_id') or '')" 2>/dev/null)
+if [ -n "$CZ_PIN" ] && [ -n "$CZ_PERG" ]; then
+  # O que DESCE para o celular. As duas listas são a novidade: é conteúdo do
+  # diagnóstico numa tela sem login, e por isso a prova mede também o que NÃO
+  # desce — o score da GUT é priorização interna e não tem por que viajar.
+  R=$(curl -s "$BASE/api/publico/rodada/$CZ_PIN" | python3 -c "
+import sys, json
+p = json.load(sys.stdin)['dados']['pergunta']
+pares = p.get('pares') or {}
+print(json.dumps({
+  'interno': pares.get('interno', {}).get('rotulo'),
+  'externo': pares.get('externo', {}).get('rotulo'),
+  'campos': sorted((pares.get('interno', {}).get('itens') or [{}])[0].keys()),
+}, ensure_ascii=False))" 2>/dev/null)
+  afirma "o celular recebe as duas listas do bloco" '"interno": "Forças", "externo": "Oportunidades"' "$R"
+  afirma "e de cada fator só o id e a descrição" '"campos": \["descricao", "id"\]' "$R"
+
+  CZ_TOK=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$CZ_PIN\",\"nome\":\"Voz do cruzamento\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['token'])" 2>/dev/null)
+  cz_resp(){ curl -s -X POST $BASE/api/publico/resposta -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$CZ_PIN\",\"token\":\"$CZ_TOK\",\"pergunta_id\":$CZ_PERG,$1\"texto\":\"Estrategia da sala\"}"; }
+
+  R=$(cz_resp '')
+  afirma "sem o par, a resposta é recusada" 'um fator interno e um externo' "$R"
+  R=$(cz_resp "\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_F,")
+  afirma "o mesmo fator dos dois lados é recusado" 'DOIS fatores diferentes' "$R"
+  R=$(cz_resp "\"fator_interno_id\":$CZ_O,\"fator_externo_id\":$CZ_F,")
+  afirma "o par invertido é recusado" 'fator INTERNO .* a um fator EXTERNO' "$R"
+  # A guarda que dá sentido à pergunta: sem ela, "Forças × Oportunidades"
+  # aceitaria força com ameaça, e o painel encheria de resposta fora do assunto.
+  R=$(cz_resp "\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_A,")
+  afirma "par de OUTRO bloco é recusado, dizendo qual é o bloco" 'Esta pergunta é do bloco Forças × Oportunidades' "$R"
+  # Id que não é da SWOT deste plano: o caso do corpo forjado, que é a razão
+  # de a rota nunca ler o planejamento do que lhe mandam.
+  R=$(cz_resp "\"fator_interno_id\":$CZ_F,\"fator_externo_id\":99999999,")
+  afirma "id de fora do planejamento é recusado" 'dois fatores da SWOT deste planejamento' "$R"
+  R=$(cz_resp "\"fator_interno_id\":$FAT,\"fator_externo_id\":$CZ_O,")
+  afirma "fator que não é da SWOT é recusado" 'dois fatores da SWOT deste planejamento' "$R"
+  R=$(cz_resp "\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_O,")
+  afirma "o par certo é aceito" '"ok":true' "$R"
+
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$CZ_PERG" | python3 -c "
+import sys, json
+s = json.load(sys.stdin)['dados']['sugestoes']
+print(json.dumps(s[0] if s else {}, ensure_ascii=False))" 2>/dev/null)
+  afirma "o painel do condutor recebe o par com as descrições" '"interno_descricao": "Forca da sala"' "$R"
+  CZ_SUG=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+
+  # O "Usar": o cruzamento nasce com o par que a sala propôs, e a voz fica
+  # amarrada a ele — é o registro de QUEM propôs aquele encontro.
+  R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_O,\"rotulo\":\"Par da sala\",\"estrategia\":\"Estrategia redigida pelo condutor\",\"sugestoes\":[$CZ_SUG]}")
+  afirma "o condutor aceita a proposta e ela vira cruzamento" '"tipo":"ATACAR"' "$R"
+  CZ_ID=$(echo "$R" | id_de)
+  R=$(get "/api/cruzamentos?planejamento_id=1&ano=2026" | campo_de $CZ_ID quiz_vozes)
+  afirma "e o cruzamento mostra a voz que o sustenta" '^1$' "$R"
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$CZ_PERG" | python3 -c "
+import sys, json
+s = [x for x in json.load(sys.stdin)['dados']['sugestoes'] if x['id'] == $CZ_SUG]
+print(json.dumps(s[0]['vinculada'] if s else None))" 2>/dev/null)
+  afirma "a voz sai do painel, porque virou registro" '^1$' "$R"
+
+  # Excluído o cruzamento, a voz VOLTA — senão ficaria ACEITA sobre um id morto,
+  # congelada para o autor e "usada" para o condutor.
+  post /api/cruzamentos/$CZ_ID/excluir '{"planejamento_id":1}' >/dev/null
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$CZ_PERG" | python3 -c "
+import sys, json
+s = [x for x in json.load(sys.stdin)['dados']['sugestoes'] if x['id'] == $CZ_SUG]
+print(json.dumps(s[0]['vinculada'] if s else None))" 2>/dev/null)
+  afirma "apagado o cruzamento, a voz volta ao painel" '^0$' "$R"
+
+  # A voz sai antes dos fatores: apagar o fator só ANULA o lado do par (a FK é
+  # SET NULL, para não perder o que alguém escreveu na oficina), e a resposta
+  # ficaria para trás a cada rodada da bateria.
+  [ -n "$CZ_SUG" ] && post /api/quiz/sugestao/$CZ_SUG/excluir '{"planejamento_id":1}' >/dev/null
+  post /api/quiz/encerrar '{"planejamento_id":1}' >/dev/null
+fi
+for F in $CZ_F $CZ_O $CZ_A; do
+  [ -n "$F" ] && post /api/fatores/$F/excluir '{"planejamento_id":1}' >/dev/null
+done
+
 echo "### 10. Limpeza"
+[ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${REU:-}" ]  && post /api/reunioes/$REU/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${ACAO:-}" ] && post /api/desdobramentos/$ACAO/excluir '{"planejamento_id":1}' >/dev/null

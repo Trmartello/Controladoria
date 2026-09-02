@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Bloqueio;
 use App\Services\Quiz;
 
 /** Cascata de escolhas: células driver × horizonte com síntese e aberturas por eixo. */
@@ -27,7 +28,23 @@ class CascataController
             'SELECT * FROM cascata_escolha WHERE planejamento_id = ?',
             [$planId]
         );
+        // Comentários por escolha, numa consulta só: a tela precisa deles para
+        // dizer, ANTES do clique, o que a exclusão leva junto. O comentário é
+        // polimórfico (`ref_tipo`/`ref_id`) e não tem FK — quem o apaga é o
+        // `excluir` daqui, em silêncio até agora.
+        $comentarios = [];
+        foreach (Database::todos(
+            "SELECT c.ref_id, COUNT(*) AS n
+             FROM comentario c
+             JOIN cascata_escolha ce ON ce.id = c.ref_id
+             WHERE c.ref_tipo = 'CASCATA' AND ce.planejamento_id = ?
+             GROUP BY c.ref_id",
+            [$planId]
+        ) as $c) {
+            $comentarios[(int)$c['ref_id']] = (int)$c['n'];
+        }
         foreach ($escolhas as &$e) {
+            $e['comentarios'] = $comentarios[(int)$e['id']] ?? 0;
             $e['fatores'] = Database::todos(
                 'SELECT f.id, f.categoria, f.descricao, g.score
                  FROM cascata_fator cf
@@ -51,11 +68,103 @@ class CascataController
         }
 
         Json::ok([
-            'horizontes' => $horizontes,
-            'drivers'    => $drivers,
-            'eixos'      => $eixos,
-            'escolhas'   => $escolhas,
+            'horizontes'  => $horizontes,
+            'drivers'     => $drivers,
+            'eixos'       => $eixos,
+            'escolhas'    => $escolhas,
+            // A Matriz de Execução: o que MEDE e o que EXECUTA cada escolha.
+            'indicadores' => $this->indicadoresDaMatriz($planId),
+            'projetos'    => $this->projetosDaMatriz($planId),
         ]);
+    }
+
+    /**
+     * Indicadores do planejamento com as escolhas que eles medem e as séries
+     * meta/real — a coluna do meio da Matriz de Execução.
+     *
+     * Vêm numa lista PLANA, com `cascatas` em cada um, e não repetidos dentro
+     * de cada escolha: um indicador pode medir várias, e duplicá-lo por escolha
+     * inflaria o corpo com as séries plurianuais repetidas. Quem agrupa é a
+     * tela, num passe.
+     *
+     * Quatro consultas para o conjunto todo, nenhuma dentro de laço. O laço que
+     * já existe acima (fatores e sugestões por escolha) é anterior a este tema e
+     * ficou como estava; o que este acrescenta não repete o problema.
+     *
+     * As séries vêm CRUAS (todos os anos, meta na versão mais recente) porque
+     * quem decide qual ano mostrar é a regra da tela de Metas — e ela mora lá,
+     * numa função só. Resolver "o ano de referência" aqui criaria uma segunda
+     * cópia da regra, que divergiria da primeira revisão em diante.
+     */
+    private function indicadoresDaMatriz(int $planId): array
+    {
+        $indicadores = Database::todos(
+            'SELECT id, nome, unidade, sentido, metrica_ancora, horizonte_id
+             FROM indicador WHERE planejamento_id = ?
+             ORDER BY metrica_ancora DESC, nome',
+            [$planId]
+        );
+        if (!$indicadores) {
+            return [];
+        }
+        $ids = array_column($indicadores, 'id');
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+
+        $vinculos = [];
+        foreach (Database::todos(
+            "SELECT indicador_id, cascata_id FROM indicador_cascata
+             WHERE indicador_id IN ({$marcas})",
+            $ids
+        ) as $v) {
+            $vinculos[(int)$v['indicador_id']][] = (int)$v['cascata_id'];
+        }
+
+        // Meta na versão mais recente de cada ano — a mesma subconsulta de
+        // `IndicadorController::listar`, que é quem define o que é "a meta".
+        $series = [];
+        foreach (Database::todos(
+            "SELECT v.indicador_id, v.ano, v.tipo, v.valor
+             FROM indicador_valor v
+             WHERE v.indicador_id IN ({$marcas})
+               AND (v.tipo = 'REAL' OR v.versao_meta = (
+                     SELECT MAX(v2.versao_meta) FROM indicador_valor v2
+                      WHERE v2.indicador_id = v.indicador_id AND v2.ano = v.ano AND v2.tipo = 'META'))
+             ORDER BY v.ano",
+            $ids
+        ) as $v) {
+            $chave = $v['tipo'] === 'REAL' ? 'reais' : 'metas';
+            $series[(int)$v['indicador_id']][$chave][] = ['ano' => (int)$v['ano'], 'valor' => $v['valor']];
+        }
+
+        foreach ($indicadores as &$i) {
+            $i['cascatas'] = $vinculos[(int)$i['id']] ?? [];
+            $i['metas'] = $series[(int)$i['id']]['metas'] ?? [];
+            $i['reais'] = $series[(int)$i['id']]['reais'] ?? [];
+        }
+        return $indicadores;
+    }
+
+    /**
+     * Projetos que executam alguma escolha — a coluna das iniciativas.
+     *
+     * Só os que têm `cascata_id`: a matriz é a leitura da cascata, e projeto
+     * sem escolha não tem linha onde aparecer. O `progresso` é a média das ações
+     * vivas, a MESMA expressão do Relatório de Status — ação cancelada fora da
+     * conta, senão trabalho que ninguém vai fazer puxaria o percentual do
+     * projeto para baixo.
+     */
+    private function projetosDaMatriz(int $planId): array
+    {
+        return Database::todos(
+            "SELECT p.id, p.cascata_id, p.titulo, p.status, p.classificacao,
+                    COALESCE(ROUND(AVG(CASE WHEN d.status <> 'CANCELADO' THEN d.progresso END)), 0) AS progresso
+             FROM projeto p
+             LEFT JOIN desdobramento d ON d.projeto_id = p.id
+             WHERE p.planejamento_id = ? AND p.cascata_id IS NOT NULL
+             GROUP BY p.id
+             ORDER BY p.classificacao, p.ano, p.id",
+            [$planId]
+        );
     }
 
     /** Cria/atualiza a célula (síntese quando eixo_id é nulo; abertura quando informado). */
@@ -102,6 +211,8 @@ class CascataController
 
         if ($existente) {
             $id = (int)$existente['id'];
+            // Cadeado só na EDIÇÃO: a célula que ainda não existe não é disputada.
+            Bloqueio::exigirMeu('cascata_escolha', $id, (int)$u['id'], 'esta célula');
             Database::executar(
                 'UPDATE cascata_escolha SET escolha = ?, renuncia = ? WHERE id = ?',
                 [$escolha, $renuncia, $id]

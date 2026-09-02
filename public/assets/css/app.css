@@ -154,6 +154,174 @@ table.tabela-cadastro td { vertical-align: middle; }
   .tabela-cascata th.celula-driver { width: 120px; }
 }
 
+/* ===== Botão travado: o × que o servidor vai recusar =====
+   O motivo da trava mora no `title` — é ele que diz o que FAZER ("exclua a ação
+   em Projetos antes"). O Bootstrap põe `pointer-events: none` em todo
+   `.btn:disabled`, e sem ponteiro o navegador não mostra `title` nenhum: o botão
+   ficaria cinzento sem dizer por quê, que é exatamente o defeito que este aviso
+   existe para corrigir.
+   Devolver o ponteiro NÃO destrava nada: quem bloqueia o clique é o atributo
+   `disabled` do `<button>`, e ele continua lá. O gancho é o `aria-disabled`, que
+   só `Vinculos.travado` escreve. */
+.btn[aria-disabled="true"],
+.fpm-item[aria-disabled="true"] {
+  pointer-events: auto;
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+/* Matriz de Execução (aba da Cascata): por eixo, a escolha, o que a mede e quem
+   a executa. A coluna do eixo é a "raia" — o que num mapa BSC seria uma faixa
+   com setas é aqui a primeira coluna, com `rowspan`. */
+.tabela-execucao td { vertical-align: top; }
+.tabela-execucao .celula-raia {
+  background: #e8f1ec;
+  font-weight: 600;
+  font-size: .8rem;
+  text-transform: uppercase;
+  color: var(--verde-escuro);
+  vertical-align: middle;
+}
+/* O cabeçalho da matriz gruda abaixo da topbar, como o de Projetos e o das
+   análises (`top: var(--topo-app)`, a altura da .topbar declarada uma vez em
+   `:root`). Sem ele, uma tabela de cinco colunas largas é lida às cegas: da
+   terceira linha em diante ninguém sabe mais se a coluna do meio é o indicador
+   ou a meta.
+
+   O motivo de isto precisar de uma media query: `.table-responsive` é um
+   CONTAINER DE ROLAGEM. `overflow-x: auto` faz o `overflow-y` computar `auto`
+   junto, e um `sticky` ali gruda no topo de uma caixa que tem exatamente a
+   altura da tabela — ele não tem para onde se mover e some com a página, que é
+   quem rola de verdade. Onde a tabela CABE na largura, o container deixa de
+   rolar e o `sticky` passa a valer contra a página.
+
+   O corte é 992px (o `lg` do Bootstrap), e o número saiu de MEDIR, não de
+   somar os `min-width` das colunas: a largura intrínseca da tabela é 911px, e
+   a 992 a caixa útil fica em 944 — 33px de folga. Abaixo disso ela vaza, e a
+   PÁGINA passaria a rolar na horizontal, que é o defeito que o
+   `.table-responsive` existe para evitar; então ali o container volta a rolar
+   sozinho e o cabeçalho não gruda. No celular a tabela já é percorrida de
+   lado, e cabeçalho fixo roubaria altura de tela sem resolver nada.
+
+   `border-collapse: separate` é o que faz o cabeçalho grudado ser OPACO. Com
+   `collapse`, as bordas (e os fundos) pertencem à TABELA, não às células: o
+   fundo do `<th>` é pintado na camada da tabela e o TEXTO das `<td>` que
+   passam por baixo aparece por cima dele — `z-index` na célula não resolve,
+   porque tabela colapsada não respeita camada por célula. Medido, não
+   deduzido: a cauda de "…ligado a esta escolha." aparecia atravessada no meio
+   do título "Iniciativas".
+   O preço de `separate` é ter de redesenhar a grade do `table-bordered` à mão
+   — cada célula fica com a borda da DIREITA e a de BAIXO, e a tabela com a de
+   cima e a da esquerda —, senão as bordas vizinhas se somam e a grade
+   engrossa. `border-spacing: 0` mantém as células encostadas. */
+.tabela-execucao {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 0;
+  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  border-left: 1px solid var(--bs-border-color, #dee2e6);
+}
+.tabela-execucao > * > tr > * {
+  border: 0;
+  border-right: 1px solid var(--bs-border-color, #dee2e6);
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+@media (min-width: 992px) {
+  .caixa-execucao { overflow: visible; }
+  .tabela-execucao thead th {
+    position: sticky;
+    top: var(--topo-app);
+    z-index: 3;
+    background: #f4f6f5;
+    /* A sombra é o "tem mais coisa acima" dos outros cabeçalhos fixos do
+       sistema; sem ela o corte é lido como linha quebrada. */
+    box-shadow: 0 .35rem .35rem -.3rem rgba(0, 0, 0, .22);
+  }
+}
+/* No papel não há rolagem: grudado, o cabeçalho viraria uma faixa cinzenta
+   sobreposta à tabela na primeira página. */
+@media print {
+  .caixa-execucao { overflow: visible; }
+  .tabela-execucao thead th { position: static; box-shadow: none; }
+}
+
+/* ===== Matriz de Impacto por Negócio =====
+   Grade fator × negócio. A coluna do fator fica PRESA à esquerda: com doze
+   negócios a tabela rola de lado, e sem ela quem rola perde de vista a linha
+   que está lendo — o mesmo defeito que o cabeçalho da Matriz de Execução tinha.
+   `border-collapse: separate` pela MESMA razão de lá: com `collapse` os fundos
+   pertencem à tabela, e o texto das células passaria por cima da coluna presa.
+   A grade do `table-bordered` é redesenhada célula a célula por causa disso. */
+.tabela-impacto {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 0;
+  border-top: 1px solid var(--bs-border-color, #dee2e6);
+  border-left: 1px solid var(--bs-border-color, #dee2e6);
+}
+.tabela-impacto > * > tr > * {
+  border: 0;
+  border-right: 1px solid var(--bs-border-color, #dee2e6);
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+.tabela-impacto .col-fator {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  min-width: 240px;
+  max-width: 340px;
+  text-align: left;
+  font-weight: 400;
+  vertical-align: top;
+}
+/* O cabeçalho gruda, e aqui a solução da Matriz de Execução NÃO serve: lá a
+   caixa podia parar de rolar porque a tabela cabia na largura; esta precisa
+   mesmo de ~1450px (doze negócios), então soltar o `overflow` jogaria a rolagem
+   horizontal para a PÁGINA. Então a caixa é que ganha altura limitada e vira o
+   container de rolagem — e o `sticky` gruda no topo DELA, que agora tem para
+   onde se mover. Sem isso, doze colunas de código numérico viram ilegíveis a
+   partir da terceira linha: ninguém sabe mais se está lendo o negócio 6 ou o 11.
+   `top: 0`, e não `--topo-app`: o topo aqui é o da caixa, não o da página. */
+.caixa-impacto { max-height: calc(100vh - var(--topo-app) - 4rem); }
+.tabela-impacto thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f4f6f5;
+  box-shadow: 0 .35rem .35rem -.3rem rgba(0, 0, 0, .22);
+}
+/* A quina: presa nos DOIS eixos, e acima de ambos — senão a coluna do fator
+   passa por cima do cabeçalho num sentido e o cabeçalho por cima dela no outro. */
+.tabela-impacto thead .col-fator { z-index: 4; background: #f4f6f5; }
+@media print {
+  .caixa-impacto { max-height: none; overflow: visible; }
+  .tabela-impacto thead th,
+  .tabela-impacto .col-fator { position: static; box-shadow: none; }
+}
+/* 64px por negócio: doze colunas mais a do fator cabem em 1500px sem rolagem.
+   Com os 170px da proposta original dava ~1900px — e a validação em 1500×800 é
+   justamente o que o CLAUDE.md exige. */
+.tabela-impacto .col-negocio {
+  width: 64px;
+  min-width: 64px;
+  text-align: center;
+  background: #f4f6f5;
+  font-size: .82rem;
+}
+.celula-impacto {
+  text-align: center;
+  font-size: 1.1rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.celula-impacto:hover { background: #eef4f1; }
+/* O glifo carrega o sinal junto com a cor: cor sozinha não sobrevive ao
+   daltonismo nem à impressão em preto e branco, e esta tela nasceu para ir
+   impressa à reunião. */
+.glifo-impacto { font-size: 1.3rem; line-height: 1.2; }
+.chip-impacto { border: 0; font-weight: 600; }
+
 /* Metas — tabela plurianual */
 .tabela-metas th.col-ano { min-width: 84px; text-align: center; }
 .tabela-metas td.valor { text-align: right; white-space: nowrap; }
@@ -473,6 +641,14 @@ input[type=range].faixa-verde:focus-visible {
   max-width: 34rem;
   align-self: flex-start;
 }
+/* Alvo de toque de 2,25rem, o padrão do sistema. O "não é você?" é a ÚNICA
+   saída da identidade guardada no navegador — sair dela num celular, ou num
+   computador que outra pessoa acabou de usar, não pode depender de mira. */
+#btn-trocar-pessoa {
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+}
 .campo-pin {
   letter-spacing: .5em;
   text-align: center;
@@ -573,6 +749,35 @@ input[type=range].faixa-verde:focus-visible {
   gap: .5rem;
   margin-top: .4rem;
 }
+/* O × de remover fica SOBRE a miniatura, e por isso o par (link + botão) mora
+   num contêiner posicionado. Em tela de toque não há hover: o botão fica
+   sempre visível, senão o gesto de remover só existiria no mouse. */
+.anexo-item { position: relative; display: block; }
+.anexo-excluir {
+  position: absolute;
+  top: .15rem;
+  right: .15rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  line-height: 1;
+  padding: 0;
+  border: 1px solid #dee2e6;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .92);
+  color: #b02a37;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s ease-in;
+}
+.anexo-item:hover .anexo-excluir,
+.anexo-excluir:focus-visible { opacity: 1; }
+.anexo-excluir:hover { background: #b02a37; border-color: #b02a37; color: #fff; }
+@media (hover: none) {
+  .anexo-excluir { opacity: 1; }
+}
+
 .anexo-mini {
   display: block;
   border: 1px solid #dee2e6;
@@ -1884,6 +2089,29 @@ tr.card-destacado > td { background: #e8f5ee; }
   50% { box-shadow: 0 0 0 6px rgba(0, 122, 69, .18); }
 }
 
+/* "Fulano está editando": o item que outro admin abriu agora (App Vivo).
+   Âmbar e não vermelho de propósito — não é erro nem bloqueio de quem olha,
+   é aviso de que aquele item vai mudar daqui a pouco. A borda existe porque
+   numa coluna cheia de cartões o selo sozinho se perde. */
+.editando-agora {
+  box-shadow: 0 0 0 2px rgba(214, 158, 46, .65);
+}
+td.editando-agora { background: #fff8e6; }
+.selo-editando {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: .25rem;
+  background: #fff3cd;
+  color: #6b4d00;
+  border: 1px solid #f0d68a;
+  font-weight: 600;
+  white-space: normal;
+  text-align: left;
+}
+/* Fora do papel: o dossiê é a foto do plano, não de quem estava digitando */
+@media print { .selo-editando { display: none; } }
+
 /* Matriz 2×2 da SWOT: escolha do quadrante por toque, no card ou no modal */
 .painel-quadrantes {
   margin-top: .5rem;
@@ -2582,6 +2810,32 @@ body.menu-aberto .menu-lateral {
   flex-direction: column;
   gap: .15rem;
 }
+/* O PAR proposto pela sala, acima do texto da estratégia (alvo CRUZAMENTO).
+   Empilha em vez de dividir a linha: são duas descrições inteiras de fator, e
+   lado a lado cada uma ficava com meia dúzia de caracteres por linha. O × fica
+   entre elas, dizendo que é encontro e não lista. */
+.par-voz {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .1rem;
+  margin-bottom: .1rem;
+}
+.par-voz-lado {
+  border-radius: .25rem;
+  padding: .05rem .3rem;
+  font-size: .72rem;
+  line-height: 1.25;
+  /* Duas linhas no máximo: a ficha é a fila de trabalho do condutor, e um
+     fator de quatro linhas empurraria a estratégia — que é o que ele lê para
+     decidir — para fora do cartão. O texto inteiro está no `title` e no 👁. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.par-voz-lado.vazio { color: #8a8f8c; font-style: italic; }
+.par-voz-x { color: #8a8f8c; font-size: .7rem; line-height: 1; }
 /* Cartão marcado como "Usado" (a síntese da célula): fica onde está, em verde.
    A borda é reforçada por sombra interna, e não por `border-width`: um pixel a
    mais mudaria a altura da ficha, e é dela que sai a conta das duas fileiras
@@ -2684,6 +2938,100 @@ body.menu-aberto .menu-lateral {
   }
 }
 
+/* ===== Dossiê do plano =====
+   A tela de montagem (escolher negócios, etapas e ano) e o documento montado.
+   O documento é uma sequência de FOTOS das seções — HTML copiado, sem ouvinte
+   nenhum —, e vive escondido na tela: o que ele é, é papel. */
+.dossie-caixa {
+  border: 1px solid #d9dee2;
+  border-radius: .5rem;
+  padding: .75rem;
+  height: 100%;
+  background: #fff;
+}
+.dossie-caixa-titulo {
+  font-weight: 600;
+  font-size: .875rem;
+  margin-bottom: .5rem;
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+}
+.dossie-caixa-titulo .btn-link { font-size: .8125rem; }
+.dossie-caixa-titulo .btn-link:first-of-type { margin-left: auto; }
+/* Duas colunas no computador, uma no celular: onze negócios em coluna única
+   empurravam o botão "Montar" para fora da primeira tela. */
+.dossie-lista {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .15rem .75rem;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+@media (min-width: 576px) {
+  .dossie-lista { grid-template-columns: 1fr 1fr; }
+}
+.dossie-item {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .15rem .1rem;
+  font-size: .9rem;
+  cursor: pointer;
+}
+.dossie-item input { flex: 0 0 auto; margin: 0; }
+.dossie-resumo { list-style: none; padding: 0; }
+.dossie-resumo li { margin-bottom: .1rem; }
+
+/* --- O documento montado ---
+   Comando nenhum vai para o papel. A lista por atributo do `@media print`
+   (`[data-editar]`, `[data-excluir]`, …) nomeia as telas uma a uma, e por isso
+   fica atrás de cada tela nova — foi o que aconteceu com os Cruzamentos. Aqui,
+   onde TUDO é cópia inerte, a regra pode ser a geral: nada que se clica.
+   O escopo é `.dossie-doc` de propósito: mudar a regra das outras telas para a
+   forma geral mexeria no papel de quem já o usa. */
+.dossie-doc button,
+.dossie-doc a.btn,
+.dossie-doc .dropdown,
+.dossie-doc input,
+.dossie-doc textarea,
+.dossie-doc .campo-busca-analise { display: none !important; }
+/* As duas exceções são CONTEÚDO desenhado como botão: o par do cruzamento (os
+   dois fatores que a estratégia liga) e o "Virou ação ↗" (estado, não gesto). */
+.dossie-doc .selo-cruz-fator { display: block !important; }
+.dossie-doc [data-ir-acao] {
+  display: inline-block !important;
+  background: none !important;
+  color: #06432a !important;
+  border: 1pt solid #adb5bd;
+}
+/* O `<select>` não some: ele é o ANO da análise, que é contexto do documento.
+   Vira texto, como o `@media print` já faz com o do cabeçalho — a caixa e a
+   setinha é que são comando. */
+.dossie-doc select {
+  border: 0 !important;
+  background-image: none !important;
+  padding: 0 !important;
+  width: auto !important;
+  font-size: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.dossie-capa { padding: 2rem 0 1rem; }
+.dossie-capa-marca {
+  font-size: .8rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #6c757d;
+}
+.dossie-capa-titulo { font-size: 2rem; color: var(--verde-escuro); margin: .3rem 0 .2rem; }
+.dossie-capa-sub { color: #6c757d; }
+.dossie-sumario { margin: 1.2rem 0 0 1.2rem; color: #212529; }
+.dossie-sumario li { margin-bottom: .15rem; }
+.dossie-capa-pe { margin-top: 1.5rem; font-size: .8rem; color: #6c757d; }
+.dossie-falha { color: #b3261e; font-style: italic; }
+
 @media print {
   /* ===== Impressão: o PDF do relatório =====
      O botão "PDF" chama a caixa de impressão do navegador — é ela que salva o
@@ -2720,8 +3068,27 @@ body.menu-aberto .menu-lateral {
   [data-desvincular],
   [data-promover],
   [data-ir-swot],
+  /* Os comandos dos Cruzamentos, pelo mesmo motivo dos de cima: editar, excluir
+     e encaminhar ao plano são gestos da TELA. No papel eles não fazem nada e
+     ainda pediam uma linha de rodapé em cada cartão. */
+  [data-novo-cruzamento],
+  [data-editar-cruz],
+  [data-excluir-cruz],
+  [data-plano-acao-cruz],
+  [data-tirar-acao-cruz],
+  [data-ir-swot-vazio],
   #btn-novo-swot,
   #btn-novo-cenario { display: none !important; }
+
+  /* "Virou ação ↗" NÃO é comando: é o estado do cruzamento, e o documento perde
+     informação sem ele. Vira texto com contorno porque o fundo de impressão vem
+     desligado por padrão — o branco sobre verde sairia branco sobre branco. */
+  [data-ir-acao] {
+    background: none !important;
+    color: #06432a !important;
+    border: 1pt solid #adb5bd;
+    font-weight: 600;
+  }
 
   body { background: #fff; }
   .conteudo { padding: 0 !important; }
@@ -2855,8 +3222,48 @@ body.menu-aberto .menu-lateral {
     page-break-after: avoid;
   }
 
+  /* --- a matriz da Cascata é o SUMÁRIO do documento ---
+     O detalhe do preenchimento vem logo abaixo dela (`#documento-cascata`);
+     aqui a tabela serve para ler a cascata inteira de uma olhada.
+     O `min-width` das células é conforto de TELA — ali sobra rolagem
+     horizontal para acomodá-lo. No papel não há para onde rolar: com três
+     horizontes a tabela passava da margem e a última coluna saía cortada. */
+  .table-responsive { overflow: visible !important; }
+  .tabela-cascata {
+    font-size: 8pt;
+    table-layout: fixed;
+    width: 100% !important;
+  }
+  .tabela-cascata td.celula-cascata,
+  .tabela-cascata th.celula-driver {
+    min-width: 0 !important;
+    width: auto !important;
+  }
+  /* Fundo de impressão é opcional no navegador e vem DESLIGADO por padrão: o
+     branco sobre verde-escuro do cabeçalho do horizonte sairia branco sobre
+     branco. A tinta vai para o texto, que é o que precisa ser lido. */
+  .tabela-cascata th.celula-horizonte {
+    background: none !important;
+    color: #06432a !important;
+  }
+  .celula-cascata.ativa { outline: 0 !important; }
+
+  /* Nos Cruzamentos o selo do par NÃO é comando: é o CONTEÚDO do cartão — o
+     fator interno e o externo que a estratégia liga. Ele carrega `data-ir-swot`
+     só porque também leva de volta à SWOT, e a regra acima esconde esse atributo
+     por ser navegação na SWOT e no PESTEL. Sem esta exceção, o papel publicava a
+     estratégia sem dizer de que encontro ela nasceu. */
+  .selo-cruz-fator {
+    display: block !important;
+    background: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
   /* O texto do cartão vai INTEIRO: o corte de três linhas é conforto de tela e
-     no papel viraria documento truncado. */
+     no papel viraria documento truncado. O selo do par é cortado em UMA linha e
+     entra na mesma regra pelo mesmo motivo. */
+  .selo-cruz-texto,
   .texto-fator,
   .texto-voz {
     display: block !important;
@@ -2872,6 +3279,25 @@ body.menu-aberto .menu-lateral {
   .coluna-categoria,
   .caixa-coluna,
   .corpo-coluna { break-inside: auto; page-break-inside: auto; }
+
+  /* --- Dossiê: onde cada peça começa ---
+     Etapa nova, folha nova. Sem isso a Cascata continuava no pé da página da
+     SWOT e ninguém achava onde uma acabava — que é justamente o trabalho que
+     este documento veio poupar de fazer com as folhas na mão.
+     A capa também abre a folha da primeira etapa (`break-after`), e as duas
+     quebras forçadas que se encontram ali valem por UMA: quebras forçadas
+     adjacentes não somam folha em branco. */
+  .dossie-etapa { break-before: page; page-break-before: always; }
+  .dossie-negocio + .dossie-negocio { break-before: page; page-break-before: always; }
+  .dossie-capa {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: page;
+    page-break-after: always;
+  }
+  /* A montagem é comando; o documento é o que sai. Na tela é o contrário — as
+     duas metades trocam de lugar aqui, e é a única regra que as separa. */
+  .dossie-montagem { display: none !important; }
 }
 
 /* Fase da estrela: as respostas em BLOCOS, um por lado da pergunta (escolhas

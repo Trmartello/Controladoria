@@ -202,6 +202,30 @@ garantirFk($pdo, 'swot_cruzamento', 'fk_cruz_desdobramento',
     'ALTER TABLE swot_cruzamento ADD CONSTRAINT fk_cruz_desdobramento
      FOREIGN KEY (desdobramento_id) REFERENCES desdobramento(id) ON DELETE SET NULL');
 
+// O item da Análise de Cenário também vai ao plano de ação (decisão do cliente
+// 2026-08-31, junto com PESTEL e Porter). Mesmas três colunas do fator e do
+// cruzamento, de novo: é a QUARTA origem da mesma fila, e o que a torna uma
+// fila só é justamente os quatro terem o mesmo par "marcado / já virou ação".
+garantirColuna($pdo, 'cenario_item', 'acao_em',
+    'ALTER TABLE cenario_item ADD COLUMN acao_em DATETIME NULL AFTER descricao');
+garantirColuna($pdo, 'cenario_item', 'acao_por',
+    'ALTER TABLE cenario_item ADD COLUMN acao_por INT NULL AFTER acao_em');
+garantirColuna($pdo, 'cenario_item', 'desdobramento_id',
+    'ALTER TABLE cenario_item ADD COLUMN desdobramento_id INT NULL AFTER acao_por');
+// Referência morta impediria o ALTER e derrubaria o start do container — a
+// mesma faxina que o fator faz antes das dele.
+$pdo->exec('UPDATE cenario_item SET acao_por = NULL WHERE acao_por IS NOT NULL
+            AND acao_por NOT IN (SELECT id FROM usuario)');
+$pdo->exec('UPDATE cenario_item SET desdobramento_id = NULL WHERE desdobramento_id IS NOT NULL
+            AND desdobramento_id NOT IN (SELECT id FROM desdobramento)');
+garantirFk($pdo, 'cenario_item', 'fk_cenario_acao_por',
+    'ALTER TABLE cenario_item ADD CONSTRAINT fk_cenario_acao_por
+     FOREIGN KEY (acao_por) REFERENCES usuario(id) ON DELETE SET NULL');
+// SET NULL: apagada a ação, o item volta sozinho para a fila.
+garantirFk($pdo, 'cenario_item', 'fk_cenario_desdobramento',
+    'ALTER TABLE cenario_item ADD CONSTRAINT fk_cenario_desdobramento
+     FOREIGN KEY (desdobramento_id) REFERENCES desdobramento(id) ON DELETE SET NULL');
+
 // O relatório do disparo, que vai para quem administra depois de cada rodada de
 // avisos. Ele entra em `envio_email` como os outros para herdar a trava de
 // duplicidade — sem um tipo próprio, ele colidiria com o aviso do próprio
@@ -270,6 +294,37 @@ if ($tipoDestinoCi2 && !str_contains((string)$tipoDestinoCi2, 'CASCATA')) {
     echo "migrate: coleta_item.destino_tipo agora aceita CASCATA (célula da cascata).\n";
 }
 
+// ---- A sala propõe CRUZAMENTOS (TOWS) ----
+// A resposta deste alvo não é só texto: a pessoa escolhe dois fatores da SWOT e
+// escreve a estratégia do encontro deles. Daí o par na própria linha da voz.
+garantirColuna($pdo, 'coleta_item', 'fator_interno_id',
+    'ALTER TABLE coleta_item ADD COLUMN fator_interno_id INT NULL AFTER tipo_resposta');
+garantirColuna($pdo, 'coleta_item', 'fator_externo_id',
+    'ALTER TABLE coleta_item ADD COLUMN fator_externo_id INT NULL AFTER fator_interno_id');
+// Limpa antes de amarrar, pelo mesmo motivo das FKs do encaminhamento: base
+// antiga pode ter id de fator já apagado, e a FK morreria no ALTER.
+$pdo->exec('UPDATE coleta_item ci SET fator_interno_id = NULL
+            WHERE fator_interno_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM (SELECT id FROM fator) f WHERE f.id = ci.fator_interno_id)');
+$pdo->exec('UPDATE coleta_item ci SET fator_externo_id = NULL
+            WHERE fator_externo_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM (SELECT id FROM fator) f WHERE f.id = ci.fator_externo_id)');
+garantirFk($pdo, 'coleta_item', 'fk_ci_fator_interno',
+    'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_fator_interno
+     FOREIGN KEY (fator_interno_id) REFERENCES fator(id) ON DELETE SET NULL');
+garantirFk($pdo, 'coleta_item', 'fk_ci_fator_externo',
+    'ALTER TABLE coleta_item ADD CONSTRAINT fk_ci_fator_externo
+     FOREIGN KEY (fator_externo_id) REFERENCES fator(id) ON DELETE SET NULL');
+$tipoDestinoCi3 = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'destino_tipo'"
+)->fetchColumn();
+if ($tipoDestinoCi3 && !str_contains((string)$tipoDestinoCi3, 'CRUZAMENTO')) {
+    $pdo->exec("ALTER TABLE coleta_item MODIFY COLUMN destino_tipo
+                ENUM('CENARIO','FATOR','ACAO','CASCATA','CRUZAMENTO') NULL");
+    echo "migrate: coleta_item.destino_tipo agora aceita CRUZAMENTO (TOWS).\n";
+}
+
 // ---- A sala é do PROJETO: a pergunta ganha um alvo polimórfico ----
 // O roteiro deixa de saber só de células da cascata e passa a apontar para
 // qualquer análise. As colunas do alvo entram todas nulas: linha antiga é
@@ -286,6 +341,27 @@ garantirColuna($pdo, 'quiz_pergunta', 'etapa',
     "ALTER TABLE quiz_pergunta ADD COLUMN etapa ENUM('PESTEL','PORTER','SWOT') NULL AFTER ano");
 garantirColuna($pdo, 'quiz_pergunta', 'categoria',
     'ALTER TABLE quiz_pergunta ADD COLUMN categoria VARCHAR(40) NULL AFTER etapa');
+// O alvo CRUZAMENTO (TOWS) entrou depois. A coluna `categoria` guarda o BLOCO
+// (ATACAR, DEFENDER, REFORCAR, PROTEGER) — não precisa de coluna nova, e a
+// `alvo_chave` já separa os usos porque carrega o `alvo_tipo`.
+$tipoAlvoQp = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quiz_pergunta' AND COLUMN_NAME = 'alvo_tipo'"
+)->fetchColumn();
+if ($tipoAlvoQp && !str_contains((string)$tipoAlvoQp, 'CRUZAMENTO')) {
+    $pdo->exec("ALTER TABLE quiz_pergunta MODIFY COLUMN alvo_tipo
+                ENUM('CASCATA','CENARIO','FATOR','CRUZAMENTO','LIVRE') NOT NULL DEFAULT 'CASCATA'");
+    echo "migrate: quiz_pergunta.alvo_tipo agora aceita CRUZAMENTO (TOWS).\n";
+}
+
+// Reentrada do participante (padrão trazido do Quiz Copérdia): o aparelho volta
+// como a MESMA pessoa, e o nome só devolve a identidade de quem está calado.
+garantirColuna($pdo, 'coleta_participante', 'dispositivo',
+    'ALTER TABLE coleta_participante ADD COLUMN dispositivo VARCHAR(80) NULL AFTER nome');
+garantirColuna($pdo, 'coleta_participante', 'visto_em',
+    'ALTER TABLE coleta_participante ADD COLUMN visto_em DATETIME NULL AFTER dispositivo');
+garantirIndice($pdo, 'coleta_participante', 'idx_part_disp',
+    'ALTER TABLE coleta_participante ADD INDEX idx_part_disp (rodada_id, dispositivo)');
 foreach (['horizonte_id', 'driver_id'] as $colunaCelula) {
     $obrigatoria = $pdo->query(
         "SELECT IS_NULLABLE FROM information_schema.COLUMNS
@@ -879,6 +955,9 @@ if ($fora) {
 // o formulário precisa do token CSRF. Aqui a limpeza é determinística: acontece
 // em todo deploy (e de novo no cron diário, em cli/notificar.php).
 $sessoes = $pdo->exec("DELETE FROM sessao WHERE atualizado_em < (NOW() - INTERVAL 30 DAY)");
+// Cadeados de edição vencidos: a tabela só cresce se ninguém varrer, e um
+// cadeado vencido nunca mais é lido — todas as consultas filtram por validade.
+$pdo->exec("DELETE FROM edicao_bloqueio WHERE expira_em < (NOW() - INTERVAL 1 DAY)");
 $tentativas = $pdo->exec("DELETE FROM coleta_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY)")
     + $pdo->exec("DELETE FROM login_tentativa WHERE criado_em < (NOW() - INTERVAL 1 DAY)");
 if ($sessoes || $tentativas) {

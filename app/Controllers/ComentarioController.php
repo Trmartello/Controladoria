@@ -167,6 +167,58 @@ class ComentarioController
     }
 
     /**
+     * Apaga UM anexo, sem levar o comentário junto. Antes desta rota, tirar o
+     * arquivo errado obrigava a apagar o comentário inteiro e reescrevê-lo com
+     * os anexos certos — o texto do registro se perdia por causa de um arquivo.
+     *
+     * A permissão é a MESMA de apagar o comentário (autor ou ADMIN): o anexo é
+     * parte do registro de alguém, e quem edita o planejamento não herda o
+     * direito de mexer no registro dos outros.
+     *
+     * Quando o anexo é o último e o comentário não tem texto, o comentário sai
+     * junto — é a mesma regra que `criar` aplica na entrada: comentário sem
+     * texto e sem arquivo não é comentário. A resposta diz o que aconteceu
+     * (`comentario_excluido`) para a tela não continuar mostrando um registro
+     * que deixou de existir.
+     */
+    public function excluirAnexo(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        $u = Auth::exigirLogin();
+        Auth::exigirEdicaoPlanejamento($planId);
+
+        $a = Database::um(
+            'SELECT a.id, a.comentario_id, c.ref_tipo, c.ref_id, c.autor_id, c.texto
+               FROM comentario_anexo a JOIN comentario c ON c.id = a.comentario_id
+              WHERE a.id = ?',
+            [$id]
+        );
+        if (!$a) {
+            Json::erro('Anexo não encontrado.', 404);
+        }
+        // Mesma conferência de `excluir`: sem ela, o id de um anexo de outro
+        // negócio passaria junto com um planejamento onde o usuário edita.
+        $this->validarRef((string)$a['ref_tipo'], (int)$a['ref_id'], $planId);
+        if ((int)$a['autor_id'] !== (int)$u['id'] && ($u['perfil'] ?? '') !== 'ADMIN') {
+            Json::erro('Só o autor do comentário (ou um administrador) pode apagar o anexo.', 403);
+        }
+
+        $restantes = (int)(Database::um(
+            'SELECT COUNT(*) n FROM comentario_anexo WHERE comentario_id = ? AND id <> ?',
+            [(int)$a['comentario_id'], $id]
+        )['n'] ?? 0);
+
+        if ($restantes === 0 && trim((string)$a['texto']) === '') {
+            // O DELETE do comentário leva o anexo por ON DELETE CASCADE.
+            Database::executar('DELETE FROM comentario WHERE id = ?', [(int)$a['comentario_id']]);
+            Json::ok(['comentario_excluido' => true]);
+        }
+        Database::executar('DELETE FROM comentario_anexo WHERE id = ?', [$id]);
+        Json::ok(['comentario_excluido' => false]);
+    }
+
+    /**
      * Entrega o arquivo. Não é rota de API: devolve bytes, e por isso escreve
      * os próprios cabeçalhos e encerra.
      *

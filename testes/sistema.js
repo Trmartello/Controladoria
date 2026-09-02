@@ -1,10 +1,10 @@
-// Bateria de sistema: percorre as 16 seções em desktop e celular e afirma que
+// Bateria de sistema: percorre as 17 seções em desktop e celular e afirma que
 // cada uma PINTA de verdade — não só que a casca do shell existe. Registra todo
 // erro de página e de console: um `pageerror` numa seção é falha, mesmo que a
 // tela pareça certa.
 //
 //   node testes/sistema.js
-const { chromiumExec, playwright, esperar, entrar, relatar } = require('./comum');
+const { BASE, chromiumExec, playwright, esperar, entrar, relatar } = require('./comum');
 
 const ok = [], bad = [], erros = [];
 const t = (nome, cond, extra = '') => (cond ? ok : bad).push(nome + (extra ? ` — ${extra}` : ''));
@@ -63,6 +63,7 @@ const SECOES = [
   { id: 'investimentos', nome: 'Investimentos', prova: '#secao-investimentos h1' },
   { id: 'metas', nome: 'Metas · Indicadores', prova: '#secao-metas h1' },
   { id: 'relatorio', nome: 'Relatório de Status', prova: '#secao-relatorio h1' },
+  { id: 'dossie', nome: 'Dossiê do plano', prova: '#secao-dossie [data-dossie-montar], #secao-dossie .alert' },
   { id: 'sala', nome: 'Sala · PIN e QR', prova: '#secao-sala h1' },
 ];
 
@@ -1855,6 +1856,1514 @@ async function provasAcao(page, largura) {
   await page.evaluate((id) => App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 }), prj);
 }
 
+/**
+ * Dossiê do plano — as etapas em sequência, por negócio.
+ *
+ * Ele pinta as outras seções DE LADO para fotografá-las, e é isso que precisa
+ * de prova: pintar de lado mexe no contexto do aplicativo e nos filtros de cada
+ * seção, que moram no objeto dela e sobrevivem à repintura. Se algum ficar para
+ * trás, o defeito não aparece aqui — aparece na tela seguinte que a pessoa
+ * abrir, com o negócio errado ou com um filtro que ela não pôs.
+ *
+ * As três coisas que a prova mede, nesta ordem de importância:
+ *
+ *  1. o que a pessoa tinha na tela VOLTA (contexto, ano, filtros, recolhidos);
+ *  2. o filtro de quem clicou NÃO vai para o papel — o documento é o plano
+ *     inteiro, e um dossiê filtrado em silêncio é o pior resultado possível
+ *     numa prestação de contas;
+ *  3. a pintura de lado não arma relógio de polling nenhum (`App.modoDossie`).
+ */
+async function provasDossie(page) {
+  const l = '[desktop] Dossiê:';
+  await page.evaluate(() => {
+    window.__timers = 0;
+    const orig = window.setInterval;
+    window.setInterval = function (...a) { window.__timers += 1; return orig.apply(this, a); };
+  });
+  await page.evaluate(() => App.mostrarSecao('dossie'));
+  await esperar(page, "!!document.querySelector('#secao-dossie [data-dossie-montar]')", 15000);
+
+  // Sujeira de propósito, nos três lugares que guardam vista: a busca da SWOT,
+  // o filtro de Projetos e os projetos recolhidos.
+  const antes = await page.evaluate(() => {
+    Diag.busca.SWOT = 'zzz-nao-existe';
+    SecaoProjetos.filtroStatus = 'CONCLUIDO';
+    SecaoProjetos.projetosFechados = new Set([1, 2]);
+    return { ctx: JSON.stringify(App.contexto), ano: Diag.anoSelecionado, timers: window.__timers };
+  });
+
+  const doc = await page.evaluate(async () => {
+    const el = document.getElementById('secao-dossie');
+    const marcar = (nome, valores) => el.querySelectorAll(`[data-dossie-${nome}]`).forEach((c) => {
+      c.checked = valores.includes(c.value);
+      c.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    // Dois negócios, para provar a troca de contexto; duas etapas, para provar
+    // a quebra entre elas. Mais que isso é tempo de bateria sem prova nova.
+    const alvos = [...el.querySelectorAll('[data-dossie-alvo]')].map((c) => c.value).slice(0, 2);
+    marcar('alvo', alvos);
+    marcar('etapa', ['swot', 'cascata']);
+    el.querySelector('[data-dossie-montar]').click();
+    for (let i = 0; i < 400; i++) {
+      if (el.querySelector('[data-dossie-imprimir]')) break;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    const d = el.querySelector('[data-dossie-documento]');
+    const cards = d.querySelectorAll('[data-card-fator]');
+    return {
+      pronto: !!el.querySelector('[data-dossie-imprimir]'),
+      negocios: d.querySelectorAll('.dossie-negocio').length,
+      capas: d.querySelectorAll('.dossie-capa').length,
+      etapas: d.querySelectorAll('.dossie-etapa').length,
+      falhas: d.querySelectorAll('.dossie-falha').length,
+      ids: d.querySelectorAll('[id]').length,
+      cards: cards.length,
+      escondidos: [...cards].filter((c) => c.classList.contains('d-none')).length,
+    };
+  });
+  t(`${l} monta o documento`, doc.pronto);
+  t(`${l} um bloco e uma capa por negócio`, doc.negocios === 2 && doc.capas === 2,
+    `${doc.negocios} blocos, ${doc.capas} capas`);
+  t(`${l} negócios × etapas`, doc.etapas === 4, `${doc.etapas}`);
+  t(`${l} nenhuma etapa falhou`, doc.falhas === 0, `${doc.falhas}`);
+  // A foto duplicaria todo `id` da seção. A partir daí `getElementById` pode
+  // cair na cópia morta em vez do elemento vivo — defeito que só apareceria
+  // depois, longe daqui, e sem sintoma que aponte para o dossiê.
+  t(`${l} a foto não duplica id nenhum`, doc.ids === 0, `${doc.ids} ids`);
+  t(`${l} o filtro de quem clicou não filtrou o documento`,
+    doc.cards > 0 && doc.escondidos === 0, `${doc.cards} cartões, ${doc.escondidos} escondidos`);
+
+  const depois = await page.evaluate(() => ({
+    ctx: JSON.stringify(App.contexto),
+    modo: App.modoDossie,
+    busca: Diag.busca.SWOT,
+    ano: Diag.anoSelecionado,
+    projStatus: SecaoProjetos.filtroStatus,
+    projFechados: [...SecaoProjetos.projetosFechados].join(','),
+    timers: window.__timers,
+  }));
+  t(`${l} o contexto do menu volta`, depois.ctx === antes.ctx, `${antes.ctx} → ${depois.ctx}`);
+  t(`${l} o modo "só desenho" fica desligado`, depois.modo === false);
+  t(`${l} a busca da SWOT volta`, depois.busca === 'zzz-nao-existe', String(depois.busca));
+  t(`${l} o ano do diagnóstico volta`, depois.ano === antes.ano, `${antes.ano} → ${depois.ano}`);
+  t(`${l} o filtro de Projetos volta`, depois.projStatus === 'CONCLUIDO', String(depois.projStatus));
+  t(`${l} os projetos recolhidos voltam`, depois.projFechados === '1,2', depois.projFechados);
+  t(`${l} a pintura de lado não arma relógio`, depois.timers === antes.timers,
+    `${antes.timers} → ${depois.timers}`);
+
+  // No papel: a montagem é comando e sai; o documento entra; e comando nenhum
+  // sobra — com as DUAS exceções declaradas, que são conteúdo desenhado como
+  // botão (o par do cruzamento e o "Virou ação ↗").
+  await page.emulateMedia({ media: 'print' });
+  const papel = await page.evaluate(() => {
+    const el = document.getElementById('secao-dossie');
+    const d = el.querySelector('[data-dossie-documento]');
+    // Um filho de `display:none` devolve o display DELE em `getComputedStyle`,
+    // não "none": sem subir a árvore, tudo dentro de um bloco oculto contaria
+    // como visível.
+    const vis = (n) => {
+      if (!n) return false;
+      for (let p = n; p && p !== document.body; p = p.parentElement) {
+        if (getComputedStyle(p).display === 'none') return false;
+      }
+      return true;
+    };
+    const conteudo = (b) => b.classList.contains('selo-cruz-fator') || b.hasAttribute('data-ir-acao');
+    return {
+      montagem: vis(el.querySelector('.dossie-montagem')),
+      documento: vis(d),
+      capa: vis(d.querySelector('.dossie-capa')),
+      comandos: [...d.querySelectorAll('button')].filter((b) => vis(b) && !conteudo(b))
+        .map((b) => b.className).slice(0, 5),
+      quebra: getComputedStyle(d.querySelector('.dossie-etapa')).breakBefore,
+    };
+  });
+  await page.emulateMedia({ media: 'screen' });
+  t(`${l} a tela de montagem não vai ao papel`, !papel.montagem);
+  t(`${l} o documento e a capa vão`, papel.documento && papel.capa);
+  t(`${l} comando nenhum sobra no documento`, papel.comandos.length === 0,
+    JSON.stringify(papel.comandos));
+  t(`${l} cada etapa abre uma folha`, papel.quebra === 'page', papel.quebra);
+
+  // Devolve a vista limpa: a sujeira acima é desta prova, e as seguintes medem
+  // busca e filtro de verdade.
+  await page.evaluate(() => {
+    Diag.busca = {};
+    SecaoProjetos.filtroStatus = '';
+    SecaoProjetos.projetosFechados = new Set();
+    App.mostrarSecao('painel');
+  });
+}
+
+/**
+ * Matriz de Execução — a aba da Cascata que liga a DECISÃO ao que a mede e ao
+ * que a executa (`indicador_cascata` + `projeto.cascata_id`).
+ *
+ * O que a prova mede, além de "a tabela pinta":
+ *
+ *  1. **A guarda de IDOR.** `Auth::exigirEdicaoPlanejamento` valida o
+ *     planejamento, não os filhos: sem conferir cada escolha, quem edita o
+ *     indicador de um negócio amarra escolhas de OUTRO passando o id. A prova
+ *     cria uma escolha num segundo planejamento e tenta amarrá-la.
+ *  2. **Salvar sem o campo não apaga o conjunto.** `salvar` é chamado por um
+ *     modal que pode não ter a lista; tratar a ausência como "vazio" apagaria
+ *     vínculos que ninguém mandou apagar.
+ *  3. **O par meta × real sai da MESMA função da tela de Metas**
+ *     (`SecaoMetas.metaReal`). Duas cópias diriam números diferentes do mesmo
+ *     indicador em telas vizinhas.
+ */
+async function provasMatrizExecucao(page) {
+  const l = '[desktop] Matriz de Execução:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const c = await App.api(`/api/cascata?planejamento_id=${plan.id}`);
+    const abertura = c.escolhas.find((e) => e.eixo_id);
+    const sintese = c.escolhas.find((e) => !e.eixo_id);
+    if (!abertura || !sintese) return { semCascata: true };
+    const ind = await App.api('/api/indicadores', {
+      planejamento_id: plan.id, nome: 'KPI de prova (matriz)', unidade: '%',
+      sentido: 'MAIOR_MELHOR', metrica_ancora: 1, horizonte_id: '',
+      cascatas: [String(abertura.id), String(sintese.id)],
+    });
+    await App.api(`/api/indicadores/${ind.id}/valores`, {
+      planejamento_id: plan.id, tipo: 'META', valores: { 2027: 80 },
+    });
+    await App.api(`/api/indicadores/${ind.id}/valores`, {
+      planejamento_id: plan.id, tipo: 'REAL', valores: { 2027: 85 },
+    });
+    const prj = await App.api('/api/projetos', {
+      planejamento_id: plan.id, tipo: 'ESTRATEGICO', titulo: 'Projeto de prova (matriz)',
+      ano: Number(c.horizontes[0].ano_inicio), responsavel: 'QA',
+      cascata_id: abertura.id, classificacao: 'NORMAL',
+    });
+    return { plan: plan.id, ind: ind.id, prj: prj.id, abertura: abertura.id, sintese: sintese.id,
+      horizonte: abertura.horizonte_id };
+  });
+  if (massa.semCascata) {
+    ok.push(`${l} pulada — a base não tem escolhas da cascata`);
+    return;
+  }
+
+  const fonte = await page.evaluate(async (m) => {
+    const c = await App.api(`/api/cascata?planejamento_id=${m.plan}`);
+    const i = (c.indicadores || []).find((x) => x.id == m.ind);
+    const p = (c.projetos || []).find((x) => x.id == m.prj);
+    return {
+      cascatas: ((i || {}).cascatas || []).length,
+      metas: ((i || {}).metas || []).length,
+      reais: ((i || {}).reais || []).length,
+      projetoNaEscolha: p ? Number(p.cascata_id) === Number(m.abertura) : false,
+      soComEscolha: (c.projetos || []).every((x) => x.cascata_id),
+    };
+  }, massa);
+  t(`${l} o indicador volta com as duas escolhas e as séries`,
+    fonte.cascatas === 2 && fonte.metas === 1 && fonte.reais === 1,
+    `${fonte.cascatas} escolhas, ${fonte.metas} metas, ${fonte.reais} reais`);
+  t(`${l} o projeto vem na escolha que executa`, fonte.projetoNaEscolha);
+  t(`${l} projeto sem escolha fica fora da fonte`, fonte.soComEscolha);
+
+  // 1. IDOR: uma escolha de outro planejamento não pode ser amarrada aqui.
+  const idor = await page.evaluate(async (m) => {
+    const outro = await App.api('/api/contexto?ciclo_id=' + App.contexto.cicloId
+      + '&negocio_id=' + (App.sessao.negocios[0] || {}).id).catch(() => null);
+    if (!outro || !outro.planejamento || outro.planejamento.id == m.plan) return { pulada: true };
+    const alheia = await App.api('/api/cascata', {
+      planejamento_id: outro.planejamento.id,
+      horizonte_id: (await App.api(`/api/cascata?planejamento_id=${outro.planejamento.id}`)).horizontes[0].id,
+      driver_id: (await App.api(`/api/cascata?planejamento_id=${outro.planejamento.id}`)).drivers[0].id,
+      eixo_id: '', escolha: 'Escolha de prova de outro negócio', renuncia: '',
+    }).catch(() => null);
+    if (!alheia) return { pulada: true };
+    await App.api(`/api/indicadores/${m.ind}`, {
+      planejamento_id: m.plan, nome: 'KPI de prova (matriz)', unidade: '%',
+      sentido: 'MAIOR_MELHOR', metrica_ancora: 1, horizonte_id: '',
+      cascatas: [String(m.abertura), String(m.sintese), String(alheia.id)],
+    });
+    const d = await App.api(`/api/indicadores?planejamento_id=${m.plan}`);
+    const gravados = (d.indicadores.find((x) => x.id == m.ind).cascatas || []).map(Number);
+    await App.api(`/api/cascata/${alheia.id}/excluir`, { planejamento_id: outro.planejamento.id })
+      .catch(() => {});
+    return { intruso: Number(alheia.id), gravados };
+  }, massa);
+  if (idor.pulada) {
+    ok.push(`${l} IDOR pulada — não há um segundo planejamento com cascata`);
+  } else {
+    t(`${l} escolha de outro planejamento NÃO é amarrada`,
+      !idor.gravados.includes(idor.intruso), `intruso ${idor.intruso} em [${idor.gravados}]`);
+    t(`${l} as escolhas legítimas continuam amarradas`, idor.gravados.length === 2,
+      `${idor.gravados.length}`);
+  }
+
+  // 2. Salvar sem a chave `cascatas` não pode limpar o conjunto.
+  const semChave = await page.evaluate(async (m) => {
+    await App.api(`/api/indicadores/${m.ind}`, {
+      planejamento_id: m.plan, nome: 'KPI de prova (matriz)', unidade: '%',
+      sentido: 'MAIOR_MELHOR', metrica_ancora: 1, horizonte_id: '',
+    });
+    const d = await App.api(`/api/indicadores?planejamento_id=${m.plan}`);
+    return (d.indicadores.find((x) => x.id == m.ind).cascatas || []).length;
+  }, massa);
+  t(`${l} salvar sem o campo não apaga os vínculos`, semChave === 2, `${semChave}`);
+
+  // 3. A tabela, e a regra do par meta × real.
+  //
+  // O horizonte é FIXADO no da escolha semeada, e não deixado no padrão: a
+  // matriz mostra um horizonte por vez, e depender de qual abre por padrão
+  // faria esta prova depender do estado que as anteriores deixaram — ela
+  // ficaria vermelha por causa de outra tela.
+  await page.evaluate((m) => {
+    SecaoCascata.horizonteMatriz = Number(m.horizonte);
+    App.mostrarSecao('cascata');
+  }, massa);
+  // A espera é pelo DADO, não pelo nó: `percorrer` já pintou esta seção no
+  // início da bateria, e a aba de execução existe naquela pintura velha —
+  // esperar por ela devolveria na hora, e a prova leria a tela de antes da massa.
+  await esperar(page,
+    "!!(SecaoCascata.dados && (SecaoCascata.dados.indicadores || [])"
+    + ".some((x) => x.nome === 'KPI de prova (matriz)'))", 15000);
+  await page.evaluate(() => document.querySelector('[data-aba-cascata="execucao"]').click());
+  await esperar(page,
+    "document.querySelector('#secao-cascata [data-painel-cascata=\"escolhas\"]').classList.contains('d-none')",
+    10000);
+
+  const matriz = await page.evaluate(() => {
+    const el = document.getElementById('secao-cascata');
+    const tab = el.querySelector('.tabela-execucao');
+    const texto = tab.textContent.replace(/\s+/g, ' ');
+    return {
+      colunas: tab.querySelectorAll('thead th').length,
+      raia1: (tab.querySelector('.celula-raia') || {}).textContent?.trim(),
+      temKpi: texto.includes('KPI de prova (matriz)'),
+      temProjeto: texto.includes('Projeto de prova (matriz)'),
+      // Último real (85, de 2027) contra a meta do MESMO ano (80) — a regra de
+      // `SecaoMetas.metaReal`, e não "a meta do ano corrente"
+      temPar: /85(,00)? \(2027\) \/ meta 80/.test(texto),
+      atingiu: !!tab.querySelector('.text-success.fw-bold'),
+      seletor: !!el.querySelector('#sel-horizonte-matriz'),
+      regra: (() => {
+        const r = SecaoMetas.metaReal({
+          sentido: 'MAIOR_MELHOR', metas: [{ ano: 2027, valor: 80 }], reais: [{ ano: 2027, valor: 85 }],
+        });
+        return `${r.ano}|${Number(r.meta.valor)}|${r.atingiu}`;
+      })(),
+    };
+  });
+  t(`${l} a tabela tem as cinco colunas`, matriz.colunas === 5, `${matriz.colunas}`);
+  t(`${l} a síntese é a primeira raia`, matriz.raia1 === 'Síntese da célula', String(matriz.raia1));
+  t(`${l} mostra o indicador amarrado`, matriz.temKpi);
+  t(`${l} mostra o projeto que executa`, matriz.temProjeto);
+  t(`${l} o par meta × real segue a regra da tela de Metas`, matriz.temPar);
+  t(`${l} meta batida sai em verde`, matriz.atingiu);
+  t(`${l} tem seletor de horizonte`, matriz.seletor);
+  t(`${l} a regra vem de SecaoMetas.metaReal`, matriz.regra === '2027|80|true', matriz.regra);
+
+  // O cabeçalho grudado. A prova é feita ROLADA até o fim: parada no topo, uma
+  // tabela qualquer parece ter cabeçalho fixo, e o defeito só aparece depois de
+  // umas centenas de pixels — que foi exatamente como ele chegou.
+  const fixo = await page.evaluate(async () => {
+    window.scrollTo(0, document.body.scrollHeight);
+    await new Promise((r) => setTimeout(r, 200));
+    const th = document.querySelector('.tabela-execucao thead th');
+    const caixa = document.querySelector('.caixa-execucao');
+    const tab = document.querySelector('.tabela-execucao');
+    return {
+      rolou: Math.round(window.scrollY),
+      topoTh: Math.round(th.getBoundingClientRect().top),
+      baseTopbar: Math.round(document.querySelector('.topbar').getBoundingClientRect().bottom),
+      // Se a caixa voltar a rolar sozinha, o `sticky` gruda no topo DELA — que
+      // sai da tela junto com a página — e o cabeçalho some sem erro nenhum.
+      caixaRola: getComputedStyle(caixa).overflowY !== 'visible',
+      // `separate` é o que torna o cabeçalho opaco: com `collapse` o texto das
+      // células passa POR CIMA do fundo dele.
+      colapso: getComputedStyle(tab).borderCollapse,
+      rolaHorizontal: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    };
+  });
+  t(`${l} a página rolou de verdade antes de medir`, fixo.rolou > 300, `${fixo.rolou}`);
+  t(`${l} o cabeçalho fica grudado logo abaixo da topbar`,
+    fixo.topoTh === fixo.baseTopbar, JSON.stringify(fixo));
+  t(`${l} a caixa não rola sozinha — senão o grudado sai com ela`,
+    fixo.caixaRola === false, JSON.stringify(fixo));
+  t(`${l} bordas separadas, para o cabeçalho ser opaco`,
+    fixo.colapso === 'separate', fixo.colapso);
+  t(`${l} e a página continua sem rolagem horizontal`, fixo.rolaHorizontal === false);
+
+  // Os dois atalhos: a tabela é leitura, e o vínculo se faz na tela de origem.
+  const atalhos = await page.evaluate(() => {
+    const bs = [...document.querySelectorAll('#secao-cascata .como-amarrar [data-ir]')];
+    return { alvos: bs.map((b) => b.dataset.ir),
+      texto: document.querySelector('#secao-cascata .como-amarrar').textContent.replace(/\s+/g, ' ') };
+  });
+  t(`${l} o aviso leva às duas telas onde o vínculo se faz`,
+    atalhos.alvos.join() === 'metas,projetos', JSON.stringify(atalhos.alvos));
+  t(`${l} e nomeia os campos exatos dos dois formulários`,
+    /Escolhas da cascata que este indicador mede/.test(atalhos.texto)
+    && /Escolha da Cascata que este projeto executa/.test(atalhos.texto), atalhos.texto.slice(0, 200));
+  await page.evaluate(() =>
+    document.querySelector('#secao-cascata .como-amarrar [data-ir="metas"]').click());
+  await esperar(page, "!document.getElementById('secao-metas').classList.contains('d-none')", 10000);
+  t(`${l} o atalho de Metas abre mesmo a tela de Metas`, true);
+
+  await page.evaluate(async (m) => {
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    await App.api(`/api/indicadores/${m.ind}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    SecaoCascata.aba = 'escolhas';
+    App.mostrarSecao('painel');
+  }, massa);
+}
+
+/**
+ * Excluir o que já está amarrado noutra tela — o aviso ANTES do clique.
+ *
+ * O que esta prova mede é a TELA. A recusa em si é regra de servidor e já tem
+ * bateria própria em `funcional.sh` ("recusa excluir o fator do par que virou
+ * ação"); repeti-la aqui só encheria o console de 400 deliberados, que o
+ * `vigiar` conta como erro de página.
+ *
+ * A massa monta o caminho da trava que a tela sozinha NÃO enxergaria: um fator
+ * do PESTEL promovido à SWOT, encaminhado e virado ação. Quem olhasse só o
+ * `desdobramento_id` do fator pedido acharia os dois livres — e a promoção
+ * continua sendo o caminho mais andado, mesmo depois de o PESTEL passar a
+ * poder ir direto ao plano.
+ */
+async function provasExclusaoComVinculo(page) {
+  const l = '[desktop] Exclusão com vínculo:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const pestel = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+      categoria: 'ECONOMICO', descricao: 'Fator PESTEL de prova (vínculo)', ano });
+    const prom = await App.api(`/api/fatores/${pestel.id}/promover`,
+      { planejamento_id: plan.id, quadrante: 'AMEACA' });
+    const solto = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'SWOT',
+      categoria: 'FORCA', descricao: 'Fator SWOT solto de prova (vínculo)', ano });
+    const prj = await App.api('/api/projetos', { planejamento_id: plan.id, tipo: 'ESTRATEGICO',
+      titulo: 'Projeto de prova (vínculo)', ano: 2027, responsavel: 'QA' });
+    await App.api(`/api/fatores/${prom.id}/plano-acao`, { planejamento_id: plan.id, marcar: true });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: plan.id, projeto_id: prj.id, iniciativa_nova: 'Frente de prova (vínculo)',
+      o_que: 'Ação de prova (vínculo)', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31', fator_id: prom.id,
+    });
+    return { plan: plan.id, ano, pestel: pestel.id, prom: prom.id, solto: solto.id, prj: prj.id };
+  });
+
+  // A trava sai da mesma consulta da recusa, e cobre o promovido E a origem.
+  const trava = await page.evaluate(async (m) => {
+    const pestel = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=PESTEL&ano=${m.ano}`);
+    const swot = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=SWOT&ano=${m.ano}`);
+    const acha = (lista, id) => lista.find((f) => f.id == id) || {};
+    return {
+      promovido: acha(swot, m.prom).acao_trava,
+      origem: acha(pestel, m.pestel).acao_trava,
+      solto: acha(swot, m.solto).acao_trava,
+    };
+  }, massa);
+  t(`${l} o fator promovido que virou ação vem travado`,
+    /Ação de prova \(vínculo\)/.test(trava.promovido || ''), String(trava.promovido));
+  t(`${l} a ORIGEM no PESTEL também — o DELETE dela leva o promovido`,
+    /Ação de prova \(vínculo\)/.test(trava.origem || ''), String(trava.origem));
+  t(`${l} fator sem ação NÃO vem travado`, !trava.solto, String(trava.solto));
+
+  // A tela obedece à trava: desabilita, tira a ação do botão e diz o porquê.
+  for (const [secao, alvo, rotulo] of [['swot', 'prom', 'SWOT'], ['pestel', 'pestel', 'PESTEL']]) {
+    await page.evaluate((s) => App.mostrarSecao(s), secao);
+    // Espera o CARTÃO da massa, não um cartão qualquer: `percorrer` já pintou
+    // estas seções no início da bateria, e um seletor genérico casaria com a
+    // pintura velha — de antes de o fator existir.
+    await esperar(page,
+      `!!document.querySelector('#secao-${secao} [data-card-fator="${massa[alvo]}"]')`, 15000);
+    const b = await page.evaluate((x) => {
+      const btn = document.querySelector(
+        `#secao-${x.secao} [data-card-fator="${x.id}"] .btn-outline-danger`);
+      if (!btn) return null;
+      return {
+        off: btn.disabled,
+        semAcao: !btn.hasAttribute('data-excluir'),
+        motivo: /Exclua a ação em Projetos/.test(btn.title),
+        // Sem ponteiro o navegador não mostra `title` nenhum, e o Bootstrap o
+        // desliga em todo `.btn:disabled` — o botão ficaria cinzento e mudo.
+        ponteiro: getComputedStyle(btn).pointerEvents,
+      };
+    }, { secao, id: massa[alvo] });
+    t(`${l} ${rotulo} desabilita o × travado, sem ação pendurada`,
+      !!b && b.off === true && b.semAcao === true, JSON.stringify(b));
+    t(`${l} ${rotulo} diz o motivo e o que fazer, com o ponteiro alcançando`,
+      !!b && b.motivo === true && b.ponteiro === 'auto', JSON.stringify(b));
+  }
+  const controle = await page.evaluate((m) => {
+    const btn = document.querySelector(`#secao-swot [data-card-fator="${m.solto}"] .btn-outline-danger`);
+    return btn ? !btn.disabled && btn.hasAttribute('data-excluir') : null;
+  }, massa);
+  t(`${l} o × do fator sem vínculo continua ativo`, controle === true, String(controle));
+
+  // As contagens que alimentam o `confirm()` vêm das listagens que já existem.
+  const contagens = await page.evaluate(async (m) => {
+    const c = await App.api(`/api/cascata?planejamento_id=${m.plan}`);
+    const p = await App.api(`/api/projetos?planejamento_id=${m.plan}`);
+    const i = await App.api(`/api/investimentos?planejamento_id=${m.plan}`);
+    const proj = p.find((x) => x.id == m.prj) || {};
+    return {
+      escolha: c.escolhas.length ? 'comentarios' in c.escolhas[0] : null,
+      projeto: 'investimentos_vinculados' in proj && 'comentarios' in proj,
+      acoes: (proj.desdobramentos || []).length,
+      invest: i.investimentos.length ? 'comentarios' in i.investimentos[0] : null,
+    };
+  }, massa);
+  t(`${l} a escolha da cascata traz os comentários`, contagens.escolha !== false);
+  t(`${l} o projeto traz investimentos soltos e comentários`, contagens.projeto === true);
+  t(`${l} o projeto traz as ações que saem junto`, contagens.acoes === 1, `${contagens.acoes}`);
+  t(`${l} o investimento traz os comentários`, contagens.invest !== false);
+
+  // A frase: separa o que SAI do que fica sem o vínculo, e some quando não há
+  // vínculo nenhum — "Sai junto: ." é pior que não dizer nada.
+  const frases = await page.evaluate(() => ({
+    vazia: Vinculos.aviso('Excluir?', { some: [Vinculos.quantos(0, 'comentário', 'comentários')] }),
+    cheia: Vinculos.aviso('Excluir?', {
+      some: [Vinculos.quantos(3, 'comentário', 'comentários'), Vinculos.quantos(2, 'ação', 'ações')],
+      solta: [Vinculos.quantos(1, 'investimento', 'investimentos')],
+    }),
+    singular: Vinculos.quantos(1, 'voz da sala', 'vozes da sala'),
+  }));
+  t(`${l} sem vínculo a frase é só a pergunta`, frases.vazia === 'Excluir?', frases.vazia);
+  t(`${l} separa o que sai do que fica sem o vínculo`,
+    /Sai junto: 3 comentários e 2 ações\./.test(frases.cheia)
+    && /Continua existindo, sem o vínculo: 1 investimento\./.test(frases.cheia), frases.cheia);
+  t(`${l} o singular é respeitado`, frases.singular === '1 voz da sala', frases.singular);
+
+  // Limpeza, nesta ordem: a ação é quem trava o resto.
+  await page.evaluate(async (m) => {
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    for (const id of [m.pestel, m.solto]) {
+      await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    }
+    App.mostrarSecao('painel');
+  }, massa);
+}
+
+/**
+ * PESTEL e Porter indo DIRETO ao plano de ação.
+ *
+ * Até 2026-08 o servidor recusava com "só fatores da SWOT vão ao plano de
+ * ação", e a fila só sabia dizer `origem: 'SWOT'`. A regra caiu por decisão do
+ * cliente, e o que precisa ficar provado é a corrente inteira: o encaminhamento
+ * é aceito, a fila declara a ETAPA (para o selo saber o rótulo), a ação criada
+ * FECHA o vínculo pelo mesmo `fator_id` — e as duas recusas que não mudaram
+ * (desmarcar e excluir depois da ação) continuam de pé.
+ *
+ * O fechamento do vínculo é o ponto que mais importa: era ele que o filtro
+ * `etapa = 'SWOT'` do ProjetoController deixava passar em silêncio. Sem ele o
+ * fator ficaria "aguardando ação" para sempre numa fila da qual já saiu.
+ */
+async function provasPlanoDiretoAnalise(page) {
+  const l = '[desktop] Plano de ação direto:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const pestel = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+      categoria: 'LEGAL', descricao: 'Fator PESTEL de prova (direto)', ano });
+    const porter = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PORTER',
+      categoria: 'SUBSTITUTOS', descricao: 'Fator Porter de prova (direto)', ano });
+    // Sem promoção à SWOT no meio: é exatamente isso que se quer provar.
+    const ida = await App.api(`/api/fatores/${pestel.id}/plano-acao`,
+      { planejamento_id: plan.id, marcar: true }).then(() => true).catch((e) => e.message);
+    await App.api(`/api/fatores/${porter.id}/plano-acao`, { planejamento_id: plan.id, marcar: true });
+    return { plan: plan.id, ano, pestel: pestel.id, porter: porter.id, ida };
+  });
+  t(`${l} o PESTEL é aceito no plano sem passar pela SWOT`, massa.ida === true, String(massa.ida));
+
+  const fila = await page.evaluate(async (m) => {
+    const linhas = await App.api(`/api/fatores/aguardando-acao?planejamento_id=${m.plan}`);
+    const acha = (id) => linhas.find((x) => x.id == id) || {};
+    return { pestel: acha(m.pestel).origem, porter: acha(m.porter).origem };
+  }, massa);
+  t(`${l} a fila declara a etapa, não o literal SWOT`,
+    fila.pestel === 'PESTEL' && fila.porter === 'PORTER', JSON.stringify(fila));
+
+  // O selo do card lê o catálogo da etapa: PESTEL/Porter têm categorias em
+  // tuplas e a SWOT tem quadrantes. Um `if` a mais em cada tela era o caminho
+  // para os rótulos divergirem, como já aconteceu com a Coleta.
+  const selos = await page.evaluate(() => ({
+    pestel: SecaoProjetos.rotuloCategoria('PESTEL', 'LEGAL'),
+    porter: SecaoProjetos.rotuloCategoria('PORTER', 'PODER_CLIENTES'),
+    swot: SecaoProjetos.rotuloCategoria('SWOT', 'AMEACA'),
+    etapa: SecaoProjetos.rotuloEtapa('PORTER'),
+    cor: SecaoProjetos.corCategoria('SWOT', 'FORCA'),
+  }));
+  t(`${l} o rótulo da categoria sai do catálogo de cada etapa`,
+    selos.pestel === 'Legal' && selos.porter === 'Poder dos Clientes' && selos.swot === 'Ameaça',
+    JSON.stringify(selos));
+  t(`${l} Porter é sobrenome, não sigla, e a cor acompanha`,
+    selos.etapa === 'Porter' && selos.cor === '#007a45', JSON.stringify(selos));
+
+  // O botão do card do PESTEL — é a porta pela qual o usuário passa.
+  await page.evaluate(() => App.mostrarSecao('pestel'));
+  await esperar(page,
+    `!!document.querySelector('#secao-pestel [data-card-fator="${massa.pestel}"]')`, 15000);
+  const botao = await page.evaluate((id) => {
+    const card = document.querySelector(`#secao-pestel [data-card-fator="${id}"]`);
+    return card ? !!card.querySelector('[data-tirar-acao]') : null;
+  }, massa.pestel);
+  t(`${l} o card do PESTEL mostra o selo "Aguardando ação"`, botao === true, String(botao));
+
+  // A ação criada fecha o vínculo — o filtro por etapa saiu do ProjetoController.
+  const vinculo = await page.evaluate(async (m) => {
+    const prj = await App.api('/api/projetos', { planejamento_id: m.plan, tipo: 'ESTRATEGICO',
+      titulo: 'Projeto de prova (direto)', ano: 2027, responsavel: 'QA' });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: m.plan, projeto_id: prj.id, iniciativa_nova: 'Frente de prova (direto)',
+      o_que: 'Ação de prova (direto)', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31', fator_id: m.pestel,
+    });
+    const lista = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=PESTEL&ano=${m.ano}`);
+    const f = lista.find((x) => x.id == m.pestel) || {};
+    const fila = await App.api(`/api/fatores/aguardando-acao?planejamento_id=${m.plan}`);
+    const desmarcar = await App.api(`/api/fatores/${m.pestel}/plano-acao`,
+      { planejamento_id: m.plan, marcar: false }).then(() => 'passou').catch((e) => e.message);
+    const excluir = await App.api(`/api/fatores/${m.pestel}/excluir`,
+      { planejamento_id: m.plan }).then(() => 'passou').catch((e) => e.message);
+    return { prj: prj.id, ligou: f.desdobramento_id, titulo: f.acao_titulo, trava: f.acao_trava,
+      naFila: fila.some((x) => x.id == m.pestel), desmarcar, excluir };
+  }, massa);
+  t(`${l} a ação fecha o vínculo do fator do PESTEL`,
+    !!vinculo.ligou && vinculo.titulo === 'Ação de prova (direto)', JSON.stringify(vinculo));
+  t(`${l} e ele sai da fila de aguardando`, vinculo.naFila === false, String(vinculo.naFila));
+  t(`${l} desmarcar depois da ação continua recusado`,
+    /já virou uma ação/.test(vinculo.desmarcar), vinculo.desmarcar);
+  t(`${l} excluir o fator preso continua recusado, dizendo a ação`,
+    /Ação de prova \(direto\)/.test(vinculo.excluir), vinculo.excluir);
+
+  await page.evaluate(async (m) => {
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    for (const id of [m.pestel, m.porter]) {
+      await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    }
+    App.mostrarSecao('painel');
+  }, { ...massa, prj: vinculo.prj });
+}
+
+/**
+ * A Análise de Cenário indo ao plano de ação — a quarta origem da mesma fila.
+ *
+ * O cenário NÃO é fator: `cenario_item` é outra tabela, com colunas de
+ * encaminhamento próprias e rota própria. O que se prova aqui é que, apesar
+ * disso, o comportamento visível é o mesmo das outras três — mesmo selo, mesma
+ * fila, mesmas recusas — porque é isso que faz o gesto ser aprendido uma vez só.
+ *
+ * O ponto mais frágil é a CHAVE da fila: `cenario_item` e `fator` numeram
+ * separado, e sem prefixo por origem dois registros diferentes ocupariam a
+ * mesma linha — o "Virar ação" abriria a pendência errada, sem erro nenhum.
+ */
+async function provasCenarioPlanoAcao(page) {
+  const l = '[desktop] Cenário no plano de ação:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const item = await App.api('/api/cenario', { planejamento_id: plan.id, ano,
+      tipo: 'TENDENCIA', ordem: 0, descricao: 'Item de cenário de prova (plano)' });
+    const ida = await App.api(`/api/cenario/${item.id}/plano-acao`,
+      { planejamento_id: plan.id, marcar: true }).then(() => true).catch((e) => e.message);
+    return { plan: plan.id, ano, item: item.id, ida };
+  });
+  t(`${l} o item é aceito no plano de ação`, massa.ida === true, String(massa.ida));
+
+  const fila = await page.evaluate(async (m) => {
+    const linhas = await App.api(`/api/cenario/aguardando-acao?planejamento_id=${m.plan}`);
+    const meu = linhas.find((x) => x.id == m.item) || {};
+    return { origem: meu.origem, categoria: meu.categoria, texto: meu.texto };
+  }, massa);
+  t(`${l} a fila declara a origem e o tipo`,
+    fila.origem === 'CENARIO' && fila.categoria === 'TENDENCIA', JSON.stringify(fila));
+
+  // A chave por origem: sem o prefixo, item de cenário e fator de mesmo id
+  // disputariam a mesma linha da fila.
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  await esperar(page,
+    `!!document.querySelector('#secao-projetos [data-virar-acao="n${massa.item}"]')`, 15000);
+  const naFila = await page.evaluate((m) => {
+    const b = document.querySelector(`#secao-projetos [data-virar-acao="n${m.item}"]`);
+    const linha = b?.closest('.d-flex')?.parentElement || b?.parentElement;
+    return { achou: !!b, selo: /Cenário · Tendência/.test(linha?.textContent || '') };
+  }, massa);
+  t(`${l} a pendência entra na fila com chave própria da origem`, naFila.achou === true);
+  t(`${l} e o selo diz "Cenário · Tendência"`, naFila.selo === true, JSON.stringify(naFila));
+
+  // O selo do card, na própria seção do cenário.
+  await page.evaluate(() => App.mostrarSecao('cenario'));
+  await esperar(page,
+    `!!document.querySelector('#secao-cenario [data-card-fator="${massa.item}"]')`, 15000);
+  const card = await page.evaluate((m) => {
+    const c = document.querySelector(`#secao-cenario [data-card-fator="${m.item}"]`);
+    return c ? !!c.querySelector('[data-tirar-acao]') : null;
+  }, massa);
+  t(`${l} o card do cenário mostra o selo "Aguardando ação"`, card === true, String(card));
+
+  // A ação fecha o vínculo pelo `cenario_item_id`, e as duas recusas valem.
+  const vinculo = await page.evaluate(async (m) => {
+    const prj = await App.api('/api/projetos', { planejamento_id: m.plan, tipo: 'ESTRATEGICO',
+      titulo: 'Projeto de prova (cenário)', ano: 2027, responsavel: 'QA' });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: m.plan, projeto_id: prj.id, iniciativa_nova: 'Frente de prova (cenário)',
+      o_que: 'Ação de prova (cenário)', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31', cenario_item_id: m.item,
+    });
+    const lista = await App.api(`/api/cenario?planejamento_id=${m.plan}&ano=${m.ano}`);
+    const i = lista.find((x) => x.id == m.item) || {};
+    const fila = await App.api(`/api/cenario/aguardando-acao?planejamento_id=${m.plan}`);
+    const desmarcar = await App.api(`/api/cenario/${m.item}/plano-acao`,
+      { planejamento_id: m.plan, marcar: false }).then(() => 'passou').catch((e) => e.message);
+    const excluir = await App.api(`/api/cenario/${m.item}/excluir`,
+      { planejamento_id: m.plan }).then(() => 'passou').catch((e) => e.message);
+    return { prj: prj.id, ligou: i.desdobramento_id, titulo: i.acao_titulo,
+      naFila: fila.some((x) => x.id == m.item), desmarcar, excluir };
+  }, massa);
+  t(`${l} a ação fecha o vínculo pelo cenario_item_id`,
+    !!vinculo.ligou && vinculo.titulo === 'Ação de prova (cenário)', JSON.stringify(vinculo));
+  t(`${l} e o item sai da fila de aguardando`, vinculo.naFila === false, String(vinculo.naFila));
+  t(`${l} desmarcar depois da ação é recusado`,
+    /já virou uma ação/.test(vinculo.desmarcar), vinculo.desmarcar);
+  t(`${l} excluir o item preso é recusado, dizendo a ação`,
+    /Ação de prova \(cenário\)/.test(vinculo.excluir), vinculo.excluir);
+
+  // A tela obedece à trava, como no fator: × desabilitado e sem ação pendurada.
+  await page.evaluate(() => App.mostrarSecao('cenario'));
+  await esperar(page,
+    `!!document.querySelector('#secao-cenario [data-card-fator="${massa.item}"] [data-ir-acao]')`,
+    15000);
+  const x = await page.evaluate((m) => {
+    const btn = document.querySelector(
+      `#secao-cenario [data-card-fator="${m.item}"] .btn-outline-danger`);
+    return btn ? { off: btn.disabled, semAcao: !btn.hasAttribute('data-excluir'),
+      motivo: /Exclua a ação em Projetos/.test(btn.title),
+      ponteiro: getComputedStyle(btn).pointerEvents } : null;
+  }, massa);
+  t(`${l} o × travado fica desabilitado e sem ação pendurada`,
+    !!x && x.off === true && x.semAcao === true, JSON.stringify(x));
+  t(`${l} e diz o motivo com o ponteiro alcançando`,
+    !!x && x.motivo === true && x.ponteiro === 'auto', JSON.stringify(x));
+
+  // Apagada a ação, a FK SET NULL devolve o item para a fila sozinho — é o que
+  // torna o "exclua a ação em Projetos" um conselho que funciona de verdade.
+  const voltou = await page.evaluate(async (m) => {
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan });
+    const lista = await App.api(`/api/cenario?planejamento_id=${m.plan}&ano=${m.ano}`);
+    const i = lista.find((x) => x.id == m.item) || {};
+    const fila = await App.api(`/api/cenario/aguardando-acao?planejamento_id=${m.plan}`);
+    return { ligou: i.desdobramento_id, naFila: fila.some((x) => x.id == m.item) };
+  }, { ...massa, prj: vinculo.prj });
+  t(`${l} apagada a ação, o item volta sozinho para a fila`,
+    !voltou.ligou && voltou.naFila === true, JSON.stringify(voltou));
+
+  await page.evaluate(async (m) => {
+    await App.api(`/api/cenario/${m.item}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    App.mostrarSecao('painel');
+  }, massa);
+}
+
+/**
+ * Mover um fator de uma análise para outra (PESTEL ⇄ Porter ⇄ SWOT).
+ *
+ * Mover um fator LIMPO é trivial; o tema é o fator amarrado, e por isso quase
+ * toda esta bateria prova RECUSAS. Cada amarra levanta uma pergunta de processo
+ * ainda em aberto (backlog, decisões 13 a 15), e enquanto elas não têm resposta
+ * a única saída segura é recusar dizendo o que desfazer primeiro. Um movimento
+ * recusado é um aborrecimento; um que apaga a nota da GUT ou invalida um
+ * cruzamento em silêncio é dado perdido que ninguém nota a tempo.
+ *
+ * A prova mais importante é a da CATEGORIA: as listas das três análises não se
+ * correspondem, e aceitar a antiga produziria um fator invisível nas duas telas
+ * — o defeito que o `salvar()` já corrigiu uma vez, por outro caminho.
+ */
+async function provasMoverAnalise(page) {
+  const l = '[desktop] Mover de análise:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const novo = (etapa, categoria, descricao) => App.api('/api/fatores',
+      { planejamento_id: plan.id, etapa, categoria, descricao, ano });
+    const limpo = await novo('PESTEL', 'LEGAL', 'Fator limpo de prova (mover)');
+    const promovido = await novo('PESTEL', 'SOCIAL', 'Fator promovido de prova (mover)');
+    const comGut = await novo('SWOT', 'FORCA', 'Fator com GUT de prova (mover)');
+    const interno = await novo('SWOT', 'FORCA', 'Fator interno de prova (mover)');
+    const externo = await novo('SWOT', 'AMEACA', 'Fator externo de prova (mover)');
+    await App.api(`/api/fatores/${promovido.id}/promover`,
+      { planejamento_id: plan.id, quadrante: 'OPORTUNIDADE' });
+    await App.api(`/api/fatores/${comGut.id}/gut`,
+      { planejamento_id: plan.id, gravidade: 5, urgencia: 4, tendencia: 3 });
+    const cruz = await App.api('/api/cruzamentos', { planejamento_id: plan.id, ano,
+      tipo: 'ATACAR', fator_interno_id: interno.id, fator_externo_id: externo.id,
+      rotulo: 'Par de prova (mover)', estrategia: 'Estratégia de prova (mover)' });
+    return { plan: plan.id, ano, limpo: limpo.id, promovido: promovido.id,
+      comGut: comGut.id, interno: interno.id, externo: externo.id, cruz: cruz.id };
+  });
+
+  const mover = (id, etapa, categoria) => page.evaluate(
+    (a) => App.api(`/api/fatores/${a.id}/mover`,
+      { planejamento_id: a.plan, etapa: a.etapa, categoria: a.categoria })
+      .then(() => 'passou').catch((e) => e.message),
+    { id, etapa, categoria, plan: massa.plan });
+
+  // O caminho feliz, e a categoria trocada junto com a etapa.
+  t(`${l} um fator limpo vai do PESTEL para o Porter`,
+    (await mover(massa.limpo, 'PORTER', 'SUBSTITUTOS')) === 'passou');
+  const depois = await page.evaluate(async (m) => {
+    const lista = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=PORTER&ano=${m.ano}`);
+    const f = lista.find((x) => x.id == m.limpo) || {};
+    return { etapa: f.etapa, categoria: f.categoria, trava: f.mover_trava };
+  }, massa);
+  t(`${l} ele chega com a etapa E a categoria do destino`,
+    depois.etapa === 'PORTER' && depois.categoria === 'SUBSTITUTOS', JSON.stringify(depois));
+  t(`${l} e sem trava nenhuma, porque nada o prende`,
+    Array.isArray(depois.trava) && depois.trava.length === 0, JSON.stringify(depois.trava));
+
+  // Categoria da etapa ERRADA: é o defeito que produziria o fator invisível.
+  t(`${l} categoria de outra análise é recusada`,
+    /listas das análises não se correspondem/.test(await mover(massa.limpo, 'SWOT', 'LEGAL')));
+  t(`${l} mover para a análise em que já está é recusado`,
+    /já está nesta análise/.test(await mover(massa.limpo, 'PORTER', 'RIVALIDADE')));
+  t(`${l} e o Porter vai para a SWOT com um quadrante`,
+    (await mover(massa.limpo, 'SWOT', 'AMEACA')) === 'passou');
+
+  // As três amarras que recusam, cada uma com a sua frase.
+  t(`${l} a ORIGEM de uma promoção é recusada`,
+    /Desfaça a promoção/.test(await mover(massa.promovido, 'PORTER', 'RIVALIDADE')));
+  const promId = await page.evaluate(async (m) => {
+    const swot = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=SWOT&ano=${m.ano}`);
+    return (swot.find((f) => f.promovido_de_id == m.promovido) || {}).id;
+  }, massa);
+  t(`${l} e o PROMOVIDO também — a amarra tem dois lados`,
+    /Desfaça a promoção/.test(await mover(promId, 'PESTEL', 'SOCIAL')));
+  t(`${l} fator com nota na GUT é recusado`,
+    /Matriz GUT/.test(await mover(massa.comGut, 'PESTEL', 'SOCIAL')));
+  t(`${l} fator citado num cruzamento é recusado`,
+    /cruzamento da SWOT/.test(await mover(massa.interno, 'PESTEL', 'SOCIAL')));
+  t(`${l} pelos DOIS lados do par, não só o interno`,
+    /cruzamento da SWOT/.test(await mover(massa.externo, 'PESTEL', 'SOCIAL')));
+
+  // Fator que já virou ação: a trava é a MESMA da exclusão, não uma segunda.
+  const comAcao = await page.evaluate(async (m) => {
+    const f = await App.api('/api/fatores', { planejamento_id: m.plan, etapa: 'PESTEL',
+      categoria: 'ECONOMICO', descricao: 'Fator com ação de prova (mover)', ano: m.ano });
+    await App.api(`/api/fatores/${f.id}/plano-acao`, { planejamento_id: m.plan, marcar: true });
+    const prj = await App.api('/api/projetos', { planejamento_id: m.plan, tipo: 'ESTRATEGICO',
+      titulo: 'Projeto de prova (mover)', ano: 2027, responsavel: 'QA' });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: m.plan, projeto_id: prj.id, iniciativa_nova: 'Frente de prova (mover)',
+      o_que: 'Ação de prova (mover)', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31', fator_id: f.id,
+    });
+    const recusa = await App.api(`/api/fatores/${f.id}/mover`,
+      { planejamento_id: m.plan, etapa: 'PORTER', categoria: 'RIVALIDADE' })
+      .then(() => 'passou').catch((e) => e.message);
+    return { fator: f.id, prj: prj.id, recusa };
+  }, massa);
+  t(`${l} fator que já virou ação é recusado, dizendo qual ação`,
+    /Ação de prova \(mover\)/.test(comAcao.recusa) && /origem da ação/.test(comAcao.recusa),
+    comAcao.recusa);
+
+  // A tela obedece: ⇄ desabilitado, sem ação pendurada, com TODOS os motivos.
+  await page.evaluate(() => App.mostrarSecao('swot'));
+  await esperar(page,
+    `!!document.querySelector('#secao-swot [data-card-fator="${massa.comGut}"]')`, 15000);
+  const botao = await page.evaluate((m) => {
+    const ver = (id) => {
+      const b = document.querySelector(
+        `#secao-swot [data-card-fator="${id}"] [aria-label^="Mover"]`);
+      return b ? { off: b.disabled, semAcao: !b.hasAttribute('data-mover'), motivo: b.title,
+        ponteiro: getComputedStyle(b).pointerEvents } : null;
+    };
+    return { gut: ver(m.comGut), interno: ver(m.interno) };
+  }, massa);
+  t(`${l} o ⇄ do fator travado fica desabilitado e sem ação pendurada`,
+    !!botao.gut && botao.gut.off === true && botao.gut.semAcao === true, JSON.stringify(botao.gut));
+  t(`${l} e o motivo alcançável diz o que desfazer`,
+    !!botao.gut && /Matriz GUT/.test(botao.gut.motivo) && botao.gut.ponteiro === 'auto',
+    JSON.stringify(botao.gut));
+  t(`${l} o fator do cruzamento também trava, com a frase dele`,
+    !!botao.interno && botao.interno.off === true && /cruzamento/.test(botao.interno.motivo),
+    JSON.stringify(botao.interno));
+
+  // O modal pergunta a categoria do DESTINO, um campo por análise: com um campo
+  // só, repintado, trocar de destino e voltar perdia a escolha já feita.
+  await page.evaluate(() => App.mostrarSecao('pestel'));
+  await esperar(page,
+    `!!document.querySelector('#secao-pestel [data-mover="${massa.promovido}"], `
+    + `#secao-pestel [data-card-fator="${massa.promovido}"]')`, 15000);
+  const modal = await page.evaluate(async (m) => {
+    const lista = await App.api(`/api/fatores?planejamento_id=${m.plan}&etapa=SWOT&ano=${m.ano}`);
+    Diag.modalMoverFator(lista.find((f) => f.id == m.limpo), m.plan);
+    await new Promise((r) => setTimeout(r, 300));
+    const rotulos = [...document.querySelectorAll('#campo-etapa input')].map(
+      (i) => i.closest('label')?.textContent.trim() || i.value);
+    return {
+      destinos: rotulos,
+      camposCategoria: ['PESTEL', 'PORTER', 'SWOT']
+        .filter((e) => document.getElementById(`campo-categoria_${e}`)),
+      titulo: document.querySelector('.modal.show .modal-title')?.textContent.trim(),
+    };
+  }, massa);
+  t(`${l} a análise em que o fator JÁ está não é oferecida`,
+    !modal.destinos.includes('SWOT'), JSON.stringify(modal.destinos));
+  // A Análise de Cenário entrou como quarto destino (fatia C-bis). Ela está
+  // aqui, e não só na prova própria, porque é o mesmo campo: quem mexer nos
+  // destinos tem de ver as duas coisas quebrarem juntas.
+  t(`${l} e a Análise de Cenário entra como destino, ao lado das outras`,
+    modal.destinos.includes('CENARIO') && modal.destinos.length === 3,
+    JSON.stringify(modal.destinos));
+  t(`${l} e um campo de categoria por destino, não um repintado`,
+    modal.camposCategoria.length === 2 && !modal.camposCategoria.includes('SWOT'),
+    JSON.stringify(modal.camposCategoria));
+
+  await page.evaluate(async (m) => {
+    window.bootstrap?.Modal.getInstance(document.querySelector('.modal.show'))?.hide();
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    await App.api(`/api/cruzamentos/${m.cruz}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    for (const id of [m.limpo, m.promovido, m.comGut, m.interno, m.externo, m.comAcao]) {
+      await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    }
+    App.mostrarSecao('painel');
+  }, { ...massa, prj: comAcao.prj, comAcao: comAcao.fator });
+}
+
+/**
+ * O `⇄` que ATRAVESSA a tabela: análise → Cenário e de volta.
+ *
+ * As regras (o que viaja, o que é recusado, as vozes que acompanham) são do
+ * servidor e estão na `funcional.sh` §9h. O que só o navegador responde é o
+ * que esta prova mede: o formulário troca de pergunta conforme o destino — no
+ * Cenário não existe categoria, existe TIPO —, e depois de salvar a pessoa é
+ * LEVADA à tela nova.
+ *
+ * Esse último ponto não é enfeite. O item some da análise de origem, e um
+ * cartão que desaparece sem nada dizendo para onde foi é indistinguível de um
+ * cartão excluído — no meio de uma reunião, é o tipo de dúvida que para a
+ * conversa.
+ */
+async function provasMoverEntreTabelas(page) {
+  const l = '[desktop] Mover entre tabelas:';
+  const TEXTO = 'Item que atravessa (prova)';
+  const rotulos = () => page.evaluate(() =>
+    [...document.querySelectorAll('.modal.show .grupo-botoes label')].map((b) => b.textContent.trim()));
+  // Os grupos de escolha do modal são `<label>` sobre um radio escondido, não
+  // `<button>`: clicar no texto é o que a pessoa faz, e é o que funciona.
+  //
+  // A busca é em TODO `label` do modal, não só nos `.grupo-botoes`: o quadrante
+  // da SWOT é o campo `quadrantes` (a matriz 2×2), com marcação própria. Preso
+  // ao grupo de botões, o clique em "Ameaça" não achava nada e a prova falhava
+  // no passo seguinte, longe da causa.
+  const escolher = (texto) => page.evaluate((t) => {
+    const alvo = [...document.querySelectorAll('.modal.show label')]
+      .find((x) => x.textContent.trim() === t || x.textContent.trim().startsWith(t));
+    if (alvo) alvo.click();
+    return !!alvo;
+  }, texto);
+
+  const fator = await page.evaluate(async (texto) => {
+    const plan = await App.planejamento();
+    const f = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+      categoria: 'SOCIAL', descricao: texto, ano: Diag.ano() });
+    return f.id;
+  }, TEXTO);
+  let final = null;
+
+  try {
+    await page.evaluate(() => App.mostrarSecao('pestel'));
+    await esperar(page, `!!document.querySelector('#secao-pestel [data-card-fator="${fator}"]')`, 15000);
+    await page.click(`#secao-pestel [data-card-fator="${fator}"] [data-mover="${fator}"]`);
+    await esperar(page, "!!document.querySelector('.modal.show')", 8000);
+    const destinos = await rotulos();
+    t(`${l} a Análise de Cenário é um destino do ⇄, como as outras`,
+      destinos.includes('Análise de Cenário'), JSON.stringify(destinos));
+
+    await escolher('Análise de Cenário');
+    await new Promise((r) => setTimeout(r, 400));
+    const pediuTipo = await page.evaluate(() =>
+      document.querySelector('.modal.show').textContent.includes('Entra como'));
+    t(`${l} escolhido o Cenário, o formulário pede o TIPO e não a categoria`, pediuTipo);
+    await escolher('Tendência');
+    await page.click('#modal-salvar');
+
+    const levou = await esperar(page,
+      "!document.getElementById('secao-cenario').classList.contains('d-none')", 12000);
+    t(`${l} salvar LEVA quem moveu até a tela nova`, levou);
+    const chegou = await esperar(page,
+      `document.getElementById('secao-cenario').textContent.includes(${JSON.stringify(TEXTO)})`, 12000);
+    t(`${l} e o item está lá, com o texto inteiro`, chegou);
+
+    const noCenario = await page.evaluate((texto) => {
+      const c = [...document.querySelectorAll('#secao-cenario [data-card-fator]')]
+        .find((x) => x.textContent.includes(texto));
+      return c ? Number(c.dataset.cardFator) : null;
+    }, TEXTO);
+
+    await page.click(`#secao-cenario [data-card-fator="${noCenario}"] [data-mover="${noCenario}"]`);
+    await esperar(page, "!!document.querySelector('.modal.show')", 8000);
+    const volta = await rotulos();
+    t(`${l} o ⇄ do Cenário oferece as três análises, e não a si mesmo`,
+      ['PESTEL', 'Porter', 'SWOT'].every((e) => volta.includes(e))
+      && !volta.includes('Análise de Cenário'), JSON.stringify(volta));
+    await escolher('SWOT');
+    await new Promise((r) => setTimeout(r, 400));
+    await escolher('Ameaça');
+    await page.click('#modal-salvar');
+
+    const naSwot = await esperar(page,
+      `!document.getElementById('secao-swot').classList.contains('d-none')
+       && document.getElementById('secao-swot').textContent.includes(${JSON.stringify(TEXTO)})`, 12000);
+    t(`${l} e a volta cai na SWOT, no quadrante escolhido`, naSwot);
+    final = await page.evaluate((texto) => {
+      const c = [...document.querySelectorAll('#secao-swot [data-card-fator]')]
+        .find((x) => x.textContent.includes(texto));
+      return c ? Number(c.dataset.cardFator) : null;
+    }, TEXTO);
+  } finally {
+    // Um id só, e não os dois: a travessia CONSUMIU o fator de origem, e pedir
+    // a exclusão dele devolveria 404 — que o `vigiar` registra como erro de
+    // página e que, sendo deliberado, ensinaria a ignorar erro de verdade.
+    // O `fator` original só sobrevive se a prova morreu antes de mover.
+    await page.evaluate(async (id) => {
+      if (!id) return;
+      const plan = await App.planejamento();
+      await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: plan.id }).catch(() => {});
+      App.mostrarSecao('painel');
+    }, final || fator).catch(() => {});
+  }
+}
+
+/**
+ * Matriz de Impacto por Negócio — as DUAS leituras da mesma tabela.
+ *
+ * A autorização, que é o coração do tema, tem bateria própria em `funcional.sh`
+ * (§9e): ela precisa de três sessões diferentes, e repeti-la aqui só encheria o
+ * console de 403 deliberados, que o `vigiar` conta como erro de página.
+ *
+ * O que se mede AQUI é o que só o navegador responde: a grade cabe na tela sem
+ * empurrar a página de lado, o cabeçalho e a coluna do fator ficam presos ao
+ * rolar, e trocar o contexto de Corporativo para um negócio troca a GRADE pela
+ * LISTA — que é a leitura que faz a tela valer para quem não é controladoria.
+ */
+async function provasImpactoNegocio(page) {
+  const l = '[desktop] Impacto por Negócio:';
+
+  const massa = await page.evaluate(async () => {
+    const ciclo = App.contexto.cicloId;
+    const ano = Diag.ano();
+    const d = await App.api(`/api/impacto?ciclo_id=${ciclo}&ano=${ano}`);
+    if (!d.fatores.length || d.negocios.length < 2) return { sem: true };
+    const [f1, f2] = d.fatores;
+    const [n1, n2] = d.negocios;
+    const grava = (fator_id, negocio_id, sinal, texto) =>
+      App.api('/api/impacto', { ciclo_id: ciclo, fator_id, negocio_id, sinal, texto });
+    await grava(f1.id, n1.id, 'NEGATIVO', 'Aperta a margem de prova');
+    await grava(f1.id, n2.id, 'POSITIVO', 'Abre espaço de prova');
+    if (f2) await grava(f2.id, n1.id, 'POSITIVO', 'Segunda linha de prova');
+    return { ciclo, ano, f1: f1.id, f2: f2?.id ?? null, n1: n1.id, n2: n2.id,
+      fatores: d.fatores.length, negocios: d.negocios.length };
+  });
+  if (massa.sem) {
+    ok.push(`${l} pulada — sem SWOT corporativa do ano ou com menos de dois negócios`);
+    return;
+  }
+
+  await page.evaluate(() => App.mostrarSecao('impacto'));
+  // Espera pelo DADO, não pelo nó: `percorrer` já pintou as seções no início da
+  // bateria, e um seletor genérico casaria com a pintura de antes da massa.
+  await esperar(page,
+    "!!(SecaoImpacto.dados && SecaoImpacto.dados.celulas.some("
+    + "(c) => (c.texto || '').includes('de prova')))", 15000);
+
+  const grade = await page.evaluate((m) => {
+    const t = document.querySelector('#secao-impacto .tabela-impacto');
+    if (!t) return null;
+    return {
+      colunas: t.querySelectorAll('thead th').length,
+      linhas: t.querySelectorAll('tbody tr').length,
+      glifos: [...t.querySelectorAll('.celula-impacto span[aria-hidden]')].map((s) => s.textContent.trim()),
+      // Cada coluna leva o rótulo completo em `title` e uma cópia para leitor de
+      // tela: o cabeçalho mostra só o código, que sozinho não identifica nada.
+      cabecalhoComRotulo: [...t.querySelectorAll('thead .col-negocio')]
+        .every((th) => (th.getAttribute('title') || '').includes(' - ')),
+      rolaPagina: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      esperadoColunas: m.negocios + 1,
+    };
+  }, massa);
+  t(`${l} a grade tem uma coluna por negócio, mais a do fator`,
+    !!grade && grade.colunas === grade.esperadoColunas, JSON.stringify(grade));
+  t(`${l} uma linha por ameaça/oportunidade da SWOT corporativa`,
+    !!grade && grade.linhas === massa.fatores, `${grade?.linhas} de ${massa.fatores}`);
+  t(`${l} o sinal é FORMA, não só cor — ▲ e ▼ desenhados`,
+    !!grade && grade.glifos.includes('▲') && grade.glifos.includes('▼'),
+    JSON.stringify(grade?.glifos));
+  t(`${l} o cabeçalho leva o nome inteiro do negócio, não só o código`,
+    grade?.cabecalhoComRotulo === true);
+  t(`${l} e a página não rola de lado`, grade?.rolaPagina === false);
+
+  // O cabeçalho e a coluna do fator presos: numa grade de códigos numéricos,
+  // perder o cabeçalho na rolagem torna as células ilegíveis.
+  const fixo = await page.evaluate(async () => {
+    const caixa = document.querySelector('#secao-impacto .caixa-impacto');
+    caixa.scrollTop = caixa.scrollHeight;
+    await new Promise((r) => setTimeout(r, 200));
+    const cx = caixa.getBoundingClientRect();
+    const th = caixa.querySelector('thead .col-negocio');
+    const quina = caixa.querySelector('thead .col-fator');
+    return {
+      rolou: Math.round(caixa.scrollTop),
+      thNoTopo: Math.round(th.getBoundingClientRect().top - cx.top),
+      quinaNoTopo: Math.round(quina.getBoundingClientRect().top - cx.top),
+      colunaPresa: getComputedStyle(caixa.querySelector('tbody .col-fator')).position,
+      colapso: getComputedStyle(caixa.querySelector('.tabela-impacto')).borderCollapse,
+    };
+  });
+  t(`${l} a caixa rolou de verdade antes de medir`, fixo.rolou > 100, `${fixo.rolou}`);
+  t(`${l} o cabeçalho fica grudado no topo da caixa`,
+    fixo.thNoTopo === 0 && fixo.quinaNoTopo === 0, JSON.stringify(fixo));
+  t(`${l} a coluna do fator fica presa à esquerda`, fixo.colunaPresa === 'sticky', fixo.colunaPresa);
+  t(`${l} bordas separadas, para o grudado ser opaco`, fixo.colapso === 'separate', fixo.colapso);
+
+  // A outra leitura: no contexto de um NEGÓCIO a grade dá lugar à lista.
+  const antes = await page.evaluate((m) => {
+    const ctx = App.contexto;
+    window.__ctxAntes = { ...ctx };
+    App.contexto = { ...ctx, corporativo: false, negocioId: m.n1 };
+    return true;
+  }, massa);
+  await page.evaluate(() => App.mostrarSecao('impacto'));
+  await esperar(page,
+    "!!document.querySelector('#secao-impacto [data-card-impacto], #secao-impacto .alert')", 15000);
+  const lista = await page.evaluate(() => {
+    const el = document.getElementById('secao-impacto');
+    return {
+      cards: el.querySelectorAll('[data-card-impacto]').length,
+      temGrade: !!el.querySelector('.tabela-impacto'),
+      texto: el.textContent.replace(/\s+/g, ' '),
+    };
+  });
+  t(`${l} no contexto de um negócio a grade some e vira lista`,
+    lista.temGrade === false && lista.cards > 0, JSON.stringify({ ...lista, texto: undefined }));
+  t(`${l} a lista traz só o que impacta ESTE negócio, com a contagem`,
+    /\d+ de \d+ fatores do diagnóstico corporativo/.test(lista.texto)
+    && lista.texto.includes('Aperta a margem de prova')
+    && !lista.texto.includes('Abre espaço de prova'),
+    lista.texto.slice(0, 220));
+
+  // A limpeza APAGA a massa e devolve o contexto — nesta ordem, e esperando a
+  // repintura terminar. Esta prova é a única que troca `App.contexto`, e o
+  // Dossiê, que roda logo depois, o troca dezenas de vezes: devolver o contexto
+  // e sair com um `carregar()` ainda no ar deixa uma pintura órfã correndo
+  // contra o contexto que a próxima prova já está mudando — exatamente o tipo
+  // de corrida que produziu os falsos-negativos de pintura velha nesta bateria.
+  await page.evaluate(async (m) => {
+    for (const [f, n] of [[m.f1, m.n1], [m.f1, m.n2], [m.f2, m.n1]]) {
+      if (f) {
+        await App.api('/api/impacto',
+          { ciclo_id: m.ciclo, fator_id: f, negocio_id: n, sinal: '' }).catch(() => {});
+      }
+    }
+    App.contexto = window.__ctxAntes;
+    delete window.__ctxAntes;
+    App.mostrarSecao('painel');
+  }, massa);
+  await esperar(page, "!document.getElementById('secao-painel').classList.contains('d-none')", 10000);
+  await esperar(page, "!!document.querySelector('#secao-painel *')", 10000);
+  void antes;
+}
+
+/**
+ * Duas telas abertas ao mesmo tempo — o "mais de um ADMIN preenchendo junto".
+ *
+ * É a única prova da bateria que precisa de DUAS sessões de navegador, e não dá
+ * para ser de outro jeito: o que se mede é justamente o que a segunda tela faz
+ * sozinha quando a primeira grava. Uma sessão só provaria o pulso do servidor,
+ * que já tem prova própria em `funcional.sh`.
+ *
+ * A segunda tela NÃO é tocada depois de aberta: nada de clique, nada de
+ * recarregar. Se o texto aparecer nela, apareceu pelo relógio.
+ */
+async function provasDuasTelas(browser) {
+  const l = '[duas telas] Preenchimento simultâneo:';
+  const ctxB = await browser.newContext({ viewport: { width: 1400, height: 800 }, reducedMotion: 'reduce' });
+  const ctxA = await browser.newContext({ viewport: { width: 1400, height: 800 }, reducedMotion: 'reduce' });
+  const A = await entrar(ctxA, 'A', []);
+  const B = await entrar(ctxB, 'B', []);
+  const TEXTO = 'Fator escrito pela outra tela (prova)';
+  const TEXTO2 = 'Fator escrito com modal aberto (prova)';
+  const criados = [];
+
+  try {
+    for (const p of [A, B]) {
+      await p.evaluate(() => App.mostrarSecao('pestel'));
+      await esperar(p, "!!document.querySelector('#secao-pestel .coluna-categoria')", 15000);
+    }
+    // O relógio é armado depois da pintura, no `recarregarSecaoAtiva`.
+    await esperar(B, '!!Vivo.relogio', 8000);
+    t(`${l} a segunda tela arma o relógio sozinha ao abrir a seção`, true);
+
+    const antes = await B.evaluate((x) =>
+      document.getElementById('secao-pestel').textContent.includes(x), TEXTO);
+    t(`${l} e não mostra o que ainda não foi escrito`, antes === false);
+
+    criados.push(await A.evaluate(async (x) => {
+      const plan = await App.planejamento();
+      const f = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+        categoria: 'ECONOMICO', descricao: x, ano: Diag.ano() });
+      return f.id;
+    }, TEXTO));
+
+    let refletiu = true;
+    const t0 = Date.now();
+    await esperar(B,
+      `document.getElementById('secao-pestel').textContent.includes(${JSON.stringify(TEXTO)})`,
+      15000).catch(() => { refletiu = false; });
+    t(`${l} o que uma escreve aparece na outra sem ninguém atualizar`,
+      refletiu, refletiu ? `${Date.now() - t0}ms` : 'não apareceu em 15s');
+
+    // A guarda que mais importa: repintar com um formulário aberto jogaria fora
+    // o que a pessoa está escrevendo. Vale mais que a atualização em si.
+    await B.evaluate(() => Modal.abrir({ titulo: 'Prova da guarda', url: '/api/nada',
+      valores: { x: '' }, campos: [{ nome: 'x', rotulo: 'Campo' }] }));
+    await esperar(B, "!!document.querySelector('.modal.show')", 5000);
+    criados.push(await A.evaluate(async (x) => {
+      const plan = await App.planejamento();
+      const f = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'PESTEL',
+        categoria: 'SOCIAL', descricao: x, ano: Diag.ano() });
+      return f.id;
+    }, TEXTO2));
+    // Duas batidas do relógio (4s cada) com folga: se fosse repintar, repintaria.
+    await new Promise((r) => setTimeout(r, 9500));
+    const comModal = await B.evaluate((x) => ({
+      aberto: !!document.querySelector('.modal.show'),
+      repintou: document.getElementById('secao-pestel').textContent.includes(x),
+    }), TEXTO2);
+    t(`${l} com um formulário aberto, NÃO repinta por baixo dele`,
+      comModal.aberto === true && comModal.repintou === false, JSON.stringify(comModal));
+
+    // E a atualização não se perde: fechado o formulário, a próxima batida traz.
+    await B.evaluate(() => {
+      window.bootstrap?.Modal.getInstance(document.querySelector('.modal.show'))?.hide();
+    });
+    await esperar(B, "!document.querySelector('.modal.show')", 5000);
+    let veioDepois = true;
+    await esperar(B,
+      `document.getElementById('secao-pestel').textContent.includes(${JSON.stringify(TEXTO2)})`,
+      15000).catch(() => { veioDepois = false; });
+    t(`${l} e o que ficou represado chega assim que o formulário fecha`, veioDepois);
+
+    // Ao sair da seção o relógio se desarma: as seções não são destruídas ao
+    // navegar, só ganham `d-none`, e um relógio por tela visitada ficaria batendo.
+    await B.evaluate(() => App.mostrarSecao('painel'));
+    await esperar(B, "!document.getElementById('secao-painel').classList.contains('d-none')", 10000);
+    await new Promise((r) => setTimeout(r, 5000));
+    const noPainel = await B.evaluate(() => Vivo.secaoId);
+    t(`${l} ao trocar de seção o relógio passa a vigiar a nova`,
+      noPainel === 'secao-painel', String(noPainel));
+  } finally {
+    await A.evaluate(async (ids) => {
+      const plan = await App.planejamento();
+      for (const i of ids) {
+        await App.api(`/api/fatores/${i}/excluir`, { planejamento_id: plan.id }).catch(() => {});
+      }
+    }, criados).catch(() => {});
+    await ctxA.close();
+    await ctxB.close();
+  }
+}
+
+/**
+ * A oficina de Cruzamentos inteira: a sala propõe o PAR pelo celular e o
+ * condutor aceita.
+ *
+ * É a única pergunta da sala em que o celular escolhe REGISTROS em vez de só
+ * escrever, e por isso a prova percorre o caminho todo em vez de medir pontas:
+ * as guardas do servidor estão na `funcional.sh` §9i, e o que só o navegador
+ * responde é se o gesto FECHA — 🎤 na coluna, dois seletores no celular,
+ * proposta aparecendo sozinha no painel, e o "Usar" abrindo o formulário já
+ * com o par e a estratégia da pessoa.
+ *
+ * Dois contextos, um deles de celular de verdade (390×844): a tela pública é a
+ * que a direção usa na mão, e provar o par num viewport de computador mediria
+ * uma tela que ninguém vai ver.
+ */
+async function provasCruzamentoNaSala(browser) {
+  const l = '[oficina] Cruzamentos na sala:';
+  const ctxA = await browser.newContext({ viewport: { width: 1500, height: 900 }, reducedMotion: 'reduce' });
+  const admin = await entrar(ctxA, 'admin', []);
+  const ctxM = await browser.newContext({
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce',
+  });
+  let massa = null;
+
+  try {
+    massa = await admin.evaluate(async () => {
+      const plan = await App.planejamento();
+      const ano = Diag.ano();
+      const novo = (categoria, descricao) => App.api('/api/fatores',
+        { planejamento_id: plan.id, etapa: 'SWOT', categoria, descricao, ano });
+      const f = await novo('FORCA', 'Forca da oficina (prova)');
+      const o = await novo('OPORTUNIDADE', 'Oportunidade da oficina (prova)');
+      return { plan: plan.id, ano, f: f.id, o: o.id };
+    });
+
+    await admin.evaluate(() => App.mostrarSecao('cruzamentos'));
+    await esperar(admin,
+      "!!document.querySelector('#secao-cruzamentos [data-coluna-categoria=\"ATACAR\"]')", 15000);
+    t(`${l} cada bloco tem o 🎤, como as outras análises`, await admin.evaluate(() =>
+      !!document.querySelector('#secao-cruzamentos [data-coluna-categoria="ATACAR"] [data-mic]')));
+
+    // O 🎤 pode pedir confirmação (a sala já estar em outro rito): aceitar é o
+    // gesto do condutor, e sem tratar o diálogo o clique fica pendurado.
+    admin.once('dialog', async (d) => { await d.accept(); });
+    await admin.click('#secao-cruzamentos [data-coluna-categoria="ATACAR"] [data-mic]');
+    t(`${l} o 🎤 abre a pergunta do bloco para a sala`, await esperar(admin,
+      "!!document.querySelector('#secao-cruzamentos [data-mic-fechar]')", 15000));
+
+    const sala = await admin.evaluate(async (m) => {
+      const q = await App.api(`/api/quiz?planejamento_id=${m.plan}`);
+      return { pin: q.sessao?.pin, perg: q.pergunta?.id };
+    }, massa);
+
+    const cel = await ctxM.newPage();
+    await cel.goto(`${BASE}/entrar/${sala.pin}`);
+    await esperar(cel, "!!document.querySelector('#campo-nome')", 15000);
+    await cel.fill('#campo-nome', 'Diretoria no celular');
+    await cel.click('#btn-entrar');
+    const viuPar = await esperar(cel, "!!document.getElementById('par-interno')", 15000);
+    const rotulos = await cel.evaluate(() => ({
+      i: document.querySelector('label[for="par-interno"]')?.textContent.trim(),
+      e: document.querySelector('label[for="par-externo"]')?.textContent.trim(),
+      campo: document.querySelector('label[for="campo-ideia"]')?.textContent.trim(),
+      rola: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }));
+    t(`${l} o celular mostra os dois lados do bloco para escolher`,
+      viuPar && rotulos.i === 'Forças' && rotulos.e === 'Oportunidades', JSON.stringify(rotulos));
+    t(`${l} e o campo de texto pede a estratégia, não uma sugestão solta`,
+      rotulos.campo === 'O que fazer com este encontro', JSON.stringify(rotulos.campo));
+    t(`${l} a tela do par não rola na horizontal no celular`, rotulos.rola === false);
+
+    // Sem o par, a tela barra ANTES da rede: o servidor recusaria igual, mas a
+    // ida e volta com a frase escrita perdida é o que se evita aqui.
+    await cel.fill('#campo-ideia', 'Sem par nenhum');
+    await cel.click('#btn-enviar');
+    await new Promise((r) => setTimeout(r, 600));
+    t(`${l} sem escolher o par, a tela avisa antes de ir à rede`,
+      /Escolha um item de cada lado/.test(
+        await cel.evaluate(() => document.getElementById('aviso-envio')?.textContent || '')));
+
+    await cel.selectOption('#par-interno', String(massa.f));
+    await cel.selectOption('#par-externo', String(massa.o));
+    // Uma batida do polling (4s) com folga: escolher dois fatores numa lista
+    // custa mais que digitar, e perder isso a cada batida inutilizaria a tela.
+    await new Promise((r) => setTimeout(r, 5200));
+    const sobreviveu = await cel.evaluate(() => ({
+      i: document.getElementById('par-interno')?.value,
+      e: document.getElementById('par-externo')?.value,
+    }));
+    t(`${l} o par escolhido sobrevive à batida do polling`,
+      String(sobreviveu.i) === String(massa.f) && String(sobreviveu.e) === String(massa.o),
+      JSON.stringify(sobreviveu));
+
+    await cel.fill('#campo-ideia', 'Usar a forca para abrir o canal novo ja em H1');
+    await cel.click('#btn-enviar');
+    await esperar(cel,
+      "/enviada/i.test(document.getElementById('aviso-envio')?.textContent || '')", 10000);
+    const limpou = await cel.evaluate(() => ({
+      i: document.getElementById('par-interno')?.value,
+      e: document.getElementById('par-externo')?.value,
+    }));
+    t(`${l} enviada a proposta, os seletores voltam ao vazio`,
+      !limpou.i && !limpou.e, JSON.stringify(limpou));
+
+    // O painel do condutor anda SOZINHO: é o relógio de 4s da sala.
+    t(`${l} a proposta aparece no painel do condutor sem ninguém atualizar`,
+      await esperar(admin,
+        "!!document.querySelector('#secao-cruzamentos .ficha-sugestao .par-voz')", 15000));
+    const ficha = await admin.evaluate(() => {
+      const f = document.querySelector('#secao-cruzamentos .ficha-sugestao');
+      return f ? [...f.querySelectorAll('.par-voz-lado')].map((x) => x.textContent.trim()) : null;
+    });
+    t(`${l} e a ficha mostra o PAR proposto, que é o que se lê para decidir`,
+      ficha?.[0] === 'Forca da oficina (prova)'
+      && ficha?.[1] === 'Oportunidade da oficina (prova)', JSON.stringify(ficha));
+
+    await admin.click('#secao-cruzamentos [data-usar-sugestao]');
+    await esperar(admin, "!!document.querySelector('.modal.show')", 8000);
+    const form = await admin.evaluate(() => ({
+      titulo: document.querySelector('.modal.show .modal-title')?.textContent.trim(),
+      // Os campos do modal são `#campo-<nome>`: `[name=...]` não existe neste
+      // formulário, e o seletor errado falha longe da causa.
+      estrategia: document.getElementById('campo-estrategia')?.value,
+      marcados: [...document.querySelectorAll('.modal.show input:checked')].map((i) => i.value),
+    }));
+    t(`${l} o "Usar" abre o formulário como proposta da sala`,
+      /Aceitar cruzamento da sala/.test(form.titulo || ''), JSON.stringify(form.titulo));
+    t(`${l} com o par JÁ escolhido pela pessoa que respondeu`,
+      form.marcados.includes(String(massa.f)) && form.marcados.includes(String(massa.o)),
+      JSON.stringify(form.marcados));
+    t(`${l} e a estratégia dela como rascunho, para o condutor redigir`,
+      form.estrategia === 'Usar a forca para abrir o canal novo ja em H1',
+      JSON.stringify(form.estrategia));
+
+    await admin.fill('#campo-rotulo', 'Par da oficina (prova)');
+    await admin.click('#modal-salvar');
+    t(`${l} salvar cria o cruzamento na coluna do bloco`, await esperar(admin,
+      "document.getElementById('secao-cruzamentos').textContent.includes('Par da oficina (prova)')",
+      12000));
+    const depois = await admin.evaluate(() => {
+      const card = [...document.querySelectorAll('#secao-cruzamentos [data-card-cruzamento]')]
+        .find((c) => c.textContent.includes('Par da oficina (prova)'));
+      return {
+        selo: card ? card.textContent.includes('🎤') : null,
+        fichas: document.querySelectorAll('#secao-cruzamentos .ficha-sugestao').length,
+      };
+    });
+    t(`${l} o cartão registra a voz da sala que o sustenta`, depois.selo === true);
+    t(`${l} e a voz sai do painel, porque virou registro`, depois.fichas === 0,
+      `${depois.fichas} ficha(s)`);
+  } finally {
+    if (massa) {
+      await admin.evaluate(async (m) => {
+        const cs = await App.api(`/api/cruzamentos?planejamento_id=${m.plan}&ano=${m.ano}`)
+          .catch(() => []);
+        for (const c of cs.filter((x) => x.rotulo === 'Par da oficina (prova)')) {
+          await App.api(`/api/cruzamentos/${c.id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+        }
+        await App.api('/api/quiz/encerrar', { planejamento_id: m.plan }).catch(() => {});
+        for (const id of [m.f, m.o]) {
+          await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+        }
+        App.mostrarSecao('painel');
+      }, massa).catch(() => {});
+    }
+    await ctxA.close();
+    await ctxM.close();
+  }
+}
+
+/**
+ * O cadeado de edição, a duas sessões e com DOIS usuários.
+ *
+ * Dois usuários é o ponto: com a mesma conta nos dois navegadores todo cadeado
+ * é "meu", todas as guardas passam e a prova ficaria verde medindo nada. Por
+ * isso ela cria um segundo admin pela própria rota e o apaga no fim.
+ *
+ * O que se mede aqui é o que só existe no navegador — o contador dentro do
+ * formulário, o "+1 minuto" e o nome de quem edita aparecendo sozinho no
+ * cartão do outro. A regra propriamente dita (quem grava e quem é recusado) é
+ * do servidor, e está provada na `funcional.sh`, seção 9g.
+ */
+async function provasCadeado(browser) {
+  const l = '[cadeado] Edição de um por vez:';
+  const ctxA = await browser.newContext({ viewport: { width: 1400, height: 800 }, reducedMotion: 'reduce' });
+  const ctxB = await browser.newContext({ viewport: { width: 1400, height: 800 }, reducedMotion: 'reduce' });
+  const A = await entrar(ctxA, 'A', []);
+  const EMAIL_B = 'bruna.cadeado@teste.local';
+  let fator = null, segundo = null;
+
+  try {
+    segundo = await A.evaluate((email) => App.api('/api/usuarios', {
+      nome: 'Bruna do Cadeado', email, senha: 'trocar123', perfil: 'ADMIN', negocios: [],
+    }).then((r) => r.id).catch(() => null), EMAIL_B);
+    if (!segundo) { t(`${l} cria o segundo admin da prova`, false); return; }
+
+    const B = await ctxB.newPage();
+    await B.goto(`${BASE}/login`);
+    await B.fill('#email', EMAIL_B);
+    await B.fill('#senha', 'trocar123');
+    await B.click('#form-login button[type=submit]');
+    await esperar(B, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+    await B.evaluate(() => {
+      App.contexto.cicloId = 1; App.contexto.negocioId = null; App.contexto.corporativo = true;
+    });
+
+    fator = await A.evaluate(async () => {
+      const plan = await App.planejamento();
+      const f = await App.api('/api/fatores', { planejamento_id: plan.id, etapa: 'SWOT',
+        categoria: 'FORCA', descricao: 'Fator do cadeado (prova)', ano: Diag.ano() });
+      return f.id;
+    });
+    for (const p of [A, B]) {
+      await p.evaluate(() => App.mostrarSecao('swot'));
+      await esperar(p, `!!document.querySelector('#secao-swot [data-card-fator="${fator}"]')`, 15000);
+    }
+
+    // 1. Quem abre primeiro vê quanto tempo tem.
+    await A.click(`#secao-swot [data-card-fator="${fator}"] [data-editar="${fator}"]`);
+    const abriu = await esperar(A, "!!document.querySelector('.modal.show')"
+      + " && !document.getElementById('modal-cadeado').classList.contains('d-none')", 8000);
+    const tempo = await A.evaluate(() => document.querySelector('.tempo-cadeado')?.textContent || '');
+    t(`${l} quem abre o item vê o contador do tempo que tem`,
+      abriu && /^0[45]:\d\d$/.test(tempo), tempo || 'sem contador');
+
+    // 2. O segundo NEM ABRE o formulário — e o aviso diz de quem é o item.
+    //    Recusar só no salvar seria pior que não recusar: a pessoa escreveria
+    //    o parágrafo inteiro para descobrir no fim que ele não ia entrar.
+    let aviso = null;
+    B.once('dialog', async (d) => { aviso = d.message(); await d.dismiss(); });
+    await B.click(`#secao-swot [data-card-fator="${fator}"] [data-editar="${fator}"]`);
+    await new Promise((r) => setTimeout(r, 1500));
+    const abriuB = await B.evaluate(() => !!document.querySelector('.modal.show'));
+    t(`${l} o segundo admin não consegue abrir o mesmo item`,
+      abriuB === false && (aviso || '').includes('Administrador'), JSON.stringify(aviso));
+
+    // 3. E o nome aparece no cartão dele SEM ele tocar em nada: é o pulso de 4s
+    //    trazendo os cadeados junto com as versões.
+    const pintou = await esperar(B,
+      `!!document.querySelector('#secao-swot [data-cadeado="fator:${fator}"] .selo-editando')`, 14000);
+    const selo = await B.evaluate((f) => document.querySelector(
+      `#secao-swot [data-cadeado="fator:${f}"] .selo-editando`)?.textContent || '', fator);
+    t(`${l} o cartão do outro mostra sozinho quem está editando`,
+      pintou && selo.includes('Administrador'), JSON.stringify(selo));
+
+    // 4. O "+1 minuto" ESTENDE. Escrito da forma óbvia (`NOW() + 60`) ele
+    //    ENCURTARIA um cadeado recém-tomado — o botão de ganhar tempo tirando
+    //    tempo de quem clicou nele.
+    const antes = await A.evaluate(() => Cadeado.restam);
+    await A.click('#modal-cadeado [data-mais-tempo]');
+    await esperar(A, `Cadeado.restam > ${antes}`, 6000);
+    const depois = await A.evaluate(() => Cadeado.restam);
+    t(`${l} o +1 minuto estende em vez de encurtar`, depois > antes, `${antes} → ${depois}`);
+
+    // 5. Fechado o formulário, o item volta a ser de todos — e a tela do outro
+    //    avisa sozinha, que é o que evita o "já pode?" repetido na reunião.
+    await fecharModal(A);
+    const soltou = await esperar(B,
+      `!document.querySelector('#secao-swot [data-cadeado="fator:${fator}"] .selo-editando')`, 14000);
+    t(`${l} fechar solta o item e o aviso some da tela do outro`, soltou);
+
+    await B.click(`#secao-swot [data-card-fator="${fator}"] [data-editar="${fator}"]`);
+    const abriuAgora = await esperar(B, "!!document.querySelector('.modal.show')", 8000);
+    t(`${l} e aí o segundo admin abre normalmente`, abriuAgora);
+    await fecharModal(B);
+    // O `soltar` do fechamento é assíncrono: a limpeza abaixo é feita por A, e
+    // sem esperar o cadeado de B cair ela seria recusada pela própria guarda —
+    // o fator ficaria para trás sujando a análise das rodadas seguintes.
+    await esperar(B, 'Cadeado.atual === null', 5000);
+    await new Promise((r) => setTimeout(r, 800));
+  } finally {
+    if (fator) {
+      await A.evaluate(async (f) => {
+        const plan = await App.planejamento();
+        await App.api(`/api/fatores/${f}/excluir`, { planejamento_id: plan.id }).catch(() => {});
+      }, fator).catch(() => {});
+    }
+    if (segundo) {
+      await A.evaluate((u) => App.api(`/api/usuarios/${u}/excluir`,
+        { transferir_para: 1 }).catch(() => {}), segundo).catch(() => {});
+    }
+    await ctxA.close();
+    await ctxB.close();
+  }
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -1879,6 +3388,20 @@ async function provasAcao(page, largura) {
   await provasGut(page);
   await provasExcluirUsuario(page);
   await provasFiltroResponsavel(page);
+  await provasMatrizExecucao(page);
+  await provasExclusaoComVinculo(page);
+  await provasPlanoDiretoAnalise(page);
+  await provasCenarioPlanoAcao(page);
+  await provasMoverAnalise(page);
+  await provasMoverEntreTabelas(page);
+  await provasImpactoNegocio(page);
+  await provasDuasTelas(browser);
+  await provasCadeado(browser);
+  await provasCruzamentoNaSala(browser);
+  // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
+  // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
+  // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.
+  await provasDossie(page);
 
   const ctxM = await browser.newContext({
     viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true,

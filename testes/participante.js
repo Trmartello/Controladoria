@@ -76,6 +76,42 @@ const t = (n, c, e = '') => (c ? ok : bad).push(n + (e ? ` — ${e}` : ''));
     .filter((b) => b.h > 0 && b.h < 36));
   t('Botões com altura de toque de ao menos 36px', pequenos.length === 0, JSON.stringify(pequenos));
 
+  // A identidade tem de ATRAVESSAR a aba. Ela era guardada no `sessionStorage`,
+  // que morre com a aba: quem voltava pelo link entrava como OUTRA pessoa, via
+  // as próprias estrelas apagadas e votava de novo — a mesma pessoa pesando
+  // duas vezes no ranking, sem sinal nenhum na tela. Num encontro à distância,
+  // voltar pelo link é o gesto comum e não a exceção.
+  const meuToken = await page.evaluate(() => Participante.token);
+  const aba2 = await ctx.newPage();
+  await aba2.goto(`${BASE}/entrar/${pin}`);
+  const seguiuDentro = await esperar(aba2,
+    "!!document.querySelector('#campo-ideia, [data-votar], .tema-rodada')", 12000);
+  t('Voltar pelo link numa aba nova mantém a pessoa dentro da sala', seguiuDentro);
+  t('E mantém a MESMA identidade (o token não é recunhado)',
+    seguiuDentro && (await aba2.evaluate(() => Participante.token)) === meuToken);
+  await aba2.close();
+
+  // Identidade local apagada, mas o APARELHO continua conhecido pelo servidor:
+  // ele devolve o token sem pedir nada. É a rede de segurança de quem limpa os
+  // dados do site no meio do encontro — ou de quem entra de casa por um
+  // navegador que descarta armazenamento sozinho.
+  await page.evaluate((p) => localStorage.removeItem(`tempestade:${p}`), pin);
+  await page.reload();
+  const voltouSozinho = await esperar(page,
+    "!!document.querySelector('#campo-ideia, [data-votar], .tema-rodada')", 12000);
+  t('Identidade apagada: o aparelho conhecido traz a pessoa de volta sozinho', voltouSozinho);
+  t('E de volta com o mesmo token',
+    voltouSozinho && (await page.evaluate(() => Participante.token)) === meuToken);
+
+  // A contrapartida do armazenamento que persiste: num computador de
+  // departamento, a segunda pessoa a sentar precisa conseguir sair da primeira.
+  page.once('dialog', (d) => d.accept());
+  await page.click('#btn-trocar-pessoa');
+  t('"não é você?" devolve a tela de entrada',
+    await esperar(page, "!!document.querySelector('#campo-nome')", 8000));
+  t('E apaga a identidade guardada',
+    await page.evaluate((p) => !localStorage.getItem(`tempestade:${p}`), pin));
+
   // PIN errado não pode devolver pista de PIN válido
   const page2 = await ctx.newPage();
   await page2.goto(`${BASE}/entrar/000000`);

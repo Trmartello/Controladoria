@@ -170,20 +170,146 @@ const SecaoCruzamentos = {
       title="Encaminhar para o plano de ação">→ Plano de ação</button>`;
   },
 
+  /**
+   * As notas de um cruzamento no relatório — o mesmo papel de `Diag.notasFator`
+   * na SWOT: a linha miúda embaixo do item, com o que não cabe no texto dele.
+   *
+   * O PAR vem primeiro e sempre. No cartão ele são dois selos coloridos; no
+   * documento não há cor que diga "isto é uma força", então o quadrante entra
+   * escrito. Sem o par, o relatório publicaria a estratégia sem dizer de que
+   * encontro ela nasceu — que é a única coisa que esta análise acrescenta.
+   */
+  notasCruzamento(c) {
+    const lado = (cat, desc) => `${Diag.QUADRANTES[cat] || cat}: ${desc}`;
+    const n = [
+      lado(c.interno_categoria, c.interno_descricao),
+      lado(c.externo_categoria, c.externo_descricao),
+    ];
+    if (c.desdobramento_id) n.push('Virou ação no plano');
+    else if (c.acao_em) n.push('Aguardando plano de ação');
+    return n;
+  },
+
+  /**
+   * O × do cruzamento — desabilitado depois que ele virou ação.
+   *
+   * O selo "Virou ação ↗" já dizia que existe vínculo, mas o × ao lado
+   * continuava com cara de quem funciona: quem clicava descobria a regra pelo
+   * erro vermelho do servidor. A recusa continua sendo dele
+   * (`CruzamentoController::excluir`); isto é o aviso ANTES dela, não no lugar
+   * dela.
+   */
+  botaoExcluir(c) {
+    if (c.desdobramento_id) {
+      return `<button class="btn btn-sm btn-outline-danger" ${Vinculos.travado(
+        'Já virou ação no plano. Exclua a ação em Projetos antes de excluir '
+        + 'este cruzamento.')} aria-label="Excluir (bloqueado: virou ação)">×</button>`;
+    }
+    return `<button class="btn btn-sm btn-outline-danger" data-excluir-cruz="${c.id}"
+      title="Excluir" aria-label="Excluir">×</button>`;
+  },
+
   /** O bloco que nasce de um par de categorias (o mesmo cálculo do servidor). */
   blocoDoPar(catInterna, catExterna) {
     return this.BLOCOS.find((b) => b.interno === catInterna && b.externo === catExterna) || null;
   },
 
+  // ---- A sala do encontro (o contrato de `dono` que o QuizSala espera) ----
+  plan: null,
+  quiz: null,
+  relogioQuiz: null,
+  assinaturaQuiz: null,
+  perguntaFoco: null,
+  quizUi: { qrAberto: false, roteiroAberto: false },
+
+  /**
+   * A pergunta em foco, se ela for DESTE bloco e ano.
+   *
+   * Confere o `alvo_tipo` antes de tudo, como as outras telas: sem isso uma
+   * pergunta de cenário (categoria nula) casaria com qualquer coluna daqui.
+   */
+  quizFoco(tipo, ano) {
+    const p = this.quiz?.foco || this.quiz?.pergunta;
+    if (!p || p.alvo_tipo !== 'CRUZAMENTO') return null;
+    return p.categoria === tipo && Number(p.ano) === Number(ano) ? p : null;
+  },
+
+  /** O 🎤 de um bloco — selo quando ele já é a pergunta ATIVA. */
+  quizMic(b, ano) {
+    const ativa = this.quiz?.pergunta;
+    const naSala = ativa && ativa.alvo_tipo === 'CRUZAMENTO'
+      && ativa.categoria === b.tipo && Number(ativa.ano) === Number(ano);
+    return QuizSala.microfone(
+      { alvo_tipo: 'CRUZAMENTO', ano, alvos: [b.tipo] }, b.rotulo,
+      { ativo: naSala, cor: b.cor, pergunta: naSala ? ativa.id : null });
+  },
+
+  /**
+   * O painel das vozes do bloco em foco. Diferente das outras análises num
+   * ponto: aqui a ficha já mostra o PAR que a pessoa escolheu, e é ele que o
+   * condutor lê para decidir — a estratégia vem depois.
+   */
+  quizPainel(ano) {
+    const p = this.BLOCOS.map((b) => this.quizFoco(b.tipo, ano)).find(Boolean);
+    if (!p) return '';
+    const sugestoes = this.quiz?.sugestoes || [];
+    const recolhido = this.quizUi?.painelRecolhido;
+    return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
+      ${QuizSala.cabecalhoPainel(this, p, sugestoes)}
+      ${recolhido ? '' : `<div class="coluna-quiz coluna-escolha mt-2">
+        ${QuizSala.fichas(sugestoes, { virou: 'cruzamento',
+          podeUnir: App.podeEditar() && p.situacao !== 'ATIVA' })}
+      </div>`}
+    </div></div>`;
+  },
+
+  /**
+   * A batida do relógio da sala (4s). Sem ela o `armarRelogio` chamaria um
+   * método que não existe e o relógio morria na primeira batida — o painel do
+   * condutor ficava parado enquanto a sala respondia, que é o único momento em
+   * que ele precisa andar sozinho.
+   *
+   * A guarda da seção ativa é a mesma das outras análises: a batida pode
+   * chegar depois de o condutor ter navegado, e recarregaria a seção errada.
+   */
+  aoBater(quizNovo) {
+    if (App.secaoAtiva !== 'cruzamentos') return;
+    const assinatura = QuizSala.assinatura(quizNovo);
+    if (assinatura === this.assinaturaQuiz) return;
+    this.assinaturaQuiz = assinatura;
+    App.recarregarSecaoAtiva();
+  },
+
+  /** O ano em que a pergunta é conduzida, ao chegar pelo "Ver" da aba Sala. */
+  aoNavegar(pergunta) {
+    if (pergunta.alvo_tipo === 'CRUZAMENTO') Diag.anoSelecionado = Number(pergunta.ano);
+  },
+
+  /** Vozes da sala registradas no cruzamento: selo próprio, sem link. */
+  seloSala(c) {
+    const n = Number(c.quiz_vozes || 0);
+    return n ? `<span class="badge text-bg-light border" title="${n} sugestão(ões) da sala
+      usada(s) aqui">🎤 ${n}</span>` : '';
+  },
+
   async carregar() {
+    // Foco vindo do "Ver" da aba Sala: posiciona o ano ANTES de resolver a base
+    const vindo = QuizSala.consumirFoco('cruzamentos');
+    if (vindo) {
+      this.perguntaFoco = vindo.perguntaId;
+      Diag.anoSelecionado = Number(vindo.pergunta.ano);
+    }
     const base = await Diag.preparar('secao-cruzamentos');
     if (!base) return;
     const { el, plan, ano } = base;
+    this.plan = plan;
 
-    const [fatores, cruzamentos] = await Promise.all([
+    const [fatores, cruzamentos, quiz] = await Promise.all([
       App.api(`/api/fatores?planejamento_id=${plan.id}&etapa=SWOT&ano=${ano}`),
       App.api(`/api/cruzamentos?planejamento_id=${plan.id}&ano=${ano}`),
+      QuizSala.estado(plan.id, this.perguntaFoco),
     ]);
+    this.quiz = quiz;
     const editar = App.podeEditar();
     const internos = fatores.filter((f) => f.categoria === 'FORCA' || f.categoria === 'FRAQUEZA');
     const externos = fatores.filter((f) => f.categoria === 'OPORTUNIDADE' || f.categoria === 'AMEACA');
@@ -228,11 +354,11 @@ const SecaoCruzamentos = {
                  justify-content-between. -->
             <div class="botoes-fator d-flex justify-content-between align-items-center gap-1 mt-1 flex-wrap">
               <span class="ms-auto d-flex gap-1 align-items-center">
+                ${this.seloSala(c)}
                 ${this.seloAcao(c)}
                 ${editar ? `<button class="btn btn-sm btn-outline-secondary" data-editar-cruz="${c.id}"
                   title="Editar" aria-label="Editar">✎</button>
-                <button class="btn btn-sm btn-outline-danger" data-excluir-cruz="${c.id}"
-                  title="Excluir" aria-label="Excluir">×</button>` : ''}
+                ${this.botaoExcluir(c)}` : ''}
               </span>
             </div>
           </div>
@@ -251,6 +377,7 @@ const SecaoCruzamentos = {
               <span class="fw-bold small text-uppercase" style="color:${b.cor}">${b.rotulo}
                 <span class="ambiente-quadrante">(${b.verbo})</span>
                 ${Diag.contadorCards(itens.length, b.cor)}</span>
+              ${this.quizMic(b, ano)}
               ${add}
             </div>`,
             corpo: `<div class="corpo-coluna">
@@ -280,9 +407,14 @@ const SecaoCruzamentos = {
       <div class="cabecalho-analise" data-cabecalho-analise>
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
           <h1 class="mb-0">Cruzamentos — ${Modal.esc(App.rotuloContexto())} · ${ano}</h1>
+          <div class="d-flex align-items-center gap-2 flex-wrap" data-selo-quiz>
+            ${QuizSala.selo(this, 'cruzamentos',
+              !!this.BLOCOS.map((b) => this.quizFoco(b.tipo, ano)).find(Boolean))}
+          </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.campoBusca('CRUZAMENTOS')}
             ${Diag.seletorAno('cruzamentos')}
+            ${RelatorioAnalise.botao()}
             ${editar && podeCruzar
               ? '<button class="btn btn-verde btn-sm" data-novo-cruzamento>+ Novo cruzamento</button>' : ''}
           </div>
@@ -290,12 +422,38 @@ const SecaoCruzamentos = {
       </div>`,
       corpo: `
       ${semMateria}
+      <div id="quiz-vivo-cruzamentos">${this.quizPainel(ano)}</div>
       ${Diag.seletorCategoriaMovel('CRUZAMENTOS',
         this.BLOCOS.map((b) => [b.tipo, b.rotulo]), contagens)}
       <div class="row g-3">${this.BLOCOS.map((b) => coluna(b)).join('')}</div>`,
     });
 
     Diag.ligarCabecalhoFixo(el);
+    // O documento sai dos MESMOS quatro blocos da tela, na mesma ordem: quem
+    // leu a análise reconhece o relatório.
+    //
+    // Em TABELA de duas colunas — cruzamento | estratégia —, e não na lista
+    // numerada das outras análises: é o formato do material do cliente
+    // (`docs/CRUZAMENTOS-SWOT.md` §7), e aqui ele é o certo pelo mesmo motivo
+    // que a lista é certa lá. O item da SWOT é UM texto; o cruzamento são dois
+    // lados de peso igual — de um lado o par que se encontrou, do outro o que
+    // se decidiu fazer com ele — e emendá-los num parágrafo só devolve
+    // exatamente a leitura que a tabela existe para separar.
+    RelatorioAnalise.ligar(el, () => ({
+      titulo: `Cruzamentos da SWOT — ${App.rotuloContexto()} · ${ano}`,
+      contexto: `Diagnóstico · análise de ${ano} · ${cruzamentos.length} cruzamento(s)`,
+      secoes: this.BLOCOS.map((b) => ({
+        rotulo: b.rotulo,
+        cor: b.cor,
+        dica: b.verbo,
+        colunas: ['Cruzamento', 'Estratégia'],
+        itens: cruzamentos.filter((c) => c.tipo === b.tipo).map((c) => ({
+          texto: c.rotulo,
+          notas: this.notasCruzamento(c),
+          detalhe: c.estrategia,
+        })),
+      })),
+    }));
     Diag.ligarSeletorAno(el);
     Diag.ligarSeletorCategoriaMovel(el, 'CRUZAMENTOS');
     Diag.ligarVerMais(el);
@@ -377,8 +535,13 @@ const SecaoCruzamentos = {
         : 'Escolha um fator interno e um externo: o bloco é consequência do par.';
     };
 
-    const modalCruzamento = (c = null, tipoInicial = null) => {
-      const b = c ? this.bloco(c.tipo) : (tipoInicial ? this.bloco(tipoInicial) : null);
+    // `sugestao` chega do painel da sala: o PAR já vem escolhido pela pessoa
+    // que respondeu, e o texto entra como RASCUNHO da estratégia — o condutor
+    // redige antes de salvar, que é a regra de aceitar do encontro. O id viaja
+    // em `sugestoes`, e é ele que registra de quem foi a proposta.
+    const modalCruzamento = (c = null, tipoInicial = null, sugestao = null) => {
+      const b = c ? this.bloco(c.tipo)
+        : (tipoInicial ? this.bloco(tipoInicial) : null);
       // Vindo do "+" de um bloco, as listas já chegam filtradas nas categorias
       // daquele bloco: é o mesmo gesto do "+" por quadrante da SWOT, e evita
       // escolher um par que cairia noutro quadro.
@@ -386,17 +549,32 @@ const SecaoCruzamentos = {
       const listaExternos = b ? externos.filter((f) => f.categoria === b.externo) : externos;
 
       Modal.abrir({
-        titulo: c ? `Editar cruzamento · ${ano}` : `Novo cruzamento · ${ano}`,
+        titulo: sugestao ? `Aceitar cruzamento da sala · ${ano}`
+          : c ? `Editar cruzamento · ${ano}` : `Novo cruzamento · ${ano}`,
         url: c ? `/api/cruzamentos/${c.id}` : '/api/cruzamentos',
         valores: c
           ? { ...c, planejamento_id: plan.id }
           : {
               planejamento_id: plan.id,
+              // O par da sugestão manda sobre a lista de um item só: quem
+              // respondeu já escolheu, e sobrescrever isso seria trocar a
+              // proposta da pessoa por um palpite da tela.
               ...(listaInternos.length === 1 ? { fator_interno_id: String(listaInternos[0].id) } : {}),
               ...(listaExternos.length === 1 ? { fator_externo_id: String(listaExternos[0].id) } : {}),
+              ...(sugestao ? {
+                fator_interno_id: String(sugestao.fator_interno_id || ''),
+                fator_externo_id: String(sugestao.fator_externo_id || ''),
+                estrategia: sugestao.texto,
+              } : {}),
             },
         campos: [
           { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+          ...(sugestao ? [
+            { nome: 'origem_sala', rotulo: '', tipo: 'info',
+              texto: `${sugestao.autor}: “${sugestao.texto}”`,
+              barra: { cor: b?.cor || '#007a45',
+                titulo: `Proposta da sala · ${b?.rotulo || 'cruzamento'}` } },
+          ] : []),
           // Na edição o PAR não é campo: ele é a identidade do cruzamento, e o
           // servidor o lê da linha. Trocar o par é outro cruzamento — some o
           // formulário, fica o registro do que está sendo editado.
@@ -437,8 +615,53 @@ const SecaoCruzamentos = {
             ajuda: 'O parágrafo que diz a decisão: o que se faz, com o quê e para quê.' },
         ],
         ...(c ? {} : { aoMudar: anunciarBloco }),
+        // Sem a chave `sugestoes` o servidor não mexe em vínculo nenhum — é o
+        // que faz o cadastro comum não tocar nas vozes.
+        ...(sugestao ? {
+          transformar: (dd) => ({ ...dd, sugestoes: sugestao.ids || [sugestao.id] }),
+        } : {}),
       });
     };
+
+    QuizSala.ligarSelo(el);
+    QuizSala.ligarMicrofones(this, el);
+    // Antes da saída por `editar`: o 👁 e a altura da grade valem para LEITURA
+    // também, que acompanha o encontro sem aceitar sugestão nenhuma.
+    QuizSala.ligarVozes(this, el);
+    QuizSala.ligarUniao(this, el);
+    QuizSala.ligarRecolher(this, el);
+    el.querySelectorAll('[data-reabrir-foco]').forEach((btn) => btn.addEventListener('click', async () => {
+      try {
+        await App.api(`/api/quiz/pergunta/${btn.dataset.reabrirFoco}/ativar`,
+          { planejamento_id: plan.id });
+      } catch (e) {
+        alert(e.message);
+      }
+      this.perguntaFoco = null;
+      App.recarregarSecaoAtiva();
+    }));
+    // A assinatura é semeada com o que acabou de ser pintado: sem isso a
+    // primeira batida (4s) sempre difere e repinta tudo de graça.
+    this.assinaturaQuiz = QuizSala.assinatura(this.quiz);
+    QuizSala.armarRelogio(this);
+    if (editar) {
+      el.querySelectorAll('[data-usar-sugestao]').forEach((btn) => btn.addEventListener('click', () => {
+        const sg = QuizSala.grupoDe(this.quiz?.sugestoes, btn.dataset.usarSugestao);
+        const p = this.BLOCOS.map((x) => this.quizFoco(x.tipo, ano)).find(Boolean);
+        if (!sg || !p) return;
+        modalCruzamento(null, p.categoria, sg);
+      }));
+      el.querySelectorAll('[data-excluir-sugestao]').forEach((btn) => btn.addEventListener('click', async () => {
+        if (!confirm('Excluir esta sugestão? Ela some para a sala também.')) return;
+        try {
+          await App.api(`/api/quiz/sugestao/${btn.dataset.excluirSugestao}/excluir`,
+            { planejamento_id: plan.id });
+        } catch (e) {
+          alert(e.message);
+        }
+        App.recarregarSecaoAtiva();
+      }));
+    }
 
     el.querySelector('[data-novo-cruzamento]')?.addEventListener('click', () => modalCruzamento());
     el.querySelectorAll('[data-add-bloco]').forEach((btn) => btn.addEventListener('click', () =>

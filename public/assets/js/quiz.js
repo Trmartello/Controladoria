@@ -223,6 +223,33 @@ const QuizSala = {
    * ter duas ou três palavras, e uma ficha por linha, na largura da página,
    * gastava meia tela com cinco respostas.
    */
+  /**
+   * O par, quando a voz traz um — as respostas do alvo CRUZAMENTO.
+   *
+   * Sai dos DADOS e não de uma opção do chamador: a ficha mostra o que a voz
+   * carrega, e uma bandeira `comPar` seria mais uma coisa para cada tela lembrar
+   * de passar. Sem par, devolve nada e o cartão fica como sempre foi.
+   *
+   * O lado que perdeu o fator (a FK é `SET NULL`) aparece como tal, em vez de
+   * sumir: a voz continua valendo, e quem conduz precisa saber que aquele
+   * fator saiu da SWOT — se ela desaparecesse, o "Usar" falharia depois sem
+   * explicação nenhuma.
+   */
+  parDaVoz(s) {
+    if (!s.fator_interno_id && !s.fator_externo_id) return '';
+    const lado = (id, descricao, categoria) => {
+      if (!id) return '<span class="par-voz-lado vazio">— o fator foi excluído —</span>';
+      const cor = Diag.CORES_QUADRANTE[categoria] || '#007a45';
+      return `<span class="par-voz-lado" style="color:${cor};background:${cor}1f"
+        title="${Modal.esc(descricao || '')}">${Modal.esc(descricao || '')}</span>`;
+    };
+    return `<div class="par-voz">
+      ${lado(s.fator_interno_id, s.interno_descricao, s.interno_categoria)}
+      <span class="par-voz-x">×</span>
+      ${lado(s.fator_externo_id, s.externo_descricao, s.externo_categoria)}
+    </div>`;
+  },
+
   fichas(sugestoes, { acao = 'Usar', virou = 'registro', podeUnir = false, marcar = false } = {}) {
     // Duas leituras de "usada", conforme o que o rito faz com a voz:
     //
@@ -265,6 +292,7 @@ const QuizSala = {
       <div class="ficha-sugestao${g.unidas.length ? ' unificada' : ''}${podeUnir ? ' arrastavel' : ''}${
         usado ? ' usada' : ''}"
         ${podeUnir ? `data-arrastavel-voz="${s.id}"` : ''}>
+        ${this.parDaVoz(s)}
         <div class="texto-voz" title="${Modal.esc(inteiro)}">${Modal.esc(s.texto)}</div>
         ${unidas}
         <div class="rodape-voz">
@@ -761,6 +789,9 @@ const QuizSala = {
   armarRelogio(dono) {
     clearInterval(dono.relogioQuiz);
     dono.relogioQuiz = null;
+    // Pintura de lado, para o Dossiê: ninguém está olhando esta tela, e o
+    // relógio só existiria para descobrir isso na batida seguinte
+    if (App.modoDossie) return;
     if (!dono.quiz?.sessao) return;
     dono.relogioQuiz = setInterval(async () => {
       const el = document.getElementById(dono.secaoId);

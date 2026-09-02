@@ -16,6 +16,10 @@
 // onde a voz da sala vira fator, item de cenário ou escolha da cascata.
 
 const SecaoSala = {
+  // Fora do relógio compartilhado: a Sala é conduzida pelo relógio do QuizSala,
+  // que acompanha a pergunta ativa e o foco do condutor no roteiro.
+  planosVigiados() { return []; },
+
   plan: null,
   quiz: null,
   tempestade: null,    // rodada de tempestade aberta, se houver

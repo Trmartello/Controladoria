@@ -111,13 +111,32 @@ const RelatorioAnalise = {
    */
   baixarWord({ titulo, contexto, secoes }) {
     const esc = Modal.esc;
+    const notas = (i) => ((i.notas || []).length
+      ? `<div class="notas">${esc(i.notas.join(' · '))}</div>` : '');
+
+    // Lista numerada — o formato de toda análise cujo item é UM texto (o fator
+    // da SWOT, a linha do PESTEL, a escolha da célula).
+    const lista = (s) => `<ol>${(s.itens || []).map((i) =>
+      `<li>${esc(i.texto)}${notas(i)}</li>`).join('')}</ol>`;
+
+    // Tabela de duas colunas, quando a seção pede (`colunas`). É o formato do
+    // material dos Cruzamentos — *cruzamento | estratégia* —, e ali a lista
+    // numerada não serve: o item tem DOIS lados de peso igual, e emendá-los num
+    // parágrafo só é justamente o que a tabela do cliente separa.
+    const tabela = (s) => `<table class="grade">
+      <thead><tr>${s.colunas.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>${(s.itens || []).map((i) => `<tr>
+        <td class="col-a"><strong>${esc(i.texto)}</strong>${notas(i)}</td>
+        <td>${esc(i.detalhe || '')}</td>
+      </tr>`).join('')}</tbody></table>`;
+
     const corpo = secoes.map((s) => {
-      const itens = (s.itens || []).map((i) => `<li>${esc(i.texto)}${
-        (i.notas || []).length ? `<div class="notas">${esc(i.notas.join(' · '))}</div>` : ''}</li>`).join('');
+      const qtd = (s.itens || []).length;
       return `<h2 style="color:${/^#[0-9a-f]{6}$/i.test(s.cor || '') ? s.cor : '#06432a'}">
-          ${esc(s.rotulo)} <span class="dica">(${(s.itens || []).length})${
+          ${esc(s.rotulo)} <span class="dica">(${qtd})${
             s.dica ? ` · ${esc(s.dica)}` : ''}</span></h2>
-        ${itens ? `<ol>${itens}</ol>` : '<p class="vazio">Nenhum registro nesta categoria.</p>'}`;
+        ${qtd ? (s.colunas ? tabela(s) : lista(s))
+          : '<p class="vazio">Nenhum registro nesta categoria.</p>'}`;
     }).join('');
 
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -134,6 +153,11 @@ h2 { font-size: 13pt; margin: 18pt 0 6pt; border-bottom: 1pt solid #d9dee2; padd
 .vazio { color: #6c757d; font-style: italic; }
 ol { margin: 0 0 0 18pt; padding: 0; }
 li { margin-bottom: 6pt; }
+.grade { width: 100%; border-collapse: collapse; }
+.grade th, .grade td { border: 1pt solid #d9dee2; padding: 4pt 6pt; text-align: left;
+  vertical-align: top; }
+.grade th { background: #eef2f0; font-size: 9pt; text-transform: uppercase; }
+.grade .col-a { width: 38%; }
 .rodape { margin-top: 24pt; border-top: 1pt solid #d9dee2; padding-top: 6pt;
   color: #6c757d; font-size: 9pt; }
 </style></head><body>

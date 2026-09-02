@@ -8,7 +8,10 @@ implementado — este documento é backlog, não registro de entrega.
 **Onde olhar primeiro:** a *tabela-resumo*, no fim. É ela que diz o que está de
 pé e o que vem depois; as seções abaixo são o porquê de cada veredito. Dois
 temas (4 e 6) chegaram depois da rodada de propostas e têm documento próprio —
-aqui ficam só o veredito e o ponteiro.
+aqui ficam só o veredito e o ponteiro. Os temas **7 e 8** chegaram depois disso,
+direto do uso: o 7 é pedido do cliente (marcado urgente) e o 8 nasceu de uma
+pergunta dele sobre exclusões. Nenhum dos dois passou por revisão adversarial —
+leia-os como primeira versão.
 
 **Como ler.** Cada tema traz: veredito, onde encaixa (sistema + menu), modelo de
 dados concreto, telas e fluxo, entrega mínima, esforço, dependências/riscos e —
@@ -30,7 +33,14 @@ como primeira versão, não como conclusão revisada.
 
 ## 1. Matriz de Impacto por Negócio
 
-### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço P)
+### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço P) — **ENTREGUE**
+
+> **Entregue** em 2026-09-01, destravado pela **decisão 1** (o gestor lê o que o
+> corporativo diz que o impacta) e pela **decisão 7** (controladoria **e** gestor
+> preenchem). `impacto_negocio`, `ImpactoController` com dois métodos, duas
+> rotas, `public/assets/js/secoes/impacto.js` e a exceção de acesso escrita em
+> `PLANEJAMENTO-SISTEMA.md §5`. O que mudou em relação ao previsto está em *Como
+> ficou*, no fim desta seção.
 
 É a única leitura transversal que o método promete e nunca entregou — hoje um
 fator do PESTEL corporativo morre no PESTEL corporativo — e custa uma tabela,
@@ -183,6 +193,61 @@ Validar em 1500×800 e 390×844, como manda o `CLAUDE.md`.
 - **Sobreposição conceitual com a Cascata:** a matriz é diagnóstico (o que o
   ambiente faz com a gente); a cascata é escolha. Se a célula ganhar campos de
   "ação" ou "resposta", as duas telas viram a mesma coisa mal feita.
+
+### Como ficou
+
+**A decisão 7 saiu diferente das três opções oferecidas.** A proposta era
+"controladoria preenche, gestor lê"; a resposta do cliente foi **os dois
+preenchem** — controladoria em qualquer célula, gestor na coluna dele. Isso
+parecia caro (escrita cross-planejamento, a primeira do sistema) e acabou sendo
+o contrário, por uma razão de modelagem que só ficou clara ao escrever:
+
+> **A célula não pertence ao plano corporativo. Ela pertence à matriz, e apenas
+> CITA um fator.**
+
+Com isso a autorização de escrita não é "pode mexer no corporativo?" — que seria
+mesmo indefensável para um gestor — e sim **"pode mexer neste negócio?"**, que é
+a pergunta que o sistema já responde em todo lugar. O gestor escolhe o sinal e o
+texto; a LINHA nunca, porque o `fator_id` é conferido contra o plano corporativo
+do ciclo. Ninguém cria linha de matriz pela borda.
+
+**O que a decisão 1 comprou, e o que ela não comprou.** O gestor passou a receber
+a **descrição** do fator — e o `score` da GUT é removido do payload
+explicitamente, não apenas omitido da tela. A diferença importa: descrição é o
+fato, que ele ouviria na reunião de qualquer jeito; score é a **priorização**,
+que é julgamento da controladoria. A bateria funcional prova as duas metades
+(`nega` no score, `afirma` na descrição), porque uma regra de acesso que só a
+tela respeita não é regra.
+
+**Duas telas, uma tabela.** No contexto corporativo, a grade; no contexto de um
+negócio, a lista da coluna dele com a contagem ("2 de 12 fatores do diagnóstico
+corporativo impactam este negócio"). A segunda era o item inegociável da
+especificação, e continua sendo o motivo de a tela existir.
+
+**O cabeçalho grudado precisou de outra solução que a Matriz de Execução.** Lá a
+caixa podia parar de rolar acima de 992px porque a tabela cabia; aqui ela precisa
+de ~1450px com doze negócios, e soltar o `overflow` jogaria a rolagem horizontal
+para a página. Então a CAIXA ganha altura limitada e vira o container de rolagem,
+e o `sticky` gruda no topo dela (`top: 0`, não `--topo-app`). A coluna do fator
+fica presa à esquerda pelo mesmo motivo: doze colunas de código numérico ficam
+ilegíveis a partir da terceira linha se a linha sair de vista. `border-collapse:
+separate` de novo — com `collapse` o texto das células atravessa o grudado.
+
+**O sinal é forma, não só cor.** ▲/▼ com `aria-label` e o texto no `title`. Cor
+sozinha não sobrevive ao daltonismo nem à impressão em preto e branco, e esta é
+uma tela feita para ir impressa à reunião.
+
+**Um caso que parecia defeito e é o desenho funcionando:** uma AMEAÇA corporativa
+marcada como "ajuda este negócio". É legítimo — uma ameaça à cooperativa pode ser
+oportunidade para um negócio específico —, e é exatamente por isso que o sinal é
+por CÉLULA e não herdado da categoria da linha.
+
+**Um defeito que a bateria pegou em si mesma:** `UID` é variável somente-leitura
+no bash, e a limpeza dos usuários de prova morria com "readonly variable" sem
+falhar o teste — deixando usuário no banco para a execução seguinte tropeçar ao
+recriar o mesmo e-mail. E `VAR=valor funcao` em bash deixa a atribuição valendo
+DEPOIS que a função retorna: um `login` seco no fim reentraria como gestor, não
+como admin.
 
 ---
 
@@ -643,7 +708,13 @@ texto simples. Fecha a página do participante — não sobra ressalva ali.
 
 ## 3. Mapa Estratégico BSC e as 4 perspectivas
 
-### Veredito: **NÃO CONSTRUIR o mapa** / **CONSTRUIR SIMPLIFICADO a Matriz de Execução** (esforço P)
+### Veredito: **NÃO CONSTRUIR o mapa** / a Matriz de Execução está **ENTREGUE** (esforço P)
+
+> **Entregue.** `indicador_cascata` no `schema.sql`, o campo “Escolhas da cascata
+> que este indicador mede” no modal de indicador (`metas.js` +
+> `IndicadorController::gravarCascatas`, com a guarda de IDOR), a ampliação de
+> `CascataController::listar` e a aba **Matriz de Execução** na Cascata. O que
+> mudou em relação ao previsto está em *Como ficou*, no fim desta seção.
 
 O que falta de verdade não é o desenho das 4 raias — é o **vínculo entre
 indicador e projeto**, que não existe no banco (`projeto` só tem `cascata_id`,
@@ -794,11 +865,51 @@ uma frase inteira, e o `multiselect` não funciona no celular, onde não há Ctr
   rótulo, a evolução barata é `garantirColuna cascata_escolha.titulo VARCHAR(120) NULL`
   — uma coluna, não uma tabela.
 
+### Como ficou
+
+Os quatro passos da entrega mínima foram feitos, e nenhum corte foi reaberto: a
+caixa continua sendo a `cascata_escolha`, as raias continuam sendo os eixos, e
+não há `objetivo_estrategico`, `perspectiva`, controller novo, rota nova nem item
+de menu. **A entrega é a matriz, não um mapa Kaplan/Norton** — e a tela diz isso
+de si mesma.
+
+Três decisões que a execução acrescentou ao previsto:
+
+- **A linha é o INDICADOR, não a escolha.** O plano falava em quatro colunas com
+  `rowspan` na primeira; na prática, com "Indicadores" e "Meta / Real" em colunas
+  separadas, dois KPIs na mesma escolha desalinhavam o nome do número na primeira
+  quebra de linha. A escolha e as iniciativas é que ganham `rowspan` sobre os
+  indicadores dela. São cinco colunas — Eixo | Escolha (e a renúncia) |
+  Indicadores | Meta / Real | Iniciativas —, e o KPI fica sempre na mesma linha
+  do número dele.
+- **Um horizonte por vez, com seletor.** Seis drivers × sete células × três
+  horizontes passariam de cem linhas numa tabela só, e a pergunta do trimestral é
+  sempre sobre uma fase.
+- **A regra do par meta × real virou função** (`SecaoMetas.metaReal`), chamada
+  pela tela de Metas e pela matriz. Era o risco mais concreto do tema: escrita
+  duas vezes, as duas telas passariam a dizer números diferentes do mesmo
+  indicador — e a matriz fica ao lado da tela que os cadastra.
+
+Duas coisas que a tela declara em vez de esconder: a escolha sem KPI diz *"Sem
+indicador que meça esta escolha"* (é a pergunta de controladoria que a matriz
+existe para responder), e um aviso conta quantos indicadores ainda não medem
+escolha nenhuma, com o caminho para amarrá-los.
+
+**A raia "Síntese da célula" vem primeiro.** A síntese não tem eixo — ela é o
+texto que a matriz publica, e as aberturas por eixo detalham o que ela resume;
+lê-las antes dela seria ler o detalhe sem o todo.
+
+**O que sobrou como dívida conhecida:** `CascataController::listar` já tinha um
+N+1 (fatores e sugestões por escolha) e ele ficou como estava. O que este tema
+acrescentou não repete o problema — são quatro consultas agregadas para o
+conjunto todo —, mas o laço antigo passou a ser chamado mais vezes desde o
+Dossiê, que percorre `/api/cascata` uma vez por negócio.
+
 ---
 
 ## 4. Cruzamentos da SWOT (TOWS)
 
-### Veredito: **CONSTRUIR** (esforço M) — **fatias 1–2 ENTREGUES**
+### Veredito: **CONSTRUIR** (esforço M) — **fatias 1–3 e o relatório ENTREGUES**
 
 O elo entre descrever o ambiente e decidir o que fazer: o par de um fator
 interno com um externo e a estratégia que nasce dele, no bloco que o próprio par
@@ -806,9 +917,12 @@ define. Tema que não passou pelo rito das seções acima (não veio como propos
 com crítica) — nasceu do material do cliente e tem **documento próprio**, com
 modelo de dados, decisões e fatiamento: **`docs/CRUZAMENTOS-SWOT.md`**.
 
-Entregues a tabela, a API, a tela das quatro colunas, o cadastro e a edição.
-Faltam a ponte com a cascata (fatia 3), a síntese e o relatório (4) e a sala (5)
-— e a fatia 3 tem um ponto em aberto registrado no §10 daquele documento.
+Entregues a tabela, a API, a tela das quatro colunas, o cadastro, a edição, a
+ponte com o plano de ação (fatia 3 — o destino é o plano, não a cascata: §10) e o
+**⤓ Relatório** da etapa, em tabela de duas colunas como o material do cliente
+(§7). Da fatia 4 falta a **síntese** (§6): os campos “o que este bloco diz ao
+planejamento”, acima das colunas na tela e antes dos blocos no relatório. A sala
+(fatia 5) segue adiada por decisão registrada.
 
 ---
 
@@ -940,7 +1054,11 @@ voz alta no começo da reunião.
 
 ## 6. Backup do banco (operação)
 
-### Veredito: **EXECUTAR** — o código está entregue, falta ligar
+### Veredito: **EXECUTAR** — código entregue, **ligado** (cliente, 2026-09-01)
+
+> **Ligado.** O cliente confirmou em 2026-09-01 que o backup está configurado em
+> produção, junto com o envio de e-mail. O que este tema deixa de herança não é
+> mais "falta ligar", e sim **o que confere se continua de pé** — abaixo.
 
 `cli/backup.sh` gera, verifica e restaura o dump do MySQL, com bateria própria
 (`testes/backup.sh`). Não é desenvolvimento: falta a configuração no Railway, e
@@ -952,8 +1070,830 @@ parece backup e não é. Precisa de um **Volume** montado com `BACKUP_DIR`
 apontando para ele, mais uma cópia periódica **fora do provedor** (backup no
 mesmo lugar do banco não protege contra perder a conta).
 
-Enquanto isso não estiver de pé, todo o resto deste backlog constrói em cima de
-um banco sem cópia — e o custo de adiar não tem teto.
+**O que continua valendo depois de ligado**, porque "configurado" e "funcionando"
+não são a mesma coisa em nenhum dos dois — e as três falhas abaixo são silenciosas:
+
+| Conferir | Como | Por que passa despercebido |
+|---|---|---|
+| O arquivo sobrevive | a linha `✓` no log traz o caminho: fora do Mount Path do Volume, é efêmero | o script imprime `✓` e o arquivo morre com o contêiner |
+| A cópia fora do provedor | `B2_KEY_ID`/`B2_KEY` definidas | sem elas `remoto()` não envia nada e **não reclama**, de propósito |
+| Dá para restaurar | `./cli/backup.sh verificar <arquivo>`, e o passo 9 do deploy | backup que ninguém restaurou é hipótese |
+
+E no e-mail há uma armadilha própria do Railway: **as portas de SMTP são
+bloqueadas lá**, e quem envia de verdade é a API sobre HTTPS (`EMAIL_API_CHAVE`).
+Configurar o bloco `SMTP_*` não dá erro e não envia. `php cli/notificar.php
+diagnostico` diz, na primeira linha, qual dos dois caminhos está em uso —
+rodado **de dentro do contêiner que envia**, que é o único lugar onde a resposta
+vale (o serviço de cron não enxerga as variáveis do web).
+
+---
+
+## 7. Dossiê: imprimir as abas em sequência, por negócio
+
+### Veredito: **CONSTRUIR** (esforço P–M) — **ENTREGUE**
+
+Hoje cada análise imprime a si mesma. Quem prepara a reunião do Conselho abria
+seção por seção, mandava imprimir, e juntava as folhas à mão — trocando de
+negócio no menu e repetindo a volta inteira. O pedido era uma saída só: **o plano
+do negócio escolhido, todas as etapas em sequência, num documento**.
+
+Isto **não é** um relatório novo. Cada seção já sabe se desenhar em papel — é a
+`RelatorioAnalise` com `canvas`/`bloco`, e o `@media print` já abre as colunas e
+repete os cabeçalhos. O que faltava é **quem manda todas se desenharem de uma
+vez**: `public/assets/js/secoes/dossie.js`, seção **Dossiê do plano**, no menu ao
+lado do Relatório de Status.
+
+### O desenho — e o que a execução mudou
+
+O caro não é imprimir: é que **só existe na tela a seção ativa**. As seções
+pintam sob demanda (`App.recarregarSecaoAtiva`), e a `#secao-X` das outras está
+vazia — mandar imprimir produziria uma folha.
+
+Eram duas saídas: **(1)** pintar todas e imprimir, reaproveitando cada seção como
+ela é, ao custo dos efeitos colaterais; **(2)** uma tela que busca os dados e
+desenha o documento do zero, sem efeito colateral e com uma segunda cópia do
+desenho de cada análise — a cópia que diverge na primeira revisão, e que a
+`RelatorioAnalise` existe para evitar.
+
+**Foi a 1, com uma correção que mudou o desenho**: em vez de tirar o `d-none` de
+todas as seções e imprimir a tela, o dossiê **fotografa** o `innerHTML` de cada
+uma e monta um documento próprio. Três coisas saíram de graça daí:
+
+- A foto é **inerte por construção** — atribuir `innerHTML` não carrega ouvinte
+  nenhum. A cópia não pode agir, e a tela viva fica intocada.
+- Cabem **onze negócios** no mesmo dossiê. As seções são dezoito elementos
+  FIXOS no shell; a saída original, que revelava os elementos, só conseguiria
+  imprimir um negócio por vez.
+- O documento ganha **capa, sumário e ordem própria**, que a tela revelada não
+  teria.
+
+O “modo só desenho” virou `App.modoDossie`, e é menor do que se previa: os
+relógios de polling já param sozinhos quando a seção tem `d-none`, mas só na
+batida seguinte — a bandeira evita que nasçam, e é lida em `QuizSala.armarRelogio`.
+
+**O que o plano não previa e a execução encontrou:** os filtros moram na seção e
+sobrevivem à repintura (`Diag.busca`, `SecaoProjetos.filtroStatus`,
+`projetosFechados`, `Diag.filtroMovel`). Sem zerá-los, quem tivesse “atrasado” no
+filtro de Projetos levaria ao Conselho um plano em que só existem projetos
+atrasados — e **nada na folha diria que houve filtro**. O dossiê monta com a
+vista limpa e devolve a de quem clicou no `finally`. É a prova mais importante da
+bateria.
+
+### O que ficou de fora (cortes adotados)
+
+- **⤓ Word do dossiê.** O plano dizia “se sair barato”, e não sai: a foto é HTML
+  com classes do Bootstrap, e sem a folha de estilo o Word renderiza uma pilha de
+  `<div>`. Fazê-lo direito seria montar o documento a partir do modelo de dados
+  de cada etapa — a saída 2, com a cópia que se quis evitar. O PDF pela impressão
+  é o que o cliente pediu; o ⤓ Word por análise continua onde está.
+- **Coleta e Tempestade não é etapa do dossiê.** `SecaoColeta.filtro` casa uma
+  `situacao` exata e não há visão “todas”: qualquer página dela seria uma fatia
+  arbitrária do material da oficina, apresentada como se fosse a etapa inteira.
+  Entra quando tiver uma visão de leitura própria.
+- **Painel e Hub também não.** São do ciclo inteiro, não de um negócio — repetidos
+  por negócio, imprimiriam a mesma folha onze vezes.
+- **O documento não aparece na tela.** Ele é `d-none d-print-block`, e quem
+  confere usa a pré-visualização da caixa de impressão. Mostrá-lo na tela traria
+  de volta os comandos mortos e os `id` duplicados que a foto justamente remove.
+
+### Riscos — e o que se fez com cada um
+
+- **Volume.** Doze negócios × dez etapas são 120 documentos. A tela conta a
+  seleção enquanto se marca e pede confirmação acima de 40; a montagem mostra
+  barra de progresso e aceita cancelamento no meio.
+- **Etapa vazia.** Sai como a própria seção a desenha (“Nenhum fator.”), e etapa
+  que **falha** ao carregar entra dizendo isso, em vermelho: sumir com ela
+  deixaria um documento que parece completo e não é.
+- **Trocar de negócio recarrega o mundo.** Continua verdade — é o custo da saída
+  1, e é o que a barra de progresso torna suportável.
+- **`/api/contexto` cria o planejamento que não existe.** Um dossiê de “todos”
+  cria a linha vazia dos negócios que ninguém abriu — o mesmo que visitar a aba
+  deles já fazia, só que de uma vez. Benigno, mas é escrita: está declarado no
+  comentário do laço.
+
+---
+
+## 8. Excluir o que já está amarrado noutra tela
+
+### Veredito: **CONSTRUIR SIMPLIFICADO** (esforço P) — **ENTREGUE**
+
+> **Entregue.** `Fatores::acoesQuePrendem` (a regra da trava, agora uma só, usada
+> pela recusa E pela tela), `acao_trava` na listagem de fatores, o × desabilitado
+> com o motivo em Fatores/Cruzamentos/Coleta, as contagens nas listagens de
+> cascata, projetos e investimentos, e `public/assets/js/vinculos.js`, que monta
+> a frase. O que mudou em relação ao previsto está em *Como ficou*, no fim.
+
+O sistema todo é feito de vínculos — o fator vira cruzamento, o cruzamento vira
+ação, a escolha da cascata vira projeto, a ideia da coleta vira fator. Apagar
+qualquer uma dessas pontas mexe na outra, e **hoje cada tela resolve isso de um
+jeito**.
+
+O levantamento, controller a controller:
+
+| Onde | O que acontece hoje |
+|---|---|
+| `CruzamentoController::excluir` | **recusa** com mensagem, se já virou ação |
+| `ColetaController::excluir` | **recusa** com mensagem, se já virou ação |
+| `NegocioController`, `UsuarioController` | **recusam** com mensagem e contagem |
+| `FatorController::excluir` | **recusa** se o fator (ou o promovido dele, ou um cruzamento que o cita) virou ação; fora disso, **apaga em cascata** o promovido e a avaliação GUT |
+| `CascataController::excluir` | o projeto originado **perde o vínculo** — sem avisar |
+| `ProjetoController::excluir` | os investimentos **perdem o vínculo** — sem avisar |
+| `IndicadorController::excluir` | apaga direto, sem guarda nenhuma |
+
+Nenhum desses comportamentos está errado isoladamente; o problema é o conjunto.
+São três regras diferentes (recusar, cascatear, soltar o vínculo) e **quase
+nenhuma delas aparecia antes do clique**: o botão × tinha a mesma cara nos sete
+casos, o `confirm()` dizia quase sempre a mesma frase, e o usuário só descobria a
+diferença depois — por um erro vermelho ou, pior, por não descobrir nada, porque
+a cascata é silenciosa.
+
+> **Correção do levantamento.** Duas telas já faziam o certo e serviram de
+> modelo: a **SWOT** já montava a frase item a item (`f.score` e `f.cruzamentos`
+> vindos da listagem — "Também será apagado: a avaliação dele na Matriz GUT e 2
+> cruzamento(s) da SWOT") e a **Coleta** já dizia o tamanho da caixa e o destino.
+> O que faltava não era inventar o padrão: era estendê-lo, e acrescentar a parte
+> que nenhuma delas tinha — o botão marcado.
+
+### A entrega mínima — três coisas, nesta ordem
+
+1. **Contar o vínculo antes.** Cada `excluir` já sabe o que está amarrado (é a
+   consulta que ele faz para decidir); falta devolver isso numa rota de
+   *pré-visualização* — `GET .../vinculos` — ou embutir a contagem na listagem
+   que a tela já busca.
+2. **Dizer no `confirm()` o que vai acontecer**, com os números: “Excluir o
+   fator? A promoção dele à SWOT e a avaliação GUT saem junto.” / “2
+   investimento(s) ficam sem projeto.” A frase muda por caso porque a
+   consequência muda — uma frase genérica é o que existe hoje.
+3. **Marcar o botão** onde a exclusão é recusada. O selo “Virou ação ↗” já diz
+   que existe vínculo; o × ao lado continua parecendo que funciona. Desabilitado,
+   com o motivo no `title`, o usuário para antes — e a recusa do servidor volta a
+   ser rede de segurança, não o canal por onde se descobre a regra.
+
+O ponto 3 é a menor parte do código e a maior do valor. Os pontos 1 e 2 são o que
+falta para as exclusões *silenciosas* (fator, cascata, projeto) pararem de ser
+silenciosas.
+
+### O que fica de fora
+
+- **Uniformizar as três regras.** Não vale: recusar, cascatear e soltar o vínculo
+  são respostas certas para relações diferentes. A ação órfã no plano é grave (por
+  isso recusa); o investimento sem projeto continua sendo um investimento (por
+  isso solta). O que precisa ser uniforme é o **aviso**, não a regra.
+- **Lixeira / desfazer.** Outro projeto, e resolveria um problema que ninguém
+  relatou.
+
+### Riscos
+
+- **A pré-visualização é mais uma consulta por cartão.** Se for por linha, a tela
+  de projetos faz dezenas. A contagem tem de vir junto da listagem que já existe,
+  não numa chamada por botão.
+- **Contagem que mente é pior que contagem nenhuma.** Ela vale no instante da
+  pintura; entre ela e o clique, alguém pode ter criado o vínculo. O servidor
+  continua sendo quem decide — este tema melhora o aviso, não substitui a guarda.
+
+### Como ficou
+
+Os três pontos da entrega mínima foram feitos, e o corte principal continua de
+pé: **uniformizou-se o aviso, não a regra**. Recusar, cascatear e soltar o
+vínculo seguem sendo respostas diferentes para relações diferentes.
+
+**O ponto 3 saiu maior do que "marcar o botão", e por um motivo que só apareceu
+no código.** A trava do fator nasce de **três** caminhos — o fator virou ação, um
+**promovido** dele virou, ou um **cruzamento** que o cita virou —, e os dois
+últimos são os mais comuns (o PESTEL não vai direto ao plano: passa pela SWOT).
+Uma tela que decidisse por conta própria erraria exatamente aí, e mentiria nos
+dois sentidos: × morto onde dava para apagar, × vivo onde o servidor recusa. A
+saída foi extrair a consulta da recusa para **`Fatores::acoesQuePrendem`** e
+servi-la à listagem como `acao_trava`. `exigirSemAcao` passou a chamá-la — há uma
+única definição de "está preso", e a tela e o servidor não podem discordar.
+
+**Uma armadilha de CSS que quase anulou a entrega.** O Bootstrap põe
+`pointer-events: none` em todo `.btn:disabled`, e sem ponteiro o navegador não
+mostra `title` nenhum — o botão ficaria cinzento e **mudo**, que é meio caminho
+para o defeito original. A regra `.btn[aria-disabled="true"] { pointer-events:
+auto }` devolve o ponteiro sem destravar coisa alguma: quem bloqueia o clique é o
+atributo `disabled`, que continua lá. A bateria mede isso (`pointerEvents ===
+'auto'`), porque é o tipo de coisa que uma atualização do Bootstrap desfaz em
+silêncio.
+
+**A frase virou `public/assets/js/vinculos.js`.** `Vinculos.aviso()` separa duas
+listas — o que **sai junto** e o que **continua existindo, sem o vínculo** —, e a
+distinção não é enfeite: perder a discussão de uma célula não é o mesmo que um
+investimento ficar sem projeto. `Vinculos.quantos()` devolve string vazia no
+zero, para o chamador despejar tudo na lista sem contar antes. O primeiro defeito
+que a bateria pegou foi justamente aqui: um registro sem vínculo nenhum ganhava a
+frase **"Sai junto: ."** — pior que não dizer nada, porque parecia informação.
+
+**Onde as contagens entram, sem consulta nova por cartão:** os projetos e os
+indicadores da escolha já vinham no payload da Matriz de Execução (tema 3a); os
+comentários por escolha, os investimentos e os comentários por projeto e os
+comentários por investimento entraram como **consultas agregadas** nas listagens
+que a tela já busca.
+
+**Um vínculo que este tema tornou visível é recente e meu:** excluir uma escolha
+da cascata agora também apaga as linhas de `indicador_cascata` (tema 3a). Ele
+aparece no aviso como "1 indicador continua existindo, sem o vínculo" — a
+escolha some, a medida fica.
+
+### O que ficou de fora (além dos cortes já listados)
+
+- **A trava por GRUPO na Coleta** é indexada pela chave de agrupamento
+  (`agrupado_em_id || id`), a mesma de `montarGrupos`, porque a guarda do
+  servidor olha a caixa inteira. É um mapa montado numa passada por carga da
+  lista — perguntar por cartão faria uma varredura por botão.
+- **Cenário e Indicador não ganharam trava**, só frase: nenhum dos dois tem
+  recusa no servidor. O indicador ganhou a contagem dos vínculos com a cascata,
+  que é o que ninguém espera perder.
+
+---
+
+## 9. Levar qualquer item ao plano de ação (e mover entre análises)
+
+### Veredito: **CONSTRUIR** (esforço P por fatia) — **A, B e C ENTREGUES**
+
+O pedido do cliente: *"poder levar qualquer item do Porter, PESTEL, análise de
+cenário para o plano de ação, ou até mesmo mover o item para outra análise"*.
+São **três coisas diferentes** num pedido só, e a ordem importa porque a segunda
+depende da primeira ter fixado o vocabulário.
+
+| Fatia | O quê | Estado |
+|---|---|---|
+| **A** | PESTEL e Porter vão **direto** ao plano de ação | **ENTREGUE** |
+| **B** | Item da **Análise de Cenário** vai ao plano de ação | **ENTREGUE** |
+| **C** | **Mover** um fator entre PESTEL ⇄ Porter ⇄ SWOT | **ENTREGUE** |
+| **C-bis** | Mover entre TABELAS (Cenário ⇄ fator) | a fazer |
+
+### Fatia A — a regra de método que caiu
+
+Até 2026-08 o servidor recusava com *"só fatores da SWOT vão ao plano de ação"*,
+e a razão era boa: PESTEL e Porter **descrevem o ambiente**, e obrigá-los a
+passar pela promoção a um quadrante forçava a síntese que a SWOT existe para
+fazer. Agir sobre um item do PESTEL sem dizer se ele é oportunidade ou ameaça é
+agir sem ter lido o próprio diagnóstico.
+
+**A regra foi revogada por decisão do cliente (2026-08-31.)** O argumento de
+quem usa: há fator do PESTEL e do Porter que **já nasce com dono e prazo** — uma
+mudança de lei com data marcada, um fornecedor que avisou que vai sair — e
+mandar inventar um quadrante só para poder agir produzia **SWOT de fachada**,
+quadrantes preenchidos por obrigação processual, que sujam a análise em vez de
+enriquecê-la. Entre uma SWOT honesta e menor e uma SWOT completa e falsa, a
+primeira é melhor.
+
+**O que a revogação NÃO tocou**, e isso é o que impede a mudança de virar
+regressão:
+
+- A **promoção continua existindo** e continua sendo o caminho recomendado
+  quando o fator precisa de síntese. Ela deixou de ser obrigatória, não de ser
+  a boa prática.
+- A **ação órfã continua proibida**. Um fator que virou ação segue travado para
+  exclusão (`Fatores::acoesQuePrendem`), e desmarcar o encaminhamento depois de
+  a ação existir continua recusado. Foi tentador tratar isso como parte da
+  mesma regra — não é: uma é de método, a outra é de integridade.
+
+### Como ficou
+
+**Um lugar só decide o rótulo.** As três etapas são a **mesma tabela** e fecham
+o vínculo pelo **mesmo campo** (`fator_id`); o que muda é o catálogo do nome da
+categoria — a SWOT tem quadrantes (`Diag.QUADRANTES`), PESTEL e Porter têm
+tuplas (`Diag.CATEGORIAS_ETAPA`). Ler os dois formatos ficou em
+`SecaoProjetos.categoriaDoFator`, e a fila e o modal de conversão só perguntam.
+Espalhar um `if (origem === 'SWOT')` por tela é exatamente como a Coleta acabou
+mostrando rótulos com outra caixa dos que a seção mostrava.
+
+**A fila passou a declarar a etapa.** `FatorController::aguardandoAcao` devolve
+`origem = f.etapa` em vez do literal `'SWOT'`, e o selo escreve "PESTEL · Legal"
+sem saber de nada.
+
+**O defeito que quase passou em silêncio** foi o terceiro lugar, não os dois
+óbvios. Tirar a recusa do `planoAcao` e generalizar a fila deixava o fator
+aparecer, ser encaminhado e virar ação — mas o `ProjetoController` fechava o
+vínculo com um `AND etapa = 'SWOT'` no WHERE. A ação nascia **sem fechar o
+vínculo**: o fator ficava "aguardando" para sempre numa fila da qual já tinha
+saído, e o "Virou ação ↗" apontava para lugar nenhum. Sem erro, sem vermelho.
+
+**O selo é um só, em duas telas.** `Diag.seloPlanoAcao` (três estados: →
+Plano de ação · Aguardando ação · Virou ação ↗) e `Diag.ligarPlanoAcao` (os três
+ouvintes) passaram a ser chamados tanto por `carregarEtapa` (PESTEL/Porter)
+quanto pela SWOT, que antes tinha a sua cópia.
+
+A bateria prova a corrente inteira (`provasPlanoDiretoAnalise`), incluindo as
+duas recusas que **não** mudaram — porque num tema cuja entrega é "tirar uma
+guarda", o que precisa de prova é o que continuou de pé.
+
+### Fatia B — o item de cenário
+
+O cenário **não é fator**: `cenario_item` é outra tabela, e por isso ganhou as
+suas próprias `acao_em`/`acao_por`/`desdobramento_id` (migrate,
+`garantirColuna` + `garantirFk` com SET NULL), `planoAcao` + `aguardandoAcao`
+no `CenarioController`, as rotas, o `cenario_item_id` como **quarto** campo de
+vínculo no `salvarDesdobramento` e a guarda de exclusão. Mesmo desenho, **não o
+mesmo código** — e é por isso que a fatia A veio antes: ela fixou o vocabulário
+que a B copiou.
+
+**Três colunas repetidas numa quarta tabela é a decisão do tema**, e é
+deliberada. A alternativa — uma tabela de encaminhamentos polimórfica
+(`origem_tipo`, `origem_id`, `acao_em`, …) — trocaria três colunas por uma
+junção a mais em **toda leitura das quatro telas**, e por uma FK a menos: hoje
+o `ON DELETE SET NULL` é o que devolve a origem à fila sozinha quando a ação é
+apagada, sem uma linha de PHP. Par polimórfico não tem FK que o carregue junto
+— é exatamente o que obriga a ideia da Coleta a ser limpa à mão em
+`excluirDesdobramento`, e o defeito que essa limpeza corrige (a ideia sumindo
+da fila para sempre) é o argumento mais forte contra estender o padrão.
+
+**O que quase deu errado** foi a chave da fila, não o servidor. As quatro
+origens numeram separado, e a fila as junta numa lista só: sem prefixo por
+origem (`c…`/`f…`/`x…`/`n…`), um item de cenário e um fator de mesmo id
+ocupariam a mesma linha e o "Transformar em ação" abriria a pendência errada —
+sem erro, sem vermelho. A bateria prova a chave (`data-virar-acao="n<id>"`),
+não só a rota.
+
+**Uma limpeza que o tema tornou barata:** os quatro rótulos que o modal de
+conversão muda por origem (título, nome do campo, pergunta do destino e barra
+colorida) estavam em ternários aninhados, repetidos em quatro lugares do
+formulário. Com a quarta origem eles teriam de ser encaixados em todos, na
+mesma ordem — viraram um objeto `falas`, uma chave por origem. Os tipos do
+cenário (rótulo e cor) viraram `SecaoCenario.TIPOS`, que já eliminou uma
+duplicação existente: o modal de "aceitar sugestão da sala" escolhia o par
+`'#8f3b3b'`/`'Tendência'` à mão.
+
+### Fatia C — mover entre análises (fator ⇄ fator **ENTREGUE**)
+
+A parte com mais armadilha do pedido. Mover um fator de PESTEL para Porter (ou
+para a SWOT) troca a **etapa** e obriga a **remapear a categoria** — as listas
+não se correspondem. E o fator pode já estar preso: avaliado na GUT, citado num
+cruzamento, promovido, ou já virado ação.
+
+**A categoria é a metade do movimento, não um detalhe.** `LEGAL` não existe no
+Porter, `RIVALIDADE` não existe na SWOT. Herdar a antiga produziria um fator que
+some das DUAS telas — a SWOT filtra por categoria dela, o PESTEL por etapa — e
+vira órfão invisível segurando vozes da sala que ninguém mais consegue
+desvincular. É literalmente o defeito que o `salvar()` já teve de corrigir por
+outro caminho (aceitar `etapa` do corpo na edição), e por isso ele veio primeiro
+na cabeça de quem escreveu isto e primeiro na bateria.
+
+**As quatro amarras RECUSAM**, cada uma dizendo o que desfazer primeiro:
+
+| Amarra | Por que recusa |
+|---|---|
+| já virou ação | mudaria a origem da ação no relatório |
+| promoção (nos **dois** sentidos) | mover a origem deixaria o promovido apontando para outra análise; mover o promovido o tiraria da SWOT sem tirar a marca |
+| nota na Matriz GUT | a GUT é da SWOT — sair de lá levaria a nota para uma tela onde ela não existe |
+| citado num cruzamento | o par escolhe um fator INTERNO e um EXTERNO por quadrante, e mover pode inverter o lado |
+
+Cada uma delas é uma decisão de **processo**, não de código (decisões 13 a 15
+abaixo). Enquanto não houver resposta, recusar é a saída segura: um movimento
+recusado é um aborrecimento, um movimento que apaga a nota da GUT ou invalida um
+cruzamento em silêncio é dado perdido que ninguém nota a tempo. Quando as
+respostas vierem, cada linha da tabela vira um comportamento — e a bateria já
+tem o teste do estado atual para virar do avesso.
+
+**A trava da ação NÃO ganhou consulta nova.** Ela é a mesma
+`Fatores::acoesQuePrendem` da exclusão — "esta linha sustenta uma ação no
+plano?" é uma pergunta só, e respondê-la de dois jeitos faria a tela liberar um
+gesto e o servidor recusar o outro sem motivo aparente. As outras três moram em
+`FatorController::travasDeMover`, que alimenta a recusa **e** o `mover_trava` da
+listagem, do mesmo jeito e pela mesma razão do tema 8. `mover_trava` é um
+**array**: as amarras se acumulam, e um fator promovido *e* citado num cruzamento
+tem duas coisas a desfazer — mostrar só a primeira faria a segunda parecer um
+erro novo depois de o usuário já ter trabalhado.
+
+**Promover ≠ mover**, e as duas continuam existindo lado a lado: promover
+**copia** (a origem fica no PESTEL, o par visível nas duas telas), mover
+**transfere**. São gestos diferentes e ambos legítimos; o que não pode é fazer os
+dois no mesmo fator — daí a promoção travar o `⇄`.
+
+### Fatia C-bis — mover ENTRE TABELAS (**ENTREGUE**)
+
+Mover um item da **Análise de Cenário** para PESTEL/Porter/SWOT, e o inverso.
+Não é o mesmo trabalho — `cenario_item` e `fator` são tabelas distintas, então
+"mover" ali é criar-e-apagar, carregando à mão o que o id sustenta: as vozes da
+Coleta (`destino_tipo`/`destino_id`, par polimórfico, sem FK), a redação
+guardada para a sala, e o encaminhamento ao plano. Um id que morre com vínculos
+pendurados é exatamente o beco sem saída que o `excluirDesdobramento` teve de
+aprender a evitar. **Não** aproveitou o `mover` atual: o `UPDATE fator SET
+etapa` de hoje é seguro justamente por não mexer em id nenhum.
+
+#### O que foi medido antes de escrever
+
+Duas descobertas mudaram o desenho, e nenhuma estava no plano original:
+
+**A Coleta já movia entre tabelas** — `ColetaController::reclassificar` apaga o
+registro no destino e devolve a ideia à fila, e o condutor tria de novo. Meio
+caminho, não o caminho: só vale para item **nascido na sala** (precisa de um
+`coleta_item` apontando para ele), e a redação feita depois, na análise, se
+perde. Ficou como está; o `⇄` é o caminho de quem já tem o item.
+
+**Duas amarras da SWOT sumiam em silêncio no `mover` que já existia** — e essa
+é a parte que valia mais que a fatia inteira:
+
+| Amarra | O que acontecia | Agora |
+|---|---|---|
+| célula na **Matriz de Impacto** | o fator sai da SWOT, as células continuam no banco e somem da grade: ninguém apaga nada e ninguém consegue mais ler | recusa, dizendo o que limpar |
+| vínculo com a **Cascata** | a célula continua exibindo o fator, mas o `salvar` dela só reinsere fatores da SWOT — o próximo salvamento, feito por outra pessoa e por outro motivo, derruba o vínculo | recusa, dizendo o que desfazer |
+
+A segunda é a pior das duas: o dado não some na hora do movimento, some depois,
+num salvamento sem relação nenhuma com ele.
+
+#### As decisões do cliente
+
+- **As vozes da sala VIAJAM com o item** (`Quiz::mudarDestino`). Devolvê-las à
+  fila criaria duplicata: o item já existe no destino, e triar a ideia de novo
+  produziria um segundo registro dizendo a mesma coisa.
+- **Fator → Cenário com GUT, cruzamento, Cascata ou Impacto: recusa**, como as
+  travas que já existiam. Na prática, o sentido "de volta" vale para fator novo
+  — e é o desenho, não uma limitação: o que está preso está preso porque
+  alguém amarrou.
+
+#### Como ficou
+
+**A ordem é a garantia, no lugar da transação.** O repositório não usa
+`beginTransaction` (e `Json::erro` encerra a execução), então: cria o destino,
+leva as vozes, e só então apaga a origem. Morrendo no meio, o pior caso é um
+registro repetido — visível e apagável. Na ordem inversa seria voz apontando
+para id morto: invisível.
+
+**A guarda que a travessia obrigou a apertar.** O "solta quem saiu do conjunto"
+dos dois `vincularSugestoes` alcançava qualquer voz do quiz amarrada ao
+registro. Depois da travessia, as vozes carregadas vêm de uma pergunta de outro
+alvo, nunca aparecem no painel do destino — e a **primeira edição do item as
+soltava caladas**, perdendo exatamente o que a travessia acabou de preservar.
+Agora o `UPDATE` faz `JOIN quiz_pergunta` e só alcança o que o painel poderia
+ter oferecido. A prova disso na `funcional.sh` foi verificada ao contrário:
+revertida a guarda, ela fica vermelha (`quiz_vozes` cai de 1 para 0).
+
+**O catálogo de categorias mudou de casa** (`FatorController` → `Fatores`):
+duas telas passaram a criar fator, e duas cópias divergiriam na primeira
+categoria nova.
+
+**Na tela é só mais um botão.** O `⇄` do fator ganhou o quarto destino, e o
+cartão do Cenário ganhou o `⇄` que não tinha. Salvando, a pessoa é **levada à
+tela nova** com o cartão destacado: o item some da análise de origem, e cartão
+que desaparece sem dizer para onde foi é indistinguível de cartão excluído.
+
+---
+
+## 10. Duas telas juntas: preenchimento simultâneo
+
+### Veredito: **CONSTRUIR** (esforço P) — **ENTREGUE**
+
+Pedido do cliente: com mais de um ADMIN conectado, o que um altera precisa
+aparecer no outro **sem atualizar a tela**, para que duas pessoas possam
+preencher juntas. A justificativa é de processo, não de conforto: *"quando
+tivermos com a direção o tempo é escasso, e determinante para maior
+engajamento"*. Numa reunião de uma hora, "atualiza aí" se repete dezenas de
+vezes, e cada repetição é um pedaço da atenção da direção.
+
+### Por que um contador, e não a comparação do conteúdo
+
+A alternativa direta seria cada tela reler o próprio conteúdo a cada poucos
+segundos e comparar. Funciona e não precisa de servidor nenhum — mas faria cada
+admin baixar o payload inteiro de Projetos a cada batida para quase sempre
+concluir que nada mudou. O custo cresce com o dado e com o número de pessoas,
+justo nos dois eixos em que se quer crescer.
+
+O contador inverte isso: o caminho **frequente** custa um inteiro
+(`GET /api/pulso`, uma tabela de duas colunas), e o caminho **caro** — reler o
+conteúdo — só acontece quando houve mudança de verdade.
+
+E por que não `MAX(atualizado_em)` das tabelas, que dispensaria tabela nova: a
+maioria delas não tem carimbo de tempo, e **as que têm não registram DELETE**.
+Apagar um fator não mexeria em carimbo nenhum, e a outra tela seguiria mostrando
+o que já não existe — o pior tipo de dessincronia, porque parece certa.
+
+### A decisão que sustenta o resto: onde a marcação mora
+
+Chamar um `bumpar()` no fim de cada endpoint que grava tem um modo de falha
+ruim: **esquecer um não quebra nada visível.** O sistema segue funcionando e só
+aquela ação some do outro monitor. Ninguém relata "a exclusão de investimento
+não propaga" — a pessoa aperta F5 e segue. Defeito que se contorna sozinho é
+defeito que fica.
+
+Então a marcação foi montada com duas metades, cada uma num ponto por onde tudo
+já passa, e nenhuma delas dependendo de lembrança:
+
+| Metade | Onde | Por que ali |
+|---|---|---|
+| Qual plano | `Auth::exigirEdicaoPlanejamento` | é o portão de toda escrita de conteúdo — 52 chamadas nos controllers |
+| Houve escrita | `Database::executar` | é o único caminho de INSERT/UPDATE/DELETE |
+
+O contador sobe quando as duas aconteceram, uma vez por requisição, num
+`register_shutdown_function` — o fim do `switch` do roteador nunca é alcançado,
+porque `Json::ok()` termina o script com `exit`.
+
+**Uma exceção, explícita:** `ImpactoController::salvar` chama `Versao::alvo()`
+na mão, porque autoriza pelo negócio da célula e não pelo planejamento (§5 do
+`PLANEJAMENTO-SISTEMA.md`). Os cadastros ficam de fora de propósito: mudam a
+moldura, não o conteúdo de um plano.
+
+### As guardas valem mais que a atualização
+
+Repintar na hora errada é pior que não repintar — perde-se o que a pessoa estava
+escrevendo. Todas as guardas vieram do relógio da Sala, que já rodou em oficina;
+o `vivo.js` existe para que valham em TODA seção e não só lá: modal aberto, foco
+num campo, seção escondida, modo Dossiê, rede piscando.
+
+**Represar não perde a atualização.** A versão de referência só avança quando a
+repintura acontece de fato, então a batida seguinte à liberação traz o que ficou.
+A bateria prova as duas metades disso: que não repinta sob o formulário aberto, e
+que o represado chega quando ele fecha.
+
+### Como ficou
+
+`Vivo.armar` é chamado **num lugar só** (`App.recarregarSecaoAtiva`), depois de
+`carregar()` resolver — armar antes capturaria a referência com a tela ainda
+lendo, e uma escrita nesse intervalo passaria por "já vista". Um relógio só em
+todo o sistema: há uma seção visível por vez, e um por seção deixaria batendo o
+da tela que esquecesse de desarmar.
+
+Quem depende de outro plano **declara isso em si mesma** (`planosVigiados()`),
+em vez de uma lista de exceções no `app.js` que envelheceria calada: a Matriz de
+Impacto vigia dois planos, e `coleta`/`sala`/`dossie` devolvem lista vazia.
+
+**Um defeito achado pela prova, não pela leitura:** mapa associativo vazio vira
+`[]` em JSON, não `{}`. Um ciclo em que ninguém escreveu devolvia uma lista, e a
+tela indexando por id funcionava **por acidente** (`undefined` lido como zero) —
+até alguém iterar as chaves.
+
+**Medido:** a segunda tela reflete em ~4 segundos, uma batida do relógio.
+
+---
+
+## 11. Um item por vez: bloqueio de edição
+
+### Veredito: **CONSTRUIR** (esforço P–M) — **ENTREGUE**
+
+Continuação direta do tema 10. Com o pulso entregue, duas telas se acompanham —
+mas nada impede que **duas pessoas abram o mesmo item** e a segunda a salvar
+apague o trabalho da primeira.
+
+### O que foi medido (2026-09-01), antes de desenhar
+
+| Caso | Hoje |
+|---|---|
+| B cria item novo enquanto A edita outro | ✅ ids distintos, os dois sobrevivem, e o pulso mostra o novo a A |
+| **A e B editam o MESMO item** | ⚠️ **A sobrescreve B e o servidor responde `ok:true`** |
+| A salva um item que B já apagou | ⚠️ *"Fator não encontrado neste planejamento"* |
+
+O primeiro caso é o que o cliente descreveu, e **já está resolvido** — vale
+registrar para ninguém reconstruir o que existe. O segundo é o que perde
+trabalho, e em silêncio: quem foi sobrescrito não recebe sinal nenhum. O
+terceiro é só uma mensagem ruim, mas cai no mesmo tema.
+
+### A decisão do cliente: BLOQUEAR, não reconciliar
+
+Havia três caminhos — recusar o salvamento velho comparando versões, avisar sem
+impedir, ou não fazer nada. O cliente escolheu um quarto, e o argumento dele é
+o melhor da lista: **se ninguém mais pode abrir o item, não existe base de
+comparação a manter.** Sem bloqueio, seria preciso versionar o registro,
+carregar essa versão no formulário e reconciliar dois textos na recusa. Com
+bloqueio, nada disso existe.
+
+**O bloqueio é do ITEM, não do campo** — ajuste sobre o pedido original, e a
+razão é concreta: o formulário edita o REGISTRO INTEIRO. Dois admins em campos
+diferentes do mesmo item salvariam o registro inteiro cada um, e o segundo
+apagaria o primeiro exatamente como hoje. Travar campo a campo só ajudaria se a
+tela editasse campo a campo — e ela não edita. O item é a unidade que
+corresponde à vida do formulário, que é o que dá ao bloqueio um começo e um fim
+óbvios.
+
+**Criar item novo não pede bloqueio nenhum**, e isso é consequência do
+raciocínio do cliente: não há registro a disputar e os ids não colidem.
+
+### O risco que decide o desenho: o cadeado esquecido
+
+Todo bloqueio pessimista tem o mesmo modo de falha, e ele é pior que o problema
+original: **alguém abre o formulário e vai embora.** Fecha o notebook, perde o
+wi-fi, o navegador cai. O item fica travado para sempre — e numa reunião com a
+direção, um item que ninguém consegue editar custa mais caro que uma
+sobrescrita.
+
+**O batimento automático foi DESCARTADO** (proposta original, revista com o
+cliente em 2026-09-01). A ideia era renovar o cadeado enquanto o formulário
+estivesse aberto, aproveitando o relógio do tema 10. O furo: **um batimento
+prova que o navegador está aberto, não que existe uma pessoa ali.** Uma aba
+esquecida numa máquina ligada renovaria para sempre — exatamente o cenário que
+o batimento deveria cobrir.
+
+**No lugar dele: contador visível e renovação MANUAL** (desenho do cliente):
+
+1. **5 minutos** de validade, com o tempo restante à vista de quem edita.
+2. **"+1 minuto", quantas vezes forem necessárias.** Sem teto, e isso é seguro
+   justamente por ser manual: um clique é prova de vida que um batimento não é.
+3. **Aviso aos 60 segundos**, visível dentro do formulário e com o botão ali.
+   Um número decrescendo num canto não é notado por quem está escrevendo.
+4. **Soltar ao fechar** — salvar, cancelar, Esc. O caminho normal libera na hora.
+5. **Soltar ao sair da página** (`sendBeacon` no `pagehide`), melhor esforço
+   para o fechar-a-aba.
+
+As duas primeiras substituem o batimento e são estritamente melhores nele: o
+cadeado só sobrevive enquanto alguém o pedir de novo.
+
+**O contador é do SERVIDOR, não do navegador.** O pulso devolve *quantos
+segundos faltam*, e o navegador só decrementa entre as batidas. Dois relógios
+dessincronizados mostrariam contagens diferentes para o mesmo cadeado — e o
+contador que decide quem pode salvar não pode depender da hora da máquina de
+ninguém.
+
+### Aos 0:00 o cadeado cai — mas o texto NÃO
+
+Ressalva adotada sobre o pedido literal ("não permite mais editar nem salvar"):
+tomado ao pé da letra, quem estivesse escrevendo um parágrafo aos 4:59 perderia
+o texto. **O recurso que existe para não perder trabalho passaria a perder
+trabalho**, e no pior momento possível.
+
+A regra fica quase igual, com uma diferença que custa pouco:
+
+- aos 0:00 o cadeado **é liberado para os outros** — a regra do cliente,
+  cumprida: o item volta a ficar disponível;
+- o texto **continua na tela** e o Salvar continua tentando;
+- se **ninguém assumiu** o item nesse meio-tempo, o salvamento passa;
+- se **alguém assumiu**, aí sim é recusado — e a recusa mostra o texto para
+  copiar, em vez de engoli-lo.
+
+Assim o cadeado expira sempre (que é o que impede o item de ficar preso), e o
+trabalho só se perde no único caso em que perder faz sentido: alguém realmente
+tomou o lugar. De quebra resolve a corrida boba do "cliquei em Salvar aos 0:02
+e a requisição levou um segundo".
+
+**E, acima de tudo, falhar ABERTO.** Se a rota do bloqueio der erro, a edição
+prossegue. Um sistema de cadeados capaz de impedir todo mundo de trabalhar é
+pior que o conflito que ele previne — e essa é a diferença entre isto reduzir
+colisões a quase zero na prática e isto virar o problema.
+
+### Modelo de dados
+
+```sql
+CREATE TABLE IF NOT EXISTS edicao_bloqueio (
+  recurso     VARCHAR(40) NOT NULL,   -- 'fator', 'cascata_escolha', 'desdobramento', ...
+  registro_id INT NOT NULL,
+  usuario_id  INT NOT NULL,
+  expira_em   DATETIME NOT NULL,
+  PRIMARY KEY (recurso, registro_id),
+  KEY idx_bloqueio_expira (expira_em)
+) ENGINE=InnoDB;
+```
+
+A chave primária composta é o que torna a tomada **atômica**: um `INSERT … ON
+DUPLICATE KEY UPDATE` com a condição de expiração dentro do `IF()` pega ou não
+pega numa instrução só, sem transação e sem janela entre "conferir" e "tomar" —
+que é justamente onde dois cliques simultâneos passariam os dois.
+
+```sql
+INSERT INTO edicao_bloqueio (recurso, registro_id, usuario_id, expira_em)
+VALUES (?, ?, ?, NOW() + INTERVAL 300 SECOND)
+ON DUPLICATE KEY UPDATE
+  usuario_id = IF(expira_em < NOW() OR usuario_id = VALUES(usuario_id),
+                  VALUES(usuario_id), usuario_id),
+  expira_em  = IF(expira_em < NOW() OR usuario_id = VALUES(usuario_id),
+                  VALUES(expira_em), expira_em);
+```
+Lê-se de volta quem ficou com ele: sou eu → abriu; é outro → recusa dizendo o
+nome. Sem FK para `usuario`: a linha é efêmera e some por validade.
+
+**Duas durações — e a renovação nunca ENCURTA.** Tomar dá 5 minutos; o "+1
+minuto" acrescenta 60 segundos. O detalhe que morde se ficar implícito: um
+`expira_em = NOW() + INTERVAL 60 SECOND` na renovação faria quem clicasse com
+4:00 restantes **cair para 1:00** — o botão de ganhar tempo tirando tempo. A
+conta certa é
+
+```sql
+expira_em = GREATEST(expira_em, NOW()) + INTERVAL 60 SECOND
+```
+
+que soma um minuto sobre o que resta quando ainda há tempo, e dá um minuto
+cheio a partir de agora quando já não há. Nos dois casos, nunca reduz.
+
+### Onde a trava é conferida — e por que nos dois lugares
+
+**Na tela**, o item travado mostra **o nome de quem está editando**, no próprio
+lugar do conteúdo — pedido explícito do cliente, e é esta metade que de fato
+evita a colisão, porque a pessoa **não chega a começar**. Onde isso aparece:
+
+| Tela | Onde o nome aparece |
+|---|---|
+| Cascata de Escolhas | na própria **célula** — ali o campo e o item coincidem |
+| PESTEL / Porter / SWOT / Cenário | no **cartão** do fator, no lugar do ✎ |
+| Projetos | na linha da **ação** ou do projeto |
+
+Não haverá trava campo a campo dentro do mesmo formulário. O motivo é o mesmo
+que fez o bloqueio ser do item: os dois salvariam o registro inteiro e o segundo
+apagaria o primeiro. Onde o "campo" do pedido é uma célula inteira — a Cascata,
+que é o caso mais disputado — trava de item e trava de campo são a mesma coisa.
+
+Os cadeados vão junto no **pulso** (tema 10), que já roda a cada 4s e já é o
+canal do "o que está acontecendo agora" — sem rota nova e sem relógio novo. É
+por ele que o nome aparece para os outros em ~4s, e some quando o cadeado cai.
+
+**No servidor**, `salvar()` e `excluir()` recusam quando o cadeado é de outro.
+Sem esta metade o bloqueio é teatro: uma tela velha, aberta antes do cadeado,
+salvaria assim mesmo. Ela também conserta o terceiro caso medido — apagar um
+item que alguém está editando passa a dizer *quem* está editando, em vez de
+deixar o outro com "não encontrado" na cara.
+
+Um helper compartilhado (`Bloqueio::exigirMeu($recurso, $id)`), pelo mesmo
+motivo de `Fatores::acoesQuePrendem`: a regra tem de ser uma só, senão a tela
+apaga o botão onde o servidor aceita, ou o contrário.
+
+### Alcance (decidido pelo cliente): as telas disputadas de verdade
+
+`cascata_escolha` (a célula que todos preenchem juntos), `fator`
+(PESTEL/Porter/SWOT — cobre a nota da GUT, que é do fator), `cenario_item`,
+`desdobramento` (a ação) e `projeto`. São os registros que duas pessoas
+realmente abrem ao mesmo tempo numa reunião.
+
+Fora por ora: investimentos, metas, indicadores, cruzamentos, matriz de impacto
+e comentários. Não por serem menos importantes — por não serem disputados. Se
+o padrão se provar numa reunião real, ampliar é acrescentar um nome de recurso
+e uma linha de guarda.
+
+### Entrega mínima
+
+1. `edicao_bloqueio` no `schema.sql`.
+2. `App\Services\Bloqueio`: `tomar`, `soltar`, `exigirMeu`, `doCiclo` (para o pulso).
+3. Duas rotas: `POST /api/bloqueio` (tomar/renovar) e `POST /api/bloqueio/soltar`.
+4. Cadeados no payload do pulso.
+5. `Modal.abrir` ganha `bloqueio: { recurso, id }`: toma ao abrir, solta ao
+   fechar, mostra o contador e o "+1 minuto". Um lugar só — as seções passam o
+   par e não cuidam de ciclo de vida nenhum.
+6. `exigirMeu` nos cinco `salvar()`/`excluir()`, com a regra do 0:00 (aceita se
+   ninguém assumiu).
+7. O nome de quem edita nas telas cobertas, alimentado pelo pulso.
+8. Provas com DUAS sessões, como o tema 10: B não abre o que A tem aberto e vê
+   o nome de A; o cadeado expira e libera; o "+1 minuto" estende; A fechando
+   solta na hora; **o texto sobrevive ao 0:00** quando ninguém assumiu; e a
+   **falha aberta** — com a rota do bloqueio fora do ar, a edição continua.
+
+### Riscos
+
+- **O cadeado esquecido** — tratado acima; é o risco número um e a razão de
+  metade do desenho. A renovação manual o cobre melhor que o batimento que a
+  primeira versão propunha.
+- **Ser expulso do próprio formulário.** É o risco que a renovação manual cria,
+  e a razão de o texto sobreviver ao 0:00. Se numa reunião real as pessoas
+  estiverem clicando "+1 minuto" o tempo todo, a validade está curta demais —
+  é o sinal para revisar os 5 minutos, e vale medir na primeira oficina.
+- **Latência no ✎.** Abrir o formulário passa a depender de uma ida ao servidor.
+  É uma chamada minúscula, mas o botão precisa de estado de espera para não
+  parecer travado no clique.
+- **Duas abas da mesma pessoa.** O `usuario_id` igual renova em vez de recusar —
+  senão alguém se autobloqueia e não entende por quê.
+- **Sensação de "travado" sem explicação.** O texto tem de dizer QUEM e oferecer
+  saída: com o cadeado expirado, um "assumir a edição" explícito.
+- **Não é garantia dura.** Falhando aberto, o bloqueio é melhor esforço. Reduz
+  colisão a quase zero entre pessoas numa sala; não substituiria um controle de
+  concorrência num sistema com centenas de editores anônimos — que não é este.
+
+### Decisões do tema — todas respondidas
+
+Respondidas pelo cliente em 2026-09-01: validade de **5 minutos**; contador
+visível; renovação **manual** de +1 minuto, sem teto; o **nome de quem edita**
+no lugar do item para os demais; e um cadeado expirado pode ser assumido por
+**qualquer admin** — não só por quem o tinha.
+
+### Como ficou
+
+**O ciclo de vida do cadeado mora num lugar só** (`Modal.abrir`, com
+`bloqueio: { recurso, registro_id, planejamento_id }`). As seções passam o par
+e não cuidam de tomar, renovar nem soltar — quem esquecesse de soltar deixaria
+um item preso por cinco minutos sem ninguém entender por quê.
+
+**O `Versao::ignorar()` é o detalhe que salva o tema 10.** Tomar e renovar
+escrevem no banco, e o pulso marca escrita na infraestrutura (`Database::executar`)
+justamente para não depender de ninguém lembrar. Sem a exceção, cada renovação
+subiria a versão do plano e **todas as telas se repintariam a cada 4 segundos** —
+o oposto exato do que o pulso existe para fazer. A prova disso está na
+`funcional.sh` ("cadeado não conta como mudança do plano").
+
+**O `+1 minuto` é `GREATEST(expira_em, NOW()) + 60`, não `NOW() + 60`.** Escrito
+da forma óbvia, o botão de ganhar tempo **encurtaria** um cadeado recém-tomado,
+de 300 para 60 segundos. Está medido nas duas baterias (297 → 356).
+
+**Aos 0:00 o cadeado cai, o texto não.** `Bloqueio::exigirMeu` volta calado
+quando o item está `livre` — quem perdeu o cadeado ainda grava, desde que
+ninguém tenha assumido. Sem isso, quem estivesse escrevendo aos 4:59 perderia o
+parágrafo, e o recurso feito para não perder trabalho passaria a perder
+trabalho.
+
+**O nome de quem edita não é deduzido dos `data-card-fator`/`data-projeto` que
+já existiam** — eles carregam só o id, e um item de cenário nº 5 casaria com o
+seletor do fator nº 5. O marcador é `data-cadeado="recurso:id"`, com o recurso
+junto, que é a chave que o cadeado usa. Na célula da Cascata ele leva a lista de
+ids (síntese + eixos), casada por palavra.
+
+**`sendBeacon` não serve para soltar ao fechar a aba:** ele não carrega
+cabeçalho, e o CSRF do sistema só é aceito em `X-CSRF-Token` — o pedido morreria
+com 419 sem soltar nada. `fetch(..., { keepalive: true })` faz o mesmo papel
+mantendo o contrato de CSRF inteiro.
+
+**Provado a duas sessões e com dois usuários** (`sistema.js`, `provasCadeado`):
+com a mesma conta nos dois navegadores todo cadeado é "meu" e a prova ficaria
+verde medindo nada. Seis provas de navegador e dezoito de servidor
+(`funcional.sh`, seção 9g), incluindo a guarda valendo igual em fator, ação e
+projeto.
+
+**Fora do alcance, de propósito:** o arraste do progresso da ação. Ele não é
+formulário — é um gesto de um toque, e trancar um item por cinco minutos porque
+alguém arrastou uma barra seria pior que a colisão que evitaria.
 
 ---
 
@@ -963,10 +1903,23 @@ O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro*
 depois o que se alimenta delas. Construir conteúdo (matriz, mapa, coleta) antes de
 existir um fórum que consome esse conteúdo é como o sistema morre.
 
-> **Estado da fila.** Os passos 1, 2 e 5 abaixo foram entregues (registro de
-> reunião, `projeto.cascata_id`, Coleta & Triagem). O que resta como *código* é
-> o passo 3 (Matriz de Execução) e o 4 (Matriz de Impacto, travada na decisão 1);
-> o que resta como *operação* são os passos 0 e 0-bis, que continuam no topo.
+> **Estado da fila.** Os passos 1, 2, 2-bis, 3, 3-bis e 5 abaixo foram entregues
+> (registro de reunião, `projeto.cascata_id`, o **Dossiê do plano**, a **Matriz
+> de Execução**, o **aviso na exclusão com vínculo** e a Coleta & Triagem).
+>
+> **Os passos 0 e 0-bis saíram da fila:** o cliente confirmou em 2026-09-01 que
+> o backup e o envio de e-mail estão configurados em produção. Eles eram o que
+> restava de *operação*, e eram o argumento de "adiar não é mais escolher entre
+> trabalhos". Não são mais pendência — viraram **conferência periódica**, com o
+> que olhar registrado no tema 6.
+>
+> **O passo 4 saiu junto:** as decisões 1 e 7 foram respondidas em 2026-09-01 e a
+> **Matriz de Impacto** foi entregue no mesmo dia. Era o último item que estava
+> parado por decisão, e não por esforço.
+>
+> O que resta como *código* é a síntese dos Cruzamentos (4c) e o mover entre
+> tabelas (9d) — os dois livres, sem trava nenhuma. Pela primeira vez desde o
+> começo, a fila não tem item bloqueado: o que sobrou é só escolher a ordem.
 
 **0. Ligar o que já existe (horas, zero código).** SMTP + cron diário do Railway
 para `cli/notificar.php`. Um módulo pronto que não roda é a melhor relação
@@ -987,10 +1940,18 @@ execução não é discutida.
 e a exibição já existiam; era a correção mais barata do repositório e é
 pré-requisito da coluna "Iniciativas".
 
-**3. Matriz de Execução — resto (P).** `indicador_cascata` + escolha múltipla no
-modal de indicador + aba na Cascata. O passo 2 já está feito, então a coluna de
-iniciativas já tem de onde sair; é a leitura que a direção pede no trimestral.
-**É o próximo item de código da fila.**
+**2-bis. Dossiê do plano — as abas em sequência (M). ✔ ENTREGUE.** Tema 7. Não
+nasceu desta lista e não era pré-requisito de nada: entrou por pedido urgente do
+cliente, e por ser o custo que se pagava toda vez que alguém montava a pasta de
+uma reunião à mão.
+
+**3. Matriz de Execução — resto (P). ✔ ENTREGUE.** `indicador_cascata` + a lista
+marcável no modal de indicador + a aba na Cascata. O passo 2 já estava feito,
+então a coluna de iniciativas já tinha de onde sair; é a leitura que a direção
+pede no trimestral.
+
+**3-bis. Aviso na exclusão com vínculo (P). ✔ ENTREGUE.** Tema 8. Dizer no
+`confirm()` o que sai junto, e desabilitar o × onde o servidor vai recusar.
 
 **4. Matriz de Impacto por Negócio (P).** Independente de tudo, mas depende de a
 SWOT/GUT **corporativa** do ano estar preenchida — por isso vem depois de o ciclo
@@ -1018,33 +1979,62 @@ nota de impacto, e não convém passar a atribuir.
 
 | | **Esforço pequeno (P)** | **Esforço médio/alto (M, G)** |
 |---|---|---|
-| **Impacto alto** | **Fazer agora** — 0 SMTP+cron · 6 ligar o backup · 3a Matriz de Execução · 1 Matriz de Impacto | **Planejar** — 4b Cruzamentos: a ponte (fatia 3) |
+| **Impacto alto** | — | **Planejar** — 4c Cruzamentos: a síntese · 9d mover entre tabelas |
 | **Impacto baixo** | — | **Descartar** — 3c Mapa BSC · 2b rodadas e roteiro da coleta |
 
-Saíram do quadro por estarem entregues: 5 (registro de reunião), 3b (vínculo com
-a Cascata), 2 e 2.1 (Coleta e Tempestade) e as fatias 1–2 dos Cruzamentos.
+Saíram do quadro por estarem entregues: 5 (registro de reunião), 3a (Matriz de
+Execução), 8 (aviso na exclusão), 3b (vínculo com a Cascata), 2 e 2.1 (Coleta e Tempestade), as fatias
+1–3 dos Cruzamentos com o relatório (§7), o ⤓ Relatório da Cascata, o 7 (Dossiê
+do plano) e o 9a–9c (ir ao plano de ação e mover entre análises). Saíram por
+estarem **ligados**: 0 (SMTP+cron) e 6 (backup).
 
-**O que essa leitura mostra — e o que ela não decide.** O que sobrou no "fazer
-agora" é quase tudo **operação, não desenvolvimento**: dois dos quatro itens (0 e
-6) são configuração no Railway de código que já existe. Não é falha da leitura —
-é o retrato de um backlog já podado, em que o trabalho caro e duvidoso foi
-cortado antes de entrar na lista.
+**O "fazer agora" esvaziou.** Ele teve, em sequência, três ocupantes e três
+saídas diferentes: 0 e 6 saíram por serem **ligados** em produção; 1 saiu por ser
+**entregue**, no dia em que as decisões 1 e 7 foram respondidas. Sobrou o
+quadrante "planejar", com dois itens de esforço médio e nenhuma trava.
+
+Vale registrar o que isso significa para quem for reordenar: **o gargalo deste
+backlog nunca foi capacidade de construir — foi decisão de processo.** O item 1
+esperou meses por duas perguntas que levaram um dia para responder e um dia para
+implementar.
+
+**O 7 esteve no “planejar” e mesmo assim foi o primeiro da fila** — a contradição
+aparente que mostra o limite deste quadro: a leitura por esforço não sabe que um
+item foi pedido como urgente. Quando o quadrante e a fila discordarem, vale a
+fila, e o motivo fica escrito ao lado dela.
+
+**O que essa leitura mostra — e o que ela não decide.** O quadro esvaziou por
+dois motivos diferentes, e vale não confundi-los: a maior parte saiu por ter
+sido **entregue**, e o resto do "fazer agora" saiu por ter sido **ligado**. O que
+sobra é um backlog já podado, em que o trabalho caro e duvidoso foi cortado antes
+de entrar na lista — e o que restou depende de gente, não de tempo.
 
 Por isso a coluna "Ordem" da tabela-resumo **não** sai desse cruzamento — ele
-empataria cinco itens. Ela sai da **dependência**: o que precisa existir antes
-para o item seguinte valer alguma coisa. Quem quiser reordenar a fila deve
-discutir a dependência, não o quadrante.
+empataria os itens que sobraram. Ela sai da **dependência**: o que precisa
+existir antes para o item seguinte valer alguma coisa. Quem quiser reordenar a
+fila deve discutir a dependência, não o quadrante.
 
 ## Tabela-resumo
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 6 | **Ligar o backup no Railway** (Volume + cron; código entregue em `cli/backup.sh`) | Executar | — | 0 |
-| 0 | Ligar SMTP + cron dos avisos (já implementado) | Executar | — | 0 |
-| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | Construir simplificado | P | 1 |
-| 1 | Matriz de Impacto por Negócio | Construir simplificado | P | 2 (trava: decisão 1) |
-| 4b | Cruzamentos da SWOT — a ponte, a síntese e o relatório (fatias 3–5) | Construir | M | 3 (ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |
+| 4c | Cruzamentos da SWOT — **a sala** (fatia 5) | **Entregue** | M | ✔ (decisão do cliente: a sala propõe o PAR) |
+| 11 | **Um item por vez: bloqueio de edição** | **Entregue** | P–M | ✔ (pedido do cliente; continua o 10) |
+| 9c | Mover um fator entre PESTEL ⇄ Porter ⇄ SWOT | **Entregue** | P | ✔ (amarras recusam; decisões 13–15 em aberto) |
+| 9b | Item da Análise de Cenário ao plano de ação | **Entregue** | P | ✔ |
+| 9a | PESTEL e Porter **direto** ao plano de ação | **Entregue** | P | ✔ (decisão do cliente) |
+| 10 | **Duas telas juntas: preenchimento simultâneo** | **Entregue** | P | ✔ (pedido do cliente) |
+| 1 | **Matriz de Impacto por Negócio** | **Entregue** | P | ✔ (decisões 1 e 7) |
+| 8 | Excluir o que já está amarrado noutra tela (aviso antes do clique) | **Entregue** | P | ✔ |
+| 6 | Backup do banco no Railway (Volume + cron) | **Ligado** | — | ✔ (cliente, 2026-09-01) |
+| 0 | SMTP + cron dos avisos | **Ligado** | — | ✔ (cliente, 2026-09-01) |
+| 3a | Matriz de Execução (`indicador_cascata` + aba na Cascata) | **Entregue** | P | ✔ |
+| 7 | **Dossiê do plano: as abas em sequência, por negócio** | **Entregue** | M | ✔ (urgente, antecipado) |
+| 4b | Cruzamentos da SWOT — a ponte (fatia 3) e o ⤓ Relatório (§7) | **Entregue** | M | ✔ |
 | 4a | Cruzamentos da SWOT — tabela, API, tela, cadastro (fatias 1–2) | **Entregue** | M | ✔ |
+| 7a | ⤓ Relatório na Cascata de Escolhas (Word + papel do preenchido) | **Entregue** | P | ✔ |
 | 3b | Reanimar `projeto.cascata_id` | **Entregue** | P (micro) | ✔ |
 | 5 | Ritual de acompanhamento (registro de reunião) | **Entregue** | P | ✔ |
 | 2 | Coleta & Triagem (tratativa item a item) | **Entregue** | M | ✔ (antecipada) |
@@ -1052,11 +2042,25 @@ discutir a dependência, não o quadrante.
 | 3c | Mapa Estratégico BSC: raias, `objetivo_estrategico`, setas | **Não construir** | G | — |
 | 2b | Rodadas, roteiro de perguntas e participantes da coleta | **Não construir** | M | — |
 
-**Por que 3a antes de 1.** Não é impacto, é dependência e trava: a Matriz de
-Impacto (item 1) esbarra na **decisão 1** abaixo — se o GESTOR pode ler
-descrições do diagnóstico corporativo —, que é mudança do modelo de acesso e
-não detalhe de controller. A Matriz de Execução não depende de decisão nenhuma
-e, com o 3b entregue, já tem metade da fonte de dados preenchível.
+**Por que 3a veio antes de 1 — e por que fechou rápido.** Não era impacto, era
+dependência e trava: a Matriz de Impacto (item 1) esbarra na **decisão 1**
+abaixo — se o GESTOR pode ler descrições do diagnóstico corporativo —, que é
+mudança do modelo de acesso e não detalhe de controller. A Matriz de Execução não
+dependia de decisão nenhuma e, com o 3b já entregue, metade da fonte de dados
+(`projeto.cascata_id`) estava preenchível: sobrou uma tabela, um campo e uma aba.
+**Entregue.**
+
+**Por que o 7 furou a fila — e como terminou.** Foi a primeira vez que a ordem
+não saiu da dependência: o dossiê não era pré-requisito de nada e nada dependia
+dele. Entrou na frente por pedido urgente do cliente, e porque o custo de não
+tê-lo era pago toda vez que alguém preparava uma reunião. **Entregue**, e os
+demais voltaram ao degrau em que estavam. Quem for reordenar a fila de novo deve
+tratar um caso desses pelo que ele é: prioridade de *uso*, não de arquitetura.
+
+**Por que o 8 depois do 3a.** É melhoria de aviso, não correção de defeito: as
+regras de exclusão que recusam já recusam, e as que cascateiam fazem o que
+devem. Ninguém perde dado hoje por causa disso — perde-se entendimento. Se
+aparecer um relato de exclusão que surpreendeu alguém, ele sobe.
 
 **Nota de manutenção.** Esta tabela ficou desatualizada uma vez (o 3b constava
 como "Construir" já estando entregue, e por pouco não guiou a escolha do
@@ -1069,11 +2073,13 @@ o índice que se consulta para decidir o que vem depois.
 
 Perguntas que nenhuma análise de código responde — só o dono do processo.
 
-1. **Acesso do gestor ao diagnóstico corporativo.** A Matriz de Impacto faz o
-   GESTOR ler descrições de fatores do plano corporativo. Hoje a regra é dura
-   (`docs/PLANEJAMENTO-SISTEMA.md` §5). Flexibiliza? Se sim, o payload do gestor
-   traz **só** descrição do fator + sinal + texto da célula, e o §5 precisa ser
-   reescrito na mesma PR.
+1. ~~Acesso do gestor ao diagnóstico corporativo.~~ **Respondida pelo cliente
+   (2026-09-01): flexibiliza, estreito.** O gestor recebe **só** a descrição do
+   fator, o sinal e o texto da célula, e apenas dos negócios do escopo dele; o
+   `score` da GUT sai do payload explicitamente. O §5 de
+   `docs/PLANEJAMENTO-SISTEMA.md` foi reescrito na mesma entrega, e a bateria
+   funcional (§9e) prova as duas metades — que a descrição chega e que o score
+   não. Destravou o tema 1.
 2. **Perfil LEITURA pode gravar ideia na Coleta?** Seria a primeira escrita por
    LEITURA em todo o sistema. É o que permite brainstorm amplo sem inflar perfis —
    mas é mudança do modelo de segurança, não detalhe de controller.
@@ -1088,13 +2094,23 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
    como proposto? Quem conduz? A reunião mensal é por negócio ou agrupa negócios?
 6. **Existe (ou existirá) real com granularidade mensal vindo do Qlik?** Se sim,
    meta × real deixa de ser assunto só anual e muda a pauta do ritual.
-7. **Quem é o dono da Matriz de Impacto:** a controladoria preenche a grade inteira,
-   ou cada gestor preenche a coluna dele? A versão proposta assume a primeira
-   (gestor só lê) — é o mais simples e o mais defensável, mas é decisão de processo.
-8. **SMTP, cron e backup já estão configurados em produção?** Se não estiverem,
-   os passos 0 e 0-bis são a primeira coisa a fazer, antes de qualquer linha de
-   código deste backlog. O backup vem primeiro dos dois: um aviso que não sai
-   custa um lembrete; um banco sem cópia custa o sistema.
+7. ~~Quem é o dono da Matriz de Impacto?~~ **Respondida pelo cliente
+   (2026-09-01): os DOIS preenchem** — controladoria em qualquer célula, gestor
+   na coluna dele. Não era nenhuma das opções oferecidas, e saiu mais barata do
+   que a análise previa: a célula não pertence ao plano corporativo, pertence à
+   matriz e apenas cita um fator, então a autorização é a do NEGÓCIO (que o
+   sistema já sabe responder) e não a do planejamento. O gestor escolhe o sinal
+   e o texto; a linha nunca.
+8. ~~SMTP, cron e backup já estão configurados em produção?~~ **Respondida pelo
+   cliente (2026-09-01): os dois estão ligados.** Era a única "decisão" que não
+   dependia de opinião, e a resposta tirou os passos 0 e 0-bis da fila. O que
+   fica no lugar dela é **conferência periódica**, não pendência: as três
+   verificações silenciosas do backup (o arquivo sobrevive ao contêiner? há
+   cópia fora do provedor? alguém já restaurou?) e, no e-mail, qual caminho de
+   envio está de fato em uso — no Railway as portas de SMTP são bloqueadas e
+   quem envia é a API (`EMAIL_API_CHAVE`), então o bloco `SMTP_*` pode estar
+   completo sem que nada saia. Tudo tabelado no tema 6; o comando que responde é
+   `php cli/notificar.php diagnostico`, rodado de dentro do contêiner que envia.
 9. ~~Quem responde ao quiz da tempestade?~~ **Respondido e entregue:** qualquer
    pessoa, por QR ou link, sem cadastro — modelo do Quiz Copérdia. A revisão de
    segurança exigida (tema 2.1, decisão A) **foi executada** antes de subir
@@ -1104,3 +2120,21 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
 11. ~~As três perguntas dos Cruzamentos da SWOT~~ (carga inicial dos 12, nome da
    seção no menu, conduzir em oficina) — **respondidas** e registradas no §9 de
    `docs/CRUZAMENTOS-SWOT.md`: sem carga, menu "Cruzamentos", sala adiada.
+12. ~~PESTEL e Porter vão ao plano de ação pela SWOT ou direto?~~ **Respondida
+   pelo cliente (2026-08-31): direto.** Registrada no tema 9, fatia A, com o que
+   a revogação não tocou. A promoção continua sendo a recomendação de método —
+   deixou de ser obrigação do sistema.
+13. **Mover um fator entre etapas: o que acontece com a nota da GUT?** A GUT é da
+   SWOT. Um fator que sai da SWOT leva a nota para uma tela onde ela não existe,
+   ou a nota se perde? **Hoje o sistema recusa o movimento** e manda limpar a
+   nota antes — não trava mais a entrega, mas responder isto transformaria uma
+   recusa em comportamento.
+14. **Mover um fator citado num cruzamento: o par sobrevive?** Um cruzamento
+   escolhe um fator INTERNO e um EXTERNO; mover o fator pode inverter o lado e
+   deixar o par sem sentido. Apagar o cruzamento, recusar o movimento, ou deixar
+   o par inválido visível para alguém decidir? **Hoje recusa.**
+15. **Mover a ORIGEM de um fator promovido move o promovido junto?** E mover um
+   fator que **já virou ação** — a origem da ação muda no relatório, ou o
+   movimento é recusado? **Hoje recusa os dois**, que era a proposta: mover
+   fator limpo é fácil, mover fator amarrado é o tema inteiro. Cada resposta que
+   vier vira uma linha da tabela de amarras na fatia 9c.

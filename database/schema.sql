@@ -92,7 +92,19 @@ CREATE TABLE IF NOT EXISTS cenario_item (
   tipo             ENUM('SITUACAO_ATUAL','TENDENCIA') NOT NULL,
   ordem            SMALLINT NOT NULL DEFAULT 0,
   descricao        TEXT NOT NULL,
+  -- Encaminhamento ao plano de ação, na MESMA regra do fator e do cruzamento:
+  -- `acao_em` marca o envio e `desdobramento_id` guarda a ação que nasceu dele;
+  -- os dois juntos definem "aguardando alocação". Três tabelas com os mesmos
+  -- três campos é repetição de propósito — o que elas compartilham é a REGRA,
+  -- não a linha, e uma tabela de encaminhamentos polimórfica trocaria três
+  -- colunas por uma junção a mais em toda leitura das três telas.
+  acao_em          DATETIME NULL,
+  acao_por         INT NULL,
+  desdobramento_id INT NULL,
   CONSTRAINT fk_cenario_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE
+  -- As FKs de `acao_por` e `desdobramento_id` moram no migrate (`garantirFk`),
+  -- como as do fator: aqui a segunda quebraria a instalação NOVA, porque
+  -- `desdobramento` só é criada mais abaixo neste mesmo arquivo.
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS fator (
@@ -223,6 +235,115 @@ CREATE TABLE IF NOT EXISTS indicador_valor (
   valor         DECIMAL(15,2) NOT NULL,
   UNIQUE KEY uk_ind_ano (indicador_id, ano, tipo, versao_meta),
   CONSTRAINT fk_iv_indicador FOREIGN KEY (indicador_id) REFERENCES indicador(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Que escolha da cascata este indicador MEDE. É o vínculo que faltava entre a
+-- decisão e a medida; o outro lado do vão — decisão × execução — já é
+-- `projeto.cascata_id`. Com os dois, a Matriz de Execução se lê da cascata sem
+-- entidade nova: escolha, o que a mede, e o que a executa.
+-- Clone literal de `cascata_fator`: N:N, chave composta e `ON DELETE CASCADE`
+-- nos dois lados, porque o vínculo não sobrevive a nenhuma das pontas. O índice
+-- avulso em `cascata_id` existe porque a leitura da matriz entra POR ELE (a
+-- chave composta só serve a quem começa pelo indicador).
+CREATE TABLE IF NOT EXISTS indicador_cascata (
+  indicador_id INT NOT NULL,
+  cascata_id   INT NOT NULL,
+  PRIMARY KEY (indicador_id, cascata_id),
+  KEY idx_ic_cascata (cascata_id),
+  CONSTRAINT fk_ic_ind FOREIGN KEY (indicador_id) REFERENCES indicador(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ic_cas FOREIGN KEY (cascata_id) REFERENCES cascata_escolha(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+/*
+ * Matriz de Impacto por Negócio: o que o diagnóstico CORPORATIVO faz com cada
+ * negócio. Linha = ameaça ou oportunidade da SWOT corporativa do ano; coluna =
+ * negócio; célula = o sinal e o como.
+ *
+ * **Sem `planejamento_id` e sem `ano`**, de propósito: os dois vêm do `fator`
+ * apontado, e guardá-los aqui criaria uma segunda verdade — a célula podia
+ * dizer 2027 com o fator dela em 2026, e nenhuma tela mostraria a divergência.
+ *
+ * **Não reusa `fator.promovido_de_id`** para o vínculo. `FatorController::listar`
+ * faz `LEFT JOIN fator pr ON pr.promovido_de_id = f.id`: reusar o campo
+ * multiplicaria a linha do fator corporativo por negócio impactado, duplicando
+ * cards na tela do PESTEL — longe daqui, e sem ninguém ligar as duas coisas.
+ *
+ * A FK do fator é ON DELETE CASCADE (some o fator, some a linha da matriz); a
+ * do negócio NÃO é: negócio não se apaga, se desativa (`NegocioController`
+ * recusa com contagem), e um CASCADE ali só esconderia a recusa.
+ */
+/*
+ * Versão do conteúdo de um planejamento — o "pulso" que faz duas telas abertas
+ * ao mesmo tempo se acompanharem.
+ *
+ * Uma linha por planejamento, um inteiro que só cresce. É o MENOR estado
+ * possível que responde "mudou alguma coisa desde a última vez que olhei?", e
+ * essa pequenez é o requisito: a rota que a lê roda a cada poucos segundos por
+ * admin conectado, e uma consulta cara ali viraria carga permanente.
+ *
+ * Por que um contador e não `MAX(atualizado_em)` das tabelas: a maioria delas
+ * não tem carimbo de tempo, e as que têm não registram DELETE — apagar um fator
+ * não mexeria em carimbo nenhum, e a outra tela seguiria mostrando o que já não
+ * existe. O contador não tem esse buraco porque quem o incrementa é a ESCRITA,
+ * qualquer que seja ela.
+ *
+ * Sem FK para `planejamento`: a linha é cache de sincronização, não dado do
+ * plano. Um plano apagado deixa aqui uma linha órfã de 16 bytes que ninguém
+ * lê — e uma FK CASCADE só acrescentaria trabalho ao DELETE para economizar
+ * isso.
+ */
+CREATE TABLE IF NOT EXISTS planejamento_versao (
+  planejamento_id INT PRIMARY KEY,
+  versao          BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  em              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+/*
+ * Um item por vez: o cadeado de edição.
+ *
+ * Enquanto alguém tem o formulário de um item aberto, ninguém mais o abre — e a
+ * tela dos outros mostra o NOME de quem está editando. É o que evita a
+ * sobrescrita silenciosa (medida em 2026-09-01: o segundo a salvar apagava o
+ * primeiro, e o servidor respondia `ok:true`).
+ *
+ * **A chave primária composta é o que torna a tomada atômica.** Um
+ * `INSERT … ON DUPLICATE KEY UPDATE` com a condição de expiração dentro do
+ * `IF()` pega ou não pega numa instrução só — sem transação, e sem a janela
+ * entre "conferir se está livre" e "tomar" por onde dois cliques simultâneos
+ * passariam os dois.
+ *
+ * `planejamento_id` é redundante com o registro apontado (dá para chegar nele
+ * por cinco caminhos diferentes, um por recurso) e está aqui de propósito: o
+ * pulso precisa listar os cadeados de um ciclo, e sem esta coluna isso seria
+ * uma união de cinco JOINs numa rota que roda a cada 4s por admin.
+ *
+ * Linha efêmera: morre por validade, sem FK para `usuario` nem para o registro
+ * apontado. Um cadeado de um item apagado é lixo de 30 bytes que nunca mais é
+ * lido — e uma FK por recurso exigiria uma tabela de cadeado por recurso.
+ */
+CREATE TABLE IF NOT EXISTS edicao_bloqueio (
+  recurso         VARCHAR(40) NOT NULL,
+  registro_id     INT NOT NULL,
+  planejamento_id INT NOT NULL,
+  usuario_id      INT NOT NULL,
+  expira_em       DATETIME NOT NULL,
+  PRIMARY KEY (recurso, registro_id),
+  KEY idx_bloqueio_plan (planejamento_id, expira_em)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS impacto_negocio (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  fator_id      INT NOT NULL,
+  negocio_id    INT NOT NULL,
+  sinal         ENUM('POSITIVO','NEGATIVO') NOT NULL,
+  texto         TEXT NULL,
+  atualizado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  -- Uma célula por par: é o que faz o `salvar` ser um upsert e não uma pilha
+  -- de opiniões sobre o mesmo cruzamento.
+  UNIQUE KEY uk_impacto (fator_id, negocio_id),
+  KEY idx_imp_negocio (negocio_id),
+  CONSTRAINT fk_imp_fator   FOREIGN KEY (fator_id)   REFERENCES fator(id) ON DELETE CASCADE,
+  CONSTRAINT fk_imp_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS projeto (
@@ -435,6 +556,15 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   origem           ENUM('TEMPESTADE','QUIZ') NOT NULL DEFAULT 'TEMPESTADE',
   pergunta_id      INT NULL,
   tipo_resposta    ENUM('ESCOLHA','RENUNCIA','SITUACAO_ATUAL','TENDENCIA') NULL,
+  -- O par do CRUZAMENTO (TOWS), quando a pergunta é desse alvo: é a única
+  -- resposta da sala que não é só texto — a pessoa ESCOLHE dois fatores da SWOT
+  -- e escreve a estratégia do encontro deles. Nulos em todos os outros alvos.
+  --
+  -- `SET NULL` e não `CASCADE`: apagar um fator da SWOT não pode apagar o que
+  -- alguém escreveu na oficina. O par se desfaz, a voz fica — e a condução vê
+  -- que o fator saiu, em vez de ver a resposta sumir sem explicação.
+  fator_interno_id INT NULL,
+  fator_externo_id INT NULL,
   texto            TEXT NOT NULL,
   texto_tratado    TEXT NULL,
   destino_sugerido ENUM('CENARIO','PESTEL','PORTER','SWOT','NAO_SEI') NOT NULL DEFAULT 'NAO_SEI',
@@ -442,7 +572,7 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   impacto          ENUM('ALTO','BAIXO') NULL,
   esforco          ENUM('BAIXO','ALTO') NULL,
   votos            SMALLINT NOT NULL DEFAULT 0,
-  destino_tipo     ENUM('CENARIO','FATOR','ACAO','CASCATA') NULL,
+  destino_tipo     ENUM('CENARIO','FATOR','ACAO','CASCATA','CRUZAMENTO') NULL,
   destino_id       INT NULL,
   motivo           TEXT NULL,
   triado_por       INT NULL,
@@ -512,17 +642,21 @@ CREATE TABLE IF NOT EXISTS coleta_rodada (
 CREATE TABLE IF NOT EXISTS quiz_pergunta (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   rodada_id    INT NOT NULL,
-  alvo_tipo    ENUM('CASCATA','CENARIO','FATOR','LIVRE') NOT NULL DEFAULT 'CASCATA',
+  alvo_tipo    ENUM('CASCATA','CENARIO','FATOR','CRUZAMENTO','LIVRE') NOT NULL DEFAULT 'CASCATA',
   -- a pergunta nas palavras do condutor (o padrão vem do alvo, em App\Services\Quiz)
   enunciado    VARCHAR(255) NULL,
   -- CASCATA: a célula (driver x horizonte x eixo). Nulos nos demais alvos.
   horizonte_id INT NULL,
   driver_id    INT NULL,
   eixo_id      INT NULL,
-  -- CENARIO e FATOR: a análise de diagnóstico é anual
+  -- CENARIO, FATOR e CRUZAMENTO: a análise de diagnóstico é anual
   ano          SMALLINT NULL,
   -- FATOR: qual coluna do PESTEL/Porter/SWOT
   etapa        ENUM('PESTEL','PORTER','SWOT') NULL,
+  -- FATOR: o quadrante. CRUZAMENTO: o BLOCO do TOWS (ATACAR, DEFENDER,
+  -- REFORCAR, PROTEGER) — a mesma coluna porque a pergunta é a mesma coisa nos
+  -- dois casos, "qual recorte desta análise estamos perguntando". `alvo_chave`
+  -- já carrega o `alvo_tipo`, então os dois usos não colidem no UNIQUE.
   categoria    VARCHAR(40) NULL,
   ordem        SMALLINT NOT NULL DEFAULT 0,
   situacao     ENUM('PENDENTE','ATIVA','ENCERRADA') NOT NULL DEFAULT 'PENDENTE',
@@ -562,8 +696,19 @@ CREATE TABLE IF NOT EXISTS coleta_participante (
   rodada_id  INT NOT NULL,
   token      CHAR(32) NOT NULL,
   nome       VARCHAR(120) NOT NULL,
+  -- Identificador do APARELHO, gerado e guardado pelo navegador — o `qc_device`
+  -- do Quiz Copérdia. O token é a credencial da rodada; o dispositivo é o que
+  -- permite DEVOLVER essa credencial a quem já entrou, sem pedir nada e sem
+  -- ter de confiar no nome digitado.
+  dispositivo VARCHAR(80) NULL,
+  -- Última vez que este participante falou com o servidor. Faz o papel da
+  -- conexão viva do Quiz (lá o SSE diz quem está on-line; aqui a tela consulta
+  -- de 4 em 4 segundos) e é o que autoriza devolver a identidade pelo NOME:
+  -- dono calado há tempo é a mesma pessoa voltando; dono ativo, não é.
+  visto_em   DATETIME NULL,
   criado_em  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_part (rodada_id, token),
+  KEY idx_part_disp (rodada_id, dispositivo),
   CONSTRAINT fk_part_rodada FOREIGN KEY (rodada_id) REFERENCES coleta_rodada(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

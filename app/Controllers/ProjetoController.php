@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Bloqueio;
 use App\Services\Consolidacao;
 use App\Services\Recorrencia;
 
@@ -33,7 +34,36 @@ class ProjetoController
              ORDER BY p.ano, p.id',
             [$planId]
         );
+        // O que a exclusão do projeto mexe fora dele, para a tela poder dizer
+        // isso ANTES do clique. Duas consultas agregadas, FORA do laço: uma por
+        // projeto faria dezenas numa tela que já lista dezenas.
+        // As duas consequências são diferentes e a frase precisa distinguir: o
+        // investimento NÃO some — perde o vínculo (a FK não tem ON DELETE) e
+        // continua sendo um investimento; o comentário some mesmo, porque é
+        // polimórfico e quem o apaga é o `excluir` daqui.
+        $solta = [];
+        foreach (Database::todos(
+            'SELECT projeto_id, COUNT(*) AS n FROM investimento
+             WHERE planejamento_id = ? AND projeto_id IS NOT NULL
+             GROUP BY projeto_id',
+            [$planId]
+        ) as $x) {
+            $solta[(int)$x['projeto_id']] = (int)$x['n'];
+        }
+        $comentarios = [];
+        foreach (Database::todos(
+            "SELECT c.ref_id, COUNT(*) AS n FROM comentario c
+             JOIN projeto p ON p.id = c.ref_id
+             WHERE c.ref_tipo = 'PROJETO' AND p.planejamento_id = ?
+             GROUP BY c.ref_id",
+            [$planId]
+        ) as $x) {
+            $comentarios[(int)$x['ref_id']] = (int)$x['n'];
+        }
+
         foreach ($projetos as &$p) {
+            $p['investimentos_vinculados'] = $solta[(int)$p['id']] ?? 0;
+            $p['comentarios'] = $comentarios[(int)$p['id']] ?? 0;
             $p['iniciativas'] = Database::todos(
                 'SELECT * FROM iniciativa WHERE projeto_id = ? ORDER BY ordem, id',
                 [$p['id']]
@@ -184,6 +214,7 @@ class ProjetoController
         // preservado como está nos projetos antigos
         if ($id) {
             $this->exigirProjeto($id, $planId);
+            Bloqueio::exigirMeu('projeto', $id, (int)Auth::exigirLogin()['id'], 'este projeto');
             Database::executar(
                 'UPDATE projeto SET tipo = ?, ano = ?, titulo = ?, descricao = ?,
                    responsavel = ?, horizonte_id = ?, cascata_id = ? WHERE id = ?',
@@ -206,6 +237,7 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirProjeto($id, $planId);
+        Bloqueio::exigirMeu('projeto', $id, (int)Auth::exigirLogin()['id'], 'este projeto');
         // Investimentos vinculados perdem o vínculo (a FK não tem ON DELETE)
         Database::executar('UPDATE investimento SET projeto_id = NULL WHERE projeto_id = ?', [$id]);
         // Comentários do projeto (ref_tipo/ref_id é polimórfico e não tem FK
@@ -451,6 +483,7 @@ class ProjetoController
         ];
         if ($id) {
             $this->exigirDesdobramento($id, $planId);
+            Bloqueio::exigirMeu('desdobramento', $id, (int)Auth::exigirLogin()['id'], 'esta ação');
             Database::executar(
                 'UPDATE desdobramento SET projeto_id = ?, iniciativa_id = ?, o_que = ?, por_que = ?, quem = ?,
                    quem_usuario_id = ?, recorrencia = ?, recorrencia_dia = ?, recorrencia_dias = ?,
@@ -472,15 +505,20 @@ class ProjetoController
             // Ação criada a partir de uma ideia da coleta ("Plano de ação"):
             // fecha o vínculo para a ideia deixar de ficar pendente e apontar
             // para o desdobramento que nasceu dela
-            // Fator da SWOT encaminhado ao plano: mesmo fechamento de vínculo,
-            // e a mesma guarda no WHERE — só fecha o que estava mesmo na fila,
-            // para um pedido repetido não sequestrar o vínculo de outra ação.
+            // Fator encaminhado ao plano: mesmo fechamento de vínculo, e a
+            // mesma guarda no WHERE — só fecha o que estava mesmo na fila, para
+            // um pedido repetido não sequestrar o vínculo de outra ação.
+            // Sem filtro de ETAPA: PESTEL e Porter passaram a ir direto ao
+            // plano (ver `FatorController::planoAcao`), e manter `etapa =
+            // 'SWOT'` aqui deixaria a ação criada sem fechar o vínculo — o
+            // fator ficaria eternamente "aguardando" numa fila que ele já
+            // saiu, e o caminho de volta apontaria para lugar nenhum.
             $fatorId = (int)($d['fator_id'] ?? 0);
             if ($fatorId) {
                 Database::executar(
-                    "UPDATE fator SET desdobramento_id = ?
-                     WHERE id = ? AND planejamento_id = ? AND etapa = 'SWOT'
-                       AND acao_em IS NOT NULL AND desdobramento_id IS NULL",
+                    'UPDATE fator SET desdobramento_id = ?
+                     WHERE id = ? AND planejamento_id = ?
+                       AND acao_em IS NOT NULL AND desdobramento_id IS NULL',
                     [$id, $fatorId, $planId]
                 );
             }
@@ -493,6 +531,17 @@ class ProjetoController
                      WHERE id = ? AND planejamento_id = ?
                        AND acao_em IS NOT NULL AND desdobramento_id IS NULL',
                     [$id, $cruzamentoId, $planId]
+                );
+            }
+            // Item da Análise de Cenário: quarta origem da mesma fila, mesmo
+            // fechamento e mesma guarda no WHERE.
+            $cenarioId = (int)($d['cenario_item_id'] ?? 0);
+            if ($cenarioId) {
+                Database::executar(
+                    'UPDATE cenario_item SET desdobramento_id = ?
+                     WHERE id = ? AND planejamento_id = ?
+                       AND acao_em IS NOT NULL AND desdobramento_id IS NULL',
+                    [$id, $cenarioId, $planId]
                 );
             }
             $coletaId = (int)($d['coleta_item_id'] ?? 0);
@@ -681,6 +730,7 @@ class ProjetoController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirDesdobramento($id, $planId);
+        Bloqueio::exigirMeu('desdobramento', $id, (int)Auth::exigirLogin()['id'], 'esta ação');
         $this->soltarAcoes('id = ?', [$id]);
         Database::executar('DELETE FROM desdobramento WHERE id = ?', [$id]);
         Json::ok();
@@ -701,8 +751,9 @@ class ProjetoController
      * isso. Só `excluirDesdobramento` fazia a limpeza — apagar o PROJETO ou a
      * INICIATIVA derruba as ações por CASCADE sem passar por lá.
      *
-     * O fator da SWOT não precisa de linha nenhuma: a FK dele é
-     * ON DELETE SET NULL e o banco o devolve para a fila sozinho.
+     * O fator, o cruzamento e o item do cenário não precisam de linha nenhuma:
+     * a FK dos três é ON DELETE SET NULL e o banco os devolve para a fila
+     * sozinho. A ideia da Coleta é a exceção justamente por não ter FK.
      *
      * @param string $onde   condição sobre `desdobramento`, literal do código
      * @param array  $params os valores dessa condição

@@ -34,7 +34,7 @@
     <!--
       Atalho para os Cadastros. Ele mora ao lado do ☰ porque é a tela que se
       abre para AJUSTAR o sistema (usuários, negócios, horizontes) e não faz
-      parte do percurso do planejamento — procurá-la no meio das dezesseis
+      parte do percurso do planejamento — procurá-la no meio das dezessete
       seções do menu custava duas decisões antes do primeiro clique.
       É um <a> com data-secao, o mesmo contrato dos itens do menu: sem onclick,
       que a CSP não permite.
@@ -100,6 +100,10 @@
         <li><a class="nav-link" href="#porter" data-secao="porter">Porter — 5 Forças</a></li>
         <li><a class="nav-link" href="#swot" data-secao="swot">SWOT</a></li>
         <li><a class="nav-link" href="#gut" data-secao="gut">Matriz GUT</a></li>
+        <!-- Depois do GUT, e não entre Porter e SWOT: a linha da matriz é a SWOT
+             corporativa priorizada pelo GUT, então o dado de entrada dela só
+             existe depois dele. -->
+        <li><a class="nav-link" href="#impacto" data-secao="impacto">Impacto por Negócio</a></li>
         <li><a class="nav-link" href="#cruzamentos" data-secao="cruzamentos">Cruzamentos</a></li>
         <li class="nav-item mt-2 text-white-50 small">Estratégia</li>
         <li><a class="nav-link" href="#cascata" data-secao="cascata">Cascata de Escolhas</a></li>
@@ -110,6 +114,12 @@
         <li class="nav-item mt-2 text-white-50 small">Gestão</li>
         <li><a class="nav-link" href="#metas" data-secao="metas">Metas · Indicadores</a></li>
         <li><a class="nav-link" href="#relatorio" data-secao="relatorio">Relatório de Status</a></li>
+        <!-- O Dossiê fica ao lado do Relatório de Status porque são as duas
+             saídas em papel do sistema, e é aqui que se procura por elas. O que
+             muda é o assunto: o Relatório é o documento da REUNIÃO (um período,
+             o que andou); o Dossiê é o documento do PLANO (as etapas inteiras,
+             na ordem em que se lê). -->
+        <li><a class="nav-link" href="#dossie" data-secao="dossie">Dossiê do plano</a></li>
         <li class="nav-item mt-2 text-white-50 small">Encontro</li>
         <li><a class="nav-link" href="#sala" data-secao="sala">Sala · PIN e QR code</a></li>
       </ul>
@@ -135,12 +145,14 @@
       <section id="secao-porter" class="secao d-none"></section>
       <section id="secao-swot" class="secao d-none"></section>
       <section id="secao-gut" class="secao d-none"></section>
+      <section id="secao-impacto" class="secao d-none"></section>
       <section id="secao-cruzamentos" class="secao d-none"></section>
       <section id="secao-cascata" class="secao d-none"></section>
       <section id="secao-projetos" class="secao d-none"></section>
       <section id="secao-investimentos" class="secao d-none"></section>
       <section id="secao-metas" class="secao d-none"></section>
       <section id="secao-relatorio" class="secao d-none"></section>
+      <section id="secao-dossie" class="secao d-none"></section>
       <section id="secao-sala" class="secao d-none"></section>
     </main>
   </div>
@@ -155,6 +167,9 @@
             aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
+          <!-- Cadeado de edição: fica ACIMA dos campos, porque o tempo restante é
+               a primeira coisa a saber ao abrir o formulário. -->
+          <div id="modal-cadeado" class="d-none" role="status"></div>
           <form id="modal-campos"></form>
           <div id="modal-erro" class="alert alert-danger d-none py-2 mt-2" role="alert"></div>
           <!-- O corpo do modal rola, mas nada dizia isso: numa janela baixa o
@@ -181,10 +196,16 @@
        que conduz um encontro: carregam antes das seções, que as consomem -->
   <script src="<?= versao_asset('/assets/js/quiz.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/relatorio-analise.js') ?>"></script>
+  <!-- O aviso de exclusão é o mesmo em toda tela que apaga algo com vínculo:
+       carrega antes das seções, que o consomem -->
+  <script src="<?= versao_asset('/assets/js/vinculos.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/vivo.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/cadeado.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/painel.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/hub.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cadastros.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/diagnostico.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/impacto.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cruzamentos.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/coleta.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/cascata.js') ?>"></script>
@@ -193,6 +214,9 @@
   <script src="<?= versao_asset('/assets/js/secoes/metas.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/relatorio.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/sala.js') ?>"></script>
+  <!-- Depois de TODAS as seções: o dossiê as chama pelo nome para pintá-las de
+       lado, e a tabela de etapas dele referencia cada objeto `Secao*`. -->
+  <script src="<?= versao_asset('/assets/js/secoes/dossie.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/app.js') ?>"></script>
 </body>
 </html>

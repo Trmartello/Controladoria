@@ -1,20 +1,23 @@
 # Baterias de validação
 
-Quatro baterias, cada uma cobrindo uma camada diferente. Elas não substituem a
+Seis baterias, cada uma cobrindo uma camada diferente. Elas não substituem a
 leitura do código — cobrem o que a leitura não pega: regressão silenciosa.
 
 | Bateria | O que cobre | Como falha |
 |---|---|---|
 | `funcional.sh` | Os caminhos de **escrita** de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As **16 seções** em 1500×900 e 390×844 | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal no celular |
+| `sistema.js` | As **18 seções** em 1500×700 e 390×844, mais duas sessões no preenchimento simultâneo, no cadeado de edição e na oficina de Cruzamentos (computador + celular) | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela **pública** da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | O vaivém de `cli/backup.sh` — gerar, verificar, restaurar | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
-| `email.sh` | O envio por **API** de `App\Core\Email`, contra um serviço de mentira | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, ou a chave passou a vazar na mensagem de erro |
+| `email.sh` | O envio por **API** de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |
+| `backup_remoto.sh` | A cópia fora do provedor, contra um B2 de mentira | O envio parou de subir o arquivo inteiro, o erro do serviço deixou de chegar, a chave vazou, ou a falta de configuração passou a derrubar o backup local |
 
 ## Antes de rodar
 
-As três batem numa instância **local** — nunca aponte para produção: a
-`funcional.sh` cria e apaga registros.
+As que precisam da aplicação batem numa instância **local** — nunca aponte para
+produção: a `funcional.sh` cria e apaga registros. A `email.sh` e a
+`backup_remoto.sh` não precisam de nada de pé (sobem o serviço de mentira elas
+mesmas) e a `backup.sh` fala com o banco direto.
 
 ```bash
 # 1. Banco (MariaDB local; o socket precisa de caminho curto)
@@ -25,19 +28,24 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
   ADMIN_SENHA=trocar123 php database/migrate.php
 
 # 3. Servidor — o argumento router (public/index.php) é OBRIGATÓRIO
+#    SALA_AUSENTE_SEG encurta a janela de ausência da sala (padrão: 300 s). Sem
+#    ela, a funcional pula as duas provas da reentrada pelo NOME em vez de
+#    ficar cinco minutos parada esperando o "dono calado".
 DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
-  php -S 127.0.0.1:8099 -t public public/index.php
+  SALA_AUSENTE_SEG=6 php -S 127.0.0.1:8099 -t public public/index.php
 ```
 
 ## Rodando
 
 ```bash
-./testes/rodar.sh                 # as quatro, em sequência
+./testes/rodar.sh                 # as seis, em sequência
 ./testes/funcional.sh             # só a funcional
+SALA_AUSENTE_SEG=6 ./testes/funcional.sh   # inclui a reentrada pelo nome
 node testes/sistema.js            # só a de sistema
 node testes/participante.js 123456   # precisa do PIN de uma rodada ABERTA
 ./testes/backup.sh                # backup/restauração (cria e derruba bancos descartáveis)
 ./testes/email.sh                 # envio por API (não precisa de banco nem de servidor)
+./testes/backup_remoto.sh         # cópia fora do provedor (idem)
 ```
 
 A `backup.sh` é a única que **não** passa pela aplicação: ela fala com o banco
@@ -86,4 +94,20 @@ Dito de propósito, para ninguém confundir verde com completo:
 - O arraste da matriz de prioridade e o agrupamento por gesto.
 - A exportação `.xls` e a folha de impressão do relatório.
 - O envio de e-mail (`cli/notificar.php`) e a sincronização com o Qlik.
-- Concorrência de verdade: dois condutores agindo ao mesmo tempo.
+
+A concorrência **saiu desta lista**: dois navegadores, com duas contas
+diferentes, provam o preenchimento simultâneo (`provasDuasTelas`) e o cadeado de
+edição (`provasCadeado`); a seção 9g da `funcional.sh` prova as guardas do
+servidor, que são o que de fato impede a sobrescrita.
+
+A **condução ao vivo** também saiu, em parte: `provasCruzamentoNaSala` percorre
+uma oficina inteira — o condutor abre o 🎤, um celular de verdade (390×844)
+propõe o par, o painel do condutor anda sozinho e o "Usar" vira registro. O que
+continua fora são os outros ritos da sala (a tempestade e a matriz de
+prioridade) a duas telas.
+
+Uma armadilha própria destas duas: elas dependem de o banco local estar
+**limpo**. Massa deixada por uma execução interrompida empurra os projetos da
+prova tela abaixo, e as medições de rolagem (o cabeçalho fixo de Projetos)
+falham por posição, não por defeito. Antes de investigar um vermelho ali,
+confira se sobrou lixo de prova no banco.

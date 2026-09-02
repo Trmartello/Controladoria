@@ -28,6 +28,392 @@ const SecaoCascata = {
   // a marca de um segundo condutor (que chega pelo polling) sumir da tela.
   usoQuiz: {},
 
+  /**
+   * Aba aberta: `escolhas` (a matriz de decisão) ou `execucao` (a Matriz de
+   * Execução). Mora no dono, como todo estado de vista desta tela, para
+   * sobreviver às repinturas do polling — quem estivesse lendo a execução
+   * durante um encontro veria a tela voltar sozinha para a outra aba.
+   */
+  aba: 'escolhas',
+
+  /** Horizonte lido na Matriz de Execução; `null` = o primeiro do ciclo. */
+  horizonteMatriz: null,
+
+  /**
+   * Uma cor por horizonte, para o relatório separar as fases de relance. A
+   * matriz da tela não precisa disso — ali o horizonte é a COLUNA, e a posição
+   * já diz qual é. No documento as fases viram seções empilhadas, e sem cor
+   * nenhuma três blocos iguais se leem como um só.
+   */
+  CORES_HORIZONTE: ['#007a45', '#2c7fb8', '#b08d4f', '#8f3b3b'],
+
+  /**
+   * O que já foi PREENCHIDO, agrupado por horizonte — a matéria-prima do
+   * relatório nos dois formatos (o `.doc` e o papel).
+   *
+   * Célula vazia não entra. O pedido é o relatório do que já foi decidido, e uma
+   * lista de "— definir síntese —" no meio das decisões esconderia justamente o
+   * que existe. Quanto FALTA já está dito nos dois contadores do cabeçalho, que
+   * vão no contexto do documento.
+   *
+   * Lê `this.dados` a cada chamada, nunca uma cópia: numa oficina a matriz muda
+   * embaixo da tela a cada batida do polling, e um relatório montado na pintura
+   * sairia com o texto de dez minutos atrás.
+   */
+  relatorioSecoes() {
+    const { horizontes, drivers, eixos, escolhas } = this.dados || {};
+    if (!horizontes) return [];
+    return horizontes.map((h, i) => {
+      const itens = [];
+      drivers.forEach((d) => {
+        const daCelula = (eixoId) => escolhas.find((e) =>
+          e.driver_id == d.id && e.horizonte_id == h.id
+          && (eixoId ? e.eixo_id == eixoId : !e.eixo_id));
+        // A síntese primeiro, as aberturas depois — a ordem em que a célula é
+        // lida na tela, e a ordem em que a decisão foi tomada.
+        [{ rotulo: 'Síntese da célula', registro: daCelula(null) },
+          ...eixos.map((x) => ({ rotulo: `Eixo · ${x.nome}`, registro: daCelula(x.id) }))]
+          .filter((p) => p.registro && String(p.registro.escolha || '').trim())
+          .forEach((p) => itens.push({ driver: d.nome, rotulo: p.rotulo, registro: p.registro }));
+      });
+      return { horizonte: h, cor: this.CORES_HORIZONTE[i % this.CORES_HORIZONTE.length], itens };
+    }).filter((s) => s.itens.length);
+  },
+
+  /**
+   * As notas de uma escolha: a renúncia e as evidências da SWOT que a
+   * fundamentam. A renúncia é o que esta análise tem de próprio — uma escolha
+   * publicada sem ela é só uma intenção — e por isso vai no documento mesmo
+   * quando o cartão da tela a mostra recolhida.
+   */
+  notasEscolha(reg) {
+    const n = [];
+    if (String(reg.renuncia || '').trim()) n.push(`Renúncia: ${reg.renuncia}`);
+    const fatores = (reg.fatores || []).map((f) =>
+      `${Diag.QUADRANTES[f.categoria] || f.categoria}: ${f.descricao}${
+        f.score ? ` (GUT ${f.score})` : ''}`);
+    if (fatores.length) n.push(`Fundamenta (SWOT): ${fatores.join('; ')}`);
+    return n;
+  },
+
+  /**
+   * O documento no PAPEL — a outra metade do botão "Relatório", já que o PDF é
+   * a impressão da própria tela.
+   *
+   * Ele existe porque a tela NÃO serve de documento aqui: a matriz mostra só as
+   * sínteses, cortadas na largura da célula, e as aberturas por eixo só aparecem
+   * na célula que estiver aberta. Imprimir o que está à vista publicaria uma
+   * fração do preenchido. Este bloco é o preenchimento inteiro, escondido na
+   * tela (`d-none`) e revelado só na impressão (`d-print-block`).
+   *
+   * A estrutura é a das colunas do diagnóstico de propósito — `caixa-coluna`,
+   * `cabecalho-coluna`, `corpo-coluna` dentro de `RelatorioAnalise.bloco` —
+   * porque é essa marcação que o `@media print` já sabe abrir em documento
+   * vertical, com o título da seção repetido no topo de cada folha.
+   */
+  renderImpressao() {
+    const alvo = document.getElementById('documento-cascata');
+    if (!alvo) return;
+    const secoes = this.relatorioSecoes();
+    if (!secoes.length) {
+      alvo.innerHTML = '<p class="fst-italic">Nenhuma escolha preenchida até aqui.</p>';
+      return;
+    }
+    const cartao = (it) => `
+      <div class="card mb-2"><div class="card-body py-2 px-3">
+        <div class="fw-bold small">${Modal.esc(it.driver)} · ${Modal.esc(it.rotulo)}</div>
+        <div class="small texto-fator texto-celula mt-1">${Modal.esc(it.registro.escolha)}</div>
+        ${this.notasEscolha(it.registro).map((n) =>
+          `<div class="small text-muted texto-fator mt-1">${Modal.esc(n)}</div>`).join('')}
+      </div></div>`;
+
+    alvo.innerHTML = `<div class="row g-3">${secoes.map((s) => `
+      <div class="col-md-6" data-coluna-categoria="H${s.horizonte.id}">
+        <div class="p-2 rounded caixa-coluna"
+          style="--tinta-coluna:${s.cor}18; border-top: 3px solid ${s.cor}">
+          ${RelatorioAnalise.bloco({
+            cabecalho: `<div class="cabecalho-coluna d-flex align-items-center mb-2">
+              <span class="fw-bold small text-uppercase" style="color:${s.cor}">${
+                Modal.esc(s.horizonte.nome)} · ${s.horizonte.ano_inicio}–${s.horizonte.ano_fim}
+                <span class="fw-normal fst-italic text-lowercase">“${
+                  Modal.esc(s.horizonte.tema)}”</span></span>
+            </div>`,
+            corpo: `<div class="corpo-coluna">${s.itens.map(cartao).join('')}</div>`,
+          })}
+        </div>
+      </div>`).join('')}</div>`;
+  },
+
+  // ── Matriz de Execução ──────────────────────────────────────────────────
+  /**
+   * A leitura que fecha o vão entre decidir e cobrar: por eixo, a escolha (com
+   * a renúncia), os indicadores que a medem, o par meta × real de cada um e os
+   * projetos que a executam.
+   *
+   * **Não é um mapa estratégico.** Não há raias com setas de causa-e-efeito, e
+   * a caixa não é entidade nova: é a própria `cascata_escolha`, que já traz a
+   * renúncia (que o BSC não tem) e os fatores SWOT/GUT que a fundamentam. As
+   * raias são os EIXOS, que já estão cadastrados e ordenados pelo usuário.
+   *
+   * Um horizonte por vez, e não os três: com seis drivers e seis eixos, a
+   * cascata inteira daria mais de cem linhas numa tabela só — e a pergunta que
+   * se faz no trimestral é sempre sobre uma fase.
+   */
+  /**
+   * Como se preenchem as três colunas da direita — a pergunta que a tela
+   * levantava e não respondia.
+   *
+   * A frase "o indicador se amarra na tela Metas · Indicadores" já estava aqui,
+   * e mesmo assim a pergunta veio: um parágrafo cinzento no meio de uma tabela
+   * grande é lido como legenda, não como instrução, e ainda deixava o trabalho
+   * de ACHAR a tela e o campo com quem lê. Aqui o caminho vira botão: diz o
+   * campo exato e leva até ele.
+   *
+   * Os dois vínculos são gravados na tela de ORIGEM, não aqui, e é de propósito
+   * — um indicador mede escolhas de vários horizontes e um projeto executa uma
+   * só, então a pergunta natural ("o que este indicador mede?") é feita de lá
+   * para cá. Editar daqui exigiria repetir os dois formulários na matriz, e
+   * duas telas gravando o mesmo vínculo divergem na primeira mudança.
+   *
+   * `semVinculo` é o único número que muda de estado: indicador que não mede
+   * escolha nenhuma NÃO aparece na tabela, e some sem dizer por quê — por isso
+   * ele vira aviso, e não linha de rodapé.
+   */
+  comoAmarrar(semVinculo) {
+    return `<div class="alert alert-secondary py-2 small d-print-none como-amarrar">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span><strong>Indicadores</strong> e <strong>Meta / Real</strong>: abra o indicador em
+          Metas e marque a escolha no campo <em>“Escolhas da cascata que este indicador
+          mede”</em>.</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap"
+          data-ir="metas">Ir para Metas · Indicadores ↗</button>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+        <span><strong>Iniciativas</strong>: edite o projeto e escolha a célula no campo
+          <em>“Escolha da Cascata que este projeto executa”</em>.</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap"
+          data-ir="projetos">Ir para Projetos ↗</button>
+      </div>
+      ${semVinculo ? `<div class="mt-2 pt-2 border-top">
+        <strong>${semVinculo} indicador(es)</strong> ainda não medem escolha nenhuma — e por isso
+        não aparecem na tabela abaixo.</div>` : ''}
+    </div>`;
+  },
+
+  matrizExecucao() {
+    const { horizontes, drivers, eixos, escolhas, indicadores, projetos } = this.dados;
+    if (!horizontes.length) {
+      return '<div class="alert alert-info">Cadastre os horizontes do ciclo em Cadastros.</div>';
+    }
+    const h = horizontes.find((x) => x.id == this.horizonteMatriz) || horizontes[0];
+    const nome = (lista, id) => lista.find((x) => x.id == id)?.nome || '';
+
+    // Índices num passe: a tabela é montada em memória, e não com uma varredura
+    // por linha — com seis eixos × seis drivers, o laço aninhado ingênuo faria
+    // milhares de comparações a cada pintura.
+    const porEscolha = { indicadores: {}, projetos: {} };
+    for (const i of indicadores || []) {
+      for (const cid of i.cascatas || []) (porEscolha.indicadores[cid] ||= []).push(i);
+    }
+    for (const p of projetos || []) (porEscolha.projetos[p.cascata_id] ||= []).push(p);
+
+    // As raias: um grupo por eixo, na ordem cadastrada, mais a SÍNTESE. Ela vem
+    // primeiro porque é o texto que a matriz publica — as aberturas por eixo
+    // detalham o que ela resume, e lê-las antes dela é ler o detalhe sem o todo.
+    const raias = [
+      { chave: 'S', rotulo: 'Síntese da célula', eixoId: null },
+      ...eixos.map((x) => ({ chave: String(x.id), rotulo: x.nome, eixoId: x.id })),
+    ];
+
+    const fmt = (v) => SecaoMetas.fmt(v);
+    const celulaKpi = (i) => {
+      // A MESMA regra da tela de Metas, chamada de lá: duas cópias diriam
+      // números diferentes do mesmo indicador em telas vizinhas.
+      const { real, meta, atingiu } = SecaoMetas.metaReal(i);
+      const cor = atingiu === null ? 'text-muted' : atingiu ? 'text-success fw-bold' : 'text-danger fw-bold';
+      return `<div class="small text-nowrap ${cor}">
+        ${real ? `${fmt(real.valor)} <span class="text-muted">(${real.ano})</span>` : 'sem real'}
+        ${meta ? ` / meta ${fmt(meta.valor)}` : ''}</div>`;
+    };
+
+    const corpo = raias.map((raia) => {
+      const daRaia = drivers
+        .map((d) => escolhas.find((e) => e.horizonte_id == h.id && e.driver_id == d.id
+          && (raia.eixoId ? e.eixo_id == raia.eixoId : !e.eixo_id)))
+        .filter(Boolean)
+        .map((e) => ({
+          escolha: e,
+          driver: nome(drivers, e.driver_id),
+          kpis: porEscolha.indicadores[e.id] || [],
+          acoes: porEscolha.projetos[e.id] || [],
+        }));
+      // Raia sem nenhuma escolha preenchida some da tabela: a matriz é a
+      // leitura do que foi decidido, e uma faixa vazia por eixo empurraria o
+      // que existe para fora da primeira tela.
+      if (!daRaia.length) return '';
+
+      // Uma linha por INDICADOR — é o que alinha o KPI com o número dele. A
+      // escolha e as iniciativas se estendem por elas com `rowspan`; escolha
+      // sem indicador ocupa uma linha, com a coluna do meio vazia.
+      const alturaRaia = daRaia.reduce((n, x) => n + Math.max(1, x.kpis.length), 0);
+      let primeiraDaRaia = true;
+      return daRaia.map((x) => {
+        const altura = Math.max(1, x.kpis.length);
+        const celulaEixo = primeiraDaRaia
+          ? `<td rowspan="${alturaRaia}" class="align-middle celula-raia">${Modal.esc(raia.rotulo)}</td>` : '';
+        primeiraDaRaia = false;
+
+        const celulaEscolha = `<td rowspan="${altura}" class="align-middle">
+          <div class="fw-bold small text-uppercase text-muted">${Modal.esc(x.driver)}</div>
+          <div class="small texto-celula">${Modal.esc(x.escolha.escolha)}</div>
+          ${x.escolha.renuncia ? `<div class="small text-muted texto-celula mt-1">
+            <strong>Renúncia:</strong> ${Modal.esc(x.escolha.renuncia)}</div>` : ''}</td>`;
+
+        const celulaAcoes = `<td rowspan="${altura}" class="align-middle">${x.acoes.length
+          ? x.acoes.map((p) => {
+            // O mesmo catálogo de status da tela de Projetos e do Relatório de
+            // Status (`STATUS_PROJETO`, em `projetos.js`): o selo do projeto tem
+            // de ser o mesmo em toda tela que o mostra.
+            const [rotulo, classe] = STATUS_PROJETO[p.status] || [p.status, 'text-bg-light border'];
+            return `<div class="small mb-1">
+              ${p.classificacao === 'PRIORITARIO' ? '<span class="badge badge-horizonte me-1">P</span>' : ''}
+              ${Modal.esc(p.titulo)}
+              <span class="badge ${classe} ms-1">${rotulo}</span>
+              <span class="text-muted">${p.progresso}%</span></div>`;
+          }).join('')
+          : '<span class="small text-muted fst-italic">Sem projeto ligado a esta escolha.</span>'}</td>`;
+
+        if (!x.kpis.length) {
+          return `<tr>${celulaEixo}${celulaEscolha}
+            <td colspan="2" class="small text-muted fst-italic">Sem indicador que meça esta escolha.</td>
+            ${celulaAcoes}</tr>`;
+        }
+        return x.kpis.map((i, n) => `<tr>
+          ${n === 0 ? celulaEixo + celulaEscolha : ''}
+          <td class="small">${Modal.esc(i.nome)}
+            ${Number(i.metrica_ancora) ? '<span class="badge badge-ancora ms-1">âncora</span>' : ''}
+            <span class="text-muted">(${Modal.esc(i.unidade)})</span></td>
+          <td>${celulaKpi(i)}</td>
+          ${n === 0 ? celulaAcoes : ''}
+        </tr>`).join('');
+      }).join('');
+    }).join('');
+
+    const semVinculo = (indicadores || []).filter((i) => !(i.cascatas || []).length).length;
+
+    return `
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <p class="text-muted mb-0">Por eixo: o que foi decidido, o que mede a decisão e quem a
+        executa. As três colunas da direita <strong>não se preenchem aqui</strong> — esta aba é
+        leitura. O vínculo se faz na tela de origem, e os dois atalhos abaixo levam a ela.</p>
+        <div class="d-flex align-items-center gap-2">
+          <label class="small text-muted text-nowrap" for="sel-horizonte-matriz">Horizonte</label>
+          <select id="sel-horizonte-matriz" class="form-select form-select-sm" style="width:auto">
+            ${horizontes.map((x) => `<option value="${x.id}" ${x.id == h.id ? 'selected' : ''}>${
+              Modal.esc(x.nome)} · ${x.ano_inicio}–${x.ano_fim}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      ${this.comoAmarrar(semVinculo)}
+      <div class="table-responsive caixa-execucao">
+        <table class="table table-sm table-bordered align-middle tabela-execucao">
+          <thead><tr>
+            <th style="min-width:120px">Eixo</th>
+            <th style="min-width:260px">Escolha (e a renúncia)</th>
+            <th style="min-width:180px">Indicadores</th>
+            <th style="min-width:150px">Meta / Real</th>
+            <th style="min-width:200px">Iniciativas</th>
+          </tr></thead>
+          <tbody>${corpo || `<tr><td colspan="5" class="text-muted">Nenhuma escolha preenchida
+            em ${Modal.esc(h.nome)}.</td></tr>`}</tbody>
+        </table>
+      </div>`;
+  },
+
+  /**
+   * A troca de aba é só mostrar e esconder: os dois painéis são pintados
+   * juntos, da MESMA `this.dados`, e trocar de aba não muda dado nenhum.
+   * Recarregar a seção aqui custaria uma ida ao servidor por clique e ainda
+   * derrubaria o detalhe que estivesse aberto na outra aba.
+   */
+  /**
+   * O que sai junto com uma escolha da cascata — a célula é a ponta de quatro
+   * vínculos, e nenhum deles aparecia antes do clique.
+   *
+   * Os números saem do que a tela JÁ carregou (`this.dados`): os projetos e os
+   * indicadores vieram com a Matriz de Execução, as vozes vêm na própria
+   * escolha e os comentários são um campo agregado da listagem. Nenhuma
+   * consulta nova, nenhuma chamada por cartão.
+   *
+   * A distinção entre "sai" e "continua sem o vínculo" não é enfeite: o projeto
+   * e o indicador SOBREVIVEM (as FKs deles não apagam nada — o projeto perde
+   * `cascata_id`, o indicador perde a linha de `indicador_cascata`), enquanto o
+   * comentário some de vez. Juntar as duas coisas na mesma frase faria quem lê
+   * hesitar em apagar uma célula que não custa nada, ou apagar sem saber que a
+   * discussão ia junto.
+   */
+  avisoExcluirCelula(id) {
+    const { escolhas, indicadores, projetos } = this.dados;
+    const e = escolhas.find((x) => x.id == id);
+    const q = (n, s, p) => Vinculos.quantos(n, s, p);
+    const vozes = q((e?.sugestoes || []).length, 'voz da sala', 'vozes da sala');
+    return Vinculos.aviso('Excluir esta escolha da cascata?', {
+      some: [q((e?.comentarios) || 0, 'comentário', 'comentários')],
+      solta: [
+        q((projetos || []).filter((p) => p.cascata_id == id).length, 'projeto', 'projetos'),
+        q((indicadores || []).filter((i) => (i.cascatas || []).some((c) => c == id)).length,
+          'indicador', 'indicadores'),
+        // A voz não some nem fica solta no vazio: ela VOLTA para a fila da
+        // Coleta, editável de novo — dizer só "sem o vínculo" faria parecer
+        // perda, e é o contrário.
+        vozes ? `${vozes}, que ${vozes.startsWith('1 ') ? 'volta' : 'voltam'} à fila da Coleta` : '',
+      ],
+      nota: 'Não dá para desfazer.',
+    });
+  },
+
+  ligarAbas(el) {
+    const mostrar = () => {
+      el.querySelectorAll('[data-painel-cascata]').forEach((p) =>
+        p.classList.toggle('d-none', p.dataset.painelCascata !== this.aba));
+      el.querySelectorAll('[data-aba-cascata]').forEach((b) => {
+        const ativa = b.dataset.abaCascata === this.aba;
+        b.classList.toggle('active', ativa);
+        b.setAttribute('aria-selected', String(ativa));
+      });
+    };
+    el.querySelectorAll('[data-aba-cascata]').forEach((b) => b.addEventListener('click', () => {
+      this.aba = b.dataset.abaCascata;
+      mostrar();
+    }));
+    this.ligarHorizonteMatriz(el);
+  },
+
+  /**
+   * Trocar de horizonte repinta SÓ a matriz de execução — e o `<select>` some
+   * junto com o HTML anterior, por isso o ouvinte é religado no nó novo. Sem
+   * essa religação, o seletor funcionava uma vez e ficava mudo na segunda.
+   */
+  ligarHorizonteMatriz(el) {
+    el.querySelector('#sel-horizonte-matriz')?.addEventListener('change', (ev) => {
+      this.horizonteMatriz = parseInt(ev.target.value, 10) || null;
+      this.renderExecucao(el);
+    });
+    // Os atalhos do "como amarrar". Ficam no mesmo lugar do seletor porque o
+    // painel inteiro é repintado a cada troca de horizonte — e um ouvinte
+    // pendurado no nó antigo fica mudo na segunda vez, que foi o defeito que
+    // esta função existe para não repetir.
+    el.querySelectorAll('.como-amarrar [data-ir]').forEach((b) => b.addEventListener('click',
+      () => App.mostrarSecao(b.dataset.ir)));
+  },
+
+  renderExecucao(el) {
+    const painel = el.querySelector('[data-painel-cascata="execucao"]');
+    if (!painel) return;
+    painel.innerHTML = this.matrizExecucao();
+    this.ligarHorizonteMatriz(el);
+  },
+
   async carregar() {
     const el = document.getElementById('secao-cascata');
     const params = App.contextoParams();
@@ -65,7 +451,15 @@ const SecaoCascata = {
         const aberturas = escolhas.filter((e) => e.driver_id == d.id && e.horizonte_id == h.id && e.eixo_id).length;
         const ativa = this.celulaAberta
           && this.celulaAberta.driverId == d.id && this.celulaAberta.horizonteId == h.id;
-        return `<td class="celula-cascata ${ativa ? 'ativa' : ''}" data-driver="${d.id}" data-horizonte="${h.id}">
+        // A célula guarda a síntese E as aberturas dos eixos — todas escolhas
+        // da mesma cruz. O aviso de "alguém está editando" tem de acender para
+        // qualquer uma delas, então o atributo leva a LISTA de ids: a marcação
+        // do cadeado casa por palavra (`~=`), não pelo valor inteiro.
+        const cadeados = escolhas
+          .filter((e) => e.driver_id == d.id && e.horizonte_id == h.id)
+          .map((e) => `cascata_escolha:${e.id}`).join(' ');
+        return `<td class="celula-cascata ${ativa ? 'ativa' : ''}" data-driver="${d.id}" data-horizonte="${h.id}"
+          data-cadeado="${cadeados}">
           <div class="small texto-celula">${sintese ? Modal.esc(sintese.escolha) : '<span class="text-muted">— definir síntese —</span>'}</div>
           <span class="badge ${aberturas === eixos.length ? 'text-bg-success' : 'text-bg-light border'} mt-1">${aberturas}/${eixos.length} eixos</span>
         </td>`;
@@ -76,22 +470,69 @@ const SecaoCascata = {
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h1>Cascata de Escolhas — ${Modal.esc(App.rotuloContexto())}</h1>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 align-items-center">
           <span class="badge text-bg-success fs-6">Aberturas ${feitasAberturas}/${totalAberturas}</span>
           <span class="badge badge-horizonte fs-6">Sínteses ${feitasSinteses}/${totalSinteses}</span>
+          ${RelatorioAnalise.botao()}
         </div>
       </div>
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2"
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2 d-print-none"
         id="selo-quiz">${QuizSala.selo(this, 'cascata')}</div>
-      <p class="text-muted">Cada célula <em>driver × horizonte</em> tem uma síntese e ${eixos.length}
-      aberturas por eixo — cada escolha declara também a sua renúncia. Clique na célula para detalhar.</p>
-      <div class="table-responsive">
-        <table class="table table-bordered tabela-cascata">
-          <thead><tr><th class="celula-driver">LINHAS BASES</th>${cabecalho}</tr></thead>
-          <tbody>${linhas}</tbody>
-        </table>
+      <!-- As duas leituras da mesma cascata: a MATRIZ é onde se decide (célula
+           por célula, com a renúncia); a EXECUÇÃO é onde se cobra (o que mede e
+           o que executa cada decisão). Aba, e não seção nova: pôr a leitura
+           longe da decisão obrigaria a navegar para conferir se a escolha tem
+           dono e número. -->
+      <ul class="nav nav-tabs mb-3 d-print-none" role="tablist">
+        <li class="nav-item"><button type="button" role="tab"
+          class="nav-link${this.aba === 'execucao' ? '' : ' active'}"
+          aria-selected="${this.aba !== 'execucao'}" data-aba-cascata="escolhas">Matriz de escolhas</button></li>
+        <li class="nav-item"><button type="button" role="tab"
+          class="nav-link${this.aba === 'execucao' ? ' active' : ''}"
+          aria-selected="${this.aba === 'execucao'}" data-aba-cascata="execucao">Matriz de Execução</button></li>
+      </ul>
+
+      <div data-painel-cascata="escolhas"${this.aba === 'execucao' ? ' class="d-none"' : ''}>
+        <p class="text-muted d-print-none">Cada célula <em>driver × horizonte</em> tem uma síntese e ${eixos.length}
+        aberturas por eixo — cada escolha declara também a sua renúncia. Clique na célula para detalhar.</p>
+        <div class="table-responsive">
+          <table class="table table-bordered tabela-cascata">
+            <thead><tr><th class="celula-driver">LINHAS BASES</th>${cabecalho}</tr></thead>
+            <tbody>${linhas}</tbody>
+          </table>
+        </div>
+        <!-- No papel a matriz acima é o SUMÁRIO (só as sínteses, como na tela) e
+             este bloco é o documento: todas as células preenchidas, com as
+             aberturas por eixo e as renúncias. O detalhe interativo não vai —
+             é a célula que alguém deixou aberta, não uma escolha do relatório.
+             Mora DENTRO da aba de escolhas porque é o documento dela: na aba de
+             execução o que se imprime é a leitura que está à vista. -->
+        <div class="d-none d-print-block" id="documento-cascata"></div>
+        <div id="detalhe-celula" class="d-print-none"></div>
       </div>
-      <div id="detalhe-celula"></div>`;
+
+      <div data-painel-cascata="execucao"${this.aba === 'execucao' ? '' : ' class="d-none"'}
+        >${this.matrizExecucao()}</div>`;
+
+    this.renderImpressao();
+    this.ligarAbas(el);
+    // O documento sai da MESMA fonte do bloco impresso (`relatorioSecoes`), para
+    // que o `.doc` e o papel nunca discordem sobre o que já foi preenchido.
+    RelatorioAnalise.ligar(el, () => ({
+      titulo: `Cascata de Escolhas — ${App.rotuloContexto()}`,
+      contexto: `Sínteses ${this.dados.escolhas.filter((e) => !e.eixo_id).length}/${totalSinteses}`
+        + ` · aberturas ${this.dados.escolhas.filter((e) => e.eixo_id).length}/${totalAberturas}`
+        + ' — o relatório traz só o que já foi preenchido',
+      secoes: this.relatorioSecoes().map((s) => ({
+        rotulo: `${s.horizonte.nome} · ${s.horizonte.ano_inicio}–${s.horizonte.ano_fim}`,
+        cor: s.cor,
+        dica: `“${s.horizonte.tema}”`,
+        itens: s.itens.map((it) => ({
+          texto: `${it.driver} · ${it.rotulo}: ${it.registro.escolha}`,
+          notas: this.notasEscolha(it.registro),
+        })),
+      })),
+    }));
 
     el.querySelectorAll('.celula-cascata').forEach((td) => {
       td.addEventListener('click', () => {
@@ -176,6 +617,13 @@ const SecaoCascata = {
       clearInterval(this.relogioQuiz);
       this.relogioQuiz = null;
     }
+    // O bloco impresso acompanha a matriz. Ele é invisível na tela, então nada
+    // denunciaria que ficou para trás: quem mandasse imprimir no fim da oficina
+    // levaria para o papel a cascata de antes da última célula salva.
+    this.renderImpressao();
+    // A Matriz de Execução pelo mesmo motivo: ela lê as mesmas escolhas, e numa
+    // oficina a célula que acabou de ser redigida tem de aparecer nas duas abas.
+    this.renderExecucao(el);
     if (this.celulaAberta) this.renderDetalhe();
   },
 
@@ -301,7 +749,7 @@ const SecaoCascata = {
     }));
 
     alvo.querySelectorAll('[data-excluir-celula]').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Excluir esta escolha?')) return;
+      if (!confirm(this.avisoExcluirCelula(Number(b.dataset.excluirCelula)))) return;
       try {
         await App.api(`/api/cascata/${b.dataset.excluirCelula}/excluir`, { planejamento_id: this.plan.id });
       } catch (e) {
@@ -607,6 +1055,14 @@ const SecaoCascata = {
     Modal.abrir({
       titulo: `${driver.nome} × ${horizonte.nome}${eixoNome ? ` · Eixo ${eixoNome}` : ' · Síntese'}`,
       url: '/api/cascata',
+      // Só há o que trancar quando a célula JÁ EXISTE: a rota grava por
+      // (driver, horizonte, eixo), e enquanto ninguém escreveu não há registro
+      // para dois admins disputarem — o primeiro a salvar cria, e a partir daí
+      // o cadeado vale. É o mesmo desenho do servidor, que só cobra
+      // `Bloqueio::exigirMeu` no caminho de atualização.
+      bloqueio: registro?.id
+        ? { recurso: 'cascata_escolha', registro_id: registro.id, planejamento_id: this.plan.id }
+        : null,
       valores: {
         planejamento_id: this.plan.id,
         horizonte_id: horizonteId,

@@ -52,6 +52,14 @@ const SITUACOES = {
 };
 
 const SecaoColeta = {
+  /**
+   * Fora do relógio compartilhado: a Coleta tem o seu, com as regras da oficina
+   * (rodada aberta, voto, ficha sendo arrastada). Dois relógios na mesma tela
+   * repintariam um por cima do outro, e o desta seção é o que sabe não tirar a
+   * ficha da mão de quem a segura.
+   */
+  planosVigiados() { return []; },
+
   plan: null,
   itens: [],
   filtro: 'NOVO',
@@ -153,6 +161,43 @@ const SecaoColeta = {
     return '';
   },
 
+  /**
+   * Por que o servidor vai recusar apagar esta ideia — ou `null` se não vai.
+   *
+   * A guarda de `ColetaController::excluir` olha a CAIXA inteira, não a ideia:
+   * excluir leva o grupo junto, e basta uma das vozes já ter virado ação num
+   * projeto para a exclusão ser recusada. Por isso a trava é indexada pela
+   * chave de agrupamento (`agrupado_em_id || id`), a mesma de `montarGrupos`.
+   *
+   * O mapa é montado numa passada só, a cada carga da lista: perguntar por
+   * cartão faria uma varredura por botão numa tela que desenha dezenas.
+   */
+  mapearTravas() {
+    this.travas = new Map();
+    for (const i of this.itens) {
+      if (i.situacao === 'ACEITO' && i.destino_tipo === 'ACAO') {
+        this.travas.set(String(i.agrupado_em_id || i.id), true);
+      }
+    }
+  },
+
+  travaDaIdeia(item) {
+    if (!item || !this.travas?.get(String(item.agrupado_em_id || item.id))) return null;
+    return 'Esta ideia já virou ação num projeto. Exclua a ação em Projetos antes '
+      + '— apagar por aqui deixaria a ação no plano sem origem nenhuma.';
+  },
+
+  /**
+   * O × (ou o "Excluir") da ideia, desabilitado quando o servidor vai recusar.
+   * `attrs` é o que muda entre os três lugares que desenham este botão.
+   */
+  botaoExcluirIdeia(item, classe, conteudo, attrs = '') {
+    const trava = this.travaDaIdeia(item);
+    return `<button type="button" class="${classe}" ${attrs} ${trava
+      ? Vinculos.travado(trava)
+      : `data-excluir-ideia="${item.id}"`}>${conteudo}</button>`;
+  },
+
   /** Quadrante do grupo, quando classificado (a classificação vale para todos). */
   quadranteDe(g) {
     // Pelo LÍDER, não pelo representante: uma voz nova pode entrar no grupo já
@@ -232,6 +277,7 @@ const SecaoColeta = {
         const antes = retrato(this.itens);
         const antesRodada = retratoRodada(this.rodadas);
         this.itens = await App.api(`/api/coleta?planejamento_id=${this.plan.id}&ano=${ano}`);
+        this.mapearTravas();
         this.rodadas = (await App.api(`/api/rodadas?planejamento_id=${this.plan.id}&ano=${ano}`))
           .filter((r) => r.modo !== 'QUIZ');
         if (antes !== retrato(this.itens) || antesRodada !== retratoRodada(this.rodadas)) {
@@ -255,6 +301,9 @@ const SecaoColeta = {
     this.rodadas = this.rodadas.filter((r) => r.modo !== 'QUIZ');
     this.rodadaAberta = this.rodadas.find((r) => r.situacao === 'ABERTA') || null;
     this.prepararReclassificacao();
+    // Antes de qualquer desenho: os três lugares que mostram o botão de excluir
+    // consultam este mapa para saber se o servidor vai recusar.
+    this.mapearTravas();
 
     const conta = (s) => this.itens.filter((i) => i.situacao === s).length;
     const naFila = conta('NOVO');
@@ -595,8 +644,7 @@ const SecaoColeta = {
           data-desfazer-destino="${lider.id}">Desmarcar ${Modal.esc(destino)}</button>` : ''}
         <button type="button" class="fpm-item fpm-remover" role="menuitem"
           data-tirar-quadrante="${lider.id}">Remover do quadrante</button>
-        <button type="button" class="fpm-item fpm-excluir" role="menuitem"
-          data-excluir-ideia="${lider.id}">Excluir ideia</button>
+        ${this.botaoExcluirIdeia(lider, 'fpm-item fpm-excluir', 'Excluir ideia', 'role="menuitem"')}
       </div>` : '';
     return `<span class="ficha-prio-caixa">
       <button type="button" class="ficha-prio ${desteGrupo ? 'selecionada' : ''} ${
@@ -688,9 +736,8 @@ const SecaoColeta = {
         ${ids.length > 1 ? `<button class="btn btn-sm btn-outline-secondary"
           data-desagrupar="${item.id}" title="Separar as ideias deste grupo">Desagrupar</button>` : ''}
         <button class="btn btn-sm btn-outline-secondary" data-adiar="${item.id}">Tratar depois</button>
-        ${App.podeEditar() ? `<button class="btn btn-sm btn-outline-danger"
-          data-excluir-ideia="${item.id}" title="Apagar a ideia e o que ela virou no diagnóstico"
-          >Excluir</button>` : ''}
+        ${App.podeEditar() ? this.botaoExcluirIdeia(item, 'btn btn-sm btn-outline-danger', 'Excluir',
+          this.travaDaIdeia(item) ? '' : 'title="Apagar a ideia e o que ela virou no diagnóstico"') : ''}
       </div>`;
   },
 
@@ -1248,8 +1295,9 @@ const SecaoColeta = {
           <span class="d-flex gap-1 flex-shrink-0">
             <button class="btn btn-sm btn-outline-secondary" data-editar-ideia="${i.id}"
               title="Editar" aria-label="Editar">✎</button>
-            <button class="btn btn-sm btn-outline-danger" data-excluir-ideia="${i.id}"
-              title="Excluir" aria-label="Excluir">×</button>
+            ${this.botaoExcluirIdeia(i, 'btn btn-sm btn-outline-danger', '×',
+              this.travaDaIdeia(i) ? 'aria-label="Excluir (bloqueado: virou ação)"'
+                : 'title="Excluir" aria-label="Excluir"')}
           </span>` : ''}
       </div>
       <div class="small texto-fator mt-1">${Modal.esc(i.texto)}</div>

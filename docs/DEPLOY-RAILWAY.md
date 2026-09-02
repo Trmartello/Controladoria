@@ -39,7 +39,9 @@ E estas variáveis simples (valores seus):
 | `ADMIN_EMAIL` | `trm.martello@gmail.com` | login inicial (opcional; padrão `admin@coperdia.com.br`) |
 | `ADMIN_SENHA` | *(senha forte)* | senha inicial do admin — troque no 1º acesso |
 | `APP_URL` | `https://<nome>.up.railway.app` | usada no botão dos e-mails de aviso |
-| `QLIK_API_KEY` | *(opcional)* | só quando formos ativar a conectividade Qlik |
+| `QLIK_API_KEY` | *(opcional)* | só quando formos ativar a conectividade Qlik. O tenant e o app já têm padrão no código; `QLIK_TENANT` e `QLIK_APP_ID` existem só para trocá-los sem mexer no repositório |
+| `TZ_APP` | *(opcional; padrão `America/Sao_Paulo`)* | fuso de TODA decisão de data — vencimento de ação, dia do relatório semanal, `data_reg` do diário. O contêiner roda em UTC; sem isto, das 21h à meia-noite o sistema já estaria no dia seguinte. Só mexa se a operação sair do horário de Brasília |
+| `SALA_AUSENTE_SEG` | *(opcional; padrão `300` = 5 min)* | silêncio que faz a sala dar o participante como ausente. Só então o nome dele volta a ser aceito por quem entra de outro aparelho. Encurtar acelera a troca de aparelho, mas aproxima o risco de alguém assumir o nome de quem ainda está na sala |
 
 ### Avisos por e-mail (opcional)
 

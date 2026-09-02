@@ -114,6 +114,13 @@ function versao_asset(string $caminho): string
 
 use App\Core\Auth;
 use App\Core\Json;
+use App\Core\Versao;
+
+// O pulso é fechado no ENCERRAMENTO, não no fim do switch: `Json::ok()` e
+// `Json::erro()` terminam o script com `exit`, e o fim do switch nunca é
+// alcançado numa requisição normal. Aqui pega os dois caminhos — inclusive o do
+// endpoint que gravou e depois recusou por regra.
+register_shutdown_function([Versao::class, 'registrar']);
 
 // Corpo grande só faz sentido em rota autenticada; na pública o texto é curto
 if ($rotaPublica && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 65536) {
@@ -161,6 +168,7 @@ if (!str_starts_with($caminho, '/api/')) {
 // /api/publico/ perderia a proteção em silêncio.
 $semCsrf = $caminho === '/api/login'
     || $caminho === '/api/publico/entrar'
+    || $caminho === '/api/publico/esquecer'
     || $caminho === '/api/publico/ideia'
     || (bool)preg_match('#^/api/publico/ideia/\\d+$#', $caminho)
     || $caminho === '/api/publico/resposta'
@@ -171,6 +179,7 @@ if ($metodo !== 'GET' && !$semCsrf) {
 }
 
 use App\Controllers\AuthController;
+use App\Controllers\BloqueioController;
 use App\Controllers\CascataController;
 use App\Controllers\QuizController;
 use App\Controllers\CenarioController;
@@ -180,6 +189,7 @@ use App\Controllers\ComentarioController;
 use App\Controllers\CruzamentoController;
 use App\Controllers\DriverEixoController;
 use App\Controllers\FatorController;
+use App\Controllers\ImpactoController;
 use App\Controllers\IndicadorController;
 use App\Controllers\InvestimentoController;
 use App\Controllers\NegocioController;
@@ -241,6 +251,19 @@ try {
 
         case $rota === 'GET /api/contexto':        (new PlanejamentoController())->contexto(); break;
 
+        // O pulso: `[planejamento_id => versao]` dos planos visíveis do ciclo.
+        // É a rota mais chamada do sistema quando há gente preenchendo junto —
+        // uma por admin a cada poucos segundos —, e por isso ela lê UMA tabela
+        // de duas colunas e não toca em nada do conteúdo.
+        case $rota === 'GET /api/pulso':           (new PlanejamentoController())->pulso(); break;
+
+        // O cadeado de edição. As três exigem edição do planejamento: pedir
+        // cadeado é declarar intenção de gravar, e quem não grava também não
+        // pode travar o item para os outros.
+        case $rota === 'POST /api/bloqueio':        (new BloqueioController())->tomar(); break;
+        case $rota === 'POST /api/bloqueio/renovar':(new BloqueioController())->renovar(); break;
+        case $rota === 'POST /api/bloqueio/soltar': (new BloqueioController())->soltar(); break;
+
         // Rotas públicas da tempestade: sem sessão, guardadas pelo token
         case (bool)preg_match('#^GET /api/publico/rodada/(\\d{6})$#', $rota, $m):
             (new PublicoController())->rodada($m[1]); break;
@@ -252,6 +275,8 @@ try {
         case (bool)preg_match('#^POST /api/publico/estrela/(\\d+)$#', $rota, $m):
             (new PublicoController())->estrela((int)$m[1]); break;
         case $rota === 'POST /api/publico/entrar': (new PublicoController())->entrar(); break;
+        // "Não é você?": solta o aparelho da pessoa anterior, sem apagá-la.
+        case $rota === 'POST /api/publico/esquecer': (new PublicoController())->esquecer(); break;
         case $rota === 'POST /api/publico/ideia':  (new PublicoController())->ideia(); break;
         // Resposta do quiz da cascata (escolha ou renúncia da pergunta ativa)
         case $rota === 'POST /api/publico/resposta': (new PublicoController())->resposta(); break;
@@ -301,9 +326,18 @@ try {
             (new ColetaController())->salvar((int)$m[1]); break;
 
         case $rota === 'GET /api/cenario':         (new CenarioController())->listar(); break;
+        // Antes das rotas com {id}: "aguardando-acao" não é um número, mas a
+        // rota literal precisa vir primeiro para o leitor não ter de conferir
+        case $rota === 'GET /api/cenario/aguardando-acao':
+            (new CenarioController())->aguardandoAcao(); break;
+        case (bool)preg_match('#^POST /api/cenario/(\d+)/plano-acao$#', $rota, $m):
+            (new CenarioController())->planoAcao((int)$m[1]); break;
         case $rota === 'POST /api/cenario':        (new CenarioController())->salvar(); break;
         case (bool)preg_match('#^POST /api/cenario/(\d+)/excluir$#', $rota, $m):
             (new CenarioController())->excluir((int)$m[1]); break;
+        // A específica antes da genérica: /api/cenario/7/mover cairia nela
+        case (bool)preg_match('#^POST /api/cenario/(\d+)/mover$#', $rota, $m):
+            (new CenarioController())->mover((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/cenario/(\d+)$#', $rota, $m):
             (new CenarioController())->salvar((int)$m[1]); break;
 
@@ -319,12 +353,21 @@ try {
             (new FatorController())->excluir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/promover$#', $rota, $m):
             (new FatorController())->promover((int)$m[1]); break;
+        case (bool)preg_match('#^POST /api/fatores/(\d+)/mover$#', $rota, $m):
+            (new FatorController())->mover((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/gut$#', $rota, $m):
             (new FatorController())->avaliarGut((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/gut/limpar$#', $rota, $m):
             (new FatorController())->limparGut((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)$#', $rota, $m):
             (new FatorController())->salvar((int)$m[1]); break;
+
+        // Matriz de Impacto: as duas rotas NÃO recebem `planejamento_id`, e sim
+        // `ciclo_id`. O plano corporativo é resolvido no servidor a partir dele —
+        // aceitar o id pronto do cliente deixaria a tela escolher em que plano
+        // grava, que é justamente o que a autorização por negócio evita.
+        case $rota === 'GET /api/impacto':          (new ImpactoController())->listar(); break;
+        case $rota === 'POST /api/impacto':         (new ImpactoController())->salvar(); break;
 
         // Cruzamentos da SWOT (TOWS): o par interno × externo e a estratégia
         case $rota === 'GET /api/cruzamentos':     (new CruzamentoController())->listar(); break;
@@ -400,6 +443,9 @@ try {
         // Devolve BYTES (não JSON): a rota escreve os próprios cabeçalhos.
         case (bool)preg_match('#^GET /api/anexos/(\d+)$#', $rota, $m):
             (new ComentarioController())->baixar((int)$m[1]); break;
+        // Remove UM anexo sem apagar o comentário que o carrega.
+        case (bool)preg_match('#^POST /api/anexos/(\d+)/excluir$#', $rota, $m):
+            (new ComentarioController())->excluirAnexo((int)$m[1]); break;
 
         case $rota === 'GET /api/investimentos':    (new InvestimentoController())->listar(); break;
         case $rota === 'POST /api/investimentos':   (new InvestimentoController())->salvar(); break;

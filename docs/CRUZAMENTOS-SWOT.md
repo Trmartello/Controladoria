@@ -3,10 +3,11 @@
 Plano para trazer ao sistema o material “Cruzando os quadrantes: as quatro
 estratégias” e a síntese “O que a SWOT diz ao planejamento”.
 
-> **Situação: fatias 1 e 2 ENTREGUES** (tabela, API, tela das quatro colunas,
-> cadastro, edição e a cascata de exclusão a partir do fator). Faltam a ponte
-> (§5), a síntese e o relatório (§6 e §7) e a sala (§8, fatia 5). O §8 traz o
-> que mudou em relação ao planejado e o §9, as decisões já tomadas.
+> **Situação: fatias 1, 2, 3 e 5 ENTREGUES** (tabela, API, tela das quatro
+> colunas, cadastro, edição, a cascata de exclusão a partir do fator, a ponte com
+> o plano de ação — §10 — e a sala do encontro — §11), **mais o relatório (§7)**.
+> **Falta uma coisa só na etapa inteira: a síntese** (§6, o resto da fatia 4).
+> O §8 traz o que mudou em relação ao planejado e o §9, as decisões já tomadas.
 
 > A frase que fecha o material é a especificação inteira em uma linha:
 > **“Uma boa SWOT não descreve a empresa — descreve o que ela precisa decidir.”**
@@ -168,15 +169,28 @@ análises dentro do ⓘ em vez de virar parágrafo fixo.
 
 ---
 
-## 7. Relatório
+## 7. Relatório — **entregue**
 
-O ⤓ Relatório da etapa sai de graça: `RelatorioAnalise` já entrega Word e PDF, e
-a paginação já repete o cabeçalho do bloco em toda folha. O que precisa ser
-escrito é o `montar()` da seção — quatro blocos, cada item com rótulo, o par de
-fatores e a estratégia, e a síntese antes deles.
+O ⤓ Relatório da etapa saiu de graça, como previsto: `RelatorioAnalise` já
+entregava Word e PDF, e a paginação já repetia o cabeçalho do bloco em toda
+folha. O que se escreveu foi o `montar()` da seção — quatro blocos, cada item com
+rótulo, o par de fatores e a estratégia. **A síntese ainda não entra**: ela é o §6,
+que continua pendente.
 
-No papel o cruzamento deve sair **em tabela de duas colunas**, como no material
-(cruzamento | estratégia): é o formato que o cliente já usa e reconhece.
+No papel o cruzamento sai **em tabela de duas colunas**, como no material
+(cruzamento | estratégia): é o formato que o cliente já usa e reconhece. Isso
+custou uma capacidade nova em `RelatorioAnalise.baixarWord` — uma seção que
+declara `colunas` vira tabela em vez de lista numerada, e o item ganha `detalhe`
+para a segunda coluna. É *opt-in*: as demais análises não passam `colunas` e
+seguem na lista, que é o certo para elas — o fator da SWOT é UM texto, o
+cruzamento são dois lados de peso igual.
+
+**Duas coisas que a impressão exigiu e não estavam no plano.** O selo do par
+carrega `data-ir-swot`, que o `@media print` escondia por ser navegação na SWOT e
+no PESTEL — aqui ele é o conteúdo, e o papel saía com a estratégia sem o
+encontro que a gerou. E os comandos do cartão (editar, excluir, encaminhar ao
+plano) não estavam na lista de coisas que não vão ao papel, porque essa lista
+nomeia os atributos das outras telas, um a um.
 
 ---
 
@@ -188,13 +202,14 @@ Cada fatia é entregável sozinha:
    (listar/salvar/excluir com o tipo derivado no servidor), as quatro colunas.
 2. ✅ **Cadastro e edição** — o modal com o par, o `info` que antecipa o bloco, a
    cascata de exclusão a partir do fator.
-3. **A ponte** — botão de destino, vínculo nos dois sentidos, selos, “desmarcar”.
-4. **Síntese e relatório** — os campos de texto e o `montar()` da etapa.
-5. **A sala** — 🎤 por bloco, para a oficina propor cruzamentos pelo celular
-   (reaproveita `QuizSala` inteiro; o alvo novo entra em `Quiz::PERGUNTA_CATEGORIA`).
+3. ✅ **A ponte** — botão de destino, vínculo nos dois sentidos, selos,
+   “desmarcar” (§10: o destino é o plano de ação, não a cascata).
+4. **Síntese e relatório** — ✅ o `montar()` da etapa (§7); falta a **síntese**,
+   os campos de texto do §6. **É o único pedaço da etapa que ainda não existe.**
+5. ✅ **A sala** — 🎤 por bloco, a oficina propondo cruzamentos pelo celular (§11).
 
-A fatia 5 é opcional e depende de o cliente querer conduzir esta etapa em
-oficina — as quatro primeiras não dependem dela.
+A fatia 5 era opcional e dependia de o cliente querer conduzir esta etapa em
+oficina. Ele quis — e escolheu a mais cara das duas formas possíveis (§11).
 
 ### O que mudou na execução das fatias 1 e 2
 
@@ -273,7 +288,79 @@ O que precisou de cuidado próprio:
 Provas em `testes/funcional.sh` §9b: encaminhar, aparecer na fila, tirar da
 fila, virar ação, as três recusas, e o retorno à fila quando a ação é apagada.
 
-## 11. O que ficou fora
+## 11. Fatia 5 — entregue: a sala propõe o par
+
+### A escolha, e a recomendação que não foi seguida
+
+Havia duas formas de a oficina participar desta etapa:
+
+| | O que a sala faz | Custo |
+|---|---|---|
+| **A** (escolhida) | escolhe os DOIS fatores e escreve a estratégia | a rota pública passa a aceitar **ids de registro** |
+| **B** (recomendada) | escreve a estratégia de um par que a condução montou | reaproveita a sala inteira, nada muda na rota pública |
+
+A recomendação foi a **B**, por dois motivos registrados aqui porque continuam
+valendo: cruzar é trabalho de quem conduz a análise (é ela que sabe que aquela
+força e aquela ameaça se encontram), e a **A** obriga cada participante a ler
+os vinte e poucos fatores da SWOT antes de responder qualquer coisa — no
+celular, com a direção na sala e o tempo curto.
+
+**O cliente escolheu a A**, com o argumento de que o cruzamento deixa de ser
+trabalho só de quem conduz. É uma decisão de processo legítima e foi construída
+assim. Se numa oficina real a leitura do catálogo se provar cara, o caminho de
+volta é curto: a **B** é a mesma tela sem os dois seletores.
+
+### O que a escolha obrigou
+
+A **A** faz a única escrita sem login do sistema aceitar ids. Três guardas, e
+nenhuma confia no corpo para nada além dos dois números:
+
+1. **A regra do par mora num lugar só** — `App\Services\Cruzamentos::parValidado`,
+   chamada pelo cadastro (com login) e pela rota pública (sem). Foi extraída de
+   `CruzamentoController` ANTES de a rota nova existir: duas escritas da mesma
+   regra divergiriam, e a frouxa seria justamente a exposta. Ela confere numa
+   consulta só que os dois fatores existem, são da SWOT **do planejamento da
+   rodada** (nunca o do corpo), são do mesmo ano e formam interno × externo.
+2. **O ano é o da pergunta ativa** — sem isso a sala responderia a SWOT de outro
+   exercício sem ninguém perceber.
+3. **O bloco derivado do par tem de ser o bloco PERGUNTADO** — sem ela, a
+   pergunta “Forças × Oportunidades” aceitaria um par de fraqueza com ameaça, e
+   o painel encheria de resposta fora do assunto: a pergunta viraria decoração.
+
+O par viaja em `coleta_item.fator_interno_id`/`fator_externo_id`, com FK
+**`ON DELETE SET NULL`** — apagar um fator da SWOT não pode apagar o que alguém
+escreveu na oficina. O par se desfaz, a voz fica, e o painel mostra o lado que
+caiu em vez de sumir com a resposta.
+
+As duas listas descem ao celular por `Cruzamentos::doQuadrante`, que devolve
+**só id e descrição**. É conteúdo do diagnóstico numa tela sem login, e a
+decisão do que expor mora num método só, em vez de espalhada em SELECTs — o
+score da GUT, por exemplo, é priorização interna e não viaja.
+
+### Na tela
+
+**No celular**: dois `<select>` nativos acima do campo de texto (a roleta do
+sistema rola com o polegar e não ocupa a tela inteira, ao contrário de uma
+lista de cartões), e o campo passa a perguntar *“o que fazer com este
+encontro”*. A escolha do par **sobrevive à batida do polling** pelo mesmo
+mecanismo do rascunho, e com mais motivo: escolher dois fatores numa lista de
+vinte custa mais que digitar a frase.
+
+**Na condução**: 🎤 por bloco na coluna, e a ficha do painel mostra o **par**
+acima do texto — é ele que o condutor lê para decidir. O “Usar” abre o
+formulário com o par já escolhido pela pessoa e a estratégia dela como
+rascunho: aceitar é ato de quem conduz, e o texto final é dele. A voz fica
+amarrada (`destino_tipo = 'CRUZAMENTO'`) e volta ao painel se o cruzamento for
+apagado.
+
+**Provas**: 16 na `funcional.sh` §9i — sete delas são tentativas de burlar o
+par pela rota pública — e 15 de navegador em `sistema.js`
+(`provasCruzamentoNaSala`), percorrendo a oficina inteira com dois contextos,
+um deles um celular de verdade.
+
+---
+
+## 12. O que ficou fora
 
 A ponte para a **cascata** continua sem existir, e agora por decisão: quem quer
 rastrear qual leitura justificou uma escolha do horizonte ainda faz isso pelo

@@ -184,6 +184,23 @@ const App = {
 
   secaoAtiva: null,
 
+  /**
+   * Modo "só desenho": o Dossiê está pintando uma seção DE LADO, para tirar a
+   * foto do papel dela, e não para alguém olhar.
+   *
+   * Quem lê esta bandeira são os relógios de consulta periódica. Eles já param
+   * sozinhos quando a seção está com `d-none` — mas só na primeira batida, 4
+   * segundos depois: montar um dossiê de onze negócios armaria dezenas de
+   * temporizadores para eles se desarmarem um a um, cada um custando uma
+   * chamada à API pelo caminho. Aqui eles nem chegam a nascer.
+   *
+   * É bandeira, e não um parâmetro de `carregar()`, porque quem precisa dela
+   * está três chamadas abaixo (`QuizSala.armarRelogio`) e passá-la de mão em
+   * mão obrigaria a mudar a assinatura de toda seção — inclusive das que não
+   * têm relógio nenhum.
+   */
+  modoDossie: false,
+
   mostrarSecao(nome) {
     this.secaoAtiva = nome;
     document.querySelectorAll('.secao').forEach((s) => s.classList.add('d-none'));
@@ -209,10 +226,19 @@ const App = {
   },
 
   // Resolve (e cria se preciso) o planejamento do contexto atual
+  // O plano do contexto, como a última resolução o devolveu. Serve ao relógio
+  // do "duas telas juntas", que precisa do id DEPOIS da pintura e não pode
+  // gastar mais uma ida ao servidor para descobri-lo.
+  planAtual: null,
+
   async planejamento() {
     const params = this.contextoParams();
-    if (!params) return null;
-    return (await this.api(`/api/contexto?${params}`)).planejamento;
+    if (!params) {
+      this.planAtual = null;
+      return null;
+    }
+    this.planAtual = (await this.api(`/api/contexto?${params}`)).planejamento;
+    return this.planAtual;
   },
 
   rotuloContexto() {
@@ -230,24 +256,52 @@ const App = {
       painel: SecaoPainel, hub: SecaoHub, cadastros: SecaoCadastros,
       coleta: SecaoColeta,
       cenario: SecaoCenario, pestel: SecaoPestel, porter: SecaoPorter,
-      swot: SecaoSwot, gut: SecaoGut, cruzamentos: SecaoCruzamentos,
+      swot: SecaoSwot, gut: SecaoGut, impacto: SecaoImpacto, cruzamentos: SecaoCruzamentos,
       cascata: SecaoCascata,
       projetos: SecaoProjetos, investimentos: SecaoInvestimentos,
-      metas: SecaoMetas, relatorio: SecaoRelatorio,
+      metas: SecaoMetas, relatorio: SecaoRelatorio, dossie: SecaoDossie,
       sala: SecaoSala,
     };
-    const secao = secoes[this.secaoAtiva];
-    if (secao) secao.carregar().catch((e) => {
+    const nome = this.secaoAtiva;
+    const secao = secoes[nome];
+    if (!secao) return;
+    // O relógio do "duas telas juntas" é armado AQUI, e não dentro de cada
+    // `carregar()`: é um lugar só, por onde toda seção passa, e nenhuma precisa
+    // lembrar de armar o seu. E é DEPOIS de a pintura terminar — armar antes
+    // capturaria a versão de referência com a tela ainda lendo o conteúdo, e
+    // uma escrita nesse intervalo passaria por "já vista".
+    secao.carregar().then(() => {
+      if (this.secaoAtiva !== nome) return; // navegou enquanto carregava
+      Vivo.armar(`secao-${nome}`, this.planosDaSecao(secao));
+    }).catch((e) => {
+      Vivo.parar();
       // A mensagem vai como TEXTO: várias respostas de erro do servidor
       // devolvem entrada do usuário dentro delas, e interpolar isso em HTML
       // seria o único ponto do front fora da disciplina de escape
-      const alvo = document.getElementById(`secao-${this.secaoAtiva}`);
+      const alvo = document.getElementById(`secao-${nome}`);
       alvo.innerHTML = '';
       const aviso = document.createElement('div');
       aviso.className = 'alert alert-danger';
       aviso.textContent = e.message;
       alvo.appendChild(aviso);
     });
+  },
+
+  /**
+   * De quais planejamentos uma seção depende — a lista que o relógio vigia.
+   *
+   * O padrão é o plano do contexto, que serve a quase todas. Quem depende de
+   * outro declara `planosVigiados()` em si mesma: a Matriz de Impacto é lida no
+   * contexto de um NEGÓCIO e o conteúdo dela vive no plano CORPORATIVO, e é ela
+   * quem sabe disso — não uma lista de exceções aqui, que envelheceria calada.
+   *
+   * `coleta` e `sala` devolvem lista vazia: as duas já têm relógio próprio, com
+   * as regras da oficina (voto aberto, pergunta ativa, ficha sendo arrastada).
+   * Um segundo relógio ali repintaria por cima do primeiro.
+   */
+  planosDaSecao(secao) {
+    if (typeof secao.planosVigiados === 'function') return secao.planosVigiados();
+    return [this.planAtual?.id].filter(Boolean);
   },
 };
 
