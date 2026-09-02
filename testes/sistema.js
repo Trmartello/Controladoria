@@ -3469,6 +3469,14 @@ async function provasMenuRecolhido(page, largura) {
   const fechou = await estado();
   t(`[${largura}] tocar de novo fecha`, fechou.abertos.length === 0, JSON.stringify(fechou.abertos));
 
+  // Um tópico por vez: abrir um segundo fecha o primeiro (pedido do cliente
+  // depois de ver a primeira versão, em que os dois ficavam abertos).
+  await page.click('#nav-secoes [data-grupo="gestao"] .cabecalho-grupo');
+  await page.click('#nav-secoes [data-grupo="capital"] .cabecalho-grupo');
+  const segundo = await estado();
+  t(`[${largura}] abrir um segundo tópico fecha o primeiro`, segundo.abertos.join() === 'capital' && segundo.ariaBate,
+    JSON.stringify(segundo.abertos));
+
   // Navegar para uma tela de tópico fechado abre o tópico — pelo caminho que
   // o resto do sistema usa (App.mostrarSecao), não só pelo clique no menu.
   await page.evaluate(() => App.mostrarSecao('swot'));
