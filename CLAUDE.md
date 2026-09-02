@@ -3,6 +3,16 @@
 Sistema de planejamento estratégico da Copérdia (one-page app em PHP 8 + MySQL,
 deploy no Railway). Idioma do código, commits e UI: **português**.
 
+**Este é o sistema do PE.** Existe um segundo repositório,
+`Trmartello/PE_PLAN_ESTRATEGICO` — um app React que põe em tela a planilha do
+plano **2026–2030** (dashboard para o Conselho e simulador de cenários), servido
+na Railway atrás de senha. Ele **não** é este sistema, não tem login nem banco,
+e o backlog dele (gestão de metas, importação de Excel) é provavelmente
+redundante com o que já existe aqui. Pergunta sobre "o backlog do PE" se
+responde a partir de `docs/BACKLOG-EVOLUCAO.md` **deste** repositório — a
+confusão já custou uma resposta errada. Fica em aberto com o cliente qual ciclo
+vale: o 2026–2030 de lá ou o 2027–2035 daqui.
+
 ## Arquitetura
 
 - **Onde fica o quê**: `app/` (Core, Controllers, Services), `views/` na RAIZ —
@@ -790,7 +800,7 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   o par JÁ escolhido pela pessoa e a estratégia dela como rascunho — aceitar é
   ato de quem conduz, e o texto final é dele. A voz fica amarrada por
   `destino_tipo = 'CRUZAMENTO'`, com a mesma guarda de alvo das outras telas, e
-  volta ao painel se o cruzamento for apagado (`Quiz::soltarVozes`). O cartão
+  é apagada junto se o cruzamento for excluído (`Quiz::excluirVozes`). O cartão
   ganha o selo 🎤 com quantas vozes o sustentam. A ficha do painel mostra o
   **par** acima do texto (`QuizSala.parDaVoz`), que é o que o condutor lê para
   decidir; o lado cujo fator foi excluído aparece como tal em vez de sumir.
@@ -1077,7 +1087,8 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   ação destrutiva (desvincular) num lugar de leitura. O texto composto vai um
   cartão por linha e por isso a célula usa `.texto-celula` (`white-space:
   pre-line`) — sem ele as contribuições se emendam numa frase só no HTML.
-  Apagado o destino, a voz **volta sozinha e JÁ REDIGIDA**: `Quiz::guardarRedacao` guarda o
+  Quando o destino é apagado sem ser descartado (hoje, só a reclassificação da
+  ideia da tempestade), a voz **volta sozinha e JÁ REDIGIDA**: `Quiz::guardarRedacao` guarda o
   texto do registro no vínculo (a cada salvamento, não só ao amarrar — senão a
   edição seguinte deixaria a redação velha; na cascata, por LADO, porque a
   célula tem dois textos) e `Quiz::soltarVozes` **promove** esse
@@ -1110,10 +1121,14 @@ deploy no Railway). Idioma do código, commits e UI: **português**.
   faziam o condutor ver uma pergunta e a sala responder outra; **lista vinda do
   corpo é medida antes de tocar o banco** (`alvos` com 50 mil elementos = um
   SELECT cada, e `php -S` é single-threaded: doze segundos de servidor travado
-  por um pedido que ia falhar de qualquer jeito); e **apagar um item de cenário
-  ou um fator solta as vozes** por `Quiz::soltarVozes` — a da tempestade volta a
-  SELECIONADO, a do quiz volta a NOVO (a única situação em que o autor ainda
-  consegue corrigi-la pelo celular). O encerra-e-abre é serializado por
+  por um pedido que ia falhar de qualquer jeito); e **excluir um item de
+  cenário, um fator ou um cruzamento apaga as vozes do quiz de vez** por
+  `Quiz::excluirVozes` (a ideia da tempestade volta a SELECIONADO, na matriz da
+  Coleta). Até 2026-09-02 a voz voltava a NOVO e reaparecia no painel como
+  sugestão nova depois de o condutor excluir o registro — o cliente viu isso
+  numa voz que atravessou do Cenário para a SWOT e pediu a exclusão definitiva;
+  `soltarVozes` (voz volta a NOVO, redigida) ficou só para a reclassificação
+  da ideia, em que o conteúdo continua noutra análise. O encerra-e-abre é serializado por
   `GET_LOCK` por planejamento: era check-then-act, e dois condutores passavam
   os dois — o segundo encerrando a sala que o primeiro acabou de abrir.
   Plano e decisões: `docs/CASCATA-QUIZ-COLABORATIVO.md`.
@@ -1938,9 +1953,48 @@ mínima. A checagem passou a rodar nas duas larguras.
 
 ## Deploy
 
-- Railway, servidor embutido do PHP (`php -S` no `entrypoint.sh`) — adequado a
-  homologação; para produção o recomendado é php-fpm + nginx
-  (ver `docs/DEPLOY-RAILWAY.md`).
+- **O `main` é produção.** O serviço web da Railway está ligado ao repositório
+  `Trmartello/Controladoria`, branch `main`, com auto-deploy a cada push e
+  *Wait for CI* desligado (não há CI para esperar — as baterias rodam na
+  máquina de quem entrega). O caminho de uma entrega é: branch de trabalho →
+  pull request → merge no `main` → a Railway constrói e sobe sozinha. **Nunca
+  reaproveitar o serviço de produção** para homologar outra coisa (o app do
+  repositório irmão, uma branch experimental): é o sistema que a cooperativa
+  usa, e o banco dele é o único.
+  Referência do último deploy grande: **2026-09-02, PR #4** (`69eb128`, 23
+  commits de 2026-08-18 a 09-01, 52 arquivos) — levou o Dossiê, a Matriz de
+  Execução, o Impacto por Negócio, o Vivo, o bloqueio de edição, os movimentos
+  entre análises e a sala nos Cruzamentos. A migração criou quatro tabelas
+  (`impacto_negocio`, `indicador_cascata`, `edicao_bloqueio`,
+  `planejamento_versao`) e alargou dois ENUMs; **não pediu variável nova**.
+  Antes dele a produção estava 23 commits atrás do trabalho — e ficou assim por
+  dias sem ninguém notar, porque nada avisa. Confira `git rev-list --count
+  origin/main..<branch>` antes de dizer que "está no sistema".
+- **Ler o deploy certo.** A Railway tem duas abas de log e elas confundem:
+  *Build Logs* é a construção da imagem (Dockerfile) e **não** mostra a
+  migração; o que interessa está em *Deploy Logs*, onde o `entrypoint.sh`
+  escreve. Um deploy saudável imprime, nesta ordem:
+  `entrypoint: iniciando na porta 8080` → `Aplicando migração do banco...` →
+  `migrate: conectando em mysql.railway.internal:3306/railway (usuário root).`
+  → `migrate: ok.` → a linha do `php -S` com os trabalhadores
+  (`PHP_CLI_SERVER_WORKERS` — 8 no Dockerfile; o log de 2026-09-02 mostrou 10,
+  a variável está sobrescrita no serviço). Sem o `migrate: ok.` o `set -e` do
+  entrypoint aborta o start e o deploy nunca fica *Active* — a Railway mantém o
+  anterior no ar. É a proteção principal: **não a contorne** com `|| true`.
+  **As linhas de cada passo do migrate só saem quando o passo AGE.** Elas moram
+  dentro das guardas de `information_schema` (`garantirColuna`, `garantirFk`, o
+  `str_contains` que testa o ENUM), então "a linha do CRUZAMENTO não apareceu"
+  significa "a produção já tinha", não "o passo foi pulado" — foi o que
+  aconteceu em 2026-09-02, quando o banco de produção estava à frente do
+  código. É a direção segura, e só é segura porque **toda migração deste
+  repositório é aditiva**: cria tabela, coluna, índice, FK, alarga ENUM; nunca
+  apaga nem estreita. Por isso o *rollback* de código (Railway → *Deployments*
+  → deploy anterior → *Redeploy*) nunca precisa de rollback de schema — o
+  código velho ignora a coluna nova. Quem quebrar essa regra quebra o rollback.
+- O servidor é o embutido do PHP (`php -S` no `entrypoint.sh`). Hoje é o que
+  roda em **produção**, para os usuários da cooperativa; php-fpm + nginx continua sendo
+  a evolução recomendada quando a carga pedir (ver `docs/DEPLOY-RAILWAY.md`),
+  não um bloqueio.
 - Após deploy com mudança de CSS/JS, um refresh normal já pega a versão nova
   (graças ao `versao_asset`).
 - E-mail: variáveis `SMTP_*` e `EMAIL_REMETENTE` (tabela em
@@ -1981,11 +2035,60 @@ mínima. A checagem passou a rodar nas duas larguras.
   anunciar o tamanho (o PHP não expõe `CURLOPT_POSTFIELDSIZE`), virando
   `chunked` e pendurando o envio. `B2_API_URL` existe para a bateria apontar a
   um serviço de mentira.
+- **Os dois serviços de cron estão ligados em produção** — o cliente confirmou
+  em 2026-09-01 (`44bd2ff`), e por isso os itens 0 e 6 do backlog saíram da
+  fila. Os dois rodam a **mesma imagem** do web (o Dockerfile instala o
+  `default-mysql-client` justamente para o `backup.sh` existir lá), como
+  serviços separados, sem porta, cada um com *Custom Start Command* e *Cron
+  Schedule* em *Settings*:
+
+  | Serviço | Comando | Cron (UTC) | Em Brasília | Precisa de |
+  |---|---|---|---|---|
+  | `backup` | `./cli/backup.sh` | `0 7 * * *` | 04h | Volume em `/backups`, `BACKUP_DIR=/backups`, `BACKUP_MANTER=14` |
+  | avisos | `php cli/notificar.php` | `0 11 * * *` | 08h | `SMTP_*`, `EMAIL_REMETENTE` |
+
+  A Railway agenda em UTC, três horas à frente. *Serverless* fica desligado (a
+  própria tela diz que não existe para serviço com cron) e *Teardown* também.
+  **Sem o Cron Schedule o serviço vira servidor**: roda, termina em segundos, a
+  Railway reinicia, e assim a noite inteira — gasta o crédito do plano e enche
+  o log. O `backup.sh` confere o próprio arquivo e só o batiza (`.parcial` →
+  `.sql.gz`) depois de íntegro; a linha do ✓ traz o tamanho e o número de
+  tabelas, e é ela que se procura no log.
+  **Configurado não é funcionando.** A aba *Settings* prova a configuração; a
+  aba **Cron Runs** é o único lugar que prova a execução — falha de cron não
+  acorda ninguém, por construção. E o log do plano Hobby dura **7 dias**: não
+  dá para olhar três semanas atrás. Por isso a conferência é ritual mensal
+  (passo 8 de `docs/DEPLOY-RAILWAY.md`: a cópia que fica no computador de
+  alguém é a prova que não expira), e o tamanho do arquivo impresso no ✓ fecha
+  a retenção — até 50 MB cabem 30 dias no volume de 5 GB do Hobby; 50–150 MB,
+  14; 150–300 MB, 7; acima de 300 MB o caminho é tirar os anexos do banco, não
+  encolher a retenção. O pico no disco é `BACKUP_MANTER + 1` arquivos, porque a
+  faxina roda **depois** de gravar o novo.
+  **Nunca force o backup com `*/5 * * * *`.** O truque de encurtar o cron para
+  provar que roda, que o roteiro do e-mail usa, é inofensivo lá (a tabela
+  `envio_email` não deixa mandar duas vezes) e **destrutivo aqui**: cada
+  execução gera um arquivo, a faxina apaga tudo além dos 14 mais novos, e em 70
+  minutos os 14 dias de histórico viram 14 cópias da última hora. Para uma
+  execução avulsa use *Redeploy* no serviço `backup` (uma rodada, sem mexer no
+  agendamento); se for mesmo preciso repetir, suba `BACKUP_MANTER` para 30
+  antes e devolva depois.
 
 ## Convenções de entrega
 
-- Branch de trabalho: `claude/git-repo-overview-d17774` — desenvolver,
-  commitar e fazer `git push -u origin` sempre nessa branch.
+- Branch de trabalho: **`claude/acesso-planejamento-controladoria-9pe28s`** —
+  desenvolver, commitar e fazer `git push -u origin` sempre nessa branch, e
+  levar ao `main` por pull request (o `main` é produção — ver *Deploy*). A
+  branch anterior, `claude/git-repo-overview-d17774`, foi o PR #1 e está
+  encerrada; `docs/ESTADO-IMPLEMENTACAO.md` ainda a cita porque é um
+  **retrato datado** (2026-08-02), não o estado atual.
+  **PR mesclado é PR terminado**: o trabalho seguinte reinicia a branch a
+  partir do `main` (`git fetch origin main && git checkout -B <branch>
+  origin/main`) em vez de empilhar commits sobre a história já mesclada — foi
+  assim depois do PR #4, e um `push --force-with-lease` é aceitável quando a
+  branch só continha o que já entrou.
+  Nesta sessão o clone é raso: antes de comparar branches, busque com
+  `+refs/heads/*:refs/remotes/origin/*` — um `git rev-list` sem as referências
+  remotas devolve vazio e parece "nada pendente".
 - Mensagens de commit em português, primeira linha descritiva.
 - Ao concluir trabalho grande: rodar o time de agentes de revisão
   (segurança, corretude, infra, frontend) e aplicar os achados confirmados;
@@ -2001,18 +2104,49 @@ mínima. A checagem passou a rodar nas duas larguras.
   `::after` sobreposto — áreas invisíveis de botões vizinhos se cobrem e o
   toque na fronteira vai para o errado.
 - Roadmap e especificações: `docs/PLANEJAMENTO-SISTEMA.md` (fases 1–6 já
-  entregues) e `docs/BACKLOG-EVOLUCAO.md` (matriz de impacto por negócio,
-  triagem pós-brainstorm, mapa BSC e ritual de
-  acompanhamento — com o veredito de o que vale ou não construir).
+  entregues) e `docs/BACKLOG-EVOLUCAO.md` — o backlog vivo, com o veredito de
+  o que vale ou não construir. **Estado em 2026-09-02: tudo entregue ou
+  ligado, menos um item** — `4d`, a síntese dos Cruzamentos da SWOT (fatia 4,
+  §6 de `docs/CRUZAMENTOS-SWOT.md`, esforço P, ordem 1). Os itens 0 (SMTP +
+  cron) e 6 (backup) não foram construídos, foram **ligados** pelo cliente em
+  2026-09-01, e viraram conferência periódica. O Mapa BSC com raias foi
+  descartado nesta forma. Leia o backlog **na ponta da branch**: a cópia do
+  `main` fica para trás entre um PR e outro, e foi dela que saiu uma
+  recomendação de "ligar backup e SMTP" que já estavam ligados.
+- `docs/DEPLOY-RAILWAY.md`: o roteiro de operação — serviços, variáveis,
+  volume, crons, o que cada tela deve mostrar e a tabela de "se der errado".
+  É escrito para o cliente executar sozinho; mudança de infraestrutura entra
+  lá antes de entrar em conversa.
 - `docs/REFATORACAO-GTD-COLETA.md`: o fluxo GTD da Coleta como ficou (matriz
   única, arraste, menu da pílula, saídas da ideia encaminhada), as decisões do
   cliente e os defeitos que a validação pegou. Leia antes de mexer na condução da
   tempestade.
 - `docs/CRUZAMENTOS-SWOT.md`: o plano dos **cruzamentos (TOWS)** — a quinta tela
   do diagnóstico, o modelo de dados (tipo derivado do par, par único por ano),
-  a ponte para a cascata e as cinco fatias de entrega. As **fatias 1 e 2 estão
-  entregues** (tabela, controller, tela, testes); o §9 registra o que foi
-  decidido na execução — entre outras coisas, que o `destino_tipo`/`destino_id`
-  polimórfico do plano **não** entrou, porque a fatia que o usaria ainda não
-  existe e coluna sem leitor é convite a divergir — e o §10 lista o que a
-  **fatia 3** ainda precisa resolver antes de ser escrita.
+  a ponte para a cascata e as cinco fatias de entrega. **Fatias 1, 2, 3 e 5
+  entregues** (tabela, API e tela; o relatório do §7; o cruzamento que vira
+  ação, §10; a sala que propõe o par pelo celular, §11 — decisão do cliente
+  contra a recomendação, e o §11 registra o que a escolha obrigou). O §9
+  guarda o que foi decidido na execução — entre outras coisas, que o
+  `destino_tipo`/`destino_id` polimórfico do plano **não entrou** na tabela: a
+  fatia 3 foi pelo mesmo caminho do fator da SWOT (`acao_em`, `acao_por`,
+  `desdobramento_id`), e coluna que nada escreve é regra que ninguém testa.
+  **Falta só a síntese** (§6): um campo de prosa por bloco ("o que este bloco
+  diz ao planejamento") mais um geral, guardados por planejamento e ano,
+  acima das colunas na tela e antes dos blocos no relatório — sem virar campo
+  estruturado. É o item `4d` do backlog e o último pedaço da etapa. O §12
+  lista o que ficou fora de propósito.
+
+## Limites do ambiente de sessão
+
+- O proxy da sessão **bloqueia `*.up.railway.app`** (`CONNECT tunnel failed,
+  403`). Não é possível abrir o sistema em produção daqui, nem bater no
+  `/healthz`, nem conferir um deploy pela URL. A verificação de deploy é feita
+  pelo cliente — print das abas *Deployments*, *Deploy Logs* e *Cron Runs* — e
+  a leitura desses prints é o trabalho. **Não afirme que "está no ar" sem uma
+  dessas evidências**; o que dá para provar daqui é o estado do Git
+  (`origin/main` contém o commit) e o conteúdo da migração.
+- CDNs também são bloqueados — por isso o Bootstrap e o `qrcode.js` são
+  vendorados, e o projeto não tem dependência PHP nenhuma de propósito.
+- O Chromium do Playwright está em `/opt/pw-browsers` e o MariaDB local sobe
+  com socket em `/tmp` (detalhes em *Rodando localmente*).

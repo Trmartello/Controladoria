@@ -327,11 +327,14 @@ class CenarioController
                 . 'Exclua a ação em Projetos antes de excluir o item.'
                 . ($acao ? ' (ação: “' . $acao['o_que'] . '”)' : ''));
         }
-        // Solta o vínculo da Coleta antes de apagar: sem isso a ideia ficaria
+        // Trata o vínculo da Coleta antes de apagar: sem isso a ideia ficaria
         // apontando para um id morto e o rastreio exibiria link quebrado.
-        // Volta a SELECIONADO, como o "Desmarcar" (ColetaController::reabrir):
-        // ACEITO sem destino nenhum prendia a ideia num beco sem saída.
-        Quiz::soltarVozes('CENARIO', [$id]);
+        // A ideia da tempestade volta a SELECIONADO, como o "Desmarcar"
+        // (ColetaController::reabrir): ACEITO sem destino nenhum a prendia num
+        // beco sem saída. A voz do QUIZ é apagada de vez: excluir o item é
+        // descartá-la, não devolvê-la ao painel como sugestão nova
+        // (`Quiz::excluirVozes`).
+        Quiz::excluirVozes('CENARIO', [$id]);
         Database::executar('DELETE FROM cenario_item WHERE id = ?', [$id]);
         Json::ok();
     }

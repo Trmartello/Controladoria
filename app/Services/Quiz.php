@@ -854,7 +854,10 @@ class Quiz
     }
 
     /**
-     * Solta as vozes que apontavam para registros que vão deixar de existir.
+     * Solta as vozes que apontavam para registros que vão deixar de existir
+     * SEM que o conteúdo deles tenha sido descartado — hoje, só a
+     * reclassificação da ideia da tempestade (`ColetaController::reclassificar`),
+     * que apaga o registro para criá-lo noutra análise.
      *
      * A ideia da TEMPESTADE volta a `SELECIONADO` — o mesmo que o "Desmarcar"
      * da triagem faz: ela segue na matriz, pronta para outro destino. A voz do
@@ -863,10 +866,11 @@ class Quiz
      * NOVO). Dar SELECIONADO à voz do quiz a congelava: sem destino, sem
      * edição e ainda marcada "usada" na tela do participante.
      *
-     * Existe como método porque são QUATRO caminhos que apagam um item de
-     * cenário ou um fator (a tela da análise, a exclusão da ideia, a
-     * reclassificação e a exclusão do fator) — escrita quatro vezes, a regra
-     * divergiria na primeira mudança.
+     * Os caminhos que EXCLUEM o registro (a tela da análise, a exclusão da
+     * ideia, a exclusão do fator e a do cruzamento) usam `excluirVozes`, que
+     * apaga a voz do quiz de vez e delega a este método só a tempestade. Até
+     * 2026-09-02 todos passavam por aqui, e a voz voltava ao painel como
+     * sugestão nova depois de o condutor tê-la excluído — ver lá o porquê.
      *
      * A voz volta com o TEXTO REDIGIDO, não com o original: quem aceitou
      * refinou a frase da sala, e apagar o registro não desfaz esse trabalho. O
@@ -891,6 +895,57 @@ class Quiz
               WHERE destino_tipo = ? AND destino_id IN ({$marcas})",
             array_merge([$destinoTipo], $ids)
         );
+    }
+
+    /**
+     * Apaga DE VEZ as vozes do QUIZ amarradas a registros que estão sendo
+     * excluídos — e solta, como sempre, as ideias da tempestade que apontavam
+     * para eles.
+     *
+     * Até 2026-09-02 a exclusão passava por `soltarVozes`, e a voz voltava a
+     * `NOVO`: o condutor apagava um fator na SWOT e a mesma frase reaparecia
+     * no painel do Cenário como sugestão nova. Pior quando o registro tinha
+     * atravessado de análise (`mudarDestino`): a voz voltava a uma pergunta de
+     * onde ninguém a esperava mais. O cliente viu exatamente isso acontecer e
+     * pediu a exclusão definitiva. Faz sentido: excluir o registro é o mesmo
+     * gesto de condução do ✕ da ficha (`QuizController::excluirSugestao`) — a
+     * voz foi lida, virou registro, e o registro foi descartado. Devolvê-la à
+     * fila era refazer uma triagem que acabou de ser desfeita de propósito.
+     *
+     * A ideia da TEMPESTADE segue outra regra e continua em `soltarVozes`: ela
+     * vive na matriz da Coleta, com quadrante e motivo próprios, e quem a
+     * apagou foi o destino, não a triagem. Voltar a `SELECIONADO` é o que o
+     * "Desmarcar" faz, e é na matriz que o triador decide o que fazer com ela.
+     *
+     * O grupo unificado sai inteiro (o "Usar" amarra líder e unidas ao mesmo
+     * destino), os votos caem pela FK, e quem ainda apontava para uma linha
+     * apagada por `agrupado_em_id` ou `unido_de_id` perde a marca — o mesmo
+     * cuidado do `excluirSugestao`, para o desfazer nunca devolver uma ficha a
+     * um líder que não existe.
+     */
+    public static function excluirVozes(string $destinoTipo, array $destinoIds): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $destinoIds)));
+        if (!$ids) {
+            return;
+        }
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        $vozes = array_map('intval', array_column(Database::todos(
+            "SELECT id FROM coleta_item
+              WHERE origem = 'QUIZ' AND destino_tipo = ? AND destino_id IN ({$marcas})",
+            array_merge([$destinoTipo], $ids)
+        ), 'id'));
+        if ($vozes) {
+            $marcasVozes = implode(',', array_fill(0, count($vozes), '?'));
+            Database::executar(
+                "UPDATE coleta_item
+                    SET agrupado_em_id = NULL, unido_de_id = NULL, unido_por = NULL, unido_em = NULL
+                  WHERE agrupado_em_id IN ({$marcasVozes}) OR unido_de_id IN ({$marcasVozes})",
+                array_merge($vozes, $vozes)
+            );
+            Database::executar("DELETE FROM coleta_item WHERE id IN ({$marcasVozes})", $vozes);
+        }
+        self::soltarVozes($destinoTipo, $ids);
     }
 
     /**

@@ -256,7 +256,8 @@ const QuizSala = {
     //  - onde cada voz vira UM REGISTRO PRÓPRIO (um fator, um item de cenário),
     //    ela SAI do painel: o lugar dela agora é o quadrante de destino, e
     //    mantê-la aqui com um ✓ fazia a fila de trabalho crescer com o que já
-    //    foi feito. Apagado o destino, ela volta sozinha (`Quiz::soltarVozes`);
+    //    foi feito. Excluído o destino, ela é apagada junto
+    //    (`Quiz::excluirVozes`) — excluir é descartar, não devolver à fila;
     //  - onde MUITAS vozes viram UM TEXTO SÓ (a síntese da célula da cascata),
     //    ela FICA, marcada de verde (`marcar`). Tirá-la da grade escondia
     //    justamente o que compõe a síntese — e desmarcar ficava sem onde ser

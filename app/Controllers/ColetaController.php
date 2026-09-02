@@ -181,9 +181,11 @@ class ColetaController
             $destinoId = (int)$dst['destino_id'];
             if ($dst['destino_tipo'] === 'CENARIO') {
                 // Vozes de OUTRA origem (o quiz) também apontam para este
-                // registro: sem soltá-las, ficariam ACEITO em cima de uma linha
-                // morta — congeladas para o autor e "usadas" para o condutor
-                Quiz::soltarVozes('CENARIO', [$destinoId]);
+                // registro: sem tratá-las, ficariam ACEITO em cima de uma linha
+                // morta — congeladas para o autor e "usadas" para o condutor.
+                // Como o registro está sendo excluído, elas saem de vez
+                // (`Quiz::excluirVozes`), e não voltam ao painel como novas.
+                Quiz::excluirVozes('CENARIO', [$destinoId]);
                 Database::executar(
                     'DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]
                 );
@@ -194,7 +196,7 @@ class ColetaController
                     . 'Exclua a ação em Projetos antes de excluir a ideia.');
                 // Fatores promovidos apontam para o de origem (sem ON DELETE):
                 // saem antes. GUT e vínculo com a cascata caem por CASCADE.
-                Quiz::soltarVozes('FATOR', array_column(Database::todos(
+                Quiz::excluirVozes('FATOR', array_column(Database::todos(
                     'SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?', [$destinoId, $destinoId]
                 ), 'id'));
                 Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$destinoId]);

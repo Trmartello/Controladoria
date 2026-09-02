@@ -334,14 +334,15 @@ class FatorController
         // justamente o caso mais comum.
         Fatores::exigirSemAcao([$id], 'Este fator já virou uma ação no plano. '
             . 'Exclua a ação em Projetos antes de excluir o fator.');
-        // Solta o vínculo da Coleta (deste fator e do promovido) antes de
+        // Trata o vínculo da Coleta (deste fator e do promovido) antes de
         // apagar: sem isso a ideia apontaria para um id morto e o rastreio
         // exibiria link quebrado.
-        // A ideia volta a SELECIONADO (mesmo estado do "Desmarcar" em
-        // ColetaController::reabrir): deixá-la ACEITO sem destino nenhum a
-        // prendia num beco sem saída — sem análise e sem conseguir ser
-        // encaminhada de novo.
-        Quiz::soltarVozes('FATOR', array_column(Database::todos(
+        // A ideia da tempestade volta a SELECIONADO (mesmo estado do
+        // "Desmarcar" em ColetaController::reabrir): deixá-la ACEITO sem
+        // destino nenhum a prendia num beco sem saída. A voz do QUIZ é
+        // apagada de vez: excluir o fator é descartá-la, não devolvê-la ao
+        // painel como sugestão nova (`Quiz::excluirVozes`).
+        Quiz::excluirVozes('FATOR', array_column(Database::todos(
             'SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?', [$id, $id]
         ), 'id'));
         // Excluir o fator de origem leva junto o que foi promovido dele para a

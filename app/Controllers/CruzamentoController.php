@@ -182,11 +182,12 @@ class CruzamentoController
             Json::erro('Este cruzamento já virou ação no plano e não pode ser excluído'
                 . ($acao ? ' (ação: “' . $acao['o_que'] . '”)' : '') . '.');
         }
-        // Solta as vozes antes de apagar: sem isto elas ficariam ACEITAS em
+        // Trata as vozes antes de apagar: sem isto elas ficariam ACEITAS em
         // cima de um id morto — congeladas para o autor e "usadas" para o
-        // condutor. É a mesma regra dos outros quatro caminhos que apagam um
-        // registro nascido da sala.
-        Quiz::soltarVozes('CRUZAMENTO', [$id]);
+        // condutor. A voz do QUIZ sai de vez (excluir o cruzamento é
+        // descartá-la); a ideia da tempestade volta à matriz. É a mesma regra
+        // dos outros caminhos que apagam um registro nascido da sala.
+        Quiz::excluirVozes('CRUZAMENTO', [$id]);
         Database::executar('DELETE FROM swot_cruzamento WHERE id = ?', [$id]);
         Json::ok();
     }

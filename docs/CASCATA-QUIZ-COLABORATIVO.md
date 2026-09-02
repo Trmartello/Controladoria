@@ -738,7 +738,7 @@ Na revisão adversarial (segurança e corretude), dez achados — todos corrigid
 | 7 | `FatorController::listar` não filtrava `origem`: o mesmo defeito que o Cenário acabou de corrigir, esperando a Fase 4 | filtro + `quiz_vozes`, igual ao Cenário |
 | 8 | A assinatura do polling perdeu a célula da cascata: outro condutor salvando a escolha não repintava o detalhe | a cascata compõe a própria assinatura, e rebusca **antes** de comparar |
 | 9 | Reperguntar um alvo com **outra redação** descartava o enunciado em silêncio (o `INSERT IGNORE` come o INSERT) | UPDATE do enunciado quando o alvo já está no roteiro |
-| 10 | Apagar um item de cenário ou um fator deixava as vozes do quiz **ACEITO em cima de linha morta** — congeladas para o autor | `Quiz::soltarVozes`, usado pelos **quatro** caminhos que apagam esses registros |
+| 10 | Apagar um item de cenário ou um fator deixava as vozes do quiz **ACEITO em cima de linha morta** — congeladas para o autor | `Quiz::soltarVozes`, usado pelos **quatro** caminhos que apagam esses registros. **Revisto em 2026-09-02:** devolver a voz a `NOVO` fazia a sugestão reaparecer no painel depois de o condutor excluir o registro (relato do cliente, numa voz que atravessou do Cenário para a SWOT); os caminhos que **excluem** passaram a `Quiz::excluirVozes`, que apaga a voz de vez, e `soltarVozes` ficou só para a reclassificação da ideia da tempestade |
 
 Duas invariantes que a revisão tentou quebrar e **não conseguiu**, com teste de
 concorrência real: o teto de envios dentro do INSERT (20 envios simultâneos com

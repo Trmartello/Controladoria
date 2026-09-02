@@ -1530,6 +1530,23 @@ cartão do Cenário ganhou o `⇄` que não tinha. Salvando, a pessoa é **levad
 tela nova** com o cartão destacado: o item some da análise de origem, e cartão
 que desaparece sem dizer para onde foi é indistinguível de cartão excluído.
 
+**Excluir apaga a voz, não a devolve (2026-09-02).** O cliente usou uma voz
+da sala num item do Cenário, levou o item à SWOT pelo `⇄` e o excluiu lá — e
+a frase reapareceu no painel do Cenário como sugestão nova. Era o
+`Quiz::soltarVozes` fazendo o que foi desenhado para fazer (voz volta a
+`NOVO`, editável pelo autor), mas o desenho errava o gesto: quem exclui um
+registro nascido da sala está descartando a voz, como no ✕ da ficha, e
+devolvê-la à fila era refazer uma triagem desfeita de propósito. Os quatro
+caminhos que **excluem** (tela da análise, exclusão da ideia, exclusão do
+fator, exclusão do cruzamento) passaram a `Quiz::excluirVozes`: a voz do quiz
+sai de vez (grupo unificado inteiro, votos pela FK, marcas de união limpas
+como no `excluirSugestao`), e a ideia da tempestade continua voltando a
+`SELECIONADO`, porque ela vive na matriz da Coleta e é lá que se decide o
+que fazer com ela. `soltarVozes` ficou só para a reclassificação da ideia,
+em que o registro morre mas o conteúdo continua noutra análise. Prova na
+`funcional.sh` (§9h), nos dois lados: o painel do condutor e o celular do
+autor.
+
 ---
 
 ## 10. Duas telas juntas: preenchimento simultâneo
