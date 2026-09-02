@@ -3364,6 +3364,70 @@ async function provasCadeado(browser) {
   }
 }
 
+/**
+ * "Tratar" fora da ordem na Coleta (pedido do cliente, 2026-09-02): a fila de
+ * tratativa segue a ordem de chegada, mas qualquer cartão de "A tratar" pode
+ * ser puxado para a fila na hora. A prova cria três ideias, puxa a ÚLTIMA,
+ * confere que a fila a mostra (com o selo no cartão e sem o botão nele), e
+ * que o Pular solta o foco e devolve a fila à ordem.
+ */
+async function provasTratarForaDaOrdem(page, largura) {
+  const ids = await page.evaluate(async () => {
+    const ano = Diag.ano();
+    const cria = async (texto) => (await App.api('/api/coleta',
+      { planejamento_id: 1, texto, ano })).id;
+    const a = await cria('Ideia da fila — primeira a chegar');
+    const b = await cria('Ideia da fila — segunda a chegar');
+    const c = await cria('Ideia da fila — a última, que vai ser puxada');
+    return { a, b, c };
+  });
+
+  await page.evaluate(() => App.mostrarSecao('coleta'));
+  const pintou = await esperar(page, `!!document.querySelector('#secao-coleta [data-tratar="${ids.c}"]')`);
+  t(`[${largura}] cartão "A tratar" da lista tem o botão Tratar`, pintou);
+
+  if (pintou) {
+    const estado = () => page.evaluate((i) => {
+      const fila = document.querySelector('#secao-coleta .fila-coleta');
+      const card = document.querySelector(`#secao-coleta .lista-ideias [data-card-ideia="${i.c}"]`);
+      return {
+        filaMostra: fila?.querySelector('.ideia-crua')?.textContent.trim() || '',
+        filaDiz: fila?.querySelector('.flex-grow-1')?.textContent.trim() || '',
+        seloNaFila: !!card?.querySelector('.badge.text-bg-success'),
+        botaoNoCard: !!card?.querySelector('[data-tratar]'),
+        comSelo: document.querySelectorAll('#secao-coleta .lista-ideias .card.na-fila').length,
+      };
+    }, ids);
+
+    const antes = await estado();
+    t(`[${largura}] antes: a fila NÃO está na última ideia`, !antes.filaMostra.includes('a última'), antes.filaMostra);
+    t(`[${largura}] antes: um só cartão com o selo "na fila"`, antes.comSelo === 1, `${antes.comSelo}`);
+
+    await page.click(`#secao-coleta [data-tratar="${ids.c}"]`);
+    const puxou = await esperar(page,
+      `(document.querySelector('#secao-coleta .fila-coleta .ideia-crua')?.textContent || '').includes('a última')`);
+    t(`[${largura}] Tratar puxa a última ideia para a fila`, puxou);
+    const depois = await estado();
+    t(`[${largura}] a fila diz que foi puxada da lista`, depois.filaDiz.includes('Puxada da lista'), depois.filaDiz);
+    t(`[${largura}] o cartão puxado ganha o selo e perde o botão`, depois.seloNaFila && !depois.botaoNoCard,
+      JSON.stringify(depois));
+    t(`[${largura}] continua um só cartão com o selo`, depois.comSelo === 1, `${depois.comSelo}`);
+
+    await page.click(`#secao-coleta .fila-coleta [data-pular="${ids.c}"]`);
+    const voltou = await esperar(page,
+      `!(document.querySelector('#secao-coleta .fila-coleta .ideia-crua')?.textContent || '').includes('a última')`);
+    t(`[${largura}] Pular solta o foco e a fila volta à ordem`, voltou);
+    const final = await estado();
+    t(`[${largura}] e o cartão volta a ter o botão Tratar`, final.botaoNoCard && !final.seloNaFila, JSON.stringify(final));
+  }
+
+  await page.evaluate(async (i) => {
+    for (const id of [i.a, i.b, i.c]) {
+      await App.api(`/api/coleta/${id}/excluir`, { planejamento_id: 1 }).catch(() => {});
+    }
+  }, ids);
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -3394,6 +3458,7 @@ async function provasCadeado(browser) {
   await provasCenarioPlanoAcao(page);
   await provasMoverAnalise(page);
   await provasMoverEntreTabelas(page);
+  await provasTratarForaDaOrdem(page, 'desktop');
   await provasImpactoNegocio(page);
   await provasDuasTelas(browser);
   await provasCadeado(browser);
@@ -3415,6 +3480,7 @@ async function provasCadeado(browser) {
   await provasFilaAcao(pageM, 'celular');
   await provasCabecalhoProjetos(pageM, 'celular');
   await provasBuscaAnalise(pageM, 'celular');
+  await provasTratarForaDaOrdem(pageM, 'celular');
 
   // O formulário da ação corre em contexto PRÓPRIO, nas duas larguras.
   //

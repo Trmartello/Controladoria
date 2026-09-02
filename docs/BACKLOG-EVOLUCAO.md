@@ -368,6 +368,11 @@ Uma seção, **sem abas**:
    textarea), PESTEL/Porter (select categoria + textarea), SWOT
    (`Diag.campoQuadrante()` + textarea), Descartar (**motivo obrigatório**,
    visível ao autor), Pular. O `destino_sugerido` destaca o botão provável.
+   **Fora da ordem (2026-09-02, pedido do cliente):** a fila segue a ordem de
+   chegada, mas cada cartão da lista "A tratar" tem um **Tratar** que puxa a
+   ideia para a fila na hora; o cartão puxado ganha o selo "na fila", e
+   depois de tratada ou pulada a fila volta à ordem. O foco vive só na
+   sessão, como o Pular.
 3. **Tratadas** — mesmo bloco, filtro de situação, mostrando item → destino com
    link que abre o registro.
 

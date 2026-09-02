@@ -66,10 +66,23 @@ const SecaoColeta = {
   // "Pular" vale só para esta sessão de triagem: a fila recarrega do servidor
   // a cada ação, então a escolha precisa morar aqui e não na ordem da lista
   pulados: new Set(),
+  // Ideia PUXADA da lista pelo "Tratar" (pedido do cliente, 2026-09-02): a
+  // fila segue a ordem de chegada por padrão, mas quem triagem nem sempre quer
+  // seguir a ordem — a ideia mais urgente pode ser a última. O foco vale até
+  // ela ser tratada, pulada ou sumir de "A tratar"; depois a fila volta à
+  // ordem. Mora aqui pelo mesmo motivo do `pulados`.
+  foco: null,
+  atualDaFila: null, // a ideia que a fila está mostrando neste desenho
 
-  /** Próxima da fila: a mais antiga ainda não tratada que ninguém pulou. */
+  /**
+   * Próxima da fila: a puxada pelo "Tratar", se ainda está por tratar; senão
+   * a mais antiga ainda não tratada que ninguém pulou.
+   */
   proximaDaFila() {
     const novas = this.itens.filter((i) => i.situacao === 'NOVO');
+    const focada = novas.find((i) => i.id === this.foco);
+    if (focada) return focada;
+    this.foco = null;
     const restantes = novas.filter((i) => !this.pulados.has(i.id));
     // Todas puladas: recomeça a rodada em vez de deixar a fila vazia
     if (!restantes.length && novas.length) {
@@ -309,6 +322,9 @@ const SecaoColeta = {
     const naFila = conta('NOVO');
     const visiveis = this.itens.filter((i) => i.situacao === this.filtro);
     const podeTriar = App.podeEditar();
+    // Resolvida uma vez por desenho: a fila mostra esta, e o cartão dela na
+    // lista ganha o selo "na fila" em vez do botão "Tratar".
+    this.atualDaFila = podeTriar && naFila && !this.rodadaAberta ? this.proximaDaFila() : null;
 
     el.innerHTML = `
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -328,9 +344,11 @@ const SecaoColeta = {
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <strong class="small text-uppercase">Fila de tratativa</strong>
           <span class="badge text-bg-warning">${naFila} a tratar</span>
-          <span class="small text-muted flex-grow-1">Uma ideia por vez, na ordem em que chegaram.</span>
+          <span class="small text-muted flex-grow-1">${this.foco
+            ? 'Puxada da lista — depois dela a fila volta à ordem de chegada.'
+            : 'Uma ideia por vez, na ordem em que chegaram — ou toque em “Tratar” numa ideia da lista.'}</span>
         </div>
-        ${this.cartaoFila(this.proximaDaFila())}
+        ${this.cartaoFila(this.atualDaFila)}
       </div></div>` : ''}
 
       ${this.rodadaAberta ? '' : `
@@ -1287,17 +1305,25 @@ const SecaoColeta = {
   cartaoIdeia(i) {
     const [rotulo, classe] = SITUACOES[i.situacao] || [i.situacao, 'text-bg-light'];
     const podeMexer = i.minha && i.situacao === 'NOVO' && App.podeEditar();
-    return `<div class="card mb-2" data-card-ideia="${i.id}"><div class="card-body py-2 px-3">
+    // "Tratar" puxa a ideia para a fila fora da ordem de chegada. Só existe
+    // onde a fila existe (quem triagem, sem rodada aberta) e não aparece no
+    // cartão que a fila já está mostrando — esse ganha o selo "na fila".
+    const naFila = this.atualDaFila && this.atualDaFila.id === i.id;
+    const podeTratar = !naFila && i.situacao === 'NOVO' && App.podeEditar() && !this.rodadaAberta;
+    return `<div class="card mb-2 ${naFila ? 'na-fila' : ''}" data-card-ideia="${i.id}"><div class="card-body py-2 px-3">
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <span class="badge ${classe}">${rotulo}</span>
+        ${naFila ? '<span class="badge text-bg-success" title="É a ideia aberta na fila de tratativa, acima">na fila</span>' : ''}
         <span class="small text-muted flex-grow-1">${Modal.esc(i.autor)} · ${this.data(i.criado_em)}</span>
-        ${podeMexer ? `
+        ${podeMexer || podeTratar ? `
           <span class="d-flex gap-1 flex-shrink-0">
-            <button class="btn btn-sm btn-outline-secondary" data-editar-ideia="${i.id}"
+            ${podeTratar ? `<button class="btn btn-sm btn-verde" data-tratar="${i.id}"
+              title="Puxar esta ideia para a fila de tratativa agora">Tratar</button>` : ''}
+            ${podeMexer ? `<button class="btn btn-sm btn-outline-secondary" data-editar-ideia="${i.id}"
               title="Editar" aria-label="Editar">✎</button>
             ${this.botaoExcluirIdeia(i, 'btn btn-sm btn-outline-danger', '×',
               this.travaDaIdeia(i) ? 'aria-label="Excluir (bloqueado: virou ação)"'
-                : 'title="Excluir" aria-label="Excluir"')}
+                : 'title="Excluir" aria-label="Excluir"')}` : ''}
           </span>` : ''}
       </div>
       <div class="small texto-fator mt-1">${Modal.esc(i.texto)}</div>
@@ -1454,10 +1480,24 @@ const SecaoColeta = {
       this.carregar();
     }));
 
-    // Pular deixa a ideia para o fim desta rodada de triagem
+    // Pular deixa a ideia para o fim desta rodada de triagem — e solta o foco,
+    // senão a puxada voltaria à fila logo em seguida
     el.querySelectorAll('[data-pular]').forEach((b) => b.addEventListener('click', () => {
       this.pulados.add(Number(b.dataset.pular));
+      this.foco = null;
       this.carregar();
+    }));
+
+    // "Tratar" na lista: a ideia vai para a fila agora, fora da ordem. Não
+    // recarrega do servidor — nada mudou lá; redesenha e leva a pessoa até a
+    // fila, porque no celular ela está acima, fora da vista.
+    el.querySelectorAll('[data-tratar]').forEach((b) => b.addEventListener('click', () => {
+      this.foco = Number(b.dataset.tratar);
+      this.pulados.delete(this.foco);
+      this.carregar().then(() => {
+        document.querySelector('#secao-coleta .fila-coleta')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     }));
 
     el.querySelectorAll('[data-encaminhar]').forEach((b) => b.addEventListener('click', () =>

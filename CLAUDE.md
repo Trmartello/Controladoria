@@ -582,6 +582,13 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   coluna mais longa trava a rolagem da página; e no **celular não há rolagem
   interna** — só o cabeçalho grudado, que ali já resolve, e rolagem aninhada no
   dedo é o que não se quer.
+- **Fila de tratativa da Coleta** (sem rodada aberta): um card por vez, na
+  ordem de chegada, com Pular. Desde 2026-09-02 cada cartão de "A tratar" da
+  lista tem um **Tratar** que puxa a ideia para a fila fora da ordem (pedido
+  do cliente); o cartão puxado ganha o selo "na fila" e perde o botão, e
+  depois de tratada ou pulada a fila volta à ordem. O foco (`foco`) e o
+  Pular (`pulados`) vivem só na sessão, porque a fila recarrega do servidor
+  a cada ação. Prova em `sistema.js` (`provasTratarForaDaOrdem`).
 - **Matriz de prioridade** (condução da tempestade): gráfico de **quatro
   quadrantes**, Impacto no eixo horizontal e Esforço no vertical. É a **única
   matriz do sistema** e fica **acima** da fila — a bancada não tem matriz
