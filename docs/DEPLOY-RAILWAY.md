@@ -782,6 +782,40 @@ quem estava logado no dia do backup.
 | O arquivo é gerado mas some no dia seguinte | O volume não está montado | Refaça o passo 3 e confira que `BACKUP_DIR` é `/backups` |
 | O serviço fica reiniciando sem parar | Está configurado como serviço comum, não agendado | Confira o **Cron Schedule** do passo 5 |
 
+## 7b. Zerar o plano de ação (recomeçar o cadastro)
+
+Pedido do cliente em 2026-09-02: apagar **todas** as ações, projetos e
+iniciativas cadastrados para recomeçar o cadastro do zero — sem tocar no
+banco, nas telas nem no resto do planejamento. É o único comando destrutivo em
+massa do sistema, e por isso ele conta antes, gera backup, exige confirmação
+por extenso e roda numa transação (ou apaga tudo, ou nada).
+
+Na aba **Deployments → Shell** do serviço web (ou como one-off command):
+
+```bash
+php cli/limpar_plano_acao.php            # 1. só conta: o que sai e o que fica
+php cli/limpar_plano_acao.php apagar     # 2. gera o backup, pede a confirmação e apaga
+```
+
+No Shell ele pede para digitar `APAGAR-PLANO-DE-ACAO`. Num one-off command,
+que não tem terminal, passe a confirmação na chamada:
+
+```bash
+php cli/limpar_plano_acao.php apagar --confirmo=APAGAR-PLANO-DE-ACAO
+```
+
+`--planejamento=ID` limita a um planejamento (o corporativo ou o de um
+negócio). O backup vai para `BACKUP_DIR` como qualquer outro (`cli/backup.sh
+listar` mostra); se o backup falhar, nada é apagado.
+
+O que sai: projetos, iniciativas, ações, os comentários e anexos deles e os
+cadeados de edição abertos sobre eles. O que fica, mudando só de estado: o
+fator, o item de cenário e o cruzamento que tinham virado ação voltam à fila
+de "aguardando plano de ação" (a marca de encaminhamento continua); a ideia da
+Coleta encaminhada ao plano fica aceita, aguardando; o investimento vinculado a
+um projeto perde o vínculo e continua cadastrado. É a mesma contabilidade que a
+exclusão de um projeto pela tela faz, um a um.
+
 ## 8. Iterando
 
 Cada `git push` na branch configurada dispara um novo deploy automaticamente.

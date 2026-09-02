@@ -1884,6 +1884,14 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 - Login local de teste: `admin@coperdia.com.br` / `trocar123` (em produção a
   senha inicial vem de `ADMIN_SENHA`; sem ela o migrate gera uma aleatória e
   imprime uma única vez no log).
+- **Zerar o plano de ação** (`php cli/limpar_plano_acao.php` conta;
+  `... apagar` faz backup, pede `APAGAR-PLANO-DE-ACAO` e apaga numa transação;
+  `--confirmo=` para one-off sem terminal; `--planejamento=ID` limita). Sai:
+  projeto, iniciativa, desdobramento, comentários deles e cadeados. Fica, mudando
+  de estado: fator/item/cruzamento voltam à fila de aguardando plano de ação,
+  ideia da Coleta fica aceita aguardando, investimento perde o vínculo. Mesma
+  contabilidade de `ProjetoController::excluir`. Pedido do cliente em
+  2026-09-02 para recomeçar o cadastro; ver `docs/DEPLOY-RAILWAY.md` §7b.
 - **Senha perdida** (`cli/senha.php listar` / `trocar <e-mail> [senha]
   [--ativar]`): é o caminho de quando NINGUÉM mais entra. A senha é bcrypt e
   não tem volta — nem o sistema, nem um ADMIN, nem o dono do banco leem a

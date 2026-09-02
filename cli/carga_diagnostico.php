@@ -22,6 +22,9 @@
 
 $GLOBALS['config'] = require __DIR__ . '/../config/config.php';
 require __DIR__ . '/../app/Core/Database.php';
+// Database::executar marca o pulso em App\Core\Versao; sem a classe carregada,
+// a primeira escrita fora do front controller morre com "Class not found".
+require __DIR__ . '/../app/Core/Versao.php';
 require __DIR__ . '/../app/Services/CargaConteudo.php';
 
 use App\Core\Database;
