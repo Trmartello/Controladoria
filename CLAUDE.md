@@ -130,6 +130,14 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   símbolo é desenhado uma vez no `shell.php`, senão as duas cópias divergiriam
   na primeira revisão do ícone e o leitor lê "mesmo símbolo" como "mesmo
   destino".
+- **Menu lateral com tópicos recolhíveis** (2026-09-02, pedido do cliente, no
+  padrão do CRM Agro): Painel, Hub e Cadastros soltos; Diagnóstico, Estratégia,
+  Execução, Capital, Gestão e Encontro como tópicos com cabeçalho
+  (`<button class="cabecalho-grupo">`, `aria-expanded`) e chevron. Nascem
+  fechados; `App.mostrarSecao` abre o tópico da tela ativa, e o que a pessoa
+  abriu fica em `localStorage` (`menu.grupos`). Os links continuam sendo
+  `#nav-secoes .nav-link` / `[data-secao]`: o contrato é o atributo, não a
+  profundidade. Prova em `sistema.js` (`provasMenuRecolhido`).
 - **Atalho ⚙ na topbar** (`#btn-cadastros`, ao lado do ☰): abre os Cadastros —
   a tela de AJUSTAR o sistema, que não faz parte do percurso do planejamento e
   se procurava no meio de dezoito seções. É um `<a data-secao>`, o mesmo

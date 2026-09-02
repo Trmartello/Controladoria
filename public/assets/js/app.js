@@ -87,6 +87,22 @@ const App = {
     menu.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-secao]')) alternar(false);
     });
+
+    // Tópicos recolhíveis. O que a pessoa abriu fica guardado no navegador
+    // (`menu.grupos`), para o menu não voltar todo fechado a cada recarga; o
+    // tópico da tela ativa é aberto por `mostrarSecao`, sempre — o item
+    // aceso nunca pode estar escondido dentro de um tópico fechado.
+    menu.querySelectorAll('.cabecalho-grupo').forEach((cab) => {
+      cab.addEventListener('click', () => {
+        const grupo = cab.closest('.grupo-menu');
+        this.abrirGrupo(grupo, !grupo.classList.contains('aberto'));
+        this.guardarGrupos();
+      });
+    });
+    let guardados = [];
+    try { guardados = JSON.parse(localStorage.getItem('menu.grupos') || '[]'); } catch { /* sem storage */ }
+    menu.querySelectorAll('.grupo-menu').forEach((g) =>
+      this.abrirGrupo(g, Array.isArray(guardados) && guardados.includes(g.dataset.grupo)));
     // Só o negócio: o ciclo saiu do menu e agora é escolhido em Cadastros.
     document.getElementById('sel-negocio').addEventListener('change', () => alternar(false));
 
@@ -112,6 +128,17 @@ const App = {
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') alternar(false);
     });
+  },
+
+  abrirGrupo(grupo, aberto) {
+    grupo.classList.toggle('aberto', aberto);
+    grupo.querySelector('.cabecalho-grupo').setAttribute('aria-expanded', String(aberto));
+  },
+
+  guardarGrupos() {
+    const abertos = [...document.querySelectorAll('#nav-secoes .grupo-menu.aberto')]
+      .map((g) => g.dataset.grupo);
+    try { localStorage.setItem('menu.grupos', JSON.stringify(abertos)); } catch { /* sem storage */ }
   },
 
   montarSeletores() {
@@ -206,7 +233,15 @@ const App = {
     document.querySelectorAll('.secao').forEach((s) => s.classList.add('d-none'));
     document.querySelectorAll('#nav-secoes .nav-link').forEach((l) => l.classList.remove('active'));
     document.getElementById(`secao-${nome}`).classList.remove('d-none');
-    document.querySelector(`#nav-secoes [data-secao="${nome}"]`).classList.add('active');
+    const link = document.querySelector(`#nav-secoes [data-secao="${nome}"]`);
+    link.classList.add('active');
+    // O tópico da tela ativa abre sozinho (e fica guardado): item aceso
+    // escondido dentro de um tópico fechado é o mesmo que menu sem item ativo.
+    const grupo = link.closest('.grupo-menu');
+    if (grupo && !grupo.classList.contains('aberto')) {
+      this.abrirGrupo(grupo, true);
+      this.guardarGrupos();
+    }
     // O atalho da topbar não vira `.active` (ele não é item de lista): quem diz
     // que a tela é a dele é o `aria-current`, que o leitor de tela anuncia e o
     // CSS usa para acender o botão.
