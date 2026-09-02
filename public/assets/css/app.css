@@ -119,6 +119,37 @@ body.menu-aberto .menu-lateral {
 .menu-lateral .nav-link.active { background: var(--verde-coperdia); color: #fff; }
 .menu-lateral .nav-link.disabled { color: #6d8a7c; }
 
+/* Tópicos recolhíveis do menu (padrão do CRM Agro). O cabeçalho ocupa a
+   linha inteira, com o chevron encostado à direita, e tem 40px de altura por
+   dimensão real — é toque de celular. Os itens só existem no fluxo quando o
+   tópico está aberto (`display: none`, não `visibility`), para o Tab não
+   passar por links que ninguém vê. */
+.grupo-menu { margin-top: .35rem; }
+.cabecalho-grupo {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px;
+  background: none;
+  border: 0;
+  border-radius: var(--bs-nav-pills-border-radius, .375rem);
+  color: #d3e5dc;
+  font-size: .8rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  text-align: left;
+}
+.cabecalho-grupo:hover, .cabecalho-grupo:focus-visible { color: #fff; background: rgba(255, 255, 255, .1); }
+/* O símbolo `#i-chevron` aponta para BAIXO: fechado ele vira para a direita
+   (como no CRM Agro), aberto volta a apontar para os itens abaixo. */
+.cabecalho-grupo .chevron { margin-left: auto; transform: rotate(-90deg); transition: transform .2s ease; }
+.grupo-menu.aberto .cabecalho-grupo .chevron { transform: rotate(0); }
+.itens-grupo { display: none; padding-left: .5rem; }
+.grupo-menu.aberto .itens-grupo { display: flex; }
+
 .btn-verde {
   background: var(--verde-coperdia);
   color: #fff;

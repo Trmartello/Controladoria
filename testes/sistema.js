@@ -3428,6 +3428,66 @@ async function provasTratarForaDaOrdem(page, largura) {
   }, ids);
 }
 
+/**
+ * Menu lateral com tópicos recolhíveis (pedido do cliente, 2026-09-02, no
+ * padrão do CRM Agro). O que se mede: os tópicos nascem fechados, salvo o da
+ * tela ativa; o cabeçalho abre e fecha com aria-expanded; navegar para uma
+ * tela de outro tópico abre esse tópico; e a escolha sobrevive à recarga.
+ */
+async function provasMenuRecolhido(page, largura) {
+  await page.evaluate(() => { localStorage.removeItem('menu.grupos'); App.mostrarSecao('painel'); });
+  await page.reload();
+  await esperar(page, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+
+  const estado = () => page.evaluate(() => {
+    const grupos = [...document.querySelectorAll('#nav-secoes .grupo-menu')];
+    return {
+      total: grupos.length,
+      abertos: grupos.filter((g) => g.classList.contains('aberto')).map((g) => g.dataset.grupo),
+      ariaBate: grupos.every((g) =>
+        g.querySelector('.cabecalho-grupo').getAttribute('aria-expanded') === String(g.classList.contains('aberto'))),
+      // Link dentro de tópico fechado não pode ser alcançável nem visível
+      escondidos: grupos.filter((g) => !g.classList.contains('aberto'))
+        .every((g) => [...g.querySelectorAll('.nav-link')].every((a) => a.offsetParent === null)),
+      ativoVisivel: (() => { const a = document.querySelector('#nav-secoes .nav-link.active'); return !!a && a.offsetParent !== null; })(),
+    };
+  });
+
+  await page.click('#btn-menu');
+  const inicio = await estado();
+  t(`[${largura}] seis tópicos, todos fechados no Painel`, inicio.total === 6 && inicio.abertos.length === 0,
+    JSON.stringify(inicio.abertos));
+  t(`[${largura}] aria-expanded acompanha o estado`, inicio.ariaBate);
+  t(`[${largura}] links de tópico fechado não ficam visíveis`, inicio.escondidos);
+  t(`[${largura}] o item ativo (Painel) está visível`, inicio.ativoVisivel);
+
+  await page.click('#nav-secoes [data-grupo="gestao"] .cabecalho-grupo');
+  const abriu = await estado();
+  t(`[${largura}] tocar no cabeçalho abre só aquele tópico`, abriu.abertos.join() === 'gestao' && abriu.ariaBate,
+    JSON.stringify(abriu.abertos));
+  await page.click('#nav-secoes [data-grupo="gestao"] .cabecalho-grupo');
+  const fechou = await estado();
+  t(`[${largura}] tocar de novo fecha`, fechou.abertos.length === 0, JSON.stringify(fechou.abertos));
+
+  // Navegar para uma tela de tópico fechado abre o tópico — pelo caminho que
+  // o resto do sistema usa (App.mostrarSecao), não só pelo clique no menu.
+  await page.evaluate(() => App.mostrarSecao('swot'));
+  const navegou = await estado();
+  t(`[${largura}] ir para a SWOT abre o Diagnóstico`, navegou.abertos.join() === 'diagnostico' && navegou.ativoVisivel,
+    JSON.stringify(navegou));
+
+  await page.reload();
+  await esperar(page, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+  const guardado = await page.evaluate(() =>
+    [...document.querySelectorAll('#nav-secoes .grupo-menu.aberto')].map((g) => g.dataset.grupo));
+  t(`[${largura}] o tópico aberto sobrevive à recarga`, guardado.includes('diagnostico'), JSON.stringify(guardado));
+  // Recarregada, a tela volta ao Painel: o menu não pode ter deixado
+  // rolagem horizontal nem o corpo travado
+  const rola = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  t(`[${largura}] sem rolagem horizontal depois do menu`, !rola);
+  await page.evaluate(() => { document.body.classList.remove('menu-aberto'); });
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -3459,6 +3519,7 @@ async function provasTratarForaDaOrdem(page, largura) {
   await provasMoverAnalise(page);
   await provasMoverEntreTabelas(page);
   await provasTratarForaDaOrdem(page, 'desktop');
+  await provasMenuRecolhido(page, 'desktop');
   await provasImpactoNegocio(page);
   await provasDuasTelas(browser);
   await provasCadeado(browser);
@@ -3481,6 +3542,7 @@ async function provasTratarForaDaOrdem(page, largura) {
   await provasCabecalhoProjetos(pageM, 'celular');
   await provasBuscaAnalise(pageM, 'celular');
   await provasTratarForaDaOrdem(pageM, 'celular');
+  await provasMenuRecolhido(pageM, 'celular');
 
   // O formulário da ação corre em contexto PRÓPRIO, nas duas larguras.
   //

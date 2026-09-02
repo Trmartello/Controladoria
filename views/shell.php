@@ -89,39 +89,86 @@
         <select id="sel-negocio" class="form-select form-select-sm"></select>
       </div>
 
+      <!--
+        Tópicos RECOLHÍVEIS (pedido do cliente, 2026-09-02, no padrão do CRM
+        Agro): os três primeiros itens ficam soltos, como o Dashboard de lá; o
+        resto vive dentro de um tópico com cabeçalho e chevron. Fechado, o menu
+        cabe numa tela de celular sem rolar; aberto fica só o tópico da tela
+        atual e os que a pessoa abriu (`App.iniciarMenu` guarda no navegador).
+        O cabeçalho é <button>, nunca <a>: não navega, só abre e fecha.
+        `#nav-secoes .nav-link` e `[data-secao]` continuam valendo: os links
+        estão aninhados, mas o contrato é o atributo, não a profundidade.
+      -->
       <ul class="nav nav-pills flex-column gap-1" id="nav-secoes">
         <li><a class="nav-link" href="#painel" data-secao="painel">Painel</a></li>
         <li><a class="nav-link" href="#hub" data-secao="hub">Hub do Planejamento</a></li>
         <li><a class="nav-link" href="#cadastros" data-secao="cadastros">Cadastros</a></li>
-        <li class="nav-item mt-2 text-white-50 small">Diagnóstico</li>
-        <li><a class="nav-link" href="#coleta" data-secao="coleta">Coleta e Tempestade</a></li>
-        <li><a class="nav-link" href="#cenario" data-secao="cenario">Análise de Cenário</a></li>
-        <li><a class="nav-link" href="#pestel" data-secao="pestel">PESTEL</a></li>
-        <li><a class="nav-link" href="#porter" data-secao="porter">Porter — 5 Forças</a></li>
-        <li><a class="nav-link" href="#swot" data-secao="swot">SWOT</a></li>
-        <li><a class="nav-link" href="#gut" data-secao="gut">Matriz GUT</a></li>
-        <!-- Depois do GUT, e não entre Porter e SWOT: a linha da matriz é a SWOT
-             corporativa priorizada pelo GUT, então o dado de entrada dela só
-             existe depois dele. -->
-        <li><a class="nav-link" href="#impacto" data-secao="impacto">Impacto por Negócio</a></li>
-        <li><a class="nav-link" href="#cruzamentos" data-secao="cruzamentos">Cruzamentos</a></li>
-        <li class="nav-item mt-2 text-white-50 small">Estratégia</li>
-        <li><a class="nav-link" href="#cascata" data-secao="cascata">Cascata de Escolhas</a></li>
-        <li class="nav-item mt-2 text-white-50 small">Execução</li>
-        <li><a class="nav-link" href="#projetos" data-secao="projetos">Projetos · 5W2H</a></li>
-        <li class="nav-item mt-2 text-white-50 small">Capital</li>
-        <li><a class="nav-link" href="#investimentos" data-secao="investimentos">Investimentos</a></li>
-        <li class="nav-item mt-2 text-white-50 small">Gestão</li>
-        <li><a class="nav-link" href="#metas" data-secao="metas">Metas · Indicadores</a></li>
-        <li><a class="nav-link" href="#relatorio" data-secao="relatorio">Relatório de Status</a></li>
-        <!-- O Dossiê fica ao lado do Relatório de Status porque são as duas
-             saídas em papel do sistema, e é aqui que se procura por elas. O que
-             muda é o assunto: o Relatório é o documento da REUNIÃO (um período,
-             o que andou); o Dossiê é o documento do PLANO (as etapas inteiras,
-             na ordem em que se lê). -->
-        <li><a class="nav-link" href="#dossie" data-secao="dossie">Dossiê do plano</a></li>
-        <li class="nav-item mt-2 text-white-50 small">Encontro</li>
-        <li><a class="nav-link" href="#sala" data-secao="sala">Sala · PIN e QR code</a></li>
+
+        <li class="grupo-menu" data-grupo="diagnostico">
+          <button type="button" class="cabecalho-grupo" aria-expanded="false"
+            aria-controls="grupo-diagnostico">Diagnóstico
+            <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+          <ul class="itens-grupo nav flex-column gap-1" id="grupo-diagnostico">
+            <li><a class="nav-link" href="#coleta" data-secao="coleta">Coleta e Tempestade</a></li>
+            <li><a class="nav-link" href="#cenario" data-secao="cenario">Análise de Cenário</a></li>
+            <li><a class="nav-link" href="#pestel" data-secao="pestel">PESTEL</a></li>
+            <li><a class="nav-link" href="#porter" data-secao="porter">Porter — 5 Forças</a></li>
+            <li><a class="nav-link" href="#swot" data-secao="swot">SWOT</a></li>
+            <li><a class="nav-link" href="#gut" data-secao="gut">Matriz GUT</a></li>
+            <!-- Depois do GUT, e não entre Porter e SWOT: a linha da matriz é a SWOT
+                 corporativa priorizada pelo GUT, então o dado de entrada dela só
+                 existe depois dele. -->
+            <li><a class="nav-link" href="#impacto" data-secao="impacto">Impacto por Negócio</a></li>
+            <li><a class="nav-link" href="#cruzamentos" data-secao="cruzamentos">Cruzamentos</a></li>
+          </ul>
+        </li>
+        <li class="grupo-menu" data-grupo="estrategia">
+          <button type="button" class="cabecalho-grupo" aria-expanded="false"
+            aria-controls="grupo-estrategia">Estratégia
+            <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+          <ul class="itens-grupo nav flex-column gap-1" id="grupo-estrategia">
+            <li><a class="nav-link" href="#cascata" data-secao="cascata">Cascata de Escolhas</a></li>
+          </ul>
+        </li>
+        <li class="grupo-menu" data-grupo="execucao">
+          <button type="button" class="cabecalho-grupo" aria-expanded="false"
+            aria-controls="grupo-execucao">Execução
+            <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+          <ul class="itens-grupo nav flex-column gap-1" id="grupo-execucao">
+            <li><a class="nav-link" href="#projetos" data-secao="projetos">Projetos · 5W2H</a></li>
+          </ul>
+        </li>
+        <li class="grupo-menu" data-grupo="capital">
+          <button type="button" class="cabecalho-grupo" aria-expanded="false"
+            aria-controls="grupo-capital">Capital
+            <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+          <ul class="itens-grupo nav flex-column gap-1" id="grupo-capital">
+            <li><a class="nav-link" href="#investimentos" data-secao="investimentos">Investimentos</a></li>
+          </ul>
+        </li>
+        <li class="grupo-menu" data-grupo="gestao">
+          <button type="button" class="cabecalho-grupo" aria-expanded="false"
+            aria-controls="grupo-gestao">Gestão
+            <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+          <ul class="itens-grupo nav flex-column gap-1" id="grupo-gestao">
+            <li><a class="nav-link" href="#metas" data-secao="metas">Metas · Indicadores</a></li>
+            <li><a class="nav-link" href="#relatorio" data-secao="relatorio">Relatório de Status</a></li>
+            <!-- O Dossiê fica ao lado do Relatório de Status porque são as duas
+                 saídas em papel do sistema, e é aqui que se procura por elas. O que
+                 muda é o assunto: o Relatório é o documento da REUNIÃO (um período,
+                 o que andou); o Dossiê é o documento do PLANO (as etapas inteiras,
+                 na ordem em que se lê). -->
+            <li><a class="nav-link" href="#dossie" data-secao="dossie">Dossiê do plano</a></li>
+          </ul>
+        </li>
+        <li class="grupo-menu" data-grupo="encontro">
+          <button type="button" class="cabecalho-grupo" aria-expanded="false"
+            aria-controls="grupo-encontro">Encontro
+            <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
+          <ul class="itens-grupo nav flex-column gap-1" id="grupo-encontro">
+            <li><a class="nav-link" href="#sala" data-secao="sala">Sala · PIN e QR code</a></li>
+          </ul>
+        </li>
       </ul>
 
       <div class="mt-auto pt-3 border-top border-secondary">
