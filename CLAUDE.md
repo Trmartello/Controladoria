@@ -800,7 +800,7 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   o par JÁ escolhido pela pessoa e a estratégia dela como rascunho — aceitar é
   ato de quem conduz, e o texto final é dele. A voz fica amarrada por
   `destino_tipo = 'CRUZAMENTO'`, com a mesma guarda de alvo das outras telas, e
-  volta ao painel se o cruzamento for apagado (`Quiz::soltarVozes`). O cartão
+  é apagada junto se o cruzamento for excluído (`Quiz::excluirVozes`). O cartão
   ganha o selo 🎤 com quantas vozes o sustentam. A ficha do painel mostra o
   **par** acima do texto (`QuizSala.parDaVoz`), que é o que o condutor lê para
   decidir; o lado cujo fator foi excluído aparece como tal em vez de sumir.
@@ -1087,7 +1087,8 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   ação destrutiva (desvincular) num lugar de leitura. O texto composto vai um
   cartão por linha e por isso a célula usa `.texto-celula` (`white-space:
   pre-line`) — sem ele as contribuições se emendam numa frase só no HTML.
-  Apagado o destino, a voz **volta sozinha e JÁ REDIGIDA**: `Quiz::guardarRedacao` guarda o
+  Quando o destino é apagado sem ser descartado (hoje, só a reclassificação da
+  ideia da tempestade), a voz **volta sozinha e JÁ REDIGIDA**: `Quiz::guardarRedacao` guarda o
   texto do registro no vínculo (a cada salvamento, não só ao amarrar — senão a
   edição seguinte deixaria a redação velha; na cascata, por LADO, porque a
   célula tem dois textos) e `Quiz::soltarVozes` **promove** esse
@@ -1120,10 +1121,14 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   faziam o condutor ver uma pergunta e a sala responder outra; **lista vinda do
   corpo é medida antes de tocar o banco** (`alvos` com 50 mil elementos = um
   SELECT cada, e `php -S` é single-threaded: doze segundos de servidor travado
-  por um pedido que ia falhar de qualquer jeito); e **apagar um item de cenário
-  ou um fator solta as vozes** por `Quiz::soltarVozes` — a da tempestade volta a
-  SELECIONADO, a do quiz volta a NOVO (a única situação em que o autor ainda
-  consegue corrigi-la pelo celular). O encerra-e-abre é serializado por
+  por um pedido que ia falhar de qualquer jeito); e **excluir um item de
+  cenário, um fator ou um cruzamento apaga as vozes do quiz de vez** por
+  `Quiz::excluirVozes` (a ideia da tempestade volta a SELECIONADO, na matriz da
+  Coleta). Até 2026-09-02 a voz voltava a NOVO e reaparecia no painel como
+  sugestão nova depois de o condutor excluir o registro — o cliente viu isso
+  numa voz que atravessou do Cenário para a SWOT e pediu a exclusão definitiva;
+  `soltarVozes` (voz volta a NOVO, redigida) ficou só para a reclassificação
+  da ideia, em que o conteúdo continua noutra análise. O encerra-e-abre é serializado por
   `GET_LOCK` por planejamento: era check-then-act, e dois condutores passavam
   os dois — o segundo encerrando a sala que o primeiro acabou de abrir.
   Plano e decisões: `docs/CASCATA-QUIZ-COLABORATIVO.md`.

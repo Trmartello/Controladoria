@@ -812,6 +812,9 @@ afirma "e o item novo já nasce mostrando a voz que o originou" '^1$' "$R"
 # este bloco inteiro era pulado — verde por não ter rodado, que é o pior jeito
 # de uma prova passar.
 R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"CENARIO","ano":2026,"tema":"Prova da travessia","max_ideias":3,"confirmar_encerrar":true}')
+# Afirmado de propósito: o bloco abaixo é condicional, e uma sala que não
+# abrisse o pularia inteiro em silêncio — verde sem ter rodado.
+afirma "abre a sala no Cenário para a prova da travessia" '"pergunta_id"' "$R"
 MV_PIN=$(echo "$R" | python3 -c "import sys,json
 try: print(json.load(sys.stdin)['dados'].get('pin',''))
 except: print('')" 2>/dev/null)
@@ -842,7 +845,36 @@ print(next((s['id'] for s in d.get('sugestoes', []) if s['texto'] == 'Voz que at
   post /api/fatores/$MV_FQ "{\"planejamento_id\":1,\"etapa\":\"PORTER\",\"categoria\":\"RIVALIDADE\",\"ano\":2026,\"descricao\":\"Item com voz do quiz (editado)\",\"sugestoes\":[]}" >/dev/null
   R=$(get "/api/fatores?planejamento_id=1&etapa=PORTER&ano=2026" | campo_de $MV_FQ quiz_vozes)
   afirma "e a primeira edição NÃO solta a voz que atravessou" '^1$' "$R"
-  post /api/fatores/$MV_FQ/excluir '{"planejamento_id":1}' >/dev/null
+  # Excluir o registro apaga a voz DE VEZ. Até 2026-09-02 ela voltava a NOVO
+  # e reaparecia no painel do Cenário como sugestão nova — o cliente viu isso
+  # numa voz que tinha atravessado do Cenário para a SWOT e pediu a exclusão
+  # definitiva: apagar o registro é o mesmo gesto do ✕ da ficha. A prova mede
+  # os dois lados — o painel do condutor e o celular do autor.
+  R=$(post /api/fatores/$MV_FQ/excluir '{"planejamento_id":1}')
+  afirma "exclui o fator que nasceu da voz" '"ok":true' "$R"
+  # As duas negações vêm depois de um `afirma` na MESMA resposta: uma rota que
+  # falhasse também não conteria o texto, e a prova ficaria verde sem provar.
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$MV_PERG")
+  afirma "o painel da pergunta continua respondendo" '"ok":true' "$R"
+  nega "e excluir o fator NÃO devolve a voz que atravessou ao painel" 'Voz que atravessa' "$R"
+  R=$(curl -s "$BASE/api/publico/minhas?pin=$MV_PIN&token=$MV_TOK")
+  afirma "o celular do autor continua respondendo" '"ok":true' "$R"
+  nega "e a voz não volta para ele" 'Voz que atravessa' "$R"
+  # O mesmo vale sem travessia: voz usada no Cenário e item excluído ali.
+  curl -s -X POST $BASE/api/publico/resposta -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$MV_PIN\",\"token\":\"$MV_TOK\",\"pergunta_id\":$MV_PERG,\"tipo\":\"SITUACAO_ATUAL\",\"texto\":\"Voz que some com o item\"}" >/dev/null
+  MV_SUG2=$(get "/api/quiz?planejamento_id=1&pergunta_id=$MV_PERG" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+print(next((s['id'] for s in d.get('sugestoes', []) if s['texto'] == 'Voz que some com o item'), ''))" 2>/dev/null)
+  MV_CI=$(post /api/cenario "{\"planejamento_id\":1,\"ano\":2026,\"tipo\":\"SITUACAO_ATUAL\",\"descricao\":\"Item que vai ser excluído\",\"sugestoes\":[$MV_SUG2]}" | id_de)
+  R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $MV_CI quiz_vozes)
+  afirma "a segunda voz fica amarrada ao item do cenário" '^1$' "$R"
+  R=$(post /api/cenario/$MV_CI/excluir '{"planejamento_id":1}')
+  afirma "exclui o item do Cenário" '"ok":true' "$R"
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$MV_PERG")
+  afirma "o painel responde depois da exclusão" '"ok":true' "$R"
+  nega "e a voz que originou o item foi apagada com ele" 'Voz que some com o item' "$R"
   post /api/quiz/encerrar '{"planejamento_id":1}' >/dev/null
 fi
 post /api/coleta/$MV_ID/excluir '{"planejamento_id":1}' >/dev/null
@@ -926,14 +958,18 @@ s = [x for x in json.load(sys.stdin)['dados']['sugestoes'] if x['id'] == $CZ_SUG
 print(json.dumps(s[0]['vinculada'] if s else None))" 2>/dev/null)
   afirma "a voz sai do painel, porque virou registro" '^1$' "$R"
 
-  # Excluído o cruzamento, a voz VOLTA — senão ficaria ACEITA sobre um id morto,
-  # congelada para o autor e "usada" para o condutor.
-  post /api/cruzamentos/$CZ_ID/excluir '{"planejamento_id":1}' >/dev/null
+  # Excluído o cruzamento, a voz SAI com ele. Até 2026-09-02 ela voltava ao
+  # painel como sugestão nova — o cliente pediu a exclusão definitiva: quem
+  # exclui o registro está descartando a voz, como no ✕ da ficha. Ficar ACEITA
+  # sobre um id morto continua proibido; a resposta agora é apagar, não soltar.
+  R=$(post /api/cruzamentos/$CZ_ID/excluir '{"planejamento_id":1}')
+  afirma "exclui o cruzamento que nasceu da voz" '"ok":true' "$R"
   R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$CZ_PERG" | python3 -c "
 import sys, json
-s = [x for x in json.load(sys.stdin)['dados']['sugestoes'] if x['id'] == $CZ_SUG]
-print(json.dumps(s[0]['vinculada'] if s else None))" 2>/dev/null)
-  afirma "apagado o cruzamento, a voz volta ao painel" '^0$' "$R"
+d = json.load(sys.stdin)
+s = [x for x in d['dados']['sugestoes'] if x['id'] == $CZ_SUG]
+print('painel-ok', json.dumps(s[0]['vinculada'] if s else None))" 2>/dev/null)
+  afirma "apagado o cruzamento, a voz é apagada junto" '^painel-ok null$' "$R"
 
   # A voz sai antes dos fatores: apagar o fator só ANULA o lado do par (a FK é
   # SET NULL, para não perder o que alguém escreveu na oficina), e a resposta
