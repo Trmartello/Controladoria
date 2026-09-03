@@ -548,14 +548,20 @@ CREATE TABLE IF NOT EXISTS coleta_item (
   unido_em         DATETIME NULL,
   adiado           TINYINT(1) NOT NULL DEFAULT 0,
   -- Quiz: a sugestão pertence a uma pergunta do roteiro e, quando o alvo tem
-  -- dois lados, declara de qual fala. `origem` é a MARCA de isolamento entre
+  -- lados, declara de qual fala. `origem` é a MARCA de isolamento entre
   -- os ritos — é por ela que as listagens da tempestade deixam a resposta de
   -- quiz de fora. Nunca por pergunta_id (FK SET NULL, que soltaria o item para
-  -- dentro da tela errada) nem por tipo_resposta: alvo sem lado (PESTEL, SWOT)
-  -- responde com tipo_resposta NULL e vazaria para a fila da Coleta.
+  -- dentro da tela errada) nem por tipo_resposta: alvo sem lado (o 🎤 de uma
+  -- coluna do PESTEL/SWOT) responde com tipo_resposta NULL e vazaria para a
+  -- fila da Coleta.
+  -- `tipo_resposta` é o LADO da resposta (ESCOLHA/RENUNCIA na cascata,
+  -- SITUACAO_ATUAL/TENDENCIA no cenário) ou, na pergunta da ETAPA INTEIRA, a
+  -- CATEGORIA que o participante escolheu no celular (POLITICO, FORCA…). Não é
+  -- ENUM de propósito: a lista branca é derivada da pergunta
+  -- (App\Services\Quiz::ladosDe), e um ENUM cresceria a cada análise nova.
   origem           ENUM('TEMPESTADE','QUIZ') NOT NULL DEFAULT 'TEMPESTADE',
   pergunta_id      INT NULL,
-  tipo_resposta    ENUM('ESCOLHA','RENUNCIA','SITUACAO_ATUAL','TENDENCIA') NULL,
+  tipo_resposta    VARCHAR(40) NULL,
   -- O par do CRUZAMENTO (TOWS), quando a pergunta é desse alvo: é a única
   -- resposta da sala que não é só texto — a pessoa ESCOLHE dois fatores da SWOT
   -- e escreve a estratégia do encontro deles. Nulos em todos os outros alvos.

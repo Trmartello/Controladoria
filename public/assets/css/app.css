@@ -2960,6 +2960,22 @@ body.menu-aberto .menu-lateral {
 .texto-celula { white-space: pre-line; }
 /* Par Escolha/Renúncia do participante: alvos generosos no toque */
 .par-tipo-resposta .btn { min-height: 2.75rem; }
+/* A escolha da CATEGORIA no celular (pergunta da etapa inteira): os mesmos
+   cartões `.quadrante-opcao` do formulário do fator, em grade que cabe no
+   celular (duas por linha a 390px). O `auto-fill` e não `auto-fit`: com
+   cinco cartões, o último não deve esticar sozinho até a largura toda. */
+.grade-categorias {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: .4rem;
+}
+.grade-categorias .quadrante-opcao { min-height: 3.2rem; }
+/* O painel do condutor na pergunta da etapa inteira: uma coluna por categoria,
+   com a cor da coluna da análise no topo. */
+.grade-quiz-categorias .coluna-categoria {
+  border-top: 3px solid var(--cor-cat, #007a45);
+  background: #f8f9fa;
+}
 .contexto-pergunta {
   border-left: 4px solid var(--verde-coperdia);
   padding-left: .75rem;

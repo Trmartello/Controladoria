@@ -526,9 +526,14 @@ const Participante = {
     return lados.map((l) => {
       const doLado = e.itens.filter((i) => i.tipo_resposta === l.valor);
       if (!doLado.length) return '';
+      // Lado com COR própria é categoria (pergunta da etapa inteira): o selo
+      // vai na cor da coluna, não nas duas cores do par escolha/renúncia
+      const selo = l.cor
+        ? `<span class="badge" style="background:${this.esc(l.cor)}">${this.esc(l.rotulo)}</span>`
+        : `<span class="badge text-bg-${classeLado(l.valor)}">${this.esc(l.rotulo)}</span>`;
       return `<div class="bloco-estrelas">
         <div class="titulo-bloco-estrelas">
-          <span class="badge text-bg-${classeLado(l.valor)}">${this.esc(l.rotulo)}</span>
+          ${selo}
           <span class="small text-muted">${doLado.length} resposta(s)</span>
         </div>
         ${doLado.map(ficha).join('')}
@@ -563,7 +568,40 @@ const Participante = {
   ladoAtual(p) {
     const lados = p.lados || [];
     if (!lados.length) return null;
-    return lados.some((l) => l.valor === this.tipoResposta) ? this.tipoResposta : lados[0].valor;
+    const valido = lados.some((l) => l.valor === this.tipoResposta);
+    // Na pergunta da etapa inteira ninguém escolhe pela pessoa: os lados são
+    // as CATEGORIAS, e a escolha é o conteúdo da resposta. Sem escolha, sem
+    // lado — a tela pede, e o servidor recusa sem ela.
+    if (p.escolhe_categoria) return valido ? this.tipoResposta : null;
+    return valido ? this.tipoResposta : lados[0].valor;
+  },
+
+  /**
+   * A escolha da CATEGORIA no celular (pergunta da etapa inteira): os mesmos
+   * cartões do formulário do fator — rótulo, dica e cor —, e, abaixo, a
+   * orientação do ⓘ da categoria escolhida. É o pedido do cliente
+   * (2026-09-03): a pessoa escolhe em qual quadrante a resposta entra e lê
+   * ali o que considerar antes de escrever.
+   */
+  cartoesCategoria(lados, lado) {
+    const escolhido = lados.find((l) => l.valor === lado);
+    return `<div class="mt-3" role="radiogroup" aria-label="Em qual categoria entra a sua sugestão">
+      <div class="small fw-bold mb-1">Categoria</div>
+      <div class="grade-categorias">
+        ${lados.map((l, i) => `
+          <input type="radio" class="btn-check" name="tipo-resposta" id="tipo-lado-${i}"
+            value="${this.esc(l.valor)}" ${l.valor === lado ? 'checked' : ''}>
+          <label class="quadrante-opcao" for="tipo-lado-${i}" style="--cor-quad:${this.esc(l.cor || '#007a45')}">
+            <span class="quadrante-nome">${this.esc(l.rotulo)}</span>
+            ${l.dica ? `<span class="quadrante-dica">${this.esc(l.dica)}</span>` : ''}
+          </label>`).join('')}
+      </div>
+      ${escolhido?.orientacao
+        ? `<div class="orientacao-pergunta" style="border-left-color:${this.esc(escolhido.cor || '#007a45')}"
+             data-orientacao-lado="${this.esc(escolhido.valor)}">
+             <strong>${this.esc(escolhido.rotulo)}:</strong> ${this.esc(escolhido.orientacao)}</div>`
+        : '<div class="small text-muted mt-2" data-orientacao-lado="">Toque numa categoria para ver o que considerar.</div>'}
+    </div>`;
   },
 
   /**
@@ -600,15 +638,21 @@ const Participante = {
   blocoQuiz(p, minhas, par = { interno: '', externo: '' }) {
     const prog = this.rodada?.progresso;
     const lados = p.lados || [];
+    const escolhe = !!p.escolhe_categoria;
     const lado = this.ladoAtual(p);
     const rotuloLado = (valor) => (lados.find((l) => l.valor === valor)?.rotulo) || 'sugestão';
+    const corLado = (valor) => (lados.find((l) => l.valor === valor)?.cor) || '#007a45';
     const usadas = (valor) => minhas.filter((i) => (i.tipo_resposta || null) === valor).length;
-    const restam = this.rodada.max_ideias - usadas(lado);
+    // Sem categoria escolhida ainda, o teto não é de ninguém: o campo aparece
+    // e é o envio que pede a escolha
+    const restam = escolhe && lado === null
+      ? this.rodada.max_ideias : this.rodada.max_ideias - usadas(lado);
     const maxTexto = Number(p.max_texto) || 255;
     // Duas cores para dois lados; o segundo lado é sempre o "contraponto"
     const classeLado = (i) => (i === 0 ? 'success' : 'danger');
     const area = `<textarea id="campo-ideia" class="form-control" rows="3" maxlength="${maxTexto}"
-          placeholder="${this.esc(lado ? rotuloLado(lado) + '…' : 'Escreva sua sugestão…')}"></textarea>`;
+          placeholder="${this.esc(lado ? rotuloLado(lado) + '…'
+            : escolhe ? 'Escolha a categoria acima e escreva…' : 'Escreva sua sugestão…')}"></textarea>`;
 
     const contexto = (p.contexto || []).map((c) =>
       `<div class="small text-muted"><strong>${this.esc(c.rotulo)}:</strong> ${this.esc(c.valor)}</div>`
@@ -620,6 +664,22 @@ const Participante = {
       .filter((l) => l.valor !== lado && this.rodada.max_ideias - usadas(l.valor) > 0)
       .map((l) => l.rotulo.toLowerCase());
 
+    // O selo e a listra da ficha "minha": pelo lado (duas cores) ou pela
+    // categoria (a cor dela, vinda do servidor)
+    const seloMinha = (i) => {
+      if (!i.tipo_resposta) return { classe: '', estilo: '', selo: '' };
+      if (escolhe) {
+        const cor = this.esc(corLado(i.tipo_resposta));
+        return { classe: '', estilo: ` style="border-left-color:${cor}"`,
+          selo: `<span class="badge float-start me-2" style="background:${cor}">${
+            this.esc(rotuloLado(i.tipo_resposta))}</span>` };
+      }
+      const classe = classeLado(lados.findIndex((l) => l.valor === i.tipo_resposta));
+      return { classe: ` lado-${classe}`, estilo: '',
+        selo: `<span class="badge text-bg-${classe} float-start me-2">${
+          this.esc(rotuloLado(i.tipo_resposta))}</span>` };
+    };
+
     return `
       <div class="contexto-pergunta">
         <div class="small text-muted">${this.esc(p.rotulo)}${
@@ -629,7 +689,8 @@ const Participante = {
         ${p.orientacao ? `<div class="orientacao-pergunta">${this.esc(p.orientacao)}</div>` : ''}
       </div>
 
-      ${lados.length ? `<div class="mt-3" role="radiogroup" aria-label="O que você vai sugerir">
+      ${escolhe ? this.cartoesCategoria(lados, lado)
+        : lados.length ? `<div class="mt-3" role="radiogroup" aria-label="O que você vai sugerir">
         <div class="btn-group w-100 par-tipo-resposta">
           ${lados.map((l, i) => `
             <input type="radio" class="btn-check" name="tipo-resposta" id="tipo-lado-${i}"
@@ -640,17 +701,19 @@ const Participante = {
 
       ${restam <= 0
         ? `<div class="alert alert-success py-2 small mt-3">Você enviou todas as suas
-             sugestões${lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''} desta pergunta.
-             ${outrosAbertos.length ? `Ainda pode sugerir ${this.esc(outrosAbertos.join(' e '))}.` : ''}</div>`
+             sugestões${lado ? ` ${escolhe ? 'em' : 'de'} ${this.esc(escolhe ? rotuloLado(lado) : rotuloLado(lado).toLowerCase())}` : ''} desta pergunta.
+             ${outrosAbertos.length ? `Ainda pode sugerir ${escolhe ? 'em ' : ''}${this.esc(outrosAbertos.join(' e '))}.` : ''}</div>`
         : `<div class="mt-3">
           ${this.seletoresPar(p, par)}
           <label class="form-label small" for="campo-ideia">${
             p.pares ? 'O que fazer com este encontro' : `Sua sugestão${
-              lado ? ` de ${this.esc(rotuloLado(lado).toLowerCase())}` : ''}`}</label>
+              lado ? (escolhe ? ` em ${this.esc(rotuloLado(lado))}`
+                : ` de ${this.esc(rotuloLado(lado).toLowerCase())}`) : ''}`}</label>
           ${this.comVoz(area, 'campo-ideia')}
           <div class="d-flex align-items-center gap-2 mt-2">
             <span class="small text-muted" id="contador-resposta" data-max="${maxTexto}">0/${maxTexto}</span>
-            <span class="small text-muted flex-grow-1">Pode enviar mais ${restam}.</span>
+            <span class="small text-muted flex-grow-1">${escolhe && lado === null
+              ? `Até ${restam} por categoria.` : `Pode enviar mais ${restam}.`}</span>
             <button class="btn btn-verde" id="btn-enviar">Enviar</button>
           </div>
           <div id="aviso-envio" class="small mt-2"></div>
@@ -667,15 +730,13 @@ const Participante = {
             // o que cabe em quatro. A listra da borda segue o mesmo lado do
             // selo: verde em cima de selo vermelho fazia a ficha dizer duas
             // coisas ao mesmo tempo.
-            const classe = i.tipo_resposta
-              ? classeLado(lados.findIndex((l) => l.valor === i.tipo_resposta)) : '';
-            return `<div class="ideia-minha${classe ? ` lado-${classe}` : ''}">
+            const m = seloMinha(i);
+            return `<div class="ideia-minha${m.classe}"${m.estilo}>
                  ${i.situacao === 'NOVO'
                    ? `<button type="button" class="btn btn-link btn-sm p-0 float-end ms-2 text-decoration-none"
                         data-editar="${i.id}" aria-label="Editar sugestão">✎ editar</button>`
                    : '<span class="small text-success float-end ms-2" title="Usada pela condução">✓ usada</span>'}
-                 ${classe ? `<span class="badge text-bg-${classe} float-start me-2">${
-                   this.esc(rotuloLado(i.tipo_resposta))}</span>` : ''}
+                 ${m.selo}
                  <div>${this.esc(i.texto)}</div>
                </div>`;
           }).join('')}
@@ -729,6 +790,16 @@ const Participante = {
         if (falta) {
           falta.className = 'small mt-2 text-danger';
           falta.textContent = 'Escolha um item de cada lado antes de enviar.';
+        }
+        return;
+      }
+      // A mesma conferência de conforto para a categoria: o servidor recusa
+      // igual, mas a frase escrita não precisa ir e voltar para saber disso.
+      if (p.escolhe_categoria && this.ladoAtual(p) === null) {
+        const falta = document.getElementById('aviso-envio');
+        if (falta) {
+          falta.className = 'small mt-2 text-danger';
+          falta.textContent = 'Escolha a categoria da sugestão antes de enviar.';
         }
         return;
       }

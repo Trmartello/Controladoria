@@ -25,6 +25,11 @@ class Quiz
      * O lado da resposta, por alvo. Vazio = o alvo não tem lado: a categoria
      * JÁ é a pergunta ("me deem ameaças"), e um seletor no celular só somaria
      * um toque a cada envio.
+     *
+     * A exceção é o 🎤 da ETAPA INTEIRA (alvo FATOR com `categoria` nula): ali
+     * os lados são as próprias categorias da etapa, e o celular escolhe em qual
+     * a resposta entra — ver `ladosDe()`, que é quem deve ser consultado; esta
+     * tabela é só a parte fixa.
      */
     public const LADOS = [
         'CASCATA' => ['ESCOLHA' => 'Escolha', 'RENUNCIA' => 'Renúncia'],
@@ -131,6 +136,57 @@ class Quiz
             . 'realidade atual — mercado, resultado, capacidade e posição competitiva.',
         'TENDENCIA' => 'Para onde o ambiente aponta: movimentos que já se desenham e devem se '
             . 'intensificar — mercado, tecnologia, comportamento do cliente e regulação.',
+    ];
+
+    /**
+     * O catálogo das categorias que o CELULAR desenha quando a pergunta é da
+     * etapa inteira: rótulo curto, cor e a dica de uma linha de cada cartão —
+     * o mesmo cartão do formulário do fator (`Diag.campoCategoria`), para que
+     * quem responde e quem conduz vejam a mesma coisa.
+     *
+     * É a cópia servida do `Diag.CATEGORIAS_ETAPA` / `CORES_QUADRANTE` /
+     * `DICAS_QUADRANTE` do front. A tela do participante não carrega o `Diag`
+     * (é uma página autônoma, sem login), e a cópia é vigiada pela bateria de
+     * sistema (`provasEtapaNaSala` compara os dois catálogos) — divergência
+     * vira vermelho, não duas telas dizendo coisas diferentes.
+     * Os rótulos são os das COLUNAS (curtos, no plural na SWOT), não os do
+     * enunciado (`ROTULO_CATEGORIA`, que fala "Ameaça de novos entrantes").
+     */
+    public const CATALOGO_CATEGORIA = [
+        'PESTEL' => [
+            'POLITICO'    => ['rotulo' => 'Político', 'cor' => '#7a3b8f', 'dica' => 'Governo · Regulação'],
+            'ECONOMICO'   => ['rotulo' => 'Econômico', 'cor' => '#b08d4f', 'dica' => 'Juros · Câmbio · Renda'],
+            'SOCIAL'      => ['rotulo' => 'Social', 'cor' => '#2c7fb8', 'dica' => 'Comportamento · Demografia'],
+            'TECNOLOGICO' => ['rotulo' => 'Tecnológico', 'cor' => '#0d6e6e', 'dica' => 'Automação · Digital'],
+            'ECOLOGICO'   => ['rotulo' => 'Ecológico', 'cor' => '#007a45', 'dica' => 'Clima · Recursos · ESG'],
+            'LEGAL'       => ['rotulo' => 'Legal', 'cor' => '#8f3b3b', 'dica' => 'Leis · Compliance'],
+        ],
+        'PORTER' => [
+            'RIVALIDADE'         => ['rotulo' => 'Rivalidade', 'cor' => '#8f3b3b', 'dica' => 'Concorrentes diretos'],
+            'NOVOS_ENTRANTES'    => ['rotulo' => 'Novos Entrantes', 'cor' => '#b08d4f', 'dica' => 'Barreiras de entrada'],
+            'SUBSTITUTOS'        => ['rotulo' => 'Substitutos', 'cor' => '#7a3b8f', 'dica' => 'Soluções alternativas'],
+            'PODER_FORNECEDORES' => ['rotulo' => 'Poder dos Fornecedores', 'cor' => '#2c7fb8', 'dica' => 'Quem nos abastece'],
+            'PODER_CLIENTES'     => ['rotulo' => 'Poder dos Clientes', 'cor' => '#0d6e6e', 'dica' => 'Quem compra de nós'],
+        ],
+        'SWOT' => [
+            'FORCA'        => ['rotulo' => 'Forças', 'cor' => '#007a45', 'dica' => 'Interno · Ajuda'],
+            'FRAQUEZA'     => ['rotulo' => 'Fraquezas', 'cor' => '#b08d4f', 'dica' => 'Interno · Atrapalha'],
+            'OPORTUNIDADE' => ['rotulo' => 'Oportunidades', 'cor' => '#2c7fb8', 'dica' => 'Externo · Ajuda'],
+            'AMEACA'       => ['rotulo' => 'Ameaças', 'cor' => '#8f3b3b', 'dica' => 'Externo · Atrapalha'],
+        ],
+    ];
+
+    /**
+     * A pergunta da ETAPA INTEIRA, quando o 🎤 é o do cabeçalho da análise e
+     * não o de uma coluna. Pedido do cliente (2026-09-03): a sala escolhe o
+     * quadrante no celular e lê ali o que considerar. O enunciado precisa
+     * dizer que há uma escolha a fazer — sem isso a pessoa escreve e só então
+     * descobre o cartão de categoria.
+     */
+    private const PERGUNTA_ETAPA = [
+        'PESTEL' => 'Que fatores do ambiente afetam o nosso negócio em %d? Escolha a categoria.',
+        'PORTER' => 'O que pesa nas cinco forças do nosso setor em %d? Escolha a força.',
+        'SWOT'   => 'O que você vê de forças, fraquezas, oportunidades e ameaças em %d? Escolha o quadrante.',
     ];
 
     /**
@@ -298,6 +354,47 @@ class Quiz
 
     // ---- Como a pergunta se descreve ----
 
+    /**
+     * A pergunta é da ETAPA INTEIRA — o celular escolhe a categoria? É o alvo
+     * FATOR sem categoria. Quem decide "tem lados / quais" para uma pergunta
+     * concreta é `ladosDe()`, e é ela que as rotas devem consultar: a tabela
+     * `LADOS` sozinha diz que FATOR não tem lado, e para esta pergunta isso é
+     * mentira.
+     */
+    public static function escolheCategoria(array $p): bool
+    {
+        $categoria = $p['categoria'] ?? null;
+        return ($p['alvo_tipo'] ?? '') === 'FATOR'
+            && ($categoria === null || $categoria === '')
+            && isset(self::CATALOGO_CATEGORIA[(string)($p['etapa'] ?? '')]);
+    }
+
+    /**
+     * Os lados de UMA pergunta: o que o celular oferece para escolher antes de
+     * escrever. Para a cascata e o cenário, a tabela fixa; para a etapa
+     * inteira, as categorias da etapa — cada uma com cor, dica e a orientação
+     * do ⓘ, porque é ao escolher o cartão que a pessoa lê o que considerar.
+     */
+    public static function ladosDe(array $p): array
+    {
+        if (self::escolheCategoria($p)) {
+            $lados = [];
+            foreach (self::CATALOGO_CATEGORIA[(string)$p['etapa']] as $valor => $c) {
+                $lados[] = [
+                    'valor' => $valor, 'rotulo' => $c['rotulo'], 'cor' => $c['cor'],
+                    'dica' => $c['dica'],
+                    'orientacao' => self::ORIENTACAO_CATEGORIA[$valor] ?? null,
+                ];
+            }
+            return $lados;
+        }
+        $lados = [];
+        foreach (self::LADOS[(string)($p['alvo_tipo'] ?? 'CASCATA')] ?? [] as $valor => $rot) {
+            $lados[] = ['valor' => $valor, 'rotulo' => $rot];
+        }
+        return $lados;
+    }
+
     /** Rótulo curto, para o roteiro e a faixa da sessão. */
     public static function rotulo(array $p): string
     {
@@ -305,6 +402,10 @@ class Quiz
             case 'CENARIO':
                 return "Cenário {$p['ano']}";
             case 'FATOR':
+                if (self::escolheCategoria($p)) {
+                    return (self::TELA_ETAPA[(string)$p['etapa']] ?? $p['etapa'])
+                        . " {$p['ano']} · a análise inteira";
+                }
                 return self::rotuloCategoria((string)$p['categoria'])
                     . " · {$p['etapa']} {$p['ano']}";
             case 'CRUZAMENTO':
@@ -381,10 +482,7 @@ class Quiz
     public static function paraSala(array $p, ?int $planId = null): array
     {
         $tipo = (string)($p['alvo_tipo'] ?? 'CASCATA');
-        $lados = [];
-        foreach (self::LADOS[$tipo] ?? [] as $valor => $rot) {
-            $lados[] = ['valor' => $valor, 'rotulo' => $rot];
-        }
+        $lados = self::ladosDe($p);
         // O alvo CRUZAMENTO é o único que manda REGISTROS para o celular: sem
         // as duas listas a pessoa não tem o que escolher. Elas descem para uma
         // tela sem login, e por isso vêm de `Cruzamentos::doQuadrante`, que
@@ -424,7 +522,14 @@ class Quiz
             // A orientação do ⓘ desce com a pergunta: quem responde pelo celular
             // não vê o ícone da análise, e sem ela "que fatores TECNOLÓGICOS
             // afetam o negócio?" fica no ar. É o mesmo texto que o condutor lê.
+            // Na etapa inteira ela vai em CADA lado (`ladosDe`), e aparece ao
+            // escolher o cartão — aqui fica nula de propósito.
             'orientacao' => self::ORIENTACAO_CATEGORIA[(string)($p['categoria'] ?? '')] ?? null,
+            // O celular precisa saber que a escolha é OBRIGATÓRIA: com dois
+            // lados ele marca o primeiro por padrão; com as categorias, marcar
+            // uma sozinho mandaria a resposta para um quadrante que ninguém
+            // escolheu — e o servidor recusa sem ela.
+            'escolhe_categoria' => self::escolheCategoria($p),
         ];
     }
 
@@ -439,6 +544,9 @@ class Quiz
             case 'CENARIO':
                 return "O que descreve o cenário de {$p['ano']}?";
             case 'FATOR':
+                if (self::escolheCategoria($p)) {
+                    return sprintf(self::PERGUNTA_ETAPA[(string)$p['etapa']], (int)$p['ano']);
+                }
                 $modelo = self::PERGUNTA_CATEGORIA[(string)$p['categoria']] ?? null;
                 return $modelo
                     ? sprintf($modelo, (int)$p['ano'])
@@ -474,6 +582,14 @@ class Quiz
                         . 'ou o que vem pela frente (tendência).'],
                 ];
             case 'FATOR':
+                if (self::escolheCategoria($p)) {
+                    return [
+                        ['rotulo' => 'Análise', 'valor' => "{$p['etapa']} · {$p['ano']}"],
+                        ['rotulo' => 'Como responder',
+                         'valor' => 'Toque na categoria em que a sua sugestão entra; a orientação '
+                            . 'do que considerar aparece ao escolher.'],
+                    ];
+                }
                 return [
                     ['rotulo' => 'Análise', 'valor' => "{$p['etapa']} · {$p['ano']}"],
                     ['rotulo' => 'Categoria',
@@ -565,6 +681,14 @@ class Quiz
                 }
                 $linhas = [];
                 foreach ($d['alvos'] as $categoria) {
+                    // O alvo VAZIO é a etapa inteira: a pergunta nasce sem
+                    // categoria e o celular escolhe (`escolheCategoria`). É o
+                    // 🎤 do cabeçalho da análise; o de cada coluna continua
+                    // mandando a categoria dele.
+                    if ($categoria === '') {
+                        $linhas[] = array_merge($vazio, ['ano' => $ano, 'etapa' => $etapa]);
+                        continue;
+                    }
                     if (!in_array($categoria, self::CATEGORIAS[$etapa], true)) {
                         Json::erro('Categoria inválida para esta etapa.');
                     }

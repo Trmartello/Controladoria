@@ -828,21 +828,72 @@ const Diag = {
   },
 
   /**
-   * As sugestões da categoria em foco. O alvo FATOR não tem lado — a categoria
-   * JÁ é a pergunta —, então é uma lista só. "Usar" leva o texto ao formulário
-   * do fator: aceitar é ato de quem conduz, e o texto final é o dele.
+   * O 🎤 da ETAPA INTEIRA, no cabeçalho da análise. A pergunta nasce sem
+   * categoria e é o CELULAR que escolhe em qual quadrante a resposta entra —
+   * lendo ali a orientação do ⓘ daquela categoria. Pedido do cliente
+   * (2026-09-03): numa oficina a pessoa tem uma ideia e sabe onde ela cabe;
+   * esperar o condutor abrir coluna por coluna perdia a ideia. O alvo vazio
+   * (`alvos: ['']`) é o que o servidor lê como "toda a etapa"
+   * (`Quiz::validarAlvos`). O 🎤 de cada coluna continua existindo, para a
+   * condução que prefere perguntar um quadrante por vez.
+   */
+  quizMicEtapa(dono, etapa, ano, titulo) {
+    const ativa = dono.quiz?.pergunta;
+    const naSala = !!ativa && ativa.alvo_tipo === 'FATOR' && ativa.etapa === etapa
+      && Number(ativa.ano) === Number(ano) && !ativa.categoria;
+    return `<span data-mic-etapa="${etapa}">${QuizSala.microfone(
+      { alvo_tipo: 'FATOR', etapa, ano, alvos: [''] },
+      `a análise inteira (${titulo}; a sala escolhe a categoria)`,
+      { ativo: naSala, pergunta: naSala ? ativa.id : null })}</span>`;
+  },
+
+  /**
+   * As categorias de uma etapa como o PAINEL da sala as desenha: valor, rótulo
+   * da coluna e cor. Vêm do catálogo servido (`App.sessao.categorias`, o mesmo
+   * que o celular usa), para que o painel do condutor e a tela do participante
+   * falem da mesma coisa com as mesmas palavras; sem ele, o do `Diag`.
+   */
+  categoriasDaEtapa(etapa) {
+    const servidas = App.sessao?.categorias?.[etapa];
+    if (servidas) return Object.entries(servidas).map(([v, c]) => [v, c.rotulo, c.cor]);
+    if (etapa === 'SWOT') {
+      return Object.entries(this.QUADRANTES).map(([v, r]) => [v, r, this.CORES_QUADRANTE[v]]);
+    }
+    return (this.CATEGORIAS_ETAPA[etapa] || []).map(([v, r, cor]) => [v, r, cor]);
+  },
+
+  /**
+   * As sugestões da pergunta em foco. Com o 🎤 de uma coluna, o alvo não tem
+   * lado — a categoria JÁ é a pergunta — e é uma lista só. Com o 🎤 da etapa
+   * inteira, uma coluna por categoria, na cor da coluna da análise: a
+   * categoria escolhida no celular viaja em `tipo_resposta`. "Usar" leva o
+   * texto ao formulário do fator, já com a categoria marcada: aceitar é ato de
+   * quem conduz, e o texto (e o quadrante) final é o dele.
    */
   quizPainel(dono, etapa, ano) {
     const p = this.quizFoco(dono, etapa, ano);
     if (!p) return '';
     const sugestoes = dono.quiz?.sugestoes || [];
     const recolhido = dono.quizUi?.painelRecolhido;
+    const podeUnir = App.podeEditar() && p.situacao !== 'ATIVA';
+    const grade = p.categoria
+      ? `<div class="coluna-quiz coluna-escolha mt-2">
+          ${QuizSala.fichas(sugestoes, { virou: 'fator', podeUnir })}
+        </div>`
+      : `<div class="row g-2 mt-1 grade-quiz-categorias">
+          ${this.categoriasDaEtapa(etapa).map(([cat, rotulo, cor]) => {
+            const fichas = sugestoes.filter((s) => s.tipo_resposta === cat);
+            return `<div class="col-md-6 col-xl-4" data-quiz-categoria="${cat}">
+              <div class="coluna-quiz coluna-categoria" style="--cor-cat:${cor}">
+                <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${Modal.esc(rotulo)}
+                  <span class="badge rounded-pill text-bg-secondary">${QuizSala.contarCartoes(fichas)}</span></div>
+                ${QuizSala.fichas(fichas, { virou: 'fator', podeUnir })}
+              </div></div>`;
+          }).join('')}
+        </div>`;
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
       ${QuizSala.cabecalhoPainel(dono, p, sugestoes)}
-      ${recolhido ? '' : `<div class="coluna-quiz coluna-escolha mt-2">
-        ${QuizSala.fichas(sugestoes, { virou: 'fator',
-          podeUnir: App.podeEditar() && p.situacao !== 'ATIVA' })}
-      </div>`}
+      ${recolhido ? '' : grade}
     </div></div>`;
   },
 
@@ -879,7 +930,9 @@ const Diag = {
       const sg = QuizSala.grupoDe(dono.quiz?.sugestoes, b.dataset.usarSugestao);
       const p = this.quizFoco(dono, etapa, ano);
       if (!sg || !p) return;
-      modalFator(null, p.categoria, sg);
+      // Pergunta da etapa inteira: a categoria é a que a pessoa escolheu no
+      // celular — marcada no formulário, e o condutor troca se discordar.
+      modalFator(null, p.categoria || sg.tipo_resposta || null, sg);
     }));
     el.querySelectorAll('[data-excluir-sugestao]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Excluir esta sugestão? Ela some para a sala também.')) return;
@@ -964,6 +1017,7 @@ const Diag = {
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${this.campoBusca(etapa)}
             ${this.seletorAno(etapa)}
+            ${this.quizMicEtapa(dono, etapa, ano, titulo)}
             ${RelatorioAnalise.botao()}
             ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
           </div>
@@ -1703,6 +1757,7 @@ const SecaoSwot = {
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.campoBusca('SWOT')}
             ${Diag.seletorAno('swot')}
+            ${Diag.quizMicEtapa(this, 'SWOT', ano, 'SWOT')}
             ${RelatorioAnalise.botao()}
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
           </div>
