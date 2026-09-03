@@ -962,6 +962,10 @@ const SecaoProjetos = {
 
     el.querySelectorAll('[data-virar-acao]').forEach((b) => b.addEventListener('click', () =>
       this.modalConverterAcao(pendentes.find((p) => p.chave === b.dataset.virarAcao))));
+    el.querySelectorAll('[data-tirar-fila]').forEach((b) => b.addEventListener('click', () => {
+      const p = pendentes.find((x) => x.chave === b.dataset.tirarFila);
+      this.tirarDaFila(b.dataset.tirarFila, p ? (p.texto_tratado || p.texto) : '');
+    }));
 
     el.querySelectorAll('[data-nivel]').forEach((b) =>
       b.addEventListener('click', () => this.aplicarNivel(b.dataset.nivel, projetos)));
@@ -1044,7 +1048,7 @@ const SecaoProjetos = {
       const p = projetos.find((x) => x.id == b.dataset.excluirProj);
       const q = (n, s, pl) => Vinculos.quantos(n, s, pl);
       const acoes = (p?.desdobramentos || []).length;
-      if (!confirm(Vinculos.aviso(`Excluir o projeto «${p?.titulo || ''}»?`, {
+      const aviso = Vinculos.aviso(`Excluir o projeto «${p?.titulo || ''}»?`, {
         some: [
           q(acoes, 'ação 5W2H', 'ações 5W2H'),
           q((p?.iniciativas || []).length, 'iniciativa', 'iniciativas'),
@@ -1052,7 +1056,16 @@ const SecaoProjetos = {
         ],
         solta: [q(p?.investimentos_vinculados, 'investimento', 'investimentos')],
         nota: 'Não dá para desfazer.',
-      }))) return;
+      });
+      const origens = (p?.desdobramentos || []).reduce((n, a) => n + (Number(a.origens) || 0), 0);
+      if (origens) {
+        this.excluirComOrigens({
+          titulo: 'Excluir o projeto', aviso, origens,
+          url: `/api/projetos/${b.dataset.excluirProj}/excluir`,
+        });
+        return;
+      }
+      if (!confirm(aviso)) return;
       try {
         await App.api(`/api/projetos/${b.dataset.excluirProj}/excluir`, { planejamento_id: this.plan.id });
       } catch (e) {
@@ -1069,6 +1082,17 @@ const SecaoProjetos = {
     }));
     el.querySelectorAll('[data-excluir-ini]').forEach((b) => b.addEventListener('click', async (ev) => {
       ev.stopPropagation();
+      const iniId = Number(b.dataset.excluirIni);
+      const ini = projetos.flatMap((x) => x.iniciativas || []).find((i) => Number(i.id) === iniId);
+      const origens = (ini?.acoes || []).reduce((n, a) => n + (Number(a.origens) || 0), 0);
+      if (origens) {
+        this.excluirComOrigens({
+          titulo: 'Excluir a iniciativa',
+          aviso: `Excluir a iniciativa «${ini?.titulo || ''}» e todas as ações dentro dela?`,
+          origens, url: `/api/iniciativas/${iniId}/excluir`,
+        });
+        return;
+      }
       if (!confirm('Excluir a iniciativa e todas as ações dentro dela?')) return;
       try {
         await App.api(`/api/iniciativas/${b.dataset.excluirIni}/excluir`, { planejamento_id: this.plan.id });
@@ -1148,8 +1172,18 @@ const SecaoProjetos = {
       this.pintarNiveis(el, projetos);
     }));
     el.querySelectorAll('[data-excluir-desd]').forEach((b) => b.addEventListener('click', async () => {
+      const acaoId = Number(b.dataset.excluirDesd);
+      const acao = projetos.flatMap((x) => x.desdobramentos || []).find((a) => Number(a.id) === acaoId);
+      if (Number(acao?.origens)) {
+        this.excluirComOrigens({
+          titulo: 'Excluir a ação',
+          aviso: `Excluir a ação «${acao?.o_que || ''}»?`,
+          origens: Number(acao.origens), url: `/api/desdobramentos/${acaoId}/excluir`,
+        });
+        return;
+      }
       if (!confirm('Excluir este desdobramento?')) return;
-      await App.api(`/api/desdobramentos/${b.dataset.excluirDesd}/excluir`, { planejamento_id: this.plan.id });
+      await App.api(`/api/desdobramentos/${acaoId}/excluir`, { planejamento_id: this.plan.id });
       this.carregar();
     }));
 
@@ -1439,14 +1473,47 @@ const SecaoProjetos = {
         <span class="ms-auto d-flex align-items-center gap-2 flex-shrink-0 acoes-pendencia">
           ${selo(p)}
           ${podeConverter ? `<button class="btn btn-sm btn-verde"
-            data-virar-acao="${p.chave}">Transformar em ação</button>` : ''}
+            data-virar-acao="${p.chave}">Transformar em ação</button>
+          <button class="btn btn-sm btn-outline-danger" data-tirar-fila="${p.chave}"
+            title="Tirar da fila de vez — o registro continua na análise dele"
+            aria-label="Tirar da fila de vez">×</button>` : ''}
         </span>
       </div>`).join('');
     return `<div class="card mb-3 card-ideias-acao"><div class="card-body py-2 px-3">
       <div class="rotulo-secao">Aguardando plano de ação (${pendentes.length})</div>
-      <div class="small text-muted mb-2">Vindas da coleta, da SWOT e dos cruzamentos — atribua cada uma a uma iniciativa para virar ação.</div>
+      <div class="small text-muted mb-2">Vindas da coleta, da SWOT e dos cruzamentos — atribua cada uma a uma iniciativa para virar ação, ou tire da fila (×) o que não vai virar.</div>
       ${linhas}
     </div></div>`;
+  },
+
+  /**
+   * O × da fila: tira a pendência de "aguardando plano de ação" DE VEZ. Pedido
+   * do cliente (2026-09-03). O registro não é apagado — o fator segue na
+   * análise, o cruzamento na SWOT, a ideia volta à matriz da Coleta —, só
+   * deixa de esperar uma ação. É o mesmo "desmarcar" de cada origem
+   * (`plano-acao` com `marcar: false`; `reabrir` na Coleta), chamado daqui
+   * porque a fila é onde a pessoa vê a pendência que não quer mais.
+   * A chave da pendência diz a origem pela primeira letra (ver `carregar`).
+   */
+  async tirarDaFila(chave, texto) {
+    const id = Number(chave.slice(1));
+    const rota = {
+      c: [`/api/coleta/${id}/reabrir`, {}],
+      f: [`/api/fatores/${id}/plano-acao`, { marcar: false }],
+      x: [`/api/cruzamentos/${id}/plano-acao`, { marcar: false }],
+      n: [`/api/cenario/${id}/plano-acao`, { marcar: false }],
+    }[chave[0]];
+    if (!rota) return;
+    const resumo = (texto || '').length > 90 ? `${texto.slice(0, 90)}…` : texto;
+    if (!confirm(`Tirar «${resumo}» da fila de plano de ação?\n\n`
+      + 'O registro continua na análise de origem (a ideia volta à matriz da Coleta); '
+      + 'só deixa de aguardar uma ação.')) return;
+    try {
+      await App.api(rota[0], { planejamento_id: this.plan.id, ...rota[1] });
+    } catch (e) {
+      alert(e.message);
+    }
+    this.carregar();
   },
 
   // Transforma uma pendência numa ação (desdobramento) de uma iniciativa,
@@ -1795,6 +1862,41 @@ const SecaoProjetos = {
         this.avisarReagendamento(r);
         App.recarregarSecaoAtiva();
       },
+    });
+  },
+
+  /**
+   * A exclusão de ação, frente ou projeto quando alguma ação NASCEU de uma
+   * origem — fator, item de cenário, cruzamento, ideia da Coleta. Pedido do
+   * cliente (2026-09-03): apagar a ação devolvia a origem para a fila de
+   * "aguardando plano de ação" sem perguntar, e a fila enchia de pendências
+   * que ninguém queria mais. Aqui a pessoa escolhe: devolver à fila (o
+   * comportamento de sempre) ou tirar de vez — o registro continua na análise
+   * dele, só deixa de esperar uma ação.
+   *
+   * É um MODAL do sistema, nunca `confirm()`: o navegador oferece "bloquear
+   * caixas de diálogo" e, bloqueadas, o gesto simplesmente não acontecia.
+   * Ação sem origem nenhuma não passa por aqui — perguntar o destino de uma
+   * origem que não existe seria um diálogo sem sentido (quem chama confere
+   * `origens` antes).
+   */
+  excluirComOrigens({ titulo, aviso, origens, url }) {
+    const quantas = origens === 1 ? 'A origem desta ação' : `As ${origens} origens destas ações`;
+    Modal.abrir({
+      titulo,
+      valores: { planejamento_id: this.plan.id, origens: 'devolver' },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'aviso_exclusao', rotulo: '', tipo: 'info', texto: aviso },
+        { nome: 'origens', rotulo: `${quantas} — o fator, o item de cenário, o cruzamento ou a ideia que virou ação:`,
+          tipo: 'botoes', vertical: true, opcoes: [
+            { valor: 'devolver', rotulo: 'Devolver para "Aguardando plano de ação"' },
+            { valor: 'tirar', rotulo: 'Excluir de vez — sai da fila; o registro continua na análise dele' },
+          ] },
+      ],
+      salvar: { rotulo: 'Excluir', perigo: true },
+      enviar: (dados) => App.api(url, { planejamento_id: this.plan.id, origens: dados.origens }),
+      aoSalvar: () => this.carregar(),
     });
   },
 

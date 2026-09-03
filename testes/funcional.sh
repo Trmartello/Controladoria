@@ -1066,6 +1066,62 @@ print(json.dumps({'usada': int(s.get('Automacao da granja', {}).get('vinculada')
   post /api/quiz/encerrar '{"planejamento_id":1}' >/dev/null
 fi
 
+echo "### 9k. Excluir ação, frente ou projeto: as origens voltam à fila ou saem de vez"
+#
+# Pedido do cliente (2026-09-03): apagar uma ação devolvia a origem (o fator, a
+# ideia…) para "aguardando plano de ação" sem perguntar, e a fila enchia do
+# que ninguém queria mais. A chave `origens` do corpo decide: `devolver` (o
+# padrão, e o de sempre) ou `tirar`. As provas medem os dois caminhos e as
+# duas origens que se comportam diferente — o fator (FK SET NULL) e a ideia da
+# Coleta (par polimórfico, sem FK) —, mais a recusa de valor desconhecido.
+OK_F=$(post /api/fatores '{"planejamento_id":1,"etapa":"SWOT","categoria":"FRAQUEZA","descricao":"Fraqueza da prova de origens","ano":2026}' | id_de)
+post /api/fatores/$OK_F/plano-acao '{"planejamento_id":1}' >/dev/null
+OK_I=$(post /api/coleta '{"planejamento_id":1,"texto":"Ideia da prova de origens","ano":2026}' | id_de)
+post /api/coleta/$OK_I/encaminhar '{"planejamento_id":1,"destino":"ACAO"}' >/dev/null
+OK_P=$(post /api/projetos '{"planejamento_id":1,"titulo":"Projeto da prova de origens","ano":2027,"responsavel":"QA"}' | id_de)
+OK_BASE="\"planejamento_id\":1,\"projeto_id\":$OK_P,\"iniciativa_nova\":\"Frente das origens\",\"como\":\"x\",\"quem\":\"QA\",\"prioridade\":\"MEDIA\",\"status\":\"NAO_INICIADO\",\"progresso\":0,\"recorrencia\":\"NENHUMA\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\""
+OK_A1=$(post /api/desdobramentos "{$OK_BASE,\"o_que\":\"Acao da fraqueza\",\"fator_id\":$OK_F}" | id_de)
+OK_A2=$(post /api/desdobramentos "{$OK_BASE,\"o_que\":\"Acao da ideia\",\"coleta_item_id\":$OK_I}" | id_de)
+R=$(get "/api/projetos?planejamento_id=1" | python3 -c "
+import sys, json
+p = json.load(sys.stdin)['dados']
+a = [x for pr in p for x in pr['desdobramentos'] if x['id'] == $OK_A1]
+print(a[0]['origens'] if a else '')" 2>/dev/null)
+afirma "a listagem conta a origem de cada ação (é ela que decide se a tela pergunta)" '^1$' "$R"
+R=$(post /api/desdobramentos/$OK_A1/excluir '{"planejamento_id":1,"origens":"jogar fora"}')
+afirma "valor desconhecido para as origens é recusado, nunca corrigido" 'devolver à fila ou tirar' "$R"
+R=$(post /api/desdobramentos/$OK_A1/excluir '{"planejamento_id":1,"origens":"tirar"}')
+afirma "exclui a ação tirando a origem de vez" '"ok":true' "$R"
+R=$(get "/api/fatores/aguardando-acao?planejamento_id=1")
+afirma "a fila de fatores responde" '"ok":true' "$R"
+nega "e o fator NÃO volta para ela" "\"id\":$OK_F," "$R"
+R=$(get "/api/fatores?planejamento_id=1&etapa=SWOT&ano=2026" | campo_de $OK_F acao_em)
+afirma "o fator continua na SWOT, sem a marca de plano de ação" '^null$' "$R"
+R=$(post /api/desdobramentos/$OK_A2/excluir '{"planejamento_id":1,"origens":"tirar"}')
+afirma "exclui a ação da ideia tirando-a de vez" '"ok":true' "$R"
+R=$(get "/api/coleta/aguardando-acao?planejamento_id=1")
+afirma "a fila de ideias responde" '"ok":true' "$R"
+nega "e a ideia NÃO volta para ela" "\"id\":$OK_I," "$R"
+R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $OK_I situacao)
+afirma "a ideia volta à matriz da Coleta como selecionada, sem destino" '^"SELECIONADO"$' "$R"
+# O padrão continua sendo o de sempre: sem a chave, a origem volta à fila.
+post /api/fatores/$OK_F/plano-acao '{"planejamento_id":1}' >/dev/null
+OK_A3=$(post /api/desdobramentos "{$OK_BASE,\"o_que\":\"Acao devolvida\",\"fator_id\":$OK_F}" | id_de)
+R=$(post /api/desdobramentos/$OK_A3/excluir '{"planejamento_id":1}')
+afirma "sem a chave, exclui como sempre" '"ok":true' "$R"
+R=$(get "/api/fatores/aguardando-acao?planejamento_id=1")
+afirma "e o fator volta para a fila" "\"id\":$OK_F," "$R"
+# Pelo PROJETO inteiro: as ações caem por CASCADE, e a origem tem de ser
+# tratada ANTES — depois do DELETE a subconsulta não as encontra mais.
+OK_A4=$(post /api/desdobramentos "{$OK_BASE,\"o_que\":\"Acao do projeto que sai\",\"fator_id\":$OK_F}" | id_de)
+R=$(post /api/projetos/$OK_P/excluir '{"planejamento_id":1,"origens":"tirar"}')
+afirma "exclui o projeto inteiro tirando as origens" '"ok":true' "$R"
+R=$(get "/api/fatores/aguardando-acao?planejamento_id=1")
+afirma "a fila responde depois do projeto" '"ok":true' "$R"
+nega "e o fator das ações do projeto não volta para ela" "\"id\":$OK_F," "$R"
+post /api/fatores/$OK_F/excluir '{"planejamento_id":1}' >/dev/null
+post /api/coleta/$OK_I/excluir '{"planejamento_id":1}' >/dev/null
+
 echo "### 10. Limpeza"
 [ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null

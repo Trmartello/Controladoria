@@ -254,6 +254,101 @@ async function provasPainelSalaFixo(page, largura) {
   }
 }
 
+/**
+ * Excluir uma ação que NASCEU de uma origem pergunta o que fazer com ela:
+ * devolver à fila de "aguardando plano de ação" ou tirar de vez. E a própria
+ * fila ganha o × que tira a pendência sem passar por ação nenhuma. Pedido do
+ * cliente (2026-09-03).
+ *
+ * O que a prova guarda: a listagem conta as origens (é o número que decide
+ * se há diálogo); o diálogo é um modal do sistema com as duas saídas e
+ * "devolver" marcado por padrão; "tirar de vez" apaga a ação, deixa o fator
+ * na SWOT e o mantém FORA da fila; o × da fila faz o mesmo com uma pendência
+ * que nunca virou ação.
+ */
+async function provasExcluirComOrigens(page) {
+  const l = '[desktop] Excluir com origens:';
+  const m = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const novo = (categoria, descricao) => App.api('/api/fatores',
+      { planejamento_id: plan.id, etapa: 'SWOT', categoria, descricao, ano });
+    const f1 = await novo('FRAQUEZA', 'Fraqueza que vira acao (prova origens)');
+    await App.api(`/api/fatores/${f1.id}/plano-acao`, { planejamento_id: plan.id });
+    const prj = await App.api('/api/projetos',
+      { planejamento_id: plan.id, titulo: 'Projeto de prova (origens)', ano: 2027, responsavel: 'QA' });
+    const acao = await App.api('/api/desdobramentos', {
+      planejamento_id: plan.id, projeto_id: prj.id, iniciativa_nova: 'Frente de prova (origens)',
+      o_que: 'Acao nascida da fraqueza', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31', fator_id: f1.id,
+    });
+    const f2 = await novo('AMEACA', 'Ameaca que sai da fila (prova origens)');
+    await App.api(`/api/fatores/${f2.id}/plano-acao`, { planejamento_id: plan.id });
+    return { plan: plan.id, ano, f1: f1.id, f2: f2.id, prj: prj.id, acao: acao.id };
+  });
+  try {
+    await page.evaluate(() => App.mostrarSecao('painel'));
+    await page.evaluate(() => App.mostrarSecao('projetos'));
+    await esperar(page, `!!document.querySelector('[data-excluir-desd="${m.acao}"]')`, 15000);
+    const origens = await page.evaluate((id) => (SecaoProjetos.projetos || [])
+      .flatMap((p) => p.desdobramentos || []).find((a) => Number(a.id) === id)?.origens, m.acao);
+    t(`${l} a listagem diz que a ação tem uma origem`, Number(origens) === 1, String(origens));
+
+    // Pelo DOM, com `.click()`: o botão mora atrás da seta de detalhes e o
+    // Playwright esperaria para sempre por um botão visível.
+    await page.evaluate((id) => document.querySelector(`[data-excluir-desd="${id}"]`).click(), m.acao);
+    const modal = await esperar(page, "!!document.querySelector('#modal-form.show #campo-origens')", 10000);
+    t(`${l} excluir a ação abre o diálogo com as duas saídas (modal, não confirm)`, modal);
+    if (modal) {
+      await new Promise((r) => setTimeout(r, 300));
+      const estado = await page.evaluate(() => ({
+        opcoes: [...document.querySelectorAll('#campo-origens input')].map((i) => i.value),
+        marcada: Modal.coletar().origens,
+        botao: document.getElementById('modal-salvar')?.textContent.trim(),
+      }));
+      t(`${l} devolver e tirar, com devolver marcado por padrão e o botão dizendo Excluir`,
+        JSON.stringify(estado.opcoes) === '["devolver","tirar"]' && estado.marcada === 'devolver'
+        && estado.botao === 'Excluir', JSON.stringify(estado));
+      await page.click('label[for="campo-origens-tirar"]');
+      await page.click('#modal-salvar');
+      await esperar(page, "!document.querySelector('#modal-form.show')", 10000);
+    }
+    const depois = await page.evaluate(async (x) => {
+      const fatores = await App.api(`/api/fatores?planejamento_id=${x.plan}&etapa=SWOT&ano=${x.ano}`);
+      const f = fatores.find((y) => Number(y.id) === x.f1);
+      const projetos = await App.api(`/api/projetos?planejamento_id=${x.plan}`);
+      return {
+        fatorExiste: !!f, acaoEm: f?.acao_em ?? null, desd: f?.desdobramento_id ?? null,
+        acaoExiste: projetos.flatMap((p) => p.desdobramentos || []).some((a) => Number(a.id) === x.acao),
+        naFila: !!document.querySelector(`[data-ideia-acao="f${x.f1}"]`),
+      };
+    }, m);
+    t(`${l} "tirar de vez": a ação saiu, o fator continua na SWOT e fora da fila`,
+      depois.fatorExiste && !depois.acaoExiste && !depois.acaoEm && !depois.desd && !depois.naFila,
+      JSON.stringify(depois));
+
+    const temX = await esperar(page, `!!document.querySelector('[data-tirar-fila="f${m.f2}"]')`, 15000);
+    t(`${l} a pendência da fila tem o × de tirar de vez`, temX);
+    if (temX) {
+      page.once('dialog', async (d) => { await d.accept(); });
+      await page.click(`[data-tirar-fila="f${m.f2}"]`);
+      const saiu = await esperar(page, `!document.querySelector('[data-ideia-acao="f${m.f2}"]')`, 15000);
+      const f2 = await page.evaluate(async (x) => (await App.api(
+        `/api/fatores?planejamento_id=${x.plan}&etapa=SWOT&ano=${x.ano}`)).find((y) => Number(y.id) === x.f2), m);
+      t(`${l} o × tira a pendência da fila e o fator fica na análise`,
+        saiu && !!f2 && !f2.acao_em, JSON.stringify({ saiu, acao_em: f2?.acao_em ?? null }));
+    }
+  } finally {
+    await page.evaluate(async (x) => {
+      await App.api(`/api/projetos/${x.prj}/excluir`, { planejamento_id: x.plan }).catch(() => {});
+      for (const id of [x.f1, x.f2]) {
+        await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: x.plan }).catch(() => {});
+      }
+    }, m);
+  }
+}
+
 async function provasCiclo(page, largura) {
   t(`[${largura}] o menu não tem mais seletor de ciclo`,
     await page.evaluate(() => !document.getElementById('sel-ciclo')));
@@ -3783,6 +3878,7 @@ async function provasMenuRecolhido(page, largura) {
   await provasCartaoAcao(page, 'desktop');
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
+  await provasExcluirComOrigens(page);
   await provasCabecalhoProjetos(page, 'desktop');
   await provasPopoverResumo(page, 'desktop');
   await noAnoDaCarga(page);

@@ -1741,6 +1741,20 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   uma vez, e grudado custaria uma faixa de tela em toda rolagem, para sempre.
   As margens negativas cobrem a sarjeta do container, senão a lista aparece
   pelas beiradas ao passar por baixo.
+- **Excluir ação, frente ou projeto pergunta o destino das ORIGENS**
+  (2026-09-03, pedido do cliente): quando alguma ação nasceu de um fator, item
+  de cenário, cruzamento ou ideia da Coleta, a tela abre um modal (nunca
+  `confirm()`) com duas saídas — **devolver** à fila de "aguardando plano de
+  ação" (o de sempre: a FK SET NULL devolve fator/cenário/cruzamento sozinha,
+  a ideia fica ACEITA sem destino) ou **tirar de vez** (a marca `acao_em` e o
+  vínculo somem ANTES do DELETE, e a ideia volta a SELECIONADO sem destino,
+  como o "Desmarcar" da Coleta). A chave é `origens` no corpo das três rotas
+  de exclusão (`ProjetoController::destinoDasOrigens`); ausente vale
+  `devolver`, valor desconhecido é recusado. A listagem de projetos traz
+  `origens` por ação — é o número que decide se há diálogo: ação sem origem
+  exclui com o `confirm` de sempre. A própria fila ganhou o **×** que tira a
+  pendência de vez (`tirarDaFila`: o `plano-acao` com `marcar:false` de cada
+  origem, `reabrir` na Coleta). Provas: funcional 9k e `provasExcluirComOrigens`.
 - **Pesquisa do plano de ação** (`.filtro-acoes`, no cabeçalho fixo): palavra e
   situação. A palavra casa com o texto do cartão da ação **e com os títulos da
   frente e do projeto**, e o resultado mostra os três níveis juntos; a situação

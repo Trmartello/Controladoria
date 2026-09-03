@@ -1974,6 +1974,16 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   /* No celular a linha não comporta os dois: o grupo desce sempre, e a mínima
      alta só serviria para espremer o texto antes disso. */
   .texto-pendencia { min-width: 100%; }
+  /* Com o × de "tirar da fila" o grupo (selo + Transformar + ×) passou a não
+     caber em 390px e vazava 10px pela direita. Ele quebra por dentro,
+     alinhado à direita, em vez de estourar: o `flex-shrink-0` do Bootstrap
+     (com !important) é o que o impedia de encolher. */
+  .acoes-pendencia {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    flex-shrink: 1 !important;
+    max-width: 100%;
+  }
 }
 
 .selo-prioridade {
