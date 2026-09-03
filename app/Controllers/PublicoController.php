@@ -91,6 +91,12 @@ class PublicoController
             'modo' => $r['modo'],
             'max_ideias' => (int)$r['max_ideias'],
             'max_votos' => (int)$r['max_votos'],
+            'prazo' => $r['prazo'] ?? null,
+            // O QUESTIONÁRIO da tempestade: as perguntas em ordem, todas
+            // abertas ao mesmo tempo — o celular percorre uma a uma, no ritmo
+            // de quem responde. Lista vazia = tempestade de tema único.
+            'perguntas' => $r['modo'] === 'TEMPESTADE'
+                ? Quiz::perguntasDaTempestade((int)$r['id']) : [],
             'pergunta' => $ativa ? Quiz::paraSala($ativa, (int)$r['planejamento_id']) : null,
             // Progresso enxuto: o roteiro completo é do condutor. Esta rota
             // roda a cada 4s por participante.
@@ -389,22 +395,46 @@ class PublicoController
         // o manual (arrastar uma sobre a outra) são o mesmo mecanismo
         $lider = $this->liderEquivalente((int)$r['id'], $texto);
 
+        // No QUESTIONÁRIO (tempestade com perguntas), a ideia responde a UMA
+        // pergunta, e o teto conta por pergunta — "cinco por pessoa" vale em
+        // cada uma, senão quem gastasse tudo na primeira ficaria calado nas
+        // outras. A pergunta tem de ser desta rodada e livre: ideia sem
+        // pergunta num questionário cairia na Coleta sem dizer a que respondia,
+        // e o corpo forjado não escolhe a pergunta de outra sala.
+        $perguntas = Quiz::perguntasDaTempestade((int)$r['id']);
+        $perguntaId = null;
+        if ($perguntas) {
+            $pedida = (int)($d['pergunta_id'] ?? 0);
+            foreach ($perguntas as $q) {
+                if ((int)$q['id'] === $pedida) {
+                    $perguntaId = $pedida;
+                }
+            }
+            if ($perguntaId === null) {
+                Json::erro('Escolha a pergunta que a ideia responde.');
+            }
+        }
+
         // O teto vai dentro do próprio INSERT: dois envios ao mesmo tempo não
-        // conseguem furar a contagem, como fariam com COUNT + INSERT separados
+        // conseguem furar a contagem, como fariam com COUNT + INSERT separados.
+        // `<=>` e não `=`: sem questionário a pergunta é NULL, e `=` devolveria
+        // NULL — o teto viraria decoração na tempestade de tema único.
         $gravadas = Database::afetadas(
             'INSERT INTO coleta_item (planejamento_id, rodada_id, ano, autor_id, autor_nome,
-               participante_token, texto, destino_sugerido, agrupado_em_id)
-             SELECT ?, ?, ?, NULL, ?, ?, ?, ?, ?
+               participante_token, texto, destino_sugerido, agrupado_em_id, pergunta_id)
+             SELECT ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?
              FROM DUAL WHERE (SELECT COUNT(*) FROM coleta_item x
-                              WHERE x.rodada_id = ? AND x.participante_token = ?) < ?',
+                              WHERE x.rodada_id = ? AND x.participante_token = ?
+                                AND x.pergunta_id <=> ?) < ?',
             [
                 (int)$r['planejamento_id'], (int)$r['id'], (int)$r['ano'],
-                $p['nome'], $p['token'], $texto, $destino, $lider,
-                (int)$r['id'], $p['token'], (int)$r['max_ideias'],
+                $p['nome'], $p['token'], $texto, $destino, $lider, $perguntaId,
+                (int)$r['id'], $p['token'], $perguntaId, (int)$r['max_ideias'],
             ]
         );
         if (!$gravadas) {
-            Json::erro("Você já enviou {$r['max_ideias']} ideia(s) nesta rodada.");
+            Json::erro("Você já enviou {$r['max_ideias']} ideia(s) nesta "
+                . ($perguntaId ? 'pergunta' : 'rodada') . '.');
         }
         Json::ok(['ok' => true]);
     }
@@ -520,13 +550,17 @@ class PublicoController
         // quais defender. `<=>` e não `=`: a ideia cadastrada pela condução tem
         // token NULL, e `=` devolveria NULL (nem verdadeiro nem falso) — o selo
         // sumiria de todo mundo assim que uma dessas entrasse na lista.
+        // No questionário a lista vem NA ORDEM DAS PERGUNTAS (e o celular a
+        // separa em blocos por pergunta): misturadas pela ordem de chegada,
+        // as respostas de cinco perguntas viravam um vaivém entre assuntos.
         $itens = Database::todos(
-            "SELECT i.id, i.texto, (v.id IS NOT NULL) AS votei,
+            "SELECT i.id, i.texto, i.pergunta_id, (v.id IS NOT NULL) AS votei,
                     (i.participante_token <=> ?) AS minha
              FROM coleta_item i
              LEFT JOIN coleta_voto v ON v.item_id = i.id AND v.participante_token = ?
+             LEFT JOIN quiz_pergunta qp ON qp.id = i.pergunta_id
              WHERE i.rodada_id = ? AND i.situacao = 'NOVO'
-             ORDER BY i.id",
+             ORDER BY qp.ordem, i.id",
             [$p['token'], $p['token'], (int)$r['id']]
         );
         // Só contam os votos em ideias ainda na lista: tratada uma ideia, o
@@ -838,6 +872,10 @@ class PublicoController
      */
     private function rodadaPorPin(string $pin): array
     {
+        // O prazo do questionário fecha a rodada na primeira leitura depois
+        // dele — é aqui que toda rota pública começa, então é aqui que o
+        // celular descobre que acabou.
+        Quiz::fecharVencidas();
         $r = preg_match('/^\d{6}$/', $pin)
             ? Database::um('SELECT * FROM coleta_rodada WHERE pin = ?', [$pin])
             : null;

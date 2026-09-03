@@ -2970,6 +2970,49 @@ body.menu-aberto .menu-lateral {
 .texto-celula { white-space: pre-line; }
 /* Par Escolha/Renúncia do participante: alvos generosos no toque */
 .par-tipo-resposta .btn { min-height: 2.75rem; }
+/* O QUESTIONÁRIO da tempestade no celular: a barra de quanto já foi
+   respondido, as fichas numeradas para pular de pergunta (a respondida ganha
+   o ✓ e a cor da casa; a atual fica cheia) e os botões de navegação com o
+   alvo de toque do sistema. */
+.progresso-questionario .barra {
+  height: .4rem;
+  background: #e3e8e5;
+  border-radius: .25rem;
+  overflow: hidden;
+}
+.progresso-questionario .barra > div {
+  height: 100%;
+  background: var(--verde-coperdia);
+  transition: width .2s;
+}
+.chips-perguntas { display: flex; flex-wrap: wrap; gap: .3rem; }
+.chip-pergunta {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 .6rem;
+  border: 1px solid #ced4da;
+  border-radius: 1.2rem;
+  background: #fff;
+  color: #495057;
+  font-size: .8rem;
+  font-weight: 600;
+}
+.chip-pergunta.respondida {
+  border-color: var(--verde-coperdia);
+  color: var(--verde-coperdia);
+  background: #f2f8f5;
+}
+.chip-pergunta.atual {
+  background: var(--verde-coperdia);
+  border-color: var(--verde-coperdia);
+  color: #fff;
+}
+.navegacao-perguntas .btn { min-height: 2.75rem; }
+.resumo-pergunta + .resumo-pergunta { margin-top: .6rem; }
+/* A lista das perguntas na projeção da Sala e a etiqueta "P2" na nuvem */
+.lista-perguntas-sala { padding-left: 1.2rem; }
+.lista-perguntas-sala li { display: flex; justify-content: space-between; gap: .75rem; padding: .15rem 0; }
+.selo-pergunta { font-weight: 700; }
 /* A escolha da CATEGORIA no celular (pergunta da etapa inteira): os mesmos
    cartões `.quadrante-opcao` do formulário do fator, em grade que cabe no
    celular (duas por linha a 390px). O `auto-fill` e não `auto-fit`: com

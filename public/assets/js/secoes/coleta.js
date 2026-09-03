@@ -422,6 +422,21 @@ const SecaoColeta = {
         : 'Fechar a sala tira o campo de escrever dos celulares e abre as ★ para a sala eleger as ideias mais importantes.'
       }</div>`
       : '';
+    // O QUESTIONÁRIO: um filtro por pergunta na nuvem. As ideias de cinco
+    // perguntas misturadas na mesma fila viravam um vaivém entre assuntos; com
+    // o filtro, o condutor trata uma pergunta por vez, na ordem do encontro.
+    const perguntas = r.perguntas || [];
+    const filtroPerguntas = perguntas.length ? `
+      <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
+        <span class="rotulo-secao mb-0">Questionário · ${perguntas.length} pergunta(s)${
+          r.prazo ? ` · até ${this.dataHora(r.prazo)}` : ''}</span>
+        <select class="form-select form-select-sm" style="width:auto;max-width:100%" data-filtro-pergunta
+          aria-label="Mostrar as ideias de uma pergunta">
+          <option value="">Todas as perguntas</option>
+          ${perguntas.map((q) => `<option value="${q.id}" ${String(this.filtroPergunta) === String(q.id) ? 'selected' : ''}>${
+            q.ordem}. ${Modal.esc(q.enunciado)} (${q.ideias})</option>`).join('')}
+        </select>
+      </div>` : '';
     return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <strong class="small text-uppercase">Tempestade aberta</strong>
@@ -433,12 +448,34 @@ const SecaoColeta = {
         <button class="btn btn-sm btn-outline-secondary" data-ir-sala>PIN e QR na Sala</button>
       </div>
       <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
-        <span class="rotulo-secao mb-0">Pergunta da sala</span>
+        <span class="rotulo-secao mb-0">${perguntas.length ? 'Tema do questionário' : 'Pergunta da sala'}</span>
         <span class="small flex-grow-1">${Modal.esc(r.tema)}</span>
         ${editar}
       </div>
+      ${filtroPerguntas}
       ${dicaFase}
     </div></div>`;
+  },
+
+  /** dd/mm/aaaa hh:mm a partir do DATETIME do banco — o prazo do questionário. */
+  dataHora(iso) {
+    if (!iso) return '';
+    const [data, hora] = String(iso).split(' ');
+    return `${data.split('-').reverse().join('/')}${hora ? ` ${hora.slice(0, 5)}` : ''}`;
+  },
+
+  /** O grupo passa pelo filtro de pergunta do questionário? Sem filtro, tudo passa. */
+  passaFiltroPergunta(g) {
+    if (!this.filtroPergunta) return true;
+    return g.itens.some((i) => String(i.pergunta_id) === String(this.filtroPergunta));
+  },
+
+  /** A etiqueta "P2" da ideia que respondeu a uma pergunta do questionário. */
+  seloPergunta(i) {
+    return i.pergunta_ordem
+      ? `<span class="fp-tag selo-pergunta" title="Pergunta ${i.pergunta_ordem}: ${
+        Modal.esc(i.pergunta_enunciado || '')}">P${i.pergunta_ordem}</span> `
+      : '';
   },
 
   /**
@@ -472,7 +509,7 @@ const SecaoColeta = {
       // sem ela pareceria uma ideia por tratar, e alguém a encaminharia de novo
       const destinoFicha = this.rotuloDestino(lider);
       return `<button type="button" class="ficha-nuvem ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
-        style="--peso:1" ${acao} title="${dica}">${Modal.esc(rotulo)}${
+        style="--peso:1" ${acao} title="${dica}">${this.seloPergunta(lider)}${Modal.esc(rotulo)}${
         selo ? ` <span class="repetida">${selo}</span>` : ''}${
         destinoFicha ? ` <span class="fp-tag">${Modal.esc(destinoFicha)}</span>` : ''}</button>`;
     }
@@ -493,7 +530,7 @@ const SecaoColeta = {
     const aberta = this.caixaAberta === chave;
     return `<div class="grupo-caixa ${aberta ? '' : 'compacta'} ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
       role="button" tabindex="0" ${acao} title="${dica}">
-      <div class="grupo-titulo">${Modal.esc(titulo)}</div>
+      <div class="grupo-titulo">${this.seloPergunta(lider)}${Modal.esc(titulo)}</div>
       <div class="grupo-rodape">
         <button type="button" class="btn-ver-palavras" data-ver-palavras="${chave}"
           aria-expanded="${aberta}" aria-controls="palavras-${chave}"
@@ -681,7 +718,7 @@ const SecaoColeta = {
   // organizar lá. No celular empilha — a fila vem antes da bancada, para o
   // arraste até a matriz ser o mais curto possível.
   telaConducao() {
-    const grupos = this.nuvem();
+    const grupos = this.nuvem().filter((g) => this.passaFiltroPergunta(g));
     // A bancada procura o selecionado na tempestade E no painel de prioridade:
     // classificar move o grupo de um para o outro, e a bancada não pode sumir
     // no meio da tratativa (o Destino é escolhido depois de posicionar)
@@ -695,7 +732,7 @@ const SecaoColeta = {
       : null;
     const fichas = grupos.map((g) => this.fichaOuCaixa(g)).join('');
 
-    const adiadas = this.nuvem(true);
+    const adiadas = this.nuvem(true).filter((g) => this.passaFiltroPergunta(g));
 
     // "Tratar depois" fica anexado à própria tempestade, logo abaixo dela e
     // separado só por uma linha pontilhada: é a mesma nuvem, guardada para o
@@ -941,9 +978,17 @@ const SecaoColeta = {
     }
   },
 
+  // A pergunta do questionário que a nuvem mostra (null = todas). Mora no
+  // objeto, não no DOM: a nuvem é repintada a cada batida do relógio.
+  filtroPergunta: null,
+
   ligarTempestade(el, ano) {
     el.querySelectorAll('[data-ir-sala]').forEach((b) =>
       b.addEventListener('click', () => App.mostrarSecao('sala')));
+    el.querySelector('[data-filtro-pergunta]')?.addEventListener('change', (ev) => {
+      this.filtroPergunta = ev.target.value || null;
+      this.carregar();
+    });
 
     // O mesmo modal da aba Sala (QuizSala.modalPergunta): uma redação só para
     // o campo, o rótulo e a ajuda, em qualquer tela que edite a pergunta.
@@ -1314,6 +1359,7 @@ const SecaoColeta = {
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <span class="badge ${classe}">${rotulo}</span>
         ${naFila ? '<span class="badge text-bg-success" title="É a ideia aberta na fila de tratativa, acima">na fila</span>' : ''}
+        ${i.pergunta_ordem ? `<span class="badge text-bg-light border" title="${Modal.esc(i.pergunta_enunciado || '')}">Pergunta ${i.pergunta_ordem}</span>` : ''}
         <span class="small text-muted flex-grow-1">${Modal.esc(i.autor)} · ${this.data(i.criado_em)}</span>
         ${podeMexer || podeTratar ? `
           <span class="d-flex gap-1 flex-shrink-0">

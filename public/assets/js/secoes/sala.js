@@ -80,6 +80,13 @@ const SecaoSala = {
    * O PIN é credencial de escrita: perfil LEITURA não o recebe do servidor, e
    * sem ele não há QR — dizer isso é melhor que uma caixa vazia.
    */
+  /** dd/mm/aaaa hh:mm a partir do DATETIME do banco — o prazo do questionário. */
+  dataHora(iso) {
+    if (!iso) return '';
+    const [data, hora] = String(iso).split(' ');
+    return `${data.split('-').reverse().join('/')}${hora ? ` ${hora.slice(0, 5)}` : ''}`;
+  },
+
   cartaoProjecao({ pin, tema, selos, acoes, rodape }) {
     return `<div class="card mb-3 cartao-projecao"><div class="card-body">
       <div class="d-flex flex-wrap gap-4 align-items-center">
@@ -128,6 +135,21 @@ const SecaoSala = {
         ${votacaoAberta ? 'Reabrir a sala' : 'Fechar a sala (ir para as ★)'}</button>
       <button class="btn btn-sm btn-outline-danger" id="btn-encerrar-rodada">Encerrar tempestade</button>` : '';
 
+    // O QUESTIONÁRIO: as perguntas em ordem, com quantas ideias e quantas
+    // pessoas cada uma já recebeu — é o acompanhamento de quem conduz antes do
+    // encontro. O prazo vai junto, porque é ele que fecha a rodada sozinha.
+    const perguntas = r.perguntas || [];
+    const questionario = perguntas.length ? `
+        <div class="mt-3 pergunta-sala">
+          <div class="rotulo-secao">Questionário prévio · ${perguntas.length} pergunta(s)${
+            r.prazo ? ` · responder até ${SecaoSala.dataHora(r.prazo)}` : ''}</div>
+          <ol class="lista-perguntas-sala mb-1">${perguntas.map((q) => `
+            <li><span>${Modal.esc(q.enunciado)}</span>
+              <span class="text-muted small text-nowrap">${q.ideias} ideia(s) · ${q.respondentes} pessoa(s)</span></li>`).join('')}
+          </ol>
+          ${podeConduzir ? `<button class="btn btn-sm btn-outline-secondary" id="btn-mais-pergunta"
+            title="Entra no fim da lista, para não mudar a numeração de quem já respondeu">+ Acrescentar pergunta</button>` : ''}
+        </div>` : '';
     return `
       ${this.cabecalho()}
       ${this.cartaoProjecao({
@@ -138,9 +160,9 @@ const SecaoSala = {
         // e as ideias já coletadas.
         rodape: `${aviso}
         <div class="mt-3 pergunta-sala">
-          <div class="rotulo-secao">A pergunta que abre a tempestade</div>
+          <div class="rotulo-secao">${perguntas.length ? 'Tema do questionário' : 'A pergunta que abre a tempestade'}</div>
           <p class="mb-0">${Modal.esc(r.tema)}</p>
-        </div>`,
+        </div>${questionario}`,
       })}
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <button class="btn btn-verde btn-sm" data-ir-coleta>Ir para a Coleta de Ideias</button>
@@ -224,8 +246,19 @@ const SecaoSala = {
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'ano', rotulo: '', tipo: 'hidden' },
         QuizSala.campoPergunta(),
-        { nome: 'max_ideias', rotulo: 'Ideias por participante', tipo: 'number', padrao: 5,
-          ajuda: 'Um teto evita que uma pessoa domine a tempestade.' },
+        // O QUESTIONÁRIO PRÉVIO (pedido do cliente, 2026-09-03): com perguntas
+        // aqui, a sala as responde em ordem no celular, antes do encontro, e o
+        // teto de ideias vale em CADA pergunta. Sem perguntas, é a tempestade
+        // de tema único de sempre.
+        { nome: 'perguntas', rotulo: 'Questionário prévio — uma pergunta por linha (opcional)',
+          tipo: 'textarea', linhas: 5,
+          exemplo: 'O que mais trava o nosso crescimento hoje?\nQue oportunidade estamos deixando passar?',
+          ajuda: 'Com perguntas, cada pessoa responde uma por vez no celular, na ordem, antes do '
+            + 'encontro — e o teto de ideias vale em cada pergunta. Sem perguntas, a sala responde só o tema acima.' },
+        { nome: 'prazo', rotulo: 'Responder até (opcional)', tipo: 'date',
+          ajuda: 'A rodada fecha sozinha no fim desse dia, ou quando você encerrar — o que vier primeiro.' },
+        { nome: 'max_ideias', rotulo: 'Ideias por participante (em cada pergunta)', tipo: 'number', padrao: 5,
+          ajuda: 'Um teto evita que uma pessoa domine a tempestade. Atingido o teto numa pergunta, o celular passa à próxima.' },
         { nome: 'max_votos', rotulo: 'Votos por participante', tipo: 'number', padrao: 3,
           ajuda: 'Só vale se você abrir a fase de votação depois.' },
       ],
@@ -249,6 +282,21 @@ const SecaoSala = {
       }
       this.carregar();
     });
+
+    // Pergunta a mais no questionário, sempre ao FIM: reordenar depois da
+    // primeira resposta trocaria a "pergunta 2" que alguém já respondeu.
+    el.querySelector('#btn-mais-pergunta')?.addEventListener('click', () => Modal.abrir({
+      titulo: 'Acrescentar pergunta ao questionário',
+      url: `/api/rodadas/${this.tempestade.id}/perguntas`,
+      valores: { planejamento_id: this.plan.id, perguntas: '' },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'perguntas', rotulo: 'Perguntas novas — uma por linha', tipo: 'textarea', linhas: 3,
+          obrigatorio: true, ajuda: 'Entram depois das que já existem.' },
+      ],
+      salvar: { rotulo: 'Acrescentar' },
+      aoSalvar: () => this.carregar(),
+    }));
 
     el.querySelector('#btn-encerrar-rodada')?.addEventListener('click', async () => {
       if (!confirm('Encerrar a tempestade? Os participantes não conseguem mais enviar ideias.')) return;
