@@ -359,6 +359,11 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   diagnóstico (cenário, PESTEL, Porter, SWOT, GUT) são anuais** — coluna `ano`
   em `fator` e `cenario_item`, seletor de ano compartilhado em
   `diagnostico.js` (`Diag`), limitado a [ano_base, ano_fim] do ciclo.
+  **Ao logar, o ano da análise é o `ano_inicio` do ciclo em uso** (2027 no
+  ciclo 2027–2035), não o ano do relógio — pedido do cliente em 2026-09-03: o
+  `ano_base` é o de diagnóstico, e o preenchimento é do primeiro ano planejado.
+  O que o usuário escolher no seletor vale até fechar a página
+  (`Diag.anoSelecionado` não é persistido); prova em `provasAnoPadrao`.
 - Promoção PESTEL/Porter → SWOT copia o `ano`; o botão do fator promovido
   mostra a categoria SWOT na cor do quadrante e reabre a edição.
 - **Duas telas juntas** (`planejamento_versao`, `App\Core\Versao`,
