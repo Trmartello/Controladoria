@@ -10,11 +10,16 @@ const Diag = {
     return App.sessao.ciclos.find((c) => c.id === App.contexto.cicloId);
   },
 
-  // Ano vigente da análise, sempre dentro de [ano_base, ano_fim] do ciclo
+  // Ano vigente da análise, sempre dentro de [ano_base, ano_fim] do ciclo.
+  // Enquanto o usuário não escolhe um ano, vale o PRIMEIRO ANO DE PLANEJAMENTO
+  // do ciclo (ano_inicio, 2027 no ciclo 2027–2035) — pedido do cliente em
+  // 2026-09-03: ao logar, o sistema já abre em 2027, e não no ano do relógio
+  // (o ano_base, que é o de diagnóstico, e não o planejado).
   ano() {
     const c = this.cicloAtual();
     if (!c) return new Date().getFullYear();
-    const a = this.anoSelecionado ?? new Date().getFullYear();
+    const padrao = c.ano_inicio != null ? Number(c.ano_inicio) : new Date().getFullYear();
+    const a = this.anoSelecionado ?? padrao;
     return Math.min(Number(c.ano_fim), Math.max(Number(c.ano_base), a));
   },
 

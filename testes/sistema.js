@@ -10,6 +10,18 @@ const ok = [], bad = [], erros = [];
 const t = (nome, cond, extra = '') => (cond ? ok : bad).push(nome + (extra ? ` — ${extra}` : ''));
 
 /**
+ * O ano da análise abre no primeiro ano PLANEJADO do ciclo (2027; ver
+ * `Diag.ano`), mas a carga do deploy — PESTEL, Porter, SWOT, cenário — está
+ * gravada no ano-base (2026). As provas que precisam de CONTEÚDO na tela (a
+ * pesquisa, a GUT com fila, o dossiê) apontam para o ano da carga e devolvem o
+ * padrão ao terminar; as que criam a própria massa usam `Diag.ano()`.
+ */
+const noAnoDaCarga = (page) => page.evaluate(() => {
+  Diag.anoSelecionado = Number(Diag.cicloAtual().ano_base);
+});
+const noAnoPadrao = (page) => page.evaluate(() => { Diag.anoSelecionado = null; });
+
+/**
  * Fecha o modal e só volta quando ele saiu MESMO da tela.
  *
  * Duas armadilhas, as duas já pagas nesta bateria:
@@ -140,6 +152,33 @@ async function provasAtalhoCadastros(page, largura) {
  * menu, ou um seletor apontando para outro ciclo, é o tipo de divergência que
  * só aparece quando alguém estranha o número na tela.
  */
+/**
+ * Ao logar, o ano da análise é o PRIMEIRO ANO PLANEJADO do ciclo (ano_inicio,
+ * 2027), e não o ano do relógio — pedido do cliente em 2026-09-03. O
+ * `anoSelecionado` é zerado à mão porque o percurso anterior pode tê-lo
+ * fixado (o dossiê e o quiz escrevem nele); zerado, ele reproduz o estado de
+ * quem acabou de entrar.
+ */
+async function provasAnoPadrao(page, largura) {
+  const r = await page.evaluate(() => {
+    Diag.anoSelecionado = null;
+    const c = Diag.cicloAtual();
+    return { ano: Diag.ano(), inicio: Number(c?.ano_inicio), base: Number(c?.ano_base) };
+  });
+  t(`[${largura}] sem escolha, o ano da análise é o ano_inicio do ciclo`,
+    r.ano === r.inicio, JSON.stringify(r));
+  t(`[${largura}] o ano padrão é 2027, não o ano-base ${r.base}`, r.ano === 2027 && r.ano !== r.base);
+
+  // E o seletor da tela mostra o mesmo ano: repintar o Cenário a partir de
+  // outra seção, porque a seção não é destruída ao navegar.
+  await page.evaluate(() => App.mostrarSecao('painel'));
+  await page.evaluate(() => App.mostrarSecao('cenario'));
+  const mostra = await esperar(page,
+    () => Number(document.getElementById('sel-ano-cenario')?.value) === 2027, 15000);
+  t(`[${largura}] o seletor da Análise de Cenário abre em 2027`, mostra);
+  await page.evaluate(() => App.mostrarSecao('painel'));
+}
+
 async function provasCiclo(page, largura) {
   t(`[${largura}] o menu não tem mais seletor de ciclo`,
     await page.evaluate(() => !document.getElementById('sel-ciclo')));
@@ -203,7 +242,7 @@ async function provasCiclo(page, largura) {
 async function provasCartaoCruzamento(page) {
   const ids = await page.evaluate(async () => {
     const cria = async (cat, desc) => (await App.api('/api/fatores',
-      { planejamento_id: 1, etapa: 'SWOT', categoria: cat, descricao: desc, ano: 2026 })).id;
+      { planejamento_id: 1, etapa: 'SWOT', categoria: cat, descricao: desc, ano: Diag.ano() })).id;
     // Textos longos de propósito: o botão só aparece no que foi MESMO cortado.
     const fi = await cria('FORCA', 'Força de teste com um texto deliberadamente longo para '
       + 'não caber em uma linha só dentro do selo do par, forçando o corte por line-clamp');
@@ -844,7 +883,7 @@ async function provasFilaAcao(page, largura) {
   const ids = await page.evaluate(async () => {
     const cria = async (desc) => {
       const f = await App.api('/api/fatores',
-        { planejamento_id: 1, etapa: 'SWOT', categoria: 'FRAQUEZA', descricao: desc, ano: 2026 });
+        { planejamento_id: 1, etapa: 'SWOT', categoria: 'FRAQUEZA', descricao: desc, ano: Diag.ano() });
       await App.api(`/api/fatores/${f.id}/plano-acao`, { planejamento_id: 1 });
       return f.id;
     };
@@ -1112,7 +1151,10 @@ async function provasBuscaAnalise(page, largura) {
 }
 
 async function provasGut(page) {
+  // Corre no ano da carga (ver `noAnoDaCarga`): a GUT lista a SWOT do ano da
+  // análise, e a fila que gruda e rola só existe onde há conteúdo.
   await page.evaluate(() => App.mostrarSecao('gut'));
+  await esperar(page, `!!document.querySelector('#secao-gut tbody tr [data-avaliar]')`, 15000);
   await esperar(page, "!document.getElementById('secao-gut').classList.contains('d-none')", 15000);
 
   await page.evaluate(() => window.scrollTo(0, 900));
@@ -3510,14 +3552,17 @@ async function provasMenuRecolhido(page, largura) {
   await percorrer(page, 'desktop');
   await provasAtalhoCadastros(page, 'desktop');
   await provasCiclo(page, 'desktop');
+  await provasAnoPadrao(page, 'desktop');
   await provasCartaoCruzamento(page);
   await provasCartaoAcao(page, 'desktop');
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
   await provasCabecalhoProjetos(page, 'desktop');
   await provasPopoverResumo(page, 'desktop');
+  await noAnoDaCarga(page);
   await provasBuscaAnalise(page, 'desktop');
   await provasGut(page);
+  await noAnoPadrao(page);
   await provasExcluirUsuario(page);
   await provasFiltroResponsavel(page);
   await provasMatrizExecucao(page);
@@ -3535,7 +3580,9 @@ async function provasMenuRecolhido(page, largura) {
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.
+  await noAnoDaCarga(page);
   await provasDossie(page);
+  await noAnoPadrao(page);
 
   const ctxM = await browser.newContext({
     viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true,
@@ -3544,11 +3591,14 @@ async function provasMenuRecolhido(page, largura) {
   await percorrer(pageM, 'celular');
   await provasAtalhoCadastros(pageM, 'celular');
   await provasCiclo(pageM, 'celular');
+  await provasAnoPadrao(pageM, 'celular');
   await provasCartaoAcao(pageM, 'celular');
   await provasResumoStatus(pageM, 'celular');
   await provasFilaAcao(pageM, 'celular');
   await provasCabecalhoProjetos(pageM, 'celular');
+  await noAnoDaCarga(pageM);
   await provasBuscaAnalise(pageM, 'celular');
+  await noAnoPadrao(pageM);
   await provasTratarForaDaOrdem(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
 
