@@ -927,8 +927,11 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   cair em "Político" mandaria a voz para um quadrante que ninguém escolheu. A
   categoria viaja em `coleta_item.tipo_resposta`, que por isso virou
   **VARCHAR(40)** (o ENUM cresceria a cada análise nova; a lista branca já era
-  "derivada do alvo"). O painel do condutor mostra **uma coluna por
-  categoria** e o "Usar" abre o fator com ela marcada; a guarda de
+  "derivada do alvo"). O painel do condutor é **uma grade só, em ordem de
+  chegada, com a etiqueta do quadrante em cada voz** (`.selo-categoria-voz`;
+  já foi uma coluna por categoria, e cinco colunas vazias comiam a faixa fixa —
+  o cliente pediu a grade única no mesmo dia); o "Usar" abre o fator com a
+  categoria marcada; a guarda de
   `FatorController::vincularSugestoes` aceita a voz dessa pergunta
   (`qp.categoria IS NULL`) para QUALQUER categoria da etapa — a escolha do
   celular é sugestão, o quadrante final é de quem conduz. O catálogo das
