@@ -913,6 +913,29 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   O que cada alvo SIGNIFICA (o lado da resposta, o limite de texto, o rótulo, o
   contexto que o celular lê) mora em **`App\Services\Quiz`** — cinco telas
   reescrevendo isso divergiriam na primeira análise nova.
+  **O 🎤 da ETAPA INTEIRA** (2026-09-03, pedido do cliente): além do 🎤 de
+  cada coluna, o cabeçalho do PESTEL, do Porter e da SWOT tem um 🎤 que abre a
+  análise toda — a pergunta é FATOR com `categoria` **NULL** (o front manda
+  `alvos: ['']`, que `Quiz::validarAlvos` lê como "toda a etapa"), e é o
+  **celular que escolhe a categoria**, em cartões iguais aos do formulário do
+  fator, lendo ao escolher a orientação do ⓘ daquela categoria. Quem diz se
+  uma pergunta tem lados, e quais, é **`Quiz::ladosDe`** (`escolheCategoria`),
+  nunca a tabela `LADOS` sozinha: nessa pergunta os lados são as categorias,
+  cada uma com cor, dica e orientação. O celular recebe `escolhe_categoria`
+  e **não marca nenhuma por padrão**; o servidor **recusa a resposta sem
+  categoria** em vez de "cair na primeira" (a regra dos alvos de dois lados) —
+  cair em "Político" mandaria a voz para um quadrante que ninguém escolheu. A
+  categoria viaja em `coleta_item.tipo_resposta`, que por isso virou
+  **VARCHAR(40)** (o ENUM cresceria a cada análise nova; a lista branca já era
+  "derivada do alvo"). O painel do condutor mostra **uma coluna por
+  categoria** e o "Usar" abre o fator com ela marcada; a guarda de
+  `FatorController::vincularSugestoes` aceita a voz dessa pergunta
+  (`qp.categoria IS NULL`) para QUALQUER categoria da etapa — a escolha do
+  celular é sugestão, o quadrante final é de quem conduz. O catálogo das
+  categorias (`Quiz::CATALOGO_CATEGORIA`, servido em `/api/me` como
+  `categorias`) é uma cópia do `Diag.CATEGORIAS_ETAPA`/`CORES_QUADRANTE`/
+  `DICAS_QUADRANTE`, porque a tela do participante não carrega o `Diag`;
+  `provasEtapaNaSala` compara as duas e fica vermelha na primeira divergência.
   Regras que não podem ser afrouxadas, além das da tempestade: o teto de envios
   conta por **(pergunta, tipo)** dentro do INSERT, com `<=>` e não `=` (alvo sem
   lado grava `tipo_resposta` NULL, e o `=` devolveria NULL — o teto virava

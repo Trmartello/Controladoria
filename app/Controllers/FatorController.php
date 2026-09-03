@@ -200,6 +200,13 @@ class FatorController
         // uma pergunta de CENÁRIO, jamais aparecem neste painel, e a primeira
         // edição do fator as soltaria caladas — perdendo exatamente o que a
         // transferência acabou de preservar.
+        //
+        // `qp.categoria IS NULL` é a pergunta da ETAPA INTEIRA (o 🎤 do
+        // cabeçalho): o painel dela oferece as vozes de todas as categorias da
+        // etapa, e a categoria que o participante escolheu no celular
+        // (`ci.tipo_resposta`) é sugestão, não amarra — quem decide o quadrante
+        // final é o condutor, no formulário. Por isso a guarda aceita a voz
+        // dessa pergunta para QUALQUER categoria do mesmo ano e etapa.
         Database::executar(
             "UPDATE coleta_item ci
              JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
@@ -207,9 +214,10 @@ class FatorController
                  ci.situacao = 'NOVO', ci.triado_por = NULL, ci.triado_em = NULL
              WHERE ci.destino_tipo = 'FATOR' AND ci.destino_id = ? AND ci.origem = 'QUIZ'
                AND ci.planejamento_id = ?
-               AND qp.alvo_tipo = 'FATOR' AND qp.etapa = ? AND qp.categoria = ? AND qp.ano = ?"
+               AND qp.alvo_tipo = 'FATOR' AND qp.etapa = ? AND qp.ano = ?
+               AND (qp.categoria = ? OR qp.categoria IS NULL)"
             . ($marcas ? " AND ci.id NOT IN ({$marcas})" : ''),
-            array_merge([$id, $planId, $etapa, $categoria, $ano], $sugestoes)
+            array_merge([$id, $planId, $etapa, $ano, $categoria], $sugestoes)
         );
         if (!$sugestoes) {
             return;
@@ -229,11 +237,12 @@ class FatorController
              SET ci.destino_tipo = 'FATOR', ci.destino_id = ?,
                  ci.situacao = 'ACEITO', ci.triado_por = ?, ci.triado_em = NOW()
              WHERE ci.id IN ({$marcas}) AND ci.planejamento_id = ? AND ci.origem = 'QUIZ'
-               AND qp.alvo_tipo = 'FATOR' AND qp.etapa = ? AND qp.categoria = ? AND qp.ano = ?
+               AND qp.alvo_tipo = 'FATOR' AND qp.etapa = ? AND qp.ano = ?
+               AND (qp.categoria = ? OR qp.categoria IS NULL)
                AND (ci.destino_id IS NULL
                     OR (ci.destino_tipo = 'FATOR' AND ci.destino_id = ?))",
             array_merge([$id, (int)$u['id']], $sugestoes,
-                        [$planId, $etapa, $categoria, $ano, $id])
+                        [$planId, $etapa, $ano, $categoria, $id])
         );
     }
 

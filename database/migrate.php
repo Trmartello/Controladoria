@@ -433,10 +433,25 @@ $tipoResposta = $pdo->query(
     "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'coleta_item' AND COLUMN_NAME = 'tipo_resposta'"
 )->fetchColumn();
-if ($tipoResposta && !str_contains((string)$tipoResposta, 'SITUACAO_ATUAL')) {
+// O passo do ENUM ficou pelo histórico, mas só roda sobre um ENUM: no esquema
+// novo a coluna já nasce VARCHAR (abaixo), e `str_contains` sozinho a mandaria
+// DE VOLTA para o ENUM a cada deploy.
+if ($tipoResposta && stripos((string)$tipoResposta, 'enum') === 0
+    && !str_contains((string)$tipoResposta, 'SITUACAO_ATUAL')) {
     $pdo->exec("ALTER TABLE coleta_item MODIFY COLUMN tipo_resposta
                 ENUM('ESCOLHA','RENUNCIA','SITUACAO_ATUAL','TENDENCIA') NULL");
     echo "migrate: coleta_item.tipo_resposta agora aceita os lados do cenário.\n";
+    $tipoResposta = 'enum(atualizado)';
+}
+// O lado deixa de ser um ENUM: com o 🎤 da ETAPA INTEIRA (2026-09-03) o
+// celular escolhe a CATEGORIA do PESTEL/Porter/SWOT, e ela viaja na mesma
+// coluna — a lista branca é derivada da pergunta (`Quiz::ladosDe`), como o
+// CLAUDE.md sempre prometeu, e um ENUM que precisasse crescer a cada análise
+// nova era justamente o "ENUM fixo" que a regra proíbe. VARCHAR(40) é a
+// largura de `quiz_pergunta.categoria`, de onde os valores vêm.
+if ($tipoResposta && stripos((string)$tipoResposta, 'enum') === 0) {
+    $pdo->exec('ALTER TABLE coleta_item MODIFY COLUMN tipo_resposta VARCHAR(40) NULL');
+    echo "migrate: coleta_item.tipo_resposta vira VARCHAR(40) (lado ou categoria, derivados da pergunta).\n";
 }
 
 // O modo CASCATA vira QUIZ: a sessão não é mais de uma análise só. Três passos

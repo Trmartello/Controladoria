@@ -3215,6 +3215,139 @@ async function provasDuasTelas(browser) {
  * que a direção usa na mão, e provar o par num viewport de computador mediria
  * uma tela que ninguém vai ver.
  */
+/**
+ * O 🎤 da ETAPA INTEIRA: o cabeçalho do PESTEL abre a análise toda para a
+ * sala, e é o CELULAR que escolhe em qual categoria a resposta entra — lendo,
+ * ao escolher, a orientação do ⓘ daquela categoria. Pedido do cliente
+ * (2026-09-03).
+ *
+ * O que a prova guarda, e que quebra em silêncio:
+ *  - o catálogo servido (`App.sessao.categorias`, o que o celular desenha)
+ *    bate com o do `Diag` (o que a análise desenha) — são duas cópias, e a
+ *    divergência é exatamente o defeito que ninguém vê;
+ *  - nenhuma categoria vem marcada: com dois lados o padrão é o primeiro, e
+ *    o mesmo padrão aqui mandaria a resposta para "Político" sem escolha;
+ *  - a orientação aparece AO ESCOLHER, e é o mesmo texto do ⓘ do condutor;
+ *  - a voz chega ao condutor na coluna da categoria, e "Usar" abre o fator
+ *    já com ela marcada.
+ */
+async function provasEtapaNaSala(browser) {
+  const l = '[oficina] Etapa inteira na sala:';
+  const ctxA = await browser.newContext({ viewport: { width: 1500, height: 900 }, reducedMotion: 'reduce' });
+  const admin = await entrar(ctxA, 'admin', []);
+  const ctxM = await browser.newContext({
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce',
+  });
+  const aceitar = async (d) => { await d.accept(); };
+  admin.on('dialog', aceitar);
+  try {
+    const dif = await admin.evaluate(() => {
+      const s = App.sessao.categorias || {};
+      const fora = [];
+      for (const etapa of ['PESTEL', 'PORTER']) {
+        const doDiag = Diag.CATEGORIAS_ETAPA[etapa] || [];
+        doDiag.forEach(([v, r, cor, dica]) => {
+          const x = s[etapa]?.[v];
+          if (!x || x.rotulo !== r || x.cor !== cor || x.dica !== dica) fora.push(`${etapa}.${v}`);
+        });
+        if (Object.keys(s[etapa] || {}).length !== doDiag.length) fora.push(`${etapa}.quantidade`);
+      }
+      Object.keys(Diag.QUADRANTES).forEach((v) => {
+        const x = s.SWOT?.[v];
+        if (!x || x.cor !== Diag.CORES_QUADRANTE[v] || x.dica !== Diag.DICAS_QUADRANTE[v]) fora.push(`SWOT.${v}`);
+      });
+      return fora;
+    });
+    t(`${l} o catálogo servido ao celular bate com o do Diag (rótulo, cor, dica)`,
+      dif.length === 0, dif.join(', '));
+
+    await admin.evaluate(() => {
+      Diag.anoSelecionado = Number(Diag.cicloAtual().ano_base);
+      App.mostrarSecao('pestel');
+    });
+    const temMic = await esperar(admin,
+      "!!document.querySelector('#secao-pestel [data-mic-etapa=\"PESTEL\"] [data-mic]')", 15000);
+    t(`${l} o cabeçalho do PESTEL tem o 🎤 da análise inteira`, temMic);
+    if (!temMic) return;
+    await admin.click('#secao-pestel [data-mic-etapa="PESTEL"] [data-mic]');
+    const abriu = await esperar(admin,
+      "!!document.querySelector('#secao-pestel [data-mic-etapa=\"PESTEL\"] [data-mic-fechar]')", 15000);
+    t(`${l} o 🎤 abre a etapa inteira para a sala, e acende`, abriu);
+    if (!abriu) return;
+    t(`${l} o painel do condutor mostra uma coluna por categoria`, await admin.evaluate(() =>
+      document.querySelectorAll('#secao-pestel .painel-quiz-vivo [data-quiz-categoria]').length === 6));
+
+    const sala = await admin.evaluate(async () => {
+      const plan = await App.planejamento();
+      const q = await App.api(`/api/quiz?planejamento_id=${plan.id}`);
+      return { pin: q.sessao?.pin };
+    });
+    const cel = await ctxM.newPage();
+    await cel.goto(`${BASE}/entrar/${sala.pin}`);
+    await esperar(cel, "!!document.querySelector('#campo-nome')", 15000);
+    await cel.fill('#campo-nome', 'Cooperado no celular');
+    await cel.click('#btn-entrar');
+    const cartoes = await esperar(cel,
+      "document.querySelectorAll('.grade-categorias .quadrante-opcao').length === 6", 15000);
+    t(`${l} o celular mostra as seis categorias em cartões`, cartoes);
+    if (!cartoes) return;
+    const antes = await cel.evaluate(() => ({
+      marcado: !!document.querySelector('input[name="tipo-resposta"]:checked'),
+      aviso: document.querySelector('[data-orientacao-lado]')?.textContent.trim() || '',
+      rola: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }));
+    t(`${l} nenhuma categoria vem marcada — a escolha é da pessoa`, !antes.marcado);
+    t(`${l} sem escolha, a tela pede para tocar numa categoria`,
+      /Toque numa categoria/.test(antes.aviso), antes.aviso);
+    t(`${l} os cartões não fazem a tela rolar na horizontal`, antes.rola === false);
+
+    await cel.fill('#campo-ideia', 'Automacao das granjas com sensores');
+    await cel.click('#btn-enviar');
+    await new Promise((r) => setTimeout(r, 500));
+    t(`${l} enviar sem categoria avisa antes de ir à rede`, /Escolha a categoria/.test(
+      await cel.evaluate(() => document.getElementById('aviso-envio')?.textContent || '')));
+
+    // Tecnológico é o quarto cartão (a ordem é a do catálogo)
+    await cel.click('label[for="tipo-lado-3"]');
+    const esperado = await admin.evaluate(() => App.sessao.orientacoes.TECNOLOGICO);
+    const mostrou = await esperar(cel,
+      "!!document.querySelector('[data-orientacao-lado=\"TECNOLOGICO\"]')", 8000);
+    const texto = await cel.evaluate(() =>
+      document.querySelector('[data-orientacao-lado="TECNOLOGICO"]')?.textContent || '');
+    t(`${l} ao escolher, a orientação do ⓘ da categoria aparece — a mesma do condutor`,
+      mostrou && texto.includes(esperado), texto.slice(0, 80));
+    t(`${l} o rascunho sobrevive à escolha`,
+      (await cel.evaluate(() => document.getElementById('campo-ideia')?.value)) === 'Automacao das granjas com sensores');
+    await cel.click('#btn-enviar');
+    t(`${l} a resposta com categoria é enviada`, await esperar(cel,
+      "/enviada/.test(document.getElementById('aviso-envio')?.textContent || '')", 10000));
+    t(`${l} e volta na lista da pessoa com o selo da categoria`, await esperar(cel,
+      "[...document.querySelectorAll('.ideia-minha .badge')].some((b) => b.textContent.trim() === 'Tecnológico')", 10000));
+
+    const chegou = await esperar(admin,
+      "!!document.querySelector('#secao-pestel [data-quiz-categoria=\"TECNOLOGICO\"] .ficha-sugestao')", 15000);
+    t(`${l} a voz chega ao condutor na coluna da categoria escolhida`, chegou);
+    if (chegou) {
+      await admin.click('#secao-pestel [data-quiz-categoria="TECNOLOGICO"] [data-usar-sugestao]');
+      // O grupo de cartões tem o id do campo (`campo-categoria`); os rádios
+      // dentro dele levam esse id como `name`, não o nome do campo.
+      const modal = await esperar(admin, "!!document.querySelector('#modal-form.show #campo-categoria')", 10000);
+      await new Promise((r) => setTimeout(r, 300));
+      const marcada = modal ? await admin.evaluate(() => Modal.coletar()?.categoria) : null;
+      t(`${l} "Usar" abre o fator já com a categoria da voz marcada`,
+        modal && marcada === 'TECNOLOGICO', String(marcada));
+      await fecharModal(admin);
+    }
+    await admin.click('#secao-pestel [data-mic-etapa="PESTEL"] [data-mic-fechar]');
+    t(`${l} o 🎤 aceso fecha a pergunta`, await esperar(admin,
+      "!document.querySelector('#secao-pestel [data-mic-etapa=\"PESTEL\"] [data-mic-fechar]')", 15000));
+  } finally {
+    admin.off('dialog', aceitar);
+    await ctxM.close();
+    await ctxA.close();
+  }
+}
+
 async function provasCruzamentoNaSala(browser) {
   const l = '[oficina] Cruzamentos na sala:';
   const ctxA = await browser.newContext({ viewport: { width: 1500, height: 900 }, reducedMotion: 'reduce' });
@@ -3660,6 +3793,7 @@ async function provasMenuRecolhido(page, largura) {
   await provasDuasTelas(browser);
   await provasCadeado(browser);
   await provasCruzamentoNaSala(browser);
+  await provasEtapaNaSala(browser);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.

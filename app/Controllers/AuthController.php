@@ -135,6 +135,12 @@ class AuthController
             // do texto, e quem responde ficaria orientado por uma e quem conduz
             // por outra. Fonte única: App\Services\Quiz.
             'orientacoes' => Quiz::ORIENTACAO_CATEGORIA,
+            // O catálogo das categorias (rótulo curto, cor, dica) que o
+            // celular desenha na pergunta da etapa inteira. O front tem a
+            // própria cópia em `Diag`; esta desce para o painel do condutor
+            // usar as mesmas palavras do celular e para a bateria de sistema
+            // conferir que as duas batem — ver Quiz::CATALOGO_CATEGORIA.
+            'categorias' => Quiz::CATALOGO_CATEGORIA,
         ];
     }
 }

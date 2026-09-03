@@ -981,6 +981,91 @@ for F in $CZ_F $CZ_O $CZ_A; do
   [ -n "$F" ] && post /api/fatores/$F/excluir '{"planejamento_id":1}' >/dev/null
 done
 
+echo "### 9j. A etapa inteira na sala — o celular escolhe a categoria"
+#
+# Pedido do cliente (2026-09-03): o 🎤 do cabeçalho do PESTEL/Porter/SWOT abre
+# a análise INTEIRA, e é o participante quem diz em qual categoria a resposta
+# entra — lendo ali a orientação do ⓘ. O alvo VAZIO é "toda a etapa"
+# (`Quiz::validarAlvos`), e os lados da pergunta passam a ser as categorias
+# (`Quiz::ladosDe`). As provas medem sobretudo o que a rota pública RECUSA:
+# resposta sem categoria e categoria de outra etapa — "cair na primeira", que é
+# a regra dos alvos de dois lados, aqui mandaria a voz para um quadrante que
+# ninguém escolheu.
+R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"FATOR","etapa":"PESTEL","ano":2026,"alvos":[""],"tema":"PESTEL inteiro","max_ideias":2,"confirmar_encerrar":true}')
+afirma "abre a sala na etapa inteira (alvo vazio)" '"pergunta_id"' "$R"
+EI_PIN=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('pin',''))" 2>/dev/null)
+EI_PERG=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('pergunta_id') or '')" 2>/dev/null)
+if [ -n "$EI_PIN" ] && [ -n "$EI_PERG" ]; then
+  R=$(curl -s "$BASE/api/publico/rodada/$EI_PIN" | python3 -c "
+import sys, json
+p = json.load(sys.stdin)['dados']['pergunta']
+lados = p.get('lados') or []
+print(json.dumps({'n': len(lados), 'escolhe': p.get('escolhe_categoria'),
+  'campos': sorted(lados[0].keys()) if lados else [],
+  'tem_orientacao': all(l.get('orientacao') for l in lados),
+  'rotulo': p.get('rotulo'), 'titulo': p.get('titulo')}, ensure_ascii=False))" 2>/dev/null)
+  afirma "o celular recebe as seis categorias do PESTEL como lados" '"n": 6' "$R"
+  afirma "e sabe que a escolha é obrigatória" '"escolhe": true' "$R"
+  afirma "cada lado leva cor, dica, rótulo e a orientação do ⓘ" '"campos": \["cor", "dica", "orientacao", "rotulo", "valor"\]' "$R"
+  afirma "com orientação em todos" '"tem_orientacao": true' "$R"
+  afirma "o rótulo diz que é a análise inteira" 'a análise inteira' "$R"
+  afirma "e o enunciado pede a escolha" 'Escolha a categoria' "$R"
+
+  EI_TOK=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$EI_PIN\",\"nome\":\"Voz da etapa\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['token'])" 2>/dev/null)
+  ei_resp(){ curl -s -X POST $BASE/api/publico/resposta -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$EI_PIN\",\"token\":\"$EI_TOK\",\"pergunta_id\":$EI_PERG,$1\"texto\":\"$2\"}"; }
+  R=$(ei_resp '' 'Sem categoria')
+  afirma "sem categoria, a resposta é recusada — nunca cai na primeira" 'Escolha a categoria' "$R"
+  R=$(ei_resp '"tipo":"FORCA",' 'Categoria de outra etapa')
+  afirma "categoria de OUTRA etapa é recusada" 'Escolha a categoria' "$R"
+  R=$(ei_resp '"tipo":"TECNOLOGICO",' 'Automacao da granja')
+  afirma "com a categoria, a resposta entra" '"ok":true' "$R"
+  R=$(ei_resp '"tipo":"TECNOLOGICO",' 'Sensores no rebanho')
+  afirma "a segunda da mesma categoria também" '"ok":true' "$R"
+  R=$(ei_resp '"tipo":"TECNOLOGICO",' 'Terceira estoura o teto')
+  afirma "o teto conta POR CATEGORIA, e a recusa diz qual" 'sugestão\(ões\) em Tecnológico' "$R"
+  R=$(ei_resp '"tipo":"SOCIAL",' 'Sucessao no campo')
+  afirma "e outra categoria segue aberta" '"ok":true' "$R"
+  R=$(curl -s "$BASE/api/publico/minhas?pin=$EI_PIN&token=$EI_TOK")
+  afirma "a categoria volta ao celular em tipo_resposta" '"tipo_resposta":"SOCIAL"' "$R"
+
+  # O "Usar" do condutor: a voz amarra ao fator da categoria escolhida — ou de
+  # OUTRA da mesma etapa, porque a escolha do celular é sugestão e o quadrante
+  # final é decisão de quem conduz (`FatorController::vincularSugestoes` aceita
+  # `qp.categoria IS NULL` para qualquer categoria da etapa).
+  ei_sug(){ get "/api/quiz?planejamento_id=1&pergunta_id=$EI_PERG" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+print(next((s['id'] for s in d.get('sugestoes', []) if s['texto'] == sys.argv[1]), ''))" "$1" 2>/dev/null; }
+  EI_SUG=$(ei_sug 'Automacao da granja')
+  R=$(post /api/fatores "{\"planejamento_id\":1,\"etapa\":\"PESTEL\",\"categoria\":\"TECNOLOGICO\",\"ano\":2026,\"descricao\":\"Automacao da granja (fator)\",\"sugestoes\":[$EI_SUG]}")
+  EI_F=$(echo "$R" | id_de)
+  R=$(get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" | campo_de $EI_F quiz_vozes)
+  afirma "a voz da etapa inteira amarra ao fator da categoria escolhida" '^1$' "$R"
+  EI_SUG2=$(ei_sug 'Sucessao no campo')
+  R=$(post /api/fatores "{\"planejamento_id\":1,\"etapa\":\"PESTEL\",\"categoria\":\"ECONOMICO\",\"ano\":2026,\"descricao\":\"Sucessao reclassificada (fator)\",\"sugestoes\":[$EI_SUG2]}")
+  EI_F2=$(echo "$R" | id_de)
+  R=$(get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" | campo_de $EI_F2 quiz_vozes)
+  afirma "e o condutor pode amarrá-la a OUTRA categoria da mesma etapa" '^1$' "$R"
+  post /api/fatores/$EI_F "{\"planejamento_id\":1,\"etapa\":\"PESTEL\",\"categoria\":\"TECNOLOGICO\",\"ano\":2026,\"descricao\":\"Automacao da granja (editado)\",\"sugestoes\":[$EI_SUG]}" >/dev/null
+  R=$(get "/api/fatores?planejamento_id=1&etapa=PESTEL&ano=2026" | campo_de $EI_F quiz_vozes)
+  afirma "editar o fator mantendo o conjunto não solta a voz" '^1$' "$R"
+  # O estado devolve TODAS as vozes; quem tira a usada da grade é a tela, pela
+  # marca `vinculada` — é ela que a prova mede.
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$EI_PERG" | python3 -c "
+import sys, json
+s = {x['texto']: x for x in json.load(sys.stdin)['dados'].get('sugestoes', [])}
+print(json.dumps({'usada': int(s.get('Automacao da granja', {}).get('vinculada') or 0),
+  'sobra': s.get('Sensores no rebanho', {}).get('tipo_resposta')}))" 2>/dev/null)
+  afirma "a voz usada fica marcada como vinculada no painel do condutor" '"usada": 1' "$R"
+  afirma "e a que sobrou continua lá, com a categoria" '"sobra": "TECNOLOGICO"' "$R"
+  post /api/fatores/$EI_F/excluir '{"planejamento_id":1}' >/dev/null
+  post /api/fatores/$EI_F2/excluir '{"planejamento_id":1}' >/dev/null
+  post /api/quiz/encerrar '{"planejamento_id":1}' >/dev/null
+fi
+
 echo "### 10. Limpeza"
 [ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null

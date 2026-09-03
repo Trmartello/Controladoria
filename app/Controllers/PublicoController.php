@@ -270,15 +270,32 @@ class PublicoController
             Json::erro('A condução mudou de pergunta. Releia o contexto e envie de novo.', 409);
         }
 
-        // Lista branca DERIVADA DO ALVO, não um ENUM fixo: alvo sem lado
-        // (PESTEL, Porter, SWOT — a categoria já é a pergunta) grava NULL, e
-        // valor inventado no corpo cai no primeiro lado válido, pela mesma
-        // razão que o nome sai do registro e nunca do corpo.
+        // Lista branca DERIVADA DA PERGUNTA, não um ENUM fixo: alvo sem lado
+        // (a categoria já é a pergunta) grava NULL, e valor inventado no corpo
+        // cai no primeiro lado válido, pela mesma razão que o nome sai do
+        // registro e nunca do corpo.
+        //
+        // A pergunta da ETAPA INTEIRA é a exceção ao "cai no primeiro": ali os
+        // lados são as categorias e a escolha é o conteúdo da resposta —
+        // gravar "Político" porque a pessoa não escolheu nada mandaria a
+        // sugestão para um quadrante que ninguém escolheu. Sem categoria
+        // válida, recusa e diz o que falta.
         $alvoTipo = (string)$ativa['alvo_tipo'];
-        $lados = array_keys(Quiz::LADOS[$alvoTipo] ?? []);
-        $tipo = $lados
-            ? (in_array($d['tipo'] ?? '', $lados, true) ? (string)$d['tipo'] : $lados[0])
-            : null;
+        $lados = [];
+        foreach (Quiz::ladosDe($ativa) as $l) {
+            $lados[$l['valor']] = $l['rotulo'];
+        }
+        $pedido = is_string($d['tipo'] ?? null) ? $d['tipo'] : '';
+        if (Quiz::escolheCategoria($ativa)) {
+            if (!isset($lados[$pedido])) {
+                Json::erro('Escolha a categoria da sugestão antes de enviar.');
+            }
+            $tipo = $pedido;
+        } else {
+            $tipo = $lados
+                ? (isset($lados[$pedido]) ? $pedido : (string)array_key_first($lados))
+                : null;
+        }
         $limite = Quiz::LIMITE_TEXTO[$alvoTipo] ?? 255;
         $texto = mb_substr(trim(is_string($d['texto'] ?? null) ? $d['texto'] : ''), 0, $limite);
         if ($texto === '') {
@@ -338,9 +355,11 @@ class PublicoController
             ]
         );
         if (!$gravadas) {
-            $lado = $tipo !== null
-                ? mb_strtolower(Quiz::LADOS[$alvoTipo][$tipo]) . '(s)'
-                : 'sugestão(ões)';
+            $lado = $tipo === null
+                ? 'sugestão(ões)'
+                : (Quiz::escolheCategoria($ativa)
+                    ? "sugestão(ões) em {$lados[$tipo]}"
+                    : mb_strtolower($lados[$tipo]) . '(s)');
             Json::erro("Você já enviou {$r['max_ideias']} {$lado} nesta pergunta.");
         }
         Json::ok(['ok' => true]);
