@@ -578,8 +578,15 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   das colunas vem do **`row-cols-*` da fila**, calculado com o número de
   categorias da análise — com um `col-*` fixo o Porter (cinco forças num
   `col-xl-2`) deixava um sexto da tela vazio e espremia os cartões à toa.
-  O painel de vozes fica **fora** do fixo: ele
-  cresce com a oficina e engoliria a tela.
+  **O painel de vozes da sala mora DENTRO do fixo** (o `<thead>` do
+  `RelatorioAnalise.canvas`), nas quatro análises e nos Cruzamentos. Ele já
+  ficou fora, para não engolir a tela numa oficina cheia — e o resultado foi o
+  relato do cliente (2026-09-03): o cabeçalho grudava e o painel rolava para
+  fora, e quem conduzia a reunião perdia de vista o que a sala respondia. Dentro
+  do fixo, o `ResizeObserver` já o mede junto, e a grade de vozes tem **teto
+  (30vh) com rolagem própria** — é isso que segura o crescimento, não o lugar.
+  O "Recolher" continua para quem quer só os cartões; na impressão o painel não
+  vai. Prova: `provasPainelSalaFixo`.
 - **Colunas das análises** (as mesmas quatro): o cabeçalho de cada
   categoria é `position: sticky` logo abaixo do cabeçalho da análise
   (`.cabecalho-coluna`) e, no computador, o corpo rola **por dentro** da caixa

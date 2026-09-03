@@ -179,6 +179,81 @@ async function provasAnoPadrao(page, largura) {
   await page.evaluate(() => App.mostrarSecao('painel'));
 }
 
+/**
+ * O painel da sala (as vozes que chegam pelo QR) fica À VISTA enquanto a
+ * análise rola: ele mora dentro do cabeçalho fixo, e o cabeçalho das colunas
+ * gruda ABAIXO dele. Relato do cliente (2026-09-03): na Análise de Cenário o
+ * cabeçalho grudava e o painel sumia com a rolagem — quem conduzia a reunião
+ * não via mais o que a sala respondia.
+ *
+ * A prova abre a pergunta do cenário para a sala pelo 🎤, rola a página até o
+ * fim e mede: o painel inteiro dentro da janela, abaixo da topbar; a coluna
+ * grudada abaixo do painel, e não por cima. No computador as colunas rolam
+ * por dentro e a página pode nem rolar — a medida vale nos dois casos.
+ */
+async function provasPainelSalaFixo(page, largura) {
+  const l = `[${largura}] Painel da sala:`;
+  await page.evaluate(() => App.mostrarSecao('cenario'));
+  await esperar(page, "!!document.querySelector('#secao-cenario [data-mic]')", 15000);
+  // O 🎤 e o "Fechar" podem pedir confirmação (a sala em outro rito): aceitar
+  // é o gesto do condutor. Ligado e desligado aqui, para não aceitar o
+  // diálogo de uma prova seguinte.
+  const aceitar = async (d) => { await d.accept(); };
+  page.on('dialog', aceitar);
+  try {
+    await page.click('#secao-cenario [data-mic]');
+    const aberta = await esperar(page,
+      "!!document.querySelector('#secao-cenario .painel-quiz-vivo [data-mic-fechar]')", 15000);
+    t(`${l} o 🎤 abre a pergunta do cenário para a sala`, aberta);
+    if (!aberta) return;
+
+    const m = await page.evaluate(async () => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      await new Promise((r) => setTimeout(r, 350));
+      const topo = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--topo-app'), 10);
+      const caixa = (s) => {
+        const r = document.querySelector(s)?.getBoundingClientRect();
+        return r ? { topo: Math.round(r.top), fundo: Math.round(r.bottom) } : null;
+      };
+      const cabecalho = caixa('#secao-cenario .canvas-analise > thead');
+      // As DUAS colunas: no celular a página mostra uma categoria por vez e a
+      // que já passou levou o cabeçalho junto (fica acima da janela). O que
+      // interessa é o cabeçalho que está À VISTA — ele é que não pode estar
+      // pintado por cima do painel.
+      const colunas = [...document.querySelectorAll('#secao-cenario .cabecalho-coluna')]
+        .map((c) => c.getBoundingClientRect())
+        .filter((r) => r.height > 0 && r.bottom > 0 && r.top < window.innerHeight)
+        .map((r) => ({ topo: Math.round(r.top), fundo: Math.round(r.bottom) }));
+      return {
+        rolou: Math.round(window.scrollY),
+        alto: window.innerHeight,
+        topo,
+        painel: caixa('#secao-cenario .painel-quiz-vivo'),
+        cabecalho,
+        colunas,
+        coluna: colunas.length ? colunas.reduce((a, b) => (a.topo <= b.topo ? a : b)) : null,
+        noCabecalho: !!document.querySelector('#secao-cenario .canvas-analise > thead .painel-quiz-vivo'),
+      };
+    });
+    t(`${l} o painel mora dentro do cabeçalho fixo`, m.noCabecalho);
+    // No celular as colunas não rolam por dentro: a página tem de ter rolado
+    // de verdade, senão a medida abaixo é de uma tela parada. Corre no ano da
+    // carga (ver `noAnoDaCarga`) justamente para haver cartões que empurrem.
+    if (largura === 'celular') t(`${l} a página rolou de verdade`, m.rolou > 0, JSON.stringify(m));
+    t(`${l} com a página rolada, o painel continua inteiro à vista, abaixo da topbar`,
+      !!m.painel && m.painel.topo >= m.topo && m.painel.fundo <= m.alto, JSON.stringify(m));
+    t(`${l} o cabeçalho da coluna gruda ABAIXO do painel, não por cima`,
+      !!m.coluna && !!m.cabecalho && m.coluna.topo >= m.cabecalho.fundo - 2, JSON.stringify(m));
+
+    await page.click('#secao-cenario .painel-quiz-vivo [data-mic-fechar]');
+    t(`${l} "Fechar para a sala" encerra a pergunta`, await esperar(page,
+      "!document.querySelector('#secao-cenario .painel-quiz-vivo [data-mic-fechar]')", 15000));
+  } finally {
+    page.off('dialog', aceitar);
+    await page.evaluate(() => window.scrollTo(0, 0));
+  }
+}
+
 async function provasCiclo(page, largura) {
   t(`[${largura}] o menu não tem mais seletor de ciclo`,
     await page.evaluate(() => !document.getElementById('sel-ciclo')));
@@ -1060,6 +1135,11 @@ async function provasBuscaAnalise(page, largura) {
   // O resto é medido na SWOT, que é a de renderizador próprio
   await page.evaluate(() => App.mostrarSecao('swot'));
   await esperar(page, "!!document.querySelector('#secao-swot [data-busca-analise]')", 15000);
+  // O campo de busca já existe na pintura ANTERIOR da SWOT (a seção não é
+  // destruída ao navegar): esperar só por ele media a tela velha, às vezes
+  // antes de a repintura no ano da carga trazer os cartões — "nenhum cartão"
+  // de vez em quando, sem defeito nenhum.
+  await esperar(page, "document.querySelectorAll('#secao-swot [data-card-fator]').length > 0", 15000);
   const digitar = async (q) => {
     await page.evaluate((termo) => {
       const c = document.querySelector('#secao-swot [data-busca-analise]');
@@ -3573,6 +3653,9 @@ async function provasMenuRecolhido(page, largura) {
   await provasMoverEntreTabelas(page);
   await provasTratarForaDaOrdem(page, 'desktop');
   await provasMenuRecolhido(page, 'desktop');
+  await noAnoDaCarga(page);
+  await provasPainelSalaFixo(page, 'desktop');
+  await noAnoPadrao(page);
   await provasImpactoNegocio(page);
   await provasDuasTelas(browser);
   await provasCadeado(browser);
@@ -3601,6 +3684,9 @@ async function provasMenuRecolhido(page, largura) {
   await noAnoPadrao(pageM);
   await provasTratarForaDaOrdem(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
+  await noAnoDaCarga(pageM);
+  await provasPainelSalaFixo(pageM, 'celular');
+  await noAnoPadrao(pageM);
 
   // O formulário da ação corre em contexto PRÓPRIO, nas duas larguras.
   //
