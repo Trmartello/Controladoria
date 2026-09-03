@@ -2307,6 +2307,25 @@ td.editando-agora { background: #fff8e6; }
 }
 .cabecalho-analise h1 { margin-bottom: 0; }
 
+/* ===== O painel da sala gruda JUNTO com o cabeçalho =====
+   As vozes que chegam pelo QR ficam num cartão logo abaixo do título, e esse
+   cartão mora DENTRO do `<thead>` fixo — não no corpo. Fora dele, o cabeçalho
+   grudava e o painel rolava para fora da tela: quem conduzia a reunião perdia
+   de vista justamente o que a sala estava respondendo (relato do cliente,
+   2026-09-03, na Análise de Cenário). Dentro, ele acompanha a rolagem, e a
+   altura medida em `ligarCabecalhoFixo` já o inclui: o cabeçalho das colunas e
+   a altura da caixa de cada coluna seguem certos sem conta nova.
+   O preço é o cabeçalho fixo crescer com a sala; por isso a grade de vozes
+   tem teto e rola por dentro — o painel nunca toma a tela dos cartões — e o
+   "Recolher" continua lá para quem quer só os cartões. Na impressão o painel
+   já não vai (é comando, não documento). */
+.canvas-analise > thead .painel-quiz-vivo { margin: .45rem 0 .15rem; }
+.canvas-analise > thead .painel-quiz-vivo .coluna-quiz {
+  max-height: 30vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
 /* Pesquisa dentro da análise. No computador acompanha os outros controles do
    cabeçalho; no celular ocupa a linha inteira — campo de texto espremido ao
    lado do seletor de ano não recebe mais que duas letras por vez. */

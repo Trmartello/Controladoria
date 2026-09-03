@@ -419,10 +419,10 @@ const SecaoCruzamentos = {
               ? '<button class="btn btn-verde btn-sm" data-novo-cruzamento>+ Novo cruzamento</button>' : ''}
           </div>
         </div>
-      </div>`,
+      </div>
+      <div id="quiz-vivo-cruzamentos">${this.quizPainel(ano)}</div>`,
       corpo: `
       ${semMateria}
-      <div id="quiz-vivo-cruzamentos">${this.quizPainel(ano)}</div>
       ${Diag.seletorCategoriaMovel('CRUZAMENTOS',
         this.BLOCOS.map((b) => [b.tipo, b.rotulo]), contagens)}
       <div class="row g-3">${this.BLOCOS.map((b) => coluna(b)).join('')}</div>`,

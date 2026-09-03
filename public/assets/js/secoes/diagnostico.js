@@ -968,10 +968,10 @@ const Diag = {
             ${App.podeEditar() ? `<button class="btn btn-verde btn-sm" data-novo-fator>+ Novo fator</button>` : ''}
           </div>
         </div>
-      </div>`,
+      </div>
+      <div data-quiz-vivo>${this.quizPainel(dono, etapa, ano)}</div>`,
       corpo: `
       ${descricao ? `<p class="text-muted">${descricao} <em>A análise é anual — troque o ano acima para revisar ou consultar edições anteriores.</em></p>` : ''}
-      <div data-quiz-vivo>${this.quizPainel(dono, etapa, ano)}</div>
       ${this.seletorCategoriaMovel(etapa, categorias.map(([cat, rotulo]) => [cat, rotulo]), contagens)}
       <div class="row g-3 row-cols-1 row-cols-sm-2 row-cols-md-3
         row-cols-xl-${categorias.length}">${colunas}</div>`,
@@ -1309,9 +1309,9 @@ const SecaoCenario = {
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-cenario">+ Novo item</button>' : ''}
           </div>
         </div>
-      </div>`,
+      </div>
+      <div id="quiz-vivo-cenario">${this.painelVivo()}</div>`,
       corpo: `
-      <div id="quiz-vivo-cenario">${this.painelVivo()}</div>
       ${Diag.seletorCategoriaMovel('CENARIO', [
         ['SITUACAO_ATUAL', 'Situação Atual'], ['TENDENCIA', 'Tendências'],
       ], contagensCen)}
@@ -1707,9 +1707,9 @@ const SecaoSwot = {
             ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-swot">+ Novo fator</button>' : ''}
           </div>
         </div>
-      </div>`,
+      </div>
+      <div data-quiz-vivo>${Diag.quizPainel(this, 'SWOT', ano)}</div>`,
       corpo: `
-      <div data-quiz-vivo>${Diag.quizPainel(this, 'SWOT', ano)}</div>
       ${Diag.seletorCategoriaMovel('SWOT', [
         ['FORCA', 'Forças'], ['FRAQUEZA', 'Fraquezas'],
         ['OPORTUNIDADE', 'Oportunidades'], ['AMEACA', 'Ameaças'],
