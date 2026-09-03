@@ -3295,8 +3295,16 @@ async function provasEtapaNaSala(browser) {
       marcado: !!document.querySelector('input[name="tipo-resposta"]:checked'),
       aviso: document.querySelector('[data-orientacao-lado]')?.textContent.trim() || '',
       rola: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      // O bloco do topo (enunciado, "Análise", "Como responder") saiu desta
+      // pergunta a pedido do cliente: os quadrantes SÃO a pergunta, e o bloco
+      // os empurrava para baixo da dobra.
+      topo: !!document.querySelector('.contexto-pergunta'),
+      cartoesAcima: (document.querySelector('.grade-categorias')?.getBoundingClientRect().top || 9999)
+        < window.innerHeight / 2,
     }));
     t(`${l} nenhuma categoria vem marcada — a escolha é da pessoa`, !antes.marcado);
+    t(`${l} sem o bloco do topo: os quadrantes vêm logo abaixo do PIN`, !antes.topo && antes.cartoesAcima,
+      JSON.stringify({ topo: antes.topo, cartoesAcima: antes.cartoesAcima }));
     t(`${l} sem escolha, a tela pede para tocar numa categoria`,
       /Toque numa categoria/.test(antes.aviso), antes.aviso);
     t(`${l} os cartões não fazem a tela rolar na horizontal`, antes.rola === false);

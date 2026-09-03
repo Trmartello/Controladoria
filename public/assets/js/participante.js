@@ -585,7 +585,7 @@ const Participante = {
    */
   cartoesCategoria(lados, lado) {
     const escolhido = lados.find((l) => l.valor === lado);
-    return `<div class="mt-3" role="radiogroup" aria-label="Em qual categoria entra a sua sugestão">
+    return `<div class="mt-1" role="radiogroup" aria-label="Em qual categoria entra a sua sugestão">
       <div class="small fw-bold mb-1">Categoria</div>
       <div class="grade-categorias">
         ${lados.map((l, i) => `
@@ -680,14 +680,19 @@ const Participante = {
           this.esc(rotuloLado(i.tipo_resposta))}</span>` };
     };
 
+    // Na pergunta da análise inteira o bloco do topo SAI (pedido do cliente,
+    // 2026-09-03, com a foto riscada): o rótulo já está na barra verde, e o
+    // enunciado, a "Análise" e o "Como responder" só empurravam os quadrantes
+    // — que são a pergunta — para baixo da dobra do celular. O que orienta a
+    // pessoa é o cartão escolhido, e ele traz a própria orientação.
     return `
-      <div class="contexto-pergunta">
+      ${escolhe ? '' : `<div class="contexto-pergunta">
         <div class="small text-muted">${this.esc(p.rotulo)}${
           prog?.atual ? ` · Pergunta ${prog.atual} de ${prog.total}` : ''}</div>
         <h1 class="h5 mb-1">${this.esc(p.titulo)}</h1>
         ${contexto}
         ${p.orientacao ? `<div class="orientacao-pergunta">${this.esc(p.orientacao)}</div>` : ''}
-      </div>
+      </div>`}
 
       ${escolhe ? this.cartoesCategoria(lados, lado)
         : lados.length ? `<div class="mt-3" role="radiogroup" aria-label="O que você vai sugerir">
