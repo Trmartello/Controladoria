@@ -218,16 +218,28 @@ if (!$aplicar) {
     }
     $novos = 0;
     $repetidos = 0;
-    foreach ($conteudo['itens'] as $grupo => $textos) {
+    $revisoes = 0;
+    foreach ($conteudo['itens'] as $grupo => $itens) {
         echo "\n== {$grupo}\n";
-        foreach ($textos as $texto) {
+        foreach ($itens as $item) {
+            $texto = CargaConteudo::textoDoItem($item);
+            $anterior = CargaConteudo::textoAnterior($item);
             $resumo = mb_substr($texto, 0, 84, 'UTF-8') . '…';
+            // Revisão: o texto anterior na tela é atualizado no lugar (só o
+            // cenário sabe fazer isso; ver CargaConteudo::textoDoItem)
+            if ($anterior !== null && $conteudo['destino'] === 'CENARIO'
+                && isset($existentes[CargaConteudo::chaveTexto($anterior)])) {
+                echo "  ~ atualizaria: {$resumo}\n";
+                $revisoes++;
+                continue;
+            }
             $existe = isset($existentes[CargaConteudo::chaveTexto($texto)]);
             echo $existe ? "  = já existe: {$resumo}\n" : "  + gravaria: {$resumo}\n";
             $existe ? $repetidos++ : $novos++;
         }
     }
-    echo "\ncarga {$nome}: {$novos} registro(s) a gravar, {$repetidos} já presente(s).\n";
+    echo "\ncarga {$nome}: {$novos} registro(s) a gravar, {$revisoes} a atualizar no lugar, "
+        . "{$repetidos} já presente(s).\n";
     echo "carga {$nome}: repita com --aplicar para gravar.\n";
     exit(0);
 }

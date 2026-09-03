@@ -1829,7 +1829,14 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   marca é o que impede o deploy seguinte de recriar o item que alguém apagou e
   de repor a redação que alguém reescreveu — guarda que o `NOT EXISTS` dos
   seeds não dá, porque aqui o contexto nunca está vazio. Revisar os textos
-  exige **chave nova**. Cada carga mora num arquivo só
+  exige **chave nova** — e, no cenário, a revisão pode ser **no lugar**: item
+  `['de' => texto anterior, 'para' => texto novo]` atualiza a linha que ainda
+  está na tela (mesmo id, mesma ordem, mesmas vozes e encaminhamento) em vez
+  de inserir uma segunda versão do mesmo assunto; apagada ou reescrita à mão,
+  o novo entra como item (`CargaConteudo::aplicarCenario`; prova em
+  `testes/carga_cenario.sh`). Foi assim que a fotografia de setembro/2026
+  (`cenario_macro_2026_09`, 17 revisões e 8 assuntos novos) substituiu a de
+  agosto sem duplicar a tela. Cada carga mora num arquivo só
   (`database/conteudo_*.php`, com `destino` CENARIO ou FATOR), e a regra de
   aplicar é de `App\Services\CargaConteudo` — usada pelo migrate **e** pela CLI
   (`cli/carga_diagnostico.php <cenario|pestel> <plano> [ano] [--aplicar]`, que
