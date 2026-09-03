@@ -293,6 +293,9 @@ try {
             (new RodadaController())->votacao((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/rodadas/(\\d+)/pergunta$#', $rota, $m):
             (new RodadaController())->pergunta((int)$m[1]); break;
+        // O questionário prévio: acrescenta perguntas ao fim da lista da rodada
+        case (bool)preg_match('#^POST /api/rodadas/(\\d+)/perguntas$#', $rota, $m):
+            (new RodadaController())->perguntas((int)$m[1]); break;
 
         case $rota === 'GET /api/coleta':          (new ColetaController())->listar(); break;
         case $rota === 'GET /api/coleta/aguardando-acao': (new ColetaController())->aguardandoAcao(); break;

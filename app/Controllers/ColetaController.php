@@ -43,10 +43,14 @@ class ColetaController
                     ci.situacao, ci.impacto, ci.esforco, ci.votos, ci.destino_tipo,
                     ci.destino_id, ci.motivo, ci.triado_em, ci.criado_em,
                     COALESCE(a.nome, ci.autor_nome, 'Participante') AS autor, t.nome AS triador,
-                    df.etapa AS destino_etapa
+                    df.etapa AS destino_etapa,
+                    -- A pergunta do QUESTIONÁRIO da tempestade, quando a ideia
+                    -- respondeu a uma: é o que a nuvem e o cartão etiquetam
+                    ci.pergunta_id, qp.ordem AS pergunta_ordem, qp.enunciado AS pergunta_enunciado
              FROM coleta_item ci
              LEFT JOIN usuario a ON a.id = ci.autor_id
              LEFT JOIN usuario t ON t.id = ci.triado_por
+             LEFT JOIN quiz_pergunta qp ON qp.id = ci.pergunta_id
              -- A etapa do fator é o que dá nome à tag do destino na matriz:
              -- destino_tipo só diz FATOR, não se virou PESTEL, Porter ou SWOT
              LEFT JOIN fator df ON df.id = ci.destino_id AND ci.destino_tipo = 'FATOR'

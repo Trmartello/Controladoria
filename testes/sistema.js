@@ -3456,6 +3456,96 @@ async function provasEtapaNaSala(browser) {
   }
 }
 
+/**
+ * O QUESTIONÁRIO PRÉVIO da tempestade (pedido do cliente, 2026-09-03): a
+ * rodada nasce com perguntas em ordem; o celular as percorre uma a uma, no
+ * próprio ritmo, antes do encontro.
+ *
+ * O que a prova guarda, e que quebra em silêncio:
+ *  - atingido o teto numa pergunta, o celular passa SOZINHO à próxima, e diz
+ *    por quê — sem o aviso a troca de tela parece erro;
+ *  - "Pular" passa sem responder, e o resumo conta o que faltou;
+ *  - recarregar retoma de onde parou (a posição vive por PIN);
+ *  - as fichas numeradas abrem qualquer pergunta;
+ *  - na Coleta, cada ideia leva a etiqueta da pergunta e o filtro deixa uma
+ *    pergunta por vez na nuvem.
+ */
+async function provasQuestionarioTempestade(browser) {
+  const l = '[oficina] Questionário prévio:';
+  const ctxA = await browser.newContext({ viewport: { width: 1500, height: 900 }, reducedMotion: 'reduce' });
+  const admin = await entrar(ctxA, 'admin', []);
+  const ctxM = await browser.newContext({
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce',
+  });
+  let rodada = null;
+  try {
+    rodada = await admin.evaluate(async () => {
+      const plan = await App.planejamento();
+      return App.api('/api/rodadas', {
+        planejamento_id: plan.id, ano: Diag.ano(), tema: 'Preparação do encontro (prova)',
+        max_ideias: 2, max_votos: 2, confirmar_encerrar: true,
+        perguntas: 'O que trava o crescimento?\nQue oportunidade estamos perdendo?\nOnde perdemos dinheiro?',
+      });
+    });
+    t(`${l} abre a tempestade com três perguntas`, Number(rodada?.perguntas) === 3, JSON.stringify(rodada));
+    if (!rodada?.pin) return;
+
+    const cel = await ctxM.newPage();
+    await cel.goto(`${BASE}/entrar/${rodada.pin}`);
+    await esperar(cel, "!!document.querySelector('#campo-nome')", 15000);
+    await cel.fill('#campo-nome', 'Cooperado que responde antes');
+    await cel.click('#btn-entrar');
+    const texto = () => cel.evaluate(() => document.body.textContent);
+    t(`${l} o celular abre na pergunta 1 de 3, com as fichas numeradas`, await esperar(cel,
+      "document.querySelectorAll('.chip-pergunta').length === 3 && /Pergunta 1 de 3/.test(document.body.textContent)", 15000));
+
+    await cel.fill('#campo-ideia', 'Falta de sucessores nas propriedades');
+    await cel.click('#btn-enviar');
+    await esperar(cel, "document.querySelectorAll('.ideia-minha').length === 1", 10000);
+    await cel.fill('#campo-ideia', 'Credito caro para o cooperado');
+    await cel.click('#btn-enviar');
+    t(`${l} atingido o teto de 2, o celular passa sozinho à pergunta 2`,
+      await esperar(cel, "/Pergunta 2 de 3/.test(document.body.textContent)", 10000));
+    t(`${l} e diz por quê`, /enviou as 2 ideias/.test(await texto()));
+
+    await cel.click('.navegacao-perguntas .btn-verde');
+    t(`${l} "Pular esta" leva à pergunta 3 sem responder`,
+      await esperar(cel, "/Pergunta 3 de 3/.test(document.body.textContent)", 8000));
+    await cel.fill('#campo-ideia', 'Perda de estoque no supermercado');
+    await cel.click('#btn-enviar');
+    await esperar(cel, "document.querySelectorAll('.ideia-minha').length === 1", 10000);
+    await cel.click('.navegacao-perguntas .btn-verde');
+    const resumo = await esperar(cel, "/Questionário concluído/.test(document.body.textContent)", 8000);
+    t(`${l} "Concluir" mostra o resumo: 2 de 3 respondidas`, resumo && /2 de 3/.test(await texto()));
+
+    await cel.reload();
+    t(`${l} recarregar retoma de onde parou`,
+      await esperar(cel, "/Questionário concluído/.test(document.body.textContent)", 15000));
+    await cel.click('.chip-pergunta[data-ir-pergunta="1"]');
+    t(`${l} a ficha 2 abre a pergunta 2, ainda por responder`, await esperar(cel,
+      "/Pergunta 2 de 3/.test(document.body.textContent) && !!document.getElementById('campo-ideia')", 8000));
+
+    await admin.evaluate(() => { SecaoColeta.filtroPergunta = null; App.mostrarSecao('coleta'); });
+    t(`${l} na Coleta, cada ideia leva a etiqueta da pergunta`, await esperar(admin,
+      "document.querySelectorAll('#secao-coleta .selo-pergunta').length >= 3", 15000));
+    t(`${l} e o painel da rodada tem o filtro por pergunta`, await admin.evaluate(() =>
+      document.querySelectorAll('#secao-coleta [data-filtro-pergunta] option').length === 4));
+    await admin.selectOption('#secao-coleta [data-filtro-pergunta]', { index: 3 });
+    t(`${l} o filtro deixa na nuvem só as ideias da pergunta escolhida`, await esperar(admin,
+      "document.querySelectorAll('#secao-coleta .nuvem:not(#nuvem-depois) .ficha-nuvem, "
+      + "#secao-coleta .nuvem:not(#nuvem-depois) .grupo-caixa').length === 1", 15000));
+  } finally {
+    await admin.evaluate(async (id) => {
+      SecaoColeta.filtroPergunta = null;
+      if (!id) return;
+      const plan = await App.planejamento();
+      await App.api(`/api/rodadas/${id}/encerrar`, { planejamento_id: plan.id }).catch(() => {});
+    }, rodada?.id || 0);
+    await ctxM.close();
+    await ctxA.close();
+  }
+}
+
 async function provasCruzamentoNaSala(browser) {
   const l = '[oficina] Cruzamentos na sala:';
   const ctxA = await browser.newContext({ viewport: { width: 1500, height: 900 }, reducedMotion: 'reduce' });
@@ -3903,6 +3993,7 @@ async function provasMenuRecolhido(page, largura) {
   await provasCadeado(browser);
   await provasCruzamentoNaSala(browser);
   await provasEtapaNaSala(browser);
+  await provasQuestionarioTempestade(browser);
   // Por último no percurso do desktop: ele pinta meia dúzia de seções de lado e
   // mexe no contexto para isso. Provar que devolve tudo é metade do que ele
   // mede — deixá-lo antes das outras faria o rastro dele virar falha delas.

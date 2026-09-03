@@ -294,6 +294,80 @@ if [ -n "${PIN:-}" ]; then
   nega "sem devolver token de ninguém" '"token"' "$R"
 fi
 
+echo "### 8c. Questionário prévio — perguntas em ordem, teto por pergunta, prazo"
+#
+# Pedido do cliente (2026-09-03): a tempestade nasce com perguntas, respondidas
+# pelo celular antes do encontro. O que a rota pública RECUSA é o que importa
+# aqui: ideia sem pergunta num questionário, pergunta de outra sala, e o teto —
+# que passa a contar POR PERGUNTA, senão quem gastasse tudo na primeira ficaria
+# calado nas outras. `confirmar_encerrar` fecha a sala que a seção 8 deixou.
+R=$(post /api/rodadas '{"planejamento_id":1,"ano":2026,"tema":"Preparação do encontro","max_ideias":2,"max_votos":2,"prazo":"2000-01-01","perguntas":"Uma","confirmar_encerrar":true}')
+afirma "prazo no passado é recusado antes de mexer em sala nenhuma" 'no futuro' "$R"
+R=$(post /api/rodadas '{"planejamento_id":1,"ano":2026,"tema":"Preparação do encontro","max_ideias":2,"max_votos":2,"prazo":"2099-12-31","perguntas":"O que trava o crescimento?\n\nQue oportunidade estamos perdendo?\nO que trava o crescimento?\nOnde perdemos dinheiro?","confirmar_encerrar":true}')
+afirma "abre a tempestade com questionário" '"pin"' "$R"
+afirma "linha vazia e pergunta repetida não entram: três perguntas" '"perguntas":3' "$R"
+QP_ID=$(echo "$R" | id_de)
+QP_PIN=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('pin',''))" 2>/dev/null)
+if [ -n "$QP_PIN" ]; then
+  R=$(curl -s "$BASE/api/publico/rodada/$QP_PIN" | python3 -c "
+import sys, json
+p = json.load(sys.stdin)['dados']
+print(json.dumps({'ordens': [q['ordem'] for q in p['perguntas']], 'prazo': p.get('prazo'),
+  'ids': [q['id'] for q in p['perguntas']]}))" 2>/dev/null)
+  afirma "o celular recebe as três perguntas em ordem" '"ordens": \[1, 2, 3\]' "$R"
+  afirma "e o prazo, até o fim do dia" '2099-12-31 23:59:59' "$R"
+  QP_P1=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['ids'][0])")
+  QP_P2=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['ids'][1])")
+  QP_TOK=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$QP_PIN\",\"nome\":\"Cooperado que responde antes\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['token'])" 2>/dev/null)
+  qp_ideia(){ curl -s -X POST $BASE/api/publico/ideia -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$QP_PIN\",\"token\":\"$QP_TOK\",$1\"texto\":\"$2\"}"; }
+  R=$(qp_ideia '' 'Sem pergunta')
+  afirma "ideia sem pergunta é recusada num questionário" 'Escolha a pergunta' "$R"
+  R=$(qp_ideia '"pergunta_id":999999,' 'Pergunta de outra sala')
+  afirma "pergunta que não é desta rodada é recusada" 'Escolha a pergunta' "$R"
+  R=$(qp_ideia "\"pergunta_id\":$QP_P1," 'Sucessao nas propriedades')
+  afirma "ideia na pergunta 1 entra" '"ok":true' "$R"
+  R=$(qp_ideia "\"pergunta_id\":$QP_P1," 'Credito caro')
+  afirma "a segunda da pergunta 1 também" '"ok":true' "$R"
+  R=$(qp_ideia "\"pergunta_id\":$QP_P1," 'Terceira estoura')
+  afirma "o teto de 2 é POR PERGUNTA, e a recusa diz isso" 'nesta pergunta' "$R"
+  R=$(qp_ideia "\"pergunta_id\":$QP_P2," 'Marca propria no varejo')
+  afirma "e a pergunta 2 continua aberta" '"ok":true' "$R"
+  R=$(curl -s "$BASE/api/publico/minhas?pin=$QP_PIN&token=$QP_TOK")
+  afirma "as ideias voltam ao celular com a pergunta" "\"pergunta_id\":$QP_P2" "$R"
+  QP_I2=$(echo "$R" | python3 -c "
+import sys, json
+print(next((i['id'] for i in json.load(sys.stdin)['dados'] if i['texto'] == 'Marca propria no varejo'), ''))" 2>/dev/null)
+  R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $QP_I2 pergunta_ordem)
+  afirma "na Coleta a ideia sabe a que pergunta respondeu" '^2$' "$R"
+  R=$(post /api/rodadas/$QP_ID/perguntas '{"planejamento_id":1,"perguntas":"Quarta pergunta, no fim"}')
+  afirma "acrescenta uma pergunta ao questionário aberto" '"gravadas":1' "$R"
+  R=$(curl -s "$BASE/api/publico/rodada/$QP_PIN" | python3 -c "
+import sys, json; print([q['ordem'] for q in json.load(sys.stdin)['dados']['perguntas']])" 2>/dev/null)
+  afirma "e ela entra no FIM, sem mexer na numeração" '^\[1, 2, 3, 4\]$' "$R"
+  R=$(get "/api/rodadas?planejamento_id=1" | python3 -c "
+import sys, json
+r = next((x for x in json.load(sys.stdin)['dados'] if x['id'] == $QP_ID), {})
+print(json.dumps({'n': len(r.get('perguntas', [])), 'ideias1': r['perguntas'][0]['ideias'], 'gente1': r['perguntas'][0]['respondentes']}))" 2>/dev/null)
+  afirma "a lista do condutor conta ideias e pessoas por pergunta" '"ideias1": 2, "gente1": 1' "$R"
+  post /api/rodadas/$QP_ID/encerrar '{"planejamento_id":1}' >/dev/null
+  # O prazo fecha a rodada SOZINHO — na primeira leitura depois dele, porque
+  # não há relógio no servidor. Quatro segundos de prazo, e a leitura seguinte
+  # já a vê encerrada. O prazo é escrito no FUSO DO APLICATIVO (`TZ_APP` em
+  # config.php, América/São Paulo por padrão), que é o do PHP e o da conexão
+  # com o banco (`SET time_zone` em Database): no relógio da shell, em UTC,
+  # ele cairia três horas à frente e a prova esperaria para sempre.
+  QP_PRAZO=$(TZ="${TZ_APP:-America/Sao_Paulo}" date -d '+4 seconds' '+%Y-%m-%d %H:%M:%S')
+  R=$(post /api/rodadas "{\"planejamento_id\":1,\"ano\":2026,\"tema\":\"Prazo curto\",\"prazo\":\"$QP_PRAZO\",\"perguntas\":\"Só uma\",\"confirmar_encerrar\":true}")
+  afirma "abre a rodada com prazo de segundos" '"pin"' "$R"
+  QP_PIN2=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('pin',''))" 2>/dev/null)
+  sleep 5
+  R=$(curl -s "$BASE/api/publico/rodada/$QP_PIN2")
+  afirma "passado o prazo, o celular já a encontra encerrada" '"situacao":"ENCERRADA"' "$R"
+fi
+
 echo "### 9. Cruzamentos da SWOT (TOWS)"
 # O bloco é DERIVADO do par, nunca escolhido: é a regra que este trecho guarda.
 # A massa é própria — quatro fatores da SWOT criados e apagados aqui — porque a

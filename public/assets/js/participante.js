@@ -286,6 +286,8 @@ const Participante = {
   assinatura() {
     return JSON.stringify([
       this.rodada?.situacao, this.rodada?.tema, this.votacao?.votacao,
+      // O questionário: pergunta a mais no fim, prazo trocado
+      (this.rodada?.perguntas || []).map((q) => [q.id, q.enunciado]), this.rodada?.prazo,
       // A pergunta ativa do quiz: quando a condução avança (ou reabre), o
       // cabeçalho e a lista de respostas precisam acompanhar — e o progresso
       // muda até sem trocar a ativa (o roteiro cresceu)
@@ -358,6 +360,11 @@ const Participante = {
     // mesma página serve a tempestade e o quiz de qualquer análise
     const rotuloTopo = document.getElementById('topo-rotulo');
     if (rotuloTopo) rotuloTopo.textContent = 'Tempestade de ideias';
+    // O QUESTIONÁRIO: a tempestade com perguntas em ordem tem tela própria
+    if ((r.perguntas || []).length) {
+      this.renderQuestionario();
+      return;
+    }
     const rascunho = document.getElementById('campo-ideia')?.value ?? '';
     const encerrada = r.situacao !== 'ABERTA';
     // Votação aberta SEM nada para votar não é fase de votação: é um beco. A
@@ -407,6 +414,179 @@ const Participante = {
     if (votando) this.ligarVotacao();
     this.ligarIdentidade();
     this.ligarDitado();
+  },
+
+  // ---- Questionário da tempestade ----
+  /**
+   * A tempestade com PERGUNTAS EM ORDEM, respondidas antes do encontro (pedido
+   * do cliente, 2026-09-03): quem entra pelo QR ou pelo link do WhatsApp
+   * percorre pergunta 1, 2, 3… até a última, no próprio ritmo, e o encontro
+   * começa com as respostas na mesa. As regras que ele pediu:
+   *
+   *  - todas as perguntas estão abertas ao mesmo tempo, e as fichas numeradas
+   *    deixam ESCOLHER qual responder — a ordem é sugestão, não trava;
+   *  - o teto de ideias vale em CADA pergunta, e atingido o teto o celular
+   *    passa sozinho à próxima; sem atingir, "Pular" passa do mesmo jeito;
+   *  - a pergunta em que a pessoa parou é guardada por PIN: sair e voltar
+   *    retoma de onde estava;
+   *  - depois da última, o resumo do que foi enviado, com o caminho de volta
+   *    para completar ou corrigir enquanto a rodada estiver aberta.
+   *
+   * A votação por ★ e a rodada encerrada continuam as da tempestade: a
+   * diferença do questionário é só a fase de recolher.
+   */
+  perguntaAtual: null,
+  avisoQuestionario: '',
+
+  chavePergunta() {
+    return `tempestade:${this.pin}:pergunta`;
+  },
+
+  lerPerguntaAtual(n) {
+    try {
+      const v = Number(localStorage.getItem(this.chavePergunta()));
+      return Number.isInteger(v) && v >= 0 && v <= n ? v : 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  irParaPergunta(i, aviso = '') {
+    this.perguntaAtual = Math.max(0, i);
+    this.avisoQuestionario = aviso;
+    try {
+      localStorage.setItem(this.chavePergunta(), String(this.perguntaAtual));
+    } catch {
+      // Sem armazenamento: a posição vale só enquanto a página estiver aberta.
+    }
+    this.render();
+    window.scrollTo(0, 0);
+  },
+
+  /** dd/mm/aaaa hh:mm do DATETIME que o servidor devolve — o prazo. */
+  dataHora(iso) {
+    if (!iso) return '';
+    const [data, hora] = String(iso).split(' ');
+    return `${data.split('-').reverse().join('/')}${hora ? ` ${hora.slice(0, 5)}` : ''}`;
+  },
+
+  minhasDaPergunta(perguntaId) {
+    return this.minhas.filter((m) => Number(m.pergunta_id) === Number(perguntaId));
+  },
+
+  renderQuestionario() {
+    const r = this.rodada;
+    const perguntas = r.perguntas;
+    const n = perguntas.length;
+    if (this.perguntaAtual === null) this.perguntaAtual = this.lerPerguntaAtual(n);
+    const i = Math.min(this.perguntaAtual, n);
+    const p = perguntas[i] || null;
+    const encerrada = r.situacao !== 'ABERTA';
+    const paraVotar = (this.votacao?.itens || []).length;
+    const votando = this.votacao?.votacao === 'ABERTA' && paraVotar > 0;
+    const respondidas = perguntas.filter((q) => this.minhasDaPergunta(q.id).length > 0).length;
+    const rascunho = document.getElementById('campo-ideia')?.value ?? '';
+    const aviso = this.avisoQuestionario;
+    this.avisoQuestionario = '';
+
+    // As fichas numeradas: a respondida ganha o ✓, a atual fica cheia. É por
+    // elas que a pessoa ESCOLHE a pergunta, em vez de só seguir a ordem.
+    const fichas = perguntas.map((q, k) => {
+      const feita = this.minhasDaPergunta(q.id).length > 0;
+      return `<button type="button" class="chip-pergunta${k === i ? ' atual' : ''}${feita ? ' respondida' : ''}"
+        data-ir-pergunta="${k}" title="${this.esc(q.enunciado)}"
+        aria-label="Pergunta ${k + 1}${feita ? ', respondida' : ''}">${k + 1}${feita ? ' ✓' : ''}</button>`;
+    }).join('');
+
+    let corpo;
+    if (encerrada) {
+      corpo = '<div class="alert alert-secondary py-2 small mt-3">Esta rodada foi encerrada. Obrigado por participar!</div>';
+    } else if (votando) {
+      corpo = this.blocoVotacao();
+    } else if (!p) {
+      corpo = this.blocoResumo(perguntas, respondidas);
+    } else {
+      const minhas = this.minhasDaPergunta(p.id);
+      const restam = r.max_ideias - minhas.length;
+      corpo = `
+        ${aviso ? `<div class="alert alert-success py-2 small mt-2 mb-0">${this.esc(aviso)}</div>` : ''}
+        <div class="contexto-pergunta mt-3">
+          <div class="small text-muted">Pergunta ${i + 1} de ${n}</div>
+          <h1 class="h5 mb-1">${this.esc(p.enunciado)}</h1>
+        </div>
+        ${restam > 0
+          ? this.blocoEnvio(restam, { rotulo: 'Sua ideia para esta pergunta',
+            dica: `Pode enviar mais ${restam} nesta pergunta.` })
+          : `<div class="alert alert-success py-2 small mt-3">Você enviou as ${r.max_ideias} ideias
+               desta pergunta. Siga para a próxima.</div>`}
+        ${minhas.length ? `
+          <div class="mt-3">
+            <div class="rotulo-secao">Suas ideias nesta pergunta</div>
+            ${minhas.map((m) => this.editando === m.id
+              ? this.editorIdeia(m)
+              : `<div class="ideia-minha d-flex align-items-start gap-2">
+                   <span class="flex-grow-1">${this.esc(m.texto)}</span>
+                   ${m.situacao === 'NOVO' ? `
+                     <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none flex-shrink-0"
+                       data-editar="${m.id}" aria-label="Editar ideia">✎ editar</button>` : ''}
+                 </div>`).join('')}
+          </div>` : ''}
+        <div class="d-flex gap-2 mt-3 navegacao-perguntas">
+          <button type="button" class="btn btn-outline-secondary" data-ir-pergunta="${i - 1}"
+            ${i === 0 ? 'disabled' : ''}>Anterior</button>
+          <button type="button" class="btn btn-verde flex-grow-1" data-ir-pergunta="${i + 1}">${
+            i + 1 < n ? (minhas.length ? 'Próxima' : 'Pular esta') : 'Concluir'}</button>
+        </div>`;
+    }
+
+    this.tela.innerHTML = `
+      <div class="cartao-participante">
+        ${this.cabecalhoIdentidade()}
+        <div class="d-flex align-items-baseline gap-2 flex-wrap">
+          <h1 class="h6 tema-rodada mb-0 flex-grow-1">${this.esc(r.tema || 'Questionário')}</h1>
+          ${r.prazo ? `<span class="small text-muted text-nowrap">até ${this.dataHora(r.prazo)}</span>` : ''}
+        </div>
+        ${!encerrada && !votando ? `
+          <div class="progresso-questionario mt-2" aria-label="${respondidas} de ${n} perguntas respondidas">
+            <div class="barra"><div style="width:${Math.round((respondidas / n) * 100)}%"></div></div>
+            <div class="chips-perguntas mt-2">${fichas}</div>
+          </div>` : ''}
+        ${corpo}
+      </div>`;
+
+    // Com o teto da pergunta atingido não há campo nem botão: ligar o envio
+    // ali lançaria erro dentro do redesenho — e o redesenho roda no meio do
+    // clique de "Enviar", que é justamente quem precisa avançar de pergunta.
+    if (!encerrada && !votando && p && document.getElementById('btn-enviar')) {
+      const campo = document.getElementById('campo-ideia');
+      if (campo && rascunho) campo.value = rascunho;
+      this.ligarEnvio(p.id, r.max_ideias);
+    }
+    if (!encerrada && !votando && this.minhas.length) this.ligarEdicaoIdeias();
+    if (votando) this.ligarVotacao();
+    this.tela.querySelectorAll('[data-ir-pergunta]').forEach((b) => b.addEventListener('click', () =>
+      this.irParaPergunta(Number(b.dataset.irPergunta))));
+    this.ligarIdentidade();
+    this.ligarDitado();
+  },
+
+  /** Depois da última pergunta: o que foi enviado, e o caminho de volta. */
+  blocoResumo(perguntas, respondidas) {
+    return `
+      <div class="alert alert-success py-2 small mt-3">
+        <strong>Questionário concluído.</strong> Você respondeu ${respondidas} de ${perguntas.length}
+        pergunta(s). Enquanto a rodada estiver aberta, dá para voltar e completar ou corrigir.</div>
+      ${perguntas.map((q, k) => {
+        const minhas = this.minhasDaPergunta(q.id);
+        return `<div class="resumo-pergunta">
+          <div class="small fw-bold">${k + 1}. ${this.esc(q.enunciado)}</div>
+          ${minhas.length
+            ? minhas.map((m) => `<div class="ideia-minha">${this.esc(m.texto)}</div>`).join('')
+            : `<div class="small text-muted">Sem resposta.
+                 <button type="button" class="btn btn-link btn-sm p-0" data-ir-pergunta="${k}">Responder</button></div>`}
+        </div>`;
+      }).join('')}
+      <button type="button" class="btn btn-outline-secondary w-100 mt-3" data-ir-pergunta="0">Revisar desde a primeira</button>`;
   },
 
   // ---- Quiz da cascata ----
@@ -867,7 +1047,7 @@ const Participante = {
     if (campo && alvo) alvo.textContent = `${campo.value.length}/${alvo.dataset.max || 255}`;
   },
 
-  blocoEnvio(restam) {
+  blocoEnvio(restam, { rotulo = 'Sua ideia', dica = null } = {}) {
     if (restam <= 0) {
       return `<div class="alert alert-success py-2 small mt-3">
         Você enviou todas as suas ideias. Aguarde a condução.</div>`;
@@ -876,20 +1056,27 @@ const Participante = {
           placeholder="Escreva ou dite como você diria em voz alta"></textarea>`;
     return `
       <div class="mt-3">
-        <label class="form-label small" for="campo-ideia">Sua ideia</label>
+        <label class="form-label small" for="campo-ideia">${this.esc(rotulo)}</label>
         ${this.comVoz(area, 'campo-ideia')}
         <div class="d-flex align-items-center gap-2 mt-2">
-          <span class="small text-muted flex-grow-1">Pode enviar mais ${restam}.</span>
+          <span class="small text-muted flex-grow-1">${this.esc(dica || `Pode enviar mais ${restam}.`)}</span>
           <button class="btn btn-verde" id="btn-enviar">Enviar</button>
         </div>
         <div id="aviso-envio" class="small mt-2"></div>
       </div>`;
   },
 
-  ligarEnvio() {
+  /**
+   * `perguntaId` e `maxIdeias` são do questionário: a ideia vai para a
+   * pergunta em que a pessoa está e, atingido o teto dela, o celular passa
+   * sozinho à próxima (regra do cliente) — com o aviso do porquê, para a
+   * troca de tela não parecer um erro.
+   */
+  ligarEnvio(perguntaId = null, maxIdeias = null) {
     const btn = document.getElementById('btn-enviar');
     const campo = document.getElementById('campo-ideia');
     const aviso = document.getElementById('aviso-envio');
+    if (!btn || !campo) return;
     btn.addEventListener('click', async () => {
       this.pararDitado();
       const texto = campo.value.trim();
@@ -898,10 +1085,19 @@ const Participante = {
       try {
         // O nome vem do registro no servidor, não daqui: enviá-lo permitiria
         // assinar a ideia com o nome de outra pessoa
-        await this.api('/api/publico/ideia', { pin: this.pin, token: this.token, texto });
+        await this.api('/api/publico/ideia', { pin: this.pin, token: this.token, texto,
+          ...(perguntaId ? { pergunta_id: perguntaId } : {}) });
         campo.value = '';
         // A confirmação vai depois do redesenho, senão ele a apaga na hora
         await this.atualizar(true);
+        if (perguntaId && maxIdeias && this.minhasDaPergunta(perguntaId).length >= maxIdeias) {
+          const n = (this.rodada?.perguntas || []).length;
+          const proxima = Math.min((this.perguntaAtual ?? 0) + 1, n);
+          this.irParaPergunta(proxima, proxima < n
+            ? `Você enviou as ${maxIdeias} ideias da pergunta anterior — esta é a próxima.`
+            : '');
+          return;
+        }
         const novo = document.getElementById('aviso-envio');
         if (novo) {
           novo.className = 'small mt-2 text-success';
@@ -1061,15 +1257,37 @@ const Participante = {
             : restam === 1
               ? 'Resta <strong>1</strong> estrela.'
               : 'Suas estrelas acabaram — toque numa marcada para trocar.'}</div>
-        ${v.itens.map((i) => `
-          <button type="button" class="ideia-votavel ${Number(i.votei) ? 'votada' : ''}"
-            data-votar="${i.id}">
-            <span class="voto-marca">${Number(i.votei) ? '★' : '☆'}</span>
-            <span>${this.esc(i.texto)}${Number(i.minha)
-              ? '<span class="selo-minha">sua</span>' : ''}</span>
-          </button>`).join('') || '<p class="text-muted small">Nenhuma ideia para votar ainda.</p>'}
+        ${this.listaVotacao(v.itens) || '<p class="text-muted small">Nenhuma ideia para votar ainda.</p>'}
         <div id="aviso-voto" class="small mt-2"></div>
       </div>`;
+  },
+
+  /**
+   * As ideias em votação. No questionário, em BLOCOS por pergunta, na ordem
+   * do encontro (o servidor já as manda assim): misturadas, as respostas de
+   * cinco perguntas viravam um vaivém entre assuntos.
+   */
+  listaVotacao(itens) {
+    const ficha = (i) => `
+      <button type="button" class="ideia-votavel ${Number(i.votei) ? 'votada' : ''}"
+        data-votar="${i.id}">
+        <span class="voto-marca">${Number(i.votei) ? '★' : '☆'}</span>
+        <span>${this.esc(i.texto)}${Number(i.minha)
+          ? '<span class="selo-minha">sua</span>' : ''}</span>
+      </button>`;
+    const perguntas = this.rodada?.perguntas || [];
+    if (!perguntas.length) return itens.map(ficha).join('');
+    return perguntas.map((q, k) => {
+      const daPergunta = itens.filter((i) => Number(i.pergunta_id) === Number(q.id));
+      if (!daPergunta.length) return '';
+      return `<div class="bloco-estrelas">
+        <div class="titulo-bloco-estrelas">
+          <span class="badge text-bg-light border">Pergunta ${k + 1}</span>
+          <span class="small">${this.esc(q.enunciado)}</span>
+        </div>
+        ${daPergunta.map(ficha).join('')}
+      </div>`;
+    }).join('');
   },
 
   ligarVotacao() {

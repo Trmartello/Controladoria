@@ -20,11 +20,17 @@ class RodadaController
     /** Teto de segurança da tela ao vivo, independente do que o front pedir. */
     private const MAX_IDEIAS = 20;
     private const MAX_VOTOS = 10;
+    /** Perguntas por questionário: ninguém responde trinta antes de um encontro. */
+    private const MAX_PERGUNTAS = 30;
 
     public function listar(): void
     {
         $planId = (int)($_GET['planejamento_id'] ?? 0);
         Auth::exigirAcessoPlanejamento($planId);
+        // O prazo do questionário fecha a rodada na primeira leitura depois
+        // dele — inclusive esta, para o condutor ver "encerrada" sem depender
+        // de um celular ter batido antes.
+        Quiz::fecharVencidas();
         $ano = (int)($_GET['ano'] ?? 0);
         $filtro = $ano ? ' AND r.ano = ?' : '';
         // O rótulo do autor removido é o PRIMEIRO parâmetro: o `?` dele está
@@ -37,8 +43,8 @@ class RodadaController
         // POST /api/coleta — lia o PIN aqui e gravava ideias pela porta pública.
         $podeEditar = (Auth::usuario()['perfil'] ?? '') !== 'LEITURA';
         $colunas = $podeEditar ? 'r.*' : 'r.id, r.planejamento_id, r.ano, r.tema, r.situacao, r.modo,
-                    r.votacao, r.max_ideias, r.max_votos, r.criado_por, r.criado_em, r.encerrada_em';
-        Json::ok(Database::todos(
+                    r.votacao, r.max_ideias, r.max_votos, r.prazo, r.criado_por, r.criado_em, r.encerrada_em';
+        $rodadas = Database::todos(
             "SELECT {$colunas}, COALESCE(u.nome, ?) AS autor,
                     (SELECT COUNT(*) FROM coleta_item i WHERE i.rodada_id = r.id) AS ideias,
                     -- Participante é quem ENTROU (escaneou o QR e se identificou),
@@ -52,7 +58,90 @@ class RodadaController
              WHERE r.planejamento_id = ?{$filtro}
              ORDER BY r.situacao = 'ABERTA' DESC, r.criado_em DESC",
             $params
-        ));
+        );
+        // As perguntas do questionário, com quantas ideias e quantas pessoas
+        // responderam cada uma: é o acompanhamento do condutor antes do
+        // encontro. Só a tempestade as tem; no quiz o roteiro é outro.
+        foreach ($rodadas as &$r) {
+            $r['perguntas'] = $r['modo'] === 'TEMPESTADE'
+                ? Quiz::perguntasDaTempestade((int)$r['id'], true) : [];
+        }
+        Json::ok($rodadas);
+    }
+
+    /**
+     * O prazo do questionário, vindo do formulário como data (`AAAA-MM-DD`,
+     * vale até o fim do dia) ou como data e hora. Nulo = sem prazo. No
+     * passado é recusado: abriria uma rodada que a primeira leitura fecha.
+     */
+    private function prazo(array $d): ?string
+    {
+        $bruto = trim(is_string($d['prazo'] ?? null) ? $d['prazo'] : '');
+        if ($bruto === '') {
+            return null;
+        }
+        $data = \DateTimeImmutable::createFromFormat('!Y-m-d', $bruto)
+            ?: \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $bruto)
+            ?: \DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $bruto);
+        if (!$data) {
+            Json::erro('Prazo inválido — use o calendário para escolher a data.');
+        }
+        if (strlen($bruto) === 10) {
+            $data = $data->setTime(23, 59, 59);
+        }
+        if ($data <= new \DateTimeImmutable()) {
+            Json::erro('O prazo do questionário precisa estar no futuro.');
+        }
+        return $data->format('Y-m-d H:i:s');
+    }
+
+    /**
+     * As perguntas do questionário vindas do corpo: uma lista, ou um texto com
+     * uma pergunta por linha (é assim que o formulário as manda). Vazio é a
+     * tempestade de tema único, como sempre foi.
+     */
+    private function perguntasDoCorpo(array $d): array
+    {
+        $bruto = $d['perguntas'] ?? [];
+        if (is_string($bruto)) {
+            $bruto = preg_split('/\r\n|\r|\n/', $bruto) ?: [];
+        }
+        if (!is_array($bruto)) {
+            Json::erro('Perguntas inválidas.');
+        }
+        if (count($bruto) > self::MAX_PERGUNTAS) {
+            Json::erro('Questionário longo demais: no máximo ' . self::MAX_PERGUNTAS . ' perguntas.');
+        }
+        return array_values(array_filter(array_map(
+            static fn($p) => is_string($p) ? trim($p) : '', $bruto
+        ), static fn($p) => $p !== ''));
+    }
+
+    /**
+     * Acrescenta perguntas ao questionário de uma rodada ABERTA — sempre ao
+     * fim, para não mudar a numeração de quem já respondeu. Pedido do cliente
+     * (2026-09-03): as perguntas são pré-cadastradas e o participante as
+     * percorre em ordem; reordenar depois da primeira resposta trocaria o
+     * "pergunta 2" que alguém já respondeu por outra.
+     */
+    public function perguntas(int $id): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $rodada = $this->exigirRodada($id, $planId);
+        if ($rodada['situacao'] !== 'ABERTA') {
+            Json::erro('A rodada já foi encerrada.');
+        }
+        if ($rodada['modo'] !== 'TEMPESTADE') {
+            Json::erro('O questionário é da tempestade de ideias; o roteiro do encontro se monta pelo 🎤 das análises.');
+        }
+        $perguntas = $this->perguntasDoCorpo($d);
+        if (!$perguntas) {
+            Json::erro('Escreva ao menos uma pergunta.');
+        }
+        $gravadas = Quiz::gravarPerguntasLivres($id, $perguntas);
+        Json::ok(['gravadas' => $gravadas, 'perguntas' => Quiz::perguntasDaTempestade($id, true)]);
     }
 
     public function abrir(): void
@@ -72,22 +161,32 @@ class RodadaController
         if ($ano < 2000 || $ano > 2100) {
             Json::erro('Informe o ano da coleta.');
         }
+        $maxIdeias = max(1, min(self::MAX_IDEIAS, (int)($d['max_ideias'] ?? 5)));
+        $maxVotos = max(1, min(self::MAX_VOTOS, (int)($d['max_votos'] ?? 3)));
+        // Tudo validado ANTES de mexer em qualquer sala: perguntas e prazo
+        // tortos não podem encerrar a sessão de outra análise (o `liberarSala`
+        // abaixo, com a confirmação) e então recusar — nem deixar uma rodada
+        // aberta pela metade, com PIN e sem questionário.
+        $perguntas = $this->perguntasDoCorpo($d);
+        $prazo = $this->prazo($d);
+
         // Uma sala aberta por planejamento, de qualquer rito: duas deixariam uma
         // delas invisível no painel, seguindo a aceitar ideias pelo PIN antigo.
         // A colisão é PERGUNTA, não recusa — quem esqueceu de fechar a sala de
         // outra análise confirma o encerramento e segue daqui mesmo.
         Quiz::liberarSala($planId, $d, Quiz::tela('LIVRE'));
 
-        $maxIdeias = max(1, min(self::MAX_IDEIAS, (int)($d['max_ideias'] ?? 5)));
-        $maxVotos = max(1, min(self::MAX_VOTOS, (int)($d['max_votos'] ?? 3)));
-
         $pin = Quiz::pinLivre();
         $id = (int)Database::executar(
-            'INSERT INTO coleta_rodada (planejamento_id, ano, tema, pin, max_ideias, max_votos, criado_por)
-             VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [$planId, $ano, $tema, $pin, $maxIdeias, $maxVotos, (int)$u['id']]
+            'INSERT INTO coleta_rodada (planejamento_id, ano, tema, pin, max_ideias, max_votos, prazo, criado_por)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [$planId, $ano, $tema, $pin, $maxIdeias, $maxVotos, $prazo, (int)$u['id']]
         );
-        Json::ok(['id' => $id, 'pin' => $pin]);
+        // O QUESTIONÁRIO: as perguntas viram linhas LIVRE do roteiro, todas
+        // abertas ao mesmo tempo. O teto `max_ideias` passa a valer POR
+        // PERGUNTA (`PublicoController::ideia`).
+        $gravadas = $perguntas ? Quiz::gravarPerguntasLivres($id, $perguntas) : 0;
+        Json::ok(['id' => $id, 'pin' => $pin, 'perguntas' => $gravadas, 'prazo' => $prazo]);
     }
 
     public function encerrar(int $id): void

@@ -1137,6 +1137,73 @@ class Quiz
         );
     }
 
+    /**
+     * O questionário prévio da tempestade fecha SOZINHO ao passar do prazo —
+     * ou quando o condutor encerra, o que vier primeiro. Não há relógio no
+     * servidor (`php -S` não tem cron): o fechamento é preguiçoso, feito na
+     * primeira leitura depois do prazo, seja do celular (`rodadaPorPin`) ou
+     * da lista do condutor. Para quem lê, dá no mesmo: a rodada já aparece
+     * encerrada. Um UPDATE sem linhas a afetar custa nada.
+     */
+    public static function fecharVencidas(): void
+    {
+        Database::executar(
+            "UPDATE coleta_rodada SET situacao = 'ENCERRADA', votacao = 'FECHADA', encerrada_em = NOW()
+              WHERE situacao = 'ABERTA' AND prazo IS NOT NULL AND prazo < NOW()"
+        );
+    }
+
+    /**
+     * As perguntas do QUESTIONÁRIO de uma tempestade, na ordem: as linhas
+     * LIVRE de `quiz_pergunta` da rodada. Vazio = tempestade de tema único,
+     * como sempre foi. Com `$contagens`, cada pergunta traz quantas ideias
+     * recebeu e quantas pessoas responderam — para o condutor acompanhar.
+     */
+    public static function perguntasDaTempestade(int $rodadaId, bool $contagens = false): array
+    {
+        $extra = $contagens
+            ? ", (SELECT COUNT(*) FROM coleta_item ci WHERE ci.pergunta_id = p.id) AS ideias,
+                 (SELECT COUNT(DISTINCT ci.participante_token) FROM coleta_item ci
+                   WHERE ci.pergunta_id = p.id AND ci.participante_token IS NOT NULL) AS respondentes"
+            : '';
+        return Database::todos(
+            "SELECT p.id, p.ordem, p.enunciado{$extra}
+               FROM quiz_pergunta p
+              WHERE p.rodada_id = ? AND p.alvo_tipo = 'LIVRE'
+              ORDER BY p.ordem, p.id",
+            [$rodadaId]
+        );
+    }
+
+    /**
+     * Grava as perguntas do questionário numa rodada, na ordem em que vieram,
+     * depois das que já existem. Texto vazio e repetido é ignorado (o UNIQUE
+     * `alvo_chave` leva o MD5 do enunciado, e a mesma pergunta duas vezes não
+     * faz sentido num questionário). Devolve quantas entraram.
+     */
+    public static function gravarPerguntasLivres(int $rodadaId, array $perguntas): int
+    {
+        $ordem = (int)(Database::um(
+            'SELECT COALESCE(MAX(ordem), 0) AS n FROM quiz_pergunta WHERE rodada_id = ?', [$rodadaId]
+        )['n'] ?? 0);
+        $vistas = [];
+        $gravadas = 0;
+        foreach ($perguntas as $texto) {
+            $t = mb_substr(trim(is_string($texto) ? $texto : ''), 0, 255);
+            if ($t === '' || isset($vistas[mb_strtolower($t)])) {
+                continue;
+            }
+            $vistas[mb_strtolower($t)] = true;
+            $ordem++;
+            $gravadas += (int)Database::afetadas(
+                "INSERT IGNORE INTO quiz_pergunta (rodada_id, alvo_tipo, enunciado, ordem, situacao, aberta_em)
+                 VALUES (?, 'LIVRE', ?, ?, 'ATIVA', NOW())",
+                [$rodadaId, $t, $ordem]
+            );
+        }
+        return $gravadas;
+    }
+
     /** Encerra a rodada e o que estiver ativo nela. */
     public static function encerrarSala(int $rodadaId): void
     {

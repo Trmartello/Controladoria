@@ -620,6 +620,10 @@ CREATE TABLE IF NOT EXISTS coleta_rodada (
   votacao         ENUM('FECHADA','ABERTA') NOT NULL DEFAULT 'FECHADA',
   max_ideias      TINYINT NOT NULL DEFAULT 5,
   max_votos       TINYINT NOT NULL DEFAULT 3,
+  -- Questionário prévio (tempestade com perguntas em `quiz_pergunta`, alvo
+  -- LIVRE): a rodada fecha sozinha ao passar do prazo, ou quando o condutor
+  -- encerra — o que vier primeiro. Nulo = só o condutor encerra.
+  prazo           DATETIME NULL,
   modo            ENUM('TEMPESTADE','QUIZ') NOT NULL DEFAULT 'TEMPESTADE',
   -- Anulável de propósito: excluir um usuário não pode levar junto o que ele
   -- escreveu. Na exclusão o registro vai para a pessoa indicada, ou fica sem

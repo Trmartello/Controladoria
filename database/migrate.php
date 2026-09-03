@@ -454,6 +454,13 @@ if ($tipoResposta && stripos((string)$tipoResposta, 'enum') === 0) {
     echo "migrate: coleta_item.tipo_resposta vira VARCHAR(40) (lado ou categoria, derivados da pergunta).\n";
 }
 
+// Questionário prévio da tempestade (2026-09-03): a rodada ganha um prazo, e
+// fecha sozinha ao passar dele (`Quiz::fecharVencidas`). As perguntas do
+// questionário não pedem coluna: são linhas de `quiz_pergunta` com alvo LIVRE
+// e `ordem`, na mesma rodada — a ideia já apontava para a pergunta.
+garantirColuna($pdo, 'coleta_rodada', 'prazo',
+    'ALTER TABLE coleta_rodada ADD COLUMN prazo DATETIME NULL AFTER max_votos');
+
 // O modo CASCATA vira QUIZ: a sessão não é mais de uma análise só. Três passos
 // porque um ENUM não troca de valor em uso — o novo entra, as linhas migram, o
 // velho sai.

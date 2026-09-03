@@ -1186,6 +1186,27 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `GET_LOCK` por planejamento: era check-then-act, e dois condutores passavam
   os dois — o segundo encerrando a sala que o primeiro acabou de abrir.
   Plano e decisões: `docs/CASCATA-QUIZ-COLABORATIVO.md`.
+- **Questionário prévio da tempestade** (2026-09-03, pedido do cliente): a
+  rodada de tempestade pode nascer com **perguntas em ordem**, respondidas
+  pelo celular ANTES do encontro (QR ou link do WhatsApp) — o encontro começa
+  com as respostas na mesa. Só a tempestade tem isso; as análises (PESTEL,
+  Porter, SWOT, Cenário) continuam ao vivo, pelo 🎤. As perguntas são linhas
+  **LIVRE de `quiz_pergunta`** na própria rodada, com `ordem` e todas
+  `ATIVA` ao mesmo tempo (`Quiz::perguntasDaTempestade`,
+  `gravarPerguntasLivres`); a ideia aponta para a pergunta em
+  `coleta_item.pergunta_id`, e o **teto `max_ideias` vale POR PERGUNTA**
+  (`<=>` no INSERT: sem questionário a pergunta é NULL). Regras do cliente:
+  as fichas numeradas deixam escolher qual pergunta responder; "Pular" passa
+  sem responder; **atingido o teto, o celular passa sozinho à próxima**; a
+  pergunta em que parou fica no `localStorage` por PIN; depois da última, o
+  resumo. A rodada tem **`prazo`** e fecha sozinha ao passar dele
+  (`Quiz::fecharVencidas`, chamado em toda leitura pública e na lista do
+  condutor — não há cron) ou quando o condutor encerra. Perguntas novas só
+  entram ao FIM (`POST /api/rodadas/{id}/perguntas`): reordenar trocaria a
+  "pergunta 2" que alguém já respondeu. Na Coleta, a ideia leva a etiqueta
+  `P2` e o painel da rodada tem o filtro por pergunta; a votação por ★ vem em
+  blocos por pergunta. Só conta quem entrou — sem lista de convidados. Provas:
+  funcional 8c e `provasQuestionarioTempestade`.
 - **Tempestade de ideias**: rodada com PIN de 6 dígitos (`coleta_rodada`), tela
   do participante em `/entrar/{pin}` — **as únicas rotas de escrita sem
   autenticação do sistema**. Regras que não podem ser afrouxadas: o token do
