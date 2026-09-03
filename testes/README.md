@@ -1,6 +1,6 @@
 # Baterias de validação
 
-Sete baterias, cada uma cobrindo uma camada diferente. Elas não substituem a
+Oito baterias, cada uma cobrindo uma camada diferente. Elas não substituem a
 leitura do código — cobrem o que a leitura não pega: regressão silenciosa.
 
 | Bateria | O que cobre | Como falha |
@@ -12,6 +12,7 @@ leitura do código — cobrem o que a leitura não pega: regressão silenciosa.
 | `email.sh` | O envio por **API** de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |
 | `backup_remoto.sh` | A cópia fora do provedor, contra um B2 de mentira | O envio parou de subir o arquivo inteiro, o erro do serviço deixou de chegar, a chave vazou, ou a falta de configuração passou a derrubar o backup local |
 | `limpar_plano_acao.sh` | O comando que **zera o plano de ação** (`cli/limpar_plano_acao.php`): semeia projeto, iniciativa, ações e o que aponta para elas, conta, apaga e confere | Passou a apagar o que não devia, a deixar ponteiro para registro morto, ou a apagar sem confirmação |
+| `carga_cenario.sh` | A carga de cenário com **revisão no lugar** (`cli/carga_diagnostico.php cenario`): semeia os textos anteriores, aplica e confere id preservado, novos gravados, sem duplicata e segunda passagem inerte | A revisão passou a duplicar em vez de atualizar, a perder o id (e as vozes penduradas), ou a regravar a cada passagem |
 
 ## Antes de rodar
 
@@ -39,7 +40,7 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
 ## Rodando
 
 ```bash
-./testes/rodar.sh                 # as sete, em sequência
+./testes/rodar.sh                 # as oito, em sequência
 ./testes/funcional.sh             # só a funcional
 SALA_AUSENTE_SEG=6 ./testes/funcional.sh   # inclui a reentrada pelo nome
 node testes/sistema.js            # só a de sistema

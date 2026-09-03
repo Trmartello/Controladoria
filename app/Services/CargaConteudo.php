@@ -204,6 +204,26 @@ class CargaConteudo
         return $mapa;
     }
 
+    /**
+     * Um item da carga de cenário pode ser um TEXTO (entra se ainda não está
+     * na tela) ou uma REVISÃO `['de' => texto anterior, 'para' => texto novo]`:
+     * se o anterior está na tela, ele é atualizado no lugar — mesmo id, mesma
+     * ordem, mesmas vozes da sala e mesmo encaminhamento ao plano de ação; se
+     * foi apagado ou reescrito à mão, o novo entra como item, a menos que já
+     * exista. Nasceu com a fotografia de setembro/2026: revisar a de agosto só
+     * inserindo deixaria as duas versões do mesmo assunto lado a lado, e
+     * apagar a antiga levaria junto o que alguém já tinha pendurado nela.
+     */
+    public static function textoDoItem(string|array $item): string
+    {
+        return is_array($item) ? (string)$item['para'] : $item;
+    }
+
+    public static function textoAnterior(string|array $item): ?string
+    {
+        return is_array($item) && isset($item['de']) ? (string)$item['de'] : null;
+    }
+
     private static function aplicarCenario(PDO $pdo, array $conteudo, int $planoId): int
     {
         $ano = (int)$conteudo['ano'];
@@ -214,7 +234,11 @@ class CargaConteudo
         );
 
         $gravados = 0;
-        foreach ($conteudo['itens'] as $tipo => $textos) {
+        $atualiza = $pdo->prepare(
+            'UPDATE cenario_item SET descricao = ?
+              WHERE planejamento_id = ? AND ano = ? AND descricao = ?'
+        );
+        foreach ($conteudo['itens'] as $tipo => $itens) {
             // Continua a numeração do que já está na tela, em vez de disputar a
             // ordem com os itens que o usuário escreveu antes
             $maior = $pdo->prepare(
@@ -228,7 +252,21 @@ class CargaConteudo
                 'INSERT INTO cenario_item (planejamento_id, ano, tipo, ordem, descricao)
                  VALUES (?, ?, ?, ?, ?)'
             );
-            foreach ($textos as $texto) {
+            foreach ($itens as $item) {
+                $texto = self::textoDoItem($item);
+                $anterior = self::textoAnterior($item);
+                if ($anterior !== null && isset($existentes[self::chaveTexto($anterior)])) {
+                    // O UPDATE compara o texto exato; o mapa comparou o
+                    // normalizado. Se a tela guardou o texto com outra caixa ou
+                    // acento, a atualização não acha a linha e o novo entra abaixo.
+                    $atualiza->execute([$texto, $planoId, $ano, $anterior]);
+                    if ($atualiza->rowCount() > 0) {
+                        unset($existentes[self::chaveTexto($anterior)]);
+                        $existentes[self::chaveTexto($texto)] = true;
+                        $gravados++;
+                        continue;
+                    }
+                }
                 if (isset($existentes[self::chaveTexto($texto)])) {
                     continue;
                 }
