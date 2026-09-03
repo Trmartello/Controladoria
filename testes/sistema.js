@@ -3274,8 +3274,12 @@ async function provasEtapaNaSala(browser) {
       "!!document.querySelector('#secao-pestel [data-mic-etapa=\"PESTEL\"] [data-mic-fechar]')", 15000);
     t(`${l} o 🎤 abre a etapa inteira para a sala, e acende`, abriu);
     if (!abriu) return;
-    t(`${l} o painel do condutor mostra uma coluna por categoria`, await admin.evaluate(() =>
-      document.querySelectorAll('#secao-pestel .painel-quiz-vivo [data-quiz-categoria]').length === 6));
+    // Uma grade só, sem coluna por categoria: com seis colunas quase sempre
+    // vazias o painel gastava a faixa fixa inteira em "nenhuma sugestão"
+    t(`${l} o painel do condutor abre com uma grade só, sem coluna por categoria`,
+      await admin.evaluate(() =>
+        !document.querySelector('#secao-pestel .painel-quiz-vivo [data-quiz-categoria]')
+        && !!document.querySelector('#secao-pestel .painel-quiz-vivo .coluna-quiz')));
 
     const sala = await admin.evaluate(async () => {
       const plan = await App.planejamento();
@@ -3333,10 +3337,11 @@ async function provasEtapaNaSala(browser) {
       "[...document.querySelectorAll('.ideia-minha .badge')].some((b) => b.textContent.trim() === 'Tecnológico')", 10000));
 
     const chegou = await esperar(admin,
-      "!!document.querySelector('#secao-pestel [data-quiz-categoria=\"TECNOLOGICO\"] .ficha-sugestao')", 15000);
-    t(`${l} a voz chega ao condutor na coluna da categoria escolhida`, chegou);
+      "[...document.querySelectorAll('#secao-pestel .painel-quiz-vivo .ficha-sugestao .selo-categoria-voz')]"
+      + ".some((s) => s.textContent.trim() === 'Tecnológico')", 15000);
+    t(`${l} a voz chega ao condutor na grade, com a etiqueta do quadrante escolhido`, chegou);
     if (chegou) {
-      await admin.click('#secao-pestel [data-quiz-categoria="TECNOLOGICO"] [data-usar-sugestao]');
+      await admin.click('#secao-pestel .painel-quiz-vivo .ficha-sugestao:has(.selo-categoria-voz) [data-usar-sugestao]');
       // O grupo de cartões tem o id do campo (`campo-categoria`); os rádios
       // dentro dele levam esse id como `name`, não o nome do campo.
       const modal = await esperar(admin, "!!document.querySelector('#modal-form.show #campo-categoria')", 10000);

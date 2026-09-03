@@ -2970,11 +2970,18 @@ body.menu-aberto .menu-lateral {
   gap: .4rem;
 }
 .grade-categorias .quadrante-opcao { min-height: 3.2rem; }
-/* O painel do condutor na pergunta da etapa inteira: uma coluna por categoria,
-   com a cor da coluna da análise no topo. */
-.grade-quiz-categorias .coluna-categoria {
-  border-top: 3px solid var(--cor-cat, #007a45);
-  background: #f8f9fa;
+/* A etiqueta do quadrante na ficha da voz (pergunta da etapa inteira): as
+   vozes de todos os quadrantes dividem uma grade só, em ordem de chegada, e é
+   a etiqueta — na cor da coluna da análise — que diz de onde cada uma é. */
+.selo-categoria-voz {
+  align-self: flex-start;
+  font-size: .66rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: .1rem .4rem;
+  border-radius: .25rem;
+  color: var(--cor-cat, #007a45);
+  background: color-mix(in srgb, var(--cor-cat, #007a45) 14%, #fff);
 }
 .contexto-pergunta {
   border-left: 4px solid var(--verde-coperdia);

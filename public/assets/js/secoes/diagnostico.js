@@ -863,12 +863,17 @@ const Diag = {
   },
 
   /**
-   * As sugestões da pergunta em foco. Com o 🎤 de uma coluna, o alvo não tem
-   * lado — a categoria JÁ é a pergunta — e é uma lista só. Com o 🎤 da etapa
-   * inteira, uma coluna por categoria, na cor da coluna da análise: a
-   * categoria escolhida no celular viaja em `tipo_resposta`. "Usar" leva o
-   * texto ao formulário do fator, já com a categoria marcada: aceitar é ato de
-   * quem conduz, e o texto (e o quadrante) final é o dele.
+   * As sugestões da pergunta em foco, numa grade só, em ordem de chegada.
+   *
+   * Com o 🎤 de uma coluna, o alvo não tem lado — a categoria JÁ é a pergunta.
+   * Com o 🎤 da etapa inteira, a categoria escolhida no celular viaja em
+   * `tipo_resposta` e vira uma ETIQUETA na ficha, na cor da coluna da análise.
+   * Já foi uma coluna por categoria: com cinco ou seis colunas quase sempre
+   * vazias, o painel gastava a faixa fixa inteira dizendo "nenhuma sugestão"
+   * (pedido do cliente, 2026-09-03, com a foto) — a etiqueta diz o quadrante
+   * sem reservar lugar para ele. "Usar" leva o texto ao formulário do fator,
+   * já com a categoria marcada: aceitar é ato de quem conduz, e o texto (e o
+   * quadrante) final é o dele.
    */
   quizPainel(dono, etapa, ano) {
     const p = this.quizFoco(dono, etapa, ano);
@@ -876,24 +881,17 @@ const Diag = {
     const sugestoes = dono.quiz?.sugestoes || [];
     const recolhido = dono.quizUi?.painelRecolhido;
     const podeUnir = App.podeEditar() && p.situacao !== 'ATIVA';
-    const grade = p.categoria
-      ? `<div class="coluna-quiz coluna-escolha mt-2">
-          ${QuizSala.fichas(sugestoes, { virou: 'fator', podeUnir })}
-        </div>`
-      : `<div class="row g-2 mt-1 grade-quiz-categorias">
-          ${this.categoriasDaEtapa(etapa).map(([cat, rotulo, cor]) => {
-            const fichas = sugestoes.filter((s) => s.tipo_resposta === cat);
-            return `<div class="col-md-6 col-xl-4" data-quiz-categoria="${cat}">
-              <div class="coluna-quiz coluna-categoria" style="--cor-cat:${cor}">
-                <div class="fw-bold small text-uppercase mb-2" style="color:${cor}">${Modal.esc(rotulo)}
-                  <span class="badge rounded-pill text-bg-secondary">${QuizSala.contarCartoes(fichas)}</span></div>
-                ${QuizSala.fichas(fichas, { virou: 'fator', podeUnir })}
-              </div></div>`;
-          }).join('')}
-        </div>`;
+    const categorias = new Map(this.categoriasDaEtapa(etapa).map(([cat, rotulo, cor]) => [cat, { rotulo, cor }]));
+    const selo = p.categoria ? null : (s) => {
+      const c = categorias.get(s.tipo_resposta);
+      return c ? `<span class="selo-categoria-voz" style="--cor-cat:${c.cor}"
+        title="Quadrante escolhido no celular">${Modal.esc(c.rotulo)}</span>` : '';
+    };
     return `<div class="card mb-3 painel-quiz-vivo"><div class="card-body py-2 px-3">
       ${QuizSala.cabecalhoPainel(dono, p, sugestoes)}
-      ${recolhido ? '' : grade}
+      ${recolhido ? '' : `<div class="coluna-quiz coluna-escolha mt-2">
+        ${QuizSala.fichas(sugestoes, { virou: 'fator', podeUnir, selo })}
+      </div>`}
     </div></div>`;
   },
 

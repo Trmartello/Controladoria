@@ -250,7 +250,13 @@ const QuizSala = {
     </div>`;
   },
 
-  fichas(sugestoes, { acao = 'Usar', virou = 'registro', podeUnir = false, marcar = false } = {}) {
+  /**
+   * `selo(s)` é um trecho de HTML por voz, acima do texto — a etiqueta da
+   * categoria na pergunta da análise inteira, onde as vozes de todos os
+   * quadrantes dividem a mesma grade em ordem de chegada. Mora no chamador
+   * porque só ele sabe o que a etiqueta significa; a ficha só a posiciona.
+   */
+  fichas(sugestoes, { acao = 'Usar', virou = 'registro', podeUnir = false, marcar = false, selo = null } = {}) {
     // Duas leituras de "usada", conforme o que o rito faz com a voz:
     //
     //  - onde cada voz vira UM REGISTRO PRÓPRIO (um fator, um item de cenário),
@@ -293,6 +299,7 @@ const QuizSala = {
       <div class="ficha-sugestao${g.unidas.length ? ' unificada' : ''}${podeUnir ? ' arrastavel' : ''}${
         usado ? ' usada' : ''}"
         ${podeUnir ? `data-arrastavel-voz="${s.id}"` : ''}>
+        ${selo ? selo(s) : ''}
         ${this.parDaVoz(s)}
         <div class="texto-voz" title="${Modal.esc(inteiro)}">${Modal.esc(s.texto)}</div>
         ${unidas}
