@@ -75,11 +75,22 @@ class ProjetoController
             // — o gestor que precisa do mapeamento não a alcança.
             // LEFT JOIN: ação sem dono (a que sobrou de um usuário excluído)
             // continua na lista, com o e-mail nulo.
+            // `origens` conta o que apontou para a ação — fator, item de
+            // cenário, cruzamento, ideia da Coleta. A tela usa o número para
+            // saber se a exclusão tem uma pergunta a fazer (devolver à fila ou
+            // tirar de vez) ou se é só apagar: ação nascida do zero não tem
+            // origem, e perguntar o destino de uma origem que não existe seria
+            // um diálogo sem sentido.
             $p['desdobramentos'] = Database::todos(
-                'SELECT d.*, u.email AS quem_email
+                "SELECT d.*, u.email AS quem_email,
+                        (SELECT COUNT(*) FROM fator f WHERE f.desdobramento_id = d.id)
+                      + (SELECT COUNT(*) FROM cenario_item ci WHERE ci.desdobramento_id = d.id)
+                      + (SELECT COUNT(*) FROM swot_cruzamento sc WHERE sc.desdobramento_id = d.id)
+                      + (SELECT COUNT(*) FROM coleta_item co
+                          WHERE co.destino_tipo = 'ACAO' AND co.destino_id = d.id) AS origens
                    FROM desdobramento d
                    LEFT JOIN usuario u ON u.id = d.quem_usuario_id
-                  WHERE d.projeto_id = ? ORDER BY d.ordem, d.id',
+                  WHERE d.projeto_id = ? ORDER BY d.ordem, d.id",
                 [$p['id']]
             );
             foreach ($p['iniciativas'] as &$i) {
@@ -153,7 +164,7 @@ class ProjetoController
         // As ações da iniciativa saem junto (FK ON DELETE CASCADE) — e por
         // isso o que aponta para elas precisa ser solto ANTES do DELETE:
         // depois, a subconsulta não as encontraria mais
-        $this->soltarAcoes('iniciativa_id = ?', [$id]);
+        $this->soltarAcoes('iniciativa_id = ?', [$id], $this->destinoDasOrigens($d));
         Database::executar('DELETE FROM iniciativa WHERE id = ?', [$id]);
         Json::ok();
     }
@@ -246,7 +257,7 @@ class ProjetoController
             "DELETE FROM comentario WHERE ref_tipo = 'PROJETO' AND ref_id = ?", [$id]
         );
         // As ações do projeto saem em cascata: solta o que aponta para elas
-        $this->soltarAcoes('projeto_id = ?', [$id]);
+        $this->soltarAcoes('projeto_id = ?', [$id], $this->destinoDasOrigens($d));
         Database::executar('DELETE FROM projeto WHERE id = ?', [$id]);
         Json::ok();
     }
@@ -731,9 +742,34 @@ class ProjetoController
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirDesdobramento($id, $planId);
         Bloqueio::exigirMeu('desdobramento', $id, (int)Auth::exigirLogin()['id'], 'esta ação');
-        $this->soltarAcoes('id = ?', [$id]);
+        $this->soltarAcoes('id = ?', [$id], $this->destinoDasOrigens($d));
         Database::executar('DELETE FROM desdobramento WHERE id = ?', [$id]);
         Json::ok();
+    }
+
+    /**
+     * O que a exclusão faz com as ORIGENS da ação — o fator, o item de cenário,
+     * o cruzamento ou a ideia da Coleta que viraram a ação:
+     *
+     *  - `devolver` (o padrão, e o comportamento de sempre): as origens voltam
+     *    à fila de "aguardando plano de ação", para virar outra ação;
+     *  - `tirar`: as origens saem da fila de vez. O registro continua na
+     *    análise dele (o fator segue na SWOT, a ideia volta à matriz da
+     *    Coleta); o que some é a marca de que ele espera uma ação.
+     *
+     * Pedido do cliente (2026-09-03): apagar uma ação devolvia a origem para a
+     * fila sem perguntar, e a fila enchia de pendências que ninguém queria
+     * mais. A tela pergunta; sem a chave no corpo, vale o padrão de sempre.
+     * Valor fora da lista é recusado, nunca "corrigido" para o padrão — quem
+     * escreveu `tirar` com erro de digitação não pode ver a origem voltar.
+     */
+    private function destinoDasOrigens(array $d): string
+    {
+        $origens = (string)($d['origens'] ?? 'devolver');
+        if (!in_array($origens, ['devolver', 'tirar'], true)) {
+            Json::erro('Diga o que fazer com as origens: devolver à fila ou tirar.');
+        }
+        return $origens;
     }
 
     /**
@@ -751,14 +787,21 @@ class ProjetoController
      * isso. Só `excluirDesdobramento` fazia a limpeza — apagar o PROJETO ou a
      * INICIATIVA derruba as ações por CASCADE sem passar por lá.
      *
-     * O fator, o cruzamento e o item do cenário não precisam de linha nenhuma:
-     * a FK dos três é ON DELETE SET NULL e o banco os devolve para a fila
-     * sozinho. A ideia da Coleta é a exceção justamente por não ter FK.
+     * Ao DEVOLVER, o fator, o cruzamento e o item do cenário não precisam de
+     * linha nenhuma: a FK dos três é ON DELETE SET NULL e o banco os devolve
+     * para a fila sozinho (a marca `acao_em` fica). A ideia da Coleta é a
+     * exceção justamente por não ter FK.
      *
-     * @param string $onde   condição sobre `desdobramento`, literal do código
-     * @param array  $params os valores dessa condição
+     * Ao TIRAR, os quatro precisam de linha, e ANTES do DELETE: a marca
+     * `acao_em` é apagada junto com o vínculo (o SET NULL sozinho os
+     * devolveria à fila), e a ideia volta a SELECIONADO sem destino — o mesmo
+     * estado do "Desmarcar" da Coleta (`ColetaController::reabrir`).
+     *
+     * @param string $onde    condição sobre `desdobramento`, literal do código
+     * @param array  $params  os valores dessa condição
+     * @param string $origens `devolver` ou `tirar` (ver `destinoDasOrigens`)
      */
-    private function soltarAcoes(string $onde, array $params): void
+    private function soltarAcoes(string $onde, array $params, string $origens = 'devolver'): void
     {
         // A derivada `(SELECT ... FROM (...) x)` é o mesmo contorno já usado
         // aqui para o MySQL não reclamar da subconsulta no DELETE
@@ -767,6 +810,22 @@ class ProjetoController
             "DELETE FROM comentario WHERE ref_tipo = 'DESDOBRAMENTO' AND ref_id IN {$alvo}",
             $params
         );
+        if ($origens === 'tirar') {
+            foreach (['fator', 'cenario_item', 'swot_cruzamento'] as $tabela) {
+                Database::executar(
+                    "UPDATE {$tabela} SET acao_em = NULL, acao_por = NULL, desdobramento_id = NULL
+                     WHERE desdobramento_id IN {$alvo}",
+                    $params
+                );
+            }
+            Database::executar(
+                "UPDATE coleta_item SET situacao = 'SELECIONADO', destino_tipo = NULL, destino_id = NULL,
+                        triado_por = NULL, triado_em = NULL
+                 WHERE destino_tipo = 'ACAO' AND destino_id IN {$alvo}",
+                $params
+            );
+            return;
+        }
         Database::executar(
             "UPDATE coleta_item SET destino_id = NULL
              WHERE destino_tipo = 'ACAO' AND destino_id IN {$alvo}",
