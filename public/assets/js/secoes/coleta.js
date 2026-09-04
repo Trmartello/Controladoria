@@ -727,7 +727,7 @@ const SecaoColeta = {
     const item = grupoSel
       ? (grupoSel.itens.find((i) => !i.agrupado_em_id) || grupoSel.representante)
       : null;
-    const fichas = grupos.map((g) => this.fichaOuCaixa(g)).join('');
+    const fichas = this.blocosPorPergunta(grupos);
 
     const adiadas = this.nuvem(true).filter((g) => this.passaFiltroPergunta(g));
 
@@ -740,7 +740,7 @@ const SecaoColeta = {
           <div class="rotulo-secao">Fila de ideias — arraste até um quadrante da
             matriz para classificar; toque para editar; arraste uma sobre a outra
             para juntar</div>
-          <div class="nuvem">${fichas || '<span class="text-muted small">Aguardando as primeiras ideias...</span>'}</div>
+          ${fichas || '<div class="nuvem"><span class="text-muted small">Aguardando as primeiras ideias...</span></div>'}
           ${adiadas.length ? `<div class="caixa-depois">
             <button type="button" class="rotulo-secao btn-depois" data-ver-depois
               aria-expanded="${this.depoisAberto}" aria-controls="nuvem-depois">Tratar depois
@@ -759,6 +759,57 @@ const SecaoColeta = {
         </div></div>
       </div>
     </div>`;
+  },
+
+  /**
+   * A fila em BLOCOS por pergunta (pedido do cliente, 2026-09-04): a pergunta
+   * em cima, as respostas embaixo — é assim que a reunião se conduz, uma
+   * pergunta de cada vez. Sem questionário (nenhuma ideia com pergunta) a fila
+   * é a nuvem única de sempre. A ideia sem pergunta — cadastrada à mão pelo
+   * condutor, ou de uma tempestade de tema único — fica num bloco no fim.
+   * Cada bloco é uma `.nuvem` própria: o arraste e as provas olham para ela.
+   */
+  blocosPorPergunta(grupos) {
+    const nuvem = (gs) => `<div class="nuvem">${gs.map((g) => this.fichaOuCaixa(g)).join('')}</div>`;
+    const perguntas = new Map();
+    for (const q of (this.rodadaAberta?.perguntas || [])) {
+      perguntas.set(String(q.id), { ordem: Number(q.ordem), enunciado: q.enunciado, grupos: [] });
+    }
+    const soltos = [];
+    for (const g of grupos) {
+      const lider = this.liderDe(g);
+      // O grupo pertence à pergunta do LÍDER — quem recebeu o arraste manda
+      const chave = lider.pergunta_id ? String(lider.pergunta_id) : '';
+      if (!chave) { soltos.push(g); continue; }
+      if (!perguntas.has(chave)) {
+        perguntas.set(chave, { ordem: Number(lider.pergunta_ordem) || 0,
+          enunciado: lider.pergunta_enunciado || `Pergunta ${lider.pergunta_ordem || ''}`, grupos: [] });
+      }
+      perguntas.get(chave).grupos.push(g);
+    }
+    if (!perguntas.size) return grupos.length ? nuvem(grupos) : '';
+    const blocos = [...perguntas.values()].sort((a, b) => a.ordem - b.ordem)
+      // Com o filtro ligado, só a pergunta escolhida; sem filtro, TODAS — a
+      // vazia também, para o condutor ver que ninguém a respondeu ainda
+      .filter((b) => !this.filtroPergunta || b.grupos.length);
+    const html = blocos.map((b) => `
+      <div class="bloco-pergunta">
+        <div class="titulo-bloco-pergunta">
+          <span class="fp-tag selo-pergunta">P${b.ordem || '?'}</span>
+          <span class="tbp-enunciado">${Modal.esc(b.enunciado)}</span>
+          <span class="tbp-conta">${b.grupos.length}</span>
+        </div>
+        ${b.grupos.length ? nuvem(b.grupos)
+          : '<div class="nuvem"><span class="text-muted small">Nenhuma resposta ainda.</span></div>'}
+      </div>`).join('');
+    return html + (soltos.length ? `
+      <div class="bloco-pergunta">
+        <div class="titulo-bloco-pergunta">
+          <span class="tbp-enunciado text-muted">Sem pergunta</span>
+          <span class="tbp-conta">${soltos.length}</span>
+        </div>
+        ${nuvem(soltos)}
+      </div>` : '');
   },
 
   /**

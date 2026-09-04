@@ -3538,10 +3538,22 @@ async function provasQuestionarioTempestade(browser) {
       "document.querySelectorAll('#secao-coleta .selo-pergunta').length >= 3", 15000));
     t(`${l} e o painel da rodada tem o filtro por pergunta`, await admin.evaluate(() =>
       document.querySelectorAll('#secao-coleta [data-filtro-pergunta] option').length === 4));
+    // A fila em BLOCOS por pergunta (pedido de 2026-09-04): três blocos na
+    // ordem, o enunciado em cima, e o da pergunta 2 avisando que está vazio.
+    // (Ideia sem pergunta de outras provas cai num bloco extra, sem selo.)
+    t(`${l} a fila vem em três blocos, a pergunta em cima das respostas`, await admin.evaluate(() => {
+      const b = [...document.querySelectorAll('#secao-coleta .bloco-pergunta')]
+        .filter((x) => x.querySelector('.titulo-bloco-pergunta .selo-pergunta'));
+      const t = b.map((x) => x.querySelector('.tbp-enunciado').textContent);
+      return b.length === 3 && /trava o crescimento/.test(t[0]) && /Onde perdemos/.test(t[2])
+        && b[0].querySelectorAll('.ficha-nuvem').length === 2
+        && /Nenhuma resposta ainda/.test(b[1].textContent);
+    }));
     await admin.selectOption('#secao-coleta [data-filtro-pergunta]', { index: 3 });
     t(`${l} o filtro deixa na nuvem só as ideias da pergunta escolhida`, await esperar(admin,
       "document.querySelectorAll('#secao-coleta .nuvem:not(#nuvem-depois) .ficha-nuvem, "
-      + "#secao-coleta .nuvem:not(#nuvem-depois) .grupo-caixa').length === 1", 15000));
+      + "#secao-coleta .nuvem:not(#nuvem-depois) .grupo-caixa').length === 1"
+      + " && document.querySelectorAll('#secao-coleta .bloco-pergunta .titulo-bloco-pergunta .selo-pergunta').length === 1", 15000));
 
     // Tocar na ficha abre a bancada com a PERGUNTA antes da ideia — e a matriz
     // não repete o texto em foco num card "Classificando" (pedido de 2026-09-04)

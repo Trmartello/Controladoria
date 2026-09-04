@@ -1250,6 +1250,28 @@ input[type=range].faixa-verde:focus-visible {
   flex-wrap: wrap;
 }
 .ficha-prio:hover { background: #f4f8f6; }
+/* A fila em blocos por pergunta: a pergunta em cima, as respostas embaixo */
+.bloco-pergunta + .bloco-pergunta {
+  border-top: 1px solid #e3e8ec;
+  margin-top: .5rem;
+  padding-top: .5rem;
+}
+.titulo-bloco-pergunta {
+  display: flex;
+  align-items: baseline;
+  gap: .4rem;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--verde-escuro);
+}
+.titulo-bloco-pergunta .fp-tag { margin-left: 0; flex-shrink: 0; }
+.titulo-bloco-pergunta .tbp-enunciado { flex-grow: 1; overflow-wrap: anywhere; }
+.titulo-bloco-pergunta .tbp-conta {
+  font-size: .7rem;
+  font-weight: 500;
+  color: #6c757d;
+  flex-shrink: 0;
+}
 /* A pergunta que a ideia respondeu, no alto da bancada — antes da ideia */
 .bancada-pergunta {
   display: flex;
