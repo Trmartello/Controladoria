@@ -3585,6 +3585,45 @@ async function provasQuestionarioTempestade(browser) {
     t(`${l} e a matriz não repete a ideia em foco`, await admin.evaluate(() =>
       !document.querySelector('#secao-coleta .cartao-foco')
       && !/Classificando/.test(document.querySelector('#secao-coleta .painel-prio')?.textContent || '')));
+
+    // Excluir pergunta pela Sala (pedido de 2026-09-04): a sem resposta sai
+    // com o confirm; a respondida abre o MODAL com o destino das respostas.
+    // O celular, parado na pergunta 2 (a que vai sair), precisa continuar de
+    // pé — e dizer o que aconteceu.
+    await admin.evaluate(() => { SecaoColeta.filtroPergunta = null; App.mostrarSecao('sala'); });
+    t(`${l} a Sala lista as três perguntas, cada uma com o ×`, await esperar(admin,
+      "document.querySelectorAll('#secao-sala [data-excluir-pergunta]').length === 3", 15000));
+    const aceitar = async (d) => { await d.accept(); };
+    admin.on('dialog', aceitar);
+    try {
+      await admin.click('#secao-sala [data-excluir-pergunta] >> nth=1');
+      t(`${l} a pergunta sem resposta sai com a confirmação, e a lista fica com duas`, await esperar(admin,
+        "document.querySelectorAll('#secao-sala [data-excluir-pergunta]').length === 2"
+        + " && !/Que oportunidade/.test(document.querySelector('#secao-sala .lista-perguntas-sala')?.textContent || '')", 15000));
+    } finally {
+      admin.off('dialog', aceitar);
+    }
+    t(`${l} o celular, que estava na pergunta 2, segue para a próxima e diz por quê`, await esperar(cel,
+      "/Pergunta 2 de 2/.test(document.body.textContent) && /Onde perdemos dinheiro/.test(document.body.textContent)"
+      + " && /tirou do questionário/.test(document.body.textContent)", 15000));
+    await admin.click('#secao-sala [data-excluir-pergunta] >> nth=0');
+    t(`${l} a respondida abre o modal com as duas saídas, "manter" marcada`, await esperar(admin,
+      "document.getElementById('modal-form').classList.contains('show')"
+      + " && document.querySelectorAll('#modal-form input[name=\"campo-ideias\"]').length === 2"
+      + " && document.querySelector('#modal-form input[name=\"campo-ideias\"]:checked')?.value === 'manter'", 8000));
+    await admin.click('#modal-form label[for="campo-ideias-apagar"]');
+    await admin.click('#modal-salvar');
+    t(`${l} "apagar" tira a pergunta e as duas respostas dela`, await esperar(admin,
+      "document.querySelectorAll('#secao-sala [data-excluir-pergunta]').length === 1"
+      + " && !document.getElementById('modal-form').classList.contains('show')", 15000));
+    // Só as DESTA rodada: a bateria não apaga as rodadas que cria, e uma
+    // execução anterior deixou as mesmas frases numa rodada encerrada
+    t(`${l} as respostas apagadas sumiram da Coleta`, await admin.evaluate(async (rid) => {
+      const plan = await App.planejamento();
+      const itens = await App.api(`/api/coleta?planejamento_id=${plan.id}&ano=${Diag.ano()}`);
+      return !itens.some((i) => Number(i.rodada_id) === rid
+        && /sucessores nas propriedades|Credito caro/.test(i.texto));
+    }, rodada.id));
   } finally {
     await admin.evaluate(async (id) => {
       SecaoColeta.filtroPergunta = null;

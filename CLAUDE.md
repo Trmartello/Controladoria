@@ -1218,6 +1218,32 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `SecaoColeta.blocosPorPergunta`; ideia sem pergunta cai num bloco final),
   a bancada abre pela pergunta que a ideia respondeu, e a matriz não repete
   o texto em foco. Provas: funcional 8c e `provasQuestionarioTempestade`.
+  **Excluir pergunta** (2026-09-04, pedido do cliente): o × de cada pergunta
+  na lista da Sala (`POST /api/rodadas/{id}/perguntas/{pid}/excluir`,
+  `RodadaController::excluirPergunta`; só rodada ABERTA, só o rito da
+  tempestade). Sem resposta, sai com o `confirm` de sempre. Com resposta, é
+  um **modal do sistema** com o destino delas em `ideias`: `manter` (ficam
+  na Coleta sem pergunta, no bloco final da fila, e somem do celular) ou
+  `apagar` (saem com as estrelas, pelo CASCADE dos votos); "manter" nasce
+  marcada. **Sem a chave, o servidor recusa com 409/`PERGUNTA_RESPONDIDA`**:
+  a tela decide pelo número que tem, e ele envelhece (o celular escreve a
+  qualquer hora) — a recusa é o que impede uma tela desatualizada de apagar
+  resposta que ninguém viu, e ao recebê-la a Sala abre o modal em vez de
+  mostrar erro. `apagar` é recusado quando alguma resposta já virou registro
+  (fator, cenário, ação): o vínculo se desfaz pela Coleta, uma a uma. As que
+  ficam são **renumeradas** (`Quiz::renumerarPerguntasLivres`): o celular
+  conta por posição ("2 de 3") e a Coleta pela `ordem` (`P2`), e com buraco
+  as duas chamariam a mesma pergunta por números diferentes — a resposta
+  segue presa ao `pergunta_id`, é só o rótulo que anda, então a regra de
+  "pergunta nova só no fim" não é ferida. No celular,
+  `Participante.seguirPerguntaVista` segue a pergunta pelo **id** entre um
+  desenho e outro (a posição guardada apontaria para a vizinha depois da
+  exclusão, e a pessoa leria uma pergunta e responderia outra); sumindo a
+  própria, fica a posição com o aviso do porquê. Navegação explícita zera a
+  referência (`irParaPergunta`). Provas: funcional 8c (as recusas, o
+  `manter`, o `apagar`, a renumeração e a rodada encerrada) e o fim de
+  `provasQuestionarioTempestade` (o ×, o confirm, o modal e o celular que
+  segue para a próxima).
 - **Tempestade de ideias**: rodada com PIN de 6 dígitos (`coleta_rodada`), tela
   do participante em `/entrar/{pin}` — **as únicas rotas de escrita sem
   autenticação do sistema**. Regras que não podem ser afrouxadas: o token do
@@ -2067,9 +2093,10 @@ A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
-**Linha de base em 2026-09-04** (depois do PR #20): funcional **276 ✓ / 0 ✗**
+**Linha de base em 2026-09-04** (depois da exclusão de pergunta do
+questionário; era 276/578 depois do PR #20): funcional **288 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
-sistema **578 ✓ / 0 ✗** em cerca de nove minutos
+sistema **583 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
 sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
 `400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do

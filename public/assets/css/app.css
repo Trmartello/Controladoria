@@ -3093,6 +3093,24 @@ body.menu-aberto .menu-lateral {
 /* A lista das perguntas na projeção da Sala e a etiqueta "P2" na nuvem */
 .lista-perguntas-sala { padding-left: 1.2rem; }
 .lista-perguntas-sala li { display: flex; justify-content: space-between; gap: .75rem; padding: .15rem 0; }
+/* O × de excluir a pergunta mora junto da contagem, miúdo: numa lista de
+   treze perguntas, um botão de tamanho normal viraria uma coluna vermelha.
+   A área de toque é dimensão REAL (min-width/min-height), nunca ::after. */
+.lista-perguntas-sala .btn-excluir-pergunta {
+  margin-left: .5rem;
+  padding: 0 .45rem;
+  line-height: 1.3;
+  min-width: 2rem;
+  min-height: 1.6rem;
+  vertical-align: baseline;
+}
+/* No celular a contagem e o × descem para a linha de baixo, à direita: lado
+   a lado com a pergunta, o `nowrap` da contagem espremia o enunciado numa
+   coluna de uma palavra por linha (já era assim antes do ×; com ele, pior). */
+@media (max-width: 575.98px) {
+  .lista-perguntas-sala li { flex-direction: column; align-items: stretch; gap: .1rem; }
+  .lista-perguntas-sala li > span:last-child { align-self: flex-end; }
+}
 .selo-pergunta { font-weight: 700; }
 /* A escolha da CATEGORIA no celular (pergunta da etapa inteira): os mesmos
    cartões `.quadrante-opcao` do formulário do fator, em grade que cabe no

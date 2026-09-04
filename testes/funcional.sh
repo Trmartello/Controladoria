@@ -429,11 +429,50 @@ print(next((i['id'] for i in json.load(sys.stdin)['dados'] if i['texto'] == 'Loj
   QP_D1=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['criados'][0])" 2>/dev/null)
   R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $QP_D1 pergunta_ordem)
   afirma "a parte herda a pergunta da resposta original" '^1$' "$R"
+  # Excluir pergunta (pedido do cliente, 2026-09-04): sem resposta sai e
+  # pronto; com resposta o corpo DIZ o destino delas — a tela decide pelo
+  # número que tem, e o servidor recusa apagar às cegas quando esse número
+  # envelheceu. As que ficam são renumeradas: celular e Coleta contam igual.
+  R=$(curl -s "$BASE/api/publico/rodada/$QP_PIN" | python3 -c "
+import sys, json; p = json.load(sys.stdin)['dados']['perguntas']; print(json.dumps({'p3': p[2]['id'], 'p4': p[3]['id']}))" 2>/dev/null)
+  QP_P3=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['p3'])" 2>/dev/null)
+  QP_P4=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['p4'])" 2>/dev/null)
+  R=$(post /api/rodadas/$QP_ID/perguntas/999999/excluir '{"planejamento_id":1}')
+  afirma "pergunta que não é deste questionário não sai por aqui" 'não encontrada' "$R"
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P4/excluir '{"planejamento_id":1}')
+  afirma "pergunta sem resposta sai sem perguntar nada" '"destino":null' "$R"
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P2/excluir '{"planejamento_id":1}')
+  afirma "pergunta respondida NÃO sai sem o destino das respostas" '"codigo":"PERGUNTA_RESPONDIDA"' "$R"
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P2/excluir '{"planejamento_id":1,"ideias":"esconder"}')
+  afirma "destino desconhecido é recusado" 'manter ou apagar' "$R"
+  # Resposta que já virou registro não sai por "apagar": a Coleta é quem
+  # desfaz o vínculo. Uma da pergunta 2 vira fator da SWOT, e a recusa vem.
+  post /api/coleta/$QP_X2/encaminhar '{"planejamento_id":1,"destino":"SWOT","categoria":"OPORTUNIDADE"}' >/dev/null
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P2/excluir '{"planejamento_id":1,"ideias":"apagar"}')
+  afirma "com uma resposta já virada registro, 'apagar' é recusado" 'já virou registro' "$R"
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P2/excluir '{"planejamento_id":1,"ideias":"manter"}')
+  afirma "mas 'manter' vale: a pergunta sai e as respostas ficam" '"destino":"manter"' "$R"
+  R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $QP_I2 pergunta_ordem)
+  afirma "a resposta continua na Coleta, agora sem pergunta" '^null$' "$R"
+  # A ideia encaminhada sai pela Coleta, que leva o fator da SWOT junto —
+  # massa de prova não fica no diagnóstico
+  post /api/coleta/$QP_X2/excluir '{"planejamento_id":1}' >/dev/null
+  R=$(curl -s "$BASE/api/publico/rodada/$QP_PIN" | python3 -c "
+import sys, json; print([q['ordem'] for q in json.load(sys.stdin)['dados']['perguntas']])" 2>/dev/null)
+  afirma "as que ficam são renumeradas, sem buraco" '^\[1, 2\]$' "$R"
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P1/excluir '{"planejamento_id":1,"ideias":"apagar"}')
+  afirma "com 'apagar', a pergunta e as respostas saem juntas" '"destino":"apagar"' "$R"
+  R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $QP_D1 pergunta_ordem)
+  afirma "a resposta apagada não está mais na Coleta" '__ausente__' "$R"
+  R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $QP_L1 pergunta_ordem)
+  afirma "nem a do outro participante" '__ausente__' "$R"
   # O 🎤 de uma análise NÃO assume uma tempestade com questionário em curso:
   # as perguntas LIVRE ficariam ativas numa sessão de quiz. Recusa com código.
   R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"CENARIO","ano":2026,"tema":"Tentativa de assumir","confirmar_encerrar":true}')
   afirma "abrir o quiz com questionário em andamento é recusado" '"codigo":"QUESTIONARIO_ABERTO"' "$R"
   post /api/rodadas/$QP_ID/encerrar '{"planejamento_id":1}' >/dev/null
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P3/excluir '{"planejamento_id":1}')
+  afirma "rodada encerrada não perde pergunta" 'já foi encerrada' "$R"
   # Sem questionário nada muda: as ★ esperam o condutor fechar a sala
   R=$(post /api/rodadas '{"planejamento_id":1,"ano":2026,"tema":"Tema único","max_ideias":2,"max_votos":2,"confirmar_encerrar":true}')
   TU_ID=$(echo "$R" | id_de)

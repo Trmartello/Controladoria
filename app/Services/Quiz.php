@@ -1235,6 +1235,24 @@ class Quiz
         return $gravadas;
     }
 
+    /**
+     * Compacta a `ordem` das perguntas do questionário (1, 2, 3…) depois de
+     * uma exclusão. O celular numera por POSIÇÃO na lista e a Coleta pelo
+     * `ordem` (a etiqueta `P2`, o filtro por pergunta): com um buraco, a mesma
+     * pergunta seria "2 de 3" num lugar e `P3` no outro. Só mexe em quem está
+     * fora do lugar — um UPDATE por pergunta deslocada, nada nas demais.
+     */
+    public static function renumerarPerguntasLivres(int $rodadaId): void
+    {
+        foreach (self::perguntasDaTempestade($rodadaId) as $i => $p) {
+            if ((int)$p['ordem'] !== $i + 1) {
+                Database::executar(
+                    'UPDATE quiz_pergunta SET ordem = ? WHERE id = ?', [$i + 1, (int)$p['id']]
+                );
+            }
+        }
+    }
+
     /** Encerra a rodada e o que estiver ativo nela. */
     public static function encerrarSala(int $rodadaId): void
     {

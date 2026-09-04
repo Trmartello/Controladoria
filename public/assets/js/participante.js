@@ -477,6 +477,9 @@ const Participante = {
 
   irParaPergunta(i, aviso = '') {
     this.perguntaAtual = Math.max(0, i);
+    // Navegação explícita: a POSIÇÃO manda, e a pergunta vista deixa de ser
+    // referência (senão `seguirPerguntaVista` devolveria a pessoa à anterior)
+    this.perguntaVista = null;
     this.avisoQuestionario = aviso;
     try {
       localStorage.setItem(this.chavePergunta(), String(this.perguntaAtual));
@@ -498,13 +501,44 @@ const Participante = {
     return this.minhas.filter((m) => Number(m.pergunta_id) === Number(perguntaId));
   },
 
+  // O id da pergunta que estava na tela no último desenho (nulo no resumo).
+  perguntaVista: null,
+
+  /**
+   * A lista pode MUDAR embaixo da pessoa: a condução tira uma pergunta do
+   * questionário e as seguintes sobem uma posição. A posição guardada
+   * passaria a apontar para a vizinha — a pessoa leria uma pergunta e
+   * responderia outra. Entre um desenho e o outro (não numa navegação, que
+   * zera `perguntaVista`), a pergunta que estava na tela é seguida pelo ID;
+   * sumiu ela própria, fica a posição — a próxima da lista — e o aviso diz
+   * por quê, para a troca não parecer defeito.
+   */
+  seguirPerguntaVista(perguntas) {
+    if (this.perguntaVista === null) return;
+    const j = perguntas.findIndex((q) => Number(q.id) === Number(this.perguntaVista));
+    if (j === this.perguntaAtual) return;
+    if (j >= 0) {
+      this.perguntaAtual = j;
+    } else {
+      this.perguntaAtual = Math.min(this.perguntaAtual, perguntas.length);
+      this.avisoQuestionario = 'A condução tirou do questionário a pergunta que estava nesta tela.';
+    }
+    try {
+      localStorage.setItem(this.chavePergunta(), String(this.perguntaAtual));
+    } catch {
+      // Sem armazenamento: a posição vale só enquanto a página estiver aberta.
+    }
+  },
+
   renderQuestionario() {
     const r = this.rodada;
     const perguntas = r.perguntas;
     const n = perguntas.length;
     if (this.perguntaAtual === null) this.perguntaAtual = this.lerPerguntaAtual(n);
+    this.seguirPerguntaVista(perguntas);
     const i = Math.min(this.perguntaAtual, n);
     const p = perguntas[i] || null;
+    this.perguntaVista = p ? p.id : null;
     const encerrada = r.situacao !== 'ABERTA';
     const paraVotar = (this.votacao?.itens || []).length;
     const votando = this.votacao?.votacao === 'ABERTA' && paraVotar > 0;
