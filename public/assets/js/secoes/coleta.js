@@ -416,10 +416,15 @@ const SecaoColeta = {
           data-fase-sala="${votando ? 'abrir' : 'fechar'}">${
         votando ? 'Reabrir a sala' : 'Fechar a sala'}</button>`
       : '';
+    // No questionário as ★ já estão liberadas para quem concluiu: fechar a
+    // sala ali só tira o campo de escrever.
+    const questionario = (r.perguntas || []).length > 0;
     const dicaFase = podeConduzir
       ? `<div class="small text-muted mt-1">${votando
         ? 'A sala está escolhendo as mais importantes com ★. Reabrir devolve o campo de escrever aos celulares.'
-        : 'Fechar a sala tira o campo de escrever dos celulares e abre as ★ para a sala eleger as ideias mais importantes.'
+        : questionario
+          ? 'Quem conclui o questionário já dá as ★ nas respostas de maior impacto. Fechar a sala só tira o campo de escrever dos celulares.'
+          : 'Fechar a sala tira o campo de escrever dos celulares e abre as ★ para a sala eleger as ideias mais importantes.'
       }</div>`
       : '';
     // O QUESTIONÁRIO: um filtro por pergunta na nuvem. As ideias de cinco

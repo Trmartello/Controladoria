@@ -1175,6 +1175,15 @@ class Quiz
         );
     }
 
+    /** A rodada tem questionário prévio? (pelo menos uma pergunta LIVRE) */
+    public static function temQuestionario(int $rodadaId): bool
+    {
+        return (bool)Database::um(
+            "SELECT 1 FROM quiz_pergunta WHERE rodada_id = ? AND alvo_tipo = 'LIVRE' LIMIT 1",
+            [$rodadaId]
+        );
+    }
+
     /**
      * Grava as perguntas do questionário numa rodada, na ordem em que vieram,
      * depois das que já existem. Texto vazio e repetido é ignorado (o UNIQUE

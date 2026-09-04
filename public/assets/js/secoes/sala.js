@@ -259,8 +259,9 @@ const SecaoSala = {
           ajuda: 'A rodada fecha sozinha no fim desse dia, ou quando você encerrar — o que vier primeiro.' },
         { nome: 'max_ideias', rotulo: 'Ideias por participante (em cada pergunta)', tipo: 'number', padrao: 5,
           ajuda: 'Um teto evita que uma pessoa domine a tempestade. Atingido o teto numa pergunta, o celular passa à próxima.' },
-        { nome: 'max_votos', rotulo: 'Votos por participante', tipo: 'number', padrao: 3,
-          ajuda: 'Só vale se você abrir a fase de votação depois.' },
+        { nome: 'max_votos', rotulo: 'Estrelas por participante (em cada pergunta)', tipo: 'number', padrao: 3,
+          ajuda: 'No questionário, cada pessoa dá as estrelas assim que conclui as respostas. '
+            + 'Sem questionário, só quando você fechar a sala.' },
       ],
       // A sala é do PROJETO: com outra sessão aberta, o servidor devolve
       // 409/SALA_ABERTA e o QuizSala pergunta se encerra aquela. Sem este

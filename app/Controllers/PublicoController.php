@@ -535,6 +535,20 @@ class PublicoController
         Json::ok($itens);
     }
 
+    /**
+     * As ★ estão liberadas para o participante? Na tempestade de tema único,
+     * só quando quem conduz FECHA a sala (`votacao` ABERTA). No QUESTIONÁRIO
+     * (pedido do cliente, 2026-09-04) elas ficam liberadas o tempo todo em que
+     * a rodada está aberta: cada pessoa conclui as respostas no seu dia e já
+     * elege as de maior impacto — sem esperar um condutor que, num prazo de
+     * semanas, não está lá para fechar sala nenhuma.
+     */
+    private function estrelasLiberadas(array $r): bool
+    {
+        return $r['situacao'] === 'ABERTA' && $r['modo'] === 'TEMPESTADE'
+            && ($r['votacao'] === 'ABERTA' || Quiz::temQuestionario((int)$r['id']));
+    }
+
     /** Ideias abertas para votação, quando quem conduz liberar essa fase. */
     public function paraVotar(): void
     {
@@ -542,8 +556,8 @@ class PublicoController
         $p = $this->participante($r, $_GET);
         // A estrela do quiz chega na fase própria, com teto POR PERGUNTA; a
         // votação da tempestade conta por rodada e furaria a regra
-        if ($r['situacao'] !== 'ABERTA' || $r['votacao'] !== 'ABERTA' || $r['modo'] !== 'TEMPESTADE') {
-            Json::ok(['votacao' => 'FECHADA', 'itens' => [], 'meus_votos' => 0]);
+        if (!$this->estrelasLiberadas($r)) {
+            Json::ok(['votacao' => 'FECHADA', 'estrelas' => 'FECHADA', 'itens' => [], 'meus_votos' => 0]);
         }
         // `minha` marca as ideias do próprio participante na lista: quem escreve
         // três ideias e vota em três precisa reconhecer as suas para decidir
@@ -572,8 +586,23 @@ class PublicoController
              WHERE v.rodada_id = ? AND v.participante_token = ?",
             [(int)$r['id'], $p['token']]
         )['n'] ?? 0);
-        Json::ok(['votacao' => 'ABERTA', 'itens' => $itens, 'meus_votos' => $meus,
-                  'max_votos' => (int)$r['max_votos']]);
+        // No questionário o teto é POR PERGUNTA (como o de ideias), e o celular
+        // mostra quantas estrelas restam em cada uma
+        $porPergunta = [];
+        foreach (Database::todos(
+            "SELECT i.pergunta_id, COUNT(*) AS n FROM coleta_voto v
+             JOIN coleta_item i ON i.id = v.item_id AND i.situacao = 'NOVO'
+             WHERE v.rodada_id = ? AND v.participante_token = ? AND i.pergunta_id IS NOT NULL
+             GROUP BY i.pergunta_id",
+            [(int)$r['id'], $p['token']]
+        ) as $l) {
+            $porPergunta[(string)$l['pergunta_id']] = (int)$l['n'];
+        }
+        // `votacao` segue sendo a chave da SALA (fechada = sem campo de escrever);
+        // `estrelas` diz se dá para votar — no questionário, as duas divergem.
+        Json::ok(['votacao' => $r['votacao'], 'estrelas' => 'ABERTA', 'itens' => $itens,
+                  'meus_votos' => $meus, 'max_votos' => (int)$r['max_votos'],
+                  'meus_por_pergunta' => (object)$porPergunta]);
     }
 
     /** Alterna o voto do participante numa ideia, respeitando o teto. */
@@ -582,15 +611,16 @@ class PublicoController
         $d = $this->corpo();
         $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
         $p = $this->participante($r, $d);
-        if ($r['votacao'] !== 'ABERTA' || $r['modo'] !== 'TEMPESTADE') {
+        if (!$this->estrelasLiberadas($r)) {
             Json::erro('A votação não está aberta.');
         }
         // Ideia já tratada não recebe voto: seria gastar um voto em algo que o
         // participante nunca mais vê na lista
-        if (!Database::um(
-            "SELECT id FROM coleta_item WHERE id = ? AND rodada_id = ? AND situacao = 'NOVO'",
+        $item = Database::um(
+            "SELECT id, pergunta_id FROM coleta_item WHERE id = ? AND rodada_id = ? AND situacao = 'NOVO'",
             [$id, (int)$r['id']]
-        )) {
+        );
+        if (!$item) {
             Json::erro('Esta ideia não está mais em votação.', 404);
         }
 
@@ -603,17 +633,23 @@ class PublicoController
         }
 
         // Teto dentro do INSERT, e IGNORE para o toque duplo no mesmo item não
-        // virar erro 500 pela chave única
+        // virar erro 500 pela chave única. O `<=>` faz o teto contar POR
+        // PERGUNTA no questionário (a ideia tem pergunta) e por rodada na
+        // tempestade de tema único (pergunta NULL em todas).
+        $perguntaId = $item['pergunta_id'] !== null ? (int)$item['pergunta_id'] : null;
         $gravou = Database::afetadas(
             'INSERT IGNORE INTO coleta_voto (item_id, rodada_id, participante_token)
              SELECT ?, ?, ?
              FROM DUAL WHERE (SELECT COUNT(*) FROM coleta_voto v
                               JOIN coleta_item i ON i.id = v.item_id AND i.situacao = \'NOVO\'
-                              WHERE v.rodada_id = ? AND v.participante_token = ?) < ?',
-            [$id, (int)$r['id'], $p['token'], (int)$r['id'], $p['token'], (int)$r['max_votos']]
+                              WHERE v.rodada_id = ? AND v.participante_token = ?
+                                AND (i.pergunta_id <=> ?)) < ?',
+            [$id, (int)$r['id'], $p['token'], (int)$r['id'], $p['token'], $perguntaId, (int)$r['max_votos']]
         );
         if (!$gravou) {
-            Json::erro("Você já usou seus {$r['max_votos']} voto(s). Toque num que já votou para trocar.");
+            Json::erro($perguntaId !== null
+                ? "Você já usou suas {$r['max_votos']} estrela(s) nesta pergunta. Toque numa marcada para trocar."
+                : "Você já usou seus {$r['max_votos']} voto(s). Toque num que já votou para trocar.");
         }
         $this->recontar($id);
         Json::ok(['votou' => true]);

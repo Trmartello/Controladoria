@@ -295,7 +295,7 @@ const Participante = {
       this.rodada?.progresso?.atual, this.rodada?.progresso?.total,
       this.minhas.map((i) => [i.id, i.texto, i.situacao]),
       (this.votacao?.itens || []).map((i) => [i.id, i.votei]),
-      this.votacao?.meus_votos,
+      this.votacao?.meus_votos, this.votacao?.estrelas, this.votacao?.meus_por_pergunta,
       // A estrela entra na assinatura: sem isso o celular só descobriria a fase
       // na próxima mudança de pergunta — que é justamente o que não vai
       // acontecer enquanto a sala vota
@@ -563,29 +563,53 @@ const Participante = {
       this.ligarEnvio(p.id, r.max_ideias);
     }
     if (!encerrada && !votando && this.minhas.length) this.ligarEdicaoIdeias();
-    if (votando) this.ligarVotacao();
+    // As ★ do resumo (questionário concluído) usam o mesmo laço da votação
+    if (votando || (!encerrada && !p && this.votacao?.estrelas === 'ABERTA')) this.ligarVotacao();
     this.tela.querySelectorAll('[data-ir-pergunta]').forEach((b) => b.addEventListener('click', () =>
       this.irParaPergunta(Number(b.dataset.irPergunta))));
     this.ligarIdentidade();
     this.ligarDitado();
   },
 
-  /** Depois da última pergunta: o que foi enviado, e o caminho de volta. */
+  /**
+   * Depois da última pergunta: as respostas de TODO MUNDO, por pergunta, para
+   * eleger com ★ as de maior impacto (pedido do cliente, 2026-09-04) — sem
+   * esperar o condutor fechar a sala, porque num questionário de semanas não
+   * há condutor na sala. O teto de estrelas conta por pergunta. Quem não
+   * respondeu uma pergunta ainda tem o caminho de volta.
+   */
   blocoResumo(perguntas, respondidas) {
+    const v = this.votacao;
+    const estrelas = v?.estrelas === 'ABERTA';
+    const usadas = v?.meus_por_pergunta || {};
+    const itens = v?.itens || [];
     return `
       <div class="alert alert-success py-2 small mt-3">
         <strong>Questionário concluído.</strong> Você respondeu ${respondidas} de ${perguntas.length}
-        pergunta(s). Enquanto a rodada estiver aberta, dá para voltar e completar ou corrigir.</div>
+        pergunta(s).${estrelas ? ` Agora toque na ★ das respostas de <strong>maior impacto</strong>
+        — até ${v.max_votos} por pergunta.` : ''} Enquanto a rodada estiver aberta, dá para voltar,
+        completar ou trocar as estrelas.</div>
       ${perguntas.map((q, k) => {
         const minhas = this.minhasDaPergunta(q.id);
+        const daPergunta = itens.filter((i) => Number(i.pergunta_id) === Number(q.id));
+        const restam = estrelas ? v.max_votos - (Number(usadas[q.id]) || 0) : 0;
+        const respostas = estrelas
+          ? (daPergunta.length
+            ? `<div class="small text-muted mb-1">${restam > 1
+              ? `Restam <strong>${restam}</strong> estrelas nesta pergunta.`
+              : restam === 1 ? 'Resta <strong>1</strong> estrela nesta pergunta.'
+                : 'Suas estrelas nesta pergunta acabaram — toque numa marcada para trocar.'}</div>
+              ${daPergunta.map((i) => this.fichaVotavel(i)).join('')}`
+            : '<div class="small text-muted">Nenhuma resposta ainda.</div>')
+          : minhas.map((m) => `<div class="ideia-minha">${this.esc(m.texto)}</div>`).join('');
         return `<div class="resumo-pergunta">
           <div class="small fw-bold">${k + 1}. ${this.esc(q.enunciado)}</div>
-          ${minhas.length
-            ? minhas.map((m) => `<div class="ideia-minha">${this.esc(m.texto)}</div>`).join('')
-            : `<div class="small text-muted">Sem resposta.
-                 <button type="button" class="btn btn-link btn-sm p-0" data-ir-pergunta="${k}">Responder</button></div>`}
+          ${respostas}
+          ${minhas.length ? '' : `<div class="small text-muted">Você não respondeu esta.
+            <button type="button" class="btn btn-link btn-sm p-0" data-ir-pergunta="${k}">Responder</button></div>`}
         </div>`;
       }).join('')}
+      <div id="aviso-voto" class="small mt-2"></div>
       <button type="button" class="btn btn-outline-secondary w-100 mt-3" data-ir-pergunta="0">Revisar desde a primeira</button>`;
   },
 
@@ -1267,14 +1291,18 @@ const Participante = {
    * do encontro (o servidor já as manda assim): misturadas, as respostas de
    * cinco perguntas viravam um vaivém entre assuntos.
    */
-  listaVotacao(itens) {
-    const ficha = (i) => `
+  fichaVotavel(i) {
+    return `
       <button type="button" class="ideia-votavel ${Number(i.votei) ? 'votada' : ''}"
         data-votar="${i.id}">
         <span class="voto-marca">${Number(i.votei) ? '★' : '☆'}</span>
         <span>${this.esc(i.texto)}${Number(i.minha)
           ? '<span class="selo-minha">sua</span>' : ''}</span>
       </button>`;
+  },
+
+  listaVotacao(itens) {
+    const ficha = (i) => this.fichaVotavel(i);
     const perguntas = this.rodada?.perguntas || [];
     if (!perguntas.length) return itens.map(ficha).join('');
     return perguntas.map((q, k) => {

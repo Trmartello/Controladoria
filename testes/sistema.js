@@ -3517,6 +3517,14 @@ async function provasQuestionarioTempestade(browser) {
     await cel.click('.navegacao-perguntas .btn-verde');
     const resumo = await esperar(cel, "/Questionário concluído/.test(document.body.textContent)", 8000);
     t(`${l} "Concluir" mostra o resumo: 2 de 3 respondidas`, resumo && /2 de 3/.test(await texto()));
+    // As ★ já no resumo, sem o condutor fechar a sala (pedido de 2026-09-04)
+    t(`${l} o resumo traz as respostas com ★ para eleger as de maior impacto`, await esperar(cel,
+      "document.querySelectorAll('.resumo-pergunta .ideia-votavel').length === 3"
+      + " && /até 2 por pergunta/.test(document.body.textContent)", 8000));
+    await cel.click('.resumo-pergunta .ideia-votavel');
+    t(`${l} a estrela marca a resposta e desconta da pergunta`, await esperar(cel,
+      "document.querySelectorAll('.resumo-pergunta .ideia-votavel.votada').length === 1"
+      + " && /Resta 1 estrela nesta pergunta/.test(document.body.textContent)", 8000));
 
     await cel.reload();
     t(`${l} recarregar retoma de onde parou`,
