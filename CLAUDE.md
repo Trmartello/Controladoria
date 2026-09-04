@@ -1205,8 +1205,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   entram ao FIM (`POST /api/rodadas/{id}/perguntas`): reordenar trocaria a
   "pergunta 2" que alguém já respondeu. Na Coleta, a ideia leva a etiqueta
   `P2` e o painel da rodada tem o filtro por pergunta; a votação por ★ vem em
-  blocos por pergunta. Só conta quem entrou — sem lista de convidados. Provas:
-  funcional 8c e `provasQuestionarioTempestade`.
+  blocos por pergunta. Só conta quem entrou — sem lista de convidados.
+  **As ★ do questionário não esperam o condutor** (2026-09-04): com
+  questionário, `paraVotar`/`votar` ficam liberados enquanto a rodada está
+  aberta (`PublicoController::estrelasLiberadas`), o resumo depois de
+  "Concluir" lista as respostas de todos por pergunta com a ★, e o **teto
+  `max_votos` conta POR PERGUNTA** (`<=>` no INSERT, como o de ideias). A
+  resposta traz `votacao` (a chave da sala, que segue mandando no campo de
+  escrever) e `estrelas` separadas — no questionário elas divergem. Sem
+  questionário nada mudou: ★ só com a sala fechada. Na Coleta, a **fila vem
+  em blocos por pergunta** (a pergunta em cima, as respostas embaixo —
+  `SecaoColeta.blocosPorPergunta`; ideia sem pergunta cai num bloco final),
+  a bancada abre pela pergunta que a ideia respondeu, e a matriz não repete
+  o texto em foco. Provas: funcional 8c e `provasQuestionarioTempestade`.
 - **Tempestade de ideias**: rodada com PIN de 6 dígitos (`coleta_rodada`), tela
   do participante em `/entrar/{pin}` — **as únicas rotas de escrita sem
   autenticação do sistema**. Regras que não podem ser afrouxadas: o token do

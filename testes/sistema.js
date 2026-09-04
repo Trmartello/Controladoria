@@ -3517,6 +3517,14 @@ async function provasQuestionarioTempestade(browser) {
     await cel.click('.navegacao-perguntas .btn-verde');
     const resumo = await esperar(cel, "/Questionário concluído/.test(document.body.textContent)", 8000);
     t(`${l} "Concluir" mostra o resumo: 2 de 3 respondidas`, resumo && /2 de 3/.test(await texto()));
+    // As ★ já no resumo, sem o condutor fechar a sala (pedido de 2026-09-04)
+    t(`${l} o resumo traz as respostas com ★ para eleger as de maior impacto`, await esperar(cel,
+      "document.querySelectorAll('.resumo-pergunta .ideia-votavel').length === 3"
+      + " && /até 2 por pergunta/.test(document.body.textContent)", 8000));
+    await cel.click('.resumo-pergunta .ideia-votavel');
+    t(`${l} a estrela marca a resposta e desconta da pergunta`, await esperar(cel,
+      "document.querySelectorAll('.resumo-pergunta .ideia-votavel.votada').length === 1"
+      + " && /Resta 1 estrela nesta pergunta/.test(document.body.textContent)", 8000));
 
     await cel.reload();
     t(`${l} recarregar retoma de onde parou`,
@@ -3529,11 +3537,32 @@ async function provasQuestionarioTempestade(browser) {
     t(`${l} na Coleta, cada ideia leva a etiqueta da pergunta`, await esperar(admin,
       "document.querySelectorAll('#secao-coleta .selo-pergunta').length >= 3", 15000));
     t(`${l} e o painel da rodada tem o filtro por pergunta`, await admin.evaluate(() =>
-      document.querySelectorAll('#secao-coleta [data-filtro-pergunta] option').length === 4));
-    await admin.selectOption('#secao-coleta [data-filtro-pergunta]', { index: 3 });
+      document.querySelectorAll('#secao-coleta [data-filtro-pergunta] .cp-opcao').length === 4));
+    // A fila em BLOCOS por pergunta (pedido de 2026-09-04): três blocos na
+    // ordem, o enunciado em cima, e o da pergunta 2 avisando que está vazio.
+    // (Ideia sem pergunta de outras provas cai num bloco extra, sem selo.)
+    t(`${l} a fila vem em três blocos, a pergunta em cima das respostas`, await admin.evaluate(() => {
+      const b = [...document.querySelectorAll('#secao-coleta .bloco-pergunta')]
+        .filter((x) => x.querySelector('.titulo-bloco-pergunta .selo-pergunta'));
+      const t = b.map((x) => x.querySelector('.tbp-enunciado').textContent);
+      return b.length === 3 && /trava o crescimento/.test(t[0]) && /Onde perdemos/.test(t[2])
+        && b[0].querySelectorAll('.ficha-nuvem').length === 2
+        && /Nenhuma resposta ainda/.test(b[1].textContent);
+    }));
+    // A caixa do filtro é própria: abre a lista com as perguntas inteiras e,
+    // escolhida uma, mostra o enunciado todo (o <select> cortava numa linha)
+    await admin.click('#secao-coleta [data-combo-alternar]');
+    t(`${l} a caixa do filtro abre a lista com as perguntas inteiras`, await esperar(admin,
+      "!document.querySelector('#secao-coleta .cp-lista').hidden"
+      + " && /Que oportunidade estamos perdendo\\?/.test(document.querySelector('#secao-coleta .cp-lista').textContent)", 5000));
+    await admin.click('#secao-coleta .cp-opcao >> nth=3');
+    t(`${l} escolhida, a caixa mostra a pergunta inteira`, await esperar(admin,
+      "/Onde perdemos dinheiro\\?/.test(document.querySelector('#secao-coleta .cp-atual')?.textContent || '')"
+      + " && document.querySelector('#secao-coleta .cp-lista')?.hidden === true", 15000));
     t(`${l} o filtro deixa na nuvem só as ideias da pergunta escolhida`, await esperar(admin,
       "document.querySelectorAll('#secao-coleta .nuvem:not(#nuvem-depois) .ficha-nuvem, "
-      + "#secao-coleta .nuvem:not(#nuvem-depois) .grupo-caixa').length === 1", 15000));
+      + "#secao-coleta .nuvem:not(#nuvem-depois) .grupo-caixa').length === 1"
+      + " && document.querySelectorAll('#secao-coleta .bloco-pergunta .titulo-bloco-pergunta .selo-pergunta').length === 1", 15000));
 
     // Tocar na ficha abre a bancada com a PERGUNTA antes da ideia — e a matriz
     // não repete o texto em foco num card "Classificando" (pedido de 2026-09-04)

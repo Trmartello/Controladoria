@@ -352,7 +352,44 @@ import sys, json
 r = next((x for x in json.load(sys.stdin)['dados'] if x['id'] == $QP_ID), {})
 print(json.dumps({'n': len(r.get('perguntas', [])), 'ideias1': r['perguntas'][0]['ideias'], 'gente1': r['perguntas'][0]['respondentes']}))" 2>/dev/null)
   afirma "a lista do condutor conta ideias e pessoas por pergunta" '"ideias1": 2, "gente1": 1' "$R"
+  # As ESTRELAS do questionário (pedido de 2026-09-04): liberadas para quem
+  # concluiu, SEM o condutor fechar a sala — e o teto (2) conta POR PERGUNTA.
+  # Um segundo participante enche a pergunta 2 para o teto ter onde estourar.
+  QP_TOK2=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$QP_PIN\",\"nome\":\"Segundo cooperado\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['token'])" 2>/dev/null)
+  for t in 'Loja online' 'Entrega na propriedade'; do
+    curl -s -X POST $BASE/api/publico/ideia -H 'Content-Type: application/json' \
+      -d "{\"pin\":\"$QP_PIN\",\"token\":\"$QP_TOK2\",\"pergunta_id\":$QP_P2,\"texto\":\"$t\"}" >/dev/null
+  done
+  R=$(curl -s "$BASE/api/publico/votar?pin=$QP_PIN&token=$QP_TOK")
+  afirma "no questionário as ★ vêm liberadas com a sala ainda recolhendo" '"estrelas":"ABERTA"' "$R"
+  afirma "e a chave da sala segue FECHADA: o campo de escrever continua lá" '"votacao":"FECHADA"' "$R"
+  QP_I1A=$(echo "$R" | python3 -c "import sys,json;print([i['id'] for i in json.load(sys.stdin)['dados']['itens'] if i['pergunta_id']==$QP_P1][0])" 2>/dev/null)
+  QP_X1=$(echo "$R" | python3 -c "import sys,json;print([i['id'] for i in json.load(sys.stdin)['dados']['itens'] if i['texto']=='Loja online'][0])" 2>/dev/null)
+  QP_X2=$(echo "$R" | python3 -c "import sys,json;print([i['id'] for i in json.load(sys.stdin)['dados']['itens'] if i['texto']=='Entrega na propriedade'][0])" 2>/dev/null)
+  qp_voto(){ curl -s -X POST $BASE/api/publico/votar/$1 -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$QP_PIN\",\"token\":\"$QP_TOK\"}"; }
+  R=$(qp_voto $QP_I2); afirma "primeira estrela na pergunta 2" '"votou":true' "$R"
+  R=$(qp_voto $QP_X1); afirma "segunda estrela na pergunta 2" '"votou":true' "$R"
+  R=$(qp_voto $QP_X2); afirma "a terceira estoura o teto DA PERGUNTA, e a recusa diz isso" 'nesta pergunta' "$R"
+  R=$(qp_voto $QP_I1A); afirma "a pergunta 1 tem estrelas próprias" '"votou":true' "$R"
+  R=$(curl -s "$BASE/api/publico/votar?pin=$QP_PIN&token=$QP_TOK")
+  afirma "o celular recebe as estrelas usadas em cada pergunta" "\"$QP_P2\":2" "$R"
+  R=$(qp_voto $QP_I2); afirma "tocar de novo tira a estrela" '"votou":false' "$R"
   post /api/rodadas/$QP_ID/encerrar '{"planejamento_id":1}' >/dev/null
+  # Sem questionário nada muda: as ★ esperam o condutor fechar a sala
+  R=$(post /api/rodadas '{"planejamento_id":1,"ano":2026,"tema":"Tema único","max_ideias":2,"max_votos":2,"confirmar_encerrar":true}')
+  TU_ID=$(echo "$R" | id_de)
+  TU_PIN=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados'].get('pin',''))" 2>/dev/null)
+  TU_TOK=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$TU_PIN\",\"nome\":\"Alguém\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['token'])" 2>/dev/null)
+  curl -s -X POST $BASE/api/publico/ideia -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$TU_PIN\",\"token\":\"$TU_TOK\",\"texto\":\"Uma ideia\"}" >/dev/null
+  R=$(curl -s "$BASE/api/publico/votar?pin=$TU_PIN&token=$TU_TOK")
+  afirma "sem questionário, as ★ seguem esperando o condutor fechar a sala" '"estrelas":"FECHADA"' "$R"
+  post /api/rodadas/$TU_ID/encerrar '{"planejamento_id":1}' >/dev/null
   # O prazo fecha a rodada SOZINHO — na primeira leitura depois dele, porque
   # não há relógio no servidor. Quatro segundos de prazo, e a leitura seguinte
   # já a vê encerrada. O prazo é escrito no FUSO DO APLICATIVO (`TZ_APP` em

@@ -416,26 +416,48 @@ const SecaoColeta = {
           data-fase-sala="${votando ? 'abrir' : 'fechar'}">${
         votando ? 'Reabrir a sala' : 'Fechar a sala'}</button>`
       : '';
+    // No questionário as ★ já estão liberadas para quem concluiu: fechar a
+    // sala ali só tira o campo de escrever.
+    const questionario = (r.perguntas || []).length > 0;
     const dicaFase = podeConduzir
       ? `<div class="small text-muted mt-1">${votando
         ? 'A sala está escolhendo as mais importantes com ★. Reabrir devolve o campo de escrever aos celulares.'
-        : 'Fechar a sala tira o campo de escrever dos celulares e abre as ★ para a sala eleger as ideias mais importantes.'
+        : questionario
+          ? 'Quem conclui o questionário já dá as ★ nas respostas de maior impacto. Fechar a sala só tira o campo de escrever dos celulares.'
+          : 'Fechar a sala tira o campo de escrever dos celulares e abre as ★ para a sala eleger as ideias mais importantes.'
       }</div>`
       : '';
     // O QUESTIONÁRIO: um filtro por pergunta na nuvem. As ideias de cinco
     // perguntas misturadas na mesma fila viravam um vaivém entre assuntos; com
     // o filtro, o condutor trata uma pergunta por vez, na ordem do encontro.
+    // A caixa é PRÓPRIA, não um <select> (pedido do cliente, 2026-09-04): o
+    // select nativo corta a pergunta numa linha só, e a caixa precisa crescer
+    // até a pergunta inteira caber — na escolha e na lista.
     const perguntas = r.perguntas || [];
+    const escolhida = perguntas.find((q) => String(q.id) === String(this.filtroPergunta));
+    const aberto = !!this.comboPerguntaAberto;
+    const opcao = (valor, atual, html) => `
+      <button type="button" class="cp-opcao ${atual ? 'atual' : ''}" role="option"
+        aria-selected="${atual}" data-filtro-opcao="${valor}">${html}</button>`;
     const filtroPerguntas = perguntas.length ? `
       <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
         <span class="rotulo-secao mb-0">Questionário · ${perguntas.length} pergunta(s)${
           r.prazo ? ` · até ${this.dataHora(r.prazo)}` : ''}</span>
-        <select class="form-select form-select-sm" style="width:auto;max-width:100%" data-filtro-pergunta
-          aria-label="Mostrar as ideias de uma pergunta">
-          <option value="">Todas as perguntas</option>
-          ${perguntas.map((q) => `<option value="${q.id}" ${String(this.filtroPergunta) === String(q.id) ? 'selected' : ''}>${
-            q.ordem}. ${Modal.esc(q.enunciado)} (${q.ideias})</option>`).join('')}
-        </select>
+        <div class="combo-pergunta ${aberto ? 'aberto' : ''}" data-combo-pergunta data-filtro-pergunta>
+          <button type="button" class="cp-atual" data-combo-alternar aria-haspopup="listbox"
+            aria-expanded="${aberto}" aria-label="Mostrar as ideias de uma pergunta">
+            <span class="cp-texto">${escolhida
+              ? `<span class="fp-tag selo-pergunta">P${escolhida.ordem}</span> ${Modal.esc(escolhida.enunciado)}`
+              : 'Todas as perguntas'}</span>
+            <span class="cp-seta" aria-hidden="true">▾</span>
+          </button>
+          <div class="cp-lista" role="listbox" ${aberto ? '' : 'hidden'}>
+            ${opcao('', !escolhida, 'Todas as perguntas')}
+            ${perguntas.map((q) => opcao(q.id, escolhida === q,
+              `<span class="fp-tag selo-pergunta">P${q.ordem}</span><span class="cp-enunciado">${
+                Modal.esc(q.enunciado)}</span><span class="cp-conta">${q.ideias}</span>`)).join('')}
+          </div>
+        </div>
       </div>` : '';
     return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
       <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -722,7 +744,7 @@ const SecaoColeta = {
     const item = grupoSel
       ? (grupoSel.itens.find((i) => !i.agrupado_em_id) || grupoSel.representante)
       : null;
-    const fichas = grupos.map((g) => this.fichaOuCaixa(g)).join('');
+    const fichas = this.blocosPorPergunta(grupos);
 
     const adiadas = this.nuvem(true).filter((g) => this.passaFiltroPergunta(g));
 
@@ -735,7 +757,7 @@ const SecaoColeta = {
           <div class="rotulo-secao">Fila de ideias — arraste até um quadrante da
             matriz para classificar; toque para editar; arraste uma sobre a outra
             para juntar</div>
-          <div class="nuvem">${fichas || '<span class="text-muted small">Aguardando as primeiras ideias...</span>'}</div>
+          ${fichas || '<div class="nuvem"><span class="text-muted small">Aguardando as primeiras ideias...</span></div>'}
           ${adiadas.length ? `<div class="caixa-depois">
             <button type="button" class="rotulo-secao btn-depois" data-ver-depois
               aria-expanded="${this.depoisAberto}" aria-controls="nuvem-depois">Tratar depois
@@ -754,6 +776,57 @@ const SecaoColeta = {
         </div></div>
       </div>
     </div>`;
+  },
+
+  /**
+   * A fila em BLOCOS por pergunta (pedido do cliente, 2026-09-04): a pergunta
+   * em cima, as respostas embaixo — é assim que a reunião se conduz, uma
+   * pergunta de cada vez. Sem questionário (nenhuma ideia com pergunta) a fila
+   * é a nuvem única de sempre. A ideia sem pergunta — cadastrada à mão pelo
+   * condutor, ou de uma tempestade de tema único — fica num bloco no fim.
+   * Cada bloco é uma `.nuvem` própria: o arraste e as provas olham para ela.
+   */
+  blocosPorPergunta(grupos) {
+    const nuvem = (gs) => `<div class="nuvem">${gs.map((g) => this.fichaOuCaixa(g)).join('')}</div>`;
+    const perguntas = new Map();
+    for (const q of (this.rodadaAberta?.perguntas || [])) {
+      perguntas.set(String(q.id), { ordem: Number(q.ordem), enunciado: q.enunciado, grupos: [] });
+    }
+    const soltos = [];
+    for (const g of grupos) {
+      const lider = this.liderDe(g);
+      // O grupo pertence à pergunta do LÍDER — quem recebeu o arraste manda
+      const chave = lider.pergunta_id ? String(lider.pergunta_id) : '';
+      if (!chave) { soltos.push(g); continue; }
+      if (!perguntas.has(chave)) {
+        perguntas.set(chave, { ordem: Number(lider.pergunta_ordem) || 0,
+          enunciado: lider.pergunta_enunciado || `Pergunta ${lider.pergunta_ordem || ''}`, grupos: [] });
+      }
+      perguntas.get(chave).grupos.push(g);
+    }
+    if (!perguntas.size) return grupos.length ? nuvem(grupos) : '';
+    const blocos = [...perguntas.values()].sort((a, b) => a.ordem - b.ordem)
+      // Com o filtro ligado, só a pergunta escolhida; sem filtro, TODAS — a
+      // vazia também, para o condutor ver que ninguém a respondeu ainda
+      .filter((b) => !this.filtroPergunta || b.grupos.length);
+    const html = blocos.map((b) => `
+      <div class="bloco-pergunta">
+        <div class="titulo-bloco-pergunta">
+          <span class="fp-tag selo-pergunta">P${b.ordem || '?'}</span>
+          <span class="tbp-enunciado">${Modal.esc(b.enunciado)}</span>
+          <span class="tbp-conta">${b.grupos.length}</span>
+        </div>
+        ${b.grupos.length ? nuvem(b.grupos)
+          : '<div class="nuvem"><span class="text-muted small">Nenhuma resposta ainda.</span></div>'}
+      </div>`).join('');
+    return html + (soltos.length ? `
+      <div class="bloco-pergunta">
+        <div class="titulo-bloco-pergunta">
+          <span class="tbp-enunciado text-muted">Sem pergunta</span>
+          <span class="tbp-conta">${soltos.length}</span>
+        </div>
+        ${nuvem(soltos)}
+      </div>` : '');
   },
 
   /**
@@ -983,14 +1056,44 @@ const SecaoColeta = {
   // A pergunta do questionário que a nuvem mostra (null = todas). Mora no
   // objeto, não no DOM: a nuvem é repintada a cada batida do relógio.
   filtroPergunta: null,
+  // A lista do filtro está aberta? Mora aqui pelo mesmo motivo: o painel é
+  // repintado quando chega ideia, e a lista não pode fechar na mão de quem
+  // estava escolhendo.
+  comboPerguntaAberto: false,
+
+  /** Abre/fecha a lista do filtro sem repintar a seção. */
+  alternarComboPergunta(aberto) {
+    this.comboPerguntaAberto = aberto;
+    const c = document.querySelector('[data-combo-pergunta]');
+    if (!c) return;
+    c.classList.toggle('aberto', aberto);
+    c.querySelector('.cp-lista').hidden = !aberto;
+    c.querySelector('[data-combo-alternar]').setAttribute('aria-expanded', String(aberto));
+  },
 
   ligarTempestade(el, ano) {
     el.querySelectorAll('[data-ir-sala]').forEach((b) =>
       b.addEventListener('click', () => App.mostrarSecao('sala')));
-    el.querySelector('[data-filtro-pergunta]')?.addEventListener('change', (ev) => {
-      this.filtroPergunta = ev.target.value || null;
-      this.carregar();
-    });
+    const combo = el.querySelector('[data-combo-pergunta]');
+    if (combo) {
+      combo.querySelector('[data-combo-alternar]').addEventListener('click', () =>
+        this.alternarComboPergunta(!this.comboPerguntaAberto));
+      combo.querySelectorAll('[data-filtro-opcao]').forEach((b) => b.addEventListener('click', () => {
+        this.filtroPergunta = b.dataset.filtroOpcao || null;
+        this.comboPerguntaAberto = false;
+        this.carregar();
+      }));
+      // Toque fora (ou Esc) fecha a lista — registrado uma vez só
+      if (!this.comboFechaFora) {
+        this.comboFechaFora = true;
+        document.addEventListener('click', (ev) => {
+          if (this.comboPerguntaAberto && !ev.target.closest('[data-combo-pergunta]')) this.alternarComboPergunta(false);
+        });
+        document.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Escape' && this.comboPerguntaAberto) this.alternarComboPergunta(false);
+        });
+      }
+    }
 
     // O mesmo modal da aba Sala (QuizSala.modalPergunta): uma redação só para
     // o campo, o rótulo e a ajuda, em qualquer tela que edite a pergunta.
