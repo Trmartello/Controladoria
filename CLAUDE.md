@@ -1962,14 +1962,23 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 ## Rodando localmente
 
 ```bash
-# Banco (MariaDB local; socket precisa de caminho curto)
-mariadbd --user=root --datadir=<dir> --socket=/tmp/ccm.sock --port=33061 &
+# Banco (MariaDB local; socket precisa de caminho curto). Numa sessão de agente,
+# suba com setsid nohup … & disown: processo preso ao shell da ferramenta
+# morre quando ela devolve, e "o banco caiu" vira depuração perdida.
+setsid nohup mariadbd --user=$(id -un) --datadir=<dir> --socket=/tmp/ccm.sock \
+  --port=33061 --bind-address=127.0.0.1 >db.log 2>&1 </dev/null & disown
 
-php database/migrate.php   # com as env DB_* abaixo
+export DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app
+php database/migrate.php
 
-# Servidor — o argumento router (public/index.php) é OBRIGATÓRIO
-DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
-  php -S 127.0.0.1:8099 -t public public/index.php
+# Servidor — o argumento router (public/index.php) é OBRIGATÓRIO.
+# SALA_AUSENTE_SEG=6 encurta a ausência da sala: sem ela, duas provas da
+# funcional (reentrada pelo nome) ficam vermelhas.
+SALA_AUSENTE_SEG=6 setsid nohup php -S 127.0.0.1:8099 -t public public/index.php \
+  >php.log 2>&1 </dev/null & disown
+
+# Derrubar ao fim (o pkill devolve 144 — é inofensivo)
+mysql --socket=/tmp/ccm.sock -uroot -e SHUTDOWN; pkill -f "php -S 127.0.0.1:8099"
 ```
 
 - Login local de teste: `admin@coperdia.com.br` / `trocar123` (em produção a
@@ -2021,7 +2030,10 @@ DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
   `.show` pendurada sem o `transitionend`, então teste fechamento com
   `reducedMotion: 'reduce'` no contexto, senão o "modal fechou" dá falso-negativo.
   Para gestos de arraste, ande em passos (`mouse.move` várias vezes): abaixo de
-  8px o código trata como toque, não arraste.
+  8px o código trata como toque, não arraste. E o polling repinta as listas:
+  um `ElementHandle` guardado antes do repinte dá "Element is not attached to
+  the DOM" — refaça a consulta pelo seletor (`.ideia-votavel >> nth=N`) na
+  hora de clicar, em vez de guardar o elemento.
 - Dados inseridos pelo cliente `mysql` sem `--default-character-set=utf8mb4`
   saem com acentuação quebrada; o caminho do PDO da aplicação está correto.
 
@@ -2054,6 +2066,22 @@ fixá-lo faria a bateria parar de rodar sem ninguém entender por quê.
 A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
+
+**Linha de base em 2026-09-04** (depois do PR #20): funcional **276 ✓ / 0 ✗**
+(`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
+sistema **578 ✓ / 0 ✗** em cerca de nove minutos
+(`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
+sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
+`400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do
+parecer, não regressão; o que conta é `0 ✗`. Número abaixo da base sem ✗ é
+sinal de **prova pulada em silêncio**: foi assim que uma sala deixada aberta
+por uma execução anterior escondeu 13 provas (247 ✓, nenhum vermelho). Hoje a
+seção 8 recusa `SALA_ABERTA` como falha e os `finally` das provas de sala
+chamam `/api/quiz/encerrar` — toda prova que abre sala **fecha a sala**, mesmo
+quando reprova no meio. Duas miudezas que já custaram uma rodada: `GET
+/api/me` devolve o usuário em `dados.usuario.id`, não em `dados.id`; e a
+funcional cria 7 rodadas por execução e não as apaga (pendência §3 do
+parecer).
 Três cautelas ao escrever prova nova: a seção continua no DOM quando escondida,
 então **esperar pelo seletor não prova que a tela está visível** (confira o
 `d-none` e reemita `App.mostrarSecao` num laço — o `mostrarSecao('painel')` da
@@ -2085,6 +2113,15 @@ mínima. A checagem passou a rodar nas duas larguras.
   Antes dele a produção estava 23 commits atrás do trabalho — e ficou assim por
   dias sem ninguém notar, porque nada avisa. Confira `git rev-list --count
   origin/main..<branch>` antes de dizer que "está no sistema".
+  **Último deploy: 2026-09-04, PRs #13 a #20** (oito merges em dois dias: 🎤 da
+  etapa inteira, questionário da tempestade e a revisão pelo time de agentes).
+  A migração acrescenta `coleta_rodada.prazo` (PR #17) e dois índices
+  (`idx_fator_plan_ano`, `idx_cenario_plan_ano`, PR #20); **não pediu
+  variável nova**. O sinal de que a versão subiu está no cron de avisos: entre
+  2026-09-02 e esse deploy, `cli/notificar.php` morria na primeira escrita
+  (classe `Versao` fora do autoloader), mandava o primeiro e-mail da lista e
+  caía — *Cron Runs* do serviço `avisos` deve mostrar falha diária nesse
+  intervalo e execução limpa depois. Ninguém confirmou o print ainda.
 - **Ler o deploy certo.** A Railway tem duas abas de log e elas confundem:
   *Build Logs* é a construção da imagem (Dockerfile) e **não** mostra a
   migração; o que interessa está em *Deploy Logs*, onde o `entrypoint.sh`
@@ -2222,6 +2259,14 @@ mínima. A checagem passou a rodar nas duas larguras.
   implementa `validateId`; o 🎤 não assume tempestade com questionário
   (`QUESTIONARIO_ABERTO`); na funcional, guarda `if [ -n "$X" ]` só depois de
   um `afirma` que FALHE com `$X` vazio, e pular seção é falha, não ✓.
+  Como a rodada foi feita, para repetir: cinco agentes em paralelo, um por
+  frente, cada um com o mandato de **conferir o achado no código antes de o
+  relatar** e de gravar o relatório num arquivo do scratchpad — o limite de
+  uso da sessão caiu no meio, os cinco morreram por `429`, e o que estava em
+  arquivo sobreviveu; o que estava só na resposta final se perdeu. Retomados
+  por mensagem depois do limite voltar, terminaram de onde pararam. Achado
+  vira correção **só com prova nova na bateria**, e a documentação
+  (`docs/DEPLOY-RAILWAY.md`, este arquivo, o parecer) entra no mesmo PR.
 - Acessibilidade que já custou defeito: as seções **não são destruídas** ao
   navegar (só ganham `d-none`), então id repetido entre telas coexiste no
   documento e o `for` do label casa sempre com o primeiro — ids de tela levam
@@ -2278,3 +2323,8 @@ mínima. A checagem passou a rodar nas duas larguras.
   vendorados, e o projeto não tem dependência PHP nenhuma de propósito.
 - O Chromium do Playwright está em `/opt/pw-browsers` e o MariaDB local sobe
   com socket em `/tmp` (detalhes em *Rodando localmente*).
+- O **limite de uso** da sessão pode acabar no meio de um trabalho longo e
+  voltar depois. O que sobrevive é o que está em arquivo ou em commit; por
+  isso relatórios de agentes vão para o scratchpad, e serviços locais sobem
+  desprendidos do shell (`setsid nohup … & disown`) — os dois já custaram uma
+  retomada.
