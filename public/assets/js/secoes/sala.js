@@ -145,7 +145,11 @@ const SecaoSala = {
             r.prazo ? ` · responder até ${SecaoSala.dataHora(r.prazo)}` : ''}</div>
           <ol class="lista-perguntas-sala mb-1">${perguntas.map((q) => `
             <li><span>${Modal.esc(q.enunciado)}</span>
-              <span class="text-muted small text-nowrap">${q.ideias} ideia(s) · ${q.respondentes} pessoa(s)</span></li>`).join('')}
+              <span class="text-muted small text-nowrap">${q.ideias} ideia(s) · ${q.respondentes} pessoa(s)${
+                podeConduzir ? `<button type="button" class="btn btn-sm btn-outline-danger btn-excluir-pergunta"
+                  data-excluir-pergunta="${q.id}" aria-label="Excluir a pergunta ${q.ordem}"
+                  title="${Number(q.ideias) ? 'Excluir a pergunta — você escolhe o que fazer com as respostas'
+                    : 'Excluir a pergunta do questionário'}">×</button>` : ''}</span></li>`).join('')}
           </ol>
           ${podeConduzir ? `<button class="btn btn-sm btn-outline-secondary" id="btn-mais-pergunta"
             title="Entra no fim da lista, para não mudar a numeração de quem já respondeu">+ Acrescentar pergunta</button>` : ''}
@@ -299,6 +303,35 @@ const SecaoSala = {
       aoSalvar: () => this.carregar(),
     }));
 
+    // Excluir uma pergunta do questionário (pedido do cliente, 2026-09-04).
+    // Sem resposta, o confirm de sempre basta. Com respostas, é um MODAL com
+    // a escolha: elas ficam na Coleta (sem pergunta) ou saem junto. O número
+    // que decide é o da tela, mas ele envelhece — o celular escreve a
+    // qualquer hora —, então se o servidor recusar com PERGUNTA_RESPONDIDA o
+    // modal abre do mesmo jeito, em vez de a pergunta sair levando resposta
+    // que ninguém viu.
+    el.querySelectorAll('[data-excluir-pergunta]').forEach((b) => b.addEventListener('click', async () => {
+      const id = Number(b.dataset.excluirPergunta);
+      const q = (this.tempestade?.perguntas || []).find((x) => Number(x.id) === id);
+      if (!q) return;
+      if (Number(q.ideias) > 0) {
+        this.excluirPerguntaRespondida(q);
+        return;
+      }
+      if (!confirm(`Excluir do questionário a pergunta "${q.enunciado}"?`)) return;
+      try {
+        await App.api(`/api/rodadas/${this.tempestade.id}/perguntas/${id}/excluir`,
+          { planejamento_id: this.plan.id });
+      } catch (e) {
+        if (e.codigo === 'PERGUNTA_RESPONDIDA') {
+          this.excluirPerguntaRespondida(q, e.message);
+          return;
+        }
+        alert(e.message);
+      }
+      this.carregar();
+    }));
+
     el.querySelector('#btn-encerrar-rodada')?.addEventListener('click', async () => {
       if (!confirm('Encerrar a tempestade? Os participantes não conseguem mais enviar ideias.')) return;
       try {
@@ -354,6 +387,38 @@ const SecaoSala = {
         alert(e.message);
       }
       App.recarregarSecaoAtiva();
+    });
+  },
+
+  /**
+   * A pergunta respondida não sai sem dizer o destino das respostas — o
+   * mesmo desenho do "excluir ação pergunta o destino das origens": um MODAL
+   * do sistema, nunca `confirm()` (o navegador oferece "bloquear caixas de
+   * diálogo" e, bloqueadas, o gesto simplesmente não acontecia). "Manter" é
+   * o padrão marcado: é a saída que não perde nada. `aviso` é a mensagem do
+   * servidor quando foi ele que descobriu as respostas (a contagem da tela
+   * tinha envelhecido).
+   */
+  excluirPerguntaRespondida(q, aviso = null) {
+    const n = Number(q.ideias);
+    const gente = Number(q.respondentes);
+    Modal.abrir({
+      titulo: 'Excluir a pergunta',
+      valores: { planejamento_id: this.plan.id, ideias: 'manter' },
+      campos: [
+        { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+        { nome: 'pergunta_excluida', rotulo: '', tipo: 'info', texto: q.enunciado },
+        { nome: 'ideias',
+          rotulo: aviso || `Esta pergunta já recebeu ${n} resposta(s) de ${gente} pessoa(s). O que fazer com elas?`,
+          tipo: 'botoes', vertical: true, opcoes: [
+            { valor: 'manter', rotulo: 'Manter as respostas — ficam na Coleta, sem pergunta; só a pergunta sai' },
+            { valor: 'apagar', rotulo: 'Apagar as respostas junto com a pergunta, e as estrelas que receberam' },
+          ] },
+      ],
+      salvar: { rotulo: 'Excluir', perigo: true },
+      enviar: (dados) => App.api(`/api/rodadas/${this.tempestade.id}/perguntas/${q.id}/excluir`,
+        { planejamento_id: this.plan.id, ideias: dados.ideias }),
+      aoSalvar: () => this.carregar(),
     });
   },
 

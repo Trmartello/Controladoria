@@ -144,6 +144,117 @@ class RodadaController
         Json::ok(['gravadas' => $gravadas, 'perguntas' => Quiz::perguntasDaTempestade($id, true)]);
     }
 
+    /**
+     * Tira uma pergunta do questionário de uma rodada ABERTA (pedido do
+     * cliente, 2026-09-04). O que decide o gesto é se ela JÁ FOI RESPONDIDA:
+     *
+     *  - sem resposta nenhuma, sai e pronto;
+     *  - com respostas, o corpo precisa dizer o destino delas em `ideias`:
+     *    `manter` (ficam na Coleta, sem pergunta) ou `apagar` (saem junto,
+     *    com as estrelas, pelo CASCADE dos votos). Sem a chave, a resposta é
+     *    409/`PERGUNTA_RESPONDIDA` com a contagem. A tela decide pelo número
+     *    que TEM, mas o número envelhece — o celular escreve a qualquer hora,
+     *    e a Sala repinta de 4 em 4 s —, então a recusa é o que impede uma
+     *    tela desatualizada de apagar resposta sem ninguém ter escolhido isso.
+     *    Código e não texto: a tela DECIDE por ele (abre o modal da escolha).
+     *
+     * `manter` escreve o `pergunta_id = NULL` à mão, embora a FK seja SET NULL:
+     * o gesto fica escrito onde se lê o método, e não depende de o migrate ter
+     * criado a chave nesta instância. Resposta que já virou registro (fator,
+     * item de cenário, ação) não sai por `apagar` — o caminho é a Coleta, que
+     * sabe desfazer o destino; `manter` continua valendo para ela.
+     *
+     * As que ficam são RENUMERADAS (`Quiz::renumerarPerguntasLivres`): o
+     * celular conta por posição ("Pergunta 2 de 3") e a Coleta pela `ordem`
+     * (`P2`); com um buraco, as duas telas chamariam a mesma pergunta por
+     * números diferentes. Isso não fere a regra de "pergunta nova só no fim":
+     * a resposta segue presa ao `pergunta_id`, é só o rótulo que anda.
+     */
+    public function excluirPergunta(int $id, int $perguntaId): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $rodada = $this->exigirRodada($id, $planId);
+        if ($rodada['situacao'] !== 'ABERTA') {
+            Json::erro('A rodada já foi encerrada.');
+        }
+        if ($rodada['modo'] !== 'TEMPESTADE') {
+            Json::erro('O questionário é da tempestade de ideias; a pergunta do roteiro sai pela Sala do encontro.');
+        }
+        $p = Database::um(
+            "SELECT id FROM quiz_pergunta WHERE id = ? AND rodada_id = ? AND alvo_tipo = 'LIVRE'",
+            [$perguntaId, $id]
+        );
+        if (!$p) {
+            Json::erro('Pergunta não encontrada neste questionário.', 404);
+        }
+        $ideias = (int)(Database::um(
+            'SELECT COUNT(*) AS n FROM coleta_item WHERE pergunta_id = ?', [$perguntaId]
+        )['n'] ?? 0);
+        $destino = null;
+        if ($ideias > 0) {
+            $destino = $d['ideias'] ?? null;
+            if ($destino === null) {
+                Json::erro("Esta pergunta já recebeu {$ideias} resposta(s). Diga se elas ficam ou saem junto.",
+                    409, 'PERGUNTA_RESPONDIDA');
+            }
+            if (!in_array($destino, ['manter', 'apagar'], true)) {
+                Json::erro('Destino das respostas inválido: manter ou apagar.');
+            }
+            if ($destino === 'apagar') {
+                $this->apagarRespostas($perguntaId, $planId);
+            } else {
+                Database::executar('UPDATE coleta_item SET pergunta_id = NULL WHERE pergunta_id = ?', [$perguntaId]);
+            }
+        }
+        Database::executar('DELETE FROM quiz_pergunta WHERE id = ?', [$perguntaId]);
+        Quiz::renumerarPerguntasLivres($id);
+        Json::ok([
+            'ideias' => $ideias,
+            'destino' => $destino,
+            'perguntas' => Quiz::perguntasDaTempestade($id, true),
+        ]);
+    }
+
+    /**
+     * Apaga as respostas de uma pergunta — a mesma contabilidade de
+     * `ColetaController::excluir`, para o conjunto: `agrupado_em_id` e
+     * `dividido_de_id` não têm FK (de propósito) e são soltos antes do
+     * DELETE, porque um grupo montado à mão pode pendurar num líder desta
+     * pergunta uma ideia de OUTRA; os votos caem pela FK (`fk_voto_item`).
+     */
+    private function apagarRespostas(int $perguntaId, int $planId): void
+    {
+        $ids = array_map(
+            static fn($l) => (int)$l['id'],
+            Database::todos('SELECT id FROM coleta_item WHERE pergunta_id = ?', [$perguntaId])
+        );
+        if (!$ids) {
+            return;
+        }
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        // Resposta que já virou registro tem vida própria no diagnóstico ou
+        // no plano: apagá-la daqui deixaria o fator, o item ou a ação sem a
+        // origem — a Coleta é quem sabe desfazer o vínculo, um por um.
+        if (Database::um(
+            "SELECT id FROM coleta_item WHERE id IN ({$marcas}) AND destino_id IS NOT NULL", $ids
+        )) {
+            Json::erro('Uma das respostas desta pergunta já virou registro no diagnóstico ou no plano. '
+                . 'Mantenha as respostas, ou desfaça o vínculo dela pela Coleta antes de apagar.');
+        }
+        Database::executar(
+            "UPDATE coleta_item SET agrupado_em_id = NULL WHERE agrupado_em_id IN ({$marcas})", $ids
+        );
+        Database::executar(
+            "UPDATE coleta_item SET dividido_de_id = NULL WHERE dividido_de_id IN ({$marcas})", $ids
+        );
+        Database::executar(
+            "DELETE FROM coleta_item WHERE id IN ({$marcas}) AND planejamento_id = ?",
+            array_merge($ids, [$planId])
+        );
+    }
+
     public function abrir(): void
     {
         $d = Json::corpo();
