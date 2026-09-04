@@ -592,16 +592,9 @@ const SecaoColeta = {
         <div class="cp-fichas">${porQuadrante(imp, esf)}</div>
       </div>`;
     };
-    // A ideia em foco vira um CARD à parte, e a orientação fica curta e fixa
-    // embaixo: misturar os dois num parágrafo só fazia o texto da ideia (que
-    // pode ser longo) parecer instrução do sistema.
-    const emFoco = podeClassificar ? `
-      <div class="cartao-foco">
-        <div class="cf-rotulo">Classificando</div>
-        <div class="cf-texto">${Modal.esc(lider.texto_tratado || lider.texto)}</div>
-        ${this.rotuloDestino(lider) ? `<span class="fp-tag">${
-          Modal.esc(this.rotuloDestino(lider))}</span>` : ''}
-      </div>` : '';
+    // A ideia em foco NÃO se repete aqui (pedido do cliente, 2026-09-04): ela
+    // já está destacada na fila e aberta na bancada, com a pergunta que
+    // respondeu. Embaixo da matriz fica só a orientação, curta.
     const dica = podeClassificar
       ? 'Toque num quadrante para posicionar. Tocar no quadrante atual não muda nada; <strong>Descartar</strong> esquece a ideia (pede o motivo).'
       : 'Arraste uma ideia da fila até um quadrante — ou toque nela e depois no quadrante. O quadrante já define impacto e esforço.';
@@ -621,7 +614,6 @@ const SecaoColeta = {
         ${celula('BAIXO', 'ALTO', 'cp-ba')}
         ${celula('ALTO', 'ALTO', 'cp-aa')}
       </div>
-      ${emFoco}
       <div class="small text-muted mt-2">${dica}</div>
     </div></div>`;
   },
@@ -773,7 +765,17 @@ const SecaoColeta = {
   bancada(item, grupo) {
     // Quando a nuvem agrupou, a bancada trata o grupo inteiro de uma vez
     const ids = (grupo?.itens || [item]).map((i) => i.id);
+    // A pergunta vem ANTES da ideia (pedido do cliente, 2026-09-04): quem
+    // classifica precisa ler o que foi perguntado para julgar a resposta — e
+    // a matriz, logo acima, já não repete o texto em foco.
+    const pergunta = item.pergunta_enunciado ? `
+      <div class="bancada-pergunta">
+        <span class="fp-tag selo-pergunta">P${Number(item.pergunta_ordem) || ''}</span>
+        <span class="bp-enunciado">${Modal.esc(item.pergunta_enunciado)}</span>
+      </div>
+      <div class="rotulo-secao mt-2">Ideia enviada</div>` : '';
     return `
+      ${pergunta}
       <div class="small text-muted">${Modal.esc(item.autor)}${
         ids.length > 1 ? ` e mais ${ids.length - 1}` : ''}${
         grupo?.votos ? ` · ★ ${grupo.votos} voto(s)` : ''}</div>

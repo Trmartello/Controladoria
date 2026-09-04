@@ -119,11 +119,16 @@ A bancada avisa: *"Já encaminhada para SWOT — salvar o texto aqui corrige lá
 também"*.
 
 ### Ideia longa não vira paredão
-O texto da pílula é cortado em **duas linhas**. O texto inteiro fica no card
-**"Classificando"**, logo abaixo da grade — um card próprio, com rolagem a partir
-de ~4 linhas —, separado da **orientação** do sistema, que fica curta e fixa
-embaixo. Antes os dois vinham no mesmo parágrafo e o conteúdo do usuário parecia
-instrução da tela.
+O texto da pílula é cortado em **duas linhas**. O texto inteiro fica na
+**bancada**, que é onde a ideia se lê e se edita. Abaixo da grade fica só a
+**orientação** do sistema, curta e fixa. Houve um card "Classificando" ali,
+repetindo o texto em foco; saiu em 2026-09-04 a pedido do cliente — a ideia já
+está destacada na fila e aberta na bancada, e o card só ocupava tela no celular.
+
+### A bancada começa pela pergunta
+Quando a tempestade tem questionário prévio, a bancada abre com a **pergunta**
+que a ideia respondeu (selo P1, P2… e o enunciado) e, abaixo, a ideia enviada.
+Quem classifica precisa ler o que foi perguntado para julgar a resposta.
 
 ---
 
@@ -163,7 +168,8 @@ instrução da tela.
 ### `public/assets/css/app.css`
 `.celula-prio.clicavel/.escolhido/.alvo-solta`, `.ficha-prio` (+ `.encaminhada`,
 texto em `line-clamp: 2`), `.fp-tag`, `.fp-menu` e itens (incluindo
-`.fpm-desfazer` e `.fpm-excluir`), `.cartao-foco` e o bloco compacto do celular.
+`.fpm-desfazer` e `.fpm-excluir`), `.bancada-pergunta` (no lugar do
+`.cartao-foco`, que saiu) e o bloco compacto do celular.
 Saiu o CSS órfão da matriz antiga (`.matriz-quad`, `.quadrante-prio`,
 `.grade-matriz`, `.mq-*`).
 

@@ -1250,28 +1250,22 @@ input[type=range].faixa-verde:focus-visible {
   flex-wrap: wrap;
 }
 .ficha-prio:hover { background: #f4f8f6; }
-/* A ideia em foco, num card próprio — separada da orientação do sistema */
-.cartao-foco {
-  margin-top: .6rem;
+/* A pergunta que a ideia respondeu, no alto da bancada — antes da ideia */
+.bancada-pergunta {
+  display: flex;
+  align-items: flex-start;
+  gap: .4rem;
   padding: .45rem .6rem;
   border-left: 3px solid var(--verde-coperdia);
   background: #f2f8f5;
   border-radius: .35rem;
 }
-.cf-rotulo {
-  font-size: .6rem;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: #6c757d;
-  margin-bottom: .15rem;
-}
-.cf-texto {
-  font-size: .85rem;
+.bancada-pergunta .fp-tag { margin-left: 0; margin-top: .2rem; flex-shrink: 0; }
+.bancada-pergunta .bp-enunciado {
+  font-size: .9rem;
   font-weight: 600;
   color: var(--verde-escuro);
   overflow-wrap: anywhere;
-  max-height: 5.4rem;
-  overflow-y: auto;
 }
 .ficha-prio.selecionada {
   background: var(--cor-quad, var(--verde-coperdia));
