@@ -474,6 +474,13 @@ class ProjetoController
                 Json::erro('A iniciativa não pertence a este projeto.');
             }
         }
+        // Na EDIÇÃO, a ação e o cadeado são conferidos ANTES de criar projeto
+        // ou iniciativa: um 409 do cadeado (ou um 404) depois dos INSERTs
+        // deixava um projeto e uma frente vazios a cada tentativa.
+        if ($id) {
+            $this->exigirDesdobramento($id, $planId);
+            Bloqueio::exigirMeu('desdobramento', $id, (int)Auth::exigirLogin()['id'], 'esta ação');
+        }
         // Validado tudo, agora sim grava
         if (!$projetoId) {
             $projetoId = $this->criarProjetoRapido($plan, $planId, $d);
@@ -493,8 +500,6 @@ class ProjetoController
             $quanto, $status, $prioridade, $progresso, $progressoAnterior, $concluidoEm, (int)($d['ordem'] ?? 0),
         ];
         if ($id) {
-            $this->exigirDesdobramento($id, $planId);
-            Bloqueio::exigirMeu('desdobramento', $id, (int)Auth::exigirLogin()['id'], 'esta ação');
             Database::executar(
                 'UPDATE desdobramento SET projeto_id = ?, iniciativa_id = ?, o_que = ?, por_que = ?, quem = ?,
                    quem_usuario_id = ?, recorrencia = ?, recorrencia_dia = ?, recorrencia_dias = ?,

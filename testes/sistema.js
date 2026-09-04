@@ -250,6 +250,13 @@ async function provasPainelSalaFixo(page, largura) {
       "!document.querySelector('#secao-cenario .painel-quiz-vivo [data-mic-fechar]')", 15000));
   } finally {
     page.off('dialog', aceitar);
+    // A sala nunca fica aberta para a próxima bateria: uma falha no meio
+    // deixava a sessão de quiz no ar, e a funcional seguinte perdia 13 provas
+    // em silêncio (o 409/SALA_ABERTA era aceito como "abre rodada").
+    await page.evaluate(async () => {
+      const plan = await App.planejamento();
+      await App.api('/api/quiz/encerrar', { planejamento_id: plan.id }).catch(() => {});
+    }).catch(() => {});
     await page.evaluate(() => window.scrollTo(0, 0));
   }
 }
@@ -3451,6 +3458,11 @@ async function provasEtapaNaSala(browser) {
       "!document.querySelector('#secao-pestel [data-mic-etapa=\"PESTEL\"] [data-mic-fechar]')", 15000));
   } finally {
     admin.off('dialog', aceitar);
+    // Sala sempre encerrada ao sair (ver provasPainelSalaFixo)
+    await admin.evaluate(async () => {
+      const plan = await App.planejamento();
+      await App.api('/api/quiz/encerrar', { planejamento_id: plan.id }).catch(() => {});
+    }).catch(() => {});
     await ctxM.close();
     await ctxA.close();
   }

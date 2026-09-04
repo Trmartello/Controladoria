@@ -140,40 +140,53 @@ const Cadeado = {
     if (!this.atual) {
       el.classList.add('d-none');
       el.innerHTML = '';
+      delete el.dataset.fase;
       return;
     }
     const s = this.restam;
     const mm = String(Math.floor(s / 60)).padStart(2, '0');
     const ss = String(s % 60).padStart(2, '0');
     const alerta = s <= this.ALERTA;
+    // A faixa muda de FASE só em três momentos (contando / alerta / acabou).
+    // Fora deles, o tique de 1 s atualiza apenas o número: reescrever o
+    // innerHTML a cada segundo destruía o botão "+1 minuto" com o foco em
+    // cima — quem navega por Tab nunca chegava a acioná-lo, e um clique que
+    // atravessasse o tique caía no contêiner, não no botão.
+    const fase = s === 0 ? 'acabou' : (alerta ? 'alerta' : 'contando');
     el.classList.remove('d-none');
     el.className = `alert py-2 px-3 mb-3 d-flex align-items-center gap-2 flex-wrap ${
       s === 0 ? 'alert-danger' : (alerta ? 'alert-warning' : 'alert-secondary')}`;
-    el.innerHTML = s === 0
-      // Aos 0:00 a mensagem NÃO manda desistir: o texto continua valendo, e na
-      // maioria das vezes o salvamento passa (ninguém assumiu o item).
-      ? `<strong>O tempo de edição acabou.</strong>
-         <span class="small">O item voltou a ficar disponível para os outros. Você ainda pode
-         salvar — só não vai passar se alguém já tiver assumido.</span>
-         <button type="button" class="btn btn-sm btn-outline-dark ms-auto" data-mais-tempo>
-           Pegar de volta</button>`
-      : `<span class="small">${alerta ? '<strong>Termina em</strong>' : 'Tempo de edição:'}</span>
-         <strong class="tempo-cadeado" aria-live="${alerta ? 'polite' : 'off'}">${mm}:${ss}</strong>
-         ${alerta ? '<span class="small">Peça mais tempo para não perder o item.</span>' : ''}
-         <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-mais-tempo>
-           +1 minuto</button>`;
-    el.querySelector('[data-mais-tempo]')?.addEventListener('click', () => {
-      // Aos 0:00 o botão vira "pegar de volta": o cadeado não existe mais, e
-      // renovar não teria o que renovar — é uma tomada nova.
-      if (this.restam === 0) {
-        this.tomar(this.atual).then((r) => {
-          if (r.pode) this.restam = Number(r.restam) || 0;
-          this.pintar();
-        });
-        return;
-      }
-      this.renovar();
-    });
+    if (el.dataset.fase !== fase) {
+      el.dataset.fase = fase;
+      el.innerHTML = s === 0
+        // Aos 0:00 a mensagem NÃO manda desistir: o texto continua valendo, e na
+        // maioria das vezes o salvamento passa (ninguém assumiu o item).
+        ? `<strong>O tempo de edição acabou.</strong>
+           <span class="small">O item voltou a ficar disponível para os outros. Você ainda pode
+           salvar — só não vai passar se alguém já tiver assumido.</span>
+           <button type="button" class="btn btn-sm btn-outline-dark ms-auto" data-mais-tempo>
+             Pegar de volta</button>`
+        : `<span class="small">${alerta ? '<strong>Termina em</strong>' : 'Tempo de edição:'}</span>
+           <strong class="tempo-cadeado" aria-live="${alerta ? 'polite' : 'off'}">${mm}:${ss}</strong>
+           ${alerta ? '<span class="small">Peça mais tempo para não perder o item.</span>' : ''}
+           <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-mais-tempo>
+             +1 minuto</button>`;
+      el.querySelector('[data-mais-tempo]')?.addEventListener('click', () => {
+        // Aos 0:00 o botão vira "pegar de volta": o cadeado não existe mais, e
+        // renovar não teria o que renovar — é uma tomada nova.
+        if (this.restam === 0) {
+          this.tomar(this.atual).then((r) => {
+            if (r.pode) this.restam = Number(r.restam) || 0;
+            this.pintar();
+          });
+          return;
+        }
+        this.renovar();
+      });
+      return;
+    }
+    const tempo = el.querySelector('.tempo-cadeado');
+    if (tempo) tempo.textContent = `${mm}:${ss}`;
   },
 };
 

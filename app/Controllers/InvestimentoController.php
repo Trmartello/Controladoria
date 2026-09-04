@@ -161,8 +161,13 @@ class InvestimentoController
             // APROVADO só avança para EXECUTADO; REPROVADO/AUDITADO ficam como estão.
             $situacao = $inv['situacao'];
             $nova = $d['situacao'] ?? '';
-            if ($nova !== '' && $nova !== $situacao
-                && in_array($nova, self::TRANSICOES[$situacao] ?? [], true)) {
+            if ($nova !== '' && $nova !== $situacao) {
+                // Transição fora da tabela é RECUSADA, não ignorada: a tela
+                // mostrava "salvo" com a situação intocada.
+                if (!in_array($nova, self::TRANSICOES[$situacao] ?? [], true)) {
+                    Json::erro("Um investimento {$situacao} não pode passar a {$nova}."
+                        . ' Decisão e auditoria têm ações próprias.', 409, 'TRANSICAO_INVALIDA');
+                }
                 $situacao = $nova;
             }
             Database::executar(
@@ -215,7 +220,10 @@ class InvestimentoController
             Json::erro('Registre o critério da decisão — a cascata dá direção, não aprovação.');
         }
         $data = $d['decisao_data'] ?? date('Y-m-d');
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+        // Formato E calendário: "2026-13-40" passava pela regex e virava 500
+        // no modo estrito do MySQL.
+        $dt = is_string($data) ? \DateTimeImmutable::createFromFormat('!Y-m-d', $data) : false;
+        if (!$dt || $dt->format('Y-m-d') !== $data) {
             Json::erro('Data da decisão inválida.');
         }
         Database::executar(

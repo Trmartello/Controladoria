@@ -12,6 +12,8 @@ class AuthController
     /** Falhas de login toleradas por e-mail (e o dobro por origem) na janela. */
     private const MAX_FALHAS = 10;
     private const JANELA_MIN = 15;
+    /** Hash bcrypt de uma senha que ninguém tem — só para gastar o mesmo tempo. */
+    private const HASH_FANTASMA = '$2y$12$oB0Fi2wryNqy8oYIhFCiV.KekFirR0BK4bH.xUssU/fF4FEgThxD.';
 
     public function login(): void
     {
@@ -32,7 +34,12 @@ class AuthController
         // nunca é punido; o balde só alcança quem erra.
         // O custo por tentativa aqui é o próprio bcrypt do password_verify.
         $u = Database::um('SELECT * FROM usuario WHERE email = ? AND ativo = 1', [$email]);
-        if (!$u || !password_verify($senha, $u['senha_hash'])) {
+        // E-mail inexistente custa o MESMO bcrypt que o existente: sem isso o
+        // tempo de resposta dizia quais e-mails têm conta (enumeração).
+        $confere = $u
+            ? password_verify($senha, $u['senha_hash'])
+            : (password_verify($senha, self::HASH_FANTASMA) && false);
+        if (!$u || !$confere) {
             Database::executar(
                 'INSERT INTO login_tentativa (origem, email) VALUES (?, ?)',
                 [$origem, $email]

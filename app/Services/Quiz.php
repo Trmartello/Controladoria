@@ -943,6 +943,20 @@ class Quiz
             self::liberarSala($planId, $d, $telaPedida);
             return null;
         }
+        // Tempestade com QUESTIONÁRIO não vira quiz: as perguntas LIVRE
+        // ficariam ATIVA numa rodada QUIZ (o celular receberia "Quais ideias…"
+        // como pergunta do quiz), o prazo seguiria valendo e as respostas
+        // entrariam como voz de quiz, invisíveis na Coleta. Quem quiser o 🎤
+        // encerra o questionário antes, pela aba Sala.
+        if (self::temQuestionario((int)$aberta['id'])) {
+            self::soltarPlanejamento($planId);
+            Json::erro(
+                'A sala está com um questionário em andamento. Encerre a tempestade na aba Sala '
+                    . "antes de abrir {$telaPedida} pelo 🎤.",
+                409,
+                'QUESTIONARIO_ABERTO'
+            );
+        }
         if (empty($d['confirmar_encerrar'])) {
             self::soltarPlanejamento($planId);
             Json::erro(
@@ -1147,6 +1161,14 @@ class Quiz
      */
     public static function fecharVencidas(): void
     {
+        // As perguntas ATIVA fecham junto, como em `encerrarSala`: rodada
+        // ENCERRADA com pergunta ATIVA é linha órfã.
+        Database::executar(
+            "UPDATE quiz_pergunta p JOIN coleta_rodada r ON r.id = p.rodada_id
+                SET p.situacao = 'ENCERRADA'
+              WHERE p.situacao = 'ATIVA' AND r.situacao = 'ABERTA'
+                AND r.prazo IS NOT NULL AND r.prazo < NOW()"
+        );
         Database::executar(
             "UPDATE coleta_rodada SET situacao = 'ENCERRADA', votacao = 'FECHADA', encerrada_em = NOW()
               WHERE situacao = 'ABERTA' AND prazo IS NOT NULL AND prazo < NOW()"

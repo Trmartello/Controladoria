@@ -94,11 +94,15 @@ class CenarioController
         }
 
         if ($id) {
-            $this->exigirItem($id, $planId);
+            $item = $this->exigirItem($id, $planId);
             Bloqueio::exigirMeu('cenario_item', $id, (int)Auth::exigirLogin()['id'], 'este item');
+            // Na edição o ANO sai da linha, como no fator: um corpo com outro
+            // ano moveria o item de exercício e o descolaria da ideia da Coleta
+            // que o gerou.
+            $ano = (int)$item['ano'];
             Database::executar(
-                'UPDATE cenario_item SET tipo = ?, ordem = ?, descricao = ?, ano = ? WHERE id = ?',
-                [$tipo, $ordem, $descricao, $ano, $id]
+                'UPDATE cenario_item SET tipo = ?, ordem = ?, descricao = ? WHERE id = ?',
+                [$tipo, $ordem, $descricao, $id]
             );
         } else {
             $id = (int)Database::executar(

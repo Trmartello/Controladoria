@@ -379,8 +379,11 @@ const SecaoSala = {
       if (ativo && (ativo.tagName === 'TEXTAREA' || ativo.tagName === 'INPUT')) return;
       const nova = await this.buscarTempestade().catch(() => undefined);
       if (nova === undefined) return;  // rede piscou; a próxima batida tenta
+      // O questionário entra no retrato: pergunta acrescentada em outra tela e
+      // as contagens por pergunta mudam sem o total de ideias mudar
       const retrato = (r) => (r ? JSON.stringify(
-        [r.id, r.tema, r.participantes, r.ideias, r.votacao]) : 'sem-rodada');
+        [r.id, r.tema, r.participantes, r.ideias, r.votacao, r.prazo,
+          (r.perguntas || []).map((q) => [q.id, q.ideias, q.respondentes])]) : 'sem-rodada');
       if (retrato(nova) === retrato(this.tempestade)) return;
       this.tempestade = nova;
       el.innerHTML = this.corpo();

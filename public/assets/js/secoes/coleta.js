@@ -436,22 +436,24 @@ const SecaoColeta = {
     const perguntas = r.perguntas || [];
     const escolhida = perguntas.find((q) => String(q.id) === String(this.filtroPergunta));
     const aberto = !!this.comboPerguntaAberto;
+    // É um MENU de botões, não um listbox: sem setas/Home/End, `role=option`
+    // prometia ao leitor de tela um comportamento que não existe.
     const opcao = (valor, atual, html) => `
-      <button type="button" class="cp-opcao ${atual ? 'atual' : ''}" role="option"
-        aria-selected="${atual}" data-filtro-opcao="${valor}">${html}</button>`;
+      <button type="button" class="cp-opcao ${atual ? 'atual' : ''}"
+        aria-pressed="${atual}" data-filtro-opcao="${valor}">${html}</button>`;
     const filtroPerguntas = perguntas.length ? `
       <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
         <span class="rotulo-secao mb-0">Questionário · ${perguntas.length} pergunta(s)${
           r.prazo ? ` · até ${this.dataHora(r.prazo)}` : ''}</span>
         <div class="combo-pergunta ${aberto ? 'aberto' : ''}" data-combo-pergunta data-filtro-pergunta>
-          <button type="button" class="cp-atual" data-combo-alternar aria-haspopup="listbox"
+          <button type="button" class="cp-atual" data-combo-alternar aria-haspopup="true"
             aria-expanded="${aberto}" aria-label="Mostrar as ideias de uma pergunta">
             <span class="cp-texto">${escolhida
               ? `<span class="fp-tag selo-pergunta">P${escolhida.ordem}</span> ${Modal.esc(escolhida.enunciado)}`
               : 'Todas as perguntas'}</span>
             <span class="cp-seta" aria-hidden="true">▾</span>
           </button>
-          <div class="cp-lista" role="listbox" ${aberto ? '' : 'hidden'}>
+          <div class="cp-lista" ${aberto ? '' : 'hidden'}>
             ${opcao('', !escolhida, 'Todas as perguntas')}
             ${perguntas.map((q) => opcao(q.id, escolhida === q,
               `<span class="fp-tag selo-pergunta">P${q.ordem}</span><span class="cp-enunciado">${
@@ -1257,30 +1259,9 @@ const SecaoColeta = {
 
     // Abrir, encerrar e votação da tempestade moram na aba Sala, junto do PIN,
     // do QR e da pergunta: a sala é uma só, e tinha comando em duas telas.
-
-    document.getElementById('btn-limpar-rodada')?.addEventListener('click', async () => {
-      if (!confirm('Apagar as ideias desta rodada que ainda não foram tratadas?')) return;
-      try {
-        const r = await App.api(`/api/coleta/rodada/${this.rodadaAberta.id}/limpar`,
-          { planejamento_id: this.plan.id });
-        alert(`${r.removidas} ideia(s) removida(s).`);
-      } catch (e) {
-        alert(e.message);
-      }
-      this.selecionado = null;
-      this.carregar();
-    });
-
-    document.getElementById('btn-votacao')?.addEventListener('click', async () => {
-      try {
-        await App.api(`/api/rodadas/${this.rodadaAberta.id}/votacao`, {
-          planejamento_id: this.plan.id, abrir: this.rodadaAberta.votacao !== 'ABERTA',
-        });
-      } catch (e) {
-        alert(e.message);
-      }
-      this.carregar();
-    });
+    // (Os ouvintes antigos de `#btn-limpar-rodada` e `#btn-votacao` saíram:
+    // o primeiro id não existe mais e o segundo é o botão da SALA — como as
+    // seções não são destruídas, a Coleta pendurava um segundo handler nele.)
 
     el.querySelectorAll('[data-quadrante]').forEach((b) => this.ativarBotao(b, async (ev) => {
       // Tocar numa pílula DENTRO do quadrante leva aquela ideia à bancada —

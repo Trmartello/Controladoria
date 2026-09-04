@@ -7,8 +7,28 @@ namespace App\Core;
  * em arquivo morrem a cada deploy — no banco, o login sobrevive a deploys e
  * reinícios. A expiração usa session.gc_maxlifetime (30 dias no index.php).
  */
-class SessaoBanco implements \SessionHandlerInterface
+class SessaoBanco implements \SessionHandlerInterface, \SessionUpdateTimestampHandlerInterface
 {
+    /**
+     * `session.use_strict_mode` só recusa id inventado pelo cliente quando o
+     * handler diz se o id EXISTE. Sem este método, o PHP aceitava qualquer
+     * `PHPSESSID` do cookie e o `write()` o materializava na tabela — um
+     * visitante anônimo em /login enchia `sessao` com ids à escolha dele.
+     */
+    public function validateId(string $id): bool
+    {
+        $vida = (int)ini_get('session.gc_maxlifetime') ?: 1440;
+        return (bool)Database::um(
+            'SELECT 1 FROM sessao WHERE id = ? AND atualizado_em > DATE_SUB(NOW(), INTERVAL ? SECOND)',
+            [$id, $vida]
+        );
+    }
+
+    public function updateTimestamp(string $id, string $dados): bool
+    {
+        return $this->write($id, $dados);
+    }
+
     public function open(string $path, string $name): bool
     {
         return true;

@@ -1317,8 +1317,13 @@ const Modal = {
   },
 
   async salvar() {
+    // Trava de reentrância própria: desabilitar o botão só segurava o clique.
+    // Enter num formulário de um campo só chega pelo `submit`, e dois Enter em
+    // 80 ms criavam dois registros iguais.
+    if (this.salvando) return;
+    this.salvando = true;
     const botao = document.getElementById('modal-salvar');
-    botao.disabled = true; // evita duplo clique criando registros duplicados
+    botao.disabled = true;
     try {
       const dados = this.coletar();
       // A resposta chega ao aoSalvar: alguns formulários precisam dela (uma
@@ -1334,6 +1339,7 @@ const Modal = {
       this.mostrarErro(e.message);
     } finally {
       botao.disabled = false;
+      this.salvando = false;
     }
   },
 

@@ -4,6 +4,13 @@ namespace App\Core;
 
 use PDO;
 
+// `executar`/`afetadas` marcam o pulso em `Versao`. Fora do front controller
+// (as CLIs: notificar, senha, backup remoto) não há autoloader, e a primeira
+// escrita morria com "Class App\Core\Versao not found" — o cron de avisos
+// mandava o primeiro e-mail e caía antes de registrar o envio, repetindo-o
+// todo dia. Quem usa Database carrega Versao junto, sem depender de lembrar.
+require_once __DIR__ . '/Versao.php';
+
 class Database
 {
     private static ?PDO $pdo = null;
@@ -69,6 +76,12 @@ class Database
     {
         $stmt = self::conn()->prepare($sql);
         $stmt->execute($params);
+        // Também é escrita: a conclusão pela barra de progresso e o
+        // reagendamento da recorrente passam SÓ por aqui, e sem a marca a
+        // outra tela não acompanhava até um F5.
+        if ($stmt->rowCount() > 0) {
+            Versao::marcarEscrita();
+        }
         return $stmt->rowCount();
     }
 }

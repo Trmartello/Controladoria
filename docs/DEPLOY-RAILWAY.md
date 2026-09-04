@@ -8,8 +8,8 @@ Roteiro para publicar o ambiente de validação. Tempo estimado: ~10 minutos.
 2. **New Project → Deploy from GitHub repo** → autorize o Railway no GitHub e
    selecione **`Trmartello/Controladoria`**.
 3. Em **Settings → Source** do serviço criado, confira a branch de deploy:
-   selecione **`claude/git-repo-overview-d17774`** (ou `main` após o merge).
-   O Railway detecta o `Dockerfile` automaticamente.
+   selecione **`main`** — é a branch de produção; todo trabalho entra nela
+   por pull request. O Railway detecta o `Dockerfile` automaticamente.
 
 ## 2. Adicionar o MySQL
 
@@ -57,8 +57,9 @@ URL `https://<nome>.up.railway.app`.
 
 ## 5. Primeiro acesso
 
-1. O deploy roda `database/migrate.php` na subida: cria as 20 tabelas, os
-   seeds (6 drivers, 6 eixos, ciclo 2027–2035 com H1/H2/H3) e o usuário admin.
+1. O deploy roda `database/migrate.php` na subida: cria as tabelas (quase
+   quarenta), os seeds (6 drivers, 6 eixos, ciclo 2027–2035 com H1/H2/H3) e
+   o usuário admin.
 2. Acesse a URL → login com `ADMIN_EMAIL` / `ADMIN_SENHA`.
 3. **Troque a senha** (botão no menu lateral).
 4. Em **Cadastros → Negócios**, clique **Sincronizar Comercial Global** para
@@ -311,8 +312,9 @@ notificar[diario]: 3 enviado(s), 0 falha(s), 0 já enviado(s) hoje, 12 sem pend�
 
 **Depois volte o agendamento para `0 11 * * *`.**
 
-Se aparecer `SMTP não configurado`, alguma das duas obrigatórias
-(`SMTP_HOST`, `SMTP_REMETENTE`) não chegou até aqui.
+Se aparecer `envio não configurado`, alguma das obrigatórias não chegou até
+aqui: `EMAIL_API_CHAVE` e `SMTP_REMETENTE` (o caminho de produção, pela API),
+ou `SMTP_HOST` e `SMTP_REMETENTE` (SMTP direto).
 
 ---
 
@@ -476,8 +478,8 @@ ver" no fim — se o que aparecer for diferente, pare ali e vá para *Se der err
 ### Passo 0 — De qual branch o Railway faz deploy?
 
 Isso decide se você precisa fazer alguma coisa antes de tudo. O backup só
-funciona se a imagem publicada tiver o cliente do MySQL instalado, e ele entrou
-no `Dockerfile` na branch de trabalho — **não está na `main`**.
+funciona se a imagem publicada tiver o cliente do MySQL instalado — ele está no
+`Dockerfile` da `main` desde 2026-09-02.
 
 1. Abra o projeto no [railway.app](https://railway.app).
 2. Clique no serviço **web** (o do sistema, não o do banco).
@@ -488,8 +490,8 @@ no `Dockerfile` na branch de trabalho — **não está na `main`**.
 
 | O que aparece | O que fazer |
 |---|---|
-| `claude/git-repo-overview-d17774` | Nada. Cada envio de código já virou deploy; a imagem já tem o cliente do MySQL. Siga para o passo 1. |
-| `main` | O sistema publicado está **muito atrás** do código atual (a `main` não tem sequer o arquivo de backup). Antes de continuar, é preciso juntar a branch de trabalho na `main` — peça isso, é uma operação de código, não de configuração. |
+| `main` | Nada. Cada pull request mesclado já virou deploy; a imagem tem o cliente do MySQL. Siga para o passo 1. |
+| outra branch | O serviço está apontando para uma branch de trabalho, que pode estar atrás ou à frente da produção. Troque para `main` em *Settings → Source* e mande **Deploy**. |
 
 ---
 

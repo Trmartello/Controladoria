@@ -1076,7 +1076,7 @@ input[type=range].faixa-verde:focus-visible {
 .palavra-x {
   border: 0;
   background: none;
-  color: #9aa7a0;
+  color: #6b7a72; /* 4,6:1 sobre o fundo da caixa; o tom anterior dava 2,3:1 */
   font-size: 1rem;
   line-height: 1;
   padding: 0 .1rem;
@@ -1108,11 +1108,13 @@ input[type=range].faixa-verde:focus-visible {
   position: relative;
 }
 .btn-ver-palavras:hover { color: var(--verde-escuro); }
-/* Alvo de toque confortável no celular sem engordar a linha do rodapé */
-.btn-ver-palavras::after {
-  content: '';
-  position: absolute;
-  inset: -.6rem -.4rem;
+/* Alvo de toque por DIMENSÃO REAL (regra do projeto): o ::after invisível
+   avançava sobre o título e o ★ do rodapé, e o toque na fronteira ia para o
+   botão errado. No celular o botão cresce de verdade. */
+@media (max-width: 767.98px) {
+  .btn-ver-palavras { min-height: 2.25rem; display: inline-flex; align-items: center; }
+  .cp-opcao { min-height: 2.25rem; }
+  #secao-sala .btn-sm { min-height: 2.25rem; }
 }
 .grupo-caixa.adiada .btn-ver-palavras { color: #5d6b7a; }
 .grupo-palavras { margin-top: .4rem; }

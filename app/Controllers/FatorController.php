@@ -350,14 +350,9 @@ class FatorController
         // "Desmarcar" em ColetaController::reabrir): deixá-la ACEITO sem
         // destino nenhum a prendia num beco sem saída. A voz do QUIZ é
         // apagada de vez: excluir o fator é descartá-la, não devolvê-la ao
-        // painel como sugestão nova (`Quiz::excluirVozes`).
-        Quiz::excluirVozes('FATOR', array_column(Database::todos(
-            'SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?', [$id, $id]
-        ), 'id'));
-        // Excluir o fator de origem leva junto o que foi promovido dele para a
-        // SWOT e, com ele, a avaliação na Matriz GUT (FK gut ON DELETE CASCADE)
-        Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$id]);
-        Database::executar('DELETE FROM fator WHERE id = ?', [$id]);
+        // painel como sugestão nova. `Fatores::apagar` trata também as vozes
+        // dos CRUZAMENTOS que caem por CASCADE com o fator.
+        Fatores::apagar([$id], $planId);
         Json::ok();
     }
 
