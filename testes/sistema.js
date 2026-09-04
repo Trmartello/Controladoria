@@ -3534,9 +3534,20 @@ async function provasQuestionarioTempestade(browser) {
     t(`${l} o filtro deixa na nuvem só as ideias da pergunta escolhida`, await esperar(admin,
       "document.querySelectorAll('#secao-coleta .nuvem:not(#nuvem-depois) .ficha-nuvem, "
       + "#secao-coleta .nuvem:not(#nuvem-depois) .grupo-caixa').length === 1", 15000));
+
+    // Tocar na ficha abre a bancada com a PERGUNTA antes da ideia — e a matriz
+    // não repete o texto em foco num card "Classificando" (pedido de 2026-09-04)
+    await admin.click('#secao-coleta .nuvem:not(#nuvem-depois) .ficha-nuvem');
+    t(`${l} a bancada abre pela pergunta que a ideia respondeu`, await esperar(admin,
+      "/Onde perdemos dinheiro/.test(document.querySelector('#secao-coleta .bancada-pergunta')?.textContent || '')"
+      + " && /Perda de estoque/.test(document.querySelector('#texto-bancada')?.value || '')", 10000));
+    t(`${l} e a matriz não repete a ideia em foco`, await admin.evaluate(() =>
+      !document.querySelector('#secao-coleta .cartao-foco')
+      && !/Classificando/.test(document.querySelector('#secao-coleta .painel-prio')?.textContent || '')));
   } finally {
     await admin.evaluate(async (id) => {
       SecaoColeta.filtroPergunta = null;
+      SecaoColeta.selecionado = null;
       if (!id) return;
       const plan = await App.planejamento();
       await App.api(`/api/rodadas/${id}/encerrar`, { planejamento_id: plan.id }).catch(() => {});
