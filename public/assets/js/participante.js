@@ -93,7 +93,11 @@ const Participante = {
     try {
       let id = localStorage.getItem('tempestade:dispositivo');
       if (!id) {
-        id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        // É credencial de reentrada (o servidor devolve a identidade por ele):
+        // sai do gerador criptográfico, não do Math.random previsível.
+        id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID().replace(/-/g, '')
+          : Math.random().toString(36).slice(2) + Date.now().toString(36);
         localStorage.setItem('tempestade:dispositivo', id);
       }
       return id;
@@ -285,7 +289,8 @@ const Participante = {
   /** Só redesenha quando algo mudou de verdade. */
   assinatura() {
     return JSON.stringify([
-      this.rodada?.situacao, this.rodada?.tema, this.votacao?.votacao,
+      this.rodada?.situacao, this.rodada?.tema, this.rodada?.modo,
+      this.rodada?.max_ideias, this.rodada?.max_votos, this.votacao?.votacao,
       // O questionário: pergunta a mais no fim, prazo trocado
       (this.rodada?.perguntas || []).map((q) => [q.id, q.enunciado]), this.rodada?.prazo,
       // A pergunta ativa do quiz: quando a condução avança (ou reabre), o
@@ -305,8 +310,15 @@ const Participante = {
   },
 
   async atualizar(silencioso = false) {
+    // Geração: cada chamada invalida a anterior. Sem isto, a resposta LENTA
+    // do polling (um retrato de antes do envio) chegava depois da rápida do
+    // clique e a sobrescrevia — a ideia recém-enviada sumia da tela por 4 s
+    // e a ★ marcada piscava de volta a apagada, convidando ao toque duplo.
+    const g = ++this.geracao;
     try {
-      this.rodada = await this.api(`/api/publico/rodada/${this.pin}`);
+      const rodada = await this.api(`/api/publico/rodada/${this.pin}`);
+      if (g !== this.geracao) return;
+      this.rodada = rodada;
       if (this.rodada.situacao !== 'ABERTA') {
         this.minhas = [];
         this.votacao = null;
@@ -314,19 +326,26 @@ const Participante = {
         this.render();
         return;
       }
-      this.minhas = await this.api(`/api/publico/minhas?pin=${this.pin}`);
+      const minhas = await this.api(`/api/publico/minhas?pin=${this.pin}`);
+      if (g !== this.geracao) return;
+      this.minhas = minhas;
       // Dois ritos, duas rotas: a votação é da tempestade (teto por rodada) e a
       // estrela é do quiz (teto por pergunta, e só com o 🎤 fechado)
       if (this.rodada.modo === 'QUIZ') {
-        this.votacao = null;
-        this.estrelas = this.rodada.pergunta
+        const estrelas = this.rodada.pergunta
           ? null
           : await this.api(`/api/publico/estrelas?pin=${this.pin}`);
+        if (g !== this.geracao) return;
+        this.votacao = null;
+        this.estrelas = estrelas;
       } else {
+        const votacao = await this.api(`/api/publico/votar?pin=${this.pin}`);
+        if (g !== this.geracao) return;
         this.estrelas = null;
-        this.votacao = await this.api(`/api/publico/votar?pin=${this.pin}`);
+        this.votacao = votacao;
       }
     } catch (e) {
+      if (g !== this.geracao) return;
       // Identidade recusada (rodada encerrada e reaberta, base restaurada): o
       // token guardado nunca mais vai valer, e mantê-lo deixaria a tela presa
       // no erro. Qualquer outra falha é rede — e rede cai o tempo todo em
@@ -437,6 +456,11 @@ const Participante = {
    */
   perguntaAtual: null,
   avisoQuestionario: '',
+  // Rascunhos por pergunta (id → texto) e a pergunta a que o campo pertence
+  rascunhos: {},
+  perguntaDoCampo: null,
+  // Geração do `atualizar`: invalida a resposta que chega atrasada
+  geracao: 0,
 
   chavePergunta() {
     return `tempestade:${this.pin}:pergunta`;
@@ -485,7 +509,14 @@ const Participante = {
     const paraVotar = (this.votacao?.itens || []).length;
     const votando = this.votacao?.votacao === 'ABERTA' && paraVotar > 0;
     const respondidas = perguntas.filter((q) => this.minhasDaPergunta(q.id).length > 0).length;
-    const rascunho = document.getElementById('campo-ideia')?.value ?? '';
+    // O rascunho é POR PERGUNTA: o que está no campo pertence à pergunta que
+    // estava na tela (`perguntaDoCampo`), e só volta ao campo dela. Sem isto,
+    // tocar na ficha 3 levava junto o texto digitado na 1 — e um Enviar
+    // gravava a resposta de uma pergunta na outra.
+    const noCampo = document.getElementById('campo-ideia')?.value ?? '';
+    if (this.perguntaDoCampo !== null) this.rascunhos[this.perguntaDoCampo] = noCampo;
+    const rascunho = p ? (this.rascunhos[p.id] ?? '') : '';
+    this.perguntaDoCampo = p ? p.id : null;
     const aviso = this.avisoQuestionario;
     this.avisoQuestionario = '';
 
@@ -547,8 +578,9 @@ const Participante = {
           ${r.prazo ? `<span class="small text-muted text-nowrap">até ${this.dataHora(r.prazo)}</span>` : ''}
         </div>
         ${!encerrada && !votando ? `
-          <div class="progresso-questionario mt-2" aria-label="${respondidas} de ${n} perguntas respondidas">
-            <div class="barra"><div style="width:${Math.round((respondidas / n) * 100)}%"></div></div>
+          <div class="progresso-questionario mt-2">
+            <div class="barra" role="progressbar" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${respondidas}"
+              aria-label="${respondidas} de ${n} perguntas respondidas"><div style="width:${Math.round((respondidas / n) * 100)}%"></div></div>
             <div class="chips-perguntas mt-2">${fichas}</div>
           </div>` : ''}
         ${corpo}
@@ -1112,6 +1144,11 @@ const Participante = {
         await this.api('/api/publico/ideia', { pin: this.pin, token: this.token, texto,
           ...(perguntaId ? { pergunta_id: perguntaId } : {}) });
         campo.value = '';
+        if (perguntaId) delete this.rascunhos[perguntaId];
+        // O foco sai do campo antes do redesenho: no iOS o toque no botão não
+        // tira o foco do textarea, e `digitando()` impedia a repintura — a
+        // lista "Suas ideias" só mudava quando o teclado fechava.
+        campo.blur();
         // A confirmação vai depois do redesenho, senão ele a apaga na hora
         await this.atualizar(true);
         if (perguntaId && maxIdeias && this.minhasDaPergunta(perguntaId).length >= maxIdeias) {
@@ -1294,8 +1331,8 @@ const Participante = {
   fichaVotavel(i) {
     return `
       <button type="button" class="ideia-votavel ${Number(i.votei) ? 'votada' : ''}"
-        data-votar="${i.id}">
-        <span class="voto-marca">${Number(i.votei) ? '★' : '☆'}</span>
+        data-votar="${i.id}" aria-pressed="${Number(i.votei) ? 'true' : 'false'}">
+        <span class="voto-marca" aria-hidden="true">${Number(i.votei) ? '★' : '☆'}</span>
         <span>${this.esc(i.texto)}${Number(i.minha)
           ? '<span class="selo-minha">sua</span>' : ''}</span>
       </button>`;
@@ -1321,13 +1358,19 @@ const Participante = {
   ligarVotacao() {
     const aviso = document.getElementById('aviso-voto');
     this.tela.querySelectorAll('[data-votar]').forEach((b) => b.addEventListener('click', async () => {
+      // Trava do toque duplo, como em `ligarEstrelas`: o servidor ALTERNA o
+      // voto, e dois toques seguidos davam e tiravam a estrela.
+      b.disabled = true;
       try {
         await this.api(`/api/publico/votar/${b.dataset.votar}`, { pin: this.pin, token: this.token });
-        aviso.textContent = '';
+        if (aviso) aviso.textContent = '';
         await this.atualizar(true);
       } catch (e) {
-        aviso.className = 'small mt-2 text-danger';
-        aviso.textContent = e.message;
+        b.disabled = false;
+        if (aviso) {
+          aviso.className = 'small mt-2 text-danger';
+          aviso.textContent = e.message;
+        }
       }
     }));
   },

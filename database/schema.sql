@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS cenario_item (
   acao_em          DATETIME NULL,
   acao_por         INT NULL,
   desdobramento_id INT NULL,
-  CONSTRAINT fk_cenario_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE
+  CONSTRAINT fk_cenario_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
+  INDEX idx_cenario_plan_ano (planejamento_id, ano, tipo)
   -- As FKs de `acao_por` e `desdobramento_id` moram no migrate (`garantirFk`),
   -- como as do fator: aqui a segunda quebraria a instalação NOVA, porque
   -- `desdobramento` só é criada mais abaixo neste mesmo arquivo.
@@ -125,7 +126,9 @@ CREATE TABLE IF NOT EXISTS fator (
   desdobramento_id INT NULL,
   criado_em        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_fator_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
-  CONSTRAINT fk_fator_origem FOREIGN KEY (promovido_de_id) REFERENCES fator(id)
+  CONSTRAINT fk_fator_origem FOREIGN KEY (promovido_de_id) REFERENCES fator(id),
+  -- Toda tela de análise filtra por (planejamento, ano, etapa); só a FK não basta
+  INDEX idx_fator_plan_ano (planejamento_id, ano, etapa)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS gut (

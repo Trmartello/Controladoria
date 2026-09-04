@@ -195,11 +195,9 @@ class RodadaController
         $planId = (int)($d['planejamento_id'] ?? 0);
         Auth::exigirEdicaoPlanejamento($planId);
         $this->exigirRodada($id, $planId);
-        Database::executar(
-            "UPDATE coleta_rodada SET situacao = 'ENCERRADA', votacao = 'FECHADA', encerrada_em = NOW()
-             WHERE id = ? AND situacao = 'ABERTA'",
-            [$id]
-        );
+        // O mesmo caminho do quiz: as perguntas ATIVA (o questionário) fecham
+        // com a rodada, em vez de ficarem órfãs numa rodada encerrada.
+        Quiz::encerrarSala($id);
         Json::ok();
     }
 

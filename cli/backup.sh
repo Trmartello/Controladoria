@@ -358,6 +358,10 @@ remoto() {
 }
 
 faxina() {
+    # Um `.parcial` com mais de duas horas é resto de um dump morto no meio
+    # (kill -9 não passa pelo trap): ficava no volume para sempre.
+    find "$BACKUP_DIR" -maxdepth 1 -type f -name "$PREFIXO-*.parcial" -mmin +120 -delete 2>/dev/null
+
     case "$MANTER" in ''|*[!0-9]*) return 0 ;; esac
     [ "$MANTER" -gt 0 ] || return 0
 

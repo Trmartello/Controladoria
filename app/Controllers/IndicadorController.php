@@ -190,6 +190,11 @@ class IndicadorController
                 );
                 continue;
             }
+            // Texto que não é número era gravado como 0,00 em silêncio — uma
+            // meta "zero" com aparência de decisão.
+            if (!is_numeric($valor)) {
+                Json::erro("Valor inválido para {$ano}: informe um número.");
+            }
             Database::executar(
                 'INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
                  VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)',

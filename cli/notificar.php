@@ -223,7 +223,8 @@ function faxina(): void
 faxina();
 
 if (!Email::configurado()) {
-    fwrite(STDERR, "notificar: SMTP não configurado (defina SMTP_HOST e SMTP_REMETENTE). Nada enviado.\n");
+    fwrite(STDERR, "notificar: envio não configurado (defina EMAIL_API_CHAVE e SMTP_REMETENTE, "
+        . "ou SMTP_HOST e SMTP_REMETENTE). Nada enviado.\n");
     exit(1);
 }
 

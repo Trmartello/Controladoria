@@ -13,6 +13,9 @@ for ($tentativa = 1; $tentativa <= 30; $tentativa++) {
         $pdo = new PDO($dsn, $db['user'], $db['pass'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_TIMEOUT => 5,
+            // O mesmo fuso da aplicação (Database.php): um passo que grave
+            // NOW() numa coluna DATETIME não pode cair três horas à frente
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone = '" . date('P') . "'",
         ]);
         break;
     } catch (PDOException $e) {
@@ -268,7 +271,9 @@ garantirColuna($pdo, 'coleta_rodada', 'modo',
     "ALTER TABLE coleta_rodada ADD COLUMN modo ENUM('TEMPESTADE','QUIZ')
      NOT NULL DEFAULT 'TEMPESTADE' AFTER max_votos");
 garantirColuna($pdo, 'coleta_item', 'pergunta_id',
-    'ALTER TABLE coleta_item ADD COLUMN pergunta_id INT NULL AFTER rodada_id');
+    // Sem AFTER: `rodada_id` só é garantida mais abaixo (bloco da tempestade),
+    // e numa base anterior a ela o ALTER morria com "Unknown column"
+    'ALTER TABLE coleta_item ADD COLUMN pergunta_id INT NULL');
 garantirColuna($pdo, 'coleta_item', 'tipo_resposta',
     "ALTER TABLE coleta_item ADD COLUMN tipo_resposta ENUM('ESCOLHA','RENUNCIA') NULL
      AFTER pergunta_id");
@@ -279,7 +284,7 @@ garantirColuna($pdo, 'coleta_item', 'tipo_resposta',
 // exige — quem uniu, quando, e de que grupo a ficha veio (é o que permite
 // DESFAZER exatamente, devolvendo cada uma ao líder de antes).
 garantirColuna($pdo, 'coleta_item', 'unido_de_id',
-    'ALTER TABLE coleta_item ADD COLUMN unido_de_id INT NULL AFTER agrupado_em_id');
+    'ALTER TABLE coleta_item ADD COLUMN unido_de_id INT NULL');
 garantirColuna($pdo, 'coleta_item', 'unido_por',
     'ALTER TABLE coleta_item ADD COLUMN unido_por INT NULL AFTER unido_de_id');
 garantirColuna($pdo, 'coleta_item', 'unido_em',
@@ -424,7 +429,7 @@ if ((int)$temEixoChave > 0) {
 // nulo e a sugestão vazaria para a fila de triagem da Coleta.
 garantirColuna($pdo, 'coleta_item', 'origem',
     "ALTER TABLE coleta_item ADD COLUMN origem ENUM('TEMPESTADE','QUIZ')
-     NOT NULL DEFAULT 'TEMPESTADE' AFTER rodada_id");
+     NOT NULL DEFAULT 'TEMPESTADE'");
 // Backfill idempotente: item com lado declarado é, por definição, do quiz.
 $pdo->exec("UPDATE coleta_item SET origem = 'QUIZ'
             WHERE tipo_resposta IS NOT NULL AND origem = 'TEMPESTADE'");
@@ -886,6 +891,10 @@ if ($temDiario && !App\Services\CargaConteudo::jaAplicada($pdo, 'migracao_diario
     // do deploy e a ordem do histórico se perderia.
     // Status e progresso viravam texto: eram a informação do registro, e sem
     // eles o comentário migrado diria menos do que dizia o diário.
+    // Cópia e marca na MESMA transação: o processo morrendo entre as duas
+    // (o Railway matando o contêiner por tempo) duplicava o histórico inteiro
+    // no deploy seguinte. Os dois são DML, cabem numa transação.
+    $pdo->beginTransaction();
     $migrados = $pdo->exec(
         "INSERT INTO comentario (ref_tipo, ref_id, autor_id, texto, criado_em)
          SELECT db.ref_tipo, db.ref_id, db.autor_id,
@@ -902,8 +911,18 @@ if ($temDiario && !App\Services\CargaConteudo::jaAplicada($pdo, 'migracao_diario
         'migracao_diario_comentario',
         "{$migrados} registro(s) do diário de bordo migrados para comentários"
     );
+    $pdo->commit();
     echo "migrate: {$migrados} registro(s) do diário migrados para comentários.\n";
 }
+
+// ---------------------------------------------------------------------------
+// Índices das consultas quentes do diagnóstico: toda tela de análise filtra
+// por (planejamento, ano, etapa/tipo) e só havia o índice da FK — varredura
+// completa a cada pintura, invisível com 78 linhas e cara com dez negócios.
+garantirIndice($pdo, 'fator', 'idx_fator_plan_ano',
+    'CREATE INDEX idx_fator_plan_ano ON fator (planejamento_id, ano, etapa)');
+garantirIndice($pdo, 'cenario_item', 'idx_cenario_plan_ano',
+    'CREATE INDEX idx_cenario_plan_ano ON cenario_item (planejamento_id, ano, tipo)');
 
 // ---------------------------------------------------------------------------
 // Excluir usuário: as colunas que apontam para uma PESSOA passam a aceitar nulo

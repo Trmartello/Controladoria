@@ -198,15 +198,9 @@ class ColetaController
                 // apaga o mesmo fator e deixaria a ação no plano sem origem
                 Fatores::exigirSemAcao([$destinoId], 'Esta ideia já virou uma ação no plano. '
                     . 'Exclua a ação em Projetos antes de excluir a ideia.');
-                // Fatores promovidos apontam para o de origem (sem ON DELETE):
-                // saem antes. GUT e vínculo com a cascata caem por CASCADE.
-                Quiz::excluirVozes('FATOR', array_column(Database::todos(
-                    'SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?', [$destinoId, $destinoId]
-                ), 'id'));
-                Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$destinoId]);
-                Database::executar(
-                    'DELETE FROM fator WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]
-                );
+                // O fator, os promovidos dele e as vozes (do fator e dos
+                // cruzamentos que caem junto) saem por `Fatores::apagar`.
+                Fatores::apagar([$destinoId], $planId);
             }
         }
 
@@ -524,13 +518,16 @@ class ColetaController
         $criados = [];
         foreach ($partes as $texto) {
             $criados[] = (int)Database::executar(
+                // A parte herda a PERGUNTA do questionário: sem isso ela caía
+                // no bloco "sem pergunta" da fila e perdia a etiqueta P3.
                 'INSERT INTO coleta_item (planejamento_id, rodada_id, ano, autor_id, autor_nome,
-                   dividido_de_id, texto, destino_sugerido)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                   dividido_de_id, texto, destino_sugerido, pergunta_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
                     $planId, $item['rodada_id'] !== null ? (int)$item['rodada_id'] : null,
                     (int)$item['ano'], $item['autor_id'] !== null ? (int)$item['autor_id'] : null,
                     $item['autor_nome'], $id, $texto, $item['destino_sugerido'],
+                    ($item['pergunta_id'] ?? null) !== null ? (int)$item['pergunta_id'] : null,
                 ]
             );
         }
@@ -668,13 +665,9 @@ class ColetaController
                 // no plano sem origem — a mesma recusa dos outros dois caminhos
                 Fatores::exigirSemAcao([$destinoId], 'Esta ideia já virou uma ação no plano. '
                     . 'Exclua a ação em Projetos antes de desmarcar o destino.');
-                // Fatores promovidos apontam para o de origem (sem cascade): saem antes.
-                // O restante (GUT, vínculo com cascata) cai por ON DELETE CASCADE.
-                Quiz::soltarVozes('FATOR', array_column(Database::todos(
-                    'SELECT id FROM fator WHERE id = ? OR promovido_de_id = ?', [$destinoId, $destinoId]
-                ), 'id'));
-                Database::executar('DELETE FROM fator WHERE promovido_de_id = ?', [$destinoId]);
-                Database::executar('DELETE FROM fator WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
+                // As vozes do fator VOLTAM ao painel (é o "Desmarcar"); as dos
+                // cruzamentos que caem junto saem de vez. `Fatores::apagar`.
+                Fatores::apagar([$destinoId], $planId, true);
             }
         } else {
             Json::erro('Esta ideia não está numa análise para reclassificar.');

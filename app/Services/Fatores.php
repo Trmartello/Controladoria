@@ -58,6 +58,54 @@ class Fatores
     }
 
     /**
+     * Apaga fatores — e os promovidos a partir deles — tratando ANTES as vozes
+     * da sala que apontam para o que vai cair.
+     *
+     * O que cai junto e ninguém via: a FK dos cruzamentos da SWOT é `ON DELETE
+     * CASCADE`, então apagar uma Força leva os cruzamentos dela — mas as vozes
+     * do quiz amarradas a esses cruzamentos (`destino_tipo = 'CRUZAMENTO'`,
+     * polimórfico, sem FK) ficavam `ACEITO` apontando para um id morto: o
+     * painel as mostrava "usadas", o autor não conseguia editá-las e nenhuma
+     * tela as soltava. Os três caminhos que apagam fator (a tela da análise, a
+     * exclusão da ideia da Coleta e o "Desmarcar" da triagem) passam por aqui.
+     *
+     * `$soltar` distingue os dois destinos das vozes do FATOR: excluir de vez
+     * (`excluirVozes`) ou devolvê-las ao painel (`soltarVozes`, o "Desmarcar").
+     * As vozes de CRUZAMENTO saem de vez nos dois casos — o cruzamento morre.
+     *
+     * @param int[] $fatorIds  os fatores pedidos (os promovidos são achados aqui)
+     */
+    public static function apagar(array $fatorIds, int $planId, bool $soltar = false): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $fatorIds)));
+        if (!$ids) {
+            return;
+        }
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        $todos = array_map('intval', array_column(Database::todos(
+            "SELECT id FROM fator WHERE id IN ({$marcas}) OR promovido_de_id IN ({$marcas})",
+            array_merge($ids, $ids)
+        ), 'id'));
+        if ($todos) {
+            $marcasTodos = implode(',', array_fill(0, count($todos), '?'));
+            $cruzamentos = array_map('intval', array_column(Database::todos(
+                "SELECT id FROM swot_cruzamento
+                  WHERE fator_interno_id IN ({$marcasTodos}) OR fator_externo_id IN ({$marcasTodos})",
+                array_merge($todos, $todos)
+            ), 'id'));
+            Quiz::excluirVozes('CRUZAMENTO', $cruzamentos);
+            $soltar ? Quiz::soltarVozes('FATOR', $todos) : Quiz::excluirVozes('FATOR', $todos);
+        }
+        // Promovidos apontam para o de origem sem ON DELETE: saem antes. GUT,
+        // vínculo com a cascata e os cruzamentos caem por CASCADE.
+        Database::executar("DELETE FROM fator WHERE promovido_de_id IN ({$marcas})", $ids);
+        Database::executar(
+            "DELETE FROM fator WHERE id IN ({$marcas}) AND planejamento_id = ?",
+            array_merge($ids, [$planId])
+        );
+    }
+
+    /**
      * Quais dos fatores pedidos estão presos por uma ação, e por qual delas.
      *
      * É a MESMA pergunta de `exigirSemAcao`, e por isso a consulta é uma só. A

@@ -2206,10 +2206,22 @@ mínima. A checagem passou a rodar nas duas larguras.
   remotas devolve vazio e parece "nada pendente".
 - Mensagens de commit em português, primeira linha descritiva.
 - Ao concluir trabalho grande: rodar o time de agentes de revisão
-  (segurança, corretude, infra, frontend) e aplicar os achados confirmados;
-  manter a responsividade mobile; rodar `./testes/rodar.sh` antes de commitar.
-  Defeito corrigido vira **prova na bateria**, no mesmo commit: é o que impede
-  que ele volte na refatoração seguinte sem ninguém notar.
+  (segurança, corretude, infra, frontend, testes) e aplicar os achados
+  confirmados; manter a responsividade mobile; rodar `./testes/rodar.sh`
+  antes de commitar. Defeito corrigido vira **prova na bateria**, no mesmo
+  commit: é o que impede que ele volte na refatoração seguinte sem ninguém
+  notar. A última rodada é `docs/REVISAO-2026-09-04.md` — o que foi
+  corrigido, o que espera decisão do cliente (seeds ilustrativos, força bruta
+  no login, PIN de questionário longo, política das FKs de `acao_por`) e o
+  que ficou como pendência técnica. Regras que nasceram dela e não devem
+  regredir: `Database.php` carrega `Versao.php` (as CLIs escrevem sem
+  autoloader); `Database::afetadas` também marca o pulso; todo caminho que
+  apaga fator passa por `Fatores::apagar` (vozes dos cruzamentos que caem
+  por CASCADE); a contenção de PIN roda ANTES de resolver o PIN nas rotas
+  sem token (`PublicoController::exigirOrigemComFolga`); `SessaoBanco`
+  implementa `validateId`; o 🎤 não assume tempestade com questionário
+  (`QUESTIONARIO_ABERTO`); na funcional, guarda `if [ -n "$X" ]` só depois de
+  um `afirma` que FALHE com `$X` vazio, e pular seção é falha, não ✓.
 - Acessibilidade que já custou defeito: as seções **não são destruídas** ao
   navegar (só ganham `d-none`), então id repetido entre telas coexiste no
   documento e o `for` do label casa sempre com o primeiro — ids de tela levam
@@ -2255,8 +2267,9 @@ mínima. A checagem passou a rodar nas duas larguras.
 ## Limites do ambiente de sessão
 
 - O proxy da sessão **bloqueia `*.up.railway.app`** (`CONNECT tunnel failed,
-  403`). Não é possível abrir o sistema em produção daqui, nem bater no
-  `/healthz`, nem conferir um deploy pela URL. A verificação de deploy é feita
+  403`). Não é possível abrir o sistema em produção daqui nem conferir um
+  deploy pela URL (não há rota de saúde própria; o Railway olha a porta). A
+  verificação de deploy é feita
   pelo cliente — print das abas *Deployments*, *Deploy Logs* e *Cron Runs* — e
   a leitura desses prints é o trabalho. **Não afirme que "está no ar" sem uma
   dessas evidências**; o que dá para provar daqui é o estado do Git

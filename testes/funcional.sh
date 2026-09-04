@@ -93,6 +93,11 @@ echo "### 2. Cenário"
 R=$(post /api/cenario '{"planejamento_id":1,"tipo":"TENDENCIA","descricao":"Item de teste","ano":2026}')
 afirma "cria item de cenário" '"ok":true' "$R"
 CEN=$(echo "$R" | id_de)
+# Na edição o ano sai da LINHA, como no fator: um corpo com outro ano movia o
+# item de exercício e o descolava da ideia da Coleta que o gerou
+post /api/cenario/$CEN '{"planejamento_id":1,"tipo":"TENDENCIA","descricao":"Item de teste editado","ano":2031}' >/dev/null
+R=$(get "/api/cenario?planejamento_id=1&ano=2026" | campo_de $CEN ano)
+afirma "editar o item não muda o ano dele" '^2026$' "$R"
 
 echo "### 3. Projetos — três níveis + recorrência"
 R=$(post /api/projetos '{"planejamento_id":1,"titulo":"Projeto de teste","ano":2027,"responsavel":"QA","descricao":"x"}')
@@ -188,9 +193,18 @@ afirma "cria investimento PROPOSTO" '"ok":true' "$R"
 INV=$(echo "$R" | id_de)
 R=$(post /api/investimentos/$INV/decidir '{"planejamento_id":1,"situacao":"APROVADO","decisao_criterio":"teste","decisao_data":"2026-08-08"}')
 afirma "aprova investimento" '"ok":true' "$R"
-post /api/investimentos/$INV "{\"planejamento_id\":1,\"descricao\":\"x\",\"valor\":1000,\"ano\":2027,\"situacao\":\"PROPOSTO\"}" >/dev/null
+# Transição fora da tabela é RECUSADA, com código próprio: antes era ignorada
+# em silêncio e a tela mostrava "salvo" com a situação intocada.
+R=$(post /api/investimentos/$INV "{\"planejamento_id\":1,\"descricao\":\"x\",\"valor\":1000,\"ano\":2027,\"situacao\":\"PROPOSTO\"}")
+afirma "RECUSA voltar de APROVADO para PROPOSTO, dizendo por quê" 'não pode passar a PROPOSTO' "$R"
+afirma "e com o código da transição inválida" '"codigo":"TRANSICAO_INVALIDA"' "$R"
 R=$(get "/api/investimentos?planejamento_id=1")
-afirma "IGNORA voltar de APROVADO para PROPOSTO (segue APROVADO)" '"situacao":"APROVADO"' "$R"
+afirma "o investimento segue APROVADO" '"situacao":"APROVADO"' "$R"
+R=$(post /api/investimentos "{\"planejamento_id\":1,\"descricao\":\"Data impossível\",\"valor\":10,\"ano\":2027}")
+INV2=$(echo "$R" | id_de)
+R=$(post /api/investimentos/$INV2/decidir '{"planejamento_id":1,"situacao":"APROVADO","decisao_criterio":"teste","decisao_data":"2026-13-40"}')
+afirma "data de decisão impossível é recusada (não vira 500 no banco)" 'Data da decisão inválida' "$R"
+[ -n "$INV2" ] && post /api/investimentos/$INV2/excluir '{"planejamento_id":1}' >/dev/null
 
 echo "### 5. Metas e indicadores — versão de meta"
 R=$(post /api/indicadores '{"planejamento_id":1,"nome":"Indicador de teste","unidade":"R$ mil","metrica_ancora":0}')
@@ -202,6 +216,8 @@ R=$(post /api/indicadores/$IND/valores "{\"planejamento_id\":1,\"tipo\":\"META\"
 afirma "regrava meta (nova versão)" '"ok":true' "$R"
 R=$(get "/api/indicadores?planejamento_id=1")
 afirma "leitura usa a MAIOR versão (200, não 100)" '200' "$R"
+R=$(post /api/indicadores/$IND/valores "{\"planejamento_id\":1,\"tipo\":\"META\",\"valores\":{\"2026\":\"abc\"}}")
+afirma "texto que não é número é recusado (antes virava meta 0,00)" 'informe um número' "$R"
 
 echo "### 6. Coleta — ideia, triagem, encaminhamento"
 R=$(post /api/coleta '{"planejamento_id":1,"texto":"Ideia de teste automatizado","ano":2026}')
@@ -223,19 +239,32 @@ afirma "registra reunião" '"ok":true' "$R"
 REU=$(echo "$R" | id_de)
 
 echo "### 8. Tempestade — rodada, PIN e as regras públicas"
+# Uma sala aberta de antes (a bateria de sistema interrompida, uma oficina de
+# prova) fazia o POST responder 409/SALA_ABERTA — e a prova aceitava o 409 como
+# verde, o PIN vinha vazio e as 13 provas seguintes SUMIAM em silêncio (247 ✓
+# em vez de 260, sem um ✗ sequer). Agora o 409 é provado de propósito quando
+# há sala, `confirmar_encerrar` a encerra, e sem PIN a seção FALHA em vez de
+# pular.
 R=$(post /api/rodadas '{"planejamento_id":1,"ano":2026,"tema":"O que trava o nosso crescimento?","max_ideias":3,"max_votos":2}')
-afirma "abre rodada" '"ok":true|SALA_ABERTA' "$R"
+if echo "$R" | grep -q SALA_ABERTA; then
+  afirma "com sala aberta de antes, abrir sem confirmar é recusado com o código próprio" '"codigo":"SALA_ABERTA"' "$R"
+  R=$(post /api/rodadas '{"planejamento_id":1,"ano":2026,"tema":"O que trava o nosso crescimento?","max_ideias":3,"max_votos":2,"confirmar_encerrar":true}')
+fi
+afirma "abre rodada" '"pin":"[0-9]{6}"' "$R"
 PIN=$(echo "$R" | python3 -c "import sys,json
 try: print(json.load(sys.stdin)['dados'].get('pin',''))
 except: print('')" 2>/dev/null)
+[ -n "$PIN" ] || falha "seção 8 sem PIN: as provas 8 e 8b não vão rodar" "pin" "$(echo "$R" | head -c 200)"
 if [ -n "$PIN" ]; then
   R=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' -d "{\"pin\":\"$PIN\",\"nome\":\"Participante QA\"}")
   afirma "participante entra com o PIN" '"token"' "$R"
   TOK=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['token'])" 2>/dev/null)
   R=$(curl -s -X POST $BASE/api/publico/entrar -H 'Content-Type: application/json' -d '{"pin":"000000","nome":"x"}')
   afirma "PIN errado é recusado" '"ok":false' "$R"
-  R=$(curl -s -X POST $BASE/api/publico/ideia -d "{\"token\":\"$TOK\",\"texto\":\"sem content-type\"}")
-  afirma "RECUSA escrita sem Content-Type JSON" '"ok":false|^$' "$R"
+  # O código HTTP vai junto: `"ok":false|^$` casava com resposta vazia — um
+  # servidor morto passava verde
+  R=$(curl -s -w ' HTTP%{http_code}' -X POST $BASE/api/publico/ideia -d "{\"token\":\"$TOK\",\"texto\":\"sem content-type\"}")
+  afirma "RECUSA escrita sem Content-Type JSON" 'HTTP4[0-9][0-9]$' "$R"
   for i in 1 2 3 4; do
     R=$(curl -s -X POST $BASE/api/publico/ideia -H 'Content-Type: application/json' -d "{\"token\":\"$TOK\",\"texto\":\"ideia $i do teste\"}")
   done
@@ -377,6 +406,33 @@ print(json.dumps({'n': len(r.get('perguntas', [])), 'ideias1': r['perguntas'][0]
   R=$(curl -s "$BASE/api/publico/votar?pin=$QP_PIN&token=$QP_TOK")
   afirma "o celular recebe as estrelas usadas em cada pergunta" "\"$QP_P2\":2" "$R"
   R=$(qp_voto $QP_I2); afirma "tocar de novo tira a estrela" '"votou":false' "$R"
+  # O agrupamento automático por texto igual é POR PERGUNTA: "Loja online" em
+  # "O que trava?" e em "Que oportunidade?" são duas ideias, não um grupo
+  curl -s -X POST $BASE/api/publico/ideia -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$QP_PIN\",\"token\":\"$QP_TOK2\",\"pergunta_id\":$QP_P1,\"texto\":\"Loja online\"}" >/dev/null
+  QP_L1=$(curl -s "$BASE/api/publico/minhas?pin=$QP_PIN&token=$QP_TOK2" | python3 -c "
+import sys, json
+print(next((i['id'] for i in json.load(sys.stdin)['dados'] if i['texto'] == 'Loja online' and i['pergunta_id'] == $QP_P1), ''))" 2>/dev/null)
+  R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $QP_L1 agrupado_em_id)
+  afirma "texto igual em OUTRA pergunta não vira grupo" '^null$' "$R"
+  curl -s -X POST $BASE/api/publico/ideia -H 'Content-Type: application/json' \
+    -d "{\"pin\":\"$QP_PIN\",\"token\":\"$QP_TOK\",\"pergunta_id\":$QP_P2,\"texto\":\"Loja online\"}" >/dev/null
+  QP_L2=$(curl -s "$BASE/api/publico/minhas?pin=$QP_PIN&token=$QP_TOK" | python3 -c "
+import sys, json
+print(next((i['id'] for i in json.load(sys.stdin)['dados'] if i['texto'] == 'Loja online'), ''))" 2>/dev/null)
+  R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $QP_L2 agrupado_em_id)
+  afirma "e na MESMA pergunta o texto igual entra no grupo" "^$QP_X1$" "$R"
+  # Dividir uma resposta: as partes herdam a pergunta (caíam no bloco "sem
+  # pergunta" da fila, sem a etiqueta P1)
+  R=$(post /api/coleta/$QP_I1A/dividir '{"planejamento_id":1,"partes":["Parte um da sucessao","Parte dois da sucessao"]}')
+  afirma "divide a resposta em duas" '"criados"' "$R"
+  QP_D1=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['criados'][0])" 2>/dev/null)
+  R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $QP_D1 pergunta_ordem)
+  afirma "a parte herda a pergunta da resposta original" '^1$' "$R"
+  # O 🎤 de uma análise NÃO assume uma tempestade com questionário em curso:
+  # as perguntas LIVRE ficariam ativas numa sessão de quiz. Recusa com código.
+  R=$(post /api/quiz/abrir '{"planejamento_id":1,"alvo_tipo":"CENARIO","ano":2026,"tema":"Tentativa de assumir","confirmar_encerrar":true}')
+  afirma "abrir o quiz com questionário em andamento é recusado" '"codigo":"QUESTIONARIO_ABERTO"' "$R"
   post /api/rodadas/$QP_ID/encerrar '{"planejamento_id":1}' >/dev/null
   # Sem questionário nada muda: as ★ esperam o condutor fechar a sala
   R=$(post /api/rodadas '{"planejamento_id":1,"ano":2026,"tema":"Tema único","max_ideias":2,"max_votos":2,"confirmar_encerrar":true}')
@@ -491,6 +547,14 @@ echo "### 9c. Excluir usuário — validação, transferência e o que fica sem 
 U_SAI=$(post /api/usuarios '{"nome":"Zeca da Prova","email":"zeca.prova@teste.local","senha":"trocar123","perfil":"CONTROLADORIA","negocios":[]}' | id_de)
 U_FICA=$(post /api/usuarios '{"nome":"Ana da Prova","email":"ana.prova@teste.local","senha":"trocar123","perfil":"CONTROLADORIA","negocios":[]}' | id_de)
 U_OFF=$(post /api/usuarios '{"nome":"Inativo da Prova","email":"off.prova@teste.local","senha":"trocar123","perfil":"CONTROLADORIA","ativo":false,"negocios":[]}' | id_de)
+# As MESMAS razões que impedem excluir valem para a edição: rebaixar ou
+# desativar a própria conta (ou o último admin ativo) deixava o sistema sem
+# quem gere usuários — e a sessão caía no gesto seguinte.
+EU=$(get /api/me | python3 -c "import sys,json;print(json.load(sys.stdin)['dados']['usuario']['id'])" 2>/dev/null)
+R=$(post /api/usuarios/$EU "{\"nome\":\"Admin QA\",\"email\":\"$EMAIL\",\"perfil\":\"LEITURA\",\"ativo\":1,\"negocios\":[]}")
+afirma "rebaixar a própria conta é recusado" 'própria conta' "$R"
+R=$(post /api/usuarios/$EU "{\"nome\":\"Admin QA\",\"email\":\"$EMAIL\",\"perfil\":\"ADMIN\",\"ativo\":0,\"negocios\":[]}")
+afirma "desativar a própria conta é recusado" 'própria conta' "$R"
 UPRJ=$(post /api/projetos '{"planejamento_id":1,"titulo":"Projeto da exclusão","ano":2027,"responsavel":"QA","descricao":"x"}' | id_de)
 UINI=$(post /api/iniciativas "{\"planejamento_id\":1,\"projeto_id\":$UPRJ,\"titulo\":\"Frente da exclusão\"}" | id_de)
 ACAO_BASE="\"planejamento_id\":1,\"projeto_id\":$UPRJ,\"iniciativa_id\":$UINI,\"como\":\"x\",\"prioridade\":\"MEDIA\",\"status\":\"NAO_INICIADO\",\"progresso\":0,\"recorrencia\":\"NENHUMA\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\""
@@ -633,8 +697,8 @@ f = json.load(sys.stdin)['dados']['fatores']
 print(f[0]['id'] if f else '')" 2>/dev/null)
 
 if [ -z "${IMP_F:-}" ] || [ -z "${IMP_N1:-}" ]; then
-  ok
-  echo "  (pulada: sem SWOT corporativa de 2026 ou sem negócio ativo)"
+  # Pular NÃO é passar: 15 provas viravam um ✓ e o total caía sem um ✗
+  falha "9e não rodou: sem SWOT corporativa de 2026 ou sem negócio ativo na instância" "massa da carga" "IMP_F=${IMP_F:-} IMP_N1=${IMP_N1:-}"
 else
   R=$(get "/api/impacto?ciclo_id=1&ano=2026")
   afirma "admin recebe a grade com o score da GUT" '"score"' "$R"
@@ -1082,9 +1146,28 @@ s = [x for x in d['dados']['sugestoes'] if x['id'] == $CZ_SUG]
 print('painel-ok', json.dumps(s[0]['vinculada'] if s else None))" 2>/dev/null)
   afirma "apagado o cruzamento, a voz é apagada junto" '^painel-ok null$' "$R"
 
-  # A voz sai antes dos fatores: apagar o fator só ANULA o lado do par (a FK é
-  # SET NULL, para não perder o que alguém escreveu na oficina), e a resposta
-  # ficaria para trás a cada rodada da bateria.
+  # O outro caminho que mata um cruzamento: apagar um FATOR do par (a FK é ON
+  # DELETE CASCADE). A voz amarrada ficava ACEITA sobre um id morto — "usada"
+  # para o condutor, congelada para o autor. `Fatores::apagar` trata isso.
+  CZ_O2=$(post /api/fatores '{"planejamento_id":1,"etapa":"SWOT","categoria":"OPORTUNIDADE","descricao":"Segunda oportunidade da sala","ano":2026}' | id_de)
+  R=$(cz_resp "\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_O2,")
+  afirma "um segundo par é aceito" '"ok":true' "$R"
+  CZ_SUG2=$(get "/api/quiz?planejamento_id=1&pergunta_id=$CZ_PERG" | python3 -c "
+import sys, json
+s = [x for x in json.load(sys.stdin)['dados']['sugestoes'] if not x.get('vinculada')]
+print(s[0]['id'] if s else '')" 2>/dev/null)
+  R=$(post /api/cruzamentos "{\"planejamento_id\":1,\"fator_interno_id\":$CZ_F,\"fator_externo_id\":$CZ_O2,\"rotulo\":\"Par que vai cair\",\"estrategia\":\"Estrategia do par\",\"sugestoes\":[$CZ_SUG2]}")
+  afirma "vira cruzamento com a voz amarrada" '"tipo":"ATACAR"' "$R"
+  R=$(post /api/fatores/$CZ_O2/excluir '{"planejamento_id":1}')
+  afirma "apagar um fator do par é aceito" '"ok":true' "$R"
+  R=$(get "/api/quiz?planejamento_id=1&pergunta_id=$CZ_PERG" | python3 -c "
+import sys, json
+s = [x for x in json.load(sys.stdin)['dados']['sugestoes'] if x['id'] == ${CZ_SUG2:-0}]
+print('painel-ok', json.dumps(s[0]['vinculada'] if s else None))" 2>/dev/null)
+  afirma "o cruzamento cai em cascata e a voz sai junto (não fica ACEITA sobre id morto)" '^painel-ok null$' "$R"
+
+  # A voz sai antes dos fatores, para a resposta não ficar para trás a cada
+  # rodada da bateria.
   [ -n "$CZ_SUG" ] && post /api/quiz/sugestao/$CZ_SUG/excluir '{"planejamento_id":1}' >/dev/null
   post /api/quiz/encerrar '{"planejamento_id":1}' >/dev/null
 fi

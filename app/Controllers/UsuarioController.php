@@ -96,6 +96,31 @@ class UsuarioController
         }
 
         if ($id) {
+            // As MESMAS razões que impedem excluir valem para rebaixar ou
+            // desativar: o último ADMIN ativo que vira CONTROLADORIA (ou é
+            // desativado) deixa o sistema sem quem gere usuários, e quem se
+            // desativa derruba a própria sessão no meio do gesto.
+            $alvo = Database::um('SELECT * FROM usuario WHERE id = ?', [$id]);
+            if (!$alvo) {
+                Json::erro('Usuário não encontrado.', 404);
+            }
+            $souEu = (int)$alvo['id'] === (int)(Auth::usuario()['id'] ?? 0);
+            $eraAdminAtivo = $alvo['perfil'] === 'ADMIN' && (int)$alvo['ativo'] === 1;
+            $deixaDeSerAdmin = $perfil !== 'ADMIN' || $ativo === 0;
+            if ($souEu && ($ativo === 0 || ($eraAdminAtivo && $deixaDeSerAdmin))) {
+                Json::erro('Você não pode desativar nem rebaixar a própria conta. '
+                    . 'Peça a outro administrador.', 409);
+            }
+            if ($eraAdminAtivo && $deixaDeSerAdmin) {
+                $outros = (int)Database::um(
+                    "SELECT COUNT(*) AS n FROM usuario WHERE perfil = 'ADMIN' AND ativo = 1 AND id <> ?",
+                    [$id]
+                )['n'];
+                if ($outros === 0) {
+                    Json::erro("«{$alvo['nome']}» é o último administrador ativo. Promova outra pessoa a "
+                        . 'Admin antes de rebaixá-lo ou desativá-lo, senão ninguém mais consegue gerir usuários.', 409);
+                }
+            }
             Database::executar(
                 'UPDATE usuario SET nome = ?, email = ?, perfil = ?, ativo = ? WHERE id = ?',
                 [$nome, $email, $perfil, $ativo, $id]
@@ -153,6 +178,10 @@ class UsuarioController
             'rotulo' => ['fator aguardando ação', 'fatores aguardando ação']],
         ['grupo' => 'carteira', 'tabela' => 'swot_cruzamento', 'coluna' => 'acao_por',
             'rotulo' => ['cruzamento aguardando ação', 'cruzamentos aguardando ação']],
+        // A quarta origem da mesma fila: sem esta linha o item de cenário
+        // encaminhado ao plano perdia o dono em silêncio (FK SET NULL).
+        ['grupo' => 'carteira', 'tabela' => 'cenario_item', 'coluna' => 'acao_por',
+            'rotulo' => ['item de cenário aguardando ação', 'itens de cenário aguardando ação']],
         ['grupo' => 'carteira', 'tabela' => 'negocio', 'coluna' => 'gestor_id',
             'rotulo' => ['negócio sob gestão', 'negócios sob gestão']],
         ['grupo' => 'autoria', 'tabela' => 'comentario', 'coluna' => 'autor_id',

@@ -88,6 +88,9 @@ class CruzamentoController
                 'UPDATE swot_cruzamento SET rotulo = ?, estrategia = ? WHERE id = ?',
                 [$rotulo, $estrategia, $id]
             );
+            // A cada salvamento, como fator e cenário: a redação guardada no
+            // vínculo da voz acompanha o texto atual.
+            Quiz::guardarRedacao('CRUZAMENTO', $id, $estrategia);
             Json::ok(['id' => (int)$atual['id'], 'tipo' => $atual['tipo']]);
         }
 

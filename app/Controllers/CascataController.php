@@ -301,6 +301,9 @@ class CascataController
         if (!$celula) {
             Json::erro('Escolha não encontrada neste planejamento.', 404);
         }
+        // Como fator, cenário e ação: ninguém apaga a célula que outra pessoa
+        // está redigindo.
+        Bloqueio::exigirMeu('cascata_escolha', $id, (int)Auth::exigirLogin()['id'], 'esta escolha');
         // Projetos originados desta escolha perdem o vínculo (a FK não tem ON DELETE)
         Database::executar('UPDATE projeto SET cascata_id = NULL WHERE cascata_id = ?', [$id]);
         // Vozes do quiz voltam a soltas (e editáveis), como cenário/fator fazem

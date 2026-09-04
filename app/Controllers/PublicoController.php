@@ -74,6 +74,7 @@ class PublicoController
      */
     public function rodada(string $pin): void
     {
+        $this->exigirOrigemComFolga();
         $r = $this->rodadaPorPin($pin);
         if ($r['situacao'] !== 'ABERTA') {
             Json::ok(['situacao' => 'ENCERRADA']);
@@ -131,6 +132,7 @@ class PublicoController
     public function entrar(): void
     {
         $d = $this->corpo();
+        $this->exigirOrigemComFolga();
         $r = $this->rodadaAberta((string)($d['pin'] ?? ''));
         $dispositivo = mb_substr(trim(is_string($d['dispositivo'] ?? null) ? $d['dispositivo'] : ''), 0, 80);
 
@@ -391,10 +393,6 @@ class PublicoController
         }
         $destino = in_array($d['destino_sugerido'] ?? '', ['CENARIO', 'PESTEL', 'PORTER', 'SWOT'], true)
             ? $d['destino_sugerido'] : 'NAO_SEI';
-        // Texto igual já entra no mesmo grupo: assim o agrupamento automático e
-        // o manual (arrastar uma sobre a outra) são o mesmo mecanismo
-        $lider = $this->liderEquivalente((int)$r['id'], $texto);
-
         // No QUESTIONÁRIO (tempestade com perguntas), a ideia responde a UMA
         // pergunta, e o teto conta por pergunta — "cinco por pessoa" vale em
         // cada uma, senão quem gastasse tudo na primeira ficaria calado nas
@@ -414,6 +412,11 @@ class PublicoController
                 Json::erro('Escolha a pergunta que a ideia responde.');
             }
         }
+        // Texto igual já entra no mesmo grupo: assim o agrupamento automático e
+        // o manual (arrastar uma sobre a outra) são o mesmo mecanismo. No
+        // questionário, só dentro da MESMA pergunta: "Câmbio" respondido em
+        // "Quais riscos?" e em "Quais oportunidades?" são duas ideias.
+        $lider = $this->liderEquivalente((int)$r['id'], $texto, null, $perguntaId);
 
         // O teto vai dentro do próprio INSERT: dois envios ao mesmo tempo não
         // conseguem furar a contagem, como fariam com COUNT + INSERT separados.
@@ -462,7 +465,7 @@ class PublicoController
         // (No quiz da cascata, NOVO também significa "ainda não vinculada à
         // célula": o vínculo marca ACEITO, e a voz oficializada congela.)
         $minha = Database::um(
-            "SELECT ci.id, ci.origem, p.alvo_tipo FROM coleta_item ci
+            "SELECT ci.id, ci.origem, ci.pergunta_id, p.alvo_tipo FROM coleta_item ci
              LEFT JOIN quiz_pergunta p ON p.id = ci.pergunta_id
              WHERE ci.id = ? AND ci.rodada_id = ? AND ci.participante_token = ?
                AND ci.situacao = 'NOVO'",
@@ -501,7 +504,8 @@ class PublicoController
         if (!$lidera && !$eQuiz) {
             Database::executar(
                 'UPDATE coleta_item SET agrupado_em_id = ? WHERE id = ?',
-                [$this->liderEquivalente((int)$r['id'], $texto, $id), $id]
+                [$this->liderEquivalente((int)$r['id'], $texto, $id,
+                    $minha['pergunta_id'] !== null ? (int)$minha['pergunta_id'] : null), $id]
             );
         }
 
@@ -789,17 +793,19 @@ class PublicoController
      * que está chegando. A comparação é em PHP: numa oficina são dezenas de
      * itens, e assim a regra é a mesma do agrupamento manual.
      */
-    private function liderEquivalente(int $rodadaId, string $texto, ?int $excetoId = null): ?int
+    private function liderEquivalente(int $rodadaId, string $texto, ?int $excetoId = null, ?int $perguntaId = null): ?int
     {
         $alvo = self::normalizar($texto);
         // Só ideias da tempestade: o agrupamento da resposta de quiz é por
         // (pergunta, lado) e chega na fase própria — juntar as duas famílias
         // faria a ideia da fila liderar uma voz que pertence a outro rito.
+        // E só da MESMA pergunta do questionário (`<=>`: sem questionário as
+        // duas são NULL e a rodada inteira é um assunto só).
         foreach (Database::todos(
             "SELECT id, agrupado_em_id, texto FROM coleta_item
-             WHERE rodada_id = ? AND origem = 'TEMPESTADE'
+             WHERE rodada_id = ? AND origem = 'TEMPESTADE' AND pergunta_id <=> ?
                AND situacao IN ('NOVO','SELECIONADO') ORDER BY id",
-            [$rodadaId]
+            [$rodadaId, $perguntaId]
         ) as $i) {
             // Ao reagrupar uma ideia editada, ela não pode ser líder de si mesma.
             if ((int)$i['id'] === $excetoId) {
@@ -906,6 +912,36 @@ class PublicoController
      * wi-fi da sala, seja a borda do Railway. Do jeito certo, o balde só alcança
      * quem está errando o PIN, que é justamente quem tenta adivinhar.
      */
+    /**
+     * A contenção ANTES de resolver o PIN — só nas duas rotas que não têm
+     * token (`rodada` e `entrar`). Em `rodadaPorPin` o PIN certo passa sempre,
+     * e o balde só decidia entre 404 e 429 para o errado: quem varresse o
+     * espaço de 6 dígitos ignorava o 429 e seguia, porque o acerto era
+     * devolvido de qualquer jeito. Aqui, origem com o balde cheio não resolve
+     * PIN nenhum. Quem já tem token (`X-Participante`) não passa por aqui: a
+     * sala inteira atrás de um NAT continua respondendo mesmo que alguém ali
+     * esteja errando o PIN.
+     */
+    private function exigirOrigemComFolga(): void
+    {
+        $origem = mb_substr((string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), 0, 45);
+        $recentes = (int)(Database::um(
+            'SELECT COUNT(*) AS n FROM coleta_tentativa
+             WHERE origem = ? AND criado_em > (NOW() - INTERVAL ? MINUTE)',
+            [$origem, self::JANELA_MIN]
+        )['n'] ?? 0);
+        if ($recentes >= self::MAX_TENTATIVAS) {
+            Json::erro('Muitas tentativas. Espere alguns minutos e confira o PIN no telão.', 429);
+        }
+        $totais = (int)(Database::um(
+            'SELECT COUNT(*) AS n FROM coleta_tentativa WHERE criado_em > (NOW() - INTERVAL ? MINUTE)',
+            [self::JANELA_MIN]
+        )['n'] ?? 0);
+        if ($totais >= self::MAX_TENTATIVAS_GLOBAL) {
+            Json::erro('Muitas tentativas. Espere alguns minutos e confira o PIN no telão.', 429);
+        }
+    }
+
     private function rodadaPorPin(string $pin): array
     {
         // O prazo do questionário fecha a rodada na primeira leitura depois
