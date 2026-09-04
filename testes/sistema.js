@@ -3537,7 +3537,7 @@ async function provasQuestionarioTempestade(browser) {
     t(`${l} na Coleta, cada ideia leva a etiqueta da pergunta`, await esperar(admin,
       "document.querySelectorAll('#secao-coleta .selo-pergunta').length >= 3", 15000));
     t(`${l} e o painel da rodada tem o filtro por pergunta`, await admin.evaluate(() =>
-      document.querySelectorAll('#secao-coleta [data-filtro-pergunta] option').length === 4));
+      document.querySelectorAll('#secao-coleta [data-filtro-pergunta] .cp-opcao').length === 4));
     // A fila em BLOCOS por pergunta (pedido de 2026-09-04): três blocos na
     // ordem, o enunciado em cima, e o da pergunta 2 avisando que está vazio.
     // (Ideia sem pergunta de outras provas cai num bloco extra, sem selo.)
@@ -3549,7 +3549,16 @@ async function provasQuestionarioTempestade(browser) {
         && b[0].querySelectorAll('.ficha-nuvem').length === 2
         && /Nenhuma resposta ainda/.test(b[1].textContent);
     }));
-    await admin.selectOption('#secao-coleta [data-filtro-pergunta]', { index: 3 });
+    // A caixa do filtro é própria: abre a lista com as perguntas inteiras e,
+    // escolhida uma, mostra o enunciado todo (o <select> cortava numa linha)
+    await admin.click('#secao-coleta [data-combo-alternar]');
+    t(`${l} a caixa do filtro abre a lista com as perguntas inteiras`, await esperar(admin,
+      "!document.querySelector('#secao-coleta .cp-lista').hidden"
+      + " && /Que oportunidade estamos perdendo\\?/.test(document.querySelector('#secao-coleta .cp-lista').textContent)", 5000));
+    await admin.click('#secao-coleta .cp-opcao >> nth=3');
+    t(`${l} escolhida, a caixa mostra a pergunta inteira`, await esperar(admin,
+      "/Onde perdemos dinheiro\\?/.test(document.querySelector('#secao-coleta .cp-atual')?.textContent || '')"
+      + " && document.querySelector('#secao-coleta .cp-lista')?.hidden === true", 15000));
     t(`${l} o filtro deixa na nuvem só as ideias da pergunta escolhida`, await esperar(admin,
       "document.querySelectorAll('#secao-coleta .nuvem:not(#nuvem-depois) .ficha-nuvem, "
       + "#secao-coleta .nuvem:not(#nuvem-depois) .grupo-caixa').length === 1"

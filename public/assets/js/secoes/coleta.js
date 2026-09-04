@@ -430,17 +430,34 @@ const SecaoColeta = {
     // O QUESTIONÁRIO: um filtro por pergunta na nuvem. As ideias de cinco
     // perguntas misturadas na mesma fila viravam um vaivém entre assuntos; com
     // o filtro, o condutor trata uma pergunta por vez, na ordem do encontro.
+    // A caixa é PRÓPRIA, não um <select> (pedido do cliente, 2026-09-04): o
+    // select nativo corta a pergunta numa linha só, e a caixa precisa crescer
+    // até a pergunta inteira caber — na escolha e na lista.
     const perguntas = r.perguntas || [];
+    const escolhida = perguntas.find((q) => String(q.id) === String(this.filtroPergunta));
+    const aberto = !!this.comboPerguntaAberto;
+    const opcao = (valor, atual, html) => `
+      <button type="button" class="cp-opcao ${atual ? 'atual' : ''}" role="option"
+        aria-selected="${atual}" data-filtro-opcao="${valor}">${html}</button>`;
     const filtroPerguntas = perguntas.length ? `
       <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
         <span class="rotulo-secao mb-0">Questionário · ${perguntas.length} pergunta(s)${
           r.prazo ? ` · até ${this.dataHora(r.prazo)}` : ''}</span>
-        <select class="form-select form-select-sm" style="width:auto;max-width:100%" data-filtro-pergunta
-          aria-label="Mostrar as ideias de uma pergunta">
-          <option value="">Todas as perguntas</option>
-          ${perguntas.map((q) => `<option value="${q.id}" ${String(this.filtroPergunta) === String(q.id) ? 'selected' : ''}>${
-            q.ordem}. ${Modal.esc(q.enunciado)} (${q.ideias})</option>`).join('')}
-        </select>
+        <div class="combo-pergunta ${aberto ? 'aberto' : ''}" data-combo-pergunta data-filtro-pergunta>
+          <button type="button" class="cp-atual" data-combo-alternar aria-haspopup="listbox"
+            aria-expanded="${aberto}" aria-label="Mostrar as ideias de uma pergunta">
+            <span class="cp-texto">${escolhida
+              ? `<span class="fp-tag selo-pergunta">P${escolhida.ordem}</span> ${Modal.esc(escolhida.enunciado)}`
+              : 'Todas as perguntas'}</span>
+            <span class="cp-seta" aria-hidden="true">▾</span>
+          </button>
+          <div class="cp-lista" role="listbox" ${aberto ? '' : 'hidden'}>
+            ${opcao('', !escolhida, 'Todas as perguntas')}
+            ${perguntas.map((q) => opcao(q.id, escolhida === q,
+              `<span class="fp-tag selo-pergunta">P${q.ordem}</span><span class="cp-enunciado">${
+                Modal.esc(q.enunciado)}</span><span class="cp-conta">${q.ideias}</span>`)).join('')}
+          </div>
+        </div>
       </div>` : '';
     return `<div class="card mb-3 painel-rodada"><div class="card-body py-2 px-3">
       <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -1039,14 +1056,44 @@ const SecaoColeta = {
   // A pergunta do questionário que a nuvem mostra (null = todas). Mora no
   // objeto, não no DOM: a nuvem é repintada a cada batida do relógio.
   filtroPergunta: null,
+  // A lista do filtro está aberta? Mora aqui pelo mesmo motivo: o painel é
+  // repintado quando chega ideia, e a lista não pode fechar na mão de quem
+  // estava escolhendo.
+  comboPerguntaAberto: false,
+
+  /** Abre/fecha a lista do filtro sem repintar a seção. */
+  alternarComboPergunta(aberto) {
+    this.comboPerguntaAberto = aberto;
+    const c = document.querySelector('[data-combo-pergunta]');
+    if (!c) return;
+    c.classList.toggle('aberto', aberto);
+    c.querySelector('.cp-lista').hidden = !aberto;
+    c.querySelector('[data-combo-alternar]').setAttribute('aria-expanded', String(aberto));
+  },
 
   ligarTempestade(el, ano) {
     el.querySelectorAll('[data-ir-sala]').forEach((b) =>
       b.addEventListener('click', () => App.mostrarSecao('sala')));
-    el.querySelector('[data-filtro-pergunta]')?.addEventListener('change', (ev) => {
-      this.filtroPergunta = ev.target.value || null;
-      this.carregar();
-    });
+    const combo = el.querySelector('[data-combo-pergunta]');
+    if (combo) {
+      combo.querySelector('[data-combo-alternar]').addEventListener('click', () =>
+        this.alternarComboPergunta(!this.comboPerguntaAberto));
+      combo.querySelectorAll('[data-filtro-opcao]').forEach((b) => b.addEventListener('click', () => {
+        this.filtroPergunta = b.dataset.filtroOpcao || null;
+        this.comboPerguntaAberto = false;
+        this.carregar();
+      }));
+      // Toque fora (ou Esc) fecha a lista — registrado uma vez só
+      if (!this.comboFechaFora) {
+        this.comboFechaFora = true;
+        document.addEventListener('click', (ev) => {
+          if (this.comboPerguntaAberto && !ev.target.closest('[data-combo-pergunta]')) this.alternarComboPergunta(false);
+        });
+        document.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Escape' && this.comboPerguntaAberto) this.alternarComboPergunta(false);
+        });
+      }
+    }
 
     // O mesmo modal da aba Sala (QuizSala.modalPergunta): uma redação só para
     // o campo, o rótulo e a ajuda, em qualquer tela que edite a pergunta.
