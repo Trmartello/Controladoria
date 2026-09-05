@@ -145,6 +145,66 @@ class RodadaController
     }
 
     /**
+     * Reescreve o enunciado de uma pergunta do questionário (pedido do
+     * cliente, 2026-09-05). Serve para o que sempre aparece depois de o QR
+     * já estar circulando: erro de digitação, uma frase ambígua, a pergunta
+     * que ficou comprida demais para ler no celular.
+     *
+     * **As respostas ficam, sempre** — decisão do cliente contra a
+     * alternativa de deixar escolher o destino delas. Editar aqui é corrigir
+     * a redação, não trocar a pergunta por outra: quem quer perguntar outra
+     * coisa exclui esta (o × diz o que fazer com as respostas) e acrescenta a
+     * nova no fim. Por isso este método NÃO mexe em `coleta_item`.
+     *
+     * O que muda é só o rótulo: a `ordem` fica onde está (renumerar aqui
+     * trocaria a "pergunta 2" de quem já respondeu) e o vínculo da resposta é
+     * o `pergunta_id`, que não é tocado. Quem estiver com a pergunta aberta no
+     * celular vê o texto novo no desenho seguinte, sem perder o que digitou:
+     * `seguirPerguntaVista` acompanha pelo ID, não pelo texto.
+     *
+     * Duplicata é recusada com mensagem, não com erro de banco: o enunciado
+     * entra na chave única da rodada (`uk_pergunta_alvo`, que para LIVRE é o
+     * MD5 do texto), e sem esta guarda o condutor levaria um 500 ao editar
+     * uma pergunta para o texto de outra que já está na lista.
+     */
+    public function editarPergunta(int $id, int $perguntaId): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+        $rodada = $this->exigirRodada($id, $planId);
+        if ($rodada['situacao'] !== 'ABERTA') {
+            Json::erro('A rodada já foi encerrada.');
+        }
+        if ($rodada['modo'] !== 'TEMPESTADE') {
+            Json::erro('O questionário é da tempestade de ideias; a pergunta do roteiro se reescreve na Sala do encontro.');
+        }
+        $p = Database::um(
+            "SELECT id FROM quiz_pergunta WHERE id = ? AND rodada_id = ? AND alvo_tipo = 'LIVRE'",
+            [$perguntaId, $id]
+        );
+        if (!$p) {
+            Json::erro('Pergunta não encontrada neste questionário.', 404);
+        }
+        $enunciado = mb_substr(trim(is_string($d['enunciado'] ?? null) ? $d['enunciado'] : ''), 0, 255);
+        if ($enunciado === '') {
+            Json::erro('Escreva a pergunta.');
+        }
+        $repetida = Database::um(
+            "SELECT id FROM quiz_pergunta
+             WHERE rodada_id = ? AND alvo_tipo = 'LIVRE' AND enunciado = ? AND id <> ?",
+            [$id, $enunciado, $perguntaId]
+        );
+        if ($repetida) {
+            Json::erro('Já existe outra pergunta com este texto no questionário.');
+        }
+        Database::executar(
+            'UPDATE quiz_pergunta SET enunciado = ? WHERE id = ?', [$enunciado, $perguntaId]
+        );
+        Json::ok(['perguntas' => Quiz::perguntasDaTempestade($id, true)]);
+    }
+
+    /**
      * Tira uma pergunta do questionário de uma rodada ABERTA (pedido do
      * cliente, 2026-09-04). O que decide o gesto é se ela JÁ FOI RESPONDIDA:
      *

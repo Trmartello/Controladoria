@@ -3107,9 +3107,11 @@ body.menu-aberto .menu-lateral {
 /* A lista das perguntas na projeção da Sala e a etiqueta "P2" na nuvem */
 .lista-perguntas-sala { padding-left: 1.2rem; }
 .lista-perguntas-sala li { display: flex; justify-content: space-between; gap: .75rem; padding: .15rem 0; }
-/* O × de excluir a pergunta mora junto da contagem, miúdo: numa lista de
-   treze perguntas, um botão de tamanho normal viraria uma coluna vermelha.
+/* O ✎ de corrigir e o × de excluir moram junto da contagem, miúdos: numa
+   lista de treze perguntas, botões de tamanho normal virariam uma coluna de
+   comandos maior que as perguntas.
    A área de toque é dimensão REAL (min-width/min-height), nunca ::after. */
+.lista-perguntas-sala .btn-editar-pergunta,
 .lista-perguntas-sala .btn-excluir-pergunta {
   margin-left: .5rem;
   padding: 0 .45rem;

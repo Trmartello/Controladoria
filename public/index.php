@@ -296,9 +296,12 @@ try {
         // O questionário prévio: acrescenta perguntas ao fim da lista da rodada
         case (bool)preg_match('#^POST /api/rodadas/(\\d+)/perguntas$#', $rota, $m):
             (new RodadaController())->perguntas((int)$m[1]); break;
-        // ...e tira uma pergunta dele (com o destino das respostas no corpo)
+        // ...tira uma pergunta dele (com o destino das respostas no corpo)
         case (bool)preg_match('#^POST /api/rodadas/(\\d+)/perguntas/(\\d+)/excluir$#', $rota, $m):
             (new RodadaController())->excluirPergunta((int)$m[1], (int)$m[2]); break;
+        // ...e reescreve o enunciado de uma (as respostas ficam onde estão)
+        case (bool)preg_match('#^POST /api/rodadas/(\\d+)/perguntas/(\\d+)/editar$#', $rota, $m):
+            (new RodadaController())->editarPergunta((int)$m[1], (int)$m[2]); break;
 
         case $rota === 'GET /api/coleta':          (new ColetaController())->listar(); break;
         case $rota === 'GET /api/coleta/aguardando-acao': (new ColetaController())->aguardandoAcao(); break;
