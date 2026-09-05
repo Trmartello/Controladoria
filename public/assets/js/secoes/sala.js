@@ -146,6 +146,10 @@ const SecaoSala = {
           <ol class="lista-perguntas-sala mb-1">${perguntas.map((q) => `
             <li><span>${Modal.esc(q.enunciado)}</span>
               <span class="text-muted small text-nowrap">${q.ideias} ideia(s) · ${q.respondentes} pessoa(s)${
+                podeConduzir ? `<button type="button" class="btn btn-sm btn-outline-secondary btn-editar-pergunta"
+                  data-editar-pergunta="${q.id}" aria-label="Editar a pergunta ${q.ordem}"
+                  title="${Number(q.ideias) ? 'Corrigir o texto da pergunta — as respostas já enviadas ficam'
+                    : 'Corrigir o texto da pergunta'}">✎</button>` : ''}${
                 podeConduzir ? `<button type="button" class="btn btn-sm btn-outline-danger btn-excluir-pergunta"
                   data-excluir-pergunta="${q.id}" aria-label="Excluir a pergunta ${q.ordem}"
                   title="${Number(q.ideias) ? 'Excluir a pergunta — você escolhe o que fazer com as respostas'
@@ -301,6 +305,37 @@ const SecaoSala = {
       ],
       salvar: { rotulo: 'Acrescentar' },
       aoSalvar: () => this.carregar(),
+    }));
+
+    // Corrigir o texto de uma pergunta (pedido do cliente, 2026-09-05). O QR
+    // já está circulando quando o erro de digitação aparece, e encerrar a
+    // rodada para reformular jogaria fora PIN, participantes e respostas.
+    // Respondida, o modal AVISA quantas respostas já chegaram — elas ficam
+    // (decisão do cliente): editar aqui é corrigir a redação, não trocar a
+    // pergunta por outra. Quem quer perguntar outra coisa exclui esta, pelo ×,
+    // que é onde se decide o destino das respostas.
+    el.querySelectorAll('[data-editar-pergunta]').forEach((b) => b.addEventListener('click', () => {
+      const id = Number(b.dataset.editarPergunta);
+      const q = (this.tempestade?.perguntas || []).find((x) => Number(x.id) === id);
+      if (!q) return;
+      const n = Number(q.ideias);
+      Modal.abrir({
+        titulo: `Corrigir a pergunta ${q.ordem}`,
+        url: `/api/rodadas/${this.tempestade.id}/perguntas/${id}/editar`,
+        valores: { planejamento_id: this.plan.id, enunciado: q.enunciado },
+        campos: [
+          { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
+          ...(n ? [{ nome: 'ja_respondida', rotulo: '', tipo: 'info',
+            texto: `Esta pergunta já recebeu ${n} resposta(s) de ${q.respondentes} pessoa(s), `
+              + 'escritas para o texto atual. Elas continuam nesta pergunta — corrija a redação '
+              + 'sem mudar o sentido; para perguntar outra coisa, exclua esta pelo × e acrescente '
+              + 'uma nova no fim.' }] : []),
+          { nome: 'enunciado', rotulo: 'A pergunta', tipo: 'textarea', linhas: 3, obrigatorio: true,
+            ajuda: 'A numeração e as respostas não mudam; só o texto que o celular mostra.' },
+        ],
+        salvar: { rotulo: 'Salvar' },
+        aoSalvar: () => this.carregar(),
+      });
     }));
 
     // Excluir uma pergunta do questionário (pedido do cliente, 2026-09-04).

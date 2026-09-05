@@ -1259,6 +1259,24 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `manter`, o `apagar`, a renumeração e a rodada encerrada) e o fim de
   `provasQuestionarioTempestade` (o ×, o confirm, o modal e o celular que
   segue para a próxima).
+  **Corrigir o texto da pergunta** (2026-09-05, pedido do cliente): o ✎ ao
+  lado do × (`POST /api/rodadas/{id}/perguntas/{pid}/editar`,
+  `RodadaController::editarPergunta`; mesmas guardas do ×). O erro de
+  digitação aparece com o QR já circulando, e encerrar a rodada para
+  reformular jogaria fora PIN, participantes e respostas. **As respostas
+  FICAM, sempre** — decisão do cliente contra a alternativa de deixar
+  escolher o destino delas: editar é corrigir a REDAÇÃO, não trocar a
+  pergunta por outra; quem quer perguntar outra coisa exclui pelo × (que
+  decide o destino) e acrescenta no fim. Por isso o método **não toca em
+  `coleta_item`**, e a `ordem` também não muda (renumerar trocaria a
+  "pergunta 2" de quem já respondeu). Respondida, o modal **avisa** quantas
+  respostas já chegaram e de quantas pessoas — o aviso é o que separa este
+  gesto do ×. Texto repetido é recusado com mensagem, não com erro de banco:
+  o enunciado entra na chave única da rodada (`uk_pergunta_alvo`, MD5 do
+  texto para LIVRE), e sem a guarda o condutor levaria um 500. Quem está com
+  a pergunta aberta no celular vê o texto novo no desenho seguinte sem
+  perder o que digitou — `seguirPerguntaVista` acompanha pelo ID, não pelo
+  texto. Provas: funcional 8c (+8) e `provasQuestionarioTempestade` (+3).
 - **Tempestade de ideias**: rodada com PIN de 6 dígitos (`coleta_rodada`), tela
   do participante em `/entrar/{pin}` — **as únicas rotas de escrita sem
   autenticação do sistema**. Regras que não podem ser afrouxadas: o token do

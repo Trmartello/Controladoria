@@ -3605,6 +3605,26 @@ async function provasQuestionarioTempestade(browser) {
     await admin.evaluate(() => { SecaoColeta.filtroPergunta = null; App.mostrarSecao('sala'); });
     t(`${l} a Sala lista as três perguntas, cada uma com o ×`, await esperar(admin,
       "document.querySelectorAll('#secao-sala [data-excluir-pergunta]').length === 3", 15000));
+
+    // Corrigir o texto pelo ✎ (pedido de 2026-09-05). A pergunta 1 JÁ tem
+    // respostas: o modal avisa quantas e elas FICAM — editar é corrigir a
+    // redação, não trocar a pergunta por outra. O aviso é o que separa este
+    // gesto do ×, e por isso a prova confere o texto dele, não só o campo.
+    t(`${l} cada pergunta tem também o ✎ de corrigir`, await admin.evaluate(() =>
+      document.querySelectorAll('#secao-sala [data-editar-pergunta]').length === 3));
+    await admin.click('#secao-sala [data-editar-pergunta] >> nth=0');
+    t(`${l} o ✎ da respondida avisa que as respostas ficam`, await esperar(admin,
+      "document.getElementById('modal-form').classList.contains('show')"
+      + " && /já recebeu 2 resposta\\(s\\)/.test(document.getElementById('modal-form').textContent)"
+      + " && /continuam nesta pergunta/.test(document.getElementById('modal-form').textContent)"
+      + " && /O que trava o crescimento\\?/.test(document.querySelector('#campo-enunciado')?.value || '')", 8000));
+    await admin.fill('#campo-enunciado', 'O que trava o crescimento da cooperativa?');
+    await admin.click('#modal-salvar');
+    t(`${l} salvo, a lista mostra o texto novo e a pergunta segue com as respostas`, await esperar(admin,
+      "!document.getElementById('modal-form').classList.contains('show')"
+      + " && /crescimento da cooperativa\\?/.test(document.querySelector('#secao-sala .lista-perguntas-sala').textContent)"
+      + " && /2 ideia\\(s\\)/.test(document.querySelector('#secao-sala .lista-perguntas-sala li').textContent)", 15000));
+
     const aceitar = async (d) => { await d.accept(); };
     admin.on('dialog', aceitar);
     try {

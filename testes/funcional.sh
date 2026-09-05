@@ -437,6 +437,38 @@ print(next((i['id'] for i in json.load(sys.stdin)['dados'] if i['texto'] == 'Loj
 import sys, json; p = json.load(sys.stdin)['dados']['perguntas']; print(json.dumps({'p3': p[2]['id'], 'p4': p[3]['id']}))" 2>/dev/null)
   QP_P3=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['p3'])" 2>/dev/null)
   QP_P4=$(echo "$R" | python3 -c "import sys,json;print(json.load(sys.stdin)['p4'])" 2>/dev/null)
+  # Editar o enunciado (pedido do cliente, 2026-09-05): o QR já circula quando
+  # o erro de digitação aparece. As respostas FICAM — editar é corrigir a
+  # redação; trocar a pergunta por outra é excluir e acrescentar. O texto entra
+  # na chave única da rodada, então repetir o de outra pergunta é recusado com
+  # mensagem, não com erro de banco.
+  R=$(post /api/rodadas/$QP_ID/perguntas/999999/editar '{"planejamento_id":1,"enunciado":"x"}')
+  afirma "pergunta que não é deste questionário não se edita por aqui" 'não encontrada' "$R"
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P1/editar '{"planejamento_id":1,"enunciado":"   "}')
+  afirma "pergunta sem texto é recusada" 'Escreva a pergunta' "$R"
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P1/editar '{"planejamento_id":1,"enunciado":"Onde perdemos dinheiro?"}')
+  afirma "editar para o texto de outra pergunta da lista é recusado" 'Já existe outra pergunta' "$R"
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P4/editar '{"planejamento_id":1,"enunciado":"Quarta pergunta, corrigida"}')
+  afirma "pergunta sem resposta se edita sem mais nada" '"enunciado":"Quarta pergunta, corrigida"' "$R"
+  # O ANTES da pergunta 1, para provar que a edição não mexe no que já chegou:
+  # o número exato não é cravado aqui de propósito — outras provas desta seção
+  # acrescentam respostas, e um literal quebraria a cada ideia nova.
+  qp_p1_estado(){ python3 -c "
+import sys, json
+p = [q for q in json.load(sys.stdin)['dados']['perguntas'] if int(q['id']) == $QP_P1][0]
+print('ordem=%s ideias=%s' % (p['ordem'], p['ideias']))" 2>/dev/null; }
+  QP_ANTES=$(echo "$R" | qp_p1_estado)
+  R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P1/editar \
+    '{"planejamento_id":1,"enunciado":"O que trava o crescimento da cooperativa?"}')
+  afirma "a respondida também se edita" '"enunciado":"O que trava o crescimento da cooperativa\?"' "$R"
+  R=$(echo "$R" | qp_p1_estado)
+  [ -n "$QP_ANTES" ] || falha "leu o estado da pergunta 1 antes de editar" 'ordem= ideias=' ''
+  afirma "e as respostas dela ficam, na mesma ordem" "^${QP_ANTES}$" "$R"
+  R=$(curl -s "$BASE/api/publico/rodada/$QP_PIN")
+  afirma "o celular passa a mostrar o texto corrigido" 'crescimento da cooperativa' "$R"
+  R=$(get "/api/coleta?planejamento_id=1&ano=2026" | campo_de $QP_I2 pergunta_ordem)
+  afirma "e a Coleta não perde o vínculo da resposta com a pergunta" '^2$' "$R"
+
   R=$(post /api/rodadas/$QP_ID/perguntas/999999/excluir '{"planejamento_id":1}')
   afirma "pergunta que não é deste questionário não sai por aqui" 'não encontrada' "$R"
   R=$(post /api/rodadas/$QP_ID/perguntas/$QP_P4/excluir '{"planejamento_id":1}')
