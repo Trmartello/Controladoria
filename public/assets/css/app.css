@@ -1128,6 +1128,20 @@ input[type=range].faixa-verde:focus-visible {
   opacity: .75;
   margin-left: .25rem;
 }
+/* De quem é a ideia, dentro da própria ficha. Discreto de propósito: o que a
+   sala lê é a IDEIA — o nome é a segunda leitura, para conduzir a conversa.
+   Cor própria em vez de `opacity` porque a ficha selecionada fica verde, e um
+   cinza transparente sobre ela ficaria ilegível. */
+.fn-autor {
+  font-size: .68rem;
+  font-weight: 400;
+  color: #6b7a72;
+  white-space: nowrap;
+}
+.fn-autor::before { content: '· '; }
+.ficha-nuvem.selecionada .fn-autor { color: #dbeee3; }
+.grupo-titulo .fn-autor,
+.palavra-grupo .fn-autor { font-size: .64rem; }
 /* ===== Painel de prioridade — o quadro da sala =====
    Recebe as fichas classificadas (que saem da tempestade). Regra de ouro:
    nenhum height/max-height/overflow — o quadrante cresce o quanto precisar

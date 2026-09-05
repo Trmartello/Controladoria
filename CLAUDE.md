@@ -1218,6 +1218,21 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `SecaoColeta.blocosPorPergunta`; ideia sem pergunta cai num bloco final),
   a bancada abre pela pergunta que a ideia respondeu, e a matriz não repete
   o texto em foco. Provas: funcional 8c e `provasQuestionarioTempestade`.
+  **De quem é a resposta, DENTRO da ficha** (2026-09-05, pedido do cliente):
+  `SecaoColeta.autorDaFicha` põe o nome na ficha da fila, no título da caixa
+  agrupada e em cada palavra dentro dela (`.fn-autor`). O nome já vinha na
+  listagem (`COALESCE(a.nome, ci.autor_nome, 'Participante') AS autor`) e já
+  era desenhado na bancada, no painel da sala e nos cartões — **na fila ele
+  existia só no `title`**, que é dica de MOUSE: no celular, que é onde a fila
+  em blocos é lida com a sala em volta, não existe. Quem conduzia tocava em
+  cada resposta para descobrir o autor na bancada. Regra do cliente: "o nome
+  só serve para identificar de quem é a ideia". O genérico `'Participante'`
+  (registro perdido) e a ideia lançada por dentro do sistema **não** repetem
+  nome — seria ruído em toda ficha. A cor é própria e não `opacity`: a ficha
+  selecionada fica verde, e cinza transparente sobre ela some. Nada mudou no
+  celular do participante: **nenhuma rota pública devolve `autor_nome`**, e
+  `paraVotar` desce só id, texto, pergunta e `votei` — entre participantes
+  ninguém vê o nome de ninguém, e isso não deve regredir.
   **Excluir pergunta** (2026-09-04, pedido do cliente): o × de cada pergunta
   na lista da Sala (`POST /api/rodadas/{id}/perguntas/{pid}/excluir`,
   `RodadaController::excluirPergunta`; só rodada ABERTA, só o rito da

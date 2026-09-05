@@ -3561,6 +3561,18 @@ async function provasQuestionarioTempestade(browser) {
         && b[0].querySelectorAll('.ficha-nuvem').length === 2
         && /Nenhuma resposta ainda/.test(b[1].textContent);
     }));
+    // DE QUEM é cada resposta, na própria ficha (pedido do cliente,
+    // 2026-09-05). O nome existia só no `title`, e `title` é dica de mouse:
+    // no celular — que é onde esta fila é lida, com a sala em volta — ele não
+    // existe, e quem conduzia tinha de tocar em cada resposta para descobrir
+    // o autor na bancada.
+    t(`${l} cada resposta da fila diz de quem é`, await admin.evaluate(() => {
+      const b = [...document.querySelectorAll('#secao-coleta .bloco-pergunta')]
+        .filter((x) => x.querySelector('.titulo-bloco-pergunta .selo-pergunta'));
+      const fichas = [...b[0].querySelectorAll('.ficha-nuvem')];
+      return fichas.length === 2 && fichas.every((f) =>
+        /Cooperado que responde antes/.test(f.querySelector('.fn-autor')?.textContent || ''));
+    }));
     // A caixa do filtro é própria: abre a lista com as perguntas inteiras e,
     // escolhida uma, mostra o enunciado todo (o <select> cortava numa linha)
     await admin.click('#secao-coleta [data-combo-alternar]');

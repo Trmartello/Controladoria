@@ -509,6 +509,27 @@ const SecaoColeta = {
    * caixa — ou em qualquer palavra dela — leva o grupo INTEIRO à bancada: a
    * tratativa é sempre da caixa como um todo, nunca das filhas em separado.
    */
+  /**
+   * De quem é a ideia, DENTRO da ficha (pedido do cliente, 2026-09-05).
+   *
+   * O nome já existia no `title` da ficha, e `title` é dica de mouse: no
+   * celular — que é onde a fila em blocos por pergunta é lida, com a sala
+   * inteira em volta — ele simplesmente não existe. Quem conduzia via a
+   * resposta sem saber de quem era, e tinha de tocar em cada uma para
+   * descobrir na bancada. O nome vale para conduzir a conversa ("o que a
+   * Maria escreveu conversa com o que o João disse"), então fica à vista.
+   *
+   * Some quando não há nome: ideia lançada por dentro do sistema pelo próprio
+   * condutor não precisa dizer que é dele, e o servidor devolve o genérico
+   * "Participante" quando o registro se perdeu — repeti-lo em toda ficha
+   * seria ruído em vez de informação.
+   */
+  autorDaFicha(item) {
+    const nome = String(item?.autor || '').trim();
+    if (!nome || nome === 'Participante') return '';
+    return ` <span class="fn-autor">${Modal.esc(nome)}</span>`;
+  },
+
   fichaOuCaixa(g, { adiada = false } = {}) {
     const i = g.representante;
     const multi = g.itens.length > 1;
@@ -534,6 +555,7 @@ const SecaoColeta = {
       const destinoFicha = this.rotuloDestino(lider);
       return `<button type="button" class="ficha-nuvem ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
         style="--peso:1" ${acao} title="${dica}">${this.seloPergunta(lider)}${Modal.esc(rotulo)}${
+        this.autorDaFicha(i)}${
         selo ? ` <span class="repetida">${selo}</span>` : ''}${
         destinoFicha ? ` <span class="fp-tag">${Modal.esc(destinoFicha)}</span>` : ''}</button>`;
     }
@@ -554,7 +576,8 @@ const SecaoColeta = {
     const aberta = this.caixaAberta === chave;
     return `<div class="grupo-caixa ${aberta ? '' : 'compacta'} ${adiada ? 'adiada' : ''} ${desteGrupo ? 'selecionada' : ''}"
       role="button" tabindex="0" ${acao} title="${dica}">
-      <div class="grupo-titulo">${this.seloPergunta(lider)}${Modal.esc(titulo)}</div>
+      <div class="grupo-titulo">${this.seloPergunta(lider)}${Modal.esc(titulo)}${
+        this.autorDaFicha(lider)}</div>
       <div class="grupo-rodape">
         <button type="button" class="btn-ver-palavras" data-ver-palavras="${chave}"
           aria-expanded="${aberta}" aria-controls="palavras-${chave}"
@@ -566,6 +589,7 @@ const SecaoColeta = {
       </div>
       <div class="grupo-palavras ${aberta ? '' : 'recolhida'}" id="palavras-${chave}">
         ${filhas.map((w) => `<span class="palavra-grupo">${Modal.esc(w.texto)}${
+          this.autorDaFicha(w)}${
           podeTirar ? `<button type="button" class="palavra-x" data-remover-palavra="${w.id}"
             title="Tirar da caixa" aria-label="Tirar esta ideia da caixa">×</button>` : ''}</span>`).join('')}
       </div>
