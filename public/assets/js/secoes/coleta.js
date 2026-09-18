@@ -1097,7 +1097,33 @@ const SecaoColeta = {
     c.querySelector('[data-combo-alternar]').setAttribute('aria-expanded', String(aberto));
   },
 
+  /**
+   * O campo da bancada acompanha o texto (pedido do cliente, 2026-09-18).
+   *
+   * Ele nascia com `rows="3"` fixo: a resposta um pouco mais longa já ficava
+   * com o fim escondido atrás da rolagem, justamente na bancada — a tela onde
+   * se LÊ a ideia inteira antes de tratá-la, com a sala esperando. Quem
+   * conduz tinha de rolar dentro de um campo de três linhas para saber o que
+   * o cooperado escreveu.
+   *
+   * A conta é a MESMA do modal (`Modal.crescerTextarea`), não uma segunda:
+   * duas contas de altura divergiriam na primeira correção de uma delas. Sem
+   * `maxLinhas` declarado, o campo sobe até 60% da tela e só ali passa a
+   * rolar — e o teto de 400 caracteres mantém isso longe na prática.
+   *
+   * Recalcular a cada tecla é o que faz o campo crescer enquanto se digita;
+   * o polling não atrapalha, porque já não redesenha a seção com o campo em
+   * foco ou com texto alterado (ver `ligarRelogio`).
+   */
+  ligarCampoBancada(el) {
+    const campo = el.querySelector('#texto-bancada');
+    if (!campo) return;
+    Modal.crescerTextarea(campo);
+    campo.addEventListener('input', () => Modal.crescerTextarea(campo));
+  },
+
   ligarTempestade(el, ano) {
+    this.ligarCampoBancada(el);
     el.querySelectorAll('[data-ir-sala]').forEach((b) =>
       b.addEventListener('click', () => App.mostrarSecao('sala')));
     const combo = el.querySelector('[data-combo-pergunta]');

@@ -1334,7 +1334,18 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   move no DOM durante o gesto. Expandir o grupo é sempre server-side: a lista
   nunca vem do cliente.
   **Fluxo GTD da condução** (capturar → esclarecer → organizar): a bancada é só
-  editor (texto, dividir, desagrupar, tratar depois, excluir); a prioridade é
+  editor (texto, dividir, desagrupar, tratar depois, excluir) — e o campo de
+  texto dela **acompanha o conteúdo** (2026-09-18, pedido do cliente):
+  `SecaoColeta.ligarCampoBancada` chama `Modal.crescerTextarea` no desenho e a
+  cada tecla. Ele nascia com `rows="3"` fixo e escondia o fim da resposta atrás
+  da rolagem justamente na tela onde se LÊ a ideia inteira antes de tratá-la.
+  A conta é a **do modal, não uma segunda** — duas divergiriam na primeira
+  correção de uma delas; sem `maxLinhas` declarado o campo sobe até 60% da tela
+  e só ali rola, e o teto de 400 caracteres mantém isso longe. Prova em
+  `provasQuestionarioTempestade`, e ela **devolve o campo ao texto original no
+  fim**: com valor alterado o polling para de repintar a seção
+  (`ligarRelogio`), e as provas seguintes olhariam uma tela congelada.
+  A prioridade é
   decidida **arrastando o cartão da fila até o quadrante**, que já define impacto
   e esforço — sem popup nem tela intermediária. Reclassificar é arrastar entre
   quadrantes. Regras do arraste: o **quadrante tem precedência** sobre a ficha na
