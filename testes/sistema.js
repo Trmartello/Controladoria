@@ -3597,6 +3597,35 @@ async function provasQuestionarioTempestade(browser) {
     t(`${l} e a matriz não repete a ideia em foco`, await admin.evaluate(() =>
       !document.querySelector('#secao-coleta .cartao-foco')
       && !/Classificando/.test(document.querySelector('#secao-coleta .painel-prio')?.textContent || '')));
+    // O campo da bancada acompanha o texto (pedido de 2026-09-18): com
+    // `rows="3"` fixo, a resposta mais longa ficava com o fim escondido atrás
+    // da rolagem justamente na tela onde se LÊ a ideia inteira. Prova os dois
+    // caminhos: o texto que JÁ VEM no campo (o desenho chama
+    // `ligarCampoBancada`) e o que cresce enquanto se digita.
+    t(`${l} o campo da bancada cresce até o texto inteiro caber`, await admin.evaluate(() => {
+      const c = document.getElementById('texto-bancada');
+      if (!c) return false;
+      const antes = c.clientHeight;
+      const longo = 'Quando oportunizamos as propriedades rurais a inclusao no mercado, com '
+        + 'eficiencia e maior rentabilidade; investimento em educacao e programas de '
+        + 'capacitacao com enfase na familia cooperada, com acompanhamento tecnico.';
+      c.value = longo;
+      // O caminho do DESENHO: é isto que roda quando a bancada é repintada
+      SecaoColeta.ligarCampoBancada(document.getElementById('secao-coleta'));
+      const cresceu = c.clientHeight > antes;
+      // Sem rolagem por dentro: o texto inteiro à vista, que é o pedido
+      const semRolagem = c.scrollHeight <= c.clientHeight + 2;
+      // ...e o que se digita depois continua cabendo
+      c.value = `${longo} ${longo}`;
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+      const digitando = c.scrollHeight <= c.clientHeight + 2;
+      // Devolve o campo ao texto original: com valor alterado o polling para
+      // de repintar a seção (ver `ligarRelogio`), e as provas seguintes
+      // ficariam olhando uma tela congelada por esta.
+      c.value = c.defaultValue;
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+      return cresceu && semRolagem && digitando;
+    }));
 
     // Excluir pergunta pela Sala (pedido de 2026-09-04): a sem resposta sai
     // com o confirm; a respondida abre o MODAL com o destino das respostas.
