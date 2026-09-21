@@ -24,7 +24,7 @@ $GLOBALS['config'] = require __DIR__ . '/../config/config.php';
 require __DIR__ . '/../app/Core/Database.php';
 // Database::executar marca o pulso em App\Core\Versao; sem a classe carregada,
 // a primeira escrita fora do front controller morre com "Class not found".
-require __DIR__ . '/../app/Core/Versao.php';
+require_once __DIR__ . '/../app/Core/Versao.php';
 require __DIR__ . '/../app/Services/CargaConteudo.php';
 
 use App\Core\Database;
@@ -37,6 +37,15 @@ const CARGAS = [
     'porter'  => 'conteudo_porter_macro.php',
     'swot'    => 'conteudo_swot_macro.php',
     'cascata' => 'conteudo_cascata_h1.php',
+    // O diagnóstico de 2027 reconstruído do dossiê de 04/09/2026. Estas cinco
+    // NÃO estão na lista do migrate, ao contrário das de cima: elas repõem o
+    // que a cooperativa escreveu, e um deploy não pode repovoar diagnóstico
+    // sozinho — quem decide repor é quem está operando a recuperação.
+    'cenario2027' => 'conteudo_cenario_2027.php',
+    'pestel2027'  => 'conteudo_pestel_2027.php',
+    'porter2027'  => 'conteudo_porter_2027.php',
+    'swot2027'    => 'conteudo_swot_2027.php',
+    'cascata2027' => 'conteudo_cascata_h1_2027.php',
 ];
 
 /** str_pad conta bytes: "2027–2035" tem travessão e desalinharia a coluna. */

@@ -2010,6 +2010,22 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   e o deploy segue — quando o nome voltar, ela entra sozinha. A validação roda
   inteira **antes** do primeiro INSERT, senão um nome errado no meio da lista
   deixaria metade da cascata gravada.
+- **O diagnóstico de 2027 reconstruído do dossiê** (2026-09-21, pedido do
+  cliente depois de o banco de produção ficar inacessível): cinco cargas
+  (`conteudo_{cenario,pestel,porter,swot}_2027.php` e
+  `conteudo_cascata_h1_2027.php`, chaves `*_2027_dossie_2026_09_04`) com o que
+  a cooperativa escreveu, extraído do PDF do dossiê de 04/09/2026 — 16 itens de
+  cenário, 48 fatores e as 42 células do H1. Elas são a exceção da regra acima:
+  **entram só em `CARGAS` da CLI, não na lista do migrate**. Carga de análise
+  macro é conteúdo curado que vale para toda instalação; esta repõe o texto do
+  cliente, e um deploy não pode repovoar diagnóstico sem alguém pedir — além de
+  mexer na massa das baterias (a carga automática quebrou quatro provas da
+  SWOT, que contam cartões no ano). Uma chave **por arquivo**: a marca em
+  `carga_conteudo` é por chave, e uma só faria a primeira aplicação marcar as
+  outras quatro como feitas. O que o dossiê não permite reconstruir está
+  escrito no cabeçalho de cada arquivo — oportunidades e ameaças da SWOT (o
+  relatório as imprime zeradas), os cruzamentos que dependem delas, e autoria,
+  estrelas e datas das ideias. **Relatório não substitui backup.**
 - Compatibilidade MySQL 8 **e** MariaDB (por isso `ON DUPLICATE KEY UPDATE
   VALUES()` e nada de sintaxe exclusiva do MySQL 8). Toda tabela declara
   `COLLATE=utf8mb4_unicode_ci`: sem isso cada motor escolhe a sua (MariaDB
