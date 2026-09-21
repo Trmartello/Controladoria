@@ -1259,7 +1259,18 @@ async function provasBuscaAnalise(page, largura) {
     }));
   };
 
-  const base = await digitar('');
+  // A lista precisa PARAR de mudar antes de virar base de comparação. A seção
+  // repinta sozinha (troca de ano, carga que chega) e, medindo cedo, a base
+  // saía com os cartões de um ano e a busca rodava sobre os de outro — "0 de
+  // 10" ao procurar um termo que estava ali, e "24/10" ao limpar. Duas
+  // leituras iguais seguidas bastam para dizer que a repintura acabou.
+  let base = await digitar('');
+  for (let i = 0; i < 20; i++) {
+    const outra = await digitar('');
+    if (outra.total === base.total && outra.total > 0) { base = outra; break; }
+    base = outra;
+    await new Promise((r) => setTimeout(r, 250));
+  }
   if (!base.total) { t(`[${largura}] SWOT tem fatores para pesquisar`, false, 'nenhum cartão'); return; }
 
   // Os termos saem dos PRÓPRIOS cartões, não de palavras fixas: com termo

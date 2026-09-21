@@ -2015,16 +2015,22 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   (`conteudo_{cenario,pestel,porter,swot}_2027.php` e
   `conteudo_cascata_h1_2027.php`, chaves `*_2027_dossie_2026_09_04`) com o que
   a cooperativa escreveu, extraído do PDF do dossiê de 04/09/2026 — 16 itens de
-  cenário, 48 fatores e as 42 células do H1. Elas são a exceção da regra acima:
-  **entram só em `CARGAS` da CLI, não na lista do migrate**. Carga de análise
-  macro é conteúdo curado que vale para toda instalação; esta repõe o texto do
-  cliente, e um deploy não pode repovoar diagnóstico sem alguém pedir — além de
-  mexer na massa das baterias (a carga automática quebrou quatro provas da
-  SWOT, que contam cartões no ano). Uma chave **por arquivo**: a marca em
+  cenário, 48 fatores e as 42 células do H1. Nasceram **fora** da lista do
+  migrate (repor texto do cliente não é coisa que um deploy deva fazer
+  sozinho) e **entraram nela no mesmo dia**: o Console do Railway não abre na
+  rede do cliente (WebSocket bloqueado), a CLI ficou inalcançável, e a saída
+  que o agente do provedor ofereceu era expor os comandos de carga numa URL
+  pública. Entre um deploy que carrega uma vez e uma rota que executa comando,
+  o deploy é a escolha óbvia. Uma chave **por arquivo**: a marca em
   `carga_conteudo` é por chave, e uma só faria a primeira aplicação marcar as
-  outras quatro como feitas. O que o dossiê não permite reconstruir está
-  escrito no cabeçalho de cada arquivo — oportunidades e ameaças da SWOT (o
-  relatório as imprime zeradas), os cruzamentos que dependem delas, e autoria,
+  outras quatro como feitas. A da cascata normalmente grava **zero** — o H1 já
+  tem as células da carga macro, e a guarda dela é a célula, não o texto.
+  Carregar 2027 mexe na massa das baterias: as provas da busca na SWOT mediam
+  a lista enquanto a seção ainda repintava e passavam por sorte, com um único
+  ano povoado; agora esperam a contagem **estabilizar** antes de virar base.
+  O que o dossiê não permite reconstruir está escrito no cabeçalho de cada
+  arquivo — oportunidades e ameaças da SWOT (o relatório as imprime zeradas,
+  ainda que a cascata cite uma), os cruzamentos que dependem delas, e autoria,
   estrelas e datas das ideias. **Relatório não substitui backup.**
 - Compatibilidade MySQL 8 **e** MariaDB (por isso `ON DUPLICATE KEY UPDATE
   VALUES()` e nada de sintaxe exclusiva do MySQL 8). Toda tabela declara

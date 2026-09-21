@@ -11,10 +11,11 @@
  *
  * Como toda carga de conteúdo, é aplicada uma vez por `chave` e marcada em
  * `carga_conteudo` — ver `conteudo_cenario_macro.php` para o porquê da marca e
- * da chave nova a cada revisão. Diferente das cargas de análise macro, esta
- * **não entra na lista automática do migrate**: ela repõe conteúdo do cliente,
- * e um deploy não deve repovoar diagnóstico sem alguém pedir. O caminho é a
- * CLI (`cli/carga_diagnostico.php`).
+ * da chave nova a cada revisão. Entra na lista do migrate (aplica no deploy) e
+ * em `CARGAS` da CLI. Nasceu só na CLI, por ser reposição de conteúdo do
+ * cliente e não conteúdo curado; passou ao deploy em 2026-09-21, quando o
+ * Console do provedor mostrou-se inalcançável na rede da cooperativa e a
+ * alternativa oferecida por lá era expor os comandos numa URL pública.
  */
 
 return [
