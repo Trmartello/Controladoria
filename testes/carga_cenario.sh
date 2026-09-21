@@ -18,6 +18,7 @@ ok()    { OK=$((OK + 1)); }
 falha() { FALHA=$((FALHA + 1)); FALHAS+=("$1 | esperado: $2 | veio: $3"); }
 afirma() { if echo "$3" | grep -qE "$2"; then ok; else falha "$1" "$2" "$(echo "$3" | head -c 200)"; fi; }
 afirma_igual() { if [ "$2" = "$3" ]; then ok; else falha "$1" "$2" "$3"; fi; }
+nega()  { if echo "$3" | grep -qE "$2"; then falha "$1" "sem $2" "$(echo "$3" | head -c 200)"; else ok; fi; }
 
 command -v php >/dev/null 2>&1 || { echo "  ⏭  pulada: php não está no PATH."; exit 0; }
 mapfile -t -d '' CFG < <(php -r '
@@ -84,6 +85,25 @@ R=$(php cli/carga_diagnostico.php cenario "$PLAN" "$ANO" 2>&1)
 afirma "segunda prévia: tudo já presente" "0 registro\(s\) a gravar, 0 a atualizar no lugar, $((REVISOES + NOVOS)) já presente" "$R"
 R=$(php cli/carga_diagnostico.php cenario "$PLAN" "$ANO" --aplicar 2>&1)
 afirma_igual "segunda aplicação: contagem inalterada" "$((REVISOES + NOVOS))" "$(sql "SELECT COUNT(*) FROM cenario_item WHERE planejamento_id=$PLAN AND ano=$ANO")"
+
+# --- 4. as CLIs que escrevem ARRANCAM ----------------------------------------
+# `Database.php` passou a carregar `Versao.php` em 2026-09-04, e a CLI que
+# também o carregava com `require` (não `require_once`) passou a morrer no
+# arranque com "Cannot redeclare class", antes de tocar no banco. Ficou assim
+# por dezessete dias porque nada exercitava o arranque delas — sem argumento
+# nenhum elas só imprimem o uso, e é isso que estas duas provas pedem.
+for CLI in carga_diagnostico limpar_plano_acao; do
+  R=$(php "cli/${CLI}.php" 2>&1)
+  nega "cli/${CLI}.php arranca sem erro de classe" 'Cannot redeclare|Fatal error' "$R"
+done
+
+# --- 5. as cargas do dossiê de 2027 estão declaradas -------------------------
+# Elas ficam FORA da lista do migrate de propósito (repõem texto do cliente),
+# então a CLI é o único caminho: se saírem de `CARGAS`, ninguém as alcança.
+R=$(php cli/carga_diagnostico.php 2>&1)
+for C in cenario2027 pestel2027 porter2027 swot2027 cascata2027; do
+  afirma "a CLI oferece a carga ${C}" "$C" "$R"
+done
 
 echo
 echo "✓ $OK passaram    ✗ $FALHA falharam"

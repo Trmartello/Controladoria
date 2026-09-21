@@ -9,6 +9,10 @@ use PDO;
 // escrita morria com "Class App\Core\Versao not found" — o cron de avisos
 // mandava o primeiro e-mail e caía antes de registrar o envio, repetindo-o
 // todo dia. Quem usa Database carrega Versao junto, sem depender de lembrar.
+// Contrapartida nas CLIs: a que já carregava Versao por conta própria passou a
+// carregá-la DUAS vezes e morria com "Cannot redeclare class" — por isso lá o
+// require é `require_once`. Foi o que deixou `carga_diagnostico.php` e
+// `limpar_plano_acao.php` quebradas até 2026-09-21.
 require_once __DIR__ . '/Versao.php';
 
 class Database
