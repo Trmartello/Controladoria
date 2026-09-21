@@ -693,6 +693,17 @@ foreach ([
     'conteudo_porter_macro.php',
     'conteudo_swot_macro.php',
     'conteudo_cascata_h1.php',
+    // O diagnóstico de 2027 reconstruído do dossiê de 04/09/2026. Entrou aqui
+    // a pedido do cliente (2026-09-21): o Console do provedor não abre na rede
+    // dele (WebSocket bloqueado), então a CLI não era alcançável — e a saída
+    // que o agente do provedor propôs era expor os comandos de carga numa URL
+    // pública. Vale a mesma marca das demais: uma vez por chave, e o que
+    // alguém apagar depois não volta no deploy seguinte.
+    'conteudo_cenario_2027.php',
+    'conteudo_pestel_2027.php',
+    'conteudo_porter_2027.php',
+    'conteudo_swot_2027.php',
+    'conteudo_cascata_h1_2027.php',
 ] as $arquivo) {
     $conteudo = require __DIR__ . '/' . $arquivo;
     $chaveCarga = $conteudo['chave'];
