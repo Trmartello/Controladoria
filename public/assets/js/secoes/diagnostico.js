@@ -409,19 +409,75 @@ const Diag = {
   iconeOrientacao(cat, cor, rotulo) {
     if (!this.ORIENTACOES_CATEGORIA[cat]) return '';
     return `<button type="button" class="btn-orientacao me-1" data-orientacao="${cat}"
-      style="--cor-cat:${cor}" aria-expanded="false"
+      style="--cor-cat:${cor}" aria-expanded="${this.orientacoesAbertas() ? 'true' : 'false'}"
       title="O que considerar" aria-label="O que considerar em ${rotulo}">ⓘ</button>`;
   },
   painelOrientacao(cat, cor) {
     const o = this.ORIENTACOES_CATEGORIA[cat];
-    return o ? `<div class="orientacao-categoria small d-none mb-2" data-orientacao-alvo="${cat}"
-      style="--cor-cat:${cor}">${Modal.esc(o)}</div>` : '';
+    return o ? `<div class="orientacao-categoria small ${this.orientacoesAbertas() ? '' : 'd-none'} mb-2"
+      data-orientacao-alvo="${cat}" style="--cor-cat:${cor}">${Modal.esc(o)}</div>` : '';
   },
+
+  /**
+   * "O que considerar" ligado para a análise INTEIRA (pedido do cliente,
+   * 2026-09-22).
+   *
+   * O ⓘ de cada tópico abre um por vez e a escolha morre no próximo desenho —
+   * a seção repinta ao trocar o ano, ao pesquisar, ao chegar voz da sala. Numa
+   * oficina, quem conduz abria os seis do PESTEL e os perdia no primeiro
+   * gesto. Este interruptor decide por todos e a preferência FICA.
+   *
+   * Vale para PESTEL, Porter e SWOT ao mesmo tempo: é uma decisão sobre como a
+   * pessoa quer ler o diagnóstico, não sobre uma tela. Mora no `localStorage`
+   * porque é preferência de quem está usando, não dado do planejamento — não
+   * atravessa para os outros participantes nem vira linha no banco.
+   */
+  ORIENTACOES_CHAVE: 'pe_orientacoes_abertas',
+
+  orientacoesAbertas() {
+    if (this._orientacoes === undefined) {
+      try {
+        this._orientacoes = localStorage.getItem(this.ORIENTACOES_CHAVE) === '1';
+      } catch {
+        // Armazenamento negado (janela anônima, site bloqueado): a preferência
+        // vale só enquanto a página estiver aberta.
+        this._orientacoes = false;
+      }
+    }
+    return this._orientacoes;
+  },
+
+  definirOrientacoes(aberto) {
+    this._orientacoes = aberto;
+    try {
+      localStorage.setItem(this.ORIENTACOES_CHAVE, aberto ? '1' : '0');
+    } catch {
+      // Sem armazenamento a escolha não sobrevive ao recarregar — e tudo bem.
+    }
+  },
+
+  interruptorOrientacoes() {
+    const on = this.orientacoesAbertas();
+    return `<button type="button" class="btn btn-sm btn-outline-secondary d-print-none"
+      data-alternar-orientacoes aria-pressed="${on ? 'true' : 'false'}"
+      title="Mostrar, em cada tópico, o que considerar ao preencher">ⓘ O que considerar</button>`;
+  },
+
   ligarOrientacoes(el) {
     el.querySelectorAll('[data-orientacao]').forEach((b) => b.addEventListener('click', () => {
       const alvo = el.querySelector(`[data-orientacao-alvo="${b.dataset.orientacao}"]`);
       const oculto = alvo.classList.toggle('d-none');
       b.setAttribute('aria-expanded', oculto ? 'false' : 'true');
+    }));
+    el.querySelectorAll('[data-alternar-orientacoes]').forEach((b) => b.addEventListener('click', () => {
+      const abrir = !this.orientacoesAbertas();
+      this.definirOrientacoes(abrir);
+      b.setAttribute('aria-pressed', abrir ? 'true' : 'false');
+      // Mexe na TELA, sem redesenhar: repintar aqui jogaria fora o que já
+      // estiver digitado num card em edição e o termo da pesquisa.
+      el.querySelectorAll('[data-orientacao-alvo]').forEach((p) => p.classList.toggle('d-none', !abrir));
+      el.querySelectorAll('[data-orientacao]').forEach((i) =>
+        i.setAttribute('aria-expanded', abrir ? 'true' : 'false'));
     }));
   },
 
@@ -1014,6 +1070,7 @@ const Diag = {
           </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${this.campoBusca(etapa)}
+            ${this.interruptorOrientacoes()}
             ${this.seletorAno(etapa)}
             ${this.quizMicEtapa(dono, etapa, ano, titulo)}
             ${RelatorioAnalise.botao()}
@@ -1353,6 +1410,7 @@ const SecaoCenario = {
           </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.campoBusca('CENARIO')}
+            ${Diag.interruptorOrientacoes()}
             ${Diag.seletorAno('cenario')}
             ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
               { ativo: this.perguntaDoAno()?.situacao === 'ATIVA',
@@ -1754,6 +1812,7 @@ const SecaoSwot = {
           </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.campoBusca('SWOT')}
+            ${Diag.interruptorOrientacoes()}
             ${Diag.seletorAno('swot')}
             ${Diag.quizMicEtapa(this, 'SWOT', ano, 'SWOT')}
             ${RelatorioAnalise.botao()}

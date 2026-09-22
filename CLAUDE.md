@@ -939,6 +939,21 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `categorias`) é uma cópia do `Diag.CATEGORIAS_ETAPA`/`CORES_QUADRANTE`/
   `DICAS_QUADRANTE`, porque a tela do participante não carrega o `Diag`;
   `provasEtapaNaSala` compara as duas e fica vermelha na primeira divergência.
+  **O interruptor "ⓘ O que considerar"** (2026-09-22, pedido do cliente): o ⓘ
+  de cada tópico abre um por vez e a escolha morre no desenho seguinte — e a
+  seção repinta ao trocar o ano, ao pesquisar e ao chegar voz da sala, então
+  quem conduz abria os seis do PESTEL e os perdia no primeiro gesto. O botão
+  na barra (`Diag.interruptorOrientacoes`) decide por todos, e a preferência
+  **fica**: `localStorage` sob `pe_orientacoes_abertas`, porque é escolha de
+  leitura de quem está usando, não dado do planejamento — não atravessa para
+  os outros participantes nem vira linha no banco. Vale para Cenário, PESTEL,
+  Porter e SWOT ao mesmo tempo (as quatro telas que usam `painelOrientacao`):
+  deixar uma delas de fora abriria painel sem botão para fechar. Alternar mexe
+  na TELA, sem redesenhar — repintar jogaria fora o card em edição e o termo
+  da pesquisa. Prova em `provasOrientacoes`, que confere justamente a
+  sobrevivência à repintura, e devolve a preferência ao padrão no fim: ela é
+  do navegador e atravessaria as provas seguintes, que contam cartões e medem
+  rolagem.
   Regras que não podem ser afrouxadas, além das da tempestade: o teto de envios
   conta por **(pergunta, tipo)** dentro do INSERT, com `<=>` e não `=` (alvo sem
   lado grava `tipo_resposta` NULL, e o `=` devolveria NULL — o teto virava
