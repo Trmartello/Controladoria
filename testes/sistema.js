@@ -4182,6 +4182,134 @@ async function provasMenuRecolhido(page, largura) {
   await page.evaluate(() => { document.body.classList.remove('menu-aberto'); });
 }
 
+/**
+ * A JANELA do formulário: larga no computador, e que sai da frente.
+ *
+ * O pedido que a originou é de leitura, não de conforto — com o modal de 500px
+ * no meio da tela, quem escreve uma tendência não consegue ler as colunas do
+ * cenário que está justamente resumindo. Por isso a prova mede as três coisas
+ * juntas: a largura, o deslocamento e o VÉU (o escurecido do fundo clareando).
+ * A 50% de preto, a janela sair do meio não faz ninguém ler nada atrás, e a
+ * mudança teria passado por pronta.
+ *
+ * Os limites valem tanto quanto o movimento: janela arrastada para fora da
+ * tela é formulário perdido, com o Salvar junto — daí a prova do arraste longo,
+ * que pede muito mais do que cabe e confere onde ele parou.
+ */
+async function provasJanelaModal(page, largura) {
+  const l = `[${largura}] Janela do formulário:`;
+  const desktop = largura === 'desktop';
+
+  const abrir = async () => {
+    await page.evaluate(() => App.mostrarSecao('cenario'));
+    await esperar(page, "!!document.querySelector('#btn-novo-cenario')", 15000);
+    await page.click('#btn-novo-cenario');
+    await esperar(page, "document.getElementById('modal-form').classList.contains('show')");
+    return esperar(page, "!!document.querySelector('#modal-campos textarea')");
+  };
+
+  const medir = () => page.evaluate(() => {
+    const caixa = document.querySelector('#modal-form .modal-content').getBoundingClientRect();
+    const fundo = document.querySelector('.modal-backdrop');
+    return {
+      esq: Math.round(caixa.left),
+      topo: Math.round(caixa.top),
+      larg: Math.round(caixa.width),
+      alt: Math.round(caixa.height),
+      tela: { l: document.documentElement.clientWidth, a: document.documentElement.clientHeight },
+      transform: document.querySelector('#modal-form .modal-dialog').style.transform,
+      movido: document.body.classList.contains('modal-movido'),
+      veu: fundo ? Number(getComputedStyle(fundo).opacity) : null,
+      arrastavel: Modal.podeArrastar(),
+      dica: document.querySelector('#modal-form [data-arrastar]').getAttribute('title'),
+    };
+  });
+
+  // Em passos, e não num salto: um único `pointermove` provaria que a janela
+  // chegou, não que ela ACOMPANHA o ponteiro — e é o acompanhamento que quebra
+  // quando a transição do Bootstrap volta a valer no `.modal-dialog`.
+  const arrastar = async (dx, dy) => {
+    const alca = await page.locator('#modal-form [data-arrastar]').boundingBox();
+    const x = alca.x + alca.width / 2;
+    const y = alca.y + alca.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx / 2, y + dy / 2, { steps: 5 });
+    await page.mouse.move(x + dx, y + dy, { steps: 5 });
+    await page.mouse.up();
+  };
+
+  const dentro = (m) => m.esq >= 0 && m.topo >= 0
+    && m.esq + m.larg <= m.tela.l + 1 && m.topo + m.alt <= m.tela.a + 1;
+
+  t(`${l} o formulário do cenário abre`, await abrir() === true);
+  const antes = await medir();
+  t(`${l} a janela cabe inteira na tela`, dentro(antes), JSON.stringify(antes));
+
+  if (!desktop) {
+    // No celular não há para onde mover: o modal é a tela. A prova é que o
+    // arraste não acontece — nem meio deslocamento, nem véu clareado.
+    t(`${l} no celular a janela ocupa a largura toda`,
+      antes.larg >= antes.tela.l - 12, JSON.stringify(antes));
+    t(`${l} e o arraste está desligado`, antes.arrastavel === false);
+    // Dica que promete um gesto inexistente é pior que dica nenhuma.
+    t(`${l} sem dica de arrastar onde não se arrasta`, antes.dica === null, String(antes.dica));
+    await arrastar(-120, -60);
+    const depois = await medir();
+    t(`${l} arrastar o cabeçalho não move nada`,
+      depois.esq === antes.esq && depois.transform === '' && depois.movido === false,
+      JSON.stringify(depois));
+    await fecharModal(page);
+    return;
+  }
+
+  // 500px era o padrão do Bootstrap, e é o número que a mudança deixa para
+  // trás; 48rem (768px) é o teto novo.
+  t(`${l} no computador ela é mais larga que os 500px padrão`,
+    antes.larg > 700 && antes.larg <= 768, String(antes.larg));
+  t(`${l} e sobra tela dos dois lados para movê-la`,
+    antes.esq > 8 && antes.esq + antes.larg < antes.tela.l - 8, JSON.stringify(antes));
+  t(`${l} parada no meio, o fundo continua escurecido`,
+    antes.movido === false && antes.veu > 0.3, JSON.stringify(antes));
+  t(`${l} o cabeçalho diz que é alça`, /Arraste/.test(antes.dica || ''), String(antes.dica));
+
+  await arrastar(-300, -100);
+  const movida = await medir();
+  t(`${l} o cabeçalho arrasta a janela`,
+    Math.abs(movida.esq - (antes.esq - 300)) <= 2, JSON.stringify(movida));
+  t(`${l} sem sair da tela`, dentro(movida), JSON.stringify(movida));
+  t(`${l} e o fundo clareia para deixar ler o que está atrás`,
+    movida.movido === true && movida.veu < 0.2, JSON.stringify(movida));
+
+  // Pedir muito mais do que cabe: a janela para na folga da borda, inteira.
+  await arrastar(-700, 0);
+  const naBorda = await medir();
+  t(`${l} o arraste longo para na borda, com folga`,
+    naBorda.esq === 8 && dentro(naBorda), JSON.stringify(naBorda));
+
+  // Dois cliques devolvem ao centro — o caminho de volta sem arrastar. O
+  // `transform` some em vez de virar `translate(0px, 0px)`: é por ele que o
+  // Bootstrap anima a entrada de TODO modal do sistema.
+  await page.dblclick('#modal-form [data-arrastar] .modal-title');
+  const centro = await medir();
+  t(`${l} dois cliques no cabeçalho devolvem ao centro`,
+    centro.esq === antes.esq && centro.transform === '' && centro.movido === false,
+    JSON.stringify(centro));
+
+  // A janela reabre ONDE FOI DEIXADA: quem a moveu para ler uma coluna vai
+  // lançar vários itens seguidos, e repetir o gesto a cada item é o defeito
+  // que a memória evita.
+  await arrastar(-200, 0);
+  await fecharModal(page);
+  await abrir();
+  const reaberta = await medir();
+  t(`${l} reaberta, ela volta onde foi deixada`,
+    Math.abs(reaberta.esq - (antes.esq - 200)) <= 2, JSON.stringify(reaberta));
+
+  await page.dblclick('#modal-form [data-arrastar] .modal-title');
+  await fecharModal(page);
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -4218,6 +4346,7 @@ async function provasMenuRecolhido(page, largura) {
   await provasMoverAnalise(page);
   await provasMoverEntreTabelas(page);
   await provasTratarForaDaOrdem(page, 'desktop');
+  await provasJanelaModal(page, 'desktop');
   await provasMenuRecolhido(page, 'desktop');
   await noAnoDaCarga(page);
   await provasPainelSalaFixo(page, 'desktop');
@@ -4252,6 +4381,7 @@ async function provasMenuRecolhido(page, largura) {
   await provasBuscaAnalise(pageM, 'celular');
   await noAnoPadrao(pageM);
   await provasTratarForaDaOrdem(pageM, 'celular');
+  await provasJanelaModal(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
   await noAnoDaCarga(pageM);
   await provasPainelSalaFixo(pageM, 'celular');
