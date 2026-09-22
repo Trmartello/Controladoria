@@ -1177,6 +1177,76 @@ async function provasFilaAcao(page, largura) {
  * - o termo NÃO vaza entre análises. O estado é por etapa, e a análise vizinha
  *   abrindo com metade dos cartões escondidos não teria explicação na tela.
  */
+/**
+ * O interruptor "O que considerar" (pedido do cliente, 2026-09-22).
+ *
+ * O ⓘ de cada tópico já existia, mas abria um por vez e a escolha morria no
+ * desenho seguinte — a seção repinta ao trocar o ano, ao pesquisar, ao chegar
+ * voz da sala. Numa oficina, quem conduz abria os seis do PESTEL e os perdia
+ * no primeiro gesto. O que esta prova defende:
+ *
+ * - um clique abre TODOS os tópicos da análise, e outro fecha;
+ * - a escolha sobrevive à repintura, que é o defeito que originou o pedido;
+ * - e vale para as outras análises do diagnóstico, porque é preferência de
+ *   leitura da pessoa e não configuração de uma tela.
+ */
+async function provasOrientacoes(page, largura) {
+  const estado = (secao) => page.evaluate((s) => {
+    const el = document.getElementById(s);
+    const b = el.querySelector('[data-alternar-orientacoes]');
+    return {
+      botao: !!b,
+      pressed: b ? b.getAttribute('aria-pressed') : null,
+      paineis: el.querySelectorAll('[data-orientacao-alvo]').length,
+      visiveis: el.querySelectorAll('[data-orientacao-alvo]:not(.d-none)').length,
+    };
+  }, secao);
+
+  await page.evaluate(() => { try { localStorage.removeItem('pe_orientacoes_abertas'); } catch { /* sem armazenamento */ } });
+  await page.evaluate(() => App.mostrarSecao('pestel'));
+  await esperar(page, "!!document.querySelector('#secao-pestel [data-alternar-orientacoes]')", 15000);
+  await page.evaluate(() => App.recarregarSecaoAtiva());
+  await esperar(page, "!!document.querySelector('#secao-pestel [data-alternar-orientacoes]')", 15000);
+
+  const inicial = await estado('secao-pestel');
+  t(`[${largura}] o PESTEL traz o interruptor "O que considerar", começando fechado`,
+    inicial.botao && inicial.paineis > 0 && inicial.visiveis === 0 && inicial.pressed === 'false',
+    JSON.stringify(inicial));
+
+  await page.click('#secao-pestel [data-alternar-orientacoes]');
+  await new Promise((r) => setTimeout(r, 250));
+  const ligado = await estado('secao-pestel');
+  t(`[${largura}] um clique abre a orientação de TODOS os tópicos`,
+    ligado.visiveis === ligado.paineis && ligado.paineis > 1 && ligado.pressed === 'true',
+    `${ligado.visiveis}/${ligado.paineis}`);
+
+  // O defeito que originou o pedido: repintar apagava o que estava aberto
+  await page.evaluate(() => App.recarregarSecaoAtiva());
+  await esperar(page, "!!document.querySelector('#secao-pestel [data-alternar-orientacoes]')", 15000);
+  await new Promise((r) => setTimeout(r, 300));
+  const depois = await estado('secao-pestel');
+  t(`[${largura}] e a escolha sobrevive à repintura da seção`,
+    depois.visiveis === depois.paineis && depois.pressed === 'true',
+    `${depois.visiveis}/${depois.paineis}`);
+
+  await page.evaluate(() => App.mostrarSecao('swot'));
+  await esperar(page, "!!document.querySelector('#secao-swot [data-orientacao-alvo]')", 15000);
+  await new Promise((r) => setTimeout(r, 250));
+  const swot = await estado('secao-swot');
+  t(`[${largura}] a SWOT herda a preferência, sem clicar de novo`,
+    swot.visiveis === swot.paineis && swot.paineis > 1, `${swot.visiveis}/${swot.paineis}`);
+
+  await page.click('#secao-swot [data-alternar-orientacoes]');
+  await new Promise((r) => setTimeout(r, 250));
+  const fechado = await estado('secao-swot');
+  t(`[${largura}] e desligar fecha tudo de volta`,
+    fechado.visiveis === 0 && fechado.pressed === 'false', JSON.stringify(fechado));
+
+  // Devolve ao padrão: a preferência é do navegador e atravessaria as provas
+  // seguintes, que contam cartões e medem rolagem com a tela mais alta.
+  await page.evaluate(() => { try { localStorage.removeItem('pe_orientacoes_abertas'); } catch { /* sem armazenamento */ } });
+}
+
 async function provasBuscaAnalise(page, largura) {
   const semAcento = (s) => s.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[̀-ͯ]/g, '');
 
@@ -4135,6 +4205,7 @@ async function provasMenuRecolhido(page, largura) {
   await provasCabecalhoProjetos(page, 'desktop');
   await provasPopoverResumo(page, 'desktop');
   await noAnoDaCarga(page);
+  await provasOrientacoes(page, 'desktop');
   await provasBuscaAnalise(page, 'desktop');
   await provasGut(page);
   await noAnoPadrao(page);
@@ -4177,6 +4248,7 @@ async function provasMenuRecolhido(page, largura) {
   await provasFilaAcao(pageM, 'celular');
   await provasCabecalhoProjetos(pageM, 'celular');
   await noAnoDaCarga(pageM);
+  await provasOrientacoes(pageM, 'celular');
   await provasBuscaAnalise(pageM, 'celular');
   await noAnoPadrao(pageM);
   await provasTratarForaDaOrdem(pageM, 'celular');
