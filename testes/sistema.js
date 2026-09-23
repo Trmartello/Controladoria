@@ -4222,6 +4222,9 @@ async function provasJanelaModal(page, largura) {
       veu: fundo ? Number(getComputedStyle(fundo).opacity) : null,
       arrastavel: Modal.podeArrastar(),
       dica: document.querySelector('#modal-form [data-arrastar]').getAttribute('title'),
+      dimensionada: document.querySelector('#modal-form .modal-dialog').hasAttribute('data-dimensionada'),
+      alcas: [...document.querySelectorAll('#modal-form [data-redimensionar]')]
+        .filter((a) => a.offsetParent !== null).length,
     };
   });
 
@@ -4230,6 +4233,18 @@ async function provasJanelaModal(page, largura) {
   // quando a transição do Bootstrap volta a valer no `.modal-dialog`.
   const arrastar = async (dx, dy) => {
     const alca = await page.locator('#modal-form [data-arrastar]').boundingBox();
+    const x = alca.x + alca.width / 2;
+    const y = alca.y + alca.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx / 2, y + dy / 2, { steps: 5 });
+    await page.mouse.move(x + dx, y + dy, { steps: 5 });
+    await page.mouse.up();
+  };
+
+  // Mesmo gesto, outra alça: as bordas mudam o TAMANHO da janela.
+  const puxar = async (seletor, dx, dy) => {
+    const alca = await page.locator(seletor).boundingBox();
     const x = alca.x + alca.width / 2;
     const y = alca.y + alca.height / 2;
     await page.mouse.move(x, y);
@@ -4254,6 +4269,7 @@ async function provasJanelaModal(page, largura) {
     t(`${l} e o arraste está desligado`, antes.arrastavel === false);
     // Dica que promete um gesto inexistente é pior que dica nenhuma.
     t(`${l} sem dica de arrastar onde não se arrasta`, antes.dica === null, String(antes.dica));
+    t(`${l} e sem alça de redimensionar`, antes.alcas === 0, String(antes.alcas));
     await arrastar(-120, -60);
     const depois = await medir();
     t(`${l} arrastar o cabeçalho não move nada`,
@@ -4305,6 +4321,59 @@ async function provasJanelaModal(page, largura) {
   const reaberta = await medir();
   t(`${l} reaberta, ela volta onde foi deixada`,
     Math.abs(reaberta.esq - (antes.esq - 200)) <= 2, JSON.stringify(reaberta));
+
+  // ---- O TAMANHO também é de quem usa ----
+  t(`${l} as três alças de tamanho estão na tela`, reaberta.alcas === 3, String(reaberta.alcas));
+  t(`${l} e, sem ninguém puxar, o tamanho é o do CSS`,
+    reaberta.dimensionada === false && reaberta.larg === antes.larg,
+    JSON.stringify(reaberta));
+
+  // No eixo X a largura anda pelo DOBRO do ponteiro: o diálogo é centrado, e
+  // crescendo pelos dois lados a borda só acompanharia metade do gesto.
+  await puxar('.alca-janela-canto', 100, 20);
+  const maior = await medir();
+  t(`${l} o canto estica a janela nos dois eixos`,
+    Math.abs(maior.larg - (antes.larg + 200)) <= 2 && Math.abs(maior.alt - (antes.alt + 20)) <= 2,
+    JSON.stringify(maior));
+  t(`${l} e a janela passa a mandar no próprio tamanho`,
+    dentro(maior) && maior.dimensionada === true, JSON.stringify(maior));
+
+  // Cada borda mexe no SEU eixo: a da direita não pode mudar a altura.
+  await puxar('.alca-janela-direita', -200, 0);
+  const estreita = await medir();
+  t(`${l} a borda da direita muda só a largura`,
+    Math.abs(estreita.larg - (maior.larg - 400)) <= 2 && estreita.alt === maior.alt,
+    JSON.stringify(estreita));
+
+  // Pedir menos que o mínimo e mais que a tela: os dois param onde devem. Uma
+  // janela menor que isto não é formulário — é cabeçalho e rodapé espremendo
+  // um campo —, e maior que a tela esconderia o Salvar. Crescendo até o teto
+  // ela SOBE sozinha: o topo padrão mais a altura cheia punham o rodapé 12px
+  // fora da tela, e foi esta prova que pegou isso.
+  await puxar('.alca-janela-canto', -500, 400);
+  const limite = await medir();
+  t(`${l} a janela não encolhe abaixo do mínimo`, limite.larg === 320, String(limite.larg));
+  t(`${l} nem cresce além da tela`,
+    limite.alt === limite.tela.a - 16 && dentro(limite), JSON.stringify(limite));
+  t(`${l} e sobe sozinha para o rodapé não sair da tela`,
+    limite.topo === 8, JSON.stringify(limite));
+
+  // Dois cliques devolvem o PADRÃO — tamanho e posição de uma vez, porque quem
+  // alargou e empurrou para o canto não tem por que desfazer em duas etapas.
+  await page.dblclick('#modal-form [data-arrastar] .modal-title');
+  const padrao = await medir();
+  t(`${l} dois cliques devolvem tamanho e posição ao padrão`,
+    padrao.larg === antes.larg && padrao.alt === antes.alt && padrao.esq === antes.esq
+    && padrao.dimensionada === false && padrao.transform === '', JSON.stringify(padrao));
+
+  // E o tamanho escolhido sobrevive ao fechamento, como a posição.
+  await puxar('.alca-janela-canto', 60, 10);
+  const escolhido = await medir();
+  await fecharModal(page);
+  await abrir();
+  const voltou = await medir();
+  t(`${l} reaberta, ela volta do tamanho escolhido`,
+    voltou.larg === escolhido.larg && voltou.alt === escolhido.alt, JSON.stringify(voltou));
 
   await page.dblclick('#modal-form [data-arrastar] .modal-title');
   await fecharModal(page);
