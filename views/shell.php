@@ -208,10 +208,18 @@
   <div class="modal fade" id="modal-form" tabindex="-1" aria-labelledby="modal-titulo">
     <div class="modal-dialog modal-dialog-scrollable">
       <div class="modal-content">
-        <div class="modal-header">
+        <!-- `data-arrastar` é o CONTRATO da alça: no computador o cabeçalho
+             move a janela (`Modal.ligarArraste`), para ler o que ficou atrás
+             dela. O atributo, e não a classe do Bootstrap, porque `.modal-header`
+             descreve onde o pedaço fica, não o que ele faz. A DICA fica com o
+             JS (`Modal.dicaArraste`): abaixo de 992px não se arrasta nada, e
+             um `title` fixo aqui prometeria na tela pequena um gesto que não
+             existe. O `title` próprio do × evita que o do cabeçalho apareça em
+             cima dele. -->
+        <div class="modal-header" data-arrastar>
           <h2 class="modal-title h6" id="modal-titulo"></h2>
           <button type="button" class="btn-close" data-bs-dismiss="modal"
-            aria-label="Fechar"></button>
+            title="Fechar" aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
           <!-- Cadeado de edição: fica ACIMA dos campos, porque o tempo restante é

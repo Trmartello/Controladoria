@@ -2801,6 +2801,46 @@ td.editando-agora { background: #fff8e6; }
   }
 }
 
+/* ---- No computador o formulário é uma JANELA: mais larga, e que sai do meio ----
+
+   Duas queixas que são a mesma: o modal de digitação nascia com os 500px
+   padrão do Bootstrap — campo estreito para escrever uma tendência ou uma
+   ação — e no centro da tela, bem em cima das colunas que se está lendo para
+   escrever ("Situação Atual" e "Tendências", no cenário). Alargar sozinho
+   pioraria a segunda: quanto maior a janela, mais tela tapada. Por isso as
+   duas mudanças vieram juntas, e o arraste (`Modal.ligarArraste`) é a outra
+   metade desta regra.
+
+   O teto de 48rem é o mesmo nos dois eixos de propósito: a janela ocupa um
+   quadrado no meio da tela e sobra por onde movê-la. A altura CHEIA que havia
+   antes é do celular — no computador ela também zerava o espaço de manobra, e
+   48rem ainda dão mais de vinte linhas de texto à vista. */
+@media (min-width: 992px) {
+  #modal-form .modal-dialog:has(textarea) {
+    max-width: min(48rem, calc(100vw - 3rem));
+    height: min(calc(100dvh - 3.5rem), 48rem);
+  }
+  /* O cabeçalho é a alça: o cursor diz isso antes do primeiro arraste, e sem
+     `user-select` o gesto pintava o título de azul em vez de mover a janela. */
+  #modal-form .modal-header[data-arrastar] {
+    cursor: move;
+    user-select: none;
+  }
+  #modal-form .modal-header[data-arrastar] .btn-close { cursor: pointer; }
+  /* O Bootstrap anima `transform` no `.modal-dialog` (é assim que o modal
+     entra). Durante o arraste essa transição de 300ms faz a janela vir ATRÁS
+     do ponteiro, como se estivesse presa por um elástico. */
+  #modal-form.arrastando .modal-dialog { transition: none; }
+  /* Fora do centro, o escurecido do fundo vira véu. É o ponto da mudança: a
+     50% de preto, tirar a janela da frente revela um texto que continua
+     ilegível — e ler o que está atrás é justamente o motivo de mover. Em
+     troca a janela ganha sombra: sem o fundo escuro, ela perdia a borda. */
+  body.modal-movido .modal-backdrop.show { opacity: .12; }
+  body.modal-movido #modal-form .modal-content {
+    box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, .3);
+  }
+}
+
 /* Microfone de ditado por voz — ícone discreto flutuando no canto inferior
    direito do campo; pulsa em vermelho enquanto grava */
 .campo-voz { position: relative; display: flex; flex-direction: column; }

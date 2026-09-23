@@ -4,6 +4,13 @@ const Modal = {
   bsModal: null,
   config: null,
 
+  // Onde a janela do formulário está, em relação ao centro da tela (ver
+  // `ligarArraste`). O deslocamento é do MODAL, não de um formulário: quem
+  // arrasta a janela para ler uma coluna vai lançar vários itens seguidos, e
+  // devolvê-la ao centro a cada abertura cobraria o mesmo gesto a cada item.
+  // Vive na memória da página — recarregou, volta ao centro.
+  deslocamento: { x: 0, y: 0 },
+
   // Ícones olho / olho riscado (Bootstrap Icons, MIT)
   iconeOlho: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
     + '<path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>'
@@ -109,9 +116,19 @@ const Modal = {
         Cadeado.soltar();
       });
       // Só com o modal na tela dá para medir o que transborda
-      document.getElementById('modal-form').addEventListener('shown.bs.modal', () =>
-        this.aoAparecer(document.getElementById('modal-campos')));
+      document.getElementById('modal-form').addEventListener('shown.bs.modal', () => {
+        // A conferência do deslocamento vem ANTES do resto: as medidas do que
+        // transborda são tiradas da janela já no lugar em que ela ficou.
+        this.moverJanela(this.deslocamento.x, this.deslocamento.y);
+        this.aoAparecer(document.getElementById('modal-campos'));
+      });
+      this.ligarArraste();
     }
+    // A janela reabre onde foi deixada — já aqui, antes de aparecer, para não
+    // piscar no meio da tela e saltar depois. Conferir contra a tela é no
+    // `shown`, quando existe o que medir.
+    if (!this.podeArrastar()) this.deslocamento = { x: 0, y: 0 };
+    this.pintarDeslocamento();
     this.bsModal.show();
     if (this.bloqueioPendente) {
       Cadeado.iniciar(this.bloqueioPendente.alvo, this.bloqueioPendente.restam);
@@ -119,6 +136,164 @@ const Modal = {
     } else {
       Cadeado.pintar();
     }
+  },
+
+  /**
+   * A janela do formulário se move, arrastada pelo cabeçalho.
+   *
+   * O formulário nasce no meio da tela, e no meio da tela é onde estão as
+   * colunas que se lê para preenchê-lo — no cenário, "Situação Atual" e
+   * "Tendências"; no cruzamento, o par. Alargar a janela (a outra metade desta
+   * mudança, no CSS) só agrava isso: mais espaço para escrever é mais tela
+   * tapada. Por isso as duas vieram juntas.
+   *
+   * Ponteiro, e não mouse: `pointerdown/move/up` cobre mouse, caneta e dedo com
+   * um caminho só, e o `setPointerCapture` é o que faz o arraste continuar
+   * quando o ponteiro sai do cabeçalho — sem ele, mover rápido larga a janela
+   * no meio do gesto. Arrastar é gesto de computador (`podeArrastar`): no
+   * celular o modal ocupa a tela inteira e não há para onde ir.
+   */
+  ligarArraste() {
+    const modal = document.getElementById('modal-form');
+    const alca = modal.querySelector('[data-arrastar]');
+    let arraste = null;
+
+    alca.addEventListener('pointerdown', (ev) => {
+      // Botão direito não arrasta, e o × (ou qualquer controle do cabeçalho)
+      // continua sendo o que é: começar um arraste ali engoliria o clique.
+      if (ev.button !== 0 || !this.podeArrastar()) return;
+      if (ev.target.closest('button, a, input, select, textarea')) return;
+      arraste = {
+        id: ev.pointerId,
+        x: ev.clientX,
+        y: ev.clientY,
+        origem: { ...this.deslocamento },
+        // Os limites são medidos UMA vez, no começo: a janela não muda de
+        // tamanho durante o gesto, e remedir a cada pixel custaria um
+        // recálculo de layout por movimento do ponteiro.
+        limites: this.limitesArraste(),
+      };
+      alca.setPointerCapture(ev.pointerId);
+      modal.classList.add('arrastando');
+      ev.preventDefault();
+    });
+
+    alca.addEventListener('pointermove', (ev) => {
+      if (!arraste || ev.pointerId !== arraste.id) return;
+      this.moverJanela(
+        arraste.origem.x + ev.clientX - arraste.x,
+        arraste.origem.y + ev.clientY - arraste.y,
+        arraste.limites,
+      );
+    });
+
+    const soltar = (ev) => {
+      if (!arraste || ev.pointerId !== arraste.id) return;
+      arraste = null;
+      modal.classList.remove('arrastando');
+    };
+    alca.addEventListener('pointerup', soltar);
+    alca.addEventListener('pointercancel', soltar);
+
+    // Dois cliques no cabeçalho devolvem a janela ao centro — o caminho de
+    // volta sem arrastar, e o mesmo gesto de qualquer janela.
+    alca.addEventListener('dblclick', (ev) => {
+      if (ev.target.closest('button')) return;
+      this.deslocamento = { x: 0, y: 0 };
+      this.pintarDeslocamento();
+    });
+
+    // Tela redimensionada não pode deixar o formulário fora de alcance — nem
+    // meio deslocado quando a largura cai para a do celular, onde o modal
+    // ocupa tudo e o deslocamento não quer dizer nada.
+    this.dicaArraste();
+    window.addEventListener('resize', () => {
+      this.dicaArraste();
+      if (!modal.classList.contains('show')) return;
+      if (!this.podeArrastar()) {
+        this.deslocamento = { x: 0, y: 0 };
+        this.pintarDeslocamento();
+        return;
+      }
+      this.moverJanela(this.deslocamento.x, this.deslocamento.y);
+    });
+  },
+
+  /**
+   * A dica da alça só existe onde o gesto existe.
+   *
+   * Ela mora no JS, e não no `title` do `shell.php`, porque é o JS que decide
+   * se dá para arrastar: fixa no HTML, a dica prometeria na tela estreita um
+   * gesto que ali não acontece — e dica que mente é pior que dica nenhuma.
+   */
+  dicaArraste() {
+    const alca = document.querySelector('#modal-form [data-arrastar]');
+    if (this.podeArrastar()) {
+      alca.title = 'Arraste para mover a janela; dois cliques devolvem ao centro';
+    } else {
+      alca.removeAttribute('title');
+    }
+  },
+
+  /** Arrastar é gesto de computador: no celular o modal ocupa a tela inteira. */
+  podeArrastar() {
+    return window.matchMedia('(min-width: 992px)').matches;
+  },
+
+  /**
+   * Até onde a janela pode ir: ela fica INTEIRA dentro da tela, com uma folga
+   * de 8px.
+   *
+   * A medida é do `.modal-content`, não do `.modal-dialog`: com
+   * `modal-dialog-scrollable` o diálogo tem toda a altura disponível mesmo
+   * quando o formulário é curto, e a caixa que se vê — a que precisa caber — é
+   * o conteúdo. Medir o diálogo daria uma faixa vertical de zero em todo
+   * formulário do sistema.
+   *
+   * O `Math.min`/`Math.max` contra o zero é a rede: se a janela não couber na
+   * tela, o intervalo se inverteria e a posição de origem ficaria FORA dele —
+   * o formulário nasceria preso num canto em que ninguém o pôs.
+   */
+  limitesArraste() {
+    const caixa = document.querySelector('#modal-form .modal-content').getBoundingClientRect();
+    const folga = 8;
+    const faixa = (inicio, tamanho, tela) => [
+      Math.min(folga - inicio, 0),
+      Math.max(tela - folga - tamanho - inicio, 0),
+    ];
+    return {
+      x: faixa(caixa.left - this.deslocamento.x, caixa.width, document.documentElement.clientWidth),
+      y: faixa(caixa.top - this.deslocamento.y, caixa.height, document.documentElement.clientHeight),
+    };
+  },
+
+  /** Leva a janela para (x, y), sem deixá-la sair da tela. */
+  moverJanela(x, y, limites = null) {
+    if (!this.podeArrastar()) return;
+    const l = limites || this.limitesArraste();
+    const preso = (v, [min, max]) => Math.min(Math.max(v, min), max);
+    this.deslocamento = { x: preso(x, l.x), y: preso(y, l.y) };
+    this.pintarDeslocamento();
+  },
+
+  /**
+   * Escreve o deslocamento na tela.
+   *
+   * Sem deslocamento o `transform` SAI do elemento, em vez de virar
+   * `translate(0px, 0px)`: é por `transform` que o Bootstrap anima a entrada do
+   * modal, e um valor nosso fixo apagaria essa animação em todo formulário do
+   * sistema.
+   *
+   * O `modal-movido` no `body` clareia o escurecido do fundo (regra no CSS).
+   * Ele é o ponto da mudança: a 50% de preto, tirar a janela da frente revela
+   * um texto que continua ilegível. Só com a janela fora do centro — enquanto
+   * ela está no meio, o escurecido faz o que sempre fez.
+   */
+  pintarDeslocamento() {
+    const { x, y } = this.deslocamento;
+    const dialogo = document.querySelector('#modal-form .modal-dialog');
+    dialogo.style.transform = x || y ? `translate(${x}px, ${y}px)` : '';
+    document.body.classList.toggle('modal-movido', !!(x || y));
   },
 
   /**
