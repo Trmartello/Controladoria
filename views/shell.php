@@ -240,6 +240,17 @@
           <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
           <button class="btn btn-verde btn-sm" id="modal-salvar">Salvar</button>
         </div>
+        <!-- Alças de redimensionar (`Modal.ligarRedimensionar`), só no
+             computador. São as BORDAS, e não um canto só, porque o canto
+             inferior direito da janela é onde mora o Salvar: uma alça larga
+             ali disputaria o clique com o botão mais usado do formulário.
+             Ficam por último para pegarem o ponteiro antes do que está
+             embaixo, e dentro do `.modal-content` porque é ele que tem
+             `overflow: hidden` — do lado de fora seriam recortadas. -->
+        <div class="alca-janela alca-janela-direita" data-redimensionar="x" aria-hidden="true"></div>
+        <div class="alca-janela alca-janela-baixo" data-redimensionar="y" aria-hidden="true"></div>
+        <div class="alca-janela alca-janela-canto" data-redimensionar="xy" aria-hidden="true"
+          title="Arraste para mudar o tamanho da janela"></div>
       </div>
     </div>
   </div>

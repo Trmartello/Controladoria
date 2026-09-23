@@ -2814,17 +2814,25 @@ td.editando-agora { background: #fff8e6; }
    O teto de 48rem é o mesmo nos dois eixos de propósito: a janela ocupa um
    quadrado no meio da tela e sobra por onde movê-la. A altura CHEIA que havia
    antes é do celular — no computador ela também zerava o espaço de manobra, e
-   48rem ainda dão mais de vinte linhas de texto à vista. */
+   48rem ainda dão mais de vinte linhas de texto à vista. Ele é PADRÃO, não
+   limite: a partir da primeira alça arrastada quem manda no tamanho é quem
+   está usando (`[data-dimensionada]`, medida inline do JS). */
 @media (min-width: 992px) {
   #modal-form .modal-dialog:has(textarea) {
     max-width: min(48rem, calc(100vw - 3rem));
     height: min(calc(100dvh - 3.5rem), 48rem);
   }
+  /* Redimensionada, a janela manda na altura do conteúdo. A regra do
+     `:has(textarea)` já fazia isso para o modal de digitação; aqui ela passa a
+     valer para QUALQUER formulário, senão a alça de baixo esticava o diálogo
+     (invisível) e deixava a caixa branca do mesmo tamanho. */
+  #modal-form .modal-dialog[data-dimensionada] .modal-content { height: 100%; }
   /* O cabeçalho é a alça: o cursor diz isso antes do primeiro arraste, e sem
      `user-select` o gesto pintava o título de azul em vez de mover a janela. */
   #modal-form .modal-header[data-arrastar] {
     cursor: move;
     user-select: none;
+    touch-action: none;
   }
   #modal-form .modal-header[data-arrastar] .btn-close { cursor: pointer; }
   /* O Bootstrap anima `transform` no `.modal-dialog` (é assim que o modal
@@ -2839,6 +2847,41 @@ td.editando-agora { background: #fff8e6; }
   body.modal-movido #modal-form .modal-content {
     box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, .3);
   }
+
+  /* ---- Alças de redimensionar ----
+     Faixas de 8px nas BORDAS direita e inferior, mais o canto. Borda, e não um
+     canto só, porque o canto inferior direito é onde mora o Salvar: alça larga
+     ali disputaria o clique com o botão mais usado do formulário. A faixa fica
+     colada na borda (sem recuo negativo, que o `overflow: hidden` do
+     `.modal-content` recortaria) e os botões do rodapé têm o respiro do padding
+     do Bootstrap, então uma não alcança o outro.
+     Só o canto tem desenho: três riscos, os mesmos da alça do campo de texto
+     (`.alca-campo`) — é o vocabulário que o sistema já usa para "puxe aqui". */
+  .alca-janela {
+    position: absolute;
+    z-index: 2;
+    touch-action: none;
+  }
+  .alca-janela-direita { top: 0; right: 0; width: 8px; height: 100%; cursor: ew-resize; }
+  .alca-janela-baixo { left: 0; bottom: 0; height: 8px; width: 100%; cursor: ns-resize; }
+  .alca-janela-canto {
+    right: 0;
+    bottom: 0;
+    width: 1rem;
+    height: 1rem;
+    cursor: nwse-resize;
+    z-index: 3;
+    background:
+      linear-gradient(135deg, transparent 46%, #adb5bd 46%, #adb5bd 58%, transparent 58%) no-repeat,
+      linear-gradient(135deg, transparent 66%, #adb5bd 66%, #adb5bd 78%, transparent 78%) no-repeat,
+      linear-gradient(135deg, transparent 86%, #adb5bd 86%, #adb5bd 98%, transparent 98%) no-repeat;
+  }
+  .alca-janela-canto:hover { filter: brightness(.75); }
+}
+/* No celular a janela é a tela: não há tamanho para escolher, e a alça só
+   tiraria 8px de largura útil de cada formulário. */
+@media (max-width: 991.98px) {
+  .alca-janela { display: none; }
 }
 
 /* Microfone de ditado por voz — ícone discreto flutuando no canto inferior

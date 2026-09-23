@@ -11,6 +11,12 @@ const Modal = {
   // Vive na memória da página — recarregou, volta ao centro.
   deslocamento: { x: 0, y: 0 },
 
+  // E de que tamanho ela está (`ligarRedimensionar`). Nulo é "o do CSS": a
+  // medida só passa a existir depois de alguém puxar uma alça, e é por isso
+  // que ela é nula em vez de nascer com o padrão copiado — um número gravado
+  // aqui congelaria o tamanho do CSS e a regra de lá deixaria de valer.
+  tamanho: { l: null, a: null },
+
   // Ícones olho / olho riscado (Bootstrap Icons, MIT)
   iconeOlho: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">'
     + '<path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>'
@@ -117,17 +123,27 @@ const Modal = {
       });
       // Só com o modal na tela dá para medir o que transborda
       document.getElementById('modal-form').addEventListener('shown.bs.modal', () => {
-        // A conferência do deslocamento vem ANTES do resto: as medidas do que
-        // transborda são tiradas da janela já no lugar em que ela ficou.
+        // A conferência do tamanho e do deslocamento vem ANTES do resto: as
+        // medidas do que transborda são tiradas da janela já no tamanho e no
+        // lugar em que ela ficou. Sem tamanho escolhido não se confere nada —
+        // `dimensionar` mede o que está na tela para completar o eixo que falta,
+        // e chamá-lo aqui congelaria o padrão do CSS como se fosse escolha de
+        // alguém.
+        if (this.tamanho.l) this.dimensionar(this.tamanho.l, this.tamanho.a);
         this.moverJanela(this.deslocamento.x, this.deslocamento.y);
         this.aoAparecer(document.getElementById('modal-campos'));
       });
       this.ligarArraste();
+      this.ligarRedimensionar();
     }
-    // A janela reabre onde foi deixada — já aqui, antes de aparecer, para não
-    // piscar no meio da tela e saltar depois. Conferir contra a tela é no
-    // `shown`, quando existe o que medir.
-    if (!this.podeArrastar()) this.deslocamento = { x: 0, y: 0 };
+    // A janela reabre do tamanho e no lugar em que foi deixada — já aqui,
+    // antes de aparecer, para não piscar no padrão e saltar depois. Conferir
+    // contra a tela é no `shown`, quando existe o que medir.
+    if (!this.podeArrastar()) {
+      this.deslocamento = { x: 0, y: 0 };
+      this.tamanho = { l: null, a: null };
+    }
+    this.pintarTamanho();
     this.pintarDeslocamento();
     this.bsModal.show();
     if (this.bloqueioPendente) {
@@ -195,28 +211,143 @@ const Modal = {
     alca.addEventListener('pointerup', soltar);
     alca.addEventListener('pointercancel', soltar);
 
-    // Dois cliques no cabeçalho devolvem a janela ao centro — o caminho de
-    // volta sem arrastar, e o mesmo gesto de qualquer janela.
+    // Dois cliques no cabeçalho devolvem a janela ao PADRÃO — centro e tamanho
+    // do CSS. Um gesto só para desfazer os dois porque eles se misturam: quem
+    // alargou a janela e a empurrou para o canto não vai querer adivinhar qual
+    // dos dois desfazer primeiro.
     alca.addEventListener('dblclick', (ev) => {
       if (ev.target.closest('button')) return;
       this.deslocamento = { x: 0, y: 0 };
+      this.tamanho = { l: null, a: null };
+      this.pintarTamanho();
       this.pintarDeslocamento();
     });
 
     // Tela redimensionada não pode deixar o formulário fora de alcance — nem
     // meio deslocado quando a largura cai para a do celular, onde o modal
-    // ocupa tudo e o deslocamento não quer dizer nada.
+    // ocupa tudo e nem o deslocamento nem o tamanho querem dizer alguma coisa.
     this.dicaArraste();
     window.addEventListener('resize', () => {
       this.dicaArraste();
       if (!modal.classList.contains('show')) return;
       if (!this.podeArrastar()) {
         this.deslocamento = { x: 0, y: 0 };
+        this.tamanho = { l: null, a: null };
+        this.pintarTamanho();
         this.pintarDeslocamento();
         return;
       }
+      if (this.tamanho.l) this.dimensionar(this.tamanho.l, this.tamanho.a);
       this.moverJanela(this.deslocamento.x, this.deslocamento.y);
     });
+  },
+
+  /**
+   * A janela também muda de tamanho, puxada pelas bordas.
+   *
+   * Mover resolve "não consigo ler o que está atrás"; redimensionar resolve a
+   * outra metade — que o tamanho bom depende do que se está escrevendo e de
+   * que tela a pessoa tem. Um número fixo no CSS serve à média e a ninguém: o
+   * teto de 48rem continua sendo o PADRÃO, e a partir da primeira alça puxada
+   * quem decide é quem está usando.
+   *
+   * Duas assimetrias que parecem defeito e não são. No eixo X a largura cresce
+   * pelo DOBRO do que o ponteiro andou, porque o diálogo é centrado (`margin:
+   * auto`): crescendo pelos dois lados, a borda só acompanharia metade do
+   * gesto e a alça pareceria escorregar do dedo. No eixo Y não: a janela é
+   * ancorada no topo, e ali a borda de baixo já segue o ponteiro 1:1.
+   */
+  ligarRedimensionar() {
+    const modal = document.getElementById('modal-form');
+    let gesto = null;
+
+    modal.querySelectorAll('[data-redimensionar]').forEach((alca) => {
+      alca.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== 0 || !this.podeArrastar()) return;
+        const caixa = modal.querySelector('.modal-content').getBoundingClientRect();
+        gesto = {
+          id: ev.pointerId,
+          eixos: alca.dataset.redimensionar,
+          x: ev.clientX,
+          y: ev.clientY,
+          l: caixa.width,
+          a: caixa.height,
+        };
+        alca.setPointerCapture(ev.pointerId);
+        modal.classList.add('arrastando');
+        ev.preventDefault();
+      });
+
+      alca.addEventListener('pointermove', (ev) => {
+        if (!gesto || ev.pointerId !== gesto.id) return;
+        this.dimensionar(
+          gesto.eixos.includes('x') ? gesto.l + (ev.clientX - gesto.x) * 2 : null,
+          gesto.eixos.includes('y') ? gesto.a + (ev.clientY - gesto.y) : null,
+        );
+      });
+
+      const soltar = (ev) => {
+        if (!gesto || ev.pointerId !== gesto.id) return;
+        gesto = null;
+        modal.classList.remove('arrastando');
+      };
+      alca.addEventListener('pointerup', soltar);
+      alca.addEventListener('pointercancel', soltar);
+    });
+  },
+
+  /**
+   * Põe a janela no tamanho pedido, dentro do que cabe na tela.
+   *
+   * O eixo não pedido (`null`) entra com a medida do que está na tela: os dois
+   * lados viram número na primeira alça puxada, senão a metade não escolhida
+   * ficaria à mercê do CSS e a janela mudaria de forma sozinha na abertura
+   * seguinte.
+   *
+   * O piso de 20rem × 14rem é o que ainda é formulário: abaixo disso sobram o
+   * cabeçalho e o rodapé espremendo um campo. E depois de mudar de tamanho a
+   * posição é reconferida — janela que cresceu junto à borda precisa voltar
+   * para dentro da tela — e o aviso de "mais campos abaixo" também, porque o
+   * que cabia na altura anterior pode ter deixado de caber.
+   */
+  dimensionar(l, a) {
+    if (!this.podeArrastar()) return;
+    const caixa = document.querySelector('#modal-form .modal-content').getBoundingClientRect();
+    const folga = 8;
+    const preso = (v, min, max) => Math.round(Math.min(Math.max(v, min), max));
+    this.tamanho = {
+      l: preso(l == null ? caixa.width : l, 320, document.documentElement.clientWidth - folga * 2),
+      a: preso(a == null ? caixa.height : a, 224, document.documentElement.clientHeight - folga * 2),
+    };
+    this.pintarTamanho();
+    this.moverJanela(this.deslocamento.x, this.deslocamento.y);
+    this.ligarAvisoRolagem(document.querySelector('#modal-form .modal-body'));
+  },
+
+  /**
+   * Escreve o tamanho na tela — ou o apaga, devolvendo a palavra ao CSS.
+   *
+   * A medida vai no `.modal-dialog`, e não no `.modal-content`: é o diálogo
+   * que o CSS dimensiona (largura por `max-width`, altura pela regra do modal
+   * de digitação), e escrever no conteúdo deixaria as duas fontes brigando.
+   * O `max-width` precisa ser zerado junto, senão a largura pedida acima de
+   * 48rem seria aceita pelo `width` e recusada pelo teto, sem nada na tela
+   * explicando por que a alça parou.
+   */
+  pintarTamanho() {
+    const dialogo = document.querySelector('#modal-form .modal-dialog');
+    const { l, a } = this.tamanho;
+    if (l && a) {
+      dialogo.style.width = `${l}px`;
+      dialogo.style.maxWidth = 'none';
+      dialogo.style.height = `${a}px`;
+      dialogo.dataset.dimensionada = '';
+    } else {
+      dialogo.style.width = '';
+      dialogo.style.maxWidth = '';
+      dialogo.style.height = '';
+      delete dialogo.dataset.dimensionada;
+    }
   },
 
   /**
@@ -229,7 +360,7 @@ const Modal = {
   dicaArraste() {
     const alca = document.querySelector('#modal-form [data-arrastar]');
     if (this.podeArrastar()) {
-      alca.title = 'Arraste para mover a janela; dois cliques devolvem ao centro';
+      alca.title = 'Arraste para mover a janela; dois cliques devolvem ao padrão';
     } else {
       alca.removeAttribute('title');
     }
@@ -250,17 +381,22 @@ const Modal = {
    * o conteúdo. Medir o diálogo daria uma faixa vertical de zero em todo
    * formulário do sistema.
    *
-   * O `Math.min`/`Math.max` contra o zero é a rede: se a janela não couber na
-   * tela, o intervalo se inverteria e a posição de origem ficaria FORA dele —
-   * o formulário nasceria preso num canto em que ninguém o pôs.
+   * A rede contra o zero vale SÓ quando a janela não cabe na tela: aí o
+   * intervalo se inverte e a posição de origem ficaria fora dele — o
+   * formulário nasceria preso num canto em que ninguém o pôs. Quando ela cabe,
+   * o intervalo é o verdadeiro, mesmo que isso EXCLUA o zero: é o que faz a
+   * janela esticada pela alça subir sozinha para caber, em vez de ficar
+   * ancorada no topo com o rodapé (e o Salvar) fora da tela. A prova
+   * `nem cresce além da tela` pegou justamente esse caso.
    */
   limitesArraste() {
     const caixa = document.querySelector('#modal-form .modal-content').getBoundingClientRect();
     const folga = 8;
-    const faixa = (inicio, tamanho, tela) => [
-      Math.min(folga - inicio, 0),
-      Math.max(tela - folga - tamanho - inicio, 0),
-    ];
+    const faixa = (inicio, tamanho, tela) => {
+      const min = folga - inicio;
+      const max = tela - folga - tamanho - inicio;
+      return min <= max ? [min, max] : [Math.min(min, 0), Math.max(max, 0)];
+    };
     return {
       x: faixa(caixa.left - this.deslocamento.x, caixa.width, document.documentElement.clientWidth),
       y: faixa(caixa.top - this.deslocamento.y, caixa.height, document.documentElement.clientHeight),

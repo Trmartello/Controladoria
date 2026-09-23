@@ -331,31 +331,42 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   o estado de quem acabou de preencher e clicou em Salvar — a mensagem nascia
   fora da vista e o formulário parecia ter ignorado o clique.
   **No computador o formulário de digitação é uma JANELA**: 48rem de largura
-  (contra os 500px padrão do Bootstrap), 48rem de altura no máximo, e
+  (contra os 500px padrão do Bootstrap), 48rem de altura no máximo,
   **arrastável pelo cabeçalho** (`Modal.ligarArraste`; a alça é o atributo
-  `data-arrastar` no `shell.php`, e dois cliques devolvem ao centro). As duas
-  coisas são uma decisão só, e nasceram de uma queixa de LEITURA, não de
-  conforto: com o modal estreito no meio da tela, quem escreve uma tendência não
-  consegue ler as colunas do cenário que está resumindo — e alargar sozinho
-  pioraria isso, porque janela maior tapa mais. Daí o terceiro pedaço, o que de
-  fato resolve: **fora do centro, o escurecido do fundo clareia**
-  (`modal-movido` no `body`, opacidade 0,5 → 0,12). A 50% de preto, tirar a
-  janela da frente não faz ninguém ler nada atrás. O teto de altura existe pelo
-  mesmo motivo: a altura CHEIA é regra do celular, e no computador ela zerava o
-  espaço de manobra vertical. O deslocamento é do MODAL e **sobrevive ao
-  fechamento** (memória da página, não `localStorage`) — quem move a janela para
-  ler uma coluna vai lançar vários itens seguidos, e repetir o gesto a cada item
-  era o defeito a evitar; a cada abertura ele é reconferido contra a tela, e
-  some inteiro abaixo de 992px, onde o modal ocupa tudo. Duas armadilhas já
-  pagas: os limites são medidos pelo **`.modal-content`**, não pelo
-  `.modal-dialog` — com `modal-dialog-scrollable` o diálogo tem toda a altura
-  disponível mesmo com o formulário curto, e medi-lo daria faixa vertical zero
-  em todo formulário do sistema; e sem deslocamento o `transform` **sai** do
-  elemento em vez de virar `translate(0px, 0px)`, porque é por ele que o
-  Bootstrap anima a entrada de todo modal (durante o arraste, `.arrastando`
+  `data-arrastar` no `shell.php`) e **redimensionável pelas bordas**
+  (`Modal.ligarRedimensionar`, `data-redimensionar` nas três alças). Dois
+  cliques no cabeçalho devolvem o padrão — tamanho e posição de uma vez, porque
+  quem alargou a janela e a empurrou para o canto não tem por que desfazer em
+  duas etapas. Tudo isso nasceu de uma queixa de LEITURA, não de conforto: com
+  o modal estreito no meio da tela, quem escreve uma tendência não consegue ler
+  as colunas do cenário que está resumindo — e alargar sozinho pioraria isso,
+  porque janela maior tapa mais. Daí o pedaço que de fato resolve: **fora do
+  centro, o escurecido do fundo clareia** (`modal-movido` no `body`, opacidade
+  0,5 → 0,12). A 50% de preto, tirar a janela da frente não faz ninguém ler
+  nada atrás. As medidas do CSS são **padrão, não limite**: a partir da
+  primeira alça puxada, quem manda é `[data-dimensionada]` (medida inline do
+  JS, entre 20rem × 14rem e a tela menos a folga). O teto de altura existe pelo
+  mesmo motivo do resto: a altura CHEIA é regra do celular, e no computador ela
+  zerava o espaço de manobra vertical. Posição e tamanho são do MODAL e
+  **sobrevivem ao fechamento** (memória da página, não `localStorage`) — quem
+  ajusta a janela para ler uma coluna vai lançar vários itens seguidos, e
+  repetir o gesto a cada item era o defeito a evitar; a cada abertura os dois
+  são reconferidos contra a tela, e somem inteiros abaixo de 992px, onde o
+  modal ocupa tudo (junto com a dica do cabeçalho, que ali prometeria um gesto
+  inexistente — por isso ela mora no JS, e não num `title` fixo).
+  Quatro armadilhas já pagas: os limites são medidos pelo **`.modal-content`**,
+  não pelo `.modal-dialog` — com `modal-dialog-scrollable` o diálogo tem toda a
+  altura disponível mesmo com o formulário curto, e medi-lo daria faixa
+  vertical zero em todo formulário do sistema; sem deslocamento o `transform`
+  **sai** do elemento em vez de virar `translate(0px, 0px)`, porque é por ele
+  que o Bootstrap anima a entrada de todo modal (durante o gesto, `.arrastando`
   desliga essa transição de 300ms, senão a janela vem atrás do ponteiro como se
-  estivesse presa por um elástico). Provas em `sistema.js`
-  (`provasJanelaModal`), nas duas larguras.
+  estivesse presa por um elástico); a largura cresce pelo **dobro** do que o
+  ponteiro andou, porque o diálogo é centrado e cresce pelos dois lados — sem
+  isso a borda acompanha metade do gesto e a alça parece escorregar (a altura
+  não, que a janela é ancorada no topo); e as alças de tamanho são **faixas de
+  borda**, não um canto grande, porque o canto inferior direito é onde mora o
+  Salvar. Provas em `sistema.js` (`provasJanelaModal`), nas duas larguras.
 - Bibliotecas vendoradas do front ficam em `public/assets/vendor/` e **vão
   para o repositório**. O `.gitignore` usa `/vendor/` (só a raiz, do Composer);
   um `vendor/` solto engoliria essa pasta e o `git add -A` deixaria o arquivo

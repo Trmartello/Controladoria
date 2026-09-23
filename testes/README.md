@@ -6,7 +6,7 @@ leitura do código — cobrem o que a leitura não pega: regressão silenciosa.
 | Bateria | O que cobre | Como falha |
 |---|---|---|
 | `funcional.sh` | Os caminhos de **escrita** de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As **18 seções** em 1500×700 e 390×844, a janela do formulário (largura, arraste e véu do fundo), mais duas sessões no preenchimento simultâneo, no cadeado de edição e na oficina de Cruzamentos (computador + celular) | Uma tela parou de pintar, estourou erro de console, passou a rolar na horizontal ou a janela do formulário deixou de sair do caminho — **nas duas larguras** |
+| `sistema.js` | As **18 seções** em 1500×700 e 390×844, a janela do formulário (largura, arraste, tamanho pelas bordas e véu do fundo), mais duas sessões no preenchimento simultâneo, no cadeado de edição e na oficina de Cruzamentos (computador + celular) | Uma tela parou de pintar, estourou erro de console, passou a rolar na horizontal ou a janela do formulário deixou de sair do caminho — **nas duas larguras** |
 | `participante.js` | A tela **pública** da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | O vaivém de `cli/backup.sh` — gerar, verificar, restaurar | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 | `email.sh` | O envio por **API** de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |
