@@ -26,6 +26,11 @@
     <symbol id="i-chevron" viewBox="0 0 16 16" fill="currentColor">
       <path d="M3.28 5.72a.75.75 0 0 1 1.06 0L8 9.38l3.66-3.66a.75.75 0 1 1 1.06 1.06l-4.19 4.19a.75.75 0 0 1-1.06 0L3.28 6.78a.75.75 0 0 1 0-1.06z"/>
     </symbol>
+    <!-- Clipe (Bootstrap Icons, MIT): o selo de "tem anexo aqui dentro" no
+         botão de comentários, do projeto e da ação. -->
+    <symbol id="i-clipe" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M4.5 3a2.5 2.5 0 0 1 5 0v9a1.5 1.5 0 0 1-3 0V5a.5.5 0 0 1 1 0v7a.5.5 0 0 0 1 0V3a1.5 1.5 0 1 0-3 0v9a2.5 2.5 0 0 0 5 0V5a.5.5 0 0 1 1 0v7a3.5 3.5 0 1 1-7 0V3z"/>
+    </symbol>
   </svg>
 
   <header class="topbar d-flex align-items-center gap-2 px-3">

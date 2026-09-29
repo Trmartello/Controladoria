@@ -600,6 +600,124 @@ async function provasCartaoAcao(page, largura) {
 }
 
 /**
+ * O selo do botão de comentários: saber que existe conversa sem abri-la.
+ *
+ * Os comentários sempre abriram a pedido, mas o botão era mudo: descobrir se
+ * uma ação tinha a foto da obra anexada custava abrir ação por ação, e numa
+ * tela de dezenas de ações isso é o mesmo que não ter o anexo.
+ *
+ * A prova mais importante é a das DUAS contagens separadas — dois comentários
+ * e dois anexos, com os anexos todos num comentário só. Derivar um número do
+ * outro passaria numa massa em que cada comentário tem um anexo, e mentiria
+ * justamente no caso real: o comentário que sobe cinco fotos de uma vez.
+ */
+async function provasSeloComentarios(page) {
+  const l = '[desktop] Selo de comentários:';
+
+  const ids = await page.evaluate(async () => {
+    const pr = await App.api('/api/projetos', { planejamento_id: 1,
+      titulo: 'Projeto do selo de comentários', ano: 2027, responsavel: 'QA' });
+    const ini = await App.api('/api/iniciativas',
+      { planejamento_id: 1, projeto_id: pr.id, titulo: 'Frente do selo' });
+    const nova = (oQue) => App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: pr.id, iniciativa_id: ini.id, o_que: oQue,
+      como: 'x', quem: 'QA', prioridade: 'MEDIA', status: 'NAO_INICIADO', progresso: 0,
+      recorrencia: 'NENHUMA', data_inicio: '2027-01-01', data_fim: '2027-12-31',
+    });
+    const comConversa = await nova('Ação com conversa (selo)');
+    const limpa = await nova('Ação sem conversa (selo)');
+
+    // Multipart na mão, como o `modalComentario`: `App.api` só fala JSON, e
+    // arquivo não viaja em JSON.
+    const enviar = async (texto, arquivos) => {
+      const dados = new FormData();
+      dados.append('planejamento_id', 1);
+      dados.append('ref_tipo', 'DESDOBRAMENTO');
+      dados.append('ref_id', comConversa.id);
+      dados.append('texto', texto);
+      for (const nome of arquivos) {
+        dados.append('arquivos[]', new File(['conteúdo de prova'], nome, { type: 'text/plain' }));
+      }
+      const r = await fetch('/api/comentarios', {
+        method: 'POST', headers: { 'X-CSRF-Token': App.csrf }, body: dados,
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) throw new Error(j.erro || 'envio recusado');
+    };
+    await enviar('Comentário com dois anexos', ['prova-a.txt', 'prova-b.txt']);
+    await enviar('Comentário sem anexo nenhum', []);
+    return { pr: pr.id, comConversa: comConversa.id, limpa: limpa.id };
+  });
+
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  const sel = `[data-card-acao="${ids.comConversa}"]`;
+  const pintou = await esperar(page, `!!document.querySelector('${sel} .btn-mais')`, 15000);
+  t(`${l} o cartão da ação pinta`, pintou);
+  if (!pintou) return;
+
+  // O rodapé com o botão mora atrás da seta do cartão.
+  await page.click(`${sel} .btn-mais`);
+  await page.click(`[data-card-acao="${ids.limpa}"] .btn-mais`);
+
+  const ler = () => page.evaluate((i) => {
+    const bot = (id) => document.querySelector(`[data-card-acao="${id}"] [data-comentarios]`);
+    const b = bot(i.comConversa);
+    const limpo = bot(i.limpa);
+    return {
+      rotulo: (b.firstChild.textContent || '').trim(),
+      expandido: b.getAttribute('aria-expanded'),
+      selo: b.querySelector('.selo-comentarios')?.textContent.trim() ?? null,
+      clipe: b.querySelector('.selo-anexos')?.textContent.trim() ?? null,
+      temClipe: !!b.querySelector('.selo-anexos use'),
+      // Os selos são decoração: quem usa leitor de tela ouve a contagem em
+      // português, uma vez só, pelo `title`.
+      selosOcultos: b.querySelector('.selos-comentarios')?.getAttribute('aria-hidden') ?? null,
+      dica: b.getAttribute('title'),
+      painel: !!document.getElementById(`comentarios-DESDOBRAMENTO-${i.comConversa}`),
+      limpoSelo: !!limpo.querySelector('.selo-comentarios'),
+      limpoDica: limpo.getAttribute('title'),
+    };
+  }, ids);
+
+  const fechado = await ler();
+  t(`${l} fechado, o botão conta os comentários`, fechado.selo === '2', JSON.stringify(fechado));
+  t(`${l} e o clipe conta os anexos, que são outra conta`,
+    fechado.clipe === '2' && fechado.temClipe === true, JSON.stringify(fechado));
+  t(`${l} a dica diz os dois números em português`,
+    /2 comentários · 2 anexos/.test(fechado.dica || ''), String(fechado.dica));
+  t(`${l} os selos não são lidos duas vezes pelo leitor de tela`,
+    fechado.selosOcultos === 'true', String(fechado.selosOcultos));
+  t(`${l} os comentários nascem ocultos`,
+    fechado.painel === false && fechado.expandido === 'false', JSON.stringify(fechado));
+  t(`${l} ação sem conversa fica sem selo, e a dica diz isso`,
+    fechado.limpoSelo === false && /Nenhum comentário/.test(fechado.limpoDica || ''),
+    JSON.stringify(fechado));
+
+  await page.click(`${sel} [data-comentarios]`);
+  await esperar(page,
+    `!!document.querySelector('#comentarios-DESDOBRAMENTO-${ids.comConversa} .card')`, 15000);
+  const aberto = await ler();
+  t(`${l} o botão abre o bloco e passa a oferecer ocultar`,
+    aberto.rotulo === 'Ocultar comentários' && aberto.expandido === 'true'
+    && aberto.painel === true, JSON.stringify(aberto));
+  t(`${l} aberto, os selos saem — a conta já está no bloco`,
+    aberto.selo === null && aberto.clipe === null, JSON.stringify(aberto));
+
+  await page.click(`${sel} [data-comentarios]`);
+  await esperar(page,
+    `!document.getElementById('comentarios-DESDOBRAMENTO-${ids.comConversa}')`, 15000);
+  const denovo = await ler();
+  t(`${l} e o mesmo botão volta a ocultar, com os selos de volta`,
+    denovo.painel === false && denovo.selo === '2' && denovo.rotulo === 'Comentários',
+    JSON.stringify(denovo));
+
+  await page.evaluate(async (i) => {
+    await App.api(`/api/projetos/${i.pr}/excluir`, { planejamento_id: 1 });
+    App.mostrarSecao('painel');
+  }, ids);
+}
+
+/**
  * O resumo por situação no cabeçalho do projeto e no de cada frente.
  *
  * O que se guarda aqui é a BASE do percentual: no projeto ele é sobre todas as
@@ -4396,6 +4514,7 @@ async function provasJanelaModal(page, largura) {
   await provasAnoPadrao(page, 'desktop');
   await provasCartaoCruzamento(page);
   await provasCartaoAcao(page, 'desktop');
+  await provasSeloComentarios(page);
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
   await provasExcluirComOrigens(page);
