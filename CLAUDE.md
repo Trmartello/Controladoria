@@ -1646,6 +1646,20 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   **modal** (`modalComentario`, via `Modal.abrir` com `enviar` próprio) — texto
   com ditado por voz e o campo `arquivos` do modal (tipo novo: `coletar()` o
   pula, e o `enviar` lê os arquivos por `Modal.arquivosDe`).
+  **O botão fechado CONTA o que há atrás dele** (`botaoComentarios`, pedido do
+  cliente em 2026-09-23): um selo redondo com o número de comentários e, atrás
+  do clipe (`#i-clipe`), o de anexos — e botão liso é ação sem conversa
+  nenhuma. Antes disso o botão era mudo, e descobrir se alguma ação tinha a
+  foto da obra anexada custava abrir ação por ação, o que numa tela de dezenas
+  de ações é o mesmo que não ter o anexo. As duas contagens são **separadas na
+  origem**: um comentário leva até cinco arquivos e outro nenhum, então
+  derivar uma da outra passaria na massa de teste e mentiria no caso real.
+  Elas vêm da listagem (`ProjetoController::listar`), em consultas agregadas
+  **fora do laço** — uma por ação daria centenas —, e o JOIN que ancora cada
+  uma não é enfeite: `comentario.ref_id` é polimórfico, e sem ele o comentário
+  da ação 7 contaria como comentário do projeto 7. Aberto, o botão troca o
+  rótulo por "Ocultar comentários" e larga os selos, que o bloco logo abaixo
+  já traz o "N registro(s)". Provas em `provasSeloComentarios` (`sistema.js`).
   O envio é **multipart** (`POST /api/comentarios`), não JSON com base64: base64
   infla 33% e carrega o arquivo duas vezes na memória. O CSRF continua valendo —
   ele é o header, não o tipo do corpo — mas `App.api` só fala JSON, então este é

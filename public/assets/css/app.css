@@ -773,6 +773,43 @@ input[type=range].faixa-verde:focus-visible {
   justify-content: center;
 }
 
+/* Botão de comentários com as contagens embutidas (`botaoComentarios`): o selo
+   redondo conta os comentários, o clipe conta os anexos. Fechado, ele é o
+   único lugar da tela que diz que existe conversa naquela ação — antes disso,
+   descobrir uma foto anexada custava abrir ação por ação.
+   O `btn-outline-success` INVERTE as cores no hover (fundo verde, texto
+   branco): sem a regra de hover abaixo, o selo verde sumia dentro do botão
+   justamente enquanto o ponteiro estava nele. */
+.btn-comentarios {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+.selos-comentarios {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+}
+.selo-comentarios {
+  background: var(--verde-coperdia);
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 700;
+  padding: .15rem .42rem;
+}
+.selo-anexos {
+  display: inline-flex;
+  align-items: center;
+  gap: .12rem;
+  font-size: .72rem;
+  font-weight: 700;
+}
+.btn-comentarios:hover .selo-comentarios,
+.btn-comentarios:focus-visible .selo-comentarios {
+  background: #fff;
+  color: var(--verde-coperdia);
+}
+
 /* Grade de anexos: quantos couberem na largura, em cartões de tamanho fixo */
 .grade-anexos {
   display: grid;

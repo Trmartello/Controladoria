@@ -50,20 +50,48 @@ class ProjetoController
         ) as $x) {
             $solta[(int)$x['projeto_id']] = (int)$x['n'];
         }
-        $comentarios = [];
-        foreach (Database::todos(
-            "SELECT c.ref_id, COUNT(*) AS n FROM comentario c
-             JOIN projeto p ON p.id = c.ref_id
-             WHERE c.ref_tipo = 'PROJETO' AND p.planejamento_id = ?
-             GROUP BY c.ref_id",
-            [$planId]
-        ) as $x) {
-            $comentarios[(int)$x['ref_id']] = (int)$x['n'];
-        }
+        // Quantos comentários e quantos ANEXOS cada peça tem, para a tela poder
+        // dizer que existe conversa ali sem abrir a conversa — o selo do clipe
+        // no botão. São quatro consultas agregadas, e todas FORA do laço pelo
+        // mesmo motivo da de cima: uma por ação daria centenas numa tela que
+        // lista dezenas de projetos.
+        //
+        // O anexo é contado à parte, e não derivado do número de comentários:
+        // um comentário carrega até cinco arquivos e outro nenhum, então
+        // "3 comentários" não diz nada sobre quantas fotos há para ver — que é
+        // justamente o que se quer saber antes de abrir.
+        //
+        // O `ref_id` do comentário é polimórfico, e é o JOIN que o ancora: sem
+        // ele, o comentário de uma ação de id 7 contaria como comentário do
+        // projeto 7. O mesmo JOIN é o que prende a contagem ao planejamento.
+        $contar = function (string $refTipo, string $de) use ($planId): array {
+            $mapa = [];
+            $ancora = $refTipo === 'PROJETO'
+                ? 'JOIN projeto p ON p.id = c.ref_id'
+                : 'JOIN desdobramento d ON d.id = c.ref_id
+                   JOIN projeto p ON p.id = d.projeto_id';
+            $fonte = $de === 'anexo'
+                ? 'comentario_anexo ax JOIN comentario c ON c.id = ax.comentario_id'
+                : 'comentario c';
+            foreach (Database::todos(
+                "SELECT c.ref_id, COUNT(*) AS n FROM {$fonte} {$ancora}
+                  WHERE c.ref_tipo = ? AND p.planejamento_id = ?
+                  GROUP BY c.ref_id",
+                [$refTipo, $planId]
+            ) as $x) {
+                $mapa[(int)$x['ref_id']] = (int)$x['n'];
+            }
+            return $mapa;
+        };
+        $comentarios = $contar('PROJETO', 'comentario');
+        $anexosProjeto = $contar('PROJETO', 'anexo');
+        $comentariosAcao = $contar('DESDOBRAMENTO', 'comentario');
+        $anexosAcao = $contar('DESDOBRAMENTO', 'anexo');
 
         foreach ($projetos as &$p) {
             $p['investimentos_vinculados'] = $solta[(int)$p['id']] ?? 0;
             $p['comentarios'] = $comentarios[(int)$p['id']] ?? 0;
+            $p['anexos'] = $anexosProjeto[(int)$p['id']] ?? 0;
             $p['iniciativas'] = Database::todos(
                 'SELECT * FROM iniciativa WHERE projeto_id = ? ORDER BY ordem, id',
                 [$p['id']]
@@ -93,6 +121,14 @@ class ProjetoController
                   WHERE d.projeto_id = ? ORDER BY d.ordem, d.id",
                 [$p['id']]
             );
+            // As contagens entram AQUI, dos mapas já prontos, e não como
+            // subconsulta na linha de cima: subconsulta roda por ação, e este
+            // SELECT já roda por projeto.
+            foreach ($p['desdobramentos'] as &$d) {
+                $d['comentarios'] = $comentariosAcao[(int)$d['id']] ?? 0;
+                $d['anexos'] = $anexosAcao[(int)$d['id']] ?? 0;
+            }
+            unset($d);
             foreach ($p['iniciativas'] as &$i) {
                 $i['acoes'] = array_values(array_filter(
                     $p['desdobramentos'],

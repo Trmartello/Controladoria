@@ -743,7 +743,7 @@ const SecaoProjetos = {
                ms-auto é o que segura a direita quando o grupo da esquerda é só
                um botão, e sobrevive à quebra de linha no celular. -->
           <div class="d-flex justify-content-between align-items-center gap-1 flex-wrap mt-2">
-            <button class="btn btn-sm btn-outline-success" data-comentarios="DESDOBRAMENTO:${a.id}">Comentários</button>
+            ${this.botaoComentarios('DESDOBRAMENTO', a.id, a.comentarios, a.anexos)}
             ${App.podeEditar() ? `
               <span class="ms-auto d-flex gap-1">
                 <button class="btn btn-sm btn-outline-secondary" data-editar-desd="${a.id}" data-proj="${p.id}"
@@ -870,7 +870,7 @@ const SecaoProjetos = {
               ${concluidas}/${acoes.length} ações concluídas</div>
             ${origem}
             <div class="d-flex gap-1 flex-wrap mt-2">
-              <button class="btn btn-sm btn-outline-success" data-comentarios="PROJETO:${p.id}">Comentários</button>
+              ${this.botaoComentarios('PROJETO', p.id, p.comentarios, p.anexos)}
               ${App.podeEditar() ? `
                 <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
                 <button class="btn btn-sm btn-outline-secondary" data-editar-proj="${p.id}">Editar</button>
@@ -1988,6 +1988,46 @@ const SecaoProjetos = {
       </a>
       ${excluir}
     </span>`;
+  },
+
+  /**
+   * O botão que abre e fecha os comentários — e que, FECHADO, diz o que existe
+   * atrás dele.
+   *
+   * Os comentários sempre foram um bloco que se abre a pedido, mas o botão era
+   * mudo: para descobrir se uma ação tinha uma foto da obra anexada era preciso
+   * abrir ação por ação. Com uma tela de dezenas de ações isso é o mesmo que
+   * não ter o anexo. Agora o botão traz duas contagens — os comentários, num
+   * selo redondo, e os anexos, atrás do clipe — e a ausência delas também
+   * informa: botão liso é ação sem conversa nenhuma.
+   *
+   * Anexo é contado à parte de propósito: um comentário leva até cinco
+   * arquivos e outro nenhum, então o número de comentários não responde
+   * "quantas fotos há para ver".
+   *
+   * Aberto, o botão troca o rótulo por "Ocultar comentários" e larga os selos:
+   * o bloco logo abaixo já traz o "N registro(s)", e repetir a conta ali seria
+   * dizer duas vezes a mesma coisa a dois centímetros de distância.
+   */
+  botaoComentarios(refTipo, id, comentarios = 0, anexos = 0) {
+    const aberto = this.comentariosAbertos?.refTipo === refTipo
+      && this.comentariosAbertos?.refId === Number(id);
+    const n = Number(comentarios) || 0;
+    const ax = Number(anexos) || 0;
+    const resumo = n
+      ? [Vinculos.quantos(n, 'comentário', 'comentários'),
+        Vinculos.quantos(ax, 'anexo', 'anexos')].filter(Boolean).join(' · ')
+      : 'Nenhum comentário ainda';
+    // Os selos são `aria-hidden`: quem usa leitor de tela ouve a mesma
+    // contagem, em português, pelo `title` do botão — e ouvi-la duas vezes,
+    // uma delas como "2 3" solto, é pior que não tê-la.
+    const selos = aberto || !n ? '' : `<span class="selos-comentarios" aria-hidden="true"
+      ><span class="badge rounded-pill selo-comentarios">${n}</span>${ax
+        ? `<span class="selo-anexos"><svg width="12" height="12" focusable="false"
+            ><use href="#i-clipe"/></svg>${ax}</span>` : ''}</span>`;
+    return `<button class="btn btn-sm btn-outline-success btn-comentarios"
+      data-comentarios="${refTipo}:${id}" aria-expanded="${aberto}"
+      title="${Modal.esc(resumo)}">${aberto ? 'Ocultar comentários' : 'Comentários'}${selos}</button>`;
   },
 
   /**
