@@ -2573,7 +2573,7 @@ async function provasMatrizExecucao(page) {
     };
   });
   t(`${l} a tabela tem as cinco colunas`, matriz.colunas === 5, `${matriz.colunas}`);
-  t(`${l} a síntese é a primeira raia`, matriz.raia1 === 'Síntese da célula', String(matriz.raia1));
+  t(`${l} a síntese é a primeira raia`, matriz.raia1 === 'Síntese', String(matriz.raia1));
   t(`${l} mostra o indicador amarrado`, matriz.temKpi);
   t(`${l} mostra o projeto que executa`, matriz.temProjeto);
   t(`${l} o par meta × real segue a regra da tela de Metas`, matriz.temPar);
@@ -2634,6 +2634,51 @@ async function provasMatrizExecucao(page) {
     SecaoCascata.aba = 'escolhas';
     App.mostrarSecao('painel');
   }, massa);
+}
+
+/**
+ * O rótulo da célula aberta da Cascata.
+ *
+ * Era "Síntese da célula (texto da matriz)" — vocabulário de quem CONSTRUIU a
+ * cascata, não de quem a lê na reunião: "célula" é coordenada de tabela e
+ * "texto da matriz" explica a engrenagem. O cliente pediu (2026-10-01) o nome
+ * da linha no lugar dos dois, e é o que a prova prende: o cartão diz de que
+ * decisão se trata sem obrigar a subir até o cabeçalho.
+ */
+async function provasRotuloCelula(page) {
+  const l = '[desktop] Rótulo da célula da cascata:';
+
+  await page.evaluate(() => { SecaoCascata.aba = 'escolhas'; App.mostrarSecao('cascata'); });
+  const pintou = await esperar(page, "!!document.querySelector('.celula-cascata')", 15000);
+  t(`${l} a matriz pinta`, pintou);
+  if (!pintou) return;
+
+  await page.evaluate(() => document.querySelector('.celula-cascata').click());
+  const abriu = await esperar(page,
+    "!!document.querySelector('#detalhe-celula .card-body .fw-bold')", 10000);
+  t(`${l} clicar numa célula abre o detalhe`, abriu);
+  if (!abriu) return;
+
+  const m = await page.evaluate(() => {
+    const det = document.getElementById('detalhe-celula');
+    const driver = SecaoCascata.dados.drivers
+      .find((d) => d.id == SecaoCascata.celulaAberta.driverId);
+    return {
+      primeiro: det.querySelector('.card-body .fw-bold').textContent.trim(),
+      driver: driver ? driver.nome : null,
+      // Os rótulos dos eixos não mudam: eles já nomeiam a abertura.
+      segundo: [...det.querySelectorAll('.card-body .fw-bold')][1]?.textContent.trim() || null,
+      vocabulario: /texto da matriz|da célula/i.test(det.textContent),
+    };
+  });
+  t(`${l} o primeiro cartão é "Síntese — <linha>"`,
+    m.primeiro === `Síntese — ${m.driver}`, JSON.stringify(m));
+  t(`${l} sem "texto da matriz" nem "da célula" em lugar nenhum`,
+    m.vocabulario === false, JSON.stringify(m));
+  t(`${l} e as aberturas por eixo seguem como estavam`,
+    /^Eixo · /.test(m.segundo || ''), String(m.segundo));
+
+  await page.evaluate(() => { SecaoCascata.celulaAberta = null; App.mostrarSecao('painel'); });
 }
 
 /**
@@ -4528,6 +4573,7 @@ async function provasJanelaModal(page, largura) {
   await provasExcluirUsuario(page);
   await provasFiltroResponsavel(page);
   await provasMatrizExecucao(page);
+  await provasRotuloCelula(page);
   await provasExclusaoComVinculo(page);
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);

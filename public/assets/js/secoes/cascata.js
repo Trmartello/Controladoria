@@ -71,7 +71,9 @@ const SecaoCascata = {
           && (eixoId ? e.eixo_id == eixoId : !e.eixo_id));
         // A síntese primeiro, as aberturas depois — a ordem em que a célula é
         // lida na tela, e a ordem em que a decisão foi tomada.
-        [{ rotulo: 'Síntese da célula', registro: daCelula(null) },
+        // Só "Síntese": a linha da cascata já vai no item (`driver`), e a
+        // frase sai "Aonde Jogar · Síntese: …".
+        [{ rotulo: 'Síntese', registro: daCelula(null) },
           ...eixos.map((x) => ({ rotulo: `Eixo · ${x.nome}`, registro: daCelula(x.id) }))]
           .filter((p) => p.registro && String(p.registro.escolha || '').trim())
           .forEach((p) => itens.push({ driver: d.nome, rotulo: p.rotulo, registro: p.registro }));
@@ -220,8 +222,10 @@ const SecaoCascata = {
     // As raias: um grupo por eixo, na ordem cadastrada, mais a SÍNTESE. Ela vem
     // primeiro porque é o texto que a matriz publica — as aberturas por eixo
     // detalham o que ela resume, e lê-las antes dela é ler o detalhe sem o todo.
+    // Aqui o rótulo é só "Síntese", sem a linha da cascata junto: a raia
+    // atravessa TODAS as linhas, que são as colunas da tabela.
     const raias = [
-      { chave: 'S', rotulo: 'Síntese da célula', eixoId: null },
+      { chave: 'S', rotulo: 'Síntese', eixoId: null },
       ...eixos.map((x) => ({ chave: String(x.id), rotulo: x.nome, eixoId: x.id })),
     ];
 
@@ -726,7 +730,12 @@ const SecaoCascata = {
         </div>
         <div class="card-body">
           <div id="quiz-vivo">${this.painelVivo()}</div>
-          ${cartaoEscolha('Síntese da célula (texto da matriz)', sintese, null)}
+          <!-- "Síntese — Aonde Jogar", e não "Síntese da célula (texto da
+               matriz)" (pedido do cliente em 2026-10-01): "célula" e "texto da
+               matriz" são vocabulário de quem CONSTRUIU a cascata, não de quem
+               a lê na reunião. Com o nome da linha no lugar deles, o cartão diz
+               de que decisão se trata sem obrigar a subir até o cabeçalho. -->
+          ${cartaoEscolha(`Síntese — ${driver.nome}`, sintese, null)}
           <div class="row g-2 mt-1">
             ${eixos.map((x) => `<div class="col-md-6">${cartaoEscolha(`Eixo · ${x.nome}`, daCelula(x.id), x.id)}</div>`).join('')}
           </div>
@@ -911,7 +920,7 @@ const SecaoCascata = {
     // Vários alvos de uma vez: "as 6 aberturas de Como Vencer" entram juntas
     // no roteiro. 'S' marca a síntese — o transformar troca por null.
     const opcoesAlvo = [
-      { valor: 'S', texto: 'Síntese da célula', selo: driver ? driver.nome : 'Síntese' },
+      { valor: 'S', texto: 'Síntese', selo: driver ? driver.nome : 'Síntese' },
       ...this.dados.eixos.map((x) => ({ valor: String(x.id), texto: `Eixo · ${x.nome}` })),
     ];
     const paraAlvos = (marcados) =>

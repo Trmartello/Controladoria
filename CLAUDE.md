@@ -709,6 +709,15 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   metas começam em 2027, então em 2026 a regra do ano corrente deixaria toda linha
   em "—". A Matriz de Execução chama a mesma função: duplicá-la faria duas telas
   vizinhas dizerem números diferentes do mesmo indicador.
+- **Os rótulos da Cascata não falam de tabela.** A célula aberta traz
+  **"Síntese — Aonde Jogar"** (a linha, pelo nome) e as aberturas seguem como
+  "Eixo · Mercado". Era "Síntese da célula (texto da matriz)", e os dois termos
+  saíram por pedido do cliente (2026-10-01): "célula" é coordenada de tabela e
+  "texto da matriz" explica a engrenagem — vocabulário de quem CONSTRUIU a
+  cascata, não de quem a lê na reunião. Onde o rótulo vale para todas as linhas
+  de uma vez — a raia da Matriz de Execução, a opção do roteiro da sala, o item
+  do relatório — ele é só **"Síntese"**, porque ali a linha já está dita na
+  coluna, no selo ou no próprio item. Prova em `provasRotuloCelula`.
 - **Matriz de Execução** (aba da Cascata): por eixo, a escolha com a renúncia, os
   indicadores que a medem, o par meta × real de cada um e os projetos que a
   executam. Os dois lados do vínculo são `indicador_cascata` (N:N, clone de
