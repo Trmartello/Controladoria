@@ -1047,19 +1047,17 @@ const SecaoCascata = {
       ];
     }
 
-    // Fatores da SWOT ordenados por score GUT para o vínculo. A descrição vai
-    // inteira: quem amarra a evidência à decisão precisa ler o fator todo,
-    // não um resumo cortado no meio.
-    const swot = await App.api(`/api/fatores?planejamento_id=${this.plan.id}&etapa=SWOT`);
-    const opcoesFatores = swot
-      .sort((a, c) => (c.score || 0) - (a.score || 0))
-      .map((f) => ({
-        valor: f.id,
-        texto: f.descricao,
-        selo: Diag.QUADRANTES[f.categoria] || f.categoria,
-        selo2: f.score ? `GUT ${f.score}` : null,
-        cor: Diag.CORES_QUADRANTE[f.categoria] || '#007a45',
-      }));
+    // Aqui havia a lista dos fatores da SWOT para amarrar à decisão. Ela saiu
+    // do formulário por pedido do cliente (2026-10-01): o formulário é onde se
+    // REDIGE a escolha e a renúncia, e uma lista com todos os fatores da SWOT
+    // empurrava esses dois campos para fora da vista — a evidência ficava no
+    // caminho da decisão em vez de apoiá-la.
+    //
+    // O vínculo em si continua existindo (`cascata_fator`): os fatores já
+    // amarrados seguem no cartão da célula e no relatório. O que o servidor
+    // ganhou junto foi a guarda que torna isso seguro — sem a chave `fatores`
+    // no corpo ele não mexe na tabela, e por isso salvar a escolha daqui não
+    // apaga em silêncio o que alguém amarrou antes.
     const eixoNome = eixoId ? this.dados.eixos.find((x) => x.id == eixoId).nome : null;
     Modal.abrir({
       titulo: `${driver.nome} × ${horizonte.nome}${eixoNome ? ` · Eixo ${eixoNome}` : ' · Síntese'}`,
@@ -1079,7 +1077,6 @@ const SecaoCascata = {
         eixo_id: eixoId ?? '',
         escolha: escolhaValor,
         renuncia: renunciaValor,
-        fatores: (registro?.fatores || []).map((f) => f.id),
       },
       // O conjunto de vozes vai pelo transformar: num campo hidden o array
       // viraria a string "1,2" e o servidor amarraria vínculo nenhum
@@ -1098,12 +1095,6 @@ const SecaoCascata = {
         }] : []),
         { nome: 'escolha', rotulo: 'Escolha (o que decidimos)', tipo: 'textarea', linhas: 3 },
         { nome: 'renuncia', rotulo: 'Renúncia (do que abrimos mão)', tipo: 'textarea', linhas: 2 },
-        ...(opcoesFatores.length ? [{
-          nome: 'fatores', rotulo: 'Fatores que fundamentam (SWOT/GUT)',
-          tipo: 'lista_marcavel', opcoes: opcoesFatores,
-          ajuda: 'Marque as evidências do diagnóstico que sustentam esta decisão. '
-            + 'A lista vem ordenada pelo score da matriz GUT, do mais crítico ao menos.',
-        }] : []),
       ],
       aoSalvar: () => {
         // Salvo, quem manda é o servidor: a intenção local cumpriu o papel e

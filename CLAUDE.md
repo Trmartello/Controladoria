@@ -718,6 +718,21 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   de uma vez — a raia da Matriz de Execução, a opção do roteiro da sala, o item
   do relatório — ele é só **"Síntese"**, porque ali a linha já está dita na
   coluna, no selo ou no próprio item. Prova em `provasRotuloCelula`.
+- **O formulário da célula é só escolha e renúncia.** A lista "Fatores que
+  fundamentam (SWOT/GUT)" saiu dele por pedido do cliente (2026-10-01): com
+  todos os fatores da SWOT marcáveis ali dentro, os dois campos que se vem
+  escrever ficavam fora da vista, e a evidência atrapalhava a decisão em vez de
+  apoiá-la. **O vínculo continua existindo** (`cascata_fator`): o que já foi
+  amarrado segue no cartão da célula, no relatório e na marca do fator na SWOT
+  — o que deixou de haver é por onde amarrar um novo pela tela.
+  Junto veio a guarda que torna isso seguro: `CascataController::salvar` só
+  mexe em `cascata_fator` quando a chave `fatores` **vem no corpo**
+  (`array_key_exists`, a mesma regra de `sugestoes` e de
+  `IndicadorController::gravarCascatas`). Sem ela, como a tela passou a gravar
+  sem a chave, o primeiro ajuste de texto apagaria em silêncio evidências que
+  continuam à vista em três telas. Provas: `9l` na funcional (salvar sem a
+  chave preserva, com a chave vazia solta) e `provasRotuloCelula` na de
+  sistema (o campo não existe mais no formulário).
 - **Matriz de Execução** (aba da Cascata): por eixo, a escolha com a renúncia, os
   indicadores que a medem, o par meta × real de cada um e os projetos que a
   executam. Os dois lados do vínculo são `indicador_cascata` (N:N, clone de

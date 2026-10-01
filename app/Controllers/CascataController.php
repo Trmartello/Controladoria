@@ -184,7 +184,6 @@ class CascataController
         $escolha     = trim($d['escolha'] ?? '');
         $renuncia    = trim($d['renuncia'] ?? '');
         $fatores     = array_map('intval', $d['fatores'] ?? []);
-
         $horizonte = Database::um(
             'SELECT id FROM horizonte WHERE id = ? AND ciclo_id = ?',
             [$horizonteId, (int)$plan['ciclo_id']]
@@ -226,18 +225,28 @@ class CascataController
             );
         }
 
-        // Vínculo com os fatores priorizados (SWOT/GUT) — substitui o conjunto
-        Database::executar('DELETE FROM cascata_fator WHERE cascata_id = ?', [$id]);
-        foreach (array_unique($fatores) as $fatorId) {
-            $fator = Database::um(
-                "SELECT id FROM fator WHERE id = ? AND planejamento_id = ? AND etapa = 'SWOT'",
-                [$fatorId, $planId]
-            );
-            if ($fator) {
-                Database::executar(
-                    'INSERT INTO cascata_fator (cascata_id, fator_id) VALUES (?, ?)',
-                    [$id, $fatorId]
+        // Vínculo com os fatores priorizados (SWOT/GUT) — substitui o conjunto,
+        // e SÓ quando a chave vem no corpo. A guarda é a mesma de `sugestoes`
+        // logo abaixo e a de `IndicadorController::gravarCascatas`, e aqui ela
+        // deixou de ser teoria em 2026-10-01: o formulário da célula perdeu o
+        // campo dos fatores (pedido do cliente), então toda gravação de escolha
+        // passou a chegar sem a chave. Tratando a ausência como "lista vazia",
+        // salvar um ajuste de texto apagaria em silêncio as evidências que
+        // alguém amarrou — e elas continuam à vista no cartão e no relatório,
+        // de onde sumiriam sem que ninguém tivesse pedido.
+        if (array_key_exists('fatores', $d)) {
+            Database::executar('DELETE FROM cascata_fator WHERE cascata_id = ?', [$id]);
+            foreach (array_unique($fatores) as $fatorId) {
+                $fator = Database::um(
+                    "SELECT id FROM fator WHERE id = ? AND planejamento_id = ? AND etapa = 'SWOT'",
+                    [$fatorId, $planId]
                 );
+                if ($fator) {
+                    Database::executar(
+                        'INSERT INTO cascata_fator (cascata_id, fator_id) VALUES (?, ?)',
+                        [$id, $fatorId]
+                    );
+                }
             }
         }
 
