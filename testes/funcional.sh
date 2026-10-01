@@ -1387,6 +1387,58 @@ nega "e o fator das ações do projeto não volta para ela" "\"id\":$OK_F," "$R"
 post /api/fatores/$OK_F/excluir '{"planejamento_id":1}' >/dev/null
 post /api/coleta/$OK_I/excluir '{"planejamento_id":1}' >/dev/null
 
+echo "### 9l. Cascata — a escolha salva SEM a chave 'fatores' não solta as evidências"
+#
+# O formulário da célula perdeu o campo dos fatores (pedido do cliente,
+# 2026-10-01: a lista inteira da SWOT empurrava escolha e renúncia para fora da
+# vista). Daí em diante toda gravação de escolha chega sem a chave — e se a
+# ausência valesse "lista vazia", o primeiro ajuste de texto apagaria em
+# silêncio as evidências que alguém amarrou, que continuam à vista no cartão e
+# no relatório. A guarda é `array_key_exists`, a mesma de `sugestoes`.
+CF_F=$(post /api/fatores '{"planejamento_id":1,"etapa":"SWOT","categoria":"FORCA","descricao":"Forca que fundamenta (prova)","ano":2026}' | id_de)
+# Uma célula LIVRE: gravar por cima de uma semeada substituiria o texto do
+# plano de verdade, e a prova deixaria rastro no que ela não veio medir. A
+# varredura passa por TODOS os horizontes — o H1 da semente já vem inteiro
+# preenchido, e olhar só o primeiro dava "não há célula livre" com a matriz
+# quase toda vazia.
+CF_ALVO=$(get "/api/cascata?planejamento_id=1" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['dados']
+par = next(((int(h['id']), int(dr['id']), int(ex['id']))
+            for h in d['horizontes'] for dr in d['drivers'] for ex in d['eixos']
+            if not any(int(e['horizonte_id']) == int(h['id'])
+                       and int(e['driver_id']) == int(dr['id'])
+                       and e['eixo_id'] and int(e['eixo_id']) == int(ex['id'])
+                       for e in d['escolhas'])), None)
+print(f'{par[0]} {par[1]} {par[2]}' if par else '')" 2>/dev/null)
+conta_fatores(){ get "/api/cascata?planejamento_id=1" | python3 -c "
+import sys, json
+print(len(next((e['fatores'] for e in json.load(sys.stdin)['dados']['escolhas']
+                if str(e['id']) == '$1'), [])))" 2>/dev/null; }
+if [ -n "$CF_ALVO" ] && [ -n "$CF_F" ]; then
+  read -r CF_H CF_D CF_E <<< "$CF_ALVO"
+  CF_CORPO="\"planejamento_id\":1,\"horizonte_id\":$CF_H,\"driver_id\":$CF_D,\"eixo_id\":$CF_E"
+  CF_ID=$(post /api/cascata "{$CF_CORPO,\"escolha\":\"Escolha da prova dos fatores\",\"renuncia\":\"x\",\"fatores\":[$CF_F]}" | id_de)
+  afirma "a célula nova aceita a chave 'fatores' e amarra a evidência" '^1$' "$(conta_fatores "$CF_ID")"
+  # O caminho que a tela passou a usar: só escolha e renúncia.
+  R=$(post /api/cascata "{$CF_CORPO,\"escolha\":\"Escolha da prova (texto ajustado)\",\"renuncia\":\"x\"}")
+  afirma "salvar só o texto é aceito" '"ok":true' "$R"
+  afirma "e a evidência amarrada CONTINUA lá" '^1$' "$(conta_fatores "$CF_ID")"
+  R=$(get "/api/cascata?planejamento_id=1" | python3 -c "
+import sys, json
+print(next((e['escolha'] for e in json.load(sys.stdin)['dados']['escolhas']
+            if str(e['id']) == '$CF_ID'), ''))" 2>/dev/null)
+  afirma "o texto novo gravou mesmo (a prova acima não passou por inércia)" 'texto ajustado' "$R"
+  # Soltar continua possível para quem MANDA a chave vazia: a guarda é sobre a
+  # ausência, não sobre o conjunto vazio — senão não haveria como desamarrar.
+  post /api/cascata "{$CF_CORPO,\"escolha\":\"Escolha da prova (texto ajustado)\",\"renuncia\":\"x\",\"fatores\":[]}" >/dev/null
+  afirma "a chave vazia solta a evidência (desamarrar continua existindo)" '^0$' "$(conta_fatores "$CF_ID")"
+  post /api/cascata/$CF_ID/excluir '{"planejamento_id":1}' >/dev/null
+else
+  falha "9l não rodou — sem célula livre na matriz ou sem fator de prova" "um par (driver, eixo) livre" "$CF_ALVO"
+fi
+[ -n "${CF_F:-}" ] && post /api/fatores/$CF_F/excluir '{"planejamento_id":1}' >/dev/null
+
 echo "### 10. Limpeza"
 [ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null

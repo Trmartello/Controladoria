@@ -2678,6 +2678,32 @@ async function provasRotuloCelula(page) {
   t(`${l} e as aberturas por eixo seguem como estavam`,
     /^Eixo · /.test(m.segundo || ''), String(m.segundo));
 
+  // O formulário da célula: escolha e renúncia, e nada entre elas. A lista dos
+  // fatores da SWOT saiu daqui (pedido do cliente, 2026-10-01) — ela empurrava
+  // os dois campos que se vem escrever para fora da vista.
+  await page.click('#detalhe-celula [data-editar-celula]');
+  const abriuForm = await esperar(page,
+    "document.getElementById('modal-form').classList.contains('show')"
+    + " && !!document.querySelector('#modal-campos textarea')", 10000);
+  t(`${l} o formulário da célula abre`, abriuForm);
+  if (abriuForm) {
+    const f = await page.evaluate(() => {
+      const form = document.getElementById('modal-campos');
+      return {
+        campos: [...form.querySelectorAll('[name]')].map((e) => e.name),
+        rotulos: [...form.querySelectorAll('.form-label, .linha-rotulo')]
+          .map((e) => e.textContent.replace(/\s+/g, ' ').trim()),
+      };
+    });
+    t(`${l} o formulário não tem mais o campo dos fatores`,
+      !f.campos.includes('fatores')
+      && !f.rotulos.some((r) => /Fatores que fundamentam/.test(r)), JSON.stringify(f));
+    t(`${l} e continua com a escolha e a renúncia`,
+      f.rotulos.some((r) => /^Escolha/.test(r)) && f.rotulos.some((r) => /^Renúncia/.test(r)),
+      JSON.stringify(f.rotulos));
+  }
+  await fecharModal(page);
+
   await page.evaluate(() => { SecaoCascata.celulaAberta = null; App.mostrarSecao('painel'); });
 }
 
