@@ -1549,33 +1549,6 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   white-space: nowrap;
 }
 
-/* "mais campos abaixo ↓": grudado no fim da área visível do corpo do modal
-   enquanto sobrar campo. `sticky` em vez de `absolute` de propósito — a altura
-   do rodapé muda com o botão extra, e um deslocamento fixo erraria o alvo em
-   metade dos formulários. Ele ocupa uma linha no fim do conteúdo, e por isso
-   só aparece quando há mesmo o que rolar. */
-/* AVISO, não controle: ele flutua grudado no fundo da área visível e passa por
-   cima do que estiver ali. Clicável, engolia o toque do que ficasse embaixo —
-   com a grade de dias da repetição, o dia 31 simplesmente não podia ser
-   marcado no celular. `pointer-events: none` devolve o toque ao conteúdo; quem
-   quer descer, rola. */
-.aviso-rolagem {
-  position: sticky;
-  bottom: 0;
-  pointer-events: none;
-  display: block;
-  margin: .25rem auto 0;
-  border: 1px solid #dde3e0;
-  background: #eef1ef;
-  color: #495057;
-  border-radius: 20px;
-  font-size: .75rem;
-  font-weight: 600;
-  padding: .2rem .7rem;
-  min-height: 1.6rem;
-  box-shadow: 0 .25rem .4rem -.2rem rgba(0, 0, 0, .25);
-}
-
 /* Cabeçalho da Matriz GUT grudado abaixo da topbar, e o `<thead>` grudado
    abaixo dele. Rolando o ranking, os títulos saíam de vista e as quatro
    colunas de número viravam números anônimos — não dava para saber qual era
