@@ -623,7 +623,7 @@ class Quiz
                     $ctx[] = ['rotulo' => 'Objetivo', 'valor' => (string)$p['objetivo']];
                 }
                 $ctx[] = ['rotulo' => 'Abertura',
-                          'valor' => $p['eixo'] ?: 'Síntese da célula'];
+                          'valor' => $p['eixo'] ?: 'Síntese'];
                 return $ctx;
         }
     }
