@@ -306,9 +306,8 @@ const Modal = {
    *
    * O piso de 20rem × 14rem é o que ainda é formulário: abaixo disso sobram o
    * cabeçalho e o rodapé espremendo um campo. E depois de mudar de tamanho a
-   * posição é reconferida — janela que cresceu junto à borda precisa voltar
-   * para dentro da tela — e o aviso de "mais campos abaixo" também, porque o
-   * que cabia na altura anterior pode ter deixado de caber.
+   * posição é reconferida: janela que cresceu junto à borda precisa voltar para
+   * dentro da tela.
    */
   dimensionar(l, a) {
     if (!this.podeArrastar()) return;
@@ -321,7 +320,6 @@ const Modal = {
     };
     this.pintarTamanho();
     this.moverJanela(this.deslocamento.x, this.deslocamento.y);
-    this.ligarAvisoRolagem(document.querySelector('#modal-form .modal-body'));
   },
 
   /**
@@ -894,7 +892,6 @@ const Modal = {
   aoAparecer(raiz) {
     this.aplicarVerMais(raiz);
     raiz.querySelectorAll('textarea').forEach((t) => this.crescerTextarea(t));
-    this.ligarAvisoRolagem(raiz.closest('.modal-body'));
     this.marcarInfoRolavel(raiz);
   },
 
@@ -930,34 +927,6 @@ const Modal = {
       }
       medir();
     });
-  },
-
-  /**
-   * Avisa que há campo abaixo da dobra.
-   *
-   * O corpo rola desde sempre, mas nada indicava isso — e o Salvar mora no
-   * rodapé fixo, sempre visível. Numa janela de notebook, o formulário de
-   * quatro perguntas da matriz GUT mostrava três e o botão: quem respondia as
-   * três e salvava deixava o esforço "não estimado" sem nunca ter escolhido
-   * isso. Vale para todo modal do sistema, não só para o da GUT.
-   *
-   * O ouvinte de rolagem é ligado UMA vez: o corpo do modal é o mesmo elemento
-   * em todos os formulários, e religá-lo a cada abertura empilharia uma cópia
-   * por modal aberto na sessão.
-   *
-   * O aviso não é clicável (`pointer-events: none` no CSS): flutuando sobre o
-   * conteúdo, ele engolia o toque do que estivesse embaixo.
-   */
-  ligarAvisoRolagem(corpo) {
-    const aviso = document.getElementById('modal-mais');
-    if (!corpo || !aviso) return;
-    const medir = () => aviso.classList.toggle(
-      'd-none', corpo.scrollHeight - corpo.clientHeight - corpo.scrollTop <= 8);
-    if (!corpo.dataset.avisoLigado) {
-      corpo.addEventListener('scroll', medir);
-      corpo.dataset.avisoLigado = '1';
-    }
-    medir();
   },
 
   /**

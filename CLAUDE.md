@@ -316,20 +316,22 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `textarea[data-max-linhas]` sozinho na especificidade (o `:has` soma um tipo),
   por isso existe o seletor longo repetindo o atributo nos dois lados — sem ele
   o campo nascia com o dobro do tamanho, que ninguém chama de erro.
-  **Campo abaixo da dobra é anunciado** (`Modal.ligarAvisoRolagem`, o botão
-  `#modal-mais` em `shell.php`): o corpo do modal sempre rolou, mas nada dizia
-  isso, e o Salvar mora no rodapé FIXO, sempre visível. Numa janela de
-  notebook, o formulário de quatro perguntas da matriz GUT mostrava três e o
-  botão — quem respondia o que via e salvava deixava o esforço "não estimado"
-  sem nunca ter escolhido isso. O aviso é `position: sticky; bottom: 0` (e não
-  `absolute`: a altura do rodapé muda com o botão extra, e um deslocamento fixo
-  erraria o alvo em metade dos formulários) e some quando a rolagem acaba. O
-  ouvinte é ligado UMA vez — o corpo é o mesmo elemento em todos os
-  formulários, e religá-lo a cada abertura empilharia uma cópia por modal.
-  Pelo mesmo motivo, a recusa do servidor passa por `Modal.mostrarErro`, que dá
-  `scrollIntoView` no aviso (sem mexer no foco): com o corpo rolado até o fim —
-  o estado de quem acabou de preencher e clicou em Salvar — a mensagem nascia
-  fora da vista e o formulário parecia ter ignorado o clique.
+  **Não há aviso de "mais campos abaixo".** Existiu um (`#modal-mais`,
+  `Modal.ligarAvisoRolagem`, `.aviso-rolagem`): uma pílula grudada no fim da
+  área visível, porque o corpo do modal rola e o Salvar mora no rodapé FIXO —
+  numa janela de notebook, o formulário de quatro perguntas da GUT mostrava
+  três e o botão, e quem respondia o que via deixava o esforço "não estimado"
+  sem ter escolhido isso. **O cliente mandou removê-la de todas as telas em
+  2026-10-01**, e os três pedaços saíram juntos. O defeito que ela cobria não
+  deixou de existir: ele ficou menor porque a janela do computador agora nasce
+  com 48rem de altura e é redimensionável, mas num notebook baixo ainda há
+  formulário que não cabe inteiro. Se voltar a aparecer, o caminho combinado é
+  um esmaecido na borda (como o `.info-tem-mais` do bloco de leitura), não a
+  pílula — e a prova em `provasGut` prende a ausência dela.
+  A recusa do servidor passa por `Modal.mostrarErro`, que dá `scrollIntoView`
+  na mensagem (sem mexer no foco): com o corpo rolado até o fim — o estado de
+  quem acabou de preencher e clicou em Salvar — ela nascia fora da vista e o
+  formulário parecia ter ignorado o clique.
   **No computador o formulário de digitação é uma JANELA**: 48rem de largura
   (contra os 500px padrão do Bootstrap), 48rem de altura no máximo,
   **arrastável pelo cabeçalho** (`Modal.ligarArraste`; a alça é o atributo

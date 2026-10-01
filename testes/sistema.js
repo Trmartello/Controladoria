@@ -1576,13 +1576,24 @@ async function provasGut(page) {
   t('[desktop] Avaliação da GUT não pergunta esforço',
     !(await page.evaluate(() => !!document.getElementById('campo-esforco'))));
   await new Promise((r) => setTimeout(r, 400));
+  // O aviso "mais campos abaixo ↓" saiu do sistema (pedido do cliente,
+  // 2026-10-01). A prova vira do avesso: ela media o aparecimento e agora
+  // prende a AUSÊNCIA — o elemento foi removido do `shell.php` junto com a
+  // regra de CSS e o `ligarAvisoRolagem`, e um deles voltando sozinho traria
+  // a pílula de volta por cima do formulário.
   const dobra = await page.evaluate(() => {
     const c = document.querySelector('.modal-body');
-    const a = document.getElementById('modal-mais');
-    return { sobra: c.scrollHeight - c.clientHeight > 8, aviso: !a.classList.contains('d-none') };
+    return {
+      sobra: c.scrollHeight - c.clientHeight > 8,
+      aviso: !!document.getElementById('modal-mais'),
+      pilula: !!document.querySelector('.aviso-rolagem'),
+      // O corpo continua rolando: tirar o aviso não podia tirar a rolagem.
+      rola: getComputedStyle(c).overflowY === 'auto',
+    };
   });
-  t('[desktop] Campo abaixo da dobra é anunciado (e só então)',
-    dobra.sobra === dobra.aviso, JSON.stringify(dobra));
+  t('[desktop] o aviso "mais campos abaixo" não existe mais',
+    dobra.aviso === false && dobra.pilula === false, JSON.stringify(dobra));
+  t('[desktop] e o corpo do modal continua rolando', dobra.rola, JSON.stringify(dobra));
   await page.keyboard.press('Escape');
 }
 
