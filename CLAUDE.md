@@ -1017,6 +1017,25 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   sobrevivência à repintura, e devolve a preferência ao padrão no fim: ela é
   do navegador e atravessaria as provas seguintes, que contam cartões e medem
   rolagem.
+  **O interruptor "▾ Texto completo"** (2026-10-07, pedido do cliente) é o
+  irmão dele, uma camada adiante: o "ver mais" de cada cartão abre um por vez e
+  morria na mesma repintura — numa oficina de Porter, quem conduz abre os onze
+  cartões para ler as evidências em voz alta e os perde ao trocar o ano.
+  `Diag.interruptorTextoCompleto` + `ligarTextoCompleto`, preferência em
+  `pe_texto_completo`, **separada** da das orientações de propósito: são duas
+  leituras diferentes — "quero a instrução de preenchimento" e "quero o texto
+  inteiro do que já foi escrito" — e quem conduz costuma querer uma sem a
+  outra. O que faz a escolha atravessar o desenho novo é `ligarVerMais`: o
+  cartão **nasce** no estado escolhido. Duas armadilhas ali: a medida do
+  transbordo vem ANTES de aplicar a classe (com o texto já expandido,
+  `scrollHeight` iguala `clientHeight`, o cartão pareceria caber e ficaria
+  aberto SEM botão para fechar), e só o cartão que transborda recebe o estado —
+  por isso a prova conta `.texto-fator[data-ver-mais]`, e não todos os textos,
+  erro que a deixou vermelha na primeira rodada. Os dois interruptores ganharam
+  junto o estado visível no CSS (`[aria-pressed="true"]` em verde): sem ele,
+  ligado e desligado eram o mesmo botão cinza assim que o ponteiro saía, e quem
+  chegava com a preferência já ligada não sabia que havia o que desligar.
+  Prova em `provasTextoCompleto`, nas duas larguras.
   Regras que não podem ser afrouxadas, além das da tempestade: o teto de envios
   conta por **(pergunta, tipo)** dentro do INSERT, com `<=>` e não `=` (alvo sem
   lado grava `tipo_resposta` NULL, e o `=` devolveria NULL — o teto virava

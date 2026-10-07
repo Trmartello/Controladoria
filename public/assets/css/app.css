@@ -509,6 +509,26 @@ input[type=range].faixa-verde:focus-visible {
 .ver-mais:hover { text-decoration: underline; }
 .contador-cards { color: #fff; font-size: .7rem; vertical-align: middle; }
 
+/* Interruptores de leitura do diagnóstico — "O que considerar" e "Texto
+   completo". LIGADO precisa PARECER ligado depois que o ponteiro sai: sem esta
+   regra os dois estados eram o mesmo botão cinza, e o único sinal de que havia
+   algo aceso era o próprio conteúdo. Quem chega numa tela com a preferência já
+   ligada (ela sobrevive ao recarregar) não tinha como saber que existe um
+   interruptor para desligar. O hover escurece um grau, para o botão continuar
+   respondendo ao ponteiro nos dois estados. */
+[data-alternar-orientacoes][aria-pressed="true"],
+[data-alternar-texto][aria-pressed="true"] {
+  background: var(--verde-coperdia);
+  border-color: var(--verde-coperdia);
+  color: #fff;
+}
+[data-alternar-orientacoes][aria-pressed="true"]:hover,
+[data-alternar-texto][aria-pressed="true"]:hover {
+  background: #056038;
+  border-color: #056038;
+  color: #fff;
+}
+
 /* Formulários dos modais: campos espaçados, rótulos fortes e caixas confortáveis */
 #modal-campos > div { margin-bottom: 1.35rem; }
 #modal-campos > div:last-child { margin-bottom: .5rem; }

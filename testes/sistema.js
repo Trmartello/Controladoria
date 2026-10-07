@@ -1296,6 +1296,116 @@ async function provasFilaAcao(page, largura) {
  *   abrindo com metade dos cartões escondidos não teria explicação na tela.
  */
 /**
+ * O interruptor "Texto completo" (pedido do cliente, 2026-10-07).
+ *
+ * É o irmão do "O que considerar" e nasceu do mesmo defeito, uma camada
+ * adiante: o "ver mais" de cada cartão abre um por vez e a escolha morre na
+ * repintura. Numa oficina de Porter, quem conduz abre os onze cartões para ler
+ * as evidências em voz alta e os perde ao trocar o ano ou ao pesquisar.
+ *
+ * As duas provas que importam, e que quebram em silêncio:
+ *
+ * - **o cartão NASCE expandido** quando a preferência está ligada — é o que
+ *   faz a escolha atravessar o desenho novo;
+ * - **o botão continua existindo** nesse estado. A medida do transbordo é
+ *   feita antes de aplicar a classe justamente por isso: com o texto já
+ *   expandido, `scrollHeight` iguala `clientHeight`, o cartão pareceria caber
+ *   e ficaria aberto sem como fechar.
+ */
+async function provasTextoCompleto(page, largura) {
+  const estado = (secao) => page.evaluate((s) => {
+    const el = document.getElementById(s);
+    const b = el.querySelector('[data-alternar-texto]');
+    // Só o cartão que TRANSBORDA ganha "ver mais" (a marca `data-ver-mais`) e,
+    // com a preferência ligada, nasce aberto. O que já cabe em três linhas não
+    // tem o que expandir — contá-lo junto faz a prova exigir o impossível, e
+    // foi assim que ela falhou na primeira rodada: 23 de 25 na SWOT do
+    // celular, sendo os dois faltantes textos curtos.
+    const cortaveis = [...el.querySelectorAll('.texto-fator[data-ver-mais]')];
+    const botoes = [...el.querySelectorAll('.ver-mais')];
+    return {
+      botao: !!b,
+      pressed: b ? b.getAttribute('aria-pressed') : null,
+      cortaveis: cortaveis.length,
+      abertos: cortaveis.filter((x) => x.classList.contains('expandido')).length,
+      rotulos: [...new Set(botoes.map((v) => v.textContent.trim()))],
+      // Ligado tem de PARECER ligado com o ponteiro longe: sem a regra do
+      // `aria-pressed` no CSS, os dois estados eram o mesmo botão cinza.
+      cor: b ? getComputedStyle(b).backgroundColor : null,
+    };
+  }, secao);
+
+  const limpar = () => page.evaluate(() => {
+    try { localStorage.removeItem('pe_texto_completo'); } catch { /* sem armazenamento */ }
+  });
+
+  await limpar();
+  await page.evaluate(() => App.mostrarSecao('porter'));
+  await esperar(page, "!!document.querySelector('#secao-porter [data-alternar-texto]')", 15000);
+  await page.evaluate(() => App.recarregarSecaoAtiva());
+  await esperar(page, "!!document.querySelector('#secao-porter [data-alternar-texto]')", 15000);
+  await new Promise((r) => setTimeout(r, 300));
+
+  const inicial = await estado('secao-porter');
+  t(`[${largura}] o Porter traz o interruptor "Texto completo", começando desligado`,
+    inicial.botao && inicial.abertos === 0 && inicial.pressed === 'false',
+    JSON.stringify(inicial));
+  // Sem cartão cortado não há o que provar: a análise semeada precisa ter ao
+  // menos um texto que transborde as três linhas.
+  if (!inicial.cortaveis) {
+    ok.push(`[${largura}] Texto completo — pulada: nenhum cartão do Porter transborda`);
+    await limpar();
+    return;
+  }
+  t(`[${largura}] e os cartões longos começam cortados, dizendo "ver mais"`,
+    inicial.rotulos.join() === 'ver mais', JSON.stringify(inicial.rotulos));
+
+  await page.click('#secao-porter [data-alternar-texto]');
+  await new Promise((r) => setTimeout(r, 250));
+  const ligado = await estado('secao-porter');
+  t(`[${largura}] um clique abre o texto de TODOS os cartões cortados`,
+    ligado.abertos === ligado.cortaveis && ligado.cortaveis > 1 && ligado.pressed === 'true',
+    `${ligado.abertos}/${ligado.cortaveis}`);
+  t(`[${largura}] e cada botão passa a oferecer "ver menos"`,
+    ligado.rotulos.join() === 'ver menos', JSON.stringify(ligado.rotulos));
+  t(`[${largura}] o interruptor ligado se distingue do desligado`,
+    ligado.cor !== inicial.cor, `${inicial.cor} -> ${ligado.cor}`);
+
+  // O defeito que originou o pedido.
+  await page.evaluate(() => App.recarregarSecaoAtiva());
+  await esperar(page, "!!document.querySelector('#secao-porter [data-alternar-texto]')", 15000);
+  await new Promise((r) => setTimeout(r, 300));
+  const depois = await estado('secao-porter');
+  t(`[${largura}] a escolha sobrevive à repintura da seção`,
+    depois.abertos === depois.cortaveis && depois.cortaveis > 1 && depois.pressed === 'true',
+    `${depois.abertos}/${depois.cortaveis}`);
+  t(`[${largura}] e o cartão aberto MANTÉM o botão, com o rótulo certo`,
+    depois.cortaveis === inicial.cortaveis && depois.rotulos.join() === 'ver menos',
+    JSON.stringify(depois));
+
+  // Na SWOT o cartão é mais largo e pode não haver texto transbordando: o que
+  // se prova ali é que a preferência atravessa a troca de tela, e que o que
+  // houver de cortável chega aberto.
+  await page.evaluate(() => App.mostrarSecao('swot'));
+  await esperar(page, "!!document.querySelector('#secao-swot [data-alternar-texto]')", 15000);
+  await new Promise((r) => setTimeout(r, 300));
+  const swot = await estado('secao-swot');
+  t(`[${largura}] a SWOT herda a preferência, sem clicar de novo`,
+    swot.pressed === 'true' && swot.abertos === swot.cortaveis,
+    `${swot.abertos}/${swot.cortaveis}`);
+
+  await page.click('#secao-swot [data-alternar-texto]');
+  await new Promise((r) => setTimeout(r, 250));
+  const fechado = await estado('secao-swot');
+  t(`[${largura}] e desligar corta tudo de volta`,
+    fechado.abertos === 0 && fechado.pressed === 'false', JSON.stringify(fechado));
+
+  // Devolve ao padrão: a preferência é do navegador e atravessaria as provas
+  // seguintes, que contam cartões e medem rolagem com a tela mais alta.
+  await limpar();
+}
+
+/**
  * O interruptor "O que considerar" (pedido do cliente, 2026-09-22).
  *
  * O ⓘ de cada tópico já existia, mas abria um por vez e a escolha morria no
@@ -4604,6 +4714,7 @@ async function provasJanelaModal(page, largura) {
   await provasPopoverResumo(page, 'desktop');
   await noAnoDaCarga(page);
   await provasOrientacoes(page, 'desktop');
+  await provasTextoCompleto(page, 'desktop');
   await provasBuscaAnalise(page, 'desktop');
   await provasGut(page);
   await noAnoPadrao(page);
@@ -4649,6 +4760,7 @@ async function provasJanelaModal(page, largura) {
   await provasCabecalhoProjetos(pageM, 'celular');
   await noAnoDaCarga(pageM);
   await provasOrientacoes(pageM, 'celular');
+  await provasTextoCompleto(pageM, 'celular');
   await provasBuscaAnalise(pageM, 'celular');
   await noAnoPadrao(pageM);
   await provasTratarForaDaOrdem(pageM, 'celular');
