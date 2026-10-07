@@ -297,17 +297,26 @@ const Diag = {
       // o que já foi ligado — cada troca de filtro no celular empilharia mais
       // um "ver mais" no mesmo cartão.
       if (t.dataset.verMais) return;
+      // A medida do transbordo vem ANTES de aplicar a preferência: com o texto
+      // já expandido, `scrollHeight` iguala `clientHeight`, o cartão pareceria
+      // caber e sairia daqui SEM botão — aberto e sem como fechar.
       if (t.scrollHeight <= t.clientHeight + 1) return;
+      const aberto = this.textoCompleto();
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn btn-link btn-sm p-0 ver-mais';
-      btn.textContent = 'ver mais';
-      btn.setAttribute('aria-expanded', 'false');
+      btn.textContent = aberto ? 'ver menos' : 'ver mais';
+      btn.setAttribute('aria-expanded', String(aberto));
       btn.addEventListener('click', () => {
         const expandido = t.classList.toggle('expandido');
         btn.textContent = expandido ? 'ver menos' : 'ver mais';
         btn.setAttribute('aria-expanded', String(expandido));
       });
+      // O cartão NASCE no estado que a pessoa escolheu no interruptor. É isto
+      // que faz a escolha sobreviver à repintura: a seção se redesenha a cada
+      // troca de ano, pesquisa ou voz da sala, e sem esta linha todo cartão
+      // voltaria cortado em três linhas.
+      if (aberto) t.classList.add('expandido');
       t.dataset.verMais = '1';
 
       // O "ver mais" entra na MESMA linha dos botões do cartão. Numa linha só
@@ -478,6 +487,74 @@ const Diag = {
       el.querySelectorAll('[data-orientacao-alvo]').forEach((p) => p.classList.toggle('d-none', !abrir));
       el.querySelectorAll('[data-orientacao]').forEach((i) =>
         i.setAttribute('aria-expanded', abrir ? 'true' : 'false'));
+    }));
+  },
+
+  /**
+   * Interruptor do TEXTO COMPLETO — o irmão do "O que considerar", e pela mesma
+   * razão (pedido do cliente, 2026-10-07).
+   *
+   * O "ver mais" de cada cartão abre um por vez e a escolha morre no desenho
+   * seguinte: a seção repinta ao trocar o ano, ao pesquisar e ao chegar voz da
+   * sala. Numa oficina de Porter, quem conduz abre os onze cartões para ler as
+   * evidências em voz alta e os perde no primeiro gesto. Com o interruptor, a
+   * decisão é uma só e FICA.
+   *
+   * Preferência separada da das orientações de propósito: são duas leituras
+   * diferentes — "quero a instrução de preenchimento" e "quero o texto inteiro
+   * do que já foi escrito" —, e quem conduz a oficina costuma querer uma sem a
+   * outra. Mora no `localStorage`, como a irmã: é escolha de quem está lendo,
+   * não dado do planejamento.
+   *
+   * Vale para as quatro telas que cortam texto em três linhas (PESTEL, Porter,
+   * SWOT, Cenário) e alcança também os cartões da GUT, que usam o mesmo
+   * `.texto-fator` sem ter interruptor próprio no cabeçalho.
+   */
+  TEXTO_CHAVE: 'pe_texto_completo',
+
+  textoCompleto() {
+    if (this._textoCompleto === undefined) {
+      try {
+        this._textoCompleto = localStorage.getItem(this.TEXTO_CHAVE) === '1';
+      } catch {
+        // Armazenamento negado (janela anônima, site bloqueado): a preferência
+        // vale só enquanto a página estiver aberta.
+        this._textoCompleto = false;
+      }
+    }
+    return this._textoCompleto;
+  },
+
+  definirTextoCompleto(aberto) {
+    this._textoCompleto = aberto;
+    try {
+      localStorage.setItem(this.TEXTO_CHAVE, aberto ? '1' : '0');
+    } catch {
+      // Sem armazenamento a escolha não sobrevive ao recarregar — e tudo bem.
+    }
+  },
+
+  interruptorTextoCompleto() {
+    const on = this.textoCompleto();
+    return `<button type="button" class="btn btn-sm btn-outline-secondary d-print-none"
+      data-alternar-texto aria-pressed="${on ? 'true' : 'false'}"
+      title="Mostrar o texto inteiro de cada cartão, sem o corte de três linhas">▾ Texto completo</button>`;
+  },
+
+  ligarTextoCompleto(el) {
+    el.querySelectorAll('[data-alternar-texto]').forEach((b) => b.addEventListener('click', () => {
+      const abrir = !this.textoCompleto();
+      this.definirTextoCompleto(abrir);
+      b.setAttribute('aria-pressed', abrir ? 'true' : 'false');
+      // Mexe na TELA, sem redesenhar — mesma razão do interruptor das
+      // orientações: repintar jogaria fora o cartão em edição e a pesquisa.
+      // Os `.ver-mais` acompanham o rótulo, senão o botão diria "ver mais"
+      // embaixo de um texto que já está inteiro na tela.
+      el.querySelectorAll('.texto-fator').forEach((t) => t.classList.toggle('expandido', abrir));
+      el.querySelectorAll('.ver-mais').forEach((v) => {
+        v.textContent = abrir ? 'ver menos' : 'ver mais';
+        v.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+      });
     }));
   },
 
@@ -1071,6 +1148,7 @@ const Diag = {
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${this.campoBusca(etapa)}
             ${this.interruptorOrientacoes()}
+            ${this.interruptorTextoCompleto()}
             ${this.seletorAno(etapa)}
             ${this.quizMicEtapa(dono, etapa, ano, titulo)}
             ${RelatorioAnalise.botao()}
@@ -1110,6 +1188,7 @@ const Diag = {
     this.aplicarDestaque(el, idSecao.replace('secao-', ''));
     this.ligarSeloColeta(el, ({ PESTEL: 'PESTEL', PORTER: 'Porter', SWOT: 'SWOT' })[etapa] || etapa);
     this.ligarOrientacoes(el);
+    this.ligarTextoCompleto(el);
     dono.assinaturaQuiz = QuizSala.assinatura(dono.quiz);
     QuizSala.armarRelogio(dono);
     if (!App.podeEditar()) {
@@ -1411,6 +1490,7 @@ const SecaoCenario = {
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.campoBusca('CENARIO')}
             ${Diag.interruptorOrientacoes()}
+            ${Diag.interruptorTextoCompleto()}
             ${Diag.seletorAno('cenario')}
             ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
               { ativo: this.perguntaDoAno()?.situacao === 'ATIVA',
@@ -1456,6 +1536,7 @@ const SecaoCenario = {
     Diag.aplicarDestaque(el, 'cenario');
     Diag.ligarSeloColeta(el, 'Análise de Cenário');
     Diag.ligarOrientacoes(el);
+    Diag.ligarTextoCompleto(el);
     // O cenário vai direto ao plano de ação, como PESTEL, Porter e SWOT — mesmo
     // selo, mesmo gesto, outra rota (é outra tabela).
     Diag.ligarPlanoAcao(el, plan.id, 'cenario', 'item');
@@ -1813,6 +1894,7 @@ const SecaoSwot = {
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.campoBusca('SWOT')}
             ${Diag.interruptorOrientacoes()}
+            ${Diag.interruptorTextoCompleto()}
             ${Diag.seletorAno('swot')}
             ${Diag.quizMicEtapa(this, 'SWOT', ano, 'SWOT')}
             ${RelatorioAnalise.botao()}
@@ -1857,6 +1939,7 @@ const SecaoSwot = {
     Diag.aplicarDestaque(el, 'swot');
     Diag.ligarSeloColeta(el, 'SWOT');
     Diag.ligarOrientacoes(el);
+    Diag.ligarTextoCompleto(el);
     this.assinaturaQuiz = QuizSala.assinatura(this.quiz);
     QuizSala.armarRelogio(this);
 
@@ -2099,6 +2182,7 @@ const SecaoGut = {
     // blocos está visível de cada vez e o outro reaparece ao girar a tela.
     Diag.ligarBusca(el, 'GUT');
     Diag.ligarOrientacoes(el);
+    Diag.ligarTextoCompleto(el);
     // Mede `--altura-cabecalho` para o `<thead>` grudar logo ABAIXO do título,
     // e não por cima dele. É o mesmo helper das outras análises de propósito:
     // o bloco quebra em uma ou duas linhas conforme a largura, e um palpite em
