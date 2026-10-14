@@ -4485,11 +4485,101 @@ async function provasMenuRecolhido(page, largura) {
   const guardado = await page.evaluate(() =>
     [...document.querySelectorAll('#nav-secoes .grupo-menu.aberto')].map((g) => g.dataset.grupo));
   t(`[${largura}] o tópico aberto sobrevive à recarga`, guardado.includes('diagnostico'), JSON.stringify(guardado));
-  // Recarregada, a tela volta ao Painel: o menu não pode ter deixado
-  // rolagem horizontal nem o corpo travado
+  // Desde 2026-10-14 a recarga devolve também a TELA. Antes dela, a página
+  // voltava ao Painel e o tópico aberto no menu era a única coisa que
+  // sobrevivia — o que fazia o menu apontar para um lugar onde ninguém estava.
+  const voltou = await page.evaluate(() => App.secaoAtiva);
+  t(`[${largura}] e a tela recarregada continua sendo a SWOT`, voltou === 'swot', String(voltou));
+  // O menu não pode ter deixado rolagem horizontal nem o corpo travado
   const rola = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   t(`[${largura}] sem rolagem horizontal depois do menu`, !rola);
   await page.evaluate(() => { document.body.classList.remove('menu-aberto'); });
+}
+
+/**
+ * Onde a pessoa estava — a tela e o negócio (pedido do cliente, 2026-10-14).
+ *
+ * Recarregar devolvia todo mundo ao Painel e ao primeiro negócio da lista.
+ * O que esta prova defende, além do óbvio:
+ *
+ * - **a guarda do nome inválido.** `mostrarSecao` acende o item do menu e
+ *   estoura se o nome não estiver lá. Um `pe_secao` gravado por versão
+ *   anterior, ou de uma tela que este perfil não tem, derrubaria o sistema no
+ *   ARRANQUE — sem tela para mostrar o erro. A prova grava um nome inexistente
+ *   de propósito e exige que o sistema abra no Painel;
+ * - **a guarda do negócio alheio.** O vínculo usuário×negócio muda e o
+ *   navegador é compartilhado: um id que não está mais na lista tem de cair no
+ *   padrão, não ser aplicado por teimosia.
+ */
+async function provasLugarGuardado(page, largura) {
+  const l = `[${largura}] Onde a pessoa estava:`;
+  const recarregar = async () => {
+    await page.reload();
+    return esperar(page, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+  };
+  const estado = () => page.evaluate(() => ({
+    secao: App.secaoAtiva,
+    visivel: !document.getElementById(`secao-${App.secaoAtiva}`).classList.contains('d-none'),
+    negocio: document.getElementById('sel-negocio').value,
+    ctxNegocio: App.contexto.negocioId,
+    corporativo: App.contexto.corporativo,
+  }));
+
+  await page.evaluate(() => App.mostrarSecao('metas'));
+  await recarregar();
+  const tela = await estado();
+  t(`${l} a tela aberta volta depois da recarga`,
+    tela.secao === 'metas' && tela.visivel === true, JSON.stringify(tela));
+
+  // O negócio é testado a partir do Painel: é a tela mais tolerante a um
+  // planejamento recém-criado (trocar de negócio cria o planejamento vazio).
+  await page.evaluate(() => App.mostrarSecao('painel'));
+  const alvo = await page.evaluate(() => {
+    const sel = document.getElementById('sel-negocio');
+    const op = [...sel.options].find((o) => o.value !== 'CORP' && o.value !== '');
+    if (!op) return null;
+    sel.value = op.value;
+    sel.dispatchEvent(new Event('change'));
+    return op.value;
+  });
+  if (!alvo) {
+    ok.push(`${l} pulada — este usuário só tem o escopo corporativo`);
+  } else {
+    await new Promise((r) => setTimeout(r, 400));
+    await recarregar();
+    const neg = await estado();
+    t(`${l} o negócio escolhido volta depois da recarga`,
+      neg.negocio === alvo && String(neg.ctxNegocio) === alvo && neg.corporativo === false,
+      JSON.stringify(neg));
+  }
+
+  // Nome de tela que não existe: tem de abrir no Painel, não quebrar.
+  await page.evaluate(() => { try { localStorage.setItem('pe_secao', 'tela-que-nao-existe'); } catch { /* sem armazenamento */ } });
+  const abriu = await recarregar();
+  const caiu = await estado();
+  t(`${l} tela gravada que não existe mais abre no Painel, sem derrubar o sistema`,
+    abriu === true && caiu.secao === 'painel' && caiu.visivel === true, JSON.stringify(caiu));
+
+  // Negócio que não é (mais) deste usuário: volta ao padrão da lista.
+  await page.evaluate(() => { try { localStorage.setItem('pe_negocio', '99999'); } catch { /* sem armazenamento */ } });
+  await recarregar();
+  const padrao = await page.evaluate(() => {
+    const sel = document.getElementById('sel-negocio');
+    return { valor: sel.value, primeira: sel.options[0]?.value, ctx: App.contexto.negocioId };
+  });
+  t(`${l} negócio gravado fora da lista cai no padrão`,
+    padrao.valor === padrao.primeira, JSON.stringify(padrao));
+
+  // Devolve o contexto às provas seguintes: elas contam com o corporativo.
+  await page.evaluate(() => {
+    try { localStorage.removeItem('pe_secao'); localStorage.removeItem('pe_negocio'); } catch { /* sem armazenamento */ }
+    const sel = document.getElementById('sel-negocio');
+    if ([...sel.options].some((o) => o.value === 'CORP')) {
+      sel.value = 'CORP';
+      sel.dispatchEvent(new Event('change'));
+    }
+    App.mostrarSecao('painel');
+  });
 }
 
 /**
@@ -4730,6 +4820,7 @@ async function provasJanelaModal(page, largura) {
   await provasTratarForaDaOrdem(page, 'desktop');
   await provasJanelaModal(page, 'desktop');
   await provasMenuRecolhido(page, 'desktop');
+  await provasLugarGuardado(page, 'desktop');
   await noAnoDaCarga(page);
   await provasPainelSalaFixo(page, 'desktop');
   await noAnoPadrao(page);
@@ -4766,6 +4857,7 @@ async function provasJanelaModal(page, largura) {
   await provasTratarForaDaOrdem(pageM, 'celular');
   await provasJanelaModal(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
+  await provasLugarGuardado(pageM, 'celular');
   await noAnoDaCarga(pageM);
   await provasPainelSalaFixo(pageM, 'celular');
   await noAnoPadrao(pageM);
