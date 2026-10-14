@@ -67,7 +67,7 @@ const App = {
     });
 
     this.iniciarMenu();
-    this.mostrarSecao('painel');
+    this.mostrarSecao(this.secaoInicial());
   },
 
   // Menu automático (todas as telas): expande pelo ☰ ou ao encostar o mouse
@@ -152,6 +152,49 @@ const App = {
     try { localStorage.setItem('menu.grupos', JSON.stringify(abertos)); } catch { /* sem storage */ }
   },
 
+  /**
+   * Onde a pessoa estava: a tela e o negócio (pedido do cliente, 2026-10-14).
+   *
+   * Recarregar a página — F5, a sessão expirando e voltando, o navegador
+   * restaurando a aba — devolvia todo mundo ao Painel e ao primeiro negócio da
+   * lista. Quem trabalha o dia inteiro dentro de um negócio refazia dois
+   * gestos a cada recarga, e quem recarregava para ver dado novo perdia
+   * justamente a tela que estava olhando.
+   *
+   * Mora no `localStorage`, como a preferência do menu: é de quem está usando
+   * aquele navegador, não dado do planejamento. O ciclo fica de fora de
+   * propósito — ele é escolha de Cadastros, feita uma vez por ano, e não foi
+   * pedido.
+   */
+  LUGAR_SECAO: 'pe_secao',
+  LUGAR_NEGOCIO: 'pe_negocio',
+
+  guardarLugar(chave, valor) {
+    try { localStorage.setItem(chave, valor); } catch { /* sem armazenamento */ }
+  },
+
+  lugarGuardado(chave) {
+    // Janela anônima ou site bloqueado: segue sem memória, com o padrão.
+    try { return localStorage.getItem(chave); } catch { return null; }
+  },
+
+  /**
+   * A seção com que o sistema abre.
+   *
+   * A validação não é zelo: `mostrarSecao` acende o item do menu
+   * (`link.classList.add`) e **estoura** se o nome não existir ali. Nome
+   * gravado por uma versão anterior, seção removida desde então ou tela que
+   * este perfil não tem no menu derrubariam o sistema no arranque — a pior
+   * hora possível, porque não há tela para mostrar o erro. Por isso só se
+   * restaura o que existe no documento E está no menu deste usuário.
+   */
+  secaoInicial() {
+    const salva = this.lugarGuardado(this.LUGAR_SECAO);
+    if (salva && document.getElementById(`secao-${salva}`)
+      && document.querySelector(`#nav-secoes [data-secao="${salva}"]`)) return salva;
+    return 'painel';
+  },
+
   montarSeletores() {
     // O ciclo já não é um seletor do menu: quem o troca é a aba Cadastros ›
     // Ciclos & Horizontes, por `App.trocarCiclo`. Aqui só se define o inicial —
@@ -167,9 +210,19 @@ const App = {
     }
     selNegocio.innerHTML = opcoes.join('') || '<option value="">(nenhum negócio vinculado)</option>';
 
+    // Repõe o negócio em que a pessoa estava — e só se ele ainda for UM DOS
+    // DELA. O vínculo usuário×negócio muda, e o navegador é compartilhado: sem
+    // conferir contra as opções recém-montadas, a tela abriria num negócio que
+    // este usuário não enxerga mais (ou nunca enxergou), com as seções pedindo
+    // dado que a API vai recusar. Não casando, vale o padrão de sempre — a
+    // primeira opção da lista.
+    const salvo = this.lugarGuardado(this.LUGAR_NEGOCIO);
+    if (salvo && [...selNegocio.options].some((o) => o.value === salvo)) selNegocio.value = salvo;
+
     const atualizar = () => {
       this.contexto.corporativo = selNegocio.value === 'CORP';
       this.contexto.negocioId = this.contexto.corporativo ? null : parseInt(selNegocio.value, 10) || null;
+      this.guardarLugar(this.LUGAR_NEGOCIO, selNegocio.value);
       this.atualizarTopbar();
       this.recarregarSecaoAtiva();
     };
@@ -241,6 +294,12 @@ const App = {
 
   mostrarSecao(nome) {
     this.secaoAtiva = nome;
+    // A tela fica guardada para a próxima recarga. Aqui, e não em cada item do
+    // menu, porque este é o funil por onde TODA navegação passa — inclusive a
+    // que vem de um card ("→ SWOT", "→ Plano de ação") e a do atalho da topbar.
+    // O dossiê não polui o registro: ele pinta as seções de lado, chamando o
+    // `carregar()` de cada uma, sem navegar.
+    this.guardarLugar(this.LUGAR_SECAO, nome);
     document.querySelectorAll('.secao').forEach((s) => s.classList.add('d-none'));
     document.querySelectorAll('#nav-secoes .nav-link').forEach((l) => l.classList.remove('active'));
     document.getElementById(`secao-${nome}`).classList.remove('d-none');

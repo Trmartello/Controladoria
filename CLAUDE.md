@@ -139,6 +139,25 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   tópico da tela ativa, e o aberto fica em `localStorage` (`menu.grupos`). Os links continuam sendo
   `#nav-secoes .nav-link` / `[data-secao]`: o contrato é o atributo, não a
   profundidade. Prova em `sistema.js` (`provasMenuRecolhido`).
+- **A tela e o negócio sobrevivem à recarga** (2026-10-14, pedido do cliente):
+  o F5 devolvia todo mundo ao Painel com o escopo corporativo. Não é só
+  incômodo — quem acompanha um negócio passa o dia numa tela só, e a recarga
+  (a do navegador, a do deploy, a do celular que dormiu) jogava fora as duas
+  escolhas de uma vez. `App.secaoInicial()` abre a última tela e
+  `montarSeletores` restaura o último negócio, guardados em `localStorage` sob
+  `pe_secao` e `pe_negocio` por `guardarLugar`/`lugarGuardado` (os dois em
+  try/catch: navegador sem armazenamento não pode derrubar o arranque). As
+  duas **guardas** são o que a prova mais defende: `mostrarSecao` acende o
+  item do menu e estoura no `classList` se o nome não estiver lá, então um
+  `pe_secao` gravado por versão anterior — ou de uma tela que este perfil não
+  tem — derrubaria o sistema no ARRANQUE, sem tela para mostrar o erro; e o
+  vínculo usuário×negócio muda num navegador compartilhado, então id fora da
+  lista cai no padrão em vez de ser aplicado por teimosia. O **ciclo ficou de
+  fora** de propósito: ele é o recorte do planejamento inteiro e vem do
+  servidor como o ativo — fixá-lo no navegador faria alguém trabalhar num
+  ciclo encerrado sem perceber. Prova em `provasLugarGuardado`, nas duas
+  larguras, que também devolve o contexto (CORP + Painel) e apaga as duas
+  chaves no fim: elas são do navegador e atravessariam as provas seguintes.
 - **Atalho ⚙ na topbar** (`#btn-cadastros`, ao lado do ☰): abre os Cadastros —
   a tela de AJUSTAR o sistema, que não faz parte do percurso do planejamento e
   se procurava no meio de dezoito seções. É um `<a data-secao>`, o mesmo
@@ -2270,10 +2289,10 @@ A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
-**Linha de base em 2026-09-04** (depois da exclusão de pergunta do
-questionário; era 276/578 depois do PR #20): funcional **288 ✓ / 0 ✗**
+**Linha de base em 2026-10-14** (depois da persistência de tela e negócio; era
+288/583 em 2026-09-04 e 276/578 depois do PR #20): funcional **301 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
-sistema **583 ✓ / 0 ✗** em cerca de nove minutos
+sistema **678 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
 sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
 `400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do
