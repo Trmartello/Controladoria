@@ -2037,16 +2037,16 @@ async function provasAcao(page, largura) {
   });
   await page.evaluate(() => App.mostrarSecao('projetos'));
   await esperar(page, "!document.getElementById('secao-projetos').classList.contains('d-none')", 15000);
-  // Pelo PROJETO desta prova, nunca por um `[data-nova-acao]` qualquer: a
+  // Pelo PROJETO desta prova, nunca por um `[data-nova-acao-proj]` qualquer: a
   // pintura anterior continua na tela enquanto a recarga não volta, e o botão
-  // dela aponta para uma frente de outro projeto (já apagado).
+  // dela aponta para outro projeto (já apagado).
   const temBotao = await esperar(
-    page, `!!document.querySelector('[data-projeto="${prj}"] [data-nova-acao]')`, 15000);
-  t(`${l} Iniciativa oferece "+ Ação"`, temBotao);
+    page, `!!document.querySelector('[data-projeto="${prj}"] [data-nova-acao-proj]')`, 15000);
+  t(`${l} O projeto oferece "+ Ação" na linha do título`, temBotao);
   const abrirModal = async () => {
     await page.evaluate((id) => {
-      const b = document.querySelector(`[data-projeto="${id}"] [data-nova-acao]`);
-      SecaoProjetos.modalDesdobramento(parseInt(b.dataset.proj, 10), null, parseInt(b.dataset.novaAcao, 10));
+      const b = document.querySelector(`[data-projeto="${id}"] [data-nova-acao-proj]`);
+      SecaoProjetos.modalDesdobramento(parseInt(b.dataset.novaAcaoProj, 10), null, null);
     }, prj);
     return esperar(page, "!!document.getElementById('campo-o_que')", 8000);
   };
@@ -2058,13 +2058,35 @@ async function provasAcao(page, largura) {
       await new Promise((r) => setTimeout(r, 300));
       const ordem = await page.evaluate(() => [...document.querySelectorAll('#modal-campos .form-label')]
         .map((x) => x.textContent.trim()));
-      const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Repetição',
+      // A frente de destino abre a lista: com o "+ Ação" na linha do título do
+      // projeto, ela é a primeira coisa que a ação ainda não sabe. O resto é a
+      // ordem de sempre, que é contrato com o cliente.
+      const esperada = ['Em qual frente de trabalho?', 'Nome da nova frente *',
+        'O quê? *', 'Como? *', 'Quem? *', 'Repetição',
         'Selecione o dia da semana para repetir:',
         'Selecione o dia ou dias do mês em que haverá repetição:',
         'Data fim da repetição', 'Quando? (Prazo de Execução) *',
         'Prioridade', 'Status', 'Ganhos previstos (R$)'];
       t(`${l} Campos da ação na ordem pedida`,
         JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
+
+      // A frente já vem escolhida (a primeira do projeto) e o campo de nome da
+      // frente nova fica escondido até alguém pedir uma. Sem isto, o formulário
+      // abriria com um campo obrigatório vazio que ninguém precisa preencher.
+      const frente = await page.evaluate(() => {
+        const sel = document.getElementById('campo-iniciativa_id');
+        const nova = document.getElementById('campo-iniciativa_nova')?.closest('.mb-3');
+        return {
+          eSelect: sel?.tagName === 'SELECT',
+          escolhida: sel?.value !== '' && sel?.selectedOptions[0]?.textContent.trim(),
+          novaEscondida: !!nova?.classList.contains('d-none'),
+          temOpcaoNova: [...(sel?.options || [])].some((o) => o.value === ''),
+        };
+      });
+      t(`${l} A frente de destino é a primeira pergunta, já preenchida`,
+        frente.eSelect && frente.escolhida === 'Frente prova', JSON.stringify(frente));
+      t(`${l} Dá para criar a frente na hora, e o nome só aparece ao pedir`,
+        frente.temOpcaoNova && frente.novaEscondida, JSON.stringify(frente));
 
       // ── A caixa da repetição ────────────────────────────────────────────
       // Todo campo da decisão mora DENTRO do painel; nenhum outro entra nele.
@@ -2103,6 +2125,7 @@ async function provasAcao(page, largura) {
       const nenhuma = await trocar('NENHUMA');
       t(`${l} sem repetição, só o período de execução aparece`,
         nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate, JSON.stringify(nenhuma));
+
       const semanal = await trocar('SEMANAL');
       t(`${l} toda semana troca o período pelos dias da semana`,
         !semanal.periodo && semanal.semana && !semanal.mes && semanal.ate, JSON.stringify(semanal));
