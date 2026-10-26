@@ -826,6 +826,58 @@ garantirColuna($pdo, 'indicador', 'agregacao',
 garantirColuna($pdo, 'ciclo', 'ano_execucao',
     'ALTER TABLE ciclo ADD COLUMN ano_execucao SMALLINT NULL AFTER ano_fim');
 
+// ---- A escolha da cascata passou do PROJETO para a FRENTE ----
+//
+// Decisão do cliente (2026-10-26): quem executa um pedaço de uma escolha é a
+// frente de trabalho, não o projeto inteiro. A coluna nova é
+// `iniciativa.cascata_id`; a do projeto fica onde está, sem uso, porque é o
+// rastro de onde o vínculo morava — apagá-la tornaria a migração irreversível.
+garantirColuna($pdo, 'iniciativa', 'cascata_id',
+    'ALTER TABLE iniciativa ADD COLUMN cascata_id INT NULL AFTER descricao');
+garantirIndice($pdo, 'iniciativa', 'idx_ini_cascata',
+    'ALTER TABLE iniciativa ADD KEY idx_ini_cascata (cascata_id)');
+garantirFk($pdo, 'iniciativa', 'fk_ini_cascata',
+    'ALTER TABLE iniciativa ADD CONSTRAINT fk_ini_cascata
+     FOREIGN KEY (cascata_id) REFERENCES cascata_escolha(id)');
+
+// A cópia: cada frente herda a escolha do projeto dela (opção do cliente —
+// "copiar para todas as frentes"). Nada se perde e sobra o que não se aplica,
+// que é o erro barato; começar limpo esvaziaria a Matriz de Execução até
+// alguém refazer o cadastro inteiro.
+//
+// Uma vez por banco, pela razão de sempre: depois da primeira execução a
+// escolha da frente é de quem cadastra, e um passo que rodasse de novo
+// devolveria o valor do projeto por cima — inclusive onde alguém tivesse
+// DESMARCADO a frente de propósito.
+$chaveCascataFrente = 'cascata_do_projeto_para_frentes';
+if (tabelaExiste($pdo, 'carga_conteudo')
+    && !App\Services\CargaConteudo::jaAplicada($pdo, $chaveCascataFrente)) {
+    $copiadas = $pdo->exec(
+        'UPDATE iniciativa i
+           JOIN projeto p ON p.id = i.projeto_id
+            SET i.cascata_id = p.cascata_id
+          WHERE i.cascata_id IS NULL AND p.cascata_id IS NOT NULL'
+    );
+    // Projeto vinculado SEM frente nenhuma não tem para onde copiar, e o
+    // vínculo dele morre aqui. São poucos e precisam de nome: é o único aviso
+    // que alguém terá de que aquele projeto saiu da Matriz de Execução.
+    $orfaos = $pdo->query(
+        'SELECT p.titulo FROM projeto p
+          WHERE p.cascata_id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM iniciativa i WHERE i.projeto_id = p.id)'
+    )->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($orfaos as $titulo) {
+        echo "migrate: projeto «{$titulo}» tinha escolha da cascata e NÃO tem frente — "
+            . "o vínculo não pôde ser copiado; refaça na frente.\n";
+    }
+    if ($copiadas) {
+        echo "migrate: {$copiadas} frente(s) herdaram a escolha da cascata do projeto.\n";
+    }
+    App\Services\CargaConteudo::marcar(
+        $pdo, $chaveCascataFrente, "{$copiadas} frente(s), " . count($orfaos) . ' projeto(s) sem frente'
+    );
+}
+
 // ---- O ano em execução, escolhido pelo cliente: 2027 ----
 //
 // Em branco, `Metas::anoEmExecucao` devolve o ano corrente, e o cliente quer

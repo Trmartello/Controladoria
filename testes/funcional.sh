@@ -1534,6 +1534,52 @@ else
 fi
 [ -n "${CF_F:-}" ] && post /api/fatores/$CF_F/excluir '{"planejamento_id":1}' >/dev/null
 
+echo "### 9m. A escolha da cascata é da FRENTE — e salvar sem a chave não a solta"
+#
+# O vínculo decisão → execução passou do projeto para a frente (decisão do
+# cliente, 2026-10-26). Três regras moram no servidor e as três são do tipo que
+# falha calado: a gravação da frente, a guarda do `array_key_exists` (o modal
+# da frente pode salvar título e descrição sem tocar no vínculo) e a conferência
+# de planejamento (um id de outro negócio entraria pelo corpo e a frente
+# apareceria na matriz de um plano a que não pertence).
+CF_ESCOLHA=$(get "/api/cascata?planejamento_id=1" | python3 -c "
+import sys, json
+e = json.load(sys.stdin)['dados']['escolhas']
+print(e[0]['id'] if e else '')" 2>/dev/null)
+if [ -z "${CF_ESCOLHA:-}" ]; then
+  echo "    (pulada — a base não tem escolha da cascata)"
+else
+  R=$(post /api/projetos "{\"planejamento_id\":1,\"tipo\":\"ESTRATEGICO\",\"titulo\":\"Projeto frente-cascata (prova)\",\"ano\":2027,\"responsavel\":\"QA\"}")
+  PRJF=$(echo "$R" | id_de)
+  R=$(post /api/iniciativas "{\"planejamento_id\":1,\"projeto_id\":$PRJF,\"titulo\":\"Frente com escolha\",\"cascata_id\":$CF_ESCOLHA}")
+  afirma "cria frente já com a escolha da cascata" '"ok":true' "$R"
+  INIF=$(echo "$R" | id_de)
+  escolha_da_frente(){ get "/api/projetos?planejamento_id=1" | python3 -c "
+import sys, json
+alvo = sys.argv[1]
+for p in json.load(sys.stdin)['dados']:
+    for i in p.get('iniciativas') or []:
+        if str(i['id']) == alvo:
+            print(json.dumps(i.get('cascata_id')))
+            raise SystemExit
+print('\"__ausente__\"')" "$1" 2>/dev/null; }
+  R=$(escolha_da_frente $INIF)
+  afirma "a frente volta com a escolha vinculada" "^$CF_ESCOLHA\$" "$R"
+  # Salvar a frente SEM a chave (o que o formulário faz ao mexer só no título)
+  # não pode soltar o vínculo: é a guarda do array_key_exists.
+  R=$(post /api/iniciativas/$INIF "{\"planejamento_id\":1,\"projeto_id\":$PRJF,\"titulo\":\"Frente com escolha (renomeada)\"}")
+  afirma "renomear a frente sem mandar a chave é aceito" '"ok":true' "$R"
+  R=$(escolha_da_frente $INIF)
+  afirma "e NÃO solta a escolha da cascata" "^$CF_ESCOLHA\$" "$R"
+  # Mandar a chave vazia é o gesto explícito de desvincular.
+  R=$(post /api/iniciativas/$INIF "{\"planejamento_id\":1,\"projeto_id\":$PRJF,\"titulo\":\"Frente com escolha (renomeada)\",\"cascata_id\":\"\"}")
+  R=$(escolha_da_frente $INIF)
+  afirma "mandar a chave vazia desvincula de propósito" '^null$' "$R"
+  # Escolha de outro planejamento é recusada.
+  R=$(post /api/iniciativas/$INIF "{\"planejamento_id\":1,\"projeto_id\":$PRJF,\"titulo\":\"x\",\"cascata_id\":999999}")
+  afirma "escolha de outro planejamento é recusada" 'não encontrada neste planejamento' "$R"
+fi
+
 echo "### 10. Limpeza"
 [ -n "${COM:-}" ]  && post /api/comentarios/$COM/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${UPRJ:-}" ] && post /api/projetos/$UPRJ/excluir '{"planejamento_id":1}' >/dev/null
@@ -1541,6 +1587,7 @@ echo "### 10. Limpeza"
 [ -n "${ACAO:-}" ] && post /api/desdobramentos/$ACAO/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${INI:-}" ]  && post /api/iniciativas/$INI/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${PRJ:-}" ]  && post /api/projetos/$PRJ/excluir '{"planejamento_id":1}' >/dev/null
+[ -n "${PRJF:-}" ] && post /api/projetos/$PRJF/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${INV:-}" ]  && post /api/investimentos/$INV/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${IND:-}" ]  && post /api/indicadores/$IND/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${INDM:-}" ] && post /api/indicadores/$INDM/excluir '{"planejamento_id":1}' >/dev/null

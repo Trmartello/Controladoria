@@ -913,9 +913,30 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   chave preserva, com a chave vazia solta) e `provasRotuloCelula` na de
   sistema (o campo não existe mais no formulário).
 - **Matriz de Execução** (aba da Cascata): por eixo, a escolha com a renúncia, os
-  indicadores que a medem, o par meta × real de cada um e os projetos que a
+  indicadores que a medem, o par meta × real de cada um e as **frentes** que a
   executam. Os dois lados do vínculo são `indicador_cascata` (N:N, clone de
-  `cascata_fator`) e `projeto.cascata_id`. **Não é um mapa estratégico**: não há
+  `cascata_fator`) e **`iniciativa.cascata_id`**.
+  **O vínculo é da FRENTE, não do projeto** (decisão do cliente, 2026-10-26; era
+  `projeto.cascata_id`): um projeto toca pedaços de mais de uma decisão, e pelo
+  projeto a matriz dizia que o projeto inteiro executava uma escolha só. O que
+  mudou junto: o campo saiu do formulário do projeto e entrou no da frente, o
+  "↳ Escolha da cascata" saiu do cartão do projeto e foi para o da frente, e a
+  coluna da matriz mostra **"projeto › frente"** (composto no servidor — o nome
+  da frente sozinho não diz de que projeto ela é, e a matriz é lida longe da
+  tela de Projetos). `projeto.cascata_id` **continua na tabela, sem uso**: é o
+  rastro de onde o vínculo morava, e o `UPDATE` do projeto deixou de tocá-la
+  para não apagá-lo na primeira edição. Um passo do migrate copiou o valor do
+  projeto para **todas** as frentes dele (`cascata_do_projeto_para_frentes`,
+  opção escolhida pelo cliente — nada se perde e sobra o que não se aplica),
+  marcado uma vez só: um passo que rodasse de novo devolveria o vínculo onde
+  alguém tivesse DESMARCADO a frente de propósito. Projeto vinculado **sem
+  frente nenhuma** não tinha para onde copiar e sai nomeado no log do deploy.
+  Excluir a escolha solta as duas pontas (frente e o rastro do projeto): a FK
+  não tem `ON DELETE`, e esquecer a segunda faria o `DELETE` ser recusado pelo
+  banco. `salvarIniciativa` só toca o vínculo quando a chave `cascata_id`
+  **vem no corpo** (`array_key_exists`, a mesma regra de `fatores` e
+  `cascatas`) e confere a escolha contra o planejamento. Provas: `9m` na
+  funcional e `provasMatrizExecucao` na de sistema. **Não é um mapa estratégico**: não há
   raias com setas nem `objetivo_estrategico` — a caixa é a própria
   `cascata_escolha`, que já traz a renúncia (que o BSC não tem) e os fatores
   SWOT/GUT que a fundamentam; as raias são os eixos já cadastrados. A linha da
@@ -2448,9 +2469,9 @@ depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
 **Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
-2026-10-14 e 288/583 em 2026-09-04): funcional **321 ✓ / 0 ✗**
+2026-10-14 e 288/583 em 2026-09-04): funcional **327 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
-sistema **744 ✓ / 0 ✗** em cerca de nove minutos
+sistema **745 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
 sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
 `400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do

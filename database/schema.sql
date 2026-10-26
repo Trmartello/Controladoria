@@ -374,6 +374,10 @@ CREATE TABLE IF NOT EXISTS projeto (
   data_inicio      DATE NULL,
   data_fim         DATE NULL,
   horizonte_id     INT NULL,
+  -- `cascata_id` saiu daqui em 2026-10-26: a escolha da cascata passou a ser da
+  -- FRENTE (ver `iniciativa`). A coluna fica na tabela, sem uso, porque a
+  -- migração copia o valor dela para as frentes e apagá-la jogaria fora o
+  -- rastro de onde o vínculo estava antes.
   cascata_id       INT NULL,
   impacto          ENUM('RENTABILIDADE','FATURAMENTO','SUSTENTABILIDADE','PESSOAS') NULL,
   classificacao    ENUM('PRIORITARIO','NORMAL') NOT NULL DEFAULT 'NORMAL',
@@ -390,9 +394,16 @@ CREATE TABLE IF NOT EXISTS iniciativa (
   projeto_id  INT NOT NULL,
   titulo      TEXT NOT NULL,
   descricao   TEXT,
+  -- Que escolha da cascata esta FRENTE executa (decisão do cliente,
+  -- 2026-10-26: era do projeto). Um projeto costuma nascer de uma decisão só,
+  -- mas quem executa pedaços dela são as frentes — e é por elas que a Matriz
+  -- de Execução lê o que cada escolha virou.
+  cascata_id  INT NULL,
   status      ENUM('ABERTA','EM_ANDAMENTO','CONCLUIDA') NOT NULL DEFAULT 'ABERTA',
   ordem       SMALLINT NOT NULL DEFAULT 0,
-  CONSTRAINT fk_ini_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id) ON DELETE CASCADE
+  KEY idx_ini_cascata (cascata_id),
+  CONSTRAINT fk_ini_projeto FOREIGN KEY (projeto_id) REFERENCES projeto(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ini_cascata FOREIGN KEY (cascata_id) REFERENCES cascata_escolha(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS desdobramento (
