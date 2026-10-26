@@ -824,7 +824,15 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   **versão nova**, preservando a anterior (o selo "rev."). Digitar na célula
   corrige a versão corrente — é o caminho de quem errou um número, não o de quem
   mudou de meta. O realizado não tem equivalente: o que aconteceu não se revisa.
-  Prova em `provasCelulaMetas`, nas duas larguras.
+  Ele cobre **só os anos de lançamento anual**: o ano em execução ficou de fora
+  (achado do cliente olhando a tela pronta, 2026-10-26) porque ali um campo
+  anual é campo que parece ter funcionado — o número some atrás dos meses na
+  leitura seguinte, ou aparece enquanto não há mês e desaparece no primeiro
+  lançado. O formulário **diz** por que aquele ano falta, senão quem viesse
+  revisá-lo procuraria um defeito que não existe; num ciclo de um ano só, que é
+  o em execução, o botão não é desenhado. A mesma regra já valia na tabela — foi
+  do formulário que ela tinha escapado.
+  Provas em `provasCelulaMetas` e `provasRevisarSemAnoAtual`, nas duas larguras.
 - **O ano em execução abre MÊS A MÊS, com o total no fim** (`SecaoMetas.anoAberto`,
   `anoExecucao`, `celulasDoAno`, `cabecalhoAno`). Ele nasce aberto, os doze meses
   vêm primeiro e a coluna do ano fecha a faixa, na ordem que o cliente pediu. O
@@ -2442,7 +2450,7 @@ falta de massa ensina a ignorar o vermelho.
 **Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
 2026-10-14 e 288/583 em 2026-09-04): funcional **321 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
-sistema **736 ✓ / 0 ✗** em cerca de nove minutos
+sistema **744 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
 sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
 `400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do
