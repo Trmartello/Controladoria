@@ -1919,6 +1919,107 @@ alguém arrastou uma barra seria pior que a colisão que evitaria.
 
 ---
 
+## 12. Layout do plano de ação: projetos, frentes e 5W2H
+
+### Veredito: **CONSTRUIR** (esforço M) — **ADIADO por decisão do cliente (2026-10-26)**
+
+> Pedido do cliente em 2026-10-25: *"apenas o layout que não está amigável"*. O
+> diagnóstico, as três direções e a maquete estão abaixo; no dia seguinte ele
+> decidiu **deixar para depois**. A direção ainda não foi escolhida — é a
+> **decisão 16**. Nada aqui foi implementado.
+
+Duas respostas do cliente já fecham o contexto de uso, e são elas que decidem o
+desenho: a tela serve à **reunião de acompanhamento** (percorrer o plano projeto
+por projeto, lendo percentual e atraso de cada frente), e **computador e celular
+valem igual** — duas composições de verdade, não a mesma tela estreitada.
+
+### O diagnóstico
+
+Levantado em `public/assets/js/secoes/projetos.js` e `public/assets/css/app.css`:
+
+1. **Três níveis de acordeão num scroll só.** A ação mora dentro da frente, que
+   mora dentro do projeto: nasce no terceiro recuo, e o 5W2H dela ainda está
+   atrás de uma seta.
+2. **A pilha de cabeçalhos grudados come a tela.** `topbar` → cabeçalho de
+   Projetos → cabeçalho do projeto → **todas as frentes já percorridas**
+   (`.iniciativa-cabeca`). Num notebook de 700px, um projeto com quatro frentes
+   deixa pouco mais de um terço da altura para o conteúdo.
+3. **O 5W2H não é lido como 5W2H.** `Onde`, `Por quê` e `Ganhos` viram uma linha
+   de texto separada por `·` (`cartaoAcao`), atrás da seta. São sete perguntas e
+   estão escritas como parágrafo.
+4. **A hierarquia do cartão está invertida.** Linha 1 é selo de situação, barra
+   de progresso e seta; o "o quê" é a linha 2 — lê-se o instrumento antes da
+   coisa.
+5. **Falta a visão de carteira.** Não existe "minhas ações", "o que vence esta
+   semana" nem "atrasado por pessoa": só filtro e rolagem, e o filtro ainda abre
+   os acordeões à força para o resultado aparecer.
+
+### As três direções, e a maquete
+
+Maquete clicável com dados de exemplo (3 projetos, 5 frentes, 11 ações), nas duas
+larguras: <https://claude.ai/artifact/7fscdG2uz4mdnZGFcQtgDw> — privada, abre só
+para quem o dono liberar.
+
+| | Como fica | Ganho | Custo |
+|---|---|---|---|
+| **A · Mestre-detalhe** | Trilha de projetos/frentes à esquerda; ações da seleção no meio, com o panorama somado; gaveta do 5W2H à direita | O contexto não sai da tela e o panorama vem antes do detalhe — é a leitura da reunião | Guardar o nó selecionado; abaixo de 1100px a gaveta vira sobreposição |
+| **B · Tabela 5W2H** | Uma linha por ação, sete colunas; projeto e frente como linhas de grupo | Trinta ações numa tela; compara prazo e dono entre frentes; imprime | "Como" e "Por quê" cortam com reticências; no celular precisa de fichas |
+| **C · Quadro por situação** | Cinco colunas por estado, ficha com etiqueta do projeto | "O que está travado?" sem filtro nenhum | A estrutura projeto → frente sai da leitura e volta como filtro — o oposto do uso escolhido |
+
+**Recomendação: A como moldura, B como conteúdo do meio.** O uso escolhido é
+percorrer o plano por estrutura, e é exatamente isso que a trilha da esquerda faz
+sem nenhum cabeçalho grudado. O quadro (C) entra depois como **modo de
+visualização**, nunca como substituto.
+
+### Entrega mínima, em fatias
+
+- **12a — moldura.** Trilha (projeto → frente, com percentual e atraso), área
+  central e seleção persistida junto de `pe_secao`/`pe_negocio`.
+- **12b — tabela das ações** no centro, com o panorama do nó em cima.
+- **12c — gaveta do 5W2H**, com comentários e o ajuste de progresso (que sai do
+  cartão: barra arrastável não cabe em tabela densa, e hoje convida a arrastar
+  enquanto se lê).
+- **12d — composição de celular**: lista → ações → 5W2H, com os mesmos filtros.
+- **12e (opcional) — quadro por situação** como terceiro modo.
+
+### O que sai do código
+
+A **pilha de cabeçalhos** inteira: `.projeto-cabeca-fixa`, `.iniciativa-cabeca`,
+`medirCabecalhosProjeto`, `--altura-projeto`, `--desloca-frente`, o
+`display: contents` da `.iniciativa` e a escada de `z-index`. É o mecanismo mais
+caro da tela e nenhuma das três direções precisa dele. Os **três níveis de
+recolhimento** (`nivelAtual`/`aplicarNivel`/`pintarNiveis`) perdem o sentido na
+opção A — o nível passa a ser *onde você está na trilha*.
+
+### Dependências e riscos
+
+- **`aplicarFiltro` é filtro de DOM** amarrado à estrutura aninhada (esconde
+  cartão, frente e projeto por `d-none` e abre acordeão à força). Numa trilha com
+  tabela ele vira filtro de **dados**, e as duas precisões de busca (palavra ×
+  responsável) têm de sobreviver inteiras — é o que a bateria guarda.
+- **`destacarAcao`** (o "Virou ação ↗" vindo da SWOT) passa a ter de selecionar o
+  nó certo na trilha antes de realçar.
+- **Cadeado e duplo clique** dependem de `data-cadeado="desdobramento:id"` e de
+  `closest()`: os marcadores têm de migrar junto, ou a edição concorrente deixa
+  de ser protegida em silêncio.
+- **A bateria é o maior custo da remodelagem.** Cerca de uma dúzia de provas mede
+  este DOM — `provasCabecalhoProjetos` (que morre com a pilha),
+  `provasResumoStatus`, `provasPopoverResumo`, `provasCartaoAcao`,
+  `provasSeloComentarios`, `provasFilaAcao`, `provasFiltroResponsavel`,
+  `provasTratarForaDaOrdem`, `provasExcluirComOrigens`, `provasCadeado`,
+  `provasPlanoDiretoAnalise`. Reescrevê-las é parte da entrega, não um extra.
+
+### O que ficou de fora, de propósito
+
+- **Cadastro, recorrência, comentários, cálculo de progresso e consolidação não
+  mudam.** A remodelagem é de onde cada coisa aparece, não do que o sistema faz.
+- **Nada de campo novo no 5W2H.** A tela passa a mostrar inteiros os que já
+  existem.
+- **O quadro (C) não substitui a leitura por estrutura** — se entrar, entra como
+  modo, e a decisão 16 continua sendo qual é o modo padrão.
+
+---
+
 ## Ordem de implementação recomendada
 
 O critério é: **o que faz as reuniões de acompanhamento acontecerem primeiro**, e
@@ -2041,6 +2142,7 @@ fila deve discutir a dependência, não o quadrante.
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
 | 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
+| 12 | **Layout do plano de ação** (projetos, frentes e 5W2H) | Construir | M | **Adiado pelo cliente (2026-10-26)**; direção na decisão 16 |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |
 | 4c | Cruzamentos da SWOT — **a sala** (fatia 5) | **Entregue** | M | ✔ (decisão do cliente: a sala propõe o PAR) |
 | 11 | **Um item por vez: bloqueio de edição** | **Entregue** | P–M | ✔ (pedido do cliente; continua o 10) |
@@ -2160,3 +2262,10 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
    movimento é recusado? **Hoje recusa os dois**, que era a proposta: mover
    fator limpo é fácil, mover fator amarrado é o tema inteiro. Cada resposta que
    vier vira uma linha da tabela de amarras na fatia 9c.
+16. **Qual layout do plano de ação (tema 12)?** Mestre-detalhe, tabela 5W2H,
+   quadro por situação — ou a mistura recomendada (trilha + tabela). O contexto
+   de uso já está respondido (reunião de acompanhamento; computador e celular
+   valendo igual) e a maquete das três está publicada; falta escolher. Enquanto
+   não vier, **não começar o 12**: a moldura é o que decide onde o filtro, o
+   cadeado e a navegação da SWOT vão morar, e refazer isso duas vezes custa a
+   bateria inteira duas vezes.
