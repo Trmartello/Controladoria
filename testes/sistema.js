@@ -2126,6 +2126,52 @@ async function provasAcao(page, largura) {
       t(`${l} sem repetição, só o período de execução aparece`,
         nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate, JSON.stringify(nenhuma));
 
+      // ── O que se digita na data APARECE ─────────────────────────────────
+      // O campo de data mostra dd/mm/aaaa por um rótulo sobreposto, com o texto
+      // nativo transparente. Enquanto se digitava, o `value` só existe com os
+      // três pedaços completos: o rótulo seguia em "dd/mm/aaaa" e os dígitos,
+      // transparentes, não apareciam — via-se só o retângulo azul da seleção
+      // andando sobre um número invisível. Em foco, o texto nativo tem de estar
+      // visível e o rótulo, fora da frente.
+      // CLICAR, não `page.focus`: o foco programático não acende o `:focus` no
+      // headless, e a prova passaria a medir o estado parado achando que mediu
+      // o de quem está digitando. O clique rola o corpo do modal para trazer o
+      // campo à vista — a posição é guardada e devolvida no fim, senão as
+      // provas seguintes (que movem o mouse por coordenada de tela) miram num
+      // formulário que andou debaixo delas.
+      const rolagem = await page.evaluate(() =>
+        document.querySelector('#modal-form .modal-body')?.scrollTop ?? 0);
+      await page.click('#campo-data_inicio');
+      await new Promise((r) => setTimeout(r, 120));
+      const digitando = await page.evaluate(() => {
+        const inp = document.getElementById('campo-data_inicio');
+        const rot = inp.closest('.campo-data')?.querySelector('.data-rotulo');
+        const transparente = (c) => /rgba\(.*,\s*0\)|transparent/.test(c);
+        return {
+          textoVisivel: !transparente(getComputedStyle(inp).color),
+          rotuloForaDaFrente: !rot || getComputedStyle(rot).display === 'none',
+        };
+      });
+      t(`${l} o que se digita na data fica à vista`,
+        digitando.textoVisivel && digitando.rotuloForaDaFrente, JSON.stringify(digitando));
+      await page.evaluate(() => document.getElementById('campo-data_inicio').blur());
+      await new Promise((r) => setTimeout(r, 120));
+      const parado = await page.evaluate(() => {
+        const inp = document.getElementById('campo-data_inicio');
+        const rot = inp.closest('.campo-data')?.querySelector('.data-rotulo');
+        return {
+          nativoEscondido: /rgba\(.*,\s*0\)|transparent/.test(getComputedStyle(inp).color),
+          rotuloNaFrente: !!rot && getComputedStyle(rot).display !== 'none',
+          rotulo: rot?.textContent.trim(),
+        };
+      });
+      t(`${l} parado, a data volta a ser lida em dd/mm/aaaa`,
+        parado.nativoEscondido && parado.rotuloNaFrente, JSON.stringify(parado));
+      await page.evaluate((y) => {
+        const corpo = document.querySelector('#modal-form .modal-body');
+        if (corpo) corpo.scrollTop = y;
+      }, rolagem);
+      await new Promise((r) => setTimeout(r, 120));
       const semanal = await trocar('SEMANAL');
       t(`${l} toda semana troca o período pelos dias da semana`,
         !semanal.periodo && semanal.semana && !semanal.mes && semanal.ate, JSON.stringify(semanal));
