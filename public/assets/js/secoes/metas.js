@@ -97,16 +97,26 @@ const SecaoMetas = {
    * pela mesma regra: escrita duas vezes, ela divergiria, e as duas telas
    * passariam a dizer números diferentes do mesmo indicador.
    *
-   * O ano de referência é o do ÚLTIMO real lançado; sem real nenhum, o da
-   * PRIMEIRA meta. Não é "o ano corrente", e a diferença não é teórica: o ciclo
-   * semeado vai de 2027 a 2035 e as metas começam em 2027 — pela regra do ano
-   * corrente, em 2026 toda linha mostraria "—" e as duas telas nasceriam vazias.
+   * **O ano de referência é o ano em EXECUÇÃO** (`anoRef`, do ciclo), e isso é
+   * correção do cliente (2026-10-26) sobre o que havia: o ano do ÚLTIMO real
+   * lançado. A regra antiga fazia a matriz dizer "35 (2030) / meta 30" — um
+   * indicador com real lançado em 2030 passava a ser lido por 2030 enquanto o
+   * plano estava executando 2027, e cada linha da matriz falava de um ano
+   * diferente. A objeção que justificava a regra antiga (em 2026, um ciclo que
+   * começa em 2027 deixaria tudo em "—") morreu quando o ano em execução virou
+   * cadastro: `Metas::anoEmExecucao` devolve sempre um ano DENTRO do ciclo.
+   *
+   * Sem `anoRef` — chamador que não tem o ciclo em mãos — vale a regra antiga,
+   * para a tela não ficar vazia; as duas que chamam hoje passam o ano, e a
+   * bateria prova isso nas duas.
    */
-  metaReal(i) {
+  metaReal(i, anoRef = null) {
     const reais = i.reais || [];
     const metas = i.metas || [];
-    const real = reais[reais.length - 1] || null;
-    const ano = real ? real.ano : (metas[0] || {}).ano ?? null;
+    const ano = anoRef
+      ? Number(anoRef)
+      : ((reais[reais.length - 1] || {}).ano ?? (metas[0] || {}).ano ?? null);
+    const real = reais.find((r) => r.ano == ano) || null;
     const meta = metas.find((m) => m.ano == ano) || null;
     const atingiu = real && meta
       ? (i.sentido === 'MENOR_MELHOR'
@@ -204,7 +214,7 @@ const SecaoMetas = {
     return horizontes.map((h) => {
       const ancoras = indicadores.filter((i) => Number(i.metrica_ancora) && i.horizonte_id == h.id);
       const itens = ancoras.map((i) => {
-        const { real, meta, atingiu } = this.metaReal(i);
+        const { real, meta, atingiu } = this.metaReal(i, this.anoExecucao);
         return `<div class="d-flex justify-content-between align-items-baseline gap-2 mt-1">
           <span class="small">${Modal.esc(i.nome)} <span class="text-muted">(${Modal.esc(i.unidade)})</span></span>
           <span class="text-nowrap small ${atingiu === null ? 'text-muted' : atingiu ? 'text-success fw-bold' : 'text-danger fw-bold'}">

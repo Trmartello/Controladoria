@@ -2582,6 +2582,14 @@ async function provasMatrizExecucao(page) {
     await App.api(`/api/indicadores/${ind.id}/valores`, {
       planejamento_id: plan.id, tipo: 'REAL', valores: { 2027: 85 },
     });
+    // Um real num ano POSTERIOR, de propósito: era ele que a regra antiga
+    // elegia como referência (o último lançado), e a matriz passava a falar de
+    // 2030 enquanto o plano executava 2027. Com a massa assim, a prova do par
+    // meta × real abaixo só fica verde se a tela estiver lendo o ano em
+    // EXECUÇÃO — que é a correção do cliente.
+    await App.api(`/api/indicadores/${ind.id}/valores`, {
+      planejamento_id: plan.id, tipo: 'REAL', valores: { 2028: 999 },
+    });
     const prj = await App.api('/api/projetos', {
       planejamento_id: plan.id, tipo: 'ESTRATEGICO', titulo: 'Projeto de prova (matriz)',
       ano: Number(c.horizontes[0].ano_inicio), responsavel: 'QA', classificacao: 'NORMAL',
@@ -2619,7 +2627,7 @@ async function provasMatrizExecucao(page) {
     };
   }, massa);
   t(`${l} o indicador volta com as duas escolhas e as séries`,
-    fonte.cascatas === 2 && fonte.metas === 1 && fonte.reais === 1,
+    fonte.cascatas === 2 && fonte.metas === 1 && fonte.reais === 2,
     `${fonte.cascatas} escolhas, ${fonte.metas} metas, ${fonte.reais} reais`);
   t(`${l} a FRENTE vem na escolha que executa`, fonte.frenteNaEscolha);
   t(`${l} e com o nome do projeto junto ("projeto › frente")`,
@@ -2697,6 +2705,7 @@ async function provasMatrizExecucao(page) {
     const tab = el.querySelector('.tabela-execucao');
     const texto = tab.textContent.replace(/\s+/g, ' ');
     return {
+      texto,
       colunas: tab.querySelectorAll('thead th').length,
       raia1: (tab.querySelector('.celula-raia') || {}).textContent?.trim(),
       temKpi: texto.includes('KPI de prova (matriz)'),
@@ -2708,9 +2717,11 @@ async function provasMatrizExecucao(page) {
       seletor: !!el.querySelector('#sel-horizonte-matriz'),
       regra: (() => {
         const r = SecaoMetas.metaReal({
-          sentido: 'MAIOR_MELHOR', metas: [{ ano: 2027, valor: 80 }], reais: [{ ano: 2027, valor: 85 }],
-        });
-        return `${r.ano}|${Number(r.meta.valor)}|${r.atingiu}`;
+          sentido: 'MAIOR_MELHOR',
+          metas: [{ ano: 2027, valor: 80 }],
+          reais: [{ ano: 2027, valor: 85 }, { ano: 2028, valor: 999 }],
+        }, 2027);
+        return `${r.ano}|${Number(r.meta.valor)}|${Number(r.real.valor)}|${r.atingiu}`;
       })(),
     };
   });
@@ -2719,9 +2730,12 @@ async function provasMatrizExecucao(page) {
   t(`${l} mostra o indicador amarrado`, matriz.temKpi);
   t(`${l} mostra a frente que executa, com o projeto junto`, matriz.temFrente);
   t(`${l} o par meta × real segue a regra da tela de Metas`, matriz.temPar);
+  t(`${l} e é o do ano em EXECUÇÃO, não o do último real lançado`,
+    !/999/.test(matriz.texto), matriz.texto.slice(0, 160));
   t(`${l} meta batida sai em verde`, matriz.atingiu);
   t(`${l} tem seletor de horizonte`, matriz.seletor);
-  t(`${l} a regra vem de SecaoMetas.metaReal`, matriz.regra === '2027|80|true', matriz.regra);
+  t(`${l} a regra vem de SecaoMetas.metaReal, pelo ano pedido`,
+    matriz.regra === '2027|80|85|true', matriz.regra);
 
   // O cabeçalho grudado. A prova é feita ROLADA até o fim: parada no topo, uma
   // tabela qualquer parece ter cabeçalho fixo, e o defeito só aparece depois de

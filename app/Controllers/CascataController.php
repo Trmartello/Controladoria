@@ -76,6 +76,13 @@ class CascataController
             // A Matriz de Execução: o que MEDE e o que EXECUTA cada escolha.
             'indicadores' => $this->indicadoresDaMatriz($planId),
             'projetos'    => $this->frentesDaMatriz($planId),
+            // O ano em execução vem junto porque é ELE que a matriz mostra no
+            // par meta × real. Resolvido no servidor (`Metas::anoEmExecucao`),
+            // como na tela de Metas: duas telas calculando "qual ano mostrar"
+            // por conta própria divergiriam na primeira mudança do cadastro.
+            'ano_execucao' => Metas::anoEmExecucao(
+                Database::um('SELECT * FROM ciclo WHERE id = ?', [(int)$plan['ciclo_id']]) ?: []
+            ),
         ]);
     }
 

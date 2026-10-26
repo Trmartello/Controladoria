@@ -233,8 +233,11 @@ const SecaoCascata = {
     const fmt = (v) => SecaoMetas.fmt(v);
     const celulaKpi = (i) => {
       // A MESMA regra da tela de Metas, chamada de lá: duas cópias diriam
-      // números diferentes do mesmo indicador em telas vizinhas.
-      const { real, meta, atingiu } = SecaoMetas.metaReal(i);
+      // números diferentes do mesmo indicador em telas vizinhas. O ano vai
+      // junto — é o ano em EXECUÇÃO, resolvido no servidor: sem passá-lo, a
+      // matriz voltaria a ler cada linha por um ano diferente (o do último
+      // real lançado), que é o defeito que o cliente apontou.
+      const { real, meta, atingiu } = SecaoMetas.metaReal(i, this.dados.ano_execucao);
       const cor = atingiu === null ? 'text-muted' : atingiu ? 'text-success fw-bold' : 'text-danger fw-bold';
       return `<div class="small text-nowrap ${cor}">
         ${real ? `${fmt(real.valor)} <span class="text-muted">(${real.ano})</span>` : 'sem real'}
