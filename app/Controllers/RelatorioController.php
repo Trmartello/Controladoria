@@ -8,6 +8,7 @@ use App\Core\Email;
 use App\Core\Json;
 use App\Services\Avisos;
 use App\Services\Consolidacao;
+use App\Services\Metas;
 
 /**
  * Fase 6 — painéis (negócio, corporativo e consolidado) e relatório de
@@ -226,23 +227,11 @@ class RelatorioController
              WHERE i.planejamento_id = ? ORDER BY i.metrica_ancora DESC, i.nome',
             [$planId]
         );
-        foreach ($indicadores as &$ind) {
-            $ind['metas'] = Database::todos(
-                'SELECT v.ano, v.valor FROM indicador_valor v
-                 WHERE v.indicador_id = ? AND v.tipo = \'META\'
-                   AND v.versao_meta = (SELECT MAX(v2.versao_meta) FROM indicador_valor v2
-                                        WHERE v2.indicador_id = v.indicador_id
-                                          AND v2.ano = v.ano AND v2.tipo = \'META\')
-                 ORDER BY v.ano',
-                [(int)$ind['id']]
-            );
-            $ind['reais'] = Database::todos(
-                'SELECT ano, valor FROM indicador_valor
-                 WHERE indicador_id = ? AND tipo = \'REAL\' ORDER BY ano',
-                [(int)$ind['id']]
-            );
-        }
-        unset($ind);
+        // Pela regra única (`App\Services\Metas`), a mesma de Metas e da Matriz
+        // de Execução: o relatório imprime o ano JÁ AGREGADO a partir dos meses,
+        // e não a linha de um mês qualquer. Eram duas consultas por indicador,
+        // dentro do laço.
+        $indicadores = Metas::anexarSeries($indicadores);
 
         $projetos = Database::todos(
             "SELECT p.id, p.titulo, p.ano, p.responsavel, p.status, p.classificacao,

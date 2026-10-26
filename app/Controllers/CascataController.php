@@ -6,6 +6,7 @@ use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
 use App\Services\Bloqueio;
+use App\Services\Metas;
 use App\Services\Quiz;
 
 /** Cascata de escolhas: células driver × horizonte com síntese e aberturas por eixo. */
@@ -99,7 +100,7 @@ class CascataController
     private function indicadoresDaMatriz(int $planId): array
     {
         $indicadores = Database::todos(
-            'SELECT id, nome, unidade, sentido, metrica_ancora, horizonte_id
+            'SELECT id, nome, unidade, sentido, agregacao, metrica_ancora, horizonte_id
              FROM indicador WHERE planejamento_id = ?
              ORDER BY metrica_ancora DESC, nome',
             [$planId]
@@ -119,29 +120,15 @@ class CascataController
             $vinculos[(int)$v['indicador_id']][] = (int)$v['cascata_id'];
         }
 
-        // Meta na versão mais recente de cada ano — a mesma subconsulta de
-        // `IndicadorController::listar`, que é quem define o que é "a meta".
-        $series = [];
-        foreach (Database::todos(
-            "SELECT v.indicador_id, v.ano, v.tipo, v.valor
-             FROM indicador_valor v
-             WHERE v.indicador_id IN ({$marcas})
-               AND (v.tipo = 'REAL' OR v.versao_meta = (
-                     SELECT MAX(v2.versao_meta) FROM indicador_valor v2
-                      WHERE v2.indicador_id = v.indicador_id AND v2.ano = v.ano AND v2.tipo = 'META'))
-             ORDER BY v.ano",
-            $ids
-        ) as $v) {
-            $chave = $v['tipo'] === 'REAL' ? 'reais' : 'metas';
-            $series[(int)$v['indicador_id']][$chave][] = ['ano' => (int)$v['ano'], 'valor' => $v['valor']];
-        }
-
         foreach ($indicadores as &$i) {
             $i['cascatas'] = $vinculos[(int)$i['id']] ?? [];
-            $i['metas'] = $series[(int)$i['id']]['metas'] ?? [];
-            $i['reais'] = $series[(int)$i['id']]['reais'] ?? [];
         }
-        return $indicadores;
+        unset($i);
+        // As séries saem da regra única (`App\Services\Metas`): meta na versão
+        // mais recente, e o ANO já agregado a partir dos meses quando houver.
+        // Com a consulta própria que havia aqui, um indicador lançado mês a mês
+        // mostraria a linha de um mês como se fosse o ano inteiro.
+        return Metas::anexarSeries($indicadores);
     }
 
     /**

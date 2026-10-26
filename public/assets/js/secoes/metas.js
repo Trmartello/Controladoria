@@ -193,7 +193,7 @@ const SecaoMetas = {
       valores: ind
         ? { ...ind, horizonte_id: ind.horizonte_id ?? '', metrica_ancora: Number(ind.metrica_ancora),
             cascatas: (ind.cascatas || []).map(String), planejamento_id: this.plan.id }
-        : { planejamento_id: this.plan.id, unidade: 'R$ mil', cascatas: [] },
+        : { planejamento_id: this.plan.id, unidade: 'R$ mil', agregacao: 'SOMA', cascatas: [] },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'nome', rotulo: 'Indicador', ajuda: 'Ex.: Margem bruta, Cobertura de juros, Armazenagem própria' },
@@ -202,6 +202,14 @@ const SecaoMetas = {
           { valor: 'MAIOR_MELHOR', rotulo: 'Maior é melhor' },
           { valor: 'MENOR_MELHOR', rotulo: 'Menor é melhor' },
         ]},
+        // Como 12 meses viram um ano. A pergunta só aparece quando alguém lança
+        // mês a mês, mas a resposta é do INDICADOR: somar margem percentual dá
+        // um número que não existe, e ele não parece errado na tela.
+        { nome: 'agregacao', rotulo: 'No ano, os meses…', tipo: 'select', opcoes: [
+          { valor: 'SOMA', rotulo: 'Somam (R$, toneladas, quantidades)' },
+          { valor: 'MEDIA', rotulo: 'Viram média (%, índices, x)' },
+          { valor: 'ULTIMO', rotulo: 'Valem o último mês (saldos: estoque, dívida)' },
+        ], ajuda: 'Usado para totalizar o ano quando o indicador é lançado mês a mês.' },
         { nome: 'horizonte_id', rotulo: 'Horizonte de referência', tipo: 'select', opcoes: opcoesHorizonte },
         { nome: 'metrica_ancora', rotulo: 'Métrica-âncora (destaque no painel do horizonte)', tipo: 'checkbox' },
         ...(opcoesCascata.length ? [{

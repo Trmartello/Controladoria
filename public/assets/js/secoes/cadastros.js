@@ -205,6 +205,9 @@ const SecaoCadastros = {
           ajuda: 'Ano em que o plano é elaborado — primeiro ano disponível nas análises anuais e na tabela de metas' },
         { nome: 'ano_inicio', rotulo: 'Ano inicial do ciclo', tipo: 'number' },
         { nome: 'ano_fim', rotulo: 'Ano final do ciclo', tipo: 'number' },
+        { nome: 'ano_execucao', rotulo: 'Ano em execução', tipo: 'number',
+          ajuda: 'O ano que o plano está EXECUTANDO — é ele que a tabela de metas abre mês a mês. '
+            + 'Em branco, vale o ano corrente. Vale para todos os negócios e para o relatório.' },
         { nome: 'status', rotulo: 'Status', tipo: 'select', opcoes: [
           { valor: 'EM_ELABORACAO', rotulo: 'Em elaboração' },
           { valor: 'VIGENTE', rotulo: 'Vigente' },
