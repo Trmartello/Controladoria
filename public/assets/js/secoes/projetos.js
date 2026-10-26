@@ -628,6 +628,12 @@ const SecaoProjetos = {
            dela, a barra de progresso — ordem pedida pelo cliente -->
       ${ini.descricao ? `<div class="detalhe-item small text-muted mt-1 ${detalhado ? '' : 'd-none'}"
         data-detalhe="${chave}">${Modal.esc(ini.descricao)}</div>` : ''}
+      <!-- De que decisão esta frente nasceu. Mora aqui, e não no cartão do
+           projeto, desde que a escolha passou a ser da FRENTE: um projeto
+           executa pedaços de mais de uma decisão, e a linha no projeto diria
+           só a primeira delas. -->
+      ${ini.escolha_origem ? `<div class="detalhe-item small text-muted mt-1 ${detalhado ? '' : 'd-none'}"
+        data-detalhe="${chave}">↳ Escolha da cascata: “${Modal.esc(String(ini.escolha_origem).slice(0, 90))}”</div>` : ''}
       ${panorama}
       <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
@@ -818,8 +824,7 @@ const SecaoProjetos = {
       ].filter(Boolean).join(' · ');
       const descricao = p.descricao
         ? `<div class="small text-muted texto-fator mt-1">${Modal.esc(p.descricao)}</div>` : '';
-      const origem = p.escolha_origem
-        ? `<div class="small text-muted mt-1">↳ Escolha da cascata: “${Modal.esc(p.escolha_origem.slice(0, 90))}”</div>` : '';
+
       const iniciativas = (p.iniciativas || []).map((ini) => this.blocoIniciativa(p, ini)).join('');
 
       const timelineProjeto = this.comentariosAbertos?.refTipo === 'PROJETO' && this.comentariosAbertos?.refId === p.id
@@ -868,7 +873,6 @@ const SecaoProjetos = {
             ${detalhes ? `<div class="small text-muted mt-1">${detalhes}</div>` : ''}
             <div class="small text-muted mt-1">${(p.iniciativas || []).length} iniciativa(s) ·
               ${concluidas}/${acoes.length} ações concluídas</div>
-            ${origem}
             <div class="d-flex gap-1 flex-wrap mt-2">
               ${this.botaoComentarios('PROJETO', p.id, p.comentarios, p.anexos)}
               ${App.podeEditar() ? `
@@ -1306,26 +1310,12 @@ const SecaoProjetos = {
       opcoesAno.unshift({ valor: p.ano, rotulo: `${p.ano} (fora dos horizontes — escolha outro)` });
     }
 
-    // De qual escolha da Cascata este projeto nasce. A coluna existia e o
-    // cartão já mostrava "↳ Escolha da cascata", mas não havia como preencher:
-    // nem campo no formulário, nem gravação no servidor.
-    const nomeH = (id) => this.cascata.horizontes.find((h) => h.id == id)?.nome || '?';
-    const nomeD = (id) => this.cascata.drivers.find((d) => d.id == id)?.nome || '?';
-    const nomeE = (id) => (id ? this.cascata.eixos.find((e) => e.id == id)?.nome : 'Síntese') || 'Síntese';
-    const opcoesCascata = [{ valor: '', rotulo: '(não vinculado a uma escolha)' }].concat(
-      (this.cascata.escolhas || [])
-        .map((e) => ({
-          valor: e.id,
-          rotulo: `${nomeH(e.horizonte_id)} · ${nomeD(e.driver_id)} · ${nomeE(e.eixo_id)} — `
-            + `${String(e.escolha).replace(/\s+/g, ' ').slice(0, 70)}`,
-        }))
-        .sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR')));
     Modal.abrir({
       titulo: p ? 'Editar projeto' : 'Novo projeto',
       url: p ? `/api/projetos/${p.id}` : '/api/projetos',
       bloqueio: p ? { recurso: 'projeto', registro_id: p.id, planejamento_id: this.plan.id } : null,
       valores: p
-        ? { ...p, cascata_id: p.cascata_id ?? '', impacto: p.impacto ?? '', planejamento_id: this.plan.id }
+        ? { ...p, impacto: p.impacto ?? '', planejamento_id: this.plan.id }
         : { planejamento_id: this.plan.id, ano: anoPadrao },
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
@@ -1343,22 +1333,43 @@ const SecaoProjetos = {
         { nome: 'responsavel', rotulo: 'Responsável', tipo: 'selecao_livre', opcoes: this.responsaveis,
           obrigatorio: true, vazio: '(selecione o responsável)',
           ajuda: 'Pesquise um usuário cadastrado ou digite um nome de fora do sistema.' },
-        { nome: 'cascata_id', rotulo: 'Escolha da Cascata que este projeto executa',
-          tipo: 'select', opcoes: opcoesCascata,
-          ajuda: opcoesCascata.length > 1
-            ? 'Liga o projeto à decisão que o originou — é o que permite ler, na Cascata, o que cada escolha virou.'
-            : 'Nenhuma escolha cadastrada ainda: preencha a Cascata para poder vincular.' },
       ],
     });
   },
 
+  /**
+   * De qual escolha da Cascata nasce o que está sendo executado.
+   *
+   * O rótulo traz a célula inteira — horizonte, driver, eixo e o começo do
+   * texto —, porque é assim que a escolha é reconhecida: "H1 · Aonde Jogar ·
+   * Síntese" sozinho não diz QUAL decisão é, e o texto sozinho não diz de que
+   * ponto da matriz ele saiu.
+   */
+  opcoesCascata() {
+    const nomeH = (id) => this.cascata.horizontes.find((h) => h.id == id)?.nome || '?';
+    const nomeD = (id) => this.cascata.drivers.find((d) => d.id == id)?.nome || '?';
+    const nomeE = (id) => (id ? this.cascata.eixos.find((e) => e.id == id)?.nome : 'Síntese') || 'Síntese';
+    return [{ valor: '', rotulo: '(não vinculado a uma escolha)' }].concat(
+      (this.cascata.escolhas || [])
+        .map((e) => ({
+          valor: e.id,
+          rotulo: `${nomeH(e.horizonte_id)} · ${nomeD(e.driver_id)} · ${nomeE(e.eixo_id)} — `
+            + `${String(e.escolha).replace(/\s+/g, ' ').slice(0, 70)}`,
+        }))
+        .sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR')));
+  },
+
   modalIniciativa(projetoId, ini) {
+    // A escolha da cascata é da FRENTE (decisão do cliente, 2026-10-26): era do
+    // projeto, e um projeto executa pedaços de mais de uma decisão — quem
+    // executa um pedaço é a frente. A Matriz de Execução lê por aqui.
+    const opcoesCascata = this.opcoesCascata();
     Modal.abrir({
       titulo: ini ? 'Editar iniciativa' : 'Nova iniciativa',
       url: ini ? `/api/iniciativas/${ini.id}` : '/api/iniciativas',
       valores: ini
-        ? { ...ini, planejamento_id: this.plan.id, projeto_id: projetoId }
-        : { planejamento_id: this.plan.id, projeto_id: projetoId },
+        ? { ...ini, cascata_id: ini.cascata_id ?? '', planejamento_id: this.plan.id, projeto_id: projetoId }
+        : { planejamento_id: this.plan.id, projeto_id: projetoId, cascata_id: '' },
       // Sem campo de status: o da frente é consequência das ações (todas
       // concluídas fecham a frente sozinhas — Consolidacao), e um seletor aqui
       // gravaria um valor que a primeira leitura apaga.
@@ -1369,6 +1380,11 @@ const SecaoProjetos = {
           exemplo: 'Ex.: Licenciamento e obra civil',
           ajuda: 'Agrupa as ações de uma mesma frente dentro do projeto.' },
         { nome: 'descricao', rotulo: 'Descrição', tipo: 'textarea', linhas: 2 },
+        { nome: 'cascata_id', rotulo: 'Escolha da Cascata que esta frente executa',
+          tipo: 'select', opcoes: opcoesCascata,
+          ajuda: opcoesCascata.length > 1
+            ? 'Liga a frente à decisão que a originou — é o que permite ler, na Cascata, o que cada escolha virou.'
+            : 'Nenhuma escolha cadastrada ainda: preencha a Cascata para poder vincular.' },
       ],
     });
   },

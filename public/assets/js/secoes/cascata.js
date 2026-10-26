@@ -191,8 +191,9 @@ const SecaoCascata = {
           data-ir="metas">Ir para Metas · Indicadores ↗</button>
       </div>
       <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
-        <span><strong>Iniciativas</strong>: edite o projeto e escolha a célula no campo
-          <em>“Escolha da Cascata que este projeto executa”</em>.</span>
+        <span><strong>Iniciativas</strong>: edite a FRENTE (✎ na frente de trabalho, dentro do
+          projeto) e escolha a célula no campo
+          <em>“Escolha da Cascata que esta frente executa”</em>.</span>
         <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap"
           data-ir="projetos">Ir para Projetos ↗</button>
       </div>
@@ -275,9 +276,15 @@ const SecaoCascata = {
 
         const celulaAcoes = `<td rowspan="${altura}" class="align-middle">${x.acoes.length
           ? x.acoes.map((p) => {
-            // O mesmo catálogo de status da tela de Projetos e do Relatório de
-            // Status (`STATUS_PROJETO`, em `projetos.js`): o selo do projeto tem
-            // de ser o mesmo em toda tela que o mostra.
+            // O que aparece aqui é a FRENTE, com o nome do projeto na frente
+            // dela ("projeto › frente", composto no servidor): o nome da frente
+            // sozinho não diz de que projeto ela é, e esta matriz é lida longe
+            // da tela de Projetos.
+            // O selo de status sai do mesmo catálogo da tela de Projetos e do
+            // Relatório (`STATUS_PROJETO`). A frente tem três estados
+            // (ABERTA/EM_ANDAMENTO/CONCLUIDA) e o catálogo cobre os dois que
+            // coincidem; o que não casar cai no rótulo cru, que é o
+            // comportamento que já havia para status desconhecido.
             const [rotulo, classe] = STATUS_PROJETO[p.status] || [p.status, 'text-bg-light border'];
             return `<div class="small mb-1">
               ${p.classificacao === 'PRIORITARIO' ? '<span class="badge badge-horizonte me-1">P</span>' : ''}
@@ -285,7 +292,7 @@ const SecaoCascata = {
               <span class="badge ${classe} ms-1">${rotulo}</span>
               <span class="text-muted">${p.progresso}%</span></div>`;
           }).join('')
-          : '<span class="small text-muted fst-italic">Sem projeto ligado a esta escolha.</span>'}</td>`;
+          : '<span class="small text-muted fst-italic">Sem frente ligada a esta escolha.</span>'}</td>`;
 
         if (!x.kpis.length) {
           return `<tr>${celulaEixo}${celulaEscolha}
@@ -349,8 +356,8 @@ const SecaoCascata = {
    * escolha e os comentários são um campo agregado da listagem. Nenhuma
    * consulta nova, nenhuma chamada por cartão.
    *
-   * A distinção entre "sai" e "continua sem o vínculo" não é enfeite: o projeto
-   * e o indicador SOBREVIVEM (as FKs deles não apagam nada — o projeto perde
+   * A distinção entre "sai" e "continua sem o vínculo" não é enfeite: a frente
+   * e o indicador SOBREVIVEM (as FKs deles não apagam nada — a frente perde
    * `cascata_id`, o indicador perde a linha de `indicador_cascata`), enquanto o
    * comentário some de vez. Juntar as duas coisas na mesma frase faria quem lê
    * hesitar em apagar uma célula que não custa nada, ou apagar sem saber que a
@@ -364,7 +371,7 @@ const SecaoCascata = {
     return Vinculos.aviso('Excluir esta escolha da cascata?', {
       some: [q((e?.comentarios) || 0, 'comentário', 'comentários')],
       solta: [
-        q((projetos || []).filter((p) => p.cascata_id == id).length, 'projeto', 'projetos'),
+        q((projetos || []).filter((p) => p.cascata_id == id).length, 'frente', 'frentes'),
         q((indicadores || []).filter((i) => (i.cascatas || []).some((c) => c == id)).length,
           'indicador', 'indicadores'),
         // A voz não some nem fica solta no vazio: ela VOLTA para a fila da

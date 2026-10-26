@@ -75,7 +75,7 @@ class CascataController
             'escolhas'    => $escolhas,
             // A Matriz de Execução: o que MEDE e o que EXECUTA cada escolha.
             'indicadores' => $this->indicadoresDaMatriz($planId),
-            'projetos'    => $this->projetosDaMatriz($planId),
+            'projetos'    => $this->frentesDaMatriz($planId),
         ]);
     }
 
@@ -132,24 +132,35 @@ class CascataController
     }
 
     /**
-     * Projetos que executam alguma escolha — a coluna das iniciativas.
+     * FRENTES que executam alguma escolha — a coluna das iniciativas.
      *
-     * Só os que têm `cascata_id`: a matriz é a leitura da cascata, e projeto
-     * sem escolha não tem linha onde aparecer. O `progresso` é a média das ações
-     * vivas, a MESMA expressão do Relatório de Status — ação cancelada fora da
-     * conta, senão trabalho que ninguém vai fazer puxaria o percentual do
-     * projeto para baixo.
+     * Era por PROJETO até 2026-10-26, quando o cliente mudou o vínculo de lugar:
+     * quem executa um pedaço de uma decisão é a frente de trabalho, e um projeto
+     * costuma tocar pedaços de mais de uma. Pelo projeto, a matriz dizia que o
+     * projeto inteiro executava uma escolha só.
+     *
+     * O título vem composto — **projeto › frente** —, porque o nome da frente
+     * sozinho ("Equipe de campo") não diz de que projeto ela é, e a matriz é
+     * lida longe da tela de Projetos.
+     *
+     * O `progresso` é a média das ações vivas DA FRENTE, a mesma expressão do
+     * Relatório de Status: ação cancelada fora da conta, senão trabalho que
+     * ninguém vai fazer puxaria o percentual para baixo. A junção é por
+     * `iniciativa_id`, e não por projeto — o número tem de ser o da frente que
+     * aparece na linha.
      */
-    private function projetosDaMatriz(int $planId): array
+    private function frentesDaMatriz(int $planId): array
     {
         return Database::todos(
-            "SELECT p.id, p.cascata_id, p.titulo, p.status, p.classificacao,
+            "SELECT i.id, i.cascata_id, CONCAT(p.titulo, ' › ', i.titulo) AS titulo,
+                    i.status, p.classificacao,
                     COALESCE(ROUND(AVG(CASE WHEN d.status <> 'CANCELADO' THEN d.progresso END)), 0) AS progresso
-             FROM projeto p
-             LEFT JOIN desdobramento d ON d.projeto_id = p.id
-             WHERE p.planejamento_id = ? AND p.cascata_id IS NOT NULL
-             GROUP BY p.id
-             ORDER BY p.classificacao, p.ano, p.id",
+             FROM iniciativa i
+             JOIN projeto p ON p.id = i.projeto_id
+             LEFT JOIN desdobramento d ON d.iniciativa_id = i.id
+             WHERE p.planejamento_id = ? AND i.cascata_id IS NOT NULL
+             GROUP BY i.id
+             ORDER BY p.classificacao, p.ano, p.id, i.ordem, i.id",
             [$planId]
         );
     }
@@ -300,7 +311,11 @@ class CascataController
         // Como fator, cenário e ação: ninguém apaga a célula que outra pessoa
         // está redigindo.
         Bloqueio::exigirMeu('cascata_escolha', $id, (int)Auth::exigirLogin()['id'], 'esta escolha');
-        // Projetos originados desta escolha perdem o vínculo (a FK não tem ON DELETE)
+        // Frentes originadas desta escolha perdem o vínculo (a FK não tem ON
+        // DELETE). O projeto entra junto pelo rastro antigo: a coluna dele não
+        // é mais usada, mas continua apontando para esta escolha, e a FK
+        // recusaria o DELETE.
+        Database::executar('UPDATE iniciativa SET cascata_id = NULL WHERE cascata_id = ?', [$id]);
         Database::executar('UPDATE projeto SET cascata_id = NULL WHERE cascata_id = ?', [$id]);
         // Vozes do quiz voltam a soltas (e editáveis), como cenário/fator fazem
         // com a ideia da Coleta: sem isso ficariam apontando para um id morto

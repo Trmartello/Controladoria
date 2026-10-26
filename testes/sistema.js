@@ -2541,7 +2541,13 @@ async function provasDossie(page) {
 
 /**
  * Matriz de Execução — a aba da Cascata que liga a DECISÃO ao que a mede e ao
- * que a executa (`indicador_cascata` + `projeto.cascata_id`).
+ * que a executa (`indicador_cascata` + `iniciativa.cascata_id`).
+ *
+ * Quem executa é a FRENTE desde 2026-10-26 (era o projeto): um projeto toca
+ * pedaços de mais de uma decisão, e pelo projeto a matriz dizia que o projeto
+ * inteiro executava uma escolha só. A prova passou a criar projeto + frente e a
+ * esperar o título COMPOSTO ("projeto › frente") — o nome da frente sozinho não
+ * diz de que projeto ela é, e esta matriz é lida longe da tela de Projetos.
  *
  * O que a prova mede, além de "a tabela pinta":
  *
@@ -2578,11 +2584,20 @@ async function provasMatrizExecucao(page) {
     });
     const prj = await App.api('/api/projetos', {
       planejamento_id: plan.id, tipo: 'ESTRATEGICO', titulo: 'Projeto de prova (matriz)',
-      ano: Number(c.horizontes[0].ano_inicio), responsavel: 'QA',
-      cascata_id: abertura.id, classificacao: 'NORMAL',
+      ano: Number(c.horizontes[0].ano_inicio), responsavel: 'QA', classificacao: 'NORMAL',
     });
-    return { plan: plan.id, ind: ind.id, prj: prj.id, abertura: abertura.id, sintese: sintese.id,
-      horizonte: abertura.horizonte_id };
+    // A escolha é da FRENTE: o projeto nem recebe mais o campo.
+    const frente = await App.api('/api/iniciativas', {
+      planejamento_id: plan.id, projeto_id: prj.id, titulo: 'Frente de prova (matriz)',
+      cascata_id: abertura.id,
+    });
+    // Uma segunda frente SEM escolha, no mesmo projeto: é ela que prova que a
+    // matriz lista frentes e não projetos — pelo projeto, as duas apareceriam.
+    await App.api('/api/iniciativas', {
+      planejamento_id: plan.id, projeto_id: prj.id, titulo: 'Frente sem escolha (matriz)',
+    });
+    return { plan: plan.id, ind: ind.id, prj: prj.id, frente: frente.id,
+      abertura: abertura.id, sintese: sintese.id, horizonte: abertura.horizonte_id };
   });
   if (massa.semCascata) {
     ok.push(`${l} pulada — a base não tem escolhas da cascata`);
@@ -2592,20 +2607,26 @@ async function provasMatrizExecucao(page) {
   const fonte = await page.evaluate(async (m) => {
     const c = await App.api(`/api/cascata?planejamento_id=${m.plan}`);
     const i = (c.indicadores || []).find((x) => x.id == m.ind);
-    const p = (c.projetos || []).find((x) => x.id == m.prj);
+    const p = (c.projetos || []).find((x) => x.id == m.frente);
     return {
       cascatas: ((i || {}).cascatas || []).length,
       metas: ((i || {}).metas || []).length,
       reais: ((i || {}).reais || []).length,
-      projetoNaEscolha: p ? Number(p.cascata_id) === Number(m.abertura) : false,
+      frenteNaEscolha: p ? Number(p.cascata_id) === Number(m.abertura) : false,
+      tituloComposto: p ? p.titulo : '',
       soComEscolha: (c.projetos || []).every((x) => x.cascata_id),
+      semEscolhaFora: !(c.projetos || []).some((x) => /Frente sem escolha/.test(x.titulo || '')),
     };
   }, massa);
   t(`${l} o indicador volta com as duas escolhas e as séries`,
     fonte.cascatas === 2 && fonte.metas === 1 && fonte.reais === 1,
     `${fonte.cascatas} escolhas, ${fonte.metas} metas, ${fonte.reais} reais`);
-  t(`${l} o projeto vem na escolha que executa`, fonte.projetoNaEscolha);
-  t(`${l} projeto sem escolha fica fora da fonte`, fonte.soComEscolha);
+  t(`${l} a FRENTE vem na escolha que executa`, fonte.frenteNaEscolha);
+  t(`${l} e com o nome do projeto junto ("projeto › frente")`,
+    /Projeto de prova \(matriz\) › Frente de prova \(matriz\)/.test(fonte.tituloComposto),
+    fonte.tituloComposto);
+  t(`${l} frente sem escolha fica fora da fonte`,
+    fonte.soComEscolha && fonte.semEscolhaFora, JSON.stringify(fonte));
 
   // 1. IDOR: uma escolha de outro planejamento não pode ser amarrada aqui.
   const idor = await page.evaluate(async (m) => {
@@ -2679,7 +2700,7 @@ async function provasMatrizExecucao(page) {
       colunas: tab.querySelectorAll('thead th').length,
       raia1: (tab.querySelector('.celula-raia') || {}).textContent?.trim(),
       temKpi: texto.includes('KPI de prova (matriz)'),
-      temProjeto: texto.includes('Projeto de prova (matriz)'),
+      temFrente: texto.includes('Projeto de prova (matriz) › Frente de prova (matriz)'),
       // Último real (85, de 2027) contra a meta do MESMO ano (80) — a regra de
       // `SecaoMetas.metaReal`, e não "a meta do ano corrente"
       temPar: /85(,00)? \(2027\) \/ meta 80/.test(texto),
@@ -2696,7 +2717,7 @@ async function provasMatrizExecucao(page) {
   t(`${l} a tabela tem as cinco colunas`, matriz.colunas === 5, `${matriz.colunas}`);
   t(`${l} a síntese é a primeira raia`, matriz.raia1 === 'Síntese', String(matriz.raia1));
   t(`${l} mostra o indicador amarrado`, matriz.temKpi);
-  t(`${l} mostra o projeto que executa`, matriz.temProjeto);
+  t(`${l} mostra a frente que executa, com o projeto junto`, matriz.temFrente);
   t(`${l} o par meta × real segue a regra da tela de Metas`, matriz.temPar);
   t(`${l} meta batida sai em verde`, matriz.atingiu);
   t(`${l} tem seletor de horizonte`, matriz.seletor);
@@ -2741,9 +2762,13 @@ async function provasMatrizExecucao(page) {
   });
   t(`${l} o aviso leva às duas telas onde o vínculo se faz`,
     atalhos.alvos.join() === 'metas,projetos', JSON.stringify(atalhos.alvos));
+  // O texto cita os rótulos EXATOS dos dois formulários — é instrução de "vá
+  // ali e preencha isto". Quando o vínculo mudou de dono (projeto → frente), o
+  // rótulo mudou junto, e esta prova é o que impede o aviso de seguir mandando
+  // preencher um campo que não existe mais.
   t(`${l} e nomeia os campos exatos dos dois formulários`,
     /Escolhas da cascata que este indicador mede/.test(atalhos.texto)
-    && /Escolha da Cascata que este projeto executa/.test(atalhos.texto), atalhos.texto.slice(0, 200));
+    && /Escolha da Cascata que esta frente executa/.test(atalhos.texto), atalhos.texto.slice(0, 200));
   await page.evaluate(() =>
     document.querySelector('#secao-cascata .como-amarrar [data-ir="metas"]').click());
   await esperar(page, "!document.getElementById('secao-metas').classList.contains('d-none')", 10000);

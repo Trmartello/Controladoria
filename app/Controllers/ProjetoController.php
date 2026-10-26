@@ -92,8 +92,14 @@ class ProjetoController
             $p['investimentos_vinculados'] = $solta[(int)$p['id']] ?? 0;
             $p['comentarios'] = $comentarios[(int)$p['id']] ?? 0;
             $p['anexos'] = $anexosProjeto[(int)$p['id']] ?? 0;
+            // A escolha da cascata que a FRENTE executa vem com o texto junto:
+            // é ele que o cartão dela mostra ("↳ Escolha da cascata"), e sem o
+            // JOIN a tela teria só o id para exibir.
             $p['iniciativas'] = Database::todos(
-                'SELECT * FROM iniciativa WHERE projeto_id = ? ORDER BY ordem, id',
+                'SELECT i.*, ce.escolha AS escolha_origem
+                   FROM iniciativa i
+                   LEFT JOIN cascata_escolha ce ON ce.id = i.cascata_id
+                  WHERE i.projeto_id = ? ORDER BY i.ordem, i.id',
                 [$p['id']]
             );
             // O e-mail do responsável vem junto para a PESQUISA da tela poder
@@ -167,6 +173,26 @@ class ProjetoController
         }
         $descricao = trim($d['descricao'] ?? '');
 
+        // A escolha da cascata que esta FRENTE executa (antes era do projeto).
+        // A chave ausente NÃO limpa o vínculo: quem salva sem mandar `cascata_id`
+        // está salvando outra coisa (a ordem, o título), e um `?? null` aqui
+        // desfaria em silêncio a amarra que a Matriz de Execução lê. É a mesma
+        // guarda do `fatores` da célula da cascata e do `esforco` da GUT.
+        $mandouCascata = array_key_exists('cascata_id', $d);
+        $cascataId = !empty($d['cascata_id']) ? (int)$d['cascata_id'] : null;
+        if ($cascataId !== null) {
+            // A escolha tem de ser deste planejamento: sem esta conferência, um
+            // id de outro plano entraria pela API e a frente apareceria na
+            // matriz de um planejamento a que ela não pertence.
+            $ok = Database::um(
+                'SELECT c.id FROM cascata_escolha c WHERE c.id = ? AND c.planejamento_id = ?',
+                [$cascataId, $planId]
+            );
+            if (!$ok) {
+                Json::erro('Escolha da cascata não encontrada neste planejamento.');
+            }
+        }
+
         // O status da frente NÃO vem do corpo: ele é consequência das ações
         // (Consolidacao::consolidarIniciativas, recalculado em toda leitura).
         // Aceitá-lo aqui seria gravar um valor que a primeira leitura apaga.
@@ -176,6 +202,9 @@ class ProjetoController
                 'UPDATE iniciativa SET titulo = ?, descricao = ?, ordem = ? WHERE id = ?',
                 [$titulo, $descricao, (int)($d['ordem'] ?? 0), $id]
             );
+            if ($mandouCascata) {
+                Database::executar('UPDATE iniciativa SET cascata_id = ? WHERE id = ?', [$cascataId, $id]);
+            }
         } else {
             // ordem = quantidade atual, como no plano de ação de referência
             $ordem = (int)(Database::um(
@@ -183,9 +212,9 @@ class ProjetoController
                 [$projetoId]
             )['n'] ?? 0);
             $id = (int)Database::executar(
-                "INSERT INTO iniciativa (projeto_id, titulo, descricao, status, ordem)
-                 VALUES (?, ?, ?, 'ABERTA', ?)",
-                [$projetoId, $titulo, $descricao, $ordem]
+                "INSERT INTO iniciativa (projeto_id, titulo, descricao, cascata_id, status, ordem)
+                 VALUES (?, ?, ?, ?, 'ABERTA', ?)",
+                [$projetoId, $titulo, $descricao, $cascataId, $ordem]
             );
         }
         Json::ok(['id' => $id]);
@@ -243,36 +272,27 @@ class ProjetoController
         }
         $horizonteId = (int)$horizonte['id'];
 
-        // Vínculo com a escolha da Cascata que originou o projeto. A coluna e o
-        // JOIN da listagem já existiam ("↳ Escolha da cascata" no cartão), mas
-        // nada gravava o valor — o campo era inalcançável pela interface.
-        // A escolha precisa ser DESTE planejamento, senão um id de outro negócio
-        // entraria pelo corpo da requisição.
-        $cascataId = !empty($d['cascata_id']) ? (int)$d['cascata_id'] : null;
-        if ($cascataId !== null && !Database::um(
-            'SELECT id FROM cascata_escolha WHERE id = ? AND planejamento_id = ?',
-            [$cascataId, $planId]
-        )) {
-            Json::erro('A escolha da cascata não pertence a este planejamento.');
-        }
-
         // O cadastro pede só ano, título, descrição e responsável; datas e
         // status vêm das ações (Consolidacao) e o restante é legado,
         // preservado como está nos projetos antigos
         if ($id) {
             $this->exigirProjeto($id, $planId);
             Bloqueio::exigirMeu('projeto', $id, (int)Auth::exigirLogin()['id'], 'este projeto');
+            // `cascata_id` ficou de fora do UPDATE: a escolha é da FRENTE
+            // desde 2026-10-26, e a coluna do projeto é só o rastro de onde o
+            // vínculo morava. Mantê-la no UPDATE a limparia na primeira edição
+            // de qualquer projeto, apagando o rastro sem ninguém pedir.
             Database::executar(
                 'UPDATE projeto SET tipo = ?, ano = ?, titulo = ?, descricao = ?,
-                   responsavel = ?, horizonte_id = ?, cascata_id = ? WHERE id = ?',
-                [$tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId, $cascataId, $id]
+                   responsavel = ?, horizonte_id = ? WHERE id = ?',
+                [$tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId, $id]
             );
         } else {
             $id = (int)Database::executar(
                 'INSERT INTO projeto (planejamento_id, tipo, ano, titulo, descricao,
-                   responsavel, horizonte_id, cascata_id, classificacao, status, ordem)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, \'NORMAL\', \'NAO_INICIADO\', 0)',
-                [$planId, $tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId, $cascataId]
+                   responsavel, horizonte_id, classificacao, status, ordem)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, \'NORMAL\', \'NAO_INICIADO\', 0)',
+                [$planId, $tipo, $ano, $titulo, $descricao, $responsavel, $horizonteId]
             );
         }
         Json::ok(['id' => $id]);
