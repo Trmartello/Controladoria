@@ -865,6 +865,15 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   do período é **recusado** no cadastro, não corrigido. Quem resolve é
   `Metas::anoEmExecucao`, e a leitura de `/api/indicadores` já devolve o número
   pronto em `ano_execucao`.
+  Um passo do migrate grava **2027** nos ciclos ainda sem escolha cujo período o
+  cobre (`ano_execucao_2027`, pedido do cliente em 2026-10-26); ciclo encerrado
+  que não alcança 2027 fica sem ano em execução, que é o certo para ele. Marcado
+  uma vez só pela mesma razão do passo da agregação: na virada do ano alguém põe
+  2028 ali, e um passo que rodasse de novo devolveria 2027 em silêncio.
+  **Armadilha paga na bateria funcional:** o POST de ciclo grava o corpo
+  INTEIRO, então o restauro da §5b precisa devolver `ano_execucao` junto — sem
+  ele, a limpeza apagava o ano configurado e a tela seguinte abria o ano errado
+  mês a mês, sem ninguém ligar uma coisa à outra.
 - **Qual par meta × real se mostra** é `SecaoMetas.metaReal`, e existe **uma vez
   só**: o ano de referência é o do ÚLTIMO real lançado e, sem real nenhum, o da
   PRIMEIRA meta. Não é "o ano corrente" — o ciclo semeado vai de 2027 a 2035 e as

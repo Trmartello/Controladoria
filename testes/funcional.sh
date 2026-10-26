@@ -295,7 +295,11 @@ afirma "a leitura diz qual ano abre mês a mês" '"ano_execucao":[0-9]{4}' "$R"
 CICLO_ANTES=$(get "/api/ciclos" | python3 -c "
 import sys, json
 c = next(x for x in json.load(sys.stdin)['dados'] if str(x['id']) == '1')
-print(json.dumps({k: c[k] for k in ('nome','ano_base','ano_inicio','ano_fim','status')}))
+# `ano_execucao` entra na fotografia: o POST de ciclo grava o corpo INTEIRO, e
+# um campo que não volta no restauro volta como NULL. Sem ele aqui, a limpeza
+# apagava o ano em execução configurado — e a tela seguinte abria o ano errado
+# mês a mês, sem ninguém ligar uma coisa à outra.
+print(json.dumps({k: c[k] for k in ('nome','ano_base','ano_inicio','ano_fim','ano_execucao','status')}))
 ")
 R=$(post /api/ciclos/1 "$(python3 -c "
 import sys, json

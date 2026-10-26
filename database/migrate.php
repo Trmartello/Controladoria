@@ -826,6 +826,28 @@ garantirColuna($pdo, 'indicador', 'agregacao',
 garantirColuna($pdo, 'ciclo', 'ano_execucao',
     'ALTER TABLE ciclo ADD COLUMN ano_execucao SMALLINT NULL AFTER ano_fim');
 
+// ---- O ano em execução, escolhido pelo cliente: 2027 ----
+//
+// Em branco, `Metas::anoEmExecucao` devolve o ano corrente, e o cliente quer
+// 2027 (2026-10-26). Preenche só o ciclo que ainda está SEM escolha e cujo
+// período cobre 2027 — um ciclo antigo, já encerrado, continua sem ano em
+// execução, que é o certo para ele.
+//
+// A marca vale pelo mesmo motivo do passo abaixo: na virada do ano alguém vai
+// mudar este campo para 2028, e um passo que rodasse de novo devolveria 2027
+// em silêncio, no deploy seguinte. Uma vez por banco; depois dela o campo é de
+// quem cadastra.
+$chaveExec = 'ano_execucao_2027';
+if (tabelaExiste($pdo, 'carga_conteudo') && !App\Services\CargaConteudo::jaAplicada($pdo, $chaveExec)) {
+    $ciclos = $pdo->query('SELECT id, nome FROM ciclo
+         WHERE ano_execucao IS NULL AND 2027 BETWEEN ano_base AND ano_fim')->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($ciclos as $c) {
+        $pdo->prepare('UPDATE ciclo SET ano_execucao = 2027 WHERE id = ?')->execute([(int)$c['id']]);
+        echo "migrate: ciclo «{$c['nome']}» passou a ter 2027 como ano em execução.\n";
+    }
+    App\Services\CargaConteudo::marcar($pdo, $chaveExec, count($ciclos) . ' ciclo(s)');
+}
+
 // ---- Reclassificação única: percentual não soma ----
 //
 // Todo indicador anterior à coluna `agregacao` nasceu com SOMA, porque esse é o
