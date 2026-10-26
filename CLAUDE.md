@@ -742,6 +742,18 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     Valor desconhecido cai em SOMA, que é o comportamento de quem só lança no
     ano. Mês em branco não entra na conta (nem numerador, nem denominador),
     senão a média de um trimestre lançado sairia dividida por doze.
+    A agregação fica **à vista na linha** ("ano: soma dos meses") e o cadastro a
+    **sugere pela unidade** no indicador novo (`agregacaoSugerida`: `%`, `x`,
+    índice e dias → média), enquanto ninguém escolher à mão. Quem some os meses
+    de um percentual ganha o selo **"revisar o ano"** na linha — os indicadores
+    anteriores à coluna nasceram todos com SOMA, e sem o selo a conferência
+    seria abrir um cadastro por vez. O selo **avisa e não conserta**: há
+    percentual que soma de propósito (pontos de participação ganhos no ano), e
+    nas metas um conserto automático errado só apareceria meses adiante, no
+    fechamento. **A unidade não sabe distinguir saldo de fluxo** — estoque e
+    dívida são R$ como o faturamento e valem pelo último mês —, então ali ela
+    não sugere nada, em vez de sugerir soma com cara de acerto. Prova em
+    `provasAvisoAgregacao`.
   - **Um caminho de lançamento por ano** (decisão do cliente no mesmo dia,
     revendo a primeira versão): **o ano em execução é lançado mês a mês e o ano
     é a agregação dos meses — na meta e no realizado**; os demais anos recebem o
@@ -2406,7 +2418,7 @@ falta de massa ensina a ignorar o vermelho.
 **Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
 2026-10-14 e 288/583 em 2026-09-04): funcional **321 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
-sistema **724 ✓ / 0 ✗** em cerca de nove minutos
+sistema **736 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
 sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
 `400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do

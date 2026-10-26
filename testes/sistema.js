@@ -4726,6 +4726,69 @@ async function provasCelulaMetas(page, largura) {
 }
 
 /**
+ * A agregação à vista na linha, e o aviso de quem soma o que não se soma.
+ *
+ * Os indicadores cadastrados antes de a coluna existir nasceram todos com SOMA,
+ * percentuais inclusive — e, enquanto a agregação só aparecia dentro do
+ * cadastro, conferir dez indicadores era abrir dez formulários. O selo faz a
+ * conferência virar varredura de olho.
+ *
+ * Ele **avisa e não conserta**: há percentual que soma de propósito (pontos de
+ * participação ganhos no ano), e nas metas um conserto automático errado só
+ * apareceria meses adiante, no fechamento. O que a prova prende, então, é que o
+ * aviso aparece onde deve e **some quando a pessoa resolve**, em vez de ficar
+ * piscando para sempre num cadastro que já está certo.
+ */
+async function provasAvisoAgregacao(page, largura) {
+  const l = `[${largura}] Agregação à vista:`;
+  const ids = await page.evaluate(async () => {
+    const pct = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Margem QA', unidade: '%', agregacao: 'SOMA',
+    });
+    const reais = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Faturamento QA', unidade: 'R$ mil', agregacao: 'SOMA',
+    });
+    App.mostrarSecao('metas');
+    return { pct: pct.id, reais: reais.id };
+  });
+  const pintou = await esperar(page, `!!document.querySelector('[data-celula-ind="${ids.pct}"]')`, 15000);
+  t(`${l} a tabela pinta`, pintou);
+  if (!pintou) return;
+
+  const linha = (id) => page.evaluate((i) => {
+    const td = document.querySelector(`[data-celula-ind="${i}"]`)?.closest('tr')?.querySelector('.celula-nome');
+    return { texto: td?.textContent.replace(/\s+/g, ' ').trim() || '',
+      aviso: !!td?.querySelector('.badge.text-bg-warning') };
+  }, id);
+
+  const comPct = await linha(ids.pct);
+  const comReais = await linha(ids.reais);
+  t(`${l} a linha diz como o ano é formado`, /ano: soma dos meses/.test(comPct.texto), comPct.texto);
+  t(`${l} percentual somando os meses é apontado`, comPct.aviso === true, comPct.texto);
+  t(`${l} e R$ somando não é — somar faturamento é o certo`,
+    comReais.aviso === false, comReais.texto);
+
+  // Resolvido no cadastro, o aviso some e o rótulo acompanha.
+  await page.evaluate(async (id) => {
+    await App.api(`/api/indicadores/${id}`, {
+      planejamento_id: 1, nome: 'Margem QA', unidade: '%', agregacao: 'MEDIA',
+    });
+    await SecaoMetas.carregar();
+  }, ids.pct);
+  await esperar(page, `!!document.querySelector('[data-celula-ind="${ids.pct}"]')`, 15000);
+  const resolvido = await linha(ids.pct);
+  t(`${l} corrigida a agregação, o aviso some`, resolvido.aviso === false, resolvido.texto);
+  t(`${l} e a linha passa a dizer "média dos meses"`,
+    /ano: média dos meses/.test(resolvido.texto), resolvido.texto);
+
+  await page.evaluate(async (d) => {
+    await App.api(`/api/indicadores/${d.pct}/excluir`, { planejamento_id: 1 }).catch(() => {});
+    await App.api(`/api/indicadores/${d.reais}/excluir`, { planejamento_id: 1 }).catch(() => {});
+    App.mostrarSecao('painel');
+  }, ids);
+}
+
+/**
  * O ano aberto MÊS A MÊS, com o total no fim.
  *
  * Pedido do cliente (2026-10-25): "o ano em execução deve abrir mês a mês e
@@ -5111,6 +5174,7 @@ async function provasJanelaModal(page, largura) {
   await provasLugarGuardado(page, 'desktop');
   await provasCelulaMetas(page, 'desktop');
   await provasMesAMes(page, 'desktop');
+  await provasAvisoAgregacao(page, 'desktop');
   await noAnoDaCarga(page);
   await provasPainelSalaFixo(page, 'desktop');
   await noAnoPadrao(page);
@@ -5150,6 +5214,7 @@ async function provasJanelaModal(page, largura) {
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');
   await provasMesAMes(pageM, 'celular');
+  await provasAvisoAgregacao(pageM, 'celular');
   await noAnoDaCarga(pageM);
   await provasPainelSalaFixo(pageM, 'celular');
   await noAnoPadrao(pageM);
