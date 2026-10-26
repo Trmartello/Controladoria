@@ -4610,6 +4610,21 @@ async function provasLugarGuardado(page, largura) {
  */
 async function provasCelulaMetas(page, largura) {
   const l = `[${largura}] Célula de metas:`;
+  // Os anos usados aqui são ANUAIS de propósito: o ano em execução é lançado
+  // mês a mês e a célula dele não tem campo nenhum (quem mede aquela metade é
+  // `provasMesAMes`). Escolhê-los a partir do ciclo, e não fixos no código,
+  // porque "qual é o ano em execução" muda com o calendário e com o cadastro.
+  const anos = await page.evaluate(async () => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    const todos = [];
+    for (let a = Number(d.ciclo.ano_base); a <= Number(d.ciclo.ano_fim); a++) todos.push(a);
+    return todos.filter((a) => a !== d.ano_execucao);
+  });
+  if (anos.length < 2) {
+    ok.push(`${l} pulada — o ciclo não tem dois anos fora do ano em execução`);
+    return;
+  }
+  const [anoA, anoB] = anos;
   const ind = await page.evaluate(async () => {
     const r = await App.api('/api/indicadores', {
       planejamento_id: 1, nome: 'Indicador célula QA', unidade: 'R$ mil', agregacao: 'SOMA',
@@ -4638,70 +4653,70 @@ async function provasCelulaMetas(page, largura) {
   t(`${l} os botões M e R saíram da linha`, botoes.mr === 0, JSON.stringify(botoes));
   t(`${l} e sobrou "⟳ Revisar", que é o que a célula não faz`, botoes.revisar);
 
-  await digitar(sel('META', 2026), '45,5');
-  await esperar(page, `!document.querySelector('${sel('META', 2026)}').classList.contains('celula-gravando')`);
-  const gravado = await page.evaluate(async (id) => {
-    const d = await App.api('/api/indicadores?planejamento_id=1');
-    const i = d.indicadores.find((x) => x.id == id);
-    return (i.metas.find((m) => m.ano === 2026) || {}).valor ?? null;
-  }, ind);
+  await digitar(sel('META', anoA), '45,5');
+  await esperar(page, `!document.querySelector('${sel('META', anoA)}').classList.contains('celula-gravando')`);
+  const gravado = await page.evaluate(async (d) => {
+    const r = await App.api('/api/indicadores?planejamento_id=1');
+    const i = r.indicadores.find((x) => x.id == d.id);
+    return (i.metas.find((m) => m.ano === d.ano) || {}).valor ?? null;
+  }, { id: ind, ano: anoA });
   t(`${l} a meta digitada chega ao servidor`, Number(gravado) === 45.5, String(gravado));
 
-  await digitar(sel('REAL', 2026), '40');
-  await esperar(page, `!document.querySelector('${sel('REAL', 2026)}').classList.contains('celula-gravando')`);
+  await digitar(sel('REAL', anoA), '40');
+  await esperar(page, `!document.querySelector('${sel('REAL', anoA)}').classList.contains('celula-gravando')`);
   // Repinta a seção: o que a tela mostra depois disso é o que o servidor tem.
   await page.evaluate(() => SecaoMetas.carregar());
-  await esperar(page, `!!document.querySelector('${sel('REAL', 2026)}')`, 15000);
+  await esperar(page, `!!document.querySelector('${sel('REAL', anoA)}')`, 15000);
   const depois = await page.evaluate((s) => ({
     meta: document.querySelector(s.m)?.dataset.bruto,
     real: document.querySelector(s.r)?.dataset.bruto,
     visivel: document.querySelector(s.m)?.value,
-  }), { m: sel('META', 2026), r: sel('REAL', 2026) });
+  }), { m: sel('META', anoA), r: sel('REAL', anoA) });
   t(`${l} meta e realizado sobrevivem à repintura`,
     Number(depois.meta) === 45.5 && Number(depois.real) === 40, JSON.stringify(depois));
   t(`${l} e voltam escritos em português`, depois.visivel === '45,5', String(depois.visivel));
 
   // Letra não entra — e não apaga o que já estava lá.
-  await page.click(sel('META', 2026));
+  await page.click(sel('META', anoA));
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.type('abc');
-  const recusou = await page.evaluate((s) => document.querySelector(s).value, sel('META', 2026));
+  const recusou = await page.evaluate((s) => document.querySelector(s).value, sel('META', anoA));
   await page.keyboard.press('Escape');
   t(`${l} letra é recusada sem apagar o número que estava na célula`,
     recusou === '45,5', String(recusou));
 
   // Esc desfaz o que está sendo digitado, sem gravar.
-  await page.click(sel('META', 2026));
+  await page.click(sel('META', anoA));
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.type('999');
   await page.keyboard.press('Escape');
-  const semGravar = await page.evaluate(async (id) => {
-    const d = await App.api('/api/indicadores?planejamento_id=1');
-    const i = d.indicadores.find((x) => x.id == id);
-    return (i.metas.find((m) => m.ano === 2026) || {}).valor ?? null;
-  }, ind);
+  const semGravar = await page.evaluate(async (d) => {
+    const r = await App.api('/api/indicadores?planejamento_id=1');
+    const i = r.indicadores.find((x) => x.id == d.id);
+    return (i.metas.find((m) => m.ano === d.ano) || {}).valor ?? null;
+  }, { id: ind, ano: anoA });
   t(`${l} Esc desfaz sem gravar`, Number(semGravar) === 45.5, String(semGravar));
 
   // Negativo passa: meta de resultado financeiro e de dívida é negativa.
-  await digitar(sel('META', 2027), '-12,5');
-  await esperar(page, `!document.querySelector('${sel('META', 2027)}').classList.contains('celula-gravando')`);
-  const negativo = await page.evaluate(async (id) => {
-    const d = await App.api('/api/indicadores?planejamento_id=1');
-    const i = d.indicadores.find((x) => x.id == id);
-    return (i.metas.find((m) => m.ano === 2027) || {}).valor ?? null;
-  }, ind);
+  await digitar(sel('META', anoB), '-12,5');
+  await esperar(page, `!document.querySelector('${sel('META', anoB)}').classList.contains('celula-gravando')`);
+  const negativo = await page.evaluate(async (d) => {
+    const r = await App.api('/api/indicadores?planejamento_id=1');
+    const i = r.indicadores.find((x) => x.id == d.id);
+    return (i.metas.find((m) => m.ano === d.ano) || {}).valor ?? null;
+  }, { id: ind, ano: anoB });
   t(`${l} o negativo é aceito (o campo de ganhos recusa, este não)`,
     Number(negativo) === -12.5, String(negativo));
 
   // Apagar a célula limpa o ano, e não grava zero: "sem meta" e "meta zero" são
   // respostas diferentes.
-  await digitar(sel('META', 2027), '');
-  await esperar(page, `!document.querySelector('${sel('META', 2027)}').classList.contains('celula-gravando')`);
-  const limpo = await page.evaluate(async (id) => {
-    const d = await App.api('/api/indicadores?planejamento_id=1');
-    const i = d.indicadores.find((x) => x.id == id);
-    return i.metas.some((m) => m.ano === 2027);
-  }, ind);
+  await digitar(sel('META', anoB), '');
+  await esperar(page, `!document.querySelector('${sel('META', anoB)}').classList.contains('celula-gravando')`);
+  const limpo = await page.evaluate(async (d) => {
+    const r = await App.api('/api/indicadores?planejamento_id=1');
+    const i = r.indicadores.find((x) => x.id == d.id);
+    return i.metas.some((m) => m.ano === d.ano);
+  }, { id: ind, ano: anoB });
   t(`${l} esvaziar a célula apaga o ano, em vez de gravar zero`, limpo === false, String(limpo));
 
   await page.evaluate(async (id) => {
@@ -4807,18 +4822,24 @@ async function provasMesAMes(page, largura) {
   t(`${l} apagar um mês tira só aquele mês (sobram 20 e 30, média 25)`,
     apagado.meses === 2 && Number(apagado.valor) === 25, JSON.stringify(apagado));
 
-  // Meta: o ano digitado manda, e a diferença para os meses é DITA.
-  await lancar('META', 0, '100');
+  // A META do ano em execução também é mensal: o ano é o total dos meses, e
+  // não existe campo anual para contradizê-lo. Era o contrário na primeira
+  // versão — o ano digitado mandava e a tela marcava a diferença —, e o cliente
+  // reviu no mesmo dia: um caminho de lançamento por ano.
+  // E pela MESMA regra de agregação do realizado — o indicador está em média
+  // desde a prova acima, então 40 e 35 fecham o ano em 37,5 e não em 75. A
+  // agregação é do indicador, não da série: meta e real contados por critérios
+  // diferentes dariam um "atingiu a meta" que não quer dizer nada.
   await lancar('META', 1, '40');
-  const difere = await page.evaluate((s) => {
+  await lancar('META', 2, '35');
+  const metaAno = await page.evaluate((s) => {
     const td = document.querySelector(s);
-    return { valor: td?.querySelector('input')?.dataset.bruto,
-      marca: td?.querySelector('.difere')?.title || '' };
+    return { texto: td?.textContent.trim(), campo: !!td?.querySelector('input') };
   }, sel('META', 0));
-  t(`${l} a meta do ano continua sendo a digitada (100)`,
-    Number(difere.valor) === 100, JSON.stringify(difere));
-  t(`${l} e a tela aponta que os meses somam outra coisa`,
-    /40/.test(difere.marca), JSON.stringify(difere));
+  t(`${l} a meta do ano sai dos meses pela regra do indicador (média: 37,5)`,
+    metaAno.texto === '37,5', JSON.stringify(metaAno));
+  t(`${l} e não há campo anual para contradizer os meses`,
+    metaAno.campo === false, JSON.stringify(metaAno));
 
   // Fechar é escolha: tem de sobreviver à repintura que a gravação provoca.
   await page.evaluate((a) => document.querySelector(`#secao-metas [data-fechar-ano="${a}"]`).click(), exec);
@@ -4831,21 +4852,16 @@ async function provasMesAMes(page, largura) {
     document.querySelectorAll('#secao-metas th.col-mes').length);
   t(`${l} e continua fechado depois de a seção repintar`, seguiuFechado === 0, String(seguiuFechado));
 
-  // O ano em execução é só o PADRÃO: qualquer outro também abre.
-  const outro = exec + 1;
-  const abriuOutro = await page.evaluate((a) => {
-    const b = document.querySelector(`#secao-metas [data-abrir-ano="${a}"]`);
-    if (!b) return false;
-    b.click();
-    return true;
-  }, outro);
-  if (abriuOutro) {
-    await esperar(page, "document.querySelectorAll('#secao-metas th.col-mes').length === 12", 10000);
-    const qual = await page.evaluate(() => SecaoMetas.anoAberto);
-    t(`${l} qualquer outro ano também abre`, qual === outro, String(qual));
-  } else {
-    ok.push(`${l} pulada a abertura de outro ano — o ciclo tem um ano só`);
-  }
+  // **Só o ano em execução** é mensal: nos demais o lançamento é o valor anual,
+  // e não há o que abrir. Oferecer meses em todo ano convidaria a lançar mensal
+  // num ano que o plano trata como anual — e aí o mesmo ano teria duas verdades.
+  const outros = await page.evaluate((a) => ({
+    comBotao: document.querySelectorAll('#secao-metas [data-abrir-ano]').length,
+    doProprio: !!document.querySelector(`#secao-metas [data-abrir-ano="${a}"]`),
+    colunasDeAno: document.querySelectorAll('#secao-metas thead th.col-ano').length,
+  }), exec);
+  t(`${l} nenhum outro ano oferece abrir mês a mês`,
+    outros.comBotao === 1 && outros.doProprio === true, JSON.stringify(outros));
 
   await page.evaluate(async (id) => {
     await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 }).catch(() => {});

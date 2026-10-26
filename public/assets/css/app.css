@@ -398,15 +398,9 @@ table.tabela-cadastro td { vertical-align: middle; }
 .tabela-metas .celula-valor.celula-gravando { opacity: .55; }
 .tabela-metas .celula-valor.celula-salva { background: #e7f5ee; border-color: #9ed7bc; }
 .tabela-metas .celula-valor.celula-erro { background: #fdecea; border-color: #e5a7a1; }
-/* Valor que vem dos meses: não se digita, e o cinza-itálico diz isso antes de
-   alguém tentar. */
+/* Total do ano em execução: não se digita (o lançamento é no mês), e o
+   cinza-itálico diz isso antes de alguém tentar. */
 .tabela-metas td.celula-derivada { color: #5d6b64; font-style: italic; }
-.tabela-metas .difere {
-  color: var(--dourado);
-  font-weight: 700;
-  margin-left: .15rem;
-  cursor: help;
-}
 
 /* ===== O ano aberto mês a mês =====
    O botão do cabeçalho é o ano, não um ícone ao lado dele: o alvo de toque é a

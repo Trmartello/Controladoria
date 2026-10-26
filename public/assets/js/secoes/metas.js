@@ -24,6 +24,13 @@ const SecaoMetas = {
    */
   anoAberto: undefined,
 
+  /**
+   * O ano em execução do plano, como o servidor o resolveu (`ciclo.ano_execucao`
+   * ou o corrente). É ele, e só ele, que se lança mês a mês — nos demais anos a
+   * tabela tem um campo por ano, e nenhum mês.
+   */
+  anoExecucao: null,
+
   fmt(v) {
     return v === null || v === undefined || v === ''
       ? '—'
@@ -81,9 +88,12 @@ const SecaoMetas = {
     const bruto = anual
       ? (entrada ? entrada.valor : null)
       : (entrada && entrada.meses ? entrada.meses[mes] ?? null : null);
-    // Só o ANO do realizado é derivado. O mês é sempre lançamento, e a meta do
-    // ano é digitada mesmo havendo meses (quem manda nela é o ano).
-    const derivada = anual && tipo === 'REAL' && entrada && entrada.meses_total !== null;
+    // **Um caminho de lançamento por ano** (decisão do cliente): o ano em
+    // execução é lançado MÊS A MÊS e a célula do ano mostra o total, sem campo;
+    // os demais anos recebem o valor anual e não têm meses. Dois campos para o
+    // mesmo ano — o anual e os doze — é que produziam os dois números do mesmo
+    // ano se contradizendo na mesma linha.
+    const derivada = anual && ano === this.anoExecucao;
     const classe = `valor${derivada ? ' celula-derivada' : ''}${anual ? '' : ' celula-mes'}`;
     // Os marcadores ficam no `<td>` e não no campo: a célula derivada não tem
     // campo nenhum, e é justamente ela que precisa ser reencontrada e repintada
@@ -91,27 +101,25 @@ const SecaoMetas = {
     const marcas = `data-celula-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="${mes}"`;
     if (!App.podeEditar() || derivada) {
       const dica = derivada
-        ? ` title="Soma dos meses lançados — para mudar, lance no mês"` : '';
+        ? ' title="Total dos meses deste ano — para mudar, lance no mês"' : '';
       return `<td class="${classe}" ${marcas}${dica}>${this.fmt(bruto)}</td>`;
     }
-    // A diferença entre a meta do ano e a soma dos meses é DITA, não corrigida:
-    // quem decide se o ano ou a distribuição está errada é quem planeja.
-    const difere = anual && tipo === 'META' && entrada && entrada.meses_total !== null
-      && Number(entrada.meses_total) !== Number(entrada.valor);
     const quando = anual ? ano : `${MESES_CURTOS[mes - 1]}/${ano}`;
     return `<td class="${classe}" ${marcas}>
       <input type="text" class="celula-valor" inputmode="decimal" autocomplete="off"
         value="${Modal.esc(this.fmt(bruto))}" data-bruto="${bruto ?? ''}"
         data-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="${mes}"
         aria-label="${tipo === 'META' ? 'Meta' : 'Realizado'} de ${quando} — ${Modal.esc(ind.nome)}">
-      ${difere ? `<span class="difere" title="Os meses somam ${this.fmt(entrada.meses_total)}">≠</span>` : ''}
     </td>`;
   },
 
   /**
-   * As células de um ano numa linha: o ano fechado é uma só; o aberto são os
-   * doze meses e, **no fim**, o total do ano — na ordem em que o cliente pediu
-   * ("abrir mês a mês e totalizar o ano no final").
+   * As células de um ano numa linha.
+   *
+   * O ano em EXECUÇÃO sai em doze meses e, **no fim**, o total ("abrir mês a
+   * mês e totalizar o ano no final"); qualquer outro ano é uma célula só, com o
+   * valor anual. Recolher o ano em execução mostra só o total dele — é leitura,
+   * e o lançamento continua sendo no mês.
    */
   celulasDoAno(ind, tipo, ano, entrada) {
     if (ano !== this.anoAberto) return this.celula(ind, tipo, ano, entrada);
@@ -119,15 +127,23 @@ const SecaoMetas = {
       + this.celula(ind, tipo, ano, entrada);
   },
 
-  /** O cabeçalho de um ano: o botão que abre, ou os meses mais o total. */
+  /**
+   * O cabeçalho de um ano.
+   *
+   * **Só o ano em execução abre mês a mês** — os demais são um número e nada
+   * mais. Oferecer os doze meses em todo ano convidaria a lançar mensal num ano
+   * que o plano trata como anual, e aí o mesmo ano teria duas verdades.
+   */
   cabecalhoAno(ano) {
+    if (ano !== this.anoExecucao) return `<th class="col-ano">${ano}</th>`;
     if (ano !== this.anoAberto) {
       return `<th class="col-ano"><button type="button" class="btn-ano" data-abrir-ano="${ano}"
         title="Abrir ${ano} mês a mês" aria-expanded="false">${ano} <span aria-hidden="true">▸</span></button></th>`;
     }
     return MESES_CURTOS.map((m) => `<th class="col-mes">${m}</th>`).join('')
       + `<th class="col-ano col-total"><button type="button" class="btn-ano" data-fechar-ano="${ano}"
-        title="Recolher os meses de ${ano}" aria-expanded="true">${ano} <span aria-hidden="true">▾</span></button></th>`;
+        title="Recolher os meses de ${ano} (o lançamento continua sendo no mês)"
+        aria-expanded="true">${ano} <span aria-hidden="true">▾</span></button></th>`;
   },
 
   /** Os cartões de métrica-âncora, repintados sozinhos a cada gravação. */
@@ -261,9 +277,10 @@ const SecaoMetas = {
     // tabela nova deixaria a tela sem nenhum ano expandido e com um `colspan`
     // contando doze colunas que ninguém desenhou.
     const execucao = Number(this.dados.ano_execucao);
+    this.anoExecucao = anos.includes(execucao) ? execucao : null;
     if (this.anoAberto === undefined
-      || (this.anoAberto !== null && !anos.includes(this.anoAberto))) {
-      this.anoAberto = anos.includes(execucao) ? execucao : null;
+      || (this.anoAberto !== null && this.anoAberto !== this.anoExecucao)) {
+      this.anoAberto = this.anoExecucao;
     }
     const abertas = this.anoAberto === null ? 0 : MESES_CURTOS.length;
 
@@ -309,7 +326,9 @@ const SecaoMetas = {
         ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-ind">+ Novo indicador</button>' : ''}
       </div>
       <p class="text-muted">Métricas-âncora dão o foco de cada horizonte; a tabela plurianual acompanha
-      meta × real de ${ciclo.ano_base} a ${ciclo.ano_fim}.${App.podeEditar()
+      meta × real de ${ciclo.ano_base} a ${ciclo.ano_fim}.
+      ${this.anoExecucao ? `<strong>${this.anoExecucao}</strong> é o ano em execução: lança-se mês a mês e
+        o ano é o total dos meses. Nos demais anos, o lançamento é o valor anual.` : ''}${App.podeEditar()
         ? ' Clique no número para lançar ou corrigir; <strong>⟳ Revisar</strong> grava uma versão nova da meta, preservando a anterior.'
         : ' Revisões de meta preservam as versões anteriores.'}</p>
       <div class="alert alert-danger d-none" data-aviso-metas role="alert"></div>

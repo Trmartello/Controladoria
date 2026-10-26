@@ -25,14 +25,23 @@ use App\Core\Database;
  * distinto —, e dois valores anuais do mesmo ano passariam a conviver, com a
  * leitura escolhendo um deles por sorte.
  *
- * ## Quem manda, o ano ou os meses (decisão do cliente, 2026-10-26)
+ * ## Um caminho por ano (decisão do cliente, 2026-10-26, revista no mesmo dia)
  *
- * - **META**: manda o valor ANUAL digitado. Os meses são a *distribuição* dela,
- *   e a tela mostra a diferença ("os meses somam 43 de 45") em vez de corrigir
- *   sozinha. Sem nenhum valor anual, a meta do ano é a agregação dos meses —
- *   senão quem lança só mês a mês ficaria sem meta no ano.
- * - **REAL**: mandam os MESES. Havendo mês lançado, o ano é a agregação deles;
- *   o realizado do ano não é opinião, é o que aconteceu.
+ * **Havendo mês lançado, o ano é a agregação dos meses** — na meta e no
+ * realizado, sem exceção. O valor anual digitado só vale enquanto não houver
+ * mês nenhum.
+ *
+ * A primeira versão desta regra era outra: a meta anual mandava e os meses
+ * eram a distribuição dela, com a tela apontando a diferença ("os meses somam
+ * 43 de 45"). O cliente reviu no mesmo dia — *"para o ano atual deve ser
+ * mensal e somar o total do ano; para os demais anos lançamento do valor
+ * anual, um único campo"* — e a revisão é mais simples de usar e de explicar:
+ * cada ano tem UM caminho de lançamento, o mensal ou o anual, e não dois
+ * números do mesmo ano se contradizendo na mesma linha. A tela faz a outra
+ * metade, oferecendo os meses apenas no ano em execução.
+ *
+ * `anual` e `meses_total` continuam no payload: é com eles que a tela sabe se
+ * a célula do ano é digitável ou derivada.
  *
  * ## Agregar não é somar
  *
@@ -148,10 +157,9 @@ class Metas
                 }
             }
             $total = self::agregar($meses, $agregacao);
-            // META: o ano digitado manda. REAL: mandam os meses.
-            $valor = $tipo === 'META'
-                ? ($anual ?? $total)
-                : ($total ?? $anual);
+            // Mandam os MESES, nos dois tipos. O anual só vale enquanto não
+            // houver mês — ver "Um caminho por ano", acima.
+            $valor = $total ?? $anual;
             if ($valor === null) {
                 continue;
             }

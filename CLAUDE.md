@@ -742,10 +742,17 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     Valor desconhecido cai em SOMA, que é o comportamento de quem só lança no
     ano. Mês em branco não entra na conta (nem numerador, nem denominador),
     senão a média de um trimestre lançado sairia dividida por doze.
-  - **Quem manda no ano**: na **META**, o valor anual digitado — os meses são a
-    distribuição dela, e a tela mostra a diferença ("os meses somam 43 de 45")
-    em vez de corrigir sozinha; no **REAL**, mandam os meses, porque o realizado
-    do ano não é opinião. Sem valor anual, a meta do ano é a agregação dos meses.
+  - **Um caminho de lançamento por ano** (decisão do cliente no mesmo dia,
+    revendo a primeira versão): **o ano em execução é lançado mês a mês e o ano
+    é a agregação dos meses — na meta e no realizado**; os demais anos recebem o
+    **valor anual**, e não têm meses. Havendo mês, mandam os meses; o anual
+    digitado só vale enquanto não houver mês nenhum (e continua guardado, em
+    `anual`, para voltar a valer se o último mês for apagado).
+    A primeira versão era outra: a meta anual mandava, os meses eram a
+    distribuição dela e a tela apontava a diferença ("os meses somam 43 de 45").
+    Funcionava, mas pedia que alguém conciliasse dois números do mesmo ano na
+    mesma linha. **Não reabra isso sem o cliente**: a regra atual é dele, e é a
+    que a tela e as duas baterias assumem.
   O **mês é RECUSADO fora de 0–12** (`Mês inválido`), como o texto que não é
   número: um 13 encaixado em dezembro gravaria no lugar errado sem ninguém ver.
   Limpar um valor apaga só o **grão enviado** — limpar o anual não leva junto os
@@ -778,12 +785,10 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     `change`, a gravação simplesmente não acontecia, sem erro em lugar nenhum —
     custou uma rodada da bateria. `Esc` limpa a marca ANTES do `blur`, e é o que
     o faz desfazer sem gravar.
-  - **Célula derivada não se digita.** No REAL, o ano cujo valor vem dos meses é
-    só leitura: editável, aceitaria um número que a leitura ignora na linha
-    seguinte — o pior tipo de campo, o que parece ter funcionado. Na META a
-    diferença entre o ano e a soma dos meses é **dita** (o `≠` com o total no
-    title), nunca corrigida: quem decide qual dos dois está errado é quem
-    planeja.
+  - **Célula derivada não se digita.** A célula do ANO no ano em execução é só
+    leitura, nas duas linhas: editável, aceitaria um número que a leitura ignora
+    na linha seguinte — o pior tipo de campo, o que parece ter funcionado. Quem
+    lança ali é o mês.
   - **A resposta da gravação traz a série recalculada**, e é dela que a tela se
     serve: refazer a agregação no JS seria a segunda cópia da regra, no idioma
     errado. Recarregar a seção mataria o foco de quem percorre a linha com Tab —
@@ -794,9 +799,13 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mudou de meta. O realizado não tem equivalente: o que aconteceu não se revisa.
   Prova em `provasCelulaMetas`, nas duas larguras.
 - **O ano em execução abre MÊS A MÊS, com o total no fim** (`SecaoMetas.anoAberto`,
-  `celulasDoAno`, `cabecalhoAno`). O `▸` do cabeçalho abre qualquer ano, **um por
-  vez**, e o ano em execução já nasce aberto; os doze meses vêm primeiro e a
-  coluna do ano fecha a faixa, na ordem que o cliente pediu. Três cuidados:
+  `anoExecucao`, `celulasDoAno`, `cabecalhoAno`). Ele nasce aberto, os doze meses
+  vêm primeiro e a coluna do ano fecha a faixa, na ordem que o cliente pediu. O
+  `▸`/`▾` existe **só nele**: os demais anos são um número e um campo anual, sem
+  meses — oferecer os doze em todo ano convidaria a lançar mensal num ano que o
+  plano trata como anual, e aí o mesmo ano teria duas verdades. Recolher o ano em
+  execução é leitura: a célula mostra o total e o lançamento continua sendo no
+  mês. Três cuidados:
   - **`anoAberto` distingue três estados**: `undefined` (ninguém escolheu — vale
     o ano em execução), um número, e `null` (**fechado de propósito**). Sem o
     `null`, a gravação seguinte repinta a seção e o ano reabre sozinho: o botão
@@ -2395,7 +2404,7 @@ depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
 **Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
-2026-10-14 e 288/583 em 2026-09-04): funcional **320 ✓ / 0 ✗**
+2026-10-14 e 288/583 em 2026-09-04): funcional **321 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
 sistema **724 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
