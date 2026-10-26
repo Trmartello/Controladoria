@@ -1028,17 +1028,31 @@ async function provasCabecalhoProjetos(page, largura) {
   // cima. É o degrau que quebra em silêncio quando alguém mexe numa altura: as
   // barras continuam grudando, só que sobrepostas, e o nome do projeto some
   // atrás do da frente.
-  const pilha = await page.evaluate(() => {
+  // A prova ROLA procurando, em vez de medir num deslocamento escolhido a dedo.
+  // O `scrollTo(0, 700)` de antes media um ponto que depende da altura dos
+  // cartões, e ela muda a cada mexida na tela — um botão novo no cabeçalho da
+  // frente já basta. Quando o 700 caiu no vão ENTRE dois projetos, a prova
+  // reprovou sem que a pilha tivesse quebrado, e foi a tela que teve de provar
+  // inocência. Medir em CADA degrau da rolagem é a pergunta certa: em algum
+  // ponto da lista o cabeçalho de um projeto tem de estar grudado.
+  //
+  // Achar um ponto não basta, e é aqui que a prova morde: um bloco em fluxo
+  // normal também passa pela linha do cabeçalho — uma vez, de passagem. Por
+  // isso, achado o ponto, a prova rola mais 40px e confere que o MESMO
+  // cabeçalho continua ali. Em fluxo ele teria subido 40px junto com a página.
+  const medirPilha = () => page.evaluate(() => {
     const r = (el) => el.getBoundingClientRect();
     const sec = document.querySelector('.cabecalho-projetos');
     const proj = [...document.querySelectorAll('.projeto-cabeca-fixa')]
       .find((e) => Math.abs(r(e).top - r(sec).bottom) <= 1);
     if (!proj) return { achou: false };
-    const frente = [...proj.closest('[data-projeto]').querySelectorAll('.iniciativa-cabeca')]
+    const cartao = proj.closest('[data-projeto]');
+    const frente = [...cartao.querySelectorAll('.iniciativa-cabeca')]
       .find((e) => Math.abs(r(e).top - r(proj).bottom) <= 1);
     const z = (el) => Number(getComputedStyle(el).zIndex);
     return {
       achou: true,
+      projeto: cartao.dataset.projeto,
       frenteEncaixada: !!frente,
       // Quem está mais acima na pilha tem de ficar por CIMA: invertido, a
       // frente cobriria o nome do projeto no momento da troca.
@@ -1047,8 +1061,31 @@ async function provasCabecalhoProjetos(page, largura) {
         .every((e) => !/rgba\(.*,\s*0\)/.test(getComputedStyle(e).backgroundColor)),
     };
   });
-  t(`[${largura}] o cabeçalho do projeto encosta no de Projetos`, pilha.achou);
+  const irPara = async (y) => {
+    await page.evaluate((v) => window.scrollTo(0, v), y);
+    // O sticky se reacomoda no quadro seguinte à rolagem: medir na mesma volta
+    // lia as posições de antes.
+    await new Promise((r) => setTimeout(r, 60));
+  };
+  const fim = await page.evaluate(() => document.documentElement.scrollHeight);
+  let pilha = { achou: false };
+  for (let y = 200; y < fim && !pilha.achou; y += 60) {
+    await irPara(y);
+    pilha = await medirPilha();
+    // A frente encaixa no projeto um pouco depois de o projeto grudar: no
+    // primeiro ponto da rolagem o cabeçalho dela ainda vem descendo. Vale o
+    // ponto em que os DOIS degraus estão no lugar, que é o que se quer provar.
+    if (pilha.achou && !pilha.frenteEncaixada) pilha = { achou: false };
+    if (!pilha.achou) continue;
+    await irPara(y + 40);
+    const depois = await medirPilha();
+    pilha.continuaGrudado = depois.achou && depois.projeto === pilha.projeto;
+  }
+  t(`[${largura}] o cabeçalho do projeto encosta no de Projetos`, pilha.achou,
+    JSON.stringify(pilha));
   if (pilha.achou) {
+    t(`[${largura}] ele CONTINUA grudado ao rolar (sticky, não de passagem)`,
+      pilha.continuaGrudado, JSON.stringify(pilha));
     t(`[${largura}] o da frente encosta no do projeto`, pilha.frenteEncaixada);
     t(`[${largura}] a pilha respeita a ordem de camadas`, pilha.ordemZ, JSON.stringify(pilha));
     t(`[${largura}] os três degraus são opacos`, pilha.opacos);

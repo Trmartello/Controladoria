@@ -620,7 +620,18 @@ const SecaoProjetos = {
              do nome já diz se ela está aberta ou recolhida, e a situação
              cadastrada segue no popover e no formulário de edição. -->
         ${this.resumoStatus(acoes, ['ATRASADO'])}
+        <!-- "+ Ação" mora AQUI, na linha do nome da frente, e não atrás da
+             seta: criar ação é o que mais se faz nesta tela, e escondido no
+             detalhe ele custava um clique a mais por frente — com várias
+             frentes abertas, um clique de abrir detalhe para cada uma. O
+             cabeçalho da frente é grudado, então o botão acompanha a rolagem
+             das ações dela, que é exatamente quando dá vontade de criar mais
+             uma. O ✎ e o × seguem no detalhe: editar e excluir a frente são
+             raros, e três botões aqui empurrariam o selo de atraso para fora
+             da linha no celular. -->
         <span class="ms-auto d-flex align-items-center gap-2">
+          ${App.podeEditar() ? `
+            <button class="btn btn-sm btn-verde" data-nova-acao="${ini.id}" data-proj="${p.id}">+ Ação</button>` : ''}
           ${this.botaoMais(chave, detalhado)}
         </span>
       </div>
@@ -639,7 +650,6 @@ const SecaoProjetos = {
         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
           <span class="badge text-bg-light border" title="Ações concluídas">${feitas}/${acoes.length} ações</span>
           ${App.podeEditar() ? `
-            <button class="btn btn-sm btn-verde" data-nova-acao="${ini.id}" data-proj="${p.id}">+ Ação</button>
             <button class="btn btn-sm btn-outline-secondary" data-editar-ini="${ini.id}" data-proj="${p.id}"
               title="Editar iniciativa" aria-label="Editar iniciativa">✎</button>
             <button class="btn btn-sm btn-outline-danger" data-excluir-ini="${ini.id}"
@@ -861,6 +871,17 @@ const SecaoProjetos = {
                    Sem ação atrasada, nenhum selo: a ausência é a boa notícia. -->
               ${this.resumoStatus(acoes, ['ATRASADO'])}
             </div>
+            <!-- "+ Iniciativa" na linha do título, pelo mesmo motivo do
+                 "+ Ação" na frente: é ação de criação, a mais frequente da
+                 tela, e atrás da seta ela exigia abrir o detalhe do projeto só
+                 para chegar ao botão. Fica FORA do bloco com
+                 \`data-abrir-proj\` de propósito: aquele bloco inteiro é o
+                 alvo de clique do acordeão, e um botão dentro dele dependeria
+                 do \`closest('button')\` do handler para não recolher o
+                 projeto junto. "Comentários", "Editar" e "×" continuam no
+                 detalhe. -->
+            ${App.podeEditar() ? `
+              <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>` : ''}
             ${this.botaoMais(chave, detalhado)}
           </div>
           <!-- Com a seta aberta: descrição do projeto e, logo abaixo dela, a
@@ -876,7 +897,6 @@ const SecaoProjetos = {
             <div class="d-flex gap-1 flex-wrap mt-2">
               ${this.botaoComentarios('PROJETO', p.id, p.comentarios, p.anexos)}
               ${App.podeEditar() ? `
-                <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
                 <button class="btn btn-sm btn-outline-secondary" data-editar-proj="${p.id}">Editar</button>
                 <button class="btn btn-sm btn-outline-danger" data-excluir-proj="${p.id}">×</button>` : ''}
             </div>
