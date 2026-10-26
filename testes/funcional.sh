@@ -219,6 +219,91 @@ afirma "leitura usa a MAIOR versão (200, não 100)" '200' "$R"
 R=$(post /api/indicadores/$IND/valores "{\"planejamento_id\":1,\"tipo\":\"META\",\"valores\":{\"2026\":\"abc\"}}")
 afirma "texto que não é número é recusado (antes virava meta 0,00)" 'informe um número' "$R"
 
+echo "### 5b. Metas mês a mês — o grão, a agregação e quem manda no ano"
+# serie_de <id> <metas|reais> <ano> <campo> — lê um campo da série de UM
+# indicador num ano. Afirmar contra a resposta inteira não serve aqui: os
+# números são curtos ("60") e casariam com qualquer outro indicador da massa.
+serie_de(){ python3 -c "
+import sys, json
+alvo, chave, ano, campo = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+ind = next((x for x in json.load(sys.stdin)['dados']['indicadores'] if str(x['id']) == alvo), None)
+item = next((e for e in (ind or {}).get(chave, []) if int(e['ano']) == ano), None)
+print(json.dumps((item or {}).get(campo, '__ausente__')))
+" "$1" "$2" "$3" "$4" 2>/dev/null; }
+
+R=$(post /api/indicadores '{"planejamento_id":1,"nome":"Mensal soma","unidade":"R$ mil","agregacao":"SOMA"}')
+INDM=$(echo "$R" | id_de)
+afirma "cria indicador que SOMA os meses" '"ok":true' "$R"
+R=$(post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"mes\":1,\"valores\":{\"2027\":10}}")
+afirma "grava realizado de um MÊS" '"mes":1' "$R"
+post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"mes\":2,\"valores\":{\"2027\":20}}" >/dev/null
+post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"mes\":3,\"valores\":{\"2027\":30}}" >/dev/null
+# A chave única antiga não tinha o mês: sem a troca dela, fevereiro teria
+# sobrescrito janeiro em silêncio e o ano fecharia em 30, não em 60.
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM reais 2027 valor)
+afirma "o ano SOMA os três meses (60)" '^60(\.0)?$' "$R"
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM reais 2027 meses)
+afirma "os meses voltam um a um" '"1": ?10' "$R"
+afirma "e são os três" '"3": ?30' "$R"
+# REAL: mandam os meses. Um valor anual digitado não se sobrepõe ao que
+# aconteceu mês a mês.
+post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"valores\":{\"2027\":999}}" >/dev/null
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM reais 2027 valor)
+afirma "no REAL os meses mandam sobre o anual digitado" '^60(\.0)?$' "$R"
+# META: manda o ano digitado, e os meses ficam visíveis como distribuição.
+post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"META\",\"valores\":{\"2027\":100}}" >/dev/null
+post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"META\",\"mes\":1,\"valores\":{\"2027\":40}}" >/dev/null
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM metas 2027 valor)
+afirma "na META manda o ano digitado (100)" '^100(\.0)?$' "$R"
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM metas 2027 meses_total)
+afirma "e o total dos meses vem junto, para a tela apontar a diferença (40)" '^40(\.0)?$' "$R"
+# Limpar um mês não pode levar o ano junto — são lançamentos próprios.
+post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"META\",\"mes\":1,\"valores\":{\"2027\":null}}" >/dev/null
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM metas 2027 valor)
+afirma "limpar o mês não apaga a meta do ano" '^100(\.0)?$' "$R"
+R=$(post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"mes\":13,\"valores\":{\"2027\":1}}")
+afirma "mês 13 é recusado (não vira dezembro nem zero)" 'Mês inválido' "$R"
+R=$(post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"mes\":-1,\"valores\":{\"2027\":1}}")
+afirma "mês negativo é recusado" 'Mês inválido' "$R"
+
+# A mesma massa, lida por outra regra de agregação: é o INDICADOR que decide.
+R=$(post /api/indicadores '{"planejamento_id":1,"nome":"Mensal media","unidade":"%","agregacao":"MEDIA"}')
+INDA=$(echo "$R" | id_de)
+for M in 1 2 3; do
+  post /api/indicadores/$INDA/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"mes\":$M,\"valores\":{\"2027\":$((M*10))}}" >/dev/null
+done
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDA reais 2027 valor)
+afirma "percentual tira MÉDIA dos meses (20), não soma" '^20(\.0)?$' "$R"
+R=$(post /api/indicadores/$INDA "{\"planejamento_id\":1,\"nome\":\"Mensal media\",\"unidade\":\"%\",\"agregacao\":\"ULTIMO\"}")
+afirma "troca a agregação do indicador" '"ok":true' "$R"
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDA reais 2027 valor)
+afirma "saldo vale o ÚLTIMO mês com valor (30)" '^30(\.0)?$' "$R"
+# Agregação desconhecida não derruba nem inventa: cai em SOMA.
+post /api/indicadores/$INDA "{\"planejamento_id\":1,\"nome\":\"Mensal media\",\"unidade\":\"%\",\"agregacao\":\"MEDIANA\"}" >/dev/null
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDA reais 2027 valor)
+afirma "agregação inválida cai em SOMA (60)" '^60(\.0)?$' "$R"
+
+# O ano em execução é do CICLO — não do navegador de quem olha.
+R=$(get "/api/indicadores?planejamento_id=1")
+afirma "a leitura diz qual ano abre mês a mês" '"ano_execucao":[0-9]{4}' "$R"
+CICLO_ANTES=$(get "/api/ciclos" | python3 -c "
+import sys, json
+c = next(x for x in json.load(sys.stdin)['dados'] if str(x['id']) == '1')
+print(json.dumps({k: c[k] for k in ('nome','ano_base','ano_inicio','ano_fim','status')}))
+")
+R=$(post /api/ciclos/1 "$(python3 -c "
+import sys, json
+d = json.loads(sys.argv[1]); d['ano_execucao'] = 2027; print(json.dumps(d))
+" "$CICLO_ANTES")")
+afirma "grava o ano em execução no ciclo" '"ok":true' "$R"
+R=$(get "/api/indicadores?planejamento_id=1")
+afirma "e ele volta na leitura das metas" '"ano_execucao":2027' "$R"
+R=$(post /api/ciclos/1 "$(python3 -c "
+import sys, json
+d = json.loads(sys.argv[1]); d['ano_execucao'] = 2099; print(json.dumps(d))
+" "$CICLO_ANTES")")
+afirma "ano em execução fora do ciclo é recusado" 'deve estar entre' "$R"
+
 echo "### 6. Coleta — ideia, triagem, encaminhamento"
 R=$(post /api/coleta '{"planejamento_id":1,"texto":"Ideia de teste automatizado","ano":2026}')
 afirma "cria ideia" '"ok":true' "$R"
@@ -1448,6 +1533,12 @@ echo "### 10. Limpeza"
 [ -n "${PRJ:-}" ]  && post /api/projetos/$PRJ/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${INV:-}" ]  && post /api/investimentos/$INV/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${IND:-}" ]  && post /api/indicadores/$IND/excluir '{"planejamento_id":1}' >/dev/null
+[ -n "${INDM:-}" ] && post /api/indicadores/$INDM/excluir '{"planejamento_id":1}' >/dev/null
+[ -n "${INDA:-}" ] && post /api/indicadores/$INDA/excluir '{"planejamento_id":1}' >/dev/null
+# O ciclo é massa SEMEADA, não criada aqui: a prova do ano em execução mexeu
+# nele e tem de devolvê-lo como estava, senão a execução seguinte (e a bateria
+# de sistema) acha um ano fixado que ninguém escolheu.
+[ -n "${CICLO_ANTES:-}" ] && post /api/ciclos/1 "$CICLO_ANTES" >/dev/null
 [ -n "${IDEIA:-}" ]&& post /api/coleta/$IDEIA/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${CEN:-}" ]  && post /api/cenario/$CEN/excluir '{"planejamento_id":1}' >/dev/null
 [ -n "${FAT:-}" ]  && post /api/fatores/$FAT/excluir '{"planejamento_id":1}' >/dev/null

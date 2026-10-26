@@ -76,6 +76,17 @@ function garantirColuna(PDO $pdo, string $tabela, string $coluna, string $ddl): 
     }
 }
 
+/** O índice existe nesta tabela? */
+function indiceExiste(PDO $pdo, string $tabela, string $indice): bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?'
+    );
+    $stmt->execute([$tabela, $indice]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
 /**
  * Cria um índice só se ele ainda não existe. Serve para índice que nasceu no
  * CREATE TABLE depois que a tabela já estava em produção — ali o
@@ -83,12 +94,7 @@ function garantirColuna(PDO $pdo, string $tabela, string $coluna, string $ddl): 
  */
 function garantirIndice(PDO $pdo, string $tabela, string $indice, string $ddl): void
 {
-    $stmt = $pdo->prepare(
-        'SELECT COUNT(*) FROM information_schema.STATISTICS
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?'
-    );
-    $stmt->execute([$tabela, $indice]);
-    if ((int)$stmt->fetchColumn() === 0) {
+    if (!indiceExiste($pdo, $tabela, $indice)) {
         $pdo->exec($ddl);
         echo "migrate: índice {$tabela}.{$indice} criado.\n";
     }
@@ -791,6 +797,34 @@ garantirIndice($pdo, 'coleta_item', 'idx_ci_part',
     'ALTER TABLE coleta_item ADD KEY idx_ci_part (rodada_id, participante_token)');
 garantirIndice($pdo, 'coleta_item', 'idx_ci_grupo',
     'ALTER TABLE coleta_item ADD KEY idx_ci_grupo (agrupado_em_id)');
+
+// ---- Metas mês a mês: o ano deixa de ser o único grão ----
+// `mes = 0` é o ano inteiro e 1–12 são os meses. O DEFAULT 0 é o que converte
+// as linhas que já existem sem passo de dados: tudo o que foi lançado até aqui
+// é valor anual, e é exatamente isso que o zero diz.
+garantirColuna($pdo, 'indicador_valor', 'mes',
+    'ALTER TABLE indicador_valor ADD COLUMN mes TINYINT NOT NULL DEFAULT 0 AFTER ano');
+// A chave única nasceu sem o mês: sem trocá-la, janeiro e fevereiro do mesmo
+// ano colidiriam e o segundo UPDATE sobrescreveria o primeiro em silêncio (a
+// gravação é ON DUPLICATE KEY UPDATE). A troca é um ALTER só — com DROP e ADD
+// separados, a tabela ficaria um instante sem unicidade nenhuma.
+if (!indiceExiste($pdo, 'indicador_valor', 'uk_ind_ano_mes')) {
+    $pdo->exec(indiceExiste($pdo, 'indicador_valor', 'uk_ind_ano')
+        ? 'ALTER TABLE indicador_valor DROP INDEX uk_ind_ano,
+           ADD UNIQUE KEY uk_ind_ano_mes (indicador_id, ano, mes, tipo, versao_meta)'
+        : 'ALTER TABLE indicador_valor
+           ADD UNIQUE KEY uk_ind_ano_mes (indicador_id, ano, mes, tipo, versao_meta)');
+    echo "migrate: chave única de indicador_valor passou a incluir o mês.\n";
+}
+// Como 12 meses viram um ano. O DEFAULT 'SOMA' é o comportamento de hoje para
+// quem só lança no ano (um valor anual agregado sozinho é ele mesmo), então a
+// coluna nasce inócua até alguém lançar mês.
+garantirColuna($pdo, 'indicador', 'agregacao',
+    "ALTER TABLE indicador ADD COLUMN agregacao ENUM('SOMA','MEDIA','ULTIMO')
+     NOT NULL DEFAULT 'SOMA' AFTER sentido");
+// O ano em execução do plano, no ciclo — não no navegador de quem olha.
+garantirColuna($pdo, 'ciclo', 'ano_execucao',
+    'ALTER TABLE ciclo ADD COLUMN ano_execucao SMALLINT NULL AFTER ano_fim');
 
 /** Cria uma chave estrangeira só se ela ainda não existe. */
 function garantirFk(PDO $pdo, string $tabela, string $nome, string $ddl): void

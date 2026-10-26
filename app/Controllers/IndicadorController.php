@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Metas;
 
 /**
  * Metas — Fase 6: indicadores por planejamento, métricas-âncora por horizonte
@@ -46,28 +47,21 @@ class IndicadorController
 
         foreach ($indicadores as &$ind) {
             $ind['cascatas'] = $vinculos[(int)$ind['id']] ?? [];
-            // Metas na versão mais recente de cada ano; anos com revisão ganham marcador
-            $ind['metas'] = Database::todos(
-                'SELECT v.ano, v.valor, v.versao_meta
-                 FROM indicador_valor v
-                 WHERE v.indicador_id = ? AND v.tipo = \'META\'
-                   AND v.versao_meta = (SELECT MAX(v2.versao_meta) FROM indicador_valor v2
-                                        WHERE v2.indicador_id = v.indicador_id
-                                          AND v2.ano = v.ano AND v2.tipo = \'META\')
-                 ORDER BY v.ano',
-                [(int)$ind['id']]
-            );
-            $ind['reais'] = Database::todos(
-                'SELECT ano, valor FROM indicador_valor
-                 WHERE indicador_id = ? AND tipo = \'REAL\' ORDER BY ano',
-                [(int)$ind['id']]
-            );
         }
+        unset($ind);
+        // Metas e reais pela regra única (`App\Services\Metas`), que conhece o
+        // mês, a versão e como 12 meses viram um ano. A Matriz de Execução e o
+        // Relatório leem pela mesma função — três consultas próprias, com o mês
+        // no meio, divergiriam na primeira revisão.
+        $indicadores = Metas::anexarSeries($indicadores);
 
         Json::ok([
-            'ciclo'       => $ciclo,
-            'horizontes'  => $horizontes,
-            'indicadores' => $indicadores,
+            'ciclo'         => $ciclo,
+            'horizontes'    => $horizontes,
+            'indicadores'   => $indicadores,
+            // Qual ano a tela abre mês a mês. Vem do servidor porque é do ciclo:
+            // o mesmo para todos os negócios e para o relatório.
+            'ano_execucao'  => Metas::anoEmExecucao($ciclo),
         ]);
     }
 
@@ -83,6 +77,10 @@ class IndicadorController
         }
         $unidade = mb_substr(trim($d['unidade'] ?? ''), 0, 20) ?: 'R$ mil';
         $sentido = ($d['sentido'] ?? '') === 'MENOR_MELHOR' ? 'MENOR_MELHOR' : 'MAIOR_MELHOR';
+        // Como os meses viram o ano. Valor desconhecido cai em SOMA, que é o
+        // comportamento de quem só lança no ano — e não um erro de tela.
+        $agregacao = in_array($d['agregacao'] ?? '', Metas::AGREGACOES, true)
+            ? $d['agregacao'] : 'SOMA';
         $ancora = !empty($d['metrica_ancora']) ? 1 : 0;
 
         $horizonteId = !empty($d['horizonte_id']) ? (int)$d['horizonte_id'] : null;
@@ -96,15 +94,17 @@ class IndicadorController
         if ($id) {
             $this->exigirIndicador($id, $planId);
             Database::executar(
-                'UPDATE indicador SET nome = ?, unidade = ?, sentido = ?, metrica_ancora = ?, horizonte_id = ?
+                'UPDATE indicador SET nome = ?, unidade = ?, sentido = ?, agregacao = ?,
+                        metrica_ancora = ?, horizonte_id = ?
                  WHERE id = ?',
-                [$nome, $unidade, $sentido, $ancora, $horizonteId, $id]
+                [$nome, $unidade, $sentido, $agregacao, $ancora, $horizonteId, $id]
             );
         } else {
             $id = (int)Database::executar(
-                'INSERT INTO indicador (planejamento_id, nome, unidade, sentido, metrica_ancora, horizonte_id)
-                 VALUES (?, ?, ?, ?, ?, ?)',
-                [$planId, $nome, $unidade, $sentido, $ancora, $horizonteId]
+                'INSERT INTO indicador (planejamento_id, nome, unidade, sentido, agregacao,
+                                        metrica_ancora, horizonte_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [$planId, $nome, $unidade, $sentido, $agregacao, $ancora, $horizonteId]
             );
         }
         $this->gravarCascatas($id, $planId, $d);
@@ -152,7 +152,14 @@ class IndicadorController
     /**
      * Lança a série plurianual de um indicador.
      * Corpo: { planejamento_id, tipo: META|REAL, valores: {ano: valor|null},
-     *          nova_versao: bool } — nova_versao preserva a meta anterior.
+     *          mes?: 0–12, nova_versao: bool } — nova_versao preserva a meta
+     * anterior.
+     *
+     * O `mes` vale para TODOS os anos do corpo: ausente (ou 0) é o valor anual,
+     * 1–12 é aquele mês de cada ano enviado. Uma chave só, e não um formato
+     * novo de corpo, porque quem edita célula a célula manda um ano por vez e
+     * quem lança a série inteira continua mandando o que sempre mandou — a
+     * compatibilidade aqui não é cortesia, é o modal de revisão de meta.
      */
     public function salvarValores(int $id): void
     {
@@ -166,6 +173,14 @@ class IndicadorController
         if (!$valores) {
             Json::erro('Informe ao menos um ano com valor.');
         }
+        // Mês fora da faixa é RECUSADO, não encaixado: um 13 virando dezembro
+        // (ou virando zero) gravaria no lugar errado sem ninguém ver. É a mesma
+        // regra do texto que não é número, logo abaixo.
+        $mes = $d['mes'] ?? Metas::ANO_INTEIRO;
+        if (!is_numeric($mes) || (int)$mes != $mes || (int)$mes < 0 || (int)$mes > 12) {
+            Json::erro('Mês inválido: use 0 para o ano inteiro ou de 1 a 12.');
+        }
+        $mes = (int)$mes;
 
         $versao = 1;
         if ($tipo === 'META') {
@@ -182,11 +197,14 @@ class IndicadorController
                 continue;
             }
             if ($valor === null || $valor === '') {
-                // Limpar o ano remove todas as versões daquele ano — senão a
-                // versão antiga voltaria a aparecer (a leitura usa a mais recente)
+                // Limpar remove todas as versões daquele ano+mês — senão a
+                // versão antiga voltaria a aparecer (a leitura usa a mais
+                // recente). Apaga só o GRÃO enviado: limpar o valor anual não
+                // pode levar junto os doze meses, que são lançamento próprio.
                 Database::executar(
-                    'DELETE FROM indicador_valor WHERE indicador_id = ? AND ano = ? AND tipo = ?',
-                    [$id, $ano, $tipo]
+                    'DELETE FROM indicador_valor
+                      WHERE indicador_id = ? AND ano = ? AND mes = ? AND tipo = ?',
+                    [$id, $ano, $mes, $tipo]
                 );
                 continue;
             }
@@ -196,12 +214,25 @@ class IndicadorController
                 Json::erro("Valor inválido para {$ano}: informe um número.");
             }
             Database::executar(
-                'INSERT INTO indicador_valor (indicador_id, ano, tipo, versao_meta, valor)
-                 VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)',
-                [$id, $ano, $tipo, $versao, (float)$valor]
+                'INSERT INTO indicador_valor (indicador_id, ano, mes, tipo, versao_meta, valor)
+                 VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE valor = VALUES(valor)',
+                [$id, $ano, $mes, $tipo, $versao, (float)$valor]
             );
         }
-        Json::ok(['versao' => $versao]);
+        // A série recalculada volta no mesmo pedido. Quem edita célula a célula
+        // grava um valor e precisa do EFEITO dele — o total do ano muda quando
+        // o lançamento é de mês —, e a alternativa seria a tela refazer a
+        // agregação por conta própria: uma segunda cópia da regra, no idioma
+        // errado. Recarregar a seção inteira custaria o foco de quem digita.
+        $atualizado = Metas::anexarSeries([
+            Database::um('SELECT id, agregacao FROM indicador WHERE id = ?', [$id]),
+        ])[0];
+        Json::ok([
+            'versao' => $versao,
+            'mes'    => $mes,
+            'metas'  => $atualizado['metas'],
+            'reais'  => $atualizado['reais'],
+        ]);
     }
 
     public function excluir(int $id): void

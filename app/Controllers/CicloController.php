@@ -39,16 +39,27 @@ class CicloController
         if (!in_array($status, ['EM_ELABORACAO', 'VIGENTE', 'ENCERRADO'], true)) {
             Json::erro('Status inválido.');
         }
+        // O ano em execução: qual ano a tela de Metas abre mês a mês. Em branco
+        // é legítimo — vale o ano corrente (`App\Services\Metas`). Fora do
+        // período é recusado em vez de corrigido: a tela abriria expandida num
+        // ano que não existe na tabela, e ninguém saberia por quê.
+        $anoExec = ($d['ano_execucao'] ?? '') === '' || ($d['ano_execucao'] ?? null) === null
+            ? null : (int)$d['ano_execucao'];
+        if ($anoExec !== null && ($anoExec < $anoBase || $anoExec > $anoFim)) {
+            Json::erro("O ano em execução deve estar entre {$anoBase} e {$anoFim}.");
+        }
 
         if ($id) {
             Database::executar(
-                'UPDATE ciclo SET nome = ?, ano_base = ?, ano_inicio = ?, ano_fim = ?, status = ? WHERE id = ?',
-                [$nome, $anoBase, $anoInicio, $anoFim, $status, $id]
+                'UPDATE ciclo SET nome = ?, ano_base = ?, ano_inicio = ?, ano_fim = ?,
+                        ano_execucao = ?, status = ? WHERE id = ?',
+                [$nome, $anoBase, $anoInicio, $anoFim, $anoExec, $status, $id]
             );
         } else {
             $id = (int)Database::executar(
-                'INSERT INTO ciclo (nome, ano_base, ano_inicio, ano_fim, status) VALUES (?, ?, ?, ?, ?)',
-                [$nome, $anoBase, $anoInicio, $anoFim, $status]
+                'INSERT INTO ciclo (nome, ano_base, ano_inicio, ano_fim, ano_execucao, status)
+                 VALUES (?, ?, ?, ?, ?, ?)',
+                [$nome, $anoBase, $anoInicio, $anoFim, $anoExec, $status]
             );
             // Todo ciclo nasce com seu planejamento corporativo
             Database::executar(

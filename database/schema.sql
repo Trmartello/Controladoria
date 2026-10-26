@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS ciclo (
   ano_base    SMALLINT NOT NULL,
   ano_inicio  SMALLINT NOT NULL,
   ano_fim     SMALLINT NOT NULL,
+  -- O ano que o plano está EXECUTANDO — é ele que a tela de Metas abre mês a
+  -- mês. Fica no CICLO porque é o mesmo para todos os negócios e para o
+  -- relatório; em branco, vale o ano corrente (`App\Services\Metas`).
+  ano_execucao SMALLINT NULL,
   status      ENUM('EM_ELABORACAO','VIGENTE','ENCERRADO') NOT NULL DEFAULT 'EM_ELABORACAO'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -223,6 +227,11 @@ CREATE TABLE IF NOT EXISTS indicador (
   nome             VARCHAR(120) NOT NULL,
   unidade          VARCHAR(20)  NOT NULL DEFAULT 'R$ mil',
   sentido          ENUM('MAIOR_MELHOR','MENOR_MELHOR') NOT NULL DEFAULT 'MAIOR_MELHOR',
+  -- Como 12 meses viram um ano. R$ e tonelada SOMAM; margem e índice tiram
+  -- MÉDIA; estoque, dívida e cobertura valem pelo ÚLTIMO mês com valor (são
+  -- saldos). Somar tudo seria o mais simples e o mais perigoso: o erro não
+  -- aparece na tela, aparece na decisão.
+  agregacao        ENUM('SOMA','MEDIA','ULTIMO') NOT NULL DEFAULT 'SOMA',
   metrica_ancora   TINYINT(1) NOT NULL DEFAULT 0,
   horizonte_id     INT NULL,
   CONSTRAINT fk_ind_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
@@ -233,10 +242,14 @@ CREATE TABLE IF NOT EXISTS indicador_valor (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   indicador_id  INT NOT NULL,
   ano           SMALLINT NOT NULL,
+  -- 0 = o ANO INTEIRO; 1–12 = o mês. Zero e não NULL: com NULL a chave única
+  -- abaixo não impediria duplicata nenhuma (o MySQL trata cada NULL como
+  -- distinto) e dois valores anuais do mesmo ano passariam a conviver.
+  mes           TINYINT NOT NULL DEFAULT 0,
   tipo          ENUM('META','REAL') NOT NULL,
   versao_meta   TINYINT NOT NULL DEFAULT 1,
   valor         DECIMAL(15,2) NOT NULL,
-  UNIQUE KEY uk_ind_ano (indicador_id, ano, tipo, versao_meta),
+  UNIQUE KEY uk_ind_ano_mes (indicador_id, ano, mes, tipo, versao_meta),
   CONSTRAINT fk_iv_indicador FOREIGN KEY (indicador_id) REFERENCES indicador(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

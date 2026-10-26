@@ -723,7 +723,112 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   cabe; no celular são cartões, cada um com os próprios rótulos, e ali nada
   gruda (o título quebra em duas linhas e custaria um quinto da tela).
 - Metas plurianuais versionadas: `indicador_valor` única por
-  (indicador, ano, tipo, versão); leitura usa a MAIOR versão de cada ano.
+  (indicador, ano, **mês**, tipo, versão); leitura usa a MAIOR versão de cada ano.
+- **O mês entrou no grão** (2026-10-26, pedido do cliente: "o ano em execução
+  deve abrir mês a mês e totalizar o ano no final"). Três regras que não se
+  afrouxam:
+  - **`mes = 0` é o ano inteiro**; 1–12 são os meses. **Zero e não `NULL`**: com
+    `NULL` a chave única não impediria duplicata nenhuma (o MySQL trata cada
+    `NULL` como distinto) e dois valores anuais do mesmo ano passariam a
+    conviver, com a leitura escolhendo um por sorte. O `DEFAULT 0` é também o
+    que converte o que já estava lançado, sem passo de dados. A troca da chave
+    `uk_ind_ano` → `uk_ind_ano_mes` é **um ALTER só** (DROP e ADD separados
+    deixariam a tabela um instante sem unicidade), e o migrate a faz só quando a
+    nova ainda não existe — instalação nova já nasce com ela pelo `schema.sql`.
+  - **Agregar não é somar** (`indicador.agregacao`: SOMA/MEDIA/ULTIMO). R$ e
+    tonelada somam; margem e índice tiram média; estoque, dívida e cobertura
+    valem pelo **último mês com valor** — são saldos. Somar tudo seria o mais
+    simples e o mais perigoso: o erro não aparece na tela, aparece na decisão.
+    Valor desconhecido cai em SOMA, que é o comportamento de quem só lança no
+    ano. Mês em branco não entra na conta (nem numerador, nem denominador),
+    senão a média de um trimestre lançado sairia dividida por doze.
+  - **Quem manda no ano**: na **META**, o valor anual digitado — os meses são a
+    distribuição dela, e a tela mostra a diferença ("os meses somam 43 de 45")
+    em vez de corrigir sozinha; no **REAL**, mandam os meses, porque o realizado
+    do ano não é opinião. Sem valor anual, a meta do ano é a agregação dos meses.
+  O **mês é RECUSADO fora de 0–12** (`Mês inválido`), como o texto que não é
+  número: um 13 encaixado em dezembro gravaria no lugar errado sem ninguém ver.
+  Limpar um valor apaga só o **grão enviado** — limpar o anual não leva junto os
+  doze meses, que são lançamento próprio. Provas: funcional §5b.
+- **A leitura das séries é UMA**: `App\Services\Metas::anexarSeries`. Eram três
+  consultas próprias — Metas, Matriz de Execução e Relatório —, cada uma com a
+  sua cópia do `MAX(versao_meta)`. Enquanto o grão era o ano isso era
+  redundância tolerável; com o mês deixou de ser, porque quem não souber da
+  coluna nova lê a linha de dezembro como se fosse o ano inteiro e mostra um
+  número plausível e errado. O serviço devolve `{ano, valor, anual, meses,
+  meses_total}` (mais `versao_meta` nas metas) e **tudo como número**, não como
+  a string do DECIMAL: metade da série vem do banco e metade é calculada, e a
+  tela compara as duas entre si.
+- **Lançar e corrigir acontecem NA CÉLULA** (2026-10-25, pedido do cliente:
+  "lançar a meta e o realizado da mesma tela e editar da mesma forma"). Eram
+  dois botões (M e R) abrindo um modal com a série inteira — corrigir um ano
+  exigia achar o campo no meio de dez e salvar tudo. Quatro decisões que não se
+  afrouxam:
+  - **`type=text` com `inputmode=decimal`**, nunca `type=number`: o campo
+    numérico do navegador devolve `.value` **vazio** quando o conteúdo não casa
+    com o locale dele, e quem digitasse "13,5" gravaria nada, em silêncio. O
+    filtro de digitação é o do campo de dinheiro (`Modal.ligarMoedas`, agora com
+    `seletor` e `negativos`), **com negativos permitidos** — meta de resultado
+    financeiro e de dívida é negativa. No campo de ganhos o sinal segue
+    recusado, que é regra de lá e tem prova própria.
+  - **A gravação sai do `blur`, com marca de sujeira no `input` — não do
+    `change`.** O filtro cancela a entrada original (`preventDefault`) e escreve
+    por `setRangeText`: para o navegador o campo foi alterado por PROGRAMA, e
+    valor alterado por programa **não dispara `change`** ao perder o foco. Com
+    `change`, a gravação simplesmente não acontecia, sem erro em lugar nenhum —
+    custou uma rodada da bateria. `Esc` limpa a marca ANTES do `blur`, e é o que
+    o faz desfazer sem gravar.
+  - **Célula derivada não se digita.** No REAL, o ano cujo valor vem dos meses é
+    só leitura: editável, aceitaria um número que a leitura ignora na linha
+    seguinte — o pior tipo de campo, o que parece ter funcionado. Na META a
+    diferença entre o ano e a soma dos meses é **dita** (o `≠` com o total no
+    title), nunca corrigida: quem decide qual dos dois está errado é quem
+    planeja.
+  - **A resposta da gravação traz a série recalculada**, e é dela que a tela se
+    serve: refazer a agregação no JS seria a segunda cópia da regra, no idioma
+    errado. Recarregar a seção mataria o foco de quem percorre a linha com Tab —
+    por isso só os cartões do horizonte e as células derivadas são repintados.
+  O **⟳ Revisar** é o que a célula de propósito não faz: grava a série como
+  **versão nova**, preservando a anterior (o selo "rev."). Digitar na célula
+  corrige a versão corrente — é o caminho de quem errou um número, não o de quem
+  mudou de meta. O realizado não tem equivalente: o que aconteceu não se revisa.
+  Prova em `provasCelulaMetas`, nas duas larguras.
+- **O ano em execução abre MÊS A MÊS, com o total no fim** (`SecaoMetas.anoAberto`,
+  `celulasDoAno`, `cabecalhoAno`). O `▸` do cabeçalho abre qualquer ano, **um por
+  vez**, e o ano em execução já nasce aberto; os doze meses vêm primeiro e a
+  coluna do ano fecha a faixa, na ordem que o cliente pediu. Três cuidados:
+  - **`anoAberto` distingue três estados**: `undefined` (ninguém escolheu — vale
+    o ano em execução), um número, e `null` (**fechado de propósito**). Sem o
+    `null`, a gravação seguinte repinta a seção e o ano reabre sozinho: o botão
+    pareceria quebrado. E **não vai para o `localStorage`** — o ano em execução
+    é do ciclo justamente para ser o mesmo para todo mundo; guardar por
+    navegador qual ano cada um deixou aberto desfaria a decisão.
+  - **A célula troca de FORMA sem a seção repintar**: lançar o primeiro mês do
+    realizado transforma a célula do ano em derivada (campo vira texto) e apagar
+    o último a traz de volta. Quem faz isso é `repintarDerivadas`, com
+    `outerHTML` — e `outerHTML` **descarta os ouvintes**. Por isso existe
+    `ligarCelula` (uma célula de cada vez, marcada com `data-ligado`): sem
+    religar, a célula redesenhada para de gravar e nada na tela diz isso.
+  - **Abrir e fechar o ano vale para o perfil de LEITURA também** — é jeito de
+    ler, não de escrever —, então a fiação dos dois botões fica ANTES da guarda
+    de `podeEditar()`.
+  Prova em `provasMesAMes`, nas duas larguras.
+- **`.conteudo` precisa de `min-width: 0` em toda largura.** Ele é item de flex
+  (ao lado do menu), e item de flex nasce com `min-width: auto`: recusa-se a
+  ficar menor que o próprio conteúdo. Com isso o `.table-responsive` de dentro
+  **nunca** chega a rolar sozinho — quem estica é a página, levando cabeçalho e
+  menu para fora da tela. A regra existia só no celular; a tabela de metas com
+  doze meses (23 colunas, 2232px num monitor de 1500px) é que a cobrou no
+  desktop, e quem pegou foi a prova "não rola na horizontal".
+- **O ano em execução é do CICLO** (`ciclo.ano_execucao`), não do navegador de
+  quem olha (decisão do cliente, 2026-10-26): é o mesmo para todos os negócios e
+  para o relatório, e guardá-lo como preferência de tela faria cada pessoa ver um
+  ano diferente do mesmo plano. Em branco vale o ano corrente **quando ele cabe
+  no ciclo**; fora dele, o primeiro ano — sem essa segunda regra, um ciclo que
+  ainda não começou abriria expandido num ano que não existe na tabela. Ano fora
+  do período é **recusado** no cadastro, não corrigido. Quem resolve é
+  `Metas::anoEmExecucao`, e a leitura de `/api/indicadores` já devolve o número
+  pronto em `ano_execucao`.
 - **Qual par meta × real se mostra** é `SecaoMetas.metaReal`, e existe **uma vez
   só**: o ano de referência é o do ÚLTIMO real lançado e, sem real nenhum, o da
   PRIMEIRA meta. Não é "o ano corrente" — o ciclo semeado vai de 2027 a 2035 e as
@@ -2289,10 +2394,10 @@ A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
-**Linha de base em 2026-10-14** (depois da persistência de tela e negócio; era
-288/583 em 2026-09-04 e 276/578 depois do PR #20): funcional **301 ✓ / 0 ✗**
+**Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
+2026-10-14 e 288/583 em 2026-09-04): funcional **320 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
-sistema **678 ✓ / 0 ✗** em cerca de nove minutos
+sistema **724 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
 sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
 `400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do
@@ -2316,6 +2421,15 @@ Cruzamentos introduziram aparecia no **computador**: a mínima de conteúdo de u
 selo com `nowrap` sobe pela coluna e pela fila até o `<main>`, que é item de
 flex — quanto mais larga a tela, mais texto cabe numa linha e maior fica essa
 mínima. A checagem passou a rodar nas duas larguras.
+
+Uma quarta, cobrada em 2026-10-26: **depois de `page.reload()`, esperar por
+`#nav-secoes` não espera nada**. Ele é HTML estático do `shell.php` e existe no
+instante do load, enquanto o que a prova vai ler (o tópico reaberto, a seção
+guardada) só aparece quando o arranque termina — `/api/me`, seletores,
+`mostrarSecao`. A espera certa é por estado do `App`
+(`!!App.sessao && !!App.secaoAtiva`), e as quatro recargas da bateria passaram a
+usá-la. Com a espera fraca, a prova do menu ficava verde ou vermelha conforme o
+dia, e a vermelha seria lida como regressão de outra mudança.
 
 ## Deploy
 
