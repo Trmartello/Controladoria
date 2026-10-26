@@ -250,17 +250,23 @@ afirma "e são os três" '"3": ?30' "$R"
 post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"valores\":{\"2027\":999}}" >/dev/null
 R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM reais 2027 valor)
 afirma "no REAL os meses mandam sobre o anual digitado" '^60(\.0)?$' "$R"
-# META: manda o ano digitado, e os meses ficam visíveis como distribuição.
+# META: mandam os meses também. Um caminho por ano — o mensal OU o anual —, e
+# não os dois números do mesmo ano se contradizendo (decisão do cliente,
+# revista em 2026-10-26: "para o ano atual deve ser mensal e somar o total do
+# ano; para os demais, o valor anual").
 post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"META\",\"valores\":{\"2027\":100}}" >/dev/null
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM metas 2027 valor)
+afirma "sem mês nenhum, vale a meta anual digitada (100)" '^100(\.0)?$' "$R"
 post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"META\",\"mes\":1,\"valores\":{\"2027\":40}}" >/dev/null
 R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM metas 2027 valor)
-afirma "na META manda o ano digitado (100)" '^100(\.0)?$' "$R"
-R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM metas 2027 meses_total)
-afirma "e o total dos meses vem junto, para a tela apontar a diferença (40)" '^40(\.0)?$' "$R"
-# Limpar um mês não pode levar o ano junto — são lançamentos próprios.
+afirma "lançado um mês, a meta do ano passa a ser o total deles (40)" '^40(\.0)?$' "$R"
+R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM metas 2027 anual)
+afirma "e o anual digitado continua guardado, sem mandar" '^100(\.0)?$' "$R"
+# Limpar um mês não pode levar o ano junto — são lançamentos próprios, e sem o
+# último mês o anual volta a valer.
 post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"META\",\"mes\":1,\"valores\":{\"2027\":null}}" >/dev/null
 R=$(get "/api/indicadores?planejamento_id=1" | serie_de $INDM metas 2027 valor)
-afirma "limpar o mês não apaga a meta do ano" '^100(\.0)?$' "$R"
+afirma "apagado o último mês, a meta do ano volta a ser a anual (100)" '^100(\.0)?$' "$R"
 R=$(post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"mes\":13,\"valores\":{\"2027\":1}}")
 afirma "mês 13 é recusado (não vira dezembro nem zero)" 'Mês inválido' "$R"
 R=$(post /api/indicadores/$INDM/valores "{\"planejamento_id\":1,\"tipo\":\"REAL\",\"mes\":-1,\"valores\":{\"2027\":1}}")
