@@ -31,6 +31,59 @@ const SecaoMetas = {
    */
   anoExecucao: null,
 
+  /**
+   * Como o ano é formado a partir dos meses, escrito para ler na linha.
+   * Catálogo único: o rótulo da tabela, o do cadastro e o do aviso saem daqui.
+   */
+  ROTULO_AGREGACAO: {
+    SOMA: 'soma dos meses',
+    MEDIA: 'média dos meses',
+    ULTIMO: 'último mês',
+  },
+
+  /**
+   * A agregação que a UNIDADE sugere — e só ela.
+   *
+   * Percentual, índice, "x" e prazo em dias não somam: doze margens de 14%
+   * somadas dão 168%, um número que não existe e que não parece errado na tela.
+   * Esses a unidade denuncia, e o cadastro já abre com a média marcada.
+   *
+   * O que a unidade **não** sabe dizer é saldo de fluxo: estoque, dívida e
+   * capital de giro são R$ como o faturamento é R$, e valem pelo ÚLTIMO mês, não
+   * pela soma. Por isso a função devolve `null` nesses casos em vez de arriscar:
+   * sugerir soma para um saldo seria errar com cara de acerto, que é pior do que
+   * não sugerir.
+   */
+  agregacaoSugerida(unidade) {
+    const u = String(unidade || '').toLocaleLowerCase('pt-BR').trim();
+    if (!u) return null;
+    if (u.includes('%') || u === 'x' || u.includes('índice') || u.includes('indice')
+      || u.includes('dias')) return 'MEDIA';
+    return null;
+  },
+
+  /**
+   * O aviso de agregação suspeita, na própria linha.
+   *
+   * Existe por um motivo datado: os indicadores cadastrados antes de a coluna
+   * existir nasceram todos com SOMA, inclusive os percentuais — e a conferência
+   * disso, sem este selo, significa abrir o cadastro de um por um. Aqui ela é
+   * uma varredura de olho, e o conserto são dois cliques.
+   *
+   * Ele **não corrige nada sozinho**: a agregação é decisão de quem cadastra, e
+   * há caso legítimo de percentual que soma (pontos de participação ganhos no
+   * ano, por exemplo). Avisar e deixar decidir é diferente de consertar por
+   * conta própria e avisar depois — e, nas metas, o conserto errado só
+   * apareceria meses adiante, no fechamento do ano.
+   */
+  avisoAgregacao(ind) {
+    const sugerida = this.agregacaoSugerida(ind.unidade);
+    if (!sugerida || sugerida === ind.agregacao) return '';
+    return `<span class="badge text-bg-warning ms-1" title="Indicador em «${Modal.esc(ind.unidade)}»
+      somando os meses: doze margens somadas dão um número que não existe. O recomendado aqui é
+      ${this.ROTULO_AGREGACAO[sugerida]} — confira no cadastro (✎).">revisar o ano</span>`;
+  },
+
   fmt(v) {
     return v === null || v === undefined || v === ''
       ? '—'
@@ -308,7 +361,9 @@ const SecaoMetas = {
             ${Number(i.metrica_ancora) ? '<span class="badge badge-ancora ms-1">âncora</span>' : ''}
             ${revisada ? '<span class="badge text-bg-warning ms-1" title="Meta revisada — versões anteriores preservadas">rev.</span>' : ''}
             <div class="small text-muted">${Modal.esc(i.unidade)} · ${i.sentido === 'MENOR_MELHOR' ? '↓ menor melhor' : '↑ maior melhor'}
-              ${i.horizonte_nome ? ` · ${Modal.esc(i.horizonte_nome)}` : ''}</div>
+              ${i.horizonte_nome ? ` · ${Modal.esc(i.horizonte_nome)}` : ''}
+              · ano: ${this.ROTULO_AGREGACAO[i.agregacao] || this.ROTULO_AGREGACAO.SOMA}
+              ${this.avisoAgregacao(i)}</div>
           </td>
           <td class="small text-muted celula-rotulo">Meta</td>
           ${anos.map((a) => this.celulasDoAno(i, 'META', a, metas[a] || null)).join('')}
@@ -504,7 +559,9 @@ const SecaoMetas = {
           { valor: 'SOMA', rotulo: 'Somam (R$, toneladas, quantidades)' },
           { valor: 'MEDIA', rotulo: 'Viram média (%, índices, x)' },
           { valor: 'ULTIMO', rotulo: 'Valem o último mês (saldos: estoque, dívida)' },
-        ], ajuda: 'Usado para totalizar o ano quando o indicador é lançado mês a mês.' },
+        ], ajuda: 'Totaliza o ano quando o indicador é lançado mês a mês. A unidade sugere, '
+          + 'mas não decide: estoque e dívida são R$ como o faturamento e valem pelo último mês, '
+          + 'não pela soma.' },
         { nome: 'horizonte_id', rotulo: 'Horizonte de referência', tipo: 'select', opcoes: opcoesHorizonte },
         { nome: 'metrica_ancora', rotulo: 'Métrica-âncora (destaque no painel do horizonte)', tipo: 'checkbox' },
         ...(opcoesCascata.length ? [{
@@ -514,6 +571,22 @@ const SecaoMetas = {
             + 'aparecem na mesma linha da Matriz de Execução, na Cascata. Pode ficar em branco.',
         }] : []),
       ],
+      // A unidade sugere a agregação enquanto ninguém a escolheu à mão, e só no
+      // indicador NOVO: no já cadastrado, a agregação é decisão tomada — mexer
+      // nela porque alguém corrigiu a grafia da unidade seria trocar o critério
+      // do ano pelas costas de quem abriu o formulário para outra coisa.
+      aoMudar: (d, raiz) => {
+        const sel = raiz.querySelector('#campo-agregacao');
+        if (!sel) return;
+        if (!sel.dataset.ligado) {
+          sel.dataset.ligado = '1';
+          sel.addEventListener('change', () => { sel.dataset.tocado = '1'; });
+        }
+        if (ind || sel.dataset.tocado) return;
+        const sugerida = this.agregacaoSugerida(d.unidade);
+        // Atribuição direta não emite evento: não há laço com o `aoMudar`.
+        if (sugerida && sel.value !== sugerida) sel.value = sugerida;
+      },
       aoSalvar: () => this.carregar(),
     });
   },
