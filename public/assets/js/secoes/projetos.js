@@ -620,6 +620,10 @@ const SecaoProjetos = {
              do nome já diz se ela está aberta ou recolhida, e a situação
              cadastrada segue no popover e no formulário de edição. -->
         ${this.resumoStatus(acoes, ['ATRASADO'])}
+        <!-- Nenhum botão de criar aqui: "+ Ação" mora na linha do título do
+             PROJETO, ao lado de "+ Iniciativa" (pedido do cliente, 2026-10-26,
+             com maquete). A frente de destino passou a ser a primeira pergunta
+             do formulário da ação. O ✎ e o × seguem no detalhe. -->
         <span class="ms-auto d-flex align-items-center gap-2">
           ${this.botaoMais(chave, detalhado)}
         </span>
@@ -639,7 +643,6 @@ const SecaoProjetos = {
         <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
           <span class="badge text-bg-light border" title="Ações concluídas">${feitas}/${acoes.length} ações</span>
           ${App.podeEditar() ? `
-            <button class="btn btn-sm btn-verde" data-nova-acao="${ini.id}" data-proj="${p.id}">+ Ação</button>
             <button class="btn btn-sm btn-outline-secondary" data-editar-ini="${ini.id}" data-proj="${p.id}"
               title="Editar iniciativa" aria-label="Editar iniciativa">✎</button>
             <button class="btn btn-sm btn-outline-danger" data-excluir-ini="${ini.id}"
@@ -861,7 +864,35 @@ const SecaoProjetos = {
                    Sem ação atrasada, nenhum selo: a ausência é a boa notícia. -->
               ${this.resumoStatus(acoes, ['ATRASADO'])}
             </div>
-            ${this.botaoMais(chave, detalhado)}
+            <!-- Os DOIS botões de criar ficam aqui, na linha do título do
+                 projeto, à direita (pedido do cliente, 2026-10-26, com
+                 maquete). Criar não é detalhe: é o que mais se faz nesta tela,
+                 e atrás da seta exigia abrir o detalhe do projeto — ou o de
+                 cada frente — só para chegar ao botão. Como o cabeçalho é
+                 grudado, eles acompanham a rolagem das ações.
+                 "+ Ação" não diz a frente: ela é a primeira pergunta do
+                 formulário (ver \`modalDesdobramento\`). Foi o que permitiu
+                 tirar o botão do cabeçalho de cada frente e ainda criar ação
+                 em projeto que não tem frente nenhuma — antes era preciso
+                 cadastrar a frente primeiro.
+                 Os dois ficam FORA do bloco com \`data-abrir-proj\` de
+                 propósito: aquele bloco inteiro é o alvo de clique do
+                 acordeão, e um botão dentro dele dependeria do
+                 \`closest('button')\` do handler para não recolher o projeto
+                 junto. "Comentários", "Editar" e "×" continuam no detalhe —
+                 são raros, e cinco botões no cabeçalho empurrariam o selo de
+                 atraso para fora da linha no celular. -->
+            <!-- Os dois botões e a seta andam num grupo só, com \`ms-auto\`:
+                 no celular o título sozinho já toma a linha, e soltos eles
+                 quebravam um de cada vez e encostavam à ESQUERDA da segunda
+                 linha. Em grupo, a segunda linha nasce alinhada à direita,
+                 debaixo do nome, que é onde a mão procura. -->
+            <span class="ms-auto d-flex align-items-center gap-2">
+              ${App.podeEditar() ? `
+                <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
+                <button class="btn btn-sm btn-verde" data-nova-acao-proj="${p.id}">+ Ação</button>` : ''}
+              ${this.botaoMais(chave, detalhado)}
+            </span>
           </div>
           <!-- Com a seta aberta: descrição do projeto e, logo abaixo dela, a
                barra de progresso — ordem pedida pelo cliente -->
@@ -876,7 +907,6 @@ const SecaoProjetos = {
             <div class="d-flex gap-1 flex-wrap mt-2">
               ${this.botaoComentarios('PROJETO', p.id, p.comentarios, p.anexos)}
               ${App.podeEditar() ? `
-                <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
                 <button class="btn btn-sm btn-outline-secondary" data-editar-proj="${p.id}">Editar</button>
                 <button class="btn btn-sm btn-outline-danger" data-excluir-proj="${p.id}">×</button>` : ''}
             </div>
@@ -1105,9 +1135,11 @@ const SecaoProjetos = {
       }
       this.carregar();
     }));
-    el.querySelectorAll('[data-nova-acao]').forEach((b) => b.addEventListener('click', (ev) => {
+    // Ação nova pelo cabeçalho do PROJETO: sem frente decidida, que é a
+    // primeira pergunta do formulário.
+    el.querySelectorAll('[data-nova-acao-proj]').forEach((b) => b.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      this.modalDesdobramento(parseInt(b.dataset.proj, 10), null, parseInt(b.dataset.novaAcao, 10));
+      this.modalDesdobramento(parseInt(b.dataset.novaAcaoProj, 10), null, null);
     }));
     el.querySelectorAll('[data-editar-desd]').forEach((b) => b.addEventListener('click', () => {
       const proj = projetos.find((p) => p.id == b.dataset.proj);
@@ -1853,7 +1885,41 @@ const SecaoProjetos = {
     return { ...resto, recorrencia_dias: [], recorrencia_ate: '' };
   },
 
+  /**
+   * O formulário da ação.
+   *
+   * Quando a ação NASCE sem frente decidida — é o caso do "+ Ação" no
+   * cabeçalho do projeto, o único caminho de cadastro desde que o botão saiu
+   * de dentro de cada frente —, a frente de destino vira a PRIMEIRA pergunta,
+   * com a opção de criar uma na hora. É o mesmo par de campos que
+   * `modalConverterAcao` já usava para direcionar uma ideia da coleta, e o
+   * servidor aceita os dois caminhos (`iniciativa_id` OU `iniciativa_nova`,
+   * ver `ProjetoController::salvarDesdobramento`).
+   *
+   * Na EDIÇÃO a frente não é perguntada: ela já está escolhida e muda-se de
+   * frente arrastando o cartão, não por um seletor escondido no meio do
+   * formulário. Por isso o campo segue oculto sempre que já há `iniciativaId`.
+   */
   modalDesdobramento(projetoId, dd, iniciativaId = null) {
+    const escolherFrente = !dd && !iniciativaId;
+    const frentes = ((this.projetos || [])
+      .find((p) => Number(p.id) === Number(projetoId))?.iniciativas) || [];
+    // O valor vazio é a "nova frente": o servidor lê `iniciativa_id` como
+    // inteiro, e 0 é exatamente o que manda ele olhar o `iniciativa_nova`.
+    const opcoesFrente = [
+      ...frentes.map((i) => ({ valor: String(i.id), rotulo: i.titulo })),
+      { valor: '', rotulo: '➕ Nova frente de trabalho' },
+    ];
+    const campoFrente = escolherFrente
+      ? [
+        { nome: 'iniciativa_id', rotulo: 'Em qual frente de trabalho?', tipo: 'select',
+          opcoes: opcoesFrente,
+          ajuda: 'Toda ação vive dentro de uma frente do projeto.' },
+        { nome: 'iniciativa_nova', rotulo: 'Nome da nova frente', obrigatorio: true,
+          visivelSe: { campo: 'iniciativa_id', valores: [''] },
+          exemplo: 'Ex.: Licenciamento e obra civil' },
+      ]
+      : [{ nome: 'iniciativa_id', rotulo: '', tipo: 'hidden' }];
     Modal.abrir({
       titulo: dd ? 'Editar ação' : 'Nova ação',
       url: dd ? `/api/desdobramentos/${dd.id}` : '/api/desdobramentos',
@@ -1865,13 +1931,18 @@ const SecaoProjetos = {
             recorrencia_ate: dd.recorrencia_ate ?? '',
             recorrencia_dias_semana: dd.recorrencia === 'SEMANAL' ? this.diasDaAcao(dd) : [],
             recorrencia_dias_mes: dd.recorrencia === 'MENSAL' ? this.diasDaAcao(dd) : [] }
-        : { planejamento_id: this.plan.id, projeto_id: projetoId, iniciativa_id: iniciativaId,
+        : { planejamento_id: this.plan.id, projeto_id: projetoId,
+            // Sem frente decidida, a primeira do projeto já vem escolhida — na
+            // esmagadora maioria dos cadastros é nela que a ação entra, e o
+            // projeto sem frente nenhuma cai direto na "nova frente".
+            iniciativa_id: iniciativaId ?? (escolherFrente ? (opcoesFrente[0]?.valor ?? '') : null),
+            iniciativa_nova: '',
             ...this.valoresNovaAcao() },
       transformar: (dados) => this.transformarAcao(dados),
       campos: [
         { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
         { nome: 'projeto_id', rotulo: '', tipo: 'hidden' },
-        { nome: 'iniciativa_id', rotulo: '', tipo: 'hidden' },
+        ...campoFrente,
         ...this.camposAcao(dd),
       ],
       aoSalvar: (r) => {

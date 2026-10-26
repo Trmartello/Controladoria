@@ -1028,17 +1028,31 @@ async function provasCabecalhoProjetos(page, largura) {
   // cima. É o degrau que quebra em silêncio quando alguém mexe numa altura: as
   // barras continuam grudando, só que sobrepostas, e o nome do projeto some
   // atrás do da frente.
-  const pilha = await page.evaluate(() => {
+  // A prova ROLA procurando, em vez de medir num deslocamento escolhido a dedo.
+  // O `scrollTo(0, 700)` de antes media um ponto que depende da altura dos
+  // cartões, e ela muda a cada mexida na tela — um botão novo no cabeçalho da
+  // frente já basta. Quando o 700 caiu no vão ENTRE dois projetos, a prova
+  // reprovou sem que a pilha tivesse quebrado, e foi a tela que teve de provar
+  // inocência. Medir em CADA degrau da rolagem é a pergunta certa: em algum
+  // ponto da lista o cabeçalho de um projeto tem de estar grudado.
+  //
+  // Achar um ponto não basta, e é aqui que a prova morde: um bloco em fluxo
+  // normal também passa pela linha do cabeçalho — uma vez, de passagem. Por
+  // isso, achado o ponto, a prova rola mais 40px e confere que o MESMO
+  // cabeçalho continua ali. Em fluxo ele teria subido 40px junto com a página.
+  const medirPilha = () => page.evaluate(() => {
     const r = (el) => el.getBoundingClientRect();
     const sec = document.querySelector('.cabecalho-projetos');
     const proj = [...document.querySelectorAll('.projeto-cabeca-fixa')]
       .find((e) => Math.abs(r(e).top - r(sec).bottom) <= 1);
     if (!proj) return { achou: false };
-    const frente = [...proj.closest('[data-projeto]').querySelectorAll('.iniciativa-cabeca')]
+    const cartao = proj.closest('[data-projeto]');
+    const frente = [...cartao.querySelectorAll('.iniciativa-cabeca')]
       .find((e) => Math.abs(r(e).top - r(proj).bottom) <= 1);
     const z = (el) => Number(getComputedStyle(el).zIndex);
     return {
       achou: true,
+      projeto: cartao.dataset.projeto,
       frenteEncaixada: !!frente,
       // Quem está mais acima na pilha tem de ficar por CIMA: invertido, a
       // frente cobriria o nome do projeto no momento da troca.
@@ -1047,8 +1061,31 @@ async function provasCabecalhoProjetos(page, largura) {
         .every((e) => !/rgba\(.*,\s*0\)/.test(getComputedStyle(e).backgroundColor)),
     };
   });
-  t(`[${largura}] o cabeçalho do projeto encosta no de Projetos`, pilha.achou);
+  const irPara = async (y) => {
+    await page.evaluate((v) => window.scrollTo(0, v), y);
+    // O sticky se reacomoda no quadro seguinte à rolagem: medir na mesma volta
+    // lia as posições de antes.
+    await new Promise((r) => setTimeout(r, 60));
+  };
+  const fim = await page.evaluate(() => document.documentElement.scrollHeight);
+  let pilha = { achou: false };
+  for (let y = 200; y < fim && !pilha.achou; y += 60) {
+    await irPara(y);
+    pilha = await medirPilha();
+    // A frente encaixa no projeto um pouco depois de o projeto grudar: no
+    // primeiro ponto da rolagem o cabeçalho dela ainda vem descendo. Vale o
+    // ponto em que os DOIS degraus estão no lugar, que é o que se quer provar.
+    if (pilha.achou && !pilha.frenteEncaixada) pilha = { achou: false };
+    if (!pilha.achou) continue;
+    await irPara(y + 40);
+    const depois = await medirPilha();
+    pilha.continuaGrudado = depois.achou && depois.projeto === pilha.projeto;
+  }
+  t(`[${largura}] o cabeçalho do projeto encosta no de Projetos`, pilha.achou,
+    JSON.stringify(pilha));
   if (pilha.achou) {
+    t(`[${largura}] ele CONTINUA grudado ao rolar (sticky, não de passagem)`,
+      pilha.continuaGrudado, JSON.stringify(pilha));
     t(`[${largura}] o da frente encosta no do projeto`, pilha.frenteEncaixada);
     t(`[${largura}] a pilha respeita a ordem de camadas`, pilha.ordemZ, JSON.stringify(pilha));
     t(`[${largura}] os três degraus são opacos`, pilha.opacos);
@@ -2000,16 +2037,16 @@ async function provasAcao(page, largura) {
   });
   await page.evaluate(() => App.mostrarSecao('projetos'));
   await esperar(page, "!document.getElementById('secao-projetos').classList.contains('d-none')", 15000);
-  // Pelo PROJETO desta prova, nunca por um `[data-nova-acao]` qualquer: a
+  // Pelo PROJETO desta prova, nunca por um `[data-nova-acao-proj]` qualquer: a
   // pintura anterior continua na tela enquanto a recarga não volta, e o botão
-  // dela aponta para uma frente de outro projeto (já apagado).
+  // dela aponta para outro projeto (já apagado).
   const temBotao = await esperar(
-    page, `!!document.querySelector('[data-projeto="${prj}"] [data-nova-acao]')`, 15000);
-  t(`${l} Iniciativa oferece "+ Ação"`, temBotao);
+    page, `!!document.querySelector('[data-projeto="${prj}"] [data-nova-acao-proj]')`, 15000);
+  t(`${l} O projeto oferece "+ Ação" na linha do título`, temBotao);
   const abrirModal = async () => {
     await page.evaluate((id) => {
-      const b = document.querySelector(`[data-projeto="${id}"] [data-nova-acao]`);
-      SecaoProjetos.modalDesdobramento(parseInt(b.dataset.proj, 10), null, parseInt(b.dataset.novaAcao, 10));
+      const b = document.querySelector(`[data-projeto="${id}"] [data-nova-acao-proj]`);
+      SecaoProjetos.modalDesdobramento(parseInt(b.dataset.novaAcaoProj, 10), null, null);
     }, prj);
     return esperar(page, "!!document.getElementById('campo-o_que')", 8000);
   };
@@ -2021,13 +2058,35 @@ async function provasAcao(page, largura) {
       await new Promise((r) => setTimeout(r, 300));
       const ordem = await page.evaluate(() => [...document.querySelectorAll('#modal-campos .form-label')]
         .map((x) => x.textContent.trim()));
-      const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Repetição',
+      // A frente de destino abre a lista: com o "+ Ação" na linha do título do
+      // projeto, ela é a primeira coisa que a ação ainda não sabe. O resto é a
+      // ordem de sempre, que é contrato com o cliente.
+      const esperada = ['Em qual frente de trabalho?', 'Nome da nova frente *',
+        'O quê? *', 'Como? *', 'Quem? *', 'Repetição',
         'Selecione o dia da semana para repetir:',
         'Selecione o dia ou dias do mês em que haverá repetição:',
         'Data fim da repetição', 'Quando? (Prazo de Execução) *',
         'Prioridade', 'Status', 'Ganhos previstos (R$)'];
       t(`${l} Campos da ação na ordem pedida`,
         JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
+
+      // A frente já vem escolhida (a primeira do projeto) e o campo de nome da
+      // frente nova fica escondido até alguém pedir uma. Sem isto, o formulário
+      // abriria com um campo obrigatório vazio que ninguém precisa preencher.
+      const frente = await page.evaluate(() => {
+        const sel = document.getElementById('campo-iniciativa_id');
+        const nova = document.getElementById('campo-iniciativa_nova')?.closest('.mb-3');
+        return {
+          eSelect: sel?.tagName === 'SELECT',
+          escolhida: sel?.value !== '' && sel?.selectedOptions[0]?.textContent.trim(),
+          novaEscondida: !!nova?.classList.contains('d-none'),
+          temOpcaoNova: [...(sel?.options || [])].some((o) => o.value === ''),
+        };
+      });
+      t(`${l} A frente de destino é a primeira pergunta, já preenchida`,
+        frente.eSelect && frente.escolhida === 'Frente prova', JSON.stringify(frente));
+      t(`${l} Dá para criar a frente na hora, e o nome só aparece ao pedir`,
+        frente.temOpcaoNova && frente.novaEscondida, JSON.stringify(frente));
 
       // ── A caixa da repetição ────────────────────────────────────────────
       // Todo campo da decisão mora DENTRO do painel; nenhum outro entra nele.
@@ -2066,6 +2125,53 @@ async function provasAcao(page, largura) {
       const nenhuma = await trocar('NENHUMA');
       t(`${l} sem repetição, só o período de execução aparece`,
         nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate, JSON.stringify(nenhuma));
+
+      // ── O que se digita na data APARECE ─────────────────────────────────
+      // O campo de data mostra dd/mm/aaaa por um rótulo sobreposto, com o texto
+      // nativo transparente. Enquanto se digitava, o `value` só existe com os
+      // três pedaços completos: o rótulo seguia em "dd/mm/aaaa" e os dígitos,
+      // transparentes, não apareciam — via-se só o retângulo azul da seleção
+      // andando sobre um número invisível. Em foco, o texto nativo tem de estar
+      // visível e o rótulo, fora da frente.
+      // CLICAR, não `page.focus`: o foco programático não acende o `:focus` no
+      // headless, e a prova passaria a medir o estado parado achando que mediu
+      // o de quem está digitando. O clique rola o corpo do modal para trazer o
+      // campo à vista — a posição é guardada e devolvida no fim, senão as
+      // provas seguintes (que movem o mouse por coordenada de tela) miram num
+      // formulário que andou debaixo delas.
+      const rolagem = await page.evaluate(() =>
+        document.querySelector('#modal-form .modal-body')?.scrollTop ?? 0);
+      await page.click('#campo-data_inicio');
+      await new Promise((r) => setTimeout(r, 120));
+      const digitando = await page.evaluate(() => {
+        const inp = document.getElementById('campo-data_inicio');
+        const rot = inp.closest('.campo-data')?.querySelector('.data-rotulo');
+        const transparente = (c) => /rgba\(.*,\s*0\)|transparent/.test(c);
+        return {
+          textoVisivel: !transparente(getComputedStyle(inp).color),
+          rotuloForaDaFrente: !rot || getComputedStyle(rot).display === 'none',
+        };
+      });
+      t(`${l} o que se digita na data fica à vista`,
+        digitando.textoVisivel && digitando.rotuloForaDaFrente, JSON.stringify(digitando));
+      await page.evaluate(() => document.getElementById('campo-data_inicio').blur());
+      await new Promise((r) => setTimeout(r, 120));
+      const parado = await page.evaluate(() => {
+        const inp = document.getElementById('campo-data_inicio');
+        const rot = inp.closest('.campo-data')?.querySelector('.data-rotulo');
+        return {
+          nativoEscondido: /rgba\(.*,\s*0\)|transparent/.test(getComputedStyle(inp).color),
+          rotuloNaFrente: !!rot && getComputedStyle(rot).display !== 'none',
+          rotulo: rot?.textContent.trim(),
+        };
+      });
+      t(`${l} parado, a data volta a ser lida em dd/mm/aaaa`,
+        parado.nativoEscondido && parado.rotuloNaFrente, JSON.stringify(parado));
+      await page.evaluate((y) => {
+        const corpo = document.querySelector('#modal-form .modal-body');
+        if (corpo) corpo.scrollTop = y;
+      }, rolagem);
+      await new Promise((r) => setTimeout(r, 120));
       const semanal = await trocar('SEMANAL');
       t(`${l} toda semana troca o período pelos dias da semana`,
         !semanal.periodo && semanal.semana && !semanal.mes && semanal.ate, JSON.stringify(semanal));
