@@ -882,12 +882,22 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   INTEIRO, então o restauro da §5b precisa devolver `ano_execucao` junto — sem
   ele, a limpeza apagava o ano configurado e a tela seguinte abria o ano errado
   mês a mês, sem ninguém ligar uma coisa à outra.
-- **Qual par meta × real se mostra** é `SecaoMetas.metaReal`, e existe **uma vez
-  só**: o ano de referência é o do ÚLTIMO real lançado e, sem real nenhum, o da
-  PRIMEIRA meta. Não é "o ano corrente" — o ciclo semeado vai de 2027 a 2035 e as
-  metas começam em 2027, então em 2026 a regra do ano corrente deixaria toda linha
-  em "—". A Matriz de Execução chama a mesma função: duplicá-la faria duas telas
-  vizinhas dizerem números diferentes do mesmo indicador.
+- **Qual par meta × real se mostra** é `SecaoMetas.metaReal(i, anoRef)`, e existe
+  **uma vez só**: o ano de referência é o **ano em EXECUÇÃO** do ciclo, passado
+  pelo chamador (`SecaoMetas.anoExecucao` na tela de Metas, `dados.ano_execucao`
+  na Cascata — as duas leituras já trazem o número pronto do servidor).
+  Era o ano do ÚLTIMO real lançado até 2026-10-26, quando o cliente apontou o
+  efeito: a Matriz de Execução mostrava "35 (2030) / meta 30" enquanto o plano
+  executava 2027, e cada linha falava de um ano diferente conforme onde alguém
+  tinha lançado real pela última vez. A objeção que justificava a regra antiga
+  (num ciclo que começa em 2027, "o ano corrente" deixaria tudo em "—" durante
+  2026) morreu quando o ano em execução virou cadastro: `Metas::anoEmExecucao`
+  devolve sempre um ano dentro do ciclo. Sem `anoRef` a função cai na regra
+  antiga, para nenhuma tela nascer vazia — mas as duas que chamam passam o ano, e
+  a bateria prova isso com um real plantado num ano POSTERIOR: com a regra velha,
+  ele apareceria.
+  A Matriz chama a mesma função: duplicá-la faria duas telas vizinhas dizerem
+  números diferentes do mesmo indicador.
 - **Os rótulos da Cascata não falam de tabela.** A célula aberta traz
   **"Síntese — Aonde Jogar"** (a linha, pelo nome) e as aberturas seguem como
   "Eixo · Mercado". Era "Síntese da célula (texto da matriz)", e os dois termos
@@ -2471,7 +2481,7 @@ falta de massa ensina a ignorar o vermelho.
 **Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
 2026-10-14 e 288/583 em 2026-09-04): funcional **327 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
-sistema **745 ✓ / 0 ✗** em cerca de nove minutos
+sistema **746 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
 sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
 `400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do
