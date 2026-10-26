@@ -336,6 +336,11 @@ const SecaoMetas = {
       this.anoAberto = this.anoExecucao;
     }
     const abertas = this.anoAberto === null ? 0 : MESES_CURTOS.length;
+    // Os anos que a revisão alcança: os de lançamento ANUAL. O ano em execução
+    // fica de fora porque se lança mês a mês — um campo anual para ele seria
+    // campo que parece ter funcionado. Num ciclo de um ano só, que é o em
+    // execução, não sobra nada para revisar e o botão não é desenhado.
+    const anosAnuais = anos.filter((a) => a !== this.anoExecucao);
 
     // ---- Cartões de métrica-âncora por horizonte
     const cartoes = this.cartoes(horizontes, indicadores);
@@ -350,8 +355,8 @@ const SecaoMetas = {
       // nova (gesto deliberado, nunca consequência de uma correção de
       // digitação), editar o cadastro e excluir.
       const acoes = App.podeEditar() ? `
-        <button class="btn btn-sm btn-outline-success" data-revisar="${i.id}"
-          title="Revisar metas — grava uma versão nova e preserva a anterior">⟳ Revisar</button>
+        ${anosAnuais.length ? `<button class="btn btn-sm btn-outline-success" data-revisar="${i.id}"
+          title="Revisar as metas dos anos de lançamento anual — grava versão nova e preserva a anterior">⟳ Revisar</button>` : ''}
         <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar indicador">✎</button>
         <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir">×</button>` : '';
       return `
@@ -436,7 +441,7 @@ const SecaoMetas = {
       this.carregar();
     }));
     el.querySelectorAll('[data-revisar]').forEach((b) => b.addEventListener('click', () =>
-      this.modalRevisarMetas(indicadores.find((i) => i.id == b.dataset.revisar), anos)));
+      this.modalRevisarMetas(indicadores.find((i) => i.id == b.dataset.revisar), anosAnuais)));
 
     el.querySelectorAll('.celula-valor').forEach((inp) => this.ligarCelula(inp));
   },
@@ -604,6 +609,13 @@ const SecaoMetas = {
    *
    * O realizado não tem equivalente: ele não é versionado (o que aconteceu não
    * se revisa), e lançá-lo é digitar na célula.
+   *
+   * **O ano em execução não entra aqui** (correção do cliente, 2026-10-26). Ele
+   * é lançado mês a mês, e um campo anual para ele é campo que parece ter
+   * funcionado: o número digitado some atrás dos meses na leitura seguinte, ou
+   * — pior — aparece enquanto não há mês nenhum e desaparece quando o primeiro
+   * for lançado. É a mesma regra que já tirou o campo da tabela; faltava tirá-lo
+   * do formulário.
    */
   modalRevisarMetas(ind, anos) {
     const serie = Object.fromEntries(ind.metas.map((m) => [m.ano, m.anual ?? m.valor]));
@@ -612,6 +624,14 @@ const SecaoMetas = {
       { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
       { nome: 'tipo', rotulo: '', tipo: 'hidden' },
     ];
+    // Dizer POR QUE o ano em execução não está na lista. Sem esta linha, quem
+    // viesse revisar 2027 e não o encontrasse concluiria que a tela perdeu um
+    // ano — e iria procurar o defeito que não existe.
+    if (this.anoExecucao) {
+      campos.push({ nome: 'aviso_execucao', rotulo: '', tipo: 'info',
+        texto: `${this.anoExecucao} não aparece abaixo: é o ano em execução e se lança mês a mês, `
+          + 'na própria tabela. A meta dele é o total dos meses.' });
+    }
     for (const ano of anos) {
       valores[`ano_${ano}`] = serie[ano] ?? '';
       campos.push({ nome: `ano_${ano}`, rotulo: String(ano), tipo: 'number' });

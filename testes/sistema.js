@@ -4726,6 +4726,60 @@ async function provasCelulaMetas(page, largura) {
 }
 
 /**
+ * O "⟳ Revisar" não alcança o ano em execução.
+ *
+ * Achado do cliente olhando a tela pronta (2026-10-26): o formulário de revisão
+ * listava todos os anos do ciclo, o em execução inclusive — e aquele ano é
+ * lançado mês a mês. Um número digitado ali some atrás dos meses na leitura
+ * seguinte ou, pior, aparece enquanto não há mês nenhum e desaparece quando o
+ * primeiro for lançado. É a mesma regra que já tinha tirado o campo anual da
+ * TABELA; faltava tirá-lo do FORMULÁRIO, e é exatamente o tipo de sobra que
+ * ninguém encontra lendo o código — só usando.
+ *
+ * A prova fixa as duas metades: o ano em execução não tem campo, e os demais
+ * continuam tendo (um formulário que perdesse todos os anos "passaria" a prova
+ * da ausência sem servir para nada).
+ */
+async function provasRevisarSemAnoAtual(page, largura) {
+  const l = `[${largura}] Revisar metas:`;
+  const ctx = await page.evaluate(async () => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    const anos = [];
+    for (let a = Number(d.ciclo.ano_base); a <= Number(d.ciclo.ano_fim); a++) anos.push(a);
+    const r = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Indicador revisão QA', unidade: 'R$ mil', agregacao: 'SOMA',
+    });
+    App.mostrarSecao('metas');
+    return { id: r.id, exec: d.ano_execucao, anos };
+  });
+  const pintou = await esperar(page, `!!document.querySelector('[data-revisar="${ctx.id}"]')`, 15000);
+  t(`${l} o botão aparece na linha`, pintou);
+  if (!pintou) return;
+
+  await page.click(`[data-revisar="${ctx.id}"]`);
+  await esperar(page, "document.getElementById('modal-form').classList.contains('show')");
+  const campos = await page.evaluate(() => ({
+    anos: [...document.querySelectorAll('#modal-form .form-label')]
+      .map((r) => r.textContent.trim()).filter((r) => /^\d{4}$/.test(r)),
+    aviso: document.getElementById('campo-aviso_execucao')
+      ?.textContent.replace(/\s+/g, ' ').trim() || '',
+  }));
+  t(`${l} o ano em execução (${ctx.exec}) NÃO tem campo anual`,
+    !campos.anos.includes(String(ctx.exec)), JSON.stringify(campos.anos));
+  t(`${l} e os anos de lançamento anual continuam lá`,
+    campos.anos.length === ctx.anos.length - 1, JSON.stringify(campos.anos));
+  t(`${l} o formulário diz por que aquele ano falta`,
+    new RegExp(`${ctx.exec}.*mês a mês`).test(campos.aviso), campos.aviso.slice(0, 120));
+
+  await page.click('#modal-form [data-bs-dismiss="modal"]');
+  await esperar(page, "!document.getElementById('modal-form').classList.contains('show')");
+  await page.evaluate(async (id) => {
+    await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 }).catch(() => {});
+    App.mostrarSecao('painel');
+  }, ctx.id);
+}
+
+/**
  * A agregação à vista na linha, e o aviso de quem soma o que não se soma.
  *
  * Os indicadores cadastrados antes de a coluna existir nasceram todos com SOMA,
@@ -5175,6 +5229,7 @@ async function provasJanelaModal(page, largura) {
   await provasCelulaMetas(page, 'desktop');
   await provasMesAMes(page, 'desktop');
   await provasAvisoAgregacao(page, 'desktop');
+  await provasRevisarSemAnoAtual(page, 'desktop');
   await noAnoDaCarga(page);
   await provasPainelSalaFixo(page, 'desktop');
   await noAnoPadrao(page);
@@ -5215,6 +5270,7 @@ async function provasJanelaModal(page, largura) {
   await provasCelulaMetas(pageM, 'celular');
   await provasMesAMes(pageM, 'celular');
   await provasAvisoAgregacao(pageM, 'celular');
+  await provasRevisarSemAnoAtual(pageM, 'celular');
   await noAnoDaCarga(pageM);
   await provasPainelSalaFixo(pageM, 'celular');
   await noAnoPadrao(pageM);
