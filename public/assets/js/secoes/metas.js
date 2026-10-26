@@ -1,8 +1,28 @@
 // Metas — Fase 6: métricas-âncora por horizonte + tabela plurianual meta × real.
 
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun',
+  'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
 const SecaoMetas = {
   plan: null,
   dados: null,
+
+  /**
+   * Qual ano está aberto mês a mês.
+   *
+   * `undefined` = ninguém escolheu ainda, e vale o **ano em execução do ciclo**
+   * (que vem do servidor); `null` = alguém fechou de propósito. A diferença
+   * existe para o fechamento sobreviver às repinturas da seção — sem ela, o ano
+   * reabriria sozinho a cada troca de ano ou gravação, e o controle pareceria
+   * quebrado.
+   *
+   * **Não vai para o `localStorage`**, e isso é decisão, não esquecimento: o ano
+   * em execução é do ciclo justamente para ser o mesmo para todo mundo (ver
+   * `App\Services\Metas`). Guardar aqui qual ano cada navegador deixou aberto
+   * faria cada pessoa voltar a um ano diferente do mesmo plano — que é o que a
+   * decisão do cliente recusou.
+   */
+  anoAberto: undefined,
 
   fmt(v) {
     return v === null || v === undefined || v === ''
@@ -56,30 +76,58 @@ const SecaoMetas = {
    * é só leitura: deixá-lo editável aceitaria um número que a leitura ignora na
    * linha seguinte — o pior tipo de campo, o que parece ter funcionado.
    */
-  celula(ind, tipo, ano, entrada) {
-    const bruto = entrada ? entrada.valor : null;
-    const derivada = tipo === 'REAL' && entrada && entrada.meses_total !== null;
-    const classe = `valor${derivada ? ' celula-derivada' : ''}`;
+  celula(ind, tipo, ano, entrada, mes = 0) {
+    const anual = mes === 0;
+    const bruto = anual
+      ? (entrada ? entrada.valor : null)
+      : (entrada && entrada.meses ? entrada.meses[mes] ?? null : null);
+    // Só o ANO do realizado é derivado. O mês é sempre lançamento, e a meta do
+    // ano é digitada mesmo havendo meses (quem manda nela é o ano).
+    const derivada = anual && tipo === 'REAL' && entrada && entrada.meses_total !== null;
+    const classe = `valor${derivada ? ' celula-derivada' : ''}${anual ? '' : ' celula-mes'}`;
     // Os marcadores ficam no `<td>` e não no campo: a célula derivada não tem
     // campo nenhum, e é justamente ela que precisa ser reencontrada e repintada
     // quando um mês muda.
-    const marcas = `data-celula-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="0"`;
+    const marcas = `data-celula-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="${mes}"`;
     if (!App.podeEditar() || derivada) {
       const dica = derivada
-        ? ` title="Vem dos meses lançados (${this.fmt(entrada.meses_total)}) — abra o ano para lançar mês a mês"` : '';
+        ? ` title="Soma dos meses lançados — para mudar, lance no mês"` : '';
       return `<td class="${classe}" ${marcas}${dica}>${this.fmt(bruto)}</td>`;
     }
     // A diferença entre a meta do ano e a soma dos meses é DITA, não corrigida:
     // quem decide se o ano ou a distribuição está errada é quem planeja.
-    const difere = tipo === 'META' && entrada && entrada.meses_total !== null
+    const difere = anual && tipo === 'META' && entrada && entrada.meses_total !== null
       && Number(entrada.meses_total) !== Number(entrada.valor);
+    const quando = anual ? ano : `${MESES_CURTOS[mes - 1]}/${ano}`;
     return `<td class="${classe}" ${marcas}>
       <input type="text" class="celula-valor" inputmode="decimal" autocomplete="off"
         value="${Modal.esc(this.fmt(bruto))}" data-bruto="${bruto ?? ''}"
-        data-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="0"
-        aria-label="${tipo === 'META' ? 'Meta' : 'Realizado'} de ${ano} — ${Modal.esc(ind.nome)}">
+        data-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="${mes}"
+        aria-label="${tipo === 'META' ? 'Meta' : 'Realizado'} de ${quando} — ${Modal.esc(ind.nome)}">
       ${difere ? `<span class="difere" title="Os meses somam ${this.fmt(entrada.meses_total)}">≠</span>` : ''}
     </td>`;
+  },
+
+  /**
+   * As células de um ano numa linha: o ano fechado é uma só; o aberto são os
+   * doze meses e, **no fim**, o total do ano — na ordem em que o cliente pediu
+   * ("abrir mês a mês e totalizar o ano no final").
+   */
+  celulasDoAno(ind, tipo, ano, entrada) {
+    if (ano !== this.anoAberto) return this.celula(ind, tipo, ano, entrada);
+    return MESES_CURTOS.map((_, i) => this.celula(ind, tipo, ano, entrada, i + 1)).join('')
+      + this.celula(ind, tipo, ano, entrada);
+  },
+
+  /** O cabeçalho de um ano: o botão que abre, ou os meses mais o total. */
+  cabecalhoAno(ano) {
+    if (ano !== this.anoAberto) {
+      return `<th class="col-ano"><button type="button" class="btn-ano" data-abrir-ano="${ano}"
+        title="Abrir ${ano} mês a mês" aria-expanded="false">${ano} <span aria-hidden="true">▸</span></button></th>`;
+    }
+    return MESES_CURTOS.map((m) => `<th class="col-mes">${m}</th>`).join('')
+      + `<th class="col-ano col-total"><button type="button" class="btn-ano" data-fechar-ano="${ano}"
+        title="Recolher os meses de ${ano}" aria-expanded="true">${ano} <span aria-hidden="true">▾</span></button></th>`;
   },
 
   /** Os cartões de métrica-âncora, repintados sozinhos a cada gravação. */
@@ -176,21 +224,22 @@ const SecaoMetas = {
    * tem o que a pessoa acabou de escrever.
    */
   repintarDerivadas(ind, foco) {
-    document.querySelectorAll(`[data-celula-ind="${ind.id}"]`).forEach((td) => {
+    [...document.querySelectorAll(`[data-celula-ind="${ind.id}"]`)].forEach((td) => {
+      if (td.contains(foco)) return;
       const { tipo, ano, mes } = td.dataset;
       const serie = tipo === 'META' ? ind.metas : ind.reais;
       const entrada = serie.find((x) => x.ano == ano) || null;
-      const valor = Number(mes) === 0
-        ? (entrada ? entrada.valor : null)
-        : (entrada && entrada.meses ? entrada.meses[mes] ?? null : null);
-      const campo = td.querySelector('input');
-      if (campo) {
-        if (campo === foco) return;
-        campo.dataset.bruto = valor ?? '';
-        campo.value = this.fmt(valor);
-      } else {
-        td.textContent = this.fmt(valor);
-      }
+      // A célula é REDESENHADA, não só reescrita: lançar o primeiro mês do
+      // realizado transforma a célula do ano em derivada (campo vira texto) e
+      // apagar o último a traz de volta. Só trocar o texto deixaria um campo
+      // editável mostrando um número que a leitura ignora.
+      td.outerHTML = this.celula(ind, tipo, Number(ano), entrada, Number(mes));
+      // O campo novo chega sem ouvinte nenhum: `outerHTML` descarta o elemento
+      // antigo, e com ele os ouvintes. Sem religar, a célula redesenhada parava
+      // de gravar — e nada na tela diria isso.
+      const novo = document.querySelector(
+        `[data-celula-ind="${ind.id}"][data-tipo="${tipo}"][data-ano="${ano}"][data-mes="${mes}"] .celula-valor`);
+      if (novo) this.ligarCelula(novo);
     });
   },
 
@@ -205,6 +254,18 @@ const SecaoMetas = {
     const { ciclo, horizontes, indicadores } = this.dados;
     const anos = [];
     for (let a = Number(ciclo.ano_base); a <= Number(ciclo.ano_fim); a++) anos.push(a);
+
+    // Qual ano nasce aberto: o EM EXECUÇÃO, que vem do ciclo (o servidor já
+    // resolve o vazio). A validação contra `anos` não é zelo: trocar de ciclo
+    // ou de negócio recarrega esta seção, e um ano aberto que não existe na
+    // tabela nova deixaria a tela sem nenhum ano expandido e com um `colspan`
+    // contando doze colunas que ninguém desenhou.
+    const execucao = Number(this.dados.ano_execucao);
+    if (this.anoAberto === undefined
+      || (this.anoAberto !== null && !anos.includes(this.anoAberto))) {
+      this.anoAberto = anos.includes(execucao) ? execucao : null;
+    }
+    const abertas = this.anoAberto === null ? 0 : MESES_CURTOS.length;
 
     // ---- Cartões de métrica-âncora por horizonte
     const cartoes = this.cartoes(horizontes, indicadores);
@@ -225,20 +286,20 @@ const SecaoMetas = {
         <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir">×</button>` : '';
       return `
         <tr>
-          <td rowspan="2" class="align-middle">
+          <td rowspan="2" class="align-middle celula-nome">
             <strong>${Modal.esc(i.nome)}</strong>
             ${Number(i.metrica_ancora) ? '<span class="badge badge-ancora ms-1">âncora</span>' : ''}
             ${revisada ? '<span class="badge text-bg-warning ms-1" title="Meta revisada — versões anteriores preservadas">rev.</span>' : ''}
             <div class="small text-muted">${Modal.esc(i.unidade)} · ${i.sentido === 'MENOR_MELHOR' ? '↓ menor melhor' : '↑ maior melhor'}
               ${i.horizonte_nome ? ` · ${Modal.esc(i.horizonte_nome)}` : ''}</div>
           </td>
-          <td class="small text-muted">Meta</td>
-          ${anos.map((a) => this.celula(i, 'META', a, metas[a] || null)).join('')}
+          <td class="small text-muted celula-rotulo">Meta</td>
+          ${anos.map((a) => this.celulasDoAno(i, 'META', a, metas[a] || null)).join('')}
           <td rowspan="2" class="align-middle text-nowrap">${acoes}</td>
         </tr>
         <tr class="linha-real">
-          <td class="small text-muted">Real</td>
-          ${anos.map((a) => this.celula(i, 'REAL', a, reais[a] || null)).join('')}
+          <td class="small text-muted celula-rotulo">Real</td>
+          ${anos.map((a) => this.celulasDoAno(i, 'REAL', a, reais[a] || null)).join('')}
         </tr>`;
     }).join('');
 
@@ -256,13 +317,28 @@ const SecaoMetas = {
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle tabela-metas">
           <thead><tr>
-            <th style="min-width:220px">Indicador</th><th></th>
-            ${anos.map((a) => `<th class="col-ano">${a}</th>`).join('')}
+            <th class="col-indicador">Indicador</th><th class="col-rotulo"></th>
+            ${anos.map((a) => this.cabecalhoAno(a)).join('')}
             <th></th>
           </tr></thead>
-          <tbody>${linhas || `<tr><td colspan="${anos.length + 3}" class="text-muted">Nenhum indicador cadastrado.</td></tr>`}</tbody>
+          <tbody>${linhas || `<tr><td colspan="${anos.length + abertas + 3}" class="text-muted">Nenhum indicador cadastrado.</td></tr>`}</tbody>
         </table>
       </div>`;
+
+    // Abrir e fechar o ano vale para TODO MUNDO, inclusive o perfil de leitura:
+    // é jeito de ler, não de escrever. Por isso a fiação vem antes da guarda de
+    // edição logo abaixo.
+    el.querySelectorAll('[data-abrir-ano]').forEach((b) => b.addEventListener('click', () => {
+      this.anoAberto = Number(b.dataset.abrirAno);
+      this.carregar();
+    }));
+    el.querySelectorAll('[data-fechar-ano]').forEach((b) => b.addEventListener('click', () => {
+      // `null`, e não `undefined`: fechar é escolha, e tem de sobreviver às
+      // repinturas da seção. Com `undefined` o ano em execução reabriria
+      // sozinho na gravação seguinte.
+      this.anoAberto = null;
+      this.carregar();
+    }));
 
     if (!App.podeEditar()) return;
     document.getElementById('btn-novo-ind').addEventListener('click', () => this.modalIndicador(null));
@@ -288,10 +364,25 @@ const SecaoMetas = {
     el.querySelectorAll('[data-revisar]').forEach((b) => b.addEventListener('click', () =>
       this.modalRevisarMetas(indicadores.find((i) => i.id == b.dataset.revisar), anos)));
 
+    el.querySelectorAll('.celula-valor').forEach((inp) => this.ligarCelula(inp));
+  },
+
+  /**
+   * Liga UMA célula. Precisa ser por célula, e não uma varredura só no fim do
+   * `carregar()`, porque a tabela troca células de forma sem repintar a seção:
+   * lançar o primeiro mês de um ano transforma a célula anual do realizado em
+   * derivada (de campo para texto), e o caminho inverso a traz de volta. Quem
+   * faz essa troca é `repintarDerivadas`, e o campo novo chega sem ouvinte
+   * nenhum — uma célula muda e para de gravar, em silêncio.
+   */
+  ligarCelula(inp) {
+    if (inp.dataset.ligado) return;
+    inp.dataset.ligado = '1';
     // O mesmo filtro de digitação do campo de dinheiro, com NEGATIVOS
-    // permitidos: meta de resultado financeiro e de dívida é negativa.
-    Modal.ligarMoedas(el, { seletor: '.celula-valor', negativos: true });
-    el.querySelectorAll('.celula-valor').forEach((inp) => {
+    // permitidos: meta de resultado financeiro e de dívida é negativa. A raiz é
+    // a própria célula, que tem este campo e mais nenhum.
+    Modal.ligarMoedas(inp.parentElement, { seletor: '.celula-valor', negativos: true });
+    {
       // Com foco, o número CRU (sem separador de milhar): editar "1.500,50" é
       // pisar em cima da formatação, e a primeira tecla apagaria um número
       // certo. Sem foco, ele volta formatado, que é como se lê uma tabela.
@@ -327,7 +418,7 @@ const SecaoMetas = {
           inp.blur();
         }
       });
-    });
+    }
   },
 
   /**

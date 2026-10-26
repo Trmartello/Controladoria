@@ -793,6 +793,33 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   corrige a versão corrente — é o caminho de quem errou um número, não o de quem
   mudou de meta. O realizado não tem equivalente: o que aconteceu não se revisa.
   Prova em `provasCelulaMetas`, nas duas larguras.
+- **O ano em execução abre MÊS A MÊS, com o total no fim** (`SecaoMetas.anoAberto`,
+  `celulasDoAno`, `cabecalhoAno`). O `▸` do cabeçalho abre qualquer ano, **um por
+  vez**, e o ano em execução já nasce aberto; os doze meses vêm primeiro e a
+  coluna do ano fecha a faixa, na ordem que o cliente pediu. Três cuidados:
+  - **`anoAberto` distingue três estados**: `undefined` (ninguém escolheu — vale
+    o ano em execução), um número, e `null` (**fechado de propósito**). Sem o
+    `null`, a gravação seguinte repinta a seção e o ano reabre sozinho: o botão
+    pareceria quebrado. E **não vai para o `localStorage`** — o ano em execução
+    é do ciclo justamente para ser o mesmo para todo mundo; guardar por
+    navegador qual ano cada um deixou aberto desfaria a decisão.
+  - **A célula troca de FORMA sem a seção repintar**: lançar o primeiro mês do
+    realizado transforma a célula do ano em derivada (campo vira texto) e apagar
+    o último a traz de volta. Quem faz isso é `repintarDerivadas`, com
+    `outerHTML` — e `outerHTML` **descarta os ouvintes**. Por isso existe
+    `ligarCelula` (uma célula de cada vez, marcada com `data-ligado`): sem
+    religar, a célula redesenhada para de gravar e nada na tela diz isso.
+  - **Abrir e fechar o ano vale para o perfil de LEITURA também** — é jeito de
+    ler, não de escrever —, então a fiação dos dois botões fica ANTES da guarda
+    de `podeEditar()`.
+  Prova em `provasMesAMes`, nas duas larguras.
+- **`.conteudo` precisa de `min-width: 0` em toda largura.** Ele é item de flex
+  (ao lado do menu), e item de flex nasce com `min-width: auto`: recusa-se a
+  ficar menor que o próprio conteúdo. Com isso o `.table-responsive` de dentro
+  **nunca** chega a rolar sozinho — quem estica é a página, levando cabeçalho e
+  menu para fora da tela. A regra existia só no celular; a tabela de metas com
+  doze meses (23 colunas, 2232px num monitor de 1500px) é que a cobrou no
+  desktop, e quem pegou foi a prova "não rola na horizontal".
 - **O ano em execução é do CICLO** (`ciclo.ano_execucao`), não do navegador de
   quem olha (decisão do cliente, 2026-10-26): é o mesmo para todos os negócios e
   para o relatório, e guardá-lo como preferência de tela faria cada pessoa ver um
@@ -2367,10 +2394,10 @@ A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
-**Linha de base em 2026-10-26** (depois do mês nas metas e da célula editável;
-era 301/678 em 2026-10-14 e 288/583 em 2026-09-04): funcional **320 ✓ / 0 ✗**
+**Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
+2026-10-14 e 288/583 em 2026-09-04): funcional **320 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
-sistema **698 ✓ / 0 ✗** em cerca de nove minutos
+sistema **724 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
 sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
 `400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do
@@ -2394,6 +2421,15 @@ Cruzamentos introduziram aparecia no **computador**: a mínima de conteúdo de u
 selo com `nowrap` sobe pela coluna e pela fila até o `<main>`, que é item de
 flex — quanto mais larga a tela, mais texto cabe numa linha e maior fica essa
 mínima. A checagem passou a rodar nas duas larguras.
+
+Uma quarta, cobrada em 2026-10-26: **depois de `page.reload()`, esperar por
+`#nav-secoes` não espera nada**. Ele é HTML estático do `shell.php` e existe no
+instante do load, enquanto o que a prova vai ler (o tópico reaberto, a seção
+guardada) só aparece quando o arranque termina — `/api/me`, seletores,
+`mostrarSecao`. A espera certa é por estado do `App`
+(`!!App.sessao && !!App.secaoAtiva`), e as quatro recargas da bateria passaram a
+usá-la. Com a espera fraca, a prova do menu ficava verde ou vermelha conforme o
+dia, e a vermelha seria lida como regressão de outra mudança.
 
 ## Deploy
 

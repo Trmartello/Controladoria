@@ -4275,7 +4275,7 @@ async function provasCadeado(browser) {
     await B.fill('#email', EMAIL_B);
     await B.fill('#senha', 'trocar123');
     await B.click('#form-login button[type=submit]');
-    await esperar(B, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+    await esperar(B, "typeof App !== 'undefined' && !!App.sessao && !!App.secaoAtiva", 20000);
     await B.evaluate(() => {
       App.contexto.cicloId = 1; App.contexto.negocioId = null; App.contexto.corporativo = true;
     });
@@ -4433,7 +4433,7 @@ async function provasTratarForaDaOrdem(page, largura) {
 async function provasMenuRecolhido(page, largura) {
   await page.evaluate(() => { localStorage.removeItem('menu.grupos'); App.mostrarSecao('painel'); });
   await page.reload();
-  await esperar(page, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+  await esperar(page, "typeof App !== 'undefined' && !!App.sessao && !!App.secaoAtiva", 20000);
 
   const estado = () => page.evaluate(() => {
     const grupos = [...document.querySelectorAll('#nav-secoes .grupo-menu')];
@@ -4481,7 +4481,7 @@ async function provasMenuRecolhido(page, largura) {
     JSON.stringify(navegou));
 
   await page.reload();
-  await esperar(page, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+  await esperar(page, "typeof App !== 'undefined' && !!App.sessao && !!App.secaoAtiva", 20000);
   const guardado = await page.evaluate(() =>
     [...document.querySelectorAll('#nav-secoes .grupo-menu.aberto')].map((g) => g.dataset.grupo));
   t(`[${largura}] o tópico aberto sobrevive à recarga`, guardado.includes('diagnostico'), JSON.stringify(guardado));
@@ -4515,7 +4515,7 @@ async function provasLugarGuardado(page, largura) {
   const l = `[${largura}] Onde a pessoa estava:`;
   const recarregar = async () => {
     await page.reload();
-    return esperar(page, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+    return esperar(page, "typeof App !== 'undefined' && !!App.sessao && !!App.secaoAtiva", 20000);
   };
   const estado = () => page.evaluate(() => ({
     secao: App.secaoAtiva,
@@ -4706,6 +4706,150 @@ async function provasCelulaMetas(page, largura) {
 
   await page.evaluate(async (id) => {
     await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 }).catch(() => {});
+    App.mostrarSecao('painel');
+  }, ind);
+}
+
+/**
+ * O ano aberto MÊS A MÊS, com o total no fim.
+ *
+ * Pedido do cliente (2026-10-25): "o ano em execução deve abrir mês a mês e
+ * totalizar o ano no final". A prova mede as quatro coisas que fazem isso ser
+ * verdade, e não só desenho:
+ *
+ * - **abre sozinho no ano em execução**, que vem do CICLO e não do navegador —
+ *   se cada tela escolhesse o seu, duas pessoas leriam anos diferentes do mesmo
+ *   plano;
+ * - **o total é o que a regra do indicador manda**, não a soma de tudo: o mesmo
+ *   trimestre lançado vale 60 somando e 20 na média, e quem decide é o cadastro
+ *   do indicador;
+ * - **a célula do ano do REALIZADO vira só leitura** assim que existe mês. Se
+ *   continuasse editável, aceitaria um número que a leitura ignora na linha
+ *   seguinte — e a troca acontece SEM repintar a seção, que é justamente onde o
+ *   campo novo ficaria sem ouvinte nenhum (ver `ligarCelula`);
+ * - **o ano fechado fica fechado.** Fechar é escolha, e a gravação seguinte
+ *   repinta a seção: sem o estado que distingue "ninguém escolheu" de "fechei",
+ *   o ano em execução reabriria sozinho e o botão pareceria quebrado.
+ */
+async function provasMesAMes(page, largura) {
+  const l = `[${largura}] Ano mês a mês:`;
+  const exec = await page.evaluate(async () => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    return d.ano_execucao;
+  });
+  const ind = await page.evaluate(async () => {
+    const r = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Indicador mensal QA', unidade: 'R$ mil', agregacao: 'SOMA',
+    });
+    SecaoMetas.anoAberto = undefined;   // como quem abre a tela pela primeira vez
+    App.mostrarSecao('metas');
+    return r.id;
+  });
+  const pintou = await esperar(page, `!!document.querySelector('[data-celula-ind="${ind}"]')`, 15000);
+  t(`${l} a tabela pinta`, pintou);
+  if (!pintou) return;
+
+  const colunas = await page.evaluate((a) => ({
+    meses: document.querySelectorAll('#secao-metas th.col-mes').length,
+    rotulos: [...document.querySelectorAll('#secao-metas th.col-mes')].map((th) => th.textContent),
+    totalDepois: !!document.querySelector('#secao-metas th.col-mes ~ th.col-total'),
+    aberto: SecaoMetas.anoAberto,
+  }), exec);
+  t(`${l} o ano em execução (${exec}) nasce aberto`, colunas.aberto === exec, JSON.stringify(colunas));
+  t(`${l} são doze meses, de jan a dez`,
+    colunas.meses === 12 && colunas.rotulos[0] === 'jan' && colunas.rotulos[11] === 'dez',
+    JSON.stringify(colunas.rotulos));
+  t(`${l} e o total do ano vem DEPOIS dos meses`, colunas.totalDepois, JSON.stringify(colunas));
+
+  const sel = (tipo, mes) =>
+    `[data-celula-ind="${ind}"][data-tipo="${tipo}"][data-ano="${exec}"][data-mes="${mes}"]`;
+  const lancar = async (tipo, mes, texto) => {
+    await page.click(`${sel(tipo, mes)} input`);
+    await page.keyboard.press('ControlOrMeta+A');
+    if (texto === '') await page.keyboard.press('Backspace');
+    else await page.keyboard.type(texto);
+    await page.keyboard.press('Tab');
+    await esperar(page, `!document.querySelector('${sel(tipo, mes)} input')?.classList.contains('celula-gravando')`);
+  };
+  await lancar('REAL', 1, '10');
+  await lancar('REAL', 2, '20');
+  await lancar('REAL', 3, '30');
+
+  const total = await page.evaluate((s) => {
+    const td = document.querySelector(s);
+    return { texto: td?.textContent.trim(), campo: !!td?.querySelector('input'),
+      derivada: !!td?.classList.contains('celula-derivada') };
+  }, sel('REAL', 0));
+  t(`${l} o ano totaliza os meses (60)`, total.texto === '60', JSON.stringify(total));
+  t(`${l} e a célula do ano vira só leitura, sem campo para digitar`,
+    total.campo === false && total.derivada === true, JSON.stringify(total));
+
+  // A regra é do INDICADOR: a mesma massa vale 20 quando o ano tira média.
+  await page.evaluate(async (id) => {
+    await App.api(`/api/indicadores/${id}`, {
+      planejamento_id: 1, nome: 'Indicador mensal QA', unidade: '%', agregacao: 'MEDIA',
+    });
+    await SecaoMetas.carregar();
+  }, ind);
+  await esperar(page, `!!document.querySelector('${sel('REAL', 0)}')`, 15000);
+  const media = await page.evaluate((s) => document.querySelector(s)?.textContent.trim(), sel('REAL', 0));
+  t(`${l} com média, o mesmo trimestre vale 20`, media === '20', String(media));
+
+  // Apagar um mês tira só aquele mês — e o campo que volta precisa gravar, que
+  // é onde o ouvinte se perderia na troca de forma da célula.
+  await lancar('REAL', 1, '');
+  const apagado = await page.evaluate(async (d) => {
+    const r = await App.api('/api/indicadores?planejamento_id=1');
+    const i = r.indicadores.find((x) => x.id == d.id);
+    const ano = i.reais.find((e) => e.ano === d.exec);
+    return { meses: ano ? Object.keys(ano.meses).length : 0, valor: ano ? ano.valor : null };
+  }, { id: ind, exec });
+  t(`${l} apagar um mês tira só aquele mês (sobram 20 e 30, média 25)`,
+    apagado.meses === 2 && Number(apagado.valor) === 25, JSON.stringify(apagado));
+
+  // Meta: o ano digitado manda, e a diferença para os meses é DITA.
+  await lancar('META', 0, '100');
+  await lancar('META', 1, '40');
+  const difere = await page.evaluate((s) => {
+    const td = document.querySelector(s);
+    return { valor: td?.querySelector('input')?.dataset.bruto,
+      marca: td?.querySelector('.difere')?.title || '' };
+  }, sel('META', 0));
+  t(`${l} a meta do ano continua sendo a digitada (100)`,
+    Number(difere.valor) === 100, JSON.stringify(difere));
+  t(`${l} e a tela aponta que os meses somam outra coisa`,
+    /40/.test(difere.marca), JSON.stringify(difere));
+
+  // Fechar é escolha: tem de sobreviver à repintura que a gravação provoca.
+  await page.evaluate((a) => document.querySelector(`#secao-metas [data-fechar-ano="${a}"]`).click(), exec);
+  await esperar(page, "document.querySelectorAll('#secao-metas th.col-mes').length === 0", 10000);
+  const fechado = await page.evaluate(() => document.querySelectorAll('#secao-metas th.col-mes').length);
+  t(`${l} o botão fecha os meses`, fechado === 0, String(fechado));
+  await page.evaluate(() => SecaoMetas.carregar());
+  await esperar(page, `!!document.querySelector('[data-celula-ind="${ind}"]')`, 15000);
+  const seguiuFechado = await page.evaluate(() =>
+    document.querySelectorAll('#secao-metas th.col-mes').length);
+  t(`${l} e continua fechado depois de a seção repintar`, seguiuFechado === 0, String(seguiuFechado));
+
+  // O ano em execução é só o PADRÃO: qualquer outro também abre.
+  const outro = exec + 1;
+  const abriuOutro = await page.evaluate((a) => {
+    const b = document.querySelector(`#secao-metas [data-abrir-ano="${a}"]`);
+    if (!b) return false;
+    b.click();
+    return true;
+  }, outro);
+  if (abriuOutro) {
+    await esperar(page, "document.querySelectorAll('#secao-metas th.col-mes').length === 12", 10000);
+    const qual = await page.evaluate(() => SecaoMetas.anoAberto);
+    t(`${l} qualquer outro ano também abre`, qual === outro, String(qual));
+  } else {
+    ok.push(`${l} pulada a abertura de outro ano — o ciclo tem um ano só`);
+  }
+
+  await page.evaluate(async (id) => {
+    await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 }).catch(() => {});
+    SecaoMetas.anoAberto = undefined;
     App.mostrarSecao('painel');
   }, ind);
 }
@@ -4950,6 +5094,7 @@ async function provasJanelaModal(page, largura) {
   await provasMenuRecolhido(page, 'desktop');
   await provasLugarGuardado(page, 'desktop');
   await provasCelulaMetas(page, 'desktop');
+  await provasMesAMes(page, 'desktop');
   await noAnoDaCarga(page);
   await provasPainelSalaFixo(page, 'desktop');
   await noAnoPadrao(page);
@@ -4988,6 +5133,7 @@ async function provasJanelaModal(page, largura) {
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');
+  await provasMesAMes(pageM, 'celular');
   await noAnoDaCarga(pageM);
   await provasPainelSalaFixo(pageM, 'celular');
   await noAnoPadrao(pageM);

@@ -156,6 +156,15 @@ body.menu-aberto .menu-lateral {
 }
 .btn-verde:hover { background: #056038; color: #fff; }
 
+/* `min-width: 0` em TODA largura, e não só no celular como era.
+   `.conteudo` é item de flex (ao lado do menu), e item de flex nasce com
+   `min-width: auto`: ele se recusa a ficar menor que o próprio conteúdo. Com
+   isso, um `.table-responsive` lá dentro NUNCA chega a rolar sozinho — quem
+   estica é a página inteira, e a tabela leva o cabeçalho e o menu junto para
+   fora da tela. Só apareceu quando a tabela de metas passou a abrir doze meses
+   (23 colunas, 2232px num monitor de 1500px); no celular a regra já existia,
+   e é por isso que a bateria só ficou vermelha no desktop. */
+.conteudo { min-width: 0; }
 .conteudo h1 { font-size: 1.4rem; font-weight: 700; }
 
 .cartao-etapa { border-left: 4px solid var(--verde-coperdia); }
@@ -397,6 +406,68 @@ table.tabela-cadastro td { vertical-align: middle; }
   font-weight: 700;
   margin-left: .15rem;
   cursor: help;
+}
+
+/* ===== O ano aberto mês a mês =====
+   O botão do cabeçalho é o ano, não um ícone ao lado dele: o alvo de toque é a
+   coluna inteira, e no celular um chevron de 12px seria mira de agulha. */
+.tabela-metas .btn-ano {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  padding: 0 .2rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tabela-metas .btn-ano:hover { color: var(--verde-coperdia); }
+.tabela-metas .btn-ano:focus-visible { outline: 2px solid var(--verde-coperdia); outline-offset: 1px; }
+/* Os doze meses são uma FAIXA, e precisam ler como uma: fundo próprio e um
+   filete no começo. Sem isso, treze colunas iguais no meio de dez anos viram
+   uma parede de números em que ninguém acha onde o ano começa. */
+.tabela-metas th.col-mes { min-width: 58px; text-align: center; font-weight: 400; }
+.tabela-metas th.col-mes, .tabela-metas td.celula-mes { background: #f2f7f4; }
+.tabela-metas tr.linha-real td.celula-mes { background: #eef4f1; }
+.tabela-metas th.col-mes:first-of-type, .tabela-metas td.celula-mes:first-of-type {
+  border-left: 2px solid var(--verde-coperdia);
+}
+/* O total do ano fecha a faixa — é ele que a pessoa procura depois de percorrer
+   os meses, e por isso ganha o peso que as colunas de mês não têm. */
+.tabela-metas th.col-total, .tabela-metas td.valor.col-total { font-weight: 600; }
+.tabela-metas th.col-total { border-right: 2px solid var(--verde-coperdia); }
+
+/* Com o ano aberto a tabela passa de dez para vinte e três colunas e rola de
+   lado. As DUAS primeiras colunas ficam paradas — o nome do indicador e o
+   rótulo Meta/Real —, senão três meses adiante ninguém sabe de que indicador é
+   a linha nem qual das duas está lendo. Só a partir de md: no celular elas
+   tomariam metade da tela e sobraria menos do que já havia.
+   A âncora do rótulo é a largura FIXA da coluna do nome (220px): com largura
+   automática, as duas se sobreporiam na primeira tabela de nome comprido. */
+.tabela-metas th.col-indicador, .tabela-metas .celula-nome {
+  min-width: 220px;
+  width: 220px;
+}
+@media (min-width: 768px) {
+  .tabela-metas th.col-indicador, .tabela-metas .celula-nome {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #fff;
+  }
+  .tabela-metas th.col-rotulo, .tabela-metas .celula-rotulo {
+    position: sticky;
+    left: 220px;
+    z-index: 2;
+    background: #fff;
+  }
+  .tabela-metas tr.linha-real .celula-rotulo { background: #fafcfb; }
+}
+@media (max-width: 767.98px) {
+  .tabela-metas th.col-indicador, .tabela-metas .celula-nome {
+    min-width: 150px;
+    width: auto;
+  }
 }
 
 /* Painel consolidado */
