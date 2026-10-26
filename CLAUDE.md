@@ -754,6 +754,21 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     dívida são R$ como o faturamento e valem pelo último mês —, então ali ela
     não sugere nada, em vez de sugerir soma com cara de acerto. Prova em
     `provasAvisoAgregacao`.
+    Um passo do migrate **reclassifica uma única vez** os que ficaram em SOMA e
+    cuja unidade denuncia (`reclassificar_agregacao_percentual`), a pedido do
+    cliente. **A marca em `carga_conteudo` é o ponto**: o passo não é
+    idempotente no que importa — quem puser um percentual de volta em SOMA (há
+    caso legítimo) veria a escolha desfeita no deploy seguinte, em silêncio.
+    Com a marca ele roda uma vez por banco e nunca mais, e os NOMES
+    reclassificados vão para o log, não só a contagem — é a única chance de
+    alguém reconhecer um que não devia ter entrado. Duas armadilhas de SQL pagas
+    ali: o `%` precisa de `ESCAPE` (sem ele o próprio sinal vira o coringa e a
+    condição casa com TODAS as unidades, reclassificando o plano inteiro) e a
+    busca por índice é por **`'%ndice%'`, sem a letra acentuada** — apesar de
+    `utf8mb4_unicode_ci` prometer insensibilidade a acento, o teste mostrou
+    "Índice" NÃO casando com `'%indice%'`, porque quem decide é a collation do
+    PAR coluna×literal. Saldo (estoque, dívida) **não entra** no passo, pela
+    mesma razão de a tela não o sugerir.
   - **Um caminho de lançamento por ano** (decisão do cliente no mesmo dia,
     revendo a primeira versão): **o ano em execução é lançado mês a mês e o ano
     é a agregação dos meses — na meta e no realizado**; os demais anos recebem o

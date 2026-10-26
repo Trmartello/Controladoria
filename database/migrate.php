@@ -826,6 +826,60 @@ garantirColuna($pdo, 'indicador', 'agregacao',
 garantirColuna($pdo, 'ciclo', 'ano_execucao',
     'ALTER TABLE ciclo ADD COLUMN ano_execucao SMALLINT NULL AFTER ano_fim');
 
+// ---- Reclassificação única: percentual não soma ----
+//
+// Todo indicador anterior à coluna `agregacao` nasceu com SOMA, porque esse é o
+// DEFAULT — inclusive os que medem margem, índice, cobertura e prazo. Enquanto
+// só houver valor anual lançado nada acontece (agregar um valor é ele mesmo),
+// mas no primeiro lançamento mensal doze margens de 14% somariam 168%: um
+// número que não existe e que não parece errado na tela.
+//
+// **Por que a marca em `carga_conteudo`, e não um WHERE que se baste.** Este
+// passo NÃO é idempotente no sentido que importa aqui: quem reclassificar um
+// percentual de volta para SOMA — e há caso legítimo, como pontos de
+// participação ganhos no ano — veria a escolha desfeita no deploy seguinte, em
+// silêncio. A marca faz o passo rodar UMA vez por banco; depois dela, a
+// agregação é só de quem cadastra. É a mesma semântica das cargas de conteúdo
+// ("uma vez por chave, e o que alguém mudar depois não volta no próximo
+// deploy"), e por isso o registro é o mesmo, apesar de isto não ser carga.
+//
+// O critério é o de `SecaoMetas.agregacaoSugerida`, na tela: % no texto, "x"
+// sozinho, índice e dias. **Saldo não entra**: estoque, dívida e capital de giro
+// são R$ como o faturamento é R$, e a unidade não os distingue — reclassificá-los
+// por chute seria errar com cara de acerto. Eles continuam dependendo do olho de
+// quem cadastra, com o selo "revisar o ano" apontando na tela.
+$chaveAgreg = 'reclassificar_agregacao_percentual';
+if (tabelaExiste($pdo, 'carga_conteudo') && !App\Services\CargaConteudo::jaAplicada($pdo, $chaveAgreg)) {
+    // Duas armadilhas de SQL pagas aqui, as duas silenciosas:
+    //
+    // 1. O `%` é ESCAPADO. Sem isso, o próprio sinal de porcentagem seria o
+    //    coringa do LIKE e a condição casaria com TODAS as unidades —
+    //    reclassificando o plano inteiro, R$ e toneladas junto.
+    // 2. `'%ndice%'` sem o "í". A collation das colunas é `utf8mb4_unicode_ci`,
+    //    e a documentação promete insensibilidade a acento — mas quem decide a
+    //    collation da COMPARAÇÃO é o par coluna×literal, e o teste aqui mostrou
+    //    "Índice" NÃO casando com `'%indice%'`. Procurar pelo pedaço sem a letra
+    //    acentuada casa os dois e não depende de collation nenhuma; escrever as
+    //    duas grafias casaria hoje e perderia "ÍNDICE" amanhã, por outro motivo
+    //    igualmente invisível.
+    $alvos = $pdo->query("SELECT id, nome, unidade FROM indicador
+         WHERE agregacao = 'SOMA'
+           AND (unidade LIKE '%!%%' ESCAPE '!'
+                OR LOWER(TRIM(unidade)) = 'x'
+                OR unidade LIKE '%ndice%'
+                OR unidade LIKE '%dias%')")->fetchAll(PDO::FETCH_ASSOC);
+    if ($alvos) {
+        $ids = implode(',', array_map(static fn ($i) => (int)$i['id'], $alvos));
+        $pdo->exec("UPDATE indicador SET agregacao = 'MEDIA' WHERE id IN ({$ids})");
+        // Os nomes vão para o log do deploy, e não só a contagem: é a única
+        // chance de alguém reconhecer um que não devia ter entrado.
+        foreach ($alvos as $a) {
+            echo "migrate: indicador «{$a['nome']}» ({$a['unidade']}) passou a tirar MÉDIA dos meses.\n";
+        }
+    }
+    App\Services\CargaConteudo::marcar($pdo, $chaveAgreg, count($alvos) . ' indicador(es)');
+}
+
 /** Cria uma chave estrangeira só se ela ainda não existe. */
 function garantirFk(PDO $pdo, string $tabela, string $nome, string $ddl): void
 {
