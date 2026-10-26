@@ -4583,6 +4583,134 @@ async function provasLugarGuardado(page, largura) {
 }
 
 /**
+ * A CÉLULA da tabela de metas: lançar e corrigir no mesmo lugar.
+ *
+ * Eram dois botões (M e R) abrindo um modal com a série inteira — para corrigir
+ * um ano era preciso abrir o formulário, achar o campo no meio de dez e salvar
+ * tudo. O cliente pediu meta e realizado lançáveis e editáveis NA TELA
+ * (2026-10-25), e esta prova prende as quatro coisas que fazem isso funcionar
+ * sem virar armadilha:
+ *
+ * - **o valor chega ao servidor** e volta depois da repintura (digitar e ver o
+ *   número não prova nada: o campo guarda o que foi digitado mesmo quando a
+ *   gravação falha);
+ * - **o filtro recusa letra** sem apagar o que estava escrito. O campo é
+ *   `type=text` de propósito — o numérico do navegador devolve valor VAZIO
+ *   quando o conteúdo não casa com o locale, e quem digitasse "13,5" gravaria
+ *   nada, em silêncio;
+ * - **o negativo passa**, porque meta de resultado financeiro e de dívida é
+ *   negativa, e o filtro de dinheiro que este campo reaproveita recusa o sinal
+ *   no campo de ganhos, onde ele não vale;
+ * - **Esc desfaz sem gravar**, que é a saída de quem clicou na célula errada.
+ *
+ * A prova usa teclado DE VERDADE (`keyboard.type`), e não `fill`: o filtro vive
+ * no `beforeinput`, e preencher por programa pularia justamente o que ela mede.
+ * Limpar é `ControlOrMeta+A` + digitar — `fill(campo, '')` é no-op num campo
+ * com texto (armadilha já paga, ver CLAUDE.md).
+ */
+async function provasCelulaMetas(page, largura) {
+  const l = `[${largura}] Célula de metas:`;
+  const ind = await page.evaluate(async () => {
+    const r = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Indicador célula QA', unidade: 'R$ mil', agregacao: 'SOMA',
+    });
+    App.mostrarSecao('metas');
+    return r.id;
+  });
+  const pintou = await esperar(page, `!!document.querySelector('[data-celula-ind="${ind}"]')`, 15000);
+  t(`${l} a tabela pinta com a célula do indicador novo`, pintou);
+  if (!pintou) return;
+
+  const sel = (tipo, ano) => `[data-celula-ind="${ind}"][data-tipo="${tipo}"][data-ano="${ano}"] input`;
+  const digitar = async (campo, texto) => {
+    await page.click(campo);
+    await page.keyboard.press('ControlOrMeta+A');
+    if (texto !== '') await page.keyboard.type(texto);
+    else await page.keyboard.press('Backspace');
+    await page.keyboard.press('Tab');
+  };
+
+  // Os botões de antes não existem mais, e o que sobrou diz o que faz.
+  const botoes = await page.evaluate(() => ({
+    mr: document.querySelectorAll('#secao-metas [data-valores]').length,
+    revisar: !!document.querySelector('#secao-metas [data-revisar]'),
+  }));
+  t(`${l} os botões M e R saíram da linha`, botoes.mr === 0, JSON.stringify(botoes));
+  t(`${l} e sobrou "⟳ Revisar", que é o que a célula não faz`, botoes.revisar);
+
+  await digitar(sel('META', 2026), '45,5');
+  await esperar(page, `!document.querySelector('${sel('META', 2026)}').classList.contains('celula-gravando')`);
+  const gravado = await page.evaluate(async (id) => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    const i = d.indicadores.find((x) => x.id == id);
+    return (i.metas.find((m) => m.ano === 2026) || {}).valor ?? null;
+  }, ind);
+  t(`${l} a meta digitada chega ao servidor`, Number(gravado) === 45.5, String(gravado));
+
+  await digitar(sel('REAL', 2026), '40');
+  await esperar(page, `!document.querySelector('${sel('REAL', 2026)}').classList.contains('celula-gravando')`);
+  // Repinta a seção: o que a tela mostra depois disso é o que o servidor tem.
+  await page.evaluate(() => SecaoMetas.carregar());
+  await esperar(page, `!!document.querySelector('${sel('REAL', 2026)}')`, 15000);
+  const depois = await page.evaluate((s) => ({
+    meta: document.querySelector(s.m)?.dataset.bruto,
+    real: document.querySelector(s.r)?.dataset.bruto,
+    visivel: document.querySelector(s.m)?.value,
+  }), { m: sel('META', 2026), r: sel('REAL', 2026) });
+  t(`${l} meta e realizado sobrevivem à repintura`,
+    Number(depois.meta) === 45.5 && Number(depois.real) === 40, JSON.stringify(depois));
+  t(`${l} e voltam escritos em português`, depois.visivel === '45,5', String(depois.visivel));
+
+  // Letra não entra — e não apaga o que já estava lá.
+  await page.click(sel('META', 2026));
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('abc');
+  const recusou = await page.evaluate((s) => document.querySelector(s).value, sel('META', 2026));
+  await page.keyboard.press('Escape');
+  t(`${l} letra é recusada sem apagar o número que estava na célula`,
+    recusou === '45,5', String(recusou));
+
+  // Esc desfaz o que está sendo digitado, sem gravar.
+  await page.click(sel('META', 2026));
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('999');
+  await page.keyboard.press('Escape');
+  const semGravar = await page.evaluate(async (id) => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    const i = d.indicadores.find((x) => x.id == id);
+    return (i.metas.find((m) => m.ano === 2026) || {}).valor ?? null;
+  }, ind);
+  t(`${l} Esc desfaz sem gravar`, Number(semGravar) === 45.5, String(semGravar));
+
+  // Negativo passa: meta de resultado financeiro e de dívida é negativa.
+  await digitar(sel('META', 2027), '-12,5');
+  await esperar(page, `!document.querySelector('${sel('META', 2027)}').classList.contains('celula-gravando')`);
+  const negativo = await page.evaluate(async (id) => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    const i = d.indicadores.find((x) => x.id == id);
+    return (i.metas.find((m) => m.ano === 2027) || {}).valor ?? null;
+  }, ind);
+  t(`${l} o negativo é aceito (o campo de ganhos recusa, este não)`,
+    Number(negativo) === -12.5, String(negativo));
+
+  // Apagar a célula limpa o ano, e não grava zero: "sem meta" e "meta zero" são
+  // respostas diferentes.
+  await digitar(sel('META', 2027), '');
+  await esperar(page, `!document.querySelector('${sel('META', 2027)}').classList.contains('celula-gravando')`);
+  const limpo = await page.evaluate(async (id) => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    const i = d.indicadores.find((x) => x.id == id);
+    return i.metas.some((m) => m.ano === 2027);
+  }, ind);
+  t(`${l} esvaziar a célula apaga o ano, em vez de gravar zero`, limpo === false, String(limpo));
+
+  await page.evaluate(async (id) => {
+    await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 }).catch(() => {});
+    App.mostrarSecao('painel');
+  }, ind);
+}
+
+/**
  * A JANELA do formulário: larga no computador, e que sai da frente.
  *
  * O pedido que a originou é de leitura, não de conforto — com o modal de 500px
@@ -4821,6 +4949,7 @@ async function provasJanelaModal(page, largura) {
   await provasJanelaModal(page, 'desktop');
   await provasMenuRecolhido(page, 'desktop');
   await provasLugarGuardado(page, 'desktop');
+  await provasCelulaMetas(page, 'desktop');
   await noAnoDaCarga(page);
   await provasPainelSalaFixo(page, 'desktop');
   await noAnoPadrao(page);
@@ -4858,6 +4987,7 @@ async function provasJanelaModal(page, largura) {
   await provasJanelaModal(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
+  await provasCelulaMetas(pageM, 'celular');
   await noAnoDaCarga(pageM);
   await provasPainelSalaFixo(pageM, 'celular');
   await noAnoPadrao(pageM);

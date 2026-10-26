@@ -1182,8 +1182,13 @@ const Modal = {
    * caminho de volta. Aceitar os dois e mostrar um só evita o campo que recusa
    * exatamente a tecla que a pessoa aprendeu a usar para centavos.
    */
-  ligarMoedas(raiz) {
-    raiz.querySelectorAll('.campo-moeda').forEach((inp) => {
+  ligarMoedas(raiz, { seletor = '.campo-moeda', negativos = false } = {}) {
+    // `negativos` nasceu para a tabela de metas, onde o número negativo é
+    // legítimo (resultado financeiro, dívida, margem negativa). No campo de
+    // ganhos ele segue recusado — é regra de lá, com prova própria —, e por
+    // isso quem decide é o CHAMADOR, não o filtro.
+    const forma = negativos ? /^-?\d*(,\d{0,2})?$/ : /^\d*(,\d{0,2})?$/;
+    raiz.querySelectorAll(seletor).forEach((inp) => {
       inp.addEventListener('beforeinput', (ev) => {
         const bruto = ev.data ?? ev.dataTransfer?.getData('text') ?? '';
         if (bruto === '') {
@@ -1195,7 +1200,7 @@ const Modal = {
           if (String(ev.inputType || '').startsWith('insert')) ev.preventDefault();
           return;
         }
-        const pedaco = this.pedacoMoeda(bruto);
+        const pedaco = this.pedacoMoeda(bruto, negativos);
         const ini = inp.selectionStart ?? inp.value.length;
         const fim = inp.selectionEnd ?? inp.value.length;
         const candidato = inp.value.slice(0, ini) + pedaco + inp.value.slice(fim);
@@ -1203,8 +1208,8 @@ const Modal = {
         // limpo é diferente dela (o ponto virou vírgula) e precisa ser inserido
         // por aqui. Deixar passar o original escreveria o caractere cru.
         ev.preventDefault();
-        // Uma vírgula só, no máximo dois centavos e nada de sinal
-        if (pedaco === '' || !/^\d*(,\d{0,2})?$/.test(candidato)) return;
+        // Uma vírgula só, no máximo dois centavos, e o sinal só onde ele vale
+        if (pedaco === '' || !forma.test(candidato)) return;
         inp.setRangeText(pedaco, ini, fim, 'end');
         inp.dispatchEvent(new Event('input', { bubbles: true }));
       });
@@ -1221,18 +1226,23 @@ const Modal = {
    * milhar — é o que distingue "1.234,56" de "1,50". Sem essa leitura, colar um
    * valor formatado deixava o campo vazio, sem dizer por quê.
    *
-   * O sinal de menos não é enfeite como o "R$": ele é parte do número. Por isso
-   * o texto que o contém é recusado INTEIRO, em vez de entrar sem o sinal —
-   * colar "-99" e ver 99 seria o campo mentindo sobre o que recebeu.
+   * O sinal de menos não é enfeite como o "R$": ele é parte do número. Onde ele
+   * não é aceito (`negativos` falso, o padrão), o texto que o contém é recusado
+   * INTEIRO em vez de entrar sem o sinal — colar "-99" e ver 99 seria o campo
+   * mentindo sobre o que recebeu. Onde é aceito, ele só vale no COMEÇO: um
+   * menos no meio do número não é número, e quem recusa o resto é a forma
+   * conferida em `ligarMoedas`.
    */
-  pedacoMoeda(bruto) {
+  pedacoMoeda(bruto, negativos = false) {
     const texto = String(bruto);
-    if (texto.includes('-')) return '';
+    const negativo = negativos && /^\s*-/.test(texto);
+    if (texto.includes('-') && !negativo) return '';
     const cru = texto.replace(/[^0-9.,]/g, '');
     const partes = cru.split(/[.,]/);
-    if (partes.length <= 1) return cru;
-    const decimais = partes.pop();
-    return `${partes.join('')},${decimais}`;
+    const numero = partes.length <= 1
+      ? cru
+      : `${partes.slice(0, -1).join('')},${partes[partes.length - 1]}`;
+    return negativo ? `-${numero}` : numero;
   },
 
   /** Pesquisa e contador das listas marcáveis. */

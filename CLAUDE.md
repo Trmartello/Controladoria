@@ -759,6 +759,40 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   meses_total}` (mais `versao_meta` nas metas) e **tudo como número**, não como
   a string do DECIMAL: metade da série vem do banco e metade é calculada, e a
   tela compara as duas entre si.
+- **Lançar e corrigir acontecem NA CÉLULA** (2026-10-25, pedido do cliente:
+  "lançar a meta e o realizado da mesma tela e editar da mesma forma"). Eram
+  dois botões (M e R) abrindo um modal com a série inteira — corrigir um ano
+  exigia achar o campo no meio de dez e salvar tudo. Quatro decisões que não se
+  afrouxam:
+  - **`type=text` com `inputmode=decimal`**, nunca `type=number`: o campo
+    numérico do navegador devolve `.value` **vazio** quando o conteúdo não casa
+    com o locale dele, e quem digitasse "13,5" gravaria nada, em silêncio. O
+    filtro de digitação é o do campo de dinheiro (`Modal.ligarMoedas`, agora com
+    `seletor` e `negativos`), **com negativos permitidos** — meta de resultado
+    financeiro e de dívida é negativa. No campo de ganhos o sinal segue
+    recusado, que é regra de lá e tem prova própria.
+  - **A gravação sai do `blur`, com marca de sujeira no `input` — não do
+    `change`.** O filtro cancela a entrada original (`preventDefault`) e escreve
+    por `setRangeText`: para o navegador o campo foi alterado por PROGRAMA, e
+    valor alterado por programa **não dispara `change`** ao perder o foco. Com
+    `change`, a gravação simplesmente não acontecia, sem erro em lugar nenhum —
+    custou uma rodada da bateria. `Esc` limpa a marca ANTES do `blur`, e é o que
+    o faz desfazer sem gravar.
+  - **Célula derivada não se digita.** No REAL, o ano cujo valor vem dos meses é
+    só leitura: editável, aceitaria um número que a leitura ignora na linha
+    seguinte — o pior tipo de campo, o que parece ter funcionado. Na META a
+    diferença entre o ano e a soma dos meses é **dita** (o `≠` com o total no
+    title), nunca corrigida: quem decide qual dos dois está errado é quem
+    planeja.
+  - **A resposta da gravação traz a série recalculada**, e é dela que a tela se
+    serve: refazer a agregação no JS seria a segunda cópia da regra, no idioma
+    errado. Recarregar a seção mataria o foco de quem percorre a linha com Tab —
+    por isso só os cartões do horizonte e as células derivadas são repintados.
+  O **⟳ Revisar** é o que a célula de propósito não faz: grava a série como
+  **versão nova**, preservando a anterior (o selo "rev."). Digitar na célula
+  corrige a versão corrente — é o caminho de quem errou um número, não o de quem
+  mudou de meta. O realizado não tem equivalente: o que aconteceu não se revisa.
+  Prova em `provasCelulaMetas`, nas duas larguras.
 - **O ano em execução é do CICLO** (`ciclo.ano_execucao`), não do navegador de
   quem olha (decisão do cliente, 2026-10-26): é o mesmo para todos os negócios e
   para o relatório, e guardá-lo como preferência de tela faria cada pessoa ver um
@@ -2333,10 +2367,10 @@ A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
-**Linha de base em 2026-10-26** (depois do mês nas metas; era 301/678 em
-2026-10-14 e 288/583 em 2026-09-04): funcional **320 ✓ / 0 ✗**
+**Linha de base em 2026-10-26** (depois do mês nas metas e da célula editável;
+era 301/678 em 2026-10-14 e 288/583 em 2026-09-04): funcional **320 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
-sistema **678 ✓ / 0 ✗** em cerca de nove minutos
+sistema **698 ✓ / 0 ✗** em cerca de nove minutos
 (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node testes/sistema.js`). A de
 sistema ainda **sai com código 1** por 14 avisos de console esperados (12 ×
 `400` e 2 × `409` que as próprias provas provocam) — é pendência técnica do

@@ -219,7 +219,20 @@ class IndicadorController
                 [$id, $ano, $mes, $tipo, $versao, (float)$valor]
             );
         }
-        Json::ok(['versao' => $versao, 'mes' => $mes]);
+        // A série recalculada volta no mesmo pedido. Quem edita célula a célula
+        // grava um valor e precisa do EFEITO dele — o total do ano muda quando
+        // o lançamento é de mês —, e a alternativa seria a tela refazer a
+        // agregação por conta própria: uma segunda cópia da regra, no idioma
+        // errado. Recarregar a seção inteira custaria o foco de quem digita.
+        $atualizado = Metas::anexarSeries([
+            Database::um('SELECT id, agregacao FROM indicador WHERE id = ?', [$id]),
+        ])[0];
+        Json::ok([
+            'versao' => $versao,
+            'mes'    => $mes,
+            'metas'  => $atualizado['metas'],
+            'reais'  => $atualizado['reais'],
+        ]);
     }
 
     public function excluir(int $id): void

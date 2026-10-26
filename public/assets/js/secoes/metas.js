@@ -36,20 +36,55 @@ const SecaoMetas = {
     return { real, meta, ano, atingiu };
   },
 
-  async carregar() {
-    const el = document.getElementById('secao-metas');
-    if (!App.contextoParams()) {
-      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu ☰.</div>';
-      return;
+  /**
+   * A célula da tabela — leitura e lançamento no MESMO lugar.
+   *
+   * Era um par de botões (M e R) abrindo um modal com a série inteira: para
+   * corrigir um ano era preciso abrir o formulário, achar o campo no meio de
+   * dez e salvar tudo. Agora clica-se no número e digita-se por cima, que é o
+   * gesto da planilha de onde estes dados vêm.
+   *
+   * `type=text` com `inputmode=decimal`, e não `type=number`: o campo numérico
+   * do navegador devolve `.value` VAZIO quando o conteúdo não casa com o locale
+   * dele — quem digitasse "13,5" em português gravaria nada, sem nada na tela
+   * dizendo isso. O filtro de digitação é o mesmo do campo de dinheiro
+   * (`Modal.ligarMoedas`), **com negativos permitidos**: meta de resultado
+   * financeiro e de dívida é negativa, e recusar o sinal aqui seria recusar o
+   * número certo.
+   *
+   * **Célula derivada não se digita.** No REAL, o ano cujo valor vem dos meses
+   * é só leitura: deixá-lo editável aceitaria um número que a leitura ignora na
+   * linha seguinte — o pior tipo de campo, o que parece ter funcionado.
+   */
+  celula(ind, tipo, ano, entrada) {
+    const bruto = entrada ? entrada.valor : null;
+    const derivada = tipo === 'REAL' && entrada && entrada.meses_total !== null;
+    const classe = `valor${derivada ? ' celula-derivada' : ''}`;
+    // Os marcadores ficam no `<td>` e não no campo: a célula derivada não tem
+    // campo nenhum, e é justamente ela que precisa ser reencontrada e repintada
+    // quando um mês muda.
+    const marcas = `data-celula-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="0"`;
+    if (!App.podeEditar() || derivada) {
+      const dica = derivada
+        ? ` title="Vem dos meses lançados (${this.fmt(entrada.meses_total)}) — abra o ano para lançar mês a mês"` : '';
+      return `<td class="${classe}" ${marcas}${dica}>${this.fmt(bruto)}</td>`;
     }
-    this.plan = await App.planejamento();
-    this.dados = await App.api(`/api/indicadores?planejamento_id=${this.plan.id}`);
-    const { ciclo, horizontes, indicadores } = this.dados;
-    const anos = [];
-    for (let a = Number(ciclo.ano_base); a <= Number(ciclo.ano_fim); a++) anos.push(a);
+    // A diferença entre a meta do ano e a soma dos meses é DITA, não corrigida:
+    // quem decide se o ano ou a distribuição está errada é quem planeja.
+    const difere = tipo === 'META' && entrada && entrada.meses_total !== null
+      && Number(entrada.meses_total) !== Number(entrada.valor);
+    return `<td class="${classe}" ${marcas}>
+      <input type="text" class="celula-valor" inputmode="decimal" autocomplete="off"
+        value="${Modal.esc(this.fmt(bruto))}" data-bruto="${bruto ?? ''}"
+        data-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="0"
+        aria-label="${tipo === 'META' ? 'Meta' : 'Realizado'} de ${ano} — ${Modal.esc(ind.nome)}">
+      ${difere ? `<span class="difere" title="Os meses somam ${this.fmt(entrada.meses_total)}">≠</span>` : ''}
+    </td>`;
+  },
 
-    // ---- Cartões de métrica-âncora por horizonte
-    const cartoes = horizontes.map((h) => {
+  /** Os cartões de métrica-âncora, repintados sozinhos a cada gravação. */
+  cartoes(horizontes, indicadores) {
+    return horizontes.map((h) => {
       const ancoras = indicadores.filter((i) => Number(i.metrica_ancora) && i.horizonte_id == h.id);
       const itens = ancoras.map((i) => {
         const { real, meta, atingiu } = this.metaReal(i);
@@ -71,15 +106,121 @@ const SecaoMetas = {
         </div>
       </div>`;
     }).join('');
+  },
+
+  /** O recado de erro da gravação em célula, que não tem modal para mostrá-lo. */
+  avisar(texto) {
+    const caixa = document.querySelector('[data-aviso-metas]');
+    if (!caixa) return;
+    caixa.textContent = texto || '';
+    caixa.classList.toggle('d-none', !texto);
+  },
+
+  /**
+   * Grava UMA célula e repinta o que ela muda.
+   *
+   * O servidor devolve a série inteira do indicador já recalculada, e é dela
+   * que a tela se serve: refazer a agregação aqui seria uma segunda cópia da
+   * regra, no idioma errado. Recarregar a seção também não serve — mataria o
+   * foco de quem está percorrendo a linha com Tab.
+   */
+  async gravarCelula(inp) {
+    const texto = inp.value.trim().replace(',', '.');
+    const vazio = texto === '';
+    if (!vazio && !Number.isFinite(Number(texto))) {
+      this.avisar('Valor inválido: informe um número.');
+      inp.value = this.fmt(inp.dataset.bruto || null);
+      inp.classList.add('celula-erro');
+      return;
+    }
+    // A gravação vem do `blur`, com o campo já sem foco: quem escreve o valor
+    // formatado de volta é ela, nos dois desfechos. Sem isso a célula ficaria
+    // mostrando o que foi digitado ("45,5") enquanto a tabela ao lado mostra
+    // número formatado — ou, pior, o valor antigo depois de um erro.
+    const ind = this.dados.indicadores.find((i) => i.id == inp.dataset.ind);
+    const corpo = {
+      planejamento_id: this.plan.id,
+      tipo: inp.dataset.tipo,
+      mes: Number(inp.dataset.mes),
+      valores: { [inp.dataset.ano]: vazio ? null : Number(texto) },
+    };
+    inp.classList.remove('celula-erro');
+    inp.classList.add('celula-gravando');
+    try {
+      const r = await App.api(`/api/indicadores/${ind.id}/valores`, corpo);
+      ind.metas = r.metas;
+      ind.reais = r.reais;
+      inp.dataset.bruto = vazio ? '' : String(Number(texto));
+      inp.value = this.fmt(vazio ? null : Number(texto));
+      this.avisar('');
+      inp.classList.add('celula-salva');
+      setTimeout(() => inp.classList.remove('celula-salva'), 1200);
+      // O lançamento mexe no cartão do horizonte (meta × real da âncora) e,
+      // quando é de mês, no total do ano. Os dois são repintados a partir da
+      // série nova; a célula em foco não é tocada.
+      const cartoes = document.querySelector('[data-cartoes-metas]');
+      if (cartoes) cartoes.innerHTML = this.cartoes(this.dados.horizontes, this.dados.indicadores);
+      this.repintarDerivadas(ind, inp);
+    } catch (e) {
+      this.avisar(e.message);
+      inp.classList.add('celula-erro');
+      inp.value = this.fmt(inp.dataset.bruto || null);
+    } finally {
+      inp.classList.remove('celula-gravando');
+    }
+  },
+
+  /**
+   * As células do indicador que o lançamento mudou SEM serem digitadas: o total
+   * do ano quando o que mudou foi um mês. A que está em foco fica de fora — ela
+   * tem o que a pessoa acabou de escrever.
+   */
+  repintarDerivadas(ind, foco) {
+    document.querySelectorAll(`[data-celula-ind="${ind.id}"]`).forEach((td) => {
+      const { tipo, ano, mes } = td.dataset;
+      const serie = tipo === 'META' ? ind.metas : ind.reais;
+      const entrada = serie.find((x) => x.ano == ano) || null;
+      const valor = Number(mes) === 0
+        ? (entrada ? entrada.valor : null)
+        : (entrada && entrada.meses ? entrada.meses[mes] ?? null : null);
+      const campo = td.querySelector('input');
+      if (campo) {
+        if (campo === foco) return;
+        campo.dataset.bruto = valor ?? '';
+        campo.value = this.fmt(valor);
+      } else {
+        td.textContent = this.fmt(valor);
+      }
+    });
+  },
+
+  async carregar() {
+    const el = document.getElementById('secao-metas');
+    if (!App.contextoParams()) {
+      el.innerHTML = '<div class="alert alert-info">Selecione o ciclo e o negócio no menu ☰.</div>';
+      return;
+    }
+    this.plan = await App.planejamento();
+    this.dados = await App.api(`/api/indicadores?planejamento_id=${this.plan.id}`);
+    const { ciclo, horizontes, indicadores } = this.dados;
+    const anos = [];
+    for (let a = Number(ciclo.ano_base); a <= Number(ciclo.ano_fim); a++) anos.push(a);
+
+    // ---- Cartões de métrica-âncora por horizonte
+    const cartoes = this.cartoes(horizontes, indicadores);
 
     // ---- Tabela plurianual (linha Meta + linha Real por indicador)
     const linhas = indicadores.map((i) => {
       const metas = Object.fromEntries(i.metas.map((m) => [m.ano, m]));
-      const reais = Object.fromEntries(i.reais.map((r) => [r.ano, r.valor]));
+      const reais = Object.fromEntries(i.reais.map((r) => [r.ano, r]));
       const revisada = i.metas.some((m) => Number(m.versao_meta) > 1);
+      // Os botões M e R saíram: lançar e corrigir acontecem na célula. O que
+      // sobra aqui é o que a célula NÃO faz — revisar a meta criando versão
+      // nova (gesto deliberado, nunca consequência de uma correção de
+      // digitação), editar o cadastro e excluir.
       const acoes = App.podeEditar() ? `
-        <button class="btn btn-sm btn-outline-success" data-valores="${i.id}" data-tipo="META" title="Lançar metas">M</button>
-        <button class="btn btn-sm btn-outline-primary" data-valores="${i.id}" data-tipo="REAL" title="Lançar realizados">R</button>
+        <button class="btn btn-sm btn-outline-success" data-revisar="${i.id}"
+          title="Revisar metas — grava uma versão nova e preserva a anterior">⟳ Revisar</button>
         <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar indicador">✎</button>
         <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir">×</button>` : '';
       return `
@@ -92,12 +233,12 @@ const SecaoMetas = {
               ${i.horizonte_nome ? ` · ${Modal.esc(i.horizonte_nome)}` : ''}</div>
           </td>
           <td class="small text-muted">Meta</td>
-          ${anos.map((a) => `<td class="valor">${this.fmt(metas[a]?.valor)}</td>`).join('')}
+          ${anos.map((a) => this.celula(i, 'META', a, metas[a] || null)).join('')}
           <td rowspan="2" class="align-middle text-nowrap">${acoes}</td>
         </tr>
         <tr class="linha-real">
           <td class="small text-muted">Real</td>
-          ${anos.map((a) => `<td class="valor">${this.fmt(reais[a])}</td>`).join('')}
+          ${anos.map((a) => this.celula(i, 'REAL', a, reais[a] || null)).join('')}
         </tr>`;
     }).join('');
 
@@ -107,8 +248,11 @@ const SecaoMetas = {
         ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-ind">+ Novo indicador</button>' : ''}
       </div>
       <p class="text-muted">Métricas-âncora dão o foco de cada horizonte; a tabela plurianual acompanha
-      meta × real de ${ciclo.ano_base} a ${ciclo.ano_fim}. Revisões de meta preservam as versões anteriores.</p>
-      <div class="row g-3 mb-3">${cartoes}</div>
+      meta × real de ${ciclo.ano_base} a ${ciclo.ano_fim}.${App.podeEditar()
+        ? ' Clique no número para lançar ou corrigir; <strong>⟳ Revisar</strong> grava uma versão nova da meta, preservando a anterior.'
+        : ' Revisões de meta preservam as versões anteriores.'}</p>
+      <div class="alert alert-danger d-none" data-aviso-metas role="alert"></div>
+      <div class="row g-3 mb-3" data-cartoes-metas>${cartoes}</div>
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle tabela-metas">
           <thead><tr>
@@ -141,8 +285,49 @@ const SecaoMetas = {
       await App.api(`/api/indicadores/${b.dataset.excluir}/excluir`, { planejamento_id: this.plan.id });
       this.carregar();
     }));
-    el.querySelectorAll('[data-valores]').forEach((b) => b.addEventListener('click', () =>
-      this.modalValores(indicadores.find((i) => i.id == b.dataset.valores), b.dataset.tipo, anos)));
+    el.querySelectorAll('[data-revisar]').forEach((b) => b.addEventListener('click', () =>
+      this.modalRevisarMetas(indicadores.find((i) => i.id == b.dataset.revisar), anos)));
+
+    // O mesmo filtro de digitação do campo de dinheiro, com NEGATIVOS
+    // permitidos: meta de resultado financeiro e de dívida é negativa.
+    Modal.ligarMoedas(el, { seletor: '.celula-valor', negativos: true });
+    el.querySelectorAll('.celula-valor').forEach((inp) => {
+      // Com foco, o número CRU (sem separador de milhar): editar "1.500,50" é
+      // pisar em cima da formatação, e a primeira tecla apagaria um número
+      // certo. Sem foco, ele volta formatado, que é como se lê uma tabela.
+      inp.addEventListener('focus', () => {
+        inp.value = Modal.moedaBr(inp.dataset.bruto || '');
+        inp.select();
+      });
+      // Grava ao SAIR do campo, e só se alguma tecla mexeu nele. Não dá para
+      // usar `change` aqui, e a razão é a armadilha desta tela: o filtro de
+      // digitação cancela a entrada original (`preventDefault`) e escreve por
+      // `setRangeText` — para o navegador o campo foi alterado por PROGRAMA, e
+      // valor alterado por programa não dispara `change` ao perder o foco.
+      // A gravação simplesmente não acontecia, sem erro em lugar nenhum.
+      // Marcar a sujeira no `input` (que o próprio filtro emite) e gravar no
+      // `blur` dá o mesmo comportamento que se queria do `change`: uma
+      // gravação por campo deixado, e nenhuma a cada tecla.
+      inp.addEventListener('input', () => { inp.dataset.sujo = '1'; });
+      inp.addEventListener('blur', () => {
+        if (inp.dataset.sujo === '1') {
+          delete inp.dataset.sujo;
+          this.gravarCelula(inp);
+          return;
+        }
+        inp.value = this.fmt(inp.dataset.bruto || null);
+      });
+      inp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+        // Esc desfaz o que está sendo digitado — sem gravar. Limpar a marca de
+        // sujeira ANTES do blur é o que impede a gravação do valor desfeito.
+        if (ev.key === 'Escape') {
+          delete inp.dataset.sujo;
+          inp.value = Modal.moedaBr(inp.dataset.bruto || '');
+          inp.blur();
+        }
+      });
+    });
   },
 
   /**
@@ -223,11 +408,23 @@ const SecaoMetas = {
     });
   },
 
-  modalValores(ind, tipo, anos) {
-    const serie = tipo === 'REAL'
-      ? Object.fromEntries(ind.reais.map((r) => [r.ano, r.valor]))
-      : Object.fromEntries(ind.metas.map((m) => [m.ano, m.valor]));
-    const valores = { planejamento_id: this.plan.id, tipo };
+  /**
+   * Revisar metas — a série inteira de uma vez, criando VERSÃO NOVA.
+   *
+   * É o que a célula editável de propósito não faz. Na célula, digitar corrige
+   * a versão corrente: é o caminho de quem errou um número. Aqui é o outro
+   * gesto, o de quem mudou de meta — e ele preserva a anterior, que é o que o
+   * selo "rev." passa a anunciar na linha.
+   *
+   * Por isso `nova_versao` já vem MARCADA: quem abriu este formulário veio
+   * revisar. Desmarcá-la corrige a versão corrente, como a célula faria.
+   *
+   * O realizado não tem equivalente: ele não é versionado (o que aconteceu não
+   * se revisa), e lançá-lo é digitar na célula.
+   */
+  modalRevisarMetas(ind, anos) {
+    const serie = Object.fromEntries(ind.metas.map((m) => [m.ano, m.anual ?? m.valor]));
+    const valores = { planejamento_id: this.plan.id, tipo: 'META', nova_versao: true };
     const campos = [
       { nome: 'planejamento_id', rotulo: '', tipo: 'hidden' },
       { nome: 'tipo', rotulo: '', tipo: 'hidden' },
@@ -236,16 +433,17 @@ const SecaoMetas = {
       valores[`ano_${ano}`] = serie[ano] ?? '';
       campos.push({ nome: `ano_${ano}`, rotulo: String(ano), tipo: 'number' });
     }
-    if (tipo === 'META') {
-      campos.push({ nome: 'nova_versao', rotulo: 'Revisão de meta (preserva a versão anterior)', tipo: 'checkbox' });
-    }
+    campos.push({ nome: 'nova_versao', rotulo: 'Gravar como revisão (preserva a versão anterior)', tipo: 'checkbox',
+      ajuda: 'Desmarcado, corrige a versão atual — o mesmo que digitar na célula da tabela.' });
     Modal.abrir({
-      titulo: `${tipo === 'REAL' ? 'Realizado' : 'Metas'} — ${ind.nome} (${ind.unidade})`,
+      titulo: `Revisar metas — ${ind.nome} (${ind.unidade})`,
       url: `/api/indicadores/${ind.id}/valores`,
       valores,
       campos,
       aoSalvar: () => this.carregar(),
-      // Reagrupa os campos de ano no corpo JSON esperado pela API
+      // Reagrupa os campos de ano no corpo JSON esperado pela API. Sem `mes`:
+      // a revisão é do ANO — os meses dele são a distribuição, e quem os lança
+      // é a célula.
       transformar: (d) => ({
         planejamento_id: d.planejamento_id,
         tipo: d.tipo,

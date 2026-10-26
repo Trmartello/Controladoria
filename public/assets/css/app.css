@@ -359,6 +359,46 @@ table.tabela-cadastro td { vertical-align: middle; }
 .tabela-metas tr.linha-real td { color: #555; background: #fafcfb; }
 .badge-ancora { background: var(--dourado); }
 
+/* ===== A célula que se digita =====
+   O campo não parece campo enquanto ninguém mexe nele: a tabela é LIDA muito
+   mais vezes do que preenchida, e 20 caixas desenhadas numa linha de números
+   viram um formulário onde devia haver uma planilha. A borda aparece no
+   passar do mouse e no foco — que é quando ela significa alguma coisa. */
+.tabela-metas .celula-valor {
+  width: 100%;
+  min-width: 4.5rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  padding: 1px 4px;
+  text-align: right;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+}
+.tabela-metas .celula-valor:hover { border-color: #ccd6d1; }
+.tabela-metas .celula-valor:focus {
+  outline: 0;
+  border-color: var(--verde-coperdia);
+  background: #fff;
+  box-shadow: 0 0 0 .2rem rgba(0, 122, 69, .15);
+}
+/* Gravando, gravado e recusado. O verde é um PISCA de 1,2s: confirmação que
+   fica vira decoração, e a tabela inteira acabaria verde depois de um
+   lançamento. O vermelho fica, porque o valor não entrou. */
+.tabela-metas .celula-valor.celula-gravando { opacity: .55; }
+.tabela-metas .celula-valor.celula-salva { background: #e7f5ee; border-color: #9ed7bc; }
+.tabela-metas .celula-valor.celula-erro { background: #fdecea; border-color: #e5a7a1; }
+/* Valor que vem dos meses: não se digita, e o cinza-itálico diz isso antes de
+   alguém tentar. */
+.tabela-metas td.celula-derivada { color: #5d6b64; font-style: italic; }
+.tabela-metas .difere {
+  color: var(--dourado);
+  font-weight: 700;
+  margin-left: .15rem;
+  cursor: help;
+}
+
 /* Painel consolidado */
 .tabela-painel td, .tabela-painel th { white-space: nowrap; }
 /* ===== Barras de progresso — um desenho só em todo o sistema =====
