@@ -769,6 +769,12 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     "Índice" NÃO casando com `'%indice%'`, porque quem decide é a collation do
     PAR coluna×literal. Saldo (estoque, dívida) **não entra** no passo, pela
     mesma razão de a tela não o sugerir.
+    Sobra daí **uma conferência do cliente, depois do deploy** (pendente):
+    ler no log do passo os nomes reclassificados — é a única chance de pegar um
+    que somava de propósito — e marcar à mão como **último mês** os indicadores
+    de saldo em R$ (estoque, dívida, capital de giro). Eles nasceram todos em
+    SOMA e **nem o selo nem o passo os alcança**: a unidade deles é a mesma do
+    faturamento.
   - **Um caminho de lançamento por ano** (decisão do cliente no mesmo dia,
     revendo a primeira versão): **o ano em execução é lançado mês a mês e o ano
     é a agregação dos meses — na meta e no realizado**; os demais anos recebem o
@@ -957,6 +963,27 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   planejamento — `Auth::exigirEdicaoPlanejamento` valida o planejamento, não os
   filhos —, e só toca a tabela quando a chave `cascatas` vem no corpo: tratar a
   ausência como "lista vazia" apagaria vínculos que ninguém mandou apagar.
+  **Pendente, e pedido do cliente: o indicador deve medir UMA escolha**
+  (2026-10-26, ao ver "Faturamento Nutrição animal" medindo a Síntese e mais
+  duas aberturas na mesma matriz). Hoje o modelo é N:N de propósito e **nada
+  impede o múltiplo** — a regra nova **não está implementada**. O que ela pede:
+  o campo "Escolhas da cascata que este indicador mede" vira escolha única (o
+  `lista_marcavel` já tem o modo `unico` em `Modal.coletar` — não precisa de
+  controle novo, mas ele vira **radio**, e radio não se desmarca: hoje o campo
+  pode ficar em branco, e manter isso pede uma opção "nenhuma" explícita ou
+  indicador algum voltaria a não medir escolha nenhuma depois de medir uma),
+  `gravarCascatas` passa a **recusar** mais de uma em vez de guardar a primeira
+  (guardar em silêncio é o campo que parece ter funcionado), e os rótulos da
+  matriz e do `.como-amarrar` deixam o plural. A tabela
+  `indicador_cascata` pode continuar como está, com uma linha por indicador:
+  trocá-la por `indicador.cascata_id` é migração sem ganho de leitura, e a
+  matriz agrupa por escolha do mesmo jeito.
+  **A decisão que falta é do cliente e não se adivinha**: o que fazer com os
+  indicadores que já medem várias em produção — fica a Síntese, fica a abertura
+  por eixo, ou cada um é revisado à mão com um selo na tela. Qualquer passo de
+  dados aqui **descarta vínculo que alguém amarrou de propósito**, então ele vai
+  marcado em `carga_conteudo` e com os nomes no log, como os três passos de
+  2026-10-26.
   **A aba é LEITURA**: as três colunas da direita não se preenchem ali, e o
   bloco `.como-amarrar` (`SecaoCascata.comoAmarrar`) diz o campo exato de cada
   uma e leva à tela — a frase solta que existia antes era lida como legenda, e a
@@ -2282,6 +2309,15 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `atualizarMedias()` recalcula os **dois** níveis ao arrastar a barra de uma
   ação, lendo os valores que estão na tela (a ação recém-arrastada precisa
   entrar na conta).
+- **O redesenho desta tela está ADIADO pelo cliente** ("vamos deixar o plano de
+  ação na lista de backlog. Para fazer depois", 2026-10-25) — é o **tema 12** de
+  `docs/BACKLOG-EVOLUCAO.md`, e lá está o diagnóstico inteiro: a tela é lida em
+  **reunião de acompanhamento**, no computador e no celular igualmente, e o
+  plano foi aprovado em **maquete clicável** antes de qualquer código
+  (`https://claude.ai/artifact/7fscdG2uz4mdnZGFcQtgDw`). Nada do layout novo
+  entrou no sistema; o que está em produção é o que esta seção descreve. **Não
+  comece pelo código**: a decisão 16 do backlog é o que falta, e a maquete é o
+  contrato dela.
 
 ## Migrações e seeds
 
@@ -2392,6 +2428,20 @@ SALA_AUSENTE_SEG=6 setsid nohup php -S 127.0.0.1:8099 -t public public/index.php
 mysql --socket=/tmp/ccm.sock -uroot -e SHUTDOWN; pkill -f "php -S 127.0.0.1:8099"
 ```
 
+- **O contêiner volta sem o MariaDB instalado.** Entre uma retomada e outra, o
+  `mariadbd` não só cai: o pacote pode não estar mais lá, e o comando some com
+  "command not found" como se o ambiente nunca o tivesse tido. A receita inteira
+  é `apt-get update && apt-get install -y mariadb-server`,
+  `mariadb-install-db --datadir=/tmp/ccm-data` e subir com
+  **`--pid-file=/tmp/ccm.pid`** — sem ele o padrão é `/run/mysqld/mysqld.pid`,
+  que não existe para usuário comum, e o servidor morre no arranque dizendo
+  outra coisa.
+- **`cd dir && comando &` põe o `cd` DENTRO do subshell de fundo**, e o
+  `php -S -t public public/index.php` do bloco acima quebra com "Directory public
+  does not exist" quando a ferramenta reinicia o shell em outro diretório. Em
+  sessão de agente, suba o servidor com **caminhos absolutos**
+  (`-t /home/user/controladoria/public /home/user/controladoria/public/index.php`)
+  em vez de confiar no diretório corrente.
 - Login local de teste: `admin@coperdia.com.br` / `trocar123` (em produção a
   senha inicial vem de `ADMIN_SENHA`; sem ela o migrate gera uma aleatória e
   imprime uma única vez no log).
