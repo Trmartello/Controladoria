@@ -1940,137 +1940,13 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   border-radius: 50%;
 }
 
-/* Plano de ação em três níveis: projeto → iniciativa → ação.
-   O filete verde e o recuo moram no CONTAINER das frentes, e a `.iniciativa`
-   vira `display: contents` de propósito: `position: sticky` só se move dentro
-   do bloco PAI, e com a caixa da frente no meio cada cabeçalho grudava apenas
-   enquanto o próprio bloco estava na tela — a pilha pedida pelo cliente (as
-   frentes percorridas acumuladas até o fim do projeto) exige que o limite de
-   cada cabeçalho seja o bloco INTEIRO de frentes. O elemento continua no DOM
-   (os seletores `[data-iniciativa]` e o duplo clique seguem valendo); só a
-   caixa dele deixa de existir — e com ela o `mb-2`, então o respiro entre
-   frentes passou para o último bloco visível de cada uma, nunca para o
-   cabeçalho: margem em elemento sticky vira fresta transparente na pilha. */
-.iniciativas-projeto:has(> .iniciativa) {
-  border-left: 3px solid var(--verde-coperdia);
-  padding-left: .6rem;
-}
-.iniciativa { display: contents; }
-.iniciativa > .acoes-iniciativa { margin-bottom: .5rem; }
-/* Frente recolhida (ações em d-none, que não gera caixa nem margem): o respiro
-   vem do panorama, o último bloco que sobra visível. */
-.iniciativa:has(> .acoes-iniciativa.d-none) > .panorama-execucao { margin-bottom: .5rem; }
-/* A PILHA de cabeçalhos, de cima para baixo:
-     topbar (52px) → cabeçalho de Projetos → cabeçalho do projeto → as frentes
-     JÁ PERCORRIDAS do projeto, empilhadas.
-   Cada degrau soma a altura do anterior, e as alturas variáveis são medidas no
-   JS: `--altura-cabecalho` (o bloco de Projetos, uma por seção),
-   `--altura-projeto` (por CARTÃO, porque o selo de atraso e o nome que quebra
-   mudam a altura de um projeto para o outro) e `--desloca-frente` (por FRENTE,
-   a soma dos cabeçalhos de frente acima dela — `medirCabecalhosProjeto`).
-
-   Decisão do cliente: dentro de um projeto as frentes ACUMULAM — a pilha só é
-   varrida quando o bloco do projeto acaba e o projeto seguinte toma o lugar.
-   Projeto NÃO empilha embaixo de projeto: todos os cabeçalhos de projeto usam
-   o mesmo `top` e cada um é limitado ao próprio cartão, então o novo substitui
-   o anterior na mesma linha. O custo assumido: projeto de muitas frentes gasta
-   uma faixa de tela por frente percorrida.
-
-   O z-index desce conforme se desce na pilha — Projetos 20, projeto 15 e as
-   frentes de 14 para baixo (em linha, pelo JS, com piso 1: sempre acima dos
-   cartões) — para que cada um passe POR BAIXO do de cima ao se encontrarem.
-   Invertido, no fim do bloco a frente que sai cobriria a de cima em vez de
-   deslizar por baixo dela. */
-.projeto-cabeca-fixa {
-  position: sticky;
-  top: calc(var(--topo-app) + var(--altura-cabecalho, 0px));
-  z-index: 15;
-  background: #fff;
-  margin: 0 -1rem;
-  padding: .3rem 1rem;
-  box-shadow: 0 .3rem .3rem -.3rem rgba(0, 0, 0, .18);
-}
-
-/* O cabeçalho da frente é o TERCEIRO degrau: gruda abaixo do do projeto
-   (`--altura-projeto`) e das frentes empilhadas acima dele (`--desloca-frente`).
-   Três cuidados que fazem a diferença entre "grudado" e "vazando":
-   • fundo 100% OPACO e igual ao do cartão (branco). Translúcido, os cartões de
-     ação apareceriam através dele enquanto passam por baixo;
-   • margens negativas cobrindo o recuo do bloco, senão sobra uma faixa
-     transparente à esquerda (onde mora o padding do container das frentes) e o
-     texto das ações passa por ali;
-   • o z-index em linha (14, 13, …) — acima dos cartões, abaixo do cabeçalho do
-     projeto (15), que é quem fica por cima quando os degraus se encontram.
-   O que NÃO se deve fazer aqui é pôr `overflow: hidden` em algum ancestral para
-   "cortar" o conteúdo: qualquer ancestral com overflow vira o scrollport do
-   sticky, e o cabeçalho passa a grudar numa caixa que não rola — ou seja,
-   nunca. Quem esconde o que passa por baixo é o fundo opaco. */
-.iniciativa-cabeca {
-  cursor: pointer;
-  position: sticky;
-  top: calc(var(--topo-app) + var(--altura-cabecalho, 0px) + var(--altura-projeto, 0px) + var(--desloca-frente, 0px));
-  z-index: 1;
-  background: #fff;
-  margin: 0 -.6rem;
-  padding: .25rem .6rem;
-  box-shadow: 0 .3rem .3rem -.3rem rgba(0, 0, 0, .18);
-}
-.projeto-cabeca { cursor: pointer; min-width: 0; }
-.seta-projeto { color: var(--verde-coperdia); font-weight: 700; margin-right: .15rem; }
-/* Panorama de execução (mesmo bloco no projeto e na iniciativa): a barra tem
-   largura de leitura, não de preenchimento — esticada até a borda ela competia
-   com a barra ajustável das ações, que é a única que se arrasta. */
-.panorama-execucao { flex-wrap: wrap; }
-.panorama-execucao .faixa-progresso { max-width: 180px; }
-/* Um nível abaixo, o panorama é mais discreto: a leitura que manda na tela é a
-   do projeto, e a da iniciativa não pode disputar com ela. */
-.panorama-iniciativa .faixa-progresso { max-width: 140px; height: .45rem; }
-.panorama-iniciativa .valor-progresso { font-size: .72rem; }
-.panorama-iniciativa .badge { font-size: .62rem; }
-.seta-iniciativa { color: var(--verde-coperdia); font-size: .8rem; }
-.acoes-iniciativa { padding-top: .5rem; }
-.acao-card { border-left: 4px solid var(--cor-prio, #b08d4f); }
 
 /* Duplo toque abre a edição do cartão (ver o dblclick em projetos.js). Sem
    `manipulation` o iOS trata o segundo toque como zoom da página e o dblclick
    ou não chega, ou chega depois da espera de 300ms. `manipulation` tira só o
    zoom por duplo toque: rolar e pinçar continuam valendo, e a barra de
-   progresso segue arrastando como antes. */
-/* Só o cartão: a `.iniciativa` é `display: contents` (não gera caixa), e o
    toque nos filhos dela já herda a regra do cartão que os contém. */
 #secao-projetos .card { touch-action: manipulation; }
-
-/* "mostrar mais": o detalhe fica escondido até o usuário pedir */
-/* Expandir/recolher o detalhe de um item. É uma SETA, não texto: na linha do
-   cartão de ação ela divide espaço com o selo de situação e a barra de
-   progresso, e "mostrar menos" custava à barra a largura que ela usa para ser
-   lida de relance. 28px de lado por dimensão real — alvo de toque não se faz
-   com área invisível sobreposta, que cobre a do vizinho. */
-.btn-mais {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: var(--verde-coperdia);
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  line-height: 1;
-}
-.btn-mais:hover { color: #005c34; background: rgba(0, 122, 69, .08); }
-.btn-mais svg { transition: transform .18s ease; }
-.btn-mais[aria-expanded="true"] svg { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) {
-  .btn-mais svg { transition: none; }
-}
-/* A barra é a única peça da linha que se lê por proporção: quando a largura
-   aperta, é ela que cede — e precisa poder encolher abaixo do conteúdo, que o
-   padrão do flex (`min-width: auto`) não permite. */
-.linha-acao-topo .faixa-verde,
-.linha-acao-topo .faixa-progresso { min-width: 3rem; }
 .detalhe-item { border-top: 1px dashed #dee2e6; margin-top: .4rem; padding-top: .4rem; }
 
 /* A cor de cada situação, por CLASSE e não por estilo em linha: o conteúdo do

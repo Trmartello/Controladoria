@@ -77,188 +77,32 @@ const SecaoProjetos = {
   cascata: null,
   responsaveis: [],
   comentariosAbertos: null, // { refTipo, refId }
-  // Recolhidos guardam quem está fechado; projeto e iniciativa começam
-  // abertos e a escolha do usuário sobrevive aos recarregamentos da seção
-  iniciativasFechadas: new Set(),
-  projetosFechados: new Set(),
-  detalhesAbertos: new Set(), // quem está com o detalhe (a seta) aberto
+
+  /* ── Onde estou no plano ──────────────────────────────────────────────────
+   * A tela deixou de ser uma árvore de três acordeões e virou mestre-detalhe:
+   * a trilha diz ONDE se está, o centro mostra as ações de lá, a gaveta abre
+   * UMA ação. Por isso o estado deixou de ser "quem está recolhido"
+   * (`projetosFechados`, `iniciativasFechadas`, `detalhesAbertos`, que não
+   * existem mais) e passou a ser "onde estou". São três campos, e os três são
+   * de navegação: nenhum guarda dado do plano.
+   */
+  selecao: null, // { tipo: 'FILA' | 'PROJETO' | 'FRENTE', id }
+  acaoAberta: null, // id da ação que a gaveta mostra
+  trilhaAberta: new Set(), // projetos com as frentes à mostra
   // id da ação que a seção deve realçar ao abrir (vindo do "Virou ação ↗")
   destacarAcao: null,
 
-  /**
-   * Realça a ação alcançada pela navegação vinda da SWOT.
-   *
-   * Revelar vem antes de realçar: a ação pode estar dentro de um projeto ou de
-   * uma iniciativa recolhidos, e piscar um cartão escondido não leva ninguém a
-   * lugar nenhum. O `d-none` sai direto no DOM em vez de mexer nos conjuntos de
-   * recolhidos — a preferência de quem recolheu continua valendo no próximo
-   * carregamento, e o desvio é só desta visita.
-   */
-  aplicarDestaqueAcao(el) {
-    const id = this.destacarAcao;
-    if (!id) return;
-    this.destacarAcao = null;
-    const card = el.querySelector(`[data-card-acao="${id}"]`);
-    if (!card) return;
-    for (let pai = card.parentElement; pai && pai !== el; pai = pai.parentElement) {
-      pai.classList.remove('d-none');
-    }
-    card.classList.add('card-destacado');
-    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => card.classList.remove('card-destacado'), 2600);
+  // A seleção sobrevive ao F5 pelo mesmo par que guarda a seção e o negócio
+  // (`App.guardarLugar`/`App.lugarGuardado`). Uma chave só, no formato
+  // "TIPO:id", porque o par é sempre lido junto — duas chaves abririam a porta
+  // para um tipo sem id depois de uma gravação pela metade.
+  LUGAR_NO: 'pe_plano_no',
+
+  guardarNo() {
+    const s = this.selecao;
+    App.guardarLugar(this.LUGAR_NO, s ? `${s.tipo}:${s.id ?? ''}` : '');
   },
 
-  /**
-   * Alternador de detalhe de um item (projeto, iniciativa ou ação).
-   *
-   * É um CHEVRON, não as palavras "mostrar mais"/"mostrar menos" que estavam
-   * aqui: na linha do cartão de ação ele divide espaço com o selo de situação e
-   * a barra de progresso, e doze caracteres de texto ali custavam à barra
-   * justamente a largura que ela usa para ser lida de relance. A seta gira com
-   * o estado e o significado continua dito — em `aria-label`, para quem usa
-   * leitor de tela, e em `title`, para quem passa o mouse.
-   *
-   * O mesmo botão serve aos três níveis: dois jeitos de expandir na mesma tela
-   * seriam duas coisas para aprender.
-   */
-  botaoMais(chave, aberto) {
-    const rotulo = aberto ? 'Recolher detalhes' : 'Mostrar detalhes';
-    return `<button type="button" class="btn-mais" data-mais="${chave}"
-      aria-expanded="${aberto}" aria-controls="detalhe-${chave}"
-      aria-label="${rotulo}" title="${rotulo}">
-      <svg width="16" height="16" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg>
-    </button>`;
-  },
-
-  ligarBotoesMais(el) {
-    el.querySelectorAll('[data-mais]').forEach((b) => b.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      const chave = b.dataset.mais;
-      const abrir = this.detalhesAbertos.has(chave);
-      if (abrir) this.detalhesAbertos.delete(chave);
-      else this.detalhesAbertos.add(chave);
-      // TODOS os blocos da chave: a descrição mora acima da barra de progresso
-      // e o resto do detalhe abaixo dela — a seta abre e fecha os dois juntos
-      el.querySelectorAll(`[data-detalhe="${chave}"]`).forEach((alvo) =>
-        alvo.classList.toggle('d-none', abrir));
-      // O que muda é o ESTADO, não o conteúdo: quem gira a seta é o CSS pelo
-      // `aria-expanded`. Trocar o texto do botão apagaria o `<svg>` de dentro.
-      const rotulo = abrir ? 'Mostrar detalhes' : 'Recolher detalhes';
-      b.setAttribute('aria-expanded', String(!abrir));
-      b.setAttribute('aria-label', rotulo);
-      b.setAttribute('title', rotulo);
-    }));
-  },
-
-  /**
-   * Até onde a tela está aberta hoje. Serve para acender o botão do nível —
-   * e devolve vazio quando o usuário abriu/fechou itens à mão e o estado não
-   * corresponde a nenhum dos três: nesse caso nenhum botão fica aceso, em vez
-   * de mentir que a tela está num nível que ela não está.
-   *
-   * A ordem importa: com tudo recolhido as duas condições valem, e o nível é
-   * PROJETOS — o mais fechado dos dois.
-   */
-  nivelAtual(projetos) {
-    if (!projetos.length) return '';
-    const iniciativas = projetos.flatMap((p) => p.iniciativas || []);
-    if (projetos.every((p) => this.projetosFechados.has(p.id))) return 'PROJETOS';
-    // `every` de lista vazia é verdadeiro: sem nenhuma iniciativa cadastrada,
-    // "frentes recolhidas" não significa nada e o nível é o aberto
-    if (iniciativas.length && iniciativas.every((i) => this.iniciativasFechadas.has(i.id))) {
-      return 'FRENTES';
-    }
-    const nadaFechado = !projetos.some((p) => this.projetosFechados.has(p.id))
-      && !iniciativas.some((i) => this.iniciativasFechadas.has(i.id));
-    return nadaFechado ? 'ACOES' : '';
-  },
-
-  /**
-   * Reacende o botão do nível depois de alguém abrir/recolher um item à mão.
-   * Os acordeões mexem no DOM sem recarregar a seção (é o que os deixa
-   * instantâneos), então sem isto o grupo continuaria mostrando "Ações" com as
-   * ações já escondidas — o controle mentiria sobre a própria tela.
-   */
-  pintarNiveis(el, projetos) {
-    const nivel = this.nivelAtual(projetos);
-    el.querySelectorAll('[data-nivel]').forEach((b) => {
-      const ativo = b.dataset.nivel === nivel;
-      b.classList.toggle('btn-verde', ativo);
-      b.classList.toggle('btn-outline-secondary', !ativo);
-      b.setAttribute('aria-pressed', String(ativo));
-    });
-  },
-
-  /**
-   * Pesquisa do plano de ação (pedido do cliente): palavra e situação, lado a
-   * lado no cabeçalho fixo. A palavra casa com o TEXTO do cartão da ação e
-   * também com o título da frente e do projeto — procurar o nome de uma frente
-   * deve trazê-la inteira — e o resultado mostra sempre os três níveis juntos:
-   * a ação, a frente e o projeto dela. A situação casa pelo código
-   * (`data-status` do cartão), nunca pelo rótulo, que é refém da redação.
-   *
-   * É filtro de DOM, não recarga: esconder com `d-none` preserva o foco de quem
-   * digita (repintar a seção mataria o campo no meio da palavra), e o estado
-   * (`filtroTexto`/`filtroStatus`) mora na seção, então sobrevive às repinturas
-   * do `carregar()` — que reaplica o filtro ao terminar. Com filtro ativo os
-   * acordeões abrem À FORÇA (ação encontrada dentro de frente recolhida é
-   * resultado invisível); ao limpar, o recolhimento volta dos conjuntos
-   * (`projetosFechados`/`iniciativasFechadas`), que o filtro nunca altera.
-   * A pilha de cabeçalhos se reacomoda sozinha: esconder uma frente zera a
-   * altura do cabeçalho dela e o ResizeObserver de `medirCabecalhosProjeto`
-   * reempilha as que ficaram.
-   *
-   * **A pessoa entra por dois caminhos, e eles não são redundantes.**
-   *
-   * A PALAVRA passou a casar também com o nome e o e-mail de quem responde pela
-   * ação. É o caminho largo: quem digita "Ana" acha as ações dela sem saber onde
-   * o nome aparece na tela. O preço é o falso positivo — "ana" também está
-   * dentro de "semana", e uma reunião semanal de outra pessoa vem junto.
-   *
-   * O RESPONSÁVEL é o caminho exato: casa SÓ contra o nome e o e-mail de quem
-   * responde, nunca contra o texto da ação, e por isso "ana" ali devolve as
-   * ações da Ana e nada mais. Ele é uma caixa de texto com lista
-   * (`<datalist>`): dá para escolher da lista ou digitar parte do nome, que é o
-   * que se faz quando não se lembra da grafia. Um `<select>` fechado obrigaria
-   * a achar a pessoa numa lista longa, e um campo de texto puro não diria quem
-   * existe.
-   *
-   * A lista é montada com quem TEM ação no plano — que é exatamente o conjunto
-   * capaz de devolver resultado —, e inclui quem já foi desativado mas ainda
-   * carrega ação: são justamente as que precisam ser reatribuídas, e deixá-las
-   * fora do mapeamento seria esconder o problema. **«Sem usuário» é a primeira
-   * opção**, fixa: a ação órfã não é cobrada de ninguém, e é a fila que mais
-   * precisa ser vista.
-   *
-   * Os três filtros são E, não OU: palavra e responsável e situação. Somados,
-   * respondem "o que a Ana tem de atrasado com a palavra contrato".
-   */
-  filtroTexto: '',
-  filtroStatus: '',
-  filtroResponsavel: '',
-
-  /**
-   * O rótulo do «Sem usuário» no filtro de pessoa — e, ao mesmo tempo, o valor
-   * que o compara. Uma constante só de propósito: a caixa é de texto livre, o
-   * que este item escreve nela é o que volta para o filtro, e um rótulo escrito
-   * na lista e comparado à mão em outro lugar deixaria de casar na primeira vez
-   * que alguém revisasse a redação — em silêncio, devolvendo tela vazia.
-   */
-  ROTULO_SEM_DONO: 'Sem usuário',
-
-  normalizar(s) {
-    return s.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[̀-ͯ]/g, '');
-  },
-
-  /**
-   * O que o filtro de pessoa compara: nome e e-mail de quem responde pela ação,
-   * já normalizados, num texto só. Sai do `data-quem` que o cartão carrega —
-   * ler do texto visível não serviria, porque o e-mail não aparece na tela e o
-   * nome está no meio de seis outros metadados.
-   */
-  quemDoCartao(card) {
-    return card.dataset.quem || '';
-  },
 
   /**
    * A chave de busca de quem responde por uma ação: nome e e-mail juntos, já
@@ -306,80 +150,87 @@ const SecaoProjetos = {
     return [...porChave.values()].sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR'));
   },
 
-  aplicarFiltro(el) {
-    const texto = this.normalizar(this.filtroTexto.trim());
-    const status = this.filtroStatus;
-    const resp = this.filtroResponsavel.trim();
-    // «Sem usuário» é ESCOLHA, não busca por pedaço: só o rótulo inteiro vale,
-    // senão digitar "sem" mudaria o sentido do filtro no meio da palavra.
-    const semDono = this.normalizar(resp) === this.normalizar(this.ROTULO_SEM_DONO);
-    const respTexto = semDono ? '' : this.normalizar(resp);
-    const ativo = !!(texto || status || resp);
-    let algum = false;
-    el.querySelectorAll('[data-projeto]').forEach((cartao) => {
-      const projId = parseInt(cartao.dataset.projeto, 10);
-      const tituloProj = this.normalizar(
-        cartao.querySelector('.projeto-cabeca strong')?.textContent || '');
-      let temNoProjeto = false;
-      cartao.querySelectorAll('[data-iniciativa]').forEach((bloco) => {
-        const iniId = parseInt(bloco.dataset.iniciativa, 10);
-        const tituloIni = this.normalizar(
-          bloco.querySelector('.iniciativa-cabeca strong')?.textContent || '');
-        let temNaFrente = false;
-        bloco.querySelectorAll('[data-card-acao]').forEach((card) => {
-          const quem = this.quemDoCartao(card);
-          // O `data-quem` do cartão é vazio quando ninguém responde pela ação —
-          // é o mesmo vazio que desenha o selo «Sem usuário».
-          const casaResp = !resp || (semDono ? quem === '' : quem.includes(respTexto));
-          const bate = (!status || card.dataset.status === status)
-            && casaResp
-            // A palavra alcança o texto do cartão, os títulos acima dele e
-            // TAMBÉM quem responde: o e-mail não está escrito na tela, então
-            // sem o `data-quem` ele nunca seria encontrado por aqui.
-            && (!texto || this.normalizar(card.textContent).includes(texto)
-              || quem.includes(texto)
-              || tituloIni.includes(texto) || tituloProj.includes(texto));
-          card.classList.toggle('d-none', ativo && !bate);
-          if (bate) temNaFrente = true;
-        });
-        // `d-none` vence o `display: contents` da frente (é !important): a
-        // frente sem resultado some inteira, cabeçalho junto.
-        bloco.classList.toggle('d-none', ativo && !temNaFrente);
-        const fechadoIni = ativo ? !temNaFrente : this.iniciativasFechadas.has(iniId);
-        bloco.querySelector('.acoes-iniciativa')?.classList.toggle('d-none', fechadoIni);
-        const setaIni = bloco.querySelector('.seta-iniciativa');
-        if (setaIni) setaIni.textContent = fechadoIni ? '▸' : '▾';
-        if (temNaFrente) temNoProjeto = true;
-      });
-      cartao.classList.toggle('d-none', ativo && !temNoProjeto);
-      const fechadoProj = ativo ? !temNoProjeto : this.projetosFechados.has(projId);
-      cartao.querySelector('.iniciativas-projeto')?.classList.toggle('d-none', fechadoProj);
-      const setaProj = cartao.querySelector('.seta-projeto');
-      if (setaProj) setaProj.textContent = fechadoProj ? '▸' : '▾';
-      if (temNoProjeto) algum = true;
-    });
-    el.querySelector('[data-filtro-vazio]')?.classList.toggle('d-none', !ativo || algum);
+
+  /* ── O filtro, agora de DADOS ─────────────────────────────────────────────
+   * Ele era filtro de DOM: escondia cartão, frente e projeto por `d-none` e
+   * ABRIA os acordeões à força para o resultado aparecer. Não havia outro
+   * jeito numa árvore — a ação encontrada podia estar dentro de dois níveis
+   * recolhidos.
+   *
+   * Com a trilha isso acabou. A lista do centro é derivada: filtra-se a lista
+   * de ações ANTES de pintar, e quem está fora não chega a virar linha. O que
+   * o acordeão à força fazia, a trilha faz melhor — com filtro ativo o centro
+   * mostra os acertos do PLANO INTEIRO, agrupados por projeto e frente, e a
+   * trilha marca os nós que têm acerto. Procurar deixou de depender de onde
+   * você está.
+   *
+   * As duas precisões continuam inteiras, e não são redundantes: a PALAVRA é o
+   * caminho largo (casa também o nome e o e-mail de quem responde, e por isso
+   * "ana" também acha "semana"); o RESPONSÁVEL é o exato (casa só contra a
+   * pessoa). Quem digita "Ana" no primeiro quer as ações dela sem saber onde o
+   * nome aparece; quem usa o segundo quer as dela e nada mais.
+   */
+  temFiltro() {
+    return !!(this.filtroTexto.trim() || this.filtroResponsavel.trim() || this.filtroStatus);
   },
 
   /**
-   * Abre/recolhe a tela inteira até o nível pedido. Sempre parte do zero (os
-   * dois conjuntos limpos), senão um item recolhido à mão antes sobreviveria ao
-   * clique e o nível escolhido não seria o que a tela mostra.
+   * Casa UMA ação contra os três campos do filtro.
+   *
+   * `projeto` e `frente` entram porque procurar pelo nome da frente deve
+   * trazê-la inteira — era o que o filtro de DOM fazia ao casar contra o
+   * título do bloco.
    */
-  aplicarNivel(nivel, projetos) {
-    this.projetosFechados.clear();
-    this.iniciativasFechadas.clear();
-    if (nivel !== 'ACOES') {
-      // Frentes e Projetos escondem as ações; Projetos esconde também as
-      // frentes. Recolher a iniciativa é justamente o que oculta as ações dela.
-      projetos.forEach((p) => {
-        (p.iniciativas || []).forEach((i) => this.iniciativasFechadas.add(i.id));
-        if (nivel === 'PROJETOS') this.projetosFechados.add(p.id);
-      });
+  acaoCasa(a, projeto, frente) {
+    const texto = this.normalizar(this.filtroTexto.trim());
+    if (texto) {
+      const alvo = this.normalizar([
+        a.o_que, a.como, a.quem, a.quem_email, a.onde, a.por_que,
+        projeto?.titulo, frente?.titulo,
+      ].filter(Boolean).join(' '));
+      if (!alvo.includes(texto)) return false;
     }
-    this.carregar();
+    const resp = this.filtroResponsavel.trim();
+    if (resp) {
+      // «Sem usuário» procura a chave VAZIA, não um rótulo: é a ação órfã, a
+      // de quem saiu do cadastro sem que ninguém assumisse a carteira.
+      if (this.normalizar(resp) === this.normalizar(this.ROTULO_SEM_DONO)) {
+        if (this.chaveQuem(a)) return false;
+      } else if (!this.chaveQuem(a).includes(this.normalizar(resp))) {
+        return false;
+      }
+    }
+    // Pelo CÓDIGO da situação, nunca pelo rótulo, que é refém da redação
+    if (this.filtroStatus && a.status !== this.filtroStatus) return false;
+    return true;
   },
 
+  /**
+   * Toda ação do plano que passa no filtro, com o projeto e a frente de cada
+   * uma — é o que o centro mostra quando há filtro, e o que marca a trilha.
+   */
+  acertosDoPlano(projetos) {
+    const fora = [];
+    projetos.forEach((p) => {
+      const porFrente = new Map((p.iniciativas || []).map((i) => [Number(i.id), i]));
+      (p.desdobramentos || []).forEach((a) => {
+        const frente = porFrente.get(Number(a.iniciativa_id)) || null;
+        if (this.acaoCasa(a, p, frente)) fora.push({ acao: a, projeto: p, frente });
+      });
+    });
+    return fora;
+  },
+
+  // As chaves de nó que têm acerto, para a trilha acender quem responde à
+  // pesquisa — inclusive nós que não estão selecionados.
+  nosComAcerto(acertos) {
+    const chaves = new Set();
+    acertos.forEach(({ projeto, frente }) => {
+      chaves.add(`PROJETO:${projeto.id}`);
+      if (frente) chaves.add(`FRENTE:${frente.id}`);
+    });
+    return chaves;
+  },
   /**
    * Panorama de um conjunto de ações: barra da média, o percentual e quantas
    * estão atrasadas. É o MESMO bloco no projeto e na iniciativa — escritos
@@ -490,6 +341,7 @@ const SecaoProjetos = {
       }).join('');
     return `${linhas}<div class="total-resumo"><span>Total</span><span>${total} ação(ões)</span></div>${linhaExtra}`;
   },
+  popoversResumo: [],
 
   /**
    * Liga os popovers do resumo, um por título (projeto e frente).
@@ -503,62 +355,6 @@ const SecaoProjetos = {
    * no `<body>` fica — sem o `dispose`, uma tarde de uso deixa dezenas deles
    * empilhados fora da tela.
    */
-  /**
-   * A pilha de cabeçalhos: app → Projetos → projeto → as frentes percorridas.
-   *
-   * Cada degrau precisa saber a altura do de cima, e a do PROJETO varia entre
-   * cartões (o selo de atraso, o "Prioritário", o nome que quebra em duas
-   * linhas no celular) — por isso a medida é POR CARTÃO, guardada numa variável
-   * do próprio cartão, e não uma só para a seção. Uma média erraria em todos os
-   * cartões menos num.
-   *
-   * As frentes EMPILHAM (decisão do cliente): dentro do projeto, cada cabeçalho
-   * de frente fica grudado até o bloco do projeto acabar, deslocado pela soma
-   * dos cabeçalhos de frente acima dele (`--desloca-frente`, por frente). Quem
-   * permite isso é o `display: contents` da `.iniciativa` no CSS — o limite do
-   * sticky passa a ser o bloco inteiro de frentes, não a caixa de cada uma. O
-   * projeto seguinte varre a pilha: o cabeçalho dele é limitado ao próprio
-   * cartão e usa o mesmo `top` dos demais, então substitui em vez de empilhar.
-   *
-   * O observador é trocado a cada pintura: o cartão anterior já saiu do
-   * documento, e observá-lo seria medir o que ninguém vê.
-   */
-  observadoresProjeto: [],
-
-  medirCabecalhosProjeto(el) {
-    this.observadoresProjeto.forEach((o) => o.disconnect());
-    this.observadoresProjeto = [];
-    el.querySelectorAll('[data-projeto]').forEach((cartao) => {
-      const cab = cartao.querySelector('.projeto-cabeca-fixa');
-      if (!cab) return;
-      const frentes = [...cartao.querySelectorAll('.iniciativa-cabeca')];
-      const medir = () => {
-        // Cartão recolhido ou seção escondida medem zero, e zero aqui empilharia
-        // o cabeçalho da frente por cima do do projeto.
-        const h = Math.round(cab.getBoundingClientRect().height);
-        if (h) cartao.style.setProperty('--altura-projeto', `${h}px`);
-        // O z-index DESCE a cada frente (14, 13, …) para a que sai no fim do
-        // bloco deslizar por BAIXO das de cima — sempre abaixo do cabeçalho do
-        // projeto (15) e, com o piso 1, sempre acima dos cartões de ação.
-        let soma = 0;
-        frentes.forEach((f, i) => {
-          f.style.setProperty('--desloca-frente', `${soma}px`);
-          f.style.zIndex = String(Math.max(1, 14 - i));
-          soma += Math.round(f.getBoundingClientRect().height);
-        });
-      };
-      medir();
-      const ro = new ResizeObserver(medir);
-      ro.observe(cab);
-      // A altura de cada frente também varia (nome que quebra, selo de atraso):
-      // mudou uma, as de baixo reempilham.
-      frentes.forEach((f) => ro.observe(f));
-      this.observadoresProjeto.push(ro);
-    });
-  },
-
-  popoversResumo: [],
-
   ligarPopoversResumo(el, conteudos) {
     this.popoversResumo.forEach((p) => p.dispose());
     this.popoversResumo = [];
@@ -592,180 +388,389 @@ const SecaoProjetos = {
   },
 
   // Bloco da iniciativa (frente de trabalho) com as ações dentro
-  blocoIniciativa(p, ini) {
-    const acoes = ini.acoes || [];
-    const feitas = acoes.filter((a) => a.status === 'CONCLUIDO').length;
-    const aberta = !this.iniciativasFechadas.has(ini.id);
-    const cartoes = acoes.map((a) => this.cartaoAcao(p, ini, a)).join('');
-    // Recolhida mostra só título e situação; o resto vai atrás da seta
-    const chave = `ini-${ini.id}`;
-    const detalhado = this.detalhesAbertos.has(chave);
-    // Panorama da frente de trabalho, o mesmo do projeto um nível acima: média
-    // do progresso das ações DELA e quantas estão atrasadas. Sem isto, saber
-    // como vai uma iniciativa exigia somar as barras das ações com o olho — e,
-    // com a iniciativa recolhida, não havia número nenhum.
-    const panorama = this.panorama(acoes, `data-media-ini="${ini.id}"`, `data-barra-ini="${ini.id}"`,
-      'panorama-iniciativa', 'Progresso médio das ações desta iniciativa');
-    return `<div class="iniciativa mb-2" data-iniciativa="${ini.id}">
-      <div class="d-flex align-items-center gap-2 flex-wrap iniciativa-cabeca" data-abrir-ini="${ini.id}">
-        <span class="seta-iniciativa">${aberta ? '▾' : '▸'}</span>
-        <strong class="small" data-popover-resumo="ini-${ini.id}"
-          title="Situação das ações desta frente">${Modal.esc(ini.titulo)}</strong>
-        <!-- Só o ATRASO, como no projeto: a pergunta é a mesma nos dois níveis
-             e a distribuição inteira mora no popover do título, a um passar de
-             mouse. Cinco selos por frente numa tela com várias viravam parede.
-             O ms-auto está no grupo da direita para o título não esticar e
-             empurrar o selo para longe do nome que ele resume.
-             O selo de situação da frente ("Aberta") saiu daqui: a seta ao lado
-             do nome já diz se ela está aberta ou recolhida, e a situação
-             cadastrada segue no popover e no formulário de edição. -->
-        ${this.resumoStatus(acoes, ['ATRASADO'])}
-        <!-- Nenhum botão de criar aqui: "+ Ação" mora na linha do título do
-             PROJETO, ao lado de "+ Iniciativa" (pedido do cliente, 2026-10-26,
-             com maquete). A frente de destino passou a ser a primeira pergunta
-             do formulário da ação. O ✎ e o × seguem no detalhe. -->
-        <span class="ms-auto d-flex align-items-center gap-2">
-          ${this.botaoMais(chave, detalhado)}
-        </span>
-      </div>
-      <!-- Com a seta aberta, a leitura é: descrição da frente e, logo abaixo
-           dela, a barra de progresso — ordem pedida pelo cliente -->
-      ${ini.descricao ? `<div class="detalhe-item small text-muted mt-1 ${detalhado ? '' : 'd-none'}"
-        data-detalhe="${chave}">${Modal.esc(ini.descricao)}</div>` : ''}
-      <!-- De que decisão esta frente nasceu. Mora aqui, e não no cartão do
-           projeto, desde que a escolha passou a ser da FRENTE: um projeto
-           executa pedaços de mais de uma decisão, e a linha no projeto diria
-           só a primeira delas. -->
-      ${ini.escolha_origem ? `<div class="detalhe-item small text-muted mt-1 ${detalhado ? '' : 'd-none'}"
-        data-detalhe="${chave}">↳ Escolha da cascata: “${Modal.esc(String(ini.escolha_origem).slice(0, 90))}”</div>` : ''}
-      ${panorama}
-      <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
-        <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
-          <span class="badge text-bg-light border" title="Ações concluídas">${feitas}/${acoes.length} ações</span>
-          ${App.podeEditar() ? `
-            <button class="btn btn-sm btn-outline-secondary" data-editar-ini="${ini.id}" data-proj="${p.id}"
-              title="Editar iniciativa" aria-label="Editar iniciativa">✎</button>
-            <button class="btn btn-sm btn-outline-danger" data-excluir-ini="${ini.id}"
-              title="Excluir iniciativa" aria-label="Excluir iniciativa">×</button>` : ''}
-        </div>
-      </div>
-      <!-- O respiro no topo é para o primeiro cartão não nascer colado no
-           cabeçalho grudado — sem ele, o cartão e o título dividem a mesma
-           linha visual no instante em que a barra trava. -->
-      <div class="acoes-iniciativa pt-1 ${aberta ? '' : 'd-none'}">
-        ${cartoes || '<div class="text-muted small">Nenhuma ação nesta iniciativa.</div>'}
-      </div>
-    </div>`;
-  },
 
-  cartaoAcao(p, ini, a) {
-    const [rotulo, classe] = STATUS_ACAO[a.status] || [a.status, 'text-bg-light'];
-    const [rotPrio, corPrio] = PRIORIDADES[a.prioridade] || PRIORIDADES.MEDIA;
-    const prazo = this.periodo(a.data_inicio, a.data_fim, a.quando_);
-    // O "Como" sai daqui: ele ganhou linha própria, logo abaixo do "o quê".
-    // Os dois juntos são a ação — o que se faz e por onde —, e espremidos no
-    // meio de sete metadados separados por ponto o caminho virava rodapé.
-    const detalhes = [
-      a.onde && `Onde: ${a.onde}`,
-      a.por_que && `Por quê: ${a.por_que}`,
-      // Sempre com os DOIS centavos: `toLocaleString` sozinho corta o zero à
-      // direita e R$ 1.500,50 aparecia como "R$ 1.500,5", que não é como se
-      // escreve dinheiro — e ainda parecia valor truncado.
-      a.quanto !== null && a.quanto !== undefined
-        && `Ganhos previstos: R$ ${Number(a.quanto).toLocaleString('pt-BR',
-          { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-    ].filter(Boolean).map(Modal.esc).join(' · ');
-    const timeline = this.comentariosAbertos?.refTipo === 'DESDOBRAMENTO' && this.comentariosAbertos?.refId === a.id
-      ? `<div id="comentarios-DESDOBRAMENTO-${a.id}" class="mt-2"></div>` : '';
-    // As DUAS grades podem vencer em vários dias ("toda segunda e quinta",
-    // "todo dia 5 e 20"), e por isso a montagem da frase é a mesma nas duas
-    const diasGrade = this.diasDaAcao(a);
+  /**
+   * A frase da repetição ("toda quarta-feira e sábado", "todo dia 5 e 20").
+   *
+   * Mora fora da pintura porque a gaveta e a ficha do celular dizem a mesma
+   * coisa, e as duas grades podem vencer em vários dias — escrita duas vezes,
+   * a frase divergiria na primeira correção.
+   */
+  fraseRepeticao(a) {
+    const dias = this.diasDaAcao(a);
+    if (!dias.length) return '';
     const enumerar = (lista) => (lista.length > 1
       ? `${lista.slice(0, -1).join(', ')} e ${lista.at(-1)}`
       : String(lista[0] ?? ''));
-    const repeticao = !diasGrade.length ? ''
-      : a.recorrencia === 'SEMANAL'
-        ? `toda ${enumerar(diasGrade.map(
-          (d) => (DIAS_SEMANA.find(([v]) => v === d) || [, ''])[1].toLowerCase()))}`
-        : a.recorrencia === 'MENSAL' ? `todo dia ${enumerar(diasGrade)}` : '';
-    // Ação cancelada não tem progresso: 0% numa barra inativa, sem controle
-    // para arrastar. Mesmo que o banco ainda guarde um valor antigo (linha
-    // anterior à regra, corrigida pelo migrate), a tela mostra 0 — a ação está
-    // fora das médias, e um "70%" ali contradizia o percentual da frente logo
-    // acima. Sem o `data-progresso`, ela sai sozinha de `atualizarMedias`.
-    const cancelada = a.status === 'CANCELADO';
-    const pct = cancelada ? 0 : a.progresso;
-    // Cinco linhas: situação+progresso+seta, o quê, como, metadados e o rodapé
-    // de botões. As três últimas ficam atrás da seta.
-    const chave = `acao-${a.id}`;
-    const detalhado = this.detalhesAbertos.has(chave);
-    // Prazo → Quem → Prioridade, nessa ordem: são as três perguntas que se faz
-    // de um cartão de ação, e nessa sequência. O que sobra (repetição, onde,
-    // por quê, quanto) segue na mesma linha, depois — tirá-los da tela para
-    // cumprir a ordem seria perder informação que alguém digitou.
-    const extras = [
-      prazo && `<strong>Prazo:</strong> ${Modal.esc(prazo)}`,
-      // Ação sem dono é DITA, nunca omitida. Enquanto a linha só aparecia com
-      // `quem` preenchido, a ação órfã — a de quem saiu do cadastro sem que
-      // ninguém assumisse a carteira — ficava visualmente idêntica a uma ação
-      // bem atribuída, com o "Quem:" simplesmente ausente no meio de outros
-      // seis metadados. Ela não é cobrada por e-mail de ninguém, e é
-      // exatamente por isso que precisa gritar na tela.
-      a.quem
-        ? `<strong>Quem:</strong> ${Modal.esc(a.quem)}`
-        : '<span class="selo-sem-usuario" title="Ninguém responde por esta ação:'
-          + ' ela não entra em cobrança nenhuma">Sem usuário</span>',
-      `<strong>Prioridade:</strong> ${rotPrio}`,
-      repeticao && `<strong>Repete:</strong> ${repeticao}`,
-      detalhes,
-    ].filter(Boolean).join(' · ');
-    return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}"
-      data-cadeado="desdobramento:${a.id}"
-      data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
-      <div class="card-body py-2 px-2">
-        <!-- Linha 1: situação, progresso e o expandir. O selo e o chevron não
-             encolhem (flex-shrink-0); quem cede largura é a barra, que é a
-             única peça aqui que se lê por proporção e não por texto. -->
-        <div class="d-flex align-items-center gap-2 linha-acao-topo">
-          <span class="badge ${classe} flex-shrink-0">${rotulo}</span>
-          ${App.podeEditar() && !cancelada ? `
-          <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="5"
-            style="--pct:${pct}%" value="${pct}"
-            data-progresso="${a.id}" data-proj="${p.id}"
-            title="Arraste para ajustar o progresso" aria-label="Progresso da ação">
-          <span class="valor-progresso" data-rotulo="${a.id}">${pct}%</span>` : `
-          <div class="faixa-progresso flex-grow-1 ${cancelada ? 'inativa' : ''}"
-            title="${cancelada ? 'Ação cancelada — sem progresso e fora da média' : `${pct}%`}">
-            <span style="width:${pct}%"></span>
-          </div>
-          <span class="valor-progresso ${cancelada ? 'inativo' : ''}">${pct}%</span>`}
-          ${this.botaoMais(chave, detalhado)}
-        </div>
-        <!-- Linha 2: o quê -->
-        <div class="small fw-bold mt-2">${Modal.esc(a.o_que)}</div>
-        <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
-          <!-- Linha 3: como -->
-          ${a.como ? `<div class="small"><strong>Como:</strong> ${Modal.esc(a.como)}</div>` : ''}
-          <!-- Linha 4: metadados -->
-          ${extras ? `<div class="small text-muted mt-1">${extras}</div>` : ''}
-          <!-- Linha 5: rodapé — conversa à esquerda, edição à direita. O
-               ms-auto é o que segura a direita quando o grupo da esquerda é só
-               um botão, e sobrevive à quebra de linha no celular. -->
-          <div class="d-flex justify-content-between align-items-center gap-1 flex-wrap mt-2">
-            ${this.botaoComentarios('DESDOBRAMENTO', a.id, a.comentarios, a.anexos)}
-            ${App.podeEditar() ? `
-              <span class="ms-auto d-flex gap-1">
-                <button class="btn btn-sm btn-outline-secondary" data-editar-desd="${a.id}" data-proj="${p.id}"
-                  title="Editar ação" aria-label="Editar ação">✎</button>
-                <button class="btn btn-sm btn-outline-danger" data-excluir-desd="${a.id}"
-                  title="Excluir ação" aria-label="Excluir ação">×</button>
-              </span>` : ''}
-          </div>
-        </div>
-        ${timeline}
+    if (a.recorrencia === 'SEMANAL') {
+      return `toda ${enumerar(dias.map(
+        (d) => (DIAS_SEMANA.find(([v]) => v === d) || [, ''])[1].toLowerCase()))}`;
+    }
+    if (a.recorrencia === 'MENSAL') return `todo dia ${enumerar(dias)}`;
+    return '';
+  },
+
+  // Sempre com os DOIS centavos: `toLocaleString` sozinho corta o zero à
+  // direita e R$ 1.500,50 saía como "R$ 1.500,5", que não é como se escreve
+  // dinheiro — e ainda parecia valor truncado.
+  dinheiro(v) {
+    if (v === null || v === undefined || v === '') return '';
+    return `R$ ${Number(v).toLocaleString('pt-BR',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  },
+
+  // Barra de leitura (não a arrastável): o número ao lado, porque proporção
+  // sozinha não se lê em tabela densa.
+  barraLeitura(pct, marcaBarra = '', marcaMedia = '') {
+    return `<span class="barra-plano" role="img" aria-label="${pct}% concluído">
+        <span style="width:${pct}%" ${marcaBarra}></span>
+      </span><span class="pct-plano" ${marcaMedia}>${pct}%</span>`;
+  },
+
+  /* ── A trilha ─────────────────────────────────────────────────────────────
+   * O plano inteiro numa coluna: a fila de pendências no topo, os projetos
+   * abaixo e, sob o projeto onde se está, as frentes dele. É ela que dá o
+   * contexto que a pilha de cabeçalhos grudados dava antes — e de graça, sem
+   * medir altura nenhuma, sem escada de z-index e sem comer a tela.
+   *
+   * Só o projeto ABERTO mostra as frentes. Mostrar as de todos devolveria a
+   * lista inteira em três níveis, que é justamente o que saiu daqui.
+   */
+  trilha(projetos, pendentes, acertos) {
+    const comAcerto = this.temFiltro() ? this.nosComAcerto(acertos) : null;
+    const sel = this.selecao;
+    const marca = (chave) => (comAcerto && comAcerto.has(chave) ? ' tem-acerto' : '');
+
+    const noFila = pendentes.length ? `
+      <button type="button" class="no-plano no-fila${sel?.tipo === 'FILA' ? ' sel' : ''}"
+        data-no="FILA" aria-current="${sel?.tipo === 'FILA'}">
+        <span class="no-titulo">Aguardando plano de ação</span>
+        <span class="badge text-bg-warning">${pendentes.length}</span>
+      </button>` : '';
+
+    const nos = projetos.map((p) => {
+      const acoes = p.desdobramentos || [];
+      const aberto = this.trilhaAberta.has(Number(p.id));
+      const selP = sel?.tipo === 'PROJETO' && Number(sel.id) === Number(p.id);
+      const frentes = aberto ? (p.iniciativas || []).map((ini) => {
+        const selF = sel?.tipo === 'FRENTE' && Number(sel.id) === Number(ini.id);
+        return `
+        <button type="button" class="no-plano no-frente${selF ? ' sel' : ''}${marca(`FRENTE:${ini.id}`)}"
+          data-no="FRENTE" data-id="${ini.id}" aria-current="${selF}">
+          <span class="no-titulo">${Modal.esc(ini.titulo)}</span>
+          <span class="no-linha2">${this.barraLeitura(this.mediaDe(ini.acoes || []),
+    `data-barra-no="FRENTE:${ini.id}"`, `data-media-no="FRENTE:${ini.id}"`)}
+            ${this.resumoStatus(ini.acoes || [], ['ATRASADO'])}</span>
+        </button>`;
+      }).join('') : '';
+      return `
+      <button type="button" class="no-plano no-projeto${selP ? ' sel' : ''}${marca(`PROJETO:${p.id}`)}"
+        data-no="PROJETO" data-id="${p.id}" aria-current="${selP}"
+        aria-expanded="${aberto}">
+        <span class="no-linha1">
+          <span class="seta-no" aria-hidden="true">${aberto ? '▾' : '▸'}</span>
+          <span class="no-titulo">${Modal.esc(p.titulo)}</span>
+          ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning">Prioritário</span>' : ''}
+        </span>
+        <span class="no-linha2">${this.barraLeitura(this.mediaDe(acoes),
+    `data-barra-no="PROJETO:${p.id}"`, `data-media-no="PROJETO:${p.id}"`)}
+          ${this.resumoStatus(acoes, ['ATRASADO'])}</span>
+      </button>${frentes}`;
+    }).join('');
+
+    const totalAcoes = projetos.reduce((n, p) => n + (p.desdobramentos || []).length, 0);
+    return `
+      <div class="trilha-topo">
+        <strong>Plano de ação</strong>
+        <span class="text-muted small">${projetos.length} projeto(s) · ${totalAcoes} ação(ões)</span>
       </div>
+      ${noFila}
+      ${nos || '<p class="text-muted small p-2 mb-0">Nenhum projeto cadastrado.</p>'}`;
+  },
+
+  // A mesma conta de `panorama`, isolada para a trilha e os KPIs: média
+  // aritmética simples com CANCELADO fora do numerador E do denominador.
+  mediaDe(acoes) {
+    const valem = acoes.filter((a) => a.status !== 'CANCELADO');
+    if (!valem.length) return 0;
+    return Math.round(valem.reduce((s, a) => s + Number(a.progresso || 0), 0) / valem.length);
+  },
+
+  /* ── O centro ─────────────────────────────────────────────────────────── */
+
+  kpis(acoes) {
+    const atrasadas = acoes.filter((a) => a.status === 'ATRASADO').length;
+    const concluidas = acoes.filter((a) => a.status === 'CONCLUIDO').length;
+    const campo = (rot, val, alerta = false) => `
+      <div class="kpi-plano"><div class="kpi-rot">${rot}</div>
+        <div class="kpi-val${alerta && val ? ' alerta' : ''}" data-kpi="${rot}">${val}</div></div>`;
+    return `<div class="kpis-plano">
+      ${campo('Ações', acoes.length)}
+      ${campo('Progresso médio', `${this.mediaDe(acoes)}%`)}
+      ${campo('Atrasadas', atrasadas, true)}
+      ${campo('Concluídas', concluidas)}
     </div>`;
   },
+
+  /**
+   * A linha da ação.
+   *
+   * Os atributos são os MESMOS do cartão antigo — `data-card-acao`,
+   * `data-cadeado`, `data-status`, `data-quem` — e isso é decisão, não
+   * sobra: é o que mantém o cadeado de edição concorrente (`cadeado.js`, que
+   * acha o alvo por `closest`) funcionando sem uma linha de mudança, e o que
+   * deixa boa parte da bateria mirando onde já mirava.
+   *
+   * Sem barra arrastável: ela foi para a gaveta. Numa tabela densa a barra
+   * convida a arrastar enquanto se lê, e a leitura da reunião é justamente
+   * passar o olho por trinta linhas.
+   */
+  linhaAcao(a, grupo = '') {
+    const [rotulo, classe] = STATUS_ACAO[a.status] || [a.status, 'text-bg-light'];
+    const pct = a.status === 'CANCELADO' ? 0 : a.progresso;
+    const prazo = this.periodo(a.data_inicio, a.data_fim, a.quando_);
+    const repete = this.fraseRepeticao(a);
+    const selos = (Number(a.comentarios) || 0) + (Number(a.anexos) || 0);
+    const aberta = Number(this.acaoAberta) === Number(a.id);
+    return `<tr class="linha-acao${aberta ? ' sel' : ''}" data-card-acao="${a.id}"
+      data-cadeado="desdobramento:${a.id}"
+      data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}" tabindex="0">
+      ${grupo}
+      <td><span class="badge ${classe}">${rotulo}</span></td>
+      <td class="col-oque">${Modal.esc(a.o_que)}
+        ${selos ? `<span class="clipe-plano" title="${a.comentarios} comentário(s), ${a.anexos} anexo(s)">📎 ${selos}</span>` : ''}</td>
+      <td>${a.quem
+    ? Modal.esc(a.quem)
+    : '<span class="selo-sem-usuario" title="Ninguém responde por esta ação: ela não entra em cobrança nenhuma">Sem usuário</span>'}</td>
+      <td class="col-quando">${prazo ? Modal.esc(prazo) : '—'}${repete ? `<span class="repete-plano">${Modal.esc(repete)}</span>` : ''}</td>
+      <td class="col-progresso">${this.barraLeitura(pct)}</td>
+    </tr>`;
+  },
+
+  cabecalhoTabela(comGrupo = false) {
+    return `<thead><tr>
+      ${comGrupo ? '<th class="col-grupo">Onde</th>' : ''}
+      <th>Situação</th><th>O quê</th><th>Quem</th><th>Quando</th><th>Progresso</th>
+    </tr></thead>`;
+  },
+
+  /**
+   * O centro: o caminho, os KPIs e a tabela.
+   *
+   * Com filtro ativo ele deixa de ser "as ações deste nó" e passa a ser "o que
+   * a pesquisa achou no plano inteiro", com uma coluna a mais dizendo de onde
+   * cada linha veio. É o que substitui abrir acordeão à força.
+   */
+  centro(projetos, pendentes, acertos) {
+    if (this.temFiltro()) {
+      const linhas = acertos.map(({ acao, projeto, frente }) => this.linhaAcao(acao,
+        `<td class="col-grupo">${Modal.esc(projeto.titulo)}${frente ? ` › ${Modal.esc(frente.titulo)}` : ''}</td>`))
+        .join('');
+      return `
+        <div class="caminho-plano">
+          <strong>Resultado da pesquisa</strong>
+          <span class="text-muted small">${acertos.length} ação(ões) no plano inteiro</span>
+          <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-limpar-filtro>Limpar pesquisa</button>
+        </div>
+        ${this.kpis(acertos.map((x) => x.acao))}
+        <div class="rolagem-plano">
+          ${linhas
+    ? `<table class="tabela-plano">${this.cabecalhoTabela(true)}<tbody>${linhas}</tbody></table>`
+    : '<p class="text-muted p-3" data-filtro-vazio>Nenhuma ação encontrada com a pesquisa atual.</p>'}
+        </div>`;
+    }
+
+    const sel = this.selecao;
+    if (!sel) {
+      return '<p class="text-muted p-3">Cadastre um projeto para começar o plano de ação.</p>';
+    }
+    if (sel.tipo === 'FILA') {
+      return `<div class="caminho-plano"><strong>Aguardando plano de ação</strong>
+          <span class="text-muted small">${pendentes.length} pendência(s)</span></div>
+        <div class="rolagem-plano p-2">${this.cartaoIdeiasAcao(pendentes)}</div>`;
+    }
+
+    const p = this.projetoDoNo(projetos);
+    const frente = this.frenteDoNo(projetos);
+    const acoes = this.acoesDoNo(projetos);
+    const pode = App.podeEditar();
+    const botoes = pode ? (frente ? `
+      <span class="ms-auto d-flex gap-1">
+        <button class="btn btn-sm btn-verde" data-nova-acao-proj="${p.id}">+ Ação</button>
+        <button class="btn btn-sm btn-outline-secondary" data-editar-ini="${frente.id}" data-proj="${p.id}">Editar frente</button>
+        <button class="btn btn-sm btn-outline-danger" data-excluir-ini="${frente.id}" title="Excluir frente" aria-label="Excluir frente">×</button>
+      </span>` : `
+      <span class="ms-auto d-flex gap-1">
+        <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
+        <button class="btn btn-sm btn-verde" data-nova-acao-proj="${p.id}">+ Ação</button>
+        <button class="btn btn-sm btn-outline-secondary" data-editar-proj="${p.id}">Editar projeto</button>
+        <button class="btn btn-sm btn-outline-danger" data-excluir-proj="${p.id}" title="Excluir projeto" aria-label="Excluir projeto">×</button>
+      </span>`) : '';
+
+    const detalhes = [
+      p.ano && `<strong>Ano:</strong> ${p.ano}`,
+      p.responsavel && `<strong>Responsável:</strong> ${Modal.esc(p.responsavel)}`,
+      this.periodo(p.data_inicio, p.data_fim, p.prazo)
+        && `<strong>Prazo (das ações):</strong> ${Modal.esc(this.periodo(p.data_inicio, p.data_fim, p.prazo))}`,
+    ].filter(Boolean).join(' · ');
+    // De que decisão a frente nasceu. Mora aqui, e não no projeto, desde que a
+    // escolha passou a ser da FRENTE: um projeto executa pedaços de mais de uma
+    // decisão, e a linha no projeto diria só a primeira delas.
+    const origem = frente?.escolha_origem
+      ? `<div class="small text-muted">↳ Escolha da cascata: “${Modal.esc(String(frente.escolha_origem).slice(0, 90))}”</div>`
+      : '';
+    const descricao = (frente?.descricao || p.descricao)
+      ? `<div class="small text-muted">${Modal.esc(frente?.descricao || p.descricao)}</div>` : '';
+
+    return `
+      <div class="caminho-plano">
+        ${frente ? `<span class="raiz-caminho">${Modal.esc(p.titulo)} ›</span><strong>${Modal.esc(frente.titulo)}</strong>`
+    : `<strong>${Modal.esc(p.titulo)}</strong>`}
+        ${this.resumoStatus(acoes, ['ATRASADO'])}
+        ${botoes}
+      </div>
+      ${detalhes || descricao || origem ? `<div class="sobre-plano">
+        ${detalhes ? `<div class="small text-muted">${detalhes}</div>` : ''}
+        ${descricao}${origem}
+        <!-- A conversa é do PROJETO e da AÇÃO, nunca da frente: a API só
+             valida esses dois tipos de referência (ComentarioController::
+             validarRef), e um botão aqui no nó da frente pediria ao servidor
+             um vínculo que ele recusa. -->
+        ${frente ? '' : this.botaoComentarios('PROJETO', p.id, p.comentarios, p.anexos)}
+      </div>` : ''}
+      ${this.kpis(acoes)}
+      <div class="rolagem-plano">
+        ${acoes.length
+    ? `<table class="tabela-plano">${this.cabecalhoTabela()}<tbody>${acoes.map((a) => this.linhaAcao(a)).join('')}</tbody></table>`
+    : `<p class="text-muted p-3">${frente ? 'Nenhuma ação nesta frente.' : 'Nenhuma ação neste projeto.'}</p>`}
+      </div>`;
+  },
+
+  /* ── A gaveta ─────────────────────────────────────────────────────────────
+   * O detalhe de UMA ação, ao lado da lista — não no lugar dela. É aqui que
+   * moram os campos que a tabela não comporta e o ajuste de progresso.
+   *
+   * O método em uso tem CINCO perguntas, não sete: o quê, como, quem, quando e
+   * quanto. "Onde" e "Por quê" saíram do formulário há tempos (`camposAcao` os
+   * mantém como `hidden` só para não apagar o que já estava gravado), e por
+   * isso aparecem aqui SÓ quando o registro antigo tem valor — dar-lhes uma
+   * linha fixa e vazia ensinaria um método que a cooperativa não pratica.
+   */
+  gaveta(projetos) {
+    const a = this.acaoAberta ? this.acaoPorId(projetos, this.acaoAberta) : null;
+    if (!a) {
+      return `<div class="gaveta-vazia text-muted small">
+        Escolha uma ação na lista para ver o detalhe.</div>`;
+    }
+    const [rotulo, classe] = STATUS_ACAO[a.status] || [a.status, 'text-bg-light'];
+    const [rotPrio] = PRIORIDADES[a.prioridade] || PRIORIDADES.MEDIA;
+    const cancelada = a.status === 'CANCELADO';
+    const pct = cancelada ? 0 : a.progresso;
+    const pode = App.podeEditar();
+    const prazo = this.periodo(a.data_inicio, a.data_fim, a.quando_);
+    const repete = this.fraseRepeticao(a);
+    const linha = (dt, dd) => (dd ? `<dt>${dt}</dt><dd>${dd}</dd>` : '');
+    const timeline = this.comentariosAbertos?.refTipo === 'DESDOBRAMENTO'
+      && this.comentariosAbertos?.refId === Number(a.id)
+      ? `<div id="comentarios-DESDOBRAMENTO-${a.id}" class="mt-2"></div>` : '';
+
+    return `
+      <div class="gaveta-topo">
+        <div><div class="gaveta-rot">Ação</div>
+          <h4 data-cadeado="desdobramento:${a.id}">${Modal.esc(a.o_que)}</h4></div>
+        <button type="button" class="btn-fechar-gaveta" data-fechar-gaveta
+          aria-label="Fechar detalhe" title="Fechar detalhe">✕</button>
+      </div>
+      <div class="gaveta-situacao">
+        <span class="badge ${classe}">${rotulo}</span>
+        ${pode && !cancelada ? `
+          <input type="range" class="faixa-verde flex-grow-1" min="0" max="100" step="5"
+            style="--pct:${pct}%" value="${pct}"
+            data-progresso="${a.id}" data-proj="${a.projeto_id}"
+            title="Arraste para ajustar o progresso" aria-label="Progresso da ação">
+          <span class="valor-progresso" data-rotulo="${a.id}">${pct}%</span>`
+    : `<span class="faixa-progresso flex-grow-1 ${cancelada ? 'inativa' : ''}"
+            title="${cancelada ? 'Ação cancelada — sem progresso e fora da média' : `${pct}%`}">
+            <span style="width:${pct}%"></span></span>
+          <span class="valor-progresso ${cancelada ? 'inativo' : ''}">${pct}%</span>`}
+      </div>
+      <dl class="campos-acao">
+        ${linha('Como', Modal.esc(a.como || ''))}
+        ${a.quem
+    ? linha('Quem', Modal.esc(a.quem))
+    : '<dt>Quem</dt><dd><span class="selo-sem-usuario" title="Ninguém responde por esta ação: ela não entra em cobrança nenhuma">Sem usuário</span></dd>'}
+        ${linha('Quando', prazo ? Modal.esc(prazo) : '')}
+        ${linha('Repete', repete ? Modal.esc(repete) : '')}
+        ${linha('Ganhos', this.dinheiro(a.quanto))}
+        ${linha('Prioridade', rotPrio)}
+        ${linha('Onde', a.onde ? Modal.esc(a.onde) : '')}
+        ${linha('Por quê', a.por_que ? Modal.esc(a.por_que) : '')}
+      </dl>
+      <div class="gaveta-botoes">
+        ${this.botaoComentarios('DESDOBRAMENTO', a.id, a.comentarios, a.anexos)}
+        ${pode ? `
+          <button class="btn btn-sm btn-outline-secondary" data-editar-desd="${a.id}"
+            data-proj="${a.projeto_id}">Editar ação</button>
+          <button class="btn btn-sm btn-outline-danger" data-excluir-desd="${a.id}"
+            title="Excluir ação" aria-label="Excluir ação">×</button>` : ''}
+      </div>
+      ${timeline}`;
+  },
+
+  /* ── Celular ──────────────────────────────────────────────────────────────
+   * Três telas, uma seleção só: lista → ações → detalhe. Não é a mesma tela
+   * estreitada — a tabela de cinco colunas não se lê em 390px, e a ficha sim.
+   *
+   * As duas composições saem da MESMA pintura, como a Matriz de Impacto já
+   * faz (`impacto.js:136` desenha a tabela, `:171` as fichas). Quem troca é o
+   * CSS; o JS só diz em que passo a navegação está, no `data-passo`.
+   *
+   * O que NÃO dá para reusar aqui é `Diag.ligarSeletorCategoriaMovel`: o
+   * `d-md-block` dele aplicado a `<td>`/`<th>` desmonta a tabela no
+   * computador, e o estado dele é global (está anotado em `impacto.js:162`).
+   */
+  fichasCelular(projetos, acertos) {
+    const lista = this.temFiltro()
+      ? acertos
+      : this.acoesDoNo(projetos).map((acao) => ({ acao, projeto: null, frente: null }));
+    if (!lista.length) return '<p class="text-muted p-3">Nenhuma ação aqui.</p>';
+    return lista.map(({ acao: a, projeto, frente }) => {
+      const [rotulo, classe] = STATUS_ACAO[a.status] || [a.status, 'text-bg-light'];
+      const pct = a.status === 'CANCELADO' ? 0 : a.progresso;
+      const prazo = this.periodo(a.data_inicio, a.data_fim, a.quando_);
+      return `<button type="button" class="ficha-acao" data-card-acao="${a.id}"
+        data-cadeado="desdobramento:${a.id}"
+        data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
+        ${projeto ? `<span class="ficha-onde">${Modal.esc(projeto.titulo)}${frente ? ` › ${Modal.esc(frente.titulo)}` : ''}</span>` : ''}
+        <span class="ficha-oque">${Modal.esc(a.o_que)}</span>
+        <span class="ficha-meta"><span class="badge ${classe}">${rotulo}</span>
+          ${prazo ? `<span class="ficha-quando">${Modal.esc(prazo)}</span>` : ''}</span>
+        <span class="ficha-meta">${a.quem ? Modal.esc(a.quem)
+    : '<span class="selo-sem-usuario">Sem usuário</span>'}
+          <span class="ms-auto">${this.barraLeitura(pct)}</span></span>
+        <span class="ficha-abrir">Ver detalhe ›</span>
+      </button>`;
+    }).join('');
+  },
+
+  // Em que passo a navegação do CELULAR está. No computador os três blocos
+  // estão na tela ao mesmo tempo e este campo não governa nada — por isso ele
+  // não entra no que é guardado entre visitas.
+  passo: 'TRILHA',
+
+  /* ── Modo documento ───────────────────────────────────────────────────────
+   * O dossiê fotografa o `innerHTML` desta seção (`dossie.js:140`, `foto`) e
+   * leva a folha ao Conselho. Numa tela mestre-detalhe isso seria veneno: a
+   * foto pegaria as ações de UM nó — o que estivesse selecionado — e nada na
+   * página diria que o resto do plano ficou de fora. É o mesmo perigo que o
+   * comentário de `dossie.js:78-83` já descreve para o filtro, e por isso a
+   * vista do documento agora também neutraliza a seleção.
+   *
+   * Com a bandeira ligada a seção se pinta PLANA: todo projeto, toda frente,
+   * toda ação, sem trilha, sem gaveta e sem filtros. Não é uma segunda tela —
+   * é a mesma linha de ação (`linhaAcao`) empilhada sob os títulos.
+   */
+  modoDocumento: false,
 
   async carregar() {
     const el = document.getElementById('secao-projetos');
@@ -800,167 +805,37 @@ const SecaoProjetos = {
     ];
     this.cascata = cascata;
     this.responsaveis = responsaveis;
-    this.projetos = projetos;   // guardado para o seletor de iniciativa ao converter ideias
+    this.projetos = projetos;
+    this.pendentes = pendentes;
 
-    // O conteúdo de cada popover, montado ANTES da pintura e guardado por
-    // chave: o balão do projeto resume as ações de TODAS as frentes, e o de
-    // cada frente, as dela — a mesma regra do selo do cabeçalho.
-    const conteudos = new Map();
-    projetos.forEach((p) => {
-      conteudos.set(`proj-${p.id}`, this.conteudoPopover(p.desdobramentos || []));
-      (p.iniciativas || []).forEach((ini) => {
-        // A situação da frente vem no rodapé do balão dela: saiu do cabeçalho
-        // a pedido, e sem lugar nenhum ela deixaria de existir na tela. Ela é
-        // DERIVADA das ações (Consolidacao) — todas concluídas fecham a frente.
-        const [rot] = STATUS_INICIATIVA[ini.status] || [ini.status];
-        conteudos.set(`ini-${ini.id}`, this.conteudoPopover(ini.acoes || [], ['Frente', rot]));
-      });
-    });
+    // A navegação vinda da SWOT escolhe o nó ANTES de a seleção guardada ser
+    // conferida: ela manda, e o que estava guardado é só o padrão.
+    this.prepararDestaque(projetos);
+    this.ajustarSelecao(projetos, pendentes);
+    if (this.acaoAberta && !this.acaoPorId(projetos, this.acaoAberta)) this.acaoAberta = null;
 
-    const cartoes = projetos.map((p) => {
-      // O prazo é consequência das ações: menor início e maior fim entre elas
-      const detalhes = [
-        p.ano && `<strong>Ano:</strong> ${p.ano}`,
-        p.responsavel && `<strong>Responsável:</strong> ${Modal.esc(p.responsavel)}`,
-        this.periodo(p.data_inicio, p.data_fim, p.prazo)
-          && `<strong>Prazo (das ações):</strong> ${Modal.esc(this.periodo(p.data_inicio, p.data_fim, p.prazo))}`,
-      ].filter(Boolean).join(' · ');
-      const descricao = p.descricao
-        ? `<div class="small text-muted texto-fator mt-1">${Modal.esc(p.descricao)}</div>` : '';
+    if (this.modoDocumento) {
+      el.innerHTML = this.documentoPlano(projetos, pendentes);
+      return;
+    }
 
-      const iniciativas = (p.iniciativas || []).map((ini) => this.blocoIniciativa(p, ini)).join('');
-
-      const timelineProjeto = this.comentariosAbertos?.refTipo === 'PROJETO' && this.comentariosAbertos?.refId === p.id
-        ? `<div id="comentarios-PROJETO-${p.id}" class="mt-2"></div>` : '';
-
-      // Panorama do projeto: soma no cabeçalho o que está dentro dele
-      const acoes = p.desdobramentos || [];
-      const concluidas = acoes.filter((a) => a.status === 'CONCLUIDO').length;
-      const aberto = !this.projetosFechados.has(p.id);
-
-      // Recolhido mostra só título, situação e a barra; o resto atrás da seta
-      const chave = `proj-${p.id}`;
-      const detalhado = this.detalhesAbertos.has(chave);
-      return `<div class="card mb-3" data-projeto="${p.id}" data-cadeado="projeto:${p.id}">
-        <div class="card-body">
-          <!-- A linha do título GRUDA, um degrau abaixo do cabeçalho de
-               Projetos: é ela que diz de qual projeto são as frentes e as ações
-               que estão passando. Sem isso, três telas de rolagem adiante o
-               nome do projeto já tinha ido embora. -->
-          <div class="d-flex align-items-center gap-2 flex-wrap projeto-cabeca-fixa">
-            <div class="projeto-cabeca flex-grow-1" data-abrir-proj="${p.id}" role="button" tabindex="0">
-              <span class="seta-projeto">${aberto ? '▾' : '▸'}</span>
-              <strong data-popover-resumo="proj-${p.id}"
-                title="Situação das ações deste projeto">${Modal.esc(p.titulo)}</strong>
-              ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning ms-1">Prioritário</span>' : ''}
-              <!-- UM selo, e é o do atraso: quantas ações estão fora do prazo e
-                   quanto isso é do total criado (todas as frentes somadas). O
-                   selo de situação do projeto saiu daqui — ele dizia "Atrasado"
-                   ao lado de "Atrasada: 1 (20%)", a mesma notícia duas vezes,
-                   uma delas sem o tamanho. A situação agregada continua no
-                   cadastro do projeto e a média, na barra logo abaixo.
-                   A distribuição inteira fica na frente de trabalho, onde ela
-                   cabe num punhado de ações e ainda se lê.
-                   Sem ação atrasada, nenhum selo: a ausência é a boa notícia. -->
-              ${this.resumoStatus(acoes, ['ATRASADO'])}
-            </div>
-            <!-- Os DOIS botões de criar ficam aqui, na linha do título do
-                 projeto, à direita (pedido do cliente, 2026-10-26, com
-                 maquete). Criar não é detalhe: é o que mais se faz nesta tela,
-                 e atrás da seta exigia abrir o detalhe do projeto — ou o de
-                 cada frente — só para chegar ao botão. Como o cabeçalho é
-                 grudado, eles acompanham a rolagem das ações.
-                 "+ Ação" não diz a frente: ela é a primeira pergunta do
-                 formulário (ver \`modalDesdobramento\`). Foi o que permitiu
-                 tirar o botão do cabeçalho de cada frente e ainda criar ação
-                 em projeto que não tem frente nenhuma — antes era preciso
-                 cadastrar a frente primeiro.
-                 Os dois ficam FORA do bloco com \`data-abrir-proj\` de
-                 propósito: aquele bloco inteiro é o alvo de clique do
-                 acordeão, e um botão dentro dele dependeria do
-                 \`closest('button')\` do handler para não recolher o projeto
-                 junto. "Comentários", "Editar" e "×" continuam no detalhe —
-                 são raros, e cinco botões no cabeçalho empurrariam o selo de
-                 atraso para fora da linha no celular. -->
-            <!-- Os dois botões e a seta andam num grupo só, com \`ms-auto\`:
-                 no celular o título sozinho já toma a linha, e soltos eles
-                 quebravam um de cada vez e encostavam à ESQUERDA da segunda
-                 linha. Em grupo, a segunda linha nasce alinhada à direita,
-                 debaixo do nome, que é onde a mão procura. -->
-            <span class="ms-auto d-flex align-items-center gap-2">
-              ${App.podeEditar() ? `
-                <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
-                <button class="btn btn-sm btn-verde" data-nova-acao-proj="${p.id}">+ Ação</button>` : ''}
-              ${this.botaoMais(chave, detalhado)}
-            </span>
-          </div>
-          <!-- Com a seta aberta: descrição do projeto e, logo abaixo dela, a
-               barra de progresso — ordem pedida pelo cliente -->
-          ${p.descricao ? `<div class="detalhe-item ${detalhado ? '' : 'd-none'}"
-            data-detalhe="${chave}">${descricao}</div>` : ''}
-          ${this.panorama(acoes, 'data-media-projeto', 'data-barra-projeto', 'panorama-projeto',
-            'Progresso médio das ações do projeto')}
-          <div class="detalhe-item ${detalhado ? '' : 'd-none'}" id="detalhe-${chave}" data-detalhe="${chave}">
-            ${detalhes ? `<div class="small text-muted mt-1">${detalhes}</div>` : ''}
-            <div class="small text-muted mt-1">${(p.iniciativas || []).length} iniciativa(s) ·
-              ${concluidas}/${acoes.length} ações concluídas</div>
-            <div class="d-flex gap-1 flex-wrap mt-2">
-              ${this.botaoComentarios('PROJETO', p.id, p.comentarios, p.anexos)}
-              ${App.podeEditar() ? `
-                <button class="btn btn-sm btn-outline-secondary" data-editar-proj="${p.id}">Editar</button>
-                <button class="btn btn-sm btn-outline-danger" data-excluir-proj="${p.id}">×</button>` : ''}
-            </div>
-          </div>
-          <div class="mt-3 iniciativas-projeto ${aberto ? '' : 'd-none'}">
-            ${iniciativas || '<div class="text-muted small">Nenhuma iniciativa cadastrada. Crie uma frente de trabalho para organizar as ações.</div>'}
-          </div>
-          ${timelineProjeto}
-        </div>
-      </div>`;
-    }).join('');
-
-    // Até onde a tela mostra. Eram só dois extremos — tudo aberto ou o
-    // "Recolher tudo", que sumia com projetos E frentes de uma vez. Faltava
-    // justamente o meio: recolher as AÇÕES e ficar com o retrato dos projetos e
-    // das suas frentes, que é como se lê o plano numa reunião.
-    const nivel = this.nivelAtual(projetos);
-    // A lista do filtro de pessoa: quem tem ação (com e-mail) mais os
-    // responsáveis ativos que ainda não receberam nenhuma.
     const pessoasFiltro = this.pessoasParaFiltro(projetos, responsaveis);
-    const botaoNivel = (valor, rotulo, dica) =>
-      `<button type="button" class="btn ${nivel === valor ? 'btn-verde' : 'btn-outline-secondary'}"
-        data-nivel="${valor}" title="${Modal.esc(dica)}"
-        aria-pressed="${nivel === valor}">${rotulo}</button>`;
     el.innerHTML = `
-      <!-- O cabeçalho GRUDA abaixo da topbar: os três botões de nível são o
-           controle que se usa lendo a lista, e rolar até o quinto projeto para
-           trocar de visão obrigava a subir a página inteira de volta.
-           O parágrafo de instruções fica FORA do bloco fixo, de propósito: ele
-           se lê uma vez, e grudado custaria uma faixa de tela em toda rolagem,
-           para sempre. Quem precisa dele está no começo, onde ele está. -->
+      <!-- O cabeçalho gruda abaixo da topbar, e ele é o ÚNICO degrau grudado
+           que sobrou: a pilha de quatro (app → Projetos → projeto → frentes
+           percorridas) foi embora junto com a árvore de acordeões. Quem dá o
+           contexto agora é a trilha, que não custa altura nenhuma. -->
       <div class="cabecalho-projetos d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h1>Projetos — ${Modal.esc(App.rotuloContexto())}</h1>
+        <h1>Plano de ação — ${Modal.esc(App.rotuloContexto())}</h1>
         <div class="d-flex gap-2 align-items-center flex-wrap">
-          ${projetos.length ? `
-          <!-- Pesquisa: enxuta de propósito — mora no cabeçalho fixo, e cada
-               rem aqui é tela roubada da lista o tempo todo. Palavra à
-               esquerda, situação ao lado; \`type=search\` traz o ✕ de limpar
-               de graça. -->
           <div class="filtro-acoes d-flex gap-2 align-items-center">
             <!-- O placeholder é CURTO porque o campo tem 11rem e o texto é
                  cortado no meio: "Pesquisar palavra, pessoa ou e-mail…" morria
-                 em "pessoa ou e-", que é pior que não prometer nada. O que ele
-                 não cabe dizer vai no title e no aria-label, e o campo ao lado
-                 já anuncia o caminho exato da pessoa. -->
+                 em "pessoa ou e-", que é pior que não prometer nada. -->
             <input type="search" class="form-control form-control-sm" data-filtro-texto
               value="${Modal.esc(this.filtroTexto)}" placeholder="Palavra ou pessoa…"
               title="Procura no texto da ação, no título da frente e do projeto e também no nome e no e-mail de quem responde pela ação"
               aria-label="Pesquisar ações por palavra, nome ou e-mail do responsável">
-            <!-- Caixa de texto COM lista: dá para escolher da lista ou digitar
-                 parte do nome. Um <select> fechado obrigaria a achar a pessoa
-                 numa lista longa; um texto puro não diria quem existe.
-                 O type=search traz o ✕ de limpar de graça, como o campo ao
-                 lado. -->
             <input type="search" list="lista-responsaveis-acoes" data-filtro-responsavel
               class="form-control form-control-sm campo-responsavel"
               value="${Modal.esc(this.filtroResponsavel)}" placeholder="Responsável…"
@@ -970,121 +845,247 @@ const SecaoProjetos = {
                    ninguém, e é a fila que mais precisa ser vista. -->
               <option value="${Modal.esc(this.ROTULO_SEM_DONO)}">ações sem responsável</option>
               ${pessoasFiltro.map((r) =>
-                `<option value="${Modal.esc(r.nome)}">${Modal.esc(r.email || 'sem e-mail')}</option>`).join('')}
+    `<option value="${Modal.esc(r.nome)}">${Modal.esc(r.email || 'sem e-mail')}</option>`).join('')}
             </datalist>
             <select class="form-select form-select-sm w-auto" data-filtro-status
               aria-label="Filtrar por situação">
               <option value="">Todas as situações</option>
-              ${Object.entries(STATUS_ACAO).map(([v, [rotulo]]) =>
-                `<option value="${v}" ${this.filtroStatus === v ? 'selected' : ''}>${rotulo}</option>`).join('')}
+              ${Object.entries(STATUS_ACAO).map(([v, [rot]]) =>
+    `<option value="${v}" ${this.filtroStatus === v ? 'selected' : ''}>${rot}</option>`).join('')}
             </select>
           </div>
-          <span class="small text-muted d-none d-sm-inline">Mostrar até</span>
-          <div class="btn-group btn-group-sm niveis-visao" role="group" aria-label="Mostrar até">
-            ${botaoNivel('ACOES', 'Ações', 'Abre tudo: projetos, frentes e as ações de cada uma')}
-            ${botaoNivel('FRENTES', 'Frentes', 'Recolhe as ações — projetos e frentes continuam à vista, com o percentual de cada um')}
-            ${botaoNivel('PROJETOS', 'Projetos', 'Recolhe tudo: só os projetos, com o percentual e os atrasos')}
-          </div>` : ''}
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-proj">+ Novo projeto</button>' : ''}
         </div>
       </div>
-      <p class="text-muted">Toque no título para recolher e expandir um item; use a seta (⌄) para
-        ver o detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>
-      ${this.cartaoIdeiasAcao(pendentes)}
-      <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>
-      <div class="text-muted d-none" data-filtro-vazio>Nenhuma ação encontrada com a pesquisa atual.</div>`;
+      <div class="grade-plano" data-grade data-passo="${this.passo}">
+        <nav class="trilha-plano" data-trilha aria-label="Projetos e frentes do plano"></nav>
+        <section class="centro-plano" data-centro></section>
+        <aside class="gaveta-plano" data-gaveta aria-label="Detalhe da ação"></aside>
+        <div class="veu-gaveta" data-veu hidden></div>
+      </div>`;
 
-    el.querySelectorAll('[data-virar-acao]').forEach((b) => b.addEventListener('click', () =>
-      this.modalConverterAcao(pendentes.find((p) => p.chave === b.dataset.virarAcao))));
-    el.querySelectorAll('[data-tirar-fila]').forEach((b) => b.addEventListener('click', () => {
-      const p = pendentes.find((x) => x.chave === b.dataset.tirarFila);
-      this.tirarDaFila(b.dataset.tirarFila, p ? (p.texto_tratado || p.texto) : '');
-    }));
-
-    el.querySelectorAll('[data-nivel]').forEach((b) =>
-      b.addEventListener('click', () => this.aplicarNivel(b.dataset.nivel, projetos)));
-
-    // A pesquisa filtra o DOM a cada tecla (sem recarga, que mataria o foco) e
-    // é reaplicada aqui porque a repintura acabou de redesenhar tudo visível.
+    // Os filtros são ligados UMA vez, no esqueleto: a repintura troca só a
+    // trilha, o centro e a gaveta, e por isso o foco de quem está digitando
+    // sobrevive a cada tecla. Era esse o motivo de o filtro antigo mexer no
+    // DOM em vez de recarregar — agora ele filtra dados e o foco continua de pé.
     const campoFiltro = el.querySelector('[data-filtro-texto]');
     campoFiltro?.addEventListener('input', () => {
       this.filtroTexto = campoFiltro.value;
-      this.aplicarFiltro(el);
+      this.repintar(el);
     });
     // O responsável escuta `input`, não `change`: a caixa é de texto com lista,
-    // e escolher um item da lista dispara os DOIS — mas digitar parte do nome
-    // só dispara `input`. Com `change`, quem digitasse ficaria sem filtro
-    // nenhum até sair do campo, que é justamente o uso que este campo existe
-    // para atender.
+    // e escolher um item dispara os DOIS — mas digitar parte do nome só dispara
+    // `input`. Com `change`, quem digitasse ficaria sem filtro até sair do campo.
     const campoResp = el.querySelector('[data-filtro-responsavel]');
     campoResp?.addEventListener('input', () => {
       this.filtroResponsavel = campoResp.value;
-      this.aplicarFiltro(el);
+      this.repintar(el);
     });
     const selFiltro = el.querySelector('[data-filtro-status]');
     selFiltro?.addEventListener('change', () => {
       this.filtroStatus = selFiltro.value;
-      this.aplicarFiltro(el);
+      this.repintar(el);
     });
-    this.aplicarFiltro(el);
-
-    // Acordeão do projeto (clicar no cabeçalho abre/fecha as iniciativas)
-    el.querySelectorAll('[data-abrir-proj]').forEach((c) => {
-      const alternar = () => {
-        const id = parseInt(c.dataset.abrirProj, 10);
-        if (this.projetosFechados.has(id)) this.projetosFechados.delete(id);
-        else this.projetosFechados.add(id);
-        const cartao = el.querySelector(`[data-projeto="${id}"]`);
-        const fechado = this.projetosFechados.has(id);
-        cartao.querySelector('.iniciativas-projeto').classList.toggle('d-none', fechado);
-        cartao.querySelector('.seta-projeto').textContent = fechado ? '▸' : '▾';
-        this.pintarNiveis(el, projetos);
-      };
-      c.addEventListener('click', (ev) => {
-        if (ev.target.closest('button, a, input')) return;
-        alternar();
-      });
-      c.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar(); }
-      });
-    });
-
-    this.ligarBotoesMais(el);
-    // O cabeçalho da FRENTE gruda logo abaixo do de Projetos, e para isso
-    // precisa saber a altura dele — medida a cada pintura, com ResizeObserver,
-    // porque o bloco quebra em duas ou três linhas conforme a largura. Um
-    // palpite em `rem` curto demais deixaria um cabeçalho por cima do outro.
+    document.getElementById('btn-novo-proj')
+      ?.addEventListener('click', () => this.modalProjeto(null, this.projetos));
     Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos');
-    this.medirCabecalhosProjeto(el);
+
+    this.repintar(el);
+  },
+
+  /**
+   * Repinta as três zonas e religa o que vive dentro delas.
+   *
+   * O esqueleto (cabeçalho, filtros, grade) fica de pé: é o que preserva o
+   * foco do campo de pesquisa e evita religar os filtros a cada tecla.
+   */
+  repintar(el) {
+    const projetos = this.projetos || [];
+    const pendentes = this.pendentes || [];
+    const acertos = this.temFiltro() ? this.acertosDoPlano(projetos) : [];
+    const grade = el.querySelector('[data-grade]');
+    if (!grade) return;
+
+    el.querySelector('[data-trilha]').innerHTML = this.trilha(projetos, pendentes, acertos);
+    el.querySelector('[data-centro]').innerHTML = `
+      <div class="so-computador">${this.centro(projetos, pendentes, acertos)}</div>
+      <div class="so-celular">${this.cabecaCelular(projetos)}${this.fichasCelular(projetos, acertos)}</div>`;
+    el.querySelector('[data-gaveta]').innerHTML = this.gaveta(projetos);
+    grade.dataset.passo = this.passo;
+    grade.classList.toggle('com-gaveta', !!this.acaoAberta);
+    el.querySelector('[data-veu]').hidden = !this.acaoAberta;
+
+    // Os popovers de resumo são refeitos a cada pintura, e os antigos
+    // DESCARTADOS: o balão que o Bootstrap pendura no <body> não sai com o
+    // elemento, e sem o dispose uma tarde de uso deixa dezenas fora da tela.
+    const conteudos = new Map();
+    projetos.forEach((p) => {
+      conteudos.set(`proj-${p.id}`, this.conteudoPopover(p.desdobramentos || []));
+      (p.iniciativas || []).forEach((ini) => {
+        const [rot] = STATUS_INICIATIVA[ini.status] || [ini.status];
+        conteudos.set(`ini-${ini.id}`, this.conteudoPopover(ini.acoes || [], ['Frente', rot]));
+      });
+    });
     this.ligarPopoversResumo(el, conteudos);
-    this.aplicarDestaqueAcao(el);
+
+    this.ligarTrilha(el);
+    this.ligarCentro(el);
+    this.ligarGaveta(el);
+    if (this.comentariosAbertos) this.renderComentarios();
+    this.realcarLinha(el);
+  },
+
+  /** O plano inteiro em folha corrida, para o dossiê. */
+  documentoPlano(projetos, pendentes) {
+    if (!projetos.length) return '<p class="text-muted">Nenhum projeto cadastrado.</p>';
+    const blocos = projetos.map((p) => {
+      const acoes = p.desdobramentos || [];
+      const detalhes = [
+        p.ano && `<strong>Ano:</strong> ${p.ano}`,
+        p.responsavel && `<strong>Responsável:</strong> ${Modal.esc(p.responsavel)}`,
+      ].filter(Boolean).join(' · ');
+      const frentes = (p.iniciativas || []).map((ini) => {
+        const suas = ini.acoes || [];
+        return `<div class="doc-frente">
+          <h3>${Modal.esc(ini.titulo)}</h3>
+          <div class="doc-panorama">${this.barraLeitura(this.mediaDe(suas))}
+            ${this.resumoStatus(suas, ['ATRASADO'])}</div>
+          ${suas.length
+    ? `<table class="tabela-plano">${this.cabecalhoTabela()}<tbody>${suas.map((a) => this.linhaAcao(a)).join('')}</tbody></table>`
+    : '<p class="text-muted small">Nenhuma ação nesta frente.</p>'}
+        </div>`;
+      }).join('');
+      // Ação sem frente existe no banco (`iniciativa_id` é anulável) e sumiria
+      // da folha se o documento lesse só as listas aninhadas.
+      const orfas = acoes.filter((a) => !a.iniciativa_id);
+      return `<section class="doc-projeto">
+        <h2>${Modal.esc(p.titulo)}
+          ${p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning">Prioritário</span>' : ''}</h2>
+        ${detalhes ? `<div class="small text-muted">${detalhes}</div>` : ''}
+        <div class="doc-panorama">${this.barraLeitura(this.mediaDe(acoes))}
+          ${this.resumoStatus(acoes, ['ATRASADO'])}</div>
+        ${frentes}
+        ${orfas.length ? `<div class="doc-frente"><h3>Sem frente de trabalho</h3>
+          <table class="tabela-plano">${this.cabecalhoTabela()}<tbody>${orfas.map((a) => this.linhaAcao(a)).join('')}</tbody></table></div>` : ''}
+      </section>`;
+    }).join('');
+    return `<h1>Plano de ação — ${Modal.esc(App.rotuloContexto())}</h1>${blocos}
+      ${pendentes.length ? this.cartaoIdeiasAcao(pendentes) : ''}`;
+  },
+
+  // No celular a tela 2 precisa dizer de onde são estas ações e como voltar
+  cabecaCelular(projetos) {
+    const p = this.projetoDoNo(projetos);
+    const frente = this.frenteDoNo(projetos);
+    const nome = this.temFiltro() ? 'Resultado da pesquisa'
+      : (frente ? frente.titulo : (p ? p.titulo : 'Plano de ação'));
+    return `<div class="cabeca-celular">
+      <button type="button" class="volta-celular" data-passo-ir="TRILHA"
+        aria-label="Voltar para projetos e frentes">‹</button>
+      <strong>${Modal.esc(nome)}</strong>
+    </div>`;
+  },
+
+  /* ── Ligadores ───────────────────────────────────────────────────────── */
+
+  ligarTrilha(el) {
+    el.querySelectorAll('[data-no]').forEach((b) => b.addEventListener('click', () => {
+      const tipo = b.dataset.no;
+      const id = b.dataset.id ? Number(b.dataset.id) : null;
+      const mesmoNo = this.selecao?.tipo === tipo && Number(this.selecao?.id) === Number(id);
+      // Clicar no projeto onde já se está dobra e desdobra as frentes dele.
+      // É o único gesto de abrir/fechar que sobrou na tela, e ele não esconde
+      // nada: as ações do projeto continuam no centro, abertas ou não.
+      if (tipo === 'PROJETO' && mesmoNo) {
+        if (this.trilhaAberta.has(id)) this.trilhaAberta.delete(id);
+        else this.trilhaAberta.add(id);
+      } else if (tipo === 'PROJETO') {
+        this.trilhaAberta.add(id);
+      }
+      this.selecao = { tipo, id };
+      this.acaoAberta = null;
+      this.passo = 'ACOES';
+      this.guardarNo();
+      this.repintar(el);
+    }));
+  },
+
+  ligarCentro(el) {
+    const projetos = this.projetos || [];
+    // Escolher a linha abre a gaveta. No celular isso é a terceira tela.
+    el.querySelectorAll('[data-card-acao]').forEach((linha) => {
+      const abrir = (ev) => {
+        if (ev.target.closest('button, a, input, select, textarea, label')) return;
+        this.acaoAberta = Number(linha.dataset.cardAcao);
+        this.passo = 'DETALHE';
+        this.repintar(el);
+      };
+      linha.addEventListener('click', abrir);
+      linha.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir(ev); }
+      });
+    });
+    el.querySelectorAll('[data-passo-ir]').forEach((b) => b.addEventListener('click', () => {
+      this.passo = b.dataset.passoIr;
+      this.repintar(el);
+    }));
+    el.querySelector('[data-limpar-filtro]')?.addEventListener('click', () => {
+      this.filtroTexto = '';
+      this.filtroResponsavel = '';
+      this.filtroStatus = '';
+      const t = el.querySelector('[data-filtro-texto]');
+      const r = el.querySelector('[data-filtro-responsavel]');
+      const s = el.querySelector('[data-filtro-status]');
+      if (t) t.value = '';
+      if (r) r.value = '';
+      if (s) s.value = '';
+      this.repintar(el);
+    });
+
+    // A fila de "Aguardando plano de ação", quando o nó dela está escolhido
+    el.querySelectorAll('[data-virar-acao]').forEach((b) => b.addEventListener('click', () =>
+      this.modalConverterAcao((this.pendentes || []).find((p) => p.chave === b.dataset.virarAcao))));
+    el.querySelectorAll('[data-tirar-fila]').forEach((b) => b.addEventListener('click', () => {
+      const p = (this.pendentes || []).find((x) => x.chave === b.dataset.tirarFila);
+      this.tirarDaFila(b.dataset.tirarFila, p ? (p.texto_tratado || p.texto) : '');
+    }));
 
     el.querySelectorAll('[data-comentarios]').forEach((b) => b.addEventListener('click', () => {
       const [refTipo, refId] = b.dataset.comentarios.split(':');
       const mesmo = this.comentariosAbertos?.refTipo === refTipo
         && this.comentariosAbertos?.refId === Number(refId);
       this.comentariosAbertos = mesmo ? null : { refTipo, refId: Number(refId) };
-      this.carregar();
+      this.repintar(el);
     }));
-    if (this.comentariosAbertos) this.renderComentarios();
 
     if (!App.podeEditar()) return;
 
-    document.getElementById('btn-novo-proj').addEventListener('click', () => this.modalProjeto(null, projetos));
+    el.querySelectorAll('[data-nova-ini]').forEach((b) => b.addEventListener('click', () =>
+      this.modalIniciativa(Number(b.dataset.novaIni), null)));
+    // Ação nova pelo centro: sem frente decidida quando o nó é o projeto —
+    // ela é a primeira pergunta do formulário.
+    el.querySelectorAll('[data-nova-acao-proj]').forEach((b) => b.addEventListener('click', () => {
+      const frente = this.frenteDoNo(projetos);
+      this.modalDesdobramento(Number(b.dataset.novaAcaoProj), null, frente ? Number(frente.id) : null);
+    }));
     el.querySelectorAll('[data-editar-proj]').forEach((b) => b.addEventListener('click', () =>
-      this.modalProjeto(projetos.find((p) => p.id == b.dataset.editarProj), projetos)));
+      this.modalProjeto(projetos.find((p) => Number(p.id) === Number(b.dataset.editarProj)), projetos)));
+    el.querySelectorAll('[data-editar-ini]').forEach((b) => b.addEventListener('click', () => {
+      const proj = projetos.find((p) => Number(p.id) === Number(b.dataset.proj));
+      this.modalIniciativa(proj.id,
+        (proj.iniciativas || []).find((i) => Number(i.id) === Number(b.dataset.editarIni)));
+    }));
     el.querySelectorAll('[data-excluir-proj]').forEach((b) => b.addEventListener('click', async () => {
       // O projeto é ponta de quatro vínculos, e só um deles aparecia na frase
       // antiga ("e todos os seus desdobramentos"). O investimento é o que mais
       // surpreende: ele NÃO some — a FK não tem ON DELETE e ele volta a ser um
       // investimento sem projeto —, mas quem apaga precisa saber que o vínculo
       // que ele montou vai embora.
-      const p = projetos.find((x) => x.id == b.dataset.excluirProj);
+      const p = projetos.find((x) => Number(x.id) === Number(b.dataset.excluirProj));
       const q = (n, s, pl) => Vinculos.quantos(n, s, pl);
-      const acoes = (p?.desdobramentos || []).length;
       const aviso = Vinculos.aviso(`Excluir o projeto «${p?.titulo || ''}»?`, {
         some: [
-          q(acoes, 'ação 5W2H', 'ações 5W2H'),
+          q((p?.desdobramentos || []).length, 'ação', 'ações'),
           q((p?.iniciativas || []).length, 'iniciativa', 'iniciativas'),
           q(p?.comentarios, 'comentário', 'comentários'),
         ],
@@ -1105,20 +1106,17 @@ const SecaoProjetos = {
       } catch (e) {
         alert(e.message);
       }
+      // O nó some junto com o projeto: sem zerar a seleção, a próxima carga
+      // procuraria um projeto que não existe mais.
+      this.selecao = null;
+      this.acaoAberta = null;
       this.carregar();
     }));
-    el.querySelectorAll('[data-nova-ini]').forEach((b) => b.addEventListener('click', () =>
-      this.modalIniciativa(parseInt(b.dataset.novaIni, 10), null)));
-    el.querySelectorAll('[data-editar-ini]').forEach((b) => b.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      const proj = projetos.find((p) => p.id == b.dataset.proj);
-      this.modalIniciativa(proj.id, proj.iniciativas.find((i) => i.id == b.dataset.editarIni));
-    }));
-    el.querySelectorAll('[data-excluir-ini]').forEach((b) => b.addEventListener('click', async (ev) => {
-      ev.stopPropagation();
+    el.querySelectorAll('[data-excluir-ini]').forEach((b) => b.addEventListener('click', async () => {
       const iniId = Number(b.dataset.excluirIni);
       const ini = projetos.flatMap((x) => x.iniciativas || []).find((i) => Number(i.id) === iniId);
       const origens = (ini?.acoes || []).reduce((n, a) => n + (Number(a.origens) || 0), 0);
+      const depois = () => { this.selecao = null; this.acaoAberta = null; this.carregar(); };
       if (origens) {
         this.excluirComOrigens({
           titulo: 'Excluir a iniciativa',
@@ -1129,87 +1127,69 @@ const SecaoProjetos = {
       }
       if (!confirm('Excluir a iniciativa e todas as ações dentro dela?')) return;
       try {
-        await App.api(`/api/iniciativas/${b.dataset.excluirIni}/excluir`, { planejamento_id: this.plan.id });
+        await App.api(`/api/iniciativas/${iniId}/excluir`, { planejamento_id: this.plan.id });
       } catch (e) {
         alert(e.message);
       }
-      this.carregar();
+      depois();
     }));
-    // Ação nova pelo cabeçalho do PROJETO: sem frente decidida, que é a
-    // primeira pergunta do formulário.
-    el.querySelectorAll('[data-nova-acao-proj]').forEach((b) => b.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      this.modalDesdobramento(parseInt(b.dataset.novaAcaoProj, 10), null, null);
-    }));
+
+    // Duplo clique abre a edição do que está sob o cursor — o mesmo que o
+    // botão, sem precisar alcançá-lo. O listener vai no CENTRO e não na seção:
+    // `el` sobrevive aos recarregamentos (as seções não são destruídas, só
+    // ganham `d-none`) e um listener nele empilharia uma cópia por pintura —
+    // na terceira visita à tela, um duplo clique abriria três modais.
+    el.querySelector('[data-centro]')?.addEventListener('dblclick', (ev) => {
+      if (ev.target.closest('button, a, input, select, textarea, label, [id^="comentarios-"]')) return;
+      window.getSelection?.()?.removeAllRanges();
+      const naAcao = ev.target.closest('[data-card-acao]');
+      if (naAcao) {
+        const acao = this.acaoPorId(projetos, naAcao.dataset.cardAcao);
+        if (acao) this.modalDesdobramento(acao.projeto_id, acao, acao.iniciativa_id);
+        return;
+      }
+      const frente = this.frenteDoNo(projetos);
+      const p = this.projetoDoNo(projetos);
+      if (frente) this.modalIniciativa(p.id, frente);
+      else if (p) this.modalProjeto(p, projetos);
+    });
+  },
+
+  ligarGaveta(el) {
+    const projetos = this.projetos || [];
+    const fechar = () => {
+      this.acaoAberta = null;
+      this.passo = 'ACOES';
+      this.repintar(el);
+    };
+    el.querySelector('[data-fechar-gaveta]')?.addEventListener('click', fechar);
+    el.querySelector('[data-veu]')?.addEventListener('click', fechar);
+    // `Esc` fecha a gaveta, mas NUNCA quando há um modal aberto: ali o Esc é
+    // do formulário, e fechar a gaveta por baixo tiraria o chão de quem salva.
+    if (this.acaoAberta && !this.fechaPorEsc) {
+      this.fechaPorEsc = (ev) => {
+        if (ev.key !== 'Escape') return;
+        if (document.querySelector('.modal.show')) return;
+        if (!this.acaoAberta) return;
+        fechar();
+      };
+      document.addEventListener('keydown', this.fechaPorEsc);
+    }
+
+    if (!App.podeEditar()) return;
+
     el.querySelectorAll('[data-editar-desd]').forEach((b) => b.addEventListener('click', () => {
-      const proj = projetos.find((p) => p.id == b.dataset.proj);
-      const acao = proj.desdobramentos.find((dd) => dd.id == b.dataset.editarDesd);
-      // A barra do cartão pode ter mudado o progresso depois da carga da lista;
-      // vale o que está na tela, senão o modal regravaria o valor antigo
+      const acao = this.acaoPorId(projetos, b.dataset.editarDesd);
+      if (!acao) return;
+      // Vale o progresso que está na TELA, que a barra pode ter mudado depois
+      // da carga da lista — senão o modal regravaria o valor antigo.
       const barra = el.querySelector(`[data-progresso="${acao.id}"]`);
       const atual = barra ? { ...acao, progresso: Number(barra.value) } : acao;
-      this.modalDesdobramento(proj.id, atual, acao.iniciativa_id);
-    }));
-
-    // Duplo clique (duplo toque no celular) abre a edição do cartão sob o
-    // cursor — o mesmo que o ✎, sem precisar abrir o detalhe para
-    // alcançá-lo. Os botões continuam onde estavam: são o caminho de quem usa
-    // teclado, que não tem duplo clique.
-    //
-    // O listener vai em CADA cartão de projeto, não na seção: `el` sobrevive
-    // aos recarregamentos (as seções não são destruídas, só ganham `d-none`) e
-    // um listener nele empilharia uma cópia por `carregar()` — na terceira
-    // visita à tela, um duplo clique abriria três modais.
-    el.querySelectorAll('[data-projeto]').forEach((cartaoProj) => {
-      cartaoProj.addEventListener('dblclick', (ev) => {
-        // Controle é controle: dois cliques na barra de progresso, num botão ou
-        // num link são interação com ele. O diário mora DENTRO do cartão e tem
-        // os próprios registros — abrir a edição do projeto ao clicar duas
-        // vezes num registro seria surpresa.
-        if (ev.target.closest('button, a, input, select, textarea, label, [id^="comentarios-"]')) return;
-        // O duplo clique seleciona a palavra sob o cursor, e ela ficaria acesa
-        // atrás do modal
-        window.getSelection?.()?.removeAllRanges();
-
-        const proj = projetos.find((p) => p.id == cartaoProj.dataset.projeto);
-        if (!proj) return;
-
-        // Do mais interno para o mais externo: os três níveis são aninhados no
-        // DOM, e sem esta ordem um duplo clique na ação abriria o projeto.
-        const naAcao = ev.target.closest('[data-card-acao]');
-        if (naAcao) {
-          const acao = (proj.desdobramentos || []).find((dd) => dd.id == naAcao.dataset.cardAcao);
-          if (!acao) return;
-          // Mesma regra do ✎: vale o progresso que está na TELA, que a barra
-          // pode ter mudado depois da carga da lista
-          const barra = el.querySelector(`[data-progresso="${acao.id}"]`);
-          const atual = barra ? { ...acao, progresso: Number(barra.value) } : acao;
-          this.modalDesdobramento(proj.id, atual, acao.iniciativa_id);
-          return;
-        }
-        const naIniciativa = ev.target.closest('[data-iniciativa]');
-        if (naIniciativa) {
-          const ini = (proj.iniciativas || []).find((i) => i.id == naIniciativa.dataset.iniciativa);
-          if (ini) this.modalIniciativa(proj.id, ini);
-          return;
-        }
-        this.modalProjeto(proj, projetos);
-      });
-    });
-    // Acordeão das iniciativas (clicar no cabeçalho abre/fecha)
-    el.querySelectorAll('[data-abrir-ini]').forEach((c) => c.addEventListener('click', (ev) => {
-      if (ev.target.closest('button')) return;
-      const id = parseInt(c.dataset.abrirIni, 10);
-      if (this.iniciativasFechadas.has(id)) this.iniciativasFechadas.delete(id);
-      else this.iniciativasFechadas.add(id);
-      const bloco = el.querySelector(`[data-iniciativa="${id}"]`);
-      bloco.querySelector('.acoes-iniciativa').classList.toggle('d-none', this.iniciativasFechadas.has(id));
-      bloco.querySelector('.seta-iniciativa').textContent = this.iniciativasFechadas.has(id) ? '▸' : '▾';
-      this.pintarNiveis(el, projetos);
+      this.modalDesdobramento(acao.projeto_id, atual, acao.iniciativa_id);
     }));
     el.querySelectorAll('[data-excluir-desd]').forEach((b) => b.addEventListener('click', async () => {
       const acaoId = Number(b.dataset.excluirDesd);
-      const acao = projetos.flatMap((x) => x.desdobramentos || []).find((a) => Number(a.id) === acaoId);
+      const acao = this.acaoPorId(projetos, acaoId);
       if (Number(acao?.origens)) {
         this.excluirComOrigens({
           titulo: 'Excluir a ação',
@@ -1218,24 +1198,26 @@ const SecaoProjetos = {
         });
         return;
       }
-      if (!confirm('Excluir este desdobramento?')) return;
+      if (!confirm('Excluir esta ação?')) return;
       await App.api(`/api/desdobramentos/${acaoId}/excluir`, { planejamento_id: this.plan.id });
+      this.acaoAberta = null;
       this.carregar();
     }));
 
-    // Progresso ajustado arrastando a própria barra do cartão: a barra e o
-    // rótulo acompanham o dedo e a gravação sai só ao soltar
+    // Progresso ajustado arrastando a barra da GAVETA: a barra e o rótulo
+    // acompanham o dedo e a gravação sai só ao soltar.
     el.querySelectorAll('[data-progresso]').forEach((r) => {
       const id = r.dataset.progresso;
       const rotulo = el.querySelector(`[data-rotulo="${id}"]`);
       const pintar = (v) => {
         r.style.setProperty('--pct', `${v}%`);
-        rotulo.textContent = `${v}%`;
+        if (rotulo) rotulo.textContent = `${v}%`;
       };
       r.addEventListener('input', () => pintar(r.value));
       r.addEventListener('change', async () => {
         const anterior = r.dataset.salvo ?? r.defaultValue;
-        const status = r.closest('[data-status]')?.dataset.status;
+        const acao = this.acaoPorId(projetos, id);
+        const status = acao?.status;
         const voltar = () => { r.value = anterior; pintar(anterior); };
 
         // Chegar aos 100% CONCLUI, sem perguntar — a pergunta virava mais um
@@ -1247,8 +1229,6 @@ const SecaoProjetos = {
             const resp = await App.api(`/api/desdobramentos/${id}/progresso`, {
               planejamento_id: this.plan.id, progresso: 100, concluir: true,
             });
-            // O salvo muda antes da recarga: se ela falhar, o próximo arraste
-            // ainda parte do valor que o servidor tem de fato
             r.dataset.salvo = String(resp.progresso);
             this.avisarReagendamento(resp);
             App.recarregarSecaoAtiva();
@@ -1276,12 +1256,12 @@ const SecaoProjetos = {
             planejamento_id: this.plan.id, progresso: Number(r.value),
           });
           r.dataset.salvo = r.value;
-          this.atualizarMedias(el, r);
+          if (acao) acao.progresso = Number(r.value);
+          this.atualizarPanoramas(el);
         } catch (e) {
-          // Falhou: devolve a barra ao valor que está no servidor
           voltar();
-          // A ação foi cancelada por outra pessoa depois que este cartão foi
-          // desenhado: a barra aqui não deveria mais existir. Recarregar é o
+          // A ação foi cancelada por outra pessoa depois que esta gaveta foi
+          // desenhada: a barra aqui não deveria mais existir. Recarregar é o
           // que a troca em `alert` não faria — a tela volta com a faixa inativa.
           if (e.codigo === 'ACAO_CANCELADA') {
             App.recarregarSecaoAtiva();
@@ -1294,32 +1274,39 @@ const SecaoProjetos = {
   },
 
   /**
-   * Recalcula na tela os percentuais que a ação ajustada afeta: o da iniciativa
-   * dela e o do projeto. Os dois níveis, não só o projeto — a barra da
-   * iniciativa ficaria mostrando o número velho até a próxima carga, bem na
-   * frente da ação que acabou de mudar.
+   * Recalcula na tela o que o progresso ajustado afeta: as barras da trilha
+   * (do projeto E da frente) e os quatro KPIs do centro.
    *
-   * A média sai dos valores que estão na TELA (as barras), não dos dados da
-   * carga: é a ação recém-arrastada que precisa entrar na conta. Ação cancelada
-   * não tem barra com `data-progresso` (o cartão dela desenha uma faixa
-   * inativa), então fica de fora daqui pelo mesmo caminho de `panorama`.
+   * Não é uma repintura: a barra arrastável está sob o dedo de quem acabou de
+   * soltar, e refazer a gaveta inteira tiraria o controle do meio do gesto. Os
+   * números saem dos dados já atualizados em memória, pelo mesmo caminho de
+   * `mediaDe` — CANCELADO fora do numerador e do denominador.
    */
-  atualizarMedias(el, barra) {
-    const niveis = [
-      [barra.closest('[data-iniciativa]'), '[data-media-ini]', '[data-barra-ini]'],
-      [barra.closest('[data-projeto]'), '[data-media-projeto]', '[data-barra-projeto]'],
-    ];
-    for (const [raiz, marcaMedia, marcaBarra] of niveis) {
-      const valores = [...(raiz?.querySelectorAll('[data-progresso]') || [])].map((x) => Number(x.value));
-      const alvo = raiz?.querySelector(marcaMedia);
-      if (!alvo || !valores.length) continue;
-      const media = Math.round(valores.reduce((s, v) => s + v, 0) / valores.length);
-      alvo.textContent = `${media}%`;
-      const faixa = raiz.querySelector(marcaBarra);
-      if (faixa) faixa.style.width = `${media}%`;
-    }
+  atualizarPanoramas(el) {
+    const projetos = this.projetos || [];
+    projetos.forEach((p) => {
+      const porNo = [[`PROJETO:${p.id}`, p.desdobramentos || []],
+        ...(p.iniciativas || []).map((i) => [`FRENTE:${i.id}`, i.acoes || []])];
+      porNo.forEach(([chave, acoes]) => {
+        const media = this.mediaDe(acoes);
+        const barra = el.querySelector(`[data-barra-no="${chave}"]`);
+        const num = el.querySelector(`[data-media-no="${chave}"]`);
+        if (barra) barra.style.width = `${media}%`;
+        if (num) num.textContent = `${media}%`;
+      });
+    });
+    const acoes = this.temFiltro()
+      ? this.acertosDoPlano(projetos).map((x) => x.acao)
+      : this.acoesDoNo(projetos);
+    const kpi = (rot, valor) => {
+      const alvo = el.querySelector(`[data-kpi="${rot}"]`);
+      if (alvo) alvo.textContent = valor;
+    };
+    kpi('Ações', acoes.length);
+    kpi('Progresso médio', `${this.mediaDe(acoes)}%`);
+    kpi('Atrasadas', acoes.filter((a) => a.status === 'ATRASADO').length);
+    kpi('Concluídas', acoes.filter((a) => a.status === 'CONCLUIDO').length);
   },
-
   // Anos de execução do ciclo vigente para o seletor "Ano do planejamento"
   anosDoCiclo() {
     const c = App.sessao.ciclos.find((x) => x.id === App.contexto.cicloId);

@@ -53,7 +53,7 @@ const SecaoDossie = {
     { chave: 'gut', rotulo: 'Matriz GUT', secao: () => SecaoGut, anual: true, padrao: true },
     { chave: 'cruzamentos', rotulo: 'Cruzamentos', secao: () => SecaoCruzamentos, anual: true, padrao: true },
     { chave: 'cascata', rotulo: 'Cascata de Escolhas', secao: () => SecaoCascata, padrao: true },
-    { chave: 'projetos', rotulo: 'Projetos · 5W2H', secao: () => SecaoProjetos, padrao: true },
+    { chave: 'projetos', rotulo: 'Plano de ação', secao: () => SecaoProjetos, padrao: true },
     { chave: 'investimentos', rotulo: 'Investimentos', secao: () => SecaoInvestimentos, padrao: true },
     { chave: 'metas', rotulo: 'Metas · Indicadores', secao: () => SecaoMetas, padrao: true },
   ],
@@ -90,8 +90,11 @@ const SecaoDossie = {
       projTexto: SecaoProjetos.filtroTexto,
       projStatus: SecaoProjetos.filtroStatus,
       projResp: SecaoProjetos.filtroResponsavel,
-      projFechados: new Set(SecaoProjetos.projetosFechados),
-      iniFechadas: new Set(SecaoProjetos.iniciativasFechadas),
+      // O recolhimento de projetos e frentes não existe mais: a tela do plano
+      // virou mestre-detalhe. O que precisa ser neutralizado agora é a
+      // SELEÇÃO — sem isso a foto sairia com as ações de um nó só, e nada na
+      // folha diria que o resto do plano ficou de fora.
+      projDocumento: SecaoProjetos.modoDocumento,
       abaCascata: SecaoCascata.aba,
     };
   },
@@ -103,12 +106,11 @@ const SecaoDossie = {
     SecaoProjetos.filtroTexto = v.projTexto;
     SecaoProjetos.filtroStatus = v.projStatus;
     SecaoProjetos.filtroResponsavel = v.projResp;
-    SecaoProjetos.projetosFechados = v.projFechados;
-    SecaoProjetos.iniciativasFechadas = v.iniFechadas;
+    SecaoProjetos.modoDocumento = v.projDocumento;
     SecaoCascata.aba = v.abaCascata;
   },
 
-  /** A vista do documento: sem filtro, sem recolhido, no ano pedido. */
+  /** A vista do documento: sem filtro, plano inteiro, no ano pedido. */
   vistaDoDocumento(ano) {
     return {
       busca: {},
@@ -117,8 +119,7 @@ const SecaoDossie = {
       projTexto: '',
       projStatus: '',
       projResp: '',
-      projFechados: new Set(),
-      iniFechadas: new Set(),
+      projDocumento: true,
       // A Cascata tem duas abas, e a foto pegaria a que estivesse aberta: o
       // dossiê de ontem sairia diferente do de hoje sem ninguém ter mudado o
       // plano. A etapa "Cascata de Escolhas" é a matriz de decisão — a Matriz
