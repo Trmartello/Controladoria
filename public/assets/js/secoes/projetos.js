@@ -96,6 +96,37 @@ const SecaoProjetos = {
   // id da ação que a seção deve realçar ao abrir (vindo do "Virou ação ↗")
   destacarAcao: null,
 
+  /* ── Os três modos de ver o plano ─────────────────────────────────────────
+   * Pedido do cliente (2026-10-27): a mesma informação, três leituras.
+   * LISTA percorre o plano por estrutura (projeto → frente → ação) e é a
+   * leitura da reunião de acompanhamento — por isso é o padrão. TABELA põe uma
+   * ação por linha com as cinco perguntas do método, e é a que imprime.
+   * QUADRO agrupa por situação e responde "o que está travado?".
+   *
+   * O modo é escolha de pessoa, não de plano: vai no mesmo armazém da seção e
+   * do negócio (`App.guardarLugar`), e é lido COM VALIDAÇÃO — um valor
+   * estranho (versão antiga, armazém mexido à mão) cai na lista em vez de
+   * deixar a tela em branco.
+   */
+  MODOS: ['LISTA', 'TABELA', 'QUADRO'],
+  LUGAR_MODO: 'pe_plano_modo',
+  modo: null,
+
+  modoAtual() {
+    if (!this.modo) {
+      const guardado = String(App.lugarGuardado(this.LUGAR_MODO) || '');
+      this.modo = this.MODOS.includes(guardado) ? guardado : 'LISTA';
+    }
+    return this.modo;
+  },
+
+  trocarModo(novo) {
+    if (!this.MODOS.includes(novo)) return;
+    this.modo = novo;
+    App.guardarLugar(this.LUGAR_MODO, novo);
+    this.carregar();
+  },
+
   /**
    * Realça a ação alcançada pela navegação vinda da SWOT.
    *
@@ -317,15 +348,54 @@ const SecaoProjetos = {
     return [...porChave.values()].sort((x, y) => x.nome.localeCompare(y.nome, 'pt-BR'));
   },
 
-  aplicarFiltro(el) {
-    const texto = this.normalizar(this.filtroTexto.trim());
-    const status = this.filtroStatus;
+  /**
+   * Os critérios da pesquisa, lidos uma vez.
+   *
+   * Eles moram fora de `aplicarFiltro` desde que a tela ganhou modos: a lista
+   * esconde nós de uma árvore, a tabela esconde linhas, e as duas precisam
+   * decidir a MESMA coisa. Escritas separadas, as duas leituras divergiriam na
+   * primeira correção — e a divergência apareceria como "a pesquisa acha na
+   * tabela e não acha na lista", que ninguém sabe depurar.
+   */
+  criteriosFiltro() {
     const resp = this.filtroResponsavel.trim();
     // «Sem usuário» é ESCOLHA, não busca por pedaço: só o rótulo inteiro vale,
     // senão digitar "sem" mudaria o sentido do filtro no meio da palavra.
     const semDono = this.normalizar(resp) === this.normalizar(this.ROTULO_SEM_DONO);
-    const respTexto = semDono ? '' : this.normalizar(resp);
-    const ativo = !!(texto || status || resp);
+    const texto = this.normalizar(this.filtroTexto.trim());
+    return {
+      texto,
+      status: this.filtroStatus,
+      resp,
+      semDono,
+      respTexto: semDono ? '' : this.normalizar(resp),
+      ativo: !!(texto || this.filtroStatus || resp),
+    };
+  },
+
+  /**
+   * Uma ação casa com a pesquisa?
+   *
+   * `quem` e `conteudo` já vêm normalizados por quem chama — a lista os tira
+   * do DOM (é onde o texto da ação está escrito) e a tabela, dos dados.
+   */
+  acaoBate(c, { quem, conteudo, tituloIni, tituloProj, status }) {
+    if (c.status && status !== c.status) return false;
+    // O `data-quem` é vazio quando ninguém responde pela ação — é o mesmo
+    // vazio que desenha o selo «Sem usuário».
+    if (c.resp && (c.semDono ? quem !== '' : !quem.includes(c.respTexto))) return false;
+    if (!c.texto) return true;
+    // A palavra alcança o texto da ação, os títulos acima dela e TAMBÉM quem
+    // responde: o e-mail não está escrito na tela, e sem isto nunca seria
+    // encontrado por aqui.
+    return conteudo.includes(c.texto) || quem.includes(c.texto)
+      || tituloIni.includes(c.texto) || tituloProj.includes(c.texto);
+  },
+
+  aplicarFiltro(el) {
+    if (this.modoAtual() === 'TABELA') { this.filtrarTabela(el); return; }
+    const c = this.criteriosFiltro();
+    const { ativo } = c;
     let algum = false;
     el.querySelectorAll('[data-projeto]').forEach((cartao) => {
       const projId = parseInt(cartao.dataset.projeto, 10);
@@ -338,18 +408,11 @@ const SecaoProjetos = {
           bloco.querySelector('.iniciativa-cabeca strong')?.textContent || '');
         let temNaFrente = false;
         bloco.querySelectorAll('[data-card-acao]').forEach((card) => {
-          const quem = this.quemDoCartao(card);
-          // O `data-quem` do cartão é vazio quando ninguém responde pela ação —
-          // é o mesmo vazio que desenha o selo «Sem usuário».
-          const casaResp = !resp || (semDono ? quem === '' : quem.includes(respTexto));
-          const bate = (!status || card.dataset.status === status)
-            && casaResp
-            // A palavra alcança o texto do cartão, os títulos acima dele e
-            // TAMBÉM quem responde: o e-mail não está escrito na tela, então
-            // sem o `data-quem` ele nunca seria encontrado por aqui.
-            && (!texto || this.normalizar(card.textContent).includes(texto)
-              || quem.includes(texto)
-              || tituloIni.includes(texto) || tituloProj.includes(texto));
+          const bate = this.acaoBate(c, {
+            quem: this.quemDoCartao(card),
+            conteudo: this.normalizar(card.textContent),
+            tituloIni, tituloProj, status: card.dataset.status,
+          });
           card.classList.toggle('d-none', ativo && !bate);
           if (bate) temNaFrente = true;
         });
@@ -600,6 +663,132 @@ const SecaoProjetos = {
     if (de) return `a partir de ${de}`;
     if (ate) return `até ${ate}`;
     return legado || null;
+  },
+
+  /* ── Modo TABELA ──────────────────────────────────────────────────────────
+   * Uma linha por ação, com as CINCO perguntas do método como está em uso
+   * nesta casa: o quê, como, quem, quando e ganhos. "Onde" e "Por quê" não
+   * entram — saíram do formulário há tempos e só sobrevivem em registros
+   * antigos (`camposAcao` os guarda em campos ocultos); dar-lhes coluna fixa
+   * ensinaria um método que ninguém pratica aqui.
+   *
+   * Projeto e frente viram LINHAS DE GRUPO em vez de colunas repetidas: a
+   * estrutura continua legível e cada ação não carrega dois textos longos que
+   * se repetem a cada linha.
+   *
+   * A linha leva os mesmos atributos do cartão da lista — `data-card-acao`,
+   * `data-cadeado`, `data-status`, `data-quem`. É o que mantém o cadeado de
+   * edição concorrente (`cadeado.js` acha o alvo por `closest`) e a pesquisa
+   * funcionando sem uma segunda implementação.
+   */
+  tabela5w2h(projetos) {
+    const corpo = projetos.map((p) => {
+      const acoes = p.desdobramentos || [];
+      const porFrente = new Map((p.iniciativas || []).map((i) => [Number(i.id), i]));
+      const linhaGrupo = (classe, marca, titulo, lista, extra = '') => `
+        <tr class="${classe}" ${marca}>
+          <td colspan="7"><span class="grupo-celula">
+            <span class="grupo-titulo">${Modal.esc(titulo)}</span>
+            <span class="badge text-bg-light border">${this.contaAcoes(lista.length)}</span>
+            ${this.resumoStatus(lista, ['ATRASADO'])}${extra}</span></td>
+        </tr>`;
+      const linhas = (lista) => lista.map((a) => this.linhaTabela(a)).join('');
+      const frentes = (p.iniciativas || []).map((ini) => {
+        const suas = ini.acoes || [];
+        return linhaGrupo('g-frente', `data-grupo-frente="${ini.id}"`, ini.titulo, suas)
+          + linhas(suas);
+      }).join('');
+      // Ação sem frente existe no banco (`iniciativa_id` é anulável) e sumiria
+      // da tabela se ela lesse só as listas aninhadas.
+      const orfas = acoes.filter((a) => !a.iniciativa_id);
+      return linhaGrupo('g-proj', `data-grupo-proj="${p.id}"`, p.titulo, acoes,
+        p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning">Prioritário</span>' : '')
+        + frentes
+        + (orfas.length
+          ? linhaGrupo('g-frente', 'data-sem-frente', 'Sem frente de trabalho', orfas) + linhas(orfas)
+          : '');
+    }).join('');
+
+    return `<div class="table-responsive caixa-tabela-5w2h">
+      <table class="table table-sm align-middle tabela-5w2h">
+        <thead><tr>
+          <th>Situação</th><th>O quê</th><th>Como</th><th>Quem</th>
+          <th>Quando</th><th>Ganhos</th><th>Progresso</th>
+        </tr></thead>
+        <tbody>${corpo}</tbody>
+      </table>
+    </div>`;
+  },
+
+  linhaTabela(a) {
+    const [rotulo, classe] = STATUS_ACAO[a.status] || [a.status, 'text-bg-light'];
+    const cancelada = a.status === 'CANCELADO';
+    const pct = cancelada ? 0 : a.progresso;
+    const prazo = this.periodo(a.data_inicio, a.data_fim, a.quando_);
+    const selos = (Number(a.comentarios) || 0) + (Number(a.anexos) || 0);
+    // Sempre com os DOIS centavos: `toLocaleString` sozinho corta o zero à
+    // direita e R$ 1.500,50 saía como "R$ 1.500,5", que não é dinheiro.
+    const ganhos = (a.quanto === null || a.quanto === undefined || a.quanto === '')
+      ? '—'
+      : `R$ ${Number(a.quanto).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `<tr class="linha-5w2h" data-card-acao="${a.id}" data-cadeado="desdobramento:${a.id}"
+      data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
+      <td><span class="badge ${classe}">${rotulo}</span></td>
+      <td class="col-oque">${Modal.esc(a.o_que)}
+        ${selos ? `<span class="clipe-5w2h" title="${a.comentarios} comentário(s), ${a.anexos} anexo(s)">📎 ${selos}</span>` : ''}</td>
+      <td class="corta" title="${Modal.esc(a.como || '')}">${Modal.esc(a.como || '')}</td>
+      <td>${a.quem
+    ? Modal.esc(a.quem)
+    : '<span class="selo-sem-usuario" title="Ninguém responde por esta ação: ela não entra em cobrança nenhuma">Sem usuário</span>'}</td>
+      <td class="num">${prazo ? Modal.esc(prazo) : '—'}</td>
+      <td class="num">${ganhos}</td>
+      <td class="num"><span class="faixa-progresso ${cancelada ? 'inativa' : ''}"
+        title="${cancelada ? 'Ação cancelada — sem progresso e fora da média' : `${pct}%`}"><span
+        style="width:${pct}%"></span></span> ${pct}%</td>
+    </tr>`;
+  },
+
+  /** A pesquisa na tabela: esconde linhas, e o grupo que ficou sem nenhuma. */
+  filtrarTabela(el) {
+    const c = this.criteriosFiltro();
+    let algum = false;
+    let grupoProj = null;
+    let grupoFrente = null;
+    let temProj = false;
+    let temFrente = false;
+    const fecharFrente = () => {
+      if (grupoFrente) grupoFrente.classList.toggle('d-none', c.ativo && !temFrente);
+    };
+    const fecharProj = () => {
+      if (grupoProj) grupoProj.classList.toggle('d-none', c.ativo && !temProj);
+    };
+    let tituloProj = '';
+    let tituloIni = '';
+    el.querySelectorAll('.tabela-5w2h tbody tr').forEach((tr) => {
+      if (tr.classList.contains('g-proj')) {
+        fecharFrente(); fecharProj();
+        grupoProj = tr; temProj = false;
+        grupoFrente = null; temFrente = false;
+        tituloProj = this.normalizar(tr.querySelector('.grupo-titulo')?.textContent || '');
+        tituloIni = '';
+        return;
+      }
+      if (tr.classList.contains('g-frente')) {
+        fecharFrente();
+        grupoFrente = tr; temFrente = false;
+        tituloIni = this.normalizar(tr.querySelector('.grupo-titulo')?.textContent || '');
+        return;
+      }
+      const bate = this.acaoBate(c, {
+        quem: this.quemDoCartao(tr),
+        conteudo: this.normalizar(tr.textContent),
+        tituloIni, tituloProj, status: tr.dataset.status,
+      });
+      tr.classList.toggle('d-none', c.ativo && !bate);
+      if (bate) { temFrente = true; temProj = true; algum = true; }
+    });
+    fecharFrente(); fecharProj();
+    el.querySelector('[data-filtro-vazio]')?.classList.toggle('d-none', !c.ativo || algum);
   },
 
   // "ação(ões)" é como se escreve em formulário, não em tela. Com número à
@@ -956,6 +1145,11 @@ const SecaoProjetos = {
     // A lista do filtro de pessoa: quem tem ação (com e-mail) mais os
     // responsáveis ativos que ainda não receberam nenhuma.
     const pessoasFiltro = this.pessoasParaFiltro(projetos, responsaveis);
+    const modo = this.modoAtual();
+    const botaoModo = (valor, rotulo, dica) =>
+      `<button type="button" class="btn ${modo === valor ? 'btn-verde' : 'btn-outline-secondary'}"
+        data-modo="${valor}" title="${Modal.esc(dica)}"
+        aria-pressed="${modo === valor}">${rotulo}</button>`;
     const botaoNivel = (valor, rotulo, dica) =>
       `<button type="button" class="btn ${nivel === valor ? 'btn-verde' : 'btn-outline-secondary'}"
         data-nivel="${valor}" title="${Modal.esc(dica)}"
@@ -1008,19 +1202,30 @@ const SecaoProjetos = {
                 `<option value="${v}" ${this.filtroStatus === v ? 'selected' : ''}>${rotulo}</option>`).join('')}
             </select>
           </div>
+          <!-- Os três modos: a mesma informação, três leituras. O grupo vem
+               ANTES do "Mostrar até" porque ele decide se aquele existe — os
+               níveis de recolhimento só fazem sentido na lista. -->
+          <div class="btn-group btn-group-sm modos-plano" role="group" aria-label="Modo de visualização">
+            ${botaoModo('LISTA', 'Lista', 'Projeto, frente e ação, como na reunião de acompanhamento')}
+            ${botaoModo('TABELA', 'Tabela', 'Uma linha por ação, com o quê, como, quem, quando e ganhos')}
+            ${botaoModo('QUADRO', 'Quadro', 'Fichas agrupadas por situação')}
+          </div>
+          ${modo === 'LISTA' ? `
           <span class="small text-muted d-none d-sm-inline">Mostrar até</span>
           <div class="btn-group btn-group-sm niveis-visao" role="group" aria-label="Mostrar até">
             ${botaoNivel('ACOES', 'Ações', 'Abre tudo: projetos, frentes e as ações de cada uma')}
             ${botaoNivel('FRENTES', 'Frentes', 'Recolhe as ações — projetos e frentes continuam à vista, com o percentual de cada um')}
             ${botaoNivel('PROJETOS', 'Projetos', 'Recolhe tudo: só os projetos, com o percentual e os atrasos')}
-          </div>` : ''}
+          </div>` : ''}` : ''}
           ${App.podeEditar() ? '<button class="btn btn-verde btn-sm" id="btn-novo-proj">+ Novo projeto</button>' : ''}
         </div>
       </div>
-      <p class="text-muted">Toque no título para recolher e expandir um item; use a seta (⌄) para
-        ver o detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>
+      ${modo === 'LISTA' ? `<p class="text-muted">Toque no título para recolher e expandir um item; use a seta (⌄) para
+        ver o detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>` : ''}
       ${this.cartaoIdeiasAcao(pendentes)}
-      <div class="pt-2">${cartoes || '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>
+      <div class="pt-2">${projetos.length
+    ? (modo === 'TABELA' ? this.tabela5w2h(projetos) : cartoes)
+    : '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>
       <div class="text-muted d-none" data-filtro-vazio>Nenhuma ação encontrada com a pesquisa atual.</div>`;
 
     el.querySelectorAll('[data-virar-acao]').forEach((b) => b.addEventListener('click', () =>
@@ -1030,6 +1235,20 @@ const SecaoProjetos = {
       this.tirarDaFila(b.dataset.tirarFila, p ? (p.texto_tratado || p.texto) : '');
     }));
 
+    el.querySelectorAll('[data-modo]').forEach((b) =>
+      b.addEventListener('click', () => this.trocarModo(b.dataset.modo)));
+    // Na tabela o duplo clique abre a ação — o mesmo gesto da lista. O
+    // ouvinte vai na TABELA, não na seção: `el` sobrevive aos
+    // recarregamentos e um ouvinte nele empilharia uma cópia por pintura.
+    el.querySelector('.tabela-5w2h')?.addEventListener('dblclick', (ev) => {
+      if (ev.target.closest('button, a, input, select, textarea, label')) return;
+      const linha = ev.target.closest('[data-card-acao]');
+      if (!linha) return;
+      window.getSelection?.()?.removeAllRanges();
+      const acao = projetos.flatMap((x) => x.desdobramentos || [])
+        .find((a) => Number(a.id) === Number(linha.dataset.cardAcao));
+      if (acao) this.modalDesdobramento(acao.projeto_id, acao, acao.iniciativa_id);
+    });
     el.querySelectorAll('[data-nivel]').forEach((b) =>
       b.addEventListener('click', () => this.aplicarNivel(b.dataset.nivel, projetos)));
 

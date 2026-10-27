@@ -3880,3 +3880,87 @@ body.menu-aberto .menu-lateral {
   border: 1px solid currentColor;
   border-radius: 4px;
 }
+
+/* ── Modo TABELA do plano de ação ────────────────────────────────────────────
+   Uma linha por ação, com projeto e frente como linhas de grupo.
+
+   Três decisões copiadas da Matriz de Execução, onde elas foram MEDIDAS
+   (ver o bloco de `.tabela-execucao`), porque o mecanismo é o mesmo:
+
+   • `border-collapse: separate` é obrigatório para o `thead` grudado ficar
+     opaco. Com `collapse`, o texto das `<td>` passa por cima do fundo do
+     `<th>` e nenhum `z-index` resolve. O preço é redesenhar a grade célula a
+     célula, que é o que as regras de borda abaixo fazem.
+   • O `thead` só gruda a partir de 992px, e ali a caixa deixa de ser o
+     scrollport: `.table-responsive` é container de rolagem, e `sticky` dentro
+     dele não tem para onde ir.
+   • Na impressão o sticky sai: no papel ele não gruda, só ocupa. */
+.caixa-tabela-5w2h { overflow-x: auto; }
+.tabela-5w2h {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: .86rem;
+}
+.tabela-5w2h th,
+.tabela-5w2h td { border-bottom: 1px solid var(--bs-border-color); vertical-align: middle; }
+.tabela-5w2h th {
+  background: #f4f6f5;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: #5a6a61;
+  white-space: nowrap;
+}
+/* O grupo do PROJETO é o degrau mais forte da leitura: é por ele que se
+   percorre o plano. A frente vem um tom abaixo, pelo mesmo motivo que na
+   lista ela é recuada — são níveis, não irmãos. */
+.tabela-5w2h tr.g-proj > td {
+  background: var(--verde-coperdia);
+  color: #fff;
+  font-weight: 600;
+}
+.tabela-5w2h tr.g-proj .badge.text-bg-light { background: rgba(255, 255, 255, .18) !important; color: #fff; border-color: rgba(255, 255, 255, .35) !important; }
+.tabela-5w2h tr.g-frente > td {
+  background: #e8f3ed;
+  font-weight: 600;
+  padding-left: 1.4rem;
+}
+.tabela-5w2h .grupo-celula { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+/* O `border: 0` não é enfeite: alguma regra larga de tabela pinta uma borda
+   inferior nos filhos da célula, e o título do grupo saía sublinhado — parecia
+   link no meio de uma tabela que não tem nenhum. */
+.tabela-5w2h .grupo-titulo { min-width: 0; border: 0; }
+.tabela-5w2h tr.linha-5w2h:hover > td { background: rgba(0, 122, 69, .06); }
+.tabela-5w2h .col-oque { font-weight: 500; max-width: 22rem; }
+/* "Como" é o único texto longo que entra na tabela, e ele corta: a alternativa
+   é a linha crescer até três alturas e a tabela deixar de ser densa, que é a
+   razão de este modo existir. O texto inteiro fica no `title`. */
+.tabela-5w2h .corta {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tabela-5w2h .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tabela-5w2h .num .faixa-progresso { display: inline-block; width: 4rem; vertical-align: middle; }
+.tabela-5w2h .clipe-5w2h { font-size: .72rem; color: #5a6a61; white-space: nowrap; }
+@media (min-width: 992px) {
+  .caixa-tabela-5w2h { overflow: visible; }
+  .tabela-5w2h thead th {
+    position: sticky;
+    top: calc(var(--topo-app) + var(--altura-cabecalho, 0px));
+    z-index: 3;
+  }
+  /* A linha do projeto gruda logo abaixo do cabeçalho enquanto as ações dele
+     passam — é o que a pilha de cabeçalhos fazia na lista, aqui de graça:
+     um degrau só, e limitado ao próprio grupo pelo fluxo da tabela. */
+  .tabela-5w2h tr.g-proj > td {
+    position: sticky;
+    top: calc(var(--topo-app) + var(--altura-cabecalho, 0px) + 1.9rem);
+    z-index: 2;
+  }
+}
+@media print {
+  .tabela-5w2h thead th,
+  .tabela-5w2h tr.g-proj > td { position: static; }
+}

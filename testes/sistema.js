@@ -2034,6 +2034,122 @@ async function provasExcluirUsuario(page) {
   }, ids);
 }
 
+/**
+ * Os três modos de ver o plano (pedido do cliente, 2026-10-27).
+ *
+ * A prova guarda três coisas que quebram em silêncio: que o seletor existe e
+ * troca de verdade; que a TABELA mostra as cinco perguntas do método em uso
+ * (o quê, como, quem, quando, ganhos) e nenhuma a mais; e que a pesquisa vale
+ * nela — a tabela e a lista decidem pelo MESMO critério (`acaoBate`), e sem
+ * prova a segunda implementação divergiria na primeira correção.
+ */
+async function provasModosPlano(page, largura) {
+  const l = `[${largura}]`;
+  const prj = await page.evaluate(async () => {
+    const p = await App.api('/api/projetos', {
+      planejamento_id: 1, titulo: 'Projeto modos', ano: 2027, responsavel: 'QA', descricao: '',
+    });
+    const a = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id, titulo: 'Frente modos A' });
+    const b = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id, titulo: 'Frente modos B' });
+    const nova = (ini, o_que, quem, quanto) => App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: p.id, iniciativa_id: ini, o_que, como: 'Como de prova',
+      quem, quem_usuario_id: 1, prioridade: 'MEDIA', status: 'EM_ANDAMENTO', progresso: 40, quanto,
+      recorrencia: 'NENHUMA', data_inicio: '2027-01-01', data_fim: '2027-12-31',
+    });
+    await nova(a.id, 'Ação alfa dos modos', 'QA dos modos', 1500.5);
+    await nova(a.id, 'Ação beta dos modos', 'QA dos modos', null);
+    await nova(b.id, 'Ação gama dos modos', 'QA dos modos', null);
+    return p.id;
+  });
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  await esperar(page, `!!document.querySelector('[data-projeto="${prj}"]')`, 15000);
+
+  const temSeletor = await esperar(page, "!!document.querySelector('[data-modo=\"TABELA\"]')", 8000);
+  t(`${l} o seletor oferece os três modos`, temSeletor
+    && (await page.evaluate(() => [...document.querySelectorAll('[data-modo]')].map((b) => b.dataset.modo)
+      .join(','))) === 'LISTA,TABELA,QUADRO');
+  // A lista é o padrão de quem nunca escolheu: é a leitura da reunião.
+  t(`${l} a lista é o modo padrão`,
+    await page.evaluate(() => document.querySelector('[data-modo="LISTA"]').getAttribute('aria-pressed') === 'true'));
+
+  await page.click('[data-modo="TABELA"]');
+  const pintou = await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
+  t(`${l} a tabela pinta ao trocar de modo`, pintou);
+  if (pintou) {
+    const tab = await page.evaluate((id) => {
+      const el = document.querySelector('.tabela-5w2h');
+      const vis = (sel) => [...el.querySelectorAll(sel)].filter((x) => !x.classList.contains('d-none'));
+      return {
+        colunas: [...el.querySelectorAll('thead th')].map((x) => x.textContent.trim()),
+        linhas: vis(`tbody tr[data-card-acao]`).length,
+        grupos: vis('tr.g-frente .grupo-titulo').map((x) => x.textContent.trim()),
+        cadeados: el.querySelectorAll('[data-cadeado^="desdobramento:"]').length,
+        ganhos: [...el.querySelectorAll('tbody tr[data-card-acao]')]
+          .map((tr) => tr.children[5].textContent.trim()),
+        semNiveis: !document.querySelector('.niveis-visao'),
+        rolagemH: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    }, prj);
+    // CINCO perguntas, não sete: "Onde" e "Por quê" saíram do método em uso
+    // nesta casa e não voltam por uma coluna.
+    t(`${l} a tabela mostra as cinco perguntas do método`,
+      tab.colunas.join(' | ') === 'Situação | O quê | Como | Quem | Quando | Ganhos | Progresso',
+      JSON.stringify(tab.colunas));
+    t(`${l} projeto e frente viram linhas de grupo`,
+      tab.grupos.includes('Frente modos A') && tab.grupos.includes('Frente modos B'),
+      JSON.stringify(tab.grupos));
+    // O cadeado de edição concorrente acha o alvo por `closest`: sem o
+    // marcador na linha, duas pessoas editariam a mesma ação sem aviso.
+    t(`${l} a linha da tabela leva o marcador do cadeado`, tab.cadeados >= 3, `${tab.cadeados}`);
+    // Dinheiro com os DOIS centavos, como no cartão: 1500,50 não é 1500,5.
+    t(`${l} os ganhos saem com os dois centavos`,
+      tab.ganhos.includes('R$ 1.500,50'), JSON.stringify(tab.ganhos));
+    t(`${l} os níveis de recolhimento somem fora da lista`, tab.semNiveis);
+    t(`${l} a tabela não rola na horizontal`, !tab.rolagemH);
+
+    // A pesquisa vale na tabela, e o grupo sem acerto some junto
+    await page.evaluate(() => {
+      const c = document.querySelector('[data-filtro-texto]');
+      c.value = 'gama';
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    const f = await page.evaluate(() => {
+      const vis = (sel) => [...document.querySelectorAll(sel)].filter((x) => !x.classList.contains('d-none'));
+      return {
+        linhas: vis('.tabela-5w2h tbody tr[data-card-acao]')
+          .map((x) => x.querySelector('.col-oque').textContent.trim().split('\n')[0]),
+        frentes: vis('.tabela-5w2h tr.g-frente').map((x) => x.querySelector('.grupo-titulo').textContent.trim()),
+      };
+    });
+    t(`${l} a pesquisa filtra a tabela`, f.linhas.length === 1 && /gama/.test(f.linhas[0]),
+      JSON.stringify(f.linhas));
+    t(`${l} o grupo sem acerto some da tabela`,
+      f.frentes.length === 1 && f.frentes[0] === 'Frente modos B', JSON.stringify(f.frentes));
+    await page.evaluate(() => {
+      const c = document.querySelector('[data-filtro-texto]');
+      c.value = '';
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  // O modo é escolha de PESSOA: tem de sobreviver ao recarregamento.
+  await page.reload();
+  await esperar(page, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+  await page.evaluate(() => {
+    App.contexto.cicloId = 1;
+    App.contexto.negocioId = null;
+    App.contexto.corporativo = true;
+    App.mostrarSecao('projetos');
+  });
+  t(`${l} o modo escolhido sobrevive ao recarregamento`,
+    await esperar(page, "!!document.querySelector('.tabela-5w2h')", 20000));
+
+  await page.evaluate(() => SecaoProjetos.trocarModo('LISTA'));
+  await esperar(page, "!!document.querySelector('.niveis-visao')", 10000);
+  await page.evaluate((id) => App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 }), prj);
+}
+
 async function provasAcao(page, largura) {
   const l = `[${largura}]`;
   const prj = await page.evaluate(async () => {
@@ -5363,6 +5479,7 @@ async function provasJanelaModal(page, largura) {
   await provasFilaAcao(page, 'desktop');
   await provasExcluirComOrigens(page);
   await provasCabecalhoProjetos(page, 'desktop');
+  await provasModosPlano(page, 'desktop');
   await provasPopoverResumo(page, 'desktop');
   await noAnoDaCarga(page);
   await provasOrientacoes(page, 'desktop');
@@ -5415,6 +5532,7 @@ async function provasJanelaModal(page, largura) {
   await provasResumoStatus(pageM, 'celular');
   await provasFilaAcao(pageM, 'celular');
   await provasCabecalhoProjetos(pageM, 'celular');
+  await provasModosPlano(pageM, 'celular');
   await noAnoDaCarga(pageM);
   await provasOrientacoes(pageM, 'celular');
   await provasTextoCompleto(pageM, 'celular');
