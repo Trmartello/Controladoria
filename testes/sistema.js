@@ -762,7 +762,11 @@ async function provasResumoStatus(page, largura) {
       const frentes = [...c.querySelectorAll('.iniciativa-cabeca')].map((h) => ({
         nome: h.querySelector('strong').textContent.trim(),
         selos: textos(h),
-        badges: [...h.querySelectorAll('.badge')].map((x) => x.textContent.trim()),
+        // A CONTAGEM de ações fica de fora: ela é um `.badge` que entrou no
+        // cabeçalho da frente a pedido do cliente (2026-10-27) e não é selo de
+        // situação, que é o que esta prova guarda.
+        badges: [...h.querySelectorAll('.badge:not(.conta-acoes)')].map((x) => x.textContent.trim()),
+        conta: h.querySelector('.conta-acoes')?.textContent.trim() || '',
       }));
       const titulo = cabeca.querySelector('strong').getBoundingClientRect();
       const primeiro = cabeca.querySelector('.selo-resumo').getBoundingClientRect();
@@ -811,6 +815,10 @@ async function provasResumoStatus(page, largura) {
       m.frentes.every((f) => f.badges.length === 0), JSON.stringify(m.frentes.map((f) => f.badges)));
     // Situação sem nenhuma ação não vira selo com zero: numa fila de sete, seis
     // zerados, o que importa se perde no meio.
+    // A contagem de ações da frente, pedida para se ver com ela recolhida.
+    // "Frente A" tem 3 ações na massa desta prova.
+    t(`[${largura}] a frente diz quantas ações carrega`,
+      a && a.conta === '3 ações', JSON.stringify(m.frentes.map((f) => f.conta)));
     t(`[${largura}] situação sem ação nenhuma não aparece`,
       !m.frentes.some((f) => f.selos.some((x) => / 0 \(/.test(x))), JSON.stringify(m.frentes));
     // O balão da frente é onde a distribuição inteira e a situação dela vivem
@@ -2037,16 +2045,16 @@ async function provasAcao(page, largura) {
   });
   await page.evaluate(() => App.mostrarSecao('projetos'));
   await esperar(page, "!document.getElementById('secao-projetos').classList.contains('d-none')", 15000);
-  // Pelo PROJETO desta prova, nunca por um `[data-nova-acao-proj]` qualquer: a
+  // Pelo PROJETO desta prova, nunca por um `[data-nova-acao]` qualquer: a
   // pintura anterior continua na tela enquanto a recarga não volta, e o botão
-  // dela aponta para outro projeto (já apagado).
+  // dela aponta para uma frente de outro projeto (já apagado).
   const temBotao = await esperar(
-    page, `!!document.querySelector('[data-projeto="${prj}"] [data-nova-acao-proj]')`, 15000);
-  t(`${l} O projeto oferece "+ Ação" na linha do título`, temBotao);
+    page, `!!document.querySelector('[data-projeto="${prj}"] .iniciativa-cabeca [data-nova-acao]')`, 15000);
+  t(`${l} A frente oferece "+ Ação" na linha do título`, temBotao);
   const abrirModal = async () => {
     await page.evaluate((id) => {
-      const b = document.querySelector(`[data-projeto="${id}"] [data-nova-acao-proj]`);
-      SecaoProjetos.modalDesdobramento(parseInt(b.dataset.novaAcaoProj, 10), null, null);
+      const b = document.querySelector(`[data-projeto="${id}"] .iniciativa-cabeca [data-nova-acao]`);
+      SecaoProjetos.modalDesdobramento(parseInt(b.dataset.proj, 10), null, parseInt(b.dataset.novaAcao, 10));
     }, prj);
     return esperar(page, "!!document.getElementById('campo-o_que')", 8000);
   };
@@ -2058,35 +2066,15 @@ async function provasAcao(page, largura) {
       await new Promise((r) => setTimeout(r, 300));
       const ordem = await page.evaluate(() => [...document.querySelectorAll('#modal-campos .form-label')]
         .map((x) => x.textContent.trim()));
-      // A frente de destino abre a lista: com o "+ Ação" na linha do título do
-      // projeto, ela é a primeira coisa que a ação ainda não sabe. O resto é a
-      // ordem de sempre, que é contrato com o cliente.
-      const esperada = ['Em qual frente de trabalho?', 'Nome da nova frente *',
-        'O quê? *', 'Como? *', 'Quem? *', 'Repetição',
+      // Aberta pela FRENTE, a ação já sabe onde entra e o formulário não
+      // pergunta: a lista é a ordem de sempre, que é contrato com o cliente.
+      const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Repetição',
         'Selecione o dia da semana para repetir:',
         'Selecione o dia ou dias do mês em que haverá repetição:',
         'Data fim da repetição', 'Quando? (Prazo de Execução) *',
         'Prioridade', 'Status', 'Ganhos previstos (R$)'];
       t(`${l} Campos da ação na ordem pedida`,
         JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
-
-      // A frente já vem escolhida (a primeira do projeto) e o campo de nome da
-      // frente nova fica escondido até alguém pedir uma. Sem isto, o formulário
-      // abriria com um campo obrigatório vazio que ninguém precisa preencher.
-      const frente = await page.evaluate(() => {
-        const sel = document.getElementById('campo-iniciativa_id');
-        const nova = document.getElementById('campo-iniciativa_nova')?.closest('.mb-3');
-        return {
-          eSelect: sel?.tagName === 'SELECT',
-          escolhida: sel?.value !== '' && sel?.selectedOptions[0]?.textContent.trim(),
-          novaEscondida: !!nova?.classList.contains('d-none'),
-          temOpcaoNova: [...(sel?.options || [])].some((o) => o.value === ''),
-        };
-      });
-      t(`${l} A frente de destino é a primeira pergunta, já preenchida`,
-        frente.eSelect && frente.escolhida === 'Frente prova', JSON.stringify(frente));
-      t(`${l} Dá para criar a frente na hora, e o nome só aparece ao pedir`,
-        frente.temOpcaoNova && frente.novaEscondida, JSON.stringify(frente));
 
       // ── A caixa da repetição ────────────────────────────────────────────
       // Todo campo da decisão mora DENTRO do painel; nenhum outro entra nele.
@@ -2501,6 +2489,30 @@ async function provasAcao(page, largura) {
   // atraso automático, os avisos por e-mail e o prazo consolidado do projeto.
   t(`${l} o servidor deriva a data de vencimento da grade`,
     /^\d{4}-\d{2}-\d{2}$/.test(String(voltou.data_fim || '')), String(voltou.data_fim));
+
+  // A frente já vem escolhida (a primeira do projeto) e o campo de nome da
+  // frente nova fica escondido até alguém pedir uma. Sem isto, o formulário
+  // abriria com um campo obrigatório vazio que ninguém precisa preencher.
+  // O seletor de frente não some: ele é o caminho de quem cria ação sem
+  // frente no contexto do clique. Aqui ele é exercitado abrindo o
+  // formulário como esses modos abrem — sem frente decidida.
+  await page.evaluate((id) => SecaoProjetos.modalDesdobramento(id, null, null), prj);
+  await esperar(page, "!!document.getElementById('campo-iniciativa_id')", 8000);
+  await new Promise((r) => setTimeout(r, 200));
+  const frente = await page.evaluate(() => {
+    const sel = document.getElementById('campo-iniciativa_id');
+    const nova = document.getElementById('campo-iniciativa_nova')?.closest('.mb-3');
+    return {
+      eSelect: sel?.tagName === 'SELECT',
+      escolhida: sel?.value !== '' && sel?.selectedOptions[0]?.textContent.trim(),
+      novaEscondida: !!nova?.classList.contains('d-none'),
+      temOpcaoNova: [...(sel?.options || [])].some((o) => o.value === ''),
+    };
+  });
+  t(`${l} A frente de destino é a primeira pergunta, já preenchida`,
+    frente.eSelect && frente.escolhida === 'Frente prova', JSON.stringify(frente));
+  t(`${l} Dá para criar a frente na hora, e o nome só aparece ao pedir`,
+    frente.temOpcaoNova && frente.novaEscondida, JSON.stringify(frente));
   await fecharModal(page);
 
   await page.evaluate((id) => App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 }), prj);

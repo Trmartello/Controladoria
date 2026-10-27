@@ -70,7 +70,18 @@ const STATUS_INICIATIVA = {
 // A lista e os nomes de tela saem de `Diag.ROTULO_ETAPA`, que é o catálogo
 // único — o "⇄ Mover" do diagnóstico monta os destinos a partir dele, e duas
 // listas de etapas divergiriam na primeira análise nova.
-const ORIGENS_FATOR = Object.keys(Diag.ROTULO_ETAPA);
+//
+// É uma FUNÇÃO, não uma constante de módulo. Como constante ela rodava
+// `Object.keys(Diag.ROTULO_ETAPA)` no instante em que este arquivo é avaliado,
+// e portanto exigia que `diagnostico.js` já tivesse terminado de carregar. A
+// ordem dos `<script>` garante isso em condições normais — mas quando a
+// resposta daquele arquivo falha ou chega truncada (o `php -S` do ambiente de
+// prova atende uma requisição por vez, e é lá que isso aparece), o que se
+// recebe é um `Object.keys(undefined)`: um erro de página que derruba a
+// avaliação de ESTE arquivo inteiro, levando junto coisas que nada têm a ver,
+// e cuja mensagem não aponta para cá. Adiada para o uso, a dependência se
+// resolve quando a tela é aberta, que é quando `Diag` já existe de fato.
+const origensFator = () => Object.keys(Diag.ROTULO_ETAPA || {});
 
 const SecaoProjetos = {
   plan: null,
@@ -591,6 +602,13 @@ const SecaoProjetos = {
     return legado || null;
   },
 
+  // "ação(ões)" é como se escreve em formulário, não em tela. Com número à
+  // frente, o plural se resolve sozinho — e o zero tem palavra própria.
+  contaAcoes(n) {
+    if (!n) return 'Nenhuma ação';
+    return n === 1 ? '1 ação' : `${n} ações`;
+  },
+
   // Bloco da iniciativa (frente de trabalho) com as ações dentro
   blocoIniciativa(p, ini) {
     const acoes = ini.acoes || [];
@@ -620,11 +638,23 @@ const SecaoProjetos = {
              do nome já diz se ela está aberta ou recolhida, e a situação
              cadastrada segue no popover e no formulário de edição. -->
         ${this.resumoStatus(acoes, ['ATRASADO'])}
-        <!-- Nenhum botão de criar aqui: "+ Ação" mora na linha do título do
-             PROJETO, ao lado de "+ Iniciativa" (pedido do cliente, 2026-10-26,
-             com maquete). A frente de destino passou a ser a primeira pergunta
-             do formulário da ação. O ✎ e o × seguem no detalhe. -->
+        <!-- A contagem fica na LINHA DO TÍTULO, e não atrás da seta: com a
+             frente recolhida, saber quantas ações ela carrega é metade do que
+             se pergunta numa reunião de acompanhamento. Atrás do detalhe, a
+             resposta custava um clique por frente.
+             "N ações" é o TOTAL atribuído à frente; o par concluídas/total
+             continua no detalhe, onde há espaço para a barra ao lado. -->
+        <span class="badge text-bg-light border conta-acoes"
+          title="Ações atribuídas a esta frente de trabalho">${this.contaAcoes(acoes.length)}</span>
+        <!-- Cada nível cria o SEU: o projeto cria frentes, a frente cria ações
+             (pedido do cliente, 2026-10-27, com maquete). O botão na linha da
+             frente já sabe em qual delas a ação entra — não há o que
+             perguntar. O ✎ e o × seguem no detalhe: editar e excluir a frente
+             são raros, e quatro botões aqui empurrariam o selo de atraso para
+             fora da linha no celular. -->
         <span class="ms-auto d-flex align-items-center gap-2">
+          ${App.podeEditar() ? `
+            <button class="btn btn-sm btn-verde" data-nova-acao="${ini.id}" data-proj="${p.id}">+ Ação</button>` : ''}
           ${this.botaoMais(chave, detalhado)}
         </span>
       </div>
@@ -889,8 +919,7 @@ const SecaoProjetos = {
                  debaixo do nome, que é onde a mão procura. -->
             <span class="ms-auto d-flex align-items-center gap-2">
               ${App.podeEditar() ? `
-                <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>
-                <button class="btn btn-sm btn-verde" data-nova-acao-proj="${p.id}">+ Ação</button>` : ''}
+                <button class="btn btn-sm btn-verde" data-nova-ini="${p.id}">+ Iniciativa</button>` : ''}
               ${this.botaoMais(chave, detalhado)}
             </span>
           </div>
@@ -1135,11 +1164,13 @@ const SecaoProjetos = {
       }
       this.carregar();
     }));
-    // Ação nova pelo cabeçalho do PROJETO: sem frente decidida, que é a
-    // primeira pergunta do formulário.
-    el.querySelectorAll('[data-nova-acao-proj]').forEach((b) => b.addEventListener('click', (ev) => {
+    // Ação nova pelo cabeçalho da FRENTE: ela já diz em qual frente a ação
+    // entra, e por isso o formulário não pergunta. O seletor de frente do
+    // `modalDesdobramento` continua existindo — ele é o caminho dos modos
+    // Quadro e Tabela, onde não há frente no contexto do clique.
+    el.querySelectorAll('[data-nova-acao]').forEach((b) => b.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      this.modalDesdobramento(parseInt(b.dataset.novaAcaoProj, 10), null, null);
+      this.modalDesdobramento(parseInt(b.dataset.proj, 10), null, parseInt(b.dataset.novaAcao, 10));
     }));
     el.querySelectorAll('[data-editar-desd]').forEach((b) => b.addEventListener('click', () => {
       const proj = projetos.find((p) => p.id == b.dataset.proj);
@@ -1492,7 +1523,7 @@ const SecaoProjetos = {
       }
       // PESTEL, Porter e SWOT são a mesma tabela e o mesmo campo de vínculo; o
       // que muda é o rótulo da categoria, que vive num catálogo por etapa.
-      if (ORIGENS_FATOR.includes(p.origem)) {
+      if (origensFator().includes(p.origem)) {
         const cat = SecaoProjetos.rotuloCategoria(p.origem, p.categoria);
         const etapa = SecaoProjetos.rotuloEtapa(p.origem);
         return `<span class="badge text-bg-light border" title="Fator do ${Modal.esc(etapa)} · ${
@@ -1572,7 +1603,7 @@ const SecaoProjetos = {
     // O vínculo é por TABELA, não por análise: PESTEL, Porter e SWOT são todos
     // `fator`, e fecham pelo mesmo `fator_id`. O cenário é outra tabela e por
     // isso é outro campo, embora o gesto do usuário seja o mesmo.
-    const deFator = ORIGENS_FATOR.includes(ideia.origem);
+    const deFator = origensFator().includes(ideia.origem);
     const doCruzamento = ideia.origem === 'TOWS';
     const doCenario = ideia.origem === 'CENARIO';
     // O campo que fecha o vínculo, um por origem. Mandar mais de um faria o

@@ -1951,9 +1951,18 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
    caixa dele deixa de existir — e com ela o `mb-2`, então o respiro entre
    frentes passou para o último bloco visível de cada uma, nunca para o
    cabeçalho: margem em elemento sticky vira fresta transparente na pilha. */
+/* O RECUO das frentes dentro do projeto (pedido do cliente, 2026-10-27): ele
+   era de .6rem e não separava os dois níveis — com a frente recolhida, o
+   título dela nascia quase na mesma coluna do título do projeto, e a lista
+   parecia plana. 1.4rem é o que faz o degrau ser visto sem roubar largura da
+   ação, que é o que se lê.
+   Quem mexer aqui tem de mexer na margem negativa de `.iniciativa-cabeca`
+   JUNTO: ela existe para o fundo opaco do cabeçalho grudado cobrir este
+   padding. Descasadas, sobra uma fresta transparente à esquerda e o texto das
+   ações passa por ela enquanto rola. */
 .iniciativas-projeto:has(> .iniciativa) {
   border-left: 3px solid var(--verde-coperdia);
-  padding-left: .6rem;
+  padding-left: 1.4rem;
 }
 .iniciativa { display: contents; }
 .iniciativa > .acoes-iniciativa { margin-bottom: .5rem; }
@@ -2011,10 +2020,14 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   top: calc(var(--topo-app) + var(--altura-cabecalho, 0px) + var(--altura-projeto, 0px) + var(--desloca-frente, 0px));
   z-index: 1;
   background: #fff;
-  margin: 0 -.6rem;
-  padding: .25rem .6rem;
+  /* Em par com o `padding-left: 1.4rem` do container das frentes — ver a nota
+     lá em cima. */
+  margin: 0 -.6rem 0 -1.4rem;
+  padding: .25rem .6rem .25rem 1.4rem;
   box-shadow: 0 .3rem .3rem -.3rem rgba(0, 0, 0, .18);
 }
+/* A contagem não compete com o nome da frente: ela é referência, não título. */
+.iniciativa-cabeca .conta-acoes { font-size: .68rem; font-weight: 500; }
 .projeto-cabeca { cursor: pointer; min-width: 0; }
 .seta-projeto { color: var(--verde-coperdia); font-weight: 700; margin-right: .15rem; }
 /* Panorama de execução (mesmo bloco no projeto e na iniciativa): a barra tem
