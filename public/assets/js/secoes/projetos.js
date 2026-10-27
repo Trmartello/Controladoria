@@ -393,7 +393,9 @@ const SecaoProjetos = {
   },
 
   aplicarFiltro(el) {
-    if (this.modoAtual() === 'TABELA') { this.filtrarTabela(el); return; }
+    const modo = this.modoAtual();
+    if (modo === 'TABELA') { this.filtrarTabela(el); return; }
+    if (modo === 'QUADRO') { this.filtrarQuadro(el); return; }
     const c = this.criteriosFiltro();
     const { ativo } = c;
     let algum = false;
@@ -746,6 +748,167 @@ const SecaoProjetos = {
         title="${cancelada ? 'Ação cancelada — sem progresso e fora da média' : `${pct}%`}"><span
         style="width:${pct}%"></span></span> ${pct}%</td>
     </tr>`;
+  },
+
+  /* ── Modo QUADRO ──────────────────────────────────────────────────────────
+   * Uma coluna por situação, a ficha etiquetada com projeto › frente. A
+   * pergunta que ele responde é "o que está travado?", sem filtro nenhum: a
+   * coluna vermelha é a pauta da reunião e o tamanho de cada coluna é o
+   * retrato do mês.
+   *
+   * A ORDEM não é a do enum: começa no atraso, porque é o que se procura, e
+   * termina no concluído, que é o que já não se discute.
+   *
+   * "Cancelada" só ganha coluna quando existe alguma — uma coluna permanente
+   * e vazia rouba um sexto da largura para dizer nada. Mas quando a pesquisa
+   * pede situação "Cancelada", ela aparece de qualquer jeito: filtrar por algo
+   * e receber um quadro vazio seria a tela mentindo.
+   */
+  ORDEM_QUADRO: ['ATRASADO', 'EM_ANDAMENTO', 'AGUARDANDO_VALIDACAO', 'PAUSADO',
+    'NAO_INICIADO', 'CONCLUIDO'],
+
+  quadroSituacao(projetos) {
+    const todas = [];
+    projetos.forEach((p) => {
+      const porFrente = new Map((p.iniciativas || []).map((i) => [Number(i.id), i]));
+      (p.desdobramentos || []).forEach((a) => {
+        todas.push({ a, p, f: porFrente.get(Number(a.iniciativa_id)) || null });
+      });
+    });
+    const colunas = [...this.ORDEM_QUADRO];
+    if (todas.some((x) => x.a.status === 'CANCELADO') || this.filtroStatus === 'CANCELADO') {
+      colunas.push('CANCELADO');
+    }
+    const corpo = colunas.map((st) => {
+      const [rotulo] = STATUS_ACAO[st] || [st];
+      const fichas = todas.filter((x) => x.a.status === st);
+      // As duas situações AUTOMÁTICAS não recebem ficha: elas saem da
+      // data-limite (`Consolidacao::sincronizarAtrasos` reescreve as duas a
+      // cada leitura). Aceitar o arraste aqui gravaria uma situação que o
+      // servidor desfaria no próximo carregamento, em silêncio — o pior modo
+      // de falha que esta tela poderia ter.
+      const automatica = !STATUS_MANUAIS.includes(st);
+      return `<div class="coluna-quadro st-${st.toLowerCase()}${automatica ? ' so-leitura' : ''}"
+        data-coluna="${st}" ${automatica ? '' : 'data-aceita-ficha'}>
+        <header>
+          <span class="nome-coluna">${rotulo}</span>
+          <span class="conta-coluna" data-conta-coluna="${st}">${fichas.length}</span>
+          ${automatica ? `<span class="dica-automatica"
+            title="Esta situação sai da data-limite da ação e é recalculada a cada leitura: arrastar para cá não teria efeito."
+            aria-label="Situação automática, calculada pela data-limite">auto</span>` : ''}
+        </header>
+        <div class="pilha-quadro">
+          ${fichas.map(({ a, p, f }) => this.fichaQuadro(a, p, f)).join('')
+    || '<p class="vazia-quadro">Nada aqui.</p>'}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="quadro-situacao">${corpo}</div>`;
+  },
+
+  fichaQuadro(a, p, f) {
+    const pct = a.status === 'CANCELADO' ? 0 : a.progresso;
+    const prazo = this.periodo(a.data_inicio, a.data_fim, a.quando_);
+    const selos = (Number(a.comentarios) || 0) + (Number(a.anexos) || 0);
+    const podeArrastar = App.podeEditar();
+    return `<article class="ficha-quadro" data-card-acao="${a.id}"
+      data-cadeado="desdobramento:${a.id}" data-status="${a.status}"
+      data-quem="${Modal.esc(this.chaveQuem(a))}"
+      ${podeArrastar ? 'draggable="true"' : ''} tabindex="0">
+      <span class="etiqueta-quadro">${Modal.esc(p.titulo)}${f ? ` › ${Modal.esc(f.titulo)}` : ''}</span>
+      <span class="oque-quadro">${Modal.esc(a.o_que)}</span>
+      <span class="rodape-quadro">
+        ${a.quem ? Modal.esc(a.quem)
+    : '<span class="selo-sem-usuario" title="Ninguém responde por esta ação: ela não entra em cobrança nenhuma">Sem usuário</span>'}
+        ${prazo ? `<span class="quando-quadro">${Modal.esc(prazo)}</span>` : ''}
+        ${selos ? `<span class="clipe-5w2h" title="${a.comentarios} comentário(s), ${a.anexos} anexo(s)">📎 ${selos}</span>` : ''}
+      </span>
+      <span class="rodape-quadro"><span class="faixa-progresso ${a.status === 'CANCELADO' ? 'inativa' : ''}"><span
+        style="width:${pct}%"></span></span><span class="pct-quadro">${pct}%</span></span>
+    </article>`;
+  },
+
+  /** A pesquisa no quadro: esconde fichas e reconta cada coluna. */
+  filtrarQuadro(el) {
+    const c = this.criteriosFiltro();
+    let algum = false;
+    el.querySelectorAll('.coluna-quadro').forEach((col) => {
+      let n = 0;
+      col.querySelectorAll('[data-card-acao]').forEach((ficha) => {
+        const bate = this.acaoBate(c, {
+          quem: this.quemDoCartao(ficha),
+          conteudo: this.normalizar(ficha.textContent),
+          // No quadro a etiqueta da ficha JÁ traz projeto › frente, e ela
+          // entra no `textContent` acima — não há título separado a casar.
+          tituloIni: '', tituloProj: '',
+          status: ficha.dataset.status,
+        });
+        ficha.classList.toggle('d-none', c.ativo && !bate);
+        if (bate) { n += 1; algum = true; }
+      });
+      const conta = col.querySelector('[data-conta-coluna]');
+      if (conta) conta.textContent = c.ativo ? n : col.querySelectorAll('[data-card-acao]').length;
+      const vazia = col.querySelector('.vazia-quadro');
+      if (vazia) vazia.classList.toggle('d-none', false);
+    });
+    el.querySelector('[data-filtro-vazio]')?.classList.toggle('d-none', !c.ativo || algum);
+  },
+
+  /**
+   * Arrastar a ficha entre colunas troca a situação.
+   *
+   * Grava pela rota do PROGRESSO, que já aceita um `status` opcional e o
+   * encaminha pelo mesmo caminho do formulário — inclusive o reagendamento da
+   * ação recorrente ao concluir. Um UPDATE cru de situação pularia essa regra:
+   * a ação "concluía" e nunca mais reabria.
+   *
+   * Só as colunas MANUAIS recebem (`data-aceita-ficha`). As duas automáticas
+   * não são alvo de soltura nenhum, e por isso o navegador nem desenha o
+   * cursor de "pode soltar" sobre elas.
+   *
+   * É arraste de ponteiro (HTML5), que não existe no toque: no celular a ficha
+   * se edita pelo duplo toque, como o cartão da lista. Trocar isso por arraste
+   * por `pointerdown` é possível (é o que as fichas da nuvem fazem), mas é
+   * bastante código para um gesto que a tela estreita quase não comporta —
+   * cinco colunas não cabem lado a lado em 390px.
+   */
+  ligarQuadro(el, projetos) {
+    if (!App.podeEditar()) return;
+    el.querySelectorAll('.ficha-quadro[draggable="true"]').forEach((ficha) => {
+      ficha.addEventListener('dragstart', (ev) => {
+        ev.dataTransfer.setData('text/plain', ficha.dataset.cardAcao);
+        ev.dataTransfer.effectAllowed = 'move';
+        ficha.classList.add('arrastando');
+      });
+      ficha.addEventListener('dragend', () => ficha.classList.remove('arrastando'));
+    });
+    el.querySelectorAll('[data-aceita-ficha]').forEach((col) => {
+      col.addEventListener('dragover', (ev) => {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'move';
+        col.classList.add('alvo');
+      });
+      col.addEventListener('dragleave', () => col.classList.remove('alvo'));
+      col.addEventListener('drop', async (ev) => {
+        ev.preventDefault();
+        col.classList.remove('alvo');
+        const id = Number(ev.dataTransfer.getData('text/plain'));
+        const acao = projetos.flatMap((p) => p.desdobramentos || [])
+          .find((a) => Number(a.id) === id);
+        if (!acao || acao.status === col.dataset.coluna) return;
+        try {
+          const resp = await App.api(`/api/desdobramentos/${id}/progresso`, {
+            planejamento_id: this.plan.id,
+            progresso: Number(acao.progresso) || 0,
+            status: col.dataset.coluna,
+          });
+          this.avisarReagendamento(resp);
+        } catch (e) {
+          alert(e.message);
+        }
+        this.carregar();
+      });
+    });
   },
 
   /** A pesquisa na tabela: esconde linhas, e o grupo que ficou sem nenhuma. */
@@ -1224,7 +1387,8 @@ const SecaoProjetos = {
         ver o detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>` : ''}
       ${this.cartaoIdeiasAcao(pendentes)}
       <div class="pt-2">${projetos.length
-    ? (modo === 'TABELA' ? this.tabela5w2h(projetos) : cartoes)
+    ? (modo === 'TABELA' ? this.tabela5w2h(projetos)
+      : (modo === 'QUADRO' ? this.quadroSituacao(projetos) : cartoes))
     : '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>
       <div class="text-muted d-none" data-filtro-vazio>Nenhuma ação encontrada com a pesquisa atual.</div>`;
 
@@ -1240,6 +1404,16 @@ const SecaoProjetos = {
     // Na tabela o duplo clique abre a ação — o mesmo gesto da lista. O
     // ouvinte vai na TABELA, não na seção: `el` sobrevive aos
     // recarregamentos e um ouvinte nele empilharia uma cópia por pintura.
+    this.ligarQuadro(el, projetos);
+    // Duplo clique na ficha do quadro abre a ação, como na lista e na tabela.
+    el.querySelector('.quadro-situacao')?.addEventListener('dblclick', (ev) => {
+      const ficha = ev.target.closest('[data-card-acao]');
+      if (!ficha) return;
+      window.getSelection?.()?.removeAllRanges();
+      const acao = projetos.flatMap((x) => x.desdobramentos || [])
+        .find((a) => Number(a.id) === Number(ficha.dataset.cardAcao));
+      if (acao) this.modalDesdobramento(acao.projeto_id, acao, acao.iniciativa_id);
+    });
     el.querySelector('.tabela-5w2h')?.addEventListener('dblclick', (ev) => {
       if (ev.target.closest('button, a, input, select, textarea, label')) return;
       const linha = ev.target.closest('[data-card-acao]');

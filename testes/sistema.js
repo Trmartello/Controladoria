@@ -2133,6 +2133,74 @@ async function provasModosPlano(page, largura) {
     });
   }
 
+  // ── O quadro por situação ────────────────────────────────────────────
+  await page.evaluate(() => SecaoProjetos.trocarModo('QUADRO'));
+  const quadroPintou = await esperar(page, "!!document.querySelector('.quadro-situacao')", 10000);
+  t(`${l} o quadro pinta ao trocar de modo`, quadroPintou);
+  if (quadroPintou) {
+    const q = await page.evaluate(() => {
+      const cols = [...document.querySelectorAll('.coluna-quadro')];
+      return {
+        ordem: cols.map((c) => c.dataset.coluna),
+        aceitam: cols.filter((c) => c.hasAttribute('data-aceita-ficha')).map((c) => c.dataset.coluna),
+        recusam: cols.filter((c) => !c.hasAttribute('data-aceita-ficha')).map((c) => c.dataset.coluna),
+        temDica: cols.filter((c) => c.querySelector('.dica-automatica')).map((c) => c.dataset.coluna),
+        cadeados: document.querySelectorAll('.ficha-quadro[data-cadeado^="desdobramento:"]').length,
+        etiquetas: [...document.querySelectorAll('.etiqueta-quadro')].map((x) => x.textContent.trim()),
+      };
+    });
+    // A ordem começa no atraso, que é o que se procura, e termina no
+    // concluído, que já não se discute.
+    t(`${l} o quadro começa no atraso e termina no concluído`,
+      q.ordem[0] === 'ATRASADO' && q.ordem[q.ordem.length - 1] === 'CONCLUIDO', JSON.stringify(q.ordem));
+    // ESTA é a prova que importa: "No prazo" e "Atrasada" saem da data-limite
+    // (`Consolidacao::sincronizarAtrasos` reescreve as duas a cada leitura).
+    // Se elas aceitarem a ficha, a mudança é desfeita no carregamento
+    // seguinte, sem aviso nenhum — o pior defeito que esta tela pode ter.
+    t(`${l} as colunas automáticas não recebem ficha`,
+      q.recusam.includes('ATRASADO') && q.recusam.includes('NAO_INICIADO')
+      && !q.aceitam.includes('ATRASADO') && !q.aceitam.includes('NAO_INICIADO'),
+      JSON.stringify(q));
+    t(`${l} e dizem por quê`, q.temDica.includes('ATRASADO') && q.temDica.includes('NAO_INICIADO'),
+      JSON.stringify(q.temDica));
+    t(`${l} a ficha leva o marcador do cadeado`, q.cadeados >= 3, `${q.cadeados}`);
+    // A ficha perde a estrutura da lista, e por isso carrega a etiqueta: sem
+    // ela, "Revisar contrato" não diz de qual projeto é.
+    t(`${l} a ficha diz de que projeto e frente ela é`,
+      q.etiquetas.every((x) => x.includes('›')) && q.etiquetas.some((x) => /Projeto modos/.test(x)),
+      JSON.stringify(q.etiquetas.slice(0, 2)));
+
+    // Soltar numa coluna MANUAL grava; os eventos são disparados à mão porque
+    // o arraste nativo do Chromium headless não é confiável — e o que importa
+    // aqui é o manipulador do `drop`, não a emulação de ponteiro.
+    const arrastar = (de, para) => page.evaluate(([a, b]) => {
+      const ficha = document.querySelector(`.coluna-quadro[data-coluna="${a}"] .ficha-quadro`);
+      const alvo = document.querySelector(`.coluna-quadro[data-coluna="${b}"]`);
+      if (!ficha || !alvo) return false;
+      const dt = new DataTransfer();
+      ficha.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+      alvo.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt, cancelable: true }));
+      return true;
+    }, [de, para]);
+    const contar = (col) => page.evaluate((c) =>
+      document.querySelectorAll(`.coluna-quadro[data-coluna="${c}"] .ficha-quadro`).length, col);
+
+    await arrastar('EM_ANDAMENTO', 'PAUSADO');
+    await new Promise((r) => setTimeout(r, 1500));
+    t(`${l} arrastar entre colunas manuais troca a situação`,
+      (await contar('PAUSADO')) > 0, `pausada: ${await contar('PAUSADO')}`);
+
+    const antesAuto = await contar('ATRASADO');
+    await arrastar('PAUSADO', 'ATRASADO');
+    await new Promise((r) => setTimeout(r, 1200));
+    t(`${l} soltar numa coluna automática não grava nada`,
+      (await contar('ATRASADO')) === antesAuto,
+      `${antesAuto} → ${await contar('ATRASADO')}`);
+  }
+
+  await page.evaluate(() => SecaoProjetos.trocarModo('TABELA'));
+  await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
+
   // O modo é escolha de PESSOA: tem de sobreviver ao recarregamento.
   await page.reload();
   await esperar(page, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
