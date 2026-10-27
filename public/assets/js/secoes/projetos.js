@@ -1,4 +1,11 @@
-// Projetos estratégicos e operacionais: desdobramentos 5W2H + diário de bordo.
+// O plano de ação: projetos, frentes de trabalho e as ações de cada uma.
+//
+// "5W2H" saiu dos textos de tela (2026-10-27). O método como esta casa o
+// pratica tem CINCO perguntas, não sete — o quê, como, quem, quando e ganhos:
+// "onde" e "por quê" já tinham saído do formulário e só sobrevivem em
+// registros antigos. Chamar a tela de 5W2H prometia um método que ela não
+// pede. O nome do modo de tabela guarda a sigla de propósito, porque é ali
+// que as perguntas viram colunas.
 
 const STATUS_ROTULOS = {
   NAO_INICIADO: ['Não iniciado', 'text-bg-light border'],
@@ -1325,7 +1332,7 @@ const SecaoProjetos = {
            se lê uma vez, e grudado custaria uma faixa de tela em toda rolagem,
            para sempre. Quem precisa dele está no começo, onde ele está. -->
       <div class="cabecalho-projetos d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h1>Projetos — ${Modal.esc(App.rotuloContexto())}</h1>
+        <h1>Plano de ação — ${Modal.esc(App.rotuloContexto())}</h1>
         <div class="d-flex gap-2 align-items-center flex-wrap">
           ${projetos.length ? `
           <!-- Pesquisa: enxuta de propósito — mora no cabeçalho fixo, e cada
@@ -1506,7 +1513,7 @@ const SecaoProjetos = {
       const acoes = (p?.desdobramentos || []).length;
       const aviso = Vinculos.aviso(`Excluir o projeto «${p?.titulo || ''}»?`, {
         some: [
-          q(acoes, 'ação 5W2H', 'ações 5W2H'),
+          q(acoes, 'ação', 'ações'),
           q((p?.iniciativas || []).length, 'iniciativa', 'iniciativas'),
           q(p?.comentarios, 'comentário', 'comentários'),
         ],

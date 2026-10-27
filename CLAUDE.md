@@ -2309,15 +2309,47 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `atualizarMedias()` recalcula os **dois** níveis ao arrastar a barra de uma
   ação, lendo os valores que estão na tela (a ação recém-arrastada precisa
   entrar na conta).
-- **O redesenho desta tela está ADIADO pelo cliente** ("vamos deixar o plano de
-  ação na lista de backlog. Para fazer depois", 2026-10-25) — é o **tema 12** de
-  `docs/BACKLOG-EVOLUCAO.md`, e lá está o diagnóstico inteiro: a tela é lida em
-  **reunião de acompanhamento**, no computador e no celular igualmente, e o
-  plano foi aprovado em **maquete clicável** antes de qualquer código
-  (`https://claude.ai/artifact/7fscdG2uz4mdnZGFcQtgDw`). Nada do layout novo
-  entrou no sistema; o que está em produção é o que esta seção descreve. **Não
-  comece pelo código**: a decisão 16 do backlog é o que falta, e a maquete é o
-  contrato dela.
+- **A tela tem TRÊS MODOS** (2026-10-27, tema 12 do backlog): **Lista**,
+  **Tabela** e **Quadro**, num seletor no cabeçalho. O modo é escolha de
+  PESSOA — vai no mesmo armazém da seção e do negócio
+  (`App.guardarLugar`/`lugarGuardado`, chave `pe_plano_modo`) e é lido com
+  validação, caindo na lista quando o valor não é um dos três. A **lista é o
+  padrão**, porque é a leitura da reunião de acompanhamento; os níveis de
+  recolhimento ("Mostrar até") só aparecem nela, porque só ela tem árvore.
+  - A **pesquisa decide num lugar só** (`criteriosFiltro` + `acaoBate`), e cada
+    modo aplica o resultado à sua maneira: a lista esconde nós da árvore, a
+    tabela esconde linhas e recolhe o grupo que ficou vazio, o quadro esconde
+    fichas e reconta as colunas. Escritas separadas, as três divergiriam na
+    primeira correção — e o sintoma seria "a pesquisa acha num modo e não acha
+    no outro", que ninguém sabe depurar.
+  - **O dossiê fixa a lista** (`vistaDoDocumento`). Ele fotografa o
+    `innerHTML` desta seção, e sem fixar o modo o mesmo documento sairia em
+    tabela para quem deixou a tabela escolhida — duas folhas diferentes do
+    mesmo plano, sem nada na página dizendo por quê. É a mesma razão pela qual
+    ele já zerava os filtros.
+  - **No QUADRO, "No prazo" e "Atrasada" não recebem ficha.** As duas saem da
+    data-limite e são reescritas a cada leitura por
+    `Consolidacao::sincronizarAtrasos`; só as outras cinco situações são
+    manuais (`STATUS_MANUAIS`). Aceitar o arraste nelas gravaria uma situação
+    que o servidor desfaz no carregamento seguinte, **em silêncio**. Elas
+    levam um selo "auto" que diz isso a quem passa o mouse. A gravação das
+    outras vai pela rota do PROGRESSO, que já aceita um `status` opcional e
+    encaminha o reagendamento da ação recorrente — um UPDATE cru de situação
+    pularia essa regra, e a ação "concluiria" sem nunca reabrir.
+  - O arraste do quadro é HTML5, que **não existe no toque**: no celular a
+    ficha se edita pelo duplo toque e as colunas rolam uma a uma. Trocar por
+    arraste de ponteiro é possível (é o que as fichas da nuvem fazem) e ficou
+    de fora por custo.
+  - **A opção A da maquete — mestre-detalhe, com trilha e gaveta — foi
+    construída e descartada.** Ela está na branch
+    `claude/plano-acao-trilha-gaveta` (`2da9bfe`), incompleta e sem bateria.
+    A maquete clicável (`https://claude.ai/artifact/7fscdG2uz4mdnZGFcQtgDw`)
+    descreve aquele desenho, não este: leia-a como história, não como contrato.
+- **A tela não se chama mais "5W2H".** O método como a cooperativa o pratica
+  tem CINCO perguntas — o quê, como, quem, quando e ganhos. "Onde" e "por quê"
+  saíram do formulário há tempos e só sobrevivem em registros antigos, em
+  campos ocultos (`camposAcao`). O nome na interface é **Plano de ação**; a
+  sigla ficou só no modo de tabela, que é onde as perguntas viram colunas.
 
 ## Migrações e seeds
 
@@ -2584,11 +2616,17 @@ dia, e a vermelha seria lida como regressão de outra mudança.
   Antes dele a produção estava 23 commits atrás do trabalho — e ficou assim por
   dias sem ninguém notar, porque nada avisa. Confira `git rev-list --count
   origin/main..<branch>` antes de dizer que "está no sistema".
-  **Último deploy: 2026-09-04, PRs #13 a #20** (oito merges em dois dias: 🎤 da
+  **Último deploy: 2026-10-26, PR #46** (`dad256a`) — os dois botões de criar
+  na linha do título do projeto e a correção do campo de data, que deixava
+  invisível o número sendo digitado. Sem migração e sem variável nova: a
+  mudança é só de tela. **Ainda NÃO foi ao ar** o que veio depois dele: os
+  três modos do plano de ação estão na branch
+  `claude/acesso-planejamento-controladoria-9pe28s`, sem PR aberto.
+  (Anterior: **2026-09-04, PRs #13 a #20** (oito merges em dois dias: 🎤 da
   etapa inteira, questionário da tempestade e a revisão pelo time de agentes).
   A migração acrescenta `coleta_rodada.prazo` (PR #17) e dois índices
   (`idx_fator_plan_ano`, `idx_cenario_plan_ano`, PR #20); **não pediu
-  variável nova**. O sinal de que a versão subiu está no cron de avisos: entre
+  variável nova.) O sinal de que aquela versão subiu está no cron de avisos: entre
   2026-09-02 e esse deploy, `cli/notificar.php` morria na primeira escrita
   (classe `Versao` fora do autoloader), mandava o primeiro e-mail da lista e
   caía — *Cron Runs* do serviço `avisos` deve mostrar falha diária nesse

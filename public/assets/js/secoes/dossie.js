@@ -53,7 +53,7 @@ const SecaoDossie = {
     { chave: 'gut', rotulo: 'Matriz GUT', secao: () => SecaoGut, anual: true, padrao: true },
     { chave: 'cruzamentos', rotulo: 'Cruzamentos', secao: () => SecaoCruzamentos, anual: true, padrao: true },
     { chave: 'cascata', rotulo: 'Cascata de Escolhas', secao: () => SecaoCascata, padrao: true },
-    { chave: 'projetos', rotulo: 'Projetos · 5W2H', secao: () => SecaoProjetos, padrao: true },
+    { chave: 'projetos', rotulo: 'Plano de ação', secao: () => SecaoProjetos, padrao: true },
     { chave: 'investimentos', rotulo: 'Investimentos', secao: () => SecaoInvestimentos, padrao: true },
     { chave: 'metas', rotulo: 'Metas · Indicadores', secao: () => SecaoMetas, padrao: true },
   ],

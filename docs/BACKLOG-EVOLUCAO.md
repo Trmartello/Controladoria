@@ -1921,12 +1921,45 @@ alguém arrastou uma barra seria pior que a colisão que evitaria.
 
 ## 12. Layout do plano de ação: projetos, frentes e 5W2H
 
-### Veredito: **CONSTRUIR** (esforço M) — **ADIADO por decisão do cliente (2026-10-26)**
+### Veredito: **ENTREGUE em 2026-10-27**, e não como a maquete previa
 
-> Pedido do cliente em 2026-10-25: *"apenas o layout que não está amigável"*. O
-> diagnóstico, as três direções e a maquete estão abaixo; no dia seguinte ele
-> decidiu **deixar para depois**. A direção ainda não foi escolhida — é a
-> **decisão 16**. Nada aqui foi implementado.
+> **Como terminou.** O cliente adiou em 2026-10-26, reabriu no dia seguinte e
+> escolheu outra coisa: não UMA direção, mas **três modos de visualização** na
+> mesma tela — **Lista · Tabela · Quadro** —, com um seletor no cabeçalho e a
+> escolha guardada por pessoa. A lista é o padrão, porque é a leitura da
+> reunião de acompanhamento.
+>
+> A **opção A (mestre-detalhe: trilha + gaveta)** chegou a ser implementada e
+> foi abandonada no meio. Ela está guardada na branch
+> `claude/plano-acao-trilha-gaveta` (`2da9bfe`), incompleta e sem bateria —
+> não abra PR a partir de lá sem terminar as duas coisas.
+>
+> **O que o diagnóstico abaixo previa e NÃO aconteceu:** a pilha de cabeçalhos
+> grudados continua de pé. Ela é o mecanismo da LISTA, e a lista sobreviveu —
+> o que saía com a trilha não sai com os modos. Os três níveis de recolhimento
+> também ficaram, e passaram a aparecer só no modo lista.
+>
+> **O que mudou na lista**, a pedido do cliente e com maquete: cada nível cria
+> o que é dele (o projeto cria frentes, a frente cria ações), a frente diz
+> quantas ações carrega na própria linha do título, e o recuo entre os níveis
+> dobrou.
+>
+> **"5W2H" saiu dos textos de tela.** O método como a cooperativa o pratica tem
+> CINCO perguntas — o quê, como, quem, quando e ganhos. "Onde" e "por quê" já
+> tinham saído do formulário e só sobrevivem em registros antigos. A tela passou
+> a se chamar **Plano de ação**; a sigla ficou só no nome do modo de tabela,
+> que é onde as perguntas viram colunas.
+>
+> **A armadilha que o quadro obrigou a enfrentar:** "No prazo" e "Atrasada"
+> não são escolha de ninguém — saem da data-limite e são reescritas a cada
+> leitura por `Consolidacao::sincronizarAtrasos`. As duas colunas são de
+> leitura e **recusam a ficha**; aceitar o arraste ali gravaria uma situação
+> que o servidor desfaria no carregamento seguinte, em silêncio. A gravação
+> das outras cinco vai pela rota do progresso, que já aceitava um `status`
+> opcional e encaminha o reagendamento da ação recorrente.
+>
+> O diagnóstico, as três direções e a maquete continuam abaixo: eles explicam
+> de onde vieram os três modos, e o que foi descartado no caminho.
 
 Duas respostas do cliente já fecham o contexto de uso, e são elas que decidem o
 desenho: a tela serve à **reunião de acompanhamento** (percorrer o plano projeto
@@ -2142,7 +2175,7 @@ fila deve discutir a dependência, não o quadrante.
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
 | 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
-| 12 | **Layout do plano de ação** (projetos, frentes e 5W2H) | Construir | M | **Adiado pelo cliente (2026-10-26)**; direção na decisão 16 |
+| 12 | **Layout do plano de ação** (projetos, frentes e ações) | Construir | M | ✔ **Entregue em 2026-10-27**: três modos (Lista · Tabela · Quadro), e não a trilha da maquete |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |
 | 4c | Cruzamentos da SWOT — **a sala** (fatia 5) | **Entregue** | M | ✔ (decisão do cliente: a sala propõe o PAR) |
 | 11 | **Um item por vez: bloqueio de edição** | **Entregue** | P–M | ✔ (pedido do cliente; continua o 10) |
@@ -2262,10 +2295,10 @@ Perguntas que nenhuma análise de código responde — só o dono do processo.
    movimento é recusado? **Hoje recusa os dois**, que era a proposta: mover
    fator limpo é fácil, mover fator amarrado é o tema inteiro. Cada resposta que
    vier vira uma linha da tabela de amarras na fatia 9c.
-16. **Qual layout do plano de ação (tema 12)?** Mestre-detalhe, tabela 5W2H,
-   quadro por situação — ou a mistura recomendada (trilha + tabela). O contexto
-   de uso já está respondido (reunião de acompanhamento; computador e celular
-   valendo igual) e a maquete das três está publicada; falta escolher. Enquanto
-   não vier, **não começar o 12**: a moldura é o que decide onde o filtro, o
-   cadeado e a navegação da SWOT vão morar, e refazer isso duas vezes custa a
-   bateria inteira duas vezes.
+16. **Qual layout do plano de ação (tema 12)?** ✔ **RESPONDIDA em
+   2026-10-27** — e a resposta não foi nenhuma das três sozinha: o cliente
+   pediu **os três modos convivendo**, com seletor e a escolha guardada por
+   pessoa. A lista é o padrão. A mistura recomendada aqui (trilha + tabela)
+   chegou a ser construída e foi descartada; está parada na branch
+   `claude/plano-acao-trilha-gaveta`. Ver o tema 12 para o que ficou de pé e o
+   que a maquete previa e não aconteceu.

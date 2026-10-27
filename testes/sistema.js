@@ -71,7 +71,7 @@ const SECOES = [
   { id: 'gut', nome: 'Matriz GUT', prova: '#secao-gut .gut-legenda-barra' },
   { id: 'cruzamentos', nome: 'Cruzamentos (TOWS)', prova: '#secao-cruzamentos [data-coluna-categoria]' },
   { id: 'cascata', nome: 'Cascata de Escolhas', prova: '#secao-cascata h1' },
-  { id: 'projetos', nome: 'Projetos · 5W2H', prova: '#secao-projetos h1' },
+  { id: 'projetos', nome: 'Plano de ação', prova: '#secao-projetos h1' },
   { id: 'investimentos', nome: 'Investimentos', prova: '#secao-investimentos h1' },
   { id: 'metas', nome: 'Metas · Indicadores', prova: '#secao-metas h1' },
   { id: 'relatorio', nome: 'Relatório de Status', prova: '#secao-relatorio h1' },
