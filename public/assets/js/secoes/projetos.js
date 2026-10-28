@@ -707,6 +707,11 @@ const SecaoProjetos = {
       // duas barras empilhadas na mesma coluna — uma de média, outra do valor
       // de uma ação — se leem como a mesma grandeza. O número maior é o que dá
       // o destaque que a barra tentava dar.
+      //
+      // E dentro da célula ele vai CENTRADO (segundo pedido do mesmo dia): o
+      // total de frente e de projeto é o número DO GRUPO, não mais uma linha
+      // de ação encostada à esquerda da coluna. A geometria — e o que se
+      // perdeu ao escolher centrar — está em `pct-grupo`, no CSS.
       const linhaGrupo = (classe, marca, titulo, lista, chave, extra = '') => {
         const media = this.mediaProgresso(lista);
         return `

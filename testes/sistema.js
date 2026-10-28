@@ -2089,14 +2089,28 @@ async function provasModosPlano(page, largura) {
         semNiveis: !document.querySelector('.niveis-visao'),
         ajustaveis: el.querySelectorAll('[data-progresso]').length,
         rolagemH: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-        // Onde começa o número de cada nível. Os três têm de coincidir: é o
-        // que faz a coluna ser comparável de cima a baixo.
-        esquerdas: (() => {
-          const x = (sel) => {
+        // Duas medidas, porque são duas regras diferentes: o total do grupo
+        // tem de ficar CENTRADO na célula, e os três níveis têm de continuar
+        // na MESMA coluna — a última, sob "Progresso". `desvio` é a distância
+        // entre o centro do número e o centro da célula que o contém.
+        geometria: (() => {
+          const cel = (sel) => {
             const e = el.querySelector(sel);
-            return e ? Math.round(e.getBoundingClientRect().left) : null;
+            const td = e && e.closest('td');
+            if (!td) return null;
+            const a = e.getBoundingClientRect();
+            const b = td.getBoundingClientRect();
+            return {
+              desvio: Math.round(((a.left + a.right) - (b.left + b.right)) / 2),
+              coluna: Math.round(b.left),
+              largura: Math.round(b.width),
+            };
           };
-          return { proj: x('tr.g-proj .pct-grupo'), frente: x('tr.g-frente .pct-grupo'), acao: x('tr.linha-5w2h .valor-progresso') };
+          return {
+            proj: cel('tr.g-proj .pct-grupo'),
+            frente: cel('tr.g-frente .pct-grupo'),
+            acao: cel('tr.linha-5w2h .valor-progresso'),
+          };
         })(),
       };
     }, prj);
@@ -2121,14 +2135,22 @@ async function provasModosPlano(page, largura) {
     t(`${l} o progresso é ajustável na tabela`, tab.ajustaveis >= 3, `${tab.ajustaveis}`);
     // Pedido do cliente, 2026-10-28: o percentual do projeto e o da frente
     // ficavam dentro da célula do título, que atravessa a tabela inteira —
-    // cada nível com o número num ponto diferente da largura. Dar largura
-    // própria a qualquer uma das três barras desalinha a coluna de novo, e
-    // nada quebra: por isso a prova mede, em vez de conferir uma classe.
-    const esq = tab.esquerdas;
+    // cada nível com o número num ponto diferente da largura. Agora os três
+    // dividem a coluna do "Progresso", e o TOTAL do grupo fica centrado nela
+    // (segundo pedido do mesmo dia). As duas provas MEDEM: um recuo ou uma
+    // largura diferente quebra o arranjo sem quebrar nada no código, e
+    // conferir que a classe está lá não pegaria isso.
+    const geo = tab.geometria;
+    t(`${l} o total de projeto e de frente fica centrado na coluna do progresso`,
+      geo.proj !== null && geo.frente !== null
+      && Math.abs(geo.proj.desvio) <= 2 && Math.abs(geo.frente.desvio) <= 2,
+      JSON.stringify(geo));
     t(`${l} os percentuais de projeto, frente e ação caem na mesma coluna`,
-      esq.proj !== null && esq.frente !== null && esq.acao !== null
-      && Math.abs(esq.proj - esq.acao) <= 1 && Math.abs(esq.frente - esq.acao) <= 1,
-      JSON.stringify(esq));
+      geo.proj !== null && geo.frente !== null && geo.acao !== null
+      && Math.abs(geo.proj.coluna - geo.acao.coluna) <= 1
+      && Math.abs(geo.frente.coluna - geo.acao.coluna) <= 1
+      && Math.abs(geo.proj.largura - geo.acao.largura) <= 1,
+      JSON.stringify(geo));
     t(`${l} a tabela não rola na horizontal`, !tab.rolagemH);
 
     // A pesquisa vale na tabela, e o grupo sem acerto some junto
