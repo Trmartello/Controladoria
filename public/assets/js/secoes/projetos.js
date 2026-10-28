@@ -279,12 +279,34 @@ const SecaoProjetos = {
    * opção**, fixa: a ação órfã não é cobrada de ninguém, e é a fila que mais
    * precisa ser vista.
    *
-   * Os três filtros são E, não OU: palavra e responsável e situação. Somados,
-   * respondem "o que a Ana tem de atrasado com a palavra contrato".
+   * **O PROJETO é o quarto filtro, e aceita mais de um** (pedido do cliente,
+   * 2026-10-28, olhando o quadro). Ele não cabia nos outros dois caminhos: a
+   * palavra casa com o título do projeto, mas também com o texto de qualquer
+   * ação — procurar "Agropecuária" traz junto toda ação que cite a palavra —,
+   * e no QUADRO a estrutura desaparece: a ficha é solta, agrupada por
+   * situação, e ali não há cabeçalho de projeto para guiar o olho. Escolher na
+   * lista é exato e não depende de como o projeto foi escrito.
+   *
+   * Mais de um porque a pergunta da reunião costuma ser sobre uma FRENTE da
+   * cooperativa, que quase nunca é um projeto só ("como estão os dois projetos
+   * da Agropecuária?"). Vazio quer dizer TODOS — e não "nenhum": é o estado em
+   * que a tela nasce, e seria absurdo abrir o plano de ação vazio.
+   *
+   * Os quatro filtros são E, não OU: palavra e responsável e situação e
+   * projeto. Somados, respondem "o que a Ana tem de atrasado com a palavra
+   * contrato nestes dois projetos".
    */
   filtroTexto: '',
   filtroStatus: '',
   filtroResponsavel: '',
+
+  /**
+   * Os projetos escolhidos, por id. Conjunto VAZIO = todos, que é como a tela
+   * nasce. Mora na seção, como os outros filtros, e por isso sobrevive às
+   * repinturas do `carregar()` e à troca de modo — escolher dois projetos na
+   * lista e passar ao quadro mantém os dois.
+   */
+  filtroProjetos: new Set(),
 
   /**
    * O rótulo do «Sem usuário» no filtro de pessoa — e, ao mesmo tempo, o valor
@@ -341,6 +363,24 @@ const SecaoProjetos = {
    * entrava duas vezes na lista. Quem veio das ações tem precedência, porque
    * carrega o e-mail.
    */
+  /**
+   * O que o botão do filtro de projeto diz.
+   *
+   * Com um só escolhido ele mostra o TÍTULO (a CSS corta no fim e o `title`
+   * guarda o inteiro): "1 projeto" obrigaria a abrir o menu para lembrar
+   * qual. Com dois ou mais vira a contagem, porque dois títulos não cabem no
+   * cabeçalho fixo nem cortados.
+   */
+  rotuloFiltroProjetos(projetos) {
+    const n = this.filtroProjetos.size;
+    if (!n) return 'Todos os projetos';
+    if (n === 1) {
+      const p = (projetos || []).find((x) => this.filtroProjetos.has(Number(x.id)));
+      if (p) return p.titulo;
+    }
+    return `${n} projetos`;
+  },
+
   pessoasParaFiltro(projetos, ativos) {
     const porChave = new Map();
     (projetos || []).forEach((p) => (p.desdobramentos || []).forEach((a) => {
@@ -376,7 +416,10 @@ const SecaoProjetos = {
       resp,
       semDono,
       respTexto: semDono ? '' : this.normalizar(resp),
-      ativo: !!(texto || this.filtroStatus || resp),
+      // Conjunto vazio = todos os projetos, e por isso ele só entra em `ativo`
+      // quando tem alguém dentro.
+      projs: this.filtroProjetos,
+      ativo: !!(texto || this.filtroStatus || resp || this.filtroProjetos.size),
     };
   },
 
@@ -385,8 +428,14 @@ const SecaoProjetos = {
    *
    * `quem` e `conteudo` já vêm normalizados por quem chama — a lista os tira
    * do DOM (é onde o texto da ação está escrito) e a tabela, dos dados.
+   *
+   * `proj` é o id do projeto da ação, e vem como texto quando sai de um
+   * `dataset`: a comparação passa por `Number` dos dois lados, senão o
+   * conjunto (que guarda números) nunca acharia a string "12".
    */
-  acaoBate(c, { quem, conteudo, tituloIni, tituloProj, status }) {
+  acaoBate(c, { quem, conteudo, tituloIni, tituloProj, status, proj }) {
+    // Primeiro o projeto: é o filtro mais grosso e o mais barato de decidir.
+    if (c.projs.size && !c.projs.has(Number(proj))) return false;
     if (c.status && status !== c.status) return false;
     // O `data-quem` é vazio quando ninguém responde pela ação — é o mesmo
     // vazio que desenha o selo «Sem usuário».
@@ -420,7 +469,7 @@ const SecaoProjetos = {
           const bate = this.acaoBate(c, {
             quem: this.quemDoCartao(card),
             conteudo: this.normalizar(card.textContent),
-            tituloIni, tituloProj, status: card.dataset.status,
+            tituloIni, tituloProj, status: card.dataset.status, proj: projId,
           });
           card.classList.toggle('d-none', ativo && !bate);
           if (bate) temNaFrente = true;
@@ -691,6 +740,13 @@ const SecaoProjetos = {
    * funcionando sem uma segunda implementação.
    */
   tabela5w2h(projetos) {
+    // Mapa escolha → "H1 · Aonde Jogar · Eficiência — frase…", montado UMA vez
+    // por pintura: `opcoesCascata` percorre horizontes, drivers e eixos a cada
+    // chamada, e chamá-lo por frente faria isso dezenas de vezes na mesma
+    // tabela.
+    const rotuloCascata = new Map((this.cascata ? this.opcoesCascata() : [])
+      .filter((o) => o.valor !== '')
+      .map((o) => [String(o.valor), o.rotulo]));
     const corpo = projetos.map((p) => {
       const acoes = p.desdobramentos || [];
       const porFrente = new Map((p.iniciativas || []).map((i) => [Number(i.id), i]));
@@ -725,10 +781,49 @@ const SecaoProjetos = {
         </tr>`;
       };
       const linhas = (lista) => lista.map((a) => this.linhaTabela(a)).join('');
+      /* O que a linha da frente leva além do título (pedido do cliente,
+       * 2026-10-28): onde ela está vinculada na Cascata, e o ✎ que edita esse
+       * vínculo sem sair da tabela.
+       *
+       * O ✎ é o MESMO botão da lista — `data-editar-ini` + `data-proj` —, e por
+       * isso não precisa de ouvinte novo: o que a lista liga por
+       * `el.querySelectorAll` pega este também. Escrever um segundo caminho
+       * para abrir o mesmo modal é como duas telas divergem na primeira
+       * correção.
+       *
+       * O selo existe porque, sem ele, vincular a frente aqui não mudaria nada
+       * na tela: a pessoa escolhe o horizonte, o modal fecha, a tabela volta
+       * igual e não há como saber se gravou.
+       *
+       * E ele mostra a COORDENADA (horizonte · driver · eixo), não a frase da
+       * escolha como na lista: é o que a pessoa foi ligar, cabe numa linha de
+       * tabela e não repete o que a frase já diz. A frase inteira fica no
+       * `title`. O rótulo sai do mesmo `opcoesCascata` que alimenta o modal —
+       * duas montagens do mesmo nome divergiriam na primeira renomeação de
+       * eixo.
+       */
+      const extraFrente = (ini) => {
+        const escolha = ini.escolha_origem
+          ? String(ini.escolha_origem).replace(/\s+/g, ' ').trim() : '';
+        const rotulo = rotuloCascata.get(String(ini.cascata_id ?? ''));
+        const coordenada = rotulo ? rotulo.split(' — ')[0] : '';
+        // Sem a coordenada (cascata que não carregou, escolha apagada) ainda
+        // há a frase: o vínculo existe e some do olho se o selo sumir junto.
+        const visivel = coordenada
+          || (escolha.length > 48 ? `${escolha.slice(0, 48)}…` : escolha);
+        return `${visivel ? `<span class="badge text-bg-light border cascata-frente"
+          title="Escolha da Cascata que esta frente executa: ${
+  Modal.esc(coordenada ? `${coordenada} — ${escolha}` : escolha)}"
+          >↳ ${Modal.esc(visivel)}</span>` : ''}${App.podeEditar() ? `
+          <button class="btn btn-sm btn-outline-secondary botao-editar-frente"
+            data-editar-ini="${ini.id}" data-proj="${p.id}"
+            title="Editar a frente de trabalho — inclusive a escolha da Cascata que ela executa"
+            aria-label="Editar frente de trabalho">✎</button>` : ''}`;
+      };
       const frentes = (p.iniciativas || []).map((ini) => {
         const suas = ini.acoes || [];
         return linhaGrupo('g-frente', `data-grupo-frente="${ini.id}"`, ini.titulo, suas,
-          `FRENTE:${ini.id}`) + linhas(suas);
+          `FRENTE:${ini.id}`, extraFrente(ini)) + linhas(suas);
       }).join('');
       // Ação sem frente existe no banco (`iniciativa_id` é anulável) e sumiria
       // da tabela se ela lesse só as listas aninhadas.
@@ -861,7 +956,7 @@ const SecaoProjetos = {
     const podeArrastar = App.podeEditar();
     return `<article class="ficha-quadro" data-card-acao="${a.id}"
       data-cadeado="desdobramento:${a.id}" data-status="${a.status}"
-      data-quem="${Modal.esc(this.chaveQuem(a))}"
+      data-quem="${Modal.esc(this.chaveQuem(a))}" data-proj="${p.id}"
       ${podeArrastar ? 'data-arrastavel-quadro' : ''} tabindex="0">
       <span class="etiqueta-quadro">${Modal.esc(p.titulo)}${f ? ` › ${Modal.esc(f.titulo)}` : ''}</span>
       <span class="oque-quadro">${Modal.esc(a.o_que)}</span>
@@ -890,6 +985,9 @@ const SecaoProjetos = {
           // entra no `textContent` acima — não há título separado a casar.
           tituloIni: '', tituloProj: '',
           status: ficha.dataset.status,
+          // O id do projeto vem no `data-proj` da ficha: a etiqueta tem o
+          // TÍTULO, e dois projetos podem começar igual.
+          proj: ficha.dataset.proj,
         });
         ficha.classList.toggle('d-none', c.ativo && !bate);
         if (bate) { n += 1; algum = true; }
@@ -1114,12 +1212,18 @@ const SecaoProjetos = {
     };
     let tituloProj = '';
     let tituloIni = '';
+    // Na tabela o projeto é CONTEXTO: a linha da ação não o carrega, quem o
+    // diz é a linha de grupo acima dela. Guardá-lo ao passar por ela é o que
+    // permite ao filtro de projeto decidir aqui pelo mesmo critério dos outros
+    // dois modos.
+    let projAtual = null;
     el.querySelectorAll('.tabela-5w2h tbody tr').forEach((tr) => {
       if (tr.classList.contains('g-proj')) {
         fecharFrente(); fecharProj();
         grupoProj = tr; temProj = false;
         grupoFrente = null; temFrente = false;
         tituloProj = this.normalizar(tr.querySelector('.nome-grupo')?.textContent || '');
+        projAtual = tr.dataset.grupoProj;
         tituloIni = '';
         return;
       }
@@ -1132,7 +1236,7 @@ const SecaoProjetos = {
       const bate = this.acaoBate(c, {
         quem: this.quemDoCartao(tr),
         conteudo: this.normalizar(tr.textContent),
-        tituloIni, tituloProj, status: tr.dataset.status,
+        tituloIni, tituloProj, status: tr.dataset.status, proj: projAtual,
       });
       tr.classList.toggle('d-none', c.ativo && !bate);
       if (bate) { temFrente = true; temProj = true; algum = true; }
@@ -1508,6 +1612,13 @@ const SecaoProjetos = {
     // A lista do filtro de pessoa: quem tem ação (com e-mail) mais os
     // responsáveis ativos que ainda não receberam nenhuma.
     const pessoasFiltro = this.pessoasParaFiltro(projetos, responsaveis);
+    // Projeto apagado (aqui ou em outra aba) sai do filtro. Sem isto o id
+    // morto continuaria no conjunto, o filtro seguiria ATIVO e a tela ficaria
+    // vazia — sem nenhuma caixa marcada no menu que explicasse por quê.
+    const idsVivos = new Set(projetos.map((p) => Number(p.id)));
+    this.filtroProjetos.forEach((id) => {
+      if (!idsVivos.has(id)) this.filtroProjetos.delete(id);
+    });
     const modo = this.modoAtual();
     const botaoModo = (valor, rotulo, dica) =>
       `<button type="button" class="btn ${modo === valor ? 'btn-verde' : 'btn-outline-secondary'}"
@@ -1564,6 +1675,36 @@ const SecaoProjetos = {
               ${Object.entries(STATUS_ACAO).map(([v, [rotulo]]) =>
                 `<option value="${v}" ${this.filtroStatus === v ? 'selected' : ''}>${rotulo}</option>`).join('')}
             </select>
+            <!-- PROJETO, um ou mais (pedido do cliente, 2026-10-28). Lista
+                 suspensa com caixas de marcar, e não um <select multiple>:
+                 aquele mostra as opções todas o tempo todo e comeria a altura
+                 do cabeçalho fixo, que é o que mais custa nesta tela.
+                 O auto-close "outside" é o que deixa marcar vários sem o menu
+                 fechar a cada clique — sem ele, escolher dois projetos seriam
+                 dois cliques no botão e dois no menu.
+                 Os itens são label com a caixa DENTRO, sem id/for: as seções
+                 não são destruídas ao navegar, e id repetido entre telas faz
+                 o for casar com o primeiro do documento, que pode estar em
+                 outra tela. -->
+            <div class="dropdown filtro-projetos">
+              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle"
+                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                data-filtro-projetos
+                title="Mostra apenas os projetos marcados — nenhum marcado mostra todos"
+                aria-label="Filtrar por projeto — escolha um ou mais">${
+  Modal.esc(this.rotuloFiltroProjetos(projetos))}</button>
+              <div class="dropdown-menu dropdown-menu-end menu-projetos p-2">
+                ${projetos.map((p) => `
+                <label class="dropdown-item d-flex gap-2 align-items-start">
+                  <input type="checkbox" class="form-check-input flex-shrink-0 mt-1"
+                    data-filtro-projeto="${p.id}"
+                    ${this.filtroProjetos.has(Number(p.id)) ? 'checked' : ''}>
+                  <span>${Modal.esc(p.titulo)}</span>
+                </label>`).join('')}
+                <button type="button" class="btn btn-sm btn-link px-2 pt-2"
+                  data-limpar-projetos>Mostrar todos</button>
+              </div>
+            </div>
           </div>
           <!-- Os três modos: a mesma informação, três leituras. O grupo vem
                ANTES do "Mostrar até" porque ele decide se aquele existe — os
@@ -1616,12 +1757,34 @@ const SecaoProjetos = {
     });
     el.querySelector('.tabela-5w2h')?.addEventListener('dblclick', (ev) => {
       if (ev.target.closest('button, a, input, select, textarea, label')) return;
-      const linha = ev.target.closest('[data-card-acao]');
-      if (!linha) return;
       window.getSelection?.()?.removeAllRanges();
-      const acao = projetos.flatMap((x) => x.desdobramentos || [])
-        .find((a) => Number(a.id) === Number(linha.dataset.cardAcao));
-      if (acao) this.modalDesdobramento(acao.projeto_id, acao, acao.iniciativa_id);
+      const linha = ev.target.closest('[data-card-acao]');
+      if (linha) {
+        const acao = projetos.flatMap((x) => x.desdobramentos || [])
+          .find((a) => Number(a.id) === Number(linha.dataset.cardAcao));
+        if (acao) this.modalDesdobramento(acao.projeto_id, acao, acao.iniciativa_id);
+        return;
+      }
+      // O mesmo gesto da lista, e agora nos TRÊS níveis da tabela: o duplo
+      // clique que já abria a ação abre também a frente e o projeto. Meio
+      // gesto — duas linhas que abrem e uma que não — ensina que a tabela só
+      // às vezes edita, e manda a pessoa de volta para a lista.
+      // «Sem frente de trabalho» não abre nada: ela não é uma frente, é o
+      // lugar das ações que não têm nenhuma.
+      if (!App.podeEditar()) return;
+      const frente = ev.target.closest('[data-grupo-frente]');
+      if (frente) {
+        const iniId = Number(frente.dataset.grupoFrente);
+        const proj = projetos.find((x) => (x.iniciativas || []).some((i) => Number(i.id) === iniId));
+        const ini = (proj?.iniciativas || []).find((i) => Number(i.id) === iniId);
+        if (ini) this.modalIniciativa(proj.id, ini);
+        return;
+      }
+      const grupoProj = ev.target.closest('[data-grupo-proj]');
+      if (grupoProj) {
+        const proj = projetos.find((x) => Number(x.id) === Number(grupoProj.dataset.grupoProj));
+        if (proj) this.modalProjeto(proj, projetos);
+      }
     });
     el.querySelectorAll('[data-nivel]').forEach((b) =>
       b.addEventListener('click', () => this.aplicarNivel(b.dataset.nivel, projetos)));
@@ -1646,6 +1809,35 @@ const SecaoProjetos = {
     const selFiltro = el.querySelector('[data-filtro-status]');
     selFiltro?.addEventListener('change', () => {
       this.filtroStatus = selFiltro.value;
+      this.aplicarFiltro(el);
+    });
+    // As caixas de projeto filtram o DOM na hora, como os outros três: uma
+    // repintura aqui fecharia o menu no meio da escolha, que é exatamente o
+    // gesto de marcar o segundo projeto.
+    const botaoProjetos = el.querySelector('[data-filtro-projetos]');
+    const pintarRotuloProjetos = () => {
+      if (!botaoProjetos) return;
+      const rotulo = this.rotuloFiltroProjetos(projetos);
+      // `textContent`, e não `innerHTML`: o título do projeto é texto do
+      // usuário. A setinha do menu é `::after` da CSS e sobrevive à troca.
+      botaoProjetos.textContent = rotulo;
+      botaoProjetos.title = this.filtroProjetos.size
+        ? `Mostrando ${rotulo} — desmarque para ver todos`
+        : 'Mostra apenas os projetos marcados — nenhum marcado mostra todos';
+    };
+    el.querySelectorAll('[data-filtro-projeto]').forEach((caixa) => {
+      caixa.addEventListener('change', () => {
+        const id = Number(caixa.dataset.filtroProjeto);
+        if (caixa.checked) this.filtroProjetos.add(id);
+        else this.filtroProjetos.delete(id);
+        pintarRotuloProjetos();
+        this.aplicarFiltro(el);
+      });
+    });
+    el.querySelector('[data-limpar-projetos]')?.addEventListener('click', () => {
+      this.filtroProjetos.clear();
+      el.querySelectorAll('[data-filtro-projeto]').forEach((c) => { c.checked = false; });
+      pintarRotuloProjetos();
       this.aplicarFiltro(el);
     });
     this.aplicarFiltro(el);
