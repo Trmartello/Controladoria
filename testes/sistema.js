@@ -2089,6 +2089,15 @@ async function provasModosPlano(page, largura) {
         semNiveis: !document.querySelector('.niveis-visao'),
         ajustaveis: el.querySelectorAll('[data-progresso]').length,
         rolagemH: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        // Onde começa o número de cada nível. Os três têm de coincidir: é o
+        // que faz a coluna ser comparável de cima a baixo.
+        esquerdas: (() => {
+          const x = (sel) => {
+            const e = el.querySelector(sel);
+            return e ? Math.round(e.getBoundingClientRect().left) : null;
+          };
+          return { proj: x('tr.g-proj .pct-grupo'), frente: x('tr.g-frente .pct-grupo'), acao: x('tr.linha-5w2h .valor-progresso') };
+        })(),
       };
     }, prj);
     // CINCO perguntas, não sete: "Onde" e "Por quê" saíram do método em uso
@@ -2110,6 +2119,16 @@ async function provasModosPlano(page, largura) {
     // 2026-10-28): quem conduz a reunião por ela não deve trocar de modo para
     // mexer no número que a reunião mais mexe.
     t(`${l} o progresso é ajustável na tabela`, tab.ajustaveis >= 3, `${tab.ajustaveis}`);
+    // Pedido do cliente, 2026-10-28: o percentual do projeto e o da frente
+    // ficavam dentro da célula do título, que atravessa a tabela inteira —
+    // cada nível com o número num ponto diferente da largura. Dar largura
+    // própria a qualquer uma das três barras desalinha a coluna de novo, e
+    // nada quebra: por isso a prova mede, em vez de conferir uma classe.
+    const esq = tab.esquerdas;
+    t(`${l} os percentuais de projeto, frente e ação caem na mesma coluna`,
+      esq.proj !== null && esq.frente !== null && esq.acao !== null
+      && Math.abs(esq.proj - esq.acao) <= 1 && Math.abs(esq.frente - esq.acao) <= 1,
+      JSON.stringify(esq));
     t(`${l} a tabela não rola na horizontal`, !tab.rolagemH);
 
     // A pesquisa vale na tabela, e o grupo sem acerto some junto
