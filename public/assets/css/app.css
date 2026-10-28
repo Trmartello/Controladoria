@@ -3953,15 +3953,41 @@ body.menu-aberto .menu-lateral {
    ser visto sem roubar largura do texto, que é o que se lê. */
 .tabela-5w2h tr.linha-5w2h > td.col-oque { padding-left: 1.4rem; }
 .tabela-5w2h .grupo-celula { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
-/* A barra do grupo tem largura de LEITURA, não de preenchimento: esticada até
-   a borda ela competiria com as barras ajustáveis das ações, que são as únicas
-   que se arrastam. Mesma decisão do panorama da lista. */
-.tabela-5w2h .faixa-grupo { width: 6rem; flex: 0 0 auto; }
-.tabela-5w2h .pct-grupo { font-variant-numeric: tabular-nums; font-size: .78rem; }
-/* Na faixa do projeto o fundo é verde: a barra precisa de contraste próprio,
-   senão some. */
-.tabela-5w2h tr.g-proj .faixa-grupo { background: rgba(255, 255, 255, .28); }
-.tabela-5w2h tr.g-proj .faixa-grupo > span { background: #9fe3c0; }
+/* ── Uma só geometria para os três níveis ────────────────────────────────
+   Projeto, frente e ação mostram o percentual na MESMA célula (a última) e na
+   mesma posição dentro dela. É o que torna a coluna comparável de cima a
+   baixo — a leitura da reunião é "a frente está em 14% e esta ação em 35%", e
+   ela não se faz com os números em pontos diferentes da largura.
+
+   Por isso a medida da barra é ÚNICA e vale para as duas formas da célula da
+   ação: a arrastável e a de leitura (sem permissão, ou cancelada). Dar uma
+   largura própria a qualquer uma delas desalinha a coluna inteira, em
+   silêncio. */
+.tabela-5w2h .celula-progresso { display: flex; align-items: center; gap: .35rem; }
+.tabela-5w2h .celula-progresso > .faixa-progresso,
+.tabela-5w2h .celula-progresso > .faixa-verde { flex: 0 0 5.5rem; width: 5.5rem; min-width: 0; }
+.tabela-5w2h .celula-progresso > .valor-progresso,
+.tabela-5w2h .celula-progresso > .pct-grupo {
+  flex: 0 0 auto;
+  min-width: 2.6rem;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+/* O grupo mostra SÓ o número, sem barra (pedido do cliente, 2026-10-28): a do
+   grupo media uma MÉDIA, e duas barras empilhadas na mesma coluna — uma de
+   média, outra do valor de uma ação — se leem como a mesma grandeza. O número
+   maior é o que dá o destaque que a barra tentava dar.
+
+   O recuo é o que o mantém na coluna: ele ocupa a largura que a barra ocuparia
+   (5,5rem) mais o respiro (0,35rem), e por isso continua começando no mesmo
+   ponto que o percentual da ação, logo abaixo. Mexer numa das duas medidas sem
+   mexer na outra desalinha a coluna — a prova da bateria mede justamente
+   isso. */
+.tabela-5w2h .celula-progresso > .pct-grupo {
+  margin-left: calc(5.5rem + .35rem);
+  font-size: .95rem;
+  font-weight: 700;
+}
 /* `nome-grupo`, e não `grupo-titulo`: aquele nome JÁ EXISTE neste arquivo, na
    caixa de agrupamento da Coleta, e vem com cor própria e borda inferior. A
    tabela herdava os dois sem pedir — o título saía verde-escuro sobre a faixa
@@ -3981,12 +4007,11 @@ body.menu-aberto .menu-lateral {
   white-space: nowrap;
 }
 .tabela-5w2h .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.tabela-5w2h .num .faixa-progresso { display: inline-block; width: 4rem; vertical-align: middle; }
 /* A barra ajustável precisa de largura para ser arrastável com precisão: a de
-   leitura tinha 4rem, que basta para ler e não para mirar. */
+   leitura tinha 4rem, que basta para ler e não para mirar. Hoje a largura é a
+   mesma para todas (ver `celula-progresso` acima); aqui só se garante que a
+   coluna não encolha abaixo dela. */
 .tabela-5w2h td.col-progresso { min-width: 9.5rem; }
-.tabela-5w2h td.col-progresso .faixa-verde { width: 5.5rem; vertical-align: middle; }
-.tabela-5w2h td.col-progresso .valor-progresso { margin-left: .35rem; }
 .tabela-5w2h .clipe-5w2h { font-size: .72rem; color: #5a6a61; white-space: nowrap; }
 @media (min-width: 992px) {
   .caixa-tabela-5w2h { overflow: visible; }

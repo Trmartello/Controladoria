@@ -694,20 +694,29 @@ const SecaoProjetos = {
     const corpo = projetos.map((p) => {
       const acoes = p.desdobramentos || [];
       const porFrente = new Map((p.iniciativas || []).map((i) => [Number(i.id), i]));
-      // A barra do grupo é a MESMA leitura da lista: percorrer o plano é ver o
-      // quanto cada projeto e cada frente andaram, não só quantas ações têm.
-      // Sem ela a tabela obrigava a somar as linhas com o olho.
+      // O grupo mostra o quanto o projeto e a frente andaram — sem ela a tabela
+      // obrigava a somar as linhas com o olho —, e mostra isso NA MESMA CÉLULA
+      // das ações, a última (pedido do cliente, 2026-10-28). Antes o número
+      // vinha logo depois do título, dentro de uma célula que atravessava a
+      // tabela inteira: cada nível o exibia num ponto diferente da largura, e
+      // comparar frente com ação, que é a leitura da reunião, obrigava a
+      // procurá-lo em três lugares. As colunas do meio ficam vagas no grupo,
+      // que é o que elas são — projeto e frente não têm "como" nem "quem".
+      //
+      // SÓ o número, sem barra (mesmo pedido): a barra ali media uma MÉDIA, e
+      // duas barras empilhadas na mesma coluna — uma de média, outra do valor
+      // de uma ação — se leem como a mesma grandeza. O número maior é o que dá
+      // o destaque que a barra tentava dar.
       const linhaGrupo = (classe, marca, titulo, lista, chave, extra = '') => {
         const media = this.mediaProgresso(lista);
         return `
         <tr class="${classe}" ${marca}>
-          <td colspan="7"><span class="grupo-celula">
+          <td colspan="6"><span class="grupo-celula">
             <span class="nome-grupo">${Modal.esc(titulo)}</span>
             <span class="badge text-bg-light border">${this.contaAcoes(lista.length)}</span>
-            <span class="faixa-progresso faixa-grupo"><span style="width:${media}%"
-              data-barra-grupo="${chave}"></span></span>
-            <span class="pct-grupo" data-media-grupo="${chave}">${media}%</span>
             ${this.resumoStatus(lista, ['ATRASADO'])}${extra}</span></td>
+          <td class="num col-progresso"><span class="celula-progresso">
+            <span class="pct-grupo" data-media-grupo="${chave}">${media}%</span></span></td>
         </tr>`;
       };
       const linhas = (lista) => lista.map((a) => this.linhaTabela(a)).join('');
@@ -771,7 +780,7 @@ const SecaoProjetos = {
            lembra ao reescrever — chegar a
            100% conclui sem perguntar, e sair de 100% abre o pop-up que pergunta
            em que situação a ação fica. -->
-      <td class="num col-progresso">${App.podeEditar() && !cancelada ? `
+      <td class="num col-progresso"><span class="celula-progresso">${App.podeEditar() && !cancelada ? `
         <input type="range" class="faixa-verde" min="0" max="100" step="5"
           style="--pct:${pct}%" value="${pct}"
           data-progresso="${a.id}" data-proj="${a.projeto_id}"
@@ -779,7 +788,8 @@ const SecaoProjetos = {
         <span class="valor-progresso" data-rotulo="${a.id}">${pct}%</span>`
     : `<span class="faixa-progresso ${cancelada ? 'inativa' : ''}"
           title="${cancelada ? 'Ação cancelada — sem progresso e fora da média' : `${pct}%`}"><span
-          style="width:${pct}%"></span></span> ${pct}%`}</td>
+          style="width:${pct}%"></span></span>
+        <span class="valor-progresso ${cancelada ? 'inativo' : ''}">${pct}%</span>`}</span></td>
     </tr>`;
   },
 
@@ -1961,9 +1971,7 @@ const SecaoProjetos = {
     acumulado.forEach(({ soma, n }, chave) => {
       const media = n ? Math.round(soma / n) : 0;
       const num = tabela.querySelector(`[data-media-grupo="${chave}"]`);
-      const barra = tabela.querySelector(`[data-barra-grupo="${chave}"]`);
       if (num) num.textContent = `${media}%`;
-      if (barra) barra.style.width = `${media}%`;
     });
   },
 
