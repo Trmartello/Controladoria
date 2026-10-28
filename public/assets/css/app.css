@@ -3954,14 +3954,14 @@ body.menu-aberto .menu-lateral {
 .tabela-5w2h tr.linha-5w2h > td.col-oque { padding-left: 1.4rem; }
 .tabela-5w2h .grupo-celula { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 /* ── Uma só geometria para os três níveis ────────────────────────────────
-   Projeto, frente e ação mostram o percentual na MESMA célula (a última) e na
-   mesma posição dentro dela. É o que torna a coluna comparável de cima a
-   baixo — a leitura da reunião é "a frente está em 14% e esta ação em 35%", e
-   ela não se faz com os números em pontos diferentes da largura.
+   Projeto, frente e ação mostram o percentual na MESMA célula (a última, sob
+   "Progresso"). É o que torna a coluna comparável de cima a baixo — a leitura
+   da reunião é "a frente está em 14% e esta ação em 35%", e ela não se faz com
+   os números espalhados por colunas diferentes.
 
-   Por isso a medida da barra é ÚNICA e vale para as duas formas da célula da
-   ação: a arrastável e a de leitura (sem permissão, ou cancelada). Dar uma
-   largura própria a qualquer uma delas desalinha a coluna inteira, em
+   A medida da barra é ÚNICA e vale para as duas formas da célula da ação: a
+   arrastável e a de leitura (sem permissão, ou cancelada). Dar uma largura
+   própria a qualquer uma delas desalinha os números das ações entre si, em
    silêncio. */
 .tabela-5w2h .celula-progresso { display: flex; align-items: center; gap: .35rem; }
 .tabela-5w2h .celula-progresso > .faixa-progresso,
@@ -3978,13 +3978,22 @@ body.menu-aberto .menu-lateral {
    média, outra do valor de uma ação — se leem como a mesma grandeza. O número
    maior é o que dá o destaque que a barra tentava dar.
 
-   O recuo é o que o mantém na coluna: ele ocupa a largura que a barra ocuparia
-   (5,5rem) mais o respiro (0,35rem), e por isso continua começando no mesmo
-   ponto que o percentual da ação, logo abaixo. Mexer numa das duas medidas sem
-   mexer na outra desalinha a coluna — a prova da bateria mede justamente
-   isso. */
+   E o número do grupo fica CENTRADO na coluna (segundo pedido do mesmo dia,
+   depois de ver a tela). Antes ele recuava a largura exata da barra da ação
+   (5,5rem + 0,35rem de respiro) para começar no mesmo ponto que o percentual
+   dela; assim o total ficava encostado no canto esquerdo do que lhe sobra da
+   coluna e se lia como mais uma linha de ação. Centrado, o total de frente e
+   de projeto se lê como o número DO GRUPO.
+   As duas posições são excludentes: centrar o total é desistir de alinhá-lo
+   com o número da ação, que vem depois de uma barra de 5,5rem. A escolha é do
+   cliente — e é por isso que a prova da bateria passou a medir a CENTRAGEM,
+   não mais a coincidência com a ação.
+   Centra-se por `margin: 0 auto` no item de flex, e não por `justify-content`
+   na célula: a célula é a mesma da ação, e centrar o conteúdo dela empurraria
+   também a barra arrastável. */
 .tabela-5w2h .celula-progresso > .pct-grupo {
-  margin-left: calc(5.5rem + .35rem);
+  margin: 0 auto;
+  text-align: center;
   font-size: .95rem;
   font-weight: 700;
 }
