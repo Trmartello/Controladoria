@@ -694,27 +694,37 @@ const SecaoProjetos = {
     const corpo = projetos.map((p) => {
       const acoes = p.desdobramentos || [];
       const porFrente = new Map((p.iniciativas || []).map((i) => [Number(i.id), i]));
-      const linhaGrupo = (classe, marca, titulo, lista, extra = '') => `
+      // A barra do grupo é a MESMA leitura da lista: percorrer o plano é ver o
+      // quanto cada projeto e cada frente andaram, não só quantas ações têm.
+      // Sem ela a tabela obrigava a somar as linhas com o olho.
+      const linhaGrupo = (classe, marca, titulo, lista, chave, extra = '') => {
+        const media = this.mediaProgresso(lista);
+        return `
         <tr class="${classe}" ${marca}>
           <td colspan="7"><span class="grupo-celula">
-            <span class="grupo-titulo">${Modal.esc(titulo)}</span>
+            <span class="nome-grupo">${Modal.esc(titulo)}</span>
             <span class="badge text-bg-light border">${this.contaAcoes(lista.length)}</span>
+            <span class="faixa-progresso faixa-grupo"><span style="width:${media}%"
+              data-barra-grupo="${chave}"></span></span>
+            <span class="pct-grupo" data-media-grupo="${chave}">${media}%</span>
             ${this.resumoStatus(lista, ['ATRASADO'])}${extra}</span></td>
         </tr>`;
+      };
       const linhas = (lista) => lista.map((a) => this.linhaTabela(a)).join('');
       const frentes = (p.iniciativas || []).map((ini) => {
         const suas = ini.acoes || [];
-        return linhaGrupo('g-frente', `data-grupo-frente="${ini.id}"`, ini.titulo, suas)
-          + linhas(suas);
+        return linhaGrupo('g-frente', `data-grupo-frente="${ini.id}"`, ini.titulo, suas,
+          `FRENTE:${ini.id}`) + linhas(suas);
       }).join('');
       // Ação sem frente existe no banco (`iniciativa_id` é anulável) e sumiria
       // da tabela se ela lesse só as listas aninhadas.
       const orfas = acoes.filter((a) => !a.iniciativa_id);
-      return linhaGrupo('g-proj', `data-grupo-proj="${p.id}"`, p.titulo, acoes,
+      return linhaGrupo('g-proj', `data-grupo-proj="${p.id}"`, p.titulo, acoes, `PROJETO:${p.id}`,
         p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning">Prioritário</span>' : '')
         + frentes
         + (orfas.length
-          ? linhaGrupo('g-frente', 'data-sem-frente', 'Sem frente de trabalho', orfas) + linhas(orfas)
+          ? linhaGrupo('g-frente', 'data-sem-frente', 'Sem frente de trabalho', orfas, `ORFAS:${p.id}`)
+            + linhas(orfas)
           : '');
     }).join('');
 
@@ -751,9 +761,25 @@ const SecaoProjetos = {
     : '<span class="selo-sem-usuario" title="Ninguém responde por esta ação: ela não entra em cobrança nenhuma">Sem usuário</span>'}</td>
       <td class="num">${prazo ? Modal.esc(prazo) : '—'}</td>
       <td class="num">${ganhos}</td>
-      <td class="num"><span class="faixa-progresso ${cancelada ? 'inativa' : ''}"
-        title="${cancelada ? 'Ação cancelada — sem progresso e fora da média' : `${pct}%`}"><span
-        style="width:${pct}%"></span></span> ${pct}%</td>
+      <!-- O percentual se ajusta AQUI (pedido do cliente, 2026-10-28). Era
+           leitura: a barra arrastável tinha ficado só na lista, para não
+           convidar ao arraste enquanto se lê uma tabela densa. Quem conduz a
+           reunião pela tabela precisava trocar de modo a cada ação para mexer
+           num número — e era o número que a reunião mais mexe.
+           É o MESMO controle da lista, com os mesmos marcadores de dados: o
+           ligador é um só, e com ele vêm de graça as duas regras que ninguém
+           lembra ao reescrever — chegar a
+           100% conclui sem perguntar, e sair de 100% abre o pop-up que pergunta
+           em que situação a ação fica. -->
+      <td class="num col-progresso">${App.podeEditar() && !cancelada ? `
+        <input type="range" class="faixa-verde" min="0" max="100" step="5"
+          style="--pct:${pct}%" value="${pct}"
+          data-progresso="${a.id}" data-proj="${a.projeto_id}"
+          title="Arraste para ajustar o progresso" aria-label="Progresso da ação">
+        <span class="valor-progresso" data-rotulo="${a.id}">${pct}%</span>`
+    : `<span class="faixa-progresso ${cancelada ? 'inativa' : ''}"
+          title="${cancelada ? 'Ação cancelada — sem progresso e fora da média' : `${pct}%`}"><span
+          style="width:${pct}%"></span></span> ${pct}%`}</td>
     </tr>`;
   },
 
@@ -821,7 +847,7 @@ const SecaoProjetos = {
     return `<article class="ficha-quadro" data-card-acao="${a.id}"
       data-cadeado="desdobramento:${a.id}" data-status="${a.status}"
       data-quem="${Modal.esc(this.chaveQuem(a))}"
-      ${podeArrastar ? 'draggable="true"' : ''} tabindex="0">
+      ${podeArrastar ? 'data-arrastavel-quadro' : ''} tabindex="0">
       <span class="etiqueta-quadro">${Modal.esc(p.titulo)}${f ? ` › ${Modal.esc(f.titulo)}` : ''}</span>
       <span class="oque-quadro">${Modal.esc(a.o_que)}</span>
       <span class="rodape-quadro">
@@ -881,41 +907,180 @@ const SecaoProjetos = {
    */
   ligarQuadro(el, projetos) {
     if (!App.podeEditar()) return;
-    el.querySelectorAll('.ficha-quadro[draggable="true"]').forEach((ficha) => {
-      ficha.addEventListener('dragstart', (ev) => {
-        ev.dataTransfer.setData('text/plain', ficha.dataset.cardAcao);
-        ev.dataTransfer.effectAllowed = 'move';
-        ficha.classList.add('arrastando');
+    const quadro = el.querySelector('.quadro-situacao');
+    if (!quadro) return;
+
+    el.querySelectorAll('.ficha-quadro[data-arrastavel-quadro]').forEach((ficha) => {
+      ficha.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== undefined && ev.button !== 0) return;
+        if (ev.target.closest('button, a, input, select, textarea, label')) return;
+
+        const origem = { x: ev.clientX, y: ev.clientY };
+        let ultimo = { x: ev.clientX, y: ev.clientY };
+        let arrastando = false;
+        let colAtual = null;
+        let quadroAnim = null;
+        /* O gesto é o mesmo no mouse e no dedo: passou de 8px, é arraste.
+         *
+         * Quem divide o trabalho com o navegador é o `touch-action: pan-y` da
+         * ficha (no CSS): o movimento VERTICAL continua sendo do navegador — a
+         * página rola normalmente com o dedo sobre uma ficha —, e o
+         * HORIZONTAL, que é o que move ficha entre colunas, chega aqui. Essa
+         * divisão precisa estar no CSS desde o começo: `touch-action` é lido
+         * quando o gesto nasce, e apertá-lo depois não vale para o gesto em
+         * curso. Foi o que se tentou antes, com um toque longo que mudava a
+         * propriedade na hora: no dedo de verdade o navegador já teria levado
+         * o gesto embora.
+         *
+         * Rolar o quadro de lado com o dedo continua existindo: o deslize no
+         * fundo da coluna e no cabeçalho dela não passa por aqui. E, durante
+         * o arraste, a borda puxa o quadro sozinha.
+         *
+         * Nada de `setPointerCapture`: os ouvintes vivem no `document`, que
+         * recebe o movimento de qualquer jeito, e a captura numa ficha com
+         * `pointer-events: none` faz o navegador parar de entregar os eventos
+         * — o arraste morria no primeiro movimento, e só no mouse.
+         */
+        const comecar = () => {
+          if (arrastando) return;
+          arrastando = true;
+          ficha.classList.add('arrastando');
+          document.body.classList.add('arrastando-ficha');
+          quadroAnim = requestAnimationFrame(rolar);
+          atualizarAlvo(ultimo.x, ultimo.y);
+        };
+
+        const limparRealce = () => colAtual?.classList.remove('alvo');
+
+        const atualizarAlvo = (x, y) => {
+          // A ficha arrastada fica `pointer-events: none` pelo CSS, então o
+          // ponto devolve o que está DEBAIXO dela — sem isso o alvo seria
+          // sempre ela mesma.
+          const sob = document.elementFromPoint(x, y);
+          const col = sob?.closest('[data-aceita-ficha]') || null;
+          if (col !== colAtual) limparRealce();
+          colAtual = col;
+          colAtual?.classList.add('alvo');
+        };
+
+        /**
+         * Rolagem automática perto das bordas, nos DOIS eixos.
+         *
+         * A horizontal é a que o quadro exige e a nuvem não precisava: no
+         * celular as colunas são mais largas que a tela, e sem isto só daria
+         * para soltar a ficha na coluna vizinha — o atraso nunca alcançaria o
+         * concluído, que está do outro lado.
+         */
+        const rolar = () => {
+          const margem = 80;
+          const passo = 16;
+          const caixa = quadro.getBoundingClientRect();
+          let dx = 0;
+          if (ultimo.x < caixa.left + margem) {
+            dx = -passo * (1 - Math.max(0, ultimo.x - caixa.left) / margem);
+          } else if (ultimo.x > caixa.right - margem) {
+            dx = passo * (1 - Math.max(0, caixa.right - ultimo.x) / margem);
+          }
+          if (dx) quadro.scrollLeft += dx;
+
+          let dy = 0;
+          const alt = window.innerHeight;
+          if (ultimo.y < margem) dy = -passo * (1 - ultimo.y / margem);
+          else if (ultimo.y > alt - margem) dy = passo * (1 - (alt - ultimo.y) / margem);
+          if (dy) window.scrollBy(0, dy);
+
+          if (dx || dy) atualizarAlvo(ultimo.x, ultimo.y);
+          quadroAnim = requestAnimationFrame(rolar);
+        };
+
+        const mover = (e) => {
+          const dist = Math.hypot(e.clientX - origem.x, e.clientY - origem.y);
+          if (!arrastando) {
+            if (dist < 8) return;
+            comecar();
+          }
+          e.preventDefault();
+          ultimo = { x: e.clientX, y: e.clientY };
+          atualizarAlvo(e.clientX, e.clientY);
+        };
+
+        const encerrar = () => {
+          document.removeEventListener('pointermove', mover);
+          document.removeEventListener('pointerup', soltar);
+          document.removeEventListener('pointercancel', encerrar);
+          if (quadroAnim) cancelAnimationFrame(quadroAnim);
+          ficha.classList.remove('arrastando');
+          document.body.classList.remove('arrastando-ficha');
+          limparRealce();
+        };
+
+        const soltar = async () => {
+          const col = colAtual;
+          const valeu = arrastando;
+          encerrar();
+          // Arrastar e soltar engole o clique que o navegador dispara em
+          // seguida: sem isto, largar a ficha no mesmo lugar abriria a ação.
+          if (valeu) {
+            ficha.dataset.arrastou = '1';
+            setTimeout(() => { delete ficha.dataset.arrastou; }, 60);
+          }
+          if (!valeu || !col) return;
+          const id = Number(ficha.dataset.cardAcao);
+          const acao = projetos.flatMap((p) => p.desdobramentos || [])
+            .find((a) => Number(a.id) === id);
+          // Devolver à mesma coluna não é operação: nada mudou, e um pedido ao
+          // servidor aqui só gastaria uma recarga.
+          if (!acao || acao.status === col.dataset.coluna) return;
+          try {
+            const resp = await App.api(`/api/desdobramentos/${id}/progresso`, {
+              planejamento_id: this.plan.id,
+              progresso: Number(acao.progresso) || 0,
+              status: col.dataset.coluna,
+            });
+            this.avisarReagendamento(resp);
+          } catch (e) {
+            alert(e.message);
+          }
+          this.carregar();
+        };
+
+        document.addEventListener('pointermove', mover);
+        document.addEventListener('pointerup', soltar);
+        document.addEventListener('pointercancel', encerrar);
       });
-      ficha.addEventListener('dragend', () => ficha.classList.remove('arrastando'));
     });
-    el.querySelectorAll('[data-aceita-ficha]').forEach((col) => {
-      col.addEventListener('dragover', (ev) => {
-        ev.preventDefault();
-        ev.dataTransfer.dropEffect = 'move';
-        col.classList.add('alvo');
-      });
-      col.addEventListener('dragleave', () => col.classList.remove('alvo'));
-      col.addEventListener('drop', async (ev) => {
-        ev.preventDefault();
-        col.classList.remove('alvo');
-        const id = Number(ev.dataTransfer.getData('text/plain'));
-        const acao = projetos.flatMap((p) => p.desdobramentos || [])
-          .find((a) => Number(a.id) === id);
-        if (!acao || acao.status === col.dataset.coluna) return;
-        try {
-          const resp = await App.api(`/api/desdobramentos/${id}/progresso`, {
-            planejamento_id: this.plan.id,
-            progresso: Number(acao.progresso) || 0,
-            status: col.dataset.coluna,
-          });
-          this.avisarReagendamento(resp);
-        } catch (e) {
-          alert(e.message);
-        }
-        this.carregar();
-      });
-    });
+  },
+
+  /**
+   * A altura real do cabeçalho da tabela, para a faixa do projeto grudar
+   * exatamente embaixo dele.
+   *
+   * Medida, e não adivinhada: o `thead` cresce com a fonte do sistema, com o
+   * zoom do navegador e com qualquer coluna cujo rótulo quebre em duas linhas.
+   * Com um valor fixo, a diferença vira fresta — e pela fresta passa a metade
+   * de cima da linha que está rolando, encostada na faixa verde. É o mesmo
+   * cuidado que `Diag.ligarCabecalhoFixo` tem com o cabeçalho da seção.
+   *
+   * O observador é trocado a cada pintura: a tabela anterior já saiu do
+   * documento, e observá-la seria medir o que ninguém vê.
+   */
+  observadorThead: null,
+
+  medirCabecalhoTabela(el) {
+    this.observadorThead?.disconnect();
+    this.observadorThead = null;
+    const tabela = el.querySelector('.tabela-5w2h');
+    const thead = tabela?.querySelector('thead');
+    if (!thead) return;
+    const medir = () => {
+      const h = Math.round(thead.getBoundingClientRect().height);
+      // Zero é tabela escondida (outro modo, outra seção): guardar zero faria
+      // a faixa grudar por cima do cabeçalho na volta.
+      if (h) tabela.style.setProperty('--altura-thead', `${h}px`);
+    };
+    medir();
+    this.observadorThead = new ResizeObserver(medir);
+    this.observadorThead.observe(thead);
   },
 
   /** A pesquisa na tabela: esconde linhas, e o grupo que ficou sem nenhuma. */
@@ -939,14 +1104,14 @@ const SecaoProjetos = {
         fecharFrente(); fecharProj();
         grupoProj = tr; temProj = false;
         grupoFrente = null; temFrente = false;
-        tituloProj = this.normalizar(tr.querySelector('.grupo-titulo')?.textContent || '');
+        tituloProj = this.normalizar(tr.querySelector('.nome-grupo')?.textContent || '');
         tituloIni = '';
         return;
       }
       if (tr.classList.contains('g-frente')) {
         fecharFrente();
         grupoFrente = tr; temFrente = false;
-        tituloIni = this.normalizar(tr.querySelector('.grupo-titulo')?.textContent || '');
+        tituloIni = this.normalizar(tr.querySelector('.nome-grupo')?.textContent || '');
         return;
       }
       const bate = this.acaoBate(c, {
@@ -959,6 +1124,19 @@ const SecaoProjetos = {
     });
     fecharFrente(); fecharProj();
     el.querySelector('[data-filtro-vazio]')?.classList.toggle('d-none', !c.ativo || algum);
+  },
+
+  /**
+   * A média de progresso de um conjunto de ações.
+   *
+   * MESMA regra do `panorama` da lista: `CANCELADO` fica fora do numerador e
+   * também do denominador. Uma ação cancelada puxando a média para baixo diria
+   * que a frente anda mal por causa de trabalho que ninguém vai fazer.
+   */
+  mediaProgresso(acoes) {
+    const valem = (acoes || []).filter((a) => a.status !== 'CANCELADO');
+    if (!valem.length) return 0;
+    return Math.round(valem.reduce((t, a) => t + (Number(a.progresso) || 0), 0) / valem.length);
   },
 
   // "ação(ões)" é como se escreve em formulário, não em tela. Com número à
@@ -1415,7 +1593,7 @@ const SecaoProjetos = {
     // Duplo clique na ficha do quadro abre a ação, como na lista e na tabela.
     el.querySelector('.quadro-situacao')?.addEventListener('dblclick', (ev) => {
       const ficha = ev.target.closest('[data-card-acao]');
-      if (!ficha) return;
+      if (!ficha || ficha.dataset.arrastou) return;
       window.getSelection?.()?.removeAllRanges();
       const acao = projetos.flatMap((x) => x.desdobramentos || [])
         .find((a) => Number(a.id) === Number(ficha.dataset.cardAcao));
@@ -1484,6 +1662,7 @@ const SecaoProjetos = {
     // porque o bloco quebra em duas ou três linhas conforme a largura. Um
     // palpite em `rem` curto demais deixaria um cabeçalho por cima do outro.
     Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos');
+    this.medirCabecalhoTabela(el);
     this.medirCabecalhosProjeto(el);
     this.ligarPopoversResumo(el, conteudos);
     this.aplicarDestaqueAcao(el);
@@ -1735,7 +1914,62 @@ const SecaoProjetos = {
    * não tem barra com `data-progresso` (o cartão dela desenha uma faixa
    * inativa), então fica de fora daqui pelo mesmo caminho de `panorama`.
    */
+  /**
+   * Refaz as médias das linhas de grupo da TABELA depois de um ajuste.
+   *
+   * Na lista as barras do projeto e da frente são ANCESTRAIS da ação, e um
+   * `closest` resolve. Na tabela não há aninhamento: grupo e ação são linhas
+   * irmãs, e quem diz a quem cada ação pertence é a ORDEM. Por isso a conta é
+   * uma varredura só, de cima para baixo, acumulando no grupo aberto.
+   *
+   * Lê o que está na TELA (os controles), não os dados da carga: é a ação
+   * recém-arrastada que precisa entrar na conta. Ação cancelada não tem
+   * controle — e é assim que ela fica fora da média, pelo mesmo caminho do
+   * `mediaProgresso`.
+   */
+  atualizarMediasTabela(el) {
+    const tabela = el.querySelector('.tabela-5w2h');
+    if (!tabela) return;
+    const acumulado = new Map();
+    let proj = null;
+    let frente = null;
+    const somar = (chave, valor) => {
+      if (!chave) return;
+      const atual = acumulado.get(chave) || { soma: 0, n: 0 };
+      atual.soma += valor;
+      atual.n += 1;
+      acumulado.set(chave, atual);
+    };
+    tabela.querySelectorAll('tbody tr').forEach((tr) => {
+      if (tr.classList.contains('g-proj')) {
+        proj = `PROJETO:${tr.dataset.grupoProj}`;
+        frente = null;
+        acumulado.set(proj, { soma: 0, n: 0 });
+        return;
+      }
+      if (tr.classList.contains('g-frente')) {
+        frente = tr.dataset.grupoFrente ? `FRENTE:${tr.dataset.grupoFrente}` : `ORFAS:${proj}`;
+        acumulado.set(frente, { soma: 0, n: 0 });
+        return;
+      }
+      const campo = tr.querySelector('[data-progresso]');
+      if (!campo) return;
+      const v = Number(campo.value);
+      somar(frente, v);
+      somar(proj, v);
+    });
+    acumulado.forEach(({ soma, n }, chave) => {
+      const media = n ? Math.round(soma / n) : 0;
+      const num = tabela.querySelector(`[data-media-grupo="${chave}"]`);
+      const barra = tabela.querySelector(`[data-barra-grupo="${chave}"]`);
+      if (num) num.textContent = `${media}%`;
+      if (barra) barra.style.width = `${media}%`;
+    });
+  },
+
   atualizarMedias(el, barra) {
+    // Na tabela os grupos não são ancestrais da ação: a conta é outra.
+    if (this.modoAtual() === 'TABELA') { this.atualizarMediasTabela(el); return; }
     const niveis = [
       [barra.closest('[data-iniciativa]'), '[data-media-ini]', '[data-barra-ini]'],
       [barra.closest('[data-projeto]'), '[data-media-projeto]', '[data-barra-projeto]'],

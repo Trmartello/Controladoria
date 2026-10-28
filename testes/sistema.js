@@ -2082,11 +2082,12 @@ async function provasModosPlano(page, largura) {
       return {
         colunas: [...el.querySelectorAll('thead th')].map((x) => x.textContent.trim()),
         linhas: vis(`tbody tr[data-card-acao]`).length,
-        grupos: vis('tr.g-frente .grupo-titulo').map((x) => x.textContent.trim()),
+        grupos: vis('tr.g-frente .nome-grupo').map((x) => x.textContent.trim()),
         cadeados: el.querySelectorAll('[data-cadeado^="desdobramento:"]').length,
         ganhos: [...el.querySelectorAll('tbody tr[data-card-acao]')]
           .map((tr) => tr.children[5].textContent.trim()),
         semNiveis: !document.querySelector('.niveis-visao'),
+        ajustaveis: el.querySelectorAll('[data-progresso]').length,
         rolagemH: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       };
     }, prj);
@@ -2105,6 +2106,10 @@ async function provasModosPlano(page, largura) {
     t(`${l} os ganhos saem com os dois centavos`,
       tab.ganhos.includes('R$ 1.500,50'), JSON.stringify(tab.ganhos));
     t(`${l} os níveis de recolhimento somem fora da lista`, tab.semNiveis);
+    // O percentual se ajusta na própria tabela (pedido do cliente,
+    // 2026-10-28): quem conduz a reunião por ela não deve trocar de modo para
+    // mexer no número que a reunião mais mexe.
+    t(`${l} o progresso é ajustável na tabela`, tab.ajustaveis >= 3, `${tab.ajustaveis}`);
     t(`${l} a tabela não rola na horizontal`, !tab.rolagemH);
 
     // A pesquisa vale na tabela, e o grupo sem acerto some junto
@@ -2119,7 +2124,7 @@ async function provasModosPlano(page, largura) {
       return {
         linhas: vis('.tabela-5w2h tbody tr[data-card-acao]')
           .map((x) => x.querySelector('.col-oque').textContent.trim().split('\n')[0]),
-        frentes: vis('.tabela-5w2h tr.g-frente').map((x) => x.querySelector('.grupo-titulo').textContent.trim()),
+        frentes: vis('.tabela-5w2h tr.g-frente').map((x) => x.querySelector('.nome-grupo').textContent.trim()),
       };
     });
     t(`${l} a pesquisa filtra a tabela`, f.linhas.length === 1 && /gama/.test(f.linhas[0]),
@@ -2146,6 +2151,8 @@ async function provasModosPlano(page, largura) {
         recusam: cols.filter((c) => !c.hasAttribute('data-aceita-ficha')).map((c) => c.dataset.coluna),
         temDica: cols.filter((c) => c.querySelector('.dica-automatica')).map((c) => c.dataset.coluna),
         cadeados: document.querySelectorAll('.ficha-quadro[data-cadeado^="desdobramento:"]').length,
+        porPonteiro: document.querySelectorAll('.ficha-quadro[data-arrastavel-quadro]').length,
+        comDraggable: document.querySelectorAll('.ficha-quadro[draggable]').length,
         etiquetas: [...document.querySelectorAll('.etiqueta-quadro')].map((x) => x.textContent.trim()),
       };
     });
@@ -2164,38 +2171,89 @@ async function provasModosPlano(page, largura) {
     t(`${l} e dizem por quê`, q.temDica.includes('ATRASADO') && q.temDica.includes('NAO_INICIADO'),
       JSON.stringify(q.temDica));
     t(`${l} a ficha leva o marcador do cadeado`, q.cadeados >= 3, `${q.cadeados}`);
+    // O arraste é de PONTEIRO, não a API de arrastar do HTML — que não existe
+    // no toque. Um `draggable` de volta aqui mataria o arraste no celular sem
+    // quebrar nada no computador, e ninguém notaria até alguém reclamar.
+    t(`${l} a ficha arrasta por ponteiro, não pela API do HTML`,
+      q.porPonteiro >= 3 && q.comDraggable === 0,
+      JSON.stringify({ porPonteiro: q.porPonteiro, comDraggable: q.comDraggable }));
     // A ficha perde a estrutura da lista, e por isso carrega a etiqueta: sem
     // ela, "Revisar contrato" não diz de qual projeto é.
     t(`${l} a ficha diz de que projeto e frente ela é`,
       q.etiquetas.every((x) => x.includes('›')) && q.etiquetas.some((x) => /Projeto modos/.test(x)),
       JSON.stringify(q.etiquetas.slice(0, 2)));
 
-    // Soltar numa coluna MANUAL grava; os eventos são disparados à mão porque
-    // o arraste nativo do Chromium headless não é confiável — e o que importa
-    // aqui é o manipulador do `drop`, não a emulação de ponteiro.
-    const arrastar = (de, para) => page.evaluate(([a, b]) => {
-      const ficha = document.querySelector(`.coluna-quadro[data-coluna="${a}"] .ficha-quadro`);
-      const alvo = document.querySelector(`.coluna-quadro[data-coluna="${b}"]`);
-      if (!ficha || !alvo) return false;
-      const dt = new DataTransfer();
-      ficha.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
-      alvo.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt, cancelable: true }));
+    // O arraste é de PONTEIRO (não a API de arrastar do HTML, que não existe
+    // no toque), e por isso a prova usa o mouse de verdade do Playwright: ele
+    // gera `pointerdown/move/up` como um dedo ou um mouse real geram. Mover em
+    // DOIS passos não é zelo — o primeiro passa do limiar de 8px que separa o
+    // toque do arraste, e sem ele o gesto nunca começa.
+    const arrastar = async (de, para) => {
+      const origem = await page.$(`.coluna-quadro[data-coluna="${de}"] .ficha-quadro`);
+      const alvo = await page.$(`.coluna-quadro[data-coluna="${para}"]`);
+      if (!origem || !alvo) return false;
+      const a = await origem.boundingBox();
+      const b = await alvo.boundingBox();
+      if (!a || !b) return false;
+      await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(a.x + a.width / 2 + 20, a.y + a.height / 2 + 20);
+      await page.mouse.move(b.x + b.width / 2, b.y + 60);
+      await page.mouse.up();
       return true;
-    }, [de, para]);
+    };
     const contar = (col) => page.evaluate((c) =>
       document.querySelectorAll(`.coluna-quadro[data-coluna="${c}"] .ficha-quadro`).length, col);
 
-    await arrastar('EM_ANDAMENTO', 'PAUSADO');
-    await new Promise((r) => setTimeout(r, 1500));
-    t(`${l} arrastar entre colunas manuais troca a situação`,
-      (await contar('PAUSADO')) > 0, `pausada: ${await contar('PAUSADO')}`);
+    if (largura === 'desktop') {
+      // Só no computador as duas colunas cabem na tela ao mesmo tempo. No
+      // celular a de destino está FORA dela, e um arraste direto miraria uma
+      // coordenada que não existe — o que a largura estreita exige é a
+      // rolagem automática, provada logo abaixo.
+      await arrastar('EM_ANDAMENTO', 'PAUSADO');
+      await new Promise((r) => setTimeout(r, 1500));
+      t(`${l} arrastar entre colunas manuais troca a situação`,
+        (await contar('PAUSADO')) > 0, `pausada: ${await contar('PAUSADO')}`);
 
-    const antesAuto = await contar('ATRASADO');
-    await arrastar('PAUSADO', 'ATRASADO');
-    await new Promise((r) => setTimeout(r, 1200));
-    t(`${l} soltar numa coluna automática não grava nada`,
-      (await contar('ATRASADO')) === antesAuto,
-      `${antesAuto} → ${await contar('ATRASADO')}`);
+      const antesAuto = await contar('ATRASADO');
+      await arrastar('PAUSADO', 'ATRASADO');
+      await new Promise((r) => setTimeout(r, 1200));
+      t(`${l} soltar numa coluna automática não grava nada`,
+        (await contar('ATRASADO')) === antesAuto,
+        `${antesAuto} → ${await contar('ATRASADO')}`);
+    } else {
+      // No celular o quadro rola na horizontal, e sem a rolagem automática da
+      // borda só daria para soltar a ficha na coluna vizinha: o atraso nunca
+      // alcançaria o concluído, que está do outro lado. Esta é a prova de que
+      // segurar a ficha junto da borda traz o resto do quadro.
+      // A coluna de origem é a SEGUNDA, e no celular só a primeira cabe na
+      // tela: sem trazê-la à vista, o ponteiro miraria uma coordenada fora da
+      // janela e o arraste nem começaria.
+      await page.evaluate(() => {
+        const c = document.querySelector('.coluna-quadro[data-coluna="EM_ANDAMENTO"]');
+        c.scrollIntoView({ inline: 'start', block: 'nearest' });
+      });
+      await new Promise((r) => setTimeout(r, 400));
+      const partida = await page.evaluate(() =>
+        Math.round(document.querySelector('.quadro-situacao').scrollLeft));
+      const ficha = await page.$('.coluna-quadro[data-coluna="EM_ANDAMENTO"] .ficha-quadro');
+      const cx = await ficha.boundingBox();
+      const caixa = await page.evaluate(() => {
+        const q = document.querySelector('.quadro-situacao').getBoundingClientRect();
+        return { right: q.right, y: Math.round(q.top + 60) };
+      });
+      await page.mouse.move(cx.x + cx.width / 2, cx.y + cx.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(cx.x + cx.width / 2 + 20, cx.y + cx.height / 2);
+      await page.mouse.move(caixa.right - 12, caixa.y);
+      await new Promise((r) => setTimeout(r, 900));
+      const rolou = await page.evaluate(() =>
+        Math.round(document.querySelector('.quadro-situacao').scrollLeft));
+      await page.mouse.up();
+      await new Promise((r) => setTimeout(r, 600));
+      t(`${l} segurar a ficha na borda rola o quadro até as outras colunas`,
+        rolou > partida + 60, `scrollLeft ${partida} → ${rolou}`);
+    }
   }
 
   await page.evaluate(() => SecaoProjetos.trocarModo('TABELA'));
