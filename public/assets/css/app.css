@@ -3978,22 +3978,25 @@ body.menu-aberto .menu-lateral {
    média, outra do valor de uma ação — se leem como a mesma grandeza. O número
    maior é o que dá o destaque que a barra tentava dar.
 
-   E o número do grupo fica CENTRADO na coluna (segundo pedido do mesmo dia,
-   depois de ver a tela). Antes ele recuava a largura exata da barra da ação
-   (5,5rem + 0,35rem de respiro) para começar no mesmo ponto que o percentual
-   dela; assim o total ficava encostado no canto esquerdo do que lhe sobra da
-   coluna e se lia como mais uma linha de ação. Centrado, o total de frente e
-   de projeto se lê como o número DO GRUPO.
-   As duas posições são excludentes: centrar o total é desistir de alinhá-lo
-   com o número da ação, que vem depois de uma barra de 5,5rem. A escolha é do
-   cliente — e é por isso que a prova da bateria passou a medir a CENTRAGEM,
-   não mais a coincidência com a ação.
-   Centra-se por `margin: 0 auto` no item de flex, e não por `justify-content`
-   na célula: a célula é a mesma da ação, e centrar o conteúdo dela empurraria
-   também a barra arrastável. */
+   E o número do grupo COMEÇA ONDE A COLUNA COMEÇA: sem recuo nenhum, no mesmo
+   ponto em que começa a barra da ação logo abaixo e em que começa o texto do
+   cabeçalho "Progresso". A posição foi escolhida pelo cliente a partir de uma
+   imagem (2026-10-28), e vale mais do que parece: ela já foi tentada de duas
+   outras maneiras, as duas descartadas por ele.
+   1) Recuar a largura exata da barra (5,5rem + 0,35rem), para o total cair no
+      mesmo ponto que o percentual da ação.
+   2) Centrar o total na célula, com `margin: 0 auto`.
+   As três são excludentes — o número só pode estar num lugar — e as duas
+   primeiras afastam o total do cabeçalho: numa janela larga esta coluna passa
+   de 240px, e o número ia parar perto do meio dela, longe do rótulo que o
+   nomeia e sem nada por baixo que explique aquele recuo.
+   Por isso aqui NÃO entra margem, nem `justify-content` na célula, nem
+   `text-align` próprio: o alinhamento vem do início da célula com o
+   `text-align: left` da regra acima, e qualquer um dos três o desloca. A prova
+   da bateria mede a coincidência com a esquerda da barra da ação.
+   O corpo maior fica: é ele que dá ao total o destaque que a barra do grupo
+   dava antes de sair. */
 .tabela-5w2h .celula-progresso > .pct-grupo {
-  margin: 0 auto;
-  text-align: center;
   font-size: .95rem;
   font-weight: 700;
 }

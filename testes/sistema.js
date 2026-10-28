@@ -2090,9 +2090,10 @@ async function provasModosPlano(page, largura) {
         ajustaveis: el.querySelectorAll('[data-progresso]').length,
         rolagemH: document.documentElement.scrollWidth > document.documentElement.clientWidth,
         // Duas medidas, porque são duas regras diferentes: o total do grupo
-        // tem de ficar CENTRADO na célula, e os três níveis têm de continuar
-        // na MESMA coluna — a última, sob "Progresso". `desvio` é a distância
-        // entre o centro do número e o centro da célula que o contém.
+        // COMEÇA onde a coluna começa (a mesma esquerda da barra da ação), e
+        // os três níveis continuam na MESMA coluna — a última, sob
+        // "Progresso". `esq` é onde o elemento começa; `coluna`, onde começa a
+        // célula que o contém.
         geometria: (() => {
           const cel = (sel) => {
             const e = el.querySelector(sel);
@@ -2101,7 +2102,7 @@ async function provasModosPlano(page, largura) {
             const a = e.getBoundingClientRect();
             const b = td.getBoundingClientRect();
             return {
-              desvio: Math.round(((a.left + a.right) - (b.left + b.right)) / 2),
+              esq: Math.round(a.left),
               coluna: Math.round(b.left),
               largura: Math.round(b.width),
             };
@@ -2109,6 +2110,7 @@ async function provasModosPlano(page, largura) {
           return {
             proj: cel('tr.g-proj .pct-grupo'),
             frente: cel('tr.g-frente .pct-grupo'),
+            barra: cel('tr.linha-5w2h .faixa-verde, tr.linha-5w2h .faixa-progresso'),
             acao: cel('tr.linha-5w2h .valor-progresso'),
           };
         })(),
@@ -2136,14 +2138,17 @@ async function provasModosPlano(page, largura) {
     // Pedido do cliente, 2026-10-28: o percentual do projeto e o da frente
     // ficavam dentro da célula do título, que atravessa a tabela inteira —
     // cada nível com o número num ponto diferente da largura. Agora os três
-    // dividem a coluna do "Progresso", e o TOTAL do grupo fica centrado nela
-    // (segundo pedido do mesmo dia). As duas provas MEDEM: um recuo ou uma
-    // largura diferente quebra o arranjo sem quebrar nada no código, e
-    // conferir que a classe está lá não pegaria isso.
+    // dividem a coluna do "Progresso", e o TOTAL do grupo começa onde ela
+    // começa, na mesma esquerda da barra da ação (posição escolhida pelo
+    // cliente a partir de uma imagem, no mesmo dia; ver `pct-grupo` no CSS).
+    // As duas provas MEDEM: uma margem, um `justify-content` ou um
+    // `text-align` acrescentados ali deslocam o número sem quebrar nada no
+    // código, e conferir que a classe está lá não pegaria isso.
     const geo = tab.geometria;
-    t(`${l} o total de projeto e de frente fica centrado na coluna do progresso`,
-      geo.proj !== null && geo.frente !== null
-      && Math.abs(geo.proj.desvio) <= 2 && Math.abs(geo.frente.desvio) <= 2,
+    t(`${l} o total de projeto e de frente começa no início da coluna do progresso`,
+      geo.proj !== null && geo.frente !== null && geo.barra !== null
+      && Math.abs(geo.proj.esq - geo.barra.esq) <= 1
+      && Math.abs(geo.frente.esq - geo.barra.esq) <= 1,
       JSON.stringify(geo));
     t(`${l} os percentuais de projeto, frente e ação caem na mesma coluna`,
       geo.proj !== null && geo.frente !== null && geo.acao !== null
