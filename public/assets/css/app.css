@@ -3911,25 +3911,64 @@ body.menu-aberto .menu-lateral {
   color: #5a6a61;
   white-space: nowrap;
 }
-/* O grupo do PROJETO é o degrau mais forte da leitura: é por ele que se
-   percorre o plano. A frente vem um tom abaixo, pelo mesmo motivo que na
-   lista ela é recuada — são níveis, não irmãos. */
+/* ── Os três degraus da tabela ───────────────────────────────────────────
+   Projeto, frente e ação são NÍVEIS, não irmãos, e numa tabela de linhas
+   iguais isso se perde: era o que acontecia — a faixa do projeto aparecia,
+   mas da frente para baixo tudo virava uma lista plana e, três telas adiante,
+   não se sabia mais de qual frente era a ação que estava passando.
+
+   O que separa os níveis aqui é o mesmo recurso em três intensidades: um
+   filete à esquerda e um recuo. O projeto é faixa cheia; a frente é faixa
+   clara com filete forte; a ação não tem faixa, mas herda o filete claro —
+   é ele que amarra visualmente o bloco inteiro e diz onde um projeto acaba. */
 .tabela-5w2h tr.g-proj > td {
   background: var(--verde-coperdia);
   color: #fff;
   font-weight: 600;
+  font-size: .9rem;
+  padding-top: .5rem;
+  padding-bottom: .5rem;
+  /* O respiro ANTES do projeto é o que separa um bloco do outro. Sem ele, a
+     última ação de um projeto encosta na faixa do seguinte e os dois parecem
+     o mesmo bloco. */
+  border-top: .6rem solid var(--bs-body-bg, #fff);
 }
+.tabela-5w2h tbody tr.g-proj:first-child > td { border-top-width: 0; }
 .tabela-5w2h tr.g-proj .badge.text-bg-light { background: rgba(255, 255, 255, .18) !important; color: #fff; border-color: rgba(255, 255, 255, .35) !important; }
 .tabela-5w2h tr.g-frente > td {
   background: #e8f3ed;
   font-weight: 600;
+}
+/* O filete e o recuo são de CÉLULA, não de linha: `border-left` numa `<tr>`
+   não é pintado com `border-collapse: separate`, que a tabela precisa manter
+   para o cabeçalho grudado ficar opaco. */
+.tabela-5w2h tr.g-frente > td:first-child {
+  border-left: 4px solid var(--verde-coperdia);
   padding-left: 1.4rem;
 }
+.tabela-5w2h tr.linha-5w2h > td:first-child {
+  border-left: 4px solid #cfe2d8;
+}
+/* A ação recua mais que a frente, pelo mesmo motivo da lista: o degrau tem de
+   ser visto sem roubar largura do texto, que é o que se lê. */
+.tabela-5w2h tr.linha-5w2h > td.col-oque { padding-left: 1.4rem; }
 .tabela-5w2h .grupo-celula { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
-/* O `border: 0` não é enfeite: alguma regra larga de tabela pinta uma borda
-   inferior nos filhos da célula, e o título do grupo saía sublinhado — parecia
-   link no meio de uma tabela que não tem nenhum. */
-.tabela-5w2h .grupo-titulo { min-width: 0; border: 0; }
+/* A barra do grupo tem largura de LEITURA, não de preenchimento: esticada até
+   a borda ela competiria com as barras ajustáveis das ações, que são as únicas
+   que se arrastam. Mesma decisão do panorama da lista. */
+.tabela-5w2h .faixa-grupo { width: 6rem; flex: 0 0 auto; }
+.tabela-5w2h .pct-grupo { font-variant-numeric: tabular-nums; font-size: .78rem; }
+/* Na faixa do projeto o fundo é verde: a barra precisa de contraste próprio,
+   senão some. */
+.tabela-5w2h tr.g-proj .faixa-grupo { background: rgba(255, 255, 255, .28); }
+.tabela-5w2h tr.g-proj .faixa-grupo > span { background: #9fe3c0; }
+/* `nome-grupo`, e não `grupo-titulo`: aquele nome JÁ EXISTE neste arquivo, na
+   caixa de agrupamento da Coleta, e vem com cor própria e borda inferior. A
+   tabela herdava os dois sem pedir — o título saía verde-escuro sobre a faixa
+   verde (ilegível) e sublinhado, parecendo link numa tabela que não tem
+   nenhum. Classe nova resolve na origem; remendar com `border: 0` e uma cor
+   por cima só esconderia a colisão até a próxima mudança lá. */
+.tabela-5w2h .nome-grupo { min-width: 0; }
 .tabela-5w2h tr.linha-5w2h:hover > td { background: rgba(0, 122, 69, .06); }
 .tabela-5w2h .col-oque { font-weight: 500; max-width: 22rem; }
 /* "Como" é o único texto longo que entra na tabela, e ele corta: a alternativa
@@ -3943,6 +3982,11 @@ body.menu-aberto .menu-lateral {
 }
 .tabela-5w2h .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tabela-5w2h .num .faixa-progresso { display: inline-block; width: 4rem; vertical-align: middle; }
+/* A barra ajustável precisa de largura para ser arrastável com precisão: a de
+   leitura tinha 4rem, que basta para ler e não para mirar. */
+.tabela-5w2h td.col-progresso { min-width: 9.5rem; }
+.tabela-5w2h td.col-progresso .faixa-verde { width: 5.5rem; vertical-align: middle; }
+.tabela-5w2h td.col-progresso .valor-progresso { margin-left: .35rem; }
 .tabela-5w2h .clipe-5w2h { font-size: .72rem; color: #5a6a61; white-space: nowrap; }
 @media (min-width: 992px) {
   .caixa-tabela-5w2h { overflow: visible; }
@@ -3953,12 +3997,24 @@ body.menu-aberto .menu-lateral {
   }
   /* A linha do projeto gruda logo abaixo do cabeçalho enquanto as ações dele
      passam — é o que a pilha de cabeçalhos fazia na lista, aqui de graça:
-     um degrau só, e limitado ao próprio grupo pelo fluxo da tabela. */
+     um degrau só, e limitado ao próprio grupo pelo fluxo da tabela.
+     A altura do `thead` é MEDIDA (`--altura-thead`, escrita por
+     `medirCabecalhoTabela`), não adivinhada. Ela estava num `1.9rem` chutado,
+     e a diferença entre o chute e a altura real virava uma fresta entre os
+     dois degraus: por ela passava a metade de cima da linha que estava
+     rolando, e o que se via era texto cortado encostado na faixa verde,
+     parecendo defeito de pintura. */
   .tabela-5w2h tr.g-proj > td {
     position: sticky;
-    top: calc(var(--topo-app) + var(--altura-cabecalho, 0px) + 1.9rem);
+    top: calc(var(--topo-app) + var(--altura-cabecalho, 0px) + var(--altura-thead, 1.9rem));
     z-index: 2;
+    /* A sombra é o que faz a linha cortada ao meio parecer PASSAR POR BAIXO em
+       vez de estar quebrada. É o mesmo recurso dos cabeçalhos grudados da
+       lista, pelo mesmo motivo: sem ela, o corte no meio das letras se lê como
+       defeito de pintura. */
+    box-shadow: 0 .3rem .3rem -.3rem rgba(0, 0, 0, .25);
   }
+  .tabela-5w2h thead th { box-shadow: 0 .3rem .3rem -.3rem rgba(0, 0, 0, .18); }
 }
 @media print {
   .tabela-5w2h thead th,
@@ -4023,11 +4079,25 @@ body.menu-aberto .menu-lateral {
   border-radius: .4rem;
   padding: .4rem .45rem;
   cursor: grab;
-  /* Duplo toque abre a edição: sem `manipulation` o iOS trata o segundo toque
-     como zoom e o dblclick ou não chega, ou chega depois de 300ms. */
-  touch-action: manipulation;
+  /* `pan-y` divide o gesto com o navegador, e é o que faz o arraste existir no
+     dedo: o movimento VERTICAL continua sendo dele (a página rola com o dedo
+     sobre uma ficha) e o HORIZONTAL — que é o que leva ficha de uma coluna à
+     outra — chega ao JS. Tem de estar aqui, e não ser apertado durante o
+     gesto: `touch-action` é lido quando o gesto nasce.
+     Rolar o quadro de lado com o dedo continua existindo pelo fundo da coluna
+     e pelo cabeçalho dela, que não têm esta regra. */
+  touch-action: pan-y;
 }
-.ficha-quadro.arrastando { opacity: .45; cursor: grabbing; }
+/* Durante o arraste a ficha não recebe ponteiro: `elementFromPoint` tem de
+   devolver a COLUNA que está embaixo dela, e não ela mesma — senão o alvo
+   seria sempre a origem e a solta nunca mudaria nada. */
+.ficha-quadro.arrastando {
+  opacity: .45;
+  cursor: grabbing;
+  pointer-events: none;
+}
+/* O gesto não pode virar seleção de texto no meio do caminho. */
+body.arrastando-ficha { user-select: none; -webkit-user-select: none; }
 .ficha-quadro .etiqueta-quadro {
   font-size: .62rem;
   text-transform: uppercase;
@@ -4062,3 +4132,10 @@ body.menu-aberto .menu-lateral {
   .quadro-situacao { grid-auto-columns: 85%; scroll-snap-type: x mandatory; }
   .coluna-quadro { scroll-snap-align: start; }
 }
+/* O encaixe SAI durante o arraste, e isto não é detalhe: a rolagem automática
+   da borda move o quadro de 15 em 15 pixels, e com `scroll-snap-type:
+   mandatory` o navegador devolvia a posição ao ponto de encaixe a cada quadro
+   — o `scrollLeft` ficava teimosamente em zero e era impossível alcançar
+   qualquer coluna além da primeira. Nada no console denunciava isso: o laço
+   rodava, a conta dava certo, e a tela não andava. */
+body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
