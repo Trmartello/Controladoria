@@ -2194,6 +2194,35 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
    ou se escolhe da lista, não uma frase. Cada rem no cabeçalho fixo é tela
    roubada da lista o tempo todo. */
 .filtro-acoes [data-filtro-responsavel] { width: 9rem; }
+/* O filtro de PROJETO mostra o título quando há um só escolhido, e título de
+   projeto é frase inteira ("Aumentar Share de mercado nas Famílias…"). Sem
+   teto ele empurraria os botões de modo para fora da linha; com teto e
+   reticências o cabeçalho não se mexe, e o título inteiro fica no `title`. */
+.filtro-projetos > .btn {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* O menu precisa de teto próprio: um plano com trinta projetos faria uma lista
+   mais alta que a janela, e os últimos ficariam inalcançáveis — a página não
+   rola por trás de um menu aberto. */
+.menu-projetos {
+  max-height: min(60vh, 24rem);
+  overflow-y: auto;
+  min-width: 15rem;
+  max-width: min(22rem, 92vw);
+}
+/* Título longo QUEBRA dentro do item em vez de alargar o menu: a caixa de
+   marcar fica alinhada com a primeira linha e o texto corre ao lado.
+   `white-space: normal` desfaz o `nowrap` que o `.dropdown-item` do Bootstrap
+   impõe. */
+.menu-projetos .dropdown-item {
+  white-space: normal;
+  cursor: pointer;
+  border-radius: .25rem;
+}
+.menu-projetos .dropdown-item:active { color: inherit; background: #e9f3ee; }
 @media (max-width: 575.98px) {
   /* A corrente inteira precisa poder encolher: a linha do cabeçalho é item
      flex (min-width:auto trava no conteúdo) e o input, com base `auto`,
@@ -2209,6 +2238,12 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   /* Na segunda linha, pessoa e situação dividem a largura. */
   .filtro-acoes [data-filtro-responsavel] { width: auto; flex: 1 1 0; min-width: 0; }
   .filtro-acoes [data-filtro-status] { flex: 1 1 0; min-width: 0; }
+  /* O projeto toma a terceira linha inteira: ele é o único cujo rótulo é um
+     título, e dividindo a linha com outro controle sobraria espaço para três
+     letras mais as reticências. O menu, que é posicionado pelo botão, pode
+     então usar a largura toda da tela. */
+  .filtro-projetos { flex: 1 1 100%; min-width: 0; }
+  .filtro-projetos > .btn { max-width: none; width: 100%; }
 }
 
 /* Fila de "Aguardando plano de ação": texto à esquerda, selo de origem e botão
@@ -4007,6 +4042,24 @@ body.menu-aberto .menu-lateral {
    nenhum. Classe nova resolve na origem; remendar com `border: 0` e uma cor
    por cima só esconderia a colisão até a próxima mudança lá. */
 .tabela-5w2h .nome-grupo { min-width: 0; }
+/* O ✎ da frente e o selo da escolha da Cascata (pedido do cliente,
+   2026-10-28). O botão encolhe para caber numa linha de tabela densa: a
+   altura padrão do -sm abriria a linha do grupo mais que a da ação, e o
+   degrau entre as duas é o que faz a tabela parecer desalinhada.
+   O selo não cresce com o texto: corta no fim, e o título inteiro vive no
+   `title` — escolha da Cascata é frase, não rótulo. */
+.tabela-5w2h .botao-editar-frente {
+  --bs-btn-padding-y: 0;
+  --bs-btn-padding-x: .35rem;
+  line-height: 1.2;
+}
+.tabela-5w2h .cascata-frente {
+  font-weight: 500;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tabela-5w2h tr.linha-5w2h:hover > td { background: rgba(0, 122, 69, .06); }
 .tabela-5w2h .col-oque { font-weight: 500; max-width: 22rem; }
 /* "Como" é o único texto longo que entra na tabela, e ele corta: a alternativa

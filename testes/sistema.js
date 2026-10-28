@@ -2061,6 +2061,22 @@ async function provasModosPlano(page, largura) {
     await nova(b.id, 'Ação gama dos modos', 'QA dos modos', null);
     return p.id;
   });
+  // Um SEGUNDO projeto, só para o filtro por projeto ter o que esconder: com
+  // um projeto só, "mostrar apenas este" e "mostrar todos" dão a mesma tela, e
+  // a prova passaria com o filtro desligado.
+  const prj2 = await page.evaluate(async () => {
+    const p = await App.api('/api/projetos', {
+      planejamento_id: 1, titulo: 'Projeto modos vizinho', ano: 2027, responsavel: 'QA', descricao: '',
+    });
+    const f = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id, titulo: 'Frente do vizinho' });
+    await App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: p.id, iniciativa_id: f.id, o_que: 'Ação do projeto vizinho',
+      como: 'Como de prova', quem: 'QA dos modos', quem_usuario_id: 1, prioridade: 'MEDIA',
+      status: 'EM_ANDAMENTO', progresso: 10, quanto: null, recorrencia: 'NENHUMA',
+      data_inicio: '2027-01-01', data_fim: '2027-12-31',
+    });
+    return p.id;
+  });
   await page.evaluate(() => App.mostrarSecao('projetos'));
   await esperar(page, `!!document.querySelector('[data-projeto="${prj}"]')`, 15000);
 
@@ -2182,6 +2198,69 @@ async function provasModosPlano(page, largura) {
       c.value = '';
       c.dispatchEvent(new Event('input', { bubbles: true }));
     });
+
+    // ── Editar a frente pela TABELA (pedido do cliente, 2026-10-28) ──────
+    // Vincular a frente a um horizonte/eixo da Cascata só dava para fazer na
+    // lista: quem conduzia a reunião pela tabela trocava de modo, achava a
+    // frente de novo e voltava. O ✎ é o MESMO botão da lista
+    // (`data-editar-ini` + `data-proj`), e é isso que a prova confere — um
+    // botão próprio aqui abriria um segundo caminho para o mesmo modal, que é
+    // como duas telas divergem na primeira correção.
+    // A frente do projeto DESTA prova, nunca a primeira da tabela: o banco
+    // local tem outros projetos, e a primeira linha de frente costuma ser de
+    // um deles — a prova passaria ou falharia conforme o que mais existe.
+    const frenteTab = await page.evaluate((id) => {
+      const trs = [...document.querySelectorAll('.tabela-5w2h tr.g-frente[data-grupo-frente]')];
+      const minha = trs.find((tr) => tr.querySelector(`[data-editar-ini][data-proj="${id}"]`));
+      const b = minha?.querySelector('[data-editar-ini]');
+      return {
+        frentes: trs.length,
+        comBotao: trs.filter((tr) => tr.querySelector('[data-editar-ini]')).length,
+        ini: b ? b.dataset.editarIni : null,
+        // O modal precisa do projeto para achar a frente: sem `data-proj` o
+        // ouvinte da lista acha `undefined` e estoura ao abrir.
+        proj: b ? b.dataset.proj : null,
+        daLinha: minha?.dataset.grupoFrente || null,
+        // Sem vínculo não há selo: ele é o retorno de ter vinculado.
+        selos: document.querySelectorAll('.tabela-5w2h .cascata-frente').length,
+      };
+    }, prj);
+    t(`${l} toda linha de frente traz o ✎ que a edita`,
+      frenteTab.frentes >= 2 && frenteTab.comBotao === frenteTab.frentes,
+      JSON.stringify(frenteTab));
+    t(`${l} o ✎ da tabela é o mesmo botão da lista, com frente e projeto`,
+      frenteTab.ini === frenteTab.daLinha && frenteTab.proj === String(prj),
+      JSON.stringify(frenteTab));
+    t(`${l} frente sem vínculo na Cascata não mostra selo`, frenteTab.selos === 0,
+      `${frenteTab.selos}`);
+    await page.click(`.tabela-5w2h tr.g-frente [data-editar-ini][data-proj="${prj}"]`);
+    const abriuFrente = await esperar(page, "!!document.querySelector('.modal.show')", 8000);
+    const campoCascata = await page.evaluate(() => {
+      const m = document.querySelector('.modal.show');
+      const sel = m?.querySelector('#campo-cascata_id');
+      return {
+        titulo: m?.querySelector('.modal-title')?.textContent.trim() || '',
+        temCascata: !!sel,
+        // A primeira opção é sempre "não vinculado": é como se DESFAZ o
+        // vínculo, e sem ela a escolha seria uma porta de mão única.
+        primeira: sel ? sel.options[0]?.textContent.trim() : null,
+      };
+    });
+    t(`${l} o ✎ abre a frente com a escolha da Cascata`,
+      abriuFrente && campoCascata.titulo === 'Editar iniciativa' && campoCascata.temCascata
+      && /não vinculado/.test(campoCascata.primeira || ''),
+      JSON.stringify(campoCascata));
+    await page.keyboard.press('Escape');
+    await esperar(page, "!document.querySelector('.modal.show')", 5000);
+    // O duplo clique passa a abrir os TRÊS níveis da tabela, não só a ação.
+    await page.dblclick(`.tabela-5w2h tr.g-frente[data-grupo-frente="${frenteTab.daLinha}"] .nome-grupo`);
+    const abriuPorGesto = await esperar(page, "!!document.querySelector('.modal.show')", 8000);
+    t(`${l} o duplo clique na linha da frente abre a frente`,
+      abriuPorGesto
+      && (await page.evaluate(() => document.querySelector('.modal.show .modal-title')?.textContent.trim()))
+        === 'Editar iniciativa');
+    await page.keyboard.press('Escape');
+    await esperar(page, "!document.querySelector('.modal.show')", 5000);
   }
 
   // ── O quadro por situação ────────────────────────────────────────────
@@ -2228,6 +2307,65 @@ async function provasModosPlano(page, largura) {
     t(`${l} a ficha diz de que projeto e frente ela é`,
       q.etiquetas.every((x) => x.includes('›')) && q.etiquetas.some((x) => /Projeto modos/.test(x)),
       JSON.stringify(q.etiquetas.slice(0, 2)));
+
+    // ── O filtro por projeto (pedido do cliente, 2026-10-28) ─────────────
+    // Ele nasceu olhando o QUADRO, e é aqui que ele mais vale: a ficha é
+    // solta, agrupada por situação, e não há cabeçalho de projeto para guiar
+    // o olho. A palavra não resolvia — ela casa com o título do projeto, mas
+    // também com o texto de qualquer ação que cite a mesma palavra.
+    const temFiltroProj = await page.evaluate(() => !!document.querySelector('[data-filtro-projetos]'));
+    t(`${l} o plano de ação oferece o filtro por projeto`, temFiltroProj);
+    if (temFiltroProj) {
+      const visiveis = () => page.evaluate(() => [...document.querySelectorAll('.ficha-quadro')]
+        .filter((f) => !f.classList.contains('d-none')).map((f) => Number(f.dataset.proj)));
+      const rotulo = () => page.evaluate(() =>
+        document.querySelector('[data-filtro-projetos]').textContent.trim());
+      // Marcar pelo evento, e não pelo clique: o menu do Bootstrap pode estar
+      // fechado, e o que se prova aqui é o filtro, não a animação dele.
+      const marcar = async (id) => {
+        await page.evaluate((x) => {
+          const c = document.querySelector(`[data-filtro-projeto="${x}"]`);
+          c.checked = !c.checked;
+          c.dispatchEvent(new Event('change', { bubbles: true }));
+        }, id);
+        await new Promise((r) => setTimeout(r, 250));
+      };
+      const antes = (await visiveis()).length;
+      await marcar(prj);
+      const soUm = await visiveis();
+      t(`${l} escolher um projeto deixa só as fichas dele`,
+        soUm.length > 0 && soUm.every((x) => x === prj) && soUm.length < antes,
+        JSON.stringify({ antes, depois: soUm.length }));
+      // O botão diz QUAL, não "1 projeto": com um só escolhido, a contagem
+      // obrigaria a abrir o menu de novo para lembrar qual é.
+      t(`${l} com um projeto, o botão mostra o nome dele`,
+        (await rotulo()) === 'Projeto modos', await rotulo());
+      await marcar(prj2);
+      const dois = await visiveis();
+      t(`${l} escolher dois projetos mostra os dois`,
+        new Set(dois).size === 2 && dois.includes(prj) && dois.includes(prj2),
+        JSON.stringify(dois));
+      t(`${l} com dois, o botão conta em vez de nomear`, (await rotulo()) === '2 projetos',
+        await rotulo());
+      // A escolha é da PESSOA, não do modo: ela atravessa a troca, como o
+      // modo atravessa o recarregamento.
+      await page.evaluate(() => SecaoProjetos.trocarModo('TABELA'));
+      await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
+      await new Promise((r) => setTimeout(r, 300));
+      const gruposVis = await page.evaluate(() =>
+        [...document.querySelectorAll('.tabela-5w2h tr.g-proj')]
+          .filter((x) => !x.classList.contains('d-none')).length);
+      t(`${l} o filtro por projeto atravessa a troca de modo`, gruposVis === 2, `${gruposVis}`);
+      await page.evaluate(() => SecaoProjetos.trocarModo('QUADRO'));
+      await esperar(page, "!!document.querySelector('.quadro-situacao')", 10000);
+      await page.evaluate(() => document.querySelector('[data-limpar-projetos]').click());
+      await new Promise((r) => setTimeout(r, 250));
+      const limpo = await visiveis();
+      t(`${l} "mostrar todos" devolve o quadro inteiro`, limpo.length === antes,
+        `${antes} → ${limpo.length}`);
+      t(`${l} e o botão volta a dizer "Todos os projetos"`,
+        (await rotulo()) === 'Todos os projetos', await rotulo());
+    }
 
     // O arraste é de PONTEIRO (não a API de arrastar do HTML, que não existe
     // no toque), e por isso a prova usa o mouse de verdade do Playwright: ele
@@ -2319,7 +2457,9 @@ async function provasModosPlano(page, largura) {
 
   await page.evaluate(() => SecaoProjetos.trocarModo('LISTA'));
   await esperar(page, "!!document.querySelector('.niveis-visao')", 10000);
-  await page.evaluate((id) => App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 }), prj);
+  await page.evaluate(async (ids) => {
+    for (const id of ids) await App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 });
+  }, [prj, prj2]);
 }
 
 async function provasAcao(page, largura) {
