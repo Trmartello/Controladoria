@@ -53,7 +53,7 @@ const SecaoDossie = {
     { chave: 'gut', rotulo: 'Matriz GUT', secao: () => SecaoGut, anual: true, padrao: true },
     { chave: 'cruzamentos', rotulo: 'Cruzamentos', secao: () => SecaoCruzamentos, anual: true, padrao: true },
     { chave: 'cascata', rotulo: 'Cascata de Escolhas', secao: () => SecaoCascata, padrao: true },
-    { chave: 'projetos', rotulo: 'Projetos · 5W2H', secao: () => SecaoProjetos, padrao: true },
+    { chave: 'projetos', rotulo: 'Plano de ação', secao: () => SecaoProjetos, padrao: true },
     { chave: 'investimentos', rotulo: 'Investimentos', secao: () => SecaoInvestimentos, padrao: true },
     { chave: 'metas', rotulo: 'Metas · Indicadores', secao: () => SecaoMetas, padrao: true },
   ],
@@ -90,6 +90,7 @@ const SecaoDossie = {
       projTexto: SecaoProjetos.filtroTexto,
       projStatus: SecaoProjetos.filtroStatus,
       projResp: SecaoProjetos.filtroResponsavel,
+      projModo: SecaoProjetos.modo,
       projFechados: new Set(SecaoProjetos.projetosFechados),
       iniFechadas: new Set(SecaoProjetos.iniciativasFechadas),
       abaCascata: SecaoCascata.aba,
@@ -103,6 +104,7 @@ const SecaoDossie = {
     SecaoProjetos.filtroTexto = v.projTexto;
     SecaoProjetos.filtroStatus = v.projStatus;
     SecaoProjetos.filtroResponsavel = v.projResp;
+    SecaoProjetos.modo = v.projModo;
     SecaoProjetos.projetosFechados = v.projFechados;
     SecaoProjetos.iniciativasFechadas = v.iniFechadas;
     SecaoCascata.aba = v.abaCascata;
@@ -117,6 +119,13 @@ const SecaoDossie = {
       projTexto: '',
       projStatus: '',
       projResp: '',
+      // O plano de ação ganhou três modos de visualização, e eles são escolha
+      // de PESSOA. Sem fixar um aqui, o mesmo dossiê sairia em tabela para
+      // quem deixou a tabela escolhida e em lista para quem não mexeu — dois
+      // documentos diferentes do mesmo plano, sem nada na folha dizendo por
+      // quê. A lista é a que o documento carrega: ela mostra projeto, frente e
+      // ação com a hierarquia à vista, que é o que se lê no papel.
+      projModo: 'LISTA',
       projFechados: new Set(),
       iniFechadas: new Set(),
       // A Cascata tem duas abas, e a foto pegaria a que estivesse aberta: o

@@ -140,7 +140,7 @@
             aria-controls="grupo-execucao">Execução
             <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
           <ul class="itens-grupo nav flex-column gap-1" id="grupo-execucao">
-            <li><a class="nav-link" href="#projetos" data-secao="projetos">Projetos · 5W2H</a></li>
+            <li><a class="nav-link" href="#projetos" data-secao="projetos">Plano de ação</a></li>
           </ul>
         </li>
         <li class="grupo-menu" data-grupo="capital">

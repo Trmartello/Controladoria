@@ -108,7 +108,7 @@ afirma "cria iniciativa" '"ok":true' "$R"
 INI=$(echo "$R" | id_de)
 BASE_ACAO="\"planejamento_id\":1,\"projeto_id\":$PRJ,\"iniciativa_id\":$INI,\"quem\":\"QA\",\"prioridade\":\"MEDIA\",\"status\":\"NAO_INICIADO\",\"progresso\":0,\"recorrencia\":\"NENHUMA\""
 R=$(post /api/desdobramentos "{$BASE_ACAO,\"o_que\":\"Ação de teste\",\"como\":\"Passo a passo do teste\",\"data_inicio\":\"2027-01-01\",\"data_fim\":\"2027-12-31\"}")
-afirma "cria ação 5W2H" '"ok":true' "$R"
+afirma "cria ação do plano" '"ok":true' "$R"
 ACAO=$(echo "$R" | id_de)
 # O asterisco do modal DESENHA a obrigatoriedade, não a impõe: quem recusa é o
 # servidor, e por aqui passa também o direcionamento de uma ideia da Coleta.

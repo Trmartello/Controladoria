@@ -71,7 +71,7 @@ const SECOES = [
   { id: 'gut', nome: 'Matriz GUT', prova: '#secao-gut .gut-legenda-barra' },
   { id: 'cruzamentos', nome: 'Cruzamentos (TOWS)', prova: '#secao-cruzamentos [data-coluna-categoria]' },
   { id: 'cascata', nome: 'Cascata de Escolhas', prova: '#secao-cascata h1' },
-  { id: 'projetos', nome: 'Projetos · 5W2H', prova: '#secao-projetos h1' },
+  { id: 'projetos', nome: 'Plano de ação', prova: '#secao-projetos h1' },
   { id: 'investimentos', nome: 'Investimentos', prova: '#secao-investimentos h1' },
   { id: 'metas', nome: 'Metas · Indicadores', prova: '#secao-metas h1' },
   { id: 'relatorio', nome: 'Relatório de Status', prova: '#secao-relatorio h1' },
@@ -762,7 +762,11 @@ async function provasResumoStatus(page, largura) {
       const frentes = [...c.querySelectorAll('.iniciativa-cabeca')].map((h) => ({
         nome: h.querySelector('strong').textContent.trim(),
         selos: textos(h),
-        badges: [...h.querySelectorAll('.badge')].map((x) => x.textContent.trim()),
+        // A CONTAGEM de ações fica de fora: ela é um `.badge` que entrou no
+        // cabeçalho da frente a pedido do cliente (2026-10-27) e não é selo de
+        // situação, que é o que esta prova guarda.
+        badges: [...h.querySelectorAll('.badge:not(.conta-acoes)')].map((x) => x.textContent.trim()),
+        conta: h.querySelector('.conta-acoes')?.textContent.trim() || '',
       }));
       const titulo = cabeca.querySelector('strong').getBoundingClientRect();
       const primeiro = cabeca.querySelector('.selo-resumo').getBoundingClientRect();
@@ -811,6 +815,10 @@ async function provasResumoStatus(page, largura) {
       m.frentes.every((f) => f.badges.length === 0), JSON.stringify(m.frentes.map((f) => f.badges)));
     // Situação sem nenhuma ação não vira selo com zero: numa fila de sete, seis
     // zerados, o que importa se perde no meio.
+    // A contagem de ações da frente, pedida para se ver com ela recolhida.
+    // "Frente A" tem 3 ações na massa desta prova.
+    t(`[${largura}] a frente diz quantas ações carrega`,
+      a && a.conta === '3 ações', JSON.stringify(m.frentes.map((f) => f.conta)));
     t(`[${largura}] situação sem ação nenhuma não aparece`,
       !m.frentes.some((f) => f.selos.some((x) => / 0 \(/.test(x))), JSON.stringify(m.frentes));
     // O balão da frente é onde a distribuição inteira e a situação dela vivem
@@ -2026,6 +2034,190 @@ async function provasExcluirUsuario(page) {
   }, ids);
 }
 
+/**
+ * Os três modos de ver o plano (pedido do cliente, 2026-10-27).
+ *
+ * A prova guarda três coisas que quebram em silêncio: que o seletor existe e
+ * troca de verdade; que a TABELA mostra as cinco perguntas do método em uso
+ * (o quê, como, quem, quando, ganhos) e nenhuma a mais; e que a pesquisa vale
+ * nela — a tabela e a lista decidem pelo MESMO critério (`acaoBate`), e sem
+ * prova a segunda implementação divergiria na primeira correção.
+ */
+async function provasModosPlano(page, largura) {
+  const l = `[${largura}]`;
+  const prj = await page.evaluate(async () => {
+    const p = await App.api('/api/projetos', {
+      planejamento_id: 1, titulo: 'Projeto modos', ano: 2027, responsavel: 'QA', descricao: '',
+    });
+    const a = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id, titulo: 'Frente modos A' });
+    const b = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id, titulo: 'Frente modos B' });
+    const nova = (ini, o_que, quem, quanto) => App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: p.id, iniciativa_id: ini, o_que, como: 'Como de prova',
+      quem, quem_usuario_id: 1, prioridade: 'MEDIA', status: 'EM_ANDAMENTO', progresso: 40, quanto,
+      recorrencia: 'NENHUMA', data_inicio: '2027-01-01', data_fim: '2027-12-31',
+    });
+    await nova(a.id, 'Ação alfa dos modos', 'QA dos modos', 1500.5);
+    await nova(a.id, 'Ação beta dos modos', 'QA dos modos', null);
+    await nova(b.id, 'Ação gama dos modos', 'QA dos modos', null);
+    return p.id;
+  });
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  await esperar(page, `!!document.querySelector('[data-projeto="${prj}"]')`, 15000);
+
+  const temSeletor = await esperar(page, "!!document.querySelector('[data-modo=\"TABELA\"]')", 8000);
+  t(`${l} o seletor oferece os três modos`, temSeletor
+    && (await page.evaluate(() => [...document.querySelectorAll('[data-modo]')].map((b) => b.dataset.modo)
+      .join(','))) === 'LISTA,TABELA,QUADRO');
+  // A lista é o padrão de quem nunca escolheu: é a leitura da reunião.
+  t(`${l} a lista é o modo padrão`,
+    await page.evaluate(() => document.querySelector('[data-modo="LISTA"]').getAttribute('aria-pressed') === 'true'));
+
+  await page.click('[data-modo="TABELA"]');
+  const pintou = await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
+  t(`${l} a tabela pinta ao trocar de modo`, pintou);
+  if (pintou) {
+    const tab = await page.evaluate((id) => {
+      const el = document.querySelector('.tabela-5w2h');
+      const vis = (sel) => [...el.querySelectorAll(sel)].filter((x) => !x.classList.contains('d-none'));
+      return {
+        colunas: [...el.querySelectorAll('thead th')].map((x) => x.textContent.trim()),
+        linhas: vis(`tbody tr[data-card-acao]`).length,
+        grupos: vis('tr.g-frente .grupo-titulo').map((x) => x.textContent.trim()),
+        cadeados: el.querySelectorAll('[data-cadeado^="desdobramento:"]').length,
+        ganhos: [...el.querySelectorAll('tbody tr[data-card-acao]')]
+          .map((tr) => tr.children[5].textContent.trim()),
+        semNiveis: !document.querySelector('.niveis-visao'),
+        rolagemH: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    }, prj);
+    // CINCO perguntas, não sete: "Onde" e "Por quê" saíram do método em uso
+    // nesta casa e não voltam por uma coluna.
+    t(`${l} a tabela mostra as cinco perguntas do método`,
+      tab.colunas.join(' | ') === 'Situação | O quê | Como | Quem | Quando | Ganhos | Progresso',
+      JSON.stringify(tab.colunas));
+    t(`${l} projeto e frente viram linhas de grupo`,
+      tab.grupos.includes('Frente modos A') && tab.grupos.includes('Frente modos B'),
+      JSON.stringify(tab.grupos));
+    // O cadeado de edição concorrente acha o alvo por `closest`: sem o
+    // marcador na linha, duas pessoas editariam a mesma ação sem aviso.
+    t(`${l} a linha da tabela leva o marcador do cadeado`, tab.cadeados >= 3, `${tab.cadeados}`);
+    // Dinheiro com os DOIS centavos, como no cartão: 1500,50 não é 1500,5.
+    t(`${l} os ganhos saem com os dois centavos`,
+      tab.ganhos.includes('R$ 1.500,50'), JSON.stringify(tab.ganhos));
+    t(`${l} os níveis de recolhimento somem fora da lista`, tab.semNiveis);
+    t(`${l} a tabela não rola na horizontal`, !tab.rolagemH);
+
+    // A pesquisa vale na tabela, e o grupo sem acerto some junto
+    await page.evaluate(() => {
+      const c = document.querySelector('[data-filtro-texto]');
+      c.value = 'gama';
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    const f = await page.evaluate(() => {
+      const vis = (sel) => [...document.querySelectorAll(sel)].filter((x) => !x.classList.contains('d-none'));
+      return {
+        linhas: vis('.tabela-5w2h tbody tr[data-card-acao]')
+          .map((x) => x.querySelector('.col-oque').textContent.trim().split('\n')[0]),
+        frentes: vis('.tabela-5w2h tr.g-frente').map((x) => x.querySelector('.grupo-titulo').textContent.trim()),
+      };
+    });
+    t(`${l} a pesquisa filtra a tabela`, f.linhas.length === 1 && /gama/.test(f.linhas[0]),
+      JSON.stringify(f.linhas));
+    t(`${l} o grupo sem acerto some da tabela`,
+      f.frentes.length === 1 && f.frentes[0] === 'Frente modos B', JSON.stringify(f.frentes));
+    await page.evaluate(() => {
+      const c = document.querySelector('[data-filtro-texto]');
+      c.value = '';
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  // ── O quadro por situação ────────────────────────────────────────────
+  await page.evaluate(() => SecaoProjetos.trocarModo('QUADRO'));
+  const quadroPintou = await esperar(page, "!!document.querySelector('.quadro-situacao')", 10000);
+  t(`${l} o quadro pinta ao trocar de modo`, quadroPintou);
+  if (quadroPintou) {
+    const q = await page.evaluate(() => {
+      const cols = [...document.querySelectorAll('.coluna-quadro')];
+      return {
+        ordem: cols.map((c) => c.dataset.coluna),
+        aceitam: cols.filter((c) => c.hasAttribute('data-aceita-ficha')).map((c) => c.dataset.coluna),
+        recusam: cols.filter((c) => !c.hasAttribute('data-aceita-ficha')).map((c) => c.dataset.coluna),
+        temDica: cols.filter((c) => c.querySelector('.dica-automatica')).map((c) => c.dataset.coluna),
+        cadeados: document.querySelectorAll('.ficha-quadro[data-cadeado^="desdobramento:"]').length,
+        etiquetas: [...document.querySelectorAll('.etiqueta-quadro')].map((x) => x.textContent.trim()),
+      };
+    });
+    // A ordem começa no atraso, que é o que se procura, e termina no
+    // concluído, que já não se discute.
+    t(`${l} o quadro começa no atraso e termina no concluído`,
+      q.ordem[0] === 'ATRASADO' && q.ordem[q.ordem.length - 1] === 'CONCLUIDO', JSON.stringify(q.ordem));
+    // ESTA é a prova que importa: "No prazo" e "Atrasada" saem da data-limite
+    // (`Consolidacao::sincronizarAtrasos` reescreve as duas a cada leitura).
+    // Se elas aceitarem a ficha, a mudança é desfeita no carregamento
+    // seguinte, sem aviso nenhum — o pior defeito que esta tela pode ter.
+    t(`${l} as colunas automáticas não recebem ficha`,
+      q.recusam.includes('ATRASADO') && q.recusam.includes('NAO_INICIADO')
+      && !q.aceitam.includes('ATRASADO') && !q.aceitam.includes('NAO_INICIADO'),
+      JSON.stringify(q));
+    t(`${l} e dizem por quê`, q.temDica.includes('ATRASADO') && q.temDica.includes('NAO_INICIADO'),
+      JSON.stringify(q.temDica));
+    t(`${l} a ficha leva o marcador do cadeado`, q.cadeados >= 3, `${q.cadeados}`);
+    // A ficha perde a estrutura da lista, e por isso carrega a etiqueta: sem
+    // ela, "Revisar contrato" não diz de qual projeto é.
+    t(`${l} a ficha diz de que projeto e frente ela é`,
+      q.etiquetas.every((x) => x.includes('›')) && q.etiquetas.some((x) => /Projeto modos/.test(x)),
+      JSON.stringify(q.etiquetas.slice(0, 2)));
+
+    // Soltar numa coluna MANUAL grava; os eventos são disparados à mão porque
+    // o arraste nativo do Chromium headless não é confiável — e o que importa
+    // aqui é o manipulador do `drop`, não a emulação de ponteiro.
+    const arrastar = (de, para) => page.evaluate(([a, b]) => {
+      const ficha = document.querySelector(`.coluna-quadro[data-coluna="${a}"] .ficha-quadro`);
+      const alvo = document.querySelector(`.coluna-quadro[data-coluna="${b}"]`);
+      if (!ficha || !alvo) return false;
+      const dt = new DataTransfer();
+      ficha.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+      alvo.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt, cancelable: true }));
+      return true;
+    }, [de, para]);
+    const contar = (col) => page.evaluate((c) =>
+      document.querySelectorAll(`.coluna-quadro[data-coluna="${c}"] .ficha-quadro`).length, col);
+
+    await arrastar('EM_ANDAMENTO', 'PAUSADO');
+    await new Promise((r) => setTimeout(r, 1500));
+    t(`${l} arrastar entre colunas manuais troca a situação`,
+      (await contar('PAUSADO')) > 0, `pausada: ${await contar('PAUSADO')}`);
+
+    const antesAuto = await contar('ATRASADO');
+    await arrastar('PAUSADO', 'ATRASADO');
+    await new Promise((r) => setTimeout(r, 1200));
+    t(`${l} soltar numa coluna automática não grava nada`,
+      (await contar('ATRASADO')) === antesAuto,
+      `${antesAuto} → ${await contar('ATRASADO')}`);
+  }
+
+  await page.evaluate(() => SecaoProjetos.trocarModo('TABELA'));
+  await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
+
+  // O modo é escolha de PESSOA: tem de sobreviver ao recarregamento.
+  await page.reload();
+  await esperar(page, "typeof App !== 'undefined' && !!document.querySelector('#nav-secoes')", 20000);
+  await page.evaluate(() => {
+    App.contexto.cicloId = 1;
+    App.contexto.negocioId = null;
+    App.contexto.corporativo = true;
+    App.mostrarSecao('projetos');
+  });
+  t(`${l} o modo escolhido sobrevive ao recarregamento`,
+    await esperar(page, "!!document.querySelector('.tabela-5w2h')", 20000));
+
+  await page.evaluate(() => SecaoProjetos.trocarModo('LISTA'));
+  await esperar(page, "!!document.querySelector('.niveis-visao')", 10000);
+  await page.evaluate((id) => App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 }), prj);
+}
+
 async function provasAcao(page, largura) {
   const l = `[${largura}]`;
   const prj = await page.evaluate(async () => {
@@ -2037,16 +2229,16 @@ async function provasAcao(page, largura) {
   });
   await page.evaluate(() => App.mostrarSecao('projetos'));
   await esperar(page, "!document.getElementById('secao-projetos').classList.contains('d-none')", 15000);
-  // Pelo PROJETO desta prova, nunca por um `[data-nova-acao-proj]` qualquer: a
+  // Pelo PROJETO desta prova, nunca por um `[data-nova-acao]` qualquer: a
   // pintura anterior continua na tela enquanto a recarga não volta, e o botão
-  // dela aponta para outro projeto (já apagado).
+  // dela aponta para uma frente de outro projeto (já apagado).
   const temBotao = await esperar(
-    page, `!!document.querySelector('[data-projeto="${prj}"] [data-nova-acao-proj]')`, 15000);
-  t(`${l} O projeto oferece "+ Ação" na linha do título`, temBotao);
+    page, `!!document.querySelector('[data-projeto="${prj}"] .iniciativa-cabeca [data-nova-acao]')`, 15000);
+  t(`${l} A frente oferece "+ Ação" na linha do título`, temBotao);
   const abrirModal = async () => {
     await page.evaluate((id) => {
-      const b = document.querySelector(`[data-projeto="${id}"] [data-nova-acao-proj]`);
-      SecaoProjetos.modalDesdobramento(parseInt(b.dataset.novaAcaoProj, 10), null, null);
+      const b = document.querySelector(`[data-projeto="${id}"] .iniciativa-cabeca [data-nova-acao]`);
+      SecaoProjetos.modalDesdobramento(parseInt(b.dataset.proj, 10), null, parseInt(b.dataset.novaAcao, 10));
     }, prj);
     return esperar(page, "!!document.getElementById('campo-o_que')", 8000);
   };
@@ -2058,35 +2250,15 @@ async function provasAcao(page, largura) {
       await new Promise((r) => setTimeout(r, 300));
       const ordem = await page.evaluate(() => [...document.querySelectorAll('#modal-campos .form-label')]
         .map((x) => x.textContent.trim()));
-      // A frente de destino abre a lista: com o "+ Ação" na linha do título do
-      // projeto, ela é a primeira coisa que a ação ainda não sabe. O resto é a
-      // ordem de sempre, que é contrato com o cliente.
-      const esperada = ['Em qual frente de trabalho?', 'Nome da nova frente *',
-        'O quê? *', 'Como? *', 'Quem? *', 'Repetição',
+      // Aberta pela FRENTE, a ação já sabe onde entra e o formulário não
+      // pergunta: a lista é a ordem de sempre, que é contrato com o cliente.
+      const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Repetição',
         'Selecione o dia da semana para repetir:',
         'Selecione o dia ou dias do mês em que haverá repetição:',
         'Data fim da repetição', 'Quando? (Prazo de Execução) *',
         'Prioridade', 'Status', 'Ganhos previstos (R$)'];
       t(`${l} Campos da ação na ordem pedida`,
         JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
-
-      // A frente já vem escolhida (a primeira do projeto) e o campo de nome da
-      // frente nova fica escondido até alguém pedir uma. Sem isto, o formulário
-      // abriria com um campo obrigatório vazio que ninguém precisa preencher.
-      const frente = await page.evaluate(() => {
-        const sel = document.getElementById('campo-iniciativa_id');
-        const nova = document.getElementById('campo-iniciativa_nova')?.closest('.mb-3');
-        return {
-          eSelect: sel?.tagName === 'SELECT',
-          escolhida: sel?.value !== '' && sel?.selectedOptions[0]?.textContent.trim(),
-          novaEscondida: !!nova?.classList.contains('d-none'),
-          temOpcaoNova: [...(sel?.options || [])].some((o) => o.value === ''),
-        };
-      });
-      t(`${l} A frente de destino é a primeira pergunta, já preenchida`,
-        frente.eSelect && frente.escolhida === 'Frente prova', JSON.stringify(frente));
-      t(`${l} Dá para criar a frente na hora, e o nome só aparece ao pedir`,
-        frente.temOpcaoNova && frente.novaEscondida, JSON.stringify(frente));
 
       // ── A caixa da repetição ────────────────────────────────────────────
       // Todo campo da decisão mora DENTRO do painel; nenhum outro entra nele.
@@ -2501,6 +2673,30 @@ async function provasAcao(page, largura) {
   // atraso automático, os avisos por e-mail e o prazo consolidado do projeto.
   t(`${l} o servidor deriva a data de vencimento da grade`,
     /^\d{4}-\d{2}-\d{2}$/.test(String(voltou.data_fim || '')), String(voltou.data_fim));
+
+  // A frente já vem escolhida (a primeira do projeto) e o campo de nome da
+  // frente nova fica escondido até alguém pedir uma. Sem isto, o formulário
+  // abriria com um campo obrigatório vazio que ninguém precisa preencher.
+  // O seletor de frente não some: ele é o caminho de quem cria ação sem
+  // frente no contexto do clique. Aqui ele é exercitado abrindo o
+  // formulário como esses modos abrem — sem frente decidida.
+  await page.evaluate((id) => SecaoProjetos.modalDesdobramento(id, null, null), prj);
+  await esperar(page, "!!document.getElementById('campo-iniciativa_id')", 8000);
+  await new Promise((r) => setTimeout(r, 200));
+  const frente = await page.evaluate(() => {
+    const sel = document.getElementById('campo-iniciativa_id');
+    const nova = document.getElementById('campo-iniciativa_nova')?.closest('.mb-3');
+    return {
+      eSelect: sel?.tagName === 'SELECT',
+      escolhida: sel?.value !== '' && sel?.selectedOptions[0]?.textContent.trim(),
+      novaEscondida: !!nova?.classList.contains('d-none'),
+      temOpcaoNova: [...(sel?.options || [])].some((o) => o.value === ''),
+    };
+  });
+  t(`${l} A frente de destino é a primeira pergunta, já preenchida`,
+    frente.eSelect && frente.escolhida === 'Frente prova', JSON.stringify(frente));
+  t(`${l} Dá para criar a frente na hora, e o nome só aparece ao pedir`,
+    frente.temOpcaoNova && frente.novaEscondida, JSON.stringify(frente));
   await fecharModal(page);
 
   await page.evaluate((id) => App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 }), prj);
@@ -5351,6 +5547,7 @@ async function provasJanelaModal(page, largura) {
   await provasFilaAcao(page, 'desktop');
   await provasExcluirComOrigens(page);
   await provasCabecalhoProjetos(page, 'desktop');
+  await provasModosPlano(page, 'desktop');
   await provasPopoverResumo(page, 'desktop');
   await noAnoDaCarga(page);
   await provasOrientacoes(page, 'desktop');
@@ -5403,6 +5600,7 @@ async function provasJanelaModal(page, largura) {
   await provasResumoStatus(pageM, 'celular');
   await provasFilaAcao(pageM, 'celular');
   await provasCabecalhoProjetos(pageM, 'celular');
+  await provasModosPlano(pageM, 'celular');
   await noAnoDaCarga(pageM);
   await provasOrientacoes(pageM, 'celular');
   await provasTextoCompleto(pageM, 'celular');
