@@ -463,6 +463,60 @@ table.tabela-cadastro td { vertical-align: middle; }
     width: auto;
   }
 }
+/* A coluna de AÇÕES fica parada à direita, no mesmo ponto em que as duas
+   primeiras ficam paradas à esquerda (pedido do cliente, 2026-11-02). Ela leva
+   o ✎, o ⟳ Revisar e o ×, e estava no fim de uma tabela de quatorze a vinte e
+   três colunas: para editar um indicador era preciso atravessar a tabela
+   inteira de lado, e quem não fizesse isso concluía que a tela não editava.
+   Só a partir de md, pela mesma razão das outras duas: no celular as três
+   paradas não deixariam largura para os números, que são o conteúdo. */
+@media (min-width: 768px) {
+  .tabela-metas th.col-acoes, .tabela-metas .celula-acoes {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background: #fff;
+    border-left: 2px solid var(--verde-coperdia);
+  }
+  .tabela-metas tr.linha-real .celula-acoes { background: #fafcfb; }
+}
+/* O horizonte do indicador vira controle: selo com × para desvincular, ou um
+   «+ horizonte» quando não há vínculo. Os dois moram na linha pequena embaixo
+   do nome, e por isso herdam o tamanho dela em vez de abrir a altura da
+   célula. */
+.tabela-metas .selo-horizonte {
+  display: inline-flex;
+  align-items: center;
+  gap: .1rem;
+  padding: 0 .15rem 0 .3rem;
+  border: 1px solid #cfe2d8;
+  border-radius: .75rem;
+  background: #f1f7f4;
+  color: #39544a;
+  white-space: nowrap;
+}
+.tabela-metas .desvincular-horizonte,
+.tabela-metas .btn-vincular-horizonte {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+}
+.tabela-metas .desvincular-horizonte {
+  padding: 0 .15rem;
+  opacity: .55;
+  font-size: .95rem;
+}
+.tabela-metas .desvincular-horizonte:hover,
+.tabela-metas .desvincular-horizonte:focus-visible { opacity: 1; color: #8f3b3b; }
+.tabela-metas .btn-vincular-horizonte {
+  color: var(--verde-coperdia);
+  text-decoration: underline dotted;
+}
+.tabela-metas .btn-vincular-horizonte:hover { text-decoration: underline; }
 
 /* Painel consolidado */
 .tabela-painel td, .tabela-painel th { white-space: nowrap; }
@@ -4060,6 +4114,22 @@ body.menu-aberto .menu-lateral {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* O × que desfaz o vínculo mora DENTRO do selo, e não ao lado: é o × daquela
+   escolha, e solto na linha ele se leria como "excluir a frente" — que é o
+   que o × faz em todo o resto desta tela. Herda a cor do selo e só ganha
+   contraste no toque/hover, para não competir com o texto que ele acompanha. */
+.tabela-5w2h .desvincular-cascata {
+  border: 0;
+  background: none;
+  padding: 0 0 0 .35rem;
+  margin: 0;
+  color: inherit;
+  opacity: .55;
+  line-height: 1;
+  font-size: 1rem;
+}
+.tabela-5w2h .desvincular-cascata:hover,
+.tabela-5w2h .desvincular-cascata:focus-visible { opacity: 1; color: #8f3b3b; }
 .tabela-5w2h tr.linha-5w2h:hover > td { background: rgba(0, 122, 69, .06); }
 .tabela-5w2h .col-oque { font-weight: 500; max-width: 22rem; }
 /* "Como" é o único texto longo que entra na tabela, e ele corta: a alternativa
@@ -4071,6 +4141,29 @@ body.menu-aberto .menu-lateral {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* …até alguém pedir a frase inteira (interruptor "Quebrar o texto", pedido do
+   cliente em 2026-11-02). Com a quebra ligada a célula deixa de cortar e a
+   LINHA cresce até caber o texto. A largura máxima fica: sem ela, uma
+   premissa de três parágrafos viraria uma coluna larguíssima e empurraria as
+   outras para fora da tela — a quebra é para crescer para BAIXO, não para o
+   lado. */
+.tabela-5w2h.quebra-linhas .corta {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  /* Palavra sem espaço (um link colado na premissa) não alarga a coluna. */
+  overflow-wrap: anywhere;
+  /* A mínima não é zelo: com a quebra ligada, a largura natural da coluna
+     deixa de ser a frase inteira e passa a ser a MAIOR PALAVRA. Num celular,
+     a tabela aproveitava isso para espremer o «Como» até 47px — o texto
+     aparecia inteiro, uma ou duas palavras por linha, numa coluna mais alta
+     que larga. Medido na bateria: 256px viravam 47px. */
+  min-width: 11rem;
+}
+/* O interruptor mora no cabeçalho fixo, ao lado dos modos: `nowrap` para o
+   rótulo não quebrar entre "Quebrar" e "o texto" quando a barra aperta. */
+.quebra-texto { white-space: nowrap; }
+.quebra-texto .form-check-label { cursor: pointer; }
 .tabela-5w2h .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* A barra ajustável precisa de largura para ser arrastável com precisão: a de
    leitura tinha 4rem, que basta para ler e não para mirar. Hoje a largura é a
@@ -4078,6 +4171,33 @@ body.menu-aberto .menu-lateral {
    coluna não encolha abaixo dela. */
 .tabela-5w2h td.col-progresso { min-width: 9.5rem; }
 .tabela-5w2h .clipe-5w2h { font-size: .72rem; color: #5a6a61; white-space: nowrap; }
+/* A coluna de ações da tabela (pedido do cliente, 2026-11-02): criar, editar
+   e excluir nos três níveis, sem trocar para a lista.
+   Os botões são MIÚDOS de propósito — eles repetem em toda linha de uma
+   tabela densa, e no tamanho padrão do -sm a coluna comeria a largura que é
+   das colunas de conteúdo. A altura reduzida também é o que impede a linha da
+   ação de ficar mais alta que a da frente, degrau que faz a tabela parecer
+   desalinhada. */
+.tabela-5w2h .col-acoes-plano { white-space: nowrap; width: 1%; text-align: right; }
+.tabela-5w2h .botao-linha-plano {
+  --bs-btn-padding-y: 0;
+  --bs-btn-padding-x: .3rem;
+  --bs-btn-font-size: .8rem;
+  line-height: 1.35;
+}
+/* O «+ eixo» aparece onde o selo do vínculo apareceria: é o par do × que
+   desvincula, e por isso tem o peso de um link, não de um botão. */
+.tabela-5w2h .btn-vincular-eixo {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: .78rem;
+  color: var(--verde-coperdia);
+  text-decoration: underline dotted;
+}
+.tabela-5w2h .btn-vincular-eixo:hover { text-decoration: underline; }
 @media (min-width: 992px) {
   .caixa-tabela-5w2h { overflow: visible; }
   .tabela-5w2h thead th {
