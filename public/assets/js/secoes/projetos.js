@@ -144,6 +144,44 @@ const SecaoProjetos = {
   LUGAR_QUEBRA: 'pe_plano_quebra',
   quebra: null,
 
+  /* ── A situação SOBRE o "o quê", no celular ───────────────────────────────
+   * Pedido do cliente (2026-11-02). Em 390px a coluna "Situação" come um
+   * terço da largura útil para dizer duas palavras, e sobra pouco para a
+   * frase da ação — que é o conteúdo. Na tela estreita as duas viram UMA
+   * coluna: o selo em cima, o texto embaixo.
+   *
+   * É decidido aqui, no JS, e não só na CSS, por causa do `colspan`: a célula
+   * do título do grupo atravessa as colunas de conteúdo, e `colspan` é
+   * ATRIBUTO, não estilo. Escondendo a coluna da situação pela CSS, o grupo
+   * continuaria cobrindo uma coluna a mais e o "Progresso" dele sairia do
+   * alinhamento com o das ações — exatamente o que custou dois pedidos a esta
+   * tabela.
+   *
+   * O limite é o mesmo do resto da tela (575.98px, o `sm` do Bootstrap), e
+   * girar o aparelho cruza esse limite: por isso há um ouvinte que repinta.
+   */
+  CELULAR: '(max-width: 575.98px)',
+  observandoLargura: false,
+
+  emCelular() {
+    return !!window.matchMedia?.(this.CELULAR)?.matches;
+  },
+
+  /**
+   * Repinta a tabela quando a largura cruza o limite do celular (girar o
+   * aparelho, redimensionar a janela). Sem isto, a tabela fica com a montagem
+   * da largura anterior até a próxima pintura — e a do grupo é a que
+   * desalinha, não a das ações. Ouvinte ÚNICO: `carregar()` roda a cada
+   * gravação, e um ouvinte por pintura empilharia uma cópia a cada vez.
+   */
+  ligarTrocaDeLargura() {
+    if (this.observandoLargura || !window.matchMedia) return;
+    this.observandoLargura = true;
+    window.matchMedia(this.CELULAR).addEventListener('change', () => {
+      if (App.secaoAtiva === 'projetos' && this.modoAtual() === 'TABELA') this.carregar();
+    });
+  },
+
   quebraAtual() {
     if (this.quebra === null) {
       this.quebra = String(App.lugarGuardado(this.LUGAR_QUEBRA) || '') === '1';
@@ -810,6 +848,10 @@ const SecaoProjetos = {
    * funcionando sem uma segunda implementação.
    */
   tabela5w2h(projetos) {
+    // No celular a situação sobe para dentro do "o quê" e a tabela perde uma
+    // coluna — então a célula do título do grupo cobre uma a menos.
+    const celular = this.emCelular();
+    const colunasDoTitulo = celular ? 5 : 6;
     // Mapa escolha → "H1 · Aonde Jogar · Eficiência — frase…", montado UMA vez
     // por pintura: `opcoesCascata` percorre horizontes, drivers e eixos a cada
     // chamada, e chamá-lo por frente faria isso dezenas de vezes na mesma
@@ -842,7 +884,7 @@ const SecaoProjetos = {
         const media = this.mediaProgresso(lista);
         return `
         <tr class="${classe}" ${marca}>
-          <td colspan="6"><span class="grupo-celula">
+          <td colspan="${colunasDoTitulo}"><span class="grupo-celula">
             <span class="nome-grupo">${Modal.esc(titulo)}</span>
             <span class="badge text-bg-light border">${this.contaAcoes(lista.length)}</span>
             ${this.resumoStatus(lista, ['ATRASADO'])}${extra}</span></td>
@@ -851,7 +893,7 @@ const SecaoProjetos = {
           <td class="col-acoes-plano">${acoesLinha}</td>
         </tr>`;
       };
-      const linhas = (lista) => lista.map((a) => this.linhaTabela(a)).join('');
+      const linhas = (lista) => lista.map((a) => this.linhaTabela(a, celular)).join('');
       /* O que a linha da frente leva além do título (pedido do cliente,
        * 2026-10-28): onde ela está vinculada na Cascata, e o ✎ que edita esse
        * vínculo sem sair da tabela.
@@ -949,7 +991,7 @@ const SecaoProjetos = {
     return `<div class="table-responsive caixa-tabela-5w2h">
       <table class="table table-sm align-middle tabela-5w2h${this.quebraAtual() ? ' quebra-linhas' : ''}">
         <thead><tr>
-          <th>Situação</th><th>O quê</th><th>Como</th><th>Quem</th>
+          ${celular ? '' : '<th>Situação</th>'}<th>O quê</th><th>Como</th><th>Quem</th>
           <th>Quando</th><th>Ganhos</th><th>Progresso</th>
           <!-- Sem rótulo, como na tabela de Metas: escrever "Ações" aqui
                colidiria com a AÇÃO do método, que é o que as linhas são. -->
@@ -960,7 +1002,7 @@ const SecaoProjetos = {
     </div>`;
   },
 
-  linhaTabela(a) {
+  linhaTabela(a, celular = false) {
     const [rotulo, classe] = STATUS_ACAO[a.status] || [a.status, 'text-bg-light'];
     const cancelada = a.status === 'CANCELADO';
     const pct = cancelada ? 0 : a.progresso;
@@ -973,15 +1015,24 @@ const SecaoProjetos = {
       : `R$ ${Number(a.quanto).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     return `<tr class="linha-5w2h" data-card-acao="${a.id}" data-cadeado="desdobramento:${a.id}"
       data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
-      <td><span class="badge ${classe}">${rotulo}</span></td>
-      <td class="col-oque">${Modal.esc(a.o_que)}
+      ${celular ? '' : `<td><span class="badge ${classe}">${rotulo}</span></td>`}
+      <!-- No celular o selo vem AQUI, acima do texto: é a mesma informação,
+           na mesma coluna, sem gastar um terço da largura com uma coluna de
+           duas palavras. -->
+      <td class="col-oque">${celular
+    ? `<div class="situacao-no-oque"><span class="badge ${classe}">${rotulo}</span></div>`
+    : ''}${Modal.esc(a.o_que)}
         ${selos ? `<span class="clipe-5w2h" title="${a.comentarios} comentário(s), ${a.anexos} anexo(s)">📎 ${selos}</span>` : ''}</td>
       <td class="corta" title="${Modal.esc(a.como || '')}">${Modal.esc(a.como || '')}</td>
       <td>${a.quem
     ? Modal.esc(a.quem)
     : '<span class="selo-sem-usuario" title="Ninguém responde por esta ação: ela não entra em cobrança nenhuma">Sem usuário</span>'}</td>
       <td class="num">${prazo ? Modal.esc(prazo) : '—'}</td>
-      <td class="num">${ganhos}</td>
+      <!-- col-ganhos para a célula ser achada por NOME. A bateria a lia por
+           índice (children[5]), e no celular, com a coluna da situação fora,
+           o índice passou a cair no "Progresso": a prova dos centavos ficou
+           vermelha falando de dinheiro quando lia um percentual. -->
+      <td class="num col-ganhos">${ganhos}</td>
       <!-- O percentual se ajusta AQUI (pedido do cliente, 2026-10-28). Era
            leitura: a barra arrastável tinha ficado só na lista, para não
            convidar ao arraste enquanto se lê uma tabela densa. Quem conduz a
@@ -2012,6 +2063,9 @@ const SecaoProjetos = {
     // porque o bloco quebra em duas ou três linhas conforme a largura. Um
     // palpite em `rem` curto demais deixaria um cabeçalho por cima do outro.
     Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos');
+    // Girar o aparelho cruza o limite do celular, e a tabela é montada com
+    // um número de colunas diferente de cada lado dele.
+    this.ligarTrocaDeLargura();
     this.medirCabecalhoTabela(el);
     this.medirCabecalhosProjeto(el);
     this.ligarPopoversResumo(el, conteudos);
