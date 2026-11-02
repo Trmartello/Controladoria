@@ -5398,6 +5398,37 @@ async function provasMenuRecolhido(page, largura) {
   // sobrevivia — o que fazia o menu apontar para um lugar onde ninguém estava.
   const voltou = await page.evaluate(() => App.secaoAtiva);
   t(`[${largura}] e a tela recarregada continua sendo a SWOT`, voltou === 'swot', String(voltou));
+  // ── O marcador de versão (2026-11-02) ────────────────────────────────
+  // Ele existe porque uma entrega ficou presa sem deploy e a tela velha não
+  // tinha como se denunciar: "não mudou nada" virava adivinhação até alguém
+  // abrir a Railway. A prova lê o ATRIBUTO, não o texto — redação muda, e o
+  // que importa é o dado estar lá — e exige a DATA sempre: é ela que acusa a
+  // imagem antiga mesmo para quem não sabe de cor o hash do que foi mesclado.
+  const versao = await page.evaluate(() => {
+    const v = document.querySelector('#nav-secoes')?.closest('nav')?.querySelector('.versao-app')
+      || document.querySelector('.versao-app');
+    if (!v) return null;
+    const r = v.getBoundingClientRect();
+    return {
+      dado: v.dataset.versao || '',
+      titulo: v.title || '',
+      visivel: r.width > 0 && r.height > 0,
+      cabe: r.right <= window.innerWidth + 1,
+    };
+  });
+  t(`[${largura}] o rodapé do menu diz qual versão está no ar`,
+    !!versao && /\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/.test(versao.dado) && versao.visivel,
+    JSON.stringify(versao));
+  // Com a variável da Railway presente, o commit vem junto e o `title` traz o
+  // hash inteiro — é o que se copia para uma conversa.
+  t(`[${largura}] e o título explica o que é aquilo`,
+    !!versao && /imagem montada em/.test(versao.titulo)
+    && (!/^[0-9a-f]{7} · /.test(versao.dado) || /^Commit [0-9a-f]{40} — /.test(versao.titulo)),
+    JSON.stringify(versao));
+  // Nowrap num menu estreito é convite a estouro: no celular a barra tem
+  // menos de 300px, e o marcador não pode empurrá-la.
+  t(`[${largura}] e o marcador cabe na barra`, !!versao && versao.cabe, JSON.stringify(versao));
+
   // O menu não pode ter deixado rolagem horizontal nem o corpo travado
   const rola = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   t(`[${largura}] sem rolagem horizontal depois do menu`, !rola);
