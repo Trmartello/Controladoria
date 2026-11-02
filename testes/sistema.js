@@ -2125,7 +2125,10 @@ async function provasModosPlano(page, largura) {
         grupos: vis('tr.g-frente .nome-grupo').map((x) => x.textContent.trim()),
         cadeados: el.querySelectorAll('[data-cadeado^="desdobramento:"]').length,
         ganhos: [...el.querySelectorAll('tbody tr[data-card-acao]')]
-          .map((tr) => tr.children[5].textContent.trim()),
+          // Pelo NOME da célula, não pelo índice: no celular a tabela tem
+          // uma coluna a menos (a situação sobe para dentro do "o quê") e
+          // `children[5]` passava a ler o "Progresso".
+          .map((tr) => tr.querySelector('.col-ganhos').textContent.trim()),
         semNiveis: !document.querySelector('.niveis-visao'),
         ajustaveis: el.querySelectorAll('[data-progresso]').length,
         rolagemH: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -2158,13 +2161,21 @@ async function provasModosPlano(page, largura) {
     }, prj);
     // CINCO perguntas, não sete: "Onde" e "Por quê" saíram do método em uso
     // nesta casa e não voltam por uma coluna.
-    // A oitava coluna é a das AÇÕES (2026-11-02) e não leva rótulo de
+    // A última coluna é a das AÇÕES (2026-11-02) e não leva rótulo de
     // propósito: escrever "Ações" ali colidiria com a AÇÃO do método, que é o
-    // que as linhas são. A prova confere as sete primeiras e exige que a
-    // última esteja vazia — rótulo aparecendo ali seria defeito.
+    // que as linhas são. A prova confere os rótulos e exige que a última
+    // esteja vazia — rótulo aparecendo ali seria defeito.
+    //
+    // No CELULAR a coluna "Situação" não existe: o selo dela vai para dentro
+    // do "o quê" (pedido do cliente, no mesmo dia), e a tabela tem uma coluna
+    // a menos.
+    const esperadas = largura === 'celular'
+      ? 'O quê | Como | Quem | Quando | Ganhos | Progresso'
+      : 'Situação | O quê | Como | Quem | Quando | Ganhos | Progresso';
+    const nColunas = largura === 'celular' ? 7 : 8;
     t(`${l} a tabela mostra as cinco perguntas do método`,
-      tab.colunas.slice(0, 7).join(' | ') === 'Situação | O quê | Como | Quem | Quando | Ganhos | Progresso'
-      && tab.colunas.length === 8 && tab.colunas[7] === '',
+      tab.colunas.slice(0, nColunas - 1).join(' | ') === esperadas
+      && tab.colunas.length === nColunas && tab.colunas[nColunas - 1] === '',
       JSON.stringify(tab.colunas));
     t(`${l} projeto e frente viram linhas de grupo`,
       tab.grupos.includes('Frente modos A') && tab.grupos.includes('Frente modos B'),
@@ -2224,7 +2235,8 @@ async function provasModosPlano(page, largura) {
       };
     }, { prj });
     t(`${l} a tabela ganhou a coluna de ações`,
-      colAcoes.colunas === 8 && colAcoes.celulasAcao === 8 && colAcoes.celulasGrupo === 3,
+      colAcoes.colunas === nColunas && colAcoes.celulasAcao === nColunas
+      && colAcoes.celulasGrupo === 3,
       JSON.stringify(colAcoes));
     t(`${l} o projeto tem criar frente, editar e excluir`,
       colAcoes.projeto.join('|') === 'novaIni|editarProj|excluirProj',
@@ -2298,6 +2310,50 @@ async function provasModosPlano(page, largura) {
     t(`${l} os botões da coluna de ações têm contraste nos três níveis`,
       contraste.length >= 8 && fracos.length === 0,
       JSON.stringify(fracos.length ? fracos : contraste.slice(0, 3)));
+
+    // ── A situação sobre o "o quê", no celular (2026-11-02) ─────────────
+    // Na tela estreita as duas primeiras colunas viram uma: o selo em cima, o
+    // texto embaixo. O risco real não é o selo — é o `colspan` da linha de
+    // grupo, que é ATRIBUTO e não acompanha a CSS: uma coluna a mais ali e a
+    // coluna do "Progresso" do grupo sai do alinhamento com a das ações, que
+    // é a régua desta tabela e já custou dois pedidos. Por isso a prova mede
+    // as duas coisas.
+    const empilhada = await page.evaluate((id) => {
+      const linha = document.querySelector('.tabela-5w2h tr[data-card-acao]');
+      const oque = linha.querySelector('.col-oque');
+      const selo = oque.querySelector('.situacao-no-oque .badge');
+      const grupo = document.querySelector(`tr[data-grupo-proj="${id}"]`);
+      const esq = (e) => Math.round(e.getBoundingClientRect().left);
+      return {
+        temColunaSituacao: [...document.querySelectorAll('.tabela-5w2h thead th')]
+          .some((th) => th.textContent.trim() === 'Situação'),
+        seloNoOque: !!selo,
+        seloTexto: selo ? selo.textContent.trim() : null,
+        // "Acima" de verdade: o selo começa no topo da célula, e o texto da
+        // ação vem depois dele — não ao lado.
+        seloNoTopo: selo ? Math.round(selo.getBoundingClientRect().top)
+          <= Math.round(oque.getBoundingClientRect().top) + 8 : null,
+        progressoGrupo: esq(grupo.querySelector('.col-progresso')),
+        progressoAcao: esq(linha.querySelector('.col-progresso')),
+        colspan: grupo.children[0].getAttribute('colspan'),
+      };
+    }, prj);
+    if (largura === 'celular') {
+      t(`${l} no celular a situação sobe para dentro do "o quê"`,
+        empilhada.seloNoOque && empilhada.seloNoTopo && !empilhada.temColunaSituacao
+        && /\S/.test(empilhada.seloTexto || ''),
+        JSON.stringify(empilhada));
+      t(`${l} e o grupo acompanha, mantendo o "Progresso" alinhado`,
+        empilhada.colspan === '5'
+        && Math.abs(empilhada.progressoGrupo - empilhada.progressoAcao) <= 1,
+        JSON.stringify(empilhada));
+    } else {
+      // No computador nada muda: a situação continua tendo coluna própria.
+      t(`${l} no computador a situação continua em coluna própria`,
+        empilhada.temColunaSituacao && !empilhada.seloNoOque && empilhada.colspan === '6'
+        && Math.abs(empilhada.progressoGrupo - empilhada.progressoAcao) <= 1,
+        JSON.stringify(empilhada));
+    }
 
     // ── Quebrar o texto (pedido do cliente, 2026-11-02) ──────────────────
     // O "Como" é cortado com reticências porque a tabela existe para ser

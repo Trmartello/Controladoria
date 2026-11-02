@@ -4249,6 +4249,11 @@ body.menu-aberto .menu-lateral {
    coluna não encolha abaixo dela. */
 .tabela-5w2h td.col-progresso { min-width: 9.5rem; }
 .tabela-5w2h .clipe-5w2h { font-size: .72rem; color: #5a6a61; white-space: nowrap; }
+/* No celular o selo da situação vem DENTRO da célula do "o quê", acima do
+   texto (pedido do cliente, 2026-11-02). `div` para ele ocupar a linha
+   inteira: inline, o texto da ação continuaria ao lado dele e a economia de
+   largura — que é o motivo da mudança — se perderia. */
+.tabela-5w2h .situacao-no-oque { margin-bottom: .2rem; }
 /* A coluna de ações da tabela (pedido do cliente, 2026-11-02): criar, editar
    e excluir nos três níveis, sem trocar para a lista.
    Os botões são MIÚDOS de propósito — eles repetem em toda linha de uma
