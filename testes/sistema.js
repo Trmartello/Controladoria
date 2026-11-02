@@ -2049,6 +2049,20 @@ async function provasModosPlano(page, largura) {
   // alcançá-la: ela nasce lá dentro, e o `let` aqui é o que a deixa viva até o
   // fim da função.
   let vincEscolha = null;
+  // Rodada que morre no meio deixa os projetos dela para trás, e a PRÓXIMA
+  // encontra dois de cada: a pesquisa acha duas "Ação gama", o grupo aparece
+  // duplicado e meia dúzia de provas fica vermelha falando de um defeito que
+  // não existe. Já aconteceu — por isso a limpeza vem ANTES de criar, e não
+  // só no fim.
+  await page.evaluate(async () => {
+    const r = await App.api('/api/projetos?planejamento_id=1', null, 'GET');
+    const lista = (r && (r.projetos || r.dados || r)) || [];
+    for (const p of lista) {
+      if (/^Projeto modos( vizinho)?$/.test(p.titulo || '')) {
+        await App.api(`/api/projetos/${p.id}/excluir`, { planejamento_id: 1 });
+      }
+    }
+  });
   const prj = await page.evaluate(async () => {
     const p = await App.api('/api/projetos', {
       planejamento_id: 1, titulo: 'Projeto modos', ano: 2027, responsavel: 'QA', descricao: '',
@@ -2228,8 +2242,7 @@ async function provasModosPlano(page, largura) {
     t(`${l} o ＋ do projeto abre "Nova iniciativa"`,
       abriuNovaIni && (await page.evaluate(() =>
         document.querySelector('.modal.show .modal-title')?.textContent.trim())) === 'Nova iniciativa');
-    await page.keyboard.press('Escape');
-    await esperar(page, "!document.querySelector('.modal.show')", 5000);
+    t(`${l} e o formulário fecha, liberando a tabela`, await fecharModal(page));
 
     // ── Quebrar o texto (pedido do cliente, 2026-11-02) ──────────────────
     // O "Como" é cortado com reticências porque a tabela existe para ser
@@ -2359,8 +2372,7 @@ async function provasModosPlano(page, largura) {
       abriuFrente && campoCascata.titulo === 'Editar iniciativa' && campoCascata.temCascata
       && /não vinculado/.test(campoCascata.primeira || ''),
       JSON.stringify(campoCascata));
-    await page.keyboard.press('Escape');
-    await esperar(page, "!document.querySelector('.modal.show')", 5000);
+    t(`${l} e o formulário da frente fecha`, await fecharModal(page));
 
     // ── Vincular e DESVINCULAR a frente (pedido do cliente, 2026-11-02) ──
     // A escolha da Cascata é criada numa combinação LIVRE de horizonte,
@@ -2393,9 +2405,17 @@ async function provasModosPlano(page, largura) {
       const ini = (proj.iniciativas || [])[1];
       await App.api(`/api/iniciativas/${ini.id}`, {
         planejamento_id: 1, projeto_id: proj.id, titulo: ini.titulo,
-        descricao: ini.descricao || '', ordem: ini.ordem, cascata_id: nova.id,
+        // A descrição entra AQUI para a prova do desvínculo ter o que
+        // conferir: o × manda o corpo inteiro da frente, e um campo que
+        // faltasse nele seria apagado em silêncio.
+        descricao: 'Descrição da frente que não pode sumir ao desvincular.',
+        ordem: ini.ordem,
+        cascata_id: nova.id,
       });
-      return { escolha: nova.id, ini: Number(ini.id), ordem: Number(ini.ordem) };
+      return {
+        escolha: nova.id, ini: Number(ini.id), ordem: Number(ini.ordem),
+        acoes: (ini.acoes || []).length,
+      };
     }, prj);
     t(`${l} a prova conseguiu criar uma escolha de Cascata`, !vinc.erro && !!vinc.escolha,
       JSON.stringify(vinc));
@@ -2427,6 +2447,8 @@ async function provasModosPlano(page, largura) {
           cascata: ini ? ini.cascata_id : 'frente sumiu',
           ordem: ini ? Number(ini.ordem) : null,
           titulo: ini ? ini.titulo : null,
+          descricao: ini ? (ini.descricao || '') : null,
+          acoes: ini ? (ini.acoes || []).length : null,
         };
       }, vinc);
       t(`${l} o × desvincula a frente da Cascata`,
@@ -2436,6 +2458,13 @@ async function provasModosPlano(page, largura) {
       t(`${l} e desvincular não mexe no título nem na ordem da frente`,
         semSelo.ordem === vinc.ordem && semSelo.titulo === 'Frente modos B',
         JSON.stringify({ ...semSelo, esperado: vinc.ordem }));
+      // NADA do que foi lançado pode sumir junto com o vínculo: a descrição
+      // viaja no corpo do × (um campo esquecido ali apagaria o texto em
+      // silêncio) e as ações da frente não são tocadas por ele.
+      t(`${l} e não apaga a descrição nem as ações da frente`,
+        semSelo.descricao === 'Descrição da frente que não pode sumir ao desvincular.'
+        && semSelo.acoes === vinc.acoes && semSelo.acoes > 0,
+        JSON.stringify({ ...semSelo, acoesAntes: vinc.acoes }));
     }
 
     // O duplo clique passa a abrir os TRÊS níveis da tabela, não só a ação.
@@ -2445,8 +2474,7 @@ async function provasModosPlano(page, largura) {
       abriuPorGesto
       && (await page.evaluate(() => document.querySelector('.modal.show .modal-title')?.textContent.trim()))
         === 'Editar iniciativa');
-    await page.keyboard.press('Escape');
-    await esperar(page, "!document.querySelector('.modal.show')", 5000);
+    await fecharModal(page);
   }
 
   // ── O quadro por situação ────────────────────────────────────────────
@@ -5631,12 +5659,57 @@ async function provasHorizonteIndicador(page, largura) {
       planejamento_id: 1, nome: 'Indicador com horizonte QA', unidade: 'ton',
       sentido: 'MENOR_MELHOR', agregacao: 'MEDIA', metrica_ancora: 1, horizonte_id: h.id,
     });
+    // Meta e real LANÇADOS, e um vínculo com a Cascata: é o que não pode
+    // sumir quando alguém desvincular o horizonte. A escolha é criada numa
+    // combinação LIVRE (nunca em cima de uma existente, que seria editar
+    // decisão real do planejamento) e some no fim da prova.
+    //
+    // O ano sai do CICLO e não é fixo no código: o lançamento anual não vale
+    // no ano em execução (lá se lança mês a mês), e um ano chutado gravaria
+    // onde a tela não lê. `ano_base` é sempre o primeiro do ciclo.
+    const dadosMetas = await App.api('/api/indicadores?planejamento_id=1');
+    const anoProva = Number(dadosMetas.ciclo.ano_base) === Number(dadosMetas.ano_execucao)
+      ? Number(dadosMetas.ciclo.ano_base) + 1
+      : Number(dadosMetas.ciclo.ano_base);
+    await App.api(`/api/indicadores/${comH.id}/valores`, {
+      planejamento_id: 1, tipo: 'META', mes: 0, valores: { [anoProva]: 123.45 },
+    });
+    await App.api(`/api/indicadores/${comH.id}/valores`, {
+      planejamento_id: 1, tipo: 'REAL', mes: 0, valores: { [anoProva]: 99.9 },
+    });
+    const usadas = new Set((d.escolhas || [])
+      .map((e) => `${e.horizonte_id}|${e.driver_id}|${e.eixo_id || 0}`));
+    const combos = [];
+    for (const hz of d.horizontes || []) {
+      for (const dr of d.drivers || []) {
+        for (const ex of [...(d.eixos || []), { id: null }]) {
+          combos.push({ h: hz.id, d: dr.id, e: ex.id ?? null });
+        }
+      }
+    }
+    const livre = combos.find((k) => !usadas.has(`${k.h}|${k.d}|${k.e || 0}`));
+    let escolhaProva = null;
+    if (livre) {
+      const nova = await App.api('/api/cascata', {
+        planejamento_id: 1, horizonte_id: livre.h, driver_id: livre.d, eixo_id: livre.e,
+        escolha: 'Escolha de prova do horizonte', renuncia: '', fatores: [],
+      });
+      escolhaProva = nova.id;
+      await App.api(`/api/indicadores/${comH.id}`, {
+        planejamento_id: 1, nome: 'Indicador com horizonte QA', unidade: 'ton',
+        sentido: 'MENOR_MELHOR', agregacao: 'MEDIA', metrica_ancora: 1,
+        horizonte_id: h.id, cascatas: [nova.id],
+      });
+    }
     const semH = await App.api('/api/indicadores', {
       planejamento_id: 1, nome: 'Indicador sem horizonte QA', unidade: '%',
       agregacao: 'SOMA', metrica_ancora: 0, horizonte_id: '',
     });
     App.mostrarSecao('metas');
-    return { comH: comH.id, semH: semH.id, horizonte: h.id, nome: h.nome };
+    return {
+      comH: comH.id, semH: semH.id, horizonte: h.id, nome: h.nome,
+      ano: anoProva, escolha: escolhaProva,
+    };
   });
   t(`${l} o ciclo tem horizonte para vincular`, !ids.erro, JSON.stringify(ids));
   if (ids.erro) return;
@@ -5677,11 +5750,16 @@ async function provasHorizonteIndicador(page, largura) {
     const depois = await page.evaluate(async (x) => {
       const r = await App.api('/api/indicadores?planejamento_id=1');
       const i = (r.indicadores || []).find((y) => Number(y.id) === x.comH);
+      const meta = (i?.metas || []).find((m) => Number(m.ano) === Number(x.ano));
+      const real = (i?.reais || []).find((v) => Number(v.ano) === Number(x.ano));
       return {
         horizonte: i ? i.horizonte_id : 'sumiu',
         nome: i?.nome, unidade: i?.unidade, sentido: i?.sentido,
         agregacao: i?.agregacao, ancora: Number(i?.metrica_ancora),
         selo: !!document.querySelector(`[data-desvincular-horizonte="${x.comH}"]`),
+        meta: meta ? Number(meta.valor) : null,
+        real: real ? Number(real.valor) : null,
+        cascatas: (i?.cascatas || []).map(Number),
       };
     }, ids);
     t(`${l} o × desvincula o indicador do horizonte`,
@@ -5691,11 +5769,26 @@ async function provasHorizonteIndicador(page, largura) {
     t(`${l} e o resto do cadastro fica como estava`,
       depois.unidade === 'ton' && depois.sentido === 'MENOR_MELHOR'
       && depois.agregacao === 'MEDIA' && depois.ancora === 1, JSON.stringify(depois));
+    // O QUE FOI LANÇADO NÃO SOME. A meta e o real vivem noutra tabela
+    // (`indicador_valor`) e o `salvar` do indicador não a toca — mas é
+    // exatamente o que ninguém confere, e é a pergunta que o cliente fez.
+    t(`${l} e a meta e o real lançados continuam lá`,
+      depois.meta === 123.45 && depois.real === 99.9, JSON.stringify(depois));
+    // O vínculo com a Matriz de Execução também fica: `gravarCascatas` só
+    // mexe nele quando a chave `cascatas` vem no corpo, e o × não a manda.
+    // Mandar um `cascatas: []` ali apagaria a linha da matriz em silêncio.
+    if (ids.escolha) {
+      t(`${l} e o vínculo com a Cascata não vai junto`,
+        depois.cascatas.includes(Number(ids.escolha)), JSON.stringify(depois));
+    }
   }
   await page.evaluate(async (x) => {
     for (const id of [x.comH, x.semH]) {
       await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 });
     }
+    // A escolha sai DEPOIS dos indicadores, senão o vínculo cairia por tabela
+    // e a prova teria medido o efeito errado.
+    if (x.escolha) await App.api(`/api/cascata/${x.escolha}/excluir`, { planejamento_id: 1 });
   }, ids);
 }
 
