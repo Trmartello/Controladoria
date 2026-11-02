@@ -4036,6 +4036,72 @@ body.menu-aberto .menu-lateral {
 }
 .tabela-5w2h tbody tr.g-proj:first-child > td { border-top-width: 0; }
 .tabela-5w2h tr.g-proj .badge.text-bg-light { background: rgba(255, 255, 255, .18) !important; color: #fff; border-color: rgba(255, 255, 255, .35) !important; }
+/* Os botões da linha do PROJETO sobre a faixa verde-escura (achado do
+   cliente, 2026-11-02: "quase sem visibilidade"). Os `btn-outline-*` do
+   Bootstrap são desenhados para fundo claro — o cinza do ✎ e o vermelho
+   escuro do × caem para perto de 2:1 de contraste contra o verde, e o verde
+   do ＋ praticamente se dissolve no fundo.
+   Aqui eles viram botões de fundo escuro, pela mesma receita que o selo ao
+   lado já usa: traço e glifo brancos, fundo translúcido para destacá-los da
+   faixa sem virar bloco sólido. O preenchimento vem no hover e no foco — e o
+   × preenche VERMELHO, porque a cor de aviso tem de aparecer no momento em
+   que o dedo está sobre ele, que é quando ela serve para alguma coisa. */
+.tabela-5w2h tr.g-proj .botao-linha-plano {
+  --bs-btn-color: #fff;
+  /* Fundo TRANSPARENTE, e isto é medição, não gosto: um véu branco de 14%
+     clareia o verde sob o glifo e derruba o contraste do branco de 5,42:1
+     para 4,18:1 — abaixo do mínimo de 4,5:1 para texto. Quem destaca o botão
+     aqui é o traço, não o preenchimento. */
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: rgba(255, 255, 255, .85);
+  --bs-btn-hover-color: var(--verde-coperdia);
+  --bs-btn-hover-bg: #fff;
+  --bs-btn-hover-border-color: #fff;
+  --bs-btn-active-color: var(--verde-coperdia);
+  --bs-btn-active-bg: #fff;
+  --bs-btn-active-border-color: #fff;
+  /* Sem isto o anel de foco sai na cor do botão original e some no verde —
+     é a mesma armadilha já anotada no guia do projeto. */
+  --bs-btn-focus-shadow-rgb: 255, 255, 255;
+}
+.tabela-5w2h tr.g-proj .botao-linha-plano.btn-outline-danger {
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #8f3b3b;
+  --bs-btn-hover-border-color: #8f3b3b;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: #8f3b3b;
+  --bs-btn-active-border-color: #8f3b3b;
+}
+/* A faixa da FRENTE é verde-claro, e ali o problema é outro: o cinza padrão
+   do contorno do Bootstrap dá 3,99:1 contra o `#e8f3ed` — também abaixo dos
+   4,5:1. Escurecer o glifo resolve sem tirar a discrição do botão.
+   O × usa o vermelho da casa (`#8f3b3b`) em TODA a coluna: o `#dc3545` do
+   Bootstrap dá 3,95:1 até sobre branco, na linha da ação. */
+.tabela-5w2h .botao-linha-plano.btn-outline-danger {
+  --bs-btn-color: #8f3b3b;
+  /* O traço do × na linha da AÇÃO é sobre branco, e o tom claro dava 2,6:1 —
+     abaixo do 3:1 que o contorno de um controle precisa. */
+  --bs-btn-border-color: #a86a6a;
+  --bs-btn-hover-bg: #8f3b3b;
+  --bs-btn-hover-border-color: #8f3b3b;
+  --bs-btn-active-bg: #8f3b3b;
+  --bs-btn-active-border-color: #8f3b3b;
+}
+.tabela-5w2h tr.g-frente .botao-linha-plano {
+  --bs-btn-color: #3f5a4e;
+  /* O traço também é medido: a borda é o contorno do CONTROLE, e abaixo de
+     3:1 contra a faixa ela deixa de marcar onde o botão começa. O tom claro
+     que eu tinha escolhido primeiro dava 1,8:1. */
+  --bs-btn-border-color: #6b8a7a;
+}
+.tabela-5w2h tr.g-frente .botao-linha-plano.btn-outline-success {
+  --bs-btn-color: #1d6b43;
+  --bs-btn-border-color: #2f7a4f;
+}
+.tabela-5w2h tr.g-frente .botao-linha-plano.btn-outline-danger {
+  --bs-btn-color: #8f3b3b;
+  --bs-btn-border-color: #a05a5a;
+}
 .tabela-5w2h tr.g-frente > td {
   background: #e8f3ed;
   font-weight: 600;

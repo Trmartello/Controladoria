@@ -2243,6 +2243,61 @@ async function provasModosPlano(page, largura) {
       abriuNovaIni && (await page.evaluate(() =>
         document.querySelector('.modal.show .modal-title')?.textContent.trim())) === 'Nova iniciativa');
     t(`${l} e o formulário fecha, liberando a tabela`, await fecharModal(page));
+    // ── Contraste dos botões (achado do cliente, 2026-11-02) ────────────
+    // Na faixa verde-escura do projeto eles ficaram "quase sem visibilidade":
+    // os `btn-outline-*` do Bootstrap são desenhados para fundo claro. A
+    // prova MEDE a razão de contraste (WCAG) em vez de conferir uma cor —
+    // cor escrita no CSS não diz como ela se comporta sobre cada faixa, e foi
+    // medindo que se descobriu que a primeira correção, com um véu branco
+    // atrás do glifo, PIOROU o contraste de 5,4:1 para 4,2:1.
+    const contraste = await page.evaluate((x) => {
+      const canal = (v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+      const lum = ([r, g, b]) => 0.2126 * canal(r) + 0.7152 * canal(g) + 0.0722 * canal(b);
+      const rgb = (s2) => (s2.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+      // O alfa só existe em `rgba(...)`, e é o QUARTO número.
+      const alfa = (cor) => {
+        const n = (cor.match(/[\d.]+/g) || []).map(Number);
+        return cor.startsWith('rgba') && n.length >= 4 ? n[3] : 1;
+      };
+      const sobre = (frente, a, fundo) => frente.map((c, i) => c * a + fundo[i] * (1 - a));
+      const razao = (a, b) => {
+        const [l1, l2] = [lum(a), lum(b)].sort((p, q) => q - p);
+        return Math.round(((l1 + 0.05) / (l2 + 0.05)) * 100) / 100;
+      };
+      // Em repouso, que é como a tabela é lida. Sem isto a medida pega o botão
+      // que acabou de abrir um modal: o Bootstrap devolve o foco a ele, e
+      // `:focus-visible` aplica as cores de HOVER — o botão fica preenchido e
+      // a comparação deixa de ser a da tela parada.
+      document.activeElement?.blur();
+      const medir = (sel) => {
+        const tr = document.querySelector(sel);
+        if (!tr) return [];
+        const fundo = rgb(getComputedStyle(tr.querySelector('td')).backgroundColor);
+        return [...tr.querySelectorAll('.col-acoes-plano button')].map((b) => {
+          const e = getComputedStyle(b);
+          const fundoBotao = sobre(rgb(e.backgroundColor), alfa(e.backgroundColor), fundo);
+          return {
+            onde: `${tr.className.split(' ')[0]} ${b.textContent.trim()}`,
+            // O glifo se lê contra o que está ATRÁS DELE (o preenchimento do
+            // botão, quando há um); o traço delimita o botão contra a FAIXA.
+            // Comparar o traço com o próprio preenchimento daria razão 1 num
+            // botão cheio — borda e fundo da mesma cor, por desenho.
+            texto: razao(sobre(rgb(e.color), alfa(e.color), fundoBotao), fundoBotao),
+            borda: razao(sobre(rgb(e.borderTopColor), alfa(e.borderTopColor), fundo), fundo),
+          };
+        });
+      };
+      return [
+        ...medir(`tr[data-grupo-proj="${x.prj}"]`),
+        ...medir('tr.g-frente[data-grupo-frente]'),
+        ...medir('tr[data-card-acao]'),
+      ];
+    }, { prj });
+    // 4,5:1 é o mínimo do texto; 3:1, o do contorno de um controle (WCAG AA).
+    const fracos = contraste.filter((c) => c.texto < 4.5 || c.borda < 3);
+    t(`${l} os botões da coluna de ações têm contraste nos três níveis`,
+      contraste.length >= 8 && fracos.length === 0,
+      JSON.stringify(fracos.length ? fracos : contraste.slice(0, 3)));
 
     // ── Quebrar o texto (pedido do cliente, 2026-11-02) ──────────────────
     // O "Como" é cortado com reticências porque a tabela existe para ser
