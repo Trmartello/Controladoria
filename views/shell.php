@@ -181,6 +181,26 @@
           <button class="btn btn-sm btn-outline-light" id="btn-senha">Trocar senha</button>
           <button class="btn btn-sm btn-outline-light" id="btn-sair">Sair</button>
         </div>
+        <!-- QUAL versão está no ar. Nasceu de uma entrega que ficou presa sem
+             deploy: a tela continuava velha, e descobrir isso exigia abrir a
+             Railway. Aqui a resposta está no rodapé, para quem usa o sistema
+             — e a DATA é o que denuncia o deploy que não aconteceu, mesmo
+             para quem não sabe de cor o hash do que foi mesclado.
+             O commit completo fica no `title`, e o `data-versao` é o que a
+             bateria lê: texto de tela muda de redação, atributo não. -->
+        <?php $ver = versao_app(); ?>
+        <div class="versao-app" data-versao="<?= htmlspecialchars(
+          ($ver['commit'] !== '' ? $ver['commit'] . ' · ' : '') . $ver['data'],
+          ENT_QUOTES
+        ) ?>" title="<?= htmlspecialchars(
+          ($ver['commit_completo'] !== ''
+            ? 'Commit ' . $ver['commit_completo'] . ' — '
+            : 'Fora da Railway (sem commit na variável de ambiente) — ')
+          . 'imagem montada em ' . $ver['data'],
+          ENT_QUOTES
+        ) ?>">
+          <?= $ver['commit'] !== '' ? 'versão ' . htmlspecialchars($ver['commit'], ENT_QUOTES) . ' · ' : 'versão ' ?><?= htmlspecialchars($ver['data'], ENT_QUOTES) ?>
+        </div>
       </div>
     </nav>
 

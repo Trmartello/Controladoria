@@ -112,6 +112,35 @@ function versao_asset(string $caminho): string
     return $caminho . '?v=' . (is_file($arquivo) ? filemtime($arquivo) : 1);
 }
 
+/**
+ * QUAL versão está no ar — o commit e a data em que esta imagem foi montada.
+ *
+ * Existe por um problema real e repetido (2026-11-02): uma entrega ficou presa
+ * sem deploy e a única maneira de descobrir isso era abrir a Railway. Quem usa
+ * o sistema via a tela velha, concluía "não mudou nada", e a conversa virava
+ * adivinhação. Com o marcador no rodapé, a pergunta "o que está rodando aí?"
+ * se responde em um segundo, de dentro do próprio sistema.
+ *
+ * O commit vem de `RAILWAY_GIT_COMMIT_SHA`, que a Railway injeta sozinha em
+ * todo deploy — nada a gerar no build, nada a esquecer de atualizar. Fora dela
+ * (máquina de quem desenvolve) a variável não existe, e aí vale a DATA: o
+ * `filemtime` deste arquivo é o momento em que o `COPY` do Dockerfile o
+ * gravou, ou seja, quando a imagem foi montada.
+ *
+ * Os dois juntos respondem perguntas diferentes: o commit diz QUAL código, a
+ * data diz QUANDO ele entrou — e é a data que denuncia o deploy que não
+ * aconteceu, mesmo quando ninguém sabe de cor o hash do que foi mesclado.
+ */
+function versao_app(): array
+{
+    $sha = (string)(getenv('RAILWAY_GIT_COMMIT_SHA') ?: '');
+    return [
+        'commit' => $sha !== '' ? substr($sha, 0, 7) : '',
+        'commit_completo' => $sha,
+        'data' => date('d/m/Y H:i', (int)(@filemtime(__FILE__) ?: time())),
+    ];
+}
+
 use App\Core\Auth;
 use App\Core\Json;
 use App\Core\Versao;

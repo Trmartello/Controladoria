@@ -518,6 +518,18 @@ table.tabela-cadastro td { vertical-align: middle; }
 }
 .tabela-metas .btn-vincular-horizonte:hover { text-decoration: underline; }
 
+/* O marcador de versão, no rodapé do menu. Discreto de propósito: ele responde
+   "o que está rodando aí?", pergunta que se faz uma vez por entrega, e não
+   pode competir com a navegação. Fica selecionável — é para ser copiado numa
+   conversa — e não quebra no meio do hash. */
+.versao-app {
+  margin-top: .5rem;
+  font-size: .72rem;
+  color: rgba(255, 255, 255, .45);
+  white-space: nowrap;
+  user-select: text;
+}
+
 /* Painel consolidado */
 .tabela-painel td, .tabela-painel th { white-space: nowrap; }
 /* ===== Barras de progresso — um desenho só em todo o sistema =====

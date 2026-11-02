@@ -55,6 +55,32 @@ configuração costuma travar. Uma lista só, para as duas não divergirem.
 No serviço web: **Settings → Networking → Generate Domain**. O Railway cria a
 URL `https://<nome>.up.railway.app`.
 
+### Que versão está no ar? (olhe o rodapé do menu)
+
+No rodapé do menu lateral, abaixo dos botões **Trocar senha** e **Sair**, o
+sistema diz qual versão está rodando:
+
+```
+versão e18202f · 02/11/2026 09:43
+```
+
+- **`e18202f`** é o commit. Vem de `RAILWAY_GIT_COMMIT_SHA`, que o Railway
+  injeta sozinho em todo deploy — não há nada a configurar. Passando o mouse,
+  o balão mostra o hash inteiro, pronto para copiar.
+- **A data** é quando a IMAGEM foi montada (o `COPY` do Dockerfile), e não a
+  hora em que a página abriu.
+
+**É por aqui que se separa "não fez deploy" de "é cache do navegador"**, que é
+a dúvida de toda entrega:
+
+| O que o rodapé mostra | O que isso quer dizer |
+|---|---|
+| data **anterior** ao merge | o deploy não chegou — veja *Deployments* e, se preciso, **Redeploy** |
+| data **posterior** ao merge, mas a tela parece velha | é cache do navegador: **Ctrl+Shift+R** |
+
+Fora do Railway (rodando na máquina de alguém) a variável não existe: o
+marcador mostra só a data, e o balão avisa que não há commit.
+
 ## 5. Primeiro acesso
 
 1. O deploy roda `database/migrate.php` na subida: cria as tabelas (quase

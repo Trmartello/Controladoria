@@ -147,6 +147,16 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   Plano de ação, Metas · Indicadores e Investimentos — o plano na ordem em que
   se constrói) e **Relatórios** (Status e Dossiê, as duas saídas em papel).
   Nenhuma seção saiu do sistema: as 18 continuam no menu, e a prova conta.
+- **O rodapé do menu diz qual versão está no ar** (2026-11-02): `versao_app()`
+  no front controller devolve o commit (`RAILWAY_GIT_COMMIT_SHA`, que o Railway
+  injeta sozinho) e a data do `filemtime` do próprio `index.php` — que dentro
+  do contêiner é a hora do `COPY` do Dockerfile, ou seja, quando a IMAGEM foi
+  montada. Nasceu de uma entrega que ficou presa sem deploy: a tela continuava
+  velha, o cliente dizia "não mudou nada" e descobrir a causa exigia abrir o
+  Railway. Com o marcador, data anterior ao merge = deploy não chegou; data
+  posterior com tela velha = cache do navegador. O `title` traz o hash inteiro.
+  Está em `docs/DEPLOY-RAILWAY.md` §4 e tem prova em `provasMenuRecolhido`
+  (inclusive a de que ele CABE na barra: `nowrap` em menu de 300px estoura).
 - **A tela e o negócio sobrevivem à recarga** (2026-10-14, pedido do cliente):
   o F5 devolvia todo mundo ao Painel com o escopo corporativo. Não é só
   incômodo — quem acompanha um negócio passa o dia numa tela só, e a recarga
