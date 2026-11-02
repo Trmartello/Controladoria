@@ -127,42 +127,40 @@
             <li><a class="nav-link" href="#cruzamentos" data-secao="cruzamentos">Cruzamentos</a></li>
           </ul>
         </li>
+        <!--
+          Reagrupamento pedido pelo cliente em 2026-11-02. Eram cinco tópicos
+          depois do Diagnóstico — Estratégia, Execução, Capital, Gestão e
+          Encontro —, e três deles tinham UM item só. Um tópico que esconde um
+          link é um clique a mais para chegar a qualquer lugar, e a divisão
+          entre "estratégia", "execução" e "capital" é vocabulário de método,
+          não a pergunta de quem abre o menu.
+          Ficaram dois: ESTRATÉGIA, que é o plano inteiro na ordem em que ele
+          se constrói (a decisão, o que ela virou, como se mede, quanto custa),
+          e RELATÓRIOS, que são as saídas em papel. Execução, Capital e Gestão
+          deixaram de existir; nenhuma SEÇÃO saiu do sistema, só mudaram de
+          tópico — o contrato continua sendo o `data-secao`, não o lugar.
+        -->
         <li class="grupo-menu" data-grupo="estrategia">
           <button type="button" class="cabecalho-grupo" aria-expanded="false"
             aria-controls="grupo-estrategia">Estratégia
             <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
           <ul class="itens-grupo nav flex-column gap-1" id="grupo-estrategia">
             <li><a class="nav-link" href="#cascata" data-secao="cascata">Cascata de Escolhas</a></li>
-          </ul>
-        </li>
-        <li class="grupo-menu" data-grupo="execucao">
-          <button type="button" class="cabecalho-grupo" aria-expanded="false"
-            aria-controls="grupo-execucao">Execução
-            <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
-          <ul class="itens-grupo nav flex-column gap-1" id="grupo-execucao">
             <li><a class="nav-link" href="#projetos" data-secao="projetos">Plano de ação</a></li>
-          </ul>
-        </li>
-        <li class="grupo-menu" data-grupo="capital">
-          <button type="button" class="cabecalho-grupo" aria-expanded="false"
-            aria-controls="grupo-capital">Capital
-            <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
-          <ul class="itens-grupo nav flex-column gap-1" id="grupo-capital">
+            <li><a class="nav-link" href="#metas" data-secao="metas">Metas · Indicadores</a></li>
             <li><a class="nav-link" href="#investimentos" data-secao="investimentos">Investimentos</a></li>
           </ul>
         </li>
-        <li class="grupo-menu" data-grupo="gestao">
+        <li class="grupo-menu" data-grupo="relatorios">
           <button type="button" class="cabecalho-grupo" aria-expanded="false"
-            aria-controls="grupo-gestao">Gestão
+            aria-controls="grupo-relatorios">Relatórios
             <svg class="chevron" width="14" height="14" aria-hidden="true" focusable="false"><use href="#i-chevron"/></svg></button>
-          <ul class="itens-grupo nav flex-column gap-1" id="grupo-gestao">
-            <li><a class="nav-link" href="#metas" data-secao="metas">Metas · Indicadores</a></li>
+          <ul class="itens-grupo nav flex-column gap-1" id="grupo-relatorios">
+            <!-- As duas saídas em papel do sistema, e é aqui que se procura por
+                 elas. O que muda é o assunto: o Relatório é o documento da
+                 REUNIÃO (um período, o que andou); o Dossiê é o documento do
+                 PLANO (as etapas inteiras, na ordem em que se lê). -->
             <li><a class="nav-link" href="#relatorio" data-secao="relatorio">Relatório de Status</a></li>
-            <!-- O Dossiê fica ao lado do Relatório de Status porque são as duas
-                 saídas em papel do sistema, e é aqui que se procura por elas. O que
-                 muda é o assunto: o Relatório é o documento da REUNIÃO (um período,
-                 o que andou); o Dossiê é o documento do PLANO (as etapas inteiras,
-                 na ordem em que se lê). -->
             <li><a class="nav-link" href="#dossie" data-secao="dossie">Dossiê do plano</a></li>
           </ul>
         </li>

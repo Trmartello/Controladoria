@@ -2045,20 +2045,30 @@ async function provasExcluirUsuario(page) {
  */
 async function provasModosPlano(page, largura) {
   const l = `[${largura}]`;
+  // A escolha de Cascata criada pela prova do vínculo, para a limpeza do fim
+  // alcançá-la: ela nasce lá dentro, e o `let` aqui é o que a deixa viva até o
+  // fim da função.
+  let vincEscolha = null;
   const prj = await page.evaluate(async () => {
     const p = await App.api('/api/projetos', {
       planejamento_id: 1, titulo: 'Projeto modos', ano: 2027, responsavel: 'QA', descricao: '',
     });
     const a = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id, titulo: 'Frente modos A' });
     const b = await App.api('/api/iniciativas', { planejamento_id: 1, projeto_id: p.id, titulo: 'Frente modos B' });
-    const nova = (ini, o_que, quem, quanto) => App.api('/api/desdobramentos', {
-      planejamento_id: 1, projeto_id: p.id, iniciativa_id: ini, o_que, como: 'Como de prova',
+    const nova = (ini, o_que, quem, quanto, como = 'Como de prova') => App.api('/api/desdobramentos', {
+      planejamento_id: 1, projeto_id: p.id, iniciativa_id: ini, o_que, como,
       quem, quem_usuario_id: 1, prioridade: 'MEDIA', status: 'EM_ANDAMENTO', progresso: 40, quanto,
       recorrencia: 'NENHUMA', data_inicio: '2027-01-01', data_fim: '2027-12-31',
     });
     await nova(a.id, 'Ação alfa dos modos', 'QA dos modos', 1500.5);
     await nova(a.id, 'Ação beta dos modos', 'QA dos modos', null);
-    await nova(b.id, 'Ação gama dos modos', 'QA dos modos', null);
+    // O "como" comprido é o que a prova da QUEBRA DE TEXTO mede: com texto
+    // curto, ligar e desligar a quebra não muda altura nenhuma e a prova
+    // passaria com o interruptor desligado.
+    await nova(b.id, 'Ação gama dos modos', 'QA dos modos', null,
+      'Premissa comprida de propósito, para a célula do «Como» não caber numa linha só: '
+      + 'gerir por margem de contribuição, rastrear perdas por lote e revisar a '
+      + 'precificação semanalmente com a equipe inteira.');
     return p.id;
   });
   // Um SEGUNDO projeto, só para o filtro por projeto ter o que esconder: com
@@ -2134,8 +2144,13 @@ async function provasModosPlano(page, largura) {
     }, prj);
     // CINCO perguntas, não sete: "Onde" e "Por quê" saíram do método em uso
     // nesta casa e não voltam por uma coluna.
+    // A oitava coluna é a das AÇÕES (2026-11-02) e não leva rótulo de
+    // propósito: escrever "Ações" ali colidiria com a AÇÃO do método, que é o
+    // que as linhas são. A prova confere as sete primeiras e exige que a
+    // última esteja vazia — rótulo aparecendo ali seria defeito.
     t(`${l} a tabela mostra as cinco perguntas do método`,
-      tab.colunas.join(' | ') === 'Situação | O quê | Como | Quem | Quando | Ganhos | Progresso',
+      tab.colunas.slice(0, 7).join(' | ') === 'Situação | O quê | Como | Quem | Quando | Ganhos | Progresso'
+      && tab.colunas.length === 8 && tab.colunas[7] === '',
       JSON.stringify(tab.colunas));
     t(`${l} projeto e frente viram linhas de grupo`,
       tab.grupos.includes('Frente modos A') && tab.grupos.includes('Frente modos B'),
@@ -2173,6 +2188,100 @@ async function provasModosPlano(page, largura) {
       && Math.abs(geo.proj.largura - geo.acao.largura) <= 1,
       JSON.stringify(geo));
     t(`${l} a tabela não rola na horizontal`, !tab.rolagemH);
+
+    // ── A coluna de ações da tabela (pedido do cliente, 2026-11-02) ──────
+    // Criar, editar e excluir nos TRÊS níveis sem trocar para a lista. O que
+    // a prova fixa é que os botões carregam os marcadores DA LISTA: é isso
+    // que faz a exclusão vir com a conta dos vínculos, o cadeado de edição
+    // funcionar e a ação recorrente reagendar — tudo sem segunda
+    // implementação. Um botão novo com `onclick` próprio passaria num teste
+    // de "existe botão" e perderia as três coisas.
+    const colAcoes = await page.evaluate((x) => {
+      const marcas = (sel) => [...document.querySelectorAll(`${sel} .col-acoes-plano button`)]
+        .map((b) => Object.keys(b.dataset).filter((k) => k !== 'proj').join(','));
+      const proj = document.querySelector(`tr[data-grupo-proj="${x.prj}"]`);
+      return {
+        colunas: document.querySelectorAll('.tabela-5w2h thead th').length,
+        celulasGrupo: proj ? proj.children.length : 0,
+        celulasAcao: document.querySelector('.tabela-5w2h tr[data-card-acao]')?.children.length,
+        projeto: marcas(`tr[data-grupo-proj="${x.prj}"]`),
+        frente: marcas('tr.g-frente[data-grupo-frente]'),
+        acao: marcas('tr[data-card-acao]'),
+      };
+    }, { prj });
+    t(`${l} a tabela ganhou a coluna de ações`,
+      colAcoes.colunas === 8 && colAcoes.celulasAcao === 8 && colAcoes.celulasGrupo === 3,
+      JSON.stringify(colAcoes));
+    t(`${l} o projeto tem criar frente, editar e excluir`,
+      colAcoes.projeto.join('|') === 'novaIni|editarProj|excluirProj',
+      JSON.stringify(colAcoes.projeto));
+    t(`${l} a frente tem criar ação, editar e excluir`,
+      colAcoes.frente.slice(0, 3).join('|') === 'novaAcao|editarIni|excluirIni',
+      JSON.stringify(colAcoes.frente));
+    t(`${l} a ação tem editar e excluir`,
+      colAcoes.acao.slice(0, 2).join('|') === 'editarDesd|excluirDesd',
+      JSON.stringify(colAcoes.acao));
+    // E eles abrem mesmo o que prometem: uma amostra basta, porque o caminho
+    // é o ouvinte da lista — se este abre, os outros abrem.
+    await page.click(`tr[data-grupo-proj="${prj}"] .col-acoes-plano [data-nova-ini]`);
+    const abriuNovaIni = await esperar(page, "!!document.querySelector('.modal.show')", 8000);
+    t(`${l} o ＋ do projeto abre "Nova iniciativa"`,
+      abriuNovaIni && (await page.evaluate(() =>
+        document.querySelector('.modal.show .modal-title')?.textContent.trim())) === 'Nova iniciativa');
+    await page.keyboard.press('Escape');
+    await esperar(page, "!document.querySelector('.modal.show')", 5000);
+
+    // ── Quebrar o texto (pedido do cliente, 2026-11-02) ──────────────────
+    // O "Como" é cortado com reticências porque a tabela existe para ser
+    // densa; o interruptor devolve a frase inteira para quem precisa lê-la.
+    // A prova MEDE a altura da linha: conferir a classe não diria se a célula
+    // realmente deixou de cortar, que é a única coisa que importa aqui.
+    // SEMPRE a mesma célula — a da ação com o «Como» comprido —, achada pelo
+    // texto da linha e não pela maior largura: com a quebra ligada todas as
+    // células do «Como» ficam do mesmo tamanho, e a escolha "a maior" caía
+    // numa linha qualquer, de outro texto. Foi assim que a primeira versão
+    // desta prova mediu a altura de uma linha curta e disse que a quebra não
+    // crescia.
+    const medirQuebra = () => page.evaluate(() => {
+      const linha = [...document.querySelectorAll('.tabela-5w2h tr[data-card-acao]')]
+        .find((tr) => /gama/.test(tr.querySelector('.col-oque')?.textContent || ''));
+      const c = linha?.querySelector('td.corta');
+      return {
+        existe: !!document.querySelector('[data-quebra-texto]'),
+        marcado: !!document.querySelector('[data-quebra-texto]')?.checked,
+        quebrando: getComputedStyle(c).whiteSpace === 'normal',
+        cortado: c.scrollWidth > c.clientWidth + 1,
+        altura: Math.round(c.closest('tr').getBoundingClientRect().height),
+        largura: Math.round(c.getBoundingClientRect().width),
+        rolagemH: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+    const semQuebra = await medirQuebra();
+    t(`${l} a tabela oferece o interruptor de quebra, desligado`,
+      semQuebra.existe && !semQuebra.marcado && !semQuebra.quebrando && semQuebra.cortado,
+      JSON.stringify(semQuebra));
+    await page.click('[data-quebra-texto]');
+    await new Promise((r) => setTimeout(r, 250));
+    const comQuebra = await medirQuebra();
+    t(`${l} ligar a quebra mostra o texto inteiro e a linha cresce`,
+      comQuebra.quebrando && !comQuebra.cortado && comQuebra.altura > semQuebra.altura,
+      JSON.stringify({ semQuebra, comQuebra }));
+    // Crescer para BAIXO, não para o lado — e também não MINGUAR: com a
+    // quebra ligada a largura natural da coluna passa a ser a maior palavra,
+    // e no celular a tabela espremia o «Como» até 47px (medido). O teto
+    // impede o estouro; a mínima, a coluna-corredor.
+    t(`${l} e a coluna não estoura nem mingua com a quebra`,
+      !comQuebra.rolagemH
+      && comQuebra.largura <= semQuebra.largura + 1
+      && comQuebra.largura >= 150,
+      JSON.stringify({ semQuebra, comQuebra }));
+    // Desliga de novo: o interruptor é guardado no armazém da pessoa, e
+    // deixá-lo ligado mudaria a tela das provas seguintes.
+    await page.click('[data-quebra-texto]');
+    await new Promise((r) => setTimeout(r, 250));
+    const voltou = await medirQuebra();
+    t(`${l} e desligar devolve o corte`, !voltou.quebrando && voltou.cortado,
+      JSON.stringify(voltou));
 
     // A pesquisa vale na tabela, e o grupo sem acerto some junto
     await page.evaluate(() => {
@@ -2252,6 +2361,83 @@ async function provasModosPlano(page, largura) {
       JSON.stringify(campoCascata));
     await page.keyboard.press('Escape');
     await esperar(page, "!document.querySelector('.modal.show')", 5000);
+
+    // ── Vincular e DESVINCULAR a frente (pedido do cliente, 2026-11-02) ──
+    // A escolha da Cascata é criada numa combinação LIVRE de horizonte,
+    // driver e eixo — nunca em cima de uma existente, porque gravar ali
+    // EDITARIA uma decisão real do planejamento — e é apagada ao fim.
+    const vinc = await page.evaluate(async (id) => {
+      const c = await App.api('/api/cascata?planejamento_id=1', null, 'GET');
+      const d = c.dados || c;
+      const usadas = new Set((d.escolhas || [])
+        .map((e) => `${e.horizonte_id}|${e.driver_id}|${e.eixo_id || 0}`));
+      const combos = [];
+      for (const h of d.horizontes || []) {
+        for (const dr of d.drivers || []) {
+          for (const e of [...(d.eixos || []), { id: null }]) {
+            combos.push({ h: h.id, d: dr.id, e: e.id ?? null });
+          }
+        }
+      }
+      const livre = combos.find((k) => !usadas.has(`${k.h}|${k.d}|${k.e || 0}`));
+      if (!livre) return { erro: 'sem combinação livre na Cascata' };
+      const nova = await App.api('/api/cascata', {
+        planejamento_id: 1, horizonte_id: livre.h, driver_id: livre.d, eixo_id: livre.e,
+        escolha: 'Escolha de prova dos modos', renuncia: '', fatores: [],
+      });
+      const r = await App.api('/api/projetos?planejamento_id=1', null, 'GET');
+      const lista = (r && (r.projetos || r.dados || r)) || [];
+      const proj = lista.find((p) => Number(p.id) === id);
+      // A SEGUNDA frente, de propósito: a `ordem` dela não é zero, e é isso
+      // que faz a prova da ordem valer alguma coisa.
+      const ini = (proj.iniciativas || [])[1];
+      await App.api(`/api/iniciativas/${ini.id}`, {
+        planejamento_id: 1, projeto_id: proj.id, titulo: ini.titulo,
+        descricao: ini.descricao || '', ordem: ini.ordem, cascata_id: nova.id,
+      });
+      return { escolha: nova.id, ini: Number(ini.id), ordem: Number(ini.ordem) };
+    }, prj);
+    t(`${l} a prova conseguiu criar uma escolha de Cascata`, !vinc.erro && !!vinc.escolha,
+      JSON.stringify(vinc));
+    vincEscolha = vinc.escolha || null;
+    if (!vinc.erro) {
+      await page.evaluate(() => SecaoProjetos.carregar());
+      await esperar(page, `!!document.querySelector('tr[data-grupo-frente="${vinc.ini}"] .cascata-frente')`, 10000);
+      const comSelo = await page.evaluate((f) => {
+        const s = document.querySelector(`tr[data-grupo-frente="${f}"] .cascata-frente`);
+        return { texto: s?.textContent.trim() || null, titulo: s?.title || '',
+          temX: !!s?.querySelector('[data-desvincular-ini]') };
+      }, vinc.ini);
+      // O selo mostra a COORDENADA (horizonte · driver · eixo), não a frase:
+      // é o que a pessoa foi ligar, e é o que cabe numa linha de tabela.
+      t(`${l} a frente vinculada mostra a coordenada da Cascata`,
+        /·/.test(comSelo.texto || '') && !/Escolha de prova/.test(comSelo.texto || '')
+        && /Escolha de prova/.test(comSelo.titulo), JSON.stringify(comSelo));
+      t(`${l} e o selo traz o × que desvincula`, comSelo.temX, JSON.stringify(comSelo));
+      await page.click(`tr[data-grupo-frente="${vinc.ini}"] [data-desvincular-ini]`);
+      await new Promise((r) => setTimeout(r, 1500));
+      await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
+      const semSelo = await page.evaluate(async (v) => {
+        const tr = document.querySelector(`tr[data-grupo-frente="${v.ini}"]`);
+        const r = await App.api('/api/projetos?planejamento_id=1', null, 'GET');
+        const lista = (r && (r.projetos || r.dados || r)) || [];
+        const ini = lista.flatMap((p) => p.iniciativas || []).find((i) => Number(i.id) === v.ini);
+        return {
+          selo: !!tr?.querySelector('.cascata-frente'),
+          cascata: ini ? ini.cascata_id : 'frente sumiu',
+          ordem: ini ? Number(ini.ordem) : null,
+          titulo: ini ? ini.titulo : null,
+        };
+      }, vinc);
+      t(`${l} o × desvincula a frente da Cascata`,
+        semSelo.selo === false && semSelo.cascata === null, JSON.stringify(semSelo));
+      // `ordem` ausente no corpo vira 0 no UPDATE e reordenaria as frentes do
+      // projeto sem ninguém pedir — por isso o × manda o resto da frente.
+      t(`${l} e desvincular não mexe no título nem na ordem da frente`,
+        semSelo.ordem === vinc.ordem && semSelo.titulo === 'Frente modos B',
+        JSON.stringify({ ...semSelo, esperado: vinc.ordem }));
+    }
+
     // O duplo clique passa a abrir os TRÊS níveis da tabela, não só a ação.
     await page.dblclick(`.tabela-5w2h tr.g-frente[data-grupo-frente="${frenteTab.daLinha}"] .nome-grupo`);
     const abriuPorGesto = await esperar(page, "!!document.querySelector('.modal.show')", 8000);
@@ -2413,13 +2599,30 @@ async function provasModosPlano(page, largura) {
       // A coluna de origem é a SEGUNDA, e no celular só a primeira cabe na
       // tela: sem trazê-la à vista, o ponteiro miraria uma coordenada fora da
       // janela e o arraste nem começaria.
-      await page.evaluate(() => {
-        const c = document.querySelector('.coluna-quadro[data-coluna="EM_ANDAMENTO"]');
-        c.scrollIntoView({ inline: 'start', block: 'nearest' });
+      // O `scrollIntoView` às vezes não pega de primeira — a tabela acabou de
+      // ser trocada pelo quadro e o layout ainda está assentando. Insistir é
+      // de propósito: sem a coluna à vista o arraste mira fora da janela e a
+      // prova vermelha falaria da PREPARAÇÃO, não do que ela mede.
+      let partida = 0;
+      for (let tentativa = 0; tentativa < 10; tentativa += 1) {
+        /* eslint-disable no-await-in-loop */
+        partida = await page.evaluate(() => {
+          const q = document.querySelector('.quadro-situacao');
+          const c = document.querySelector('.coluna-quadro[data-coluna="EM_ANDAMENTO"]');
+          if (Math.round(q.scrollLeft) === 0) q.scrollLeft = c.offsetLeft - q.offsetLeft;
+          return Math.round(q.scrollLeft);
+        });
+        if (partida > 0) break;
+        await new Promise((r) => setTimeout(r, 200));
+        /* eslint-enable no-await-in-loop */
+      }
+      const prontidao = await page.evaluate(() => {
+        const q = document.querySelector('.quadro-situacao');
+        return { rolavel: q.scrollWidth > q.clientWidth, largura: Math.round(q.clientWidth) };
       });
-      await new Promise((r) => setTimeout(r, 400));
-      const partida = await page.evaluate(() =>
-        Math.round(document.querySelector('.quadro-situacao').scrollLeft));
+      t(`${l} o quadro chega rolado até a segunda coluna (preparo do arraste)`,
+        partida > 0 && prontidao.rolavel,
+        JSON.stringify({ partida, ...prontidao }));
       const ficha = await page.$('.coluna-quadro[data-coluna="EM_ANDAMENTO"] .ficha-quadro');
       const cx = await ficha.boundingBox();
       const caixa = await page.evaluate(() => {
@@ -2457,9 +2660,71 @@ async function provasModosPlano(page, largura) {
 
   await page.evaluate(() => SecaoProjetos.trocarModo('LISTA'));
   await esperar(page, "!!document.querySelector('.niveis-visao')", 10000);
+
+  // ── Trocar de modo tem de MOSTRAR o modo (pedido do cliente, 2026-11-02) ──
+  // Só no celular: é lá que o defeito existe. Acima do plano mora a fila
+  // «Aguardando plano de ação», e com doze pendências ela mede 2150px numa
+  // tela de 844px — a tabela e o quadro nasciam fora da tela, e quem tocava
+  // em "Tabela" via o botão acender e mais nada mudar. No computador o mesmo
+  // cartão é bem mais baixo e o conteúdo continuava à vista.
+  //
+  // A fila é montada com fatores CRIADOS aqui e apagados ao fim: marcar
+  // fatores que já existem devolveria à fila itens que alguém tirou dela.
+  if (largura === 'celular') {
+    const fila = await page.evaluate(async () => {
+      const ids = [];
+      for (let i = 1; i <= 12; i += 1) {
+        const f = await App.api('/api/fatores', {
+          planejamento_id: 1, etapa: 'SWOT', categoria: 'FORCA', ano: 2027,
+          descricao: `Fator ${i} da fila de prova — texto comprido de propósito, para ocupar `
+            + 'duas ou três linhas no celular e empurrar o plano para fora da tela.',
+        });
+        await App.api(`/api/fatores/${f.id}/plano-acao`, { planejamento_id: 1, marcar: true });
+        ids.push(f.id);
+      }
+      return ids;
+    });
+    await page.evaluate(() => SecaoProjetos.carregar());
+    await esperar(page, "!!document.querySelector('.card-ideias-acao')", 15000);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const antes = await page.evaluate(() => {
+      const fileira = document.querySelector('.card-ideias-acao').getBoundingClientRect();
+      const conteudo = document.querySelector('[data-conteudo-modo]').getBoundingClientRect();
+      return { fila: Math.round(fileira.height), janela: innerHeight, topo: Math.round(conteudo.top) };
+    });
+    // Sem a fila alta a prova não prova nada: ela existe para o caso em que o
+    // conteúdo NASCE fora da tela.
+    t(`${l} a fila de pendências enche a tela (cenário da prova)`,
+      antes.fila > antes.janela && antes.topo > antes.janela,
+      JSON.stringify(antes));
+    await page.tap('[data-modo="TABELA"]');
+    await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
+    // A rolagem é suave: medir cedo demais pega o meio do caminho.
+    await new Promise((r) => setTimeout(r, 1500));
+    const depois = await page.evaluate(() => {
+      const c = document.querySelector('[data-conteudo-modo]').getBoundingClientRect();
+      return { topo: Math.round(c.top), janela: innerHeight, rolagem: Math.round(scrollY) };
+    });
+    t(`${l} trocar de modo traz o conteúdo para a tela`,
+      depois.topo < depois.janela - 120 && depois.rolagem > 0, JSON.stringify(depois));
+    await page.evaluate(async (ids) => {
+      for (const id of ids) await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: 1 });
+    }, fila);
+    await page.evaluate(() => SecaoProjetos.trocarModo('LISTA'));
+    await esperar(page, "!!document.querySelector('.niveis-visao')", 10000);
+  }
+
   await page.evaluate(async (ids) => {
     for (const id of ids) await App.api(`/api/projetos/${id}/excluir`, { planejamento_id: 1 });
   }, [prj, prj2]);
+  // A escolha de Cascata criada pela prova do vínculo sai DEPOIS dos projetos:
+  // apagá-la antes derrubaria o vínculo por tabela, e a prova do desvínculo
+  // teria medido o efeito errado.
+  if (vincEscolha) {
+    await page.evaluate(async (id) => {
+      await App.api(`/api/cascata/${id}/excluir`, { planejamento_id: 1 });
+    }, vincEscolha);
+  }
 }
 
 async function provasAcao(page, largura) {
@@ -5036,27 +5301,57 @@ async function provasMenuRecolhido(page, largura) {
 
   await page.click('#btn-menu');
   const inicio = await estado();
-  t(`[${largura}] seis tópicos, todos fechados no Painel`, inicio.total === 6 && inicio.abertos.length === 0,
+  // Quatro tópicos desde o reagrupamento de 2026-11-02 (eram seis): Execução,
+  // Capital e Gestão saíram, e entrou Relatórios.
+  t(`[${largura}] quatro tópicos, todos fechados no Painel`, inicio.total === 4 && inicio.abertos.length === 0,
     JSON.stringify(inicio.abertos));
   t(`[${largura}] aria-expanded acompanha o estado`, inicio.ariaBate);
   t(`[${largura}] links de tópico fechado não ficam visíveis`, inicio.escondidos);
   t(`[${largura}] o item ativo (Painel) está visível`, inicio.ativoVisivel);
 
-  await page.click('#nav-secoes [data-grupo="gestao"] .cabecalho-grupo');
+  await page.click('#nav-secoes [data-grupo="relatorios"] .cabecalho-grupo');
   const abriu = await estado();
-  t(`[${largura}] tocar no cabeçalho abre só aquele tópico`, abriu.abertos.join() === 'gestao' && abriu.ariaBate,
+  t(`[${largura}] tocar no cabeçalho abre só aquele tópico`, abriu.abertos.join() === 'relatorios' && abriu.ariaBate,
     JSON.stringify(abriu.abertos));
-  await page.click('#nav-secoes [data-grupo="gestao"] .cabecalho-grupo');
+  await page.click('#nav-secoes [data-grupo="relatorios"] .cabecalho-grupo');
   const fechou = await estado();
   t(`[${largura}] tocar de novo fecha`, fechou.abertos.length === 0, JSON.stringify(fechou.abertos));
 
   // Um tópico por vez: abrir um segundo fecha o primeiro (pedido do cliente
   // depois de ver a primeira versão, em que os dois ficavam abertos).
-  await page.click('#nav-secoes [data-grupo="gestao"] .cabecalho-grupo');
-  await page.click('#nav-secoes [data-grupo="capital"] .cabecalho-grupo');
+  await page.click('#nav-secoes [data-grupo="relatorios"] .cabecalho-grupo');
+  await page.click('#nav-secoes [data-grupo="estrategia"] .cabecalho-grupo');
   const segundo = await estado();
-  t(`[${largura}] abrir um segundo tópico fecha o primeiro`, segundo.abertos.join() === 'capital' && segundo.ariaBate,
+  t(`[${largura}] abrir um segundo tópico fecha o primeiro`, segundo.abertos.join() === 'estrategia' && segundo.ariaBate,
     JSON.stringify(segundo.abertos));
+
+  // ── O reagrupamento pedido pelo cliente (2026-11-02) ──────────────────
+  // A prova é do CONTEÚDO dos tópicos, não só da contagem: o pedido foi que
+  // Estratégia reunisse o plano inteiro (decisão, plano de ação, medida e
+  // capital) e que as duas saídas em papel virassem Relatórios. E que nenhuma
+  // seção se perdesse no caminho — tópico some, tela não.
+  const arranjo = await page.evaluate(() => {
+    const grupo = (nome) => [...document.querySelectorAll(`#nav-secoes [data-grupo="${nome}"] .nav-link`)]
+      .map((a) => a.dataset.secao);
+    return {
+      topicos: [...document.querySelectorAll('#nav-secoes .grupo-menu')].map((g) => g.dataset.grupo),
+      estrategia: grupo('estrategia'),
+      relatorios: grupo('relatorios'),
+      secoes: [...document.querySelectorAll('#nav-secoes .nav-link')].map((a) => a.dataset.secao).sort(),
+    };
+  });
+  t(`[${largura}] Estratégia reúne cascata, plano de ação, metas e investimentos`,
+    arranjo.estrategia.join('|') === 'cascata|projetos|metas|investimentos',
+    JSON.stringify(arranjo.estrategia));
+  t(`[${largura}] Relatórios reúne o status e o dossiê`,
+    arranjo.relatorios.join('|') === 'relatorio|dossie', JSON.stringify(arranjo.relatorios));
+  t(`[${largura}] Execução, Capital e Gestão deixaram de existir`,
+    !arranjo.topicos.some((g) => ['execucao', 'capital', 'gestao'].includes(g)),
+    JSON.stringify(arranjo.topicos));
+  // Nenhuma tela ficou órfã: as mesmas 18 do mapa continuam alcançáveis pelo
+  // menu (as três soltas no topo entram na conta).
+  t(`[${largura}] nenhuma seção se perdeu no reagrupamento`,
+    arranjo.secoes.length === 18, JSON.stringify(arranjo.secoes));
 
   // Navegar para uma tela de tópico fechado abre o tópico — pelo caminho que
   // o resto do sistema usa (App.mostrarSecao), não só pelo clique no menu.
@@ -5308,6 +5603,100 @@ async function provasCelulaMetas(page, largura) {
     await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 }).catch(() => {});
     App.mostrarSecao('painel');
   }, ind);
+}
+
+/**
+ * Vincular e desvincular o indicador do HORIZONTE, na própria linha.
+ *
+ * Pedido do cliente (2026-11-02). O campo existia no formulário desde sempre,
+ * mas o ✎ que o abre mora na ÚLTIMA coluna de uma tabela de quatorze a vinte e
+ * três colunas: para editar um indicador era preciso atravessar a tabela
+ * inteira de lado, e quem não fizesse isso concluía que a tela não editava.
+ *
+ * Três coisas a provar, e nenhuma delas se confere olhando o HTML: que a
+ * coluna de ações fica mesmo PARADA à direita (é CSS, e um `position` perdido
+ * a manda de volta para o fim da rolagem); que o × desvincula sem levar junto
+ * o resto do cadastro (o `salvar` reescreve nome, unidade, sentido e
+ * agregação a cada gravação — corpo pela metade devolve o indicador aos
+ * padrões em silêncio); e que o «+ horizonte» abre o mesmo formulário do ✎.
+ */
+async function provasHorizonteIndicador(page, largura) {
+  const l = `[${largura}] Horizonte do indicador:`;
+  const ids = await page.evaluate(async () => {
+    const c = await App.api('/api/cascata?planejamento_id=1', null, 'GET');
+    const d = c.dados || c;
+    const h = (d.horizontes || [])[0];
+    if (!h) return { erro: 'ciclo sem horizonte' };
+    const comH = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Indicador com horizonte QA', unidade: 'ton',
+      sentido: 'MENOR_MELHOR', agregacao: 'MEDIA', metrica_ancora: 1, horizonte_id: h.id,
+    });
+    const semH = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Indicador sem horizonte QA', unidade: '%',
+      agregacao: 'SOMA', metrica_ancora: 0, horizonte_id: '',
+    });
+    App.mostrarSecao('metas');
+    return { comH: comH.id, semH: semH.id, horizonte: h.id, nome: h.nome };
+  });
+  t(`${l} o ciclo tem horizonte para vincular`, !ids.erro, JSON.stringify(ids));
+  if (ids.erro) return;
+  const pintou = await esperar(page, `!!document.querySelector('[data-desvincular-horizonte="${ids.comH}"]')`, 15000);
+  t(`${l} a linha do indicador vinculado traz o selo com ×`, pintou);
+  if (pintou) {
+    const tela = await page.evaluate((x) => {
+      const linha = [...document.querySelectorAll('.tabela-metas .celula-nome')]
+        .find((c) => c.textContent.includes('Indicador com horizonte QA'));
+      const sem = [...document.querySelectorAll('.tabela-metas .celula-nome')]
+        .find((c) => c.textContent.includes('Indicador sem horizonte QA'));
+      const acoes = document.querySelector('.tabela-metas .celula-acoes');
+      const r = acoes?.getBoundingClientRect();
+      return {
+        selo: linha?.querySelector('.selo-horizonte')?.textContent.trim() || null,
+        vincular: sem?.querySelector('.btn-vincular-horizonte')?.dataset.editar || null,
+        semX: !sem?.querySelector('[data-desvincular-horizonte]'),
+        posicao: acoes ? getComputedStyle(acoes).position : null,
+        dentroDaTela: r ? r.right <= window.innerWidth + 1 && r.left >= 0 : null,
+        esperado: String(x.semH),
+      };
+    }, ids);
+    t(`${l} o selo mostra o horizonte`, (tela.selo || '').includes(ids.nome), JSON.stringify(tela));
+    // Sem vínculo não há o que desfazer: ali o controle é o de VINCULAR, e ele
+    // abre o mesmo formulário do ✎ (o próprio `data-editar`).
+    t(`${l} sem vínculo, a linha oferece "+ horizonte" e nenhum ×`,
+      tela.vincular === tela.esperado && tela.semX, JSON.stringify(tela));
+    // No celular as colunas paradas não existem (elas tomariam a largura dos
+    // números), e por isso a prova da coluna grudada é só do computador.
+    if (largura === 'desktop') {
+      t(`${l} a coluna de ações fica parada à direita`,
+        tela.posicao === 'sticky' && tela.dentroDaTela === true, JSON.stringify(tela));
+    }
+    page.once('dialog', (d) => d.accept());
+    await page.click(`[data-desvincular-horizonte="${ids.comH}"]`);
+    await new Promise((r) => setTimeout(r, 1200));
+    await esperar(page, "!!document.querySelector('.tabela-metas')", 10000);
+    const depois = await page.evaluate(async (x) => {
+      const r = await App.api('/api/indicadores?planejamento_id=1');
+      const i = (r.indicadores || []).find((y) => Number(y.id) === x.comH);
+      return {
+        horizonte: i ? i.horizonte_id : 'sumiu',
+        nome: i?.nome, unidade: i?.unidade, sentido: i?.sentido,
+        agregacao: i?.agregacao, ancora: Number(i?.metrica_ancora),
+        selo: !!document.querySelector(`[data-desvincular-horizonte="${x.comH}"]`),
+      };
+    }, ids);
+    t(`${l} o × desvincula o indicador do horizonte`,
+      depois.horizonte === null && depois.selo === false, JSON.stringify(depois));
+    // ESTA é a prova que importa: o corpo vai completo, senão o indicador
+    // volta a "R$ mil, maior melhor, soma" sem ninguém pedir.
+    t(`${l} e o resto do cadastro fica como estava`,
+      depois.unidade === 'ton' && depois.sentido === 'MENOR_MELHOR'
+      && depois.agregacao === 'MEDIA' && depois.ancora === 1, JSON.stringify(depois));
+  }
+  await page.evaluate(async (x) => {
+    for (const id of [x.comH, x.semH]) {
+      await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 });
+    }
+  }, ids);
 }
 
 /**
@@ -5813,6 +6202,7 @@ async function provasJanelaModal(page, largura) {
   await provasMenuRecolhido(page, 'desktop');
   await provasLugarGuardado(page, 'desktop');
   await provasCelulaMetas(page, 'desktop');
+  await provasHorizonteIndicador(page, 'desktop');
   await provasMesAMes(page, 'desktop');
   await provasAvisoAgregacao(page, 'desktop');
   await provasRevisarSemAnoAtual(page, 'desktop');
@@ -5855,6 +6245,7 @@ async function provasJanelaModal(page, largura) {
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');
+  await provasHorizonteIndicador(pageM, 'celular');
   await provasMesAMes(pageM, 'celular');
   await provasAvisoAgregacao(pageM, 'celular');
   await provasRevisarSemAnoAtual(pageM, 'celular');

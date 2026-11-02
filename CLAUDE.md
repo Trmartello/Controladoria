@@ -132,13 +132,21 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   destino".
 - **Menu lateral com tópicos recolhíveis** (2026-09-02, pedido do cliente, no
   padrão do CRM Agro): Painel, Hub e Cadastros soltos; Diagnóstico, Estratégia,
-  Execução, Capital, Gestão e Encontro como tópicos com cabeçalho
+  **Relatórios** e Encontro como tópicos com cabeçalho
   (`<button class="cabecalho-grupo">`, `aria-expanded`) e chevron. Nascem
   fechados e **só um fica aberto por vez** (abrir um fecha os outros, como uma
   sanfona — segundo pedido do cliente, no mesmo dia); `App.mostrarSecao` abre o
   tópico da tela ativa, e o aberto fica em `localStorage` (`menu.grupos`). Os links continuam sendo
   `#nav-secoes .nav-link` / `[data-secao]`: o contrato é o atributo, não a
   profundidade. Prova em `sistema.js` (`provasMenuRecolhido`).
+  **Reagrupado em 2026-11-02**, a pedido: eram seis tópicos e três tinham UM
+  item só — Execução (Plano de ação), Capital (Investimentos) e Gestão (Metas,
+  Relatório, Dossiê). Um tópico que esconde um link é um clique a mais para
+  chegar a qualquer lugar, e "execução × capital × gestão" é vocabulário de
+  método, não a pergunta de quem abre o menu. Ficaram **Estratégia** (Cascata,
+  Plano de ação, Metas · Indicadores e Investimentos — o plano na ordem em que
+  se constrói) e **Relatórios** (Status e Dossiê, as duas saídas em papel).
+  Nenhuma seção saiu do sistema: as 18 continuam no menu, e a prova conta.
 - **A tela e o negócio sobrevivem à recarga** (2026-10-14, pedido do cliente):
   o F5 devolvia todo mundo ao Painel com o escopo corporativo. Não é só
   incômodo — quem acompanha um negócio passa o dia numa tela só, e a recarga

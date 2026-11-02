@@ -127,11 +127,81 @@ const SecaoProjetos = {
     return this.modo;
   },
 
-  trocarModo(novo) {
+  /* ── Quebrar o texto na tabela ────────────────────────────────────────────
+   * Pedido do cliente (2026-11-02). Na tabela o "Como" é cortado com
+   * reticências: é o preço de a tabela ser densa, e a densidade é a razão de
+   * ela existir — uma linha por ação, quinze cabendo na tela. Mas o "Como" é
+   * onde mora a premissa da ação, e tem hora em que a reunião quer ler a
+   * frase inteira, não a metade dela.
+   *
+   * Então a escolha é de quem lê: desmarcado, a tabela corta; marcado, a
+   * célula quebra em quantas linhas precisar e a linha cresce. É um
+   * INTERRUPTOR de leitura, como o modo — por isso é guardado no mesmo
+   * armazém e sobrevive ao recarregamento.
+   *
+   * Vale só na TABELA: na lista e no quadro o texto já aparece inteiro.
+   */
+  LUGAR_QUEBRA: 'pe_plano_quebra',
+  quebra: null,
+
+  quebraAtual() {
+    if (this.quebra === null) {
+      this.quebra = String(App.lugarGuardado(this.LUGAR_QUEBRA) || '') === '1';
+    }
+    return this.quebra;
+  },
+
+  /**
+   * Liga e desliga a quebra SEM repintar a seção: é uma troca de classe na
+   * tabela, e repintar aqui custaria o lugar da rolagem e o foco de quem
+   * acabou de arrastar uma barra de progresso — por nada, porque o HTML é
+   * exatamente o mesmo.
+   */
+  trocarQuebra(ligada, el) {
+    this.quebra = !!ligada;
+    App.guardarLugar(this.LUGAR_QUEBRA, ligada ? '1' : '0');
+    el.querySelector('.tabela-5w2h')?.classList.toggle('quebra-linhas', this.quebra);
+  },
+
+  async trocarModo(novo) {
     if (!this.MODOS.includes(novo)) return;
     this.modo = novo;
     App.guardarLugar(this.LUGAR_MODO, novo);
-    this.carregar();
+    await this.carregar();
+    this.levarAoConteudo();
+  },
+
+  /**
+   * Trocar de modo tem de MOSTRAR o modo novo (pedido do cliente, 2026-11-02,
+   * olhando o celular).
+   *
+   * Acima do plano mora a fila «Aguardando plano de ação», e ela não é
+   * pequena: com doze pendências ela tem 2150px num celular de 844px de
+   * altura. Com a fila cheia, a tabela e o quadro nasciam em y≈2436 — fora da
+   * tela. Quem tocava em "Tabela" via o cabeçalho mudar de botão aceso e mais
+   * nada embaixo, e concluía que o modo não funcionava no celular. No
+   * computador o mesmo cartão é bem mais baixo (o texto cabe em menos linhas),
+   * e por isso o defeito não aparecia lá.
+   *
+   * Então a troca de modo rola a página até o conteúdo, parando-o logo abaixo
+   * do cabeçalho grudado — `cabecalho.bottom` serve para os dois estados, solto
+   * (a altura natural) e grudado (topo da barra + altura dele), e é por isso
+   * que não se soma `--topo-app` à mão aqui.
+   *
+   * Só rola quando precisa: se o conteúdo já aparece, a tela fica parada. Puxar
+   * a página de quem está com tudo à vista seria trocar um incômodo por outro.
+   */
+  levarAoConteudo() {
+    const alvo = document.querySelector('#secao-projetos [data-conteudo-modo]');
+    if (!alvo) return;
+    const caixa = alvo.getBoundingClientRect();
+    // Com uma nesga do conteúdo à mostra ainda vale rolar: 120px é menos que
+    // uma linha de projeto, e ver só a borda de cima não é ver o modo.
+    if (caixa.top < window.innerHeight - 120) return;
+    const cabecalho = document.querySelector('#secao-projetos .cabecalho-projetos');
+    const parado = cabecalho ? cabecalho.getBoundingClientRect().bottom : 0;
+    const y = Math.max(0, window.scrollY + caixa.top - parado - 8);
+    window.scrollTo({ top: y, behavior: 'smooth' });
   },
 
   /**
@@ -768,7 +838,7 @@ const SecaoProjetos = {
       // barra da ação e do rótulo "Progresso" (posição escolhida pelo cliente
       // a partir de uma imagem, no mesmo dia). As outras duas posições já
       // tentadas, e por que esta ficou, estão em `pct-grupo`, no CSS.
-      const linhaGrupo = (classe, marca, titulo, lista, chave, extra = '') => {
+      const linhaGrupo = (classe, marca, titulo, lista, chave, extra = '', acoesLinha = '') => {
         const media = this.mediaProgresso(lista);
         return `
         <tr class="${classe}" ${marca}>
@@ -778,6 +848,7 @@ const SecaoProjetos = {
             ${this.resumoStatus(lista, ['ATRASADO'])}${extra}</span></td>
           <td class="num col-progresso"><span class="celula-progresso">
             <span class="pct-grupo" data-media-grupo="${chave}">${media}%</span></span></td>
+          <td class="col-acoes-plano">${acoesLinha}</td>
         </tr>`;
       };
       const linhas = (lista) => lista.map((a) => this.linhaTabela(a)).join('');
@@ -811,26 +882,64 @@ const SecaoProjetos = {
         // há a frase: o vínculo existe e some do olho se o selo sumir junto.
         const visivel = coordenada
           || (escolha.length > 48 ? `${escolha.slice(0, 48)}…` : escolha);
-        return `${visivel ? `<span class="badge text-bg-light border cascata-frente"
+        // Sem vínculo, o lugar do selo é de quem VINCULA — o par do × que
+        // desvincula (pedido do cliente, 2026-11-02). Abre o mesmo formulário
+        // do ✎, pelo próprio `data-editar-ini`: o campo da Cascata está lá.
+        if (!visivel) {
+          return App.podeEditar()
+            ? ` <button type="button" class="btn-vincular-eixo"
+                data-editar-ini="${ini.id}" data-proj="${p.id}"
+                title="Vincular esta frente a um eixo da Cascata">+ eixo</button>`
+            : '';
+        }
+        return `<span class="badge text-bg-light border cascata-frente"
           title="Escolha da Cascata que esta frente executa: ${
   Modal.esc(coordenada ? `${coordenada} — ${escolha}` : escolha)}"
-          >↳ ${Modal.esc(visivel)}</span>` : ''}${App.podeEditar() ? `
-          <button class="btn btn-sm btn-outline-secondary botao-editar-frente"
-            data-editar-ini="${ini.id}" data-proj="${p.id}"
-            title="Editar a frente de trabalho — inclusive a escolha da Cascata que ela executa"
-            aria-label="Editar frente de trabalho">✎</button>` : ''}`;
+          >↳ ${Modal.esc(visivel)}${App.podeEditar() ? `<button type="button"
+            class="desvincular-cascata" data-desvincular-ini="${ini.id}" data-proj="${p.id}"
+            title="Desvincular esta frente da escolha da Cascata"
+            aria-label="Desvincular da Cascata">×</button>` : ''}</span>`;
       };
+      /* A coluna de AÇÕES da tabela (pedido do cliente, 2026-11-02).
+       *
+       * Os três níveis ganham o que a lista já oferecia, e os botões são os
+       * MESMOS da lista — mesmos `data-`, mesmos ouvintes (`data-nova-ini`,
+       * `data-editar-proj`, `data-excluir-proj`, `data-nova-acao`,
+       * `data-editar-ini`, `data-excluir-ini`, `data-editar-desd`,
+       * `data-excluir-desd`). Com isso vêm de graça, e sem segunda
+       * implementação, as confirmações de exclusão com a conta dos vínculos,
+       * o cadeado de edição concorrente e o reagendamento da ação recorrente.
+       *
+       * Ícone e não texto: a coluna repete em toda linha de uma tabela densa,
+       * e "+ Frente ✎ ×" em cada uma empurraria as colunas de conteúdo para
+       * fora da tela. O que cada botão faz está no `title` e no `aria-label`.
+       */
+      const botao = (attrs, icone, titulo, classe = 'btn-outline-secondary') => `
+        <button type="button" class="btn btn-sm ${classe} botao-linha-plano" ${attrs}
+          title="${Modal.esc(titulo)}" aria-label="${Modal.esc(titulo)}">${icone}</button>`;
+      const acoesProjeto = App.podeEditar() ? `
+        ${botao(`data-nova-ini="${p.id}"`, '＋', `Nova frente de trabalho em «${p.titulo}»`, 'btn-outline-success')}
+        ${botao(`data-editar-proj="${p.id}"`, '✎', `Editar o projeto «${p.titulo}»`)}
+        ${botao(`data-excluir-proj="${p.id}"`, '×', `Excluir o projeto «${p.titulo}»`, 'btn-outline-danger')}` : '';
+      const acoesFrente = (ini) => (App.podeEditar() ? `
+        ${botao(`data-nova-acao="${ini.id}" data-proj="${p.id}"`, '＋', `Nova ação em «${ini.titulo}»`, 'btn-outline-success')}
+        ${botao(`data-editar-ini="${ini.id}" data-proj="${p.id}"`, '✎',
+    `Editar a frente «${ini.titulo}» — inclusive o eixo da Cascata que ela executa`)}
+        ${botao(`data-excluir-ini="${ini.id}"`, '×', `Excluir a frente «${ini.titulo}»`, 'btn-outline-danger')}` : '');
       const frentes = (p.iniciativas || []).map((ini) => {
         const suas = ini.acoes || [];
         return linhaGrupo('g-frente', `data-grupo-frente="${ini.id}"`, ini.titulo, suas,
-          `FRENTE:${ini.id}`, extraFrente(ini)) + linhas(suas);
+          `FRENTE:${ini.id}`, extraFrente(ini), acoesFrente(ini)) + linhas(suas);
       }).join('');
       // Ação sem frente existe no banco (`iniciativa_id` é anulável) e sumiria
       // da tabela se ela lesse só as listas aninhadas.
       const orfas = acoes.filter((a) => !a.iniciativa_id);
       return linhaGrupo('g-proj', `data-grupo-proj="${p.id}"`, p.titulo, acoes, `PROJETO:${p.id}`,
-        p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning">Prioritário</span>' : '')
+        p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning">Prioritário</span>' : '',
+        acoesProjeto)
         + frentes
+        // «Sem frente de trabalho» não é uma frente: não há o que editar,
+        // excluir, nem onde criar ação (a ação nasceria sem frente de novo).
         + (orfas.length
           ? linhaGrupo('g-frente', 'data-sem-frente', 'Sem frente de trabalho', orfas, `ORFAS:${p.id}`)
             + linhas(orfas)
@@ -838,10 +947,13 @@ const SecaoProjetos = {
     }).join('');
 
     return `<div class="table-responsive caixa-tabela-5w2h">
-      <table class="table table-sm align-middle tabela-5w2h">
+      <table class="table table-sm align-middle tabela-5w2h${this.quebraAtual() ? ' quebra-linhas' : ''}">
         <thead><tr>
           <th>Situação</th><th>O quê</th><th>Como</th><th>Quem</th>
           <th>Quando</th><th>Ganhos</th><th>Progresso</th>
+          <!-- Sem rótulo, como na tabela de Metas: escrever "Ações" aqui
+               colidiria com a AÇÃO do método, que é o que as linhas são. -->
+          <th class="col-acoes-plano"></th>
         </tr></thead>
         <tbody>${corpo}</tbody>
       </table>
@@ -890,6 +1002,16 @@ const SecaoProjetos = {
           title="${cancelada ? 'Ação cancelada — sem progresso e fora da média' : `${pct}%`}"><span
           style="width:${pct}%"></span></span>
         <span class="valor-progresso ${cancelada ? 'inativo' : ''}">${pct}%</span>`}</span></td>
+      <!-- Editar e excluir a AÇÃO, com os mesmos marcadores da lista
+           (pedido do cliente, 2026-11-02): daqui saem o modal da ação e a
+           exclusão com a conta dos vínculos, sem segunda implementação. -->
+      <td class="col-acoes-plano">${App.podeEditar() ? `
+        <button type="button" class="btn btn-sm btn-outline-secondary botao-linha-plano"
+          data-editar-desd="${a.id}" data-proj="${a.projeto_id}"
+          title="Editar a ação" aria-label="Editar a ação">✎</button>
+        <button type="button" class="btn btn-sm btn-outline-danger botao-linha-plano"
+          data-excluir-desd="${a.id}"
+          title="Excluir a ação" aria-label="Excluir a ação">×</button>` : ''}</td>
     </tr>`;
   },
 
@@ -1714,6 +1836,22 @@ const SecaoProjetos = {
             ${botaoModo('TABELA', 'Tabela', 'Uma linha por ação, com o quê, como, quem, quando e ganhos')}
             ${botaoModo('QUADRO', 'Quadro', 'Fichas agrupadas por situação')}
           </div>
+          ${modo === 'TABELA' ? `
+          <!-- Só na tabela: é lá que o texto é cortado. Na lista e no quadro
+               ele já aparece inteiro, e um interruptor que não muda nada
+               ensinaria que ele não funciona. -->
+          <!-- O id leva o sufixo da tela (-plano): as seções não são
+               destruídas ao navegar, e id repetido entre telas faz o atributo
+               "for" do rótulo casar com o primeiro do documento, que pode
+               estar em outra seção escondida. -->
+          <div class="form-check form-switch quebra-texto m-0">
+            <input class="form-check-input" type="checkbox" role="switch"
+              id="quebra-texto-plano" data-quebra-texto
+              ${this.quebraAtual() ? 'checked' : ''}>
+            <label class="form-check-label small" for="quebra-texto-plano"
+              title="Mostra o texto inteiro da coluna «Como»: a linha cresce até caber tudo">
+              Quebrar o texto</label>
+          </div>` : ''}
           ${modo === 'LISTA' ? `
           <span class="small text-muted d-none d-sm-inline">Mostrar até</span>
           <div class="btn-group btn-group-sm niveis-visao" role="group" aria-label="Mostrar até">
@@ -1727,7 +1865,10 @@ const SecaoProjetos = {
       ${modo === 'LISTA' ? `<p class="text-muted">Toque no título para recolher e expandir um item; use a seta (⌄) para
         ver o detalhe.${App.podeEditar() ? ' <strong>Toque duas vezes</strong> num cartão para editá-lo.' : ''}</p>` : ''}
       ${this.cartaoIdeiasAcao(pendentes)}
-      <div class="pt-2">${projetos.length
+      <!-- data-conteudo-modo: é o alvo para onde a troca de modo rola a
+           página (ver levarAoConteudo). Sem um marcador, o alvo seria "o que
+           vem depois da fila", que muda a cada pintura. -->
+      <div class="pt-2" data-conteudo-modo>${projetos.length
     ? (modo === 'TABELA' ? this.tabela5w2h(projetos)
       : (modo === 'QUADRO' ? this.quadroSituacao(projetos) : cartoes))
     : '<div class="text-muted">Nenhum projeto cadastrado.</div>'}</div>
@@ -1742,6 +1883,8 @@ const SecaoProjetos = {
 
     el.querySelectorAll('[data-modo]').forEach((b) =>
       b.addEventListener('click', () => this.trocarModo(b.dataset.modo)));
+    const chaveQuebra = el.querySelector('[data-quebra-texto]');
+    chaveQuebra?.addEventListener('change', () => this.trocarQuebra(chaveQuebra.checked, el));
     // Na tabela o duplo clique abre a ação — o mesmo gesto da lista. O
     // ouvinte vai na TABELA, não na seção: `el` sobrevive aos
     // recarregamentos e um ouvinte nele empilharia uma cópia por pintura.
@@ -1928,6 +2071,37 @@ const SecaoProjetos = {
       ev.stopPropagation();
       const proj = projetos.find((p) => p.id == b.dataset.proj);
       this.modalIniciativa(proj.id, proj.iniciativas.find((i) => i.id == b.dataset.editarIni));
+    }));
+    // Desvincular da Cascata num toque, no próprio selo (pedido do cliente,
+    // 2026-11-02). Pelo modal já dava — a primeira opção da lista é o
+    // desvínculo —, mas numa lista de dezenas de escolhas ninguém achava o
+    // caminho de volta.
+    //
+    // Sem confirmação: desfazer é escolher a decisão de novo, e nada se perde
+    // no meio. O que NÃO pode faltar é o resto do corpo — `titulo` é
+    // obrigatório e `ordem` ausente vira 0 no UPDATE, o que reordenaria as
+    // frentes do projeto sem ninguém pedir.
+    el.querySelectorAll('[data-desvincular-ini]').forEach((b) => b.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const proj = projetos.find((p) => p.id == b.dataset.proj);
+      const ini = (proj?.iniciativas || []).find((i) => i.id == b.dataset.desvincularIni);
+      if (!ini) return;
+      b.disabled = true;
+      try {
+        await App.api(`/api/iniciativas/${ini.id}`, {
+          planejamento_id: this.plan.id,
+          projeto_id: proj.id,
+          titulo: ini.titulo,
+          descricao: ini.descricao || '',
+          ordem: ini.ordem ?? 0,
+          cascata_id: '',
+        });
+      } catch (e) {
+        b.disabled = false;
+        alert(e.message);
+        return;
+      }
+      this.carregar();
     }));
     el.querySelectorAll('[data-excluir-ini]').forEach((b) => b.addEventListener('click', async (ev) => {
       ev.stopPropagation();
@@ -2247,11 +2421,24 @@ const SecaoProjetos = {
    * Síntese" sozinho não diz QUAL decisão é, e o texto sozinho não diz de que
    * ponto da matriz ele saiu.
    */
-  opcoesCascata() {
+  /**
+   * `vinculada` muda o rótulo da primeira opção, e isso não é enfeite: ela é a
+   * única maneira de DESFAZER o vínculo, e "(não vinculado a uma escolha)" se
+   * lê como a descrição de um estado, não como uma ação. Numa lista de
+   * dezenas de escolhas — no celular, um seletor que abre rolado na opção
+   * atual — a pessoa não achava o caminho de volta e pedia um botão de
+   * desvincular que já existia (pedido do cliente, 2026-11-02).
+   */
+  opcoesCascata(vinculada = false) {
     const nomeH = (id) => this.cascata.horizontes.find((h) => h.id == id)?.nome || '?';
     const nomeD = (id) => this.cascata.drivers.find((d) => d.id == id)?.nome || '?';
     const nomeE = (id) => (id ? this.cascata.eixos.find((e) => e.id == id)?.nome : 'Síntese') || 'Síntese';
-    return [{ valor: '', rotulo: '(não vinculado a uma escolha)' }].concat(
+    return [{
+      valor: '',
+      rotulo: vinculada
+        ? '— Desvincular: esta frente não executa nenhuma escolha —'
+        : '(não vinculado a uma escolha)',
+    }].concat(
       (this.cascata.escolhas || [])
         .map((e) => ({
           valor: e.id,
@@ -2265,7 +2452,7 @@ const SecaoProjetos = {
     // A escolha da cascata é da FRENTE (decisão do cliente, 2026-10-26): era do
     // projeto, e um projeto executa pedaços de mais de uma decisão — quem
     // executa um pedaço é a frente. A Matriz de Execução lê por aqui.
-    const opcoesCascata = this.opcoesCascata();
+    const opcoesCascata = this.opcoesCascata(!!(ini && ini.cascata_id));
     Modal.abrir({
       titulo: ini ? 'Editar iniciativa' : 'Nova iniciativa',
       url: ini ? `/api/iniciativas/${ini.id}` : '/api/iniciativas',
@@ -2285,7 +2472,8 @@ const SecaoProjetos = {
         { nome: 'cascata_id', rotulo: 'Escolha da Cascata que esta frente executa',
           tipo: 'select', opcoes: opcoesCascata,
           ajuda: opcoesCascata.length > 1
-            ? 'Liga a frente à decisão que a originou — é o que permite ler, na Cascata, o que cada escolha virou.'
+            ? ('Liga a frente à decisão que a originou — é o que permite ler, na Cascata, o que cada '
+              + 'escolha virou. Para desfazer o vínculo, escolha a PRIMEIRA opção da lista.')
             : 'Nenhuma escolha cadastrada ainda: preencha a Cascata para poder vincular.' },
       ],
     });

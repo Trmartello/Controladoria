@@ -209,6 +209,36 @@ const SecaoMetas = {
         aria-expanded="true">${ano} <span aria-hidden="true">▾</span></button></th>`;
   },
 
+  /**
+   * O horizonte do indicador, na linha dele (pedido do cliente, 2026-11-02).
+   *
+   * Era texto solto («… · H1 · ano: soma dos meses»), e o único jeito de mexer
+   * nele era o ✎ — que fica na ÚLTIMA coluna de uma tabela de quatorze a vinte
+   * e três colunas, atrás de toda a rolagem lateral. Quem abria a tela não
+   * tinha como saber que aquele H1 era editável, nem onde.
+   *
+   * Agora o vínculo é um controle, no lugar onde ele já era lido e sem sair da
+   * coluna parada à esquerda: com horizonte, um selo com × que desvincula;
+   * sem horizonte, um «+ horizonte» que abre o mesmo formulário do ✎ (é o
+   * próprio `data-editar`, para não existir um segundo caminho até o modal).
+   */
+  seloHorizonte(i) {
+    const pode = App.podeEditar();
+    if (!i.horizonte_id) {
+      return pode
+        ? ` · <button type="button" class="btn-vincular-horizonte" data-editar="${i.id}"
+            title="Vincular este indicador a um horizonte do ciclo">+ horizonte</button>`
+        : ' · sem horizonte';
+    }
+    const nome = Modal.esc(i.horizonte_nome || '');
+    return ` · <span class="selo-horizonte" title="Horizonte de referência: ${nome}">${nome}${pode
+      ? `<button type="button" class="desvincular-horizonte"
+          data-desvincular-horizonte="${i.id}"
+          title="Desvincular este indicador do horizonte"
+          aria-label="Desvincular do horizonte">×</button>`
+      : ''}</span>`;
+  },
+
   /** Os cartões de métrica-âncora, repintados sozinhos a cada gravação. */
   cartoes(horizontes, indicadores) {
     return horizontes.map((h) => {
@@ -376,13 +406,13 @@ const SecaoMetas = {
             ${Number(i.metrica_ancora) ? '<span class="badge badge-ancora ms-1">âncora</span>' : ''}
             ${revisada ? '<span class="badge text-bg-warning ms-1" title="Meta revisada — versões anteriores preservadas">rev.</span>' : ''}
             <div class="small text-muted">${Modal.esc(i.unidade)} · ${i.sentido === 'MENOR_MELHOR' ? '↓ menor melhor' : '↑ maior melhor'}
-              ${i.horizonte_nome ? ` · ${Modal.esc(i.horizonte_nome)}` : ''}
+              ${this.seloHorizonte(i)}
               · ano: ${this.ROTULO_AGREGACAO[i.agregacao] || this.ROTULO_AGREGACAO.SOMA}
               ${this.avisoAgregacao(i)}</div>
           </td>
           <td class="small text-muted celula-rotulo">Meta</td>
           ${anos.map((a) => this.celulasDoAno(i, 'META', a, metas[a] || null)).join('')}
-          <td rowspan="2" class="align-middle text-nowrap">${acoes}</td>
+          <td rowspan="2" class="align-middle text-nowrap celula-acoes">${acoes}</td>
         </tr>
         <tr class="linha-real">
           <td class="small text-muted celula-rotulo">Real</td>
@@ -408,7 +438,7 @@ const SecaoMetas = {
           <thead><tr>
             <th class="col-indicador">Indicador</th><th class="col-rotulo"></th>
             ${anos.map((a) => this.cabecalhoAno(a)).join('')}
-            <th></th>
+            <th class="col-acoes"></th>
           </tr></thead>
           <tbody>${linhas || `<tr><td colspan="${anos.length + abertas + 3}" class="text-muted">Nenhum indicador cadastrado.</td></tr>`}</tbody>
         </table>
@@ -452,6 +482,44 @@ const SecaoMetas = {
     }));
     el.querySelectorAll('[data-revisar]').forEach((b) => b.addEventListener('click', () =>
       this.modalRevisarMetas(indicadores.find((i) => i.id == b.dataset.revisar), anosAnuais)));
+    // Desvincular do horizonte no próprio selo (pedido do cliente,
+    // 2026-11-02). Pelo ✎ já dava — a primeira opção do campo é o desvínculo
+    // —, mas o ✎ mora na última coluna, atrás da rolagem lateral inteira.
+    //
+    // O corpo vai COMPLETO de propósito: `salvar` reescreve nome, unidade,
+    // sentido, agregação e âncora a cada gravação, e um corpo pela metade
+    // devolveria o indicador aos padrões (R$ mil, maior melhor, soma) sem
+    // ninguém pedir. `cascatas` fica de fora, e só por isso os vínculos com a
+    // Matriz de Execução sobrevivem: a chave ausente é o que faz
+    // `gravarCascatas` não mexer neles.
+    el.querySelectorAll('[data-desvincular-horizonte]').forEach((b) => b.addEventListener('click', async () => {
+      const ind = indicadores.find((x) => x.id == b.dataset.desvincularHorizonte);
+      if (!ind) return;
+      // Âncora sem horizonte não aparece em painel nenhum — ela não some do
+      // cadastro, mas some da tela que a pessoa está olhando. Por isso aqui
+      // se pergunta, e no indicador comum não.
+      if (Number(ind.metrica_ancora) && !confirm(
+        `«${ind.nome}» é métrica-âncora de ${ind.horizonte_nome}.\n\n`
+        + 'Sem horizonte ela sai do painel desse horizonte (continua cadastrada, '
+        + 'com as metas e os reais). Desvincular mesmo assim?')) return;
+      b.disabled = true;
+      try {
+        await App.api(`/api/indicadores/${ind.id}`, {
+          planejamento_id: this.plan.id,
+          nome: ind.nome,
+          unidade: ind.unidade,
+          sentido: ind.sentido,
+          agregacao: ind.agregacao,
+          metrica_ancora: Number(ind.metrica_ancora),
+          horizonte_id: '',
+        });
+      } catch (e) {
+        b.disabled = false;
+        alert(e.message);
+        return;
+      }
+      this.carregar();
+    }));
 
     el.querySelectorAll('.celula-valor').forEach((inp) => this.ligarCelula(inp));
   },
@@ -546,7 +614,15 @@ const SecaoMetas = {
    * que busca os fatores da SWOT ao abrir.
    */
   async modalIndicador(ind) {
-    const opcoesHorizonte = [{ valor: '', rotulo: '(sem horizonte)' }].concat(
+    // Com o indicador JÁ vinculado, a primeira opção é o caminho de volta, e
+    // "(sem horizonte)" se lê como a descrição de um estado, não como a ação
+    // de desfazer — a mesma troca feita no campo da Cascata das frentes.
+    const opcoesHorizonte = [{
+      valor: '',
+      rotulo: ind && ind.horizonte_id
+        ? '— Desvincular: sem horizonte de referência —'
+        : '(sem horizonte)',
+    }].concat(
       this.dados.horizontes.map((h) => ({ valor: h.id, rotulo: `${h.nome} · ${h.tema}` })));
     // Cascata vazia não é erro: o indicador continua cadastrável sem vínculo —
     // o campo é que some, em vez de aparecer como uma lista sem nada dentro.
