@@ -4249,11 +4249,34 @@ body.menu-aberto .menu-lateral {
    coluna não encolha abaixo dela. */
 .tabela-5w2h td.col-progresso { min-width: 9.5rem; }
 .tabela-5w2h .clipe-5w2h { font-size: .72rem; color: #5a6a61; white-space: nowrap; }
-/* No celular o selo da situação vem DENTRO da célula do "o quê", acima do
-   texto (pedido do cliente, 2026-11-02). `div` para ele ocupar a linha
-   inteira: inline, o texto da ação continuaria ao lado dele e a economia de
-   largura — que é o motivo da mudança — se perderia. */
-.tabela-5w2h .situacao-no-oque { margin-bottom: .2rem; }
+/* Situação e prioridade EMBAIXO da data da execução (pedido do cliente,
+   2026-11-03), no lugar da coluna "Situação" que existia até aqui — e, no
+   celular, no lugar do selo que em 2026-11-02 tinha subido para dentro do "o
+   quê".
+   A célula empilha em três: prazo, selo da situação, prioridade. `div` em
+   vez de `span` é o que empilha; inline, os três voltariam para a mesma
+   linha e a célula ficaria mais larga que a coluna que ela substituiu.
+   A mínima segura o selo da situação numa linha só; abaixo dela a coluna
+   encolhe até o selo quebrar no meio de "Em andamento". */
+.tabela-5w2h .col-quando { min-width: 7.5rem; }
+/* O prazo PODE quebrar aqui — e só aqui. `num` corre a tabela inteira com
+   `nowrap`, e "20/10/2026 a 15/02/2027" numa linha só fazia desta a coluna
+   mais larga da tabela (186px medidos em 390px de tela, contra 119px que
+   sobravam para a frase da ação). Quebrar não parte número nenhum: dentro de
+   uma data não há espaço por onde quebrar, e o ponto de quebra é o " a " que
+   separa as duas. */
+.tabela-5w2h .col-quando .num { white-space: normal; }
+.tabela-5w2h .selos-quando {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  flex-wrap: wrap;
+  margin-top: .15rem;
+}
+/* O selo da situação é menor aqui do que era na coluna própria: ele deixou de
+   ser a primeira coisa da linha e passou a ser a legenda da data. */
+.tabela-5w2h .selos-quando .badge { font-size: .66rem; font-weight: 600; }
+.tabela-5w2h .selo-prioridade { white-space: nowrap; }
 /* A coluna de ações da tabela (pedido do cliente, 2026-11-02): criar, editar
    e excluir nos três níveis, sem trocar para a lista.
    Os botões são MIÚDOS de propósito — eles repetem em toda linha de uma

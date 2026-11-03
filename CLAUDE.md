@@ -2358,6 +2358,20 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     tabela para quem deixou a tabela escolhida — duas folhas diferentes do
     mesmo plano, sem nada na página dizendo por quê. É a mesma razão pela qual
     ele já zerava os filtros.
+  - **Na TABELA, a situação e a prioridade ficam EMBAIXO da data** (pedido do
+    cliente, 2026-11-03), e a coluna "Situação" **não existe mais**. São sete
+    colunas: o quê, como, quem, quando, ganhos, progresso e a das ações. Prazo,
+    situação e prioridade respondem à mesma pergunta ("quando, em que pé, e o
+    quanto urge") e cabem numa célula só — foi assim que a prioridade, que até
+    então só aparecia no cartão da lista, entrou sem abrir uma oitava coluna.
+    Duas consequências de implementação: (1) a cor da prioridade no selo **não**
+    é a da faixa do cartão — o dourado da marca mede 3,10:1 no branco, e letra
+    miúda pede 4,5:1, então `PRIORIDADES` tem uma terceira cor, medida, só para
+    texto; (2) a tabela deixou de ser montada de dois jeitos conforme a largura,
+    e com isso foi-se o `matchMedia` que a repintava ao girar o aparelho, que
+    existia porque `colspan` é atributo e não acompanha a CSS. A montagem
+    anterior (2026-11-02), com o selo dentro do "o quê" e só no celular, foi
+    substituída por esta.
   - **No QUADRO, "No prazo" e "Atrasada" não recebem ficha.** As duas saem da
     data-limite e são reescritas a cada leitura por
     `Consolidacao::sincronizarAtrasos`; só as outras cinco situações são

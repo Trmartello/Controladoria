@@ -2166,13 +2166,12 @@ async function provasModosPlano(page, largura) {
     // que as linhas são. A prova confere os rótulos e exige que a última
     // esteja vazia — rótulo aparecendo ali seria defeito.
     //
-    // No CELULAR a coluna "Situação" não existe: o selo dela vai para dentro
-    // do "o quê" (pedido do cliente, no mesmo dia), e a tabela tem uma coluna
-    // a menos.
-    const esperadas = largura === 'celular'
-      ? 'O quê | Como | Quem | Quando | Ganhos | Progresso'
-      : 'Situação | O quê | Como | Quem | Quando | Ganhos | Progresso';
-    const nColunas = largura === 'celular' ? 7 : 8;
+    // A coluna "Situação" não existe mais em NENHUMA largura (pedido do
+    // cliente, 2026-11-03): o selo dela desceu para dentro do "Quando",
+    // debaixo do prazo, junto com a prioridade. Daí sete colunas no
+    // computador e no celular — a tabela deixou de ser montada de dois modos.
+    const esperadas = 'O quê | Como | Quem | Quando | Ganhos | Progresso';
+    const nColunas = 7;
     t(`${l} a tabela mostra as cinco perguntas do método`,
       tab.colunas.slice(0, nColunas - 1).join(' | ') === esperadas
       && tab.colunas.length === nColunas && tab.colunas[nColunas - 1] === '',
@@ -2311,49 +2310,85 @@ async function provasModosPlano(page, largura) {
       contraste.length >= 8 && fracos.length === 0,
       JSON.stringify(fracos.length ? fracos : contraste.slice(0, 3)));
 
-    // ── A situação sobre o "o quê", no celular (2026-11-02) ─────────────
-    // Na tela estreita as duas primeiras colunas viram uma: o selo em cima, o
-    // texto embaixo. O risco real não é o selo — é o `colspan` da linha de
-    // grupo, que é ATRIBUTO e não acompanha a CSS: uma coluna a mais ali e a
-    // coluna do "Progresso" do grupo sai do alinhamento com a das ações, que
-    // é a régua desta tabela e já custou dois pedidos. Por isso a prova mede
-    // as duas coisas.
+    // ── Situação e prioridade embaixo da data (2026-11-03) ──────────────
+    // A coluna "Situação" saiu e os dois selos desceram para dentro do
+    // "Quando", debaixo do prazo. A prova MEDE o empilhamento (mesma coluna,
+    // um abaixo do outro) porque é exatamente isso que um `display` perdido
+    // desfaz sem quebrar nada no código: inline, os três voltam para a mesma
+    // linha e a célula fica mais larga que a coluna que ela substituiu.
+    //
+    // E mede o `colspan` da linha de grupo junto: ele é ATRIBUTO, não
+    // acompanha a CSS, e uma coluna a mais ali tira o "Progresso" do grupo do
+    // alinhamento com o das ações — a régua desta tabela, que já custou dois
+    // pedidos.
+    //
+    // A prioridade é lida com CONTRASTE: ela é letra miúda em maiúsculas, e a
+    // cor da faixa do cartão (o dourado da marca, que serve a um bloco de
+    // 4px) mede 3,10:1 no branco da linha. Por isso o mapa tem uma segunda
+    // cor, só para texto — e por isso a prova a mede em vez de conferir que a
+    // classe está lá.
     const empilhada = await page.evaluate((id) => {
       const linha = document.querySelector('.tabela-5w2h tr[data-card-acao]');
-      const oque = linha.querySelector('.col-oque');
-      const selo = oque.querySelector('.situacao-no-oque .badge');
+      const quando = linha.querySelector('.col-quando');
+      const data = quando.querySelector('.num');
+      const selo = quando.querySelector('.selos-quando .badge');
+      const prio = quando.querySelector('.selos-quando .selo-prioridade');
       const grupo = document.querySelector(`tr[data-grupo-proj="${id}"]`);
-      const esq = (e) => Math.round(e.getBoundingClientRect().left);
+      const caixa = (e) => { const r = e.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; };
+      // Contraste do texto da prioridade contra o fundo REAL da linha (a
+      // célula é transparente: o fundo vem da linha, e dela o do branco da
+      // página).
+      const nums = (c) => (c.match(/[\d.]+/g) || []).map(Number);
+      const canal = (v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      const lum = (c) => { const [r, g, b] = nums(c).slice(0, 3).map((v) => canal(v / 255)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const opaco = (e) => {
+        for (let n = e; n; n = n.parentElement) {
+          const c = getComputedStyle(n).backgroundColor;
+          const v = nums(c);
+          if (v.length && (v.length < 4 || v[3] > 0.9)) return c;
+        }
+        return 'rgb(255, 255, 255)';
+      };
+      const razao = (a, b) => {
+        const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+        return Number(((x + 0.05) / (y + 0.05)).toFixed(2));
+      };
+      const corPrio = prio ? getComputedStyle(prio).color : null;
       return {
         temColunaSituacao: [...document.querySelectorAll('.tabela-5w2h thead th')]
           .some((th) => th.textContent.trim() === 'Situação'),
-        seloNoOque: !!selo,
+        // Nenhum resto da montagem anterior: o selo não ficou também no "o quê".
+        seloNoOque: !!linha.querySelector('.col-oque .badge'),
         seloTexto: selo ? selo.textContent.trim() : null,
-        // "Acima" de verdade: o selo começa no topo da célula, e o texto da
-        // ação vem depois dele — não ao lado.
-        seloNoTopo: selo ? Math.round(selo.getBoundingClientRect().top)
-          <= Math.round(oque.getBoundingClientRect().top) + 8 : null,
-        progressoGrupo: esq(grupo.querySelector('.col-progresso')),
-        progressoAcao: esq(linha.querySelector('.col-progresso')),
+        prioTexto: prio ? prio.textContent.trim() : null,
+        // Empilhados: o selo começa na mesma esquerda da data (mesma coluna) e
+        // a prioridade vem depois dele. "Depois" é ao lado OU embaixo: numa
+        // coluna estreita o par quebra, e exigir que fique ao lado seria pedir
+        // à prova uma largura que a tela não tem.
+        mesmaColuna: selo && prio
+          ? Math.abs(caixa(selo).x - caixa(data).x) <= 2
+            && (caixa(prio).x > caixa(selo).x || caixa(prio).y > caixa(selo).y)
+          : null,
+        abaixoDaData: selo ? caixa(selo).y > caixa(data).y : null,
+        contrastePrio: corPrio ? razao(corPrio, opaco(prio)) : null,
+        progressoGrupo: Math.round(grupo.querySelector('.col-progresso').getBoundingClientRect().left),
+        progressoAcao: Math.round(linha.querySelector('.col-progresso').getBoundingClientRect().left),
         colspan: grupo.children[0].getAttribute('colspan'),
       };
     }, prj);
-    if (largura === 'celular') {
-      t(`${l} no celular a situação sobe para dentro do "o quê"`,
-        empilhada.seloNoOque && empilhada.seloNoTopo && !empilhada.temColunaSituacao
-        && /\S/.test(empilhada.seloTexto || ''),
-        JSON.stringify(empilhada));
-      t(`${l} e o grupo acompanha, mantendo o "Progresso" alinhado`,
-        empilhada.colspan === '5'
-        && Math.abs(empilhada.progressoGrupo - empilhada.progressoAcao) <= 1,
-        JSON.stringify(empilhada));
-    } else {
-      // No computador nada muda: a situação continua tendo coluna própria.
-      t(`${l} no computador a situação continua em coluna própria`,
-        empilhada.temColunaSituacao && !empilhada.seloNoOque && empilhada.colspan === '6'
-        && Math.abs(empilhada.progressoGrupo - empilhada.progressoAcao) <= 1,
-        JSON.stringify(empilhada));
-    }
+    t(`${l} a situação e a prioridade ficam embaixo da data, e a coluna "Situação" sumiu`,
+      !empilhada.temColunaSituacao && !empilhada.seloNoOque
+      && /\S/.test(empilhada.seloTexto || '')
+      && ['Alta', 'Média', 'Baixa'].includes(empilhada.prioTexto)
+      && empilhada.mesmaColuna && empilhada.abaixoDaData,
+      JSON.stringify(empilhada));
+    t(`${l} a prioridade tem contraste de texto (4,5:1)`,
+      empilhada.contrastePrio !== null && empilhada.contrastePrio >= 4.5,
+      JSON.stringify(empilhada.contrastePrio));
+    t(`${l} e o grupo cobre cinco colunas, mantendo o "Progresso" alinhado`,
+      empilhada.colspan === '5'
+      && Math.abs(empilhada.progressoGrupo - empilhada.progressoAcao) <= 1,
+      JSON.stringify(empilhada));
 
     // ── Quebrar o texto (pedido do cliente, 2026-11-02) ──────────────────
     // O "Como" é cortado com reticências porque a tabela existe para ser
