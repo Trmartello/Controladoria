@@ -140,8 +140,12 @@ namespace App\Core;
  * Dublê do banco: uma responsável com uma ação vencendo hoje, uma
  * administradora, e a carteira que o relatório do disparo resume.
  *
- * O modo (argv) diz se o aviso do dia JÁ saiu e se há pendência nenhuma —
- * é o que separa os quatro cenários provados abaixo.
+ * O modo (argv) diz se o aviso do dia JÁ saiu, se há pendência nenhuma e quem
+ * é gestor de negócio — é o que separa os cenários provados abaixo.
+ *
+ * As consultas são reconhecidas por um PEDAÇO DO SQL, e a ordem das condições
+ * importa: a dos destinatários também casa com `FROM usuario u`, então é
+ * preciso perguntar primeiro pelo que só ela tem (`AS gestor`).
  */
 class Database
 {
@@ -158,11 +162,44 @@ class Database
                 'em_andamento' => 0, 'marcadas_atraso' => 1, 'pausadas' => 0, 'aguardando' => 1,
             ]];
         }
-        if (str_contains($sql, 'FROM usuario u')) {
-            return [['id' => 7, 'nome' => 'Fulana', 'email' => 'fulana@exemplo.com']];
+        if (str_contains($sql, 'AS gestor')) { // quem recebe aviso
+            // Guardado para a prova de que a regra lê os DOIS cadastros de
+            // gestor — o vínculo da tela de Usuários e o campo da tela de
+            // Negócios. O dublê não executa SQL, então sem isto uma regra
+            // estreitada em silêncio passaria por todas as outras provas.
+            $GLOBALS['sql_destinatarios'] = $sql;
+            $fulana = ['id' => 7, 'nome' => 'Fulana', 'email' => 'fulana@exemplo.com', 'gestor' => 0];
+            if ($GLOBALS['modo'] === 'gestor') {
+                // A gestora não responde por ação nenhuma: antes deste trabalho
+                // ela não entrava na lista e não recebia e-mail nenhum.
+                return [$fulana,
+                        ['id' => 9, 'nome' => 'Gestora', 'email' => 'gestora@exemplo.com', 'gestor' => 1]];
+            }
+            if ($GLOBALS['modo'] === 'ambos') {
+                return [['id' => 7, 'nome' => 'Fulana', 'email' => 'fulana@exemplo.com', 'gestor' => 1]];
+            }
+            return [$fulana];
+        }
+        if (str_contains($sql, 'JOIN negocio n')) { // as ações do negócio que ela gere
+            return [
+                // A MESMA ação que está na carteira de Fulana (id 1): no modo
+                // `ambos` ela não pode aparecer duas vezes na mesma mensagem.
+                ['id' => 1, 'o_que' => 'Ação de teste', 'data_fim' => date('Y-m-d'),
+                 'status' => 'NAO_INICIADO', 'prioridade' => 'ALTA', 'progresso' => 0,
+                 'projeto' => 'Projeto', 'iniciativa' => 'Frente',
+                 'quem' => 'Fulana', 'negocio' => 'Supermercados'],
+                ['id' => 2, 'o_que' => 'Ação órfã do negócio', 'data_fim' => date('Y-m-d'),
+                 'status' => 'NAO_INICIADO', 'prioridade' => 'ALTA', 'progresso' => 0,
+                 'projeto' => 'Projeto', 'iniciativa' => 'Frente',
+                 'quem' => null, 'negocio' => 'Supermercados'],
+            ];
         }
         if ($GLOBALS['modo'] === 'vazio') {
             return []; // ninguém com prazo vencendo: nada a disparar
+        }
+        // A carteira própria: a gestora (id 9) não tem ação nenhuma
+        if (($p[0] ?? null) === 9) {
+            return [];
         }
         return [['id' => 1, 'o_que' => 'Ação de teste', 'data_fim' => date('Y-m-d'),
                  'status' => 'NAO_INICIADO', 'prioridade' => 'ALTA', 'progresso' => 0,
@@ -189,6 +226,17 @@ printf(
     $modo, $r['enviados'], $r['reenviados'], $r['ja_enviados'], $r['falhas'],
     count(\App\Core\Database::$gravou),
     isset($saida['resumo']) ? (int)$saida['resumo']['enviados'] : 'ausente'
+);
+// `itens` por pessoa: é o número que vai para `envio_email` e para o relatório
+// do disparo, e é ele que denuncia uma lista contada pela metade.
+foreach ($r['detalhes'] as $d) {
+    printf(' | %s itens=%d', $d['usuario'], $d['itens']);
+}
+$sql = $GLOBALS['sql_destinatarios'] ?? '';
+printf(
+    ' | cadastros=%s',
+    (str_contains($sql, 'usuario_negocio') ? 'vinculo' : '-')
+    . '+' . (str_contains($sql, 'gestor_id') ? 'campo' : '-')
 );
 PHP
 
@@ -217,6 +265,44 @@ afirma "com o rótulo acentuado do que saiu" 'Pendências do dia' "$L"
 R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" vazio 2>&1)
 afirma "não sai quando nada foi disparado" 'vazio: enviados=0 reenviados=0 ja_enviados=0 falhas=0 gravou=0 resumo=ausente' "$R"
 afirma_nao "e nenhum e-mail é gerado nesse caso" 'relatório do disparo' "$(cat "$ENVIOS")"
+
+echo "### 7. O gestor do negócio recebe (pedido do cliente, 2026-11-03)"
+# Até aqui a lista de destinatários era só quem RESPONDE por ação: o gestor que
+# não tinha ação própria não recebia nada — nem das ações do negócio dele, nem
+# das que estão sem responsável, que não entram em cobrança nenhuma.
+: > "$ENVIOS"
+R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" gestor 2>&1)
+afirma "o gestor entra no disparo mesmo sem ação própria" 'gestor: enviados=2' "$R"
+# Gestor é cadastrado de DUAS formas nesta casa: o perfil Gestor com os
+# negócios marcados na tela de Usuários (`usuario_negocio`, a forma em uso) e o
+# campo "gestor" da tela de Negócios (`negocio.gestor_id`). Ler só uma deixaria
+# o aviso dependendo de qual tela alguém usou — e a que está em uso é
+# justamente a que o código NÃO lia na primeira versão deste trabalho.
+afirma "a regra lê os dois cadastros de gestor" 'cadastros=vinculo+campo' "$R"
+afirma "e a mensagem dele conta as ações do negócio" 'Gestora itens=2' "$R"
+L=$(cat "$ENVIOS")
+afirma "o e-mail chega nele" 'gestora@exemplo.com | Planejamento — pendências de hoje' "$L"
+afirma "com o nome do negócio no bloco" 'Supermercados' "$L"
+afirma "dizendo a quem cobrar cada ação" 'Responsável: Fulana' "$L"
+# A ação órfã é o caso que só o gestor pode resolver: ela não gera e-mail para
+# ninguém porque não tem a quem cobrar.
+afirma "e marcando a ação sem responsável" 'Sem responsável' "$L"
+afirma "quem responde pela ação continua recebendo a dela" 'fulana@exemplo.com | Planejamento' "$L"
+
+echo "### 8. Gestor E responsável: uma mensagem só, sem repetir a ação"
+: > "$ENVIOS"
+R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" ambos 2>&1)
+# A chave única de envio_email é (tipo, referência, usuário): duas mensagens no
+# mesmo dia para a mesma pessoa não caberiam no registro — e ela leria a mesma
+# lista duas vezes.
+afirma "uma pessoa, uma mensagem" 'ambos: enviados=1' "$R"
+afirma "contando as duas listas sem a repetida" 'Fulana itens=2' "$R"
+L=$(cat "$ENVIOS")
+REPETIDA=$(grep -o 'Ação de teste' <<< "$L" | wc -l | tr -d ' ')
+if [ "$REPETIDA" = "1" ]; then ok; else
+    falha "a ação que é dela não aparece duas vezes" "1 ocorrência" "$REPETIDA"
+fi
+afirma "e a do negócio entra no bloco dela" 'Ação órfã do negócio' "$L"
 
 echo
 if [ $FALHA -eq 0 ]; then
