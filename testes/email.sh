@@ -163,6 +163,11 @@ class Database
             ]];
         }
         if (str_contains($sql, 'AS gestor')) { // quem recebe aviso
+            // Guardado para a prova de que a regra lê os DOIS cadastros de
+            // gestor — o vínculo da tela de Usuários e o campo da tela de
+            // Negócios. O dublê não executa SQL, então sem isto uma regra
+            // estreitada em silêncio passaria por todas as outras provas.
+            $GLOBALS['sql_destinatarios'] = $sql;
             $fulana = ['id' => 7, 'nome' => 'Fulana', 'email' => 'fulana@exemplo.com', 'gestor' => 0];
             if ($GLOBALS['modo'] === 'gestor') {
                 // A gestora não responde por ação nenhuma: antes deste trabalho
@@ -175,7 +180,7 @@ class Database
             }
             return [$fulana];
         }
-        if (str_contains($sql, 'n.gestor_id = ?')) { // as ações do negócio que ela gere
+        if (str_contains($sql, 'JOIN negocio n')) { // as ações do negócio que ela gere
             return [
                 // A MESMA ação que está na carteira de Fulana (id 1): no modo
                 // `ambos` ela não pode aparecer duas vezes na mesma mensagem.
@@ -227,6 +232,12 @@ printf(
 foreach ($r['detalhes'] as $d) {
     printf(' | %s itens=%d', $d['usuario'], $d['itens']);
 }
+$sql = $GLOBALS['sql_destinatarios'] ?? '';
+printf(
+    ' | cadastros=%s',
+    (str_contains($sql, 'usuario_negocio') ? 'vinculo' : '-')
+    . '+' . (str_contains($sql, 'gestor_id') ? 'campo' : '-')
+);
 PHP
 
 R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" cron 2>&1)
@@ -262,6 +273,12 @@ echo "### 7. O gestor do negócio recebe (pedido do cliente, 2026-11-03)"
 : > "$ENVIOS"
 R=$(env EMAIL_API_CHAVE="$CHAVE" SMTP_REMETENTE="$REMETENTE" php "$TMP/avisos.php" gestor 2>&1)
 afirma "o gestor entra no disparo mesmo sem ação própria" 'gestor: enviados=2' "$R"
+# Gestor é cadastrado de DUAS formas nesta casa: o perfil Gestor com os
+# negócios marcados na tela de Usuários (`usuario_negocio`, a forma em uso) e o
+# campo "gestor" da tela de Negócios (`negocio.gestor_id`). Ler só uma deixaria
+# o aviso dependendo de qual tela alguém usou — e a que está em uso é
+# justamente a que o código NÃO lia na primeira versão deste trabalho.
+afirma "a regra lê os dois cadastros de gestor" 'cadastros=vinculo+campo' "$R"
 afirma "e a mensagem dele conta as ações do negócio" 'Gestora itens=2' "$R"
 L=$(cat "$ENVIOS")
 afirma "o e-mail chega nele" 'gestora@exemplo.com | Planejamento — pendências de hoje' "$L"

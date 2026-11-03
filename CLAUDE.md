@@ -2088,13 +2088,28 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   queda do serviço não bloquear o aviso.
   **Quem recebe** (`Avisos::destinatarios`): quem **responde** por alguma ação
   em aberto (`quem_usuario_id`) **e** quem **gere** um negócio com plano
-  (`negocio.gestor_id` — pedido do cliente, 2026-11-03: "precisamos garantir
-  que o e-mail vai para o gestor do negócio"). Era só a primeira metade, e o
+  (pedido do cliente, 2026-11-03: "precisamos garantir que o e-mail vai para o
+  gestor do negócio"). Era só a primeira metade, e o
   efeito era duplo: o gestor que não respondia por ação nenhuma não recebia
   nada, e as ações **sem responsável** não geravam e-mail para ninguém, porque
   não há a quem cobrar — justamente as que só o gestor resolve. No bloco do
   negócio cada ação sai com o nome do responsável, ou com "Sem responsável" em
   vermelho.
+  **"Gestor do negócio" são DOIS cadastros** (`Avisos::GERE_O_NEGOCIO`), e a
+  regra lê os dois: o **vínculo da tela de Usuários** (perfil `GESTOR` mais os
+  negócios marcados, em `usuario_negocio`) — que é a forma em uso, a que o
+  cliente mostrou ao pedir isto — e o campo **gestor** da tela de Negócios
+  (`negocio.gestor_id`), hoje vazio na base. Ler só um deixaria o aviso
+  dependendo de qual tela alguém usou, e foi exatamente esse o erro da primeira
+  versão deste trabalho: ela lia só o campo, e em produção não havia nenhum
+  preenchido — o e-mail não chegaria a gestor nenhum, sem erro em lugar
+  algum. **LEITURA não entra** pelo vínculo (o perfil existe para quem
+  acompanha sem responder), e **ADMIN/CONTROLADORIA/DIREÇÃO** também não: eles
+  enxergam todos os negócios e receberiam o plano inteiro da cooperativa todo
+  dia — quem administra já tem o relatório do disparo. Consequência a saber:
+  **todos** os gestores vinculados ao mesmo negócio recebem a mesma lista. Se
+  um dia a casa quiser um responsável único por negócio, o caminho é preencher
+  o campo da tela de Negócios e estreitar a regra para ele.
   **Uma pessoa, uma mensagem.** Quem é gestor e responsável recebe UM e-mail
   com as duas partes (a carteira dele primeiro, depois o bloco do negócio,
   separados por um filete), e a ação que está nos dois lugares aparece só na

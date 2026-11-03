@@ -236,9 +236,33 @@ class Avisos
     }
 
     /**
+     * Quem GERE um negócio, nas DUAS formas em que a casa cadastra isso.
+     *
+     * 1. O **vínculo da tela de Usuários**: perfil GESTOR mais os negócios
+     *    marcados nele (`usuario_negocio`). É a forma em uso — foi o que o
+     *    cliente mostrou ao pedir o aviso ("Ademar da Silva · Gestor · 1 -
+     *    CEREAIS, 13 - UBS").
+     * 2. O campo **gestor do negócio** (`negocio.gestor_id`), da tela de
+     *    Negócios. Está vazio na base, mas é cadastro válido e diz a mesma
+     *    coisa; ler só um dos dois deixaria o aviso dependendo de qual tela a
+     *    pessoa usou.
+     *
+     * LEITURA fica de fora do caminho (1): o perfil existe para quem acompanha
+     * sem responder por nada. ADMIN, CONTROLADORIA e DIREÇÃO também: eles
+     * enxergam todos os negócios, e entrar por aqui lhes mandaria o plano
+     * inteiro da cooperativa todo dia — quem administra já recebe o relatório
+     * do disparo, que é o panorama feito para eles. Pelo caminho (2) qualquer
+     * perfil entra: ali alguém escolheu aquela pessoa para aquele negócio.
+     */
+    private const GERE_O_NEGOCIO = "n.ativo = 1 AND (n.gestor_id = %1\$s.id
+            OR (%1\$s.perfil = 'GESTOR' AND EXISTS (
+                  SELECT 1 FROM usuario_negocio un
+                  WHERE un.usuario_id = %1\$s.id AND un.negocio_id = n.id)))";
+
+    /**
      * Quem recebe aviso: quem RESPONDE por alguma ação em aberto e quem GERE um
-     * negócio com plano (`negocio.gestor_id` — pedido do cliente, 2026-11-03:
-     * "precisamos garantir que o e-mail vai para o gestor do negócio").
+     * negócio com plano (pedido do cliente, 2026-11-03: "precisamos garantir
+     * que o e-mail vai para o gestor do negócio").
      *
      * Até aqui a lista era só a primeira metade, e o gestor que não respondia
      * por ação nenhuma não recebia nada: nem das ações do negócio dele, nem das
@@ -254,11 +278,12 @@ class Avisos
      */
     private static function destinatarios(): array
     {
+        $gere = sprintf(self::GERE_O_NEGOCIO, 'u');
         return Database::todos(
             "SELECT u.id, u.nome, u.email,
                     EXISTS (SELECT 1 FROM negocio n
                             JOIN planejamento pl ON pl.negocio_id = n.id
-                            WHERE n.gestor_id = u.id AND n.ativo = 1) AS gestor
+                            WHERE $gere) AS gestor
              FROM usuario u
              WHERE u.ativo = 1 AND u.email <> ''
                AND (EXISTS (SELECT 1 FROM desdobramento d
@@ -266,7 +291,7 @@ class Avisos
                               AND d.status IN " . self::STATUS_ABERTOS . ")
                     OR EXISTS (SELECT 1 FROM negocio n
                                JOIN planejamento pl ON pl.negocio_id = n.id
-                               WHERE n.gestor_id = u.id AND n.ativo = 1))
+                               WHERE $gere))
              ORDER BY u.nome"
         );
     }
@@ -296,12 +321,12 @@ class Avisos
      * chegam a ninguém pela carteira.
      *
      * Aqui não vai a cláusula de escopo da consulta de cima: ser o gestor do
-     * negócio É a autorização para ver o plano dele. O recorte por
-     * `n.gestor_id` já limita a mensagem ao que a pessoa responde.
+     * negócio É a autorização para ver o plano dele. O recorte de
+     * `GERE_O_NEGOCIO` já limita a mensagem ao que a pessoa responde.
      */
     private static function acoesDoNegocio(int $usuarioId, string $ate): array
     {
-        return Database::todos(self::CONSULTA_NEGOCIO, [$usuarioId, $ate]);
+        return Database::todos(self::consultaNegocio(), [$usuarioId, $ate]);
     }
 
     private const CAMPOS = "d.id, d.o_que, d.data_fim, d.status, d.prioridade, d.progresso,
@@ -335,16 +360,23 @@ class Avisos
      * cobrar — e ação sem responsável aparece dizendo isso, que é a informação
      * mais acionável das duas.
      */
-    private const CONSULTA_NEGOCIO = 'SELECT ' . self::CAMPOS . ", q.nome AS quem, n.nome AS negocio
+    private static function consultaNegocio(): string
+    {
+        // O gestor entra na consulta como JOIN (`g`): quem decide se ele gere
+        // o negócio é o perfil DELE mais o vínculo, e isso não cabe num
+        // `WHERE coluna = ?`. Daí a consulta ser montada e não constante.
+        return 'SELECT ' . self::CAMPOS . ", q.nome AS quem, n.nome AS negocio
          FROM desdobramento d
          JOIN projeto p ON p.id = d.projeto_id
          JOIN planejamento pl ON pl.id = p.planejamento_id
          JOIN negocio n ON n.id = pl.negocio_id
+         JOIN usuario g ON g.id = ?
          LEFT JOIN iniciativa i ON i.id = d.iniciativa_id
          LEFT JOIN usuario q ON q.id = d.quem_usuario_id
-         WHERE n.gestor_id = ? AND n.ativo = 1 AND d.status IN " . self::STATUS_ABERTOS . "
+         WHERE " . sprintf(self::GERE_O_NEGOCIO, 'g') . ' AND d.status IN ' . self::STATUS_ABERTOS . "
            AND d.data_fim IS NOT NULL AND d.data_fim <= ?
          ORDER BY d.data_fim, d.prioridade = 'ALTA' DESC";
+    }
 
     private static function corpo(
         string $tipo,
