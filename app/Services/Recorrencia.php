@@ -110,11 +110,26 @@ class Recorrencia
      * ainda não passou — contada a partir de ontem, para o dia de hoje valer.
      * Devolve null quando a grade já ultrapassou o limite de `recorrencia_ate`.
      *
+     * Com $de (a data de início da repetição, pedido do cliente em 2026-11-03),
+     * a contagem parte do DIA ANTERIOR a ela quando ela está no futuro: quem
+     * cadastra em novembro a rotina que começa em fevereiro não quer a ação
+     * vencendo na semana seguinte. Início no passado NÃO retroage: ancorar lá
+     * faria a ação nascer atrasada em ocorrências que ninguém tinha para
+     * cumprir — a rotina passa a valer, no máximo, de hoje.
+     *
      * @param int[] $dias
      */
-    public static function primeiraOcorrencia(array $dias, string $recorrencia, ?string $ate): ?string
-    {
-        $proxima = self::proxima(date('Y-m-d', strtotime('-1 day')), $recorrencia, $dias);
+    public static function primeiraOcorrencia(
+        array $dias,
+        string $recorrencia,
+        ?string $ate,
+        ?string $de = null
+    ): ?string {
+        $base = date('Y-m-d', strtotime('-1 day'));
+        if ($de !== null && $de > date('Y-m-d')) {
+            $base = date('Y-m-d', strtotime($de . ' -1 day'));
+        }
+        $proxima = self::proxima($base, $recorrencia, $dias);
         if ($proxima === null || ($ate !== null && $proxima > $ate)) {
             return null;
         }

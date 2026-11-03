@@ -55,8 +55,19 @@ const CORES_STATUS = {
 // de saber do que já está pronto.
 const ORDEM_RESUMO = ['ATRASADO', 'EM_ANDAMENTO', 'AGUARDANDO_VALIDACAO', 'PAUSADO',
   'NAO_INICIADO', 'CONCLUIDO', 'CANCELADO'];
+/* Rótulo, cor da FAIXA do cartão, cor do TEXTO do selo.
+ *
+ * São duas cores porque o mesmo tom não serve aos dois usos. A faixa do
+ * cartão é um bloco largo de 4px — ali o dourado da marca (#b08d4f) tem de
+ * sobra o 3:1 que a WCAG pede de um elemento gráfico. O selo da tabela é
+ * texto miúdo em maiúsculas, que pede 4,5:1, e o mesmo dourado mede 3,10:1
+ * no branco da linha: legível de perto, não a três metros do projetor. As
+ * terceiras colunas são os tons medidos (Alta 6,54:1 · Média 6,36:1 ·
+ * Baixa 5,49:1) — mesma família de cor, contraste conferido. */
 const PRIORIDADES = {
-  ALTA: ['Alta', '#b3261e'], MEDIA: ['Média', '#b08d4f'], BAIXA: ['Baixa', '#2c7fb8'],
+  ALTA: ['Alta', '#b3261e', '#b3261e'],
+  MEDIA: ['Média', '#b08d4f', '#7a5a14'],
+  BAIXA: ['Baixa', '#2c7fb8', '#1f6f9e'],
 };
 // 1 = segunda … 7 = domingo (mesma numeração do PHP: date('N'))
 const DIAS_SEMANA = [
@@ -144,43 +155,27 @@ const SecaoProjetos = {
   LUGAR_QUEBRA: 'pe_plano_quebra',
   quebra: null,
 
-  /* ── A situação SOBRE o "o quê", no celular ───────────────────────────────
-   * Pedido do cliente (2026-11-02). Em 390px a coluna "Situação" come um
-   * terço da largura útil para dizer duas palavras, e sobra pouco para a
-   * frase da ação — que é o conteúdo. Na tela estreita as duas viram UMA
-   * coluna: o selo em cima, o texto embaixo.
+  /* ── Situação e prioridade EMBAIXO da data ────────────────────────────────
+   * Pedido do cliente (2026-11-03): "coloque o status e a prioridade logo
+   * abaixo da data da execução da ação assim otimizando o número de colunas".
    *
-   * É decidido aqui, no JS, e não só na CSS, por causa do `colspan`: a célula
-   * do título do grupo atravessa as colunas de conteúdo, e `colspan` é
-   * ATRIBUTO, não estilo. Escondendo a coluna da situação pela CSS, o grupo
-   * continuaria cobrindo uma coluna a mais e o "Progresso" dele sairia do
-   * alinhamento com o das ações — exatamente o que custou dois pedidos a esta
-   * tabela.
+   * A coluna "Situação" deixou de existir: ela gastava uma coluna inteira
+   * para dizer duas palavras, numa tabela em que oito colunas disputam a
+   * tela. O selo desceu para dentro do "Quando", debaixo do prazo — prazo,
+   * situação e prioridade respondem à mesma pergunta ("quando, em que pé, e
+   * o quanto urge"), e juntos cabem onde antes só cabia a data. A prioridade
+   * entra de graça: até aqui ela só existia no cartão da lista, e no lugar de
+   * uma nona coluna ganhou a terceira linha de uma célula.
    *
-   * O limite é o mesmo do resto da tela (575.98px, o `sm` do Bootstrap), e
-   * girar o aparelho cruza esse limite: por isso há um ouvinte que repinta.
+   * Em 2026-11-02 o selo da situação tinha subido para dentro do "o quê", e
+   * só no celular. Esta montagem SUBSTITUI aquela e vale nas duas larguras:
+   * no computador é onde a coluna some de verdade (oito viram sete), e no
+   * celular o "o quê" recupera a largura inteira para a frase da ação.
+   *
+   * Com uma montagem só, a tabela deixou de depender da largura — e com isso
+   * foi-se o `matchMedia` que a repintava ao girar o aparelho, que existia
+   * porque `colspan` é atributo e não estilo.
    */
-  CELULAR: '(max-width: 575.98px)',
-  observandoLargura: false,
-
-  emCelular() {
-    return !!window.matchMedia?.(this.CELULAR)?.matches;
-  },
-
-  /**
-   * Repinta a tabela quando a largura cruza o limite do celular (girar o
-   * aparelho, redimensionar a janela). Sem isto, a tabela fica com a montagem
-   * da largura anterior até a próxima pintura — e a do grupo é a que
-   * desalinha, não a das ações. Ouvinte ÚNICO: `carregar()` roda a cada
-   * gravação, e um ouvinte por pintura empilharia uma cópia a cada vez.
-   */
-  ligarTrocaDeLargura() {
-    if (this.observandoLargura || !window.matchMedia) return;
-    this.observandoLargura = true;
-    window.matchMedia(this.CELULAR).addEventListener('change', () => {
-      if (App.secaoAtiva === 'projetos' && this.modoAtual() === 'TABELA') this.carregar();
-    });
-  },
 
   quebraAtual() {
     if (this.quebra === null) {
@@ -821,6 +816,17 @@ const SecaoProjetos = {
   },
 
   // Período escolhido no calendário; textos antigos (prazo/quando_) seguem valendo
+  /**
+   * Hoje em ISO, pelo relógio LOCAL. `toISOString()` devolve UTC, e às 21h no
+   * Brasil ele já está no dia seguinte: a repetição nasceria começando amanhã,
+   * e o erro só apareceria à noite.
+   */
+  hojeISO() {
+    const d = new Date();
+    const dois = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`;
+  },
+
   periodo(inicio, fim, legado) {
     const br = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : null);
     const de = br(inicio);
@@ -848,10 +854,10 @@ const SecaoProjetos = {
    * funcionando sem uma segunda implementação.
    */
   tabela5w2h(projetos) {
-    // No celular a situação sobe para dentro do "o quê" e a tabela perde uma
-    // coluna — então a célula do título do grupo cobre uma a menos.
-    const celular = this.emCelular();
-    const colunasDoTitulo = celular ? 5 : 6;
+    // Colunas de conteúdo que o título do grupo atravessa: O quê, Como, Quem,
+    // Quando e Ganhos. Fora delas ficam o Progresso — que o grupo usa para a
+    // média, alinhada com a das ações — e as ações da linha.
+    const colunasDoTitulo = 5;
     // Mapa escolha → "H1 · Aonde Jogar · Eficiência — frase…", montado UMA vez
     // por pintura: `opcoesCascata` percorre horizontes, drivers e eixos a cada
     // chamada, e chamá-lo por frente faria isso dezenas de vezes na mesma
@@ -893,7 +899,7 @@ const SecaoProjetos = {
           <td class="col-acoes-plano">${acoesLinha}</td>
         </tr>`;
       };
-      const linhas = (lista) => lista.map((a) => this.linhaTabela(a, celular)).join('');
+      const linhas = (lista) => lista.map((a) => this.linhaTabela(a)).join('');
       /* O que a linha da frente leva além do título (pedido do cliente,
        * 2026-10-28): onde ela está vinculada na Cascata, e o ✎ que edita esse
        * vínculo sem sair da tabela.
@@ -991,7 +997,9 @@ const SecaoProjetos = {
     return `<div class="table-responsive caixa-tabela-5w2h">
       <table class="table table-sm align-middle tabela-5w2h${this.quebraAtual() ? ' quebra-linhas' : ''}">
         <thead><tr>
-          ${celular ? '' : '<th>Situação</th>'}<th>O quê</th><th>Como</th><th>Quem</th>
+          <!-- Sem coluna "Situação": o selo mora debaixo da data, junto com a
+               prioridade (pedido do cliente, 2026-11-03). -->
+          <th>O quê</th><th>Como</th><th>Quem</th>
           <th>Quando</th><th>Ganhos</th><th>Progresso</th>
           <!-- Sem rótulo, como na tabela de Metas: escrever "Ações" aqui
                colidiria com a AÇÃO do método, que é o que as linhas são. -->
@@ -1002,8 +1010,9 @@ const SecaoProjetos = {
     </div>`;
   },
 
-  linhaTabela(a, celular = false) {
+  linhaTabela(a) {
     const [rotulo, classe] = STATUS_ACAO[a.status] || [a.status, 'text-bg-light'];
+    const [rotPrio, , corPrio] = PRIORIDADES[a.prioridade] || PRIORIDADES.MEDIA;
     const cancelada = a.status === 'CANCELADO';
     const pct = cancelada ? 0 : a.progresso;
     const prazo = this.periodo(a.data_inicio, a.data_fim, a.quando_);
@@ -1015,23 +1024,28 @@ const SecaoProjetos = {
       : `R$ ${Number(a.quanto).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     return `<tr class="linha-5w2h" data-card-acao="${a.id}" data-cadeado="desdobramento:${a.id}"
       data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
-      ${celular ? '' : `<td><span class="badge ${classe}">${rotulo}</span></td>`}
-      <!-- No celular o selo vem AQUI, acima do texto: é a mesma informação,
-           na mesma coluna, sem gastar um terço da largura com uma coluna de
-           duas palavras. -->
-      <td class="col-oque">${celular
-    ? `<div class="situacao-no-oque"><span class="badge ${classe}">${rotulo}</span></div>`
-    : ''}${Modal.esc(a.o_que)}
+      <td class="col-oque">${Modal.esc(a.o_que)}
         ${selos ? `<span class="clipe-5w2h" title="${a.comentarios} comentário(s), ${a.anexos} anexo(s)">📎 ${selos}</span>` : ''}</td>
       <td class="corta" title="${Modal.esc(a.como || '')}">${Modal.esc(a.como || '')}</td>
       <td>${a.quem
     ? Modal.esc(a.quem)
     : '<span class="selo-sem-usuario" title="Ninguém responde por esta ação: ela não entra em cobrança nenhuma">Sem usuário</span>'}</td>
-      <td class="num">${prazo ? Modal.esc(prazo) : '—'}</td>
+      <!-- Data, situação e prioridade na MESMA célula, uma embaixo da outra
+           (pedido do cliente, 2026-11-03): é o que apagou a coluna "Situação"
+           e deu lugar à prioridade sem abrir uma nona coluna.
+           A prioridade sai do mesmo mapa PRIORIDADES do cartão da lista, pela
+           cor de TEXTO medida (a terceira) — a da faixa do cartão não tem
+           contraste para letra miúda. -->
+      <td class="col-quando">
+        <div class="num">${prazo ? Modal.esc(prazo) : '—'}</div>
+        <div class="selos-quando"><span class="badge ${classe}">${rotulo}</span>
+          <span class="selo-prioridade" style="color:${corPrio}"
+            title="Prioridade ${rotPrio}">${rotPrio}</span></div>
+      </td>
       <!-- col-ganhos para a célula ser achada por NOME. A bateria a lia por
-           índice (children[5]), e no celular, com a coluna da situação fora,
-           o índice passou a cair no "Progresso": a prova dos centavos ficou
-           vermelha falando de dinheiro quando lia um percentual. -->
+           índice (children[5]), e quando a coluna da situação saiu o índice
+           passou a cair no "Progresso": a prova dos centavos ficou vermelha
+           falando de dinheiro quando lia um percentual. -->
       <td class="num col-ganhos">${ganhos}</td>
       <!-- O percentual se ajusta AQUI (pedido do cliente, 2026-10-28). Era
            leitura: a barra arrastável tinha ficado só na lista, para não
@@ -2063,9 +2077,6 @@ const SecaoProjetos = {
     // porque o bloco quebra em duas ou três linhas conforme a largura. Um
     // palpite em `rem` curto demais deixaria um cabeçalho por cima do outro.
     Diag.ligarCabecalhoFixo(el, '.cabecalho-projetos');
-    // Girar o aparelho cruza o limite do celular, e a tabela é montada com
-    // um número de colunas diferente de cada lado dele.
-    this.ligarTrocaDeLargura();
     this.medirCabecalhoTabela(el);
     this.medirCabecalhosProjeto(el);
     this.ligarPopoversResumo(el, conteudos);
@@ -2912,17 +2923,36 @@ const SecaoProjetos = {
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL'] },
         opcoes: DIAS_SEMANA.map(([valor, rotulo]) => ({ valor, rotulo: rotulo.replace('-feira', '') })),
         ajuda: 'A ação se renovará automaticamente nos dias selecionados de cada semana.' },
-      { nome: 'recorrencia_dias_mes', rotulo: 'Selecione o dia ou dias do mês em que haverá repetição:',
-        tipo: 'dias', grade: 'mes', caixa: 'repeticao',
+      // O dia do mês sai por LISTA, somando fichas (pedido do cliente,
+      // 2026-11-03). Os 31 botões ocupavam cinco fileiras do celular para
+      // mostrar, na maior parte, dias que ninguém ia marcar; a lista ocupa
+      // uma linha e o que cresce é o que já foi escolhido. A escolha continua
+      // múltipla — "todo dia 5 e 20" é uma rotina, não duas ações.
+      { nome: 'recorrencia_dias_mes', rotulo: 'Dia do mês em que haverá repetição:',
+        tipo: 'dias', grade: 'mes', estilo: 'select', caixa: 'repeticao',
+        vazio: 'Escolha um dia do mês…',
         visivelSe: { campo: 'recorrencia', valores: ['MENSAL'] },
         opcoes: Array.from({ length: 31 }, (_, i) => ({ valor: i + 1, rotulo: String(i + 1) })),
-        ajuda: 'Clique nos números desejados para marcar os dias fixos de repetição mensal.' },
-      // O fim da repetição é OPCIONAL: em branco, a rotina não tem prazo para
-      // terminar — segue reabrindo até alguém encerrá-la. O filete acima separa
-      // "que dias" de "até quando": são duas perguntas, e emendadas viravam
-      // uma lista só.
+        ajuda: 'Escolha na lista. Pode somar mais de um dia — cada um sai pelo × da ficha.' },
+      // ── De quando até quando a rotina vale ──────────────────────────────
+      // Duas datas na mesma linha (pedido do cliente, 2026-11-03), e o filete
+      // acima separa "que dias" de "de quando até quando": são duas perguntas,
+      // e emendadas viravam uma lista só.
+      //
+      // O INÍCIO é de quando a ação passa a ser monitorada: antes dele a
+      // primeira ocorrência caía sempre em "a partir de hoje", e quem cadastra
+      // em novembro a rotina que começa em fevereiro via a ação vencer já na
+      // semana seguinte. Em branco no formulário não existe — ele nasce com
+      // HOJE, que é o que o sistema fazia calado.
+      //
+      // O FIM é OPCIONAL: em branco, a rotina não tem prazo para terminar —
+      // segue reabrindo até alguém encerrá-la ou lhe dar uma data.
+      { nome: 'recorrencia_de', rotulo: 'Data início da repetição', tipo: 'date',
+        caixa: 'repeticao', obrigatorio: true, linha: 'repeticao-datas',
+        visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
+        ajuda: 'A partir desta data a ação passa a ser monitorada.' },
       { nome: 'recorrencia_ate', rotulo: 'Data fim da repetição', tipo: 'date',
-        caixa: 'repeticao', separador: true,
+        caixa: 'repeticao', linha: 'repeticao-datas',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
         ajuda: 'Opcional — em branco, a repetição fica por tempo indeterminado.' },
       // O período digitado só existe para a ação que NÃO se repete: quando ela
@@ -2969,30 +2999,42 @@ const SecaoProjetos = {
    * Valores iniciais de uma ação que ainda não existe. As duas grades nascem
    * VAZIAS: pré-marcar um dia gravaria uma rotina que ninguém escolheu, e a
    * grade é justamente o que decide quando a ação vence.
+   *
+   * O início da repetição nasce em HOJE — é exatamente o que o servidor fazia
+   * calado antes de o campo existir, e um obrigatório em branco na abertura
+   * faria toda ação recorrente começar com um erro na tela.
    */
   valoresNovaAcao() {
     return {
       progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO', recorrencia: 'NENHUMA',
+      recorrencia_de: this.hojeISO(),
       recorrencia_dias_semana: [], recorrencia_dias_mes: [],
     };
   },
 
   /**
    * A grade de dias enviada depende do tipo de repetição: os dias da semana, os
-   * do mês, ou nenhum. As datas da ação que se repete NÃO vão no corpo — quem
-   * as calcula é o servidor, a partir da grade; mandá-las daqui gravaria o
-   * período escondido do formulário, que é justamente o que não vale mais para
-   * ela. As DUAS grades saem do payload nos dois casos: o formulário guarda a
-   * que está escondida (para a troca de opção não apagar o que já foi marcado),
-   * e o servidor só conhece `recorrencia_dias`.
+   * do mês, ou nenhum. As DUAS grades saem do payload nos dois casos: o
+   * formulário guarda a que está escondida (para a troca de opção não apagar o
+   * que já foi marcado), e o servidor só conhece `recorrencia_dias`.
+   *
+   * Da ação que se repete vai o INÍCIO e não vai o fim: o fim é a próxima
+   * ocorrência, que quem calcula é o servidor a partir da grade — mandá-lo
+   * daqui gravaria o "fim previsto" escondido do formulário, que é justamente
+   * o que não vale mais para ela. O início é a data a partir da qual a rotina
+   * passa a ser monitorada (pedido do cliente, 2026-11-03) e viaja no mesmo
+   * `data_inicio` de sempre: é a mesma coluna, com o mesmo sentido — o começo
+   * da ocorrência em curso.
    */
   transformarAcao(dados) {
-    const { recorrencia_dias_semana: sem, recorrencia_dias_mes: mes, ...resto } = dados;
-    if (resto.recorrencia === 'SEMANAL') {
-      return { ...resto, data_inicio: '', data_fim: '', recorrencia_dias: (sem || []).map(Number) };
-    }
-    if (resto.recorrencia === 'MENSAL') {
-      return { ...resto, data_inicio: '', data_fim: '', recorrencia_dias: (mes || []).map(Number) };
+    const {
+      recorrencia_dias_semana: sem, recorrencia_dias_mes: mes, recorrencia_de: de, ...resto
+    } = dados;
+    if (resto.recorrencia === 'SEMANAL' || resto.recorrencia === 'MENSAL') {
+      const dias = resto.recorrencia === 'SEMANAL' ? sem : mes;
+      return {
+        ...resto, data_inicio: de || '', data_fim: '', recorrencia_dias: (dias || []).map(Number),
+      };
     }
     return { ...resto, recorrencia_dias: [], recorrencia_ate: '' };
   },
@@ -3041,6 +3083,12 @@ const SecaoProjetos = {
             iniciativa_id: dd.iniciativa_id ?? iniciativaId,
             recorrencia: dd.recorrencia || 'NENHUMA',
             recorrencia_ate: dd.recorrencia_ate ?? '',
+            // O início da repetição que a tela mostra é o da OCORRÊNCIA em
+            // curso (`data_inicio`): é o que a ação está monitorando agora, e
+            // é o valor que o servidor compara para saber se a grade mudou.
+            // Numa ação antiga sem data, cai em hoje — o formulário não abre
+            // com um obrigatório vazio que ninguém esvaziou.
+            recorrencia_de: dd.data_inicio || this.hojeISO(),
             recorrencia_dias_semana: dd.recorrencia === 'SEMANAL' ? this.diasDaAcao(dd) : [],
             recorrencia_dias_mes: dd.recorrencia === 'MENSAL' ? this.diasDaAcao(dd) : [] }
         : { planejamento_id: this.plan.id, projeto_id: projetoId,

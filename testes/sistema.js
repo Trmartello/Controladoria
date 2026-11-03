@@ -1286,7 +1286,8 @@ async function provasFilaAcao(page, largura) {
         return {
           caixa: !!caixa,
           campos: ['recorrencia', 'recorrencia_dias_semana', 'recorrencia_dias_mes',
-            'recorrencia_ate', 'quando_periodo'].every((n) => !!caixa?.querySelector(`#campo-${n}`)),
+            'recorrencia_de', 'recorrencia_ate', 'quando_periodo']
+            .every((n) => !!caixa?.querySelector(`#campo-${n}`)),
           ganhos: document.querySelector('#campo-quanto')?.classList.contains('campo-moeda'),
           // E o que é só DELE continua lá: o destino da ideia
           destino: !!document.getElementById('campo-destino'),
@@ -2166,13 +2167,12 @@ async function provasModosPlano(page, largura) {
     // que as linhas são. A prova confere os rótulos e exige que a última
     // esteja vazia — rótulo aparecendo ali seria defeito.
     //
-    // No CELULAR a coluna "Situação" não existe: o selo dela vai para dentro
-    // do "o quê" (pedido do cliente, no mesmo dia), e a tabela tem uma coluna
-    // a menos.
-    const esperadas = largura === 'celular'
-      ? 'O quê | Como | Quem | Quando | Ganhos | Progresso'
-      : 'Situação | O quê | Como | Quem | Quando | Ganhos | Progresso';
-    const nColunas = largura === 'celular' ? 7 : 8;
+    // A coluna "Situação" não existe mais em NENHUMA largura (pedido do
+    // cliente, 2026-11-03): o selo dela desceu para dentro do "Quando",
+    // debaixo do prazo, junto com a prioridade. Daí sete colunas no
+    // computador e no celular — a tabela deixou de ser montada de dois modos.
+    const esperadas = 'O quê | Como | Quem | Quando | Ganhos | Progresso';
+    const nColunas = 7;
     t(`${l} a tabela mostra as cinco perguntas do método`,
       tab.colunas.slice(0, nColunas - 1).join(' | ') === esperadas
       && tab.colunas.length === nColunas && tab.colunas[nColunas - 1] === '',
@@ -2311,49 +2311,85 @@ async function provasModosPlano(page, largura) {
       contraste.length >= 8 && fracos.length === 0,
       JSON.stringify(fracos.length ? fracos : contraste.slice(0, 3)));
 
-    // ── A situação sobre o "o quê", no celular (2026-11-02) ─────────────
-    // Na tela estreita as duas primeiras colunas viram uma: o selo em cima, o
-    // texto embaixo. O risco real não é o selo — é o `colspan` da linha de
-    // grupo, que é ATRIBUTO e não acompanha a CSS: uma coluna a mais ali e a
-    // coluna do "Progresso" do grupo sai do alinhamento com a das ações, que
-    // é a régua desta tabela e já custou dois pedidos. Por isso a prova mede
-    // as duas coisas.
+    // ── Situação e prioridade embaixo da data (2026-11-03) ──────────────
+    // A coluna "Situação" saiu e os dois selos desceram para dentro do
+    // "Quando", debaixo do prazo. A prova MEDE o empilhamento (mesma coluna,
+    // um abaixo do outro) porque é exatamente isso que um `display` perdido
+    // desfaz sem quebrar nada no código: inline, os três voltam para a mesma
+    // linha e a célula fica mais larga que a coluna que ela substituiu.
+    //
+    // E mede o `colspan` da linha de grupo junto: ele é ATRIBUTO, não
+    // acompanha a CSS, e uma coluna a mais ali tira o "Progresso" do grupo do
+    // alinhamento com o das ações — a régua desta tabela, que já custou dois
+    // pedidos.
+    //
+    // A prioridade é lida com CONTRASTE: ela é letra miúda em maiúsculas, e a
+    // cor da faixa do cartão (o dourado da marca, que serve a um bloco de
+    // 4px) mede 3,10:1 no branco da linha. Por isso o mapa tem uma segunda
+    // cor, só para texto — e por isso a prova a mede em vez de conferir que a
+    // classe está lá.
     const empilhada = await page.evaluate((id) => {
       const linha = document.querySelector('.tabela-5w2h tr[data-card-acao]');
-      const oque = linha.querySelector('.col-oque');
-      const selo = oque.querySelector('.situacao-no-oque .badge');
+      const quando = linha.querySelector('.col-quando');
+      const data = quando.querySelector('.num');
+      const selo = quando.querySelector('.selos-quando .badge');
+      const prio = quando.querySelector('.selos-quando .selo-prioridade');
       const grupo = document.querySelector(`tr[data-grupo-proj="${id}"]`);
-      const esq = (e) => Math.round(e.getBoundingClientRect().left);
+      const caixa = (e) => { const r = e.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; };
+      // Contraste do texto da prioridade contra o fundo REAL da linha (a
+      // célula é transparente: o fundo vem da linha, e dela o do branco da
+      // página).
+      const nums = (c) => (c.match(/[\d.]+/g) || []).map(Number);
+      const canal = (v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      const lum = (c) => { const [r, g, b] = nums(c).slice(0, 3).map((v) => canal(v / 255)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const opaco = (e) => {
+        for (let n = e; n; n = n.parentElement) {
+          const c = getComputedStyle(n).backgroundColor;
+          const v = nums(c);
+          if (v.length && (v.length < 4 || v[3] > 0.9)) return c;
+        }
+        return 'rgb(255, 255, 255)';
+      };
+      const razao = (a, b) => {
+        const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+        return Number(((x + 0.05) / (y + 0.05)).toFixed(2));
+      };
+      const corPrio = prio ? getComputedStyle(prio).color : null;
       return {
         temColunaSituacao: [...document.querySelectorAll('.tabela-5w2h thead th')]
           .some((th) => th.textContent.trim() === 'Situação'),
-        seloNoOque: !!selo,
+        // Nenhum resto da montagem anterior: o selo não ficou também no "o quê".
+        seloNoOque: !!linha.querySelector('.col-oque .badge'),
         seloTexto: selo ? selo.textContent.trim() : null,
-        // "Acima" de verdade: o selo começa no topo da célula, e o texto da
-        // ação vem depois dele — não ao lado.
-        seloNoTopo: selo ? Math.round(selo.getBoundingClientRect().top)
-          <= Math.round(oque.getBoundingClientRect().top) + 8 : null,
-        progressoGrupo: esq(grupo.querySelector('.col-progresso')),
-        progressoAcao: esq(linha.querySelector('.col-progresso')),
+        prioTexto: prio ? prio.textContent.trim() : null,
+        // Empilhados: o selo começa na mesma esquerda da data (mesma coluna) e
+        // a prioridade vem depois dele. "Depois" é ao lado OU embaixo: numa
+        // coluna estreita o par quebra, e exigir que fique ao lado seria pedir
+        // à prova uma largura que a tela não tem.
+        mesmaColuna: selo && prio
+          ? Math.abs(caixa(selo).x - caixa(data).x) <= 2
+            && (caixa(prio).x > caixa(selo).x || caixa(prio).y > caixa(selo).y)
+          : null,
+        abaixoDaData: selo ? caixa(selo).y > caixa(data).y : null,
+        contrastePrio: corPrio ? razao(corPrio, opaco(prio)) : null,
+        progressoGrupo: Math.round(grupo.querySelector('.col-progresso').getBoundingClientRect().left),
+        progressoAcao: Math.round(linha.querySelector('.col-progresso').getBoundingClientRect().left),
         colspan: grupo.children[0].getAttribute('colspan'),
       };
     }, prj);
-    if (largura === 'celular') {
-      t(`${l} no celular a situação sobe para dentro do "o quê"`,
-        empilhada.seloNoOque && empilhada.seloNoTopo && !empilhada.temColunaSituacao
-        && /\S/.test(empilhada.seloTexto || ''),
-        JSON.stringify(empilhada));
-      t(`${l} e o grupo acompanha, mantendo o "Progresso" alinhado`,
-        empilhada.colspan === '5'
-        && Math.abs(empilhada.progressoGrupo - empilhada.progressoAcao) <= 1,
-        JSON.stringify(empilhada));
-    } else {
-      // No computador nada muda: a situação continua tendo coluna própria.
-      t(`${l} no computador a situação continua em coluna própria`,
-        empilhada.temColunaSituacao && !empilhada.seloNoOque && empilhada.colspan === '6'
-        && Math.abs(empilhada.progressoGrupo - empilhada.progressoAcao) <= 1,
-        JSON.stringify(empilhada));
-    }
+    t(`${l} a situação e a prioridade ficam embaixo da data, e a coluna "Situação" sumiu`,
+      !empilhada.temColunaSituacao && !empilhada.seloNoOque
+      && /\S/.test(empilhada.seloTexto || '')
+      && ['Alta', 'Média', 'Baixa'].includes(empilhada.prioTexto)
+      && empilhada.mesmaColuna && empilhada.abaixoDaData,
+      JSON.stringify(empilhada));
+    t(`${l} a prioridade tem contraste de texto (4,5:1)`,
+      empilhada.contrastePrio !== null && empilhada.contrastePrio >= 4.5,
+      JSON.stringify(empilhada.contrastePrio));
+    t(`${l} e o grupo cobre cinco colunas, mantendo o "Progresso" alinhado`,
+      empilhada.colspan === '5'
+      && Math.abs(empilhada.progressoGrupo - empilhada.progressoAcao) <= 1,
+      JSON.stringify(empilhada));
 
     // ── Quebrar o texto (pedido do cliente, 2026-11-02) ──────────────────
     // O "Como" é cortado com reticências porque a tabela existe para ser
@@ -2902,8 +2938,9 @@ async function provasAcao(page, largura) {
       // pergunta: a lista é a ordem de sempre, que é contrato com o cliente.
       const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Repetição',
         'Selecione o dia da semana para repetir:',
-        'Selecione o dia ou dias do mês em que haverá repetição:',
-        'Data fim da repetição', 'Quando? (Prazo de Execução) *',
+        'Dia do mês em que haverá repetição:',
+        'Data início da repetição *', 'Data fim da repetição',
+        'Quando? (Prazo de Execução) *',
         'Prioridade', 'Status', 'Ganhos previstos (R$)'];
       t(`${l} Campos da ação na ordem pedida`,
         JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
@@ -2917,7 +2954,7 @@ async function provasAcao(page, largura) {
         return {
           existe: true,
           todos: ['recorrencia', 'recorrencia_dias_semana', 'recorrencia_dias_mes',
-            'recorrencia_ate', 'quando_periodo'].every(dentro),
+            'recorrencia_de', 'recorrencia_ate', 'quando_periodo'].every(dentro),
           // O que NÃO é da decisão fica de fora: senão a caixa deixa de
           // significar "isto depende da escolha acima"
           semIntrusos: !dentro('quem') && !dentro('status') && !dentro('quanto'),
@@ -2939,12 +2976,14 @@ async function provasAcao(page, largura) {
           periodo: await visivel('quando_periodo'),
           semana: await visivel('recorrencia_dias_semana'),
           mes: await visivel('recorrencia_dias_mes'),
+          de: await visivel('recorrencia_de'),
           ate: await visivel('recorrencia_ate'),
         };
       };
       const nenhuma = await trocar('NENHUMA');
       t(`${l} sem repetição, só o período de execução aparece`,
-        nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate, JSON.stringify(nenhuma));
+        nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate && !nenhuma.de,
+        JSON.stringify(nenhuma));
 
       // ── O que se digita na data APARECE ─────────────────────────────────
       // O campo de data mostra dd/mm/aaaa por um rótulo sobreposto, com o texto
@@ -2995,6 +3034,42 @@ async function provasAcao(page, largura) {
       const semanal = await trocar('SEMANAL');
       t(`${l} toda semana troca o período pelos dias da semana`,
         !semanal.periodo && semanal.semana && !semanal.mes && semanal.ate, JSON.stringify(semanal));
+      // As DUAS datas da repetição aparecem juntas (pedido do cliente,
+      // 2026-11-03): a de início, que diz de quando a ação é monitorada, e a
+      // de fim, que é opcional. Antes só existia a de fim, e a rotina começava
+      // sempre hoje, sem nada na tela dizendo isso.
+      t(`${l} a repetição mostra data de início e data de fim`,
+        semanal.de && semanal.ate, JSON.stringify(semanal));
+      const datas = await page.evaluate(() => {
+        const bloco = (n) => document.getElementById(`campo-${n}`)?.closest('.mb-3');
+        const de = bloco('recorrencia_de');
+        const ate = bloco('recorrencia_ate');
+        const r = (e) => e.getBoundingClientRect();
+        return {
+          // O início é OBRIGATÓRIO e já vem preenchido: formulário que abre
+          // com um obrigatório vazio obriga a pessoa a preencher o que o
+          // sistema sempre decidiu sozinho (hoje).
+          marcaObrigatorio: de?.querySelector('.form-label')?.textContent.includes('*'),
+          valorInicial: document.getElementById('campo-recorrencia_de')?.value,
+          hoje: new Date().toLocaleDateString('sv-SE'),
+          fimOpcional: !ate?.querySelector('.form-label')?.textContent.includes('*'),
+          // Na mesma fileira no computador; no celular a fileira empilha, como
+          // toda `grade-campos` — dois campos de data lado a lado em 390px
+          // espremem o dd/mm/aaaa.
+          mesmaLinha: Math.round(r(de).top) === Math.round(r(ate).top),
+          naOrdem: Math.round(r(de).top) <= Math.round(r(ate).top),
+          // O filete que separa "que dias" de "de quando até quando" é posto na
+          // FILEIRA, não no campo: dentro dela o campo deixa de ser filho
+          // direto da caixa, e a regra do `campo-separado` não o alcança.
+          temFilete: getComputedStyle(de.parentElement).borderTopWidth !== '0px',
+        };
+      });
+      t(`${l} o início da repetição é obrigatório e nasce em hoje`,
+        datas.marcaObrigatorio && datas.valorInicial === datas.hoje && datas.fimOpcional,
+        JSON.stringify(datas));
+      t(`${l} as duas datas ficam juntas, separadas dos dias por um filete`,
+        (largura === 'celular' ? datas.naOrdem : datas.mesmaLinha) && datas.temFilete,
+        JSON.stringify(datas));
 
       // ── As fichas dos dias, e a marcação MÚLTIPLA ───────────────────────
       const semana = await page.evaluate(() => {
@@ -3020,15 +3095,53 @@ async function provasAcao(page, largura) {
       const mensal = await trocar('MENSAL');
       t(`${l} todo mês troca a semana pela grade do mês`,
         !mensal.periodo && !mensal.semana && mensal.mes && mensal.ate, JSON.stringify(mensal));
+      // ── O dia do mês sai por LISTA (pedido do cliente, 2026-11-03) ──────
+      // "Coloca um select box para selecionar o dia. Não deixe todos os dias
+      // sendo exibido como está hoje. Assim vai otimizar a tela."
+      // A prova mede as três coisas que a troca não pode perder: os 31 dias
+      // continuam oferecidos, a escolha continua MÚLTIPLA (é "todo dia 5 e
+      // 20", não duas ações) e cada dia escolhido tem como sair. E mede a
+      // ALTURA, que é o motivo do pedido: a grade gastava cinco fileiras.
       const mes = await page.evaluate(() => {
         const g = document.getElementById('campo-recorrencia_dias_mes');
-        const fichas = [...g.querySelectorAll('input[type=checkbox]')];
-        fichas[4].click();
-        fichas[19].click();
-        return { quantas: fichas.length, coletado: Modal.coletar().recorrencia_dias_mes };
+        const lista = g.querySelector('[data-dia-escolher]');
+        const escolher = (dia) => {
+          lista.value = String(dia);
+          lista.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const altura = Math.round(g.getBoundingClientRect().height);
+        escolher(5);
+        escolher(20);
+        const comDois = Modal.coletar().recorrencia_dias_mes;
+        const fichas = [...g.querySelectorAll('.ficha-dia')].map((f) => f.textContent.replace('×', '').trim());
+        // Tirar um dia pelo × da ficha
+        g.querySelector('[data-tirar-dia="5"]').click();
+        return {
+          // A lista tem os 31 dias mais a opção vazia de "escolha um dia"
+          opcoes: lista.options.length,
+          vazia: lista.options[0].value === '',
+          semGrade: !g.querySelector('input[type=checkbox]'),
+          alturaVazio: altura,
+          comDois,
+          fichas,
+          // Depois de escolher, a lista volta ao vazio — senão o próximo
+          // toque adicionaria de novo o mesmo dia
+          listaVoltou: lista.value === '',
+          depoisDeTirar: Modal.coletar().recorrencia_dias_mes,
+        };
       });
-      t(`${l} a grade do mês tem 31 dias e aceita vários`,
-        mes.quantas === 31 && JSON.stringify(mes.coletado) === '[5,20]', JSON.stringify(mes));
+      t(`${l} o dia do mês sai por lista, com os 31 dias e sem grade de botões`,
+        mes.opcoes === 32 && mes.vazia && mes.semGrade, JSON.stringify(mes));
+      t(`${l} dá para somar mais de um dia do mês, e ver quais são`,
+        JSON.stringify(mes.comDois) === '[5,20]'
+        && JSON.stringify(mes.fichas) === '["5","20"]' && mes.listaVoltou,
+        JSON.stringify(mes));
+      t(`${l} o × da ficha tira o dia da repetição`,
+        JSON.stringify(mes.depoisDeTirar) === '[20]', JSON.stringify(mes.depoisDeTirar));
+      // Sem nada escolhido, o campo cabe em duas linhas (lista + aviso de
+      // vazio). A grade de 31 botões media cinco fileiras de 2,5rem.
+      t(`${l} o campo do dia do mês não gasta a tela quando está vazio`,
+        mes.alturaVazio <= 110, `${mes.alturaVazio}px`);
 
       // ── Prioridade e Status na mesma fileira ────────────────────────────
       const linhas = await page.evaluate(() =>
@@ -3036,7 +3149,9 @@ async function provasAcao(page, largura) {
           [...g.querySelectorAll('.mb-3')].filter((b) => !b.classList.contains('d-none'))
             .map((b) => ({ rotulo: b.querySelector('.form-label')?.textContent.trim(),
               topo: Math.round(b.getBoundingClientRect().top) }))));
-      const par = linhas.find((x) => x.length === 2);
+      // A fileira pelo RÓTULO, não "a primeira com dois campos": as datas da
+      // repetição também dividem uma, e a busca por tamanho caía nela.
+      const par = linhas.find((x) => x.some((c) => c.rotulo === 'Prioridade'));
       t(`${l} Prioridade e Status na MESMA linha`,
         !!par && par.every((c) => c.topo === par[0].topo), JSON.stringify(linhas));
 
@@ -3321,6 +3436,69 @@ async function provasAcao(page, largura) {
   // atraso automático, os avisos por e-mail e o prazo consolidado do projeto.
   t(`${l} o servidor deriva a data de vencimento da grade`,
     /^\d{4}-\d{2}-\d{2}$/.test(String(voltou.data_fim || '')), String(voltou.data_fim));
+  await fecharModal(page);
+
+  // ── A data de INÍCIO da repetição (pedido do cliente, 2026-11-03) ───────
+  // "Deve ter uma data início para iniciar o monitoramento da ação e uma data
+  // fim; porém a data fim pode ficar em branco."
+  //
+  // Antes a primeira ocorrência saía sempre de HOJE: quem cadastrasse em
+  // novembro a rotina que começa em fevereiro via a ação vencer na semana
+  // seguinte, e nada na tela dizia por quê. As provas medem as quatro regras
+  // que isso criou — e a última é a que não é óbvia: início no passado NÃO
+  // retroage, senão a ação nasceria atrasada em ocorrências que ninguém tinha
+  // para cumprir.
+  const dataEm = (dias) => {
+    const d = new Date();
+    d.setDate(d.getDate() + dias);
+    return d.toLocaleDateString('sv-SE');
+  };
+  const inicios = await page.evaluate(async (x) => {
+    const projetos = await App.api('/api/projetos?planejamento_id=1');
+    const p = projetos.find((y) => y.id === x.prj);
+    const base = {
+      planejamento_id: 1, projeto_id: x.prj, iniciativa_id: p.iniciativas[0].id,
+      como: 'x', quem: 'QA', prioridade: 'MEDIA', status: 'NAO_INICIADO',
+      progresso: 0, recorrencia: 'SEMANAL', recorrencia_dias: [1, 4],
+    };
+    const criar = async (campos) => App.api('/api/desdobramentos', { ...base, ...campos });
+    const futura = await criar({ o_que: 'Rotina que começa adiante', data_inicio: x.adiante });
+    const passada = await criar({ o_que: 'Rotina que começou atrás', data_inicio: x.atras });
+    const semData = await criar({ o_que: 'Rotina sem data de início' });
+    let recusa = null;
+    try {
+      await criar({ o_que: 'Rotina de fim invertido', data_inicio: x.adiante, recorrencia_ate: x.atras });
+    } catch (e) { recusa = e.message; }
+    const ler = async (id) => {
+      const ps = await App.api('/api/projetos?planejamento_id=1');
+      const pp = ps.find((y) => y.id === x.prj);
+      const a = pp.iniciativas[0].acoes.find((y) => y.id === id);
+      return { inicio: a.data_inicio, fim: a.data_fim };
+    };
+    const saida = {
+      futura: await ler(futura.id),
+      passada: await ler(passada.id),
+      semData: await ler(semData.id),
+      recusa,
+    };
+    for (const id of [futura.id, passada.id, semData.id]) {
+      await App.api(`/api/desdobramentos/${id}/excluir`, { planejamento_id: 1 });
+    }
+    return saida;
+  }, { prj, adiante: dataEm(90), atras: dataEm(-120) });
+  const hoje = new Date().toLocaleDateString('sv-SE');
+  t(`${l} a rotina que começa adiante guarda o início e vence depois dele`,
+    inicios.futura.inicio === dataEm(90) && inicios.futura.fim >= dataEm(90)
+    && inicios.futura.fim <= dataEm(97), JSON.stringify(inicios.futura));
+  t(`${l} início no passado não faz a ação nascer atrasada`,
+    inicios.passada.inicio === dataEm(-120) && inicios.passada.fim >= hoje,
+    JSON.stringify(inicios.passada));
+  // Quem chama a API sem a data continua funcionando como sempre: hoje.
+  t(`${l} sem data de início, a repetição começa hoje`,
+    inicios.semData.inicio === hoje && inicios.semData.fim >= hoje,
+    JSON.stringify(inicios.semData));
+  t(`${l} fim da repetição anterior ao início é recusado`,
+    /anterior à data de início/.test(String(inicios.recusa || '')), String(inicios.recusa));
 
   // A frente já vem escolhida (a primeira do projeto) e o campo de nome da
   // frente nova fica escondido até alguém pedir uma. Sem isto, o formulário
@@ -5935,6 +6113,119 @@ async function provasHorizonteIndicador(page, largura) {
 }
 
 /**
+ * O acumulado ATÉ O MÊS, no ano em execução.
+ *
+ * Pedido do cliente (2026-11-03): o cartão comparava o real de JANEIRO com a
+ * meta do ANO INTEIRO — janelas diferentes, e o indicador nascia vermelho por
+ * construção. Agora meta e real são agregados na mesma janela, do mês 1 ao
+ * mês de corte.
+ *
+ * O que esta prova fixa, e que o olho não confere: as três bordas da regra do
+ * corte (ano passado, ano corrente, ano futuro), a agregação respeitada
+ * dentro da janela (soma acumula, último mês NÃO soma) e o ano inteiro
+ * continuando disponível no balão — é ele que impede alguém de ler o
+ * acumulado de janeiro como se fosse a meta do ano.
+ */
+async function provasAcumuladoAteOMes(page, largura) {
+  const l = `[${largura}] Acumulado até o mês:`;
+  // A regra do corte, medida nos três casos pela própria função da tela.
+  const corte = await page.evaluate(() => {
+    const original = SecaoMetas.anoExecucao;
+    const hoje = new Date();
+    const comAno = (ano, ind) => { SecaoMetas.anoExecucao = ano; return SecaoMetas.mesDeCorte(ind); };
+    const r = {
+      mesDeHoje: hoje.getMonth() + 1,
+      passado: comAno(hoje.getFullYear() - 1, null),
+      corrente: comAno(hoje.getFullYear(), null),
+      // Ano futuro: o calendário não o alcança, e o corte é o último mês COM
+      // realizado lançado — por indicador, porque cada um está num mês.
+      futuroComReal: comAno(hoje.getFullYear() + 1, {
+        reais: [{ ano: hoje.getFullYear() + 1, meses: { 1: 12, 3: 13 } }],
+      }),
+      futuroSemReal: comAno(hoje.getFullYear() + 1, { reais: [] }),
+    };
+    SecaoMetas.anoExecucao = original;
+    return r;
+  });
+  t(`${l} ano já encerrado corta no mês 12`, corte.passado === 12, JSON.stringify(corte));
+  t(`${l} ano corrente corta no mês do calendário`,
+    corte.corrente === corte.mesDeHoje, JSON.stringify(corte));
+  t(`${l} ano futuro corta no último mês com realizado`,
+    corte.futuroComReal === 3 && corte.futuroSemReal === null, JSON.stringify(corte));
+
+  // A agregação DENTRO da janela: somar acumula, último mês não soma.
+  const janela = await page.evaluate(() => {
+    const meses = { 1: 10, 2: 20, 3: 30 };
+    return {
+      soma: SecaoMetas.agregarAte(meses, 'SOMA', 2),
+      media: SecaoMetas.agregarAte(meses, 'MEDIA', 2),
+      ultimo: SecaoMetas.agregarAte(meses, 'ULTIMO', 2),
+      somaTudo: SecaoMetas.agregarAte(meses, 'SOMA', 12),
+      // Mês sem valor não entra na conta — nem no denominador da média.
+      mediaComBuraco: SecaoMetas.agregarAte({ 1: 10, 2: null, 3: 30 }, 'MEDIA', 12),
+      vazio: SecaoMetas.agregarAte({}, 'SOMA', 12),
+    };
+  });
+  t(`${l} a janela respeita a agregação do indicador`,
+    janela.soma === 30 && janela.media === 15 && janela.ultimo === 20 && janela.somaTudo === 60,
+    JSON.stringify(janela));
+  t(`${l} mês em branco não entra na conta`,
+    janela.mediaComBuraco === 20 && janela.vazio === null, JSON.stringify(janela));
+
+  // E a tela: meta de doze meses, realizado só em janeiro — o caso da imagem
+  // do cliente. A comparação tem de ser contra a meta DE JANEIRO.
+  const ids = await page.evaluate(async () => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    const ano = Number(d.ano_execucao);
+    const i = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Indicador acumulado QA', unidade: 'Unidade',
+      sentido: 'MAIOR_MELHOR', agregacao: 'ULTIMO', metrica_ancora: 0,
+    });
+    for (let m = 1; m <= 12; m += 1) {
+      await App.api(`/api/indicadores/${i.id}/valores`, {
+        planejamento_id: 1, tipo: 'META', mes: m, valores: { [ano]: m <= 4 ? 14 : 16 },
+      });
+    }
+    await App.api(`/api/indicadores/${i.id}/valores`, {
+      planejamento_id: 1, tipo: 'REAL', mes: 1, valores: { [ano]: 12 },
+    });
+    App.mostrarSecao('metas');
+    return { id: i.id, ano };
+  });
+  const pintou = await esperar(page, `!!document.querySelector('[data-celula-ind="${ids.id}"]')`, 15000);
+  t(`${l} a tabela pinta com o indicador da prova`, pintou);
+  if (pintou) {
+    const lido = await page.evaluate((x) => {
+      const td = (tipo) => document.querySelector(
+        `[data-celula-ind="${x.id}"][data-tipo="${tipo}"][data-ano="${x.ano}"][data-mes="0"]`);
+      const par = SecaoMetas.metaReal(
+        (SecaoMetas.dados.indicadores || []).find((i) => Number(i.id) === x.id), x.ano);
+      return {
+        metaCelula: td('META')?.textContent.trim(),
+        realCelula: td('REAL')?.textContent.trim(),
+        dicaMeta: td('META')?.title || '',
+        corte: par.corte,
+        metaJanela: par.meta?.valor ?? null,
+        metaAno: par.meta?.valorAno ?? null,
+        atingiu: par.atingiu,
+      };
+    }, ids);
+    // Janeiro: real 12 contra meta 14 — e NÃO contra 16, a de dezembro.
+    t(`${l} a comparação usa a meta da mesma janela`,
+      lido.metaJanela === 14 && lido.metaAno === 16 && lido.atingiu === false,
+      JSON.stringify(lido));
+    t(`${l} e a coluna do ano mostra o acumulado`,
+      lido.metaCelula === '14' && lido.realCelula === '12', JSON.stringify(lido));
+    // O ano inteiro não se perde: é o que impede ler 14 como meta do ano.
+    t(`${l} com o ano inteiro guardado no balão`,
+      /No ano inteiro: 16/.test(lido.dicaMeta), JSON.stringify(lido.dicaMeta));
+  }
+  await page.evaluate(async (x) => {
+    await App.api(`/api/indicadores/${x.id}/excluir`, { planejamento_id: 1 });
+  }, ids);
+}
+
+/**
  * O "⟳ Revisar" não alcança o ano em execução.
  *
  * Achado do cliente olhando a tela pronta (2026-10-26): o formulário de revisão
@@ -6438,6 +6729,7 @@ async function provasJanelaModal(page, largura) {
   await provasLugarGuardado(page, 'desktop');
   await provasCelulaMetas(page, 'desktop');
   await provasHorizonteIndicador(page, 'desktop');
+  await provasAcumuladoAteOMes(page, 'desktop');
   await provasMesAMes(page, 'desktop');
   await provasAvisoAgregacao(page, 'desktop');
   await provasRevisarSemAnoAtual(page, 'desktop');
@@ -6481,6 +6773,7 @@ async function provasJanelaModal(page, largura) {
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');
   await provasHorizonteIndicador(pageM, 'celular');
+  await provasAcumuladoAteOMes(pageM, 'celular');
   await provasMesAMes(pageM, 'celular');
   await provasAvisoAgregacao(pageM, 'celular');
   await provasRevisarSemAnoAtual(pageM, 'celular');
