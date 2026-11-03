@@ -120,10 +120,14 @@
             <li><a class="nav-link" href="#porter" data-secao="porter">Porter — 5 Forças</a></li>
             <li><a class="nav-link" href="#swot" data-secao="swot">SWOT</a></li>
             <li><a class="nav-link" href="#gut" data-secao="gut">Matriz GUT</a></li>
-            <!-- Depois do GUT, e não entre Porter e SWOT: a linha da matriz é a SWOT
-                 corporativa priorizada pelo GUT, então o dado de entrada dela só
-                 existe depois dele. -->
-            <li><a class="nav-link" href="#impacto" data-secao="impacto">Impacto por Negócio</a></li>
+            <!-- "Impacto por Negócio" SAIU do menu a pedido do cliente
+                 (2026-11-03). A tela, a rota `/api/impacto` e a tabela
+                 `impacto_negocio` continuam de pé, com o que já foi lançado:
+                 tirar do menu é decisão de método; apagar o que foi escrito
+                 seria outra, e não foi pedida. Para devolvê-la ao menu basta
+                 um <li> aqui, depois do GUT — a linha da matriz é a SWOT
+                 corporativa priorizada por ele, então o dado de entrada dela
+                 só existe depois do GUT. -->
             <li><a class="nav-link" href="#cruzamentos" data-secao="cruzamentos">Cruzamentos</a></li>
           </ul>
         </li>

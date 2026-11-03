@@ -512,7 +512,16 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   atributo leva o RECURSO junto porque `data-card-fator` sozinho casaria um item
   de cenário nº 5 com o fator nº 5.
 - **Matriz de Impacto por Negócio** (`impacto_negocio`, `ImpactoController`,
-  `secoes/impacto.js`): o que o diagnóstico CORPORATIVO faz com cada negócio.
+  `secoes/impacto.js`) — **fora do menu desde 2026-11-03**, a pedido do
+  cliente. A tela, a rota `/api/impacto` e a tabela continuam de pé, com o que
+  já foi lançado: tirar do menu é decisão de método; apagar o que foi escrito
+  seria outra, e não foi pedida. Devolvê-la é um `<li>` no `shell.php`, depois
+  do GUT. Duas consequências que a remoção pagou: `App.mostrarSecao` passou a
+  tolerar seção SEM item de menu (acendia o item sem conferir, e estourava), e
+  `secaoInicial` continua restaurando só o que está no menu — abrir numa tela
+  que a pessoa não consegue reencontrar é pior do que abrir no painel.
+  O que a tela faz, enquanto existir: mostra o que o diagnóstico CORPORATIVO
+  faz com cada negócio.
   Linha = ameaça/oportunidade da SWOT corporativa do ano, **sem curadoria
   própria** (a SWOT já é a lista curada e o GUT já é a priorização, então a
   ordem é `ORDER BY g.score DESC`); coluna = negócio; célula = sinal + como.

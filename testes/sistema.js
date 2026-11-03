@@ -4636,6 +4636,31 @@ async function provasMoverEntreTabelas(page) {
 async function provasImpactoNegocio(page) {
   const l = '[desktop] Impacto por Negócio:';
 
+  // A tela SAIU DO MENU a pedido do cliente (2026-11-03), e continua de pé:
+  // a rota, a tabela e o que já foi lançado nela não foram tocados. As duas
+  // provas abaixo guardam as duas metades disso — o item fora do menu, e a
+  // tela ainda abrindo sem erro.
+  //
+  // A segunda não é zelo: `mostrarSecao` acendia o item do menu sem conferir
+  // se ele existe, e tirar o <li> fazia a navegação estourar com um erro de
+  // script — a tela anterior sumia e nada aparecia no lugar.
+  const fora = await page.evaluate(() => ({
+    noMenu: !!document.querySelector('#nav-secoes [data-secao="impacto"]'),
+    naTela: !!document.getElementById('secao-impacto'),
+  }));
+  t(`${l} o item saiu do menu`, !fora.noMenu && fora.naTela, JSON.stringify(fora));
+
+  const abriu = await page.evaluate(() => {
+    try {
+      App.mostrarSecao('impacto');
+      return { ok: App.secaoAtiva === 'impacto', erro: null };
+    } catch (e) {
+      return { ok: false, erro: String(e && e.message) };
+    }
+  });
+  t(`${l} e a tela ainda abre, sem item de menu para acender`,
+    abriu.ok && !abriu.erro, JSON.stringify(abriu));
+
   const massa = await page.evaluate(async () => {
     const ciclo = App.contexto.cicloId;
     const ano = Diag.ano();
@@ -5665,10 +5690,15 @@ async function provasMenuRecolhido(page, largura) {
   t(`[${largura}] Execução, Capital e Gestão deixaram de existir`,
     !arranjo.topicos.some((g) => ['execucao', 'capital', 'gestao'].includes(g)),
     JSON.stringify(arranjo.topicos));
-  // Nenhuma tela ficou órfã: as mesmas 18 do mapa continuam alcançáveis pelo
-  // menu (as três soltas no topo entram na conta).
+  // Nenhuma tela ficou órfã POR DESCUIDO no reagrupamento: as do mapa
+  // continuam alcançáveis pelo menu (as três soltas no topo entram na conta).
+  // São 17 desde 2026-11-03, quando o cliente pediu o "Impacto por Negócio"
+  // fora do menu — a conta é de tela perdida sem querer, e a que sai por
+  // decisão sai nomeada, aqui e na prova dedicada a ela.
+  const FORA_DO_MENU = ['impacto'];
   t(`[${largura}] nenhuma seção se perdeu no reagrupamento`,
-    arranjo.secoes.length === 18, JSON.stringify(arranjo.secoes));
+    arranjo.secoes.length === 17 && !arranjo.secoes.some((s) => FORA_DO_MENU.includes(s)),
+    JSON.stringify(arranjo.secoes));
 
   // Navegar para uma tela de tópico fechado abre o tópico — pelo caminho que
   // o resto do sistema usa (App.mostrarSecao), não só pelo clique no menu.
