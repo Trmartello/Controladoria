@@ -398,6 +398,16 @@ class ProjetoController
                 Json::erro('Informe o período da ação (Quando?) — início e fim previsto.');
             }
         } else {
+            // A data de INÍCIO da repetição (pedido do cliente, 2026-11-03): é
+            // dela que a ação passa a ser monitorada. Em branco cai em HOJE,
+            // que é o que o sistema fazia calado antes de o campo existir — e
+            // é o que mantém de pé quem chama a API sem mandá-la.
+            if ($inicio === null) {
+                $inicio = date('Y-m-d');
+            }
+            if ($recAte !== null && $recAte < $inicio) {
+                Json::erro('A data fim da repetição é anterior à data de início.');
+            }
             $recDias = Recorrencia::normalizarDias(
                 is_array($d['recorrencia_dias'] ?? null) ? $d['recorrencia_dias'] : [$d['recorrencia_dia'] ?? 0],
                 $recorrencia
@@ -422,16 +432,21 @@ class ProjetoController
                     [$id]
                 );
             }
+            // Mexer na data de INÍCIO é mexer na grade: quem adia o começo da
+            // rotina espera a primeira ocorrência andar junto. Sem esta
+            // comparação, a guarda abaixo preservaria o vencimento antigo e a
+            // data nova ficaria na tela sem efeito nenhum.
             $mesmaGrade = $anteriorRec !== null
                 && $anteriorRec['data_fim'] !== null
                 && $anteriorRec['recorrencia'] === $recorrencia
                 && Recorrencia::dias($anteriorRec) === $recDias
+                && $anteriorRec['data_inicio'] === $inicio
                 && ($recAte === null || $anteriorRec['data_fim'] <= $recAte);
             if ($mesmaGrade) {
                 $venceEm = $anteriorRec['data_fim'];
                 $inicio = $anteriorRec['data_inicio'];
             } else {
-                $venceEm = Recorrencia::primeiraOcorrencia($recDias, $recorrencia, $recAte);
+                $venceEm = Recorrencia::primeiraOcorrencia($recDias, $recorrencia, $recAte, $inicio);
                 if ($venceEm === null) {
                     // A repetição já acabou. Numa ação que existe, isso não pode
                     // travar o salvamento: quem só quer corrigir o responsável
@@ -445,9 +460,11 @@ class ProjetoController
                     } else {
                         Json::erro('A repetição termina antes da próxima ocorrência — ajuste o "Repetir até".');
                     }
-                } else {
-                    $inicio = date('Y-m-d');
                 }
+                // O início fica o que a pessoa escolheu (ou hoje, quando não
+                // veio). Era sempre `date('Y-m-d')` aqui, e era isso que fazia
+                // a rotina cadastrada hoje para começar em fevereiro nascer
+                // valendo desde já.
             }
             $fim = $venceEm;
             if ($inicio > $fim) {

@@ -238,10 +238,14 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   marcáveis com selos coloridos, descrição cortada em 3 linhas com “ver mais”,
   pesquisa acima de 5 itens e contador — usar sempre que o usuário precise ler
   o item antes de marcar; `multiselect` só serve para listas curtas e não
-  funciona no celular, onde não existe tecla Ctrl), `dias` (fichas marcáveis
-  para os dias de uma repetição: `grade: 'mes'` são 31 números em sete colunas,
-  como um calendário, e `grade: 'semana'` são os sete nomes, que fluem e quebram
-  a linha — a escolha é MÚLTIPLA nas duas), `moeda` (dinheiro; ver abaixo) e
+  funciona no celular, onde não existe tecla Ctrl), `dias` (os dias de uma
+  repetição: `grade: 'semana'` são os sete nomes em fichas marcáveis, que fluem
+  e quebram a linha; com `estilo: 'select'` — hoje o dia do MÊS — a escolha sai
+  por lista e o que foi escolhido vira ficha com ×, e o valor mora no
+  `data-dias` do bloco. A escolha é MÚLTIPLA nos dois. A grade de 31 números em
+  sete colunas existiu até 2026-11-03 e saiu a pedido do cliente: gastava cinco
+  fileiras do celular para mostrar, na maior parte, dias que ninguém marca),
+  `moeda` (dinheiro; ver abaixo) e
   `arquivos` (input de arquivo para formulário cujo envio é multipart —
   `coletar()` o pula, arquivo não viaja em JSON, e o `enviar` do formulário lê
   os escolhidos por `Modal.arquivosDe(nome)`; opções `multiplo` e `aceita`).
@@ -1928,12 +1932,24 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   vezes — duas cobranças, dois cartões, dois relatórios para a mesma coisa.
   `recorrencia_dia` (singular) segue gravado com o **primeiro** dia e é o
   fallback das ações anteriores à coluna nova; ninguém mais decide por ele.
-  A ação que se repete **não tem período digitado**: quem diz quando ela vence é
-  a grade, e o servidor DERIVA `data_inicio`/`data_fim` dela — o atraso
+  A ação que se repete **não tem fim digitado**: quem diz quando ela vence é
+  a grade, e o servidor DERIVA `data_fim` dela — o atraso
   automático, os avisos por e-mail e o prazo consolidado do projeto leem as
   colunas, não a regra. Editar uma recorrente em dia não empurra o vencimento:
   ele só é recalculado quando a grade muda, porque avançar a grade é gesto da
   CONCLUSÃO, não do salvamento.
+  **O INÍCIO da repetição é escolhido** (pedido do cliente, 2026-11-03: "deve
+  ter uma data início para iniciar o monitoramento da ação"). Vai no mesmo
+  `data_inicio` — é a mesma coluna, com o mesmo sentido: o começo da ocorrência
+  em curso. Três regras: em branco cai em HOJE, que é o que o servidor fazia
+  calado antes de o campo existir (e é o que mantém de pé quem chama a API sem
+  mandá-lo); início no FUTURO empurra a primeira ocorrência para a primeira
+  data da grade a partir dele (`Recorrencia::primeiraOcorrencia($dias, $tipo,
+  $ate, $de)`) — antes a rotina cadastrada em novembro para começar em
+  fevereiro vencia na semana seguinte; início no PASSADO **não retroage**, para
+  a ação não nascer atrasada em ocorrências que ninguém tinha para cumprir.
+  Mudar o início conta como mudar a grade (entra na comparação `mesmaGrade`),
+  senão a data nova ficaria na tela sem efeito nenhum.
   **`recorrencia_ate` é OPCIONAL** (decisão do cliente): em branco, a rotina é
   por tempo INDETERMINADO — segue reabrindo até alguém encerrá-la. `null` é
   exatamente o que `Recorrencia` lê como "sem limite", então a ausência não
@@ -2162,14 +2178,17 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   Salvar sem passar por ele.
   **O prazo mora DENTRO da caixa da repetição**, e não é arrumação: é a
   repetição que decide QUAL prazo existe. Sem repetição aparece "Quando? (Prazo
-  de Execução)", com início e fim previsto; toda semana ou todo mês, aparecem as
-  fichas dos dias e a data fim da repetição. Ter os dois na tela fazia o usuário
-  preencher um "fim previsto" que a primeira conclusão descartava.
+  de Execução)", com início e fim previsto; toda semana ou todo mês, aparecem os
+  dias e, numa fileira só, as **datas de início e fim da repetição**. Ter os
+  dois prazos na tela fazia o usuário preencher um "fim previsto" que a
+  primeira conclusão descartava.
   **Obrigatórios: o quê, como, quem e o período** — os quatro recusados em
   `ProjetoController::salvarDesdobramento`, não só marcados na tela. Ação sem
   caminho e sem prazo não é plano, e o prazo é o que alimenta o atraso
   automático, os avisos e o painel. A data fim da repetição NÃO entra nessa
-  lista: em branco ela significa "sem prazo para terminar". Consequência para
+  lista: em branco ela significa "sem prazo para terminar". A de INÍCIO entra,
+  mas nasce preenchida com hoje — obrigatório que abre vazio faria toda ação
+  recorrente começar com um erro na tela. Consequência para
   quem for mexer: ação antiga sem "como" ou sem datas passa a exigi-los na
   próxima vez que alguém abrir e salvar.
   **"Quanto custa?" virou "Ganhos previstos (R$)"** (pedido do cliente). A

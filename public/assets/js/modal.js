@@ -101,6 +101,7 @@ const Modal = {
     this.ligarMoedas(form);
     this.ligarSelecaoLivre(form);
     this.ligarListasMarcaveis(form);
+    this.ligarDiasSelect(form);
     this.ligarDatasBr(form);
     this.ligarFaixas(form, campos);
     this.ligarCondicionais(form, campos);
@@ -544,14 +545,45 @@ const Modal = {
         break;
       }
       case 'dias': {
-        // Fichas marcáveis para escolher os dias da repetição: os 31 do mês, ou
-        // os 7 da semana. Fichas, e não multiselect — a lista suspensa não tem
-        // Ctrl no celular, e 31 itens em coluna não cabem na tela. A escolha é
-        // MÚLTIPLA nas duas: "toda segunda e quinta" e "todo dia 5 e 20" são
-        // rotinas comuns, e com um dia só a pessoa cadastrava a mesma tarefa
-        // duas vezes para descrever uma.
+        // Fichas marcáveis para escolher os dias da repetição: os 7 da semana,
+        // ou os 31 do mês. Nos dois casos a escolha é MÚLTIPLA — "toda segunda
+        // e quinta" e "todo dia 5 e 20" são rotinas comuns, e com um dia só a
+        // pessoa cadastrava a mesma tarefa duas vezes para descrever uma.
         const marcados = new Set((Array.isArray(v) ? v : String(v || '').split(','))
           .map((x) => Number(x)).filter(Boolean));
+        /* `estilo: 'select'` — escolher por LISTA, somando fichas (pedido do
+         * cliente, 2026-11-03: "na forma mensal, coloca um select box para
+         * selecionar o dia; não deixe todos os dias sendo exibido como está
+         * hoje. Assim vai otimizar a tela").
+         *
+         * Os 31 botões do mês ocupavam cinco fileiras no celular, e as quatro
+         * últimas eram tela gasta com dias que ninguém ia marcar. Aqui o
+         * controle é um só, de uma linha, e o que ocupa espaço passa a ser o
+         * que foi ESCOLHIDO — nada, na maioria das ações.
+         *
+         * Lista mais fichas, e não um `select multiple`: a lista múltipla não
+         * tem Ctrl no celular, e perder um dia já marcado ao tocar noutro é
+         * apagar sem avisar. Assim a escolha múltipla continua existindo —
+         * quem repete "todo dia 5 e 20" não precisa de duas ações — e cada dia
+         * sai por um × que se vê.
+         *
+         * O valor mora no `data-dias` do próprio bloco (é de lá que `coletar`
+         * lê): as fichas são desenho do valor, e guardar a verdade nelas faria
+         * a lista e o campo divergirem na primeira remoção. */
+        if (c.estilo === 'select') {
+          const opcoes = (c.opcoes || []).map((o) =>
+            `<option value="${this.esc(o.valor)}">${this.esc(o.rotulo)}</option>`).join('');
+          controle = `<div class="dias-select" id="${id}"
+            data-dias="${[...marcados].join(',')}" role="group" aria-label="${this.esc(c.rotulo)}">
+            <select class="form-select" data-dia-escolher
+              aria-label="Escolher um dia para a repetição">
+              <option value="">${this.esc(c.vazio || 'Escolha um dia…')}</option>
+              ${opcoes}
+            </select>
+            <div class="dias-fichas" data-dia-fichas></div>
+          </div>`;
+          break;
+        }
         const fichas = (c.opcoes || []).map((o) => {
           const dia = Number(o.valor);
           return `
@@ -1282,6 +1314,54 @@ const Modal = {
     });
   },
 
+  /**
+   * O campo de dias em modo lista (`tipo: 'dias'`, `estilo: 'select'`).
+   *
+   * A lista ADICIONA e volta para o vazio; as fichas abaixo são o que está
+   * escolhido, cada uma com o seu ×. A verdade fica no `data-dias` do bloco,
+   * em ordem crescente — a ordem de clique faria "dia 20 e 5" aparecer assim
+   * na tela e no texto do cartão.
+   *
+   * A cada mudança o bloco dispara um `change` que SOBE: é por ele que
+   * `aoMudar` e os campos condicionais ficam sabendo. Sem o disparo, escolher
+   * um dia não acordaria nada — a lista volta ao vazio e o `change` dela
+   * sozinho diria "nenhum dia", o contrário do que acabou de acontecer.
+   */
+  ligarDiasSelect(raiz) {
+    raiz.querySelectorAll('.dias-select').forEach((caixa) => {
+      const lista = caixa.querySelector('[data-dia-escolher]');
+      const fichas = caixa.querySelector('[data-dia-fichas]');
+      const rotulo = (dia) => (lista.querySelector(`option[value="${dia}"]`)?.textContent || dia).trim();
+      const lerDias = () => String(caixa.dataset.dias || '').split(',')
+        .map(Number).filter(Boolean).sort((a, b) => a - b);
+      const pintar = () => {
+        const dias = lerDias();
+        fichas.innerHTML = dias.length
+          ? dias.map((d) => `<span class="ficha-dia">${this.esc(rotulo(d))}<button type="button"
+              class="tirar-dia" data-tirar-dia="${d}"
+              title="Tirar o dia ${this.esc(rotulo(d))} da repetição"
+              aria-label="Tirar o dia ${this.esc(rotulo(d))} da repetição">×</button></span>`).join('')
+          : '<span class="dias-vazio">Nenhum dia escolhido ainda.</span>';
+      };
+      const gravar = (dias) => {
+        caixa.dataset.dias = [...new Set(dias)].sort((a, b) => a - b).join(',');
+        pintar();
+        caixa.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      lista.addEventListener('change', () => {
+        const dia = Number(lista.value);
+        lista.value = '';
+        if (dia) gravar([...lerDias(), dia]);
+      });
+      fichas.addEventListener('click', (ev) => {
+        const botao = ev.target.closest('[data-tirar-dia]');
+        if (!botao) return;
+        gravar(lerDias().filter((d) => d !== Number(botao.dataset.tirarDia)));
+      });
+      pintar();
+    });
+  },
+
   ligarSelecaoLivre(raiz) {
     raiz.querySelectorAll('.combo-busca').forEach((caixa) => {
       const oculto = caixa.querySelector('input[type=hidden]');
@@ -1560,7 +1640,13 @@ const Modal = {
       }
       else if (c.tipo === 'multiselect') dados[c.nome] = Array.from(el.selectedOptions).map((o) => o.value);
       else if (c.tipo === 'dias') {
-        dados[c.nome] = [...el.querySelectorAll('input:checked')].map((ch) => Number(ch.value));
+        // Em modo lista o valor mora no bloco (`data-dias`); em fichas, nas
+        // caixas marcadas. Um `dataset.dias` vazio é escolha vazia — e é por
+        // isso que a leitura olha a EXISTÊNCIA do atributo, não o conteúdo:
+        // `|| caixas` devolveria os dias das fichas, que ali não existem.
+        dados[c.nome] = el.dataset.dias === undefined
+          ? [...el.querySelectorAll('input:checked')].map((ch) => Number(ch.value))
+          : String(el.dataset.dias).split(',').map(Number).filter(Boolean);
       }
       else if (c.tipo === 'moeda') {
         // O caminho de volta de `moedaBr`: a vírgula da tela vira o ponto que o

@@ -2921,7 +2921,12 @@ td.editando-agora { background: #fff8e6; }
    O seletor é ancorado NA CAIXA porque a margem negativa é medida a partir do
    padding dela: solto no formulário, o mesmo campo sangraria .9rem para fora
    dos dois lados. */
-.caixa-campos > .campo-separado {
+.caixa-campos > .campo-separado,
+/* O mesmo filete quando quem vem depois dele é uma LINHA de campos, e não um
+   campo (as duas datas da repetição, 2026-11-03): `campo-separado` é posto no
+   campo, e dentro da linha ele deixa de ser filho direto da caixa — a regra
+   acima não o alcançaria e o traço sumiria sem erro nenhum. */
+.caixa-campos > .grade-linha-repeticao-datas {
   border-top: 1px solid #e3e8e6;
   margin-left: -.9rem;
   margin-right: -.9rem;
@@ -2992,6 +2997,45 @@ td.editando-agora { background: #fff8e6; }
 .grade-dias .btn-check:focus-visible + .btn-dia {
   box-shadow: 0 0 0 .25rem rgba(0, 122, 69, .25);
 }
+
+/* Dias escolhidos por LISTA (pedido do cliente, 2026-11-03), hoje a forma do
+   dia do mês: a lista ocupa uma linha, e o que cresce é o que já foi
+   escolhido — nada, na maioria das ações. Os 31 botões gastavam cinco
+   fileiras do celular para mostrar, na maior parte, dias que ninguém marca. */
+.dias-select { display: grid; gap: .4rem; }
+.dias-fichas { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+/* O lugar das fichas nunca fica vazio: sem a frase, a lista voltando ao
+   "Escolha um dia…" depois de adicionar parecia não ter feito nada. */
+.dias-vazio { font-size: .8rem; font-style: italic; color: #5a6a61; }
+.ficha-dia {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  padding: .15rem .25rem .15rem .6rem;
+  font-size: .85rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--verde-coperdia);
+  border-radius: 999px;
+}
+/* O × tem alvo de toque próprio (2rem): dentro de uma ficha de 1,5rem de
+   altura, um × do tamanho da letra erra o dedo e tira o dia errado. */
+.tirar-dia {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  color: #fff;
+  background: rgba(255, 255, 255, .18);
+  border: 0;
+  border-radius: 999px;
+}
+.tirar-dia:hover,
+.tirar-dia:focus-visible { background: rgba(255, 255, 255, .38); }
 
 /* No celular todo modal ocupa a tela inteira; o campo de texto ou o bloco
    informativo cresce para preencher o espaço que sobrar */

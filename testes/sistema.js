@@ -1286,7 +1286,8 @@ async function provasFilaAcao(page, largura) {
         return {
           caixa: !!caixa,
           campos: ['recorrencia', 'recorrencia_dias_semana', 'recorrencia_dias_mes',
-            'recorrencia_ate', 'quando_periodo'].every((n) => !!caixa?.querySelector(`#campo-${n}`)),
+            'recorrencia_de', 'recorrencia_ate', 'quando_periodo']
+            .every((n) => !!caixa?.querySelector(`#campo-${n}`)),
           ganhos: document.querySelector('#campo-quanto')?.classList.contains('campo-moeda'),
           // E o que é só DELE continua lá: o destino da ideia
           destino: !!document.getElementById('campo-destino'),
@@ -2937,8 +2938,9 @@ async function provasAcao(page, largura) {
       // pergunta: a lista é a ordem de sempre, que é contrato com o cliente.
       const esperada = ['O quê? *', 'Como? *', 'Quem? *', 'Repetição',
         'Selecione o dia da semana para repetir:',
-        'Selecione o dia ou dias do mês em que haverá repetição:',
-        'Data fim da repetição', 'Quando? (Prazo de Execução) *',
+        'Dia do mês em que haverá repetição:',
+        'Data início da repetição *', 'Data fim da repetição',
+        'Quando? (Prazo de Execução) *',
         'Prioridade', 'Status', 'Ganhos previstos (R$)'];
       t(`${l} Campos da ação na ordem pedida`,
         JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
@@ -2952,7 +2954,7 @@ async function provasAcao(page, largura) {
         return {
           existe: true,
           todos: ['recorrencia', 'recorrencia_dias_semana', 'recorrencia_dias_mes',
-            'recorrencia_ate', 'quando_periodo'].every(dentro),
+            'recorrencia_de', 'recorrencia_ate', 'quando_periodo'].every(dentro),
           // O que NÃO é da decisão fica de fora: senão a caixa deixa de
           // significar "isto depende da escolha acima"
           semIntrusos: !dentro('quem') && !dentro('status') && !dentro('quanto'),
@@ -2974,12 +2976,14 @@ async function provasAcao(page, largura) {
           periodo: await visivel('quando_periodo'),
           semana: await visivel('recorrencia_dias_semana'),
           mes: await visivel('recorrencia_dias_mes'),
+          de: await visivel('recorrencia_de'),
           ate: await visivel('recorrencia_ate'),
         };
       };
       const nenhuma = await trocar('NENHUMA');
       t(`${l} sem repetição, só o período de execução aparece`,
-        nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate, JSON.stringify(nenhuma));
+        nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate && !nenhuma.de,
+        JSON.stringify(nenhuma));
 
       // ── O que se digita na data APARECE ─────────────────────────────────
       // O campo de data mostra dd/mm/aaaa por um rótulo sobreposto, com o texto
@@ -3030,6 +3034,42 @@ async function provasAcao(page, largura) {
       const semanal = await trocar('SEMANAL');
       t(`${l} toda semana troca o período pelos dias da semana`,
         !semanal.periodo && semanal.semana && !semanal.mes && semanal.ate, JSON.stringify(semanal));
+      // As DUAS datas da repetição aparecem juntas (pedido do cliente,
+      // 2026-11-03): a de início, que diz de quando a ação é monitorada, e a
+      // de fim, que é opcional. Antes só existia a de fim, e a rotina começava
+      // sempre hoje, sem nada na tela dizendo isso.
+      t(`${l} a repetição mostra data de início e data de fim`,
+        semanal.de && semanal.ate, JSON.stringify(semanal));
+      const datas = await page.evaluate(() => {
+        const bloco = (n) => document.getElementById(`campo-${n}`)?.closest('.mb-3');
+        const de = bloco('recorrencia_de');
+        const ate = bloco('recorrencia_ate');
+        const r = (e) => e.getBoundingClientRect();
+        return {
+          // O início é OBRIGATÓRIO e já vem preenchido: formulário que abre
+          // com um obrigatório vazio obriga a pessoa a preencher o que o
+          // sistema sempre decidiu sozinho (hoje).
+          marcaObrigatorio: de?.querySelector('.form-label')?.textContent.includes('*'),
+          valorInicial: document.getElementById('campo-recorrencia_de')?.value,
+          hoje: new Date().toLocaleDateString('sv-SE'),
+          fimOpcional: !ate?.querySelector('.form-label')?.textContent.includes('*'),
+          // Na mesma fileira no computador; no celular a fileira empilha, como
+          // toda `grade-campos` — dois campos de data lado a lado em 390px
+          // espremem o dd/mm/aaaa.
+          mesmaLinha: Math.round(r(de).top) === Math.round(r(ate).top),
+          naOrdem: Math.round(r(de).top) <= Math.round(r(ate).top),
+          // O filete que separa "que dias" de "de quando até quando" é posto na
+          // FILEIRA, não no campo: dentro dela o campo deixa de ser filho
+          // direto da caixa, e a regra do `campo-separado` não o alcança.
+          temFilete: getComputedStyle(de.parentElement).borderTopWidth !== '0px',
+        };
+      });
+      t(`${l} o início da repetição é obrigatório e nasce em hoje`,
+        datas.marcaObrigatorio && datas.valorInicial === datas.hoje && datas.fimOpcional,
+        JSON.stringify(datas));
+      t(`${l} as duas datas ficam juntas, separadas dos dias por um filete`,
+        (largura === 'celular' ? datas.naOrdem : datas.mesmaLinha) && datas.temFilete,
+        JSON.stringify(datas));
 
       // ── As fichas dos dias, e a marcação MÚLTIPLA ───────────────────────
       const semana = await page.evaluate(() => {
@@ -3055,15 +3095,53 @@ async function provasAcao(page, largura) {
       const mensal = await trocar('MENSAL');
       t(`${l} todo mês troca a semana pela grade do mês`,
         !mensal.periodo && !mensal.semana && mensal.mes && mensal.ate, JSON.stringify(mensal));
+      // ── O dia do mês sai por LISTA (pedido do cliente, 2026-11-03) ──────
+      // "Coloca um select box para selecionar o dia. Não deixe todos os dias
+      // sendo exibido como está hoje. Assim vai otimizar a tela."
+      // A prova mede as três coisas que a troca não pode perder: os 31 dias
+      // continuam oferecidos, a escolha continua MÚLTIPLA (é "todo dia 5 e
+      // 20", não duas ações) e cada dia escolhido tem como sair. E mede a
+      // ALTURA, que é o motivo do pedido: a grade gastava cinco fileiras.
       const mes = await page.evaluate(() => {
         const g = document.getElementById('campo-recorrencia_dias_mes');
-        const fichas = [...g.querySelectorAll('input[type=checkbox]')];
-        fichas[4].click();
-        fichas[19].click();
-        return { quantas: fichas.length, coletado: Modal.coletar().recorrencia_dias_mes };
+        const lista = g.querySelector('[data-dia-escolher]');
+        const escolher = (dia) => {
+          lista.value = String(dia);
+          lista.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const altura = Math.round(g.getBoundingClientRect().height);
+        escolher(5);
+        escolher(20);
+        const comDois = Modal.coletar().recorrencia_dias_mes;
+        const fichas = [...g.querySelectorAll('.ficha-dia')].map((f) => f.textContent.replace('×', '').trim());
+        // Tirar um dia pelo × da ficha
+        g.querySelector('[data-tirar-dia="5"]').click();
+        return {
+          // A lista tem os 31 dias mais a opção vazia de "escolha um dia"
+          opcoes: lista.options.length,
+          vazia: lista.options[0].value === '',
+          semGrade: !g.querySelector('input[type=checkbox]'),
+          alturaVazio: altura,
+          comDois,
+          fichas,
+          // Depois de escolher, a lista volta ao vazio — senão o próximo
+          // toque adicionaria de novo o mesmo dia
+          listaVoltou: lista.value === '',
+          depoisDeTirar: Modal.coletar().recorrencia_dias_mes,
+        };
       });
-      t(`${l} a grade do mês tem 31 dias e aceita vários`,
-        mes.quantas === 31 && JSON.stringify(mes.coletado) === '[5,20]', JSON.stringify(mes));
+      t(`${l} o dia do mês sai por lista, com os 31 dias e sem grade de botões`,
+        mes.opcoes === 32 && mes.vazia && mes.semGrade, JSON.stringify(mes));
+      t(`${l} dá para somar mais de um dia do mês, e ver quais são`,
+        JSON.stringify(mes.comDois) === '[5,20]'
+        && JSON.stringify(mes.fichas) === '["5","20"]' && mes.listaVoltou,
+        JSON.stringify(mes));
+      t(`${l} o × da ficha tira o dia da repetição`,
+        JSON.stringify(mes.depoisDeTirar) === '[20]', JSON.stringify(mes.depoisDeTirar));
+      // Sem nada escolhido, o campo cabe em duas linhas (lista + aviso de
+      // vazio). A grade de 31 botões media cinco fileiras de 2,5rem.
+      t(`${l} o campo do dia do mês não gasta a tela quando está vazio`,
+        mes.alturaVazio <= 110, `${mes.alturaVazio}px`);
 
       // ── Prioridade e Status na mesma fileira ────────────────────────────
       const linhas = await page.evaluate(() =>
@@ -3071,7 +3149,9 @@ async function provasAcao(page, largura) {
           [...g.querySelectorAll('.mb-3')].filter((b) => !b.classList.contains('d-none'))
             .map((b) => ({ rotulo: b.querySelector('.form-label')?.textContent.trim(),
               topo: Math.round(b.getBoundingClientRect().top) }))));
-      const par = linhas.find((x) => x.length === 2);
+      // A fileira pelo RÓTULO, não "a primeira com dois campos": as datas da
+      // repetição também dividem uma, e a busca por tamanho caía nela.
+      const par = linhas.find((x) => x.some((c) => c.rotulo === 'Prioridade'));
       t(`${l} Prioridade e Status na MESMA linha`,
         !!par && par.every((c) => c.topo === par[0].topo), JSON.stringify(linhas));
 
@@ -3356,6 +3436,69 @@ async function provasAcao(page, largura) {
   // atraso automático, os avisos por e-mail e o prazo consolidado do projeto.
   t(`${l} o servidor deriva a data de vencimento da grade`,
     /^\d{4}-\d{2}-\d{2}$/.test(String(voltou.data_fim || '')), String(voltou.data_fim));
+  await fecharModal(page);
+
+  // ── A data de INÍCIO da repetição (pedido do cliente, 2026-11-03) ───────
+  // "Deve ter uma data início para iniciar o monitoramento da ação e uma data
+  // fim; porém a data fim pode ficar em branco."
+  //
+  // Antes a primeira ocorrência saía sempre de HOJE: quem cadastrasse em
+  // novembro a rotina que começa em fevereiro via a ação vencer na semana
+  // seguinte, e nada na tela dizia por quê. As provas medem as quatro regras
+  // que isso criou — e a última é a que não é óbvia: início no passado NÃO
+  // retroage, senão a ação nasceria atrasada em ocorrências que ninguém tinha
+  // para cumprir.
+  const dataEm = (dias) => {
+    const d = new Date();
+    d.setDate(d.getDate() + dias);
+    return d.toLocaleDateString('sv-SE');
+  };
+  const inicios = await page.evaluate(async (x) => {
+    const projetos = await App.api('/api/projetos?planejamento_id=1');
+    const p = projetos.find((y) => y.id === x.prj);
+    const base = {
+      planejamento_id: 1, projeto_id: x.prj, iniciativa_id: p.iniciativas[0].id,
+      como: 'x', quem: 'QA', prioridade: 'MEDIA', status: 'NAO_INICIADO',
+      progresso: 0, recorrencia: 'SEMANAL', recorrencia_dias: [1, 4],
+    };
+    const criar = async (campos) => App.api('/api/desdobramentos', { ...base, ...campos });
+    const futura = await criar({ o_que: 'Rotina que começa adiante', data_inicio: x.adiante });
+    const passada = await criar({ o_que: 'Rotina que começou atrás', data_inicio: x.atras });
+    const semData = await criar({ o_que: 'Rotina sem data de início' });
+    let recusa = null;
+    try {
+      await criar({ o_que: 'Rotina de fim invertido', data_inicio: x.adiante, recorrencia_ate: x.atras });
+    } catch (e) { recusa = e.message; }
+    const ler = async (id) => {
+      const ps = await App.api('/api/projetos?planejamento_id=1');
+      const pp = ps.find((y) => y.id === x.prj);
+      const a = pp.iniciativas[0].acoes.find((y) => y.id === id);
+      return { inicio: a.data_inicio, fim: a.data_fim };
+    };
+    const saida = {
+      futura: await ler(futura.id),
+      passada: await ler(passada.id),
+      semData: await ler(semData.id),
+      recusa,
+    };
+    for (const id of [futura.id, passada.id, semData.id]) {
+      await App.api(`/api/desdobramentos/${id}/excluir`, { planejamento_id: 1 });
+    }
+    return saida;
+  }, { prj, adiante: dataEm(90), atras: dataEm(-120) });
+  const hoje = new Date().toLocaleDateString('sv-SE');
+  t(`${l} a rotina que começa adiante guarda o início e vence depois dele`,
+    inicios.futura.inicio === dataEm(90) && inicios.futura.fim >= dataEm(90)
+    && inicios.futura.fim <= dataEm(97), JSON.stringify(inicios.futura));
+  t(`${l} início no passado não faz a ação nascer atrasada`,
+    inicios.passada.inicio === dataEm(-120) && inicios.passada.fim >= hoje,
+    JSON.stringify(inicios.passada));
+  // Quem chama a API sem a data continua funcionando como sempre: hoje.
+  t(`${l} sem data de início, a repetição começa hoje`,
+    inicios.semData.inicio === hoje && inicios.semData.fim >= hoje,
+    JSON.stringify(inicios.semData));
+  t(`${l} fim da repetição anterior ao início é recusado`,
+    /anterior à data de início/.test(String(inicios.recusa || '')), String(inicios.recusa));
 
   // A frente já vem escolhida (a primeira do projeto) e o campo de nome da
   // frente nova fica escondido até alguém pedir uma. Sem isto, o formulário
