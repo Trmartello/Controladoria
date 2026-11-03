@@ -165,7 +165,9 @@ class Avisos
             'ja_enviados' => 0, 'reenviados' => 0, 'detalhes' => [],
         ];
 
-        foreach (self::responsaveis() as $u) {
+        $ate = self::limite($tipo, $hoje);
+
+        foreach (self::destinatarios() as $u) {
             // Só conta como enviado o que saiu sem erro: uma falha de SMTP
             // não pode bloquear o aviso do dia (ou da semana) para sempre
             $ja = Database::um(
@@ -178,10 +180,19 @@ class Avisos
                 continue;
             }
 
-            $acoes = $tipo === 'SEMANAL'
-                ? self::acoesDaSemana((int)$u['id'], $hoje)
-                : self::pendenciasDoDia((int)$u['id'], $hoje);
-            if (!$acoes) {
+            $acoes = self::acoesDe((int)$u['id'], $ate);
+            // O bloco do negócio sai do mesmo disparo, e SEM repetir o que já
+            // está na carteira da pessoa: o gestor que também responde pela
+            // ação a veria duas vezes na mesma mensagem, e contaria duas.
+            $doNegocio = [];
+            if ($u['gestor'] ?? false) {
+                $meus = array_column($acoes, 'id');
+                $doNegocio = array_values(array_filter(
+                    self::acoesDoNegocio((int)$u['id'], $ate),
+                    static fn($a) => !in_array($a['id'], $meus)
+                ));
+            }
+            if (!$acoes && !$doNegocio) {
                 $resumo['sem_itens']++;
                 continue;
             }
@@ -193,7 +204,7 @@ class Avisos
                     $tipo === 'SEMANAL'
                         ? 'Planejamento — sua semana (' . date('d/m', strtotime($referencia)) . ')'
                         : 'Planejamento — pendências de hoje (' . date('d/m', strtotime($hoje)) . ')',
-                    self::corpo($tipo, $u['nome'], $acoes, $hoje)
+                    self::corpo($tipo, $u['nome'], $acoes, $hoje, $doNegocio)
                 );
                 $resumo['enviados']++;
                 if ($ja) {
@@ -203,7 +214,11 @@ class Avisos
                 $erro = $e->getMessage();
                 $resumo['falhas']++;
             }
-            $resumo['detalhes'][] = ['usuario' => $u['nome'], 'itens' => count($acoes), 'erro' => $erro];
+            // `itens` conta as DUAS listas: é o número que o relatório do
+            // disparo mostra, e contar só a carteira própria diria "0 itens"
+            // num e-mail que o gestor recebeu cheio.
+            $itens = count($acoes) + count($doNegocio);
+            $resumo['detalhes'][] = ['usuario' => $u['nome'], 'itens' => $itens, 'erro' => $erro];
 
             Database::executar(
                 // `enviado_em` também é atualizado: com o reenvio manual, a linha
@@ -214,35 +229,79 @@ class Avisos
                  VALUES (?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE itens = VALUES(itens), erro = VALUES(erro),
                                          enviado_em = CURRENT_TIMESTAMP',
-                [$tipo, $referencia, (int)$u['id'], $u['email'], count($acoes), $erro]
+                [$tipo, $referencia, (int)$u['id'], $u['email'], $itens, $erro]
             );
         }
         return $resumo;
     }
 
-    /** Usuários ativos que respondem por alguma ação em aberto. */
-    private static function responsaveis(): array
+    /**
+     * Quem recebe aviso: quem RESPONDE por alguma ação em aberto e quem GERE um
+     * negócio com plano (`negocio.gestor_id` — pedido do cliente, 2026-11-03:
+     * "precisamos garantir que o e-mail vai para o gestor do negócio").
+     *
+     * Até aqui a lista era só a primeira metade, e o gestor que não respondia
+     * por ação nenhuma não recebia nada: nem das ações do negócio dele, nem das
+     * que estão SEM responsável — estas não entram em cobrança alguma e, antes
+     * disto, não geravam e-mail para ninguém.
+     *
+     * Cada pessoa entra UMA vez, com a marca `gestor`, e recebe UMA mensagem
+     * com as duas partes. Não é arrumação: a chave única de `envio_email` é
+     * (tipo, referência, usuário), então a segunda mensagem do dia para a mesma
+     * pessoa sobrescreveria o registro da primeira — e quem é gestor e
+     * responsável receberia dois e-mails por dia para ler a mesma lista duas
+     * vezes.
+     */
+    private static function destinatarios(): array
     {
         return Database::todos(
-            "SELECT DISTINCT u.id, u.nome, u.email
+            "SELECT u.id, u.nome, u.email,
+                    EXISTS (SELECT 1 FROM negocio n
+                            JOIN planejamento pl ON pl.negocio_id = n.id
+                            WHERE n.gestor_id = u.id AND n.ativo = 1) AS gestor
              FROM usuario u
-             JOIN desdobramento d ON d.quem_usuario_id = u.id
-             WHERE u.ativo = 1 AND u.email <> '' AND d.status IN " . self::STATUS_ABERTOS . '
-             ORDER BY u.nome'
+             WHERE u.ativo = 1 AND u.email <> ''
+               AND (EXISTS (SELECT 1 FROM desdobramento d
+                            WHERE d.quem_usuario_id = u.id
+                              AND d.status IN " . self::STATUS_ABERTOS . ")
+                    OR EXISTS (SELECT 1 FROM negocio n
+                               JOIN planejamento pl ON pl.negocio_id = n.id
+                               WHERE n.gestor_id = u.id AND n.ativo = 1))
+             ORDER BY u.nome"
         );
     }
 
-    /** Semana corrente (segunda a domingo) mais o que ficou atrasado antes. */
-    private static function acoesDaSemana(int $usuarioId, string $hoje): array
+    /**
+     * Até quando o aviso olha: o diário fecha em hoje; o semanal, no domingo
+     * desta semana. É a mesma régua para a carteira da pessoa e para a do
+     * negócio que ela gere — duas janelas na mesma mensagem fariam o gestor
+     * comparar listas de períodos diferentes.
+     */
+    private static function limite(string $tipo, string $hoje): string
     {
-        $domingo = date('Y-m-d', strtotime('sunday this week', strtotime($hoje)));
-        return Database::todos(self::CONSULTA, [$usuarioId, $domingo]);
+        return $tipo === 'SEMANAL'
+            ? date('Y-m-d', strtotime('sunday this week', strtotime($hoje)))
+            : $hoje;
     }
 
-    /** Só o que vence hoje ou já venceu. */
-    private static function pendenciasDoDia(int $usuarioId, string $hoje): array
+    /** Ações atribuídas à pessoa, com prazo até a data informada. */
+    private static function acoesDe(int $usuarioId, string $ate): array
     {
-        return Database::todos(self::CONSULTA, [$usuarioId, $hoje]);
+        return Database::todos(self::CONSULTA, [$usuarioId, $ate]);
+    }
+
+    /**
+     * Ações do(s) negócio(s) que a pessoa GERE, com prazo até a data informada
+     * — inclusive as que não têm responsável, que são justamente as que não
+     * chegam a ninguém pela carteira.
+     *
+     * Aqui não vai a cláusula de escopo da consulta de cima: ser o gestor do
+     * negócio É a autorização para ver o plano dele. O recorte por
+     * `n.gestor_id` já limita a mensagem ao que a pessoa responde.
+     */
+    private static function acoesDoNegocio(int $usuarioId, string $ate): array
+    {
+        return Database::todos(self::CONSULTA_NEGOCIO, [$usuarioId, $ate]);
     }
 
     private const CAMPOS = "d.id, d.o_que, d.data_fim, d.status, d.prioridade, d.progresso,
@@ -270,7 +329,30 @@ class Avisos
                       WHERE un.usuario_id = u.id AND un.negocio_id = pl.negocio_id)))
          ORDER BY d.data_fim, d.prioridade = 'ALTA' DESC";
 
-    private static function corpo(string $tipo, string $nome, array $acoes, string $hoje): string
+    /**
+     * Ações do negócio para o GESTOR dele. Traz o `quem` de cada uma: a lista
+     * não é dele, é do negócio, e sem o nome do responsável ela não diz a quem
+     * cobrar — e ação sem responsável aparece dizendo isso, que é a informação
+     * mais acionável das duas.
+     */
+    private const CONSULTA_NEGOCIO = 'SELECT ' . self::CAMPOS . ", q.nome AS quem, n.nome AS negocio
+         FROM desdobramento d
+         JOIN projeto p ON p.id = d.projeto_id
+         JOIN planejamento pl ON pl.id = p.planejamento_id
+         JOIN negocio n ON n.id = pl.negocio_id
+         LEFT JOIN iniciativa i ON i.id = d.iniciativa_id
+         LEFT JOIN usuario q ON q.id = d.quem_usuario_id
+         WHERE n.gestor_id = ? AND n.ativo = 1 AND d.status IN " . self::STATUS_ABERTOS . "
+           AND d.data_fim IS NOT NULL AND d.data_fim <= ?
+         ORDER BY d.data_fim, d.prioridade = 'ALTA' DESC";
+
+    private static function corpo(
+        string $tipo,
+        string $nome,
+        array $acoes,
+        string $hoje,
+        array $doNegocio = []
+    ): string
     {
         $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
         $cfg = $GLOBALS['config'] ?? (require dirname(__DIR__, 2) . '/config/config.php');
@@ -280,7 +362,10 @@ class Avisos
         $hojeItens = array_filter($acoes, fn($a) => $a['data_fim'] === $hoje);
         $proximas  = array_filter($acoes, fn($a) => $a['data_fim'] > $hoje);
 
-        $linhas = function (array $itens, string $titulo, string $cor) use ($esc) {
+        // `$comQuem` só é ligado no bloco do negócio: ali a lista não é da
+        // pessoa, e sem o nome do responsável ela não diz a quem cobrar. Na
+        // carteira própria o nome seria o dela em toda linha.
+        $linhas = function (array $itens, string $titulo, string $cor, bool $comQuem = false) use ($esc) {
             if (!$itens) {
                 return '';
             }
@@ -290,12 +375,21 @@ class Avisos
                 . 'style="border-collapse:collapse;font:14px sans-serif">';
             foreach ($itens as $a) {
                 $prazo = date('d/m/Y', strtotime($a['data_fim']));
+                // Ação SEM responsável é dita com todas as letras, e em
+                // vermelho: ela não entra em cobrança nenhuma, não gera e-mail
+                // para ninguém, e é por isso que ela precisa chegar ao gestor.
+                $quem = $comQuem
+                    ? ('<br>' . (trim((string)($a['quem'] ?? '')) !== ''
+                        ? '<span style="color:#6a6a6a;font-size:12px">Responsável: '
+                          . $esc($a['quem']) . '</span>'
+                        : '<span style="color:#b3261e;font-size:12px">Sem responsável</span>'))
+                    : '';
                 $html .= '<tr style="border-top:1px solid #e4e9e6">'
                     . '<td style="padding:8px 6px">'
                     . '<strong>' . $esc($a['o_que']) . '</strong><br>'
                     . '<span style="color:#6a6a6a;font-size:12px">'
                     . $esc($a['projeto']) . ($a['iniciativa'] ? ' · ' . $esc($a['iniciativa']) : '')
-                    . '</span></td>'
+                    . '</span>' . $quem . '</td>'
                     . '<td align="right" style="padding:8px 6px;white-space:nowrap;color:' . $cor . '">'
                     . $prazo . '<br><span style="color:#6a6a6a;font-size:12px">'
                     . (int)$a['progresso'] . '%</span></td></tr>';
@@ -303,9 +397,43 @@ class Avisos
             return $html . '</table>';
         };
 
-        $intro = $tipo === 'SEMANAL'
-            ? 'Este é o resumo das suas ações para esta semana no planejamento estratégico.'
-            : 'Estas são as suas pendências de hoje no planejamento estratégico.';
+        /* O bloco do NEGÓCIO, para quem o gere (pedido do cliente,
+         * 2026-11-03). Vem DEPOIS da carteira própria — primeiro o que a
+         * pessoa faz, depois o que ela cobra — e com um filete separando os
+         * dois: emendados, o gestor leria as ações dos outros como suas.
+         *
+         * O título nomeia o negócio: quem gere dois recebe os dois blocos, e
+         * sem o nome as duas listas viram uma. */
+        $negocios = [];
+        foreach ($doNegocio as $a) {
+            $negocios[(string)($a['negocio'] ?? '')][] = $a;
+        }
+        $blocoNegocio = '';
+        foreach ($negocios as $nomeNeg => $itens) {
+            $blocoNegocio .= '<div style="border-top:2px solid #e4e9e6;margin:26px 0 0;padding-top:4px">'
+                . '<h2 style="font:700 15px sans-serif;color:#06432a;margin:14px 0 0">'
+                . $esc($nomeNeg !== '' ? $nomeNeg : 'Seu negócio') . '</h2>'
+                . '<p style="font:13px sans-serif;color:#6a6a6a;margin:2px 0 0">'
+                . 'Você responde por este negócio. Abaixo, as ações do plano dele '
+                . ($tipo === 'SEMANAL' ? 'nesta semana' : 'com prazo até hoje') . '.</p>'
+                . $linhas(array_filter($itens, fn($a) => $a['data_fim'] < $hoje), 'Atrasadas', '#b3261e', true)
+                . $linhas(array_filter($itens, fn($a) => $a['data_fim'] === $hoje), 'Vencem hoje', '#b08d4f', true)
+                . ($tipo === 'SEMANAL'
+                    ? $linhas(array_filter($itens, fn($a) => $a['data_fim'] > $hoje), 'Ainda nesta semana', '#007a45', true)
+                    : '')
+                . '</div>';
+        }
+
+        // Quem é só gestor não tem carteira própria: a frase "estas são as
+        // suas pendências" acima de uma lista vazia mandaria procurar o que
+        // não existe.
+        $intro = $acoes
+            ? ($tipo === 'SEMANAL'
+                ? 'Este é o resumo das suas ações para esta semana no planejamento estratégico.'
+                : 'Estas são as suas pendências de hoje no planejamento estratégico.')
+            : ($tipo === 'SEMANAL'
+                ? 'Você não tem ações suas nesta semana. Abaixo, o que está aberto no negócio que você responde.'
+                : 'Você não tem pendências suas hoje. Abaixo, o que está aberto no negócio que você responde.');
 
         return '<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f4f6f5;padding:16px">'
             . '<div style="max-width:640px;margin:0 auto;background:#fff;border-radius:10px;overflow:hidden">'
@@ -317,6 +445,7 @@ class Avisos
             . $linhas($atrasadas, 'Atrasadas', '#b3261e')
             . $linhas($hojeItens, 'Vencem hoje', '#b08d4f')
             . ($tipo === 'SEMANAL' ? $linhas($proximas, 'Ainda nesta semana', '#007a45') : '')
+            . $blocoNegocio
             . ($url
                 ? '<p style="margin:22px 0 0"><a href="' . $esc($url) . '" '
                   . 'style="background:#007a45;color:#fff;font:600 14px sans-serif;'

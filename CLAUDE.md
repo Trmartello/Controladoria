@@ -2086,6 +2086,25 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   semanal na segunda e pendências do dia. `envio_email` é a trava contra
   duplicidade — só conta como enviado o registro com `erro IS NULL`, para uma
   queda do serviço não bloquear o aviso.
+  **Quem recebe** (`Avisos::destinatarios`): quem **responde** por alguma ação
+  em aberto (`quem_usuario_id`) **e** quem **gere** um negócio com plano
+  (`negocio.gestor_id` — pedido do cliente, 2026-11-03: "precisamos garantir
+  que o e-mail vai para o gestor do negócio"). Era só a primeira metade, e o
+  efeito era duplo: o gestor que não respondia por ação nenhuma não recebia
+  nada, e as ações **sem responsável** não geravam e-mail para ninguém, porque
+  não há a quem cobrar — justamente as que só o gestor resolve. No bloco do
+  negócio cada ação sai com o nome do responsável, ou com "Sem responsável" em
+  vermelho.
+  **Uma pessoa, uma mensagem.** Quem é gestor e responsável recebe UM e-mail
+  com as duas partes (a carteira dele primeiro, depois o bloco do negócio,
+  separados por um filete), e a ação que está nos dois lugares aparece só na
+  carteira. Não é arrumação: a chave única de `envio_email` é (tipo,
+  referência, usuário), então a segunda mensagem do dia sobrescreveria o
+  registro da primeira. `itens` conta as duas listas.
+  O recorte por `n.gestor_id` **é** a autorização para ver o plano do negócio,
+  e por isso a consulta do bloco não repete a cláusula de escopo da consulta da
+  carteira (aquela existe porque um nome digitado à mão no "Quem?" vazaria o
+  plano de um negócio para alguém de outro). Provas: bateria de e-mail, §7 e §8.
   **A trava vale para o agendamento, não para o botão.** `Avisos::despachar`
   tem `$forcar`, ligado só por `RelatorioController::despacharAvisos`: quem
   clica é um ADMIN que quer o e-mail agora — para conferir o conteúdo, ou porque
