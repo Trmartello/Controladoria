@@ -255,6 +255,24 @@
           <form id="modal-campos"></form>
           <div id="modal-erro" class="alert alert-danger d-none py-2 mt-2" role="alert"></div>
         </div>
+        <!-- A pergunta de saída (pedido do cliente, 2026-11-03): clicar fora
+             do formulário, ou apertar Esc, fechava a janela e levava junto o
+             que estava escrito, sem perguntar nada. Ela mora AQUI, dentro da
+             própria janela, e não numa segunda caixa de diálogo: modal sobre
+             modal no Bootstrap disputa foco e rolagem, e a resposta é sobre o
+             que está nesta tela — ela pertence a esta tela. -->
+        <div id="modal-sair" class="aviso-sair d-none" role="alertdialog"
+          aria-labelledby="modal-sair-texto">
+          <span id="modal-sair-texto">Há alterações não salvas neste formulário.</span>
+          <span class="acoes-sair">
+            <!-- "Salvar e sair", e não "Salvar": o rodapé logo abaixo já tem
+                 um "Salvar", e dois botões com o mesmo rótulo na mesma janela
+                 fazem parar para descobrir qual é qual. -->
+            <button type="button" class="btn btn-verde btn-sm" id="modal-sair-salvar">Salvar e sair</button>
+            <button type="button" class="btn btn-outline-danger btn-sm" id="modal-sair-descartar">Descartar</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="modal-sair-voltar">Continuar editando</button>
+          </span>
+        </div>
         <div class="modal-footer">
           <button class="btn btn-outline-danger btn-sm me-auto d-none" id="modal-extra"></button>
           <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>

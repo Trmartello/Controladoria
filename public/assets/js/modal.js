@@ -69,6 +69,10 @@ const Modal = {
       this.bloqueioPendente = null;
     }
     this.config = { campos, url, aoSalvar, transformar, extra, enviar };
+    // Janela que REABRE sem ter fechado (trocar de item pelo mesmo modal)
+    // começa limpa e sem a pergunta de saída da anterior.
+    this.retrato = null;
+    this.esconderPerguntaDeSaida();
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-erro').classList.add('d-none');
 
@@ -109,7 +113,23 @@ const Modal = {
     this.ligarMudanca(form, aoMudar);
 
     if (!this.bsModal) {
-      this.bsModal = new bootstrap.Modal(document.getElementById('modal-form'));
+      /* `backdrop: 'static'` + `keyboard: false` não existem para TRAVAR a
+       * janela: eles são o que faz o Bootstrap, em vez de fechar no clique
+       * fora e no Esc, disparar `hidePrevented` — o gancho onde a saída passa
+       * a ser decidida aqui (pedido do cliente, 2026-11-03: "clico fora dele,
+       * ele simplesmente fecha o formulário e não salva o conteúdo; deveria
+       * solicitar para que seja salvo ou cancelado").
+       *
+       * Fechar por código (`bsModal.hide()`) continua fechando na hora: a
+       * guarda é só dos dois gestos que se faz sem querer. O × e o Cancelar
+       * também fecham direto — ali a pessoa DISSE que quer sair, e perguntar
+       * de novo é a caixa de diálogo que todo mundo aprende a despachar sem
+       * ler. */
+      this.bsModal = new bootstrap.Modal(document.getElementById('modal-form'),
+        { backdrop: 'static', keyboard: false });
+      document.getElementById('modal-form')
+        .addEventListener('hidePrevented.bs.modal', () => this.tentarFechar());
+      this.ligarPerguntaDeSaida();
       document.getElementById('modal-salvar').addEventListener('click', () => this.salvar());
       document.getElementById('modal-form').addEventListener('submit', (ev) => {
         ev.preventDefault();
@@ -117,6 +137,11 @@ const Modal = {
       });
       document.getElementById('modal-form').addEventListener('hidden.bs.modal', () => {
         this.pararDitado();
+        // A pergunta de saída não sobrevive ao fechamento: deixada aberta, ela
+        // apareceria já de cara na PRÓXIMA janela, falando de um formulário
+        // que não existe mais.
+        this.esconderPerguntaDeSaida();
+        this.retrato = null;
         // Fechar por qualquer caminho — salvar, cancelar, Esc, clique fora —
         // solta o cadeado. Um lugar só: `hidden.bs.modal` é o funil por onde
         // todos eles passam, e amarrar em cada botão deixaria um de fora.
@@ -133,6 +158,12 @@ const Modal = {
         if (this.tamanho.l) this.dimensionar(this.tamanho.l, this.tamanho.a);
         this.moverJanela(this.deslocamento.x, this.deslocamento.y);
         this.aoAparecer(document.getElementById('modal-campos'));
+        // A fotografia do formulário é tirada AQUI, e não logo depois de
+        // pintar: entre uma coisa e outra ainda rodam os ligadores (o combo
+        // que escolhe a primeira opção, a grade que remarca os dias). Tirada
+        // antes, a janela nasceria "suja" e perguntaria a toda saída — e um
+        // aviso que aparece sempre é um aviso que ninguém lê.
+        this.marcarLimpo();
       });
       this.ligarArraste();
       this.ligarRedimensionar();
@@ -1690,6 +1721,89 @@ const Modal = {
     } finally {
       botao.disabled = false;
     }
+  },
+
+  /* ── A pergunta de saída ────────────────────────────────────────────────
+   * Pedido do cliente (2026-11-03): clicar fora do formulário fechava a
+   * janela e levava junto o que estava escrito, calado. Agora o clique fora
+   * (e o Esc) só fecha se não houver nada escrito desde a abertura; havendo,
+   * a janela pergunta.
+   *
+   * "Sujo" é medido pelo que o formulário VALE, não pelo que foi digitado:
+   * a fotografia da abertura contra a leitura de agora. Assim escrever e
+   * apagar de volta não conta como alteração — e um `input` que só repinta
+   * (a máscara da data, o filtro do dinheiro) também não.
+   *
+   * O que escapa: arquivo escolhido mas não enviado. `coletar()` não o lê
+   * (arquivo não viaja em JSON, vai por `arquivosDe`), então a janela de um
+   * anexo só não se considera suja. Cobrir isso seria ler os `input[type=file]`
+   * à parte — cabe quando houver um formulário em que o anexo é o conteúdo.
+   */
+  marcarLimpo() {
+    try {
+      this.retrato = JSON.stringify(this.coletar());
+    } catch {
+      // Formulário que não coleta (campo removido no meio) não trava a saída:
+      // sem retrato, `sujo()` responde não e a janela fecha como antes.
+      this.retrato = null;
+    }
+  },
+
+  sujo() {
+    if (this.retrato === null || this.retrato === undefined) return false;
+    try {
+      return JSON.stringify(this.coletar()) !== this.retrato;
+    } catch {
+      return false;
+    }
+  },
+
+  /** Clique fora ou Esc: fecha se não há o que perder; pergunta se há. */
+  tentarFechar() {
+    if (!this.sujo()) {
+      this.bsModal.hide();
+      return;
+    }
+    const aviso = document.getElementById('modal-sair');
+    if (!aviso) { // documento antigo em cache: não prende a pessoa na janela
+      this.bsModal.hide();
+      return;
+    }
+    aviso.classList.remove('d-none');
+    // O foco vai para "Continuar editando": é a resposta sem perda, e é a que
+    // o Enter apressado deve acertar.
+    document.getElementById('modal-sair-voltar').focus();
+  },
+
+  esconderPerguntaDeSaida() {
+    document.getElementById('modal-sair')?.classList.add('d-none');
+  },
+
+  ligarPerguntaDeSaida() {
+    const aviso = document.getElementById('modal-sair');
+    if (!aviso) return;
+    document.getElementById('modal-sair-salvar').addEventListener('click', () => {
+      this.esconderPerguntaDeSaida();
+      this.salvar();
+    });
+    document.getElementById('modal-sair-descartar').addEventListener('click', () => {
+      this.esconderPerguntaDeSaida();
+      // Descartar é a saída: o retrato some para o `hide` não ser barrado de
+      // novo por nada.
+      this.retrato = null;
+      this.bsModal.hide();
+    });
+    document.getElementById('modal-sair-voltar').addEventListener('click', () => {
+      this.esconderPerguntaDeSaida();
+      // O foco VOLTA para o formulário, e isso não é polidez: o botão que
+      // acabou de ser clicado some (`d-none`), e com ele o foco vai para o
+      // documento — fora da janela. Dali o Esc deixa de ser do modal (o
+      // ouvinte do Bootstrap é no elemento dele) e a pergunta não apareceria
+      // mais. Medido numa sonda: era exatamente o que acontecia.
+      const campos = document.getElementById('modal-campos');
+      const primeiro = campos?.querySelector('input:not([type=hidden]), textarea, select, button');
+      (primeiro || document.getElementById('modal-form')).focus();
+    });
   },
 
   async salvar() {
