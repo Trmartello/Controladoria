@@ -5935,6 +5935,119 @@ async function provasHorizonteIndicador(page, largura) {
 }
 
 /**
+ * O acumulado ATÉ O MÊS, no ano em execução.
+ *
+ * Pedido do cliente (2026-11-03): o cartão comparava o real de JANEIRO com a
+ * meta do ANO INTEIRO — janelas diferentes, e o indicador nascia vermelho por
+ * construção. Agora meta e real são agregados na mesma janela, do mês 1 ao
+ * mês de corte.
+ *
+ * O que esta prova fixa, e que o olho não confere: as três bordas da regra do
+ * corte (ano passado, ano corrente, ano futuro), a agregação respeitada
+ * dentro da janela (soma acumula, último mês NÃO soma) e o ano inteiro
+ * continuando disponível no balão — é ele que impede alguém de ler o
+ * acumulado de janeiro como se fosse a meta do ano.
+ */
+async function provasAcumuladoAteOMes(page, largura) {
+  const l = `[${largura}] Acumulado até o mês:`;
+  // A regra do corte, medida nos três casos pela própria função da tela.
+  const corte = await page.evaluate(() => {
+    const original = SecaoMetas.anoExecucao;
+    const hoje = new Date();
+    const comAno = (ano, ind) => { SecaoMetas.anoExecucao = ano; return SecaoMetas.mesDeCorte(ind); };
+    const r = {
+      mesDeHoje: hoje.getMonth() + 1,
+      passado: comAno(hoje.getFullYear() - 1, null),
+      corrente: comAno(hoje.getFullYear(), null),
+      // Ano futuro: o calendário não o alcança, e o corte é o último mês COM
+      // realizado lançado — por indicador, porque cada um está num mês.
+      futuroComReal: comAno(hoje.getFullYear() + 1, {
+        reais: [{ ano: hoje.getFullYear() + 1, meses: { 1: 12, 3: 13 } }],
+      }),
+      futuroSemReal: comAno(hoje.getFullYear() + 1, { reais: [] }),
+    };
+    SecaoMetas.anoExecucao = original;
+    return r;
+  });
+  t(`${l} ano já encerrado corta no mês 12`, corte.passado === 12, JSON.stringify(corte));
+  t(`${l} ano corrente corta no mês do calendário`,
+    corte.corrente === corte.mesDeHoje, JSON.stringify(corte));
+  t(`${l} ano futuro corta no último mês com realizado`,
+    corte.futuroComReal === 3 && corte.futuroSemReal === null, JSON.stringify(corte));
+
+  // A agregação DENTRO da janela: somar acumula, último mês não soma.
+  const janela = await page.evaluate(() => {
+    const meses = { 1: 10, 2: 20, 3: 30 };
+    return {
+      soma: SecaoMetas.agregarAte(meses, 'SOMA', 2),
+      media: SecaoMetas.agregarAte(meses, 'MEDIA', 2),
+      ultimo: SecaoMetas.agregarAte(meses, 'ULTIMO', 2),
+      somaTudo: SecaoMetas.agregarAte(meses, 'SOMA', 12),
+      // Mês sem valor não entra na conta — nem no denominador da média.
+      mediaComBuraco: SecaoMetas.agregarAte({ 1: 10, 2: null, 3: 30 }, 'MEDIA', 12),
+      vazio: SecaoMetas.agregarAte({}, 'SOMA', 12),
+    };
+  });
+  t(`${l} a janela respeita a agregação do indicador`,
+    janela.soma === 30 && janela.media === 15 && janela.ultimo === 20 && janela.somaTudo === 60,
+    JSON.stringify(janela));
+  t(`${l} mês em branco não entra na conta`,
+    janela.mediaComBuraco === 20 && janela.vazio === null, JSON.stringify(janela));
+
+  // E a tela: meta de doze meses, realizado só em janeiro — o caso da imagem
+  // do cliente. A comparação tem de ser contra a meta DE JANEIRO.
+  const ids = await page.evaluate(async () => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    const ano = Number(d.ano_execucao);
+    const i = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Indicador acumulado QA', unidade: 'Unidade',
+      sentido: 'MAIOR_MELHOR', agregacao: 'ULTIMO', metrica_ancora: 0,
+    });
+    for (let m = 1; m <= 12; m += 1) {
+      await App.api(`/api/indicadores/${i.id}/valores`, {
+        planejamento_id: 1, tipo: 'META', mes: m, valores: { [ano]: m <= 4 ? 14 : 16 },
+      });
+    }
+    await App.api(`/api/indicadores/${i.id}/valores`, {
+      planejamento_id: 1, tipo: 'REAL', mes: 1, valores: { [ano]: 12 },
+    });
+    App.mostrarSecao('metas');
+    return { id: i.id, ano };
+  });
+  const pintou = await esperar(page, `!!document.querySelector('[data-celula-ind="${ids.id}"]')`, 15000);
+  t(`${l} a tabela pinta com o indicador da prova`, pintou);
+  if (pintou) {
+    const lido = await page.evaluate((x) => {
+      const td = (tipo) => document.querySelector(
+        `[data-celula-ind="${x.id}"][data-tipo="${tipo}"][data-ano="${x.ano}"][data-mes="0"]`);
+      const par = SecaoMetas.metaReal(
+        (SecaoMetas.dados.indicadores || []).find((i) => Number(i.id) === x.id), x.ano);
+      return {
+        metaCelula: td('META')?.textContent.trim(),
+        realCelula: td('REAL')?.textContent.trim(),
+        dicaMeta: td('META')?.title || '',
+        corte: par.corte,
+        metaJanela: par.meta?.valor ?? null,
+        metaAno: par.meta?.valorAno ?? null,
+        atingiu: par.atingiu,
+      };
+    }, ids);
+    // Janeiro: real 12 contra meta 14 — e NÃO contra 16, a de dezembro.
+    t(`${l} a comparação usa a meta da mesma janela`,
+      lido.metaJanela === 14 && lido.metaAno === 16 && lido.atingiu === false,
+      JSON.stringify(lido));
+    t(`${l} e a coluna do ano mostra o acumulado`,
+      lido.metaCelula === '14' && lido.realCelula === '12', JSON.stringify(lido));
+    // O ano inteiro não se perde: é o que impede ler 14 como meta do ano.
+    t(`${l} com o ano inteiro guardado no balão`,
+      /No ano inteiro: 16/.test(lido.dicaMeta), JSON.stringify(lido.dicaMeta));
+  }
+  await page.evaluate(async (x) => {
+    await App.api(`/api/indicadores/${x.id}/excluir`, { planejamento_id: 1 });
+  }, ids);
+}
+
+/**
  * O "⟳ Revisar" não alcança o ano em execução.
  *
  * Achado do cliente olhando a tela pronta (2026-10-26): o formulário de revisão
@@ -6438,6 +6551,7 @@ async function provasJanelaModal(page, largura) {
   await provasLugarGuardado(page, 'desktop');
   await provasCelulaMetas(page, 'desktop');
   await provasHorizonteIndicador(page, 'desktop');
+  await provasAcumuladoAteOMes(page, 'desktop');
   await provasMesAMes(page, 'desktop');
   await provasAvisoAgregacao(page, 'desktop');
   await provasRevisarSemAnoAtual(page, 'desktop');
@@ -6481,6 +6595,7 @@ async function provasJanelaModal(page, largura) {
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');
   await provasHorizonteIndicador(pageM, 'celular');
+  await provasAcumuladoAteOMes(pageM, 'celular');
   await provasMesAMes(pageM, 'celular');
   await provasAvisoAgregacao(pageM, 'celular');
   await provasRevisarSemAnoAtual(pageM, 'celular');

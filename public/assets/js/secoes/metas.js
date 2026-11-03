@@ -84,6 +84,74 @@ const SecaoMetas = {
       ${this.ROTULO_AGREGACAO[sugerida]} — confira no cadastro (✎).">revisar o ano</span>`;
   },
 
+  /* ── O acumulado ATÉ O MÊS DE CORTE ───────────────────────────────────────
+   * Pedido do cliente (2026-11-03), olhando um indicador com realizado só em
+   * janeiro: o cartão dizia «12 (2027) / meta 16» — comparava o real de
+   * JANEIRO com a meta do ANO INTEIRO (16 é dezembro, pela regra "último
+   * mês"). Janelas diferentes, e o indicador nasce vermelho em janeiro por
+   * construção, não por desempenho.
+   *
+   * Agora, no ano em execução, meta e real são agregados na MESMA janela: do
+   * mês 1 até o mês de corte. A regra de agregação continua sendo a do
+   * indicador — soma acumula, média é a média do período, último é o último
+   * mês da janela —, e por isso "acumular" não é sempre somar: para um saldo
+   * (estoque, dívida), o acumulado até março é o saldo DE março.
+   *
+   * O corte é o MÊS DO CALENDÁRIO (escolha do cliente), com duas bordas que o
+   * calendário sozinho não resolve:
+   *  - ano em execução já encerrado (passado): o ano inteiro, mês 12 — não faz
+   *    sentido cortar 2026 em novembro quando o plano já executa 2027;
+   *  - ano em execução ainda no FUTURO (hoje é 2026 e o ciclo executa 2027):
+   *    não há mês de calendário dentro dele, e cortar no mês 11 mostraria uma
+   *    meta acumulada de onze meses contra um real de um. Aí o corte é o
+   *    último mês COM REALIZADO lançado, que é o que faz a comparação existir.
+   *    É o caso do cliente hoje, e a tela DIZ qual mês está no corte.
+   */
+  mesDeCorte(ind) {
+    if (!this.anoExecucao) return null;
+    const hoje = new Date();
+    if (this.anoExecucao < hoje.getFullYear()) return 12;
+    if (this.anoExecucao === hoje.getFullYear()) return hoje.getMonth() + 1;
+    // Ano em execução no futuro: vale o último mês com realizado.
+    const real = (ind?.reais || []).find((r) => Number(r.ano) === this.anoExecucao);
+    const meses = Object.keys(real?.meses || {}).map(Number).filter((m) => m >= 1);
+    return meses.length ? Math.max(...meses) : null;
+  },
+
+  /**
+   * Agrega `{mes: valor}` até o mês de corte, pela regra do indicador.
+   *
+   * Espelha `Metas::agregar` do servidor — mês sem valor não entra em conta
+   * nenhuma, nem no numerador nem no denominador, senão a média de um
+   * trimestre lançado sairia dividida por doze. Mantê-las iguais importa: a
+   * do servidor fecha o ano, esta mostra o caminho até aqui, e duas respostas
+   * diferentes para a mesma pergunta é o pior resultado possível.
+   */
+  agregarAte(meses, agregacao, corte) {
+    const pares = Object.entries(meses || {})
+      .map(([m, v]) => [Number(m), v])
+      .filter(([m, v]) => m >= 1 && m <= corte && v !== null && v !== undefined && v !== '');
+    if (!pares.length) return null;
+    const valores = pares.map(([, v]) => Number(v));
+    if (agregacao === 'MEDIA') return valores.reduce((a, b) => a + b, 0) / valores.length;
+    if (agregacao === 'ULTIMO') return pares.sort((a, b) => a[0] - b[0]).pop()[1];
+    return valores.reduce((a, b) => a + b, 0);
+  },
+
+  /**
+   * O valor de uma entrada (meta ou real) de um ano, acumulado até o corte.
+   *
+   * Fora do ano em execução — e quando não há corte — vale o valor do ano, que
+   * é o que o servidor já calculou: aqueles anos não têm meses.
+   */
+  valorAte(entrada, agregacao, corte) {
+    if (!entrada) return null;
+    if (!corte || !entrada.meses || !Object.keys(entrada.meses).length) {
+      return entrada.valor ?? null;
+    }
+    return this.agregarAte(entrada.meses, agregacao, corte);
+  },
+
   fmt(v) {
     return v === null || v === undefined || v === ''
       ? '—'
@@ -116,14 +184,29 @@ const SecaoMetas = {
     const ano = anoRef
       ? Number(anoRef)
       : ((reais[reais.length - 1] || {}).ano ?? (metas[0] || {}).ano ?? null);
-    const real = reais.find((r) => r.ano == ano) || null;
-    const meta = metas.find((m) => m.ano == ano) || null;
-    const atingiu = real && meta
+    const realAno = reais.find((r) => r.ano == ano) || null;
+    const metaAno = metas.find((m) => m.ano == ano) || null;
+    // No ano em execução a comparação é na MESMA janela: do mês 1 ao mês de
+    // corte, para os dois lados (pedido do cliente, 2026-11-03). Nos demais
+    // anos não há meses, e `valorAte` devolve o valor do ano.
+    const corte = ano === this.anoExecucao ? this.mesDeCorte(i) : null;
+    const comJanela = (entrada) => (entrada === null ? null : {
+      ...entrada,
+      valor: this.valorAte(entrada, i.agregacao, corte),
+      // O valor do ano INTEIRO não se perde: ele é o que o balão explica, para
+      // ninguém ler o acumulado de janeiro como se fosse a meta do ano.
+      valorAno: entrada.valor ?? null,
+    });
+    const real = comJanela(realAno);
+    const meta = comJanela(metaAno);
+    const comparavel = real && meta
+      && real.valor !== null && meta.valor !== null;
+    const atingiu = comparavel
       ? (i.sentido === 'MENOR_MELHOR'
           ? Number(real.valor) <= Number(meta.valor)
           : Number(real.valor) >= Number(meta.valor))
       : null;
-    return { real, meta, ano, atingiu };
+    return { real, meta, ano, atingiu, corte };
   },
 
   /**
@@ -148,8 +231,13 @@ const SecaoMetas = {
    */
   celula(ind, tipo, ano, entrada, mes = 0) {
     const anual = mes === 0;
+    // No ano em execução a célula do ano mostra o ACUMULADO até o mês de
+    // corte (pedido do cliente, 2026-11-03) — a mesma janela da meta logo
+    // acima, para as duas linhas se compararem. Os meses continuam todos ali,
+    // e o balão diz o ano inteiro.
+    const corte = anual && ano === this.anoExecucao ? this.mesDeCorte(ind) : null;
     const bruto = anual
-      ? (entrada ? entrada.valor : null)
+      ? (corte ? this.valorAte(entrada, ind.agregacao, corte) : (entrada ? entrada.valor : null))
       : (entrada && entrada.meses ? entrada.meses[mes] ?? null : null);
     // **Um caminho de lançamento por ano** (decisão do cliente): o ano em
     // execução é lançado MÊS A MÊS e a célula do ano mostra o total, sem campo;
@@ -163,8 +251,16 @@ const SecaoMetas = {
     // quando um mês muda.
     const marcas = `data-celula-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="${mes}"`;
     if (!App.podeEditar() || derivada) {
+      const cheio = entrada ? entrada.valor : null;
       const dica = derivada
-        ? ' title="Total dos meses deste ano — para mudar, lance no mês"' : '';
+        ? ` title="${Modal.esc(corte
+          ? `Acumulado de janeiro a ${MESES_CURTOS[corte - 1]}, pela regra `
+            + `"${this.ROTULO_AGREGACAO[ind.agregacao] || this.ROTULO_AGREGACAO.SOMA}"`
+            + (cheio !== null && cheio !== undefined
+              ? `. No ano inteiro: ${this.fmt(cheio)}` : '')
+            + '. Para mudar, lance no mês.'
+          : 'Total dos meses deste ano — para mudar, lance no mês')}"`
+        : '';
       return `<td class="${classe}" ${marcas}${dica}>${this.fmt(bruto)}</td>`;
     }
     const quando = anual ? ano : `${MESES_CURTOS[mes - 1]}/${ano}`;
@@ -203,10 +299,18 @@ const SecaoMetas = {
       return `<th class="col-ano"><button type="button" class="btn-ano" data-abrir-ano="${ano}"
         title="Abrir ${ano} mês a mês" aria-expanded="false">${ano} <span aria-hidden="true">▸</span></button></th>`;
     }
+    // A coluna do total do ano em execução leva o MÊS DE CORTE no rótulo: ela
+    // mostra o acumulado até ali, e sem dizê-lo o número se lê como o do ano
+    // inteiro. O corte não depende do indicador aqui — só a borda do ano
+    // futuro depende, e nela o rótulo fica sem o sufixo, porque cada linha
+    // pode estar num mês diferente.
+    const corte = this.mesDeCorte(null);
+    const ate = corte ? ` · até ${MESES_CURTOS[corte - 1]}` : '';
     return MESES_CURTOS.map((m) => `<th class="col-mes">${m}</th>`).join('')
       + `<th class="col-ano col-total"><button type="button" class="btn-ano" data-fechar-ano="${ano}"
-        title="Recolher os meses de ${ano} (o lançamento continua sendo no mês)"
-        aria-expanded="true">${ano} <span aria-hidden="true">▾</span></button></th>`;
+        title="Recolher os meses de ${ano} (o lançamento continua sendo no mês).${ate
+          ? ` A coluna mostra o acumulado até ${MESES_CURTOS[corte - 1]}.` : ''}"
+        aria-expanded="true">${ano}${ate} <span aria-hidden="true">▾</span></button></th>`;
   },
 
   /**
@@ -244,11 +348,22 @@ const SecaoMetas = {
     return horizontes.map((h) => {
       const ancoras = indicadores.filter((i) => Number(i.metrica_ancora) && i.horizonte_id == h.id);
       const itens = ancoras.map((i) => {
-        const { real, meta, atingiu } = this.metaReal(i, this.anoExecucao);
+        const { real, meta, atingiu, corte } = this.metaReal(i, this.anoExecucao);
+        // O mês do corte vai À VISTA, junto do ano: sem ele, "12 / meta 14"
+        // se lê como o ano inteiro, e 14 não é a meta do ano — é a dele até
+        // aqui. O balão guarda a meta cheia.
+        const janela = corte ? `${this.anoExecucao} · até ${MESES_CURTOS[corte - 1]}` : real?.ano;
+        const dica = corte
+          ? `Acumulado de janeiro a ${MESES_CURTOS[corte - 1]} de ${this.anoExecucao}, `
+            + `pela regra "${this.ROTULO_AGREGACAO[i.agregacao] || this.ROTULO_AGREGACAO.SOMA}".`
+            + (meta?.valorAno !== null && meta?.valorAno !== undefined
+              ? ` Meta do ano inteiro: ${this.fmt(meta.valorAno)}.` : '')
+          : '';
         return `<div class="d-flex justify-content-between align-items-baseline gap-2 mt-1">
           <span class="small">${Modal.esc(i.nome)} <span class="text-muted">(${Modal.esc(i.unidade)})</span></span>
-          <span class="text-nowrap small ${atingiu === null ? 'text-muted' : atingiu ? 'text-success fw-bold' : 'text-danger fw-bold'}">
-            ${real ? `${this.fmt(real.valor)} <span class="text-muted">(${real.ano})</span>` : 'sem real'}
+          <span class="text-nowrap small ${atingiu === null ? 'text-muted' : atingiu ? 'text-success fw-bold' : 'text-danger fw-bold'}"
+            ${dica ? `title="${Modal.esc(dica)}"` : ''}>
+            ${real ? `${this.fmt(real.valor)} <span class="text-muted">(${Modal.esc(String(janela))})</span>` : 'sem real'}
             ${meta ? ` / meta ${this.fmt(meta.valor)}` : ''}
           </span>
         </div>`;
@@ -428,7 +543,9 @@ const SecaoMetas = {
       <p class="text-muted">Métricas-âncora dão o foco de cada horizonte; a tabela plurianual acompanha
       meta × real de ${ciclo.ano_base} a ${ciclo.ano_fim}.
       ${this.anoExecucao ? `<strong>${this.anoExecucao}</strong> é o ano em execução: lança-se mês a mês e
-        o ano é o total dos meses. Nos demais anos, o lançamento é o valor anual.` : ''}${App.podeEditar()
+        a coluna do ano traz o <strong>acumulado até o mês atual</strong> — meta e real na mesma janela,
+        pela regra de cada indicador (soma, média ou último mês). O balão da célula mostra o ano inteiro.
+        Nos demais anos, o lançamento é o valor anual.` : ''}${App.podeEditar()
         ? ' Clique no número para lançar ou corrigir; <strong>⟳ Revisar</strong> grava uma versão nova da meta, preservando a anterior.'
         : ' Revisões de meta preservam as versões anteriores.'}</p>
       <div class="alert alert-danger d-none" data-aviso-metas role="alert"></div>

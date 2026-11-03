@@ -804,6 +804,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     Funcionava, mas pedia que alguém conciliasse dois números do mesmo ano na
     mesma linha. **Não reabra isso sem o cliente**: a regra atual é dele, e é a
     que a tela e as duas baterias assumem.
+  - **Meta × real se comparam na MESMA janela** (2026-11-03, pedido do
+    cliente: "preciso ter a possibilidade de acumular até o mês atual"). No ano
+    em execução, o cartão e a coluna do ano mostram o acumulado **até o mês do
+    calendário** — meta e realizado pela mesma regra de agregação do indicador
+    (`SecaoMetas.mesDeCorte`/`agregarAte`, espelho de `Metas::agregar`). Sem
+    isso a tela comparava doze meses de meta contra um de realizado e dizia
+    "12 de 16" em janeiro: atraso que não existe, no número que o Conselho lê
+    primeiro. O corte é o mês de HOJE (escolha do cliente entre as duas
+    opções), não o último mês lançado — lançar com atraso não pode encolher a
+    meta. Ano passado corta em dezembro; ano futuro, no último mês lançado.
+    O valor do ano inteiro não some: vai no `title` da célula e do cartão
+    ("Meta do ano inteiro: 16"), e o cabeçalho da coluna diz "· até <mês>" —
+    um acumulado sem dizer até quando é o mesmo erro, do outro lado.
   O **mês é RECUSADO fora de 0–12** (`Mês inválido`), como o texto que não é
   número: um 13 encaixado em dezembro gravaria no lugar errado sem ninguém ver.
   Limpar um valor apaga só o **grão enviado** — limpar o anual não leva junto os
