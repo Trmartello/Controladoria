@@ -37,15 +37,22 @@ const CARGAS = [
     'porter'  => 'conteudo_porter_macro.php',
     'swot'    => 'conteudo_swot_macro.php',
     'cascata' => 'conteudo_cascata_h1.php',
-    // O diagnóstico de 2027 reconstruído do dossiê de 04/09/2026. Estas cinco
-    // NÃO estão na lista do migrate, ao contrário das de cima: elas repõem o
-    // que a cooperativa escreveu, e um deploy não pode repovoar diagnóstico
-    // sozinho — quem decide repor é quem está operando a recuperação.
+    // O diagnóstico de 2027 reconstruído do dossiê de 04/09/2026. Nasceram só
+    // aqui, por serem reposição do que a cooperativa escreveu e não conteúdo
+    // curado — e passaram à lista do migrate em 2026-09-21, quando o Console
+    // do provedor se mostrou inalcançável na rede da cooperativa.
     'cenario2027' => 'conteudo_cenario_2027.php',
     'pestel2027'  => 'conteudo_pestel_2027.php',
     'porter2027'  => 'conteudo_porter_2027.php',
     'swot2027'    => 'conteudo_swot_2027.php',
     'cascata2027' => 'conteudo_cascata_h1_2027.php',
+    // Diagnóstico do NEGÓCIO Pecuária sobre a DRE Gerencial (2026-11-04).
+    // Também estão na lista do migrate. Pela CLI, o `plan` a informar é o
+    // planejamento da PECUÁRIA — o corporativo receberia texto que não é dele.
+    'cenarioPecuaria' => 'conteudo_cenario_pecuaria_2027.php',
+    'pestelPecuaria'  => 'conteudo_pestel_pecuaria_2027.php',
+    'porterPecuaria'  => 'conteudo_porter_pecuaria_2027.php',
+    'swotPecuaria'    => 'conteudo_swot_pecuaria_2027.php',
 ];
 
 /** str_pad conta bytes: "2027–2035" tem travessão e desalinharia a coluna. */

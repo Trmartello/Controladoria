@@ -80,6 +80,77 @@ class CargaConteudo
     }
 
     /**
+     * Os planejamentos que uma carga alcança: o corporativo, ou o de UM
+     * NEGÓCIO quando ela declara `negocio` (o `cod_negocio` do cadastro).
+     *
+     * A carga de negócio nasceu com o diagnóstico da Pecuária (2026-11-04):
+     * análise macro é leitura da cooperativa inteira e vai no corporativo,
+     * mas a leitura de um negócio é dele — no corporativo ela empurraria para
+     * baixo o que vale para todos, e nos outros onze negócios seria texto que
+     * não é sobre eles.
+     */
+    public static function planosDaCarga(PDO $pdo, array $conteudo): array
+    {
+        $ano = isset($conteudo['ano']) ? (int)$conteudo['ano'] : null;
+        return isset($conteudo['negocio'])
+            ? self::planosDoNegocio($pdo, (string)$conteudo['negocio'], $ano)
+            : self::planosCorporativos($pdo, $ano);
+    }
+
+    /**
+     * Planejamentos de um negócio cujo ciclo cobre o ano da carga — CRIANDO o
+     * que faltar.
+     *
+     * Criar não é liberdade que a carga toma: o planejamento de um negócio
+     * nasce quando alguém escolhe aquele contexto na tela
+     * (`PlanejamentoController::resolver`), e é a MESMA linha, com as mesmas
+     * três colunas. Sem isso a carga de um negócio que ninguém abriu ainda
+     * gravaria zero registro e seria marcada como aplicada — o pior desfecho
+     * possível, porque não há erro em lugar nenhum e o texto simplesmente
+     * nunca aparece.
+     *
+     * Negócio inexistente no cadastro levanta exceção em vez de devolver
+     * lista vazia: o migrate trata `RuntimeException` adiando a carga para o
+     * próximo deploy, que é o que se quer quando alguém renomeou ou desativou
+     * o cadastro — e não marcar a chave como se a carga tivesse rodado.
+     */
+    public static function planosDoNegocio(PDO $pdo, string $cod, ?int $ano): array
+    {
+        $st = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ? AND ativo = 1');
+        $st->execute([$cod]);
+        $negocioId = (int)$st->fetchColumn();
+        if (!$negocioId) {
+            throw new \RuntimeException("negócio de código \"{$cod}\" não existe (ou está inativo) no cadastro");
+        }
+
+        if ($ano === null) {
+            $ciclos = $pdo->query('SELECT id FROM ciclo')->fetchAll(PDO::FETCH_COLUMN);
+        } else {
+            $st = $pdo->prepare('SELECT id FROM ciclo WHERE ? BETWEEN ano_base AND ano_fim');
+            $st->execute([$ano]);
+            $ciclos = $st->fetchAll(PDO::FETCH_COLUMN);
+        }
+
+        $busca = $pdo->prepare(
+            "SELECT id FROM planejamento WHERE ciclo_id = ? AND escopo = 'NEGOCIO' AND negocio_id = ?"
+        );
+        $cria = $pdo->prepare(
+            "INSERT INTO planejamento (ciclo_id, escopo, negocio_id) VALUES (?, 'NEGOCIO', ?)"
+        );
+        $planos = [];
+        foreach ($ciclos as $cicloId) {
+            $busca->execute([(int)$cicloId, $negocioId]);
+            $planoId = (int)$busca->fetchColumn();
+            if (!$planoId) {
+                $cria->execute([(int)$cicloId, $negocioId]);
+                $planoId = (int)$pdo->lastInsertId();
+            }
+            $planos[] = $planoId;
+        }
+        return $planos;
+    }
+
+    /**
      * Aplica uma carga a um planejamento e devolve quantos registros entraram.
      *
      * `$conteudo['destino']` decide a tabela: CENARIO grava em `cenario_item`
