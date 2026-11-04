@@ -1750,7 +1750,10 @@ async function provasGut(page) {
   t('[desktop] o aviso "mais campos abaixo" não existe mais',
     dobra.aviso === false && dobra.pilula === false, JSON.stringify(dobra));
   t('[desktop] e o corpo do modal continua rolando', dobra.rola, JSON.stringify(dobra));
-  await page.keyboard.press('Escape');
+  // Fecha pelo helper da casa, e não por Esc: desde 2026-11-03 o Esc num
+  // formulário com algo escrito PERGUNTA em vez de fechar (pedido do cliente),
+  // e a prova seguinte encontraria a janela ainda de pé tapando a tela.
+  await fecharModal(page);
 }
 
 /**
@@ -2004,8 +2007,9 @@ async function provasExcluirUsuario(page) {
           const el = document.getElementById('campo-transferir_para');
           return !el || el.offsetParent === null;
         }));
-      await page.keyboard.press('Escape');
-      await esperar(page, "!document.querySelector('.modal.show')", 4000);
+      // Pelo helper, não por Esc: o formulário está SUJO (a prova acabou de
+      // escolher "Sem responsável") e o Esc agora pergunta em vez de fechar.
+      await fecharModal(page);
     }
   }
 
@@ -2023,8 +2027,7 @@ async function provasExcluirUsuario(page) {
     });
     t('[desktop] O formulário seguinte volta a "Salvar", em verde',
       rodape.texto === 'Salvar' && rodape.verde && !rodape.perigo, JSON.stringify(rodape));
-    await page.keyboard.press('Escape');
-    await esperar(page, "!document.querySelector('.modal.show')", 4000);
+    await fecharModal(page);
   }
 
   await page.evaluate(async (ids) => {
@@ -4636,6 +4639,31 @@ async function provasMoverEntreTabelas(page) {
 async function provasImpactoNegocio(page) {
   const l = '[desktop] Impacto por Negócio:';
 
+  // A tela SAIU DO MENU a pedido do cliente (2026-11-03), e continua de pé:
+  // a rota, a tabela e o que já foi lançado nela não foram tocados. As duas
+  // provas abaixo guardam as duas metades disso — o item fora do menu, e a
+  // tela ainda abrindo sem erro.
+  //
+  // A segunda não é zelo: `mostrarSecao` acendia o item do menu sem conferir
+  // se ele existe, e tirar o <li> fazia a navegação estourar com um erro de
+  // script — a tela anterior sumia e nada aparecia no lugar.
+  const fora = await page.evaluate(() => ({
+    noMenu: !!document.querySelector('#nav-secoes [data-secao="impacto"]'),
+    naTela: !!document.getElementById('secao-impacto'),
+  }));
+  t(`${l} o item saiu do menu`, !fora.noMenu && fora.naTela, JSON.stringify(fora));
+
+  const abriu = await page.evaluate(() => {
+    try {
+      App.mostrarSecao('impacto');
+      return { ok: App.secaoAtiva === 'impacto', erro: null };
+    } catch (e) {
+      return { ok: false, erro: String(e && e.message) };
+    }
+  });
+  t(`${l} e a tela ainda abre, sem item de menu para acender`,
+    abriu.ok && !abriu.erro, JSON.stringify(abriu));
+
   const massa = await page.evaluate(async () => {
     const ciclo = App.contexto.cicloId;
     const ano = Diag.ano();
@@ -5665,10 +5693,15 @@ async function provasMenuRecolhido(page, largura) {
   t(`[${largura}] Execução, Capital e Gestão deixaram de existir`,
     !arranjo.topicos.some((g) => ['execucao', 'capital', 'gestao'].includes(g)),
     JSON.stringify(arranjo.topicos));
-  // Nenhuma tela ficou órfã: as mesmas 18 do mapa continuam alcançáveis pelo
-  // menu (as três soltas no topo entram na conta).
+  // Nenhuma tela ficou órfã POR DESCUIDO no reagrupamento: as do mapa
+  // continuam alcançáveis pelo menu (as três soltas no topo entram na conta).
+  // São 17 desde 2026-11-03, quando o cliente pediu o "Impacto por Negócio"
+  // fora do menu — a conta é de tela perdida sem querer, e a que sai por
+  // decisão sai nomeada, aqui e na prova dedicada a ela.
+  const FORA_DO_MENU = ['impacto'];
   t(`[${largura}] nenhuma seção se perdeu no reagrupamento`,
-    arranjo.secoes.length === 18, JSON.stringify(arranjo.secoes));
+    arranjo.secoes.length === 17 && !arranjo.secoes.some((s) => FORA_DO_MENU.includes(s)),
+    JSON.stringify(arranjo.secoes));
 
   // Navegar para uma tela de tópico fechado abre o tópico — pelo caminho que
   // o resto do sistema usa (App.mostrarSecao), não só pelo clique no menu.
@@ -6682,6 +6715,114 @@ async function provasJanelaModal(page, largura) {
 
   await page.dblclick('#modal-form [data-arrastar] .modal-title');
   await fecharModal(page);
+
+}
+
+/**
+ * A pergunta de saída do formulário (pedido do cliente, 2026-11-03).
+ *
+ * Função PRÓPRIA, e não o fim de `provasJanelaModal`: aquela sai cedo no
+ * celular (lá não se arrasta nem redimensiona janela) e levava estas provas
+ * embora justo onde o gesto é mais fácil de fazer sem querer — tocar fora do
+ * formulário é o "clicar fora" do telefone.
+ */
+async function provasSaidaDoModal(page, largura) {
+  const l = `[${largura}] Janela do formulário:`;
+
+  const abrir = async () => {
+    await page.evaluate(() => App.mostrarSecao('cenario'));
+    await esperar(page, "!!document.querySelector('#btn-novo-cenario')", 15000);
+    await page.click('#btn-novo-cenario');
+    await esperar(page, "document.getElementById('modal-form').classList.contains('show')");
+    return esperar(page, "!!document.querySelector('#modal-campos textarea')");
+  };
+
+  // ── A pergunta de saída (pedido do cliente, 2026-11-03) ────────────────
+  // "Quando estou preenchendo e clico fora dele, ele simplesmente fecha o
+  // formulário e não salva o conteúdo. Ele deveria solicitar para que seja
+  // salvo ou cancelado."
+  //
+  // As provas medem as quatro metades disto, e a primeira é a que impede o
+  // remédio de virar doença: formulário VAZIO continua fechando no clique
+  // fora, como sempre fez. Uma janela que pergunta toda vez é uma janela que
+  // se aprende a despachar sem ler.
+  const estadoSaida = () => page.evaluate(() => ({
+    aberto: document.getElementById('modal-form').classList.contains('show'),
+    perguntando: !document.getElementById('modal-sair').classList.contains('d-none'),
+    sujo: Modal.sujo(),
+  }));
+  // O ponto de "fora" é CALCULADO, não escolhido: no celular a janela ocupa a
+  // tela inteira menos uma frestinha, e um x,y fixo acertava o formulário em
+  // vez do fundo — a prova passaria a medir um clique dentro dele. Pega-se a
+  // borda da janela e clica-se ao lado dela (computador) ou na fresta de cima
+  // (celular).
+  const clicarFora = async () => {
+    const p = await page.evaluate(() => {
+      const r = document.querySelector('#modal-form .modal-content').getBoundingClientRect();
+      const meio = Math.round(r.left + r.width / 2);
+      if (r.left > 20) return { x: 8, y: Math.round(r.top + r.height / 2) };
+      if (r.top > 3) return { x: meio, y: Math.max(1, Math.round(r.top / 2)) };
+      return { x: meio, y: Math.min(window.innerHeight - 2, Math.round(r.bottom + 2)) };
+    });
+    await page.mouse.click(p.x, p.y);
+    await new Promise((r) => setTimeout(r, 500));
+  };
+
+  await abrir();
+  await clicarFora();
+  const limpo = await estadoSaida();
+  t(`${l} sem nada escrito, clicar fora fecha como sempre`,
+    !limpo.aberto && !limpo.perguntando, JSON.stringify(limpo));
+
+  await abrir();
+  await page.evaluate(() => {
+    const t2 = document.querySelector('#modal-campos textarea');
+    t2.value = 'Texto que não pode sumir';
+    t2.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await clicarFora();
+  const pergunta = await estadoSaida();
+  t(`${l} com texto escrito, clicar fora PERGUNTA em vez de fechar`,
+    pergunta.aberto && pergunta.perguntando && pergunta.sujo, JSON.stringify(pergunta));
+
+  await page.click('#modal-sair-voltar');
+  await new Promise((r) => setTimeout(r, 300));
+  const voltouTexto = await page.evaluate(() =>
+    document.querySelector('#modal-campos textarea').value);
+  const depoisDeVoltar = await estadoSaida();
+  t(`${l} "Continuar editando" devolve o formulário com o texto intacto`,
+    depoisDeVoltar.aberto && !depoisDeVoltar.perguntando
+    && voltouTexto === 'Texto que não pode sumir', JSON.stringify({ ...depoisDeVoltar, voltouTexto }));
+
+  // O Esc entra pelo mesmo caminho. Ele só chega ao modal com o foco DENTRO
+  // dele — por isso "Continuar editando" devolve o foco ao formulário, e por
+  // isso esta prova vem logo depois dela: sem aquilo, o Esc aqui não faria
+  // nada e a pessoa fecharia a janela na segunda tentativa, perdendo tudo.
+  await page.keyboard.press('Escape');
+  await new Promise((r) => setTimeout(r, 400));
+  const porEsc = await estadoSaida();
+  t(`${l} o Esc também pergunta`,
+    porEsc.aberto && porEsc.perguntando, JSON.stringify(porEsc));
+
+  await page.click('#modal-sair-descartar');
+  await new Promise((r) => setTimeout(r, 500));
+  const descartou = await estadoSaida();
+  t(`${l} "Descartar" fecha de verdade`,
+    !descartou.aberto && !descartou.perguntando, JSON.stringify(descartou));
+
+  // Fechar POR CÓDIGO não é barrado: é o caminho do próprio sistema (e desta
+  // bateria), e travá-lo deixaria janela presa na tela depois de salvar.
+  await abrir();
+  await page.evaluate(() => {
+    const t2 = document.querySelector('#modal-campos textarea');
+    t2.value = 'Outro texto';
+    t2.dispatchEvent(new Event('input', { bubbles: true }));
+    Modal.bsModal.hide();
+  });
+  await new Promise((r) => setTimeout(r, 500));
+  const porCodigo = await estadoSaida();
+  t(`${l} fechar por código continua fechando na hora`,
+    !porCodigo.aberto && !porCodigo.perguntando, JSON.stringify(porCodigo));
 }
 
 (async () => {
@@ -6725,6 +6866,7 @@ async function provasJanelaModal(page, largura) {
   await provasMoverEntreTabelas(page);
   await provasTratarForaDaOrdem(page, 'desktop');
   await provasJanelaModal(page, 'desktop');
+  await provasSaidaDoModal(page, 'desktop');
   await provasMenuRecolhido(page, 'desktop');
   await provasLugarGuardado(page, 'desktop');
   await provasCelulaMetas(page, 'desktop');
@@ -6769,6 +6911,7 @@ async function provasJanelaModal(page, largura) {
   await noAnoPadrao(pageM);
   await provasTratarForaDaOrdem(pageM, 'celular');
   await provasJanelaModal(pageM, 'celular');
+  await provasSaidaDoModal(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');

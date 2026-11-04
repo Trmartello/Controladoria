@@ -120,10 +120,14 @@
             <li><a class="nav-link" href="#porter" data-secao="porter">Porter — 5 Forças</a></li>
             <li><a class="nav-link" href="#swot" data-secao="swot">SWOT</a></li>
             <li><a class="nav-link" href="#gut" data-secao="gut">Matriz GUT</a></li>
-            <!-- Depois do GUT, e não entre Porter e SWOT: a linha da matriz é a SWOT
-                 corporativa priorizada pelo GUT, então o dado de entrada dela só
-                 existe depois dele. -->
-            <li><a class="nav-link" href="#impacto" data-secao="impacto">Impacto por Negócio</a></li>
+            <!-- "Impacto por Negócio" SAIU do menu a pedido do cliente
+                 (2026-11-03). A tela, a rota `/api/impacto` e a tabela
+                 `impacto_negocio` continuam de pé, com o que já foi lançado:
+                 tirar do menu é decisão de método; apagar o que foi escrito
+                 seria outra, e não foi pedida. Para devolvê-la ao menu basta
+                 um <li> aqui, depois do GUT — a linha da matriz é a SWOT
+                 corporativa priorizada por ele, então o dado de entrada dela
+                 só existe depois do GUT. -->
             <li><a class="nav-link" href="#cruzamentos" data-secao="cruzamentos">Cruzamentos</a></li>
           </ul>
         </li>
@@ -250,6 +254,24 @@
           <div id="modal-cadeado" class="d-none" role="status"></div>
           <form id="modal-campos"></form>
           <div id="modal-erro" class="alert alert-danger d-none py-2 mt-2" role="alert"></div>
+        </div>
+        <!-- A pergunta de saída (pedido do cliente, 2026-11-03): clicar fora
+             do formulário, ou apertar Esc, fechava a janela e levava junto o
+             que estava escrito, sem perguntar nada. Ela mora AQUI, dentro da
+             própria janela, e não numa segunda caixa de diálogo: modal sobre
+             modal no Bootstrap disputa foco e rolagem, e a resposta é sobre o
+             que está nesta tela — ela pertence a esta tela. -->
+        <div id="modal-sair" class="aviso-sair d-none" role="alertdialog"
+          aria-labelledby="modal-sair-texto">
+          <span id="modal-sair-texto">Há alterações não salvas neste formulário.</span>
+          <span class="acoes-sair">
+            <!-- "Salvar e sair", e não "Salvar": o rodapé logo abaixo já tem
+                 um "Salvar", e dois botões com o mesmo rótulo na mesma janela
+                 fazem parar para descobrir qual é qual. -->
+            <button type="button" class="btn btn-verde btn-sm" id="modal-sair-salvar">Salvar e sair</button>
+            <button type="button" class="btn btn-outline-danger btn-sm" id="modal-sair-descartar">Descartar</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="modal-sair-voltar">Continuar editando</button>
+          </span>
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline-danger btn-sm me-auto d-none" id="modal-extra"></button>

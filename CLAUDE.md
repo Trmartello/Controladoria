@@ -217,6 +217,25 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `bloqueio:` do formulário. É a mesma escolha do `Versao::alvo()` no servidor —
   seção nova que esquecesse de chamá-los não quebraria nada visível, e defeito
   que se contorna com F5 é defeito que fica.
+  **A janela PERGUNTA antes de sair levando o que foi escrito** (pedido do
+  cliente, 2026-11-03: "clico fora dele, ele simplesmente fecha o formulário e
+  não salva o conteúdo"). O modal é criado com `backdrop: 'static'` e
+  `keyboard: false` — não para travar nada, mas para o Bootstrap disparar
+  `hidePrevented` no clique fora e no Esc, onde `Modal.tentarFechar` decide:
+  formulário limpo fecha como sempre; sujo abre a faixa `#modal-sair` com
+  **Salvar e sair · Descartar · Continuar editando**. "Sujo" é a fotografia da
+  abertura (`marcarLimpo`, tirada no `shown`, depois de os ligadores rodarem)
+  contra `coletar()` de agora — escrever e apagar de volta não conta, e a
+  máscara da data tampouco. Três coisas que não devem ser desfeitas: fechar por
+  CÓDIGO (`bsModal.hide()`) nunca é barrado — é o caminho do próprio sistema
+  depois de salvar, e travá-lo deixaria janela presa na tela; o × e o Cancelar
+  fecham direto, porque ali a pessoa já disse que quer sair; e "Continuar
+  editando" devolve o FOCO ao formulário — sem isso o foco cai no documento,
+  o Esc deixa de ser do modal (o ouvinte do Bootstrap é no elemento dele) e a
+  pergunta não apareceria na segunda tentativa. O que escapa: arquivo escolhido
+  e não enviado, que `coletar()` não lê. Provas: `provasSaidaDoModal`, nas duas
+  larguras — e é por isso que a bateria fecha formulário com o helper
+  `fecharModal` (que chama `hide()`), nunca com Esc.
   `App.api` põe `codigo` e `status` no `Error` que lança: erro que a tela
   precisa DECIDIR (e não só mostrar) vem por código, nunca por texto.
   Bootstrap 5.3.3 e o `qrcode.js` (o QR da sala) são as duas ÚNICAS
@@ -512,7 +531,16 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   atributo leva o RECURSO junto porque `data-card-fator` sozinho casaria um item
   de cenário nº 5 com o fator nº 5.
 - **Matriz de Impacto por Negócio** (`impacto_negocio`, `ImpactoController`,
-  `secoes/impacto.js`): o que o diagnóstico CORPORATIVO faz com cada negócio.
+  `secoes/impacto.js`) — **fora do menu desde 2026-11-03**, a pedido do
+  cliente. A tela, a rota `/api/impacto` e a tabela continuam de pé, com o que
+  já foi lançado: tirar do menu é decisão de método; apagar o que foi escrito
+  seria outra, e não foi pedida. Devolvê-la é um `<li>` no `shell.php`, depois
+  do GUT. Duas consequências que a remoção pagou: `App.mostrarSecao` passou a
+  tolerar seção SEM item de menu (acendia o item sem conferir, e estourava), e
+  `secaoInicial` continua restaurando só o que está no menu — abrir numa tela
+  que a pessoa não consegue reencontrar é pior do que abrir no painel.
+  O que a tela faz, enquanto existir: mostra o que o diagnóstico CORPORATIVO
+  faz com cada negócio.
   Linha = ameaça/oportunidade da SWOT corporativa do ano, **sem curadoria
   própria** (a SWOT já é a lista curada e o GUT já é a priorização, então a
   ordem é `ORDER BY g.score DESC`); coluna = negócio; célula = sinal + como.

@@ -181,12 +181,14 @@ const App = {
   /**
    * A seção com que o sistema abre.
    *
-   * A validação não é zelo: `mostrarSecao` acende o item do menu
-   * (`link.classList.add`) e **estoura** se o nome não existir ali. Nome
-   * gravado por uma versão anterior, seção removida desde então ou tela que
-   * este perfil não tem no menu derrubariam o sistema no arranque — a pior
-   * hora possível, porque não há tela para mostrar o erro. Por isso só se
-   * restaura o que existe no documento E está no menu deste usuário.
+   * A validação não é zelo. Até 2026-11-03 ela era o que impedia o arranque
+   * de estourar: `mostrarSecao` acendia o item do menu sem conferir se ele
+   * existe. Hoje aquilo tolera a ausência (há tela fora do menu — ver lá), e
+   * esta continua como REGRA DE ABERTURA: o sistema só abre no que existe no
+   * documento E está no menu deste usuário. Nome gravado por uma versão
+   * anterior, seção tirada do menu desde então ou tela que este perfil não
+   * tem fariam o sistema abrir numa tela que a pessoa não consegue reencontrar
+   * — e, no arranque, não há tela para explicar isso.
    */
   secaoInicial() {
     const salva = this.lugarGuardado(this.LUGAR_SECAO);
@@ -303,11 +305,16 @@ const App = {
     document.querySelectorAll('.secao').forEach((s) => s.classList.add('d-none'));
     document.querySelectorAll('#nav-secoes .nav-link').forEach((l) => l.classList.remove('active'));
     document.getElementById(`secao-${nome}`).classList.remove('d-none');
+    // Pode NÃO haver item de menu para a seção: o "Impacto por Negócio" saiu
+    // do menu em 2026-11-03, a pedido do cliente, e a tela continua de pé,
+    // alcançável por navegação direta. Sem o `?`, abri-la quebrava AQUI, com
+    // um erro de script — e o que a pessoa veria é a tela anterior sumindo
+    // sem nada aparecendo no lugar.
     const link = document.querySelector(`#nav-secoes [data-secao="${nome}"]`);
-    link.classList.add('active');
+    link?.classList.add('active');
     // O tópico da tela ativa abre sozinho (e fica guardado): item aceso
     // escondido dentro de um tópico fechado é o mesmo que menu sem item ativo.
-    const grupo = link.closest('.grupo-menu');
+    const grupo = link?.closest('.grupo-menu');
     if (grupo && !grupo.classList.contains('aberto')) {
       this.abrirGrupo(grupo, true);
       this.guardarGrupos();

@@ -717,6 +717,26 @@ input[type=range].faixa-verde:focus-visible {
 #modal-campos .form-text { font-size: .78rem; margin-top: .4rem; }
 .obrigatorio { color: var(--verde-coperdia); font-weight: 800; }
 
+/* A pergunta de saída (pedido do cliente, 2026-11-03): clicar fora, ou Esc,
+   com algo escrito. Fica ACIMA do rodapé, encostada nele: é sobre sair, e
+   sair é o que se faz ali embaixo. O fundo âmbar a separa do formulário sem
+   usar o vermelho, que nesta tela é de erro — e aqui não houve erro nenhum.
+   No celular os três botões quebram a linha em vez de espremer os rótulos: o
+   que eles dizem É a decisão. */
+.aviso-sair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .75rem 1rem;
+  font-size: .9rem;
+  color: #5a4a1f;
+  background: #fdf6e3;
+  border-top: 1px solid #e8dcb8;
+}
+.aviso-sair .acoes-sair { display: flex; flex-wrap: wrap; gap: .4rem; }
+
 /* Controle deslizante (ex.: progresso da ação) com o valor ao lado do rótulo */
 .valor-faixa {
   float: right;
