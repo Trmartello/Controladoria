@@ -2390,8 +2390,25 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
   touch-action: none; /* o dedo arrasta a linha, não a página */
 }
 .alca-arrastar:active { cursor: grabbing; color: var(--verde-coperdia); }
-tr.linha-arrastando td { background: #eef6f1 !important; }
-tr.linha-arrastando { opacity: .85; }
+/* `item-arrastando` (e não `linha-arrastando`): a classe passou a ser posta
+   pelo `Ordenar`, que serve linha de tabela e cartão com o mesmo nome. */
+tr.item-arrastando td { background: #eef6f1 !important; }
+tr.item-arrastando { opacity: .85; }
+/* O mesmo gesto nos CARTÕES (Análise de Cenário, 2026-11-04). A alça fica
+   colada ao número do item, antes do texto: ali ela é a primeira coisa da
+   linha e não disputa espaço com os botões do rodapé do cartão. Menor que a
+   da tabela porque o cartão é denso — e ainda com `touch-action: none`, que é
+   o que faz o dedo arrastar o cartão em vez de rolar a página. */
+.cartao-ordenavel .alca-arrastar {
+  font-size: .95rem;
+  padding: 0 .3rem 0 0;
+  vertical-align: baseline;
+}
+.card.item-arrastando {
+  opacity: .85;
+  border-color: var(--verde-coperdia);
+  box-shadow: 0 .25rem .6rem rgba(0, 122, 69, .18);
+}
 
 /* Selos que navegam para a etapa de origem / Matriz GUT */
 .selo-link { cursor: pointer; }

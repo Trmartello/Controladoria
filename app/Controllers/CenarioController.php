@@ -76,6 +76,51 @@ class CenarioController
         }, Database::todos("$sql ORDER BY c.tipo, c.ordem, c.id", $params)));
     }
 
+    /**
+     * Nova ordem dos itens de UMA coluna (pedido do cliente, 2026-11-04).
+     *
+     * A lista chega inteira e na ordem da tela; a posição vira `ordem` 1..N,
+     * que é como `listar()` ordena (`ORDER BY c.tipo, c.ordem, c.id`). Vem uma
+     * coluna por vez porque a ordem é por coluna: as duas juntas fariam a
+     * segunda começar depois da primeira.
+     *
+     * A guarda que não pode sair: todo id tem de ser DESTE planejamento. Sem
+     * ela, quem edita um plano reordenaria item de outro — o `ordem` é escrita,
+     * e `exigirEdicaoPlanejamento` autoriza o plano do corpo, não o dono de
+     * cada linha. O UPDATE repete o `planejamento_id` por via das dúvidas: a
+     * conferência e a escrita acontecem em consultas diferentes, e entre as
+     * duas cabe uma corrida.
+     */
+    public function reordenar(): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+
+        $ids = array_values(array_filter(
+            array_map('intval', is_array($d['ids'] ?? null) ? $d['ids'] : []),
+            fn($i) => $i > 0
+        ));
+        if (!$ids) {
+            Json::erro('Informe a nova ordem.');
+        }
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        $meus = (int)Database::um(
+            "SELECT COUNT(*) AS n FROM cenario_item WHERE planejamento_id = ? AND id IN ({$marcas})",
+            array_merge([$planId], $ids)
+        )['n'];
+        if ($meus !== count($ids)) {
+            Json::erro('Há item que não é desta análise na ordem enviada.');
+        }
+        foreach ($ids as $posicao => $id) {
+            Database::executar(
+                'UPDATE cenario_item SET ordem = ? WHERE id = ? AND planejamento_id = ?',
+                [$posicao + 1, $id, $planId]
+            );
+        }
+        Json::ok(['itens' => count($ids)]);
+    }
+
     public function salvar(?int $id = null): void
     {
         $d = Json::corpo();
