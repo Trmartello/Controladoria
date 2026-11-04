@@ -710,15 +710,29 @@ foreach ([
     'conteudo_porter_2027.php',
     'conteudo_swot_2027.php',
     'conteudo_cascata_h1_2027.php',
+    // Diagnóstico do NEGÓCIO Pecuária (2026-11-04), montado sobre a DRE
+    // Gerencial do Qlik e não sobre oficina. Primeira carga que mira o
+    // planejamento de um negócio em vez do corporativo — é o `negocio` no
+    // arquivo que decide isso (ver `CargaConteudo::planosDaCarga`).
+    'conteudo_cenario_pecuaria_2027.php',
+    'conteudo_pestel_pecuaria_2027.php',
+    'conteudo_porter_pecuaria_2027.php',
+    'conteudo_swot_pecuaria_2027.php',
 ] as $arquivo) {
     $conteudo = require __DIR__ . '/' . $arquivo;
     $chaveCarga = $conteudo['chave'];
     if (App\Services\CargaConteudo::jaAplicada($pdo, $chaveCarga)) {
         continue;
     }
-    $planos = App\Services\CargaConteudo::planosCorporativos($pdo, $conteudo['ano'] ?? null);
+    // Corporativo, ou o planejamento de UM negócio quando a carga declara
+    // `negocio` (ver `CargaConteudo::planosDaCarga`). A resolução vem DENTRO
+    // do try: a de negócio levanta exceção quando o código não está no
+    // cadastro, e adiar a carga é melhor do que marcá-la como aplicada sem
+    // ter gravado nada.
     $gravados = 0;
+    $planos = [];
     try {
+        $planos = App\Services\CargaConteudo::planosDaCarga($pdo, $conteudo);
         foreach ($planos as $planoId) {
             $gravados += App\Services\CargaConteudo::aplicar($pdo, $conteudo, $planoId);
         }
@@ -738,7 +752,8 @@ foreach ([
         $pdo, $chaveCarga, "{$gravados} registro(s) em " . count($planos) . ' planejamento(s)'
     );
     echo "migrate: carga {$chaveCarga} — {$gravados} registro(s) em "
-        . count($planos) . " planejamento(s) corporativo(s).\n";
+        . count($planos) . ' planejamento(s) '
+        . (isset($conteudo['negocio']) ? "do negócio {$conteudo['negocio']}" : 'corporativo(s)') . ".\n";
 }
 
 // Usuário admin inicial (senha via env ADMIN_SENHA; sem a variável, gera uma

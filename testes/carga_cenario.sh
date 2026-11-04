@@ -98,12 +98,50 @@ for CLI in carga_diagnostico limpar_plano_acao; do
 done
 
 # --- 5. as cargas do dossiê de 2027 estão declaradas -------------------------
-# Elas ficam FORA da lista do migrate de propósito (repõem texto do cliente),
-# então a CLI é o único caminho: se saírem de `CARGAS`, ninguém as alcança.
+# A CLI é o caminho de quem opera uma recuperação à mão: carga que sai de
+# `CARGAS` é carga que ninguém mais alcança por ali.
 R=$(php cli/carga_diagnostico.php 2>&1)
 for C in cenario2027 pestel2027 porter2027 swot2027 cascata2027; do
   afirma "a CLI oferece a carga ${C}" "$C" "$R"
 done
+
+# --- 6. carga de NEGÓCIO (diagnóstico da Pecuária, 2026-11-04) ---------------
+# A carga que declara `negocio` cai no planejamento DAQUELE negócio, e o cria
+# quando ninguém abriu aquele contexto ainda. O modo de falha que estas provas
+# guardam é silencioso: sem a criação, a carga grava zero registro, é marcada
+# como aplicada, e o texto nunca aparece — sem erro em lugar nenhum.
+for C in cenarioPecuaria pestelPecuaria porterPecuaria swotPecuaria; do
+  afirma "a CLI oferece a carga ${C}" "$C" "$R"
+done
+R=$(php -r '
+    require "app/Services/CargaConteudo.php";
+    $d = (require "config/config.php")["db"];
+    $pdo = new PDO("mysql:host={$d["host"]};port={$d["port"]};dbname={$d["name"]};charset=utf8mb4",
+                   $d["user"], $d["pass"], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $c = require "database/conteudo_cenario_pecuaria_2027.php";
+    $alvo = [];
+    foreach (App\Services\CargaConteudo::planosDaCarga($pdo, $c) as $id) {
+        $st = $pdo->prepare("SELECT p.escopo, n.cod_negocio FROM planejamento p
+                               LEFT JOIN negocio n ON n.id = p.negocio_id WHERE p.id = ?");
+        $st->execute([$id]);
+        $l = $st->fetch(PDO::FETCH_ASSOC);
+        $alvo[] = $l["escopo"] . ":" . $l["cod_negocio"];
+    }
+    echo "alvo=", implode(",", $alvo), "\n";
+    try {
+        App\Services\CargaConteudo::planosDoNegocio($pdo, "nao-existe", 2027);
+        echo "inexistente=passou\n";
+    } catch (RuntimeException $e) {
+        echo "inexistente=recusado\n";
+    }
+    $macro = require "database/conteudo_cenario_macro.php";
+    $ids = App\Services\CargaConteudo::planosDaCarga($pdo, $macro);
+    $n = (int)$pdo->query("SELECT COUNT(*) FROM planejamento WHERE escopo = \"CORPORATIVO\"")->fetchColumn();
+    echo "macro=", count($ids) === $n ? "corporativos" : "divergiu", "\n";
+' 2>&1)
+afirma "a carga da Pecuária mira o planejamento do negócio 2" 'alvo=NEGOCIO:2' "$R"
+afirma "negócio inexistente é recusado, não ignorado" 'inexistente=recusado' "$R"
+afirma "sem negócio declarado, a carga segue indo ao corporativo" 'macro=corporativos' "$R"
 
 echo
 echo "✓ $OK passaram    ✗ $FALHA falharam"

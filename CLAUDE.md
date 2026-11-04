@@ -454,6 +454,25 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 
 ## Regras de negócio importantes
 
+- **Diagnóstico da PECUÁRIA, montado sobre a DRE** (2026-11-04, a pedido do
+  cliente): cenário, PESTEL, Porter e SWOT do negócio 2, ano 2027, entregues
+  como carga de conteúdo (`database/conteudo_*_pecuaria_2027.php`). É a
+  primeira análise do repositório que nasce de **extração**, e não de oficina —
+  e por isso o cabeçalho de cada arquivo registra fonte, janela e âncoras de
+  sanidade. O que a extração do Qlik (DRE Gerencial, espaço Filiais, `Cód.
+  Negócio = 2`, sem participação societária) mostrou em jan–set/2026, os meses
+  fechados: receita líquida parada (+0,5%) contra custo das vendas +3,0%,
+  lucro bruto de R$ 49,0 mi para R$ 35,2 mi, resultado líquido de R$ 28,5 mi
+  para R$ 12,5 mi (−56,2%), e **73% da queda numa filial só** (Enéas Marques,
+  de +R$ 4,4 mi para −R$ 7,3 mi) enquanto São Gabriel do Oeste melhorava.
+  Outubro e novembro foram **descartados** por Rateios = 0 (mês aberto); o
+  outubro aberto exibia resultado de R$ 53,9 mi, artefato que entraria como
+  recuperação se ninguém testasse o fechamento. Duas lacunas ficam declaradas
+  no próprio conteúdo, e não devem ser preenchidas com estimativa: o **custo do
+  capital de giro por negócio** (a DRE Gerencial não aloca saldo patrimonial
+  por negócio — o Ativo da Pecuária volta em R$ −0,4 mil, o que prova a
+  ausência de alocação, não capital zero) e a separação **preço × volume**, que
+  exige o Comercial Global.
 - **Horizontes (H1/H2/H3) valem para o ciclo (plurianual); análises de
   diagnóstico (cenário, PESTEL, Porter, SWOT, GUT) são anuais** — coluna `ano`
   em `fator` e `cenario_item`, seletor de ano compartilhado em
@@ -2509,9 +2528,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   (`cli/carga_diagnostico.php <cenario|pestel> <plano> [ano] [--aplicar]`, que
   alcança um negócio ou ano fora do corporativo). Carga nova é uma entrada na
   lista do migrate e outra em `CARGAS` da CLI; escrever a lógica de novo faria
-  as cópias divergirem na primeira revisão. Só o planejamento **CORPORATIVO**
-  recebe do migrate: análise macro replicada nos doze negócios enterraria a
-  análise própria de cada um. A carga de SWOT entra **solta**, sem
+  as cópias divergirem na primeira revisão. Por padrão o migrate entrega só ao
+  planejamento **CORPORATIVO**: análise macro replicada nos doze negócios
+  enterraria a análise própria de cada um.
+  **Carga de NEGÓCIO** (2026-11-04, diagnóstico da Pecuária): o arquivo declara
+  `'negocio' => '<cod_negocio>'` e a entrega passa a ser o planejamento daquele
+  negócio (`CargaConteudo::planosDaCarga` → `planosDoNegocio`). Duas decisões
+  que não devem ser desfeitas: a carga **cria** o planejamento do negócio que
+  ainda não existe — é a mesma linha que a tela cria ao escolher o contexto
+  (`PlanejamentoController::resolver`), e sem isso a carga gravaria zero
+  registro, seria marcada como aplicada e o texto nunca apareceria, sem erro em
+  lugar nenhum; e código fora do cadastro levanta `RuntimeException`, que o
+  migrate trata **adiando** a carga para o próximo deploy em vez de marcá-la.
+  Provas no §6 de `testes/carga_cenario.sh`. A carga de SWOT entra **solta**, sem
   `promovido_de_id`: promover é o gesto de quem conduz a análise (escolher qual
   fator do PESTEL/Porter merece o quadrante), e promover pela carga decidiria
   isso pelo usuário — o botão “→ SWOT” some depois que o fator foi promovido.
