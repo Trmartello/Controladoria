@@ -371,6 +371,10 @@ try {
         case (bool)preg_match('#^POST /api/cenario/(\d+)/plano-acao$#', $rota, $m):
             (new CenarioController())->planoAcao((int)$m[1]); break;
         case $rota === 'POST /api/cenario':        (new CenarioController())->salvar(); break;
+        // Literal antes da genérica `/api/cenario/{id}`: "reordenar" não casa
+        // com `\d+`, mas a ordem aqui é o que dispensa o leitor de conferir.
+        case $rota === 'POST /api/cenario/reordenar':
+            (new CenarioController())->reordenar(); break;
         case (bool)preg_match('#^POST /api/cenario/(\d+)/excluir$#', $rota, $m):
             (new CenarioController())->excluir((int)$m[1]); break;
         // A específica antes da genérica: /api/cenario/7/mover cairia nela

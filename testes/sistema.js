@@ -4353,6 +4353,115 @@ async function provasCenarioPlanoAcao(page) {
 }
 
 /**
+ * Arrastar os cartões do cenário para ordenar (pedido do cliente, 2026-11-04).
+ *
+ * O que estas provas guardam, e que quebra calado: o arraste mexer SÓ na tela.
+ * A ordem é `cenario_item.ordem`, e a leitura é `ORDER BY tipo, ordem, id` — se
+ * a gravação não acontecer, a tela fica certa até o F5 e ninguém percebe na
+ * hora. Por isso toda prova aqui compara a tela com o que a API devolve.
+ */
+async function provasOrdenarCenario(page) {
+  const l = '[desktop] Ordenar o cenário:';
+
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const ids = [];
+    for (const n of ['A', 'B', 'C']) {
+      const i = await App.api('/api/cenario', { planejamento_id: plan.id, ano,
+        tipo: 'TENDENCIA', ordem: 0, descricao: `Ordem de prova ${n}` });
+      ids.push(i.id);
+    }
+    return { plan: plan.id, ano, ids };
+  });
+
+  await page.evaluate(() => App.mostrarSecao('cenario'));
+  await esperar(page, "!!document.querySelector('#secao-cenario .cartao-ordenavel')", 15000);
+  await new Promise((r) => setTimeout(r, 400));
+
+  const naTela = () => page.evaluate(() => [...document.querySelectorAll(
+    '[data-coluna-categoria="TENDENCIA"] .corpo-coluna .cartao-ordenavel',
+  )].map((c) => Number(c.dataset.id)));
+  const noBanco = (m) => page.evaluate(async (x) => {
+    const itens = await App.api(`/api/cenario?planejamento_id=${x.plan}&ano=${x.ano}`);
+    return itens.filter((i) => i.tipo === 'TENDENCIA').map((i) => i.id);
+  }, m);
+
+  const alca = await page.evaluate(() => {
+    const c = document.querySelector('[data-coluna-categoria="TENDENCIA"] .cartao-ordenavel');
+    const a = c?.querySelector('.alca-arrastar');
+    return { tem: !!a, antesDoNumero: !!a && a.nextElementSibling?.hasAttribute('data-ordem-visivel'),
+      // `touch-action: none` é o que faz o DEDO arrastar o cartão em vez de
+      // rolar a página — sem isso o gesto só existe no mouse.
+      toque: a ? getComputedStyle(a).touchAction : null };
+  });
+  t(`${l} cada cartão tem a alça, antes do número`,
+    alca.tem && alca.antesDoNumero, JSON.stringify(alca));
+  t(`${l} e a alça segura o dedo (touch-action: none)`, alca.toque === 'none', String(alca.toque));
+
+  const antes = await naTela();
+  // Arrasta o primeiro cartão para depois do terceiro, pela alça.
+  const caixaAlca = await page.locator(
+    '[data-coluna-categoria="TENDENCIA"] .cartao-ordenavel >> nth=0',
+  ).locator('.alca-arrastar').boundingBox();
+  const terceiro = await page.locator(
+    '[data-coluna-categoria="TENDENCIA"] .cartao-ordenavel >> nth=2',
+  ).boundingBox();
+  await page.mouse.move(caixaAlca.x + caixaAlca.width / 2, caixaAlca.y + caixaAlca.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(terceiro.x + 40, terceiro.y + terceiro.height * 0.75, { steps: 12 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 900));
+
+  const depois = await naTela();
+  const gravado = await noBanco(massa);
+  t(`${l} arrastar muda a ordem na tela`,
+    JSON.stringify(depois) !== JSON.stringify(antes),
+    `${JSON.stringify(antes)} → ${JSON.stringify(depois)}`);
+  t(`${l} e a ordem nova é a que o servidor devolve`,
+    JSON.stringify(depois) === JSON.stringify(gravado),
+    `tela ${JSON.stringify(depois)} / banco ${JSON.stringify(gravado)}`);
+  const numeros = await page.evaluate(() => [...document.querySelectorAll(
+    '[data-coluna-categoria="TENDENCIA"] .corpo-coluna .cartao-ordenavel [data-ordem-visivel]',
+  )].map((n) => n.textContent.trim()));
+  t(`${l} a numeração visível acompanha, sem repintar a tela`,
+    numeros.slice(0, 3).join(' ') === '1. 2. 3.', JSON.stringify(numeros.slice(0, 4)));
+
+  // Sem mouse: Ctrl + seta move um degrau, e grava igual.
+  await page.locator('[data-coluna-categoria="TENDENCIA"] .cartao-ordenavel >> nth=1')
+    .locator('.alca-arrastar').focus();
+  await page.keyboard.press('Control+ArrowUp');
+  await new Promise((r) => setTimeout(r, 800));
+  const porTecla = await naTela();
+  t(`${l} Ctrl + seta reordena pelo teclado`,
+    JSON.stringify(porTecla) !== JSON.stringify(depois)
+    && JSON.stringify(porTecla) === JSON.stringify(await noBanco(massa)),
+    `${JSON.stringify(depois)} → ${JSON.stringify(porTecla)}`);
+
+  // A guarda do servidor: a lista só pode trazer item DESTE planejamento. Sem
+  // ela, quem edita um plano reordenaria item de outro — `ordem` é escrita, e
+  // `exigirEdicaoPlanejamento` autoriza o plano do corpo, não o dono de cada
+  // linha. O id inexistente exercita o mesmo caminho da contagem que o id
+  // alheio, sem precisar de um segundo planejamento montado só para isto.
+  const intruso = await page.evaluate(async (m) => App.api('/api/cenario/reordenar',
+    { planejamento_id: m.plan, ids: [...m.ids, 999999999] })
+    .then(() => 'passou').catch((e) => e.message), massa);
+  t(`${l} id que não é desta análise é recusado`,
+    /não é desta análise/.test(String(intruso)), String(intruso));
+  const intacta = await noBanco(massa);
+  t(`${l} e a recusa não mexe na ordem que estava gravada`,
+    JSON.stringify(intacta) === JSON.stringify(porTecla),
+    `${JSON.stringify(porTecla)} → ${JSON.stringify(intacta)}`);
+
+  await page.evaluate(async (m) => {
+    for (const id of m.ids) {
+      await App.api(`/api/cenario/${id}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    }
+    App.mostrarSecao('painel');
+  }, massa);
+}
+
+/**
  * Mover um fator de uma análise para outra (PESTEL ⇄ Porter ⇄ SWOT).
  *
  * Mover um fator LIMPO é trivial; o tema é o fator amarrado, e por isso quase
@@ -6817,9 +6926,16 @@ async function provasSaidaDoModal(page, largura) {
     const t2 = document.querySelector('#modal-campos textarea');
     t2.value = 'Outro texto';
     t2.dispatchEvent(new Event('input', { bubbles: true }));
-    Modal.bsModal.hide();
   });
-  await new Promise((r) => setTimeout(r, 500));
+  // A janela precisa ter ASSENTADO antes do `hide()`: o Bootstrap ignora um
+  // pedido de fechar enquanto a abertura ainda está em transição, e a prova
+  // mediria a transição em vez da guarda. Foi assim que ela ficou vermelha uma
+  // vez em três execuções — o defeito era do teste, não da tela.
+  await esperar(page, "document.body.classList.contains('modal-open')", 5000);
+  await new Promise((r) => setTimeout(r, 250));
+  await page.evaluate(() => Modal.bsModal.hide());
+  await esperar(page,
+    "!document.getElementById('modal-form').classList.contains('show')", 5000);
   const porCodigo = await estadoSaida();
   t(`${l} fechar por código continua fechando na hora`,
     !porCodigo.aberto && !porCodigo.perguntando, JSON.stringify(porCodigo));
@@ -6862,6 +6978,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasExclusaoComVinculo(page);
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);
+  await provasOrdenarCenario(page);
   await provasMoverAnalise(page);
   await provasMoverEntreTabelas(page);
   await provasTratarForaDaOrdem(page, 'desktop');

@@ -208,8 +208,25 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   do 🎤 — cascata, coleta, cruzamentos, diagnóstico e sala), `vinculos.js`
   (`Vinculos.aviso()`, o que some junto ao excluir), `relatorio-analise.js`
   (`RelatorioAnalise`, o corpo comum do relatório de uma análise), `vivo.js`
-  (`Vivo`, o relógio de 4s que lê o pulso) e `cadeado.js` (`Cadeado`, o
-  contador do item travado).
+  (`Vivo`, o relógio de 4s que lê o pulso), `cadeado.js` (`Cadeado`, o
+  contador do item travado) e `ordenar.js` (`Ordenar`, arrastar para
+  reordenar).
+  **`Ordenar.ligar(caixa, {item, aoSoltar, depois})`** serve linha de tabela
+  (cadastro de drivers e eixos) e cartão (Análise de Cenário, pedido do cliente
+  em 2026-11-04) com a mesma implementação — nasceu privada no cadastro e foi
+  generalizada quando a segunda tela precisou do gesto. Três decisões que não
+  devem ser desfeitas: o arraste é de **ponteiro** (`pointerdown/move/up`), que
+  cobre mouse, caneta e dedo — o HTML5 não existe no toque, e é por isso que o
+  quadro do plano de ação não se arrasta no celular; os ouvintes ficam no
+  **`document`**, porque mover o item no DOM cancela a captura de ponteiro da
+  alça e o arraste morreria no primeiro reposicionamento; e a alça (`⠿`,
+  `Ordenar.alca()`) é um `<button>`, o que dá o caminho de teclado
+  (**Ctrl/Alt + setas**) sem código extra. `touch-action: none` na alça é o que
+  faz o dedo arrastar o item em vez de rolar a página. No cenário a gravação é
+  **por coluna** (`POST /api/cenario/reordenar`), porque a ordem é por coluna, e
+  o servidor confere que **todo id é do planejamento do corpo** — `ordem` é
+  escrita, e `exigirEdicaoPlanejamento` autoriza o plano, não o dono de cada
+  linha. Provas em `provasOrdenarCenario`.
   Os dois últimos ninguém liga na seção: `App.recarregarSecaoAtiva()` arma e
   para o `Vivo` (depois de a pintura terminar — armar antes tomaria a versão de
   referência com a tela ainda lendo, e uma escrita nesse intervalo passaria por

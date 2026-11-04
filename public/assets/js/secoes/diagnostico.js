@@ -1439,10 +1439,15 @@ const SecaoCenario = {
 
     const bloco = (tipo, titulo) => {
       const lista = itens.filter((i) => i.tipo === tipo);
-      // data-card-fator é o que permite chegar aqui vindo da Coleta
+      // `data-card-fator` é o que permite chegar aqui vindo da Coleta;
+      // `data-id` é o que o `Ordenar` lê. Os dois carregam o mesmo número de
+      // propósito — trocar um pelo outro quebraria uma das duas coisas.
       const linhas = lista.map((i, idx) => `
-        <div class="card mb-2" data-card-fator="${i.id}" data-cadeado="cenario_item:${i.id}"><div class="card-body py-2 px-3">
-          <div class="small texto-fator"><strong>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
+        <div class="card mb-2 cartao-ordenavel" data-card-fator="${i.id}" data-id="${i.id}"
+          data-cadeado="cenario_item:${i.id}"><div class="card-body py-2 px-3">
+          <div class="small texto-fator">${App.podeEditar()
+    ? Ordenar.alca('Arrastar para reordenar (ou Ctrl + seta para cima/baixo)') : ''
+}<strong data-ordem-visivel>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
           ${Diag.selosOrigem(i) || Diag.seloPlanoAcao(i) || App.podeEditar()
             ? `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
                 ${Diag.selosOrigem(i)}${Diag.seloPlanoAcao(i)}
@@ -1518,6 +1523,32 @@ const SecaoCenario = {
     this.assinaturaQuiz = QuizSala.assinatura(this.quiz);
     QuizSala.armarRelogio(this);
     Diag.ligarCabecalhoFixo(el);
+
+    /* Arrastar para ordenar (pedido do cliente, 2026-11-04). UMA coluna por
+     * vez: o arraste move dentro de "Situação atual" ou dentro de
+     * "Tendências", e trocar de coluna continua sendo o ✎ — lá a mudança é de
+     * TIPO, decisão de conteúdo, e não de posição.
+     *
+     * A gravação é por coluna porque a ordem é por coluna: mandar as duas
+     * listas juntas faria a segunda começar depois da primeira, e a numeração
+     * visível (1., 2., 3.) deixaria de bater com a de cada lado.
+     *
+     * Não há repintura depois de gravar: a tela já está na ordem nova, e
+     * recarregar a seção custaria o lugar da rolagem de quem acabou de
+     * arrastar. O que se atualiza é só o número à frente do texto. */
+    if (App.podeEditar()) {
+      el.querySelectorAll('[data-coluna-categoria] .corpo-coluna').forEach((coluna) => {
+        Ordenar.ligar(coluna, {
+          item: '.cartao-ordenavel',
+          aoSoltar: (ids) => App.api('/api/cenario/reordenar', { planejamento_id: plan.id, ids }),
+          depois: (cartoes) => cartoes.forEach((c, i) => {
+            const n = c.querySelector('[data-ordem-visivel]');
+            if (n) n.textContent = `${i + 1}.`;
+          }),
+        });
+      });
+    }
+
     RelatorioAnalise.ligar(el, () => ({
       titulo: `Análise de Cenário — ${App.rotuloContexto()} · ${ano}`,
       contexto: `Diagnóstico · análise de ${ano} · ${itens.length} item(ns)`,
