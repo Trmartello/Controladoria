@@ -4507,6 +4507,126 @@ async function provasOrdenarFatores(page) {
  * O que estas provas protegem é a contradição entre os dois níveis: o negócio
  * mostrando um total que não é a soma do que as filiais dizem.
  */
+/**
+ * O consolidado no Painel e a Projeção no Dossiê (fatia 4 do tema 13).
+ *
+ * Duas coisas que só falham em silêncio: um consolidado PARCIAL lido como
+ * total da cooperativa, e um documento que imprime o número de um negócio sob
+ * o nome de outro. As provas abaixo existem para essas duas.
+ */
+async function provasProjecaoNoPainel(page, largura) {
+  const l = `[${largura}] Painel · projeção:`;
+  await page.evaluate(() => App.mostrarSecao('painel'));
+  const abriu = await esperar(page, "!!document.querySelector('.tabela-painel')", 20000);
+  t(`${l} o painel abre`, abriu);
+  if (!abriu) return;
+
+  const v = await page.evaluate(() => {
+    const n = (s) => {
+      const x = String(s).replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '').trim();
+      return x === '' || x === '-' ? null : Number(x);
+    };
+    const linhas = [...document.querySelectorAll('.tabela-painel tbody tr')].map((tr) => {
+      const td = [...tr.querySelectorAll('td')];
+      const proj = td[8], prop = td[9];
+      return {
+        rotulo: td[0].textContent.trim(),
+        temProjecao: !!proj && proj.textContent.trim() !== '—',
+        rol: proj ? n(proj.querySelector('div')?.textContent) : null,
+        propostaRol: prop ? n(prop.querySelector('div')?.textContent) : null,
+      };
+    });
+    const cartoes = [...document.querySelectorAll('#secao-painel .card')]
+      .map((c) => c.textContent.replace(/\s+/g, ' ').trim());
+    return {
+      colunas: [...document.querySelectorAll('.tabela-painel thead th')]
+        .map((th) => th.textContent.replace(/\s+/g, ' ').trim()),
+      linhas,
+      cartaoRol: cartoes.find((c) => c.includes('Receita líquida projetada')) || '',
+      cartaoLiquido: cartoes.find((c) => c.includes('Resultado líquido projetado')) || '',
+      rodape: document.querySelector('#secao-painel p.small')?.textContent.replace(/\s+/g, ' ') || '',
+    };
+  });
+
+  t(`${l} as colunas de projeção e proposta entraram`,
+    v.colunas.some((c) => c.startsWith('Projeção')) && v.colunas.some((c) => c.startsWith('Proposta')),
+    v.colunas.join(' | ').slice(0, 120));
+  t(`${l} os dois cartões aparecem`,
+    v.cartaoRol.includes('proposta') && v.cartaoLiquido.includes('depois dos rateios'),
+    v.cartaoRol.slice(0, 80));
+
+  // Consolidado PARCIAL tem de se declarar: "de N negócios".
+  t(`${l} o cartão diz de quantos negócios é o consolidado`,
+    /de \d+ neg/.test(v.cartaoRol), v.cartaoRol.slice(0, 100));
+
+  const comProjecao = v.linhas.filter((x) => x.temProjecao);
+  t(`${l} os negócios com DRE trazem número`, comProjecao.length >= 10, String(comProjecao.length));
+
+  const corp = v.linhas.find((x) => x.rotulo.includes('Corporativo'));
+  t(`${l} o Corporativo fica com "—" (a projeção é por negócio)`,
+    !corp || !corp.temProjecao, JSON.stringify(corp));
+
+  // O cartão é a SOMA das linhas: se divergir, um dos dois está mentindo.
+  const somaRol = comProjecao.reduce((s, x) => s + (x.rol || 0), 0);
+  const noCartao = Number(String(v.cartaoRol.match(/R\$ ([\d.]+)/)?.[1] || '').replace(/\./g, ''));
+  t(`${l} o cartão é a soma das linhas da tabela`,
+    Math.abs(somaRol - noCartao) <= 50, `${somaRol} vs ${noCartao}`);
+
+  t(`${l} o rodapé aponta a seção da DRE linha a linha`,
+    v.rodape.includes('Projeção de Resultados'), v.rodape.slice(-120));
+}
+
+/**
+ * A Projeção dentro do dossiê: ela segue o NEGÓCIO do documento, e não o
+ * seletor da tela — e se declara ausente onde não há DRE em vez de imprimir
+ * o número de outro negócio.
+ */
+async function provasProjecaoNoDossie(page, largura) {
+  const l = `[${largura}] Dossiê · projeção:`;
+  const r = await page.evaluate(async () => {
+    const saida = { naLista: SecaoDossie.ETAPAS.some((e) => e.chave === 'projecao') };
+    const antes = { ...App.contexto };
+    App.modoDossie = true;
+    try {
+      const negocios = (await App.api('/api/projecao')).negocios;
+      const alvo = negocios[0];
+      App.contexto.corporativo = false;
+      App.contexto.negocioId = alvo.id;
+      await SecaoProjecao.carregar();
+      const el = document.getElementById('secao-projecao');
+      saida.negocio = alvo.rotulo;
+      saida.mostraONome = el.textContent.includes(alvo.rotulo);
+      saida.linhas = el.querySelectorAll('.tabela-projecao tbody tr').length;
+      saida.campos = el.querySelectorAll('input, select').length;
+
+      App.contexto.corporativo = true;
+      App.contexto.negocioId = null;
+      await SecaoProjecao.carregar();
+      saida.corporativo = el.textContent.replace(/\s+/g, ' ').trim();
+
+      App.contexto.corporativo = false;
+      App.contexto.negocioId = 999999;
+      await SecaoProjecao.carregar();
+      saida.semDre = el.textContent.replace(/\s+/g, ' ').trim();
+      saida.semDreTemTabela = !!el.querySelector('.tabela-projecao');
+    } finally {
+      App.modoDossie = false;
+      Object.assign(App.contexto, antes);
+    }
+    return saida;
+  });
+
+  t(`${l} a Projeção está entre as etapas do dossiê`, r.naLista === true);
+  t(`${l} ela segue o negócio do documento, com o nome na página`,
+    r.mostraONome && r.linhas >= 45, `${r.negocio}: ${r.linhas} linha(s)`);
+  t(`${l} e sai como PÁGINA: sem campo de digitar nem seletor`,
+    r.campos === 0, `${r.campos} campo(s)`);
+  t(`${l} no corporativo ela se declara ausente em vez de somar o que não existe`,
+    r.corporativo.includes('por negócio'), r.corporativo.slice(0, 90));
+  t(`${l} em negócio sem DRE ela diz isso, em vez de imprimir outro negócio`,
+    !r.semDreTemTabela && r.semDre.includes('não tem a DRE carregada'), r.semDre.slice(0, 90));
+}
+
 async function provasProjecaoFilial(page, largura) {
   const l = `[${largura}] Filial:`;
   await page.evaluate(() => App.mostrarSecao('projecao'));
@@ -7616,6 +7736,8 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoProposta(page, 'desktop');
   await provasProjecaoPremissas(page, 'desktop');
   await provasProjecaoFilial(page, 'desktop');
+  await provasProjecaoNoPainel(page, 'desktop');
+  await provasProjecaoNoDossie(page, 'desktop');
   await provasOrdenarCenario(page);
   await provasOrdenarFatores(page);
   await provasMoverAnalise(page);
@@ -7672,6 +7794,8 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoProposta(pageM, 'celular');
   await provasProjecaoPremissas(pageM, 'celular');
   await provasProjecaoFilial(pageM, 'celular');
+  await provasProjecaoNoPainel(pageM, 'celular');
+  await provasProjecaoNoDossie(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');

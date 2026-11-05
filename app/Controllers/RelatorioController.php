@@ -9,6 +9,7 @@ use App\Core\Json;
 use App\Services\Avisos;
 use App\Services\Consolidacao;
 use App\Services\Metas;
+use App\Services\Projecao;
 
 /**
  * Fase 6 — painéis (negócio, corporativo e consolidado) e relatório de
@@ -63,6 +64,39 @@ class RelatorioController
             $linhas[] = $this->linhaPainel($cicloId, (int)$n['id'], $n['rotulo'], $celulasTotal);
         }
 
+        // ── A projeção de resultados no Painel (fatia 4 do tema 13) ─────────
+        // A ROL e o resultado líquido de cada negócio: o que o ano vai dar e o
+        // que o negócio propõe para o seguinte. É o primeiro número financeiro
+        // de verdade nesta tela — o envelope de capital some em R$ 0 enquanto
+        // ninguém lança investimento.
+        $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
+        $resumo = [];
+        if ($fech) {
+            $ids = array_values(array_filter(array_map(
+                static fn ($l) => $l['negocio_id'],
+                $linhas
+            )));
+            $resumo = Projecao::resumoDosNegocios(
+                $ids,
+                (int)$fech['ano'],
+                (int)$fech['mes_fechado_ate'],
+                (int)$fech['ano'] + 1
+            );
+        }
+        foreach ($linhas as $i => $l) {
+            $r = $resumo[(int)($l['negocio_id'] ?? 0)] ?? null;
+            $linhas[$i]['projecao_rol'] = $r ? ($r['projecao']['3'] ?? null) : null;
+            $linhas[$i]['proposta_rol'] = $r ? ($r['proposta']['3'] ?? null) : null;
+            $linhas[$i]['projecao_liquido'] = $r ? ($r['projecao']['16'] ?? null) : null;
+            $linhas[$i]['proposta_liquido'] = $r ? ($r['proposta']['16'] ?? null) : null;
+            $linhas[$i]['modo_projecao'] = $r['modo'] ?? null;
+        }
+
+        $somaProj = static fn (string $campo) => array_sum(array_map(
+            static fn ($l) => (float)($l[$campo] ?? 0),
+            $linhas
+        ));
+
         $consolidado = [
             'cascata_feito' => array_sum(array_column($linhas, 'cascata_feito')),
             'cascata_total' => $celulasTotal * max(1, count($linhas)),
@@ -72,6 +106,20 @@ class RelatorioController
             'envelope'      => array_sum(array_column($linhas, 'envelope')),
             'comprometido'  => array_sum(array_column($linhas, 'comprometido')),
             'ancoras'       => array_sum(array_column($linhas, 'ancoras')),
+            'projecao_rol'     => $somaProj('projecao_rol'),
+            'proposta_rol'     => $somaProj('proposta_rol'),
+            'projecao_liquido' => $somaProj('projecao_liquido'),
+            'proposta_liquido' => $somaProj('proposta_liquido'),
+            // Quantos negócios têm DRE carregada: sem isto, um consolidado
+            // parcial (dois negócios de onze) se leria como o total da
+            // cooperativa. O número aparece na tela ao lado do valor.
+            'com_projecao'     => count(array_filter(
+                $linhas,
+                static fn ($l) => $l['projecao_rol'] !== null
+            )),
+            'ano_projecao'     => $fech ? (int)$fech['ano'] : null,
+            'ano_proposta'     => $fech ? (int)$fech['ano'] + 1 : null,
+            'mes_fechado_ate'  => $fech ? (int)$fech['mes_fechado_ate'] : null,
         ];
 
         Json::ok(['ciclo' => $ciclo, 'linhas' => $linhas, 'consolidado' => $consolidado]);

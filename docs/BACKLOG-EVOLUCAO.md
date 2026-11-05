@@ -2097,7 +2097,16 @@ opção A — o nível passa a ser *onde você está na trilha*.
 > **Só a Pecuária está carregada por filial.** A extração é por negócio, uma
 > chamada ao Qlik cada; os outros dez entram a pedido.
 >
-> A fatia 4 — o consolidado no Painel e no Dossiê — continua aberta.
+> **Fatia 4 ENTREGUE em 2026-11-05**, fechando o tema: o Painel ganha a
+> projeção e a proposta por negócio (duas colunas, dois cartões, o Corporativo
+> com "—" e o cartão declarando de quantos negócios é o consolidado), e o
+> Dossiê ganha a Projeção como etapa, seguindo o negócio do documento. O
+> consolidado do Painel usa as MESMAS regras da tela (`resumoDosNegocios`
+> chama `aplicar`/`somarFiliais`), em quatro consultas em lote.
+>
+> **O tema 13 está entregue nas quatro fatias.** O que resta são dados e uma
+> pergunta: as filiais dos outros dez negócios (uma extração cada, a pedido) e
+> a composição da linha 15.
 >
 > **Achado da entrega, e ele muda número:** outubro de 2026 **não está
 > fechado** (Rateios = 0 com R$ 373,2 mi de receita lançada). A planilha que
@@ -2453,7 +2462,7 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | ✔ **fatias 1 a 3 entregues em 2026-11-05** (onze negócios; leitura, proposta e modo filial — filiais carregadas só na Pecuária); fatia 4 em aberto |
+| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | ✔ **ENTREGUE em 2026-11-05**, nas quatro fatias (onze negócios; filiais carregadas só na Pecuária, as demais a pedido) |
 | 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
 | 12 | **Layout do plano de ação** (projetos, frentes e ações) | Construir | M | ✔ **Entregue em 2026-10-27**: três modos (Lista · Tabela · Quadro), e não a trilha da maquete |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |
