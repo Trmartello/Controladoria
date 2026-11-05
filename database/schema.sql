@@ -782,3 +782,60 @@ CREATE TABLE IF NOT EXISTS login_tentativa (
   KEY idx_login_email (email, criado_em)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
+-- ── Projeção de Resultados ──────────────────────────────────────────────────
+-- A DRE gerencial do Qlik dentro do sistema: realizado dos meses fechados,
+-- orçamento dos doze, e (nas fatias seguintes) a proposta do ano de
+-- planejamento. Pedido do cliente em 2026-11-05, com a planilha
+-- "PECUARIA - SIMULADOR Oficial" como maquete; o plano está no tema 13 de
+-- `docs/BACKLOG-EVOLUCAO.md`.
+
+-- A estrutura da DRE, espelhando `Cód Indicador` do app DRE - Gerencial. Não é
+-- cadastro de tela: vem na carga, junto com os valores, porque estrutura e
+-- número precisam ser da MESMA extração — conta nova no Qlik com estrutura
+-- velha aqui faria a DRE fechar errado em silêncio.
+CREATE TABLE IF NOT EXISTS dre_conta (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  codigo      VARCHAR(10) NOT NULL,
+  nome        VARCHAR(120) NOT NULL,
+  -- 1 = linha do bloco (as doze da DRE mais as calculadas); 2 = subconta.
+  nivel       TINYINT NOT NULL DEFAULT 1,
+  pai_codigo  VARCHAR(10) NULL,
+  -- `SeqEstrutura` do Qlik: é ela que põe "Desp./ROL" entre a linha de
+  -- despesas e as subcontas dela, como na tela do app e na planilha.
+  ordem       SMALLINT NOT NULL DEFAULT 0,
+  -- Linha de PERCENTUAL (Margem Bruta, Desp./ROL, Margem Líquida). Extração
+  -- devolve ZERO nelas — são calculadas na tela, e somá-las seria somar nada.
+  percentual  TINYINT(1) NOT NULL DEFAULT 0,
+  UNIQUE KEY uk_dre_conta (codigo)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Valor por negócio, conta e MÊS. Mês a mês, e não o acumulado, por dois
+-- motivos: o corte do fechamento se recalcula sem nova extração, e a carga do
+-- mês seguinte é um arquivo pequeno em vez da reescrita do ano.
+CREATE TABLE IF NOT EXISTS dre_valor (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  negocio_id  INT NOT NULL,
+  conta_id    INT NOT NULL,
+  ano         SMALLINT NOT NULL,
+  mes         TINYINT NOT NULL,
+  -- REAL = mês fechado (tem rateio); META = o orçamento lançado para o mês.
+  tipo        ENUM('REAL','META') NOT NULL,
+  valor       DECIMAL(18,2) NOT NULL,
+  UNIQUE KEY uk_dre_valor (negocio_id, conta_id, ano, mes, tipo),
+  KEY idx_dre_valor_leitura (negocio_id, ano, tipo),
+  CONSTRAINT fk_dre_valor_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE,
+  CONSTRAINT fk_dre_valor_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Até que mês o ano está FECHADO. É propriedade do ano, não do negócio: o
+-- fechamento é da cooperativa, e há negócio sem rateio nenhum (a Usina
+-- Fotovoltaica) que, julgado sozinho, pareceria nunca ter fechado mês.
+CREATE TABLE IF NOT EXISTS dre_fechamento (
+  ano             SMALLINT PRIMARY KEY,
+  mes_fechado_ate TINYINT NOT NULL,
+  carga           VARCHAR(80) NOT NULL,
+  extraido_em     DATE NULL,
+  fonte           VARCHAR(255) NULL,
+  aplicado_em     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

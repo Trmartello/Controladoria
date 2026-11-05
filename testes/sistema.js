@@ -1,4 +1,4 @@
-// Bateria de sistema: percorre as 17 seções em desktop e celular e afirma que
+// Bateria de sistema: percorre as 18 seções do menu em desktop e celular e afirma que
 // cada uma PINTA de verdade — não só que a casca do shell existe. Registra todo
 // erro de página e de console: um `pageerror` numa seção é falha, mesmo que a
 // tela pareça certa.
@@ -74,6 +74,7 @@ const SECOES = [
   { id: 'projetos', nome: 'Plano de ação', prova: '#secao-projetos h1' },
   { id: 'investimentos', nome: 'Investimentos', prova: '#secao-investimentos h1' },
   { id: 'metas', nome: 'Metas · Indicadores', prova: '#secao-metas h1' },
+  { id: 'projecao', nome: 'Projeção de Resultados', prova: '#secao-projecao h1' },
   { id: 'relatorio', nome: 'Relatório de Status', prova: '#secao-relatorio h1' },
   { id: 'dossie', nome: 'Dossiê do plano', prova: '#secao-dossie [data-dossie-montar], #secao-dossie .alert' },
   { id: 'sala', nome: 'Sala · PIN e QR', prova: '#secao-sala h1' },
@@ -4469,6 +4470,125 @@ async function provasOrdenarFatores(page) {
   await page.evaluate(() => App.mostrarSecao('painel'));
 }
 
+/**
+ * Projeção de Resultados — a DRE do ano na tela (tema 13, fatia 1).
+ *
+ * O que estas provas protegem é o que falha CALADO em controladoria: a conta
+ * que fecha errado e continua plausível. Por isso elas não olham se a tabela
+ * pintou — olham se Projeção = Realizado + Projetado em toda linha, se as
+ * identidades da DRE fecham na tela (ROL = ROB + deduções, lucro bruto = ROL +
+ * custos, resultado líquido = resultado do negócio + rateios) e se a A.V. da
+ * própria ROL dá 100%.
+ */
+async function provasProjecao(page, largura) {
+  const l = `[${largura}] Projeção:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre com o seletor de negócio`, abriu);
+  if (!abriu) return;
+
+  const ler = () => page.evaluate(() => {
+    const num = (s) => {
+      const limpo = String(s).replace(/\./g, '').replace(',', '.').replace('%', '').trim();
+      return limpo === '—' || limpo === '' ? null : Number(limpo);
+    };
+    const linhas = {};
+    document.querySelectorAll('.tabela-projecao tbody tr').forEach((tr) => {
+      const td = [...tr.querySelectorAll('td')];
+      linhas[tr.dataset.conta] = {
+        nivel: Number(tr.dataset.nivel),
+        realizado: num(td[1].textContent),
+        projetado: num(td[2].textContent),
+        projecao: num(td[3].textContent),
+        av: num(td[4].textContent),
+        percentual: td[1].textContent.includes('%'),
+      };
+    });
+    return {
+      titulo: document.querySelector('#secao-projecao h1').textContent.trim(),
+      negocios: document.querySelectorAll('#projecao-negocio option').length,
+      escolhido: document.querySelector('#projecao-negocio').value,
+      rotulo: document.querySelector('#projecao-negocio').selectedOptions[0].textContent,
+      linhas,
+      total: document.querySelectorAll('.tabela-projecao tbody tr').length,
+      rodape: document.querySelector('#secao-projecao p.small').textContent.replace(/\s+/g, ' '),
+      cabecalho: document.querySelector('#secao-projecao p.text-muted').textContent.replace(/\s+/g, ' '),
+    };
+  });
+
+  const v = await ler();
+  t(`${l} a DRE inteira está na tela, bloco e subconta`,
+    v.total >= 45 && v.linhas['1'] && v.linhas['1.1'] && v.linhas['16'] && v.linhas['14.3'],
+    `${v.total} linha(s)`);
+  t(`${l} todos os negócios com DRE aparecem no seletor`, v.negocios >= 10, String(v.negocios));
+
+  // Projeção = Realizado + Projetado. Vale em TODA linha que não é percentual;
+  // uma só que não fechasse já seria uma coluna somando o que não devia.
+  const soma = Object.entries(v.linhas).filter(([, x]) => !x.percentual)
+    .filter(([, x]) => Math.abs(x.projecao - (x.realizado + x.projetado)) > 1);
+  t(`${l} Projeção = Realizado + Projetado em toda linha`, soma.length === 0,
+    JSON.stringify(soma.slice(0, 3)));
+
+  // As identidades da DRE, na COLUNA da projeção (a que vai à reunião).
+  const ident = [
+    ['ROL = receita bruta + deduções', '3', ['1', '2']],
+    ['lucro bruto = ROL + custos', '5', ['3', '4']],
+    ['resultado do negócio = resultado antes dos impostos + IRPJ/CSLL', '13', ['12', '12.1']],
+    ['resultado líquido = resultado do negócio + rateios', '16', ['13', '14']],
+  ];
+  // Tolerância de R$ 20 e não de centavos: a extração arredonda cada valor
+  // MENSAL ao real, e a coluna da projeção soma doze deles por linha — num
+  // negócio a diferença acumulada chegou a R$ 4. Vinte reais sobre uma DRE de
+  // centenas de milhões é arredondamento; erro de conta não cabe aí dentro.
+  for (const [nome, alvo, partes] of ident) {
+    const esq = v.linhas[alvo]?.projecao;
+    const dir = partes.reduce((s, p) => s + (v.linhas[p]?.projecao ?? 0), 0);
+    t(`${l} ${nome}`, esq !== null && esq !== undefined && Math.abs(esq - dir) <= 20,
+      `${esq} vs ${dir}`);
+  }
+
+  // A.V. é sobre a ROL: a da própria ROL tem de dar 100%.
+  t(`${l} a A.V. da ROL é 100% (o denominador é ela)`,
+    Math.abs((v.linhas['3']?.av ?? 0) - 100) < 0.2, String(v.linhas['3']?.av));
+
+  // As linhas de percentual vêm ZERADAS da extração — são fórmula de tela.
+  // Se alguma aparecer como 0,0% nas três colunas, voltou a ler o valor
+  // guardado em vez de calcular.
+  const margemBruta = v.linhas['6'];
+  t(`${l} a Margem Bruta é calculada, não lida da carga (vem zerada)`,
+    margemBruta && margemBruta.percentual && margemBruta.projecao !== 0,
+    JSON.stringify(margemBruta));
+  t(`${l} e cada coluna usa a ROL DELA`,
+    margemBruta && margemBruta.realizado !== margemBruta.projetado,
+    JSON.stringify(margemBruta));
+
+  // O corte do fechamento é dito na tela, com o nome do mês: quem lê precisa
+  // saber até onde é realizado e de onde em diante é orçamento.
+  t(`${l} a tela declara o corte do fechamento`,
+    /Realizado de .*jan a \w{3}.*meses fechados/.test(v.cabecalho)
+    && /projetado de .*dez.*orçamento lançado/.test(v.cabecalho), v.cabecalho.slice(0, 120));
+  t(`${l} e o rodapé declara a fonte e a regra do mês aberto`,
+    v.rodape.includes('Qlik') && v.rodape.includes('rateio'), v.rodape.slice(0, 140));
+
+  // Trocar de negócio repinta com outro número — e o seletor guarda a escolha.
+  const outro = await page.evaluate(() => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => x.value !== s.value);
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return o.textContent.trim();
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+  const v2 = await ler();
+  t(`${l} trocar de negócio repinta a DRE do negócio escolhido`,
+    v2.rotulo.trim() === outro && v2.linhas['1']?.projecao !== v.linhas['1']?.projecao,
+    `${v.rotulo.trim()} → ${v2.rotulo.trim()}`);
+  const soma2 = Object.entries(v2.linhas).filter(([, x]) => !x.percentual)
+    .filter(([, x]) => Math.abs(x.projecao - (x.realizado + x.projetado)) > 1);
+  t(`${l} e a conta continua fechando no negócio novo`, soma2.length === 0,
+    JSON.stringify(soma2.slice(0, 3)));
+}
+
 async function provasOrdenarCenario(page) {
   const l = '[desktop] Ordenar o cenário:';
 
@@ -5903,8 +6023,8 @@ async function provasMenuRecolhido(page, largura) {
       secoes: [...document.querySelectorAll('#nav-secoes .nav-link')].map((a) => a.dataset.secao).sort(),
     };
   });
-  t(`[${largura}] Estratégia reúne cascata, plano de ação, metas e investimentos`,
-    arranjo.estrategia.join('|') === 'cascata|projetos|metas|investimentos',
+  t(`[${largura}] Estratégia reúne cascata, plano de ação, metas, investimentos e projeção`,
+    arranjo.estrategia.join('|') === 'cascata|projetos|metas|investimentos|projecao',
     JSON.stringify(arranjo.estrategia));
   t(`[${largura}] Relatórios reúne o status e o dossiê`,
     arranjo.relatorios.join('|') === 'relatorio|dossie', JSON.stringify(arranjo.relatorios));
@@ -5913,12 +6033,13 @@ async function provasMenuRecolhido(page, largura) {
     JSON.stringify(arranjo.topicos));
   // Nenhuma tela ficou órfã POR DESCUIDO no reagrupamento: as do mapa
   // continuam alcançáveis pelo menu (as três soltas no topo entram na conta).
-  // São 17 desde 2026-11-03, quando o cliente pediu o "Impacto por Negócio"
-  // fora do menu — a conta é de tela perdida sem querer, e a que sai por
-  // decisão sai nomeada, aqui e na prova dedicada a ela.
+  // Foram 17 entre 2026-11-03 (quando o cliente pediu o "Impacto por Negócio"
+  // fora do menu) e 2026-11-05, quando entrou a Projeção de Resultados — a
+  // conta é de tela perdida sem querer, e a que sai por decisão sai nomeada,
+  // aqui e na prova dedicada a ela.
   const FORA_DO_MENU = ['impacto'];
   t(`[${largura}] nenhuma seção se perdeu no reagrupamento`,
-    arranjo.secoes.length === 17 && !arranjo.secoes.some((s) => FORA_DO_MENU.includes(s)),
+    arranjo.secoes.length === 18 && !arranjo.secoes.some((s) => FORA_DO_MENU.includes(s)),
     JSON.stringify(arranjo.secoes));
 
   // Navegar para uma tela de tópico fechado abre o tópico — pelo caminho que
@@ -7108,6 +7229,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasExclusaoComVinculo(page);
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);
+  await provasProjecao(page, 'desktop');
   await provasOrdenarCenario(page);
   await provasOrdenarFatores(page);
   await provasMoverAnalise(page);
@@ -7160,6 +7282,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasTratarForaDaOrdem(pageM, 'celular');
   await provasJanelaModal(pageM, 'celular');
   await provasSaidaDoModal(pageM, 'celular');
+  await provasProjecao(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');

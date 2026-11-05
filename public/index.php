@@ -223,6 +223,7 @@ use App\Controllers\IndicadorController;
 use App\Controllers\InvestimentoController;
 use App\Controllers\NegocioController;
 use App\Controllers\PlanejamentoController;
+use App\Controllers\ProjecaoController;
 use App\Controllers\ProjetoController;
 use App\Controllers\PublicoController;
 use App\Controllers\RodadaController;
@@ -516,6 +517,7 @@ try {
             (new IndicadorController())->salvar((int)$m[1]); break;
 
         case $rota === 'GET /api/painel':           (new RelatorioController())->painel(); break;
+        case $rota === 'GET /api/projecao':         (new ProjecaoController())->indice(); break;
         case $rota === 'GET /api/relatorio':        (new RelatorioController())->relatorio(); break;
         case $rota === 'GET /api/relatorio/exportar': (new RelatorioController())->exportar(); break;
 

@@ -2055,6 +2055,19 @@ opção A — o nível passa a ser *onde você está na trilha*.
 
 ### Veredito: **CONSTRUIR fatiado** (esforço G) — pedido do cliente, 2026-11-05
 
+> **Fatia 1 ENTREGUE em 2026-11-05**, com os onze negócios (e não só a
+> Pecuária, como o plano previa — o cliente pediu todos). No ar: `dre_conta`,
+> `dre_valor`, `dre_fechamento`, o importador `CargaDre`, a carga
+> `dre_2026_fechamento_09.php` (11 negócios × 50 contas × 21 valores) e a tela
+> **Projeção de Resultados**, só de leitura. As fatias 2 a 4 — a proposta, os
+> modos negócio/filial e o consolidado — continuam abertas.
+>
+> **Achado da entrega, e ele muda número:** outubro de 2026 **não está
+> fechado** (Rateios = 0 com R$ 373,2 mi de receita lançada). A planilha que
+> serviu de maquete traz `Real. (Jan-Out)` incluindo outubro; o sistema corta
+> em setembro, e a regra mora no importador, não no critério de quem gera o
+> arquivo.
+
 A planilha `PECUARIA - SIMULADOR Oficial.xlsx` é a maquete, e é um simulador de
 DRE: realizado dos meses fechados, planejado dos meses que faltam, a soma dos
 dois como projeção do ano, e ao lado a **proposta** do ano seguinte — por
@@ -2403,7 +2416,7 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | 1 (pedido do cliente, 2026-11-05; fatia 1 já paga sozinha) |
+| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | ✔ **fatia 1 entregue em 2026-11-05** (os onze negócios, tela de leitura); fatias 2–4 em aberto |
 | 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
 | 12 | **Layout do plano de ação** (projetos, frentes e ações) | Construir | M | ✔ **Entregue em 2026-10-27**: três modos (Lista · Tabela · Quadro), e não a trilha da maquete |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |

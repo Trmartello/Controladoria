@@ -17,7 +17,7 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 
 - **Onde fica o quê**: `app/` (Core, Controllers, Services), `views/` na RAIZ —
   não em `app/Views/` — com as três telas que existem (`shell.php`, o one-page
-  atrás do login, com as 18 `<section class="secao d-none">`; `login.php`; e
+  atrás do login, com as 19 `<section class="secao d-none">`; `login.php`; e
   `participante.php`, a do celular sem login), `public/` (front controller e
   assets), `database/`, `cli/`, `config/`, `testes/`, `docs/`.
   Qual arquivo atende qual seção **não está escrito aqui de propósito**: o mapa
@@ -2544,6 +2544,43 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     `claude/plano-acao-trilha-gaveta` (`2da9bfe`), incompleta e sem bateria.
     A maquete clicável (`https://claude.ai/artifact/7fscdG2uz4mdnZGFcQtgDw`)
     descreve aquele desenho, não este: leia-a como história, não como contrato.
+- **Projeção de Resultados** (`projecao.js`, `ProjecaoController`,
+  `GET /api/projecao`) é a DRE gerencial do ano dentro do sistema: **realizado**
+  dos meses fechados, **projetado** dos meses que faltam pelo orçamento lançado,
+  e a **projeção** do ano, que é a soma. Pedido do cliente em 2026-11-05, com a
+  planilha "PECUARIA - SIMULADOR Oficial" como maquete; é a **fatia 1** do tema
+  13 de `docs/BACKLOG-EVOLUCAO.md` — a coluna de PROPOSTA do ano de planejamento
+  (por valor ou por % sobre a projeção, nos modos negócio e filial) é das fatias
+  seguintes, e por isso esta tela é só de leitura.
+  **O corte do fechamento é dado, não cálculo de tela.** `dre_fechamento` guarda
+  até que mês o ano fechou, e quem escreve é a carga: `CargaDre` **recusa** um
+  mês declarado fechado cujo rateio consolidado seja zero. Rateio é a última
+  etapa do fechamento contábil, e mês sem rateio é mês ABERTO — o realizado dele
+  está incompleto e muda sozinho. Em 2026 isso é **outubro**, com R$ 373,2 mi de
+  receita lançada e Rateios = 0; a planilha do cliente trazia outubro como
+  realizado, e essa é a diferença entre os dois números. O consolidado decide, e
+  não cada negócio: a Usina Fotovoltaica não tem rateio em mês nenhum e,
+  julgada sozinha, reprovaria o ano inteiro.
+  **O ano de planejamento é o do último fechamento CARREGADO + 1** — não o
+  relógio (a tela viraria de ano em 1º de janeiro com dezembro ainda aberto) e
+  não o `ciclo.ano_base` (que fica parado em 2026 enquanto os fechamentos
+  avançam).
+  **A A.V. é sobre a ROL**, e cada coluna usa a ROL dela: a margem do realizado
+  sobre a receita realizada, a do projetado sobre a projetada. E as três linhas
+  de percentual (Margem Bruta, Desp./ROL, Margem Líquida) são **calculadas na
+  tela** — na extração vêm zeradas, porque no próprio Qlik são fórmula de tela.
+  **Os valores são arredondados ao real na extração.** Sobre uma DRE de centenas
+  de milhões isso não muda decisão nenhuma, mas muda a PROVA: a coluna da
+  projeção soma doze valores arredondados por linha, e a diferença acumulada
+  chegou a R$ 4 num negócio. Por isso as identidades da DRE são conferidas com
+  tolerância de R$ 20, e não de centavos — erro de conta não cabe aí dentro.
+  **O realizado entra por CARGA, pedida no chat** (decisão do cliente, 2026-11-05):
+  não há extração automática do Qlik nem tela de importação. O ciclo é: o cliente
+  pede, os números saem do Qlik pela `coperdia-strategic-finance-skill`, viram um
+  `database/dre_*.php` e o migrate aplica no deploy. Ao contrário das cargas de
+  conteúdo, esta **sobrescreve** (`ON DUPLICATE KEY UPDATE`): é número de fora,
+  não texto que alguém edita. Provas em `testes/carga_dre.php` (as quatro recusas
+  e a idempotência) e em `provasProjecao`, nas duas larguras.
 - **A tela não se chama mais "5W2H".** O método como a cooperativa o pratica
   tem CINCO perguntas — o quê, como, quem, quando e ganhos. "Onde" e "por quê"
   saíram do formulário há tempos e só sobrevivem em registros antigos, em
@@ -2749,7 +2786,7 @@ mysql --socket=/tmp/ccm.sock -uroot -e SHUTDOWN; pkill -f "php -S 127.0.0.1:8099
 | Bateria | Cobre | Falha quando |
 |---|---|---|
 | `funcional.sh` | Escrita de cada módulo, pela própria API | Uma regra de negócio parou de valer, ou passou a valer onde não devia |
-| `sistema.js` | As 18 seções em 1500×700 e 390×844, mais DUAS sessões no preenchimento simultâneo, no cadeado de edição (com dois usuários) e na oficina de Cruzamentos (computador + celular) | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
+| `sistema.js` | As 19 seções em 1500×700 e 390×844, mais DUAS sessões no preenchimento simultâneo, no cadeado de edição (com dois usuários) e na oficina de Cruzamentos (computador + celular) | Uma tela parou de pintar, estourou erro de console ou passou a rolar na horizontal — **nas duas larguras** |
 | `participante.js` | A tela pública da tempestade no celular | A única superfície de escrita sem login quebrou, ou o polling voltou a fechar o teclado |
 | `backup.sh` | Gerar, verificar e restaurar de `cli/backup.sh` | O backup deixou de ser restaurável, o anexo binário parou de atravessar, ou arquivo pela metade voltou a passar por bom |
 | `email.sh` | O envio por API de `App\Core\Email`, o relatório do disparo, e a assimetria botão×cron | O caminho da API parou de ser escolhido, a recusa do serviço deixou de chegar a quem clicou, a chave passou a vazar na mensagem de erro, ou o relatório do admin passou a sair (ou a não sair) na hora errada |
