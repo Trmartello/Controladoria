@@ -2622,6 +2622,36 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   chegava com a versão já velha — o usuário via "alguém gravou enquanto você
   editava" sem ninguém ter gravado. Apareceu na sonda, não na bateria: precisa
   de duas gravações seguidas na mesma tela para nascer.
+  **Modo de planejamento, por negócio (fatia 3).** Cada negócio escolhe, e os
+  dois modos são os que o cliente descreveu: **Planejar o negócio** (de cima
+  para baixo — lança no total e distribui às filiais depois, e **distribuir não
+  é requisito para salvar**, por decisão dele) ou **Planejar por filial** (de
+  baixo para cima — lança em cada filial e o negócio passa a ser a soma,
+  `Projecao::somarFiliais`, que é o `O10 = SUM(AF10, AR10, …)` da planilha).
+  No modo negócio a tela ganha a coluna **A distribuir** (proposta do negócio
+  menos a soma das filiais) — ela informa e não trava. No modo filial a linha
+  do negócio vira somente-leitura e o servidor **recusa** lançamento nela: dois
+  totais discordando na mesma tela é o que esta seção inteira evita.
+  **Trocar de modo não apaga lançamento nenhum**: o que foi lançado no negócio
+  (`filial_id = 0`) e o que foi lançado em cada filial continuam onde estavam, e
+  o modo só diz qual dos dois forma o total. Apagar seria perder trabalho por
+  uma troca de visão.
+  **A DRE da filial é ACUMULADA** (`dre_valor_filial`), ao contrário da do
+  negócio, que é mensal. O motivo é tamanho: são **177 filiais com movimento**
+  nos onze negócios (Agropecuárias 78, Cereais 46, Supermercados 22, Pecuária
+  6…), e mês a mês isso passa de meio milhão de valores. Em troca, a coluna
+  `corte` diz para qual fechamento aqueles números valem, e a carga **recusa**
+  um arquivo cujo corte não seja o do `dre_fechamento` — casar realizado de um
+  período com orçamento de outro é o erro que isso impede. Quando o corte anda,
+  a filial inteira é re-extraída; o negócio, não (lá só chega o mês novo).
+  **A carga das filiais confere a soma contra o negócio**, conta a conta, e
+  recusa se não fechar (tolerância de R$ 20, arredondamento): uma filial
+  faltando passaria despercebida, com cada tela certa e o total errado. Na
+  Pecuária isso pegou **Morrinhos**, que tem R$ 1.448 em duas linhas e não está
+  na planilha do cliente — sem ela a soma não fechava.
+  **Só a Pecuária está carregada por filial** (a extração é por negócio, uma
+  chamada ao Qlik cada); os outros dez entram quando o cliente pedir, e a tela
+  diz isso a quem tentar trocar o modo sem dados.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas

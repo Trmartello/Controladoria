@@ -28,6 +28,8 @@
  */
 const SecaoProjecao = {
   negocioId: null,
+  // 0 = a visão do NEGÓCIO; qualquer outro valor, a filial aberta.
+  filialId: 0,
   versao: 0,
 
   moeda(v) {
@@ -55,7 +57,9 @@ const SecaoProjecao = {
 
   async carregar() {
     const el = document.getElementById('secao-projecao');
-    const q = this.negocioId ? `?negocio_id=${this.negocioId}` : '';
+    const q = this.negocioId
+      ? `?negocio_id=${this.negocioId}${this.filialId ? `&filial_id=${this.filialId}` : ''}`
+      : '';
     const d = await App.api(`/api/projecao${q}`);
 
     if (d.sem_carga || !d.negocios.length) {
@@ -67,6 +71,9 @@ const SecaoProjecao = {
     }
     this.negocioId = d.negocio_id;
     this.versao = d.versao;
+    // A filial pedida pode não existir neste negócio (troquei de negócio com
+    // uma filial aberta): quem manda é o que o servidor devolveu.
+    this.filialId = d.filial ? d.filial.id : 0;
     this.dados = d;
 
     el.innerHTML = this.html(d);
@@ -90,9 +97,36 @@ const SecaoProjecao = {
          em ${String(d.atualizado_em).slice(8, 10)}/${String(d.atualizado_em).slice(5, 7)}</span>`
       : '<span class="text-muted small">Nenhuma proposta lançada ainda.</span>';
 
+    // O modo de planejamento é escolha do NEGÓCIO (decisão do cliente): de cima
+    // para baixo, lançando no negócio e distribuindo às filiais depois; ou de
+    // baixo para cima, lançando em cada filial e somando. Trocar não apaga
+    // lançamento nenhum — só muda qual dos dois forma o total.
+    const seletorModo = d.filiais.length ? `
+      <div class="btn-group btn-group-sm" role="group" aria-label="Como este negócio planeja">
+        <input type="radio" class="btn-check" name="projecao-modo" id="modo-negocio"
+          value="NEGOCIO" ${d.modo === 'NEGOCIO' ? 'checked' : ''} ${d.pode_editar ? '' : 'disabled'}>
+        <label class="btn btn-outline-secondary" for="modo-negocio"
+          title="Planejar o negócio e distribuir às filiais depois — distribuir não é requisito para salvar">Planejar o negócio</label>
+        <input type="radio" class="btn-check" name="projecao-modo" id="modo-filial"
+          value="FILIAL" ${d.modo === 'FILIAL' ? 'checked' : ''} ${d.pode_editar ? '' : 'disabled'}>
+        <label class="btn btn-outline-secondary" for="modo-filial"
+          title="Planejar cada filial; o negócio passa a ser a soma delas">Planejar por filial</label>
+      </div>` : '';
+
+    const seletorFilial = d.filiais.length ? `
+      <select id="projecao-filial" class="form-select form-select-sm" style="max-width:16rem"
+        aria-label="Filial">
+        <option value="0"${d.filial ? '' : ' selected'}>Negócio (consolidado)</option>
+        ${d.filiais.map((f) => `<option value="${f.id}"${
+  d.filial && Number(d.filial.id) === Number(f.id) ? ' selected' : ''
+}>${Modal.esc(f.cod_filial)} — ${Modal.esc(f.nome)}</option>`).join('')}
+      </select>` : '';
+
     return `
       <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
         <h1 class="mb-0 me-auto">Projeção de Resultados — ${d.ano}</h1>
+        ${seletorModo}
+        ${seletorFilial}
         <select id="projecao-negocio" class="form-select form-select-sm" style="max-width:18rem"
           aria-label="Negócio">${opcoes}</select>
       </div>
@@ -103,6 +137,7 @@ const SecaoProjecao = {
         digite o valor (<code>1.500.000</code>) ou o crescimento sobre a projeção (<code>12%</code>).
       </p>
       <p class="mb-2">${assinatura}</p>
+      ${this.faixaDoModo(d)}
       ${this.painel(d)}
       ${faltando}
       <div id="projecao-aviso" class="alert alert-danger py-2 px-3 small mb-2 d-none"></div>
@@ -116,6 +151,9 @@ const SecaoProjecao = {
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
             <th class="text-end">Cresc.<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
+            ${!d.filial && d.filiais.length && d.modo === 'NEGOCIO'
+    ? '<th class="text-end">A distribuir<br><span class="fw-normal text-muted small">entre as filiais</span></th>'
+    : ''}
           </tr></thead>
           <tbody>${this.corpo(d)}</tbody>
         </table>
@@ -144,7 +182,7 @@ const SecaoProjecao = {
    * segundo papel chega com o modo filial (fatia 3).
    */
   painel(d) {
-    const p = d.premissas || {};
+    const p = this.visao(d).premissas || {};
     const num = (v, casas = 2) => (v === null || v === undefined
       ? '—'
       : `${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`);
@@ -155,7 +193,7 @@ const SecaoProjecao = {
           <input type="text" class="form-control celula-premissa" id="premissa-${chave}"
             inputmode="decimal" autocomplete="off" data-chave="${chave}"
             value="${p[chave] === null || p[chave] === undefined ? '' : String(p[chave]).replace('.', ',')}"
-            placeholder="—" ${d.pode_editar ? '' : 'disabled'}>
+            placeholder="—" ${this.editavelAqui(d) ? '' : 'disabled'}>
           <span class="input-group-text">%</span>
         </div>
       </div>`;
@@ -187,24 +225,88 @@ const SecaoProjecao = {
       </div></div>`;
   },
 
+  /**
+   * O resíduo a distribuir, com o ruído do arredondamento fora.
+   *
+   * Abaixo de R$ 20 não é resíduo: é a diferença entre duas extrações que
+   * arredondam ao real em pontos diferentes (a do negócio, mensal; a das
+   * filiais, acumulada). Mostrar "—" ali evita uma coluna cheia de "-1" que
+   * ninguém sabe o que fazer com — e que faria duvidar do resto.
+   */
+  celulaDistribuir(l) {
+    if (l.proposta === null || l.distribuido === null
+        || l.distribuido === undefined || l.percentual) {
+      return '<td class="text-end small text-muted"></td>';
+    }
+    const resto = l.proposta - l.distribuido;
+    if (Math.abs(resto) <= 20) return '<td class="text-end small text-muted">—</td>';
+    return `<td class="text-end small text-warning-emphasis">${this.moeda(resto)}</td>`;
+  },
+
+  /** A visão que está na tela: linhas e premissas do negócio ou da filial. */
+  visao(d) {
+    return d.filial
+      ? { linhas: d.filial.linhas, premissas: d.filial.premissas, filialId: d.filial.id }
+      : { linhas: d.linhas, premissas: d.premissas, filialId: 0 };
+  },
+
+  /**
+   * Quem pode receber lançamento AQUI.
+   *
+   * Na filial, sempre (no modo negócio é distribuição; no modo filial é o
+   * planejamento). No negócio, só no modo negócio — no modo filial a linha
+   * dele é a soma, e dois totais discordando na mesma tela é o que esta seção
+   * inteira existe para não ter.
+   */
+  editavelAqui(d) {
+    if (!d.pode_editar) return false;
+    return d.filial ? true : d.modo === 'NEGOCIO';
+  },
+
+  faixaDoModo(d) {
+    if (!d.filiais.length) return '';
+    const nome = d.filial
+      ? (d.filiais.find((f) => Number(f.id) === Number(d.filial.id)) || {}).nome
+      : null;
+    if (d.filial) {
+      return `<div class="alert alert-light border py-2 px-3 small mb-3">
+        Você está lançando em <strong>${Modal.esc(nome || '')}</strong>.
+        ${d.modo === 'FILIAL'
+    ? 'Neste negócio, o total é a <strong>soma das filiais</strong>.'
+    : 'Este negócio planeja no total; o que você lançar aqui é a <strong>distribuição</strong>, '
+      + 'e não muda o total do negócio.'}
+      </div>`;
+    }
+    return `<div class="alert alert-light border py-2 px-3 small mb-3">
+      ${d.modo === 'FILIAL'
+    ? 'Este negócio planeja <strong>por filial</strong>: a coluna Proposta é a soma das filiais e '
+      + 'não se digita aqui. Escolha uma filial para lançar.'
+    : 'Este negócio planeja <strong>no total</strong>. A coluna <em>A distribuir</em> mostra o que '
+      + 'falta repartir entre as filiais — distribuir não é obrigatório para salvar.'}
+    </div>`;
+  },
+
   corpo(d) {
-    const linhaRol = d.linhas.find((l) => l.codigo === '3') || {};
+    const { linhas } = this.visao(d);
+    const linhaRol = linhas.find((l) => l.codigo === '3') || {};
     const rol = linhaRol.projecao || 0;
     const CALCULADAS = { 6: '5', 8: '7', 17: '16' };
+    const podeLancar = this.editavelAqui(d);
+    const mostrarDistribuir = !d.filial && d.filiais.length && d.modo === 'NEGOCIO';
 
     const valor = (linha, campo) => {
       if (!linha.percentual) return this.moeda(linha[campo]);
       const base = linhaRol[campo] || 0;
       if (!base) return '—';
-      const alvo = d.linhas.find((x) => x.codigo === CALCULADAS[linha.codigo]);
+      const alvo = linhas.find((x) => x.codigo === CALCULADAS[linha.codigo]);
       return alvo ? this.pct(alvo[campo] / base) : '—';
     };
     const av = (linha) => (linha.percentual || !rol ? '' : this.pct(linha.projecao / rol));
 
-    return d.linhas.map((l) => {
+    return linhas.map((l) => {
       const bloco = l.nivel === 1;
       const negativo = (v) => (v < 0 ? 'text-danger' : '');
-      const editavel = l.nivel === 2 && !l.percentual && d.pode_editar;
+      const editavel = l.nivel === 2 && !l.percentual && podeLancar;
 
       // A proposta: célula de digitar quando a linha é subconta; o número
       // derivado quando é bloco; "—" quando não há regra para derivá-la.
@@ -221,8 +323,8 @@ const SecaoProjecao = {
           + 'enquanto a regra dela não estiver no modelo, ela não recebe proposta.'
         )}">—</span>`;
       } else if (l.percentual) {
-        const alvo = d.linhas.find((x) => x.codigo === CALCULADAS[l.codigo]);
-        const baseProp = (d.linhas.find((x) => x.codigo === '3') || {}).proposta || 0;
+        const alvo = linhas.find((x) => x.codigo === CALCULADAS[l.codigo]);
+        const baseProp = (linhas.find((x) => x.codigo === '3') || {}).proposta || 0;
         proposta = alvo && baseProp ? this.pct(alvo.proposta / baseProp) : '—';
       } else {
         proposta = this.moeda(l.proposta);
@@ -242,6 +344,7 @@ const SecaoProjecao = {
         <td class="text-end celula-proposta-td ${
   l.proposta_origem === 'PROJECAO' ? 'proposta-por-omissao' : ''}">${proposta}</td>
         <td class="text-end small ${cresc && l.proposta < l.projecao ? 'text-danger' : 'text-muted'}">${cresc}</td>
+        ${mostrarDistribuir ? this.celulaDistribuir(l) : ''}
       </tr>`;
     }).join('');
   },
@@ -273,6 +376,33 @@ const SecaoProjecao = {
     // A gravação vem do `blur`, como nas células de Metas: quem percorre a
     // coluna com Tab grava linha a linha sem tirar a mão do teclado. O Enter
     // tira o foco, e o `blur` faz o resto — um caminho só de gravação.
+    const selFilial = el.querySelector('#projecao-filial');
+    if (selFilial && virgem(selFilial)) {
+      selFilial.addEventListener('change', (ev) => {
+        this.filialId = Number(ev.target.value);
+        this.carregar();
+      });
+    }
+    el.querySelectorAll('input[name="projecao-modo"]').forEach((r) => {
+      if (!virgem(r)) return;
+      r.addEventListener('change', async (ev) => {
+        if (!ev.target.checked) return;
+        try {
+          const dados = await App.api('/api/projecao/modo', {
+            negocio_id: this.negocioId, modo: ev.target.value, filial_id: this.filialId,
+          });
+          this.dados = { ...this.dados, ...dados };
+          this.versao = dados.versao;
+          this.avisar('');
+          const secao = document.getElementById('secao-projecao');
+          secao.innerHTML = this.html(this.dados);
+          this.ligar(secao);
+        } catch (e) {
+          this.avisar(e.message);
+          this.carregar();
+        }
+      });
+    });
     el.querySelectorAll('.celula-proposta').forEach((inp) => {
       inp.dataset.original = inp.value;
       if (!virgem(inp)) return;
@@ -308,14 +438,12 @@ const SecaoProjecao = {
     try {
       const r = await App.api('/api/projecao/premissa', {
         negocio_id: this.negocioId,
+        filial_id: this.filialId,
         chave: inp.dataset.chave,
         valor: limpo === '' ? null : Number(limpo),
       });
       this.versao = r.versao;
-      Object.assign(this.dados, {
-        linhas: r.linhas, premissas: r.premissas, versao: r.versao,
-        atualizado_em: r.atualizado_em, atualizado_por: r.atualizado_por,
-      });
+      this.dados = { ...this.dados, ...r };
       this.avisar('');
       // O painel inteiro é repintado: mexer no IPCA muda o Cresc. Real, que é
       // conta do servidor. A tabela não precisa, mas o repinte é barato e
@@ -356,17 +484,14 @@ const SecaoProjecao = {
     try {
       const r = await App.api('/api/projecao/valor', {
         negocio_id: this.negocioId,
+        filial_id: this.filialId,
         conta: inp.dataset.conta,
         entrada: ehPct ? 'PERCENTUAL' : 'VALOR',
         valor: limpo === '' ? null : Number(limpo),
         versao: this.versao,
       });
       this.versao = r.versao;
-      this.dados.linhas = r.linhas;
-      this.dados.versao = r.versao;
-      this.dados.atualizado_em = r.atualizado_em;
-      this.dados.atualizado_por = r.atualizado_por;
-      this.dados.premissas = r.premissas;
+      this.dados = { ...this.dados, ...r };
       this.avisar('');
       // Repinta só o CORPO da tabela: a tela inteira mataria o foco de quem
       // está descendo a coluna com Tab, e o cabeçalho não mudou.

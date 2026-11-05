@@ -45,7 +45,11 @@ function prova(string $nome, bool $cond, string $extra = ''): void
 function recusa(PDO $pdo, array $dados): ?string
 {
     try {
-        App\Services\CargaDre::aplicar($pdo, $dados);
+        if (isset($dados['filiais'])) {
+            App\Services\CargaDre::aplicarFiliais($pdo, $dados);
+        } else {
+            App\Services\CargaDre::aplicar($pdo, $dados);
+        }
         return null;
     } catch (Throwable $e) {
         return $e->getMessage();
@@ -114,7 +118,31 @@ $depois = $pdo->query('SELECT COUNT(*) FROM dre_valor')->fetchColumn();
 prova('reaplicar a mesma carga não duplica linha', $antes === $depois, "{$antes} → {$depois}");
 prova('e grava os 11 negócios', $r['negocios'] === 11, (string)$r['negocios']);
 
-// ── 7. O corte do fechamento ficou gravado ──────────────────────────────────
+// ── 7. Filiais: a soma tem de bater com o negócio ───────────────────────────
+// Uma filial faltando passa despercebida — cada tela fica certa e o total
+// errado. É o modo de falha que esta guarda existe para pegar.
+$fil = require __DIR__ . '/../database/dre_filiais_pecuaria_2026_09.php';
+$semUma = $fil;
+$semUma['filiais'] = array_diff_key($fil['filiais'], ['46' => 1]);
+foreach (array_keys($semUma['valores']) as $k) {
+    if (str_starts_with($k, '46|')) {
+        unset($semUma['valores'][$k]);
+    }
+}
+$msg = recusa($pdo, $semUma);
+prova('carga de filiais com uma filial faltando é recusada',
+    $msg !== null && str_contains($msg, 'não fecha com o negócio'), (string)$msg);
+
+// ── 8. E o corte precisa ser o do fechamento gravado ────────────────────────
+// Casar realizado de um período com orçamento de outro é somar duas verdades
+// diferentes; os números da filial são acumulados e só valem para um corte.
+$outroCorte = $fil;
+$outroCorte['corte'] = 8;
+$msg = recusa($pdo, $outroCorte);
+prova('carga de filiais com corte diferente do fechamento é recusada',
+    $msg !== null && str_contains($msg, 'corte'), (string)$msg);
+
+// ── 9. O corte do fechamento ficou gravado ──────────────────────────────────
 $f = $pdo->query('SELECT * FROM dre_fechamento WHERE ano = 2026')->fetch(PDO::FETCH_ASSOC);
 prova('o corte do fechamento fica no banco, não no código',
     $f && (int)$f['mes_fechado_ate'] === 9, json_encode($f));

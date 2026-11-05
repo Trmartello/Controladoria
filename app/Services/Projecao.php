@@ -143,12 +143,7 @@ class Projecao
      */
     public static function aplicar(array $linhas, array $lancados): array
     {
-        $porCodigo = [];
-        foreach ($linhas as $i => $l) {
-            $porCodigo[$l['codigo']] = $i;
-        }
-
-        // 1) As editáveis, uma a uma.
+        // As editáveis, uma a uma; os blocos saem de `derivar`.
         foreach ($linhas as $i => $l) {
             if (!self::editavel($l)) {
                 continue;
@@ -157,6 +152,43 @@ class Projecao
             $linhas[$i]['proposta'] = $r['valor'];
             $linhas[$i]['proposta_origem'] = $r['origem'];
             $linhas[$i]['proposta_lancado'] = $r['lancado'];
+        }
+
+        return self::derivar($linhas);
+    }
+
+    /**
+     * A proposta do negócio no modo FILIAL: a soma do que as filiais lançaram.
+     *
+     * As linhas editáveis do negócio deixam de ser lançáveis e passam a valer a
+     * soma; os blocos derivam dela como sempre. É o que a planilha faz no
+     * consolidado — `O10 = SUM(AF10, AR10, BD10, BP10, CB10)`.
+     *
+     * @param array $porFilial [filialId => [codigo => proposta]]
+     */
+    public static function somarFiliais(array $linhas, array $porFilial): array
+    {
+        foreach ($linhas as $i => $l) {
+            if (!self::editavel($l)) {
+                continue;
+            }
+            $soma = 0.0;
+            foreach ($porFilial as $propostas) {
+                $soma += $propostas[$l['codigo']] ?? 0.0;
+            }
+            $linhas[$i]['proposta'] = $soma;
+            $linhas[$i]['proposta_origem'] = 'FILIAIS';
+            $linhas[$i]['proposta_lancado'] = null;
+        }
+        return self::derivar($linhas);
+    }
+
+    /** Os blocos a partir das linhas já resolvidas, e o que não tem regra. */
+    private static function derivar(array $linhas): array
+    {
+        $porCodigo = [];
+        foreach ($linhas as $i => $l) {
+            $porCodigo[$l['codigo']] = $i;
         }
 
         // 2) Os blocos, na ordem das dependências.

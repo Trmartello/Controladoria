@@ -520,6 +520,7 @@ try {
         case $rota === 'GET /api/projecao':         (new ProjecaoController())->indice(); break;
         case $rota === 'POST /api/projecao/valor':  (new ProjecaoController())->gravarValor(); break;
         case $rota === 'POST /api/projecao/premissa': (new ProjecaoController())->gravarPremissa(); break;
+        case $rota === 'POST /api/projecao/modo':   (new ProjecaoController())->gravarModo(); break;
         case $rota === 'GET /api/relatorio':        (new RelatorioController())->relatorio(); break;
         case $rota === 'GET /api/relatorio/exportar': (new RelatorioController())->exportar(); break;
 
