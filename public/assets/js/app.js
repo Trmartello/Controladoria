@@ -371,7 +371,8 @@ const App = {
       swot: SecaoSwot, gut: SecaoGut, impacto: SecaoImpacto, cruzamentos: SecaoCruzamentos,
       cascata: SecaoCascata,
       projetos: SecaoProjetos, investimentos: SecaoInvestimentos,
-      metas: SecaoMetas, relatorio: SecaoRelatorio, dossie: SecaoDossie,
+      metas: SecaoMetas, projecao: SecaoProjecao,
+      relatorio: SecaoRelatorio, dossie: SecaoDossie,
       sala: SecaoSala,
     };
     const nome = this.secaoAtiva;

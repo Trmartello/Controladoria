@@ -153,6 +153,7 @@
             <li><a class="nav-link" href="#projetos" data-secao="projetos">Plano de ação</a></li>
             <li><a class="nav-link" href="#metas" data-secao="metas">Metas · Indicadores</a></li>
             <li><a class="nav-link" href="#investimentos" data-secao="investimentos">Investimentos</a></li>
+            <li><a class="nav-link" href="#projecao" data-secao="projecao">Projeção de Resultados</a></li>
           </ul>
         </li>
         <li class="grupo-menu" data-grupo="relatorios">
@@ -225,6 +226,7 @@
       <section id="secao-projetos" class="secao d-none"></section>
       <section id="secao-investimentos" class="secao d-none"></section>
       <section id="secao-metas" class="secao d-none"></section>
+      <section id="secao-projecao" class="secao d-none"></section>
       <section id="secao-relatorio" class="secao d-none"></section>
       <section id="secao-dossie" class="secao d-none"></section>
       <section id="secao-sala" class="secao d-none"></section>
@@ -319,6 +321,7 @@
   <script src="<?= versao_asset('/assets/js/secoes/projetos.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/investimentos.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/metas.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/secoes/projecao.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/relatorio.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/sala.js') ?>"></script>
   <!-- Depois de TODAS as seções: o dossiê as chama pelo nome para pintá-las de

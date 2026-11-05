@@ -715,6 +715,38 @@ if ($apagados) {
     echo "migrate: {$apagados} negócio(s) inativo(s) removido(s) do cadastro.\n";
 }
 
+// ---- Carga da DRE gerencial (Projeção de Resultados) ----
+// Número, não texto: aqui a carga SOBRESCREVE (`ON DUPLICATE KEY UPDATE`), ao
+// contrário das cargas de conteúdo abaixo, que nunca repõem o que alguém
+// editou. A marca em `carga_conteudo` serve só para não repetir o trabalho a
+// cada deploy; cada fechamento novo chega com chave nova.
+//
+// É por aqui que o realizado entra em produção: o cliente pede a atualização,
+// os números saem do Qlik e viram um arquivo `dre_*.php` no repositório. Não há
+// extração automática nem tela de importação — decisão do cliente em 05/11/2026.
+require_once __DIR__ . '/../app/Services/CargaConteudo.php';
+require_once __DIR__ . '/../app/Services/CargaDre.php';
+foreach ([
+    'dre_2026_fechamento_09.php',
+] as $arquivo) {
+    $dre = require __DIR__ . '/' . $arquivo;
+    if (App\Services\CargaConteudo::jaAplicada($pdo, $dre['chave'])) {
+        continue;
+    }
+    $r = App\Services\CargaDre::aplicar($pdo, $dre);
+    App\Services\CargaConteudo::marcar(
+        $pdo,
+        $dre['chave'],
+        "DRE {$dre['ano']}: {$r['negocios']} negócio(s), {$r['valores']} valor(es)"
+    );
+    echo "migrate: carga de DRE {$dre['chave']} — {$r['negocios']} negócio(s), "
+        . "{$r['contas']} conta(s), {$r['valores']} valor(es).\n";
+    if ($r['ignorados']) {
+        echo 'migrate: negócio(s) fora do cadastro ignorado(s) na carga de DRE: '
+            . implode(', ', $r['ignorados']) . ".\n";
+    }
+}
+
 // ---- Cargas de conteúdo: cenário macroeconômico e PESTEL ----
 // O seeds.sql só age com o contexto vazio e essas telas já têm itens escritos
 // à mão, então a carga nunca chegaria por lá. Aqui ela chega no deploy — UMA
