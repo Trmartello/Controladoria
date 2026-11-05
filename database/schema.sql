@@ -119,6 +119,10 @@ CREATE TABLE IF NOT EXISTS fator (
   ano              SMALLINT NULL,
   etapa            ENUM('PESTEL','PORTER','SWOT') NOT NULL,
   categoria        VARCHAR(40) NOT NULL,
+  -- Posição dentro da categoria (arraste na tela). Zero = coluna nunca
+  -- ordenada: a leitura é `ORDER BY categoria, ordem, id`, e com todo mundo em
+  -- zero a ordem é a de criação, que é o que sempre foi.
+  ordem            SMALLINT NOT NULL DEFAULT 0,
   descricao        TEXT NOT NULL,
   promovido_de_id  INT NULL,
   -- Encaminhamento do fator da SWOT para o plano de ação, na mesma regra da

@@ -72,6 +72,7 @@ const Modal = {
     // Janela que REABRE sem ter fechado (trocar de item pelo mesmo modal)
     // começa limpa e sem a pergunta de saída da anterior.
     this.retrato = null;
+    this.tocado = false;
     this.esconderPerguntaDeSaida();
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-erro').classList.add('d-none');
@@ -129,6 +130,14 @@ const Modal = {
         { backdrop: 'static', keyboard: false });
       document.getElementById('modal-form')
         .addEventListener('hidePrevented.bs.modal', () => this.tentarFechar());
+      // Marca que a PESSOA mexeu, e só ela: `isTrusted` separa a tecla e o
+      // clique de verdade dos eventos que o próprio sistema dispara ao montar
+      // o formulário (os ligadores, a máscara, o combo que escolhe sozinho).
+      // Sem esse filtro a janela nasceria tocada e perguntaria a toda saída.
+      ['input', 'change'].forEach((ev) => {
+        document.getElementById('modal-campos')
+          .addEventListener(ev, (e) => { if (e.isTrusted) this.tocado = true; }, true);
+      });
       this.ligarPerguntaDeSaida();
       document.getElementById('modal-salvar').addEventListener('click', () => this.salvar());
       document.getElementById('modal-form').addEventListener('submit', (ev) => {
@@ -142,6 +151,7 @@ const Modal = {
         // que não existe mais.
         this.esconderPerguntaDeSaida();
         this.retrato = null;
+        this.tocado = false;
         // Fechar por qualquer caminho — salvar, cancelar, Esc, clique fora —
         // solta o cadeado. Um lugar só: `hidden.bs.modal` é o funil por onde
         // todos eles passam, e amarrar em cada botão deixaria um de fora.
@@ -163,7 +173,14 @@ const Modal = {
         // que escolhe a primeira opção, a grade que remarca os dias). Tirada
         // antes, a janela nasceria "suja" e perguntaria a toda saída — e um
         // aviso que aparece sempre é um aviso que ninguém lê.
-        this.marcarLimpo();
+        //
+        // Mas quem já digitou NÃO entra na fotografia: entre o `show()` e este
+        // `shown` cabe um teclado rápido (e cabia a bateria), e retratar o que
+        // a pessoa escreveu é dizer que o formulário nasceu assim — a janela
+        // fecharia no clique fora levando o texto, que é exatamente o defeito
+        // que esta guarda existe para tapar. Tocado antes do retrato conta
+        // como sujo (ver `sujo()`): na dúvida, pergunta.
+        if (!this.tocado) this.marcarLimpo();
       });
       this.ligarArraste();
       this.ligarRedimensionar();
@@ -1750,7 +1767,11 @@ const Modal = {
   },
 
   sujo() {
-    if (this.retrato === null || this.retrato === undefined) return false;
+    // Sem fotografia não há com o que comparar. Se a pessoa mexeu antes dela
+    // existir, a resposta é SIM — é o caso em que não se sabe o que se perde, e
+    // é justamente nele que a pergunta vale. Formulário que nem foi tocado
+    // (retrato que não saiu por campo removido no meio) fecha como antes.
+    if (this.retrato === null || this.retrato === undefined) return this.tocado === true;
     try {
       return JSON.stringify(this.coletar()) !== this.retrato;
     } catch {
@@ -1788,9 +1809,10 @@ const Modal = {
     });
     document.getElementById('modal-sair-descartar').addEventListener('click', () => {
       this.esconderPerguntaDeSaida();
-      // Descartar é a saída: o retrato some para o `hide` não ser barrado de
-      // novo por nada.
+      // Descartar é a saída: o retrato some, e com ele a marca de que a pessoa
+      // mexeu, para o `hide` não ser barrado de novo por nada.
       this.retrato = null;
+      this.tocado = false;
       this.bsModal.hide();
     });
     document.getElementById('modal-sair-voltar').addEventListener('click', () => {

@@ -80,7 +80,7 @@ class FatorController
                GROUP BY fator_id) cz ON cz.fator_id = f.id
              LEFT JOIN usuario ca ON ca.id = ci.autor_id
              WHERE f.planejamento_id = ? AND f.etapa = ?{$filtroAno}
-             ORDER BY f.categoria, f.id",
+             ORDER BY f.categoria, f.ordem, f.id",
             $params
         );
 
@@ -105,6 +105,52 @@ class FatorController
             $f['mover_trava'] = array_values(array_unique($mover[$id] ?? []));
         }
         Json::ok($fatores);
+    }
+
+    /**
+     * Nova ordem dos fatores de UMA categoria (pedido do cliente, 2026-11-05 —
+     * o mesmo arraste que o cenário ganhou na véspera).
+     *
+     * A regra é a do cenário, e as razões também: a lista chega inteira e na
+     * ordem da tela, a posição vira `ordem` 1..N, e vem uma categoria por vez
+     * porque a ordem é por categoria. A guarda de dono é a mesma e pela mesma
+     * razão — `ordem` é escrita, e `exigirEdicaoPlanejamento` autoriza o plano
+     * do corpo, não o dono de cada linha.
+     *
+     * Uma diferença importante: aqui a coluna pode estar toda em `ordem = 0`
+     * (nunca arrastada, que é como todo fator nasceu até esta mudança). Como a
+     * tela manda a lista completa da categoria, a primeira arrastada numera a
+     * coluna inteira — e o que era "ordem de criação" passa a ser explícito,
+     * sem nenhum item ficar para trás com zero.
+     */
+    public function reordenar(): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+
+        $ids = array_values(array_filter(
+            array_map('intval', is_array($d['ids'] ?? null) ? $d['ids'] : []),
+            fn($i) => $i > 0
+        ));
+        if (!$ids) {
+            Json::erro('Informe a nova ordem.');
+        }
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        $meus = (int)Database::um(
+            "SELECT COUNT(*) AS n FROM fator WHERE planejamento_id = ? AND id IN ({$marcas})",
+            array_merge([$planId], $ids)
+        )['n'];
+        if ($meus !== count($ids)) {
+            Json::erro('Há fator que não é desta análise na ordem enviada.');
+        }
+        foreach ($ids as $posicao => $id) {
+            Database::executar(
+                'UPDATE fator SET ordem = ? WHERE id = ? AND planejamento_id = ?',
+                [$posicao + 1, $id, $planId]
+            );
+        }
+        Json::ok(['itens' => count($ids)]);
     }
 
     public function salvar(?int $id = null): void
@@ -146,8 +192,10 @@ class FatorController
                 Json::erro('Informe o ano da análise.');
             }
             $id = (int)Database::executar(
-                'INSERT INTO fator (planejamento_id, ano, etapa, categoria, descricao) VALUES (?, ?, ?, ?, ?)',
-                [$planId, $ano, $etapa, $categoria, $descricao]
+                'INSERT INTO fator (planejamento_id, ano, etapa, categoria, ordem, descricao)
+                 VALUES (?, ?, ?, ?, ?, ?)',
+                [$planId, $ano, $etapa, $categoria,
+                 Fatores::proximaOrdem($planId, $ano, $etapa, $categoria), $descricao]
             );
         }
         $this->vincularSugestoes($d, $id, $planId, $etapa, $categoria, $ano);
@@ -377,9 +425,11 @@ class FatorController
         }
 
         $novoId = (int)Database::executar(
-            'INSERT INTO fator (planejamento_id, ano, etapa, categoria, descricao, promovido_de_id)
-             VALUES (?, ?, \'SWOT\', ?, ?, ?)',
-            [$planId, $fator['ano'], $quadrante, $fator['descricao'], $id]
+            'INSERT INTO fator (planejamento_id, ano, etapa, categoria, ordem, descricao, promovido_de_id)
+             VALUES (?, ?, \'SWOT\', ?, ?, ?, ?)',
+            [$planId, $fator['ano'], $quadrante,
+             Fatores::proximaOrdem($planId, (int)$fator['ano'], 'SWOT', $quadrante),
+             $fator['descricao'], $id]
         );
         Json::ok(['id' => $novoId]);
     }

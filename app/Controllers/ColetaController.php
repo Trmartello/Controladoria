@@ -327,8 +327,10 @@ class ColetaController
             $destinoTipo = 'ACAO';
         } else {
             $destinoId = (int)Database::executar(
-                'INSERT INTO fator (planejamento_id, ano, etapa, categoria, descricao) VALUES (?, ?, ?, ?, ?)',
-                [$planId, $ano, $destino, $d['categoria'], $texto]
+                'INSERT INTO fator (planejamento_id, ano, etapa, categoria, ordem, descricao)
+                 VALUES (?, ?, ?, ?, ?, ?)',
+                [$planId, $ano, $destino, $d['categoria'],
+                 Fatores::proximaOrdem($planId, $ano, $destino, (string)$d['categoria']), $texto]
             );
             $destinoTipo = 'FATOR';
         }

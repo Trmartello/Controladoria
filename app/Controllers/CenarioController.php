@@ -347,10 +347,11 @@ class CenarioController
         }
 
         $novo = (int)Database::executar(
-            'INSERT INTO fator (planejamento_id, ano, etapa, categoria, descricao, acao_em, acao_por)
-             VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [$planId, $ano, $etapa, $categoria, (string)$item['descricao'],
-             $item['acao_em'], $item['acao_por']]
+            'INSERT INTO fator (planejamento_id, ano, etapa, categoria, ordem, descricao, acao_em, acao_por)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [$planId, $ano, $etapa, $categoria,
+             Fatores::proximaOrdem($planId, $ano, $etapa, $categoria),
+             (string)$item['descricao'], $item['acao_em'], $item['acao_por']]
         );
         Quiz::mudarDestino('CENARIO', $id, 'FATOR', $novo);
         Database::executar('DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$id, $planId]);

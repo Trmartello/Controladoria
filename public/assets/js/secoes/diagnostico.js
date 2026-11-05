@@ -541,6 +541,31 @@ const Diag = {
       title="Mostrar o texto inteiro de cada cartão, sem o corte de três linhas">▾ Texto completo</button>`;
   },
 
+  /**
+   * Arrastar para ordenar os cartões de fator, UMA categoria por vez
+   * (pedido do cliente, 2026-11-05).
+   *
+   * Vale para as TRÊS análises — PESTEL, Porter e SWOT —, e por isso mora
+   * aqui, e não dentro de cada uma: as três desenham cartão de fator em
+   * colunas `[data-coluna-categoria]`, e o que muda entre elas é só o
+   * catálogo de categorias.
+   *
+   * A gravação é por categoria porque a ordem é por categoria; trocar de
+   * categoria continua sendo o ✎, onde a mudança é de conteúdo e não de
+   * posição. Não se repinta a seção depois de gravar: a tela já está na ordem
+   * nova, e recarregar custaria o lugar da rolagem de quem acabou de arrastar.
+   * O cartão de fator não mostra número, então não há o que renumerar.
+   */
+  ligarOrdenarFatores(el, planId) {
+    if (!App.podeEditar()) return;
+    el.querySelectorAll('[data-coluna-categoria] .corpo-coluna').forEach((coluna) => {
+      Ordenar.ligar(coluna, {
+        item: '.cartao-ordenavel',
+        aoSoltar: (ids) => App.api('/api/fatores/reordenar', { planejamento_id: planId, ids }),
+      });
+    });
+  },
+
   ligarTextoCompleto(el) {
     el.querySelectorAll('[data-alternar-texto]').forEach((b) => b.addEventListener('click', () => {
       const abrir = !this.textoCompleto();
@@ -1096,9 +1121,12 @@ const Diag = {
 
     const colunas = categorias.map(([cat, rotulo, cor]) => {
       const itens = fatores.filter((f) => f.categoria === cat);
+      // `data-id` é o que o `Ordenar` lê; `data-card-fator` continua sendo o
+      // endereço do cartão para quem chega da Coleta, da GUT ou do ⇄.
       const cartoes = itens.map((f) => `
-        <div class="card mb-2" data-card-fator="${f.id}" data-cadeado="fator:${f.id}"><div class="card-body py-2 px-2">
-          <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
+        <div class="card mb-2 cartao-ordenavel" data-card-fator="${f.id}" data-id="${f.id}"
+          data-cadeado="fator:${f.id}"><div class="card-body py-2 px-2">
+          <div class="small texto-fator">${App.podeEditar() ? Ordenar.alca() : ''}${Modal.esc(f.descricao)}</div>
           ${this.botoesFator(f, plan.id, comPromocao, this.selosOrigem(f))}
           ${comPromocao && App.podeEditar() ? this.painelQuadrantes(f) : ''}
         </div></div>`).join('');
@@ -1197,6 +1225,14 @@ const Diag = {
       QuizSala.ligarSelo(el);
       return;
     }
+    // Arrastar para ordenar, UMA categoria por vez (pedido do cliente,
+    // 2026-11-05). Mesmo componente e mesmas razões do cenário: a ordem é por
+    // categoria, trocar de categoria continua sendo o ✎ (lá a mudança é de
+    // conteúdo, não de posição), e não se repinta a seção depois de gravar —
+    // a tela já está na ordem nova e repintar custaria o lugar da rolagem.
+    // O cartão de fator não mostra número, então não há o que renumerar.
+    this.ligarOrdenarFatores(el, plan.id);
+
     const opcoesCat = categorias.map(([cat, rotulo]) => ({ valor: cat, rotulo }));
 
     // `sugestao` chega do painel da sala: o texto entra como RASCUNHO (o condutor
@@ -1875,8 +1911,9 @@ const SecaoSwot = {
         // Caminho do fator até o plano de ação, nos mesmos três estados da
         // ideia da Coleta: fora da fila, na fila e já convertido em ação.
         const acao = Diag.seloPlanoAcao(f);
-        return `<div class="card mb-2" data-card-fator="${f.id}" data-cadeado="fator:${f.id}"><div class="card-body py-2 px-3">
-          <div class="small texto-fator">${Modal.esc(f.descricao)}</div>
+        return `<div class="card mb-2 cartao-ordenavel" data-card-fator="${f.id}" data-id="${f.id}"
+          data-cadeado="fator:${f.id}"><div class="card-body py-2 px-3">
+          <div class="small texto-fator">${App.podeEditar() ? Ordenar.alca() : ''}${Modal.esc(f.descricao)}</div>
           <div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
             ${Diag.selosOrigem(f)}${origem}${gut}${acao}
             ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
@@ -1989,6 +2026,9 @@ const SecaoSwot = {
       QuizSala.ligarSelo(el);
       return;
     }
+    // O mesmo arraste do PESTEL e do Porter: aqui a "categoria" é o quadrante.
+    Diag.ligarOrdenarFatores(el, plan.id);
+
     const modalFator = (f = null, categoria = null, sugestao = null) => Modal.abrir({
       titulo: sugestao ? `Aceitar sugestão da sala · ${ano}`
         : f ? `Editar fator da SWOT (${f.ano || ano})` : `Novo fator da SWOT · ${ano}`,

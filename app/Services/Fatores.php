@@ -172,4 +172,29 @@ class Fatores
         }
         return $presos;
     }
+
+    /**
+     * A posição de um fator NOVO dentro da categoria: depois do último.
+     *
+     * Mora aqui porque QUATRO caminhos criam fator — a tela da análise, o `⇄`
+     * do cenário, a ideia da Coleta e a promoção para a SWOT — e todos
+     * precisam da mesma regra. Sem ela o fator novo nasce com `ordem = 0` e
+     * salta para o TOPO de uma coluna que alguém já arrastou, o que se lê como
+     * a tela embaralhando sozinha.
+     *
+     * `MAX(ordem)` e não `COUNT(*)`: contar dá o número errado assim que
+     * alguém apaga um item do meio.
+     *
+     * (A carga de conteúdo tem a sua própria conta, por não ter o autoload no
+     * migrate — ver `CargaConteudo::aplicarFatores`.)
+     */
+    public static function proximaOrdem(int $planId, ?int $ano, string $etapa, string $categoria): int
+    {
+        $linha = Database::um(
+            'SELECT COALESCE(MAX(ordem), 0) AS n FROM fator
+              WHERE planejamento_id = ? AND ano <=> ? AND etapa = ? AND categoria = ?',
+            [$planId, $ano, $etapa, $categoria]
+        );
+        return (int)($linha['n'] ?? 0) + 1;
+    }
 }
