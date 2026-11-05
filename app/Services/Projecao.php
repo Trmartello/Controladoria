@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Core\Database;
+
 /**
  * As regras da Projeção de Resultados que não são de tela nem de banco.
  *
@@ -181,6 +183,141 @@ class Projecao
             $linhas[$i]['proposta_lancado'] = null;
         }
         return self::derivar($linhas);
+    }
+
+    /**
+     * A projeção e a proposta de VÁRIOS negócios de uma vez (fatia 4).
+     *
+     * O Painel precisa disso para doze planejamentos ao mesmo tempo, e fazer
+     * por negócio seria dezenas de consultas por carregamento. Aqui são quatro,
+     * e as regras continuam sendo as mesmas de uma tela só: `aplicar` quando o
+     * negócio planeja no total, `somarFiliais` quando planeja por filial. Se a
+     * conta divergisse entre o Painel e a tela da Projeção, ninguém saberia
+     * qual das duas acreditar.
+     *
+     * @param int[] $negocioIds
+     * @return array<int,array{projecao:array,proposta:array,modo:string}>
+     *         por negócio, os valores das contas pedidas em `$contasAlvo`
+     */
+    public static function resumoDosNegocios(
+        array $negocioIds,
+        int $ano,
+        int $corte,
+        int $anoPlan,
+        array $contasAlvo = ['3', '16']
+    ): array {
+        if (!$negocioIds) {
+            return [];
+        }
+        $marcas = implode(',', array_fill(0, count($negocioIds), '?'));
+
+        $contas = Database::todos(
+            'SELECT id, codigo, nome, nivel, pai_codigo, percentual FROM dre_conta ORDER BY ordem'
+        );
+        if (!$contas) {
+            return [];
+        }
+        $porId = [];
+        foreach ($contas as $c) {
+            $porId[(int)$c['id']] = $c['codigo'];
+        }
+
+        $valores = Database::todos(
+            'SELECT negocio_id, conta_id,
+                    COALESCE(SUM(CASE WHEN tipo = \'REAL\' AND mes <= ? THEN valor END), 0) AS realizado,
+                    COALESCE(SUM(CASE WHEN tipo = \'META\' AND mes >  ? THEN valor END), 0) AS projetado
+               FROM dre_valor
+              WHERE ano = ? AND negocio_id IN (' . $marcas . ')
+              GROUP BY negocio_id, conta_id',
+            array_merge([$corte, $corte, $ano], $negocioIds)
+        );
+        $dre = [];
+        foreach ($valores as $v) {
+            $dre[(int)$v['negocio_id']][$porId[(int)$v['conta_id']]] =
+                [(float)$v['realizado'], (float)$v['projetado']];
+        }
+
+        $projecoes = Database::todos(
+            'SELECT id, negocio_id, modo FROM projecao WHERE ano = ? AND negocio_id IN (' . $marcas . ')',
+            array_merge([$anoPlan], $negocioIds)
+        );
+        $projPorNegocio = [];
+        $idsProj = [];
+        foreach ($projecoes as $p) {
+            $projPorNegocio[(int)$p['negocio_id']] = $p;
+            $idsProj[] = (int)$p['id'];
+        }
+
+        $lancPorProj = [];
+        if ($idsProj) {
+            $m2 = implode(',', array_fill(0, count($idsProj), '?'));
+            foreach (Database::todos(
+                'SELECT projecao_id, filial_id, conta_id, entrada, valor, percentual
+                   FROM projecao_valor WHERE projecao_id IN (' . $m2 . ')',
+                $idsProj
+            ) as $l) {
+                $lancPorProj[(int)$l['projecao_id']][(int)$l['filial_id']][$porId[(int)$l['conta_id']]] = $l;
+            }
+        }
+
+        $filiais = Database::todos(
+            'SELECT f.negocio_id, v.filial_id, v.conta_id, v.realizado, v.projetado
+               FROM filial f JOIN dre_valor_filial v ON v.filial_id = f.id
+              WHERE v.ano = ? AND f.negocio_id IN (' . $marcas . ')',
+            array_merge([$ano], $negocioIds)
+        );
+        $dreFilial = [];
+        foreach ($filiais as $f) {
+            $dreFilial[(int)$f['negocio_id']][(int)$f['filial_id']][$porId[(int)$f['conta_id']]] =
+                [(float)$f['realizado'], (float)$f['projetado']];
+        }
+
+        $monta = static function (array $valoresPorConta) use ($contas): array {
+            $linhas = [];
+            foreach ($contas as $c) {
+                [$r, $p] = $valoresPorConta[$c['codigo']] ?? [0.0, 0.0];
+                $linhas[] = [
+                    'codigo' => $c['codigo'], 'nome' => $c['nome'],
+                    'nivel' => (int)$c['nivel'], 'percentual' => (int)$c['percentual'],
+                    'realizado' => $r, 'projetado' => $p, 'projecao' => $r + $p,
+                ];
+            }
+            return $linhas;
+        };
+
+        $saida = [];
+        foreach ($negocioIds as $id) {
+            $id = (int)$id;
+            if (!isset($dre[$id])) {
+                continue;
+            }
+            $linhas = $monta($dre[$id]);
+            $proj = $projPorNegocio[$id] ?? null;
+            $modo = $proj['modo'] ?? 'NEGOCIO';
+            $lanc = $proj ? ($lancPorProj[(int)$proj['id']] ?? []) : [];
+
+            if ($modo === 'FILIAL' && !empty($dreFilial[$id])) {
+                $propostas = [];
+                foreach ($dreFilial[$id] as $filialId => $porConta) {
+                    $lf = self::aplicar($monta($porConta), $lanc[$filialId] ?? []);
+                    $propostas[$filialId] = array_column($lf, 'proposta', 'codigo');
+                }
+                $linhas = self::somarFiliais($linhas, $propostas);
+            } else {
+                $linhas = self::aplicar($linhas, $lanc[0] ?? []);
+            }
+
+            $proje = [];
+            $prop = [];
+            foreach ($linhas as $l) {
+                if (in_array($l['codigo'], $contasAlvo, true)) {
+                    $proje[$l['codigo']] = (float)$l['projecao'];
+                    $prop[$l['codigo']] = $l['proposta'] === null ? null : (float)$l['proposta'];
+                }
+            }
+            $saida[$id] = ['projecao' => $proje, 'proposta' => $prop, 'modo' => $modo];
+        }
+        return $saida;
     }
 
     /** Os blocos a partir das linhas já resolvidas, e o que não tem regra. */

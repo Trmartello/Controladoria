@@ -56,6 +56,10 @@ const SecaoDossie = {
     { chave: 'projetos', rotulo: 'Plano de ação', secao: () => SecaoProjetos, padrao: true },
     { chave: 'investimentos', rotulo: 'Investimentos', secao: () => SecaoInvestimentos, padrao: true },
     { chave: 'metas', rotulo: 'Metas · Indicadores', secao: () => SecaoMetas, padrao: true },
+    // A Projeção entra DEPOIS das metas: ela é o número que fecha o documento
+    // — o que o ano corrente entrega e o que o negócio propõe para o seguinte.
+    // No corporativo ela se declara ausente em vez de somar o que não existe.
+    { chave: 'projecao', rotulo: 'Projeção de Resultados', secao: () => SecaoProjecao, padrao: true },
   ],
 
   /**

@@ -2652,6 +2652,23 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   **Só a Pecuária está carregada por filial** (a extração é por negócio, uma
   chamada ao Qlik cada); os outros dez entram quando o cliente pedir, e a tela
   diz isso a quem tentar trocar o modo sem dados.
+  **O consolidado no Painel e a Projeção no Dossiê (fatia 4).** O Painel ganha
+  duas colunas (projeção do ano e proposta do seguinte, com ROL em cima e
+  resultado líquido embaixo) e dois cartões. O cartão **diz de quantos negócios
+  é o consolidado** — um consolidado parcial lido como total da cooperativa é o
+  erro silencioso que esta seção inteira evita —, e o Corporativo fica com "—",
+  porque a DRE gerencial não tem linha corporativa. A conta do Painel sai de
+  `Projecao::resumoDosNegocios`, que usa **as mesmas** `aplicar`/`somarFiliais`
+  da tela: se a conta divergisse entre as duas, ninguém saberia em qual
+  acreditar. São quatro consultas em lote, e não dezenas — o Painel resolve
+  doze planejamentos de uma vez.
+  **No Dossiê a Projeção segue o negócio do DOCUMENTO**, não o seletor da tela
+  (`App.modoDossie` + `App.contexto`), e se declara ausente onde não há DRE em
+  vez de imprimir o número de um negócio sob o nome de outro — a API cai no
+  primeiro negócio com DRE quando o pedido não tem, o que é conveniência numa
+  tela e falsificação num documento. No dossiê a seção também vira PÁGINA:
+  sem seletor, sem rádio e sem campo de digitar, que no papel sairiam como
+  caixas vazias.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas

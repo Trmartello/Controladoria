@@ -57,10 +57,33 @@ const SecaoProjecao = {
 
   async carregar() {
     const el = document.getElementById('secao-projecao');
-    const q = this.negocioId
-      ? `?negocio_id=${this.negocioId}${this.filialId ? `&filial_id=${this.filialId}` : ''}`
+    // No DOSSIÊ quem manda é o contexto do documento, não o seletor da tela:
+    // o dossiê percorre os negócios trocando `App.contexto` e fotografando
+    // cada seção. Sem isto, todas as páginas sairiam com o último negócio que
+    // alguém tivesse aberto aqui.
+    const dossie = !!App.modoDossie;
+    const alvo = dossie
+      ? (App.contexto.corporativo ? 0 : Number(App.contexto.negocioId) || 0)
+      : this.negocioId;
+    if (dossie && !alvo) {
+      el.innerHTML = `<h1>Projeção de Resultados</h1>
+        <p class="text-muted">A projeção é por <strong>negócio</strong>: a DRE gerencial não tem
+        linha corporativa. O consolidado dos negócios está no Painel.</p>`;
+      return;
+    }
+    const q = alvo
+      ? `?negocio_id=${alvo}${!dossie && this.filialId ? `&filial_id=${this.filialId}` : ''}`
       : '';
     const d = await App.api(`/api/projecao${q}`);
+    // A API cai no primeiro negócio com DRE quando o pedido não tem. Numa tela
+    // isso é conveniência; num DOCUMENTO seria imprimir o número de um negócio
+    // sob o nome de outro.
+    if (dossie && Number(d.negocio_id) !== Number(alvo)) {
+      el.innerHTML = `<h1>Projeção de Resultados</h1>
+        <p class="text-muted">Este negócio ainda não tem a DRE carregada — a carga vem do Qlik,
+        pela controladoria, e é feita por negócio.</p>`;
+      return;
+    }
 
     if (d.sem_carga || !d.negocios.length) {
       el.innerHTML = `<h1>Projeção de Resultados</h1>
@@ -69,7 +92,7 @@ const SecaoProjecao = {
     : 'Nenhum negócio com DRE carregada no seu escopo.'}</div>`;
       return;
     }
-    this.negocioId = d.negocio_id;
+    if (!dossie) this.negocioId = d.negocio_id;
     this.versao = d.versao;
     // A filial pedida pode não existir neste negócio (troquei de negócio com
     // uma filial aberta): quem manda é o que o servidor devolveu.
@@ -81,6 +104,10 @@ const SecaoProjecao = {
   },
 
   html(d) {
+    // No dossiê a seção vira PÁGINA: seletor e botão de rádio não se
+    // imprimem — viram caixa vazia no papel. O que era escolha vira título.
+    const dossie = !!App.modoDossie;
+    const nomeNegocio = (d.negocios.find((n) => Number(n.id) === Number(d.negocio_id)) || {}).rotulo || '';
     const opcoes = d.negocios.map((n) => `<option value="${n.id}"${
       Number(n.id) === Number(d.negocio_id) ? ' selected' : ''}>${Modal.esc(n.rotulo)}</option>`).join('');
 
@@ -101,7 +128,7 @@ const SecaoProjecao = {
     // para baixo, lançando no negócio e distribuindo às filiais depois; ou de
     // baixo para cima, lançando em cada filial e somando. Trocar não apaga
     // lançamento nenhum — só muda qual dos dois forma o total.
-    const seletorModo = d.filiais.length ? `
+    const seletorModo = d.filiais.length && !dossie ? `
       <div class="btn-group btn-group-sm" role="group" aria-label="Como este negócio planeja">
         <input type="radio" class="btn-check" name="projecao-modo" id="modo-negocio"
           value="NEGOCIO" ${d.modo === 'NEGOCIO' ? 'checked' : ''} ${d.pode_editar ? '' : 'disabled'}>
@@ -113,7 +140,7 @@ const SecaoProjecao = {
           title="Planejar cada filial; o negócio passa a ser a soma delas">Planejar por filial</label>
       </div>` : '';
 
-    const seletorFilial = d.filiais.length ? `
+    const seletorFilial = d.filiais.length && !dossie ? `
       <select id="projecao-filial" class="form-select form-select-sm" style="max-width:16rem"
         aria-label="Filial">
         <option value="0"${d.filial ? '' : ' selected'}>Negócio (consolidado)</option>
@@ -127,8 +154,10 @@ const SecaoProjecao = {
         <h1 class="mb-0 me-auto">Projeção de Resultados — ${d.ano}</h1>
         ${seletorModo}
         ${seletorFilial}
-        <select id="projecao-negocio" class="form-select form-select-sm" style="max-width:18rem"
-          aria-label="Negócio">${opcoes}</select>
+        ${dossie
+    ? `<span class="fs-5">${Modal.esc(nomeNegocio)}</span>`
+    : `<select id="projecao-negocio" class="form-select form-select-sm" style="max-width:18rem"
+          aria-label="Negócio">${opcoes}</select>`}
       </div>
       <p class="text-muted mb-1">
         Realizado de <strong>jan a ${this.nomeMes(d.mes_fechado_ate)}</strong> (meses fechados) e
@@ -186,8 +215,12 @@ const SecaoProjecao = {
     const num = (v, casas = 2) => (v === null || v === undefined
       ? '—'
       : `${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`);
-    const campo = (chave, rotulo) => `
-      <div class="col-6 col-md-auto">
+    const campo = (chave, rotulo) => (App.modoDossie
+      ? `<div class="col-6 col-md-auto">
+           <div class="small text-muted">${rotulo}</div>
+           <div class="fw-bold">${num(p[chave], 2)}</div>
+         </div>`
+      : `<div class="col-6 col-md-auto">
         <label class="form-label small text-muted mb-0" for="premissa-${chave}">${rotulo}</label>
         <div class="input-group input-group-sm premissa-campo">
           <input type="text" class="form-control celula-premissa" id="premissa-${chave}"
@@ -196,7 +229,7 @@ const SecaoProjecao = {
             placeholder="—" ${this.editavelAqui(d) ? '' : 'disabled'}>
           <span class="input-group-text">%</span>
         </div>
-      </div>`;
+      </div>`);
     const leitura = (valor, rotulo, dica) => `
       <div class="col-6 col-md-auto">
         <div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
@@ -259,6 +292,9 @@ const SecaoProjecao = {
    * inteira existe para não ter.
    */
   editavelAqui(d) {
+    // No dossiê a tela vira papel: campo de digitar sai como caixa vazia na
+    // impressão, e o documento parece quebrado.
+    if (App.modoDossie) return false;
     if (!d.pode_editar) return false;
     return d.filial ? true : d.modo === 'NEGOCIO';
   },
