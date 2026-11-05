@@ -21,6 +21,15 @@ class QlikSync
      * `seeds.sql` (instalação nova) e o passo do `migrate.php` (instalação que
      * já existe) aplicam exatamente esta lista.
      *
+     * O código **3 (FRUTICULTURA) saiu a pedido do cliente em 05/11/2026**:
+     * entrou na revisão de 03/08/2026 e não é unidade que planeja neste ciclo.
+     * Sair DAQUI é o que resolve — desativar pela tela não bastaria, porque o
+     * passo do migrate recria quem falta, e excluir pela tela também não: a
+     * linha voltaria no deploy seguinte. Fora desta lista, o migrate desativa a
+     * linha e a apaga se ela não tiver planejamento nem usuário vinculado;
+     * tendo, ela fica inativa, fora das seleções, com tudo preservado.
+     * Devolvê-lo é repor a linha aqui.
+     *
      * A revisão de 03/08/2026 trouxe os códigos 3 e 17, que faltavam, e trocou
      * os rótulos longos da carga anterior pelos oficiais, mais curtos
      * ("NEGOCIO FABRICA DE RACOES" → "F. DE RACOES"). Os códigos 10, 14, 15 e
@@ -36,7 +45,6 @@ class QlikSync
     private const NEGOCIOS_FONTE = [
         '1'  => 'CEREAIS',
         '2'  => 'PECUARIA',
-        '3'  => 'FRUTICULTURA',
         '4'  => 'LEITE',
         '6'  => 'F. DE RACOES',
         '7'  => 'UTM',
