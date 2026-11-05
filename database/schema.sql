@@ -865,11 +865,15 @@ CREATE TABLE IF NOT EXISTS projecao (
 CREATE TABLE IF NOT EXISTS projecao_valor (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   projecao_id INT NOT NULL,
+  -- 0 = a linha do NEGÓCIO; qualquer outro valor é a filial. Zero e não NULL
+  -- pela mesma razão de `indicador_valor.mes`: com NULL, a chave única abaixo
+  -- não impediria duplicata nenhuma — o MySQL trata cada NULL como distinto.
+  filial_id   INT NOT NULL DEFAULT 0,
   conta_id    INT NOT NULL,
   entrada     ENUM('VALOR','PERCENTUAL') NOT NULL,
   valor       DECIMAL(18,2) NULL,
   percentual  DECIMAL(9,4) NULL,
-  UNIQUE KEY uk_projecao_valor (projecao_id, conta_id),
+  UNIQUE KEY uk_projecao_valor_filial (projecao_id, filial_id, conta_id),
   CONSTRAINT fk_pv_projecao FOREIGN KEY (projecao_id) REFERENCES projecao(id) ON DELETE CASCADE,
   CONSTRAINT fk_pv_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -881,8 +885,44 @@ CREATE TABLE IF NOT EXISTS projecao_valor (
 -- é digitado evita a segunda fonte do mesmo número.
 CREATE TABLE IF NOT EXISTS projecao_premissa (
   projecao_id INT NOT NULL,
+  -- 0 = o negócio; outro valor, a filial. No bloco de cada filial a planilha
+  -- tem o seu próprio IPCA e PIB, e é de lá que a proposta dela sai.
+  filial_id   INT NOT NULL DEFAULT 0,
   chave       VARCHAR(20) NOT NULL,
   percentual  DECIMAL(9,4) NOT NULL,
-  PRIMARY KEY (projecao_id, chave),
+  PRIMARY KEY (projecao_id, filial_id, chave),
+  KEY idx_pp_projecao (projecao_id),
   CONSTRAINT fk_pp_projecao FOREIGN KEY (projecao_id) REFERENCES projecao(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Filiais (fatia 3 do tema 13) ────────────────────────────────────────────
+-- As unidades dentro do negócio. Só entram as que têm movimento: a Pecuária
+-- tem 39 filiais no cadastro do ERP e SEIS com lançamento em 2026 — são as
+-- cinco da planilha do cliente mais Morrinhos, que aparece com R$ 1.448.
+CREATE TABLE IF NOT EXISTS filial (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  negocio_id INT NOT NULL,
+  cod_filial VARCHAR(10) NOT NULL,
+  nome       VARCHAR(120) NOT NULL,
+  UNIQUE KEY uk_filial (negocio_id, cod_filial),
+  CONSTRAINT fk_filial_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A DRE da filial, ACUMULADA — e não mês a mês como a do negócio.
+-- O motivo é tamanho: são 177 filiais com movimento nos onze negócios, e mês a
+-- mês isso é meio milhão de valores. Acumulado, a carga de um negócio cabe numa
+-- chamada do Qlik. A contrapartida está declarada em `corte`: estes números
+-- valem para UM corte de fechamento, e quando o corte anda a filial inteira é
+-- re-extraída (o negócio, não — lá só o mês novo chega).
+CREATE TABLE IF NOT EXISTS dre_valor_filial (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  filial_id  INT NOT NULL,
+  conta_id   INT NOT NULL,
+  ano        SMALLINT NOT NULL,
+  corte      TINYINT NOT NULL,
+  realizado  DECIMAL(18,2) NOT NULL,
+  projetado  DECIMAL(18,2) NOT NULL,
+  UNIQUE KEY uk_dre_valor_filial (filial_id, conta_id, ano),
+  CONSTRAINT fk_dvf_filial FOREIGN KEY (filial_id) REFERENCES filial(id) ON DELETE CASCADE,
+  CONSTRAINT fk_dvf_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -109,6 +109,149 @@ class CargaDre
     }
 
     /**
+     * Carga da DRE por FILIAL de UM negócio (fatia 3).
+     *
+     * Acumulada, não mensal — o porquê está no `schema.sql` e no cabeçalho do
+     * arquivo de carga. A guarda que importa é a última: **a soma das filiais
+     * tem de bater com a DRE do negócio**, conta a conta. Uma filial faltando
+     * passaria despercebida (a tela mostraria cada filial certa e o total
+     * errado), e é exatamente o modo de falha que este sistema não pode ter.
+     *
+     * @return array{filiais:int, valores:int}
+     */
+    public static function aplicarFiliais(PDO $pdo, array $dados): array
+    {
+        $ano = (int)($dados['ano'] ?? 0);
+        $corte = (int)($dados['corte'] ?? 0);
+        $codNegocio = (string)($dados['negocio'] ?? '');
+        if ($ano < 2000 || $corte < 1 || $corte > 12 || $codNegocio === '') {
+            throw new RuntimeException('Carga de filiais sem ano, corte ou negócio.');
+        }
+
+        $st = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ?');
+        $st->execute([$codNegocio]);
+        $negocioId = (int)$st->fetchColumn();
+        if (!$negocioId) {
+            throw new RuntimeException("Carga de filiais para negócio fora do cadastro: {$codNegocio}.");
+        }
+
+        // O corte da carga precisa ser o do fechamento que está no banco: estes
+        // números são "realizado ATÉ o corte", e casá-los com outro corte
+        // somaria realizado de um período com orçamento de outro.
+        $st = $pdo->prepare('SELECT mes_fechado_ate FROM dre_fechamento WHERE ano = ?');
+        $st->execute([$ano]);
+        $corteBanco = (int)$st->fetchColumn();
+        if ($corteBanco !== $corte) {
+            throw new RuntimeException(
+                "Carga de filiais com corte {$corte}, mas o fechamento de {$ano} no banco está em "
+                . "{$corteBanco}. Re-extraia as filiais no corte do fechamento."
+            );
+        }
+
+        $contas = [];
+        foreach ($pdo->query('SELECT id, codigo FROM dre_conta')->fetchAll(PDO::FETCH_ASSOC) as $l) {
+            $contas[$l['codigo']] = (int)$l['id'];
+        }
+        if (!$contas) {
+            throw new RuntimeException('Carga de filiais antes da carga do negócio: não há contas.');
+        }
+
+        // Valida tudo antes de escrever qualquer coisa.
+        $porFilial = [];
+        foreach ($dados['valores'] ?? [] as $chave => $par) {
+            [$cod, $codConta] = array_pad(explode('|', (string)$chave, 2), 2, '');
+            if (!isset($dados['filiais'][$cod])) {
+                throw new RuntimeException("Carga de filiais com filial não declarada: {$chave}.");
+            }
+            if (!isset($contas[$codConta])) {
+                throw new RuntimeException("Carga de filiais com conta fora da estrutura: {$chave}.");
+            }
+            [$r, $p] = array_pad(explode('/', (string)$par, 2), 2, '');
+            foreach ([$r, $p] as $n) {
+                if (!preg_match('/^-?\d+(\.\d+)?$/', trim($n))) {
+                    throw new RuntimeException("Carga de filiais com valor não numérico em {$chave}: '{$par}'.");
+                }
+            }
+            $porFilial[$cod][$codConta] = [(float)$r, (float)$p];
+        }
+        self::exigirSomaDasFiliais($pdo, $negocioId, $ano, $corte, $porFilial, $contas);
+
+        $insF = $pdo->prepare(
+            'INSERT INTO filial (negocio_id, cod_filial, nome) VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE nome = VALUES(nome)'
+        );
+        foreach ($dados['filiais'] as $cod => $nome) {
+            $insF->execute([$negocioId, (string)$cod, $nome]);
+        }
+        $ids = [];
+        $st = $pdo->prepare('SELECT id, cod_filial FROM filial WHERE negocio_id = ?');
+        $st->execute([$negocioId]);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $l) {
+            $ids[$l['cod_filial']] = (int)$l['id'];
+        }
+
+        $ins = $pdo->prepare(
+            'INSERT INTO dre_valor_filial (filial_id, conta_id, ano, corte, realizado, projetado)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE corte = VALUES(corte), realizado = VALUES(realizado),
+                                     projetado = VALUES(projetado)'
+        );
+        $gravados = 0;
+        foreach ($porFilial as $cod => $linhas) {
+            foreach ($linhas as $codConta => [$r, $p]) {
+                $ins->execute([$ids[$cod], $contas[$codConta], $ano, $corte, $r, $p]);
+                $gravados++;
+            }
+        }
+        return ['filiais' => count($dados['filiais']), 'valores' => $gravados];
+    }
+
+    /**
+     * A soma das filiais, conta a conta, contra a DRE do negócio.
+     *
+     * Tolerância de R$ 20: os dois lados vêm de extrações diferentes, cada uma
+     * arredondando ao real — o maior desvio medido foi de R$ 6. Acima disso não
+     * é arredondamento: é filial faltando.
+     */
+    private static function exigirSomaDasFiliais(
+        PDO $pdo,
+        int $negocioId,
+        int $ano,
+        int $corte,
+        array $porFilial,
+        array $contas
+    ): void {
+        $st = $pdo->prepare(
+            'SELECT c.codigo,
+                    COALESCE(SUM(CASE WHEN v.tipo = \'REAL\' AND v.mes <= ? THEN v.valor END), 0) AS realizado,
+                    COALESCE(SUM(CASE WHEN v.tipo = \'META\' AND v.mes >  ? THEN v.valor END), 0) AS projetado
+               FROM dre_conta c
+               LEFT JOIN dre_valor v ON v.conta_id = c.id AND v.negocio_id = ? AND v.ano = ?
+              GROUP BY c.id, c.codigo'
+        );
+        $st->execute([$corte, $corte, $negocioId, $ano]);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $l) {
+            $somaR = 0.0;
+            $somaP = 0.0;
+            foreach ($porFilial as $linhas) {
+                $somaR += $linhas[$l['codigo']][0] ?? 0.0;
+                $somaP += $linhas[$l['codigo']][1] ?? 0.0;
+            }
+            if (abs($somaR - (float)$l['realizado']) > 20 || abs($somaP - (float)$l['projetado']) > 20) {
+                throw new RuntimeException(sprintf(
+                    'Carga de filiais não fecha com o negócio na conta %s: filiais somam %s realizado '
+                    . 'e %s projetado, o negócio tem %s e %s. Falta filial na carga.',
+                    $l['codigo'],
+                    number_format($somaR, 0, ',', '.'),
+                    number_format($somaP, 0, ',', '.'),
+                    number_format((float)$l['realizado'], 0, ',', '.'),
+                    number_format((float)$l['projetado'], 0, ',', '.')
+                ));
+            }
+        }
+    }
+
+    /**
      * Estrutura de contas, vinda na mesma extração dos valores.
      *
      * @return array<string,int> código => id

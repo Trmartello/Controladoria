@@ -2083,8 +2083,21 @@ opção A — o nível passa a ser *onde você está na trilha*.
 > meses, todas divergentes. **Se a controladoria souber a regra dela, é meia
 > hora de trabalho.**
 >
-> As fatias 3 e 4 — modo filial com distribuição opcional, e o consolidado no
-> Painel e no Dossiê — continuam abertas.
+> **Fatia 3 ENTREGUE em 2026-11-05**: `filial`, `dre_valor_filial`, o modo por
+> negócio (`projecao.modo`) e o lançamento por filial. Os dois modos são os que
+> o cliente descreveu — planejar o negócio e distribuir depois (com a coluna
+> *A distribuir*, que informa e não trava), ou planejar cada filial e somar.
+> Trocar de modo não apaga lançamento.
+>
+> Duas coisas que a entrega revelou: a DRE da filial teve de ser **acumulada**
+> (177 filiais com movimento nos onze negócios; mês a mês passa de meio milhão
+> de valores), e a conferência da soma pegou uma filial ausente da planilha do
+> cliente — **Morrinhos**, com R$ 1.448, sem a qual o total não fecha.
+>
+> **Só a Pecuária está carregada por filial.** A extração é por negócio, uma
+> chamada ao Qlik cada; os outros dez entram a pedido.
+>
+> A fatia 4 — o consolidado no Painel e no Dossiê — continua aberta.
 >
 > **Achado da entrega, e ele muda número:** outubro de 2026 **não está
 > fechado** (Rateios = 0 com R$ 373,2 mi de receita lançada). A planilha que
@@ -2440,7 +2453,7 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | ✔ **fatias 1 e 2 entregues em 2026-11-05** (onze negócios; leitura + proposta no modo negócio); fatias 3–4 em aberto |
+| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | ✔ **fatias 1 a 3 entregues em 2026-11-05** (onze negócios; leitura, proposta e modo filial — filiais carregadas só na Pecuária); fatia 4 em aberto |
 | 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
 | 12 | **Layout do plano de ação** (projetos, frentes e ações) | Construir | M | ✔ **Entregue em 2026-10-27**: três modos (Lista · Tabela · Quadro), e não a trilha da maquete |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |

@@ -63,6 +63,28 @@ function executarArquivoSql(PDO $pdo, string $caminho): void
 }
 
 /** Alterações em tabelas já existentes (CREATE IF NOT EXISTS não as cobre). */
+/** O índice inclui esta coluna? (usado para saber se uma chave já foi revista) */
+function indiceTemColuna(PDO $pdo, string $tabela, string $indice, string $coluna): bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? AND COLUMN_NAME = ?'
+    );
+    $stmt->execute([$tabela, $indice, $coluna]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
+/** A coluna existe nesta tabela? (o `garantirColuna` abaixo se serve dela) */
+function colunaExiste(PDO $pdo, string $tabela, string $coluna): bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+    );
+    $stmt->execute([$tabela, $coluna]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
 function garantirColuna(PDO $pdo, string $tabela, string $coluna, string $ddl): void
 {
     $stmt = $pdo->prepare(
@@ -715,6 +737,34 @@ if ($apagados) {
     echo "migrate: {$apagados} negócio(s) inativo(s) removido(s) do cadastro.\n";
 }
 
+// ---- Projeção por filial (fatia 3): `filial_id` nas tabelas da proposta ----
+// As duas tabelas nasceram ontem sem filial, e a chave única delas precisa
+// passar a incluí-la — senão a proposta da filial A sobrescreveria a da B na
+// mesma conta. Trocar chave única é DROP + ADD, e por isso a coluna é o
+// gatilho: só quando ela acabou de ser criada a chave velha ainda existe.
+// A ORDEM importa, e custou um erro 1553: a chave única velha é a que serve à
+// chave estrangeira de `projecao_id`, e o MySQL não deixa derrubá-la enquanto
+// não houver outra que comece pela mesma coluna. Cria-se a nova primeiro.
+garantirColuna($pdo, 'projecao_valor', 'filial_id',
+    'ALTER TABLE projecao_valor ADD COLUMN filial_id INT NOT NULL DEFAULT 0 AFTER projecao_id');
+if (!indiceExiste($pdo, 'projecao_valor', 'uk_projecao_valor_filial')) {
+    $pdo->exec('ALTER TABLE projecao_valor
+                ADD UNIQUE KEY uk_projecao_valor_filial (projecao_id, filial_id, conta_id)');
+    if (indiceExiste($pdo, 'projecao_valor', 'uk_projecao_valor')) {
+        $pdo->exec('ALTER TABLE projecao_valor DROP INDEX uk_projecao_valor');
+    }
+    echo "migrate: projecao_valor passou a ter filial_id na chave única.\n";
+}
+garantirColuna($pdo, 'projecao_premissa', 'filial_id',
+    'ALTER TABLE projecao_premissa ADD COLUMN filial_id INT NOT NULL DEFAULT 0 AFTER projecao_id');
+garantirIndice($pdo, 'projecao_premissa', 'idx_pp_projecao',
+    'ALTER TABLE projecao_premissa ADD KEY idx_pp_projecao (projecao_id)');
+if (!indiceTemColuna($pdo, 'projecao_premissa', 'PRIMARY', 'filial_id')) {
+    $pdo->exec('ALTER TABLE projecao_premissa DROP PRIMARY KEY');
+    $pdo->exec('ALTER TABLE projecao_premissa ADD PRIMARY KEY (projecao_id, filial_id, chave)');
+    echo "migrate: projecao_premissa passou a ter filial_id na chave primária.\n";
+}
+
 // ---- Carga da DRE gerencial (Projeção de Resultados) ----
 // Número, não texto: aqui a carga SOBRESCREVE (`ON DUPLICATE KEY UPDATE`), ao
 // contrário das cargas de conteúdo abaixo, que nunca repõem o que alguém
@@ -728,9 +778,24 @@ require_once __DIR__ . '/../app/Services/CargaConteudo.php';
 require_once __DIR__ . '/../app/Services/CargaDre.php';
 foreach ([
     'dre_2026_fechamento_09.php',
+    // A DRE por FILIAL entra depois da do negócio, e não por acaso: a carga
+    // confere que a soma das filiais bate com o negócio, e para isso o negócio
+    // já precisa estar no banco.
+    'dre_filiais_pecuaria_2026_09.php',
 ] as $arquivo) {
     $dre = require __DIR__ . '/' . $arquivo;
     if (App\Services\CargaConteudo::jaAplicada($pdo, $dre['chave'])) {
+        continue;
+    }
+    if (isset($dre['filiais'])) {
+        $r = App\Services\CargaDre::aplicarFiliais($pdo, $dre);
+        App\Services\CargaConteudo::marcar(
+            $pdo,
+            $dre['chave'],
+            "DRE por filial {$dre['ano']}: {$r['filiais']} filial(is), {$r['valores']} valor(es)"
+        );
+        echo "migrate: carga de filiais {$dre['chave']} — {$r['filiais']} filial(is), "
+            . "{$r['valores']} valor(es).\n";
         continue;
     }
     $r = App\Services\CargaDre::aplicar($pdo, $dre);

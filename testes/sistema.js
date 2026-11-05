@@ -4496,6 +4496,155 @@ async function provasOrdenarFatores(page) {
  * e 13,79% de crescimento na receita, o "Cresc. Real" tem de dar 7,81% — o
  * mesmo número que está na célula B13 do arquivo dele.
  */
+/**
+ * Modo filial (fatia 3): as duas formas de planejar que o cliente pediu.
+ *
+ *   Opção 1 — planejar o NEGÓCIO e distribuir às filiais depois. Distribuir
+ *   NÃO é requisito para salvar, e por isso a tela mostra o resíduo em vez de
+ *   travar.
+ *   Opção 2 — planejar CADA FILIAL; o negócio passa a ser a soma delas.
+ *
+ * O que estas provas protegem é a contradição entre os dois níveis: o negócio
+ * mostrando um total que não é a soma do que as filiais dizem.
+ */
+async function provasProjecaoFilial(page, largura) {
+  const l = `[${largura}] Filial:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+
+  await page.evaluate(() => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const ler = () => page.evaluate(() => {
+    const n = (s) => {
+      const x = String(s).replace(/\./g, '').replace(',', '.').replace('%', '').trim();
+      return x === '—' || x === '' ? null : Number(x);
+    };
+    const linha = (c) => {
+      const tr = document.querySelector(`.tabela-projecao tbody tr[data-conta="${c}"]`);
+      if (!tr) return null;
+      const td = [...tr.querySelectorAll('td')];
+      const inp = td[5].querySelector('input');
+      return {
+        projecao: n(td[3].textContent),
+        proposta: inp ? n(inp.value) : n(td[5].textContent),
+        digitado: inp ? inp.value : null,
+        editavel: !!inp,
+        distribuir: td[7] ? n(td[7].textContent) : undefined,
+      };
+    };
+    return {
+      modo: document.querySelector('input[name="projecao-modo"]:checked')?.value,
+      filiais: document.querySelectorAll('#projecao-filial option').length - 1,
+      naTela: document.querySelector('#projecao-filial')?.value,
+      receita: linha('1.1'), rol: linha('3'), liquido: linha('16'),
+      aviso: document.querySelector('#projecao-aviso').classList.contains('d-none')
+        ? '' : document.querySelector('#projecao-aviso').textContent.trim(),
+    };
+  });
+  const verFilial = async (pedaco) => {
+    await page.evaluate((p) => {
+      const s = document.querySelector('#projecao-filial');
+      const o = p === '0' ? s.options[0] : [...s.options].find((x) => x.textContent.includes(p));
+      s.value = o.value;
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+    }, pedaco);
+    await new Promise((r) => setTimeout(r, 1500));
+    return ler();
+  };
+  const trocarModo = async (modo) => {
+    await page.evaluate((m) => {
+      const r = document.querySelector(m === 'FILIAL' ? '#modo-filial' : '#modo-negocio');
+      r.checked = true;
+      r.dispatchEvent(new Event('change', { bubbles: true }));
+    }, modo);
+    await new Promise((r) => setTimeout(r, 1500));
+    return ler();
+  };
+  const lancar = async (conta, texto) => {
+    await page.evaluate(([c, v]) => {
+      const i = document.querySelector(`[data-conta="${c}"] .celula-proposta`);
+      i.focus(); i.value = v; i.blur();
+    }, [conta, texto]);
+    await new Promise((r) => setTimeout(r, 1500));
+    return ler();
+  };
+
+  let v = await ler();
+  t(`${l} as filiais com movimento aparecem (a Pecuária tem seis)`,
+    v.filiais >= 5, String(v.filiais));
+  t(`${l} o negócio começa planejando no total`, v.modo === 'NEGOCIO', String(v.modo));
+  t(`${l} e a coluna "A distribuir" existe nesse modo`,
+    v.rol.distribuir !== undefined, JSON.stringify(v.rol));
+
+  // A carga das filiais fecha com a do negócio: a projeção do negócio é a soma
+  // da projeção das filiais. Sem isso, cada tela estaria certa e o total errado.
+  const projNegocio = v.rol.projecao;
+  const semDistribuir = v.rol.distribuir;
+  t(`${l} sem nada lançado, não há resíduo a distribuir`,
+    Math.abs(semDistribuir) <= 20, String(semDistribuir));
+
+  // ── A filial tem DRE própria ────────────────────────────────────────────
+  const naFilial = await verFilial('ENEAS');
+  t(`${l} abrir a filial mostra a DRE dela, não a do negócio`,
+    naFilial.rol.projecao > 0 && naFilial.rol.projecao < projNegocio,
+    `${naFilial.rol.projecao} vs ${projNegocio}`);
+  t(`${l} e nela se lança`, naFilial.receita.editavel === true);
+
+  // ── Opção 1: distribuir não muda o total do negócio ─────────────────────
+  const depois = await lancar('1.1', '10%');
+  t(`${l} lançar na filial recalcula a filial`,
+    depois.rol.projecao === naFilial.rol.projecao
+    && depois.rol.proposta > naFilial.rol.proposta,
+    `${naFilial.rol.proposta} → ${depois.rol.proposta}`);
+  const voltou = await verFilial('0');
+  t(`${l} e NÃO muda o total do negócio (é distribuição)`,
+    Math.abs(voltou.rol.proposta - projNegocio) <= 20,
+    `${voltou.rol.proposta} vs ${projNegocio}`);
+  t(`${l} o resíduo a distribuir aparece`,
+    Math.abs(voltou.rol.distribuir) > 1000, String(voltou.rol.distribuir));
+
+  // ── Opção 2: o negócio vira a soma das filiais ──────────────────────────
+  const modoFilial = await trocarModo('FILIAL');
+  t(`${l} no modo filial o total do negócio passa a ser a soma`,
+    modoFilial.rol.proposta > projNegocio && !modoFilial.rol.editavel,
+    `${modoFilial.rol.proposta} vs ${projNegocio}`);
+  t(`${l} e a coluna "A distribuir" sai da tela (não há o que distribuir)`,
+    modoFilial.rol.distribuir === undefined, JSON.stringify(modoFilial.rol));
+
+  const recusa = await page.evaluate(async (id) => {
+    try {
+      await App.api('/api/projecao/valor',
+        { negocio_id: Number(id), conta: '1.1', entrada: 'PERCENTUAL', valor: 5 });
+      return 'ACEITOU';
+    } catch (e) { return e.message; }
+  }, await page.evaluate(() => SecaoProjecao.negocioId));
+  t(`${l} lançar no negócio, no modo filial, é recusado`,
+    recusa.includes('soma das filiais'), recusa.slice(0, 70));
+
+  // ── Trocar de modo não apaga trabalho ───────────────────────────────────
+  await trocarModo('NEGOCIO');
+  const aindaLa = await verFilial('ENEAS');
+  t(`${l} trocar de modo não apaga o que a filial tinha lançado`,
+    aindaLa.receita.digitado && aindaLa.receita.digitado.includes('%'),
+    String(aindaLa.receita.digitado));
+
+  // Devolve a massa ao ponto de partida.
+  await lancar('1.1', '');
+  const limpo = await verFilial('0');
+  t(`${l} apagar na filial zera o resíduo de novo`,
+    Math.abs(limpo.rol.distribuir) <= 20, String(limpo.rol.distribuir));
+  t(`${l} e o negócio volta a planejar no total, sem aviso de erro`,
+    limpo.modo === 'NEGOCIO' && limpo.aviso === '', limpo.aviso);
+}
+
 async function provasProjecaoPremissas(page, largura) {
   const l = `[${largura}] Premissas:`;
   await page.evaluate(() => App.mostrarSecao('projecao'));
@@ -7466,6 +7615,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecao(page, 'desktop');
   await provasProjecaoProposta(page, 'desktop');
   await provasProjecaoPremissas(page, 'desktop');
+  await provasProjecaoFilial(page, 'desktop');
   await provasOrdenarCenario(page);
   await provasOrdenarFatores(page);
   await provasMoverAnalise(page);
@@ -7521,6 +7671,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecao(pageM, 'celular');
   await provasProjecaoProposta(pageM, 'celular');
   await provasProjecaoPremissas(pageM, 'celular');
+  await provasProjecaoFilial(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');
