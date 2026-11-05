@@ -782,6 +782,8 @@ foreach ([
     // confere que a soma das filiais bate com o negócio, e para isso o negócio
     // já precisa estar no banco.
     'dre_filiais_pecuaria_2026_09.php',
+    'dre_filiais_supermercados_2026_09.php',
+    'dre_filiais_agropecuarias_2026_09.php',
 ] as $arquivo) {
     $dre = require __DIR__ . '/' . $arquivo;
     if (App\Services\CargaConteudo::jaAplicada($pdo, $dre['chave'])) {

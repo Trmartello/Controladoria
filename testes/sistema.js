@@ -4763,6 +4763,38 @@ async function provasProjecaoFilial(page, largura) {
     Math.abs(limpo.rol.distribuir) <= 20, String(limpo.rol.distribuir));
   t(`${l} e o negócio volta a planejar no total, sem aviso de erro`,
     limpo.modo === 'NEGOCIO' && limpo.aviso === '', limpo.aviso);
+
+  // ── Cada negócio tem as filiais da SUA carga ──────────────────────────────
+  // As provas acima medem o modo filial com um negócio. Estas medem a carga:
+  // três negócios têm DRE por filial e os outros oito não, e o seletor tem de
+  // dizer exatamente isso. Sem elas, uma carga que saísse do `migrate.php`
+  // deixaria a bateria verde e a tela planejando só o total, sem aviso nenhum.
+  const contarFiliais = async (pedaco) => {
+    const achou = await page.evaluate((p) => {
+      const s = document.querySelector('#projecao-negocio');
+      const o = [...s.options].find((x) => x.textContent.includes(p));
+      if (!o) return false;
+      s.value = o.value;
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }, pedaco);
+    if (!achou) return null;
+    await new Promise((r) => setTimeout(r, 1500));
+    return page.evaluate(() => {
+      const s = document.querySelector('#projecao-filial');
+      return s ? s.options.length - 1 : 0;
+    });
+  };
+  const porNegocio = {};
+  for (const [pedaco, esperado] of [
+    ['PECUARIA', 6], ['SUPERMERCADO', 19], ['AGROPECUARIA', 77], ['CEREAIS', 0],
+  ]) {
+    porNegocio[pedaco] = await contarFiliais(pedaco);
+    t(`${l} ${pedaco} tem ${esperado} filial(is) no seletor`,
+      porNegocio[pedaco] === esperado, String(porNegocio[pedaco]));
+  }
+  t(`${l} e negócio sem carga por filial não oferece o modo filial`,
+    porNegocio.CEREAIS === 0, String(porNegocio.CEREAIS));
 }
 
 async function provasProjecaoPremissas(page, largura) {

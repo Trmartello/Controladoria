@@ -2649,9 +2649,23 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   faltando passaria despercebida, com cada tela certa e o total errado. Na
   Pecuária isso pegou **Morrinhos**, que tem R$ 1.448 em duas linhas e não está
   na planilha do cliente — sem ela a soma não fechava.
-  **Só a Pecuária está carregada por filial** (a extração é por negócio, uma
-  chamada ao Qlik cada); os outros dez entram quando o cliente pedir, e a tela
-  diz isso a quem tentar trocar o modo sem dados.
+  **Três negócios estão carregados por filial**: Pecuária (6), Supermercados
+  (19) e Agropecuárias (77), pedidos nessa ordem pelo cliente. Os outros oito
+  entram quando ele pedir, e a tela diz isso a quem tentar trocar o modo sem
+  dados. A extração é **uma coluna por filial** (dimensão `=If(Nível<=2,
+  [Cód Indicador])`, uma medida `realizado/orçado` por filial), em lotes de
+  doze — `Concat(Aggr(...))` para trazer todas de uma vez devolve `NaN` neste
+  app, e o teto de 50 linhas por chamada obriga a buscar a sobra por paginação
+  quando a dimensão traz a linha nula do `Nível>2`.
+  **A lista de filiais a extrair sai de um peso, e depois se prova pelo
+  resto.** Primeiro ordenam-se as filiais do negócio por |receita| + |resultado|
+  + |orçado|; depois uma medida com `[Cód. Filial]-={…as listadas…}` tem de dar
+  `0/0` nas 50 contas. É essa segunda medida que fecha o caso: o peso usa três
+  agregados e poderia perder uma filial que só tenha movimento em outra conta.
+  Filial **zerada no nível da DRE sai da carga** (nos Supermercados, Silo
+  Concórdia, Passos Maia e Bela Vista do Toldo; nas Agropecuárias, Capinzal
+  UBS): elas aparecem no peso por centavos em linhas de `Nível>2`, e entrar na
+  carga só encheria o seletor de filial sem DRE nenhuma.
   **O consolidado no Painel e a Projeção no Dossiê (fatia 4).** O Painel ganha
   duas colunas (projeção do ano e proposta do seguinte, com ROL em cima e
   resultado líquido embaixo) e dois cartões. O cartão **diz de quantos negócios
