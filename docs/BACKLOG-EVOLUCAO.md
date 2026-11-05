@@ -2070,6 +2070,13 @@ opção A — o nível passa a ser *onde você está na trilha*.
 > cadeado — a tela é uma grade de 33 células, e prendê-la numa pessoa por vez
 > seria pior que o conflito que se quer evitar.
 >
+> Entrou junto o **painel de indicadores** (IPCA e PIB lançados; Cresc. Real,
+> Cresc. Total e % Custos lidos da proposta), depois de o cliente perguntar
+> onde se lançam aqueles percentuais. A leitura da planilha respondeu: no
+> consolidado só IPCA e PIB são digitados — o resto é leitura —, e é no bloco
+> de cada FILIAL que os percentuais viram entrada, com a proposta saindo deles
+> (`AD10 = AA10 * Z14%`). Esse segundo papel do painel é da fatia 3.
+>
 > Fica de fora, declarada: a linha **15 (Despesas Totais)** não recebe
 > proposta. Ela vem pronta do Qlik e não é soma de nenhuma combinação das
 > linhas carregadas — sete fórmulas candidatas testadas contra 11 negócios × 9

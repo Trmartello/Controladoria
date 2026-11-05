@@ -48,6 +48,61 @@ class Projecao
     /** Linha que o Qlik entrega pronta e que não sabemos recompor. */
     public const SEM_PROPOSTA = ['15'];
 
+    /**
+     * As premissas macro que a pessoa DIGITA. São duas, e são as duas únicas
+     * células digitadas do painel de indicadores da planilha no nível
+     * consolidado — o resto de lá é leitura da proposta (ver `premissas()`).
+     */
+    public const PREMISSAS = ['IPCA', 'PIB'];
+
+    /**
+     * O painel de indicadores, montado como a planilha monta o consolidado:
+     *
+     *   Cresc. Total = proposta da receita ÷ projeção da receita − 1   (B14)
+     *   Cresc. Real  = Cresc. Total − IPCA − PIB                       (B13)
+     *   % Custos     = proposta dos custos ÷ projeção dos custos − 1   (B17)
+     *
+     * Só IPCA e PIB entram por digitação. Deixar "Cresc. Total" também ser
+     * digitado criaria duas fontes para o mesmo número — o painel e a célula
+     * da receita —, e a primeira divergência entre elas apareceria como meta
+     * errada na reunião. Quem quer lançar o crescimento lança na linha, que é
+     * onde ele vale; o painel mostra no que deu, e decompõe.
+     */
+    public static function premissas(array $linhas, array $digitadas): array
+    {
+        $acha = static function (string $cod) use ($linhas) {
+            foreach ($linhas as $l) {
+                if ($l['codigo'] === $cod) {
+                    return $l;
+                }
+            }
+            return null;
+        };
+        $variacao = static function (?array $l): ?float {
+            if (!$l || empty($l['projecao']) || !isset($l['proposta'])) {
+                return null;
+            }
+            return 100 * ((float)$l['proposta'] / (float)$l['projecao'] - 1);
+        };
+
+        $ipca = isset($digitadas['IPCA']) ? (float)$digitadas['IPCA'] : null;
+        $pib  = isset($digitadas['PIB']) ? (float)$digitadas['PIB'] : null;
+        $total = $variacao($acha('1'));
+        $custos = $variacao($acha('4'));
+
+        return [
+            'IPCA' => $ipca,
+            'PIB' => $pib,
+            'CRESC_TOTAL' => $total,
+            // Sem IPCA e PIB lançados não há o que decompor: devolver o próprio
+            // total como "real" diria que a inflação é zero, que é uma
+            // afirmação — e não uma ausência.
+            'CRESC_REAL' => ($total === null || $ipca === null || $pib === null)
+                ? null : $total - $ipca - $pib,
+            'PCT_CUSTOS' => $custos,
+        ];
+    }
+
     /** Recebe proposta quem é subconta (nível 2) e não é linha de percentual. */
     public static function editavel(array $conta): bool
     {

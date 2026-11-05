@@ -4489,6 +4489,98 @@ async function provasOrdenarFatores(page) {
  * por percentual e por valor — e conferem a DRE inteira depois de cada
  * lançamento, até o resultado líquido.
  */
+/**
+ * O painel de indicadores (IPCA, PIB e os três derivados).
+ *
+ * A prova de fogo é reproduzir a planilha do cliente: com IPCA 4,20, PIB 1,78
+ * e 13,79% de crescimento na receita, o "Cresc. Real" tem de dar 7,81% — o
+ * mesmo número que está na célula B13 do arquivo dele.
+ */
+async function provasProjecaoPremissas(page, largura) {
+  const l = `[${largura}] Premissas:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#premissa-IPCA')", 20000);
+  t(`${l} o painel de indicadores está na tela`, abriu);
+  if (!abriu) return;
+
+  await page.evaluate(() => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const ler = () => page.evaluate(() => {
+    const n = (s) => {
+      const x = String(s).replace('%', '').replace(/\./g, '').replace(',', '.').trim();
+      return x === '—' || x === '' ? null : Number(x);
+    };
+    const o = {};
+    document.querySelectorAll('[data-premissa]').forEach((e) => { o[e.dataset.premissa] = n(e.textContent); });
+    return {
+      ipca: document.querySelector('#premissa-IPCA').value,
+      pib: document.querySelector('#premissa-PIB').value,
+      real: o['Cresc. Real'], total: o['Cresc. Total'], custos: o['% Custos'],
+      aviso: document.querySelector('#projecao-aviso').classList.contains('d-none')
+        ? '' : document.querySelector('#projecao-aviso').textContent.trim(),
+    };
+  });
+  const digitar = async (sel, v) => {
+    await page.evaluate(([s, x]) => {
+      const i = document.querySelector(s); i.focus(); i.value = x; i.blur();
+    }, [sel, v]);
+    await new Promise((r) => setTimeout(r, 1200));
+    return ler();
+  };
+
+  // Limpa o que outra execução tenha deixado, e confere o estado "sem premissa".
+  await digitar('#premissa-IPCA', '');
+  let v = await digitar('#premissa-PIB', '');
+  t(`${l} sem IPCA e PIB não há o que decompor: Cresc. Real fica vazio`,
+    v.real === null, JSON.stringify(v));
+
+  // ── Os números da planilha do cliente ───────────────────────────────────
+  await digitar('#premissa-IPCA', '4,2');
+  await digitar('#premissa-PIB', '1,78');
+  v = await digitar('[data-conta="1.1"] .celula-proposta', '13,79%');
+  t(`${l} Cresc. Total é LIDO da proposta da receita`,
+    Math.abs(v.total - 13.79) < 0.02, String(v.total));
+  t(`${l} Cresc. Real = Total − IPCA − PIB (7,81% na planilha do cliente)`,
+    Math.abs(v.real - 7.81) < 0.02, String(v.real));
+
+  v = await digitar('[data-conta="4.1"] .celula-proposta', '18,7%');
+  t(`${l} % Custos é lido da proposta dos custos (18,70% na planilha)`,
+    Math.abs(v.custos - 18.7) < 0.02, String(v.custos));
+
+  // ── Regressão: gravar duas vezes seguidas não levanta falso conflito ────
+  // A tela repinta pedaços e religa os ouvintes; sem a marca `data-ligado`, a
+  // célula ganhava um segundo `blur`, gravava duas vezes e a segunda chegava
+  // com a versão velha — o usuário via "alguém gravou enquanto você editava"
+  // sem ninguém ter gravado. Achado na sonda, não na bateria.
+  v = await digitar('[data-conta="8.5"] .celula-proposta', '5%');
+  t(`${l} gravar depois de mexer no painel não levanta conflito falso`,
+    v.aviso === '', v.aviso);
+
+  // ── O que é lido não aceita lançamento ──────────────────────────────────
+  const recusa = await page.evaluate(async (id) => {
+    try {
+      await App.api('/api/projecao/premissa',
+        { negocio_id: Number(id), chave: 'CRESC_TOTAL', valor: 10 });
+      return 'ACEITOU';
+    } catch (e) { return e.message; }
+  }, await page.evaluate(() => document.querySelector('#projecao-negocio').value));
+  t(`${l} lançar numa linha lida do painel é recusado`,
+    recusa.includes('lida da proposta'), recusa.slice(0, 70));
+
+  // Devolve a massa ao ponto de partida.
+  await digitar('[data-conta="1.1"] .celula-proposta', '');
+  await digitar('[data-conta="4.1"] .celula-proposta', '');
+  v = await digitar('[data-conta="8.5"] .celula-proposta', '');
+  t(`${l} e as premissas sobrevivem ao fim dos lançamentos`,
+    v.ipca === '4,2' && v.pib === '1,78', JSON.stringify({ ipca: v.ipca, pib: v.pib }));
+}
+
 async function provasProjecaoProposta(page, largura) {
   const l = `[${largura}] Proposta:`;
   await page.evaluate(() => App.mostrarSecao('projecao'));
@@ -7373,6 +7465,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasCenarioPlanoAcao(page);
   await provasProjecao(page, 'desktop');
   await provasProjecaoProposta(page, 'desktop');
+  await provasProjecaoPremissas(page, 'desktop');
   await provasOrdenarCenario(page);
   await provasOrdenarFatores(page);
   await provasMoverAnalise(page);
@@ -7427,6 +7520,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasSaidaDoModal(pageM, 'celular');
   await provasProjecao(pageM, 'celular');
   await provasProjecaoProposta(pageM, 'celular');
+  await provasProjecaoPremissas(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');

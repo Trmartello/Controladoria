@@ -873,3 +873,16 @@ CREATE TABLE IF NOT EXISTS projecao_valor (
   CONSTRAINT fk_pv_projecao FOREIGN KEY (projecao_id) REFERENCES projecao(id) ON DELETE CASCADE,
   CONSTRAINT fk_pv_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- As premissas macro da proposta (IPCA, PIB). São as ÚNICAS células digitadas
+-- do painel de indicadores da planilha no nível consolidado: lá, "Cresc. Total"
+-- é lido da proposta da receita (`B14 = (O9/J9)-1`), "Cresc. Real" é o resto
+-- (`B13 = B14-B11-B12`) e "% Custos" é lido dos custos. Guardar aqui só o que
+-- é digitado evita a segunda fonte do mesmo número.
+CREATE TABLE IF NOT EXISTS projecao_premissa (
+  projecao_id INT NOT NULL,
+  chave       VARCHAR(20) NOT NULL,
+  percentual  DECIMAL(9,4) NOT NULL,
+  PRIMARY KEY (projecao_id, chave),
+  CONSTRAINT fk_pp_projecao FOREIGN KEY (projecao_id) REFERENCES projecao(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

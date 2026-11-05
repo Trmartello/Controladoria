@@ -103,6 +103,7 @@ const SecaoProjecao = {
         digite o valor (<code>1.500.000</code>) ou o crescimento sobre a projeção (<code>12%</code>).
       </p>
       <p class="mb-2">${assinatura}</p>
+      ${this.painel(d)}
       ${faltando}
       <div id="projecao-aviso" class="alert alert-danger py-2 px-3 small mb-2 d-none"></div>
       <div class="table-responsive tabela-projecao">
@@ -127,6 +128,63 @@ const SecaoProjecao = {
   ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
         Mês sem rateio é mês aberto e não entra como realizado.
       </p>`;
+  },
+
+  /**
+   * O painel de indicadores, como a planilha o monta NO CONSOLIDADO: IPCA e
+   * PIB digitados, o resto lido da proposta.
+   *
+   *   Cresc. Total = proposta da receita ÷ projeção − 1   (`B14`)
+   *   Cresc. Real  = Cresc. Total − IPCA − PIB            (`B13`)
+   *   % Custos     = proposta dos custos ÷ projeção − 1   (`B17`)
+   *
+   * No bloco de CADA FILIAL a planilha faz o contrário — ali os percentuais
+   * são digitados e a proposta sai deles (`AD10 = AA10 * Z14%`). É o mesmo
+   * painel servindo a dois papéis conforme o nível em que se planeja, e o
+   * segundo papel chega com o modo filial (fatia 3).
+   */
+  painel(d) {
+    const p = d.premissas || {};
+    const num = (v, casas = 2) => (v === null || v === undefined
+      ? '—'
+      : `${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`);
+    const campo = (chave, rotulo) => `
+      <div class="col-6 col-md-auto">
+        <label class="form-label small text-muted mb-0" for="premissa-${chave}">${rotulo}</label>
+        <div class="input-group input-group-sm premissa-campo">
+          <input type="text" class="form-control celula-premissa" id="premissa-${chave}"
+            inputmode="decimal" autocomplete="off" data-chave="${chave}"
+            value="${p[chave] === null || p[chave] === undefined ? '' : String(p[chave]).replace('.', ',')}"
+            placeholder="—" ${d.pode_editar ? '' : 'disabled'}>
+          <span class="input-group-text">%</span>
+        </div>
+      </div>`;
+    const leitura = (valor, rotulo, dica) => `
+      <div class="col-6 col-md-auto">
+        <div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
+        <div class="fw-bold" data-premissa="${Modal.esc(rotulo)}">${num(valor, 2)}</div>
+      </div>`;
+
+    return `
+      <div class="card mb-3 painel-premissas"><div class="card-body py-2 px-3">
+        <div class="row g-3 align-items-end">
+          ${campo('IPCA', 'IPCA')}
+          ${campo('PIB', 'PIB')}
+          ${leitura(p.CRESC_REAL, 'Cresc. Real',
+    'Crescimento total menos IPCA e PIB — o que sobra depois da inflação e da economia. '
+    + 'Precisa dos dois lançados para existir.')}
+          ${leitura(p.CRESC_TOTAL, 'Cresc. Total',
+    'A proposta da receita contra a projeção do ano. Lido, não lançado: '
+    + 'o crescimento se lança na linha da Receita de Vendas.')}
+          ${leitura(p.PCT_CUSTOS, '% Custos',
+    'A proposta dos custos contra a projeção do ano. Lido da linha Custos das Vendas.')}
+        </div>
+        <div class="small text-muted mt-2">
+          IPCA e PIB são premissas lançadas aqui; <strong>Cresc. Real</strong>,
+          <strong>Cresc. Total</strong> e <strong>% Custos</strong> são lidos da coluna Proposta —
+          o reajuste de cada linha se lança na própria linha, como <code>5%</code>.
+        </div>
+      </div></div>`;
   },
 
   corpo(d) {
@@ -188,15 +246,36 @@ const SecaoProjecao = {
     }).join('');
   },
 
+  /**
+   * Liga o que AINDA não está ligado.
+   *
+   * A marca `data-ligado` não é zelo: esta tela repinta pedaços (o corpo da
+   * tabela, o painel) e chama `ligar` de novo: sem a marca, os campos que não
+   * foram repintados ganhavam um segundo ouvinte de `blur` e a mesma célula
+   * gravava duas vezes — a segunda com a versão já velha, levantando um
+   * "alguém gravou enquanto você editava" que não era verdade. O defeito
+   * apareceu na sonda, não na bateria: ele precisa de duas gravações seguidas
+   * na mesma tela para nascer.
+   */
   ligar(el) {
-    el.querySelector('#projecao-negocio').addEventListener('change', (ev) => {
-      this.negocioId = Number(ev.target.value);
-      this.carregar();
-    });
+    const virgem = (n) => {
+      if (n.dataset.ligado) return false;
+      n.dataset.ligado = '1';
+      return true;
+    };
+    const sel = el.querySelector('#projecao-negocio');
+    if (sel && virgem(sel)) {
+      sel.addEventListener('change', (ev) => {
+        this.negocioId = Number(ev.target.value);
+        this.carregar();
+      });
+    }
     // A gravação vem do `blur`, como nas células de Metas: quem percorre a
     // coluna com Tab grava linha a linha sem tirar a mão do teclado. O Enter
     // tira o foco, e o `blur` faz o resto — um caminho só de gravação.
     el.querySelectorAll('.celula-proposta').forEach((inp) => {
+      inp.dataset.original = inp.value;
+      if (!virgem(inp)) return;
       inp.addEventListener('blur', () => this.gravar(inp));
       inp.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
@@ -204,6 +283,54 @@ const SecaoProjecao = {
       });
       inp.dataset.original = inp.value;
     });
+    el.querySelectorAll('.celula-premissa').forEach((inp) => {
+      inp.dataset.original = inp.value;
+      if (!virgem(inp)) return;
+      inp.addEventListener('blur', () => this.gravarPremissa(inp));
+      inp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+        if (ev.key === 'Escape') { inp.value = inp.dataset.original ?? inp.value; inp.blur(); }
+      });
+      inp.dataset.original = inp.value;
+    });
+  },
+
+  async gravarPremissa(inp) {
+    const bruto = inp.value.trim();
+    if (bruto === (inp.dataset.original ?? '')) return;
+    const limpo = bruto.replace('%', '').replace(',', '.').trim();
+    if (limpo !== '' && !Number.isFinite(Number(limpo))) {
+      this.avisar('Premissa inválida: informe um número.');
+      inp.value = inp.dataset.original ?? '';
+      return;
+    }
+    inp.classList.add('celula-gravando');
+    try {
+      const r = await App.api('/api/projecao/premissa', {
+        negocio_id: this.negocioId,
+        chave: inp.dataset.chave,
+        valor: limpo === '' ? null : Number(limpo),
+      });
+      this.versao = r.versao;
+      Object.assign(this.dados, {
+        linhas: r.linhas, premissas: r.premissas, versao: r.versao,
+        atualizado_em: r.atualizado_em, atualizado_por: r.atualizado_por,
+      });
+      this.avisar('');
+      // O painel inteiro é repintado: mexer no IPCA muda o Cresc. Real, que é
+      // conta do servidor. A tabela não precisa, mas o repinte é barato e
+      // mantém a tela e o banco dizendo a mesma coisa.
+      const el = document.getElementById('secao-projecao');
+      const painel = el.querySelector('.painel-premissas');
+      painel.outerHTML = this.painel(this.dados);
+      this.ligar(el);
+      el.querySelector(`#premissa-${inp.dataset.chave}`)?.focus();
+    } catch (e) {
+      this.avisar(e.message);
+      inp.value = inp.dataset.original ?? '';
+    } finally {
+      inp.classList.remove('celula-gravando');
+    }
   },
 
   avisar(msg) {
@@ -239,12 +366,18 @@ const SecaoProjecao = {
       this.dados.versao = r.versao;
       this.dados.atualizado_em = r.atualizado_em;
       this.dados.atualizado_por = r.atualizado_por;
+      this.dados.premissas = r.premissas;
       this.avisar('');
       // Repinta só o CORPO da tabela: a tela inteira mataria o foco de quem
       // está descendo a coluna com Tab, e o cabeçalho não mudou.
+      const el = document.getElementById('secao-projecao');
       const tbody = document.querySelector('.tabela-projecao tbody');
       tbody.innerHTML = this.corpo(this.dados);
-      this.ligar(document.getElementById('secao-projecao'));
+      // O painel lê a proposta: mexer numa linha muda o Cresc. Total e o
+      // % Custos. Deixá-lo parado mostraria dois números discordando na mesma
+      // tela — que é o defeito que esta seção inteira existe para não ter.
+      el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
+      this.ligar(el);
       const volta = tbody.querySelector(`[data-conta="${inp.dataset.conta}"] .celula-proposta`);
       if (volta) {
         volta.classList.add('celula-salva');

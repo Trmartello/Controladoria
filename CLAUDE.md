@@ -2600,6 +2600,28 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   inteira numa pessoa por vez — e esta tela é uma grade de 33 células, não um
   formulário. É a mesma escolha das células de Metas, que também não tomam
   cadeado.
+  **O painel de indicadores (IPCA, PIB e três leituras)** reproduz o bloco da
+  esquerda da planilha **no nível consolidado**, e a distinção importa: lá,
+  `B11` (IPCA) e `B12` (PIB) são digitados, enquanto `B14` (Cresc. Total) é
+  lido da proposta da receita, `B13` (Cresc. Real) é `B14 − B11 − B12` e `B17`
+  (% Custos) é lido dos custos — os reajustes por linha de despesa (`B22..B41`)
+  também são leitura. No bloco de CADA FILIAL a planilha faz o oposto: ali os
+  percentuais são digitados e a proposta sai deles (`AD10 = AA10 * Z14%`). É o
+  mesmo painel com dois papéis, conforme o nível em que se planeja; o segundo
+  chega com o modo filial (fatia 3).
+  Por isso só IPCA e PIB são gravados (`projecao_premissa`): deixar "Cresc.
+  Total" também ser digitado criaria duas fontes para o mesmo número — o painel
+  e a célula da receita —, e a divergência entre elas apareceria como meta
+  errada na reunião. Quem quer lançar crescimento lança **na linha**, que é
+  onde ele vale. Confere com a planilha do cliente: IPCA 4,20 + PIB 1,78 e
+  13,79% na receita dão **Cresc. Real 7,81%** e **% Custos 18,70%** — os mesmos
+  números do arquivo dele, e é isso que `provasProjecaoPremissas` fixa.
+  **`ligar()` marca o que já ligou (`data-ligado`).** A tela repinta PEDAÇOS (o
+  corpo da tabela, o painel) e religa os ouvintes; sem a marca, um campo que não
+  foi repintado ganhava um segundo `blur`, gravava duas vezes e a segunda
+  chegava com a versão já velha — o usuário via "alguém gravou enquanto você
+  editava" sem ninguém ter gravado. Apareceu na sonda, não na bateria: precisa
+  de duas gravações seguidas na mesma tela para nascer.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas

@@ -86,6 +86,7 @@ class ProjecaoController
 
         $proj = $this->projecaoDoNegocio($negocioId, $ano + 1);
         $linhas = Projecao::aplicar($linhas, $this->lancados($proj['id'] ?? 0));
+        $premissas = Projecao::premissas($linhas, $this->premissasLancadas((int)($proj['id'] ?? 0)));
 
         Json::ok([
             'ano' => $ano,
@@ -99,6 +100,7 @@ class ProjecaoController
             'pode_editar' => $u['perfil'] !== 'LEITURA',
             'versao' => (int)($proj['versao'] ?? 0),
             'modo' => $proj['modo'] ?? 'NEGOCIO',
+            'premissas' => $premissas,
             'atualizado_em' => $proj['atualizado_em'] ?? null,
             'atualizado_por' => $proj['atualizado_por_nome'] ?? null,
             'linhas' => $linhas,
@@ -212,7 +214,109 @@ class ProjecaoController
             'atualizado_em' => $proj['atualizado_em'],
             'atualizado_por' => $proj['atualizado_por_nome'],
             'linhas' => $linhas,
+            'premissas' => Projecao::premissas($linhas, $this->premissasLancadas((int)$proj['id'])),
         ]);
+    }
+
+    /**
+     * Lança uma premissa macro (IPCA, PIB).
+     *
+     * Só estas duas: "Cresc. Total", "Cresc. Real" e "% Custos" são LEITURA da
+     * proposta, pela mesma conta que a planilha faz no consolidado. Aceitar
+     * lançamento nelas criaria uma segunda fonte para um número que já tem
+     * dono — a célula da linha.
+     */
+    public function gravarPremissa(): void
+    {
+        $u = Auth::exigirLogin();
+        if ($u['perfil'] === 'LEITURA') {
+            Json::erro('Perfil somente leitura.', 403);
+        }
+        $corpo = Json::corpo();
+        $negocioId = (int)($corpo['negocio_id'] ?? 0);
+        $chave = strtoupper(trim((string)($corpo['chave'] ?? '')));
+
+        $escopo = Auth::escopoNegocios($u);
+        if ($escopo !== null && !in_array($negocioId, $escopo, true)) {
+            Json::erro('Sem acesso a este negócio.', 403);
+        }
+        if (!in_array($chave, Projecao::PREMISSAS, true)) {
+            Json::erro(
+                'Esta linha do painel é lida da proposta, não lançada: '
+                . 'o crescimento se lança na própria linha da DRE.',
+                422
+            );
+        }
+        $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
+        if (!$fech) {
+            Json::erro('Nenhuma DRE carregada.', 409);
+        }
+        $anoPlan = (int)$fech['ano'] + 1;
+
+        $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+        if (!$proj) {
+            Database::executar(
+                'INSERT INTO projecao (negocio_id, ano, atualizado_em, atualizado_por)
+                 VALUES (?, ?, NOW(), ?)',
+                [$negocioId, $anoPlan, $u['id']]
+            );
+            $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+        }
+
+        $bruto = $corpo['valor'] ?? null;
+        if ($bruto === null || $bruto === '') {
+            Database::executar(
+                'DELETE FROM projecao_premissa WHERE projecao_id = ? AND chave = ?',
+                [(int)$proj['id'], $chave]
+            );
+        } else {
+            if (!is_numeric($bruto)) {
+                Json::erro('Informe um número.', 422);
+            }
+            $v = (float)$bruto;
+            if (abs($v) > 100) {
+                Json::erro('Percentual fora de faixa: informe entre -100% e 100%.', 422);
+            }
+            Database::executar(
+                'INSERT INTO projecao_premissa (projecao_id, chave, percentual) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE percentual = VALUES(percentual)',
+                [(int)$proj['id'], $chave, $v]
+            );
+        }
+        Database::executar(
+            'UPDATE projecao SET versao = versao + 1, atualizado_em = NOW(), atualizado_por = ?
+              WHERE id = ?',
+            [$u['id'], (int)$proj['id']]
+        );
+
+        $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+        $linhas = Projecao::aplicar(
+            $this->linhasDaDre($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate']),
+            $this->lancados((int)$proj['id'])
+        );
+        Json::ok([
+            'versao' => (int)$proj['versao'],
+            'atualizado_em' => $proj['atualizado_em'],
+            'atualizado_por' => $proj['atualizado_por_nome'],
+            'linhas' => $linhas,
+            'premissas' => Projecao::premissas($linhas, $this->premissasLancadas((int)$proj['id'])),
+        ]);
+    }
+
+    /** @return array<string,float> chave => percentual digitado */
+    private function premissasLancadas(int $projecaoId): array
+    {
+        if (!$projecaoId) {
+            return [];
+        }
+        $out = [];
+        foreach (Database::todos(
+            'SELECT chave, percentual FROM projecao_premissa WHERE projecao_id = ?',
+            [$projecaoId]
+        ) as $l) {
+            $out[$l['chave']] = (float)$l['percentual'];
+        }
+        return $out;
     }
 
     private function projecaoDoNegocio(int $negocioId, int $ano): ?array
