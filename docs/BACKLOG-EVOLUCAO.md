@@ -2051,6 +2051,235 @@ opção A — o nível passa a ser *onde você está na trilha*.
 - **O quadro (C) não substitui a leitura por estrutura** — se entrar, entra como
   modo, e a decisão 16 continua sendo qual é o modo padrão.
 
+## 13. Projeção de Resultados: realizado, projetado e a proposta do ano seguinte
+
+### Veredito: **CONSTRUIR fatiado** (esforço G) — pedido do cliente, 2026-11-05
+
+A planilha `PECUARIA - SIMULADOR Oficial.xlsx` é a maquete, e é um simulador de
+DRE: realizado dos meses fechados, planejado dos meses que faltam, a soma dos
+dois como projeção do ano, e ao lado a **proposta** do ano seguinte — por
+negócio e por filial, com a proposta do negócio somando as filiais. É isso que
+entra no sistema, e por um motivo que o resto do método já expõe: a Cascata
+decide, a SWOT justifica e o plano de ação executa, mas **o número que a
+Direção cobra não mora em lugar nenhum**. Hoje ele mora numa planilha por
+negócio, refeita a cada fechamento.
+
+### O que a planilha faz, lido do arquivo
+
+| Coluna | O que é | Como sai |
+|---|---|---|
+| `Real. (Jan-Out)` | realizado dos meses **fechados** | `VLOOKUP` na aba BASE, que é um dinâmico da DRE |
+| `Plan. (Nov-Dez)` | os meses **ainda abertos** | valores já orçados, não cálculo |
+| `Proj. (Real + Plan)` | o ano corrente fechado na conta | soma das duas |
+| `A.V.` | análise vertical | a linha dividida pela **ROL** (`D9/D$15`) |
+| `Contribuição` | quanto a proposta acrescenta | projeção × % da premissa (`M16 = J16*$B$17%`) |
+| `PROPOSTA` | a meta do ano seguinte | projeção + contribuição, **ou** valor digitado |
+| `Cresc.` | crescimento sobre a projeção | `(O9/J9)-1` |
+| `NOVA PROPOSTA` | camada de simulação (redução de custo, PPR, variável, rateio) | proposta ± ajustes avulsos |
+
+No consolidado, `PROPOSTA = SUM(AF, AR, BD, BP, CB)` — a soma das cinco
+filiais (Enéas Marques, Matriz, Severiano de Almeida, Embrapa, MS). As
+premissas macro ficam à esquerda (IPCA 4,2%, PIB 1,78%, crescimento real, %
+custos e um reajuste por linha de despesa).
+
+### Decisões do cliente (2026-11-05)
+
+1. **O realizado chega pelo chat.** Não há extração automática do Qlik nem
+   importação por tela: quando a controladoria quiser atualizar, pede aqui, os
+   números saem do Qlik pela `coperdia-strategic-finance-skill` e entram como
+   **carga de conteúdo** (um arquivo por negócio/ano/fechamento, aplicado pelo
+   migrate uma vez por chave, como já é feito com cenário, PESTEL, Porter e
+   SWOT). É o mesmo caminho que levou o diagnóstico da Pecuária à produção.
+2. **Os meses abertos vêm da meta já lançada**, não de cálculo. ⚠ **Premissa a
+   confirmar:** li "a meta do ano anterior para projetar o ano atual" como *a
+   meta que foi lançada no ciclo anterior PARA o ano corrente* — a mesma coisa
+   que a coluna `Plan. (Nov-Dez)` da planilha. Se a intenção for outra (usar o
+   REALIZADO do ano anterior nos meses que faltam), muda o importador e muda o
+   número; é trocar uma linha, mas é melhor trocar antes.
+3. **Cada negócio escolhe como planeja**, e os dois modos existem:
+   - **Modo Negócio** (de cima para baixo): planeja o total e distribui para as
+     filiais **depois**. Distribuir **não é requisito para salvar**.
+   - **Modo Filial** (de baixo para cima): planeja cada filial e o negócio é a
+     soma — é o que a planilha faz hoje.
+4. **A proposta se lança dos dois jeitos**: valor digitado na linha, ou
+   percentual sobre a projeção. Guarda-se **o que foi digitado**, nunca os dois.
+
+### O ano de planejamento
+
+É sempre o **subsequente**, e deriva dos **dados**, não do relógio do servidor
+nem do `ciclo.ano_base`: ano do realizado = o ano do último fechamento
+carregado; ano de planejamento = esse + 1. Derivar do relógio faria a tela
+trocar de ano sozinha em 1º de janeiro, com o fechamento de dezembro ainda não
+carregado; derivar do ciclo congelaria o ano de planejamento em 2027 quando o
+ciclo 2027–2035 estiver no terceiro ano.
+
+### Onde encaixa
+
+Seção nova, **Projeção de Resultados**, no grupo em que já estão Metas ·
+Indicadores e Investimentos — o plano na ordem em que se faz. Não é dentro de
+Metas: `indicador`/`indicador_valor` é um indicador por vez, escolhido a dedo,
+com meta e real versionados; aqui a estrutura é **fixa** (a DRE inteira), vem
+de fora e tem mês a mês de todas as linhas. Enfiar uma coisa na outra
+deformaria as duas.
+
+O que o Painel ganha: hoje ele mostra `Envelope × comprometido` em R$ 0. A
+projeção é o primeiro número financeiro de verdade a entrar no sistema.
+
+### Modelo de dados
+
+```sql
+-- A estrutura da DRE, carregada uma vez (espelha o Cód Indicador do Qlik).
+CREATE TABLE dre_conta (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  codigo     VARCHAR(10) NULL,       -- '1', '3', '12'… NULL nas subcontas
+  nome       VARCHAR(120) NOT NULL,
+  tipo       ENUM('BLOCO','SUBCONTA','CALCULADA') NOT NULL,
+  pai_id     INT NULL,
+  ordem      SMALLINT NOT NULL DEFAULT 0,
+  base_av    TINYINT(1) NOT NULL DEFAULT 0,  -- 1 só na ROL: é o denominador da A.V.
+  UNIQUE KEY uk_dre_conta_nome (nome)
+);
+
+-- As filiais do negócio (a planilha tem cinco na Pecuária).
+CREATE TABLE filial (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  negocio_id INT NOT NULL,
+  cod_filial VARCHAR(10) NOT NULL,
+  nome       VARCHAR(120) NOT NULL,
+  ativo      TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY uk_filial_cod (negocio_id, cod_filial)
+);
+
+-- O que veio de fora: realizado dos meses fechados e meta dos meses abertos.
+CREATE TABLE dre_valor (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  negocio_id INT NOT NULL,
+  filial_id  INT NULL,               -- NULL = consolidado do negócio
+  conta_id   INT NOT NULL,
+  ano        SMALLINT NOT NULL,
+  mes        TINYINT NOT NULL,       -- 1–12; aqui não existe mês 0
+  tipo       ENUM('REAL','META') NOT NULL,
+  valor      DECIMAL(18,2) NOT NULL,
+  fonte      ENUM('QLIK','MANUAL') NOT NULL DEFAULT 'QLIK',
+  carga      VARCHAR(80) NOT NULL,   -- a chave da carga que o trouxe
+  UNIQUE KEY uk_dre_valor (negocio_id, filial_id, conta_id, ano, mes, tipo)
+);
+
+-- O cabeçalho da proposta: um por negócio e ano de planejamento.
+CREATE TABLE projecao (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  negocio_id        INT NOT NULL,
+  ano_planejamento  SMALLINT NOT NULL,
+  modo              ENUM('NEGOCIO','FILIAL') NOT NULL DEFAULT 'NEGOCIO',
+  status            ENUM('RASCUNHO','ENVIADA','APROVADA') NOT NULL DEFAULT 'RASCUNHO',
+  atualizado_em     DATETIME NULL,
+  atualizado_por    INT NULL,
+  UNIQUE KEY uk_projecao (negocio_id, ano_planejamento)
+);
+
+-- A proposta, linha a linha. Guarda O QUE FOI DIGITADO: valor OU percentual,
+-- nunca os dois — com os dois gravados eles divergem na primeira recarga do
+-- realizado, e ninguém sabe qual dos dois a pessoa quis dizer.
+CREATE TABLE projecao_valor (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  projecao_id   INT NOT NULL,
+  filial_id     INT NULL,            -- NULL = a linha do negócio
+  conta_id      INT NOT NULL,
+  entrada       ENUM('VALOR','PERCENTUAL') NOT NULL,
+  valor         DECIMAL(18,2) NULL,
+  percentual    DECIMAL(7,4) NULL,
+  UNIQUE KEY uk_projecao_valor (projecao_id, filial_id, conta_id)
+);
+
+-- As premissas de referência da tela (IPCA, PIB, % custos, reajustes).
+CREATE TABLE projecao_premissa (
+  projecao_id INT NOT NULL,
+  chave       VARCHAR(40) NOT NULL,
+  percentual  DECIMAL(7,4) NOT NULL,
+  PRIMARY KEY (projecao_id, chave)
+);
+```
+
+**Mês fechado é mês com rateio.** A regra da controladoria — `Rateios = 0`
+significa mês aberto, e o valor dele é descartável — mora no **importador**, e
+não na cabeça de quem gera a carga: a carga recusa o mês em que a linha 12
+(Rateios) vier zerada, e diz qual mês recusou. Foi exatamente assim que a
+análise da Pecuária descartou outubro, que exibia R$ 53,9 milhões de resultado.
+
+### Telas e fluxo
+
+Uma tabela, as colunas da planilha, o negócio escolhido no seletor de sempre:
+
+```
+Conta                     Realizado   Projetado   Projeção   A.V.    Proposta   A.V.   Cresc.
+                          jan–set     out–dez     do ano                        
+1 - RECEITA OPER. BRUTA   690.545.516  88.105.160 778.650.676 100,8%  886.003.000 …     13,8%
+```
+
+- **Modo Negócio**: uma coluna de proposta. Embaixo, uma faixa discreta —
+  *"a distribuir entre filiais: R$ 107,4 mi"* — que **informa e não bloqueia**:
+  o cliente foi explícito em que distribuir não é requisito para salvar.
+- **Modo Filial**: uma coluna de proposta por filial e a do negócio em
+  somente-leitura, somando. Trocar de modo com dados lançados pergunta antes
+  (de Filial para Negócio a soma vira o total; de Negócio para Filial o total
+  fica como resíduo a distribuir) — e a pergunta usa a mesma guarda de saída
+  dos formulários.
+- **Como se digita**: a célula aceita `1.500.000` ou `12%`. O `%` é lido como
+  percentual sobre a projeção e a tela mostra o valor que ele vira, do lado;
+  o valor digitado apaga o percentual, e vice-versa.
+- **Bloqueio e versão**: `Cadeado` por projeção (uma pessoa por vez) e
+  `planejamento_versao` para não sobrescrever quem salvou antes — os dois já
+  existem e não se reimplementam aqui.
+- **Celular**: a tabela inteira não cabe, e empilhar 50 linhas × 7 colunas não
+  se lê. No celular entram os **blocos** (1 a 12) com Projeção × Proposta ×
+  Cresc.; as subcontas abrem por toque.
+
+### Entrega mínima, em quatro fatias
+
+| Fatia | O que entrega | Esforço |
+|---|---|---|
+| **1** | `dre_conta`, `filial`, `dre_valor`, a carga da Pecuária 2026 e a tela **só de leitura** (Realizado, Projetado, Projeção, A.V.) | M |
+| **2** | `projecao` + `projecao_valor`, modo Negócio, digitação por valor e por `%`, cadeado e versão | M |
+| **3** | Modo Filial, a soma de baixo para cima e a distribuição opcional | M |
+| **4** | Os outros dez negócios, o consolidado no Painel e a projeção no Dossiê | P–M |
+
+A fatia 1 sozinha já paga: ela põe a DRE do negócio na tela da reunião, que
+hoje é uma planilha anexada no e-mail.
+
+### O que fica de fora (cortes adotados na proposta)
+
+- **A `NOVA PROPOSTA`** da planilha (redução de custo, PPR, variável, rateio
+  corporativo como ajustes avulsos) — é uma **segunda** camada de simulação
+  sobre a proposta, e ela só faz sentido depois de a primeira existir. Entra
+  como tema próprio, se entrar.
+- **Extração automática do Qlik**: decisão do cliente. Fica registrado o que
+  custaria se um dia virar pedido — chave de API no servidor, o bloco de
+  seleção da controladoria no código e um caminho de erro para quando o Qlik
+  estiver fora do ar na hora da reunião.
+- **Mês a mês na tela**: a carga guarda mês a mês (é o que permite recalcular
+  o corte do fechamento), mas a tela mostra o ano. Abrir os doze meses é outra
+  tela, e ninguém pediu.
+- **Edição do realizado pela tela**: o realizado vem de fora e não se digita.
+  `fonte = 'MANUAL'` existe na tabela para o caso excepcional, sem tela.
+
+### Riscos
+
+- **A premissa dos meses abertos** (decisão 2 acima) é a que mais muda número:
+  confirmar antes de escrever o importador.
+- **Meses abertos sem meta lançada** deixam a coluna Projetado incompleta. A
+  tela precisa dizer *qual* mês falta, em vez de somar o que tem e apresentar
+  como ano — esse é o erro silencioso clássico de controladoria.
+- **A estrutura de contas muda no Qlik** (conta nova, renomeada). O importador
+  deve recusar conta desconhecida em vez de ignorá-la: ignorar faz a DRE fechar
+  errado sem ninguém ver.
+- **Proposta e realizado desencontrados**: ao recarregar um fechamento novo, a
+  projeção muda e, com ela, toda proposta lançada em `%`. É o comportamento
+  certo, mas precisa ficar visível na tela — "a projeção mudou com o
+  fechamento de outubro" —, senão a meta muda sozinha entre duas reuniões.
+- **Resíduo de distribuição esquecido**: no modo Negócio, somar as filiais e
+  dar diferente do total é o estado normal (foi decisão do cliente), e por isso
+  o relatório tem de mostrar os dois números, nunca escolher um.
+
 ---
 
 ## Ordem de implementação recomendada
@@ -2174,6 +2403,7 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
+| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | 1 (pedido do cliente, 2026-11-05; fatia 1 já paga sozinha) |
 | 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
 | 12 | **Layout do plano de ação** (projetos, frentes e ações) | Construir | M | ✔ **Entregue em 2026-10-27**: três modos (Lista · Tabela · Quadro), e não a trilha da maquete |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |
