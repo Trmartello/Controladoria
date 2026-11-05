@@ -130,6 +130,16 @@ garantirColuna($pdo, 'cenario_item', 'ano',
 garantirColuna($pdo, 'fator', 'ano',
     'ALTER TABLE fator ADD COLUMN ano SMALLINT NULL AFTER planejamento_id');
 
+// Ordem dos fatores dentro da categoria (pedido do cliente, 2026-11-05: o
+// mesmo arraste que o cenário já tinha). `DEFAULT 0` é o que dispensa carga de
+// dados: a leitura é `ORDER BY categoria, ordem, id`, e com todo mundo em zero
+// a ordem continua sendo a de hoje — a de criação. A primeira arrastada numa
+// coluna numera a coluna inteira (1..N), e fator novo nasce com MAX+1 da
+// categoria, não com zero: com zero ele saltaria para o TOPO de uma coluna já
+// ordenada.
+garantirColuna($pdo, 'fator', 'ordem',
+    'ALTER TABLE fator ADD COLUMN ordem SMALLINT NOT NULL DEFAULT 0 AFTER categoria');
+
 // Fator da SWOT encaminhado ao plano de ação (mesma regra da ideia da Coleta:
 // marcado e sem ação = aguardando alocação em Projetos). A FK do
 // desdobramento é ON DELETE SET NULL: apagada a ação, o fator volta sozinho

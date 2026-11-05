@@ -227,6 +227,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   o servidor confere que **todo id é do planejamento do corpo** — `ordem` é
   escrita, e `exigirEdicaoPlanejamento` autoriza o plano, não o dono de cada
   linha. Provas em `provasOrdenarCenario`.
+  **PESTEL, Porter e SWOT arrastam igual** (pedido do cliente, 2026-11-05, logo
+  depois de ver o gesto no cenário): coluna `fator.ordem`, leitura sempre por
+  `ORDER BY f.categoria, f.ordem, f.id`, gravação em `POST /api/fatores/reordenar`
+  com a mesma guarda de dono, e `Diag.ligarOrdenarFatores(el, planId)` ligando
+  **uma caixa por categoria** — a ordem é dentro da coluna (ECONOMICO, RIVALIDADE,
+  FORCA…), e um arraste entre colunas seria mover o fator de categoria, que é
+  outro gesto, com outra rota. O fator nasce no FIM da sua coluna por
+  `Fatores::proximaOrdem($plan, $ano, $etapa, $categoria)`, e são **quatro** os
+  caminhos que criam fator — a tela da análise, o ⇄ do cenário, a ideia promovida
+  na Coleta e a promoção para a SWOT: esquecer um deles devolve `ordem = 0`, e
+  item com 0 cola no topo. A carga de conteúdo conta a ordem por conta própria
+  (`MAX+1` em SQL), porque o `migrate.php` carrega só `CargaConteudo.php` e não
+  vê a classe `Fatores`. Provas em `provasOrdenarFatores`, nas três etapas.
   Os dois últimos ninguém liga na seção: `App.recarregarSecaoAtiva()` arma e
   para o `Vivo` (depois de a pintura terminar — armar antes tomaria a versão de
   referência com a tela ainda lendo, e uma escrita nesse intervalo passaria por
@@ -253,6 +266,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   e não enviado, que `coletar()` não lê. Provas: `provasSaidaDoModal`, nas duas
   larguras — e é por isso que a bateria fecha formulário com o helper
   `fecharModal` (que chama `hide()`), nunca com Esc.
+  **Quem mexeu antes da fotografia conta como sujo** (`Modal.tocado`, 2026-11-05).
+  Entre o `show()` e o `shown` cabe um teclado rápido — e cabia a bateria, que
+  ficou vermelha uma vez em duas: o texto digitado nessa fresta entrava no
+  retrato como se fosse o estado inicial, o formulário se dizia limpo e o clique
+  fora o fechava levando tudo, que é exatamente o defeito relatado. Agora um
+  ouvinte de captura em `#modal-campos` marca `tocado` nos `input`/`change` com
+  **`isTrusted`** — só a tecla e o clique de gente, nunca os ligadores, a máscara
+  ou o combo que escolhe sozinho, que fariam a janela nascer tocada e perguntar a
+  toda saída —, o `shown` só retrata se ninguém mexeu, e `sujo()` sem retrato
+  responde pelo `tocado`. "Descartar" limpa os dois, senão o `hide()` seguinte
+  seria barrado de novo. Na bateria, `abrir()` espera `Modal.retrato !== null`
+  antes de escrever: esperar a classe `show` é esperar a janela, não a
+  fotografia.
   `App.api` põe `codigo` e `status` no `Error` que lança: erro que a tela
   precisa DECIDIR (e não só mostrar) vem por código, nunca por texto.
   Bootstrap 5.3.3 e o `qrcode.js` (o QR da sala) são as duas ÚNICAS

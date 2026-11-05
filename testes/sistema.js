@@ -4360,6 +4360,115 @@ async function provasCenarioPlanoAcao(page) {
  * a gravação não acontecer, a tela fica certa até o F5 e ninguém percebe na
  * hora. Por isso toda prova aqui compara a tela com o que a API devolve.
  */
+/**
+ * Arrastar para ordenar os cartões de FATOR — PESTEL, Porter e SWOT
+ * (pedido do cliente, 2026-11-05).
+ *
+ * As três telas compartilham o componente, então o que pode faltar em uma e
+ * não na outra é a LIGAÇÃO: por isso a prova passa pelas três, e não por uma
+ * só. E guarda a armadilha da coluna `ordem` recém-criada: fator novo com
+ * `ordem = 0` saltaria para o topo de uma categoria já arrastada.
+ */
+async function provasOrdenarFatores(page) {
+  const l = '[desktop] Ordenar fatores:';
+  const telas = [
+    ['pestel', 'PESTEL', 'ECONOMICO'],
+    ['porter', 'PORTER', 'RIVALIDADE'],
+    ['swot', 'SWOT', 'FORCA'],
+  ];
+
+  for (const [secao, etapa, cat] of telas) {
+    // Massa própria da prova: três cartões na categoria, para o arraste ter
+    // para onde ir sem depender do que a base já tinha.
+    const massa = await page.evaluate(async (x) => {
+      const plan = await App.planejamento();
+      const ano = Diag.ano();
+      const ids = [];
+      for (const n of ['A', 'B', 'C']) {
+        const f = await App.api('/api/fatores', { planejamento_id: plan.id, ano,
+          etapa: x.etapa, categoria: x.cat, descricao: `Ordem de prova ${x.etapa} ${n}` });
+        ids.push(f.id);
+      }
+      return { plan: plan.id, ano, ids };
+    }, { etapa, cat });
+
+    // A tela precisa estar SEM FILTRO: a busca da análise vive em `Diag.busca`
+    // e sobrevive à troca de seção, então um termo deixado por outra prova
+    // esconde cartões com `d-none` — e aí o terceiro cartão da coluna é um
+    // invisível, cuja caixa o Playwright devolve como `null`. Foi assim que
+    // esta prova derrubou a bateria inteira na primeira execução.
+    await page.evaluate((e) => { Diag.busca[e] = ''; }, etapa);
+    await page.evaluate((s) => App.mostrarSecao(s), secao);
+    const sel = `#secao-${secao} [data-coluna-categoria="${cat}"] .corpo-coluna .cartao-ordenavel`;
+    await esperar(page, `document.querySelectorAll('${sel}').length >= 3`, 15000);
+    await new Promise((r) => setTimeout(r, 400));
+    const visiveis = await page.locator(`${sel}:visible`).count();
+    t(`${l} ${etapa} — a coluna abre com os cartões à vista`, visiveis >= 3, String(visiveis));
+
+    const naTela = () => page.evaluate((s) =>
+      [...document.querySelectorAll(s)].map((c) => Number(c.dataset.id)), sel);
+    const noBanco = () => page.evaluate(async (x) => {
+      const f = await App.api(
+        `/api/fatores?planejamento_id=${x.plan}&etapa=${x.etapa}&ano=${x.ano}`);
+      return f.filter((i) => i.categoria === x.cat).map((i) => i.id);
+    }, { ...massa, etapa, cat });
+
+    const temAlca = await page.evaluate((s) => {
+      const c = document.querySelector(s);
+      const a = c?.querySelector('.alca-arrastar');
+      return !!a && getComputedStyle(a).touchAction === 'none';
+    }, sel);
+    t(`${l} ${etapa} — o cartão tem alça que segura o dedo`, temAlca, String(temAlca));
+
+    const antes = await naTela();
+    const alca = await page.locator(`${sel}:visible >> nth=0`)
+      .locator('.alca-arrastar').boundingBox();
+    const terceiro = await page.locator(`${sel}:visible >> nth=2`).boundingBox();
+    await page.mouse.move(alca.x + alca.width / 2, alca.y + alca.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(terceiro.x + 30, terceiro.y + terceiro.height * 0.8, { steps: 12 });
+    await page.mouse.up();
+    await new Promise((r) => setTimeout(r, 900));
+    const depois = await naTela();
+    const gravado = await noBanco();
+    t(`${l} ${etapa} — arrastar muda a ordem, e o servidor devolve a mesma`,
+      JSON.stringify(depois) !== JSON.stringify(antes)
+      && JSON.stringify(depois) === JSON.stringify(gravado),
+      `${JSON.stringify(antes)} → tela ${JSON.stringify(depois)} / banco ${JSON.stringify(gravado)}`);
+
+    // A armadilha da coluna nova: fator criado DEPOIS de alguém arrastar tem
+    // de nascer no FIM da categoria. Com `ordem = 0` ele iria para o topo.
+    const novo = await page.evaluate(async (x) => {
+      const f = await App.api('/api/fatores', { planejamento_id: x.plan, ano: x.ano,
+        etapa: x.etapa, categoria: x.cat, descricao: `Ordem de prova ${x.etapa} D (novo)` });
+      const lista = await App.api(
+        `/api/fatores?planejamento_id=${x.plan}&etapa=${x.etapa}&ano=${x.ano}`);
+      const col = lista.filter((i) => i.categoria === x.cat).map((i) => i.id);
+      return { id: f.id, ultimo: col[col.length - 1] === f.id, col };
+    }, { ...massa, etapa, cat });
+    t(`${l} ${etapa} — fator novo nasce no fim da categoria ordenada`,
+      novo.ultimo === true, JSON.stringify(novo.col));
+
+    await page.evaluate(async (x) => {
+      for (const id of [...x.ids, x.novo]) {
+        await App.api(`/api/fatores/${id}/excluir`, { planejamento_id: x.plan }).catch(() => {});
+      }
+    }, { ...massa, novo: novo.id });
+  }
+
+  // A guarda de dono, como no cenário: id que não é deste planejamento é
+  // recusado antes de qualquer escrita.
+  const intruso = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    return App.api('/api/fatores/reordenar', { planejamento_id: plan.id, ids: [999999999] })
+      .then(() => 'passou').catch((e) => e.message);
+  });
+  t(`${l} id que não é desta análise é recusado`,
+    /não é desta análise/.test(String(intruso)), String(intruso));
+
+  await page.evaluate(() => App.mostrarSecao('painel'));
+}
+
 async function provasOrdenarCenario(page) {
   const l = '[desktop] Ordenar o cenário:';
 
@@ -6843,7 +6952,13 @@ async function provasSaidaDoModal(page, largura) {
     await esperar(page, "!!document.querySelector('#btn-novo-cenario')", 15000);
     await page.click('#btn-novo-cenario');
     await esperar(page, "document.getElementById('modal-form').classList.contains('show')");
-    return esperar(page, "!!document.querySelector('#modal-campos textarea')");
+    await esperar(page, "!!document.querySelector('#modal-campos textarea')");
+    // Espera a FOTOGRAFIA da abertura, não só a janela na tela. A classe
+    // `show` entra antes do `shown.bs.modal`, e foi nessa fresta que a prova
+    // ficou vermelha uma vez em duas: escrevia no textarea, o `shown` chegava
+    // depois e retratava o texto como estado inicial — formulário "limpo",
+    // clique fora fechando, e a prova medindo a corrida em vez da guarda.
+    return esperar(page, 'Modal.retrato !== null', 5000);
   };
 
   // ── A pergunta de saída (pedido do cliente, 2026-11-03) ────────────────
@@ -6939,6 +7054,21 @@ async function provasSaidaDoModal(page, largura) {
   const porCodigo = await estadoSaida();
   t(`${l} fechar por código continua fechando na hora`,
     !porCodigo.aberto && !porCodigo.perguntando, JSON.stringify(porCodigo));
+
+  // O outro lado da corrida acima, agora como regra da tela e não do teste:
+  // quem digitou ANTES da fotografia sair não tem retrato com que comparar, e
+  // aí a resposta é perguntar. Sem isto, o teclado rápido (ou o preenchimento
+  // automático do navegador) cairia no único caminho em que o clique fora
+  // leva o texto calado — o defeito que o cliente relatou.
+  await abrir();
+  await page.evaluate(() => { Modal.retrato = null; Modal.tocado = true; });
+  await clicarFora();
+  const semRetrato = await estadoSaida();
+  t(`${l} mexido antes da fotografia, a janela pergunta em vez de fechar`,
+    semRetrato.aberto && semRetrato.perguntando, JSON.stringify(semRetrato));
+  await page.click('#modal-sair-descartar');
+  await esperar(page,
+    "!document.getElementById('modal-form').classList.contains('show')", 5000);
 }
 
 (async () => {
@@ -6979,6 +7109,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);
   await provasOrdenarCenario(page);
+  await provasOrdenarFatores(page);
   await provasMoverAnalise(page);
   await provasMoverEntreTabelas(page);
   await provasTratarForaDaOrdem(page, 'desktop');

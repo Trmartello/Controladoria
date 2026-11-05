@@ -391,6 +391,9 @@ try {
         case (bool)preg_match('#^POST /api/fatores/(\d+)/plano-acao$#', $rota, $m):
             (new FatorController())->planoAcao((int)$m[1]); break;
         case $rota === 'POST /api/fatores':        (new FatorController())->salvar(); break;
+        // Literal antes da genérica `/api/fatores/{id}`, como no cenário.
+        case $rota === 'POST /api/fatores/reordenar':
+            (new FatorController())->reordenar(); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/excluir$#', $rota, $m):
             (new FatorController())->excluir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/fatores/(\d+)/promover$#', $rota, $m):

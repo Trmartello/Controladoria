@@ -362,20 +362,30 @@ class CargaConteudo
             [$planoId, $ano, $etapa]
         );
 
-        // `fator` não tem coluna de ordem: a tela ordena por categoria e id, e
-        // a sequência do INSERT já é a ordem em que os itens aparecem.
+        // A carga entra DEPOIS do que já está na coluna: desde 2026-11-05 o
+        // fator tem `ordem`, e item novo com zero saltaria para o topo de uma
+        // coluna que alguém arrastou. A conta é feita aqui, e não por
+        // `Fatores::proximaOrdem`, porque o migrate carrega este arquivo
+        // sozinho (`require_once`), sem o autoload da aplicação — chamar o
+        // serviço derrubaria o start do contêiner.
+        $ultima = $pdo->prepare(
+            'SELECT COALESCE(MAX(ordem), 0) FROM fator
+              WHERE planejamento_id = ? AND ano <=> ? AND etapa = ? AND categoria = ?'
+        );
         $insere = $pdo->prepare(
-            'INSERT INTO fator (planejamento_id, ano, etapa, categoria, descricao)
-             VALUES (?, ?, ?, ?, ?)'
+            'INSERT INTO fator (planejamento_id, ano, etapa, categoria, ordem, descricao)
+             VALUES (?, ?, ?, ?, ?, ?)'
         );
         $gravados = 0;
         foreach ($conteudo['itens'] as $categoria => $textos) {
+            $ultima->execute([$planoId, $ano, $etapa, $categoria]);
+            $ordem = (int)$ultima->fetchColumn();
             foreach ($textos as $texto) {
                 if (isset($existentes[self::chaveTexto($texto)])) {
                     continue;
                 }
                 $existentes[self::chaveTexto($texto)] = true;
-                $insere->execute([$planoId, $ano, $etapa, $categoria, $texto]);
+                $insere->execute([$planoId, $ano, $etapa, $categoria, ++$ordem, $texto]);
                 $gravados++;
             }
         }
