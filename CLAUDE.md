@@ -1168,7 +1168,18 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   linha de `negocio`: é opção própria do seletor (`app.js`, valor `CORP`) e
   vira `planejamento.escopo = 'CORPORATIVO'` com `negocio_id` NULL.
   O código **5 (JUROS S. COTA CAPITAL) existe no ERP e fica fora da lista** de
-  propósito: é resultado financeiro, não unidade que planeja.
+  propósito: é resultado financeiro, não unidade que planeja. O **3
+  (FRUTICULTURA) saiu a pedido do cliente em 05/11/2026**, depois de ter entrado
+  na revisão de 03/08/2026.
+  **Tirar um negócio é tirá-lo da FONTE, não da tela.** Desativar pelo Cadastro
+  não basta (o passo "negócios oficiais" recria quem falta) e excluir pelo
+  Cadastro menos ainda (a linha volta no deploy seguinte). Fora de
+  `NEGOCIOS_FONTE`, o passo **"negócio que saiu da lista oficial"** do migrate
+  o desativa — mesma regra da sincronização, só linha `origem = 'QLIK'`, nunca
+  cadastro manual —, e a faxina seguinte o apaga **só** se ele não tiver
+  planejamento nem usuário vinculado. Tendo, a linha fica inativa: some do
+  seletor, do Painel (`negocio WHERE ativo = 1`) e dos relatórios, e **nada do
+  que está pendurado nela se perde**. Devolver é repor a linha na fonte.
   A identidade do negócio é o **código**, não o nome: `QlikSync` casa por
   `cod_negocio` e só depois por nome. Casar por nome primeiro fazia de toda
   renomeação na fonte uma troca de linha — a antiga era desativada e uma nova

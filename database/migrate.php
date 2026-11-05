@@ -661,6 +661,29 @@ if ($renomeados || $novos) {
     echo "migrate: negócios oficiais — {$renomeados} renomeado(s), {$novos} novo(s).\n";
 }
 
+// ---- Negócio que SAIU da lista oficial sai das seleções ----
+// O passo acima só acrescenta e renomeia; sem este, retirar um código da fonte
+// não teria efeito nenhum numa instalação em uso — e desativar pela tela também
+// não resolveria, porque o cadastro voltaria no deploy seguinte. O caso real é
+// o 3 (FRUTICULTURA), tirado a pedido do cliente em 05/11/2026 depois de ter
+// entrado na revisão de 03/08/2026.
+//
+// É a MESMA regra da sincronização (`QlikSync::sincronizarNegocios`): linha de
+// carga QLIK que nenhum código da fonte reconhece é desativada, nunca apagada
+// aqui. Desativar tira do seletor, do Painel e dos relatórios e **preserva
+// tudo** o que estiver pendurado nela; quem apaga de verdade é a faxina logo
+// abaixo, e só quando não há nada a perder. Cadastro MANUAL (`origem` diferente
+// de QLIK) nunca é tocado: ele não vem da fonte e não é dela que depende.
+$saiuDaFonte = $pdo->prepare(
+    "UPDATE negocio SET ativo = 0
+      WHERE origem = 'QLIK' AND ativo = 1
+        AND cod_negocio NOT IN (" . implode(',', array_fill(0, count($oficiais), '?')) . ')'
+);
+$saiuDaFonte->execute(array_map('strval', array_keys($oficiais)));
+if ($saiuDaFonte->rowCount()) {
+    echo 'migrate: ' . $saiuDaFonte->rowCount() . " negócio(s) fora da lista oficial desativado(s).\n";
+}
+
 // ---- Faxina dos negócios inativos que não representam nada ----
 // Sobra de carga antiga: linha com o nome longo de antes da revisão (ex.: "99 —
 // NEGOCIO UTM" ao lado do "7 — UTM" oficial) que ficou desativada ocupando
