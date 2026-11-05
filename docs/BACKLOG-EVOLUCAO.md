@@ -2094,8 +2094,16 @@ opção A — o nível passa a ser *onde você está na trilha*.
 > de valores), e a conferência da soma pegou uma filial ausente da planilha do
 > cliente — **Morrinhos**, com R$ 1.448, sem a qual o total não fecha.
 >
-> **Só a Pecuária está carregada por filial.** A extração é por negócio, uma
-> chamada ao Qlik cada; os outros dez entram a pedido.
+> **Três negócios estão carregados por filial:** Pecuária (6), Supermercados
+> (19) e Agropecuárias (77), pedidos nessa ordem pelo cliente. A extração é por
+> negócio, uma coluna por filial e em lotes de doze; os outros oito entram a
+> pedido. A lista de filiais sai de um peso (|receita| + |resultado| + |orçado|)
+> e **se prova pelo resto**: uma medida com `[Cód. Filial]-={…as listadas…}` tem
+> de dar `0/0` nas 50 contas, porque o peso poderia perder uma filial que só
+> tenha movimento em outra conta. Filial zerada no nível da DRE fica fora da
+> carga (Silo Concórdia, Passos Maia, Bela Vista do Toldo nos Supermercados;
+> Capinzal UBS nas Agropecuárias) — elas só têm centavos em linhas de
+> `Nível>2`, e entrariam no seletor sem DRE nenhuma.
 >
 > **Fatia 4 ENTREGUE em 2026-11-05**, fechando o tema: o Painel ganha a
 > projeção e a proposta por negócio (duas colunas, dois cartões, o Corporativo
@@ -2105,7 +2113,7 @@ opção A — o nível passa a ser *onde você está na trilha*.
 > chama `aplicar`/`somarFiliais`), em quatro consultas em lote.
 >
 > **O tema 13 está entregue nas quatro fatias.** O que resta são dados e uma
-> pergunta: as filiais dos outros dez negócios (uma extração cada, a pedido) e
+> pergunta: as filiais dos outros oito negócios (uma extração cada, a pedido) e
 > a composição da linha 15.
 >
 > **Achado da entrega, e ele muda número:** outubro de 2026 **não está
@@ -2462,7 +2470,7 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | ✔ **ENTREGUE em 2026-11-05**, nas quatro fatias (onze negócios; filiais carregadas só na Pecuária, as demais a pedido) |
+| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | ✔ **ENTREGUE em 2026-11-05**, nas quatro fatias (onze negócios; filiais carregadas na Pecuária, Supermercados e Agropecuárias, as demais a pedido) |
 | 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
 | 12 | **Layout do plano de ação** (projetos, frentes e ações) | Construir | M | ✔ **Entregue em 2026-10-27**: três modos (Lista · Tabela · Quadro), e não a trilha da maquete |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |

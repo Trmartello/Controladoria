@@ -142,7 +142,25 @@ $msg = recusa($pdo, $outroCorte);
 prova('carga de filiais com corte diferente do fechamento é recusada',
     $msg !== null && str_contains($msg, 'corte'), (string)$msg);
 
-// ── 9. O corte do fechamento ficou gravado ──────────────────────────────────
+// ── 9. TODA carga de filiais do repositório fecha com o seu negócio ─────────
+// A prova 7 mede a guarda com um arquivo; esta mede os arquivos. Ela cresce
+// sozinha: negócio novo carregado por filial entra aqui no mesmo commit, e se a
+// extração dele tiver perdido uma filial a bateria fica vermelha antes do
+// deploy, em vez de o Painel somar menos do que o negócio.
+$arquivos = glob(__DIR__ . '/../database/dre_filiais_*.php');
+sort($arquivos);
+prova('há carga de filiais no repositório', $arquivos !== [], count($arquivos) . ' arquivo(s)');
+foreach ($arquivos as $a) {
+    $d = require $a;
+    $msg = recusa($pdo, $d);
+    prova(
+        'a soma das filiais de ' . basename($a, '.php') . ' fecha com o negócio',
+        $msg === null,
+        (string)$msg
+    );
+}
+
+// ── 10. O corte do fechamento ficou gravado ─────────────────────────────────
 $f = $pdo->query('SELECT * FROM dre_fechamento WHERE ano = 2026')->fetch(PDO::FETCH_ASSOC);
 prova('o corte do fechamento fica no banco, não no código',
     $f && (int)$f['mes_fechado_ate'] === 9, json_encode($f));
