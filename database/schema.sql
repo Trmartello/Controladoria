@@ -839,3 +839,37 @@ CREATE TABLE IF NOT EXISTS dre_fechamento (
   fonte           VARCHAR(255) NULL,
   aplicado_em     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A proposta do ano de planejamento (fatia 2 do tema 13). Uma por negócio e
+-- ano; o `modo` existe desde já porque a decisão do cliente é que cada negócio
+-- escolhe planejar de cima para baixo (negócio, distribuindo às filiais depois)
+-- ou de baixo para cima (filial a filial, somando) — a fatia 3 liga o segundo.
+CREATE TABLE IF NOT EXISTS projecao (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  negocio_id     INT NOT NULL,
+  ano            SMALLINT NOT NULL,
+  modo           ENUM('NEGOCIO','FILIAL') NOT NULL DEFAULT 'NEGOCIO',
+  -- Trava otimista: sobe a cada gravação. Quem carregou a tela antes da
+  -- gravação de outra pessoa é recusado com 409 em vez de sobrescrever calado.
+  versao         INT NOT NULL DEFAULT 1,
+  atualizado_em  DATETIME NULL,
+  atualizado_por INT NULL,
+  UNIQUE KEY uk_projecao (negocio_id, ano),
+  CONSTRAINT fk_projecao_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE,
+  CONSTRAINT fk_projecao_usuario FOREIGN KEY (atualizado_por) REFERENCES usuario(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- O que foi LANÇADO, linha a linha. Guarda o que a pessoa digitou — valor OU
+-- percentual, nunca os dois: com os dois gravados eles divergem no primeiro
+-- fechamento novo e ninguém sabe qual dos dois ela quis dizer.
+CREATE TABLE IF NOT EXISTS projecao_valor (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  projecao_id INT NOT NULL,
+  conta_id    INT NOT NULL,
+  entrada     ENUM('VALOR','PERCENTUAL') NOT NULL,
+  valor       DECIMAL(18,2) NULL,
+  percentual  DECIMAL(9,4) NULL,
+  UNIQUE KEY uk_projecao_valor (projecao_id, conta_id),
+  CONSTRAINT fk_pv_projecao FOREIGN KEY (projecao_id) REFERENCES projecao(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pv_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

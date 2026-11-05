@@ -2055,12 +2055,29 @@ opção A — o nível passa a ser *onde você está na trilha*.
 
 ### Veredito: **CONSTRUIR fatiado** (esforço G) — pedido do cliente, 2026-11-05
 
-> **Fatia 1 ENTREGUE em 2026-11-05**, com os onze negócios (e não só a
-> Pecuária, como o plano previa — o cliente pediu todos). No ar: `dre_conta`,
-> `dre_valor`, `dre_fechamento`, o importador `CargaDre`, a carga
-> `dre_2026_fechamento_09.php` (11 negócios × 50 contas × 21 valores) e a tela
-> **Projeção de Resultados**, só de leitura. As fatias 2 a 4 — a proposta, os
-> modos negócio/filial e o consolidado — continuam abertas.
+> **Fatias 1 e 2 ENTREGUES em 2026-11-05**, com os onze negócios (e não só a
+> Pecuária, como o plano previa — o cliente pediu todos).
+>
+> Fatia 1: `dre_conta`, `dre_valor`, `dre_fechamento`, o importador `CargaDre`,
+> a carga `dre_2026_fechamento_09.php` (11 negócios × 50 contas × 21 valores) e
+> a tela **Projeção de Resultados**.
+>
+> Fatia 2: `projecao` + `projecao_valor`, a coluna de **Proposta** no modo
+> negócio, aceitando valor (`1.500.000`) ou percentual (`12%`) sobre a
+> projeção, com derivação dos blocos no servidor e trava de versão. Três
+> decisões se firmaram aqui: o lançamento é na **subconta** (o bloco é a soma);
+> célula vazia vale a **projeção**, não zero; e a trava é de **versão**, não
+> cadeado — a tela é uma grade de 33 células, e prendê-la numa pessoa por vez
+> seria pior que o conflito que se quer evitar.
+>
+> Fica de fora, declarada: a linha **15 (Despesas Totais)** não recebe
+> proposta. Ela vem pronta do Qlik e não é soma de nenhuma combinação das
+> linhas carregadas — sete fórmulas candidatas testadas contra 11 negócios × 9
+> meses, todas divergentes. **Se a controladoria souber a regra dela, é meia
+> hora de trabalho.**
+>
+> As fatias 3 e 4 — modo filial com distribuição opcional, e o consolidado no
+> Painel e no Dossiê — continuam abertas.
 >
 > **Achado da entrega, e ele muda número:** outubro de 2026 **não está
 > fechado** (Rateios = 0 com R$ 373,2 mi de receita lançada). A planilha que
@@ -2416,7 +2433,7 @@ fila deve discutir a dependência, não o quadrante.
 
 | # | Tema | Veredito | Esforço | Ordem |
 |---|------|----------|---------|-------|
-| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | ✔ **fatia 1 entregue em 2026-11-05** (os onze negócios, tela de leitura); fatias 2–4 em aberto |
+| 13 | **Projeção de Resultados** (realizado + projetado + proposta do ano seguinte) | Construir fatiado | G | ✔ **fatias 1 e 2 entregues em 2026-11-05** (onze negócios; leitura + proposta no modo negócio); fatias 3–4 em aberto |
 | 4d | Cruzamentos da SWOT — **a síntese** (fatia 4, §6) | Construir | P | 1 (o último pedaço da etapa; ver `docs/CRUZAMENTOS-SWOT.md`) |
 | 12 | **Layout do plano de ação** (projetos, frentes e ações) | Construir | M | ✔ **Entregue em 2026-10-27**: três modos (Lista · Tabela · Quadro), e não a trilha da maquete |
 | 9d | Mover entre TABELAS (Cenário ⇄ fator) | **Entregue** | P–M | ✔ (levou junto duas amarras que sumiam em silêncio) |
