@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Projecao;
 
 /**
  * Projeção de Resultados — fatia 1: a DRE do ano corrente na tela.
@@ -70,27 +71,7 @@ class ProjecaoController
         $ids = array_map(static fn ($n) => (int)$n['id'], $negocios);
         $negocioId = in_array($pedido, $ids, true) ? $pedido : $ids[0];
 
-        $linhas = Database::todos(
-            'SELECT c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual,
-                    COALESCE(SUM(CASE WHEN v.tipo = \'REAL\' AND v.mes <= ? THEN v.valor END), 0) AS realizado,
-                    COALESCE(SUM(CASE WHEN v.tipo = \'META\' AND v.mes >  ? THEN v.valor END), 0) AS projetado,
-                    COALESCE(SUM(CASE WHEN v.tipo = \'META\' THEN v.valor END), 0) AS meta_ano
-               FROM dre_conta c
-               LEFT JOIN dre_valor v
-                      ON v.conta_id = c.id AND v.negocio_id = ? AND v.ano = ?
-              GROUP BY c.id, c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual, c.ordem
-              ORDER BY c.ordem',
-            [$corte, $corte, $negocioId, $ano]
-        );
-        foreach ($linhas as &$l) {
-            $l['nivel'] = (int)$l['nivel'];
-            $l['percentual'] = (int)$l['percentual'];
-            $l['realizado'] = (float)$l['realizado'];
-            $l['projetado'] = (float)$l['projetado'];
-            $l['meta_ano'] = (float)$l['meta_ano'];
-            $l['projecao'] = $l['realizado'] + $l['projetado'];
-        }
-        unset($l);
+        $linhas = $this->linhasDaDre($negocioId, $ano, $corte);
 
         // Mês aberto SEM orçamento lançado deixa a projeção incompleta. A tela
         // precisa dizer QUAL mês falta: somar o que tem e apresentar como ano é
@@ -103,6 +84,9 @@ class ProjecaoController
         $temMeta = array_map(static fn ($l) => (int)$l['mes'], $comMeta);
         $semMeta = array_values(array_diff(range($corte + 1, 12), $temMeta));
 
+        $proj = $this->projecaoDoNegocio($negocioId, $ano + 1);
+        $linhas = Projecao::aplicar($linhas, $this->lancados($proj['id'] ?? 0));
+
         Json::ok([
             'ano' => $ano,
             'ano_planejamento' => $ano + 1,
@@ -112,7 +96,174 @@ class ProjecaoController
             'negocio_id' => $negocioId,
             'negocios' => $negocios,
             'meses_sem_meta' => $semMeta,
+            'pode_editar' => $u['perfil'] !== 'LEITURA',
+            'versao' => (int)($proj['versao'] ?? 0),
+            'modo' => $proj['modo'] ?? 'NEGOCIO',
+            'atualizado_em' => $proj['atualizado_em'] ?? null,
+            'atualizado_por' => $proj['atualizado_por_nome'] ?? null,
             'linhas' => $linhas,
         ]);
+    }
+
+    /**
+     * Lança a proposta de UMA linha (fatia 2).
+     *
+     * Grava o que foi digitado — valor ou percentual —, e devolve a tabela
+     * inteira recalculada. Devolver a tabela, e não só a célula, é o que
+     * mantém os blocos derivados fiéis sem a tela refazer a soma: a regra de
+     * derivação mora em `App\Services\Projecao`, de um lado só.
+     */
+    public function gravarValor(): void
+    {
+        $u = Auth::exigirLogin();
+        if ($u['perfil'] === 'LEITURA') {
+            Json::erro('Perfil somente leitura.', 403);
+        }
+        $corpo = Json::corpo();
+        $negocioId = (int)($corpo['negocio_id'] ?? 0);
+        $codigo = trim((string)($corpo['conta'] ?? ''));
+
+        $escopo = Auth::escopoNegocios($u);
+        if ($escopo !== null && !in_array($negocioId, $escopo, true)) {
+            Json::erro('Sem acesso a este negócio.', 403);
+        }
+        $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
+        if (!$fech) {
+            Json::erro('Nenhuma DRE carregada.', 409);
+        }
+        $anoPlan = (int)$fech['ano'] + 1;
+
+        $conta = Database::um('SELECT * FROM dre_conta WHERE codigo = ?', [$codigo]);
+        if (!$conta) {
+            Json::erro('Conta não encontrada.', 404);
+        }
+        // Bloco não recebe lançamento: ele é a SOMA das subcontas. Aceitar aqui
+        // deixaria a linha de despesas valendo um total diferente da soma das
+        // despesas lançadas logo abaixo dela — e as duas na mesma tela.
+        if (!Projecao::editavel($conta)) {
+            Json::erro(
+                'Esta linha é calculada a partir das subcontas: lance nas linhas de baixo.',
+                422
+            );
+        }
+
+        $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+        // Trava otimista. Só vale quando a projeção JÁ existe: a primeira
+        // gravação cria a linha, e exigir versão de algo que não existe
+        // impediria qualquer começo.
+        if ($proj && array_key_exists('versao', $corpo)
+            && (int)$corpo['versao'] !== (int)$proj['versao']) {
+            Json::erro(
+                'Alguém gravou nesta projeção enquanto você editava. Recarregue a tela '
+                . 'para ver o que mudou antes de lançar de novo.',
+                409
+            );
+        }
+        if (!$proj) {
+            Database::executar(
+                'INSERT INTO projecao (negocio_id, ano, atualizado_em, atualizado_por)
+                 VALUES (?, ?, NOW(), ?)',
+                [$negocioId, $anoPlan, $u['id']]
+            );
+            $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+        }
+
+        $entrada = ($corpo['entrada'] ?? 'VALOR') === 'PERCENTUAL' ? 'PERCENTUAL' : 'VALOR';
+        $bruto = $corpo['valor'] ?? null;
+        if ($bruto === null || $bruto === '') {
+            // Apagar a célula devolve a linha à projeção (crescimento zero), que
+            // é o estado de quem nunca a tocou — e não zero, que seria uma
+            // proposta de fechar o negócio.
+            Database::executar(
+                'DELETE FROM projecao_valor WHERE projecao_id = ? AND conta_id = ?',
+                [(int)$proj['id'], (int)$conta['id']]
+            );
+        } else {
+            if (!is_numeric($bruto)) {
+                Json::erro('Informe um número.', 422);
+            }
+            $v = (float)$bruto;
+            if ($entrada === 'PERCENTUAL' && abs($v) > 1000) {
+                Json::erro('Percentual fora de faixa: informe entre -1000% e 1000%.', 422);
+            }
+            Database::executar(
+                'INSERT INTO projecao_valor (projecao_id, conta_id, entrada, valor, percentual)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE entrada = VALUES(entrada), valor = VALUES(valor),
+                                         percentual = VALUES(percentual)',
+                [(int)$proj['id'], (int)$conta['id'], $entrada,
+                 $entrada === 'VALOR' ? $v : null,
+                 $entrada === 'PERCENTUAL' ? $v : null]
+            );
+        }
+        Database::executar(
+            'UPDATE projecao SET versao = versao + 1, atualizado_em = NOW(), atualizado_por = ?
+              WHERE id = ?',
+            [$u['id'], (int)$proj['id']]
+        );
+
+        $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+        $linhas = Projecao::aplicar(
+            $this->linhasDaDre($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate']),
+            $this->lancados((int)$proj['id'])
+        );
+        Json::ok([
+            'versao' => (int)$proj['versao'],
+            'atualizado_em' => $proj['atualizado_em'],
+            'atualizado_por' => $proj['atualizado_por_nome'],
+            'linhas' => $linhas,
+        ]);
+    }
+
+    private function projecaoDoNegocio(int $negocioId, int $ano): ?array
+    {
+        return Database::um(
+            'SELECT p.*, u.nome AS atualizado_por_nome
+               FROM projecao p LEFT JOIN usuario u ON u.id = p.atualizado_por
+              WHERE p.negocio_id = ? AND p.ano = ?',
+            [$negocioId, $ano]
+        );
+    }
+
+    /** @return array<string,array> codigo => lançamento */
+    private function lancados(int $projecaoId): array
+    {
+        if (!$projecaoId) {
+            return [];
+        }
+        $linhas = Database::todos(
+            'SELECT c.codigo, v.entrada, v.valor, v.percentual
+               FROM projecao_valor v JOIN dre_conta c ON c.id = v.conta_id
+              WHERE v.projecao_id = ?',
+            [$projecaoId]
+        );
+        $out = [];
+        foreach ($linhas as $l) {
+            $out[$l['codigo']] = $l;
+        }
+        return $out;
+    }
+
+    private function linhasDaDre(int $negocioId, int $ano, int $corte): array
+    {
+        $linhas = Database::todos(
+            'SELECT c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual,
+                    COALESCE(SUM(CASE WHEN v.tipo = \'REAL\' AND v.mes <= ? THEN v.valor END), 0) AS realizado,
+                    COALESCE(SUM(CASE WHEN v.tipo = \'META\' AND v.mes >  ? THEN v.valor END), 0) AS projetado
+               FROM dre_conta c
+               LEFT JOIN dre_valor v
+                      ON v.conta_id = c.id AND v.negocio_id = ? AND v.ano = ?
+              GROUP BY c.id, c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual, c.ordem
+              ORDER BY c.ordem',
+            [$corte, $corte, $negocioId, $ano]
+        );
+        foreach ($linhas as &$l) {
+            $l['nivel'] = (int)$l['nivel'];
+            $l['percentual'] = (int)$l['percentual'];
+            $l['realizado'] = (float)$l['realizado'];
+            $l['projetado'] = (float)$l['projetado'];
+            $l['projecao'] = $l['realizado'] + $l['projetado'];
+        }
+        return $linhas;
     }
 }

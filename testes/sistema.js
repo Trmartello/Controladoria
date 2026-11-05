@@ -4480,6 +4480,148 @@ async function provasOrdenarFatores(page) {
  * custos, resultado líquido = resultado do negócio + rateios) e se a A.V. da
  * própria ROL dá 100%.
  */
+/**
+ * A coluna de PROPOSTA (tema 13, fatia 2).
+ *
+ * O que estas provas protegem é a contradição que uma tela assim cria com
+ * facilidade: o bloco valendo um número diferente da soma das subcontas que
+ * estão logo abaixo dele, as duas à vista. Por isso elas lançam de verdade —
+ * por percentual e por valor — e conferem a DRE inteira depois de cada
+ * lançamento, até o resultado líquido.
+ */
+async function provasProjecaoProposta(page, largura) {
+  const l = `[${largura}] Proposta:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+
+  // Um negócio só para estas provas, e o mesmo sempre: elas GRAVAM, e lançar
+  // em qualquer negócio deixaria massa espalhada por toda a base de teste.
+  const escolhido = await page.evaluate(() => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return o.textContent.trim();
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const ler = () => page.evaluate(() => {
+    const n = (s) => {
+      const x = String(s).replace(/\./g, '').replace(',', '.').replace('%', '').trim();
+      return x === '—' || x === '' ? null : Number(x);
+    };
+    const o = {};
+    document.querySelectorAll('.tabela-projecao tbody tr').forEach((tr) => {
+      const td = [...tr.querySelectorAll('td')];
+      const inp = td[5].querySelector('input');
+      o[tr.dataset.conta] = {
+        projecao: n(td[3].textContent),
+        digitado: inp ? inp.value : null,
+        proposta: inp ? null : n(td[5].textContent),
+        cresc: n(td[6].textContent),
+        origem: tr.dataset.origem,
+        editavel: !!inp,
+      };
+    });
+    return o;
+  });
+  const lancar = async (conta, texto) => {
+    await page.evaluate(([c, v]) => {
+      const i = document.querySelector(`[data-conta="${c}"] .celula-proposta`);
+      i.focus(); i.value = v; i.blur();
+    }, [conta, texto]);
+    await new Promise((r) => setTimeout(r, 1200));
+    return ler();
+  };
+
+  let v = await ler();
+  const editaveis = Object.values(v).filter((x) => x.editavel).length;
+  const derivadas = Object.values(v).filter((x) => x.origem === 'DERIVADA').length;
+  t(`${l} quem recebe lançamento é a subconta, e o bloco é derivado`,
+    editaveis >= 30 && derivadas >= 12, `${editaveis} editável(is), ${derivadas} derivada(s)`);
+
+  // Sem nada lançado, a proposta REPETE a projeção: crescimento zero, e não
+  // zero — zero seria uma proposta de fechar a linha.
+  // Tolerância de R$ 20: a proposta do BLOCO é derivada das subcontas, e a
+  // projeção dele vem carregada do Qlik — as duas somam valores arredondados
+  // ao real por caminhos diferentes, e no resultado líquido a diferença chegou
+  // a R$ 7. Exigir igualdade exata aqui seria exigir que dois arredondamentos
+  // diferentes dessem no mesmo centavo.
+  t(`${l} sem lançamento, a proposta vale a projeção`,
+    Math.abs(v['1'].proposta - v['1'].projecao) <= 20
+    && Math.abs(v['16'].proposta - v['16'].projecao) <= 20,
+    `${v['1'].proposta} vs ${v['1'].projecao} / ${v['16'].proposta} vs ${v['16'].projecao}`);
+
+  // ── Lançar por PERCENTUAL ───────────────────────────────────────────────
+  const projReceita = v['1.1'].projecao;
+  v = await lancar('1.1', '10%');
+  t(`${l} 10% na receita sobe o bloco em 10%`,
+    Math.abs(v['1'].proposta - projReceita * 1.1) <= 2,
+    `${v['1'].proposta} vs ${Math.round(projReceita * 1.1)}`);
+  t(`${l} e a célula guarda o PERCENTUAL, não o valor`,
+    v['1.1'].digitado.includes('%'), String(v['1.1'].digitado));
+  t(`${l} o crescimento do bloco aparece na coluna`,
+    Math.abs(v['1'].cresc - 10) < 0.2, String(v['1'].cresc));
+
+  // A cadeia inteira: ROL = receita + deduções, e o líquido muda junto.
+  t(`${l} a ROL proposta acompanha (receita + deduções)`,
+    Math.abs(v['3'].proposta - (v['1'].proposta + v['2'].proposta)) <= 2,
+    `${v['3'].proposta} vs ${v['1'].proposta + v['2'].proposta}`);
+  t(`${l} e o resultado líquido proposto sobe junto`,
+    v['16'].proposta > v['16'].projecao,
+    `${v['16'].proposta} vs ${v['16'].projecao}`);
+
+  // ── Lançar por VALOR ────────────────────────────────────────────────────
+  v = await lancar('4.1', '-800.000.000');
+  t(`${l} valor digitado entra como valor`,
+    Math.abs(v['4'].proposta + 800000000) <= 2, String(v['4'].proposta));
+  t(`${l} lucro bruto proposto = ROL + custos`,
+    Math.abs(v['5'].proposta - (v['3'].proposta + v['4'].proposta)) <= 2,
+    `${v['5'].proposta} vs ${v['3'].proposta + v['4'].proposta}`);
+  t(`${l} resultado líquido proposto = resultado do negócio + rateios`,
+    Math.abs(v['16'].proposta - (v['13'].proposta + v['14'].proposta)) <= 2,
+    `${v['16'].proposta} vs ${v['13'].proposta + v['14'].proposta}`);
+
+  // ── O bloco não aceita lançamento ───────────────────────────────────────
+  // (Pela API, porque a tela nem desenha o campo — e é a API que precisa
+  // recusar: a tela é só a primeira barreira.)
+  const noBloco = await page.evaluate(async (id) => {
+    try {
+      await App.api('/api/projecao/valor', { negocio_id: Number(id), conta: '3', entrada: 'VALOR', valor: 1 });
+      return 'ACEITOU';
+    } catch (e) { return e.message; }
+  }, await page.evaluate(() => document.querySelector('#projecao-negocio').value));
+  t(`${l} lançar num bloco é recusado pelo servidor`,
+    noBloco.includes('calculada a partir das subcontas'), noBloco.slice(0, 80));
+
+  // ── Trava otimista ──────────────────────────────────────────────────────
+  const conflito = await page.evaluate(async (id) => {
+    try {
+      await App.api('/api/projecao/valor',
+        { negocio_id: Number(id), conta: '8.5', entrada: 'VALOR', valor: -1, versao: 1 });
+      return 'ACEITOU';
+    } catch (e) { return e.message; }
+  }, await page.evaluate(() => document.querySelector('#projecao-negocio').value));
+  t(`${l} gravar com versão velha é recusado em vez de sobrescrever`,
+    conflito.includes('enquanto você editava'), conflito.slice(0, 80));
+
+  // ── Apagar devolve à projeção ───────────────────────────────────────────
+  v = await lancar('1.1', '');
+  t(`${l} apagar a célula devolve a linha à projeção`,
+    v['1.1'].origem === 'PROJECAO' && v['1'].proposta === v['1'].projecao,
+    `${v['1'].proposta} vs ${v['1'].projecao}`);
+  v = await lancar('4.1', '');
+  t(`${l} e a DRE inteira volta ao ponto de partida`,
+    Math.abs(v['16'].proposta - v['16'].projecao) <= 20,
+    `${v['16'].proposta} vs ${v['16'].projecao}`);
+
+  // ── A linha que o sistema não sabe recompor ─────────────────────────────
+  t(`${l} "Despesas Totais" não recebe proposta inventada`,
+    v['15'].proposta === null && !v['15'].editavel, JSON.stringify(v['15']));
+}
+
 async function provasProjecao(page, largura) {
   const l = `[${largura}] Projeção:`;
   await page.evaluate(() => App.mostrarSecao('projecao'));
@@ -7230,6 +7372,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);
   await provasProjecao(page, 'desktop');
+  await provasProjecaoProposta(page, 'desktop');
   await provasOrdenarCenario(page);
   await provasOrdenarFatores(page);
   await provasMoverAnalise(page);
@@ -7283,6 +7426,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasJanelaModal(pageM, 'celular');
   await provasSaidaDoModal(pageM, 'celular');
   await provasProjecao(pageM, 'celular');
+  await provasProjecaoProposta(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');

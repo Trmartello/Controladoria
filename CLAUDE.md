@@ -2564,9 +2564,12 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   **O ano de planejamento é o do último fechamento CARREGADO + 1** — não o
   relógio (a tela viraria de ano em 1º de janeiro com dezembro ainda aberto) e
   não o `ciclo.ano_base` (que fica parado em 2026 enquanto os fechamentos
-  avançam).
+  avançam). **Confirmado pelo cliente em 2026-11-05**, junto com as duas
+  decisões seguintes: não são escolha de implementação a revisar, são regra
+  acordada.
   **A A.V. é sobre a ROL**, e cada coluna usa a ROL dela: a margem do realizado
-  sobre a receita realizada, a do projetado sobre a projetada. E as três linhas
+  sobre a receita realizada, a do projetado sobre a projetada (confirmado pelo
+  cliente em 2026-11-05). E as três linhas
   de percentual (Margem Bruta, Desp./ROL, Margem Líquida) são **calculadas na
   tela** — na extração vêm zeradas, porque no próprio Qlik são fórmula de tela.
   **Os valores são arredondados ao real na extração.** Sobre uma DRE de centenas
@@ -2574,8 +2577,44 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   projeção soma doze valores arredondados por linha, e a diferença acumulada
   chegou a R$ 4 num negócio. Por isso as identidades da DRE são conferidas com
   tolerância de R$ 20, e não de centavos — erro de conta não cabe aí dentro.
-  **O realizado entra por CARGA, pedida no chat** (decisão do cliente, 2026-11-05):
-  não há extração automática do Qlik nem tela de importação. O ciclo é: o cliente
+  **A PROPOSTA do ano de planejamento (fatia 2)** é lançada na coluna da direita:
+  `projecao` (uma por negócio e ano) e `projecao_valor` (o que foi lançado,
+  linha a linha). Quem recebe lançamento é a **subconta**; o bloco é a soma
+  dela, feita no servidor (`App\Services\Projecao::aplicar`) — aceitar
+  lançamento no bloco deixaria a linha de despesas valendo um total diferente
+  da soma das despesas logo abaixo, as duas na mesma tela. A célula aceita
+  `1.500.000` **ou** `12%` (crescimento sobre a projeção), e o que fica gravado
+  é **o que foi digitado**, nunca os dois: com os dois, a recarga do fechamento
+  seguinte os faria divergir e ninguém saberia qual deles valia.
+  **Célula vazia é "sem proposta" e vale a PROJEÇÃO** (crescimento zero), não
+  zero — zero seria uma proposta de fechar a linha. A tela marca em cinza o que
+  está ali por omissão, e apagar a célula devolve a linha a esse estado.
+  A derivação mora no servidor pelo mesmo motivo que a agregação das metas:
+  refazer a conta no JavaScript seria uma segunda cópia da regra, no idioma
+  errado, e a primeira divergência entre as duas apareceria como número na
+  reunião. Por isso a gravação devolve a TABELA inteira recalculada, não a
+  célula.
+  **A trava é de VERSÃO, não cadeado.** `projecao.versao` sobe a cada gravação
+  e quem carregou antes é recusado com 409 ("alguém gravou enquanto você
+  editava"). Cadeado de item, como o dos formulários, prenderia a projeção
+  inteira numa pessoa por vez — e esta tela é uma grade de 33 células, não um
+  formulário. É a mesma escolha das células de Metas, que também não tomam
+  cadeado.
+  **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
+  valor próprio e não é soma de nenhuma combinação das linhas carregadas —
+  foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas
+  divergentes. Enquanto a regra não for conhecida, a tela mostra "—" ali.
+  Inventar uma soma plausível seria o erro mais caro deste sistema.
+  **Bloco derivado e linha carregada podem diferir em alguns reais**: a proposta
+  do bloco soma as subcontas, a projeção dele vem pronta da carga, e os dois
+  caminhos arredondam ao real em pontos diferentes — no resultado líquido da
+  Pecuária a diferença é de R$ 7 em R$ 21,8 milhões. As provas usam tolerância
+  de R$ 20 por isso.
+  **O realizado entra por CARGA, pedida no chat** (decisão do cliente, 2026-11-05,
+  reconfirmada no mesmo dia): não há extração automática do Qlik nem tela de
+  importação. O gatilho é o cliente dizer "atualiza a DRE" — e é por guardar mês
+  a mês que a atualização de um fechamento novo é um arquivo pequeno, com o mês
+  que entrou, em vez da reescrita do ano. O ciclo é: o cliente
   pede, os números saem do Qlik pela `coperdia-strategic-finance-skill`, viram um
   `database/dre_*.php` e o migrate aplica no deploy. Ao contrário das cargas de
   conteúdo, esta **sobrescreve** (`ON DUPLICATE KEY UPDATE`): é número de fora,
