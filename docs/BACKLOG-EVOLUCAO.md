@@ -2112,9 +2112,31 @@ opção A — o nível passa a ser *onde você está na trilha*.
 > consolidado do Painel usa as MESMAS regras da tela (`resumoDosNegocios`
 > chama `aplicar`/`somarFiliais`), em quatro consultas em lote.
 >
-> **O tema 13 está entregue nas quatro fatias.** O que resta são dados e uma
-> pergunta: as filiais dos outros oito negócios (uma extração cada, a pedido) e
-> a composição da linha 15.
+> **Coluna Reajuste ENTREGUE em 2026-11-06** (a coluna B da planilha). O
+> cliente apontou que a maquete tem duas colunas à esquerda que a tela não
+> tinha: a A, um rótulo mesclado ("Reajustes despesas operacionais"), e a B, um
+> % por linha de despesa. A B **já existia no sistema**, nos dois lugares
+> errados — como a coluna *Cresc.*, só de leitura, e como o `12%` que se podia
+> digitar **dentro** da célula de Proposta, onde o % e o valor disputavam um
+> campo só. Conferida a regra da planilha nas 16 linhas de despesa dela
+> (`PROPOSTA = Projeção × (1 + B%)`, resíduo de até R$ 134, puro arredondamento
+> de exibição), ela é exatamente a `entrada = 'PERCENTUAL'` que o sistema já
+> gravava. A entrega foi dar célula própria ao percentual: **zero migração,
+> zero backend** — `projecao_valor.entrada/percentual` e a faixa de ±1000% do
+> `gravarValor` já estavam lá. Continua havendo um lançamento por linha: a
+> última célula tocada decide a `entrada` e a outra vira a conta dela, em
+> cinza-itálico.
+>
+> A **coluna A não foi copiada**, por decisão do cliente na mesma conversa: lá
+> ela agrupa as despesas à mão, e aqui a tabela já agrupa pelo bloco em negrito
+> com as subcontas indentadas. Pelo mesmo pedido, o reajuste é **linha a
+> linha**, sem um % de bloco.
+>
+> **O tema 13 está entregue nas quatro fatias.** O que resta são dados e duas
+> perguntas: as filiais dos outros oito negócios (uma extração cada, a pedido),
+> a composição da linha 15, e a A.V. por coluna — a planilha tem análise
+> vertical ao lado do Realizado, do Projetado e da Proposta; a tela tem uma só,
+> sobre a projeção. Oferecida ao cliente em 2026-11-06, ainda sem resposta.
 >
 > **Achado da entrega, e ele muda número:** outubro de 2026 **não está
 > fechado** (Rateios = 0 com R$ 373,2 mi de receita lançada). A planilha que

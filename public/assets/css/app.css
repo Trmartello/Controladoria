@@ -373,7 +373,8 @@ table.tabela-cadastro td { vertical-align: middle; }
    mais vezes do que preenchida, e 20 caixas desenhadas numa linha de números
    viram um formulário onde devia haver uma planilha. A borda aparece no
    passar do mouse e no foco — que é quando ela significa alguma coisa. */
-.tabela-metas .celula-valor {
+.tabela-metas .celula-valor,
+.tabela-projecao .celula-valor {
   width: 100%;
   min-width: 4.5rem;
   border: 1px solid transparent;
@@ -385,8 +386,10 @@ table.tabela-cadastro td { vertical-align: middle; }
   font-variant-numeric: tabular-nums;
   color: inherit;
 }
-.tabela-metas .celula-valor:hover { border-color: #ccd6d1; }
-.tabela-metas .celula-valor:focus {
+.tabela-metas .celula-valor:hover,
+.tabela-projecao .celula-valor:hover { border-color: #ccd6d1; }
+.tabela-metas .celula-valor:focus,
+.tabela-projecao .celula-valor:focus {
   outline: 0;
   border-color: var(--verde-coperdia);
   background: #fff;
@@ -395,12 +398,29 @@ table.tabela-cadastro td { vertical-align: middle; }
 /* Gravando, gravado e recusado. O verde é um PISCA de 1,2s: confirmação que
    fica vira decoração, e a tabela inteira acabaria verde depois de um
    lançamento. O vermelho fica, porque o valor não entrou. */
-.tabela-metas .celula-valor.celula-gravando { opacity: .55; }
-.tabela-metas .celula-valor.celula-salva { background: #e7f5ee; border-color: #9ed7bc; }
-.tabela-metas .celula-valor.celula-erro { background: #fdecea; border-color: #e5a7a1; }
+.tabela-metas .celula-valor.celula-gravando,
+.tabela-projecao .celula-valor.celula-gravando { opacity: .55; }
+.tabela-metas .celula-valor.celula-salva,
+.tabela-projecao .celula-valor.celula-salva { background: #e7f5ee; border-color: #9ed7bc; }
+.tabela-metas .celula-valor.celula-erro,
+.tabela-projecao .celula-valor.celula-erro { background: #fdecea; border-color: #e5a7a1; }
 /* Total do ano em execução: não se digita (o lançamento é no mês), e o
    cinza-itálico diz isso antes de alguém tentar. */
 .tabela-metas td.celula-derivada { color: #5d6b64; font-style: italic; }
+
+/* ===== Proposta e Reajuste: duas células, UM lançamento =====
+   Na Projeção a mesma linha tem a proposta em dinheiro e o reajuste em %, e
+   só uma das duas está gravada: a outra é a conta da primeira. A que ESPELHA
+   sai em cinza-itálico — sem isso não dá para saber se a linha está ancorada
+   num percentual (e vai se mexer quando o fechamento andar) ou congelada num
+   valor. Ela continua editável, e digitar nela é que troca quem manda.
+   É por isso que NÃO reusa a `celula-derivada` de Metas, que quer dizer o
+   contrário: lá a célula cinza-itálico é a que não se digita. */
+.tabela-projecao .celula-valor.celula-espelhada { color: #5d6b64; font-style: italic; }
+.tabela-projecao .celula-valor.celula-espelhada:focus { color: inherit; font-style: normal; }
+/* Proposta pior que a projeção — despesa que cresce, receita que cai. Mesmo
+   vermelho que a coluna já usava quando era só de leitura. */
+.tabela-projecao .celula-valor.celula-pior { color: var(--bs-danger, #b02a37); }
 
 /* ===== O ano aberto mês a mês =====
    O botão do cabeçalho é o ano, não um ícone ao lado dele: o alvo de toque é a
