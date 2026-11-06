@@ -4652,10 +4652,13 @@ async function provasProjecaoFilial(page, largura) {
       if (!tr) return null;
       const td = [...tr.querySelectorAll('td')];
       const inp = td[5].querySelector('input');
+      const rea = td[6].querySelector('input');
       return {
         projecao: n(td[3].textContent),
         proposta: inp ? n(inp.value) : n(td[5].textContent),
         digitado: inp ? inp.value : null,
+        // A coluna Reajuste: campo nas subcontas, leitura nos blocos.
+        reajuste: rea ? rea.value : td[6].textContent.trim(),
         editavel: !!inp,
         distribuir: td[7] ? n(td[7].textContent) : undefined,
       };
@@ -4752,8 +4755,13 @@ async function provasProjecaoFilial(page, largura) {
   // ── Trocar de modo não apaga trabalho ───────────────────────────────────
   await trocarModo('NEGOCIO');
   const aindaLa = await verFilial('ENEAS');
+  // O `10%` lançado continua lá — agora na coluna de Reajuste, que é onde o
+  // percentual mora. A Proposta ao lado mostra o VALOR que ele produziu.
   t(`${l} trocar de modo não apaga o que a filial tinha lançado`,
-    aindaLa.receita.digitado && aindaLa.receita.digitado.includes('%'),
+    aindaLa.receita.reajuste.includes('10') && aindaLa.receita.reajuste.includes('%'),
+    `${aindaLa.receita.reajuste} / ${aindaLa.receita.digitado}`);
+  t(`${l} e a Proposta ao lado mostra o valor, não o percentual`,
+    !String(aindaLa.receita.digitado).includes('%') && aindaLa.receita.proposta > 1000,
     String(aindaLa.receita.digitado));
 
   // Devolve a massa ao ponto de partida.
@@ -4909,25 +4917,34 @@ async function provasProjecaoProposta(page, largura) {
     document.querySelectorAll('.tabela-projecao tbody tr').forEach((tr) => {
       const td = [...tr.querySelectorAll('td')];
       const inp = td[5].querySelector('input');
+      const rea = td[6].querySelector('input');
       o[tr.dataset.conta] = {
         projecao: n(td[3].textContent),
         digitado: inp ? inp.value : null,
-        proposta: inp ? null : n(td[5].textContent),
-        cresc: n(td[6].textContent),
+        // A Proposta das subcontas agora é dinheiro também, então dá para ler
+        // o número nos dois casos — antes o campo podia conter "10%".
+        proposta: inp ? n(inp.value) : n(td[5].textContent),
+        // A coluna Reajuste: campo nas subcontas, leitura nos blocos.
+        cresc: rea ? n(rea.value) : n(td[6].textContent),
+        reajuste: rea ? rea.value : td[6].textContent.trim(),
+        espelhada: inp ? inp.classList.contains('celula-espelhada') : null,
+        espelhadaReajuste: rea ? rea.classList.contains('celula-espelhada') : null,
         origem: tr.dataset.origem,
         editavel: !!inp,
       };
     });
     return o;
   });
-  const lancar = async (conta, texto) => {
-    await page.evaluate(([c, v]) => {
-      const i = document.querySelector(`[data-conta="${c}"] .celula-proposta`);
+  const digitarEm = async (conta, texto, classe) => {
+    await page.evaluate(([c, v, k]) => {
+      const i = document.querySelector(`[data-conta="${c}"] .${k}`);
       i.focus(); i.value = v; i.blur();
-    }, [conta, texto]);
+    }, [conta, texto, classe]);
     await new Promise((r) => setTimeout(r, 1200));
     return ler();
   };
+  const lancar = (conta, texto) => digitarEm(conta, texto, 'celula-proposta');
+  const lancarReajuste = (conta, texto) => digitarEm(conta, texto, 'celula-reajuste');
 
   let v = await ler();
   const editaveis = Object.values(v).filter((x) => x.editavel).length;
@@ -4953,10 +4970,57 @@ async function provasProjecaoProposta(page, largura) {
   t(`${l} 10% na receita sobe o bloco em 10%`,
     Math.abs(v['1'].proposta - projReceita * 1.1) <= 2,
     `${v['1'].proposta} vs ${Math.round(projReceita * 1.1)}`);
-  t(`${l} e a célula guarda o PERCENTUAL, não o valor`,
-    v['1.1'].digitado.includes('%'), String(v['1.1'].digitado));
+  t(`${l} e o que ficou gravado é o PERCENTUAL, não o valor`,
+    v['1.1'].origem === 'PERCENTUAL', String(v['1.1'].origem));
   t(`${l} o crescimento do bloco aparece na coluna`,
     Math.abs(v['1'].cresc - 10) < 0.2, String(v['1'].cresc));
+
+  // ── As duas células: a coluna B da planilha ─────────────────────────────
+  // Lançado por percentual, o % fica na coluna de Reajuste e a Proposta ao
+  // lado mostra o VALOR. Antes as duas coisas disputavam um campo só: quem
+  // lançava `10%` via `10%` e o valor não aparecia em lugar nenhum da linha.
+  t(`${l} o percentual lançado fica na coluna Reajuste`,
+    v['1.1'].reajuste.includes('10') && v['1.1'].reajuste.includes('%'),
+    v['1.1'].reajuste);
+  t(`${l} e a Proposta ao lado mostra o valor em dinheiro`,
+    !String(v['1.1'].digitado).includes('%')
+    && Math.abs(v['1.1'].proposta - projReceita * 1.1) <= 2,
+    `${v['1.1'].digitado} vs ${Math.round(projReceita * 1.1)}`);
+  t(`${l} a Proposta é a célula que ESPELHA (o lançamento é o percentual)`,
+    v['1.1'].espelhada === true && v['1.1'].espelhadaReajuste === false,
+    `proposta=${v['1.1'].espelhada} reajuste=${v['1.1'].espelhadaReajuste}`);
+
+  // ── Digitar na coluna de Reajuste é o mesmo lançamento ──────────────────
+  const projPessoal = v['8.5'].projecao;
+  v = await lancarReajuste('8.5', '11,43');
+  t(`${l} digitar na coluna Reajuste grava como percentual`,
+    v['8.5'].origem === 'PERCENTUAL', String(v['8.5'].origem));
+  t(`${l} e a Proposta vira projeção × (1 + reajuste), como na planilha`,
+    Math.abs(v['8.5'].proposta - projPessoal * 1.1143) <= 2,
+    `${v['8.5'].proposta} vs ${Math.round(projPessoal * 1.1143)}`);
+  // Despesa é negativa: reajuste POSITIVO deixa a linha MAIS negativa — a
+  // despesa cresce. É o que a planilha do cliente faz (Pessoal, 11,43%:
+  // −8.917.976 → −9.937.167), e o inverso disso seria uma economia.
+  t(`${l} reajuste positivo numa despesa deixa a linha mais negativa`,
+    projPessoal < 0 && v['8.5'].proposta < projPessoal,
+    `${projPessoal} → ${v['8.5'].proposta}`);
+  t(`${l} o sinal de porcento é dispensável na coluna de Reajuste`,
+    Math.abs(v['8.5'].cresc - 11.43) < 0.05, String(v['8.5'].cresc));
+
+  // Lançar por VALOR inverte quem espelha quem.
+  v = await lancar('8.5', `${Math.round(projPessoal * 1.05)}`);
+  t(`${l} lançar o valor inverte: agora quem espelha é o Reajuste`,
+    v['8.5'].origem === 'VALOR'
+    && v['8.5'].espelhada === false && v['8.5'].espelhadaReajuste === true,
+    `origem=${v['8.5'].origem} proposta=${v['8.5'].espelhada} reajuste=${v['8.5'].espelhadaReajuste}`);
+  t(`${l} e a coluna Reajuste mostra a conta de volta (5%)`,
+    Math.abs(v['8.5'].cresc - 5) < 0.05, String(v['8.5'].cresc));
+
+  // Apagar o reajuste devolve a linha à projeção, como apagar a proposta.
+  v = await lancarReajuste('8.5', '');
+  t(`${l} apagar o reajuste devolve a linha à projeção`,
+    v['8.5'].origem === 'PROJECAO' && v['8.5'].reajuste === '',
+    `${v['8.5'].origem} / "${v['8.5'].reajuste}"`);
 
   // A cadeia inteira: ROL = receita + deduções, e o líquido muda junto.
   t(`${l} a ROL proposta acompanha (receita + deduções)`,

@@ -22,6 +22,15 @@
  *   projeção, e o que fica gravado é o que foi digitado — valor OU percentual,
  *   nunca os dois: com os dois, a recarga do fechamento seguinte os faria
  *   divergir e ninguém saberia qual deles a pessoa quis dizer.
+ * - **O percentual tem célula PRÓPRIA, a coluna Reajuste** — a coluna B da
+ *   planilha do cliente (`PROPOSTA = Projeção × (1 + B%)`, conferido nas 16
+ *   linhas de despesa dele, com resíduo de arredondamento de até R$ 134). É a
+ *   mesma `entrada = 'PERCENTUAL'` de sempre; o que muda é que o % e o valor
+ *   deixam de disputar um campo só. Continua havendo **um** lançamento por
+ *   linha: a última célula tocada decide a `entrada`, e a outra passa a ser a
+ *   conta dela, marcada como espelho. Sem a marca não dá para saber se a linha
+ *   está ancorada num percentual — e vai se mexer quando o fechamento andar —
+ *   ou congelada num valor.
  * - **Célula vazia é "sem proposta", e vale a PROJEÇÃO** (crescimento zero),
  *   não zero — zero seria uma proposta de fechar a linha. A tela marca em
  *   cinza o que está ali por omissão.
@@ -46,12 +55,32 @@ const SecaoProjecao = {
       'jul', 'ago', 'set', 'out', 'nov', 'dez'][m - 1] || m;
   },
 
-  /** O que vai DENTRO da célula editável: o que foi digitado, ou nada. */
+  /**
+   * O que vai DENTRO da célula de Proposta: sempre dinheiro.
+   *
+   * Quando a linha foi lançada por percentual, aqui aparece o valor que o
+   * percentual produziu — o `%` tem a coluna dele ao lado. Antes da coluna de
+   * Reajuste existir, esta célula mostrava o texto `11,43%` e o valor não
+   * aparecia em lugar nenhum da linha.
+   */
   textoLancado(l) {
+    if (l.proposta_origem === 'PERCENTUAL') return this.moeda(l.proposta);
+    if (l.proposta_origem === 'VALOR') return this.moeda(l.proposta_lancado);
+    return '';
+  },
+
+  /** O que vai DENTRO da célula de Reajuste: sempre percentual. */
+  textoReajuste(l) {
     if (l.proposta_origem === 'PERCENTUAL') {
       return `${Number(l.proposta_lancado).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
     }
-    if (l.proposta_origem === 'VALOR') return this.moeda(l.proposta_lancado);
+    // Lançada por valor: o reajuste é a conta de volta. Sem projeção não há
+    // base, e aí a célula fica vazia em vez de "—" — "—" dentro de um campo
+    // de digitar seria um texto que a pessoa teria de apagar antes de usar.
+    if (l.proposta_origem === 'VALOR' && l.projecao) {
+      const v = l.proposta / l.projecao - 1;
+      return isFinite(v) ? this.pct(v, 2) : '';
+    }
     return '';
   },
 
@@ -163,7 +192,8 @@ const SecaoProjecao = {
         Realizado de <strong>jan a ${this.nomeMes(d.mes_fechado_ate)}</strong> (meses fechados) e
         projetado de <strong>${this.nomeMes(d.mes_fechado_ate + 1)} a dez</strong> pelo orçamento
         lançado. A coluna <strong>Proposta</strong> é a meta de <strong>${d.ano_planejamento}</strong>:
-        digite o valor (<code>1.500.000</code>) ou o crescimento sobre a projeção (<code>12%</code>).
+        digite o valor (<code>1.500.000</code>) ali, ou o reajuste sobre a projeção
+        (<code>11,43</code>) na coluna <strong>Reajuste</strong>. Uma preenche a outra.
       </p>
       <p class="mb-2">${assinatura}</p>
       ${this.faixaDoModo(d)}
@@ -179,7 +209,7 @@ const SecaoProjecao = {
             <th class="text-end">Projeção<br><span class="fw-normal text-muted small">do ano</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
-            <th class="text-end">Cresc.<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
+            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
             ${!d.filial && d.filiais.length && d.modo === 'NEGOCIO'
     ? '<th class="text-end">A distribuir<br><span class="fw-normal text-muted small">entre as filiais</span></th>'
     : ''}
@@ -190,7 +220,9 @@ const SecaoProjecao = {
       <p class="text-muted small">
         Valores em R$. A.V. = análise vertical sobre a Receita Operacional Líquida.
         A proposta é lançada nas <strong>subcontas</strong>; as linhas em negrito são a soma delas.
-        Célula vazia vale a projeção (crescimento zero).
+        Célula vazia vale a projeção (crescimento zero). Proposta e Reajuste são o
+        <strong>mesmo lançamento</strong> visto de dois jeitos: a que você digita manda,
+        a outra sai em cinza-itálico porque é a conta dela.
         Fonte: ${Modal.esc(d.fonte || 'Qlik')}${d.extraido_em
   ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
         Mês sem rateio é mês aberto e não entra como realizado.
@@ -348,7 +380,8 @@ const SecaoProjecao = {
       // derivado quando é bloco; "—" quando não há regra para derivá-la.
       let proposta;
       if (editavel) {
-        proposta = `<input type="text" class="celula-valor celula-proposta" inputmode="decimal"
+        proposta = `<input type="text" class="celula-valor celula-proposta${
+          l.proposta_origem === 'PERCENTUAL' ? ' celula-espelhada' : ''}" inputmode="decimal"
           autocomplete="off" value="${Modal.esc(this.textoLancado(l))}"
           placeholder="${this.moeda(l.projecao)}"
           data-conta="${Modal.esc(l.codigo)}"
@@ -368,6 +401,24 @@ const SecaoProjecao = {
 
       const cresc = (!l.percentual && l.proposta !== null && l.projecao)
         ? this.pct(l.proposta / l.projecao - 1) : '';
+      const pior = cresc && l.proposta < l.projecao;
+
+      // O reajuste: a coluna B da planilha do cliente. Mesmo lançamento da
+      // Proposta (`entrada = PERCENTUAL`), só que com célula própria — nas
+      // linhas que não recebem lançamento ela volta a ser o que sempre foi,
+      // a leitura do crescimento.
+      let reajuste;
+      if (editavel) {
+        reajuste = `<input type="text" class="celula-valor celula-reajuste${
+          l.proposta_origem === 'VALOR' ? ' celula-espelhada' : ''}${
+          pior ? ' celula-pior' : ''}" inputmode="decimal"
+          autocomplete="off" value="${Modal.esc(this.textoReajuste(l))}"
+          placeholder="0,00%"
+          data-conta="${Modal.esc(l.codigo)}"
+          aria-label="Reajuste sobre a projeção para ${Modal.esc(l.nome)}">`;
+      } else {
+        reajuste = `<span class="${pior ? 'text-danger' : 'text-muted'}">${cresc}</span>`;
+      }
 
       return `<tr class="${bloco ? 'fw-bold linha-bloco' : 'linha-subconta'}"
         data-conta="${Modal.esc(l.codigo)}" data-nivel="${l.nivel}"
@@ -379,7 +430,7 @@ const SecaoProjecao = {
         <td class="text-end text-muted small">${av(l)}</td>
         <td class="text-end celula-proposta-td ${
   l.proposta_origem === 'PROJECAO' ? 'proposta-por-omissao' : ''}">${proposta}</td>
-        <td class="text-end small ${cresc && l.proposta < l.projecao ? 'text-danger' : 'text-muted'}">${cresc}</td>
+        <td class="text-end small celula-reajuste-td">${reajuste}</td>
         ${mostrarDistribuir ? this.celulaDistribuir(l) : ''}
       </tr>`;
     }).join('');
@@ -439,7 +490,10 @@ const SecaoProjecao = {
         }
       });
     });
-    el.querySelectorAll('.celula-proposta').forEach((inp) => {
+    // As DUAS células da linha, a de valor e a de percentual: elas gravam o
+    // mesmo lançamento por caminhos diferentes, e por isso usam o mesmo
+    // `gravar` — quem decide a `entrada` é a classe do campo.
+    el.querySelectorAll('.celula-proposta, .celula-reajuste').forEach((inp) => {
       inp.dataset.original = inp.value;
       if (!virgem(inp)) return;
       inp.addEventListener('blur', () => this.gravar(inp));
@@ -507,8 +561,17 @@ const SecaoProjecao = {
   async gravar(inp) {
     const bruto = inp.value.trim();
     if (bruto === (inp.dataset.original ?? '')) return;      // nada mudou
-    const ehPct = bruto.endsWith('%');
-    const limpo = bruto.replace('%', '').replace(/\./g, '').replace(',', '.').trim();
+    // Na coluna de Reajuste o número é SEMPRE percentual: ali o `%` é enfeite,
+    // e exigi-lo faria a coluna B da planilha recusar o que o cliente digita.
+    // Na Proposta o `%` continua valendo — é o atalho da fatia 2.
+    const reajuste = inp.classList.contains('celula-reajuste');
+    const ehPct = reajuste || bruto.endsWith('%');
+    // O ponto é separador de MILHAR num valor e separador DECIMAL num
+    // percentual: percentual não tem milhar (a faixa é ±1000%), e quem digita
+    // `11.43` quer dizer 11,43 — tirar o ponto ali daria 1.143%.
+    const limpo = ehPct
+      ? bruto.replace('%', '').replace(',', '.').trim()
+      : bruto.replace(/\./g, '').replace(',', '.').trim();
     if (limpo !== '' && !Number.isFinite(Number(limpo))) {
       this.avisar('Valor inválido: informe um número, ou um percentual terminado em %.');
       inp.classList.add('celula-erro');
@@ -539,7 +602,11 @@ const SecaoProjecao = {
       // tela — que é o defeito que esta seção inteira existe para não ter.
       el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
       this.ligar(el);
-      const volta = tbody.querySelector(`[data-conta="${inp.dataset.conta}"] .celula-proposta`);
+      // O pisca verde volta para a célula que a pessoa digitou, e não sempre
+      // para a Proposta: quem lançou na coluna de Reajuste veria o verde na
+      // célula ao lado, como se o sistema tivesse gravado outra coisa.
+      const volta = tbody.querySelector(`[data-conta="${inp.dataset.conta}"] .${
+        reajuste ? 'celula-reajuste' : 'celula-proposta'}`);
       if (volta) {
         volta.classList.add('celula-salva');
         setTimeout(() => volta.classList.remove('celula-salva'), 1200);

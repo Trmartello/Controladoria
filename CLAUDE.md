@@ -2586,6 +2586,29 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `1.500.000` **ou** `12%` (crescimento sobre a projeção), e o que fica gravado
   é **o que foi digitado**, nunca os dois: com os dois, a recarga do fechamento
   seguinte os faria divergir e ninguém saberia qual deles valia.
+  **O percentual tem célula própria: a coluna Reajuste**, que é a coluna B da
+  planilha do cliente (`PROPOSTA = Projeção × (1 + B%)` — conferido nas 16
+  linhas de despesa dela, resíduo de arredondamento de até R$ 134). É a mesma
+  `entrada = 'PERCENTUAL'` de sempre, com um lançamento só por linha: a
+  **última célula tocada decide** a `entrada`, e a outra passa a ser a conta
+  dela. A que espelha sai em cinza-itálico (`.celula-espelhada`) e continua
+  editável — sem a marca, não dá para saber se a linha está ancorada num
+  percentual, e vai se mexer quando o fechamento andar, ou congelada num valor.
+  Antes desta coluna o `%` e o valor disputavam um campo só: quem lançava
+  `11,43%` via `11,43%` e o valor não aparecia em lugar nenhum da linha.
+  Na coluna de Reajuste o `%` é dispensável, e ali **o ponto é separador
+  decimal**, não de milhar: percentual não tem milhar (a faixa do servidor é
+  ±1000%) e `11.43` quer dizer 11,43 — tirar o ponto daria 1.143%.
+  O vermelho da coluna continua querendo dizer "pior que a projeção", e com
+  despesa negativa isso lê certo: reajuste positivo deixa a despesa **mais
+  negativa** (a despesa cresce) e sai em vermelho; os −0,61% de uma despesa
+  que encolhe, não.
+  **A coluna A da planilha não foi copiada** (decisão do cliente em
+  2026-11-06): lá ela é um rótulo mesclado que agrupa as despesas à mão, e aqui
+  a tabela já agrupa pelo bloco em negrito com as subcontas indentadas. Uma
+  coluna de rótulo repetiria o agrupamento e gastaria largura numa tela que já
+  tem oito colunas e precisa caber no celular. Pelo mesmo pedido, **o reajuste
+  é linha a linha**, sem um % que se aplique ao bloco inteiro de uma vez.
   **Célula vazia é "sem proposta" e vale a PROJEÇÃO** (crescimento zero), não
   zero — zero seria uma proposta de fechar a linha. A tela marca em cinza o que
   está ali por omissão, e apagar a célula devolve a linha a esse estado.
