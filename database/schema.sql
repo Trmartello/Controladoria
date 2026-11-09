@@ -238,6 +238,12 @@ CREATE TABLE IF NOT EXISTS indicador (
   agregacao        ENUM('SOMA','MEDIA','ULTIMO') NOT NULL DEFAULT 'SOMA',
   metrica_ancora   TINYINT(1) NOT NULL DEFAULT 0,
   horizonte_id     INT NULL,
+  -- Ordem escolhida a dedo na tela de Metas (arraste pelo ⠿). Zero quer dizer
+  -- "nunca arrastado", e a leitura é `ORDER BY ordem, metrica_ancora DESC,
+  -- nome`: com a coluna toda em zero a tela continua como sempre foi — âncora
+  -- em cima, depois alfabético. A primeira arrastada numera o planejamento
+  -- inteiro (1..N) e a ordem passa a ser a de quem planeja, âncora inclusive.
+  ordem            SMALLINT NOT NULL DEFAULT 0,
   CONSTRAINT fk_ind_plan FOREIGN KEY (planejamento_id) REFERENCES planejamento(id) ON DELETE CASCADE,
   CONSTRAINT fk_ind_horiz FOREIGN KEY (horizonte_id) REFERENCES horizonte(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

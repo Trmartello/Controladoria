@@ -240,6 +240,23 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   item com 0 cola no topo. A carga de conteúdo conta a ordem por conta própria
   (`MAX+1` em SQL), porque o `migrate.php` carrega só `CargaConteudo.php` e não
   vê a classe `Fatores`. Provas em `provasOrdenarFatores`, nas três etapas.
+  **Metas arrasta os INDICADORES** (pedido do cliente, 2026-11-09): coluna
+  `indicador.ordem`, gravação em `POST /api/indicadores/reordenar` com a mesma
+  guarda de dono. O que esta tela tem de diferente é a **unidade do arraste**:
+  o indicador ocupa duas linhas (Meta e Real) amarradas por `rowspan`, então
+  cada um ganhou um **`<tbody>` próprio** e o item é `tbody[data-id]`, com a
+  tabela inteira como caixa. Voltar para `tr[data-id]` levaria metade do
+  indicador e quebraria a tabela no meio do gesto — é a primeira prova de
+  `provasOrdenarIndicadores`. A leitura é `ORDER BY ordem, metrica_ancora DESC,
+  nome` **nos três lugares** que listam indicador (a tela, o Relatório e a
+  Matriz de Execução): divergir deixaria a reunião com duas listas da mesma
+  coisa em ordens diferentes, nenhuma errada o bastante para alguém
+  desconfiar. Com a coluna toda em zero nada muda de lugar — a ordem continua
+  sendo âncora em cima, depois alfabética —, e a primeira arrastada numera o
+  planejamento inteiro (1..N). A partir daí **a ordem escolhida vale sobre a
+  métrica-âncora**: quem arrasta uma âncora para baixo quer vê-la ali. Indicador
+  novo nasce com `MAX+1` do planejamento, e aqui há um caminho só de criação
+  (`IndicadorController::salvar`), ao contrário dos quatro do fator.
   Os dois últimos ninguém liga na seção: `App.recarregarSecaoAtiva()` arma e
   para o `Vivo` (depois de a pintura terminar — armar antes tomaria a versão de
   referência com a tela ainda lendo, e uma escrita nesse intervalo passaria por

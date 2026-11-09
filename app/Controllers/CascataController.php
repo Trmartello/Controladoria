@@ -109,7 +109,7 @@ class CascataController
         $indicadores = Database::todos(
             'SELECT id, nome, unidade, sentido, agregacao, metrica_ancora, horizonte_id
              FROM indicador WHERE planejamento_id = ?
-             ORDER BY metrica_ancora DESC, nome',
+             ORDER BY ordem, metrica_ancora DESC, nome',
             [$planId]
         );
         if (!$indicadores) {

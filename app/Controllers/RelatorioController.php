@@ -272,7 +272,7 @@ class RelatorioController
         $indicadores = Database::todos(
             'SELECT i.*, h.nome AS horizonte_nome
              FROM indicador i LEFT JOIN horizonte h ON h.id = i.horizonte_id
-             WHERE i.planejamento_id = ? ORDER BY i.metrica_ancora DESC, i.nome',
+             WHERE i.planejamento_id = ? ORDER BY i.ordem, i.metrica_ancora DESC, i.nome',
             [$planId]
         );
         // Pela regra única (`App\Services\Metas`), a mesma de Metas e da Matriz

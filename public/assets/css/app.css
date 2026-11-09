@@ -2414,6 +2414,11 @@ body.arrastando-ficha .fp-menu { pointer-events: none; }
    pelo `Ordenar`, que serve linha de tabela e cartão com o mesmo nome. */
 tr.item-arrastando td { background: #eef6f1 !important; }
 tr.item-arrastando { opacity: .85; }
+/* Em Metas o item arrastado é um `<tbody>` inteiro: o indicador ocupa duas
+   linhas (Meta e Real) amarradas por `rowspan`, e arrastar uma `<tr>` sozinha
+   quebraria a tabela no meio do gesto. */
+tbody.item-arrastando td { background: #eef6f1 !important; }
+tbody.item-arrastando { opacity: .85; }
 /* O mesmo gesto nos CARTÕES (Análise de Cenário, 2026-11-04). A alça fica
    colada ao número do item, antes do texto: ali ela é a primeira coisa da
    linha e não disputa espaço com os botões do rodapé do cartão. Menor que a
