@@ -2467,6 +2467,26 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   botão fica aceso** — melhor que um botão mentindo. Os acordeões chamam
   `pintarNiveis`: eles mexem no DOM sem recarregar a seção, e sem isso o grupo
   seguiria marcando "Ações" com as ações já escondidas.
+  **Vale na TABELA também** (pedido do cliente, 2026-11-09), e pelo **mesmo
+  estado**: `projetosFechados`/`iniciativasFechadas` são lidos pelos dois modos,
+  então recolher num e trocar para o outro mostra a mesma coisa recolhida — um
+  segundo estado faria o mesmo plano estar aberto num modo e fechado no outro,
+  e troca-se de modo justamente para ver o mesmo de outro jeito. No **quadro**
+  não existe: lá o agrupamento é por situação, e "recolher até frentes" não quer
+  dizer nada.
+  Na tabela, recolhido é **desenhado e escondido por classe**
+  (`.linha-recolhida`), nunca omitido do HTML. Omitir seria mais simples e
+  quebraria a pesquisa: `filtrarTabela` varre as linhas que existem, e uma ação
+  dentro de um projeto recolhido não seria achada — a pessoa procuraria o que
+  está ali e leria "Nenhuma ação encontrada". E a classe é **própria**, não
+  `d-none`: este já tem dono na tabela, que é o filtro, e com um só limpar a
+  pesquisa reabriria o que estava recolhido. Com pesquisa ativa o recolhimento
+  sai da frente (o mesmo `ativo ? … : …` da lista) e volta sozinho ao limpar,
+  lido de `data-recolhida`, escrito na pintura — a restauração não recalcula
+  estado nenhum. «Sem frente de trabalho» não tem id para entrar nos conjuntos
+  e segue o **nível derivado**; uma chave sintética resolveria o desenho e
+  desacertaria o botão num projeto sem frente nenhuma, onde `nivelAtual` não tem
+  frente para olhar.
 - **Resumo por situação** (`resumoStatus(acoes, apenas)`): nos cabeçalhos do
   projeto **e** da frente vai só o **atraso** (`apenas: ['ATRASADO']`) — quantas
   ações estão fora do prazo e quanto isso é do total daquele nível. A pergunta
@@ -2517,7 +2537,9 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   (`App.guardarLugar`/`lugarGuardado`, chave `pe_plano_modo`) e é lido com
   validação, caindo na lista quando o valor não é um dos três. A **lista é o
   padrão**, porque é a leitura da reunião de acompanhamento; os níveis de
-  recolhimento ("Mostrar até") só aparecem nela, porque só ela tem árvore.
+  recolhimento ("Mostrar até") aparecem na lista **e na tabela**, que são as
+  duas com a árvore projeto → frente → ação, e não no quadro, que agrupa por
+  situação.
   - A **pesquisa decide num lugar só** (`criteriosFiltro` + `acaoBate`), e cada
     modo aplica o resultado à sua maneira: a lista esconde nós da árvore, a
     tabela esconde linhas e recolhe o grupo que ficou vazio, o quadro esconde
