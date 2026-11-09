@@ -107,15 +107,32 @@ const SecaoMetas = {
    *    último mês COM REALIZADO lançado, que é o que faz a comparação existir.
    *    É o caso do cliente hoje, e a tela DIZ qual mês está no corte.
    */
-  mesDeCorte(ind) {
+  mesDeCorte() {
     if (!this.anoExecucao) return null;
     const hoje = new Date();
     if (this.anoExecucao < hoje.getFullYear()) return 12;
     if (this.anoExecucao === hoje.getFullYear()) return hoje.getMonth() + 1;
-    // Ano em execução no futuro: vale o último mês com realizado.
-    const real = (ind?.reais || []).find((r) => Number(r.ano) === this.anoExecucao);
-    const meses = Object.keys(real?.meses || {}).map(Number).filter((m) => m >= 1);
-    return meses.length ? Math.max(...meses) : null;
+    // Ano em execução no FUTURO: não há corte, e a coluna do ano vale o ano
+    // inteiro dos dois lados.
+    //
+    // Até 2026-11-09 o corte vinha do "último mês com realizado", e o cliente
+    // apontou o efeito: "quando lança o realizado não deve interferir na meta
+    // total do ano". Interferia — e muito. Num indicador de média com os doze
+    // meses de meta lançados, a meta do ano valia 21.000; bastava alguém
+    // lançar um realizado em maio para ela virar 18.320, que é a média de
+    // janeiro a maio. A meta não mudou: mudou a janela, e ela mudou porque
+    // alguém digitou do outro lado da tabela.
+    //
+    // O cabeçalho já denunciava a incoerência: `cabecalhoAno` chama
+    // `mesDeCorte`, que neste ramo devolvia null por não encontrar realizado
+    // nenhum — a coluna se anunciava como o ano inteiro enquanto as células
+    // mostravam janeiro a maio.
+    //
+    // Nos outros dois ramos o corte é do CALENDÁRIO, não dos dados: ele anda
+    // com o mês, nunca com o que alguém lança. Por isso a janela comum de meta
+    // e real (pedido do cliente em 2026-11-03) continua de pé onde ela quer
+    // dizer alguma coisa — no ano que está correndo.
+    return null;
   },
 
   /**
@@ -189,7 +206,7 @@ const SecaoMetas = {
     // No ano em execução a comparação é na MESMA janela: do mês 1 ao mês de
     // corte, para os dois lados (pedido do cliente, 2026-11-03). Nos demais
     // anos não há meses, e `valorAte` devolve o valor do ano.
-    const corte = ano === this.anoExecucao ? this.mesDeCorte(i) : null;
+    const corte = ano === this.anoExecucao ? this.mesDeCorte() : null;
     const comJanela = (entrada) => (entrada === null ? null : {
       ...entrada,
       valor: this.valorAte(entrada, i.agregacao, corte),
@@ -245,7 +262,7 @@ const SecaoMetas = {
     // corte (pedido do cliente, 2026-11-03) — a mesma janela da meta logo
     // acima, para as duas linhas se compararem. Os meses continuam todos ali,
     // e o balão diz o ano inteiro.
-    const corte = ano === this.anoExecucao ? this.mesDeCorte(ind) : null;
+    const corte = ano === this.anoExecucao ? this.mesDeCorte() : null;
     return corte
       ? this.valorAte(entrada, ind.agregacao, corte)
       : (entrada ? entrada.valor : null);
@@ -253,7 +270,7 @@ const SecaoMetas = {
 
   celula(ind, tipo, ano, entrada, mes = 0) {
     const anual = mes === 0;
-    const corte = anual && ano === this.anoExecucao ? this.mesDeCorte(ind) : null;
+    const corte = anual && ano === this.anoExecucao ? this.mesDeCorte() : null;
     const bruto = this.valorDaCelula(ind, ano, entrada, mes);
     // **Um caminho de lançamento por ano** (decisão do cliente): o ano em
     // execução é lançado MÊS A MÊS e a célula do ano mostra o total, sem campo;
@@ -389,7 +406,7 @@ const SecaoMetas = {
     // inteiro. O corte não depende do indicador aqui — só a borda do ano
     // futuro depende, e nela o rótulo fica sem o sufixo, porque cada linha
     // pode estar num mês diferente.
-    const corte = this.mesDeCorte(null);
+    const corte = this.mesDeCorte();
     const ate = corte ? ` · até ${MESES_CURTOS[corte - 1]}` : '';
     return MESES_CURTOS.map((m) => `<th class="col-mes">${m}</th>`).join('')
       + `<th class="col-ano col-total"><button type="button" class="btn-ano" data-fechar-ano="${ano}"

@@ -4228,16 +4228,40 @@ body.menu-aberto .menu-lateral {
 /* O filete e o recuo são de CÉLULA, não de linha: `border-left` numa `<tr>`
    não é pintado com `border-collapse: separate`, que a tabela precisa manter
    para o cabeçalho grudado ficar opaco. */
-.tabela-5w2h tr.g-frente > td:first-child {
-  border-left: 4px solid var(--verde-coperdia);
-  padding-left: 1.4rem;
+/* ── O degrau dos três níveis (pedido do cliente, 2026-11-09) ──────────────
+   "Endentação para evidenciar que as frentes pertencem a um projeto e uma ação
+   pertence a uma frente" — e, na volta seguinte, "a endentação não deve ser
+   aplicada ao texto e sim na coluna referente".
+
+   Por isso o recuo é ESTRUTURA: duas colunas estreitas e vazias à esquerda
+   (`col-recuo`), que o projeto atravessa, a frente deixa uma e a ação deixa as
+   duas. Com `padding` dentro da célula, o recuo saía da largura da frase: a
+   mesma coluna "O quê" tinha um texto começando em lugares diferentes e
+   quebrando em alturas diferentes conforme o nível. Agora o que se desloca é a
+   CÉLULA, e a coluna do "O quê" das ações começa sempre no mesmo ponto.
+
+   A coluna de recuo fica com o fundo da página, e não com o da linha: é ela
+   que faz a faixa da frente e a da ação nascerem recuadas em vez de atravessar
+   a tabela inteira. O filete colorido marca onde cada nível COMEÇA — verde
+   cheio na frente, verde claro na ação. A posição diz a profundidade; a cor,
+   de quem a linha é. */
+.tabela-5w2h .col-recuo {
+  width: 1.1rem;
+  min-width: 1.1rem;
+  padding: 0;
+  background: var(--bs-body-bg, #fff);
 }
-.tabela-5w2h tr.linha-5w2h > td:first-child {
+.tabela-5w2h tr.g-frente > td.col-recuo + td {
+  border-left: 4px solid var(--verde-coperdia);
+}
+.tabela-5w2h tr.linha-5w2h > td.col-oque {
   border-left: 4px solid #cfe2d8;
 }
-/* A ação recua mais que a frente, pelo mesmo motivo da lista: o degrau tem de
-   ser visto sem roubar largura do texto, que é o que se lê. */
-.tabela-5w2h tr.linha-5w2h > td.col-oque { padding-left: 1.4rem; }
+/* No celular as duas colunas encolhem, mas não somem: ali a tela é estreita e
+   cada rem conta, só que sem elas os três níveis voltam a ser uma lista plana. */
+@media (max-width: 767.98px) {
+  .tabela-5w2h .col-recuo { width: .6rem; min-width: .6rem; }
+}
 .tabela-5w2h .grupo-celula { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 /* ── Uma só geometria para os três níveis ────────────────────────────────
    Projeto, frente e ação mostram o percentual na MESMA célula (a última, sob
