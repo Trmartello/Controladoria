@@ -778,6 +778,42 @@ input[type=range].faixa-verde:focus-visible {
 }
 .faixa-limites { font-size: .7rem; color: #8a939b; }
 .grade-datas { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+/* ===== A lista de datas avulsas (pedido do cliente, 2026-11-09) =====
+   Uma linha por período: início, fim e o × que a remove. As duas datas ficam
+   lado a lado como no "Quando?" comum — é a mesma pergunta —, e o × ganha
+   coluna própria para não disputar largura com elas. No celular as colunas
+   viram duas e o × cai para a linha de baixo, à direita: espremer três
+   controles numa tela de 390px deixava os calendários sem onde abrir. */
+.periodo-linha {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: .5rem;
+  align-items: end;
+  margin-bottom: .5rem;
+}
+.periodo-linha + .periodo-linha { border-top: 1px solid var(--bs-border-color, #dee2e6); padding-top: .5rem; }
+/* Período já concluído: travado e esmaecido. Mudar a data de um treinamento
+   que aconteceu é reescrever o passado, e apagá-lo por engano é perder o
+   registro de que ele foi feito. */
+.periodo-linha.periodo-feito { opacity: .75; }
+.selo-periodo-feito {
+  color: var(--verde-coperdia);
+  font-size: .8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  padding-bottom: .4rem;
+}
+/* No celular as duas datas EMPILHAM, e não é gosto: um `input[type=date]` tem
+   min-content de 178px (o "30/04/2026" mais o ícone do calendário), e duas
+   colunas pedem 364px numa linha que ali tem 325. `1fr` não encolhe abaixo do
+   min-content, então o segundo campo saía pela direita do modal — com o "✓
+   feito" cortado junto. Apertar a coluna com `minmax(0, 1fr)` trocaria o
+   estouro por data truncada dentro do campo, que é pior: a pessoa deixaria de
+   ler a data que veio gravada. */
+@media (max-width: 575.98px) {
+  .periodo-linha { grid-template-columns: 1fr; gap: .35rem; }
+  .periodo-linha > :last-child { justify-self: end; }
+}
 /* Campos que dividem uma linha (a opção `linha` de Modal.abrir).
    `auto-fit` e não um número fixo de colunas: na linha da repetição há campo
    que aparece e some conforme a escolha (`visivelSe` põe `d-none` no bloco), e

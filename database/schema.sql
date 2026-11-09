@@ -430,7 +430,11 @@ CREATE TABLE IF NOT EXISTS desdobramento (
   como         TEXT,
   quanto       DECIMAL(15,2) NULL,
   quem_usuario_id INT NULL,
-  recorrencia     ENUM('NENHUMA','SEMANAL','MENSAL') NOT NULL DEFAULT 'NENHUMA',
+  -- DATAS: a ação acontece em períodos AVULSOS, lançados um a um em
+  -- `desdobramento_periodo` (um treinamento em abril e outro em agosto, por
+  -- exemplo). Não é grade: nada se calcula, e as únicas datas que valem são as
+  -- digitadas. Ver a tabela mais abaixo.
+  recorrencia     ENUM('NENHUMA','SEMANAL','MENSAL','DATAS') NOT NULL DEFAULT 'NENHUMA',
   recorrencia_dia TINYINT NULL,
   recorrencia_dias VARCHAR(100) NULL,
   recorrencia_ate DATE NULL,
@@ -446,6 +450,34 @@ CREATE TABLE IF NOT EXISTS desdobramento (
   -- o usuário deixava a ação com um responsável que não existe — listada, sem
   -- dono e sem nada na tela dizendo isso. Ver a nota de fk_ci_unido_por.
   CONSTRAINT fk_desd_quem FOREIGN KEY (quem_usuario_id) REFERENCES usuario(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Os períodos de uma ação de recorrência DATAS (pedido do cliente,
+-- 2026-11-09): "a ação de treinamento seria realizada duas vezes ao ano, uma
+-- em abril e outra em agosto, e se houvessem mais datas pudessem ser lançadas.
+-- Essas ações não se repetem mensalmente, e sim só nas datas lançadas."
+--
+-- A ação continua tendo UM `data_inicio`/`data_fim`, e eles espelham o período
+-- CORRENTE — o primeiro ainda não concluído. É isso que mantém o atraso
+-- automático, os avisos por e-mail e o prazo consolidado do projeto
+-- funcionando sem saber desta tabela: os três leem as colunas da ação, como já
+-- acontece com a recorrência semanal e mensal.
+--
+-- `concluido_em` por período, e não só na ação: sem ele, concluir abril e
+-- reabrir em agosto apagaria o registro de que abril foi feito.
+CREATE TABLE IF NOT EXISTS desdobramento_periodo (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  desdobramento_id INT NOT NULL,
+  -- Início opcional, fim obrigatório: é o fim que vence, e é ele que o atraso
+  -- e a cobrança leem. "Entregar até 30/04" é um período legítimo sem início.
+  data_inicio      DATE NULL,
+  data_fim         DATE NOT NULL,
+  concluido_em     DATETIME NULL,
+  CONSTRAINT fk_dperiodo_desd FOREIGN KEY (desdobramento_id)
+    REFERENCES desdobramento(id) ON DELETE CASCADE,
+  -- A ordem de leitura é sempre por `data_fim`: o período corrente é o
+  -- primeiro em aberto, e "primeiro" quer dizer o que vence antes.
+  KEY idx_dperiodo_acao (desdobramento_id, data_fim)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS envelope_capital (

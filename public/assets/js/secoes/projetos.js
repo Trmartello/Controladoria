@@ -1094,6 +1094,9 @@ const SecaoProjetos = {
            contraste para letra miúda. -->
       <td class="col-quando">
         <div class="num">${prazo ? Modal.esc(prazo) : '—'}</div>
+        ${this.resumoDatas(a) ? `<div class="small text-muted selo-datas"
+          title="Esta ação acontece em datas específicas; a tela mostra a que está em aberto"
+          >${Modal.esc(this.resumoDatas(a))}</div>` : ''}
         <div class="selos-quando"><span class="badge ${classe}">${rotulo}</span>
           <span class="selo-prioridade" style="color:${corPrio}"
             title="Prioridade ${rotPrio}">${rotPrio}</span></div>
@@ -1207,6 +1210,9 @@ const SecaoProjetos = {
         ${a.quem ? Modal.esc(a.quem)
     : '<span class="selo-sem-usuario" title="Ninguém responde por esta ação: ela não entra em cobrança nenhuma">Sem usuário</span>'}
         ${prazo ? `<span class="quando-quadro">${Modal.esc(prazo)}</span>` : ''}
+        ${this.resumoDatas(a) ? `<span class="quando-quadro"
+          title="Esta ação acontece em datas específicas; a ficha mostra a que está em aberto"
+          >${Modal.esc(this.resumoDatas(a))}</span>` : ''}
         ${selos ? `<span class="clipe-5w2h" title="${a.comentarios} comentário(s), ${a.anexos} anexo(s)">📎 ${selos}</span>` : ''}
       </span>
       <span class="rodape-quadro"><span class="faixa-progresso ${a.status === 'CANCELADO' ? 'inativa' : ''}"><span
@@ -1660,6 +1666,7 @@ const SecaoProjetos = {
           + ' ela não entra em cobrança nenhuma">Sem usuário</span>',
       `<strong>Prioridade:</strong> ${rotPrio}`,
       repeticao && `<strong>Repete:</strong> ${repeticao}`,
+      this.resumoDatas(a) && `<strong>Datas:</strong> ${Modal.esc(this.resumoDatas(a))}`,
       detalhes,
     ].filter(Boolean).join(' · ');
     return `<div class="card acao-card mb-2" style="--cor-prio:${corPrio}" data-card-acao="${a.id}"
@@ -2988,6 +2995,11 @@ const SecaoProjetos = {
         { valor: 'NENHUMA', rotulo: 'Não se repete' },
         { valor: 'SEMANAL', rotulo: 'Repetir toda semana' },
         { valor: 'MENSAL', rotulo: 'Repetir todo mês' },
+        // Datas avulsas (pedido do cliente, 2026-11-09): a ação que acontece
+        // em períodos escolhidos a dedo — um treinamento em abril e outro em
+        // agosto. Não é grade: nada se calcula, e as únicas datas que valem
+        // são as digitadas.
+        { valor: 'DATAS', rotulo: 'Em datas específicas' },
       ] },
       // Semanal e mensal aceitam MAIS DE UM dia ("toda segunda e quinta",
       // "todo dia 5 e 20"): com um dia só, a mesma rotina virava duas ações.
@@ -3032,6 +3044,14 @@ const SecaoProjetos = {
       // repete, quem diz a data de vencimento é a grade acima, e o servidor a
       // calcula. Ter os dois na tela fazia o usuário digitar um "fim previsto"
       // que a primeira conclusão descartava.
+      // A lista de períodos das datas avulsas. Fica ao lado do "Quando?" na
+      // mesma caixa e pela mesma razão: as duas respondem a pergunta do
+      // prazo, e qual delas aparece depende da repetição escolhida logo acima.
+      { nome: 'periodos', rotulo: 'Quando? (datas em que a ação acontece)',
+        tipo: 'periodos', caixa: 'repeticao',
+        visivelSe: { campo: 'recorrencia', valores: ['DATAS'] },
+        ajuda: 'Uma linha por data. A ação cobra a primeira em aberto; ao concluí-la, '
+          + 'ela reabre sozinha na próxima.' },
       { nome: 'quando_periodo', rotulo: 'Quando? (Prazo de Execução)', tipo: 'periodo',
         obrigatorio: true, caixa: 'repeticao',
         visivelSe: { campo: 'recorrencia', valores: ['NENHUMA'] },
@@ -3082,7 +3102,27 @@ const SecaoProjetos = {
       progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO', recorrencia: 'NENHUMA',
       recorrencia_de: this.hojeISO(),
       recorrencia_dias_semana: [], recorrencia_dias_mes: [],
+      // Uma linha em branco para a lista nascer com onde digitar.
+      periodos: [],
     };
+  },
+
+  /**
+   * "2 de 3 datas" — o retrato das datas avulsas numa linha.
+   *
+   * Existe porque a ação mostra UMA data (a do período corrente), e sem este
+   * resumo não há nada na tela dizendo que há outras combinadas. Quem abrisse
+   * a ação em maio veria só "Prazo: 30/08" e concluiria que o treinamento de
+   * abril nunca foi planejado.
+   */
+  resumoDatas(a) {
+    if (a.recorrencia !== 'DATAS') return '';
+    const lista = a.periodos || [];
+    if (!lista.length) return '';
+    const feitas = lista.filter((p) => p.concluido_em).length;
+    const total = lista.length;
+    if (feitas >= total) return `${total} de ${total} concluída${total > 1 ? 's' : ''}`;
+    return `${feitas + 1}ª de ${total}${feitas ? ` (${feitas} concluída${feitas > 1 ? 's' : ''})` : ''}`;
   },
 
   /**
@@ -3109,7 +3149,19 @@ const SecaoProjetos = {
         ...resto, data_inicio: de || '', data_fim: '', recorrencia_dias: (dias || []).map(Number),
       };
     }
-    return { ...resto, recorrencia_dias: [], recorrencia_ate: '' };
+    // Datas avulsas: quem diz o vencimento é a LISTA, e o servidor resolve
+    // dali o período corrente. Mandar `data_fim` daqui gravaria o "fim
+    // previsto" do campo escondido — o mesmo erro que a rotina semanal evita
+    // logo acima.
+    if (resto.recorrencia === 'DATAS') {
+      return {
+        ...resto, data_inicio: '', data_fim: '', recorrencia_dias: [], recorrencia_ate: '',
+      };
+    }
+    // Sem datas avulsas a lista não viaja: um `periodos` no corpo de uma ação
+    // comum seria lista que o servidor ignora e tela que pensa ter salvo.
+    const { periodos, ...semPeriodos } = resto;
+    return { ...semPeriodos, recorrencia_dias: [], recorrencia_ate: '' };
   },
 
   /**
@@ -3163,7 +3215,10 @@ const SecaoProjetos = {
             // com um obrigatório vazio que ninguém esvaziou.
             recorrencia_de: dd.data_inicio || this.hojeISO(),
             recorrencia_dias_semana: dd.recorrencia === 'SEMANAL' ? this.diasDaAcao(dd) : [],
-            recorrencia_dias_mes: dd.recorrencia === 'MENSAL' ? this.diasDaAcao(dd) : [] }
+            recorrencia_dias_mes: dd.recorrencia === 'MENSAL' ? this.diasDaAcao(dd) : [],
+            // Os períodos chegam da API junto com a ação. Vazio vira uma linha
+            // em branco pelo próprio campo, que é o que dá onde digitar.
+            periodos: dd.recorrencia === 'DATAS' ? (dd.periodos || []) : [] }
         : { planejamento_id: this.plan.id, projeto_id: projetoId,
             // Sem frente decidida, a primeira do projeto já vem escolhida — na
             // esmagadora maioria dos cadastros é nela que a ação entra, e o

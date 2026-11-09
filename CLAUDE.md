@@ -81,7 +81,8 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   não precise lembrar de marcá-lo — ver "Duas telas juntas") e `Email` (cliente
   SMTP/API escrito à mão: sem Composer, não há biblioteca para isso).
 - **Serviços** (`app/Services/`): `QlikSync`, `Recorrencia` (repetição das
-  ações — usada pelo cadastro), `Avisos` (e-mails do plano
+  ações por GRADE de dias — usada pelo cadastro), `Periodos` (as datas avulsas
+  da ação: qual manda agora e como ela avança), `Avisos` (e-mails do plano
   de ação), `Consolidacao` (reconciliação do que é *consequência*: atraso da
   ação e período/status do projeto). `Consolidacao::reconciliar($planId)` roda
   no começo de **toda leitura** que exibe esses campos — Projetos, Painel e
@@ -2107,6 +2108,44 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   de ser data: quem recusa é o `periodo()` do controller, e sem essa recusa um
   texto que não parseia viraria um null silencioso — a rotina que alguém quis
   limitar passaria a não acabar nunca, que é justamente o significado do vazio.
+- **Datas avulsas** (`recorrencia = 'DATAS'` + tabela `desdobramento_periodo`;
+  pedido do cliente, 2026-11-09: "a ação de treinamento seria realizada duas
+  vezes ao ano, uma em abril e outra em agosto, e se houvessem mais datas
+  pudessem ser lançadas; essas ações não se repetem mensalmente, e sim só nas
+  datas lançadas"). É o terceiro jeito de responder "quando?", ao lado do
+  período digitado e da grade, e o formulário mostra **um** dos três conforme a
+  Repetição escolhida. A regra inteira mora em `App\Services\Periodos`.
+  **Nada se calcula**: as únicas datas que valem são as digitadas, uma linha por
+  data (início opcional, fim obrigatório), e por isso `DATAS` entra na lista de
+  `ProjetoController::RECORRENCIAS` e **não** em `Recorrencia::TIPOS` — aquela
+  constante é a dos tipos que a GRADE sabe calcular.
+  A ação continua tendo **UM** par `data_inicio`/`data_fim`, espelhando o
+  período CORRENTE, pelo mesmo motivo da recorrente: atraso automático, avisos
+  por e-mail e prazo consolidado do projeto leem as COLUNAS, não a regra.
+  **O corrente é o primeiro em ABERTO, não o mais próximo de hoje** (decisão do
+  cliente na mesma conversa). Com abril vencido e não concluído, a ação continua
+  cobrando abril — atrasada — até alguém concluí-lo; só então passa para agosto.
+  A rotina semanal faz o CONTRÁRIO: `Recorrencia::reagendar` pula as ocorrências
+  perdidas (`max($base, $hoje)`), porque oito reuniões semanais perdidas não
+  viram oito cobranças. Aqui as datas foram escolhidas uma a uma, e deixar uma
+  para trás apaga um compromisso que alguém marcou. **Não unifique as duas
+  regras** sem o cliente dizer qual vale.
+  **`concluido_em` é por período**, e `Periodos::gravar` o preserva por chave
+  (`data_inicio|data_fim`): salvar uma correção no "Como?" não pode desfazer o
+  treinamento de abril que já aconteceu. Na tela, período cumprido vem travado e
+  sem o × — mudar a data de um treinamento que aconteceu é reescrever o passado.
+  Lista vazia e data repetida são **recusadas**: sem data a ação sairia do
+  atraso e das cobranças em silêncio, e remover a repetida calado esconderia o
+  engano de quem digitou em vez de resolvê-lo.
+  Os **dois** caminhos de conclusão (formulário e barra de progresso) passam por
+  `Periodos::concluirCorrente`, que marca o corrente num `UPDATE` atômico e
+  devolve a janela seguinte; sem período em aberto devolve `null` e a ação
+  conclui de vez. Um `UPDATE` cru de status em qualquer um dos dois faria a ação
+  "concluir" sem nunca reabrir. A tela diz onde a ação está — "2ª de 3
+  (1 concluída)" — no card, na tabela e na ficha do quadro
+  (`SecaoProjetos.resumoDatas`). No celular as duas datas da linha **empilham**:
+  `input[type=date]` tem min-content de 178px e duas colunas não cabem nos 325px
+  do modal, então `1fr 1fr` jogava o segundo campo para fora da tela.
 - **Comentários com anexos** (`comentario` + `comentario_anexo`): sucederam o
   Diário de Bordo, que saiu do código. O registro continua datado e nunca
   sobrescrito; o que mudou é que agora carrega arquivo. O que o diário fazia

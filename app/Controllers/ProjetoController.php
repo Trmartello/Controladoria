@@ -7,6 +7,7 @@ use App\Core\Database;
 use App\Core\Json;
 use App\Services\Bloqueio;
 use App\Services\Consolidacao;
+use App\Services\Periodos;
 use App\Services\Recorrencia;
 
 class ProjetoController
@@ -18,7 +19,13 @@ class ProjetoController
     ];
     private const STATUS_PROJETO = ['NAO_INICIADO', 'EM_ANDAMENTO', 'CONCLUIDO', 'ATRASADO', 'CANCELADO'];
     private const PRIORIDADES = ['ALTA', 'MEDIA', 'BAIXA'];
-    private const RECORRENCIAS = Recorrencia::TIPOS;
+    /**
+     * `DATAS` entra aqui e NÃO em `Recorrencia::TIPOS`: aquela constante é a
+     * lista dos tipos que a GRADE de dias sabe calcular, e datas avulsas não se
+     * calculam — são as digitadas. Somar lá faria `Recorrencia` ser consultada
+     * por uma recorrência que ela não entende.
+     */
+    private const RECORRENCIAS = [...Recorrencia::TIPOS, Periodos::TIPO];
 
     public function listar(): void
     {
@@ -87,6 +94,22 @@ class ProjetoController
         $anexosProjeto = $contar('PROJETO', 'anexo');
         $comentariosAcao = $contar('DESDOBRAMENTO', 'comentario');
         $anexosAcao = $contar('DESDOBRAMENTO', 'anexo');
+        // Os períodos das ações de datas avulsas, do plano INTEIRO numa
+        // consulta só — pelo mesmo motivo dos mapas acima: uma consulta por
+        // ação rodaria dezenas de vezes na mesma pintura. Ordem por `data_fim`,
+        // que é a que decide qual período é o corrente.
+        $periodosAcao = [];
+        foreach (Database::todos(
+            'SELECT dp.desdobramento_id, dp.id, dp.data_inicio, dp.data_fim, dp.concluido_em
+               FROM desdobramento_periodo dp
+               JOIN desdobramento d ON d.id = dp.desdobramento_id
+               JOIN projeto pr ON pr.id = d.projeto_id
+              WHERE pr.planejamento_id = ?
+              ORDER BY dp.data_fim, dp.id',
+            [$planId]
+        ) as $x) {
+            $periodosAcao[(int)$x['desdobramento_id']][] = $x;
+        }
 
         foreach ($projetos as &$p) {
             $p['investimentos_vinculados'] = $solta[(int)$p['id']] ?? 0;
@@ -133,6 +156,7 @@ class ProjetoController
             foreach ($p['desdobramentos'] as &$d) {
                 $d['comentarios'] = $comentariosAcao[(int)$d['id']] ?? 0;
                 $d['anexos'] = $anexosAcao[(int)$d['id']] ?? 0;
+                $d['periodos'] = $periodosAcao[(int)$d['id']] ?? [];
             }
             unset($d);
             foreach ($p['iniciativas'] as &$i) {
@@ -392,10 +416,39 @@ class ProjetoController
         // dias, e o período sai dela — pedir as duas coisas deixaria a tela
         // aceitar um "fim previsto" que a primeira conclusão jogaria fora.
         $recDias = [];
+        $periodosNovos = [];
         [$inicio, $fim] = $this->periodo($d);
         if ($recorrencia === 'NENHUMA') {
             if ($inicio === null || $fim === null) {
                 Json::erro('Informe o período da ação (Quando?) — início e fim previsto.');
+            }
+        } elseif ($recorrencia === 'DATAS') {
+            // ── Datas avulsas (pedido do cliente, 2026-11-09) ──────────────
+            // Nada se calcula aqui: as únicas datas que valem são as digitadas.
+            // A ação segue com UM par `data_inicio`/`data_fim`, espelhando o
+            // período CORRENTE — o primeiro ainda em aberto —, que é o que
+            // mantém o atraso, as cobranças e o prazo do projeto funcionando
+            // sem saber da tabela de períodos. A regra inteira mora em
+            // `App\Services\Periodos`.
+            [$periodosNovos, $erroPeriodos] = Periodos::validar($d['periodos'] ?? null);
+            if ($erroPeriodos !== null) {
+                Json::erro($erroPeriodos);
+            }
+            $recAte = null;
+            // O corrente é resolvido com a lista NOVA contra o que já estava
+            // concluído: salvar uma correção de texto não pode ressuscitar o
+            // treinamento de abril que já aconteceu.
+            $corrente = Periodos::correnteDaLista((int)$id, $periodosNovos);
+            if ($corrente === null) {
+                // Todos os períodos da lista já foram cumpridos. A ação fica
+                // com o último deles como vencimento — e não sem data, que a
+                // tiraria do atraso e das cobranças em silêncio.
+                $ultimo = $periodosNovos[count($periodosNovos) - 1];
+                $inicio = $ultimo['data_inicio'];
+                $fim = $ultimo['data_fim'];
+            } else {
+                $inicio = $corrente['data_inicio'];
+                $fim = $corrente['data_fim'];
             }
         } else {
             // A data de INÍCIO da repetição (pedido do cliente, 2026-11-03): é
@@ -643,6 +696,32 @@ class ProjetoController
             }
         }
 
+        // ── Datas avulsas: grava a lista e, se for conclusão, avança ───────
+        // Depois da escrita da ação, porque na criação não havia id para pendurar
+        // os períodos. `gravar` preserva o `concluido_em` do que continua na
+        // lista — salvar uma correção de texto não desfaz o que já aconteceu.
+        if ($recorrencia === 'DATAS') {
+            Periodos::gravar((int)$id, $periodosNovos);
+            // Concluir aqui é concluir O PERÍODO CORRENTE, e a ação reabre no
+            // seguinte — é o mesmo desenho da rotina semanal e mensal, e passa
+            // pelo mesmo ponto para que um status escolhido no formulário não
+            // pule a regra. Só quando não sobra período é que a ação conclui de
+            // vez, e aí o estado gravado acima já é o certo.
+            if ($status === 'CONCLUIDO' && ($anterior === null || $anterior['status'] !== 'CONCLUIDO')) {
+                $proximo = Periodos::concluirCorrente((int)$id);
+                if ($proximo !== null) {
+                    $reagendou = $proximo;
+                    Database::executar(
+                        'UPDATE desdobramento SET data_inicio = ?, data_fim = ?, status = ?,
+                           progresso = 0, progresso_anterior = NULL, concluido_em = NULL
+                         WHERE id = ?',
+                        [$proximo['data_inicio'], $proximo['data_fim'],
+                         $this->resolverStatus('NAO_INICIADO', $proximo['data_fim']), $id]
+                    );
+                }
+            }
+        }
+
         // A conclusão de uma ocorrência fica registrada nos comentários: a ação
         // volta a NAO_INICIADO na data seguinte, e sem o registro não sobraria
         // rastro nenhum de que ela chegou a ser concluída uma vez.
@@ -746,6 +825,25 @@ class ProjetoController
         // pulando uma ocorrência.
         $concluir = (!empty($d['concluir']) && $progresso === 100) || $statusNovo === 'CONCLUIDO';
         if ($concluir && $acao['status'] !== 'CONCLUIDO') {
+            // Datas avulsas: concluir é concluir o período CORRENTE, e a ação
+            // reabre no seguinte. Mesmo lugar e mesma razão da rotina semanal
+            // logo abaixo — um UPDATE cru de status pularia a regra e a ação
+            // "concluiria" sem nunca reabrir em agosto.
+            if (($acao['recorrencia'] ?? 'NENHUMA') === 'DATAS') {
+                $proximo = Periodos::concluirCorrente($id);
+                if ($proximo !== null) {
+                    if (Database::afetadas(
+                        "UPDATE desdobramento SET data_inicio = ?, data_fim = ?, status = ?,
+                           progresso = 0, progresso_anterior = NULL, concluido_em = NULL
+                         WHERE id = ? AND status <> 'CONCLUIDO'",
+                        [$proximo['data_inicio'], $proximo['data_fim'],
+                         $this->resolverStatus('NAO_INICIADO', $proximo['data_fim']), $id]
+                    ) === 0) {
+                        Json::erro('A ação acabou de mudar por outra pessoa — recarregue a tela.', 409, 'ACAO_MUDOU');
+                    }
+                    Json::ok(['progresso' => 0, 'reagendada_para' => $proximo['data_fim']]);
+                }
+            }
             if (($acao['recorrencia'] ?? 'NENHUMA') !== 'NENHUMA') {
                 $reagendou = Recorrencia::reagendar(
                     $acao['data_inicio'], $acao['recorrencia'],

@@ -107,6 +107,7 @@ const Modal = {
     this.ligarSelecaoLivre(form);
     this.ligarListasMarcaveis(form);
     this.ligarDiasSelect(form);
+    this.ligarPeriodos();
     this.ligarDatasBr(form);
     this.ligarFaixas(form, campos);
     this.ligarCondicionais(form, campos);
@@ -567,6 +568,31 @@ const Modal = {
         // alcançar o período inteiro: sem ele, esconder "Quando?" escondia só
         // o rótulo e as duas datas continuavam na tela
         controle = `<div class="grade-datas" id="${id}">${colunas}</div>`;
+        break;
+      }
+      case 'periodos': {
+        /* Uma LISTA de períodos (pedido do cliente, 2026-11-09): a ação que
+         * acontece em datas escolhidas a dedo — um treinamento em abril e
+         * outro em agosto — e não numa grade semanal ou mensal.
+         *
+         * É um campo e não três: início, fim e o × de cada linha pertencem ao
+         * mesmo período, e separá-los faria a pessoa casar linhas na cabeça.
+         * O valor vive no DOM (uma `<div>` por linha) e o `coletar` o lê de
+         * lá — guardar uma cópia em `dataset` criaria duas verdades sobre as
+         * mesmas datas, e a primeira edição as faria divergir.
+         *
+         * Cada linha traz o selo do que já foi CONCLUÍDO: sem ele, a pessoa
+         * que abre a ação em maio não tem como saber que abril já aconteceu, e
+         * apagaria a linha achando que é lixo. A data concluída não se edita
+         * pelo mesmo motivo — mudar o período de algo que já foi feito é
+         * reescrever o passado.
+         */
+        const linhas = (Array.isArray(v) ? v : []).map((p) => this.linhaPeriodo(p));
+        controle = `<div class="lista-periodos" id="${id}">
+          <div class="periodos-linhas">${linhas.join('') || this.linhaPeriodo({})}</div>
+          <button type="button" class="btn btn-sm btn-outline-success mt-2" data-add-periodo="${id}">
+            + Adicionar data</button>
+        </div>`;
         break;
       }
       case 'textarea': {
@@ -1665,6 +1691,71 @@ const Modal = {
     }));
   },
 
+  /**
+   * Uma linha da lista de períodos: início, fim e o × que a remove.
+   *
+   * Período JÁ CONCLUÍDO não se edita — mudar a data de um treinamento que
+   * aconteceu é reescrever o passado —, e por isso sai com os campos travados
+   * e um selo dizendo quando foi. Ele também não some pelo ×: quem quiser
+   * apagá-lo tem de ter certeza, e a certeza passa por reabrir a ação.
+   */
+  linhaPeriodo(p) {
+    const feito = !!(p && p.concluido_em);
+    const trava = feito ? ' disabled' : '';
+    return `<div class="periodo-linha${feito ? ' periodo-feito' : ''}">
+      <div>
+        <span class="sub-rotulo">Início</span>
+        <input type="date" class="form-control" data-periodo-inicio
+          value="${this.esc(p?.data_inicio ?? '')}"${trava}>
+      </div>
+      <div>
+        <span class="sub-rotulo">Fim previsto</span>
+        <input type="date" class="form-control" data-periodo-fim
+          value="${this.esc(p?.data_fim ?? '')}"${trava}>
+      </div>
+      ${feito
+    ? `<span class="selo-periodo-feito" title="Concluído em ${this.esc(
+      String(p.concluido_em).slice(0, 10).split('-').reverse().join('/'))}">✓ feito</span>`
+    : `<button type="button" class="btn btn-sm btn-outline-danger"
+        data-remove-periodo title="Remover esta data" aria-label="Remover esta data">×</button>`}
+    </div>`;
+  },
+
+  /** O + e o × da lista de períodos. */
+  ligarPeriodos() {
+    document.querySelectorAll('[data-add-periodo]').forEach((b) => {
+      if (b.dataset.ligado) return;
+      b.dataset.ligado = '1';
+      b.addEventListener('click', () => {
+        const lista = document.getElementById(b.dataset.addPeriodo);
+        lista.querySelector('.periodos-linhas').insertAdjacentHTML('beforeend', this.linhaPeriodo({}));
+        // O foco vai para a data nova: quem clicou em "adicionar" quer digitar,
+        // e sem isto teria de mirar o campo com o mouse.
+        const nova = lista.querySelector('.periodo-linha:last-child [data-periodo-inicio]');
+        nova?.focus();
+      });
+    });
+    document.querySelectorAll('.lista-periodos').forEach((lista) => {
+      if (lista.dataset.ligadoRemover) return;
+      lista.dataset.ligadoRemover = '1';
+      // Delegado: as linhas nascem depois, e um ouvinte por botão deixaria as
+      // novas sem o ×.
+      lista.addEventListener('click', (ev) => {
+        const x = ev.target.closest('[data-remove-periodo]');
+        if (!x) return;
+        const linhas = lista.querySelectorAll('.periodo-linha');
+        // A última linha não some: a ação precisa de ao menos uma data, e o
+        // servidor a recusaria com uma mensagem que a pessoa não pediu. Em vez
+        // de sumir, ela se esvazia.
+        if (linhas.length <= 1) {
+          lista.querySelectorAll('input[type="date"]').forEach((i) => { i.value = ''; });
+          return;
+        }
+        x.closest('.periodo-linha').remove();
+      });
+    });
+  },
+
   coletar() {
     const dados = {};
     for (const c of this.config.campos) {
@@ -1672,6 +1763,19 @@ const Modal = {
         for (const s of c.campos || []) {
           dados[s.nome] = document.getElementById(`campo-${s.nome}`)?.value ?? '';
         }
+        continue;
+      }
+      if (c.tipo === 'periodos') {
+        // Lido do DOM, que é onde o valor mora. Linha totalmente em branco não
+        // viaja: a pessoa que clicou em "adicionar" e desistiu não deve receber
+        // "toda data precisa de um fim previsto" por causa de uma linha vazia.
+        const lista = document.getElementById(`campo-${c.nome}`);
+        dados[c.nome] = [...(lista?.querySelectorAll('.periodo-linha') || [])]
+          .map((ln) => ({
+            data_inicio: ln.querySelector('[data-periodo-inicio]')?.value || '',
+            data_fim: ln.querySelector('[data-periodo-fim]')?.value || '',
+          }))
+          .filter((x) => x.data_inicio !== '' || x.data_fim !== '');
         continue;
       }
       // `info` é bloco de leitura: tem id (para ser reescrito por `aoMudar`)
