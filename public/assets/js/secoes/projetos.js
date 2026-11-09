@@ -865,6 +865,9 @@ const SecaoProjetos = {
     const rotuloCascata = new Map((this.cascata ? this.opcoesCascata() : [])
       .filter((o) => o.valor !== '')
       .map((o) => [String(o.valor), o.rotulo]));
+    // Só para as ações ÓRFÃS, que não têm id para entrar nos conjuntos de
+    // recolhimento. O resto da tabela lê os conjuntos, como a lista.
+    const nivel = this.nivelAtual(projetos);
     const corpo = projetos.map((p) => {
       const acoes = p.desdobramentos || [];
       const porFrente = new Map((p.iniciativas || []).map((i) => [Number(i.id), i]));
@@ -886,10 +889,12 @@ const SecaoProjetos = {
       // barra da ação e do rótulo "Progresso" (posição escolhida pelo cliente
       // a partir de uma imagem, no mesmo dia). As outras duas posições já
       // tentadas, e por que esta ficou, estão em `pct-grupo`, no CSS.
-      const linhaGrupo = (classe, marca, titulo, lista, chave, extra = '', acoesLinha = '') => {
+      const linhaGrupo = (classe, marca, titulo, lista, chave, extra = '', acoesLinha = '',
+        recolhida = false) => {
         const media = this.mediaProgresso(lista);
         return `
-        <tr class="${classe}" ${marca}>
+        <tr class="${classe}${recolhida ? ' linha-recolhida' : ''}"
+          data-recolhida="${recolhida ? '1' : '0'}" ${marca}>
           <td colspan="${colunasDoTitulo}"><span class="grupo-celula">
             <span class="nome-grupo">${Modal.esc(titulo)}</span>
             <span class="badge text-bg-light border">${this.contaAcoes(lista.length)}</span>
@@ -899,7 +904,8 @@ const SecaoProjetos = {
           <td class="col-acoes-plano">${acoesLinha}</td>
         </tr>`;
       };
-      const linhas = (lista) => lista.map((a) => this.linhaTabela(a)).join('');
+      const linhas = (lista, recolhida = false) =>
+        lista.map((a) => this.linhaTabela(a, recolhida)).join('');
       /* O que a linha da frente leva além do título (pedido do cliente,
        * 2026-10-28): onde ela está vinculada na Cascata, e o ✎ que edita esse
        * vínculo sem sair da tabela.
@@ -974,14 +980,39 @@ const SecaoProjetos = {
         ${botao(`data-editar-ini="${ini.id}" data-proj="${p.id}"`, '✎',
     `Editar a frente «${ini.titulo}» — inclusive o eixo da Cascata que ela executa`)}
         ${botao(`data-excluir-ini="${ini.id}"`, '×', `Excluir a frente «${ini.titulo}»`, 'btn-outline-danger')}` : '');
+      // O "Mostrar até" vale aqui também (pedido do cliente, 2026-11-09), e
+      // pelo MESMO estado da lista: `projetosFechados` e `iniciativasFechadas`.
+      // Um segundo estado só para a tabela faria o mesmo plano estar recolhido
+      // num modo e aberto no outro — e a pessoa troca de modo justamente para
+      // ver o mesmo de outro jeito.
+      //
+      // Recolhido é DESENHADO e escondido por classe (`linha-recolhida`), e
+      // não omitido do HTML. Omitir seria mais simples e quebraria a pesquisa:
+      // `filtrarTabela` varre as linhas que existem, e uma ação dentro de um
+      // projeto recolhido não seria achada — a pessoa procuraria o que está
+      // ali e leria "Nenhuma ação encontrada". Com a classe, o filtro reabre o
+      // que casou, que é exatamente o que a lista já faz.
+      //
+      // A classe é PRÓPRIA, e não `d-none`: o filtro usa `d-none` para o que
+      // não casou, e as duas razões de esconder se atropelariam — limpar a
+      // pesquisa reabriria o que estava recolhido.
+      const projFechado = this.projetosFechados.has(p.id);
       const frentes = (p.iniciativas || []).map((ini) => {
         const suas = ini.acoes || [];
         return linhaGrupo('g-frente', `data-grupo-frente="${ini.id}"`, ini.titulo, suas,
-          `FRENTE:${ini.id}`, extraFrente(ini), acoesFrente(ini)) + linhas(suas);
+          `FRENTE:${ini.id}`, extraFrente(ini), acoesFrente(ini), projFechado)
+          + linhas(suas, projFechado || this.iniciativasFechadas.has(ini.id));
       }).join('');
       // Ação sem frente existe no banco (`iniciativa_id` é anulável) e sumiria
       // da tabela se ela lesse só as listas aninhadas.
       const orfas = acoes.filter((a) => !a.iniciativa_id);
+      // «Sem frente de trabalho» não tem id, então não cabe nos conjuntos: ela
+      // segue o NÍVEL derivado. Sem isto, "Mostrar até Frentes" recolheria as
+      // ações de toda frente e deixaria as órfãs à vista — o botão diria uma
+      // coisa e a tabela mostraria outra. Uma chave sintética no conjunto
+      // resolveria o desenho, mas desacertaria o botão num projeto sem frente
+      // nenhuma, onde `nivelAtual` não tem frente para olhar.
+      const orfasFechadas = projFechado || nivel === 'FRENTES' || nivel === 'PROJETOS';
       return linhaGrupo('g-proj', `data-grupo-proj="${p.id}"`, p.titulo, acoes, `PROJETO:${p.id}`,
         p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning">Prioritário</span>' : '',
         acoesProjeto)
@@ -989,8 +1020,9 @@ const SecaoProjetos = {
         // «Sem frente de trabalho» não é uma frente: não há o que editar,
         // excluir, nem onde criar ação (a ação nasceria sem frente de novo).
         + (orfas.length
-          ? linhaGrupo('g-frente', 'data-sem-frente', 'Sem frente de trabalho', orfas, `ORFAS:${p.id}`)
-            + linhas(orfas)
+          ? linhaGrupo('g-frente', 'data-sem-frente', 'Sem frente de trabalho', orfas,
+            `ORFAS:${p.id}`, '', '', projFechado)
+            + linhas(orfas, orfasFechadas)
           : '');
     }).join('');
 
@@ -1010,7 +1042,7 @@ const SecaoProjetos = {
     </div>`;
   },
 
-  linhaTabela(a) {
+  linhaTabela(a, recolhida = false) {
     const [rotulo, classe] = STATUS_ACAO[a.status] || [a.status, 'text-bg-light'];
     const [rotPrio, , corPrio] = PRIORIDADES[a.prioridade] || PRIORIDADES.MEDIA;
     const cancelada = a.status === 'CANCELADO';
@@ -1022,7 +1054,9 @@ const SecaoProjetos = {
     const ganhos = (a.quanto === null || a.quanto === undefined || a.quanto === '')
       ? '—'
       : `R$ ${Number(a.quanto).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    return `<tr class="linha-5w2h" data-card-acao="${a.id}" data-cadeado="desdobramento:${a.id}"
+    return `<tr class="linha-5w2h${recolhida ? ' linha-recolhida' : ''}"
+      data-recolhida="${recolhida ? '1' : '0'}"
+      data-card-acao="${a.id}" data-cadeado="desdobramento:${a.id}"
       data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
       <td class="col-oque">${Modal.esc(a.o_que)}
         ${selos ? `<span class="clipe-5w2h" title="${a.comentarios} comentário(s), ${a.anexos} anexo(s)">📎 ${selos}</span>` : ''}</td>
@@ -1383,9 +1417,23 @@ const SecaoProjetos = {
     this.observadorThead.observe(thead);
   },
 
-  /** A pesquisa na tabela: esconde linhas, e o grupo que ficou sem nenhuma. */
+  /**
+   * A pesquisa na tabela: esconde linhas, e o grupo que ficou sem nenhuma.
+   *
+   * Com pesquisa ativa, o RECOLHIMENTO sai da frente: procurar é querer ver o
+   * que casou, esteja onde estiver. É o mesmo que a lista faz
+   * (`fechadoIni = ativo ? !temNaFrente : …`), e sem isso uma ação dentro de
+   * um projeto recolhido ficaria invisível para a pesquisa — a pessoa leria
+   * "Nenhuma ação encontrada" procurando o que está ali.
+   *
+   * Limpa a pesquisa, o recolhimento volta sozinho: cada linha carrega
+   * `data-recolhida`, escrito na pintura, e a restauração não depende de
+   * recalcular estado nenhum aqui.
+   */
   filtrarTabela(el) {
     const c = this.criteriosFiltro();
+    el.querySelectorAll('.tabela-5w2h tbody tr[data-recolhida]').forEach((tr) =>
+      tr.classList.toggle('linha-recolhida', !c.ativo && tr.dataset.recolhida === '1'));
     let algum = false;
     let grupoProj = null;
     let grupoFrente = null;
@@ -1895,7 +1943,10 @@ const SecaoProjetos = {
           </div>
           <!-- Os três modos: a mesma informação, três leituras. O grupo vem
                ANTES do "Mostrar até" porque ele decide se aquele existe — os
-               níveis de recolhimento só fazem sentido na lista. -->
+               níveis de recolhimento valem na lista e na TABELA (pedido do
+               cliente, 2026-11-09), que são as duas que têm a hierarquia
+               projeto → frente → ação. No quadro não: lá o agrupamento é por
+               SITUAÇÃO, e recolher "até frentes" não quer dizer nada. -->
           <div class="btn-group btn-group-sm modos-plano" role="group" aria-label="Modo de visualização">
             ${botaoModo('LISTA', 'Lista', 'Projeto, frente e ação, como na reunião de acompanhamento')}
             ${botaoModo('TABELA', 'Tabela', 'Uma linha por ação, com o quê, como, quem, quando e ganhos')}
@@ -1917,7 +1968,7 @@ const SecaoProjetos = {
               title="Mostra o texto inteiro da coluna «Como»: a linha cresce até caber tudo">
               Quebrar o texto</label>
           </div>` : ''}
-          ${modo === 'LISTA' ? `
+          ${modo !== 'QUADRO' ? `
           <span class="small text-muted d-none d-sm-inline">Mostrar até</span>
           <div class="btn-group btn-group-sm niveis-visao" role="group" aria-label="Mostrar até">
             ${botaoNivel('ACOES', 'Ações', 'Abre tudo: projetos, frentes e as ações de cada uma')}

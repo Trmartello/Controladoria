@@ -4325,6 +4325,14 @@ body.menu-aberto .menu-lateral {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Linha recolhida pelo "Mostrar até" (pedido do cliente, 2026-11-09): a
+   tabela ganhou os mesmos três níveis da lista. É classe PRÓPRIA e não
+   `d-none` porque o `d-none` já tem dono nesta tabela — é o filtro da
+   pesquisa. Com um só, limpar a pesquisa reabriria o que estava recolhido, e
+   recolher esconderia o resultado de quem está procurando.
+   `!important` pela mesma razão do `d-none` do Bootstrap: a linha de grupo
+   tem `display` próprio, e sem ele a regra mais específica venceria esta. */
+.tabela-5w2h tbody tr.linha-recolhida { display: none !important; }
 /* …até alguém pedir a frase inteira (interruptor "Quebrar o texto", pedido do
    cliente em 2026-11-02). Com a quebra ligada a célula deixa de cortar e a
    LINHA cresce até caber o texto. A largura máxima fica: sem ela, uma

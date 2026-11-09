@@ -2134,7 +2134,8 @@ async function provasModosPlano(page, largura) {
           // uma coluna a menos (a situação sobe para dentro do "o quê") e
           // `children[5]` passava a ler o "Progresso".
           .map((tr) => tr.querySelector('.col-ganhos').textContent.trim()),
-        semNiveis: !document.querySelector('.niveis-visao'),
+        // Fora da TABELA: o grupo mora na barra de cima, não dentro dela.
+        comNiveis: !!document.querySelector('#secao-projetos .niveis-visao'),
         ajustaveis: el.querySelectorAll('[data-progresso]').length,
         rolagemH: document.documentElement.scrollWidth > document.documentElement.clientWidth,
         // Duas medidas, porque são duas regras diferentes: o total do grupo
@@ -2190,7 +2191,12 @@ async function provasModosPlano(page, largura) {
     // Dinheiro com os DOIS centavos, como no cartão: 1500,50 não é 1500,5.
     t(`${l} os ganhos saem com os dois centavos`,
       tab.ganhos.includes('R$ 1.500,50'), JSON.stringify(tab.ganhos));
-    t(`${l} os níveis de recolhimento somem fora da lista`, tab.semNiveis);
+    // Até 2026-11-09 os níveis existiam SÓ na lista, e esta prova media a
+    // ausência deles aqui. O cliente pediu o mesmo recolhimento na tabela —
+    // ela tem a mesma hierarquia projeto → frente → ação —, então agora a
+    // prova mede a presença. Quem não os tem é o quadro, que agrupa por
+    // situação; isso é medido na seção dele.
+    t(`${l} a tabela também oferece os níveis de recolhimento`, tab.comNiveis);
     // O percentual se ajusta na própria tabela (pedido do cliente,
     // 2026-10-28): quem conduz a reunião por ela não deve trocar de modo para
     // mexer no número que a reunião mais mexe.
@@ -2628,10 +2634,100 @@ async function provasModosPlano(page, largura) {
     await fecharModal(page);
   }
 
+  // ── "Mostrar até" na TABELA (pedido do cliente, 2026-11-09) ──────────
+  // Os mesmos três níveis da lista, e pelo MESMO estado. O que quebra calado
+  // aqui é a pesquisa: na tabela, recolher é esconder linha, e se a linha
+  // escondida saísse do HTML a pesquisa não a acharia — a pessoa procuraria
+  // uma ação que está ali e leria "Nenhuma ação encontrada".
+  if (pintou) {
+    const contar = () => page.evaluate(() => {
+      const vis = (s) => [...document.querySelectorAll(`.tabela-5w2h tbody ${s}`)]
+        .filter((tr) => tr.getClientRects().length > 0).length;
+      return {
+        proj: vis('tr.g-proj'), frente: vis('tr.g-frente'), acao: vis('tr.linha-5w2h'),
+        nivel: document.querySelector('#secao-projetos [data-nivel][aria-pressed="true"]')?.dataset.nivel || '',
+        botoes: document.querySelectorAll('#secao-projetos [data-nivel]').length,
+      };
+    });
+    const nivelar = async (n) => {
+      await page.evaluate((x) => document.querySelector(`#secao-projetos [data-nivel="${x}"]`).click(), n);
+      await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
+      await new Promise((r) => setTimeout(r, 500));
+      return contar();
+    };
+
+    const aberta = await contar();
+    t(`${l} a tabela oferece os três níveis de "Mostrar até"`,
+      aberta.botoes === 3, String(aberta.botoes));
+
+    const emFrentes = await nivelar('FRENTES');
+    t(`${l} "Frentes" recolhe as ações da tabela e mantém projetos e frentes`,
+      emFrentes.acao === 0 && emFrentes.frente > 0 && emFrentes.proj > 0
+      && emFrentes.nivel === 'FRENTES', JSON.stringify(emFrentes));
+
+    const emProjetos = await nivelar('PROJETOS');
+    t(`${l} "Projetos" recolhe também as frentes`,
+      emProjetos.acao === 0 && emProjetos.frente === 0 && emProjetos.proj > 0
+      && emProjetos.nivel === 'PROJETOS', JSON.stringify(emProjetos));
+
+    // A armadilha: procurar tem de achar o que está recolhido.
+    await page.evaluate(() => {
+      const c = document.querySelector('[data-filtro-texto]');
+      c.value = 'alfa dos modos';
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await new Promise((r) => setTimeout(r, 700));
+    const procurando = await contar();
+    const avisoVazio = await page.evaluate(() =>
+      !document.querySelector('[data-filtro-vazio]').classList.contains('d-none'));
+    t(`${l} a pesquisa acha a ação dentro do projeto recolhido`,
+      procurando.acao > 0 && avisoVazio === false,
+      `${JSON.stringify(procurando)} vazio=${avisoVazio}`);
+
+    await page.evaluate(() => {
+      const c = document.querySelector('[data-filtro-texto]');
+      c.value = '';
+      c.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await new Promise((r) => setTimeout(r, 700));
+    const limpa = await contar();
+    t(`${l} e limpar a pesquisa devolve o recolhimento`,
+      limpa.acao === 0 && limpa.frente === 0 && limpa.proj > 0, JSON.stringify(limpa));
+
+    // O estado é UM só: recolher na tabela e ir para a lista mostra a lista
+    // recolhida igual. Dois estados fariam o mesmo plano estar aberto num modo
+    // e fechado no outro — e troca-se de modo para ver o mesmo de outro jeito.
+    await page.evaluate(() => SecaoProjetos.trocarModo('LISTA'));
+    await esperar(page, "!!document.querySelector('#secao-projetos [data-projeto]')", 10000);
+    await new Promise((r) => setTimeout(r, 500));
+    const naLista = await page.evaluate(() => ({
+      nivel: document.querySelector('#secao-projetos [data-nivel][aria-pressed="true"]')?.dataset.nivel || '',
+      frentesAbertas: [...document.querySelectorAll('#secao-projetos .iniciativas-projeto')]
+        .filter((d) => d.getClientRects().length > 0).length,
+    }));
+    t(`${l} o recolhimento é o MESMO nos dois modos`,
+      naLista.nivel === 'PROJETOS' && naLista.frentesAbertas === 0, JSON.stringify(naLista));
+
+    // Devolve tudo ao aberto: o estado mora na seção e sobreviveria às provas
+    // seguintes, que leem a lista contando cartões à vista.
+    await page.evaluate(() => SecaoProjetos.trocarModo('TABELA'));
+    await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
+    const voltou = await nivelar('ACOES');
+    t(`${l} "Ações" devolve a tabela inteira`,
+      voltou.acao > 0 && voltou.frente > 0 && voltou.proj > 0 && voltou.nivel === 'ACOES',
+      JSON.stringify(voltou));
+  }
+
   // ── O quadro por situação ────────────────────────────────────────────
   await page.evaluate(() => SecaoProjetos.trocarModo('QUADRO'));
   const quadroPintou = await esperar(page, "!!document.querySelector('.quadro-situacao')", 10000);
   t(`${l} o quadro pinta ao trocar de modo`, quadroPintou);
+  // No quadro não há "Mostrar até": lá o agrupamento é por SITUAÇÃO, e
+  // "recolher até frentes" não quer dizer nada. Deixar os botões ali seria um
+  // controle que não muda a tela — o jeito mais rápido de ensinar que ele não
+  // funciona.
+  t(`${l} o quadro não oferece "Mostrar até"`,
+    (await page.evaluate(() => document.querySelectorAll('#secao-projetos [data-nivel]').length)) === 0);
   if (quadroPintou) {
     const q = await page.evaluate(() => {
       const cols = [...document.querySelectorAll('.coluna-quadro')];
