@@ -243,8 +243,8 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   **Metas arrasta os INDICADORES** (pedido do cliente, 2026-11-09): coluna
   `indicador.ordem`, gravação em `POST /api/indicadores/reordenar` com a mesma
   guarda de dono. O que esta tela tem de diferente é a **unidade do arraste**:
-  o indicador ocupa duas linhas (Meta e Real) amarradas por `rowspan`, então
-  cada um ganhou um **`<tbody>` próprio** e o item é `tbody[data-id]`, com a
+  o indicador ocupa três linhas (Meta, Real e o % de atingimento) amarradas por
+  `rowspan`, então cada um ganhou um **`<tbody>` próprio** e o item é `tbody[data-id]`, com a
   tabela inteira como caixa. Voltar para `tr[data-id]` levaria metade do
   indicador e quebraria a tabela no meio do gesto — é a primeira prova de
   `provasOrdenarIndicadores`. A leitura é `ORDER BY ordem, metrica_ancora DESC,
@@ -1046,6 +1046,26 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   ele apareceria.
   A Matriz chama a mesma função: duplicá-la faria duas telas vizinhas dizerem
   números diferentes do mesmo indicador.
+- **O percentual de atingimento** (`atingimento` / `celulaAtingimento`, pedido
+  do cliente em 2026-11-09) é a **terceira linha** de cada indicador, debaixo de
+  Meta e Real: `%`, em cada mês e também na coluna do ano. Linha própria e não
+  um segundo número dentro da célula do Real, porque ali mora o campo de
+  lançamento — o percentual encostado nele viraria coisa que parece digitável.
+  Três decisões que não devem ser desfeitas:
+  **O sentido inverte a divisão.** Em «maior melhor» é `real ÷ meta`; em «menor
+  melhor» é `meta ÷ real`, senão gastar metade do orçado apareceria como 50% de
+  atingimento, quando é o dobro do resultado pedido. O verdadeiro/falso que dá a
+  COR sai da mesma comparação de `metaReal`, então cor e número nunca discordam.
+  **Negativo não vira percentual.** Meta de resultado financeiro e de dívida é
+  negativa, e `−50 ÷ −100 = 50%` diria "metade do caminho" a quem, em «maior
+  melhor», já superou a meta. Não há divisão honesta aí: a célula mostra "—" e
+  explica no balão, e a cor continua certa, porque a comparação funciona com
+  negativo. Meta zero cai na mesma regra, por divisão por zero.
+  **A conta divide o que a tela MOSTRA.** `valorDaCelula(ind, ano, entrada, mes)`
+  é a mesma função que a célula de leitura usa, e por isso o acumulado do ano —
+  que respeita o mês de corte e a agregação do indicador — é exatamente o número
+  dividido. Duas contas separadas dariam um percentual que não fecha com as duas
+  linhas logo acima, e cada número, sozinho, pareceria certo.
 - **Os rótulos da Cascata não falam de tabela.** A célula aberta traz
   **"Síntese — Aonde Jogar"** (a linha, pelo nome) e as aberturas seguem como
   "Eixo · Mercado". Era "Síntese da célula (texto da matriz)", e os dois termos
