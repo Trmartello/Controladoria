@@ -2177,10 +2177,17 @@ async function provasModosPlano(page, largura) {
     // debaixo do prazo, junto com a prioridade. Daí sete colunas no
     // computador e no celular — a tabela deixou de ser montada de dois modos.
     const esperadas = 'O quê | Como | Quem | Quando | Ganhos | Progresso';
-    const nColunas = 7;
+    // Duas colunas de RECUO abrem a tabela (pedido do cliente, 2026-11-09): o
+    // degrau dos três níveis é estrutura, não `padding`. Elas não têm rótulo —
+    // não são conteúdo —, e por isso a conta das colunas com nome começa
+    // depois delas.
+    const nRecuos = 2;
+    const nColunas = 7 + nRecuos;
+    const comNome = tab.colunas.slice(nRecuos);
     t(`${l} a tabela mostra as cinco perguntas do método`,
-      tab.colunas.slice(0, nColunas - 1).join(' | ') === esperadas
-      && tab.colunas.length === nColunas && tab.colunas[nColunas - 1] === '',
+      comNome.slice(0, 6).join(' | ') === esperadas
+      && tab.colunas.length === nColunas && comNome[6] === ''
+      && tab.colunas.slice(0, nRecuos).every((c) => c === ''),
       JSON.stringify(tab.colunas));
     t(`${l} projeto e frente viram linhas de grupo`,
       tab.grupos.includes('Frente modos A') && tab.grupos.includes('Frente modos B'),
@@ -2246,6 +2253,8 @@ async function provasModosPlano(page, largura) {
     }, { prj });
     t(`${l} a tabela ganhou a coluna de ações`,
       colAcoes.colunas === nColunas && colAcoes.celulasAcao === nColunas
+      // O grupo do projeto atravessa as duas colunas de recuo com o título,
+      // então continua em três células: título, progresso e ações.
       && colAcoes.celulasGrupo === 3,
       JSON.stringify(colAcoes));
     t(`${l} o projeto tem criar frente, editar e excluir`,
@@ -2396,8 +2405,12 @@ async function provasModosPlano(page, largura) {
     t(`${l} a prioridade tem contraste de texto (4,5:1)`,
       empilhada.contrastePrio !== null && empilhada.contrastePrio >= 4.5,
       JSON.stringify(empilhada.contrastePrio));
-    t(`${l} e o grupo cobre cinco colunas, mantendo o "Progresso" alinhado`,
-      empilhada.colspan === '5'
+    // Sete: as cinco colunas de conteúdo mais as DUAS de recuo, que o projeto
+    // atravessa por ser o nível de cima (pedido do cliente, 2026-11-09). O que
+    // a prova guarda de verdade é o alinhamento do "Progresso" — é a coluna
+    // que se lê de cima a baixo na reunião.
+    t(`${l} e o grupo cobre as colunas de conteúdo e as de recuo, com o "Progresso" alinhado`,
+      empilhada.colspan === '7'
       && Math.abs(empilhada.progressoGrupo - empilhada.progressoAcao) <= 1,
       JSON.stringify(empilhada));
 
@@ -2632,6 +2645,59 @@ async function provasModosPlano(page, largura) {
       && (await page.evaluate(() => document.querySelector('.modal.show .modal-title')?.textContent.trim()))
         === 'Editar iniciativa');
     await fecharModal(page);
+  }
+
+  // ── O degrau dos três níveis (pedido do cliente, 2026-11-09) ─────────
+  // Projeto, frente e ação têm de começar em colunas DIFERENTES, cada uma mais
+  // à direita que a de cima. O degrau já tinha sumido calado uma vez: a regra
+  // da ação caía no mesmo `td:first-child` da frente e SUBSTITUÍA o recuo em
+  // vez de somar, então os dois títulos nasciam no mesmo pixel e a tabela
+  // mostrava dois níveis onde há três. Nada quebra quando isso acontece — só a
+  // leitura, que é a razão de a tabela existir.
+  if (pintou) {
+    const degrau = await page.evaluate(() => {
+      // Onde o TEXTO começa: borda esquerda da célula + filete + recuo.
+      const inicio = (sel) => {
+        const td = document.querySelector(sel);
+        if (!td) return null;
+        const e = getComputedStyle(td);
+        return Math.round(td.getBoundingClientRect().left
+          + parseFloat(e.borderLeftWidth) + parseFloat(e.paddingLeft));
+      };
+      const filete = (sel) => {
+        const td = document.querySelector(sel);
+        return td ? parseFloat(getComputedStyle(td).borderLeftWidth) : null;
+      };
+      return {
+        projeto: inicio('.tabela-5w2h tr.g-proj > td:first-child'),
+        frente: inicio('.tabela-5w2h tr.g-frente > td.col-recuo + td'),
+        acao: inicio('.tabela-5w2h tr.linha-5w2h > td.col-oque'),
+        fileteFrente: filete('.tabela-5w2h tr.g-frente > td.col-recuo + td'),
+        fileteAcao: filete('.tabela-5w2h tr.linha-5w2h > td.col-oque'),
+        // O recuo é de COLUNA: a frente deixa uma célula vazia antes do
+        // título, a ação deixa duas. Contado DENTRO de uma linha — contar na
+        // tabela inteira somaria uma célula por frente e diria qualquer coisa.
+        // Com `padding` no texto, estas contas dariam zero e o degrau seria só
+        // um número de CSS.
+        recuoFrente: document.querySelector('.tabela-5w2h tr.g-frente')
+          ?.querySelectorAll('td.col-recuo').length,
+        recuoAcao: document.querySelector('.tabela-5w2h tr.linha-5w2h')
+          ?.querySelectorAll('td.col-recuo').length,
+      };
+    });
+    t(`${l} a frente começa à direita do projeto, e a ação à direita da frente`,
+      degrau.projeto !== null && degrau.frente > degrau.projeto
+      && degrau.acao > degrau.frente, JSON.stringify(degrau));
+    // O filete colorido continua: a posição diz a profundidade, a cor diz de
+    // quem a linha é. Com recuo e sem filete, três degraus pequenos numa tela
+    // densa voltam a parecer uma lista plana.
+    t(`${l} e cada nível mantém o seu filete à esquerda`,
+      degrau.fileteFrente >= 3 && degrau.fileteAcao >= 3, JSON.stringify(degrau));
+    // O pedido foi explícito: "a endentação não deve ser aplicada ao texto e
+    // sim na coluna referente". Medir só a posição deixaria passar uma volta
+    // ao `padding`, que desloca o texto e come a largura da frase.
+    t(`${l} e o degrau é de COLUNA: uma célula de recuo na frente, duas na ação`,
+      degrau.recuoFrente === 1 && degrau.recuoAcao === 2, JSON.stringify(degrau));
   }
 
   // ── "Mostrar até" na TABELA (pedido do cliente, 2026-11-09) ──────────
@@ -7363,17 +7429,18 @@ async function provasAcumuladoAteOMes(page, largura) {
   const corte = await page.evaluate(() => {
     const original = SecaoMetas.anoExecucao;
     const hoje = new Date();
-    const comAno = (ano, ind) => { SecaoMetas.anoExecucao = ano; return SecaoMetas.mesDeCorte(ind); };
+    const comAno = (ano) => { SecaoMetas.anoExecucao = ano; return SecaoMetas.mesDeCorte(); };
     const r = {
       mesDeHoje: hoje.getMonth() + 1,
-      passado: comAno(hoje.getFullYear() - 1, null),
-      corrente: comAno(hoje.getFullYear(), null),
-      // Ano futuro: o calendário não o alcança, e o corte é o último mês COM
-      // realizado lançado — por indicador, porque cada um está num mês.
-      futuroComReal: comAno(hoje.getFullYear() + 1, {
-        reais: [{ ano: hoje.getFullYear() + 1, meses: { 1: 12, 3: 13 } }],
-      }),
-      futuroSemReal: comAno(hoje.getFullYear() + 1, { reais: [] }),
+      passado: comAno(hoje.getFullYear() - 1),
+      corrente: comAno(hoje.getFullYear()),
+      // Ano futuro: o calendário não o alcança, e NÃO há corte — a coluna vale
+      // o ano inteiro. Era "o último mês com realizado" até 2026-11-09, e era
+      // por isso que lançar um realizado mexia na meta do ano.
+      futuro: comAno(hoje.getFullYear() + 1),
+      // Quantos parâmetros a função recebe: zero é o que garante que o corte
+      // não possa voltar a olhar para os dados de um indicador.
+      parametros: SecaoMetas.mesDeCorte.length,
     };
     SecaoMetas.anoExecucao = original;
     return r;
@@ -7381,8 +7448,13 @@ async function provasAcumuladoAteOMes(page, largura) {
   t(`${l} ano já encerrado corta no mês 12`, corte.passado === 12, JSON.stringify(corte));
   t(`${l} ano corrente corta no mês do calendário`,
     corte.corrente === corte.mesDeHoje, JSON.stringify(corte));
-  t(`${l} ano futuro corta no último mês com realizado`,
-    corte.futuroComReal === 3 && corte.futuroSemReal === null, JSON.stringify(corte));
+  t(`${l} ano futuro não tem corte: a coluna vale o ano inteiro`,
+    corte.futuro === null, JSON.stringify(corte));
+  // O corte não olha para os dados: é do CALENDÁRIO. Esta é a prova que o
+  // pedido do cliente obriga a manter — "quando lança o realizado não deve
+  // interferir na meta total do ano".
+  t(`${l} e o corte não depende de nenhum indicador`,
+    corte.parametros === 0, `${corte.parametros} parâmetro(s)`);
 
   // A agregação DENTRO da janela: somar acumula, último mês não soma.
   const janela = await page.evaluate(() => {
@@ -7441,16 +7513,49 @@ async function provasAcumuladoAteOMes(page, largura) {
         atingiu: par.atingiu,
       };
     }, ids);
-    // Janeiro: real 12 contra meta 14 — e NÃO contra 16, a de dezembro.
-    t(`${l} a comparação usa a meta da mesma janela`,
-      lido.metaJanela === 14 && lido.metaAno === 16 && lido.atingiu === false,
+    // No ano em execução FUTURO não há corte (pedido do cliente, 2026-11-09):
+    // a coluna vale o ano inteiro dos dois lados, e lançar realizado não mexe
+    // na meta. Com `ULTIMO`, o ano inteiro de meta é o último mês com valor —
+    // 16 —, e o realizado de janeiro é 12.
+    t(`${l} sem corte, a coluna do ano mostra o ano inteiro dos dois lados`,
+      lido.corte === null && lido.metaCelula === '16' && lido.realCelula === '12',
       JSON.stringify(lido));
-    t(`${l} e a coluna do ano mostra o acumulado`,
-      lido.metaCelula === '14' && lido.realCelula === '12', JSON.stringify(lido));
-    // O ano inteiro não se perde: é o que impede ler 14 como meta do ano.
-    t(`${l} com o ano inteiro guardado no balão`,
-      /No ano inteiro: 16/.test(lido.dicaMeta), JSON.stringify(lido.dicaMeta));
+    t(`${l} e a comparação é ano contra ano`,
+      lido.metaJanela === 16 && lido.metaAno === 16 && lido.atingiu === false,
+      JSON.stringify(lido));
+    // Sem corte, o balão não promete acumulado nenhum: ele diz que o número
+    // sai dos meses e que é lá que se lança.
+    t(`${l} e o balão não fala de um acumulado que não existe`,
+      /Total dos meses deste ano/.test(lido.dicaMeta) && !/Acumulado/.test(lido.dicaMeta),
+      JSON.stringify(lido.dicaMeta));
   }
+
+  // ── A janela do ano CORRENTE, sem depender do calendário da base ─────────
+  // O "acumulado até o mês" (pedido do cliente, 2026-11-03) continua valendo
+  // onde ele quer dizer alguma coisa: no ano que está correndo, onde o corte é
+  // do CALENDÁRIO. A base de prova executa um ano futuro, então aqui a regra é
+  // medida na própria função, com o ano em execução forçado ao de hoje.
+  const corrente = await page.evaluate(() => {
+    const original = SecaoMetas.anoExecucao;
+    const ano = new Date().getFullYear();
+    const mes = new Date().getMonth() + 1;
+    SecaoMetas.anoExecucao = ano;
+    const meses = {};
+    for (let m = 1; m <= 12; m += 1) meses[m] = 10;
+    const ind = {
+      id: -1, sentido: 'MAIOR_MELHOR', agregacao: 'SOMA',
+      metas: [{ ano, valor: 120, meses }],
+      reais: [{ ano, valor: 5, meses: { 1: 5 } }],
+    };
+    const par = SecaoMetas.metaReal(ind, ano);
+    SecaoMetas.anoExecucao = original;
+    return { mes, corte: par.corte, metaJanela: par.meta.valor, metaAno: par.meta.valorAno };
+  });
+  t(`${l} no ano corrente o corte é o mês do calendário`,
+    corrente.corte === corrente.mes, JSON.stringify(corrente));
+  t(`${l} e a meta da janela acumula só até ele, guardando o ano inteiro`,
+    corrente.metaJanela === 10 * corrente.mes && corrente.metaAno === 120,
+    JSON.stringify(corrente));
   await page.evaluate(async (x) => {
     await App.api(`/api/indicadores/${x.id}/excluir`, { planejamento_id: 1 });
   }, ids);
@@ -7710,6 +7815,55 @@ async function provasMesAMes(page, largura) {
   }), exec);
   t(`${l} nenhum outro ano oferece abrir mês a mês`,
     outros.comBotao === 1 && outros.doProprio === true, JSON.stringify(outros));
+
+  // ── Lançar realizado NÃO mexe na meta do ano ─────────────────────────────
+  // Pedido do cliente (2026-11-09), e o defeito que o originou: num indicador
+  // de média com os doze meses de meta lançados, a meta do ano valia 21.000;
+  // bastava alguém lançar um realizado em maio para ela virar 18.320 — a média
+  // de janeiro a maio. A meta não tinha mudado: mudou a janela, porque o corte
+  // saía do "último mês com realizado". Esta prova reproduz exatamente isso.
+  const indM = await page.evaluate(async (ano) => {
+    const r = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Indicador janela QA', unidade: 'Litros',
+      agregacao: 'MEDIA', sentido: 'MAIOR_MELHOR',
+    });
+    const metas = [19000, 16800, 18300, 18000, 19500, 20000,
+      21600, 24000, 23500, 24000, 23500, 23800];
+    for (let m = 1; m <= 12; m++) {
+      await App.api(`/api/indicadores/${r.id}/valores`,
+        { planejamento_id: 1, tipo: 'META', mes: m, valores: { [ano]: metas[m - 1] } });
+    }
+    SecaoMetas.anoAberto = undefined;
+    await SecaoMetas.carregar();
+    return r.id;
+  }, exec);
+  const metaDoAno = () => page.evaluate(([i, a]) => document.querySelector(
+    `[data-celula-ind="${i}"][data-tipo="META"][data-ano="${a}"][data-mes="0"]`)?.textContent.trim(),
+  [indM, exec]);
+  await esperar(page, `!!document.querySelector('[data-celula-ind="${indM}"][data-mes="0"]')`, 15000);
+  const antesDoReal = await metaDoAno();
+  t(`${l} a meta do ano é a média dos doze meses (21.000)`,
+    antesDoReal === '21.000', String(antesDoReal));
+
+  await page.evaluate(async ([i, a]) => {
+    await App.api(`/api/indicadores/${i}/valores`,
+      { planejamento_id: 1, tipo: 'REAL', mes: 5, valores: { [a]: 22222 } });
+    await SecaoMetas.carregar();
+  }, [indM, exec]);
+  await esperar(page, `!!document.querySelector('[data-celula-ind="${indM}"][data-mes="0"]')`, 15000);
+  const depoisDoReal = await metaDoAno();
+  t(`${l} e lançar realizado em maio NÃO a muda`,
+    depoisDoReal === antesDoReal, `${antesDoReal} → ${depoisDoReal}`);
+
+  // O cabeçalho e as células têm de contar a mesma história: a coluna que se
+  // anuncia como o ano inteiro não pode mostrar janeiro a maio.
+  const rotuloDaColuna = await page.evaluate((a) =>
+    document.querySelector(`#secao-metas [data-fechar-ano="${a}"]`)?.textContent.trim(), exec);
+  t(`${l} e o cabeçalho do ano não promete um corte que não existe`,
+    rotuloDaColuna && !rotuloDaColuna.includes('até'), String(rotuloDaColuna));
+
+  await page.evaluate((i) =>
+    App.api(`/api/indicadores/${i}/excluir`, { planejamento_id: 1 }).catch(() => {}), indM);
 
   // ── O atingimento do mês (pedido do cliente, 2026-11-09) ──────────────────
   // Uma linha por indicador, debaixo de Meta e Real. O que quebra calado aqui é

@@ -924,7 +924,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     "12 de 16" em janeiro: atraso que não existe, no número que o Conselho lê
     primeiro. O corte é o mês de HOJE (escolha do cliente entre as duas
     opções), não o último mês lançado — lançar com atraso não pode encolher a
-    meta. Ano passado corta em dezembro; ano futuro, no último mês lançado.
+    meta. Ano passado corta em dezembro.
+    **Ano futuro NÃO tem corte** (correção de 2026-11-09, pedido do cliente:
+    "quando lança o realizado não deve interferir na meta total do ano"). Ele
+    cortava no último mês com realizado, e era o realizado movendo a janela da
+    META: num indicador de média com os doze meses lançados, a meta do ano
+    valia 21.000 e passava a 18.320 — a média de janeiro a maio — assim que
+    alguém lançasse um realizado em maio. A meta não mudava; mudava a janela,
+    porque alguém digitou do outro lado da tabela. O cabeçalho já denunciava a
+    incoerência: ele chamava `mesDeCorte` sem indicador, recebia `null` e se
+    anunciava como o ano inteiro enquanto as células mostravam cinco meses.
+    Agora o corte é **só do calendário** — `mesDeCorte()` não recebe mais
+    parâmetro nenhum, e é isso que impede a regra de voltar a olhar para os
+    dados. A bateria mede a aridade da função, além do número na tela.
     O valor do ano inteiro não some: vai no `title` da célula e do cartão
     ("Meta do ano inteiro: 16"), e o cabeçalho da coluna diz "· até <mês>" —
     um acumulado sem dizer até quando é o mesmo erro, do outro lado.
@@ -2560,6 +2572,21 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   recolhimento ("Mostrar até") aparecem na lista **e na tabela**, que são as
   duas com a árvore projeto → frente → ação, e não no quadro, que agrupa por
   situação.
+  - **Na tabela, o degrau dos três níveis é de COLUNA** (pedido do cliente,
+    2026-11-09: "endentação para evidenciar que as frentes pertencem a um
+    projeto e uma ação pertence a uma frente" e, na volta seguinte, "a
+    endentação não deve ser aplicada ao texto e sim na coluna referente").
+    São duas colunas estreitas e vazias à esquerda (`col-recuo`, `RECUOS = 2`
+    em `tabela5w2h`): o projeto as atravessa com o `colspan` do título, a
+    frente deixa uma e a ação deixa as duas. Com `padding` dentro da célula —
+    que foi a primeira tentativa — o recuo saía da largura da frase: a mesma
+    coluna "O quê" tinha texto começando em pontos diferentes e quebrando em
+    alturas diferentes conforme o nível. Antes disso nem degrau havia: a regra
+    da ação caía no mesmo `td:first-child` da frente e **substituía** o recuo
+    em vez de somar, então os dois títulos nasciam no mesmo pixel e a tabela
+    mostrava dois níveis onde há três. A bateria mede as duas coisas — a
+    posição de cada nível **e** quantas células de recuo cada linha tem, que é
+    o que impede uma volta ao `padding`.
   - A **pesquisa decide num lugar só** (`criteriosFiltro` + `acaoBate`), e cada
     modo aplica o resultado à sua maneira: a lista esconde nós da árvore, a
     tabela esconde linhas e recolhe o grupo que ficou vazio, o quadro esconde

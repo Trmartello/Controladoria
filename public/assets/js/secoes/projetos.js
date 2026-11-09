@@ -857,7 +857,17 @@ const SecaoProjetos = {
     // Colunas de conteúdo que o título do grupo atravessa: O quê, Como, Quem,
     // Quando e Ganhos. Fora delas ficam o Progresso — que o grupo usa para a
     // média, alinhada com a das ações — e as ações da linha.
-    const colunasDoTitulo = 5;
+    const colunasDoConteudo = 5;
+    // ── O recuo é de COLUNA, não de texto (pedido do cliente, 2026-11-09) ──
+    // Duas colunas estreitas e vazias à esquerda: o projeto atravessa as duas,
+    // a frente deixa uma e a ação deixa as duas. O degrau passa a ser estrutura
+    // da tabela, e não `padding` dentro da célula — com `padding`, o recuo
+    // comia a largura da frase e o texto de uma ação longa quebrava mais cedo
+    // que o da frente ao lado. Assim a coluna "O quê" das ações é uma coluna de
+    // verdade: começa no mesmo ponto em toda a tabela, e o que se desloca é a
+    // célula, não o conteúdo dela.
+    const RECUOS = 2;
+    const celulaRecuo = '<td class="col-recuo"></td>';
     // Mapa escolha → "H1 · Aonde Jogar · Eficiência — frase…", montado UMA vez
     // por pintura: `opcoesCascata` percorre horizontes, drivers e eixos a cada
     // chamada, e chamá-lo por frente faria isso dezenas de vezes na mesma
@@ -892,10 +902,15 @@ const SecaoProjetos = {
       const linhaGrupo = (classe, marca, titulo, lista, chave, extra = '', acoesLinha = '',
         recolhida = false) => {
         const media = this.mediaProgresso(lista);
+        // Quantas colunas de recuo vêm ANTES do título. Sai da classe porque é
+        // ela que já diz o nível — um parâmetro a mais para repetir a mesma
+        // informação é um a mais para alguém passar errado.
+        const recuo = classe === 'g-proj' ? 0 : 1;
         return `
         <tr class="${classe}${recolhida ? ' linha-recolhida' : ''}"
           data-recolhida="${recolhida ? '1' : '0'}" ${marca}>
-          <td colspan="${colunasDoTitulo}"><span class="grupo-celula">
+          ${celulaRecuo.repeat(recuo)}
+          <td colspan="${colunasDoConteudo + RECUOS - recuo}"><span class="grupo-celula">
             <span class="nome-grupo">${Modal.esc(titulo)}</span>
             <span class="badge text-bg-light border">${this.contaAcoes(lista.length)}</span>
             ${this.resumoStatus(lista, ['ATRASADO'])}${extra}</span></td>
@@ -1029,6 +1044,9 @@ const SecaoProjetos = {
     return `<div class="table-responsive caixa-tabela-5w2h">
       <table class="table table-sm align-middle tabela-5w2h${this.quebraAtual() ? ' quebra-linhas' : ''}">
         <thead><tr>
+          <!-- As duas colunas do recuo, sem rótulo: elas não são conteúdo, são
+               a hierarquia desenhada como estrutura. -->
+          <th class="col-recuo"></th><th class="col-recuo"></th>
           <!-- Sem coluna "Situação": o selo mora debaixo da data, junto com a
                prioridade (pedido do cliente, 2026-11-03). -->
           <th>O quê</th><th>Como</th><th>Quem</th>
@@ -1058,6 +1076,10 @@ const SecaoProjetos = {
       data-recolhida="${recolhida ? '1' : '0'}"
       data-card-acao="${a.id}" data-cadeado="desdobramento:${a.id}"
       data-status="${a.status}" data-quem="${Modal.esc(this.chaveQuem(a))}">
+      <!-- As duas colunas de recuo: a ação é o nível mais fundo e deixa as
+           duas vazias. Ver RECUOS, em tabela5w2h. (Sem crases neste
+           comentário: ele vive dentro de um template literal.) -->
+      <td class="col-recuo"></td><td class="col-recuo"></td>
       <td class="col-oque">${Modal.esc(a.o_que)}
         ${selos ? `<span class="clipe-5w2h" title="${a.comentarios} comentário(s), ${a.anexos} anexo(s)">📎 ${selos}</span>` : ''}</td>
       <td class="corta" title="${Modal.esc(a.como || '')}">${Modal.esc(a.como || '')}</td>
