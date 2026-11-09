@@ -3106,6 +3106,10 @@ async function provasAcao(page, largura) {
         'Selecione o dia da semana para repetir:',
         'Dia do mês em que haverá repetição:',
         'Data início da repetição *', 'Data fim da repetição',
+        // A lista de datas avulsas vem ANTES do período digitado e depois da
+        // grade: as três respondem "quando?", e qual delas aparece depende da
+        // repetição escolhida lá em cima.
+        'Quando? (datas em que a ação acontece)',
         'Quando? (Prazo de Execução) *',
         'Prioridade', 'Status', 'Ganhos previstos (R$)'];
       t(`${l} Campos da ação na ordem pedida`,
@@ -3120,7 +3124,7 @@ async function provasAcao(page, largura) {
         return {
           existe: true,
           todos: ['recorrencia', 'recorrencia_dias_semana', 'recorrencia_dias_mes',
-            'recorrencia_de', 'recorrencia_ate', 'quando_periodo'].every(dentro),
+            'recorrencia_de', 'recorrencia_ate', 'periodos', 'quando_periodo'].every(dentro),
           // O que NÃO é da decisão fica de fora: senão a caixa deixa de
           // significar "isto depende da escolha acima"
           semIntrusos: !dentro('quem') && !dentro('status') && !dentro('quanto'),
@@ -3144,12 +3148,23 @@ async function provasAcao(page, largura) {
           mes: await visivel('recorrencia_dias_mes'),
           de: await visivel('recorrencia_de'),
           ate: await visivel('recorrencia_ate'),
+          datas: await visivel('periodos'),
         };
       };
       const nenhuma = await trocar('NENHUMA');
       t(`${l} sem repetição, só o período de execução aparece`,
-        nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate && !nenhuma.de,
+        nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate && !nenhuma.de
+          && !nenhuma.datas,
         JSON.stringify(nenhuma));
+      // Datas avulsas: some TUDO o que é da grade — inclusive o "de/até" da
+      // rotina, que aqui não quer dizer nada: não há o que repetir entre duas
+      // datas quando as datas são as digitadas.
+      const avulsas = await trocar('DATAS');
+      t(`${l} em datas específicas, só a lista de datas aparece`,
+        avulsas.datas && !avulsas.periodo && !avulsas.semana && !avulsas.mes
+          && !avulsas.de && !avulsas.ate,
+        JSON.stringify(avulsas));
+      await trocar('NENHUMA');
 
       // ── O que se digita na data APARECE ─────────────────────────────────
       // O campo de data mostra dd/mm/aaaa por um rótulo sobreposto, com o texto
@@ -4511,6 +4526,174 @@ async function provasCenarioPlanoAcao(page) {
 
   await page.evaluate(async (m) => {
     await App.api(`/api/cenario/${m.item}/excluir`, { planejamento_id: m.plan }).catch(() => {});
+    App.mostrarSecao('painel');
+  }, massa);
+}
+
+/**
+ * Ação em DATAS ESPECÍFICAS (pedido do cliente, 2026-11-09): o treinamento que
+ * acontece em abril e de novo em agosto, e em mais nenhuma data.
+ *
+ * O que estas provas guardam, e que quebra calado:
+ *
+ * - **Qual data manda.** É a primeira EM ABERTO, não a mais próxima de hoje. A
+ *   rotina semanal faz o contrário — `Recorrencia::reagendar` pula as
+ *   ocorrências perdidas —, e copiar aquele comportamento para cá apagaria em
+ *   silêncio um compromisso que alguém marcou a dedo. Com abril vencido e não
+ *   concluído, a ação segue cobrando abril.
+ * - **Concluir uma data não encerra a ação**: ela reabre na seguinte, zerada.
+ *   Só quando não sobra nenhuma é que conclui de vez.
+ * - **`concluido_em` é por período**, e salvar outro campo não o desfaz.
+ *   Sem isto, corrigir o "Como?" ressuscitaria o treinamento de abril.
+ *
+ * As datas vão de PROPÓSITO em 2026, já vencidas: é o caso que o cliente
+ * descreveu e o único em que o "não pula" se pode medir.
+ */
+async function provasDatasAvulsas(page) {
+  const l = '[desktop] Datas avulsas:';
+  const ABR = { data_inicio: '2026-04-01', data_fim: '2026-04-30' };
+  const AGO = { data_inicio: '2026-08-01', data_fim: '2026-08-30' };
+
+  const massa = await page.evaluate(async (datas) => {
+    const plan = await App.planejamento();
+    const prj = await App.api('/api/projetos', { planejamento_id: plan.id,
+      titulo: 'Projeto de prova (datas avulsas)', ano: 2027, responsavel: 'QA' });
+    const ini = await App.api('/api/iniciativas',
+      { planejamento_id: plan.id, projeto_id: prj.id, titulo: 'Frente de prova (datas)' });
+    const base = {
+      planejamento_id: plan.id, projeto_id: prj.id, iniciativa_id: ini.id,
+      o_que: 'Treinamento de prova', como: 'Turma por filial', quem: 'QA',
+      prioridade: 'MEDIA', progresso: 0, recorrencia: 'DATAS',
+      // FORA de ordem de propósito: quem digita não ordena, e é o servidor que
+      // tem de saber que abril vem antes de agosto.
+      periodos: [datas.AGO, datas.ABR],
+    };
+    const acao = await App.api('/api/desdobramentos', { ...base, status: 'NAO_INICIADO' });
+    return { plan: plan.id, prj: prj.id, acao: acao.id, base };
+  }, { ABR, AGO });
+
+  // Lê a ação pela mesma rota da tela: é o `periodos` que a pintura consome.
+  const ler = () => page.evaluate(async (m) => {
+    const r = await App.api(`/api/projetos?planejamento_id=${m.plan}`, null, 'GET');
+    const prj = (r.projetos || r).find((x) => x.id == m.prj);
+    const a = (prj?.desdobramentos || []).find((x) => x.id == m.acao) || {};
+    return {
+      inicio: a.data_inicio, fim: a.data_fim, status: a.status, progresso: a.progresso,
+      periodos: (a.periodos || []).map((p) => `${p.data_fim}${p.concluido_em ? '✓' : ''}`),
+      resumo: SecaoProjetos.resumoDatas(a),
+    };
+  }, massa);
+
+  const criada = await ler();
+  t(`${l} a lista chega ordenada por vencimento, não como foi digitada`,
+    JSON.stringify(criada.periodos) === JSON.stringify(['2026-04-30', '2026-08-30']),
+    JSON.stringify(criada.periodos));
+  t(`${l} a ação aponta para a primeira data em aberto`,
+    criada.inicio === ABR.data_inicio && criada.fim === ABR.data_fim, JSON.stringify(criada));
+  // Vencida e não concluída: ATRASADA, e não "pulada" para agosto — é a
+  // decisão do cliente, e o contrário seria perder a cobrança de abril.
+  t(`${l} abril vencido continua sendo cobrado, atrasado`,
+    criada.status === 'ATRASADO', JSON.stringify(criada));
+  t(`${l} a tela diz qual data é e quantas são`,
+    criada.resumo === '1ª de 2', String(criada.resumo));
+
+  // Salvar OUTRO campo não pode mexer no prazo nem na lista.
+  const texto = await page.evaluate(async (m) => {
+    await App.api(`/api/desdobramentos/${m.acao}`,
+      { ...m.base, status: 'EM_ANDAMENTO', como: 'Turma por filial, com prova ao fim' });
+    return true;
+  }, massa).then(ler);
+  t(`${l} corrigir o texto não mexe na data nem na lista`,
+    texto.fim === ABR.data_fim
+      && JSON.stringify(texto.periodos) === JSON.stringify(criada.periodos),
+    JSON.stringify(texto));
+
+  // ── A conclusão, pelos DOIS caminhos ──────────────────────────────────────
+  // O formulário conclui abril; a barra de progresso conclui agosto. Os dois
+  // passam pela mesma regra, e um `UPDATE` cru em qualquer um deles faria a
+  // ação "concluir" sem nunca reabrir.
+  const r1 = await page.evaluate((m) => App.api(`/api/desdobramentos/${m.acao}`,
+    { ...m.base, status: 'CONCLUIDO' }), massa);
+  const depois1 = await ler();
+  t(`${l} concluída pelo formulário, a ação reabre em agosto`,
+    r1.reagendada_para === AGO.data_fim && depois1.fim === AGO.data_fim
+      && depois1.inicio === AGO.data_inicio, JSON.stringify({ r1, depois1 }));
+  t(`${l} abril fica marcado como feito e agosto segue em aberto`,
+    JSON.stringify(depois1.periodos) === JSON.stringify(['2026-04-30✓', '2026-08-30']),
+    JSON.stringify(depois1.periodos));
+  t(`${l} e ela reabre zerada, não concluída`,
+    depois1.progresso === 0 && depois1.status !== 'CONCLUIDO', JSON.stringify(depois1));
+  t(`${l} a tela passa a dizer a segunda data`,
+    depois1.resumo === '2ª de 2 (1 concluída)', String(depois1.resumo));
+
+  const r2 = await page.evaluate((m) => App.api(`/api/desdobramentos/${m.acao}/progresso`,
+    { planejamento_id: m.plan, progresso: 100, concluir: true }), massa);
+  const depois2 = await ler();
+  t(`${l} concluída a última data, a ação conclui de vez`,
+    !r2.reagendada_para && depois2.status === 'CONCLUIDO' && depois2.progresso === 100,
+    JSON.stringify({ r2, depois2 }));
+  t(`${l} e as duas datas ficam registradas como feitas`,
+    JSON.stringify(depois2.periodos) === JSON.stringify(['2026-04-30✓', '2026-08-30✓'])
+      && depois2.resumo === '2 de 2 concluídas', JSON.stringify(depois2));
+
+  // ── O que a lista NÃO aceita ──────────────────────────────────────────────
+  // Lista vazia tiraria a ação do atraso, dos avisos e do prazo do projeto sem
+  // nada na tela dizer isso; data repetida é engano de quem digitou, e removê-la
+  // calado esconderia o engano em vez de resolvê-lo.
+  const recusas = await page.evaluate(async (m) => {
+    const tentar = (periodos) => App.api(`/api/desdobramentos/${m.acao}`,
+      { ...m.base, status: 'EM_ANDAMENTO', periodos }).then(() => 'passou').catch((e) => e.message);
+    return { vazia: await tentar([]), repetida: await tentar([m.base.periodos[0], m.base.periodos[0]]) };
+  }, massa);
+  t(`${l} ação em datas específicas sem data nenhuma é recusada`,
+    /ao menos uma data/.test(recusas.vazia), recusas.vazia);
+  t(`${l} data repetida é recusada, não removida calada`,
+    /duas datas iguais/.test(recusas.repetida), recusas.repetida);
+
+  // ── O formulário ──────────────────────────────────────────────────────────
+  // Data já cumprida não se edita nem some pelo ×: mudar a data de um
+  // treinamento que aconteceu é reescrever o passado.
+  await page.evaluate(() => App.mostrarSecao('projetos'));
+  await esperar(page, "!document.getElementById('secao-projetos').classList.contains('d-none')", 15000);
+  // O modal recebe a AÇÃO, não o id dela — e tem de ser a lida da API agora,
+  // com os `periodos` e o `concluido_em` que a trava da linha consome.
+  await page.evaluate(async (m) => {
+    const r = await App.api(`/api/projetos?planejamento_id=${m.plan}`, null, 'GET');
+    const prj = (r.projetos || r).find((x) => x.id == m.prj);
+    const acao = (prj?.desdobramentos || []).find((x) => x.id == m.acao);
+    SecaoProjetos.modalDesdobramento(m.prj, acao, acao.iniciativa_id);
+  }, massa);
+  const abriu = await esperar(page, "!!document.querySelector('.lista-periodos')", 8000);
+  t(`${l} o formulário abre com a lista de datas`, abriu);
+  if (abriu) {
+    const linhas = await page.evaluate(() => [...document.querySelectorAll('.periodo-linha')].map((ln) => ({
+      ini: ln.querySelector('[data-periodo-inicio]')?.value,
+      fim: ln.querySelector('[data-periodo-fim]')?.value,
+      travada: !!ln.querySelector('[data-periodo-fim]')?.disabled,
+      semX: !ln.querySelector('[data-remove-periodo]'),
+    })));
+    t(`${l} as duas datas vêm preenchidas`,
+      linhas.length === 2 && linhas[0].fim === ABR.data_fim && linhas[1].fim === AGO.data_fim,
+      JSON.stringify(linhas));
+    t(`${l} data já cumprida vem travada e sem o × que a apaga`,
+      linhas.every((x) => x.travada && x.semX), JSON.stringify(linhas));
+    // O + acrescenta linha, e a nova nasce editável.
+    const aoAdicionar = await page.evaluate(() => {
+      document.querySelector('[data-add-periodo]').click();
+      const todas = document.querySelectorAll('.periodo-linha');
+      const nova = todas[todas.length - 1];
+      return { total: todas.length, editavel: !nova.querySelector('[data-periodo-fim]').disabled,
+        temX: !!nova.querySelector('[data-remove-periodo]') };
+    });
+    t(`${l} "+ Adicionar data" abre uma linha nova e editável`,
+      aoAdicionar.total === 3 && aoAdicionar.editavel && aoAdicionar.temX,
+      JSON.stringify(aoAdicionar));
+    await page.evaluate(() => Modal.bsModal.hide());
+    await esperar(page, "!document.getElementById('modal-form').classList.contains('show')", 5000);
+  }
+
+  await page.evaluate(async (m) => {
+    await App.api(`/api/projetos/${m.prj}/excluir`, { planejamento_id: m.plan }).catch(() => {});
     App.mostrarSecao('painel');
   }, massa);
 }
@@ -8343,6 +8526,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasExclusaoComVinculo(page);
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);
+  await provasDatasAvulsas(page);
   await provasProjecao(page, 'desktop');
   await provasProjecaoProposta(page, 'desktop');
   await provasProjecaoPremissas(page, 'desktop');

@@ -236,6 +236,38 @@ if ($tipoStatus && !str_contains((string)$tipoStatus, 'PAUSADO')) {
     echo "migrate: status da ação ampliado (PAUSADO, AGUARDANDO_VALIDACAO).\n";
 }
 
+// Datas avulsas (pedido do cliente, 2026-11-09): a ação que acontece em
+// períodos escolhidos a dedo — um treinamento em abril e outro em agosto —, e
+// não numa grade semanal ou mensal. A tabela guarda os períodos; a ação segue
+// com UM `data_inicio`/`data_fim`, espelhando o corrente, que é o que mantém o
+// atraso, os avisos e o prazo do projeto funcionando sem saber desta tabela.
+$tipoRec = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'desdobramento' AND COLUMN_NAME = 'recorrencia'"
+)->fetchColumn();
+if ($tipoRec && !str_contains((string)$tipoRec, 'DATAS')) {
+    $pdo->exec(
+        "ALTER TABLE desdobramento MODIFY COLUMN recorrencia
+         ENUM('NENHUMA','SEMANAL','MENSAL','DATAS') NOT NULL DEFAULT 'NENHUMA'"
+    );
+    echo "migrate: recorrência da ação ampliada (DATAS).\n";
+}
+if (!tabelaExiste($pdo, 'desdobramento_periodo')) {
+    $pdo->exec(
+        "CREATE TABLE desdobramento_periodo (
+           id               INT AUTO_INCREMENT PRIMARY KEY,
+           desdobramento_id INT NOT NULL,
+           data_inicio      DATE NULL,
+           data_fim         DATE NOT NULL,
+           concluido_em     DATETIME NULL,
+           CONSTRAINT fk_dperiodo_desd FOREIGN KEY (desdobramento_id)
+             REFERENCES desdobramento(id) ON DELETE CASCADE,
+           KEY idx_dperiodo_acao (desdobramento_id, data_fim)
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    echo "migrate: tabela desdobramento_periodo criada.\n";
+}
+
 // O cruzamento da SWOT vai direto ao plano de ação, como o fator da SWOT: as
 // três colunas são as mesmas de lá, e por isso a fila de "aguardando plano de
 // ação" continua sendo UMA — a origem muda o selo, não a pergunta.
