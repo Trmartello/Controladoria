@@ -4607,13 +4607,15 @@ async function provasOrdenarIndicadores(page) {
   t(`${l} a tabela abre com os indicadores`, pintou);
   if (!pintou) return;
 
-  // A armadilha desta tela: o item arrastável carrega as DUAS linhas.
-  const duasLinhas = await page.evaluate((s) => {
+  // A armadilha desta tela: o item arrastável carrega as TRÊS linhas do
+  // indicador — Meta, Real e % (o atingimento entrou em 2026-11-09). Arrastar
+  // uma `<tr>` solta levaria um terço do indicador e quebraria o `rowspan`.
+  const tresLinhas = await page.evaluate((s) => {
     const corpos = [...document.querySelectorAll(s)];
-    return corpos.length && corpos.every((c) => c.querySelectorAll('tr').length === 2);
+    return corpos.length && corpos.every((c) => c.querySelectorAll('tr').length === 3);
   }, sel);
-  t(`${l} o item do arraste é o tbody, com a linha Meta e a linha Real juntas`,
-    duasLinhas === true, String(duasLinhas));
+  t(`${l} o item do arraste é o tbody, com as linhas Meta, Real e % juntas`,
+    tresLinhas === true, String(tresLinhas));
 
   const temAlca = await page.evaluate((s) => {
     const a = document.querySelector(s)?.querySelector('.alca-arrastar');
@@ -7709,11 +7711,112 @@ async function provasMesAMes(page, largura) {
   t(`${l} nenhum outro ano oferece abrir mês a mês`,
     outros.comBotao === 1 && outros.doProprio === true, JSON.stringify(outros));
 
-  await page.evaluate(async (id) => {
-    await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 }).catch(() => {});
+  // ── O atingimento do mês (pedido do cliente, 2026-11-09) ──────────────────
+  // Uma linha por indicador, debaixo de Meta e Real. O que quebra calado aqui é
+  // a conta: o percentual sair de um número e a leitura mostrar outro, ou o
+  // sentido «menor melhor» dividir ao contrário — gastar metade do orçado
+  // apareceria como 50% de atingimento, quando é o dobro do resultado pedido.
+  // Indicador PRÓPRIO, e lançado pela API: a massa do `ind` acima chegou aqui
+  // com meses apagados, metas de outra prova e a agregação trocada para média.
+  // Medir a divisão em cima dela seria medir o resto de outra prova. O caminho
+  // da célula (digitar no mês) já está provado logo acima; o que falta provar é
+  // a CONTA.
+  const indA = await page.evaluate(async (ano) => {
+    const r = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: 'Indicador atingimento QA', unidade: 'R$ mil',
+      agregacao: 'SOMA', sentido: 'MAIOR_MELHOR',
+    });
+    const lanca = (tipo, mes, valor) => App.api(`/api/indicadores/${r.id}/valores`,
+      { planejamento_id: 1, tipo, mes, valores: { [ano]: valor } });
+    await lanca('META', 1, 100);
+    await lanca('META', 2, 100);
+    await lanca('REAL', 1, 80);
+    await lanca('REAL', 2, 120);
+    SecaoMetas.anoAberto = undefined;
+    await SecaoMetas.carregar();
+    return r.id;
+  }, exec);
+  const abriuPct = await esperar(page,
+    `!!document.querySelector('[data-atingimento-ind="${indA}"][data-mes="1"]')`, 15000);
+  t(`${l} a linha de atingimento pinta`, abriuPct);
+
+  const pct = (mes) => page.evaluate(([i, a, m]) => {
+    const td = document.querySelector(
+      `[data-atingimento-ind="${i}"][data-ano="${a}"][data-mes="${m}"]`);
+    return td && { txt: td.textContent.trim(), cor: (td.className.match(/text-\w+/) || [])[0],
+      dica: td.getAttribute('title') };
+  }, [indA, exec, mes]);
+
+  const temLinha = await page.evaluate((i) =>
+    !!document.querySelector(`tbody[data-id="${i}"] tr.linha-atingimento`), indA);
+  t(`${l} o indicador ganha a linha própria de atingimento`, temLinha === true);
+
+  const jan = await pct(1);
+  t(`${l} 80 sobre meta 100 dá 80% em vermelho`,
+    jan && jan.txt === '80%' && jan.cor === 'text-danger', JSON.stringify(jan));
+  const fev = await pct(2);
+  t(`${l} 120 sobre meta 100 dá 120% em verde`,
+    fev && fev.txt === '120%' && fev.cor === 'text-success', JSON.stringify(fev));
+  const mar = await pct(3);
+  t(`${l} mês sem meta nem real fica em "—"`,
+    mar && mar.txt === '—' && mar.cor === 'text-muted', JSON.stringify(mar));
+
+  // O ano acompanha, na MESMA janela que as duas linhas de cima usam: a conta
+  // do percentual sai do número que a célula mostra, não de outro.
+  const noAno = await page.evaluate(([i, a]) => {
+    const pega = (sel) => document.querySelector(sel)?.textContent.trim();
+    return {
+      meta: pega(`[data-celula-ind="${i}"][data-tipo="META"][data-ano="${a}"][data-mes="0"]`),
+      real: pega(`[data-celula-ind="${i}"][data-tipo="REAL"][data-ano="${a}"][data-mes="0"]`),
+      pct: pega(`[data-atingimento-ind="${i}"][data-ano="${a}"][data-mes="0"]`),
+    };
+  }, [indA, exec]);
+  t(`${l} e a coluna do ano divide o que ela mesma mostra`,
+    noAno.pct === `${Math.round(100 * (Number(noAno.real) / Number(noAno.meta)))}%`,
+    JSON.stringify(noAno));
+
+  // ── «Menor melhor» inverte a divisão ─────────────────────────────────────
+  await page.evaluate((id) => App.api(`/api/indicadores/${id}`, {
+    planejamento_id: 1, nome: 'Indicador atingimento QA', unidade: 'R$ mil', agregacao: 'SOMA',
+    sentido: 'MENOR_MELHOR',
+  }).then(() => SecaoMetas.carregar()), indA);
+  await esperar(page, `!!document.querySelector('[data-atingimento-ind="${indA}"]')`, 15000);
+  const janMenor = await pct(1);
+  t(`${l} em "menor melhor", gastar 80 de 100 é 125% e fica verde`,
+    janMenor && janMenor.txt === '125%' && janMenor.cor === 'text-success',
+    JSON.stringify(janMenor));
+  const fevMenor = await pct(2);
+  t(`${l} e estourar a meta fica abaixo de 100%, em vermelho`,
+    fevMenor && fevMenor.txt === '83%' && fevMenor.cor === 'text-danger',
+    JSON.stringify(fevMenor));
+
+  // ── Negativo não vira percentual, mas a COR continua dizendo a verdade ───
+  // Meta de resultado financeiro e de dívida é negativa, e −50 ÷ −100 = 50%
+  // diria "metade do caminho" para quem já superou a meta.
+  await page.evaluate(async ([id, ano]) => {
+    await App.api(`/api/indicadores/${id}`, {
+      planejamento_id: 1, nome: 'Indicador atingimento QA', unidade: 'R$ mil',
+      agregacao: 'SOMA', sentido: 'MAIOR_MELHOR',
+    });
+    const lanca = (tipo, mes, valor) => App.api(`/api/indicadores/${id}/valores`,
+      { planejamento_id: 1, tipo, mes, valores: { [ano]: valor } });
+    await lanca('META', 1, -100);
+    await lanca('REAL', 1, -50);
+    await SecaoMetas.carregar();
+  }, [indA, exec]);
+  await esperar(page, `!!document.querySelector('[data-atingimento-ind="${indA}"][data-mes="1"]')`, 15000);
+  const negativo = await pct(1);
+  t(`${l} com meta negativa não há percentual, e a cor mostra que atingiu`,
+    negativo && negativo.txt === '—' && negativo.cor === 'text-success'
+    && /negativo/i.test(negativo.dica || ''), JSON.stringify(negativo));
+
+  await page.evaluate(async (ids) => {
+    for (const id of ids) {
+      await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: 1 }).catch(() => {});
+    }
     SecaoMetas.anoAberto = undefined;
     App.mostrarSecao('painel');
-  }, ind);
+  }, [ind, indA]);
 }
 
 /**

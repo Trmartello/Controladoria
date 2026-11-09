@@ -229,16 +229,32 @@ const SecaoMetas = {
    * é só leitura: deixá-lo editável aceitaria um número que a leitura ignora na
    * linha seguinte — o pior tipo de campo, o que parece ter funcionado.
    */
-  celula(ind, tipo, ano, entrada, mes = 0) {
-    const anual = mes === 0;
+  /**
+   * O número que uma célula MOSTRA — mês a mês ou no ano.
+   *
+   * Existe para a linha de atingimento dividir exatamente o que as duas linhas
+   * de cima exibem. Com duas contas separadas, o percentual sairia de um valor
+   * e a leitura de outro, e a divisão não fecharia com a coluna — o tipo de
+   * erro que ninguém reporta porque cada número, sozinho, parece certo.
+   */
+  valorDaCelula(ind, ano, entrada, mes = 0) {
+    if (mes !== 0) {
+      return entrada && entrada.meses ? entrada.meses[mes] ?? null : null;
+    }
     // No ano em execução a célula do ano mostra o ACUMULADO até o mês de
     // corte (pedido do cliente, 2026-11-03) — a mesma janela da meta logo
     // acima, para as duas linhas se compararem. Os meses continuam todos ali,
     // e o balão diz o ano inteiro.
+    const corte = ano === this.anoExecucao ? this.mesDeCorte(ind) : null;
+    return corte
+      ? this.valorAte(entrada, ind.agregacao, corte)
+      : (entrada ? entrada.valor : null);
+  },
+
+  celula(ind, tipo, ano, entrada, mes = 0) {
+    const anual = mes === 0;
     const corte = anual && ano === this.anoExecucao ? this.mesDeCorte(ind) : null;
-    const bruto = anual
-      ? (corte ? this.valorAte(entrada, ind.agregacao, corte) : (entrada ? entrada.valor : null))
-      : (entrada && entrada.meses ? entrada.meses[mes] ?? null : null);
+    const bruto = this.valorDaCelula(ind, ano, entrada, mes);
     // **Um caminho de lançamento por ano** (decisão do cliente): o ano em
     // execução é lançado MÊS A MÊS e a célula do ano mostra o total, sem campo;
     // os demais anos recebem o valor anual e não têm meses. Dois campos para o
@@ -284,6 +300,75 @@ const SecaoMetas = {
     if (ano !== this.anoAberto) return this.celula(ind, tipo, ano, entrada);
     return MESES_CURTOS.map((_, i) => this.celula(ind, tipo, ano, entrada, i + 1)).join('')
       + this.celula(ind, tipo, ano, entrada);
+  },
+
+  /**
+   * O atingimento de uma célula: quanto o realizado cumpriu da meta
+   * (pedido do cliente, 2026-11-09 — "deve conter o percentual do atingimento
+   * no mês").
+   *
+   * Duas coisas que não devem ser desfeitas:
+   *
+   * **O sentido inverte a divisão.** Em «maior melhor» é `real ÷ meta`; em
+   * «menor melhor» é `meta ÷ real`, senão gastar metade do orçado apareceria
+   * como 50% de atingimento, quando é o dobro do resultado pedido. O
+   * `atingiu` (verdadeiro/falso) sai da MESMA comparação que `metaReal` já
+   * usa — a cor e o número nunca discordam.
+   *
+   * **Sinal negativo não vira percentual.** Meta de resultado financeiro e de
+   * dívida é negativa, e `−50 ÷ −100 = 50%` diria "metade do caminho" para
+   * quem, em «maior melhor», já superou a meta. Não há divisão honesta aí:
+   * a célula mostra "—" e explica no balão, e a COR continua dizendo a
+   * verdade, porque a comparação de `atingiu` funciona com negativo.
+   */
+  atingimento(ind, ano, meta, real, mes = 0) {
+    const m = this.valorDaCelula(ind, ano, meta, mes);
+    const r = this.valorDaCelula(ind, ano, real, mes);
+    if (m === null || m === undefined || m === '' || r === null || r === undefined || r === '') {
+      return { pct: null, atingiu: null, motivo: 'Sem meta ou sem realizado neste período.' };
+    }
+    const vm = Number(m);
+    const vr = Number(r);
+    if (!isFinite(vm) || !isFinite(vr)) {
+      return { pct: null, atingiu: null, motivo: 'Valor não numérico.' };
+    }
+    const menor = ind.sentido === 'MENOR_MELHOR';
+    const atingiu = menor ? vr <= vm : vr >= vm;
+    if (vm === 0) {
+      return { pct: null, atingiu, motivo: 'Meta zero: não há percentual a calcular.' };
+    }
+    if (vm < 0 || (menor && vr <= 0)) {
+      return {
+        pct: null,
+        atingiu,
+        motivo: 'Valor negativo: a divisão inverteria o sentido do percentual. '
+          + 'A cor continua indicando se a meta foi atingida.',
+      };
+    }
+    return { pct: menor ? vm / vr : vr / vm, atingiu, motivo: '' };
+  },
+
+  celulaAtingimento(ind, ano, meta, real, mes = 0) {
+    const { pct, atingiu, motivo } = this.atingimento(ind, ano, meta, real, mes);
+    const cor = atingiu === null
+      ? 'text-muted'
+      : (atingiu ? 'text-success fw-bold' : 'text-danger fw-bold');
+    const texto = pct === null
+      ? '—'
+      : `${(100 * pct).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%`;
+    const quando = mes ? `${MESES_CURTOS[mes - 1]}/${ano}` : String(ano);
+    const regra = ind.sentido === 'MENOR_MELHOR' ? 'meta ÷ realizado' : 'realizado ÷ meta';
+    const dica = motivo || `Atingimento de ${quando} (${regra}).`;
+    return `<td class="valor${mes ? ' celula-mes' : ''} celula-atingimento ${cor}"
+      data-atingimento-ind="${ind.id}" data-ano="${ano}" data-mes="${mes}"
+      title="${Modal.esc(dica)}">${texto}</td>`;
+  },
+
+  /** A linha de atingimento de um ano, espelhando `celulasDoAno`. */
+  celulasAtingimentoDoAno(ind, ano, meta, real) {
+    if (ano !== this.anoAberto) return this.celulaAtingimento(ind, ano, meta, real);
+    return MESES_CURTOS.map((_, i) => this.celulaAtingimento(ind, ano, meta, real, i + 1)).join('')
+      + this.celulaAtingimento(ind, ano, meta, real);
   },
 
   /**
@@ -518,16 +603,16 @@ const SecaoMetas = {
           title="Revisar as metas dos anos de lançamento anual — grava versão nova e preserva a anterior">⟳ Revisar</button>` : ''}
         <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar indicador">✎</button>
         <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir">×</button>` : '';
-      // Um `<tbody>` POR INDICADOR, e não dois `<tr>` soltos num tbody só: o
-      // indicador ocupa duas linhas (Meta e Real) com `rowspan`, e arrastar
-      // precisa mover as duas juntas. Com o tbody o arraste move um elemento
+      // Um `<tbody>` POR INDICADOR, e não `<tr>` soltos num tbody só: o
+      // indicador ocupa TRÊS linhas (Meta, Real e %) com `rowspan`, e arrastar
+      // precisa mover as três juntas. Com o tbody o arraste move um elemento
       // só, e o `rowspan` continua válido — separar as linhas quebraria a
       // tabela no meio do gesto.
       return `
         <tbody data-id="${i.id}">
         <tr>
-          ${podeOrdenar ? `<td rowspan="2" class="align-middle celula-alca">${Ordenar.alca()}</td>` : ''}
-          <td rowspan="2" class="align-middle celula-nome">
+          ${podeOrdenar ? `<td rowspan="3" class="align-middle celula-alca">${Ordenar.alca()}</td>` : ''}
+          <td rowspan="3" class="align-middle celula-nome">
             <strong>${Modal.esc(i.nome)}</strong>
             ${Number(i.metrica_ancora) ? '<span class="badge badge-ancora ms-1">âncora</span>' : ''}
             ${revisada ? '<span class="badge text-bg-warning ms-1" title="Meta revisada — versões anteriores preservadas">rev.</span>' : ''}
@@ -538,11 +623,22 @@ const SecaoMetas = {
           </td>
           <td class="small text-muted celula-rotulo">Meta</td>
           ${anos.map((a) => this.celulasDoAno(i, 'META', a, metas[a] || null)).join('')}
-          <td rowspan="2" class="align-middle text-nowrap celula-acoes">${acoes}</td>
+          <td rowspan="3" class="align-middle text-nowrap celula-acoes">${acoes}</td>
         </tr>
         <tr class="linha-real">
           <td class="small text-muted celula-rotulo">Real</td>
           ${anos.map((a) => this.celulasDoAno(i, 'REAL', a, reais[a] || null)).join('')}
+        </tr>
+        <!-- O atingimento (pedido do cliente, 2026-11-09). Linha PRÓPRIA, e
+             não um segundo número dentro da célula do Real: ali mora o campo
+             de lançamento, e o percentual encostado nele viraria coisa que
+             parece digitável. Aqui ele lê na vertical, debaixo do par que o
+             produziu, mês a mês. -->
+        <tr class="linha-atingimento">
+          <td class="small text-muted celula-rotulo"
+            title="Atingimento: quanto o realizado cumpriu da meta no período">%</td>
+          ${anos.map((a) =>
+    this.celulasAtingimentoDoAno(i, a, metas[a] || null, reais[a] || null)).join('')}
         </tr>
         </tbody>`;
     }).join('');
@@ -560,6 +656,8 @@ const SecaoMetas = {
         Nos demais anos, o lançamento é o valor anual.` : ''}${App.podeEditar()
         ? ' Clique no número para lançar ou corrigir; <strong>⟳ Revisar</strong> grava uma versão nova da meta, preservando a anterior.'
         : ' Revisões de meta preservam as versões anteriores.'}
+      A linha <strong>%</strong> é o atingimento do período — verde quando a meta foi
+      cumprida, vermelho quando não.
       ${podeOrdenar ? 'Arraste pelo ⠿ para reordenar os indicadores — a nova ordem é salva na hora e vale também no relatório.' : ''}</p>
       <div class="alert alert-danger d-none" data-aviso-metas role="alert"></div>
       <div class="row g-3 mb-3" data-cartoes-metas>${cartoes}</div>

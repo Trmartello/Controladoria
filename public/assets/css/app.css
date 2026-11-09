@@ -366,6 +366,15 @@ table.tabela-cadastro td { vertical-align: middle; }
 .tabela-metas th.col-ano { min-width: 84px; text-align: center; }
 .tabela-metas td.valor { text-align: right; white-space: nowrap; }
 .tabela-metas tr.linha-real td { color: #555; background: #fafcfb; }
+/* O atingimento (pedido do cliente, 2026-11-09): a terceira linha do
+   indicador. Fundo um tom abaixo do "Real" e o número menor — ela é LEITURA
+   derivada das duas de cima, e com o mesmo peso delas a coluna passaria a ter
+   três números disputando o olho. A cor do texto (verde/vermelho) vem das
+   classes do Bootstrap na própria célula, então aqui não se fixa `color`:
+   fixá-lo apagaria justamente o sinal que a linha existe para dar. */
+.tabela-metas tr.linha-atingimento td { background: #f4f8f6; }
+.tabela-metas tr.linha-atingimento td.valor { font-size: .82rem; }
+.tabela-metas tr.linha-atingimento td.celula-mes { background: #e9f1ec; }
 .badge-ancora { background: var(--dourado); }
 
 /* ===== A célula que se digita =====
@@ -476,6 +485,10 @@ table.tabela-cadastro td { vertical-align: middle; }
     background: #fff;
   }
   .tabela-metas tr.linha-real .celula-rotulo { background: #fafcfb; }
+  /* A coluna parada tem fundo PRÓPRIO (ela cobre o que passa por baixo), então
+     cada linha precisa repetir o seu aqui — sem isto, o rótulo "%" sairia
+     branco ao lado de uma linha cinza. */
+  .tabela-metas tr.linha-atingimento .celula-rotulo { background: #f4f8f6; }
 }
 @media (max-width: 767.98px) {
   .tabela-metas th.col-indicador, .tabela-metas .celula-nome {
