@@ -501,6 +501,10 @@ const SecaoMetas = {
     const cartoes = this.cartoes(horizontes, indicadores);
 
     // ---- Tabela plurianual (linha Meta + linha Real por indicador)
+    // A coluna da alça só existe para quem edita: para o perfil de leitura ela
+    // seria uma coluna a mais numa tabela que já é larga, com um gesto que não
+    // leva a lugar nenhum.
+    const podeOrdenar = App.podeEditar() && indicadores.length > 1;
     const linhas = indicadores.map((i) => {
       const metas = Object.fromEntries(i.metas.map((m) => [m.ano, m]));
       const reais = Object.fromEntries(i.reais.map((r) => [r.ano, r]));
@@ -514,8 +518,15 @@ const SecaoMetas = {
           title="Revisar as metas dos anos de lançamento anual — grava versão nova e preserva a anterior">⟳ Revisar</button>` : ''}
         <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar indicador">✎</button>
         <button class="btn btn-sm btn-outline-danger" data-excluir="${i.id}" title="Excluir">×</button>` : '';
+      // Um `<tbody>` POR INDICADOR, e não dois `<tr>` soltos num tbody só: o
+      // indicador ocupa duas linhas (Meta e Real) com `rowspan`, e arrastar
+      // precisa mover as duas juntas. Com o tbody o arraste move um elemento
+      // só, e o `rowspan` continua válido — separar as linhas quebraria a
+      // tabela no meio do gesto.
       return `
+        <tbody data-id="${i.id}">
         <tr>
+          ${podeOrdenar ? `<td rowspan="2" class="align-middle celula-alca">${Ordenar.alca()}</td>` : ''}
           <td rowspan="2" class="align-middle celula-nome">
             <strong>${Modal.esc(i.nome)}</strong>
             ${Number(i.metrica_ancora) ? '<span class="badge badge-ancora ms-1">âncora</span>' : ''}
@@ -532,7 +543,8 @@ const SecaoMetas = {
         <tr class="linha-real">
           <td class="small text-muted celula-rotulo">Real</td>
           ${anos.map((a) => this.celulasDoAno(i, 'REAL', a, reais[a] || null)).join('')}
-        </tr>`;
+        </tr>
+        </tbody>`;
     }).join('');
 
     el.innerHTML = `
@@ -547,17 +559,20 @@ const SecaoMetas = {
         pela regra de cada indicador (soma, média ou último mês). O balão da célula mostra o ano inteiro.
         Nos demais anos, o lançamento é o valor anual.` : ''}${App.podeEditar()
         ? ' Clique no número para lançar ou corrigir; <strong>⟳ Revisar</strong> grava uma versão nova da meta, preservando a anterior.'
-        : ' Revisões de meta preservam as versões anteriores.'}</p>
+        : ' Revisões de meta preservam as versões anteriores.'}
+      ${podeOrdenar ? 'Arraste pelo ⠿ para reordenar os indicadores — a nova ordem é salva na hora e vale também no relatório.' : ''}</p>
       <div class="alert alert-danger d-none" data-aviso-metas role="alert"></div>
       <div class="row g-3 mb-3" data-cartoes-metas>${cartoes}</div>
       <div class="table-responsive">
         <table class="table table-sm table-bordered align-middle tabela-metas">
           <thead><tr>
+            ${podeOrdenar ? '<th class="celula-alca"></th>' : ''}
             <th class="col-indicador">Indicador</th><th class="col-rotulo"></th>
             ${anos.map((a) => this.cabecalhoAno(a)).join('')}
             <th class="col-acoes"></th>
           </tr></thead>
-          <tbody>${linhas || `<tr><td colspan="${anos.length + abertas + 3}" class="text-muted">Nenhum indicador cadastrado.</td></tr>`}</tbody>
+          ${linhas || `<tbody><tr><td colspan="${anos.length + abertas + 3 + (podeOrdenar ? 1 : 0)}"
+            class="text-muted">Nenhum indicador cadastrado.</td></tr></tbody>`}
         </table>
       </div>`;
 
@@ -577,6 +592,17 @@ const SecaoMetas = {
     }));
 
     if (!App.podeEditar()) return;
+    // O arraste mora em `Ordenar` (ordenar.js), o mesmo do cenário, do
+    // PESTEL/Porter/SWOT e dos cadastros. Aqui a caixa é a TABELA e o item é o
+    // `<tbody>` de cada indicador — não há renumeração a fazer depois, porque
+    // esta tela não mostra o número da ordem: a ordem é a própria posição.
+    if (podeOrdenar) {
+      Ordenar.ligar(el.querySelector('.tabela-metas'), {
+        item: 'tbody[data-id]',
+        aoSoltar: (ids) => App.api('/api/indicadores/reordenar',
+          { planejamento_id: this.plan.id, ids }),
+      });
+    }
     document.getElementById('btn-novo-ind').addEventListener('click', () => this.modalIndicador(null));
     el.querySelectorAll('[data-editar]').forEach((b) => b.addEventListener('click', () =>
       this.modalIndicador(indicadores.find((i) => i.id == b.dataset.editar))));

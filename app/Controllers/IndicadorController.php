@@ -27,7 +27,7 @@ class IndicadorController
             'SELECT i.*, h.nome AS horizonte_nome
              FROM indicador i LEFT JOIN horizonte h ON h.id = i.horizonte_id
              WHERE i.planejamento_id = ?
-             ORDER BY i.metrica_ancora DESC, i.nome',
+             ORDER BY i.ordem, i.metrica_ancora DESC, i.nome',
             [$planId]
         );
 
@@ -100,15 +100,74 @@ class IndicadorController
                 [$nome, $unidade, $sentido, $agregacao, $ancora, $horizonteId, $id]
             );
         } else {
+            // Indicador novo nasce no FIM da lista, e não em zero: com zero ele
+            // saltaria para o topo de um planejamento já ordenado à mão. Em
+            // planejamento nunca arrastado (tudo em zero) o MAX+1 dá 1, e o
+            // recém-criado fica sozinho acima dos demais — que continuam na
+            // ordem de sempre, logo abaixo. É o mesmo desenho do `fator`.
+            $ordem = 1 + (int)Database::um(
+                'SELECT COALESCE(MAX(ordem), 0) m FROM indicador WHERE planejamento_id = ?',
+                [$planId]
+            )['m'];
             $id = (int)Database::executar(
                 'INSERT INTO indicador (planejamento_id, nome, unidade, sentido, agregacao,
-                                        metrica_ancora, horizonte_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [$planId, $nome, $unidade, $sentido, $agregacao, $ancora, $horizonteId]
+                                        metrica_ancora, horizonte_id, ordem)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [$planId, $nome, $unidade, $sentido, $agregacao, $ancora, $horizonteId, $ordem]
             );
         }
         $this->gravarCascatas($id, $planId, $d);
         Json::ok(['id' => $id]);
+    }
+
+    /**
+     * Nova ordem dos indicadores do planejamento (pedido do cliente,
+     * 2026-11-09 — o mesmo arraste do cenário, do PESTEL/Porter/SWOT e dos
+     * cadastros).
+     *
+     * A regra é a do `FatorController::reordenar`, e as razões também: a lista
+     * chega INTEIRA e na ordem da tela, a posição vira `ordem` 1..N, e a guarda
+     * de dono é `exigirEdicaoPlanejamento` mais a conferência de que todo id é
+     * deste planejamento — `ordem` é escrita, e autorizar o plano não autoriza
+     * cada linha.
+     *
+     * A lista inteira, e não só o item movido, é o que faz a primeira arrastada
+     * numerar o planejamento todo: até aqui a coluna está em zero e a ordem
+     * real é `metrica_ancora DESC, nome`. Mandando só o que se moveu, o resto
+     * ficaria em zero e a tela embaralharia no recarregamento seguinte.
+     *
+     * A ordem passa a valer TAMBÉM sobre a métrica-âncora: quem arrasta uma
+     * âncora para baixo quer vê-la ali. Enquanto ninguém arrastar, o
+     * `ORDER BY ordem, metrica_ancora DESC, nome` deixa tudo como era.
+     */
+    public function reordenar(): void
+    {
+        $d = Json::corpo();
+        $planId = (int)($d['planejamento_id'] ?? 0);
+        Auth::exigirEdicaoPlanejamento($planId);
+
+        $ids = array_values(array_filter(
+            array_map('intval', is_array($d['ids'] ?? null) ? $d['ids'] : []),
+            fn($i) => $i > 0
+        ));
+        if (!$ids) {
+            Json::erro('Informe a nova ordem.');
+        }
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        $meus = (int)Database::um(
+            "SELECT COUNT(*) AS n FROM indicador WHERE planejamento_id = ? AND id IN ({$marcas})",
+            array_merge([$planId], $ids)
+        )['n'];
+        if ($meus !== count($ids)) {
+            Json::erro('Há indicador que não é deste planejamento na ordem enviada.');
+        }
+        foreach ($ids as $posicao => $id) {
+            Database::executar(
+                'UPDATE indicador SET ordem = ? WHERE id = ? AND planejamento_id = ?',
+                [$posicao + 1, $id, $planId]
+            );
+        }
+        Json::ok(['itens' => count($ids)]);
     }
 
     /**

@@ -4471,6 +4471,168 @@ async function provasOrdenarFatores(page) {
 }
 
 /**
+ * Arrastar para ordenar os INDICADORES de Metas (pedido do cliente,
+ * 2026-11-09 — o mesmo gesto do cenário, do PESTEL/Porter/SWOT e dos
+ * cadastros).
+ *
+ * Esta tela tem uma armadilha que as outras não têm: o indicador ocupa DUAS
+ * linhas (Meta e Real) amarradas por `rowspan`, e por isso o item do arraste é
+ * um `<tbody>` inteiro, não uma `<tr>`. Se alguém voltar a `tr[data-id]`, o
+ * arraste leva metade do indicador e a tabela quebra no meio do gesto — por
+ * isso a primeira prova conta as linhas DENTRO do item arrastável.
+ *
+ * As demais guardam o que quebra calado, como nas outras telas: o arraste
+ * mexer só no DOM. A ordem é `indicador.ordem`, lida com
+ * `ORDER BY ordem, metrica_ancora DESC, nome` — sem a gravação, a tela fica
+ * certa até o F5 e ninguém percebe na hora. Por isso cada prova compara a tela
+ * com o que a API devolve, e uma delas recarrega a seção do zero.
+ */
+async function provasOrdenarIndicadores(page) {
+  const l = '[desktop] Ordenar indicadores:';
+
+  // Massa própria: três indicadores, para o arraste ter para onde ir sem
+  // depender do que a base já tinha. Um deles é âncora de propósito — é ele
+  // que prova que a ordem da pessoa passa a valer SOBRE a regra de âncora.
+  const massa = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ids = [];
+    for (const [n, ancora] of [['A', 1], ['B', 0], ['C', 0]]) {
+      const r = await App.api('/api/indicadores', {
+        planejamento_id: plan.id, nome: `Ordem de prova ${n}`, unidade: 'R$ mil',
+        agregacao: 'SOMA', metrica_ancora: ancora,
+      });
+      ids.push(r.id);
+    }
+    App.mostrarSecao('metas');
+    return { plan: plan.id, ids };
+  });
+  const sel = '.tabela-metas tbody[data-id]';
+  const pintou = await esperar(page, `document.querySelectorAll('${sel}').length >= 3`, 20000);
+  t(`${l} a tabela abre com os indicadores`, pintou);
+  if (!pintou) return;
+
+  // A armadilha desta tela: o item arrastável carrega as DUAS linhas.
+  const duasLinhas = await page.evaluate((s) => {
+    const corpos = [...document.querySelectorAll(s)];
+    return corpos.length && corpos.every((c) => c.querySelectorAll('tr').length === 2);
+  }, sel);
+  t(`${l} o item do arraste é o tbody, com a linha Meta e a linha Real juntas`,
+    duasLinhas === true, String(duasLinhas));
+
+  const temAlca = await page.evaluate((s) => {
+    const a = document.querySelector(s)?.querySelector('.alca-arrastar');
+    return !!a && getComputedStyle(a).touchAction === 'none';
+  }, sel);
+  t(`${l} cada indicador tem alça que segura o dedo`, temAlca, String(temAlca));
+
+  const naTela = () => page.evaluate((s) =>
+    [...document.querySelectorAll(s)].map((c) => Number(c.dataset.id)), sel);
+  const noBanco = () => page.evaluate(async (p) => {
+    const d = await App.api(`/api/indicadores?planejamento_id=${p}`);
+    return d.indicadores.map((i) => Number(i.id));
+  }, massa.plan);
+
+  // ── Arrastar com o ponteiro ──────────────────────────────────────────────
+  // A tabela é larga e alta: sem trazer os dois à vista, a medida sai fora da
+  // janela e o arraste mira o lugar errado — ou `boundingBox` devolve `null` e
+  // a prova derruba a bateria inteira em vez de ficar vermelha sozinha.
+  const antes = await naTela();
+  const primeiroItem = page.locator(sel).first();
+  const terceiroItem = page.locator(sel).nth(2);
+  await primeiroItem.scrollIntoViewIfNeeded().catch(() => {});
+  const alca = await primeiroItem.locator('.alca-arrastar').boundingBox();
+  const terceiro = await terceiroItem.boundingBox();
+  if (!alca || !terceiro) {
+    t(`${l} arrastar muda a ordem, e o servidor devolve a mesma`, false,
+      `sem caixa para medir: alça=${JSON.stringify(alca)} terceiro=${JSON.stringify(terceiro)}`);
+    return;
+  }
+  await page.mouse.move(alca.x + alca.width / 2, alca.y + alca.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(terceiro.x + 30, terceiro.y + terceiro.height * 0.8, { steps: 12 });
+  await page.mouse.up();
+  await new Promise((r) => setTimeout(r, 1000));
+  const depois = await naTela();
+  const gravado = await noBanco();
+  t(`${l} arrastar muda a ordem, e o servidor devolve a mesma`,
+    JSON.stringify(depois) !== JSON.stringify(antes)
+    && JSON.stringify(depois) === JSON.stringify(gravado),
+    `${JSON.stringify(antes)} → tela ${JSON.stringify(depois)} / banco ${JSON.stringify(gravado)}`);
+
+  // A primeira arrastada numera o planejamento INTEIRO: até aqui a coluna
+  // estava em zero e quem mandava era `metrica_ancora DESC, nome`. Deixar o
+  // resto em zero faria a tela embaralhar no recarregamento seguinte.
+  const semZero = await page.evaluate(async (p) => {
+    const d = await App.api(`/api/indicadores?planejamento_id=${p}`);
+    return d.indicadores.map((i) => Number(i.ordem));
+  }, massa.plan);
+  t(`${l} a primeira arrastada numera todos, sem ninguém sobrar em zero`,
+    semZero.length > 0 && semZero.every((o) => o > 0), JSON.stringify(semZero));
+
+  // ── A ordem veio do BANCO, não do DOM ────────────────────────────────────
+  await page.evaluate(() => SecaoMetas.carregar());
+  await esperar(page, `document.querySelectorAll('${sel}').length >= 3`, 15000);
+  await new Promise((r) => setTimeout(r, 400));
+  const recarregada = await naTela();
+  t(`${l} a ordem sobrevive ao recarregamento da seção`,
+    JSON.stringify(recarregada) === JSON.stringify(depois),
+    `${JSON.stringify(depois)} → ${JSON.stringify(recarregada)}`);
+
+  // ── Ctrl + seta: o caminho sem mouse e sem dedo ──────────────────────────
+  const comTeclado = await page.evaluate(async (s) => {
+    const a = document.querySelector(s).querySelector('.alca-arrastar');
+    a.focus();
+    a.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', ctrlKey: true, bubbles: true }));
+    await new Promise((r) => setTimeout(r, 900));
+    return [...document.querySelectorAll(s)].map((c) => Number(c.dataset.id));
+  }, sel);
+  t(`${l} Ctrl + seta move um degrau, e grava`,
+    JSON.stringify(comTeclado) !== JSON.stringify(recarregada)
+    && JSON.stringify(comTeclado) === JSON.stringify(await noBanco()),
+    `${JSON.stringify(recarregada)} → ${JSON.stringify(comTeclado)}`);
+
+  // ── A ordem vale no RELATÓRIO, não só nesta tela ─────────────────────────
+  // Se divergisse, a reunião teria duas listas da mesma coisa em ordens
+  // diferentes — e nenhuma delas errada o bastante para alguém desconfiar.
+  const noRelatorio = await page.evaluate(async (p) => {
+    const r = await App.api(`/api/relatorio?planejamento_id=${p}`);
+    return (r.indicadores || []).map((i) => Number(i.id));
+  }, massa.plan);
+  t(`${l} o relatório usa a mesma ordem da tela`,
+    JSON.stringify(noRelatorio) === JSON.stringify(comTeclado),
+    `tela ${JSON.stringify(comTeclado)} / relatório ${JSON.stringify(noRelatorio)}`);
+
+  // ── A armadilha da coluna nova ───────────────────────────────────────────
+  const novo = await page.evaluate(async (x) => {
+    const r = await App.api('/api/indicadores', {
+      planejamento_id: x.plan, nome: 'Ordem de prova D (novo)', unidade: 'R$ mil',
+      agregacao: 'SOMA', metrica_ancora: 1,
+    });
+    const d = await App.api(`/api/indicadores?planejamento_id=${x.plan}`);
+    const lista = d.indicadores.map((i) => Number(i.id));
+    return { id: r.id, ultimo: lista[lista.length - 1] === r.id, lista };
+  }, massa);
+  // Âncora de propósito: com `ordem = 0` ela saltaria DUAS vezes para o topo —
+  // pela ordem zerada e pelo `metrica_ancora DESC`.
+  t(`${l} indicador novo nasce no fim, mesmo sendo âncora`,
+    novo.ultimo === true, JSON.stringify(novo.lista));
+
+  // ── A guarda de dono ─────────────────────────────────────────────────────
+  const intruso = await page.evaluate(async (p) =>
+    App.api('/api/indicadores/reordenar', { planejamento_id: p, ids: [999999999] })
+      .then(() => 'passou').catch((e) => e.message), massa.plan);
+  t(`${l} id que não é deste planejamento é recusado`,
+    /não é deste planejamento/.test(String(intruso)), String(intruso));
+
+  await page.evaluate(async (x) => {
+    for (const id of [...x.ids, x.novo]) {
+      await App.api(`/api/indicadores/${id}/excluir`, { planejamento_id: x.plan }).catch(() => {});
+    }
+    App.mostrarSecao('painel');
+  }, { ...massa, novo: novo.id });
+}
+
+/**
  * Projeção de Resultados — a DRE do ano na tela (tema 13, fatia 1).
  *
  * O que estas provas protegem é o que falha CALADO em controladoria: a conta
@@ -7836,6 +7998,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoNoDossie(page, 'desktop');
   await provasOrdenarCenario(page);
   await provasOrdenarFatores(page);
+  await provasOrdenarIndicadores(page);
   await provasMoverAnalise(page);
   await provasMoverEntreTabelas(page);
   await provasTratarForaDaOrdem(page, 'desktop');

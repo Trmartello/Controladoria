@@ -162,6 +162,17 @@ garantirColuna($pdo, 'fator', 'ano',
 garantirColuna($pdo, 'fator', 'ordem',
     'ALTER TABLE fator ADD COLUMN ordem SMALLINT NOT NULL DEFAULT 0 AFTER categoria');
 
+// Ordem dos indicadores na tela de Metas (pedido do cliente, 2026-11-09: o
+// mesmo arraste do cenário, do PESTEL/Porter/SWOT e dos cadastros). Vale a
+// regra do `fator` por inteiro, e pelas mesmas razões: `DEFAULT 0` dispensa
+// carga de dados porque a leitura é `ORDER BY ordem, metrica_ancora DESC,
+// nome` — com todo mundo em zero, a tela não muda de ordem para ninguém. A
+// primeira arrastada numera o planejamento inteiro, e indicador novo nasce com
+// MAX+1 do planejamento, não com zero: com zero ele saltaria para o TOPO de
+// uma lista já ordenada à mão.
+garantirColuna($pdo, 'indicador', 'ordem',
+    'ALTER TABLE indicador ADD COLUMN ordem SMALLINT NOT NULL DEFAULT 0 AFTER horizonte_id');
+
 // Fator da SWOT encaminhado ao plano de ação (mesma regra da ideia da Coleta:
 // marcado e sem ação = aguardando alocação em Projetos). A FK do
 // desdobramento é ON DELETE SET NULL: apagada a ação, o fator volta sozinho

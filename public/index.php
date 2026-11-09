@@ -509,6 +509,11 @@ try {
 
         case $rota === 'GET /api/indicadores':      (new IndicadorController())->listar(); break;
         case $rota === 'POST /api/indicadores':     (new IndicadorController())->salvar(); break;
+        // Literal antes da genérica `/api/indicadores/{id}`, como no cenário e
+        // nos fatores: "reordenar" não casa com `\d+`, mas a ordem aqui é o que
+        // dispensa o leitor de conferir.
+        case $rota === 'POST /api/indicadores/reordenar':
+            (new IndicadorController())->reordenar(); break;
         case (bool)preg_match('#^POST /api/indicadores/(\d+)/excluir$#', $rota, $m):
             (new IndicadorController())->excluir((int)$m[1]); break;
         case (bool)preg_match('#^POST /api/indicadores/(\d+)/valores$#', $rota, $m):
