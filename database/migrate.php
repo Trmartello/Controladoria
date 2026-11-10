@@ -268,6 +268,47 @@ if (!tabelaExiste($pdo, 'desdobramento_periodo')) {
     echo "migrate: tabela desdobramento_periodo criada.\n";
 }
 
+// ── "Não se repete" vira "em datas específicas" ──────────────────────────────
+// Pedido do cliente, 2026-11-10: "a opção não se repete não faz mais sentido.
+// Remova e transfira as datas para a opção de em datas específicas." Ela dizia
+// a mesma coisa que uma lista de UMA data, e com as duas na tela quem cadastra
+// escolhia entre elas sem critério.
+//
+// A transferência é 1 para 1: o período da ação vira a primeira (e única) linha
+// da lista. Três cuidados:
+//
+// - Só converte quem TEM `data_fim`: o fim é obrigatório na lista, e uma ação
+//   legada sem ele não tem o que transferir. Essas ficam em NENHUMA no banco e
+//   o formulário as abre como datas específicas com a linha em branco, que é
+//   onde a pessoa completa o que falta.
+// - Converte só quem ainda NÃO tem período, e por isso roda sem guarda de
+//   "já rodei": é idempotente por construção, e uma ação criada em DATAS
+//   depois da migração não é tocada.
+// - `concluido_em` vem junto para a ação já concluída. Sem ele a ação
+//   apareceria como "1ª de 1" — pendente — logo depois de uma migração, e
+//   concluí-la de novo seria o único jeito de acertar o registro.
+$convertidas = $pdo->exec(
+    "INSERT INTO desdobramento_periodo (desdobramento_id, data_inicio, data_fim, concluido_em)
+     SELECT d.id, d.data_inicio, d.data_fim,
+            CASE WHEN d.status = 'CONCLUIDO' THEN COALESCE(d.concluido_em, NOW()) END
+       FROM desdobramento d
+      WHERE d.recorrencia = 'NENHUMA'
+        AND d.data_fim IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM desdobramento_periodo p WHERE p.desdobramento_id = d.id)"
+);
+if ($convertidas) {
+    // O UPDATE vem DEPOIS do INSERT e lê a tabela de períodos, não o status:
+    // assim ele move exatamente as ações que ganharam período, e repetir a
+    // migração não encontra mais nenhuma.
+    $pdo->exec(
+        "UPDATE desdobramento d
+            JOIN desdobramento_periodo p ON p.desdobramento_id = d.id
+            SET d.recorrencia = 'DATAS'
+          WHERE d.recorrencia = 'NENHUMA'"
+    );
+    echo "migrate: {$convertidas} ação(ões) de \"não se repete\" viraram datas específicas.\n";
+}
+
 // O cruzamento da SWOT vai direto ao plano de ação, como o fator da SWOT: as
 // três colunas são as mesmas de lá, e por isso a fila de "aguardando plano de
 // ação" continua sendo UMA — a origem muda o selo, não a pergunta.

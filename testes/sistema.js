@@ -4,7 +4,7 @@
 // tela pareça certa.
 //
 //   node testes/sistema.js
-const { BASE, chromiumExec, playwright, esperar, entrar, relatar } = require('./comum');
+const { BASE, chromiumExec, playwright, esperar, entrar, relatar, hojeNoServidor } = require('./comum');
 
 const ok = [], bad = [], erros = [];
 const t = (nome, cond, extra = '') => (cond ? ok : bad).push(nome + (extra ? ` — ${extra}` : ''));
@@ -1287,7 +1287,7 @@ async function provasFilaAcao(page, largura) {
         return {
           caixa: !!caixa,
           campos: ['recorrencia', 'recorrencia_dias_semana', 'recorrencia_dias_mes',
-            'recorrencia_de', 'recorrencia_ate', 'quando_periodo']
+            'recorrencia_de', 'recorrencia_ate', 'periodos']
             .every((n) => !!caixa?.querySelector(`#campo-${n}`)),
           ganhos: document.querySelector('#campo-quanto')?.classList.contains('campo-moeda'),
           // E o que é só DELE continua lá: o destino da ideia
@@ -3106,11 +3106,10 @@ async function provasAcao(page, largura) {
         'Selecione o dia da semana para repetir:',
         'Dia do mês em que haverá repetição:',
         'Data início da repetição *', 'Data fim da repetição',
-        // A lista de datas avulsas vem ANTES do período digitado e depois da
-        // grade: as três respondem "quando?", e qual delas aparece depende da
-        // repetição escolhida lá em cima.
+        // A lista de datas é o ÚNICO "quando?" digitado desde que "não se
+        // repete" saiu (2026-11-10): o "Quando? (Prazo de Execução)" era dele,
+        // e a ação de uma data só é esta lista com uma linha.
         'Quando? (datas em que a ação acontece)',
-        'Quando? (Prazo de Execução) *',
         'Prioridade', 'Status', 'Ganhos previstos (R$)'];
       t(`${l} Campos da ação na ordem pedida`,
         JSON.stringify(ordem) === JSON.stringify(esperada), JSON.stringify(ordem));
@@ -3124,7 +3123,7 @@ async function provasAcao(page, largura) {
         return {
           existe: true,
           todos: ['recorrencia', 'recorrencia_dias_semana', 'recorrencia_dias_mes',
-            'recorrencia_de', 'recorrencia_ate', 'periodos', 'quando_periodo'].every(dentro),
+            'recorrencia_de', 'recorrencia_ate', 'periodos'].every(dentro),
           // O que NÃO é da decisão fica de fora: senão a caixa deixa de
           // significar "isto depende da escolha acima"
           semIntrusos: !dentro('quem') && !dentro('status') && !dentro('quanto'),
@@ -3143,7 +3142,6 @@ async function provasAcao(page, largura) {
         await page.selectOption('#campo-recorrencia', modo);
         await new Promise((r) => setTimeout(r, 250));
         return {
-          periodo: await visivel('quando_periodo'),
           semana: await visivel('recorrencia_dias_semana'),
           mes: await visivel('recorrencia_dias_mes'),
           de: await visivel('recorrencia_de'),
@@ -3151,20 +3149,30 @@ async function provasAcao(page, largura) {
           datas: await visivel('periodos'),
         };
       };
-      const nenhuma = await trocar('NENHUMA');
-      t(`${l} sem repetição, só o período de execução aparece`,
-        nenhuma.periodo && !nenhuma.semana && !nenhuma.mes && !nenhuma.ate && !nenhuma.de
-          && !nenhuma.datas,
-        JSON.stringify(nenhuma));
+      // ── "Não se repete" SAIU (pedido do cliente, 2026-11-10) ────────────
+      // Ela dizia a mesma coisa que uma lista de UMA data. A prova é pela
+      // ausência DA OPÇÃO, não pelo que a tela mostra: enquanto ela estivesse
+      // na lista, quem cadastra continuaria escolhendo entre dois jeitos de
+      // dizer o mesmo. E a ação nova nasce em "datas específicas" — se ela
+      // nascesse na grade semanal, todo cadastro começaria errado.
+      const select = await page.evaluate(() => ({
+        opcoes: [...document.querySelectorAll('#campo-recorrencia option')].map((o) => o.value),
+        padrao: document.getElementById('campo-recorrencia').value,
+      }));
+      t(`${l} "não se repete" não é mais oferecida`,
+        !select.opcoes.includes('NENHUMA'), JSON.stringify(select));
+      t(`${l} e a ação nova nasce em datas específicas`,
+        select.padrao === 'DATAS'
+          && JSON.stringify(select.opcoes) === JSON.stringify(['DATAS', 'SEMANAL', 'MENSAL']),
+        JSON.stringify(select));
+
       // Datas avulsas: some TUDO o que é da grade — inclusive o "de/até" da
       // rotina, que aqui não quer dizer nada: não há o que repetir entre duas
       // datas quando as datas são as digitadas.
       const avulsas = await trocar('DATAS');
       t(`${l} em datas específicas, só a lista de datas aparece`,
-        avulsas.datas && !avulsas.periodo && !avulsas.semana && !avulsas.mes
-          && !avulsas.de && !avulsas.ate,
+        avulsas.datas && !avulsas.semana && !avulsas.mes && !avulsas.de && !avulsas.ate,
         JSON.stringify(avulsas));
-      await trocar('NENHUMA');
 
       // ── O que se digita na data APARECE ─────────────────────────────────
       // O campo de data mostra dd/mm/aaaa por um rótulo sobreposto, com o texto
@@ -3179,34 +3187,61 @@ async function provasAcao(page, largura) {
       // campo à vista — a posição é guardada e devolvida no fim, senão as
       // provas seguintes (que movem o mouse por coordenada de tela) miram num
       // formulário que andou debaixo delas.
+      // A medição é na LINHA DA LISTA, e não é escolha de conveniência: com
+      // "não se repete" fora, ela é o único campo de data que se digita no
+      // formulário da ação. O `#campo-data_inicio` que esta prova usava saiu
+      // junto com o modo.
+      const PRIMEIRA = '.periodo-linha:first-child [data-periodo-inicio]';
       const rolagem = await page.evaluate(() =>
         document.querySelector('#modal-form .modal-body')?.scrollTop ?? 0);
-      await page.click('#campo-data_inicio');
+      await page.click(PRIMEIRA);
       await new Promise((r) => setTimeout(r, 120));
-      const digitando = await page.evaluate(() => {
-        const inp = document.getElementById('campo-data_inicio');
+      const digitando = await page.evaluate((sel) => {
+        const inp = document.querySelector(sel);
         const rot = inp.closest('.campo-data')?.querySelector('.data-rotulo');
         const transparente = (c) => /rgba\(.*,\s*0\)|transparent/.test(c);
         return {
           textoVisivel: !transparente(getComputedStyle(inp).color),
           rotuloForaDaFrente: !rot || getComputedStyle(rot).display === 'none',
         };
-      });
+      }, PRIMEIRA);
       t(`${l} o que se digita na data fica à vista`,
         digitando.textoVisivel && digitando.rotuloForaDaFrente, JSON.stringify(digitando));
-      await page.evaluate(() => document.getElementById('campo-data_inicio').blur());
+      await page.evaluate((sel) => document.querySelector(sel).blur(), PRIMEIRA);
       await new Promise((r) => setTimeout(r, 120));
-      const parado = await page.evaluate(() => {
-        const inp = document.getElementById('campo-data_inicio');
+      const parado = await page.evaluate((sel) => {
+        const inp = document.querySelector(sel);
         const rot = inp.closest('.campo-data')?.querySelector('.data-rotulo');
         return {
           nativoEscondido: /rgba\(.*,\s*0\)|transparent/.test(getComputedStyle(inp).color),
           rotuloNaFrente: !!rot && getComputedStyle(rot).display !== 'none',
           rotulo: rot?.textContent.trim(),
         };
-      });
+      }, PRIMEIRA);
       t(`${l} parado, a data volta a ser lida em dd/mm/aaaa`,
-        parado.nativoEscondido && parado.rotuloNaFrente, JSON.stringify(parado));
+        parado.nativoEscondido && parado.rotuloNaFrente && parado.rotulo === 'dd/mm/aaaa',
+        JSON.stringify(parado));
+      // A linha ACRESCENTADA depois nasce com o mesmo rótulo. Ela é montada por
+      // `ligarPeriodos`, bem depois de o `ligarDatasBr` do formulário ter
+      // passado: sem a chamada que a alcança, ela ficava com o texto nativo do
+      // navegador ("mm/dd/yyyy" em inglês) enquanto toda data do sistema mostra
+      // dd/mm/aaaa — e ninguém veria, porque a linha nasce em foco.
+      const nova = await page.evaluate(() => {
+        document.querySelector('[data-add-periodo]').click();
+        const linhas = document.querySelectorAll('.periodo-linha');
+        const ultima = linhas[linhas.length - 1];
+        const inp = ultima.querySelector('[data-periodo-fim]');
+        inp.blur();
+        const rot = inp.closest('.campo-data')?.querySelector('.data-rotulo');
+        return { embrulhada: !!inp.closest('.campo-data'), rotulo: rot?.textContent.trim() };
+      });
+      t(`${l} a data da linha acrescentada também sai em dd/mm/aaaa`,
+        nova.embrulhada && nova.rotulo === 'dd/mm/aaaa', JSON.stringify(nova));
+      await page.evaluate(() => {
+        // Desfaz a linha nova: as provas adiante contam o que está na tela.
+        const linhas = document.querySelectorAll('.periodo-linha');
+        linhas[linhas.length - 1].querySelector('[data-remove-periodo]')?.click();
+      });
       await page.evaluate((y) => {
         const corpo = document.querySelector('#modal-form .modal-body');
         if (corpo) corpo.scrollTop = y;
@@ -3214,7 +3249,7 @@ async function provasAcao(page, largura) {
       await new Promise((r) => setTimeout(r, 120));
       const semanal = await trocar('SEMANAL');
       t(`${l} toda semana troca o período pelos dias da semana`,
-        !semanal.periodo && semanal.semana && !semanal.mes && semanal.ate, JSON.stringify(semanal));
+        !semanal.datas && semanal.semana && !semanal.mes && semanal.ate, JSON.stringify(semanal));
       // As DUAS datas da repetição aparecem juntas (pedido do cliente,
       // 2026-11-03): a de início, que diz de quando a ação é monitorada, e a
       // de fim, que é opcional. Antes só existia a de fim, e a rotina começava
@@ -3275,7 +3310,7 @@ async function provasAcao(page, largura) {
 
       const mensal = await trocar('MENSAL');
       t(`${l} todo mês troca a semana pela grade do mês`,
-        !mensal.periodo && !mensal.semana && mensal.mes && mensal.ate, JSON.stringify(mensal));
+        !mensal.datas && !mensal.semana && mensal.mes && mensal.ate, JSON.stringify(mensal));
       // ── O dia do mês sai por LISTA (pedido do cliente, 2026-11-03) ──────
       // "Coloca um select box para selecionar o dia. Não deixe todos os dias
       // sendo exibido como está hoje. Assim vai otimizar a tela."
@@ -3629,11 +3664,10 @@ async function provasAcao(page, largura) {
   // que isso criou — e a última é a que não é óbvia: início no passado NÃO
   // retroage, senão a ação nasceria atrasada em ocorrências que ninguém tinha
   // para cumprir.
-  const dataEm = (dias) => {
-    const d = new Date();
-    d.setDate(d.getDate() + dias);
-    return d.toLocaleDateString('sv-SE');
-  };
+  // No FUSO DO SERVIDOR, não no do Node: as datas comparadas aqui vêm da API,
+  // e o app roda em America/Sao_Paulo enquanto a bateria roda em UTC. Ver
+  // `hojeNoServidor` em `testes/comum.js`.
+  const dataEm = (dias) => hojeNoServidor(dias);
   const inicios = await page.evaluate(async (x) => {
     const projetos = await App.api('/api/projetos?planejamento_id=1');
     const p = projetos.find((y) => y.id === x.prj);
@@ -3667,7 +3701,7 @@ async function provasAcao(page, largura) {
     }
     return saida;
   }, { prj, adiante: dataEm(90), atras: dataEm(-120) });
-  const hoje = new Date().toLocaleDateString('sv-SE');
+  const hoje = hojeNoServidor();
   t(`${l} a rotina que começa adiante guarda o início e vence depois dele`,
     inicios.futura.inicio === dataEm(90) && inicios.futura.fim >= dataEm(90)
     && inicios.futura.fim <= dataEm(97), JSON.stringify(inicios.futura));
@@ -4569,7 +4603,7 @@ async function provasDatasAvulsas(page) {
       periodos: [datas.AGO, datas.ABR],
     };
     const acao = await App.api('/api/desdobramentos', { ...base, status: 'NAO_INICIADO' });
-    return { plan: plan.id, prj: prj.id, acao: acao.id, base };
+    return { plan: plan.id, prj: prj.id, ini: ini.id, acao: acao.id, base };
   }, { ABR, AGO });
 
   // Lê a ação pela mesma rota da tela: é o `periodos` que a pintura consome.
@@ -4690,6 +4724,59 @@ async function provasDatasAvulsas(page) {
       JSON.stringify(aoAdicionar));
     await page.evaluate(() => Modal.bsModal.hide());
     await esperar(page, "!document.getElementById('modal-form').classList.contains('show')", 5000);
+  }
+
+  // ── A ação LEGADA em "não se repete" ──────────────────────────────────────
+  // A migração converte quem tem fim previsto; quem não tem fica em NENHUMA no
+  // banco, e é a TELA que faz a transferência ao abrir. Sem isso o select — que
+  // não oferece mais a opção — cairia na primeira da lista levando a ação junto,
+  // sem ninguém pedir, e o período dela sumiria da vista.
+  const legada = await page.evaluate(async (m) => {
+    const acao = await App.api('/api/desdobramentos', {
+      planejamento_id: m.plan, projeto_id: m.prj, iniciativa_id: m.ini,
+      o_que: 'Ação legada de prova', como: 'x', quem: 'QA', prioridade: 'MEDIA',
+      status: 'NAO_INICIADO', progresso: 0,
+      // O modo antigo, que a API ainda aceita para não quebrar integração.
+      recorrencia: 'NENHUMA', data_inicio: '2027-06-01', data_fim: '2027-06-30',
+    });
+    const r = await App.api(`/api/projetos?planejamento_id=${m.plan}`, null, 'GET');
+    const prj = (r.projetos || r).find((x) => x.id == m.prj);
+    const dd = (prj?.desdobramentos || []).find((x) => x.id == acao.id);
+    SecaoProjetos.modalDesdobramento(m.prj, dd, dd.iniciativa_id);
+    return { gravada: dd.recorrencia, id: acao.id };
+  }, massa);
+  t(`${l} a API ainda aceita o modo antigo, para não quebrar integração`,
+    legada.gravada === 'NENHUMA', JSON.stringify(legada));
+  // Esperar pelo TEXTO desta ação, e não por `.lista-periodos`: o modal
+  // anterior continua no DOM depois de escondido, e a espera genérica voltava
+  // na hora medindo as linhas DELE — a prova lia três datas onde há uma.
+  if (await esperar(page,
+    "document.getElementById('campo-o_que')?.value === 'Ação legada de prova'", 8000)) {
+    const naTela = await page.evaluate(() => ({
+      modo: document.getElementById('campo-recorrencia').value,
+      linhas: [...document.querySelectorAll('.periodo-linha')].map((ln) => ({
+        ini: ln.querySelector('[data-periodo-inicio]')?.value,
+        fim: ln.querySelector('[data-periodo-fim]')?.value,
+      })),
+    }));
+    t(`${l} ação legada abre como datas específicas, com o período dela na lista`,
+      naTela.modo === 'DATAS' && naTela.linhas.length === 1
+        && naTela.linhas[0].ini === '2027-06-01' && naTela.linhas[0].fim === '2027-06-30',
+      JSON.stringify(naTela));
+    // E salvar a converte de vez: a tela não manda mais NENHUMA em caso nenhum.
+    await page.click('#modal-salvar');
+    await esperar(page, "!document.getElementById('modal-form').classList.contains('show')", 8000);
+    const depoisDeSalvar = await page.evaluate(async (m) => {
+      const r = await App.api(`/api/projetos?planejamento_id=${m.plan}`, null, 'GET');
+      const prj = (r.projetos || r).find((x) => x.id == m.prj);
+      const dd = (prj?.desdobramentos || []).find((x) => x.id == m.legada);
+      return { modo: dd?.recorrencia, fim: dd?.data_fim,
+        periodos: (dd?.periodos || []).map((p) => p.data_fim) };
+    }, { ...massa, legada: legada.id });
+    t(`${l} e salvá-la a converte de vez, sem perder a data`,
+      depoisDeSalvar.modo === 'DATAS' && depoisDeSalvar.fim === '2027-06-30'
+        && JSON.stringify(depoisDeSalvar.periodos) === JSON.stringify(['2027-06-30']),
+      JSON.stringify(depoisDeSalvar));
   }
 
   await page.evaluate(async (m) => {
