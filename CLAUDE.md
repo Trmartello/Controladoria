@@ -2112,8 +2112,8 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   pedido do cliente, 2026-11-09: "a ação de treinamento seria realizada duas
   vezes ao ano, uma em abril e outra em agosto, e se houvessem mais datas
   pudessem ser lançadas; essas ações não se repetem mensalmente, e sim só nas
-  datas lançadas"). É o terceiro jeito de responder "quando?", ao lado do
-  período digitado e da grade, e o formulário mostra **um** dos três conforme a
+  datas lançadas"). É **o jeito padrão** de responder "quando?" — o outro é a
+  grade semanal/mensal —, e o formulário mostra um dos dois conforme a
   Repetição escolhida. A regra inteira mora em `App\Services\Periodos`.
   **Nada se calcula**: as únicas datas que valem são as digitadas, uma linha por
   data (início opcional, fim obrigatório), e por isso `DATAS` entra na lista de
@@ -2146,6 +2146,30 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   (`SecaoProjetos.resumoDatas`). No celular as duas datas da linha **empilham**:
   `input[type=date]` tem min-content de 178px e duas colunas não cabem nos 325px
   do modal, então `1fr 1fr` jogava o segundo campo para fora da tela.
+  Linha acrescentada pelo "+ Adicionar data" nasce **depois** do
+  `Modal.ligarDatasBr` do formulário, então `ligarPeriodos` o chama de novo nela:
+  sem isso ela ficava com o texto nativo do navegador (`mm/dd/yyyy` em inglês)
+  enquanto toda data do sistema mostra `dd/mm/aaaa` — e não se via, porque a
+  linha nasce em foco e o foco revela o texto nativo de propósito.
+- **"Não se repete" SAIU** (pedido do cliente, 2026-11-10: "a opção não se
+  repete não faz mais sentido. Remova e transfira as datas para a opção de em
+  datas específicas"). Ela dizia a mesma coisa que uma lista de UMA data, e com
+  as duas na tela quem cadastra escolhia entre elas sem critério. A ação que
+  acontece uma vez é a lista com uma linha.
+  **`NENHUMA` continua existindo** no ENUM, como default da coluna e como o que
+  `ProjetoController` assume quando a API é chamada sem `recorrencia` — tirá-lo
+  quebraria os dois, e a API precisa seguir aceitando o modo antigo para não
+  quebrar integração. O que mudou é que **nada mais o produz**: o select não o
+  oferece e `transformarAcao` manda `DATAS` em tudo que não é grade.
+  A transferência tem **dois lados**, e os dois são necessários. No banco, a
+  migração converte toda ação `NENHUMA` **com fim previsto**: o período vira a
+  primeira (e única) linha da lista, e `concluido_em` vai junto para a ação já
+  concluída — sem ele ela reapareceria como "1ª de 1", pendente, logo depois de
+  uma migração. É idempotente por construção (só converte quem ainda não tem
+  período), e não toca na grade semanal/mensal. Na tela, `periodosDaAcao` faz a
+  mesma transferência ao abrir o que a migração não alcançou (ação legada **sem**
+  fim previsto, que a lista não aceitaria): sem ela o select cairia na primeira
+  opção levando a ação junto, sem ninguém pedir.
 - **Comentários com anexos** (`comentario` + `comentario_anexo`): sucederam o
   Diário de Bordo, que saiu do código. O registro continua datado e nunca
   sobrescrito; o que mudou é que agora carrega arquivo. O que o diário fazia

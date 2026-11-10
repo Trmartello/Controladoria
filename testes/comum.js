@@ -95,4 +95,29 @@ function relatar(ok, bad, erros = []) {
   return bad.length || erros.length ? 1 : 0;
 }
 
-module.exports = { BASE, EMAIL, SENHA, chromiumExec, playwright, esperar, vigiar, entrar, relatar };
+/** O mesmo fuso do `TZ_APP` do servidor — o padrão de `config/config.php`. */
+const FUSO_APP = process.env.TZ_APP || 'America/Sao_Paulo';
+
+/**
+ * O dia de hoje NO FUSO DO SERVIDOR, e não no do processo que roda a bateria.
+ *
+ * O app faz `date_default_timezone_set('America/Sao_Paulo')` (ver
+ * `config/config.php`), e o contêiner da sessão roda em UTC. São três horas de
+ * diferença: toda noite, das 21h às 00h de São Paulo, o `new Date()` do Node já
+ * virou o dia e o `date('Y-m-d')` do PHP não — e as provas que comparam uma
+ * data vinda da API com "hoje" ficavam vermelhas nessa janela, dizendo que o
+ * servidor errou quando quem errou foi o relógio de quem mediu. Não é um
+ * horário exótico: é o fim do expediente de quem roda a bateria.
+ *
+ * `sv-SE` porque é o formato ISO (aaaa-mm-dd) sem montar a string à mão.
+ *
+ * @param {number} dias deslocamento em dias (negativo para o passado)
+ */
+function hojeNoServidor(dias = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return d.toLocaleDateString('sv-SE', { timeZone: FUSO_APP });
+}
+
+module.exports = { BASE, EMAIL, SENHA, FUSO_APP, chromiumExec, playwright, esperar, vigiar,
+  entrar, relatar, hojeNoServidor };

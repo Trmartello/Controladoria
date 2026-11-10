@@ -2991,15 +2991,21 @@ const SecaoProjetos = {
       // campos que aparecem aqui NÃO são do formulário, são desta decisão.
       // Soltos, trocar "todo mês" por "não se repete" trocava blocos que
       // pareciam não ter relação um com o outro.
+      // "Não se repete" SAIU (pedido do cliente, 2026-11-10: "a opção não se
+      // repete não faz mais sentido; remova e transfira as datas para a opção
+      // de em datas específicas"). Ela dizia a mesma coisa que "em datas
+      // específicas" com uma data só, e duas maneiras de dizer o mesmo fazem
+      // quem cadastra escolher entre elas sem critério. As ações que estavam
+      // nela foram convertidas pela migração, com o período virando a primeira
+      // linha da lista.
       { nome: 'recorrencia', rotulo: 'Repetição', tipo: 'select', caixa: 'repeticao', opcoes: [
-        { valor: 'NENHUMA', rotulo: 'Não se repete' },
-        { valor: 'SEMANAL', rotulo: 'Repetir toda semana' },
-        { valor: 'MENSAL', rotulo: 'Repetir todo mês' },
         // Datas avulsas (pedido do cliente, 2026-11-09): a ação que acontece
         // em períodos escolhidos a dedo — um treinamento em abril e outro em
         // agosto. Não é grade: nada se calcula, e as únicas datas que valem
-        // são as digitadas.
+        // são as digitadas. É o PADRÃO, por ser o caso de longe mais comum.
         { valor: 'DATAS', rotulo: 'Em datas específicas' },
+        { valor: 'SEMANAL', rotulo: 'Repetir toda semana' },
+        { valor: 'MENSAL', rotulo: 'Repetir todo mês' },
       ] },
       // Semanal e mensal aceitam MAIS DE UM dia ("toda segunda e quinta",
       // "todo dia 5 e 20"): com um dia só, a mesma rotina virava duas ações.
@@ -3040,25 +3046,16 @@ const SecaoProjetos = {
         caixa: 'repeticao', linha: 'repeticao-datas',
         visivelSe: { campo: 'recorrencia', valores: ['SEMANAL', 'MENSAL'] },
         ajuda: 'Opcional — em branco, a repetição fica por tempo indeterminado.' },
-      // O período digitado só existe para a ação que NÃO se repete: quando ela
-      // repete, quem diz a data de vencimento é a grade acima, e o servidor a
-      // calcula. Ter os dois na tela fazia o usuário digitar um "fim previsto"
-      // que a primeira conclusão descartava.
-      // A lista de períodos das datas avulsas. Fica ao lado do "Quando?" na
-      // mesma caixa e pela mesma razão: as duas respondem a pergunta do
-      // prazo, e qual delas aparece depende da repetição escolhida logo acima.
+      // A lista de datas, dentro da caixa da repetição e pela mesma razão que a
+      // grade: ela responde "quando?", e qual das duas aparece depende da
+      // escolha logo acima. Desde 2026-11-10 ela é o ÚNICO jeito de digitar uma
+      // data: o "Quando? (Prazo de Execução)" do antigo "não se repete" saiu, e
+      // a ação de uma data só é esta lista com uma linha.
       { nome: 'periodos', rotulo: 'Quando? (datas em que a ação acontece)',
         tipo: 'periodos', caixa: 'repeticao',
         visivelSe: { campo: 'recorrencia', valores: ['DATAS'] },
-        ajuda: 'Uma linha por data. A ação cobra a primeira em aberto; ao concluí-la, '
-          + 'ela reabre sozinha na próxima.' },
-      { nome: 'quando_periodo', rotulo: 'Quando? (Prazo de Execução)', tipo: 'periodo',
-        obrigatorio: true, caixa: 'repeticao',
-        visivelSe: { campo: 'recorrencia', valores: ['NENHUMA'] },
-        campos: [
-          { nome: 'data_inicio', rotulo: 'Início' },
-          { nome: 'data_fim', rotulo: 'Fim previsto' },
-        ] },
+        ajuda: 'Uma linha por data — uma só, se a ação acontece uma vez. A ação cobra a '
+          + 'primeira em aberto; ao concluí-la, ela reabre sozinha na próxima.' },
       // ─── fim da caixa ───────────────────────────────────────────────────
       // Prioridade e Status dividem UMA linha (também no celular): as opções
       // da prioridade empilhadas na vertical para os rótulos não espremerem
@@ -3097,9 +3094,26 @@ const SecaoProjetos = {
    * calado antes de o campo existir, e um obrigatório em branco na abertura
    * faria toda ação recorrente começar com um erro na tela.
    */
+  /**
+   * As datas que o formulário mostra para uma ação que já existe.
+   *
+   * Em `DATAS` são as da tabela. Em `NENHUMA` — ação legada que a migração não
+   * alcançou, por não ter fim previsto — é o período dela virando a primeira
+   * linha: é a mesma transferência, só que na tela. Na grade semanal/mensal não
+   * há lista nenhuma, e o `data_fim` de lá é calculado, não digitado.
+   */
+  periodosDaAcao(dd) {
+    if (!dd) return [];
+    if (dd.recorrencia === 'DATAS') return dd.periodos || [];
+    if (dd.recorrencia === 'NENHUMA' && (dd.data_inicio || dd.data_fim)) {
+      return [{ data_inicio: dd.data_inicio || '', data_fim: dd.data_fim || '' }];
+    }
+    return [];
+  },
+
   valoresNovaAcao() {
     return {
-      progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO', recorrencia: 'NENHUMA',
+      progresso: 0, prioridade: 'MEDIA', status: 'NAO_INICIADO', recorrencia: 'DATAS',
       recorrencia_de: this.hojeISO(),
       recorrencia_dias_semana: [], recorrencia_dias_mes: [],
       // Uma linha em branco para a lista nascer com onde digitar.
@@ -3149,19 +3163,14 @@ const SecaoProjetos = {
         ...resto, data_inicio: de || '', data_fim: '', recorrencia_dias: (dias || []).map(Number),
       };
     }
-    // Datas avulsas: quem diz o vencimento é a LISTA, e o servidor resolve
-    // dali o período corrente. Mandar `data_fim` daqui gravaria o "fim
-    // previsto" do campo escondido — o mesmo erro que a rotina semanal evita
-    // logo acima.
-    if (resto.recorrencia === 'DATAS') {
-      return {
-        ...resto, data_inicio: '', data_fim: '', recorrencia_dias: [], recorrencia_ate: '',
-      };
-    }
-    // Sem datas avulsas a lista não viaja: um `periodos` no corpo de uma ação
-    // comum seria lista que o servidor ignora e tela que pensa ter salvo.
-    const { periodos, ...semPeriodos } = resto;
-    return { ...semPeriodos, recorrencia_dias: [], recorrencia_ate: '' };
+    // Datas avulsas, e é o que a tela manda em todo o resto desde que "não se
+    // repete" saiu: quem diz o vencimento é a LISTA, e o servidor resolve dali
+    // o período corrente. Mandar `data_fim` daqui gravaria o "fim previsto" do
+    // campo escondido — o mesmo erro que a rotina semanal evita logo acima.
+    return {
+      ...resto, recorrencia: 'DATAS',
+      data_inicio: '', data_fim: '', recorrencia_dias: [], recorrencia_ate: '',
+    };
   },
 
   /**
@@ -3206,7 +3215,11 @@ const SecaoProjetos = {
       valores: dd
         ? { ...dd, quanto: dd.quanto ?? '', planejamento_id: this.plan.id, projeto_id: projetoId,
             iniciativa_id: dd.iniciativa_id ?? iniciativaId,
-            recorrencia: dd.recorrencia || 'NENHUMA',
+            // Ação LEGADA em "não se repete" (a migração só converte quem tem
+            // fim previsto) abre como datas específicas: a opção não existe
+            // mais na tela, e sem esta troca o select cairia na primeira opção
+            // da lista levando a ação junto, sem ninguém pedir.
+            recorrencia: dd.recorrencia === 'NENHUMA' ? 'DATAS' : (dd.recorrencia || 'DATAS'),
             recorrencia_ate: dd.recorrencia_ate ?? '',
             // O início da repetição que a tela mostra é o da OCORRÊNCIA em
             // curso (`data_inicio`): é o que a ação está monitorando agora, e
@@ -3218,7 +3231,10 @@ const SecaoProjetos = {
             recorrencia_dias_mes: dd.recorrencia === 'MENSAL' ? this.diasDaAcao(dd) : [],
             // Os períodos chegam da API junto com a ação. Vazio vira uma linha
             // em branco pelo próprio campo, que é o que dá onde digitar.
-            periodos: dd.recorrencia === 'DATAS' ? (dd.periodos || []) : [] }
+            // A ação legada em "não se repete" entra com o período dela como
+            // primeira linha: é a mesma transferência que a migração faz no
+            // banco, aplicada ao que ela não alcançou.
+            periodos: this.periodosDaAcao(dd) }
         : { planejamento_id: this.plan.id, projeto_id: projetoId,
             // Sem frente decidida, a primeira do projeto já vem escolhida — na
             // esmagadora maioria dos cadastros é nela que a ação entra, e o

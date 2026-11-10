@@ -1729,10 +1729,16 @@ const Modal = {
       b.addEventListener('click', () => {
         const lista = document.getElementById(b.dataset.addPeriodo);
         lista.querySelector('.periodos-linhas').insertAdjacentHTML('beforeend', this.linhaPeriodo({}));
+        const linha = lista.querySelector('.periodo-linha:last-child');
+        // A linha nasce DEPOIS da pintura, então o `ligarDatasBr` do formulário
+        // já passou e não a alcançou: sem esta chamada ela ficava com o texto
+        // nativo do navegador ("mm/dd/yyyy" em inglês) enquanto toda data do
+        // sistema mostra dd/mm/aaaa. Repetir é seguro — a função pula o que já
+        // está embrulhado.
+        this.ligarDatasBr(linha);
         // O foco vai para a data nova: quem clicou em "adicionar" quer digitar,
         // e sem isto teria de mirar o campo com o mouse.
-        const nova = lista.querySelector('.periodo-linha:last-child [data-periodo-inicio]');
-        nova?.focus();
+        linha.querySelector('[data-periodo-inicio]')?.focus();
       });
     });
     document.querySelectorAll('.lista-periodos').forEach((lista) => {

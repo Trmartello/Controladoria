@@ -433,7 +433,14 @@ CREATE TABLE IF NOT EXISTS desdobramento (
   -- DATAS: a ação acontece em períodos AVULSOS, lançados um a um em
   -- `desdobramento_periodo` (um treinamento em abril e outro em agosto, por
   -- exemplo). Não é grade: nada se calcula, e as únicas datas que valem são as
-  -- digitadas. Ver a tabela mais abaixo.
+  -- digitadas. Ver a tabela mais abaixo. É o PADRÃO da tela desde 2026-11-10,
+  -- e a ação que acontece UMA vez é esta lista com uma linha só.
+  --
+  -- NENHUMA continua no ENUM, mas a tela não o oferece mais e nada o produz: a
+  -- migração converteu em DATAS toda ação que estava nele COM fim previsto, e o
+  -- formulário abre como DATAS o que sobrou (ação legada sem fim). O valor fica
+  -- como default da coluna e como o que o controller assume quando a API é
+  -- chamada sem `recorrencia` — tirá-lo do ENUM quebraria os dois.
   recorrencia     ENUM('NENHUMA','SEMANAL','MENSAL','DATAS') NOT NULL DEFAULT 'NENHUMA',
   recorrencia_dia TINYINT NULL,
   recorrencia_dias VARCHAR(100) NULL,
