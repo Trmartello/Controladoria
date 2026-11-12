@@ -53,6 +53,10 @@ const CARGAS = [
     'pestelPecuaria'  => 'conteudo_pestel_pecuaria_2027.php',
     'porterPecuaria'  => 'conteudo_porter_pecuaria_2027.php',
     'swotPecuaria'    => 'conteudo_swot_pecuaria_2027.php',
+    // SWOT da Pecuária escrita pelos GERENTES DO NEGÓCIO, da planilha da
+    // reunião prévia (2026-11-12). Convive com a de cima: aquela é a leitura
+    // financeira do negócio, esta é a da oficina.
+    'swotPecuariaOficina' => 'conteudo_swot_pecuaria_oficina.php',
 ];
 
 /** str_pad conta bytes: "2027–2035" tem travessão e desalinharia a coluna. */
