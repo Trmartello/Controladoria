@@ -934,6 +934,11 @@ foreach ([
     'conteudo_pestel_pecuaria_2027.php',
     'conteudo_porter_pecuaria_2027.php',
     'conteudo_swot_pecuaria_2027.php',
+    // SWOT da Pecuária escrita pelos GERENTES DE NEGÓCIO, da planilha da
+    // reunião prévia (2026-11-12). Entra DEPOIS da carga acima e convive com
+    // ela: aquela é a leitura financeira do negócio, esta é a da oficina.
+    // Como toda carga de fator, só insere e pula o texto que já existe.
+    'conteudo_swot_pecuaria_oficina.php',
 ] as $arquivo) {
     $conteudo = require __DIR__ . '/' . $arquivo;
     $chaveCarga = $conteudo['chave'];
