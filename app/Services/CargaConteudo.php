@@ -155,16 +155,104 @@ class CargaConteudo
      *
      * `$conteudo['destino']` decide a tabela: CENARIO grava em `cenario_item`
      * (com `tipo` e `ordem`), FATOR grava em `fator` (com `etapa` e
-     * `categoria`) e CASCATA grava em `cascata_escolha` (célula
-     * driver × eixo × horizonte, com escolha e renúncia).
+     * `categoria`), CASCATA grava em `cascata_escolha` (célula
+     * driver × eixo × horizonte, com escolha e renúncia) e INDICADOR grava os
+     * doze meses de `indicador_valor`.
      */
     public static function aplicar(PDO $pdo, array $conteudo, int $planoId): int
     {
         return match ($conteudo['destino']) {
-            'CENARIO' => self::aplicarCenario($pdo, $conteudo, $planoId),
-            'CASCATA' => self::aplicarCascata($pdo, $conteudo, $planoId),
-            default   => self::aplicarFatores($pdo, $conteudo, $planoId),
+            'CENARIO'   => self::aplicarCenario($pdo, $conteudo, $planoId),
+            'CASCATA'   => self::aplicarCascata($pdo, $conteudo, $planoId),
+            'INDICADOR' => self::aplicarIndicadores($pdo, $conteudo, $planoId),
+            default     => self::aplicarFatores($pdo, $conteudo, $planoId),
         };
+    }
+
+    /**
+     * Indicadores que a carga procurou e NÃO achou, pelo nome da carga.
+     *
+     * Existe porque esta carga não cria indicador, e quem a chama precisa
+     * dizer quais ficaram de fora — ver `aplicarIndicadores`.
+     *
+     * @var string[]
+     */
+    public static array $indicadoresNaoAchados = [];
+
+    /**
+     * Metas mensais de indicadores que JÁ EXISTEM no planejamento.
+     *
+     * Nasceu com as metas de 2027 da Agropecuária (planilha do cliente,
+     * 2026-11-13). Quatro decisões, e nenhuma é simetria com as outras cargas:
+     *
+     * 1. **SOBRESCREVE o que já está lançado** — e as outras cargas nunca
+     *    sobrescrevem. É pedido explícito do cliente ("atualize caso já tenha
+     *    algo preenchido"): a planilha é a fonte, e o que estava na tela antes
+     *    dela é rascunho. A marca em `carga_conteudo` continua valendo, e é ela
+     *    que impede o deploy seguinte de desfazer uma correção feita à mão
+     *    DEPOIS da carga — sem a marca, toda subida devolveria a planilha por
+     *    cima do trabalho de quem ajustou.
+     *
+     * 2. **NÃO cria indicador que não existe.** As outras cargas criam o que
+     *    falta; aqui, não. O indicador tem unidade, sentido, agregação e
+     *    horizonte escolhidos a dedo na tela, e um nome que diverge por uma
+     *    letra ("Rações Suinos" na planilha, "Ração Suinos" na tela) criaria um
+     *    SEGUNDO indicador parecido em vez de preencher o primeiro — duplicata
+     *    que ninguém pediu e que só se descobre olhando a lista inteira. O que
+     *    não for encontrado é reportado em `$indicadoresNaoAchados`.
+     *
+     * 3. **Só os doze MESES, nunca o ano.** `mes = 0` é lançamento próprio, e a
+     *    tela deriva o ano da soma dos meses quando a agregação é SOMA. Gravar
+     *    os dois faria o anual digitado disputar com o calculado, e o que
+     *    aparece dependeria de qual dos dois a leitura prefere.
+     *
+     * 4. **Escreve na versão CORRENTE da meta**, como faz
+     *    `IndicadorController::salvar` sem `nova_versao`. A carga não é uma
+     *    revisão de meta: é o preenchimento da revisão que está aberta. Abrir
+     *    versão nova empurraria para o histórico uma meta que ninguém usou.
+     *
+     * `itens` é `nome do indicador => [doze valores, de janeiro a dezembro]`, e
+     * os valores entram COMO ESTÃO: converter para a unidade cadastrada é
+     * decisão de quem monta o arquivo, não daqui.
+     */
+    private static function aplicarIndicadores(PDO $pdo, array $conteudo, int $planoId): int
+    {
+        $ano = (int)$conteudo['ano'];
+
+        // Índice por nome normalizado: a comparação tolera acento, caixa e
+        // espaço repetido, que é onde planilha e tela divergem de verdade.
+        $porNome = [];
+        $st = $pdo->prepare('SELECT id, nome FROM indicador WHERE planejamento_id = ?');
+        $st->execute([$planoId]);
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $i) {
+            $porNome[self::chaveTexto($i['nome'])] = (int)$i['id'];
+        }
+
+        $versaoDe = $pdo->prepare(
+            "SELECT COALESCE(MAX(versao_meta), 0) FROM indicador_valor
+              WHERE indicador_id = ? AND tipo = 'META'"
+        );
+        $grava = $pdo->prepare(
+            "INSERT INTO indicador_valor (indicador_id, ano, mes, tipo, versao_meta, valor)
+             VALUES (?, ?, ?, 'META', ?, ?)
+             ON DUPLICATE KEY UPDATE valor = VALUES(valor)"
+        );
+
+        $gravados = 0;
+        foreach ($conteudo['itens'] as $nome => $meses) {
+            $id = $porNome[self::chaveTexto((string)$nome)] ?? 0;
+            if (!$id) {
+                self::$indicadoresNaoAchados[] = (string)$nome;
+                continue;
+            }
+            $versaoDe->execute([$id]);
+            $versao = max(1, (int)$versaoDe->fetchColumn());
+            foreach (array_values($meses) as $i => $valor) {
+                $grava->execute([$id, $ano, $i + 1, $versao, (float)$valor]);
+                $gravados++;
+            }
+        }
+        return $gravados;
     }
 
     /**

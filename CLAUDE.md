@@ -2929,6 +2929,25 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `promovido_de_id`: promover é o gesto de quem conduz a análise (escolher qual
   fator do PESTEL/Porter merece o quadrante), e promover pela carga decidiria
   isso pelo usuário — o botão “→ SWOT” some depois que o fator foi promovido.
+  A carga de **INDICADOR** (`destino: INDICADOR`, 2026-11-13, metas de 2027 da
+  Agropecuária) é a única que **SOBRESCREVE** — pedido explícito do cliente
+  ("atualize caso já tenha algo preenchido"): a planilha é a fonte, e o que
+  estava lançado antes dela é rascunho. A marca em `carga_conteudo` continua
+  valendo e é ela que impede o deploy seguinte de desfazer uma correção feita à
+  mão DEPOIS da carga. Três outras decisões: **não cria indicador que não
+  existe** (unidade, sentido, agregação e horizonte são escolhidos a dedo na
+  tela, e um nome divergente por uma letra — "Rações Suinos" na planilha,
+  "Ração Suinos" na tela — criaria um segundo indicador quase igual, duplicata
+  que só se descobre olhando a lista inteira; o que falta é reportado pelo
+  migrate em `$indicadoresNaoAchados`, no STDERR); grava **só os doze meses**,
+  nunca `mes = 0`, porque havendo mês lançado a tela deriva o ano da agregação
+  (ver `Metas`) e os dois juntos se contradiriam; e escreve na **versão
+  corrente** da meta, como `IndicadorController::salvar` sem `nova_versao` —
+  carga preenche a revisão aberta, não abre revisão nova. Os valores entram
+  **como estão no arquivo**: converter para a unidade cadastrada é decisão de
+  quem monta a carga, e os indicadores não compartilham unidade (há `Reais`,
+  `R$ mil`, `Ton` e `Unidades` no mesmo negócio). Provas em
+  `testes/carga_indicadores.php` (nove, com planejamento e negócio descartáveis).
   A carga de **cascata** (`destino: CASCATA`) tem guarda diferente: o que
   protege não é o texto e sim a **célula** (plano × horizonte × driver × eixo),
   porque cada uma guarda uma decisão tomada. Ela casa driver, eixo e horizonte

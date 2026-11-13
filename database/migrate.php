@@ -939,6 +939,13 @@ foreach ([
     // ela: aquela é a leitura financeira do negócio, esta é a da oficina.
     // Como toda carga de fator, só insere e pula o texto que já existe.
     'conteudo_swot_pecuaria_oficina.php',
+    // Metas mensais de 2027 da AGROPECUÁRIA, da planilha do cliente
+    // (2026-11-13). Primeira carga de destino INDICADOR: preenche os doze
+    // meses de indicadores que JÁ existem e, ao contrário de todas as outras,
+    // SOBRESCREVE o que estiver lançado — pedido explícito do cliente. A marca
+    // em `carga_conteudo` é o que impede o deploy seguinte de desfazer uma
+    // correção feita à mão depois dela.
+    'conteudo_metas_agropecuaria_2027.php',
 ] as $arquivo) {
     $conteudo = require __DIR__ . '/' . $arquivo;
     $chaveCarga = $conteudo['chave'];
@@ -975,6 +982,16 @@ foreach ([
     echo "migrate: carga {$chaveCarga} — {$gravados} registro(s) em "
         . count($planos) . ' planejamento(s) '
         . (isset($conteudo['negocio']) ? "do negócio {$conteudo['negocio']}" : 'corporativo(s)') . ".\n";
+    // Carga de INDICADOR não cria o que não acha, e o silêncio aqui seria o
+    // pior desfecho: a carga conta os valores que gravou, nunca os que deixou
+    // de gravar, e um indicador renomeado na tela sumiria da carga sem nada
+    // dizer. Vai para o STDERR porque é o que alguém precisa VER no log do
+    // deploy, não um número a mais na contagem.
+    if (App\Services\CargaConteudo::$indicadoresNaoAchados) {
+        fwrite(STDERR, "migrate: carga {$chaveCarga} — indicador(es) NÃO encontrado(s), nada gravado para: "
+            . implode(' · ', array_unique(App\Services\CargaConteudo::$indicadoresNaoAchados)) . "\n");
+        App\Services\CargaConteudo::$indicadoresNaoAchados = [];
+    }
 }
 
 // Usuário admin inicial (senha via env ADMIN_SENHA; sem a variável, gera uma
