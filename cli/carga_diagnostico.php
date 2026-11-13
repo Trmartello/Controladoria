@@ -57,6 +57,9 @@ const CARGAS = [
     // reunião prévia (2026-11-12). Convive com a de cima: aquela é a leitura
     // financeira do negócio, esta é a da oficina.
     'swotPecuariaOficina' => 'conteudo_swot_pecuaria_oficina.php',
+    // Metas mensais de 2027 da AGROPECUÁRIA (planilha do cliente,
+    // 2026-11-13). Pela CLI, o `plan` a informar é o da AGROPECUÁRIA.
+    'metasAgropecuaria' => 'conteudo_metas_agropecuaria_2027.php',
 ];
 
 /** str_pad conta bytes: "2027–2035" tem travessão e desalinharia a coluna. */
