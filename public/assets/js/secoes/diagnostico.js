@@ -418,59 +418,34 @@ const Diag = {
   iconeOrientacao(cat, cor, rotulo) {
     if (!this.ORIENTACOES_CATEGORIA[cat]) return '';
     return `<button type="button" class="btn-orientacao me-1" data-orientacao="${cat}"
-      style="--cor-cat:${cor}" aria-expanded="${this.orientacoesAbertas() ? 'true' : 'false'}"
+      style="--cor-cat:${cor}" aria-expanded="false"
       title="O que considerar" aria-label="O que considerar em ${rotulo}">ⓘ</button>`;
   },
+  // O painel NASCE FECHADO, sempre. Já nasceu aberto para quem ligava o
+  // interruptor "O que considerar" da barra; ele saiu (pedido do cliente,
+  // 2026-11-14) e a preferência que ele gravava no navegador, `pe_orientacoes_abertas`,
+  // NÃO é mais lida — de propósito. Quem a deixou ligada teria todos os painéis
+  // abertos a cada desenho da tela, sem botão nenhum para fechá-los de uma vez.
   painelOrientacao(cat, cor) {
     const o = this.ORIENTACOES_CATEGORIA[cat];
-    return o ? `<div class="orientacao-categoria small ${this.orientacoesAbertas() ? '' : 'd-none'} mb-2"
+    return o ? `<div class="orientacao-categoria small d-none mb-2"
       data-orientacao-alvo="${cat}" style="--cor-cat:${cor}">${Modal.esc(o)}</div>` : '';
   },
 
-  /**
-   * "O que considerar" ligado para a análise INTEIRA (pedido do cliente,
-   * 2026-09-22).
-   *
-   * O ⓘ de cada tópico abre um por vez e a escolha morre no próximo desenho —
-   * a seção repinta ao trocar o ano, ao pesquisar, ao chegar voz da sala. Numa
-   * oficina, quem conduz abria os seis do PESTEL e os perdia no primeiro
-   * gesto. Este interruptor decide por todos e a preferência FICA.
-   *
-   * Vale para PESTEL, Porter e SWOT ao mesmo tempo: é uma decisão sobre como a
-   * pessoa quer ler o diagnóstico, não sobre uma tela. Mora no `localStorage`
-   * porque é preferência de quem está usando, não dado do planejamento — não
-   * atravessa para os outros participantes nem vira linha no banco.
-   */
-  ORIENTACOES_CHAVE: 'pe_orientacoes_abertas',
-
-  orientacoesAbertas() {
-    if (this._orientacoes === undefined) {
-      try {
-        this._orientacoes = localStorage.getItem(this.ORIENTACOES_CHAVE) === '1';
-      } catch {
-        // Armazenamento negado (janela anônima, site bloqueado): a preferência
-        // vale só enquanto a página estiver aberta.
-        this._orientacoes = false;
-      }
-    }
-    return this._orientacoes;
-  },
-
-  definirOrientacoes(aberto) {
-    this._orientacoes = aberto;
-    try {
-      localStorage.setItem(this.ORIENTACOES_CHAVE, aberto ? '1' : '0');
-    } catch {
-      // Sem armazenamento a escolha não sobrevive ao recarregar — e tudo bem.
-    }
-  },
-
-  interruptorOrientacoes() {
-    const on = this.orientacoesAbertas();
-    return `<button type="button" class="btn btn-sm btn-outline-secondary d-print-none"
-      data-alternar-orientacoes aria-pressed="${on ? 'true' : 'false'}"
-      title="Mostrar, em cada tópico, o que considerar ao preencher">ⓘ O que considerar</button>`;
-  },
+  // O interruptor "ⓘ O que considerar" da barra SAIU (pedido do cliente,
+  // 2026-11-14: "remova essa parte da orientação de como preencher os campos
+  // abaixo"). Ele abria a orientação de TODOS os tópicos de uma vez e guardava a
+  // escolha no `localStorage`, sob `pe_orientacoes_abertas`. O ⓘ de cada título
+  // continua, e abre um tópico por vez.
+  //
+  // O que isso custa, e foi escolha dele: o ⓘ de cada tópico morre no próximo
+  // desenho da seção (trocar o ano, pesquisar, chegar voz da sala), que era
+  // justamente o defeito que o interruptor resolvia.
+  //
+  // A chave `pe_orientacoes_abertas` fica órfã em quem a gravou, e é inofensiva
+  // porque NINGUÉM mais a lê. Não reintroduza a leitura "para respeitar a
+  // preferência antiga": sem o botão, quem a tinha ligada ficaria com todos os
+  // painéis abertos a cada desenho, sem como fechá-los de uma vez.
 
   ligarOrientacoes(el) {
     el.querySelectorAll('[data-orientacao]').forEach((b) => b.addEventListener('click', () => {
@@ -478,21 +453,11 @@ const Diag = {
       const oculto = alvo.classList.toggle('d-none');
       b.setAttribute('aria-expanded', oculto ? 'false' : 'true');
     }));
-    el.querySelectorAll('[data-alternar-orientacoes]').forEach((b) => b.addEventListener('click', () => {
-      const abrir = !this.orientacoesAbertas();
-      this.definirOrientacoes(abrir);
-      b.setAttribute('aria-pressed', abrir ? 'true' : 'false');
-      // Mexe na TELA, sem redesenhar: repintar aqui jogaria fora o que já
-      // estiver digitado num card em edição e o termo da pesquisa.
-      el.querySelectorAll('[data-orientacao-alvo]').forEach((p) => p.classList.toggle('d-none', !abrir));
-      el.querySelectorAll('[data-orientacao]').forEach((i) =>
-        i.setAttribute('aria-expanded', abrir ? 'true' : 'false'));
-    }));
   },
 
   /**
-   * Interruptor do TEXTO COMPLETO — o irmão do "O que considerar", e pela mesma
-   * razão (pedido do cliente, 2026-10-07).
+   * Interruptor do TEXTO COMPLETO — foi o irmão do "O que considerar" (que saiu
+   * em 2026-11-14) e nasceu da mesma razão (pedido do cliente, 2026-10-07).
    *
    * O "ver mais" de cada cartão abre um por vez e a escolha morre no desenho
    * seguinte: a seção repinta ao trocar o ano, ao pesquisar e ao chegar voz da
@@ -1175,7 +1140,6 @@ const Diag = {
           </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${this.campoBusca(etapa)}
-            ${this.interruptorOrientacoes()}
             ${this.interruptorTextoCompleto()}
             ${this.seletorAno(etapa)}
             ${this.quizMicEtapa(dono, etapa, ano, titulo)}
@@ -1530,7 +1494,6 @@ const SecaoCenario = {
           </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.campoBusca('CENARIO')}
-            ${Diag.interruptorOrientacoes()}
             ${Diag.interruptorTextoCompleto()}
             ${Diag.seletorAno('cenario')}
             ${QuizSala.microfone({ alvo_tipo: 'CENARIO', ano }, `o cenário de ${ano}`,
@@ -1961,7 +1924,6 @@ const SecaoSwot = {
           </div>
           <div class="d-flex align-items-center gap-2 flex-wrap">
             ${Diag.campoBusca('SWOT')}
-            ${Diag.interruptorOrientacoes()}
             ${Diag.interruptorTextoCompleto()}
             ${Diag.seletorAno('swot')}
             ${Diag.quizMicEtapa(this, 'SWOT', ano, 'SWOT')}

@@ -1423,24 +1423,38 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `categorias`) é uma cópia do `Diag.CATEGORIAS_ETAPA`/`CORES_QUADRANTE`/
   `DICAS_QUADRANTE`, porque a tela do participante não carrega o `Diag`;
   `provasEtapaNaSala` compara as duas e fica vermelha na primeira divergência.
-  **O interruptor "ⓘ O que considerar"** (2026-09-22, pedido do cliente): o ⓘ
-  de cada tópico abre um por vez e a escolha morre no desenho seguinte — e a
-  seção repinta ao trocar o ano, ao pesquisar e ao chegar voz da sala, então
-  quem conduz abria os seis do PESTEL e os perdia no primeiro gesto. O botão
-  na barra (`Diag.interruptorOrientacoes`) decide por todos, e a preferência
-  **fica**: `localStorage` sob `pe_orientacoes_abertas`, porque é escolha de
-  leitura de quem está usando, não dado do planejamento — não atravessa para
-  os outros participantes nem vira linha no banco. Vale para Cenário, PESTEL,
-  Porter e SWOT ao mesmo tempo (as quatro telas que usam `painelOrientacao`):
-  deixar uma delas de fora abriria painel sem botão para fechar. Alternar mexe
-  na TELA, sem redesenhar — repintar jogaria fora o card em edição e o termo
-  da pesquisa. Prova em `provasOrientacoes`, que confere justamente a
-  sobrevivência à repintura, e devolve a preferência ao padrão no fim: ela é
-  do navegador e atravessaria as provas seguintes, que contam cartões e medem
-  rolagem.
-  **O interruptor "▾ Texto completo"** (2026-10-07, pedido do cliente) é o
-  irmão dele, uma camada adiante: o "ver mais" de cada cartão abre um por vez e
-  morria na mesma repintura — numa oficina de Porter, quem conduz abre os onze
+  **O interruptor "ⓘ O que considerar" SAIU** (2026-11-14, pedido do cliente:
+  "remova essa parte da orientação de como preencher os campos abaixo"). Ele
+  nasceu em 2026-09-22 porque o ⓘ de cada tópico abre um por vez e a escolha
+  morre no desenho seguinte — a seção repinta ao trocar o ano, ao pesquisar e ao
+  chegar voz da sala, então quem conduz abria os seis do PESTEL e os perdia no
+  primeiro gesto. O botão da barra abria todos de uma vez e guardava a escolha
+  no `localStorage`, sob `pe_orientacoes_abertas`. Saiu das **quatro** telas
+  (Cenário, PESTEL, Porter e SWOT: deixar uma de fora seria inconsistência). O
+  que ficou: o **ⓘ de cada título**, que abre só o próprio tópico, e o painel
+  (`painelOrientacao`), que agora **nasce sempre fechado**. O que se perdeu, e
+  foi escolha do cliente: o ⓘ de cada tópico volta a morrer no próximo desenho.
+  A tela do celular (`participante.js`) tem a orientação própria, escolhida pelo
+  participante, e não foi tocada.
+  **A chave `pe_orientacoes_abertas` fica órfã no navegador de quem a gravou, e
+  nada a lê — de propósito. Não reintroduza a leitura "para respeitar a
+  preferência antiga".** Quem a tinha em `'1'` abriria todos os painéis a cada
+  desenho da seção, sem botão para fechá-los de uma vez. Foi medido: contra o
+  código anterior, a chave em `'1'` abre 6 de 6 painéis no PESTEL e 4 de 4 na
+  SWOT ao carregar. A prova (`provasOrientacoes`) cobre as duas pontas — o botão
+  não existe nas quatro telas (com o "Texto completo", que mora na mesma barra,
+  de testemunha, para não passar à toa com a barra por desenhar) e a chave antiga
+  não abre nada. **Ela RECARREGA a página** ao gravar a chave, e não é detalhe: o
+  código antigo lia o `localStorage` uma vez e guardava em memória, então gravar
+  com a página aberta não mudava nada e a prova passava contra o código que
+  devia acusar — só se viu rodando-a contra o `diagnostico.js` original. E
+  espera a seção **parar de se repintar** (`assentar`) antes de clicar: as seções
+  não são destruídas ao navegar, então revisitar uma deixa o DOM velho na tela e
+  a recarga o substitui ~40 ms depois do `esperar` voltar.
+  **O interruptor "▾ Texto completo"** (2026-10-07, pedido do cliente) foi o
+  irmão do "O que considerar" — que saiu, ver acima — e hoje é o único
+  interruptor da barra. Nasceu do mesmo defeito, uma camada adiante: o "ver
+  mais" de cada cartão abre um por vez e morria na mesma repintura — numa oficina de Porter, quem conduz abre os onze
   cartões para ler as evidências em voz alta e os perde ao trocar o ano.
   `Diag.interruptorTextoCompleto` + `ligarTextoCompleto`, preferência em
   `pe_texto_completo`, **separada** da das orientações de propósito: são duas
