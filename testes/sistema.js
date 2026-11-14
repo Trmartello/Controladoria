@@ -1345,8 +1345,8 @@ async function provasFilaAcao(page, largura) {
 /**
  * O interruptor "Texto completo" (pedido do cliente, 2026-10-07).
  *
- * É o irmão do "O que considerar" e nasceu do mesmo defeito, uma camada
- * adiante: o "ver mais" de cada cartão abre um por vez e a escolha morre na
+ * Foi o irmão do "O que considerar" (que saiu em 2026-11-14) e nasceu do mesmo
+ * defeito, uma camada adiante: o "ver mais" de cada cartão abre um por vez e a escolha morre na
  * repintura. Numa oficina de Porter, quem conduz abre os onze cartões para ler
  * as evidências em voz alta e os perde ao trocar o ano ou ao pesquisar.
  *
@@ -1453,73 +1453,139 @@ async function provasTextoCompleto(page, largura) {
 }
 
 /**
- * O interruptor "O que considerar" (pedido do cliente, 2026-09-22).
+ * A orientação "O que considerar" depois que o INTERRUPTOR saiu (pedido do
+ * cliente, 2026-11-14: "remova essa parte da orientação de como preencher os
+ * campos abaixo").
  *
- * O ⓘ de cada tópico já existia, mas abria um por vez e a escolha morria no
- * desenho seguinte — a seção repinta ao trocar o ano, ao pesquisar, ao chegar
- * voz da sala. Numa oficina, quem conduz abria os seis do PESTEL e os perdia
- * no primeiro gesto. O que esta prova defende:
+ * Até então havia um botão na barra que abria a orientação de TODOS os tópicos
+ * de uma vez e guardava a escolha no `localStorage`. Ele saiu das quatro telas;
+ * o ⓘ de cada título ficou. O que esta prova defende:
  *
- * - um clique abre TODOS os tópicos da análise, e outro fecha;
- * - a escolha sobrevive à repintura, que é o defeito que originou o pedido;
- * - e vale para as outras análises do diagnóstico, porque é preferência de
- *   leitura da pessoa e não configuração de uma tela.
+ * - o botão NÃO existe em nenhuma das quatro telas. É medido com o
+ *   "Texto completo", que mora na mesma barra, como testemunha: sem ele, a prova
+ *   passaria também se a barra nem tivesse sido desenhada ainda;
+ * - o ⓘ de cada título continua abrindo e fechando só o PRÓPRIO tópico;
+ * - e a preferência antiga, que ficou gravada no navegador de quem a tinha
+ *   ligada, NÃO abre mais nada. É o caso que ninguém veria numa tela limpa: sem
+ *   o botão, quem tivesse a chave em '1' ficaria com todos os painéis abertos a
+ *   cada desenho da seção, e sem como fechá-los de uma vez.
  */
 async function provasOrientacoes(page, largura) {
+  const CHAVE = 'pe_orientacoes_abertas';
+  const guardar = (valor) => page.evaluate(([k, v]) => {
+    try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* sem armazenamento */ }
+  }, [CHAVE, valor]);
+
+  // ── O botão saiu das quatro telas ───────────────────────────────────────────
+  await guardar(null);
+  for (const secao of ['pestel', 'porter', 'swot', 'cenario']) {
+    await page.evaluate((s) => App.mostrarSecao(s), secao);
+    await esperar(page, `!!document.querySelector('#secao-${secao} [data-alternar-texto]')`, 15000);
+    const barra = await page.evaluate((s) => {
+      const el = document.getElementById(`secao-${s}`);
+      return {
+        testemunha: !!el.querySelector('[data-alternar-texto]'),
+        interruptor: !!el.querySelector('[data-alternar-orientacoes]'),
+        rotulo: [...el.querySelectorAll('button')].some((b) => /O que considerar$/.test(b.textContent.trim())),
+      };
+    }, secao);
+    t(`[${largura}] ${secao}: a barra não tem mais o interruptor "O que considerar"`,
+      barra.testemunha && !barra.interruptor && !barra.rotulo, JSON.stringify(barra));
+  }
+
+  // Espera a seção PARAR de se repintar antes de interagir. Não é zelo: as
+  // seções não são destruídas ao navegar, então REVISITAR uma deixa o DOM velho
+  // na tela — o `esperar` passa na hora — e a recarga assíncrona o substitui uns
+  // 40 ms depois. Um clique nessa janela abre o painel no elemento que vai
+  // morrer, e a prova acusava "não abre" quando o que falhou foi a sincronia.
+  // Aqui a prova visita o PESTEL duas vezes (no laço acima e logo abaixo), então
+  // o caso é o normal, não o raro. O teto de 4 s evita esperar para sempre por
+  // uma seção que nunca sossega.
+  const assentar = (secao) => page.evaluate((s) => new Promise((resolve) => {
+    const el = document.getElementById(s);
+    let fim = setTimeout(resolve, 500);
+    const teto = setTimeout(resolve, 4000);
+    const obs = new MutationObserver(() => { clearTimeout(fim); fim = setTimeout(resolve, 500); });
+    obs.observe(el, { childList: true, subtree: true });
+    // Limpa o observador quando o prazo vence, qualquer que tenha sido o motivo.
+    setTimeout(() => { obs.disconnect(); clearTimeout(teto); }, 4100);
+  }), secao);
+
+  // ── O ⓘ de cada título continua, e abre só o próprio tópico ─────────────────
+  await page.evaluate(() => App.mostrarSecao('pestel'));
+  await esperar(page, "!!document.querySelector('#secao-pestel [data-orientacao]')", 15000);
+  await assentar('secao-pestel');
   const estado = (secao) => page.evaluate((s) => {
     const el = document.getElementById(s);
-    const b = el.querySelector('[data-alternar-orientacoes]');
     return {
-      botao: !!b,
-      pressed: b ? b.getAttribute('aria-pressed') : null,
+      icones: el.querySelectorAll('[data-orientacao]').length,
       paineis: el.querySelectorAll('[data-orientacao-alvo]').length,
       visiveis: el.querySelectorAll('[data-orientacao-alvo]:not(.d-none)').length,
+      expandidos: el.querySelectorAll('[data-orientacao][aria-expanded="true"]').length,
     };
   }, secao);
 
-  await page.evaluate(() => { try { localStorage.removeItem('pe_orientacoes_abertas'); } catch { /* sem armazenamento */ } });
-  await page.evaluate(() => App.mostrarSecao('pestel'));
-  await esperar(page, "!!document.querySelector('#secao-pestel [data-alternar-orientacoes]')", 15000);
-  await page.evaluate(() => App.recarregarSecaoAtiva());
-  await esperar(page, "!!document.querySelector('#secao-pestel [data-alternar-orientacoes]')", 15000);
-
   const inicial = await estado('secao-pestel');
-  t(`[${largura}] o PESTEL traz o interruptor "O que considerar", começando fechado`,
-    inicial.botao && inicial.paineis > 0 && inicial.visiveis === 0 && inicial.pressed === 'false',
-    JSON.stringify(inicial));
+  t(`[${largura}] o PESTEL mantém um ⓘ por tópico, com as orientações fechadas`,
+    inicial.paineis > 1 && inicial.icones === inicial.paineis && inicial.visiveis === 0
+      && inicial.expandidos === 0, JSON.stringify(inicial));
 
-  await page.click('#secao-pestel [data-alternar-orientacoes]');
-  await new Promise((r) => setTimeout(r, 250));
-  const ligado = await estado('secao-pestel');
-  t(`[${largura}] um clique abre a orientação de TODOS os tópicos`,
-    ligado.visiveis === ligado.paineis && ligado.paineis > 1 && ligado.pressed === 'true',
-    `${ligado.visiveis}/${ligado.paineis}`);
+  // `click()` por código, e não `page.click`: o que se prova é a LIGAÇÃO do
+  // clique ao painel, e a geometria do ponteiro sob o cabeçalho que gruda no
+  // topo é outra prova — e a que mais oscila nesta bateria.
+  await page.evaluate(() => document.querySelector('#secao-pestel [data-orientacao]').click());
+  await new Promise((r) => setTimeout(r, 200));
+  const um = await estado('secao-pestel');
+  t(`[${largura}] clicar no ⓘ abre a orientação daquele tópico, e só dele`,
+    um.visiveis === 1 && um.expandidos === 1, JSON.stringify(um));
 
-  // O defeito que originou o pedido: repintar apagava o que estava aberto
-  await page.evaluate(() => App.recarregarSecaoAtiva());
-  await esperar(page, "!!document.querySelector('#secao-pestel [data-alternar-orientacoes]')", 15000);
-  await new Promise((r) => setTimeout(r, 300));
-  const depois = await estado('secao-pestel');
-  t(`[${largura}] e a escolha sobrevive à repintura da seção`,
-    depois.visiveis === depois.paineis && depois.pressed === 'true',
-    `${depois.visiveis}/${depois.paineis}`);
+  await page.evaluate(() => document.querySelector('#secao-pestel [data-orientacao]').click());
+  await new Promise((r) => setTimeout(r, 200));
+  const zero = await estado('secao-pestel');
+  t(`[${largura}] e clicar de novo fecha`,
+    zero.visiveis === 0 && zero.expandidos === 0, JSON.stringify(zero));
+
+  // ── A preferência antiga NÃO volta a mandar ─────────────────────────────────
+  // Quem a deixou ligada tem '1' gravado. Se alguma leitura sobrevivesse, todo
+  // desenho da seção abriria os painéis e não haveria botão para fechá-los.
+  //
+  // RECARREGA a página, e não basta gravar a chave: o código antigo lia o
+  // `localStorage` UMA vez e guardava o valor em memória, então gravar com a
+  // página já aberta não mudava nada — e esta prova passava contra o código
+  // antigo, que é exatamente o que ela existe para acusar. Foi o que se viu ao
+  // rodá-la com o `diagnostico.js` original. O cenário real é abrir o sistema
+  // com a chave já gravada, e só um recarregamento o reproduz.
+  //
+  // E DEVOLVE o ano da análise que herdou. Recarregar zera `Diag.anoSelecionado`,
+  // que é memória da página e não do navegador — e é onde `noAnoDaCarga` põe as
+  // provas que precisam de conteúdo na tela. Sem restaurá-lo, a prova seguinte
+  // (a GUT, que corre no ano da carga) abria vazia, a página não rolava e o
+  // cabeçalho "nunca grudava": a bateria ficava vermelha a duas provas daqui,
+  // acusando o que não tinha defeito. Guarda o que havia, e não presume qual era.
+  const anoHerdado = await page.evaluate(() => Diag.anoSelecionado ?? null);
+  await guardar('1');
+  await page.reload();
+  await esperar(page, "typeof App !== 'undefined' && !!App.sessao && !!App.secaoAtiva", 20000);
+  await page.evaluate((ano) => { Diag.anoSelecionado = ano; }, anoHerdado);
+  await page.evaluate(() => App.mostrarSecao('pestel'));
+  await esperar(page, "!!document.querySelector('#secao-pestel [data-orientacao]')", 15000);
+  await assentar('secao-pestel');
+  const antigoPestel = await estado('secao-pestel');
+  t(`[${largura}] preferência antiga ligada no navegador: o PESTEL segue com tudo fechado`,
+    antigoPestel.paineis > 1 && antigoPestel.visiveis === 0 && antigoPestel.expandidos === 0,
+    JSON.stringify(antigoPestel));
 
   await page.evaluate(() => App.mostrarSecao('swot'));
-  await esperar(page, "!!document.querySelector('#secao-swot [data-orientacao-alvo]')", 15000);
-  await new Promise((r) => setTimeout(r, 250));
-  const swot = await estado('secao-swot');
-  t(`[${largura}] a SWOT herda a preferência, sem clicar de novo`,
-    swot.visiveis === swot.paineis && swot.paineis > 1, `${swot.visiveis}/${swot.paineis}`);
+  await esperar(page, "!!document.querySelector('#secao-swot [data-orientacao]')", 15000);
+  await assentar('secao-swot');
+  const antigoSwot = await estado('secao-swot');
+  t(`[${largura}] e a SWOT também, sem herdar a preferência antiga`,
+    antigoSwot.paineis > 1 && antigoSwot.visiveis === 0 && antigoSwot.expandidos === 0,
+    JSON.stringify(antigoSwot));
 
-  await page.click('#secao-swot [data-alternar-orientacoes]');
-  await new Promise((r) => setTimeout(r, 250));
-  const fechado = await estado('secao-swot');
-  t(`[${largura}] e desligar fecha tudo de volta`,
-    fechado.visiveis === 0 && fechado.pressed === 'false', JSON.stringify(fechado));
-
-  // Devolve ao padrão: a preferência é do navegador e atravessaria as provas
-  // seguintes, que contam cartões e medem rolagem com a tela mais alta.
-  await page.evaluate(() => { try { localStorage.removeItem('pe_orientacoes_abertas'); } catch { /* sem armazenamento */ } });
+  // Devolve ao padrão: a chave é do navegador e atravessaria as provas seguintes,
+  // que contam cartões e medem rolagem com a tela mais alta.
+  await guardar(null);
 }
 
 async function provasBuscaAnalise(page, largura) {
