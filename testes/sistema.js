@@ -5553,6 +5553,74 @@ async function provasProjecaoPremissas(page, largura) {
 }
 
 /**
+ * A DRE das filiais é ACUMULADA e só vale para o corte em que foi extraída. Em
+ * 17/11/2026 o negócio passou a outubro, a Pecuária foi re-extraída e as
+ * demais filiais ficaram em setembro: a tela tem de DIZER isso onde é verdade e
+ * calar onde não é. Sem a faixa, o realizado de setembro apareceria ao lado do
+ * de outubro como se fossem do mesmo mês; com a faixa em toda parte, ninguém
+ * mais a leria.
+ *
+ * A prova lê o estado do BANCO antes de afirmar na tela, e se nenhum negócio
+ * estiver defasado ela se declara não aplicável em vez de passar no vazio.
+ */
+async function provasProjecaoCorteDasFiliais(page, largura) {
+  const l = `[${largura}] Corte das filiais:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+
+  const estado = await page.evaluate(async () => {
+    const s = document.querySelector('#projecao-negocio');
+    const out = [];
+    for (const o of [...s.options]) {
+      const d = await App.api(`/api/projecao?negocio_id=${o.value}`);
+      out.push({ id: o.value, rotulo: o.textContent, corte: d.mes_fechado_ate,
+        filiais: d.filiais.length, filiaisCorte: d.filiais_corte });
+    }
+    return out;
+  });
+  const comFilial = estado.filter((n) => n.filiais > 0);
+  const defasados = comFilial.filter((n) => n.filiaisCorte !== null && n.filiaisCorte < n.corte);
+  const emDia = comFilial.filter((n) => n.filiaisCorte === n.corte);
+  t(`${l} a API informa em que corte está a DRE das filiais`,
+    comFilial.length > 0 && comFilial.every((n) => Number.isInteger(n.filiaisCorte)), JSON.stringify(comFilial));
+  t(`${l} negócio sem filial carregada devolve filiais_corte nulo`,
+    estado.filter((n) => n.filiais === 0).every((n) => n.filiaisCorte === null),
+    JSON.stringify(estado.filter((n) => n.filiais === 0 && n.filiaisCorte !== null)));
+
+  const faixa = async (id) => {
+    await page.evaluate((v) => {
+      const s = document.querySelector('#projecao-negocio');
+      s.value = v;
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+    }, id);
+    await new Promise((r) => setTimeout(r, 1500));
+    return page.evaluate(() => {
+      const el = document.querySelector('#projecao-filiais-defasadas');
+      return el ? el.textContent.replace(/\s+/g, ' ').trim() : null;
+    });
+  };
+
+  if (!defasados.length) {
+    t(`${l} (nenhum negócio defasado neste banco: a faixa não tem onde ser provada)`, true);
+  } else {
+    const txt = await faixa(defasados[0].id);
+    const mesAnt = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    t(`${l} negócio com filiais defasadas mostra a faixa`, !!txt, String(txt));
+    t(`${l} e a faixa diz os dois meses`,
+      !!txt && txt.toLowerCase().includes(mesAnt[defasados[0].filiaisCorte - 1])
+        && txt.toLowerCase().includes(mesAnt[defasados[0].corte - 1]), String(txt));
+  }
+  if (!emDia.length) {
+    t(`${l} (nenhum negócio com filiais em dia neste banco)`, true);
+  } else {
+    const txt = await faixa(emDia[0].id);
+    t(`${l} negócio com filiais em dia NÃO mostra a faixa`, txt === null, String(txt));
+  }
+}
+
+/**
  * IPCA, PIB e o CRESCIMENTO DESEJADO valem para o negócio inteiro e para todas
  * as filiais dele, com um valor para cada ANO (pedido do cliente, 2026-11-16:
  * "quando lançar o PIB e o IPCA, deve ficar fixo, gravado, registrado, ou seja,
@@ -9011,6 +9079,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoProposta(page, 'desktop');
   await provasProjecaoPremissas(page, 'desktop');
   await provasProjecaoFilial(page, 'desktop');
+  await provasProjecaoCorteDasFiliais(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
   await provasProjecaoNoDossie(page, 'desktop');
@@ -9071,6 +9140,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoProposta(pageM, 'celular');
   await provasProjecaoPremissas(pageM, 'celular');
   await provasProjecaoFilial(pageM, 'celular');
+  await provasProjecaoCorteDasFiliais(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
   await provasProjecaoNoDossie(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');

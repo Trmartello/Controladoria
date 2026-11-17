@@ -885,10 +885,18 @@ foreach ([
     'dre_2026_fechamento_09.php',
     // A DRE por FILIAL entra depois da do negócio, e não por acaso: a carga
     // confere que a soma das filiais bate com o negócio, e para isso o negócio
-    // já precisa estar no banco.
-    'dre_filiais_pecuaria_2026_09.php',
+    // já precisa estar no banco — E NO MESMO CORTE (a filial é acumulada e a
+    // carga recusa corte diferente do gravado).
     'dre_filiais_supermercados_2026_09.php',
     'dre_filiais_agropecuarias_2026_09.php',
+    // Outubro fechou em 17/11/2026. O negócio e a Pecuária já foram
+    // re-extraídos; Supermercados e Agropecuárias seguem em setembro até a
+    // re-extração deles (a tela avisa — `filiais_corte`). Por isso as cargas
+    // de setembro ficam NESTA ordem: num banco novo elas precisam entrar
+    // antes de o corte andar, e as de outubro as sobrescrevem depois. Quando
+    // as duas últimas forem re-extraídas, as de setembro saem daqui.
+    'dre_2026_fechamento_10.php',
+    'dre_filiais_pecuaria_2026_10.php',
 ] as $arquivo) {
     $dre = require __DIR__ . '/' . $arquivo;
     if (App\Services\CargaConteudo::jaAplicada($pdo, $dre['chave'])) {

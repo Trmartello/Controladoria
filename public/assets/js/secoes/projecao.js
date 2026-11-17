@@ -196,6 +196,7 @@ const SecaoProjecao = {
         (<code>11,43</code>) na coluna <strong>Reajuste</strong>. Uma preenche a outra.
       </p>
       <p class="mb-2">${assinatura}</p>
+      ${this.avisoFiliaisDefasadas(d)}
       ${this.faixaDoModo(d)}
       ${this.painel(d)}
       ${faltando}
@@ -410,6 +411,24 @@ const SecaoProjecao = {
   premissaEditavel(d) {
     if (App.modoDossie) return false;
     return !!d.pode_editar && !d.filial;
+  },
+
+  /**
+   * A DRE das filiais é acumulada e só vale para o corte em que foi extraída.
+   * Se o negócio já está em outubro e as filiais ainda em setembro, as duas
+   * colunas Realizado deixam de ser comparáveis e a coluna A distribuir mede
+   * contra uma base de meses diferentes — isso precisa estar escrito na tela,
+   * não na memória de quem fez a carga.
+   */
+  avisoFiliaisDefasadas(d) {
+    if (!d.filiais.length || !d.filiais_corte || Number(d.filiais_corte) >= Number(d.mes_fechado_ate)) {
+      return '';
+    }
+    return `<div id="projecao-filiais-defasadas" class="alert alert-warning py-2 px-3 small mb-3">
+      <strong>As filiais estão no fechamento de ${this.nomeMes(d.filiais_corte)}.</strong>
+      O negócio já está em ${this.nomeMes(d.mes_fechado_ate)}: o realizado e o projetado por filial
+      não somam com os do negócio até a DRE das filiais ser extraída de novo.
+    </div>`;
   },
 
   faixaDoModo(d) {
