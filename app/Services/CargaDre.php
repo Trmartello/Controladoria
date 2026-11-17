@@ -196,12 +196,38 @@ class CargaDre
              ON DUPLICATE KEY UPDATE corte = VALUES(corte), realizado = VALUES(realizado),
                                      projetado = VALUES(projetado)'
         );
+        // A carga omite o que é zero ("ausente = zero"), e `ON DUPLICATE KEY
+        // UPDATE` só sobrescreve o que ESTÁ no arquivo. Sem apagar antes, uma
+        // linha que virou zero no corte novo continuaria no banco com o valor e
+        // o corte do anterior — fantasma que a soma contra o negócio não pega,
+        // porque essa conferência olha o arquivo, não o banco. Apagar e gravar
+        // formam uma unidade: sem a transação, uma falha no meio deixaria o
+        // negócio sem filial nenhuma.
         $gravados = 0;
-        foreach ($porFilial as $cod => $linhas) {
-            foreach ($linhas as $codConta => [$r, $p]) {
-                $ins->execute([$ids[$cod], $contas[$codConta], $ano, $corte, $r, $p]);
-                $gravados++;
+        $abriu = !$pdo->inTransaction();
+        if ($abriu) {
+            $pdo->beginTransaction();
+        }
+        try {
+            $pdo->prepare(
+                'DELETE v FROM dre_valor_filial v
+                   JOIN filial f ON f.id = v.filial_id
+                  WHERE f.negocio_id = ? AND v.ano = ?'
+            )->execute([$negocioId, $ano]);
+            foreach ($porFilial as $cod => $linhas) {
+                foreach ($linhas as $codConta => [$r, $p]) {
+                    $ins->execute([$ids[$cod], $contas[$codConta], $ano, $corte, $r, $p]);
+                    $gravados++;
+                }
             }
+            if ($abriu) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($abriu && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
         }
         return ['filiais' => count($dados['filiais']), 'valores' => $gravados];
     }

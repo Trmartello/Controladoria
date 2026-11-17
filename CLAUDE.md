@@ -2719,9 +2719,11 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   até que mês o ano fechou, e quem escreve é a carga: `CargaDre` **recusa** um
   mês declarado fechado cujo rateio consolidado seja zero. Rateio é a última
   etapa do fechamento contábil, e mês sem rateio é mês ABERTO — o realizado dele
-  está incompleto e muda sozinho. Em 2026 isso é **outubro**, com R$ 373,2 mi de
-  receita lançada e Rateios = 0; a planilha do cliente trazia outubro como
-  realizado, e essa é a diferença entre os dois números. O consolidado decide, e
+  está incompleto e muda sozinho. Em 05/11/2026 isso era **outubro** (R$ 373,2 mi
+  lançados e Rateios = 0; a planilha do cliente o trazia como realizado). Em
+  **17/11/2026 outubro fechou** (ROL R$ 356,7 mi — o realizado se moveu ao
+  fechar —, rateios −R$ 9,77 mi) e o corte passou a 10; **novembro** é o mês
+  aberto da vez (R$ 171 mi lançados, rateio zero). O consolidado decide, e
   não cada negócio: a Usina Fotovoltaica não tem rateio em mês nenhum e,
   julgada sozinha, reprovaria o ano inteiro.
   **O ano de planejamento é o do último fechamento CARREGADO + 1** — não o
@@ -2947,6 +2949,29 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   caminhos arredondam ao real em pontos diferentes — no resultado líquido da
   Pecuária a diferença é de R$ 7 em R$ 21,8 milhões. As provas usam tolerância
   de R$ 20 por isso.
+  **Quando o corte anda, o negócio e as filiais não andam juntos — e a tela
+  avisa.** A carga do negócio é pequena (só o mês novo muda: em 17/11 foram 550
+  valores, e a conferência por soma e por soma dos módulos mostrou que jan–set e
+  o orçamento não tinham se movido). A das filiais é **acumulada e inteira**, e
+  cara: uma coluna por filial, e **consulta com mais de ~12 colunas estoura os
+  60 s do Qlik** (19 filiais de uma vez deram timeout; 6 e 10 passaram), então as
+  Agropecuárias (77) são ~7 lotes de ~17 mil tokens de dados cada. Em 17/11
+  foram re-extraídos o negócio (11) e a **Pecuária**; **Supermercados e
+  Agropecuárias continuam no corte 9**. Em vez de esconder essas filiais (o
+  total do modo filial sumiria calado) ou mostrá-las como se fossem de outubro,
+  `montar()` devolve `filiais_corte` e a tela exibe a faixa amarela *"As filiais
+  estão no fechamento de setembro"* (`#projecao-filiais-defasadas`). Para zerar a
+  pendência: re-extrair os dois no corte 10, criar `dre_filiais_*_2026_10.php`,
+  apagar os `_09` e tirá-los do `migrate.php` — a ordem de lá (negócio 09 →
+  filiais 09 → negócio 10 → filiais 10) existe porque num banco novo as filiais
+  de setembro precisam entrar antes de o corte andar. `testes/carga_dre.php`
+  recarrega o negócio do corte de cada arquivo de filial antes de prová-lo.
+  **A carga de filiais apaga antes de gravar** (transação, por negócio e ano): ela
+  omite o que é zero, e o upsert só sobrescreve o que está no arquivo — sem o
+  `DELETE`, uma linha que virou zero no corte novo ficava no banco com o valor e
+  o corte do anterior (Embrapa, conta 8.17, R$ 1.184 de projetado, achada na
+  re-extração da Pecuária em 17/11/2026; a soma contra o negócio não pega, porque
+  confere o arquivo, não o banco).
   **O realizado entra por CARGA, pedida no chat** (decisão do cliente, 2026-11-05,
   reconfirmada no mesmo dia): não há extração automática do Qlik nem tela de
   importação. O gatilho é o cliente dizer "atualiza a DRE" — e é por guardar mês

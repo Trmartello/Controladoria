@@ -107,6 +107,21 @@ class ProjecaoController
         $modo = $proj['modo'] ?? 'NEGOCIO';
         $filiais = $this->filiaisDoNegocio($negocioId);
 
+        // Em que corte a DRE das filiais deste negócio foi extraída. Ela é
+        // ACUMULADA e só vale para um corte; quando o fechamento anda e o
+        // negócio é recarregado antes das filiais (a re-extração é cara: uma
+        // coluna por filial), as duas ficam em meses diferentes e a tela
+        // mostraria realizado de setembro ao lado do de outubro sem dizer. O
+        // número vai para a tela, que avisa — esconder as filiais, em troca,
+        // faria o total do modo filial sumir calado.
+        $cortesFilial = array_map('intval', array_column(Database::todos(
+            'SELECT DISTINCT v.corte
+               FROM dre_valor_filial v JOIN filial f ON f.id = v.filial_id
+              WHERE f.negocio_id = ? AND v.ano = ?',
+            [$negocioId, $ano]
+        ), 'corte'));
+        $filiaisCorte = $cortesFilial ? min($cortesFilial) : null;
+
         // A proposta de CADA filial, sempre — ela serve a duas perguntas: no
         // modo filial é ela que forma o total do negócio; no modo negócio é
         // ela que diz quanto já foi distribuído.
@@ -176,6 +191,7 @@ class ProjecaoController
             'anos_premissa' => $anosPremissa,
             'premissas_por_ano' => $porAno,
             'filiais' => $filiais,
+            'filiais_corte' => $filiaisCorte,
             'filial' => $filialAberta,
             'atualizado_em' => $proj['atualizado_em'] ?? null,
             'atualizado_por' => $proj['atualizado_por_nome'] ?? null,
