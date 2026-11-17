@@ -2926,12 +2926,34 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   duas colunas (projeção do ano e proposta do seguinte, com ROL em cima e
   resultado líquido embaixo) e dois cartões. O cartão **diz de quantos negócios
   é o consolidado** — um consolidado parcial lido como total da cooperativa é o
-  erro silencioso que esta seção inteira evita —, e o Corporativo fica com "—",
-  porque a DRE gerencial não tem linha corporativa. A conta do Painel sai de
+  erro silencioso que esta seção inteira evita —, e o Corporativo ficava com
+  "—", porque a DRE gerencial não tem linha corporativa (ver **O Corporativo é a
+  soma dos negócios**, abaixo, que mudou isso em 17/11/2026). A conta do Painel sai de
   `Projecao::resumoDosNegocios`, que usa **as mesmas** `aplicar`/`somarFiliais`
   da tela: se a conta divergisse entre as duas, ninguém saberia em qual
   acreditar. São quatro consultas em lote, e não dezenas — o Painel resolve
   doze planejamentos de uma vez.
+  **O Corporativo é a soma dos negócios** (pedido do cliente, 2026-11-17: "traga
+  os dados de todos os negócios e consolide o resultado no Corporativo"). A DRE
+  gerencial continua sem linha corporativa, então o Corporativo **não é carga**:
+  é conta derivada, `ProjecaoController::montarCorporativo`, que soma por conta
+  o `montar()` de cada negócio — a MESMA conta da tela dele, com a proposta
+  lançada (ou a projeção, onde nada foi lançado). Guardar a soma criaria a
+  segunda cópia do número, e a primeira recarga de um negócio a deixaria velha
+  sem ninguém ver. Aparece como a primeira opção do seletor de negócio
+  (`corp`, só para quem enxerga todos — `Auth::veTudo`, a mesma regra da linha
+  do Corporativo no Painel), é **só leitura** (sem campo, modo, filial nem
+  premissa: a proposta é decidida nos negócios) e **diz quantos negócios já
+  lançaram proposta** — onde nada foi lançado a proposta vale a projeção, e um
+  consolidado que não diz isso se lê como a meta da cooperativa. Linha sem
+  regra de proposta (Despesas Totais, os percentuais) segue sem regra: somar os
+  que têm e calar sobre os que não têm seria inventar o número. No **Painel**,
+  a linha do Corporativo mostra essa mesma soma, e **sai das somas do cartão**
+  (ele já é a soma dos negócios; com o Corporativo dentro dobraria). No
+  **Dossiê**, o contexto Corporativo imprime a Projeção consolidada como página.
+  Nota de leitura: o resultado líquido consolidado é **sem participação
+  societária** (convenção da controladoria) — não é comparável com as sobras de
+  R$ 75 mi que a cooperativa divulga, que as incluem.
   **No Dossiê a Projeção segue o negócio do DOCUMENTO**, não o seletor da tela
   (`App.modoDossie` + `App.contexto`), e se declara ausente onde não há DRE em
   vez de imprimir o número de um negócio sob o nome de outro — a API cai no
