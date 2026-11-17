@@ -504,8 +504,8 @@ class ProjecaoController
         }
         if ($filialId !== 0) {
             Json::erro(
-                'IPCA, PIB e o crescimento desejado valem para o negócio inteiro e '
-                . 'todas as filiais dele: lance-os no negócio, e não na filial.',
+                'IPCA, PIB, o crescimento desejado e o das despesas com pessoas valem para o '
+                . 'negócio inteiro e todas as filiais dele: lance-os no negócio, e não na filial.',
                 422
             );
         }

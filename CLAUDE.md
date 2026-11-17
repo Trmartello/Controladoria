@@ -2796,7 +2796,7 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   também são leitura. No bloco de CADA FILIAL a planilha faz o oposto: ali os
   percentuais são digitados e a proposta sai deles (`AD10 = AA10 * Z14%`) — **e
   é desse papel que o sistema se afasta, por decisão do cliente** (ver abaixo).
-  Só IPCA, PIB e o crescimento desejado são gravados (`negocio_premissa`):
+  Só IPCA, PIB, o crescimento desejado e o **crescimento das despesas com pessoas** (`PESSOAS`, pedido de 2026-11-17 — registro como o desejado: não move proposta, e a DRE não tem linha de pessoal para ligá-lo) são gravados (`negocio_premissa`):
   deixar "Cresc. Total" também ser digitado criaria duas fontes para o mesmo
   número — o painel e a célula da receita —, e a divergência entre elas
   apareceria como meta errada na reunião. Quem quer lançar crescimento **da
