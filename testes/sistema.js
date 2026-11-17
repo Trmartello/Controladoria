@@ -5552,6 +5552,197 @@ async function provasProjecaoPremissas(page, largura) {
     v.ipca === '4,2' && v.pib === '1,78', JSON.stringify({ ipca: v.ipca, pib: v.pib }));
 }
 
+/**
+ * IPCA, PIB e a META DE CRESCIMENTO valem para o negócio inteiro e para todas
+ * as filiais dele (pedido do cliente, 2026-11-17: "quando lançar o PIB e o
+ * IPCA, deve ficar fixo, gravado, registrado, ou seja, vai servir para o
+ * negócio e todas as filiais do negócio. Além desses dois campos, precisa ter
+ * um percentual de crescimento também").
+ *
+ * Antes, cada filial tinha o seu par, digitado dentro dela, e o negócio que
+ * planejava POR FILIAL nem conseguia lançar o dele — a regra que trava os
+ * totais travava também as premissas. O que esta prova defende:
+ *
+ * - o que se lança no negócio fica no BANCO (lido pela API, e não pela tela);
+ * - a filial mostra o mesmo valor, travado, e é a mesma coisa em qualquer filial;
+ * - lançar por filial pela API é RECUSADO, e o valor do negócio não se mexe —
+ *   redirecionar calado sobrescreveria o negócio inteiro;
+ * - no modo "por filial" o negócio continua podendo lançar as premissas;
+ * - a meta de crescimento é REGISTRO: não move o Cresc. Total nem a proposta.
+ */
+async function provasProjecaoPremissasDoNegocio(page, largura) {
+  const l = `[${largura}] Premissas do negócio:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+
+  const negocioId = await page.evaluate(() => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return o.value;
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const painel = () => page.evaluate(() => {
+    const n = (s) => {
+      const x = String(s).replace('%', '').replace(/\./g, '').replace(',', '.').trim();
+      return x === '—' || x === '' ? null : Number(x);
+    };
+    const campo = (c) => document.querySelector(`#premissa-${c}`);
+    return {
+      ipca: campo('IPCA')?.value, pib: campo('PIB')?.value, meta: campo('CRESCIMENTO')?.value,
+      temMeta: !!campo('CRESCIMENTO'),
+      travados: ['IPCA', 'PIB', 'CRESCIMENTO'].map((c) => !!campo(c)?.disabled),
+      total: n(document.querySelector('[data-premissa="Cresc. Total"]')?.textContent ?? ''),
+      real: n(document.querySelector('[data-premissa="Cresc. Real"]')?.textContent ?? ''),
+      modo: document.querySelector('input[name="projecao-modo"]:checked')?.value,
+    };
+  });
+  const digitar = async (c, v) => {
+    await page.evaluate(([sel, x]) => {
+      const i = document.querySelector(sel); i.focus(); i.value = x; i.blur();
+    }, [`#premissa-${c}`, v]);
+    await new Promise((r) => setTimeout(r, 1200));
+  };
+  // O estado como o BANCO o tem: a API, e não o que a página guardou em memória.
+  const doBanco = (filialId = 0) => page.evaluate(async ([n, f]) => {
+    const d = await App.api(`/api/projecao?negocio_id=${n}${f ? `&filial_id=${f}` : ''}`);
+    return { neg: d.premissas, fil: d.filial ? d.filial.premissas : null };
+  }, [negocioId, filialId]);
+  const verFilial = async (pedaco) => {
+    const id = await page.evaluate((p) => {
+      const s = document.querySelector('#projecao-filial');
+      const o = p === '0' ? s.options[0] : [...s.options].find((x) => x.textContent.includes(p));
+      s.value = o.value;
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+      return o.value;
+    }, pedaco);
+    await new Promise((r) => setTimeout(r, 1500));
+    return Number(id);
+  };
+  const trocarModo = async (modo) => {
+    await page.evaluate((m) => {
+      const r = document.querySelector(m === 'FILIAL' ? '#modo-filial' : '#modo-negocio');
+      r.checked = true;
+      r.dispatchEvent(new Event('change', { bubbles: true }));
+    }, modo);
+    await new Promise((r) => setTimeout(r, 1500));
+  };
+
+  // O que a massa tinha, para devolver no fim: outras provas lançam aqui.
+  const antes = await painel();
+  t(`${l} o painel tem o campo "Meta de crescimento"`, antes.temMeta === true, JSON.stringify(antes));
+
+  await digitar('IPCA', '');
+  await digitar('PIB', '');
+  await digitar('CRESCIMENTO', '');
+  await digitar('IPCA', '6');
+  await digitar('PIB', '5');
+  const semMeta = await painel();
+  await digitar('CRESCIMENTO', '12');
+  const comMeta = await painel();
+
+  // ── Gravado no banco ──────────────────────────────────────────────────────
+  const banco = await doBanco();
+  t(`${l} IPCA, PIB e a meta ficam GRAVADOS no banco`,
+    banco.neg.IPCA === 6 && banco.neg.PIB === 5 && banco.neg.CRESCIMENTO === 12,
+    JSON.stringify(banco.neg));
+
+  // ── A meta é registro: não move nada ──────────────────────────────────────
+  // Cresc. Total é lido da proposta da receita. Se a meta o movesse, haveria
+  // duas fontes para o mesmo número — a decisão que a seção inteira evita.
+  t(`${l} a meta de crescimento NÃO move o Cresc. Total nem o Cresc. Real`,
+    comMeta.total === semMeta.total && comMeta.real === semMeta.real,
+    `total ${semMeta.total}→${comMeta.total} · real ${semMeta.real}→${comMeta.real}`);
+  t(`${l} e apagá-la a devolve a vazio, sem levar IPCA e PIB junto`, await (async () => {
+    await digitar('CRESCIMENTO', '');
+    const b = await doBanco();
+    await digitar('CRESCIMENTO', '12');
+    return b.neg.CRESCIMENTO === null && b.neg.IPCA === 6 && b.neg.PIB === 5;
+  })());
+
+  // ── A filial herda: mesmo valor, travado ──────────────────────────────────
+  const eneas = await verFilial('ENEAS');
+  const naEneas = await painel();
+  t(`${l} a filial mostra o IPCA, o PIB e a meta do negócio`,
+    naEneas.ipca === '6' && naEneas.pib === '5' && naEneas.meta === '12', JSON.stringify(naEneas));
+  t(`${l} e os três campos ficam TRAVADOS nela`,
+    naEneas.travados.every((x) => x === true), JSON.stringify(naEneas.travados));
+  // Os derivados são DA FILIAL, mas com o IPCA e o PIB do negócio.
+  if (naEneas.total !== null && naEneas.real !== null) {
+    t(`${l} Cresc. Real da filial = o Cresc. Total dela − IPCA − PIB do negócio`,
+      Math.abs(naEneas.real - (naEneas.total - 6 - 5)) < 0.02,
+      `real ${naEneas.real} · total ${naEneas.total}`);
+  }
+  await verFilial('0');
+  // Outra filial qualquer: a primeira depois do negócio que não seja a Enéas.
+  const outra = await page.evaluate(() => {
+    const o = [...document.querySelectorAll('#projecao-filial option')].slice(1)
+      .find((x) => !x.textContent.includes('ENEAS'));
+    return o ? o.textContent.trim() : '';
+  });
+  t(`${l} o negócio tem mais de uma filial para comparar`, outra !== '', outra);
+  if (outra) {
+    await verFilial(outra);
+    const naOutra = await painel();
+    t(`${l} e é o MESMO valor em outra filial (${outra.slice(0, 24)})`,
+      naOutra.ipca === '6' && naOutra.pib === '5' && naOutra.meta === '12',
+      JSON.stringify(naOutra));
+    await verFilial('0');
+  }
+
+  // ── Lançar por filial é recusado, e o negócio não se mexe ─────────────────
+  const recusa = await page.evaluate(async ([n, f]) => {
+    try {
+      await App.api('/api/projecao/premissa',
+        { negocio_id: Number(n), filial_id: Number(f), chave: 'IPCA', valor: 99 });
+      return 'ACEITOU';
+    } catch (e) { return e.message; }
+  }, [negocioId, eneas]);
+  const depoisDaRecusa = await doBanco();
+  t(`${l} lançar uma premissa POR FILIAL pela API é recusado, dizendo o que fazer`,
+    /negócio inteiro/.test(recusa), recusa.slice(0, 80));
+  t(`${l} e o valor do negócio continua o mesmo (não foi redirecionado calado)`,
+    depoisDaRecusa.neg.IPCA === 6, JSON.stringify(depoisDaRecusa.neg));
+
+  // ── Faixa e formato ───────────────────────────────────────────────────────
+  const invalidos = await page.evaluate(async (n) => {
+    const tenta = (valor) => App.api('/api/projecao/premissa',
+      { negocio_id: Number(n), chave: 'CRESCIMENTO', valor }).then(() => 'ACEITOU').catch((e) => e.message);
+    return { alto: await tenta(101), texto: await tenta('abc') };
+  }, negocioId);
+  t(`${l} a meta recusa percentual fora de ±100%`, /fora de faixa/.test(invalidos.alto), invalidos.alto);
+  t(`${l} e recusa o que não é número`, /número/.test(invalidos.texto), invalidos.texto);
+
+  // ── O negócio que planeja POR FILIAL também lança as premissas ────────────
+  // A regra que trava a linha do negócio (ele é a soma das filiais) travava
+  // junto as premissas, e ali só se conseguia lançar IPCA e PIB dentro de cada
+  // filial — que é o que o cliente quis acabar.
+  await trocarModo('FILIAL');
+  const modoFilial = await painel();
+  t(`${l} no modo "por filial" o negócio AINDA lança as premissas`,
+    modoFilial.modo === 'FILIAL' && modoFilial.travados.every((x) => x === false),
+    JSON.stringify({ modo: modoFilial.modo, travados: modoFilial.travados }));
+  await digitar('IPCA', '7');
+  const lancadoNoModoFilial = await doBanco();
+  t(`${l} e o que ele lança nesse modo fica gravado`,
+    lancadoNoModoFilial.neg.IPCA === 7, JSON.stringify(lancadoNoModoFilial.neg));
+
+  // Devolve a massa ao ponto de partida: o modo e as premissas que havia.
+  await trocarModo('NEGOCIO');
+  await digitar('IPCA', antes.ipca ?? '');
+  await digitar('PIB', antes.pib ?? '');
+  await digitar('CRESCIMENTO', antes.meta ?? '');
+  const devolvido = await painel();
+  t(`${l} e a massa volta ao ponto de partida`,
+    devolvido.ipca === (antes.ipca ?? '') && devolvido.pib === (antes.pib ?? '')
+      && devolvido.meta === (antes.meta ?? '') && devolvido.modo === 'NEGOCIO',
+    JSON.stringify(devolvido));
+}
+
 async function provasProjecaoProposta(page, largura) {
   const l = `[${largura}] Proposta:`;
   await page.evaluate(() => App.mostrarSecao('projecao'));
@@ -8684,6 +8875,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoProposta(page, 'desktop');
   await provasProjecaoPremissas(page, 'desktop');
   await provasProjecaoFilial(page, 'desktop');
+  await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
   await provasProjecaoNoDossie(page, 'desktop');
   await provasOrdenarCenario(page);

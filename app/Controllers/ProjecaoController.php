@@ -146,9 +146,13 @@ class ProjecaoController
             $filialAberta = [
                 'id' => $filialId,
                 'linhas' => $porFilial[$filialId],
+                // IPCA, PIB e a meta de crescimento são do NEGÓCIO e a filial os
+                // herda (pedido do cliente, 2026-11-17): o conjunto digitado é o
+                // mesmo da linha de cima, e os três derivados saem das linhas
+                // DELA.
                 'premissas' => Projecao::premissas(
                     $porFilial[$filialId],
-                    $this->premissasLancadas($projId, $filialId)
+                    $this->premissasLancadas($projId)
                 ),
             ];
         }
@@ -355,12 +359,19 @@ class ProjecaoController
     }
 
     /**
-     * Lança uma premissa macro (IPCA, PIB).
+     * Lança uma premissa do painel: IPCA, PIB ou a meta de crescimento.
      *
-     * Só estas duas: "Cresc. Total", "Cresc. Real" e "% Custos" são LEITURA da
+     * Só estas três: "Cresc. Total", "Cresc. Real" e "% Custos" são LEITURA da
      * proposta, pela mesma conta que a planilha faz no consolidado. Aceitar
      * lançamento nelas criaria uma segunda fonte para um número que já tem
      * dono — a célula da linha.
+     *
+     * **A premissa é do NEGÓCIO e vale para todas as filiais dele** (pedido do
+     * cliente, 2026-11-17). Gravar uma por filial é RECUSADO, e não redirecionado
+     * calado para o negócio: quem pensa estar ajustando uma filial e sobrescreve
+     * o valor do negócio inteiro não tem como perceber — o número muda em todas
+     * as telas e a causa não está em nenhuma delas. A tela já não oferece o
+     * campo na filial; a recusa é para quem chama a API.
      */
     public function gravarPremissa(): void
     {
@@ -376,6 +387,13 @@ class ProjecaoController
         $escopo = Auth::escopoNegocios($u);
         if ($escopo !== null && !in_array($negocioId, $escopo, true)) {
             Json::erro('Sem acesso a este negócio.', 403);
+        }
+        if ($filialId !== 0) {
+            Json::erro(
+                'IPCA, PIB e a meta de crescimento valem para o negócio inteiro e '
+                . 'todas as filiais dele: lance-os no negócio, e não na filial.',
+                422
+            );
         }
         if (!in_array($chave, Projecao::PREMISSAS, true)) {
             Json::erro(
@@ -400,11 +418,14 @@ class ProjecaoController
             $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
         }
 
+        // `filial_id = 0` é a linha do NEGÓCIO, e agora a ÚNICA que existe: a
+        // coluna fica na chave porque mexer na chave primária de uma tabela em
+        // produção não paga o que ganha, mas toda premissa nova nasce com zero.
         $bruto = $corpo['valor'] ?? null;
         if ($bruto === null || $bruto === '') {
             Database::executar(
-                'DELETE FROM projecao_premissa WHERE projecao_id = ? AND filial_id = ? AND chave = ?',
-                [(int)$proj['id'], $filialId, $chave]
+                'DELETE FROM projecao_premissa WHERE projecao_id = ? AND filial_id = 0 AND chave = ?',
+                [(int)$proj['id'], $chave]
             );
         } else {
             if (!is_numeric($bruto)) {
@@ -416,9 +437,9 @@ class ProjecaoController
             }
             Database::executar(
                 'INSERT INTO projecao_premissa (projecao_id, filial_id, chave, percentual)
-                 VALUES (?, ?, ?, ?)
+                 VALUES (?, 0, ?, ?)
                  ON DUPLICATE KEY UPDATE percentual = VALUES(percentual)',
-                [(int)$proj['id'], $filialId, $chave, $v]
+                [(int)$proj['id'], $chave, $v]
             );
         }
         Database::executar(
@@ -427,19 +448,30 @@ class ProjecaoController
             [$u['id'], (int)$proj['id']]
         );
 
-        $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
+        $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
     }
 
-    /** @return array<string,float> chave => percentual digitado */
-    private function premissasLancadas(int $projecaoId, int $filialId = 0): array
+    /**
+     * As premissas lançadas do NEGÓCIO: IPCA, PIB e a meta de crescimento.
+     *
+     * Sem parâmetro de filial, e é de propósito: a filial herda o conjunto do
+     * negócio (pedido do cliente, 2026-11-17). A consulta fixa `filial_id = 0`,
+     * então uma linha de premissa gravada por filial ANTES dessa decisão
+     * continua no banco, intacta, e NINGUÉM a lê — nem a tela do negócio, nem a
+     * da filial. Não reintroduza o parâmetro "para respeitar o valor antigo": a
+     * filial voltaria a ter um IPCA que o negócio não conhece.
+     *
+     * @return array<string,float> chave => percentual digitado
+     */
+    private function premissasLancadas(int $projecaoId): array
     {
         if (!$projecaoId) {
             return [];
         }
         $out = [];
         foreach (Database::todos(
-            'SELECT chave, percentual FROM projecao_premissa WHERE projecao_id = ? AND filial_id = ?',
-            [$projecaoId, $filialId]
+            'SELECT chave, percentual FROM projecao_premissa WHERE projecao_id = ? AND filial_id = 0',
+            [$projecaoId]
         ) as $l) {
             $out[$l['chave']] = (float)$l['percentual'];
         }

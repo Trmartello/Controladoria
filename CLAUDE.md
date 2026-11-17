@@ -2792,16 +2792,52 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   lido da proposta da receita, `B13` (Cresc. Real) é `B14 − B11 − B12` e `B17`
   (% Custos) é lido dos custos — os reajustes por linha de despesa (`B22..B41`)
   também são leitura. No bloco de CADA FILIAL a planilha faz o oposto: ali os
-  percentuais são digitados e a proposta sai deles (`AD10 = AA10 * Z14%`). É o
-  mesmo painel com dois papéis, conforme o nível em que se planeja; o segundo
-  chega com o modo filial (fatia 3).
-  Por isso só IPCA e PIB são gravados (`projecao_premissa`): deixar "Cresc.
-  Total" também ser digitado criaria duas fontes para o mesmo número — o painel
-  e a célula da receita —, e a divergência entre elas apareceria como meta
-  errada na reunião. Quem quer lançar crescimento lança **na linha**, que é
-  onde ele vale. Confere com a planilha do cliente: IPCA 4,20 + PIB 1,78 e
-  13,79% na receita dão **Cresc. Real 7,81%** e **% Custos 18,70%** — os mesmos
-  números do arquivo dele, e é isso que `provasProjecaoPremissas` fixa.
+  percentuais são digitados e a proposta sai deles (`AD10 = AA10 * Z14%`) — **e
+  é desse papel que o sistema se afasta, por decisão do cliente** (ver abaixo).
+  Só IPCA, PIB e a meta de crescimento são gravados (`projecao_premissa`):
+  deixar "Cresc. Total" também ser digitado criaria duas fontes para o mesmo
+  número — o painel e a célula da receita —, e a divergência entre elas
+  apareceria como meta errada na reunião. Quem quer lançar crescimento **da
+  proposta** lança **na linha**, que é onde ele vale. Confere com a planilha do
+  cliente: IPCA 4,20 + PIB 1,78 e 13,79% na receita dão **Cresc. Real 7,81%** e
+  **% Custos 18,70%** — os mesmos números do arquivo dele, e é isso que
+  `provasProjecaoPremissas` fixa.
+  **As premissas são do NEGÓCIO e valem para TODAS as filiais dele** (pedido do
+  cliente, 2026-11-17: "quando lançar o PIB e o IPCA, deve ficar fixo, gravado,
+  registrado, ou seja, vai servir para o negócio e todas as filiais do negócio.
+  Além desses dois campos, precisa ter um percentual de crescimento também").
+  A planilha tem um IPCA e um PIB em cada bloco de filial; o cliente quis um
+  só. Quatro consequências que não devem ser desfeitas:
+  (1) **a filial HERDA** — `premissasLancadas($projecaoId)` não tem parâmetro de
+  filial e fixa `filial_id = 0`; na filial os três campos aparecem **travados**
+  com o valor do negócio, e os três derivados são DELA, calculados das linhas
+  dela com o IPCA e o PIB do negócio. Não reintroduza o parâmetro "para
+  respeitar o valor antigo": a filial voltaria a ter um IPCA que o negócio não
+  conhece; (2) **lançar por filial é RECUSADO pela API** (422, dizendo para
+  lançar no negócio), e não redirecionado calado — quem pensa estar ajustando
+  uma filial e sobrescreve o negócio inteiro não tem como perceber, porque o
+  número muda em todas as telas e a causa não está em nenhuma; (3) **o negócio
+  que planeja POR FILIAL também lança as premissas**: `editavelAqui` trava a
+  linha do negócio porque ele é a soma das filiais, e reaproveitá-la para as
+  premissas bloqueava ali o IPCA e o PIB — só se conseguia lançá-los dentro de
+  cada filial, que é exatamente o que o cliente quis acabar. A regra é outra,
+  `premissaEditavel`: só o negócio, em qualquer modo; (4) **uma linha gravada por
+  filial ANTES dessa data fica no banco, intacta e inerte** — nenhuma consulta a
+  lê, e a coluna `filial_id` continua na chave primária porque mexer nela em
+  produção não paga o que ganha. Não foi promovida ao negócio: se alguém quiser
+  recuperar um valor antigo, ele está lá.
+  **A "Meta de crescimento" (`CRESCIMENTO`) é REGISTRO: não move proposta
+  nenhuma.** É a mesma natureza de IPCA e PIB, que também só alimentam a
+  decomposição e nunca um valor — e convive com o "Cresc. Total" lido porque um
+  é o que se QUER e o outro é o que as linhas SOMAM. Foi escolha de quem
+  construiu, não do cliente, e está dita a ele: "percentual de crescimento"
+  pode significar também um motor (um padrão de reajuste da receita para as
+  linhas sem proposta), e isso mudaria números de proposta — por isso não foi
+  assumido. **Se virar motor, a regra "só o que é digitado é gravado" continua
+  valendo; o que muda é que a linha sem proposta deixa de valer a projeção.**
+  Provas em `provasProjecaoPremissasDoNegocio` (navegador: herança, travado,
+  recusa da API, modo "por filial", meta que não move nada) e em
+  `testes/projecao_premissas.php` (a linha legada, que só se semeia no banco).
   **`ligar()` marca o que já ligou (`data-ligado`).** A tela repinta PEDAÇOS (o
   corpo da tabela, o painel) e religa os ouvintes; sem a marca, um campo que não
   foi repintado ganhava um segundo `blur`, gravava duas vezes e a segunda
