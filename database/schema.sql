@@ -923,15 +923,21 @@ CREATE TABLE IF NOT EXISTS projecao_valor (
   CONSTRAINT fk_pv_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- As premissas macro da proposta (IPCA, PIB). São as ÚNICAS células digitadas
--- do painel de indicadores da planilha no nível consolidado: lá, "Cresc. Total"
--- é lido da proposta da receita (`B14 = (O9/J9)-1`), "Cresc. Real" é o resto
--- (`B13 = B14-B11-B12`) e "% Custos" é lido dos custos. Guardar aqui só o que
--- é digitado evita a segunda fonte do mesmo número.
+-- As premissas do painel: IPCA, PIB e a META DE CRESCIMENTO (`CRESCIMENTO`).
+-- IPCA e PIB são as únicas células digitadas do painel da planilha no nível
+-- consolidado: lá, "Cresc. Total" é lido da proposta da receita
+-- (`B14 = (O9/J9)-1`), "Cresc. Real" é o resto (`B13 = B14-B11-B12`) e
+-- "% Custos" é lido dos custos. Guardar aqui só o que é digitado evita a
+-- segunda fonte do mesmo número. A meta de crescimento é REGISTRO, e não entra
+-- em conta nenhuma.
 CREATE TABLE IF NOT EXISTS projecao_premissa (
   projecao_id INT NOT NULL,
-  -- 0 = o negócio; outro valor, a filial. No bloco de cada filial a planilha
-  -- tem o seu próprio IPCA e PIB, e é de lá que a proposta dela sai.
+  -- SEMPRE 0, desde 2026-11-17: as premissas são do NEGÓCIO e valem para todas
+  -- as filiais dele (pedido do cliente). A planilha tinha um IPCA e um PIB em
+  -- cada bloco de filial; o cliente quis um só. A coluna fica na chave porque
+  -- mexer na chave primária de uma tabela em produção não paga o que ganha, e
+  -- uma linha com `filial_id <> 0` gravada ANTES dessa decisão continua aqui,
+  -- intacta e inerte: nenhuma consulta a lê.
   filial_id   INT NOT NULL DEFAULT 0,
   chave       VARCHAR(20) NOT NULL,
   percentual  DECIMAL(9,4) NOT NULL,

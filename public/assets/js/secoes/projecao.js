@@ -230,35 +230,43 @@ const SecaoProjecao = {
   },
 
   /**
-   * O painel de indicadores, como a planilha o monta NO CONSOLIDADO: IPCA e
-   * PIB digitados, o resto lido da proposta.
+   * O painel de indicadores: três premissas DIGITADAS e três leituras.
    *
-   *   Cresc. Total = proposta da receita ÷ projeção − 1   (`B14`)
-   *   Cresc. Real  = Cresc. Total − IPCA − PIB            (`B13`)
-   *   % Custos     = proposta dos custos ÷ projeção − 1   (`B17`)
+   *   Digitadas:  IPCA · PIB · Meta de crescimento
+   *   Lidas:      Cresc. Total = proposta da receita ÷ projeção − 1   (`B14`)
+   *               Cresc. Real  = Cresc. Total − IPCA − PIB            (`B13`)
+   *               % Custos     = proposta dos custos ÷ projeção − 1   (`B17`)
    *
-   * No bloco de CADA FILIAL a planilha faz o contrário — ali os percentuais
-   * são digitados e a proposta sai deles (`AD10 = AA10 * Z14%`). É o mesmo
-   * painel servindo a dois papéis conforme o nível em que se planeja, e o
-   * segundo papel chega com o modo filial (fatia 3).
+   * **As três digitadas são do NEGÓCIO e valem para todas as filiais dele**
+   * (pedido do cliente, 2026-11-17). Na filial os campos aparecem travados, com
+   * o valor herdado, e o aviso diz onde alterá-los; os três valores LIDOS são
+   * da filial, calculados das linhas dela com o IPCA e o PIB do negócio.
+   *
+   * Isto se afasta da planilha, de propósito: ali cada bloco de filial tem o
+   * seu IPCA e o seu PIB e os percentuais são digitados (`AD10 = AA10 * Z14%`).
+   * O cliente pediu um só por negócio. A "Meta de crescimento" é REGISTRO e não
+   * mexe em proposta nenhuma — convive com o Cresc. Total lido, porque um é o
+   * que se quer e o outro é o que as linhas somam.
    */
   painel(d) {
     const p = this.visao(d).premissas || {};
     const num = (v, casas = 2) => (v === null || v === undefined
       ? '—'
       : `${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`);
-    const campo = (chave, rotulo) => (App.modoDossie
+    const editavel = this.premissaEditavel(d);
+    const campo = (chave, rotulo, dica) => (App.modoDossie
       ? `<div class="col-6 col-md-auto">
-           <div class="small text-muted">${rotulo}</div>
+           <div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
            <div class="fw-bold">${num(p[chave], 2)}</div>
          </div>`
       : `<div class="col-6 col-md-auto">
-        <label class="form-label small text-muted mb-0" for="premissa-${chave}">${rotulo}</label>
+        <label class="form-label small text-muted mb-0" for="premissa-${chave}"
+          title="${Modal.esc(dica)}">${rotulo}</label>
         <div class="input-group input-group-sm premissa-campo">
           <input type="text" class="form-control celula-premissa" id="premissa-${chave}"
             inputmode="decimal" autocomplete="off" data-chave="${chave}"
             value="${p[chave] === null || p[chave] === undefined ? '' : String(p[chave]).replace('.', ',')}"
-            placeholder="—" ${this.editavelAqui(d) ? '' : 'disabled'}>
+            placeholder="—" ${editavel ? '' : 'disabled'}>
           <span class="input-group-text">%</span>
         </div>
       </div>`);
@@ -268,11 +276,27 @@ const SecaoProjecao = {
         <div class="fw-bold" data-premissa="${Modal.esc(rotulo)}">${num(valor, 2)}</div>
       </div>`;
 
+    // O que explica o painel muda com o nível: no negócio se lança, na filial
+    // se herda. Sem a frase da filial, três campos cinzentos parecem quebrados.
+    const nota = d.filial
+      ? `<strong>IPCA</strong>, <strong>PIB</strong> e <strong>Meta de crescimento</strong> vêm do
+          negócio e valem para todas as filiais — para alterá-los, volte ao negócio.
+          Os três valores lidos ao lado são desta filial.`
+      : `<strong>IPCA</strong>, <strong>PIB</strong> e <strong>Meta de crescimento</strong> são lançados
+          aqui e valem para o negócio e todas as filiais. A meta é registro: não altera a proposta.
+          <strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
+          são lidos da coluna Proposta — o reajuste de cada linha se lança na própria linha,
+          como <code>5%</code>.`;
+
     return `
       <div class="card mb-3 painel-premissas"><div class="card-body py-2 px-3">
         <div class="row g-3 align-items-end">
-          ${campo('IPCA', 'IPCA')}
-          ${campo('PIB', 'PIB')}
+          ${campo('IPCA', 'IPCA', 'Inflação prevista para o ano de planejamento. Vale para o negócio e todas as filiais.')}
+          ${campo('PIB', 'PIB', 'Crescimento da economia previsto para o ano de planejamento. Vale para o negócio e todas as filiais.')}
+          ${campo('CRESCIMENTO', 'Meta de crescimento',
+    'O crescimento que se pretende para a receita. É registro: não altera a proposta de linha '
+    + 'nenhuma — compare com o Cresc. Total, que é o que as linhas somam. Vale para o negócio e todas as filiais.')}
+          <div class="w-100 d-md-none"></div>
           ${leitura(p.CRESC_REAL, 'Cresc. Real',
     'Crescimento total menos IPCA e PIB — o que sobra depois da inflação e da economia. '
     + 'Precisa dos dois lançados para existir.')}
@@ -282,11 +306,7 @@ const SecaoProjecao = {
           ${leitura(p.PCT_CUSTOS, '% Custos',
     'A proposta dos custos contra a projeção do ano. Lido da linha Custos das Vendas.')}
         </div>
-        <div class="small text-muted mt-2">
-          IPCA e PIB são premissas lançadas aqui; <strong>Cresc. Real</strong>,
-          <strong>Cresc. Total</strong> e <strong>% Custos</strong> são lidos da coluna Proposta —
-          o reajuste de cada linha se lança na própria linha, como <code>5%</code>.
-        </div>
+        <div class="small text-muted mt-2">${nota}</div>
       </div></div>`;
   },
 
@@ -329,6 +349,23 @@ const SecaoProjecao = {
     if (App.modoDossie) return false;
     if (!d.pode_editar) return false;
     return d.filial ? true : d.modo === 'NEGOCIO';
+  },
+
+  /**
+   * Quem pode digitar IPCA, PIB e a meta de crescimento: só o NEGÓCIO, em
+   * QUALQUER modo (pedido do cliente, 2026-11-17).
+   *
+   * Não reusa `editavelAqui`, e a diferença é o ponto. Aquela regra existe para
+   * os TOTAIS: no modo filial a linha do negócio é a soma das filiais, e dois
+   * totais discordando na mesma tela é o que a seção evita. Premissa não é
+   * total — não é soma de nada —, e a regra a bloqueava no negócio quando ele
+   * planejava por filial: ali só se conseguia lançar IPCA e PIB DENTRO de cada
+   * filial, que é exatamente o que o cliente quis acabar. Na filial os campos
+   * ficam travados: ela herda do negócio.
+   */
+  premissaEditavel(d) {
+    if (App.modoDossie) return false;
+    return !!d.pode_editar && !d.filial;
   },
 
   faixaDoModo(d) {

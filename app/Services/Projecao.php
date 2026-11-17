@@ -51,11 +51,18 @@ class Projecao
     public const SEM_PROPOSTA = ['15'];
 
     /**
-     * As premissas macro que a pessoa DIGITA. São duas, e são as duas únicas
-     * células digitadas do painel de indicadores da planilha no nível
-     * consolidado — o resto de lá é leitura da proposta (ver `premissas()`).
+     * As premissas que a pessoa DIGITA no painel. São TRÊS, e valem para o
+     * NEGÓCIO INTEIRO e todas as filiais dele (pedido do cliente, 2026-11-17:
+     * "quando lançar o PIB e o IPCA, deve ficar fixo, gravado, registrado, ou
+     * seja, vai servir para o negócio e todas as filiais do negócio. Além
+     * desses dois campos, precisa ter um percentual de crescimento também").
+     *
+     * IPCA e PIB são as duas únicas células digitadas do painel da planilha no
+     * nível consolidado. `CRESCIMENTO` é a META de crescimento da receita, e é
+     * REGISTRO: não move a proposta de linha nenhuma. É a mesma natureza de
+     * IPCA e PIB, que também só alimentam a decomposição e nunca um valor.
      */
-    public const PREMISSAS = ['IPCA', 'PIB'];
+    public const PREMISSAS = ['IPCA', 'PIB', 'CRESCIMENTO'];
 
     /**
      * O painel de indicadores, montado como a planilha monta o consolidado:
@@ -64,11 +71,19 @@ class Projecao
      *   Cresc. Real  = Cresc. Total − IPCA − PIB                       (B13)
      *   % Custos     = proposta dos custos ÷ projeção dos custos − 1   (B17)
      *
-     * Só IPCA e PIB entram por digitação. Deixar "Cresc. Total" também ser
-     * digitado criaria duas fontes para o mesmo número — o painel e a célula
-     * da receita —, e a primeira divergência entre elas apareceria como meta
-     * errada na reunião. Quem quer lançar o crescimento lança na linha, que é
-     * onde ele vale; o painel mostra no que deu, e decompõe.
+     * IPCA, PIB e a meta de crescimento entram por digitação; os três acima são
+     * LEITURA. Deixar "Cresc. Total" também ser digitado criaria duas fontes
+     * para o mesmo número — o painel e a célula da receita —, e a primeira
+     * divergência entre elas apareceria como meta errada na reunião. Quem quer
+     * lançar o crescimento da proposta lança na linha, que é onde ele vale; o
+     * painel mostra no que deu, e decompõe. A meta digitada convive com o
+     * "Cresc. Total" lido exatamente por isso: um é o que se QUER, o outro é o
+     * que as linhas SOMAM, e a distância entre os dois é a informação.
+     *
+     * `$digitadas` é SEMPRE o conjunto do negócio, também quando `$linhas` é as
+     * de uma filial: a filial herda as três premissas, e os três derivados são
+     * dela. "Cresc. Real" da filial é o crescimento dela menos o IPCA e o PIB
+     * do negócio.
      */
     public static function premissas(array $linhas, array $digitadas): array
     {
@@ -89,12 +104,15 @@ class Projecao
 
         $ipca = isset($digitadas['IPCA']) ? (float)$digitadas['IPCA'] : null;
         $pib  = isset($digitadas['PIB']) ? (float)$digitadas['PIB'] : null;
+        $meta = isset($digitadas['CRESCIMENTO']) ? (float)$digitadas['CRESCIMENTO'] : null;
         $total = $variacao($acha('1'));
         $custos = $variacao($acha('4'));
 
         return [
             'IPCA' => $ipca,
             'PIB' => $pib,
+            // Só devolvida, nunca usada em conta: ver `PREMISSAS`.
+            'CRESCIMENTO' => $meta,
             'CRESC_TOTAL' => $total,
             // Sem IPCA e PIB lançados não há o que decompor: devolver o próprio
             // total como "real" diria que a inflação é zero, que é uma
