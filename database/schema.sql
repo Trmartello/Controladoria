@@ -923,27 +923,52 @@ CREATE TABLE IF NOT EXISTS projecao_valor (
   CONSTRAINT fk_pv_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- As premissas do painel: IPCA, PIB e a META DE CRESCIMENTO (`CRESCIMENTO`).
+-- LEGADO: as premissas penduradas na PROJEÇÃO (que é a proposta de UM ano), por
+-- projeção e filial. Desde 2026-11-17 (pedido do cliente: "IPCA, PIB e
+-- percentual de crescimento desejado devem ser por negócio e por ano") quem as
+-- guarda é `negocio_premissa`, logo abaixo, e esta tabela NÃO É MAIS LIDA nem
+-- escrita. Fica por dois motivos: a migração copia daqui o que o cliente já
+-- tinha digitado (`Projecao::migrarPremissasParaNegocio`, uma vez só), e uma
+-- linha por FILIAL gravada antes da decisão de 2026-11-16 (as premissas são do
+-- negócio e valem para todas as filiais) continua aqui, intacta e inerte — não
+-- foi promovida ao negócio, e se alguém quiser recuperar um valor antigo, ele
+-- está aqui. Não reintroduza a leitura desta tabela.
+--
 -- IPCA e PIB são as únicas células digitadas do painel da planilha no nível
 -- consolidado: lá, "Cresc. Total" é lido da proposta da receita
 -- (`B14 = (O9/J9)-1`), "Cresc. Real" é o resto (`B13 = B14-B11-B12`) e
--- "% Custos" é lido dos custos. Guardar aqui só o que é digitado evita a
--- segunda fonte do mesmo número. A meta de crescimento é REGISTRO, e não entra
--- em conta nenhuma.
+-- "% Custos" é lido dos custos. Guardar só o que é digitado evita a segunda
+-- fonte do mesmo número.
 CREATE TABLE IF NOT EXISTS projecao_premissa (
   projecao_id INT NOT NULL,
-  -- SEMPRE 0, desde 2026-11-17: as premissas são do NEGÓCIO e valem para todas
-  -- as filiais dele (pedido do cliente). A planilha tinha um IPCA e um PIB em
-  -- cada bloco de filial; o cliente quis um só. A coluna fica na chave porque
-  -- mexer na chave primária de uma tabela em produção não paga o que ganha, e
-  -- uma linha com `filial_id <> 0` gravada ANTES dessa decisão continua aqui,
-  -- intacta e inerte: nenhuma consulta a lê.
   filial_id   INT NOT NULL DEFAULT 0,
   chave       VARCHAR(20) NOT NULL,
   percentual  DECIMAL(9,4) NOT NULL,
   PRIMARY KEY (projecao_id, filial_id, chave),
   KEY idx_pp_projecao (projecao_id),
   CONSTRAINT fk_pp_projecao FOREIGN KEY (projecao_id) REFERENCES projecao(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- As premissas do painel, por NEGÓCIO e por ANO: IPCA, PIB e o CRESCIMENTO
+-- DESEJADO (`CRESCIMENTO`). Valem para o negócio inteiro e para todas as filiais
+-- dele (pedido do cliente, 2026-11-16) e há UM valor para cada ano do ciclo, a
+-- partir do ano da proposta (2026-11-17).
+--
+-- Mora aqui e não em `projecao_premissa` porque a projeção é a PROPOSTA de um
+-- ano só: para guardar o IPCA de 2028 seria preciso criar uma projeção de 2028,
+-- com modo, versão e trava de edição de uma proposta que não existe — e o que
+-- lista projeções passaria a ver anos fantasma. Premissa de ano sem proposta é
+-- registro, e registro não precisa de proposta.
+--
+-- O CRESCIMENTO é REGISTRO: não move a proposta de linha nenhuma. É a mesma
+-- natureza de IPCA e PIB, que só alimentam a decomposição e nunca um valor.
+CREATE TABLE IF NOT EXISTS negocio_premissa (
+  negocio_id INT NOT NULL,
+  ano        SMALLINT NOT NULL,
+  chave      VARCHAR(20) NOT NULL,
+  percentual DECIMAL(9,4) NOT NULL,
+  PRIMARY KEY (negocio_id, ano, chave),
+  CONSTRAINT fk_np_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Filiais (fatia 3 do tema 13) ────────────────────────────────────────────

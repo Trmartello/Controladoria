@@ -52,17 +52,68 @@ class Projecao
 
     /**
      * As premissas que a pessoa DIGITA no painel. São TRÊS, e valem para o
-     * NEGÓCIO INTEIRO e todas as filiais dele (pedido do cliente, 2026-11-17:
-     * "quando lançar o PIB e o IPCA, deve ficar fixo, gravado, registrado, ou
-     * seja, vai servir para o negócio e todas as filiais do negócio. Além
-     * desses dois campos, precisa ter um percentual de crescimento também").
+     * NEGÓCIO INTEIRO e todas as filiais dele, com UM valor para cada ANO
+     * (pedido do cliente, 2026-11-16: "quando lançar o PIB e o IPCA, deve ficar
+     * fixo, gravado, registrado, ou seja, vai servir para o negócio e todas as
+     * filiais do negócio. Além desses dois campos, precisa ter um percentual de
+     * crescimento também"; e 2026-11-17: "IPCA, PIB e percentual de crescimento
+     * desejado devem ser por negócio e por ano").
      *
      * IPCA e PIB são as duas únicas células digitadas do painel da planilha no
-     * nível consolidado. `CRESCIMENTO` é a META de crescimento da receita, e é
+     * nível consolidado. `CRESCIMENTO` é o crescimento DESEJADO da receita, e é
      * REGISTRO: não move a proposta de linha nenhuma. É a mesma natureza de
      * IPCA e PIB, que também só alimentam a decomposição e nunca um valor.
      */
     public const PREMISSAS = ['IPCA', 'PIB', 'CRESCIMENTO'];
+
+    /**
+     * Os anos em que se lançam premissas: do ANO DA PROPOSTA ao último do ciclo.
+     *
+     * Começa no ano da proposta porque é o primeiro que ainda se planeja — o
+     * que já fechou não recebe premissa. Termina no fim do ciclo porque é até
+     * onde o planejamento enxerga. Sem ciclo que cubra o ano (`$anoFimCiclo`
+     * nulo ou anterior), devolve só o ano da proposta, e nunca uma lista vazia:
+     * o painel precisa de ao menos um ano para existir.
+     *
+     * @return int[]
+     */
+    public static function anosDasPremissas(int $anoProposta, ?int $anoFimCiclo): array
+    {
+        return range($anoProposta, max($anoProposta, (int)$anoFimCiclo));
+    }
+
+    /**
+     * Copia para `negocio_premissa` as premissas que estavam penduradas na
+     * projeção — o que o cliente JÁ DIGITOU antes de elas terem ano próprio.
+     *
+     * Só a linha do NEGÓCIO (`filial_id = 0`), e o ano vem da projeção: era o
+     * ano da proposta, que é onde a tela as mostrava. A linha por FILIAL fica de
+     * fora, de propósito — a decisão de 2026-11-16 foi que a premissa é do
+     * negócio, e promover um IPCA de filial ao negócio escolheria, entre as
+     * filiais, qual delas manda.
+     *
+     * `INSERT IGNORE`: o que já está na tabela nova NÃO é sobrescrito. Mas isto
+     * NÃO basta para rodar a cada deploy — uma premissa que alguém apagou na
+     * tabela nova seria RESSUSCITADA daqui no deploy seguinte. Quem chama roda
+     * uma vez só, sob marca em `carga_conteudo` (ver o migrate).
+     *
+     * `$negocioId` restringe a cópia a UM negócio. O migrate chama sem ele — a
+     * migração é de todos —, e existe para o teste não varrer os negócios reais
+     * do banco em que roda.
+     *
+     * @return int quantas premissas entraram
+     */
+    public static function migrarPremissasParaNegocio(\PDO $pdo, ?int $negocioId = null): int
+    {
+        $filtro = $negocioId === null ? '' : ' AND p.negocio_id = ' . (int)$negocioId;
+        return (int)$pdo->exec(
+            'INSERT IGNORE INTO negocio_premissa (negocio_id, ano, chave, percentual)
+             SELECT p.negocio_id, p.ano, pp.chave, pp.percentual
+               FROM projecao_premissa pp
+               JOIN projecao p ON p.id = pp.projecao_id
+              WHERE pp.filial_id = 0' . $filtro
+        );
+    }
 
     /**
      * O painel de indicadores, montado como a planilha monta o consolidado:
@@ -71,7 +122,7 @@ class Projecao
      *   Cresc. Real  = Cresc. Total − IPCA − PIB                       (B13)
      *   % Custos     = proposta dos custos ÷ projeção dos custos − 1   (B17)
      *
-     * IPCA, PIB e a meta de crescimento entram por digitação; os três acima são
+     * IPCA, PIB e o crescimento desejado entram por digitação; os três acima são
      * LEITURA. Deixar "Cresc. Total" também ser digitado criaria duas fontes
      * para o mesmo número — o painel e a célula da receita —, e a primeira
      * divergência entre elas apareceria como meta errada na reunião. Quem quer

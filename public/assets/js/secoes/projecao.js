@@ -230,26 +230,49 @@ const SecaoProjecao = {
   },
 
   /**
+   * O ano cujas premissas o painel mostra: o que a pessoa escolheu, se ele
+   * ainda é oferecido para este negócio; senão o ano da proposta. No dossiê é
+   * sempre o da proposta — o documento fala dela, e um seletor não imprime.
+   */
+  anoDoPainel(d) {
+    if (App.modoDossie) return d.ano_planejamento;
+    const anos = d.anos_premissa || [d.ano_planejamento];
+    return anos.includes(this.anoPremissa) ? this.anoPremissa : d.ano_planejamento;
+  },
+
+  /**
    * O painel de indicadores: três premissas DIGITADAS e três leituras.
    *
-   *   Digitadas:  IPCA · PIB · Meta de crescimento
+   *   Digitadas:  IPCA · PIB · Crescimento desejado
    *   Lidas:      Cresc. Total = proposta da receita ÷ projeção − 1   (`B14`)
    *               Cresc. Real  = Cresc. Total − IPCA − PIB            (`B13`)
    *               % Custos     = proposta dos custos ÷ projeção − 1   (`B17`)
    *
-   * **As três digitadas são do NEGÓCIO e valem para todas as filiais dele**
-   * (pedido do cliente, 2026-11-17). Na filial os campos aparecem travados, com
-   * o valor herdado, e o aviso diz onde alterá-los; os três valores LIDOS são
-   * da filial, calculados das linhas dela com o IPCA e o PIB do negócio.
+   * **As três digitadas são do NEGÓCIO e de cada ANO** (pedido do cliente,
+   * 2026-11-16 e 2026-11-17), e valem para todas as filiais dele. Na filial os
+   * campos aparecem travados, com o valor herdado, e o aviso diz onde
+   * alterá-los; os três valores LIDOS são da filial, calculados das linhas dela
+   * com o IPCA e o PIB do negócio.
+   *
+   * **As três LIDAS só existem no ano da proposta**: saem das linhas dela, e as
+   * linhas só existem para ele. Em outro ano o painel mostra as três entradas e
+   * diz por que as leituras não estão ali — três "—" no lugar pareceriam um
+   * defeito, e não uma ausência que faz sentido.
    *
    * Isto se afasta da planilha, de propósito: ali cada bloco de filial tem o
    * seu IPCA e o seu PIB e os percentuais são digitados (`AD10 = AA10 * Z14%`).
-   * O cliente pediu um só por negócio. A "Meta de crescimento" é REGISTRO e não
-   * mexe em proposta nenhuma — convive com o Cresc. Total lido, porque um é o
-   * que se quer e o outro é o que as linhas somam.
+   * O cliente pediu um só por negócio e por ano. O "Crescimento desejado" é
+   * REGISTRO e não mexe em proposta nenhuma — convive com o Cresc. Total lido,
+   * porque um é o que se quer e o outro é o que as linhas somam.
    */
   painel(d) {
-    const p = this.visao(d).premissas || {};
+    const anoProposta = d.ano_planejamento;
+    const anos = d.anos_premissa || [anoProposta];
+    const ano = this.anoDoPainel(d);
+    const noAnoDaProposta = ano === anoProposta;
+    // As digitadas são as do ANO escolhido; as lidas, as do ano da proposta.
+    const digitadas = (d.premissas_por_ano || {})[ano] || {};
+    const lidas = this.visao(d).premissas || {};
     const num = (v, casas = 2) => (v === null || v === undefined
       ? '—'
       : `${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`);
@@ -257,7 +280,7 @@ const SecaoProjecao = {
     const campo = (chave, rotulo, dica) => (App.modoDossie
       ? `<div class="col-6 col-md-auto">
            <div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
-           <div class="fw-bold">${num(p[chave], 2)}</div>
+           <div class="fw-bold">${num(digitadas[chave], 2)}</div>
          </div>`
       : `<div class="col-6 col-md-auto">
         <label class="form-label small text-muted mb-0" for="premissa-${chave}"
@@ -265,7 +288,7 @@ const SecaoProjecao = {
         <div class="input-group input-group-sm premissa-campo">
           <input type="text" class="form-control celula-premissa" id="premissa-${chave}"
             inputmode="decimal" autocomplete="off" data-chave="${chave}"
-            value="${p[chave] === null || p[chave] === undefined ? '' : String(p[chave]).replace('.', ',')}"
+            value="${digitadas[chave] === null || digitadas[chave] === undefined ? '' : String(digitadas[chave]).replace('.', ',')}"
             placeholder="—" ${editavel ? '' : 'disabled'}>
           <span class="input-group-text">%</span>
         </div>
@@ -276,35 +299,56 @@ const SecaoProjecao = {
         <div class="fw-bold" data-premissa="${Modal.esc(rotulo)}">${num(valor, 2)}</div>
       </div>`;
 
-    // O que explica o painel muda com o nível: no negócio se lança, na filial
-    // se herda. Sem a frase da filial, três campos cinzentos parecem quebrados.
+    // O ano escolhido: um seletor na tela, e só o texto no dossiê (que é papel).
+    const seletorAno = App.modoDossie
+      ? `<div class="small text-muted mb-2">Premissas de <strong>${ano}</strong></div>`
+      : (anos.length > 1
+        ? `<div class="d-flex align-items-center gap-2 mb-2">
+            <label class="small text-muted mb-0 text-nowrap" for="premissa-ano">Premissas do ano</label>
+            <select id="premissa-ano" class="form-select form-select-sm w-auto">
+              ${anos.map((a) => `<option value="${a}"${a === ano ? ' selected' : ''}>${a}${a === anoProposta ? ' · ano da proposta' : ''}</option>`).join('')}
+            </select>
+          </div>`
+        : '');
+
+    // O que explica o painel muda com o nível (no negócio se lança, na filial se
+    // herda) e com o ano (só o da proposta tem leituras). Sem a frase da filial,
+    // três campos cinzentos parecem quebrados.
+    const tres = `<strong>IPCA</strong>, <strong>PIB</strong> e <strong>Crescimento desejado</strong> de ${ano}`;
     const nota = d.filial
-      ? `<strong>IPCA</strong>, <strong>PIB</strong> e <strong>Meta de crescimento</strong> vêm do
-          negócio e valem para todas as filiais — para alterá-los, volte ao negócio.
-          Os três valores lidos ao lado são desta filial.`
-      : `<strong>IPCA</strong>, <strong>PIB</strong> e <strong>Meta de crescimento</strong> são lançados
-          aqui e valem para o negócio e todas as filiais. A meta é registro: não altera a proposta.
-          <strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
+      ? `${tres} vêm do negócio e valem para todas as filiais — para alterá-los, volte ao negócio.
+          ${noAnoDaProposta ? 'Os três valores lidos ao lado são desta filial.' : ''}`
+      : `${tres} são lançados aqui e valem para o negócio e todas as filiais.
+          O crescimento desejado é registro: não altera a proposta.
+          ${noAnoDaProposta
+    ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
           são lidos da coluna Proposta — o reajuste de cada linha se lança na própria linha,
-          como <code>5%</code>.`;
+          como <code>5%</code>.`
+    : ''}`;
+
+    const leituras = noAnoDaProposta
+      ? `<div class="w-100 d-md-none"></div>
+          ${leitura(lidas.CRESC_REAL, 'Cresc. Real',
+    'Crescimento total menos IPCA e PIB — o que sobra depois da inflação e da economia. '
+    + 'Precisa dos dois lançados para existir.')}
+          ${leitura(lidas.CRESC_TOTAL, 'Cresc. Total',
+    'A proposta da receita contra a projeção do ano. Lido, não lançado: '
+    + 'o crescimento se lança na linha da Receita de Vendas.')}
+          ${leitura(lidas.PCT_CUSTOS, '% Custos',
+    'A proposta dos custos contra a projeção do ano. Lido da linha Custos das Vendas.')}`
+      : `<div class="col-12 small text-muted">A proposta existe só para <strong>${anoProposta}</strong>:
+          Cresc. Real, Cresc. Total e % Custos saem das linhas dela e aparecem apenas nesse ano.</div>`;
 
     return `
       <div class="card mb-3 painel-premissas"><div class="card-body py-2 px-3">
+        ${seletorAno}
         <div class="row g-3 align-items-end">
-          ${campo('IPCA', 'IPCA', 'Inflação prevista para o ano de planejamento. Vale para o negócio e todas as filiais.')}
-          ${campo('PIB', 'PIB', 'Crescimento da economia previsto para o ano de planejamento. Vale para o negócio e todas as filiais.')}
-          ${campo('CRESCIMENTO', 'Meta de crescimento',
-    'O crescimento que se pretende para a receita. É registro: não altera a proposta de linha '
+          ${campo('IPCA', 'IPCA', `Inflação prevista para ${ano}. Vale para o negócio e todas as filiais.`)}
+          ${campo('PIB', 'PIB', `Crescimento da economia previsto para ${ano}. Vale para o negócio e todas as filiais.`)}
+          ${campo('CRESCIMENTO', 'Crescimento desejado',
+    `O crescimento que se deseja para a receita em ${ano}. É registro: não altera a proposta de linha `
     + 'nenhuma — compare com o Cresc. Total, que é o que as linhas somam. Vale para o negócio e todas as filiais.')}
-          <div class="w-100 d-md-none"></div>
-          ${leitura(p.CRESC_REAL, 'Cresc. Real',
-    'Crescimento total menos IPCA e PIB — o que sobra depois da inflação e da economia. '
-    + 'Precisa dos dois lançados para existir.')}
-          ${leitura(p.CRESC_TOTAL, 'Cresc. Total',
-    'A proposta da receita contra a projeção do ano. Lido, não lançado: '
-    + 'o crescimento se lança na linha da Receita de Vendas.')}
-          ${leitura(p.PCT_CUSTOS, '% Custos',
-    'A proposta dos custos contra a projeção do ano. Lido da linha Custos das Vendas.')}
+          ${leituras}
         </div>
         <div class="small text-muted mt-2">${nota}</div>
       </div></div>`;
@@ -352,7 +396,7 @@ const SecaoProjecao = {
   },
 
   /**
-   * Quem pode digitar IPCA, PIB e a meta de crescimento: só o NEGÓCIO, em
+   * Quem pode digitar IPCA, PIB e o crescimento desejado: só o NEGÓCIO, em
    * QUALQUER modo (pedido do cliente, 2026-11-17).
    *
    * Não reusa `editavelAqui`, e a diferença é o ponto. Aquela regra existe para
@@ -507,6 +551,19 @@ const SecaoProjecao = {
         this.carregar();
       });
     }
+    // O ano das premissas. Trocar de ano só repinta o painel: os valores de TODOS
+    // os anos já vieram na mesma resposta (`premissas_por_ano`), e uma ida ao
+    // servidor por troca seria espera sem motivo. O ano escolhido fica em
+    // `this.anoPremissa` e sobrevive ao repinte que toda gravação faz.
+    const selAno = el.querySelector('#premissa-ano');
+    if (selAno && virgem(selAno)) {
+      selAno.addEventListener('change', (ev) => {
+        this.anoPremissa = Number(ev.target.value);
+        el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
+        this.ligar(el);
+        el.querySelector('#premissa-ano')?.focus();
+      });
+    }
     el.querySelectorAll('input[name="projecao-modo"]').forEach((r) => {
       if (!virgem(r)) return;
       r.addEventListener('change', async (ev) => {
@@ -566,6 +623,9 @@ const SecaoProjecao = {
       const r = await App.api('/api/projecao/premissa', {
         negocio_id: this.negocioId,
         filial_id: this.filialId,
+        // O ano que o painel está mostrando: sem ele o servidor assumiria o da
+        // proposta, e quem estivesse em 2029 gravaria o valor no ano errado.
+        ano: this.anoDoPainel(this.dados),
         chave: inp.dataset.chave,
         valor: limpo === '' ? null : Number(limpo),
       });

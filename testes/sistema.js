@@ -5553,22 +5553,28 @@ async function provasProjecaoPremissas(page, largura) {
 }
 
 /**
- * IPCA, PIB e a META DE CRESCIMENTO valem para o negócio inteiro e para todas
- * as filiais dele (pedido do cliente, 2026-11-17: "quando lançar o PIB e o
- * IPCA, deve ficar fixo, gravado, registrado, ou seja, vai servir para o
- * negócio e todas as filiais do negócio. Além desses dois campos, precisa ter
- * um percentual de crescimento também").
+ * IPCA, PIB e o CRESCIMENTO DESEJADO valem para o negócio inteiro e para todas
+ * as filiais dele, com um valor para cada ANO (pedido do cliente, 2026-11-16:
+ * "quando lançar o PIB e o IPCA, deve ficar fixo, gravado, registrado, ou seja,
+ * vai servir para o negócio e todas as filiais do negócio. Além desses dois
+ * campos, precisa ter um percentual de crescimento também"; e 2026-11-17:
+ * "IPCA, PIB e percentual de crescimento desejado devem ser por negócio e por
+ * ano").
  *
- * Antes, cada filial tinha o seu par, digitado dentro dela, e o negócio que
- * planejava POR FILIAL nem conseguia lançar o dele — a regra que trava os
- * totais travava também as premissas. O que esta prova defende:
+ * Antes, cada filial tinha o seu par, digitado dentro dela, o negócio que
+ * planejava POR FILIAL nem conseguia lançar o dele, e a premissa estava presa
+ * ao ano da proposta — não havia onde lançar o IPCA de 2028. O que esta prova
+ * defende:
  *
  * - o que se lança no negócio fica no BANCO (lido pela API, e não pela tela);
+ * - cada ANO tem o seu valor, e um não vaza para o outro;
+ * - premissa de outro ano NÃO mexe na versão da proposta, que é só do ano dela;
  * - a filial mostra o mesmo valor, travado, e é a mesma coisa em qualquer filial;
  * - lançar por filial pela API é RECUSADO, e o valor do negócio não se mexe —
  *   redirecionar calado sobrescreveria o negócio inteiro;
+ * - ano fora do ciclo é recusado, e sem ano vale o da proposta;
  * - no modo "por filial" o negócio continua podendo lançar as premissas;
- * - a meta de crescimento é REGISTRO: não move o Cresc. Total nem a proposta.
+ * - o crescimento desejado é REGISTRO: não move o Cresc. Total nem a proposta.
  */
 async function provasProjecaoPremissasDoNegocio(page, largura) {
   const l = `[${largura}] Premissas do negócio:`;
@@ -5599,6 +5605,12 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
       total: n(document.querySelector('[data-premissa="Cresc. Total"]')?.textContent ?? ''),
       real: n(document.querySelector('[data-premissa="Cresc. Real"]')?.textContent ?? ''),
       modo: document.querySelector('input[name="projecao-modo"]:checked')?.value,
+      // O seletor de ano e o que ele faz com as leituras.
+      opcoes: [...document.querySelectorAll('#premissa-ano option')].map((o) => o.value),
+      anoSel: document.querySelector('#premissa-ano')?.value ?? null,
+      textoSel: document.querySelector('#premissa-ano option:checked')?.textContent ?? '',
+      leituras: !!document.querySelector('[data-premissa="Cresc. Total"]'),
+      aviso: document.querySelector('.painel-premissas .col-12.small')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
     };
   });
   const digitar = async (c, v) => {
@@ -5610,7 +5622,12 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
   // O estado como o BANCO o tem: a API, e não o que a página guardou em memória.
   const doBanco = (filialId = 0) => page.evaluate(async ([n, f]) => {
     const d = await App.api(`/api/projecao?negocio_id=${n}${f ? `&filial_id=${f}` : ''}`);
-    return { neg: d.premissas, fil: d.filial ? d.filial.premissas : null };
+    return {
+      neg: d.premissas, fil: d.filial ? d.filial.premissas : null,
+      // O que está lançado em CADA ano, a versão da proposta e os anos oferecidos.
+      anos: d.premissas_por_ano, versao: d.versao,
+      anoProposta: d.ano_planejamento, anosPremissa: d.anos_premissa,
+    };
   }, [negocioId, filialId]);
   const verFilial = async (pedaco) => {
     const id = await page.evaluate((p) => {
@@ -5634,7 +5651,7 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
 
   // O que a massa tinha, para devolver no fim: outras provas lançam aqui.
   const antes = await painel();
-  t(`${l} o painel tem o campo "Meta de crescimento"`, antes.temMeta === true, JSON.stringify(antes));
+  t(`${l} o painel tem o campo "Crescimento desejado"`, antes.temMeta === true, JSON.stringify(antes));
 
   await digitar('IPCA', '');
   await digitar('PIB', '');
@@ -5647,14 +5664,14 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
 
   // ── Gravado no banco ──────────────────────────────────────────────────────
   const banco = await doBanco();
-  t(`${l} IPCA, PIB e a meta ficam GRAVADOS no banco`,
+  t(`${l} IPCA, PIB e o crescimento desejado ficam GRAVADOS no banco`,
     banco.neg.IPCA === 6 && banco.neg.PIB === 5 && banco.neg.CRESCIMENTO === 12,
     JSON.stringify(banco.neg));
 
-  // ── A meta é registro: não move nada ──────────────────────────────────────
-  // Cresc. Total é lido da proposta da receita. Se a meta o movesse, haveria
+  // ── O crescimento desejado é registro: não move nada ──────────────────────
+  // Cresc. Total é lido da proposta da receita. Se o desejado o movesse, haveria
   // duas fontes para o mesmo número — a decisão que a seção inteira evita.
-  t(`${l} a meta de crescimento NÃO move o Cresc. Total nem o Cresc. Real`,
+  t(`${l} o crescimento desejado NÃO move o Cresc. Total nem o Cresc. Real`,
     comMeta.total === semMeta.total && comMeta.real === semMeta.real,
     `total ${semMeta.total}→${comMeta.total} · real ${semMeta.real}→${comMeta.real}`);
   t(`${l} e apagá-la a devolve a vazio, sem levar IPCA e PIB junto`, await (async () => {
@@ -5667,7 +5684,7 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
   // ── A filial herda: mesmo valor, travado ──────────────────────────────────
   const eneas = await verFilial('ENEAS');
   const naEneas = await painel();
-  t(`${l} a filial mostra o IPCA, o PIB e a meta do negócio`,
+  t(`${l} a filial mostra o IPCA, o PIB e o crescimento desejado do negócio`,
     naEneas.ipca === '6' && naEneas.pib === '5' && naEneas.meta === '12', JSON.stringify(naEneas));
   t(`${l} e os três campos ficam TRAVADOS nela`,
     naEneas.travados.every((x) => x === true), JSON.stringify(naEneas.travados));
@@ -5714,8 +5731,127 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
       { negocio_id: Number(n), chave: 'CRESCIMENTO', valor }).then(() => 'ACEITOU').catch((e) => e.message);
     return { alto: await tenta(101), texto: await tenta('abc') };
   }, negocioId);
-  t(`${l} a meta recusa percentual fora de ±100%`, /fora de faixa/.test(invalidos.alto), invalidos.alto);
+  t(`${l} o crescimento desejado recusa percentual fora de ±100%`, /fora de faixa/.test(invalidos.alto), invalidos.alto);
   t(`${l} e recusa o que não é número`, /número/.test(invalidos.texto), invalidos.texto);
+
+  // ── Um valor para cada ANO ────────────────────────────────────────────────
+  // Pedido do cliente (2026-11-17). A premissa vivia presa ao ano da proposta:
+  // não havia onde lançar o IPCA de 2028, e quando o planejamento virasse de
+  // ano os valores de 2027 ficariam gravados e inalcançáveis.
+  const escolherAno = async (a) => {
+    await page.evaluate((x) => {
+      const s = document.querySelector('#premissa-ano');
+      s.value = String(x);
+      s.dispatchEvent(new Event('change', { bubbles: true }));
+    }, a);
+    await new Promise((r) => setTimeout(r, 300));
+  };
+  const base = await doBanco();
+  const anoProposta = base.anoProposta;
+  const proximo = anoProposta + 1;
+  const ultimo = base.anosPremissa[base.anosPremissa.length - 1];
+
+  const naTela = await painel();
+  t(`${l} o painel oferece o ano das premissas: do ano da proposta ao fim do ciclo`,
+    base.anosPremissa.length > 1
+      && JSON.stringify(naTela.opcoes) === JSON.stringify(base.anosPremissa.map(String))
+      && naTela.anoSel === String(anoProposta) && /ano da proposta/.test(naTela.textoSel),
+    JSON.stringify({ opcoes: naTela.opcoes, sel: naTela.anoSel, texto: naTela.textoSel }));
+  t(`${l} e no ano da proposta as leituras (Cresc. Total, Cresc. Real, % Custos) estão lá`,
+    naTela.leituras === true);
+
+  // O que o banco tem para o outro ano, ANTES de a prova lançar: a tela tem de
+  // mostrar exatamente isso — e não o que está lançado no ano da proposta.
+  await escolherAno(proximo);
+  const noOutroAno = await painel();
+  const doOutroAno = base.anos[proximo] || {};
+  const texto = (v) => (v === undefined || v === null ? '' : String(v).replace('.', ','));
+  t(`${l} em outro ano a tela mostra o que o banco tem PARA AQUELE ano, sem herdar o da proposta`,
+    noOutroAno.anoSel === String(proximo)
+      && noOutroAno.ipca === texto(doOutroAno.IPCA) && noOutroAno.pib === texto(doOutroAno.PIB)
+      && noOutroAno.meta === texto(doOutroAno.CRESCIMENTO) && noOutroAno.ipca !== '6',
+    JSON.stringify({ tela: [noOutroAno.ipca, noOutroAno.pib, noOutroAno.meta], banco: doOutroAno }));
+  t(`${l} e fora do ano da proposta não há leituras — saem das linhas dela —, e a tela diz por quê`,
+    noOutroAno.leituras === false && new RegExp(`proposta existe só para ${anoProposta}`).test(noOutroAno.aviso),
+    noOutroAno.aviso.slice(0, 80));
+
+  await digitar('IPCA', '3,5');
+  await digitar('PIB', '2');
+  const antesDoCres = await doBanco();
+  await digitar('CRESCIMENTO', '8');
+  const noBancoOutroAno = await doBanco();
+  const o = noBancoOutroAno.anos[proximo] || {};
+  t(`${l} o que se lança em outro ano fica gravado NAQUELE ano`,
+    o.IPCA === 3.5 && o.PIB === 2 && o.CRESCIMENTO === 8, JSON.stringify(o));
+  t(`${l} e o ano da proposta não se mexeu`,
+    noBancoOutroAno.anos[anoProposta].IPCA === 6 && noBancoOutroAno.anos[anoProposta].PIB === 5
+      && noBancoOutroAno.anos[anoProposta].CRESCIMENTO === 12,
+    JSON.stringify(noBancoOutroAno.anos[anoProposta]));
+  t(`${l} a escolha do ano sobrevive à gravação (a tela repinta e continua nele)`,
+    (await painel()).anoSel === String(proximo));
+  // A decisão de projeto: só a proposta tem versão. Premissa de outro ano não
+  // tem proposta para versionar, e mexer nela avisaria quem edita a proposta de
+  // que algo mudou onde nada mudou.
+  t(`${l} lançar premissa de outro ano NÃO mexe na versão da proposta`,
+    antesDoCres.versao === noBancoOutroAno.versao,
+    `${antesDoCres.versao} → ${noBancoOutroAno.versao}`);
+
+  // A filial herda o valor do ano escolhido, travado.
+  await verFilial('ENEAS');
+  const filialOutroAno = await painel();
+  t(`${l} a filial mostra o valor do ANO escolhido, herdado e travado`,
+    filialOutroAno.anoSel === String(proximo) && filialOutroAno.ipca === '3,5'
+      && filialOutroAno.pib === '2' && filialOutroAno.meta === '8'
+      && filialOutroAno.travados.every((x) => x === true),
+    JSON.stringify(filialOutroAno));
+  await verFilial('0');
+
+  // Voltar ao ano da proposta devolve os valores DELE, e as leituras.
+  await escolherAno(anoProposta);
+  const devolta = await painel();
+  t(`${l} voltando ao ano da proposta, aparecem os valores dele e as leituras`,
+    devolta.ipca === '6' && devolta.pib === '5' && devolta.meta === '12' && devolta.leituras === true,
+    JSON.stringify({ i: devolta.ipca, p: devolta.pib, m: devolta.meta, l: devolta.leituras }));
+
+  // Lançar no ano da proposta, esse sim, versiona.
+  const v0 = (await doBanco()).versao;
+  await digitar('CRESCIMENTO', '13');
+  const v1 = (await doBanco()).versao;
+  await digitar('CRESCIMENTO', '12');
+  t(`${l} já lançar no ano da proposta versiona, como sempre`, v1 > v0, `${v0} → ${v1}`);
+
+  // ── O ano pela API ────────────────────────────────────────────────────────
+  const anosApi = await page.evaluate(async ([n, antes, depois]) => {
+    const tenta = (ano) => App.api('/api/projecao/premissa',
+      { negocio_id: Number(n), chave: 'IPCA', valor: 1, ano })
+      .then(() => 'ACEITOU').catch((e) => e.message);
+    return { antes: await tenta(antes), depois: await tenta(depois), texto: await tenta('abc') };
+  }, [negocioId, anoProposta - 1, ultimo + 1]);
+  t(`${l} ano ANTES do ano da proposta é recusado`, /fora do ciclo/.test(anosApi.antes), anosApi.antes);
+  t(`${l} ano DEPOIS do fim do ciclo é recusado`, /fora do ciclo/.test(anosApi.depois), anosApi.depois);
+  t(`${l} e ano que não é número também`, /Ano inválido/.test(anosApi.texto), anosApi.texto);
+
+  // Sem `ano`, vale o da proposta: é o que a tela e quem chamava antes de existir
+  // ano já esperavam. Devolve o PIB ao que era.
+  const semAno = await page.evaluate(async (n) => {
+    await App.api('/api/projecao/premissa', { negocio_id: Number(n), chave: 'PIB', valor: 4 });
+    const d = await App.api(`/api/projecao?negocio_id=${n}`);
+    const lido = d.premissas_por_ano[d.ano_planejamento].PIB;
+    await App.api('/api/projecao/premissa', { negocio_id: Number(n), chave: 'PIB', valor: 5 });
+    return lido;
+  }, negocioId);
+  t(`${l} sem ano, a premissa vai para o ano da proposta`, semAno === 4, String(semAno));
+
+  // Apagar devolve o outro ano a vazio, sem tocar no da proposta. Fecha a massa.
+  await escolherAno(proximo);
+  await digitar('IPCA', '');
+  await digitar('PIB', '');
+  await digitar('CRESCIMENTO', '');
+  const limpo = await doBanco();
+  t(`${l} apagar devolve o outro ano a vazio, sem levar o da proposta junto`,
+    Object.keys(limpo.anos[proximo] || {}).length === 0 && limpo.anos[anoProposta].IPCA === 6,
+    JSON.stringify({ outro: limpo.anos[proximo], proposta: limpo.anos[anoProposta] }));
+  await escolherAno(anoProposta);
 
   // ── O negócio que planeja POR FILIAL também lança as premissas ────────────
   // A regra que trava a linha do negócio (ele é a soma das filiais) travava

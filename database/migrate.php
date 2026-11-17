@@ -849,6 +849,27 @@ if (!indiceTemColuna($pdo, 'projecao_premissa', 'PRIMARY', 'filial_id')) {
     echo "migrate: projecao_premissa passou a ter filial_id na chave primária.\n";
 }
 
+// ── Premissas por NEGÓCIO e por ANO ─────────────────────────────────────────
+// Pedido do cliente, 2026-11-17: "IPCA, PIB e percentual de crescimento
+// desejado devem ser por negócio e por ano". Elas moravam penduradas na
+// projeção (a proposta de UM ano) e passaram a ter tabela própria,
+// `negocio_premissa`, criada pelo schema.sql. Aqui se COPIA o que o cliente já
+// tinha digitado — sem isso o IPCA e o PIB que ele lançou sumiriam da tela no
+// deploy, como se nunca tivessem sido gravados.
+//
+// UMA VEZ SÓ, por marca em `carga_conteudo`, e não "sempre, com INSERT IGNORE":
+// o IGNORE não sobrescreve, mas RESSUSCITA — uma premissa que alguém apagou na
+// tabela nova voltaria da antiga no deploy seguinte, e ninguém entenderia por
+// quê. A tabela antiga fica como está, inerte (ver o comentário dela no schema).
+require_once __DIR__ . '/../app/Services/CargaConteudo.php';
+require_once __DIR__ . '/../app/Services/Projecao.php';
+$chavePremissas = 'premissas_por_negocio_e_ano_2026_11_17';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $chavePremissas)) {
+    $copiadas = App\Services\Projecao::migrarPremissasParaNegocio($pdo);
+    App\Services\CargaConteudo::marcar($pdo, $chavePremissas, "{$copiadas} premissa(s) copiada(s)");
+    echo "migrate: {$copiadas} premissa(s) de IPCA/PIB/crescimento passaram a ser por negócio e ano.\n";
+}
+
 // ---- Carga da DRE gerencial (Projeção de Resultados) ----
 // Número, não texto: aqui a carga SOBRESCREVE (`ON DUPLICATE KEY UPDATE`), ao
 // contrário das cargas de conteúdo abaixo, que nunca repõem o que alguém
