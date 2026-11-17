@@ -329,12 +329,13 @@ const SecaoProjecao = {
     // O que explica o painel muda com o nível (no negócio se lança, na filial se
     // herda) e com o ano (só o da proposta tem leituras). Sem a frase da filial,
     // três campos cinzentos parecem quebrados.
-    const tres = `<strong>IPCA</strong>, <strong>PIB</strong> e <strong>Crescimento desejado</strong> de ${ano}`;
+    const tres = `<strong>IPCA</strong>, <strong>PIB</strong>, <strong>Crescimento desejado</strong> e
+      <strong>Cresc. despesas com pessoas</strong> de ${ano}`;
     const nota = d.filial
       ? `${tres} vêm do negócio e valem para todas as filiais — para alterá-los, volte ao negócio.
           ${noAnoDaProposta ? 'Os três valores lidos ao lado são desta filial.' : ''}`
       : `${tres} são lançados aqui e valem para o negócio e todas as filiais.
-          O crescimento desejado é registro: não altera a proposta.
+          O crescimento desejado e o das despesas com pessoas são registro: não alteram a proposta.
           ${noAnoDaProposta
     ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
           são lidos da coluna Proposta — o reajuste de cada linha se lança na própria linha,
@@ -363,6 +364,9 @@ const SecaoProjecao = {
           ${campo('CRESCIMENTO', 'Crescimento desejado',
     `O crescimento que se deseja para a receita em ${ano}. É registro: não altera a proposta de linha `
     + 'nenhuma — compare com o Cresc. Total, que é o que as linhas somam. Vale para o negócio e todas as filiais.')}
+          ${campo('PESSOAS', 'Cresc. despesas com pessoas',
+    `O crescimento previsto das despesas com pessoas em ${ano}. É registro: não altera a proposta de linha `
+    + 'nenhuma. Vale para o negócio e todas as filiais.')}
           ${leituras}
         </div>
         <div class="small text-muted mt-2">${nota}</div>

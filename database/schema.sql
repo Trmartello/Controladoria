@@ -949,6 +949,9 @@ CREATE TABLE IF NOT EXISTS projecao_premissa (
   CONSTRAINT fk_pp_projecao FOREIGN KEY (projecao_id) REFERENCES projecao(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- (Desde 2026-11-17 também `PESSOAS`: o crescimento das despesas com pessoas, mesma
+-- natureza do CRESCIMENTO — registro, sem efeito sobre a proposta. A coluna `chave`
+-- é texto livre de até 20 caracteres, então uma premissa nova não pede migração.)
 -- As premissas do painel, por NEGÓCIO e por ANO: IPCA, PIB e o CRESCIMENTO
 -- DESEJADO (`CRESCIMENTO`). Valem para o negócio inteiro e para todas as filiais
 -- dele (pedido do cliente, 2026-11-16) e há UM valor para cada ano do ciclo, a

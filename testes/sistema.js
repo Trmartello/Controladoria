@@ -5730,6 +5730,103 @@ async function provasProjecaoCorporativo(page, largura) {
 }
 
 /**
+ * O crescimento das despesas com pessoas (pedido do cliente, 2026-11-17): mais
+ * uma premissa do negócio, por ano, que vale para as filiais e é REGISTRO.
+ *
+ * O que a prova mede é o que um campo novo costuma errar: gravar de verdade
+ * (banco, não memória da página), ficar POR ANO (2027 não vaza para 2028), ser
+ * herdado pela filial sem poder ser lançado nela, recusar o que está fora da
+ * faixa e — o ponto — NÃO mover a proposta de linha nenhuma.
+ */
+async function provasProjecaoPessoas(page, largura) {
+  const l = `[${largura}] Despesas com pessoas:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+
+  const negocioId = await page.evaluate(() => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return o.value;
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const banco = () => page.evaluate(async (n) => {
+    const d = await App.api(`/api/projecao?negocio_id=${n}`);
+    const filial = d.filiais[0]
+      ? (await App.api(`/api/projecao?negocio_id=${n}&filial_id=${d.filiais[0].id}`)).filial : null;
+    return {
+      anos: d.premissas_por_ano, anoProposta: d.ano_planejamento, anosPremissa: d.anos_premissa,
+      propostas: JSON.stringify(d.linhas.map((x) => [x.codigo, x.proposta])),
+      filial: filial ? filial.premissas.PESSOAS : undefined,
+    };
+  }, negocioId);
+  const lancar = (valor, ano) => page.evaluate(async ([n, v, a]) => {
+    try {
+      await App.api('/api/projecao/premissa', { negocio_id: Number(n), chave: 'PESSOAS', valor: v, ano: a });
+      return 'OK';
+    } catch (e) { return e.message; }
+  }, [negocioId, valor, ano]);
+
+  const antes = await banco();
+  const anoP = antes.anoProposta;
+  const outroAno = antes.anosPremissa.find((a) => a !== anoP);
+  const guardado = { [anoP]: antes.anos[anoP]?.PESSOAS ?? null, [outroAno]: antes.anos[outroAno]?.PESSOAS ?? null };
+  const campo = await page.evaluate(() => {
+    const c = document.querySelector('#premissa-PESSOAS');
+    return c ? { desabilitado: c.disabled, rotulo: document.querySelector('label[for="premissa-PESSOAS"]')?.textContent.trim() } : null;
+  });
+  t(`${l} o painel tem o campo, habilitado no negócio`,
+    !!campo && campo.desabilitado === false && /pessoas/i.test(campo.rotulo), JSON.stringify(campo));
+
+  // Pela TELA, como o usuário: digitar e sair do campo.
+  await page.evaluate(() => {
+    const i = document.querySelector('#premissa-PESSOAS'); i.focus(); i.value = '4,5'; i.blur();
+  });
+  await new Promise((r) => setTimeout(r, 1200));
+  let b = await banco();
+  t(`${l} digitar na tela GRAVA no banco, no ano da proposta`,
+    b.anos[anoP].PESSOAS === 4.5, JSON.stringify(b.anos[anoP]));
+  t(`${l} não mexe em proposta de linha nenhuma (é registro)`,
+    b.propostas === antes.propostas);
+
+  // Por ano: 2028 tem o seu, e 2027 continua com o dele.
+  t(`${l} lança em outro ano pela API`, (await lancar(3, outroAno)) === 'OK');
+  b = await banco();
+  t(`${l} cada ano tem o seu valor, sem herdar do outro`,
+    b.anos[outroAno].PESSOAS === 3 && b.anos[anoP].PESSOAS === 4.5,
+    `${anoP}=${b.anos[anoP].PESSOAS} ${outroAno}=${b.anos[outroAno].PESSOAS}`);
+  t(`${l} a filial herda o valor do negócio`, b.filial === 4.5 || b.filial === undefined, String(b.filial));
+
+  // Recusas.
+  const alto = await lancar(101, anoP);
+  const texto = await lancar('abc', anoP);
+  t(`${l} recusa fora de ±100% e o que não é número`,
+    /fora de faixa/.test(alto) && /número/.test(texto), `${alto} | ${texto}`);
+  const naFilial = await page.evaluate(async ([n]) => {
+    const d = await App.api(`/api/projecao?negocio_id=${n}`);
+    if (!d.filiais[0]) return 'sem filial';
+    try {
+      await App.api('/api/projecao/premissa', { negocio_id: Number(n), chave: 'PESSOAS', valor: 9, filial_id: d.filiais[0].id });
+      return 'ACEITOU';
+    } catch (e) { return e.message; }
+  }, [negocioId]);
+  t(`${l} lançar pela filial é recusado, dizendo para lançar no negócio`,
+    naFilial === 'sem filial' || /negócio inteiro/.test(naFilial), naFilial);
+
+  // Devolve a massa como estava.
+  await lancar(guardado[outroAno] === null ? '' : guardado[outroAno], outroAno);
+  await lancar(guardado[anoP] === null ? '' : guardado[anoP], anoP);
+  b = await banco();
+  t(`${l} a massa volta ao que era`,
+    (b.anos[anoP]?.PESSOAS ?? null) === guardado[anoP] && (b.anos[outroAno]?.PESSOAS ?? null) === guardado[outroAno],
+    JSON.stringify(b.anos[anoP]));
+}
+
+/**
  * IPCA, PIB e o CRESCIMENTO DESEJADO valem para o negócio inteiro e para todas
  * as filiais dele, com um valor para cada ANO (pedido do cliente, 2026-11-16:
  * "quando lançar o PIB e o IPCA, deve ficar fixo, gravado, registrado, ou seja,
@@ -9190,6 +9287,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoFilial(page, 'desktop');
   await provasProjecaoCorteDasFiliais(page, 'desktop');
   await provasProjecaoCorporativo(page, 'desktop');
+  await provasProjecaoPessoas(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
   await provasProjecaoNoDossie(page, 'desktop');
@@ -9252,6 +9350,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoFilial(pageM, 'celular');
   await provasProjecaoCorteDasFiliais(pageM, 'celular');
   await provasProjecaoCorporativo(pageM, 'celular');
+  await provasProjecaoPessoas(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
   await provasProjecaoNoDossie(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');

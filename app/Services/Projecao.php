@@ -63,8 +63,14 @@ class Projecao
      * nível consolidado. `CRESCIMENTO` é o crescimento DESEJADO da receita, e é
      * REGISTRO: não move a proposta de linha nenhuma. É a mesma natureza de
      * IPCA e PIB, que também só alimentam a decomposição e nunca um valor.
+     *
+     * `PESSOAS` é o crescimento previsto das despesas com pessoas (pedido do
+     * cliente, 2026-11-17), e tem a mesma natureza: REGISTRO por negócio e por
+     * ano, que vale para todas as filiais e não move proposta nenhuma. A DRE
+     * não tem linha de pessoal separada (ela mora dentro de Despesas com
+     * Vendas, Administrativas etc.), então não há linha à qual ele se ligue.
      */
-    public const PREMISSAS = ['IPCA', 'PIB', 'CRESCIMENTO'];
+    public const PREMISSAS = ['IPCA', 'PIB', 'CRESCIMENTO', 'PESSOAS'];
 
     /**
      * Os anos em que se lançam premissas: do ANO DA PROPOSTA ao último do ciclo.
@@ -156,6 +162,7 @@ class Projecao
         $ipca = isset($digitadas['IPCA']) ? (float)$digitadas['IPCA'] : null;
         $pib  = isset($digitadas['PIB']) ? (float)$digitadas['PIB'] : null;
         $meta = isset($digitadas['CRESCIMENTO']) ? (float)$digitadas['CRESCIMENTO'] : null;
+        $pessoas = isset($digitadas['PESSOAS']) ? (float)$digitadas['PESSOAS'] : null;
         $total = $variacao($acha('1'));
         $custos = $variacao($acha('4'));
 
@@ -164,6 +171,8 @@ class Projecao
             'PIB' => $pib,
             // Só devolvida, nunca usada em conta: ver `PREMISSAS`.
             'CRESCIMENTO' => $meta,
+            // Idem: registro do crescimento das despesas com pessoas.
+            'PESSOAS' => $pessoas,
             'CRESC_TOTAL' => $total,
             // Sem IPCA e PIB lançados não há o que decompor: devolver o próprio
             // total como "real" diria que a inflação é zero, que é uma
