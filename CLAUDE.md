@@ -2794,7 +2794,7 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   também são leitura. No bloco de CADA FILIAL a planilha faz o oposto: ali os
   percentuais são digitados e a proposta sai deles (`AD10 = AA10 * Z14%`) — **e
   é desse papel que o sistema se afasta, por decisão do cliente** (ver abaixo).
-  Só IPCA, PIB e a meta de crescimento são gravados (`projecao_premissa`):
+  Só IPCA, PIB e o crescimento desejado são gravados (`negocio_premissa`):
   deixar "Cresc. Total" também ser digitado criaria duas fontes para o mesmo
   número — o painel e a célula da receita —, e a divergência entre elas
   apareceria como meta errada na reunião. Quem quer lançar crescimento **da
@@ -2802,42 +2802,74 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   cliente: IPCA 4,20 + PIB 1,78 e 13,79% na receita dão **Cresc. Real 7,81%** e
   **% Custos 18,70%** — os mesmos números do arquivo dele, e é isso que
   `provasProjecaoPremissas` fixa.
-  **As premissas são do NEGÓCIO e valem para TODAS as filiais dele** (pedido do
-  cliente, 2026-11-17: "quando lançar o PIB e o IPCA, deve ficar fixo, gravado,
-  registrado, ou seja, vai servir para o negócio e todas as filiais do negócio.
-  Além desses dois campos, precisa ter um percentual de crescimento também").
-  A planilha tem um IPCA e um PIB em cada bloco de filial; o cliente quis um
-  só. Quatro consequências que não devem ser desfeitas:
-  (1) **a filial HERDA** — `premissasLancadas($projecaoId)` não tem parâmetro de
-  filial e fixa `filial_id = 0`; na filial os três campos aparecem **travados**
-  com o valor do negócio, e os três derivados são DELA, calculados das linhas
-  dela com o IPCA e o PIB do negócio. Não reintroduza o parâmetro "para
-  respeitar o valor antigo": a filial voltaria a ter um IPCA que o negócio não
-  conhece; (2) **lançar por filial é RECUSADO pela API** (422, dizendo para
-  lançar no negócio), e não redirecionado calado — quem pensa estar ajustando
-  uma filial e sobrescreve o negócio inteiro não tem como perceber, porque o
-  número muda em todas as telas e a causa não está em nenhuma; (3) **o negócio
-  que planeja POR FILIAL também lança as premissas**: `editavelAqui` trava a
-  linha do negócio porque ele é a soma das filiais, e reaproveitá-la para as
-  premissas bloqueava ali o IPCA e o PIB — só se conseguia lançá-los dentro de
-  cada filial, que é exatamente o que o cliente quis acabar. A regra é outra,
-  `premissaEditavel`: só o negócio, em qualquer modo; (4) **uma linha gravada por
-  filial ANTES dessa data fica no banco, intacta e inerte** — nenhuma consulta a
-  lê, e a coluna `filial_id` continua na chave primária porque mexer nela em
-  produção não paga o que ganha. Não foi promovida ao negócio: se alguém quiser
-  recuperar um valor antigo, ele está lá.
-  **A "Meta de crescimento" (`CRESCIMENTO`) é REGISTRO: não move proposta
+  **As premissas são do NEGÓCIO e de cada ANO, e valem para TODAS as filiais
+  dele** (pedido do cliente, 2026-11-16: "quando lançar o PIB e o IPCA, deve
+  ficar fixo, gravado, registrado, ou seja, vai servir para o negócio e todas
+  as filiais do negócio. Além desses dois campos, precisa ter um percentual de
+  crescimento também"; e 2026-11-17: "IPCA, PIB e percentual de crescimento
+  desejado devem ser por negócio e por ano"). A planilha tem um IPCA e um PIB
+  em cada bloco de filial; o cliente quis um só por negócio e por ano.
+  Consequências que não devem ser desfeitas:
+  (1) **a filial HERDA** — `premissasPorAno($negocioId, $anos)` não tem parâmetro
+  de filial; na filial os três campos aparecem **travados** com o valor do
+  negócio, e os três derivados são DELA, calculados das linhas dela com o IPCA e
+  o PIB do negócio. Não reintroduza o parâmetro "para respeitar o valor
+  antigo": a filial voltaria a ter um IPCA que o negócio não conhece;
+  (2) **lançar por filial é RECUSADO pela API** (422, dizendo para lançar no
+  negócio), e não redirecionado calado — quem pensa estar ajustando uma filial
+  e sobrescreve o negócio inteiro não tem como perceber, porque o número muda em
+  todas as telas e a causa não está em nenhuma;
+  (3) **o negócio que planeja POR FILIAL também lança as premissas**:
+  `editavelAqui` trava a linha do negócio porque ele é a soma das filiais, e
+  reaproveitá-la para as premissas bloqueava ali o IPCA e o PIB — só se
+  conseguia lançá-los dentro de cada filial, que é exatamente o que o cliente
+  quis acabar. A regra é outra, `premissaEditavel`: só o negócio, em qualquer
+  modo;
+  (4) **cada ANO tem o seu valor**, na tabela `negocio_premissa`
+  `(negocio_id, ano, chave)`, do **ano da proposta ao fim do ciclo**
+  (`Projecao::anosDasPremissas`, 2027–2035 hoje). A tela tem um seletor de ano
+  no painel, e a API aceita `ano` (sem ele vale o da proposta; fora da faixa ou
+  não numérico é recusado — um IPCA gravado "no ano errado" não apareceria em
+  lugar nenhum). A resposta traz `anos_premissa` e `premissas_por_ano` de uma
+  vez, e trocar de ano só repinta o painel;
+  (5) **só o ano da PROPOSTA tem leituras** (Cresc. Total, Cresc. Real, % Custos):
+  elas saem das linhas da proposta, que só existem para ele. Nos outros anos o
+  painel mostra as três entradas e diz por que as leituras não estão ali — três
+  "—" pareceriam defeito;
+  (6) **premissa de OUTRO ano não mexe na `projecao`**: não há proposta ali para
+  versionar, e a projeção carrega modo, versão e trava de edição de uma
+  proposta que não existe — criar uma de 2029 só para guardar um IPCA inventaria
+  um ano e faria quem lista projeções ver anos fantasma. Por isso mora em
+  tabela própria. Lançar no ano da proposta segue marcando a projeção (versão e
+  autoria), como sempre.
+  **A migração (`Projecao::migrarPremissasParaNegocio`) copia o que o cliente
+  JÁ DIGITOU** da tabela antiga, `projecao_premissa` — sem isso o IPCA e o PIB
+  que ele lançou sumiriam da tela no deploy. Só a linha do NEGÓCIO
+  (`filial_id = 0`) e com o ano da projeção; a linha por filial fica de fora,
+  porque promovê-la escolheria, entre as filiais, qual delas manda. **Roda UMA
+  vez, sob marca em `carga_conteudo`, e não "sempre, com INSERT IGNORE"**: o
+  IGNORE não sobrescreve, mas RESSUSCITA — uma premissa apagada na tabela nova
+  voltaria da antiga no deploy seguinte, e ninguém entenderia por quê. A prova
+  em PHP documenta isso (a cópia repetida ressuscita) justamente para que
+  ninguém tire a marca; e foi conferido à mão: apagado o PIB, o segundo `migrate`
+  não o devolveu. **A tabela antiga fica como está, inerte**: nenhuma consulta a
+  lê, e uma linha por filial gravada antes de 2026-11-16 continua lá, para quem
+  quiser recuperar um valor. Não reintroduza a leitura dela.
+  **O "Crescimento desejado" (`CRESCIMENTO`) é REGISTRO: não move proposta
   nenhuma.** É a mesma natureza de IPCA e PIB, que também só alimentam a
   decomposição e nunca um valor — e convive com o "Cresc. Total" lido porque um
-  é o que se QUER e o outro é o que as linhas SOMAM. Foi escolha de quem
-  construiu, não do cliente, e está dita a ele: "percentual de crescimento"
-  pode significar também um motor (um padrão de reajuste da receita para as
-  linhas sem proposta), e isso mudaria números de proposta — por isso não foi
-  assumido. **Se virar motor, a regra "só o que é digitado é gravado" continua
-  valendo; o que muda é que a linha sem proposta deixa de valer a projeção.**
+  é o que se QUER e o outro é o que as linhas SOMAM. O cliente o chamou de
+  "desejado", o que confirma o sentido de alvo, mas "percentual de crescimento"
+  pode significar também um **motor** (um padrão de reajuste da receita para as
+  linhas sem proposta, como o bloco de filial da planilha faz), e isso mudaria
+  números de proposta — por isso não foi assumido, e a pergunta está feita a ele.
+  **Se virar motor, a regra "só o que é digitado é gravado" continua valendo; o
+  que muda é que a linha sem proposta deixa de valer a projeção.**
   Provas em `provasProjecaoPremissasDoNegocio` (navegador: herança, travado,
-  recusa da API, modo "por filial", meta que não move nada) e em
-  `testes/projecao_premissas.php` (a linha legada, que só se semeia no banco).
+  recusa da API, modo "por filial", ano, versão, faixa e formato) e em
+  `testes/projecao_premissas.php` (a migração e as linhas legadas, que só se
+  semeiam no banco). Ambas foram rodadas contra o comportamento antigo e contra
+  mutações para ver se falhavam.
   **`ligar()` marca o que já ligou (`data-ligado`).** A tela repinta PEDAÇOS (o
   corpo da tabela, o painel) e religa os ouvintes; sem a marca, um campo que não
   foi repintado ganhava um segundo `blur`, gravava duas vezes e a segunda

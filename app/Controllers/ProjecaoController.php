@@ -136,7 +136,15 @@ class ProjecaoController
             }
             $linhas[$i]['distribuido'] = $filiais ? $soma : null;
         }
-        $premissas = Projecao::premissas($linhas, $this->premissasLancadas($projId));
+        // As premissas digitadas são do NEGÓCIO e de CADA ANO. As derivadas (Cresc.
+        // Total, Cresc. Real, % Custos) só existem no ano da proposta, porque
+        // saem das linhas dela — por isso `premissas()` recebe as digitadas
+        // desse ano, e a tela ganha as dos outros em `premissas_por_ano`.
+        $anoProposta = $ano + 1;
+        $anosPremissa = $this->anosDasPremissas($anoProposta);
+        $porAno = $this->premissasPorAno($negocioId, $anosPremissa);
+        $digitadas = $porAno[(string)$anoProposta];
+        $premissas = Projecao::premissas($linhas, $digitadas);
 
         // A filial aberta na tela, quando há uma. O id vem por PARÂMETRO e não
         // da querystring: quem grava também responde com a tela, e ali não há
@@ -146,14 +154,11 @@ class ProjecaoController
             $filialAberta = [
                 'id' => $filialId,
                 'linhas' => $porFilial[$filialId],
-                // IPCA, PIB e a meta de crescimento são do NEGÓCIO e a filial os
-                // herda (pedido do cliente, 2026-11-17): o conjunto digitado é o
+                // IPCA, PIB e o crescimento desejado são do NEGÓCIO e a filial os
+                // herda (pedido do cliente, 2026-11-16): o conjunto digitado é o
                 // mesmo da linha de cima, e os três derivados saem das linhas
                 // DELA.
-                'premissas' => Projecao::premissas(
-                    $porFilial[$filialId],
-                    $this->premissasLancadas($projId)
-                ),
+                'premissas' => Projecao::premissas($porFilial[$filialId], $digitadas),
             ];
         }
 
@@ -166,6 +171,10 @@ class ProjecaoController
             'versao' => (int)($proj['versao'] ?? 0),
             'modo' => $modo,
             'premissas' => $premissas,
+            // Os anos em que se lançam premissas e o que está lançado em cada
+            // um, de uma vez: trocar de ano na tela não pede ida ao servidor.
+            'anos_premissa' => $anosPremissa,
+            'premissas_por_ano' => $porAno,
             'filiais' => $filiais,
             'filial' => $filialAberta,
             'atualizado_em' => $proj['atualizado_em'] ?? null,
@@ -359,7 +368,7 @@ class ProjecaoController
     }
 
     /**
-     * Lança uma premissa do painel: IPCA, PIB ou a meta de crescimento.
+     * Lança uma premissa do painel: IPCA, PIB ou o crescimento desejado.
      *
      * Só estas três: "Cresc. Total", "Cresc. Real" e "% Custos" são LEITURA da
      * proposta, pela mesma conta que a planilha faz no consolidado. Aceitar
@@ -367,11 +376,17 @@ class ProjecaoController
      * dono — a célula da linha.
      *
      * **A premissa é do NEGÓCIO e vale para todas as filiais dele** (pedido do
-     * cliente, 2026-11-17). Gravar uma por filial é RECUSADO, e não redirecionado
+     * cliente, 2026-11-16). Gravar uma por filial é RECUSADO, e não redirecionado
      * calado para o negócio: quem pensa estar ajustando uma filial e sobrescreve
      * o valor do negócio inteiro não tem como perceber — o número muda em todas
      * as telas e a causa não está em nenhuma delas. A tela já não oferece o
      * campo na filial; a recusa é para quem chama a API.
+     *
+     * **E é de um ANO** (pedido do cliente, 2026-11-17): o corpo traz `ano`, do
+     * ano da proposta ao fim do ciclo, e sem ele vale o ano da proposta — o que
+     * a tela e quem chamava antes de existir ano já esperavam. Ano fora dessa
+     * faixa é recusado: um IPCA de 2019 gravado "no ano errado" apareceria em
+     * lugar nenhum, e ninguém acharia o número.
      */
     public function gravarPremissa(): void
     {
@@ -390,7 +405,7 @@ class ProjecaoController
         }
         if ($filialId !== 0) {
             Json::erro(
-                'IPCA, PIB e a meta de crescimento valem para o negócio inteiro e '
+                'IPCA, PIB e o crescimento desejado valem para o negócio inteiro e '
                 . 'todas as filiais dele: lance-os no negócio, e não na filial.',
                 422
             );
@@ -407,73 +422,121 @@ class ProjecaoController
             Json::erro('Nenhuma DRE carregada.', 409);
         }
         $anoPlan = (int)$fech['ano'] + 1;
+        $anos = $this->anosDasPremissas($anoPlan);
 
-        $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
-        if (!$proj) {
-            Database::executar(
-                'INSERT INTO projecao (negocio_id, ano, atualizado_em, atualizado_por)
-                 VALUES (?, ?, NOW(), ?)',
-                [$negocioId, $anoPlan, $u['id']]
+        $anoPedido = $corpo['ano'] ?? null;
+        if ($anoPedido === null || $anoPedido === '') {
+            $ano = $anoPlan;
+        } elseif (!is_numeric($anoPedido) || (int)$anoPedido != $anoPedido) {
+            Json::erro('Ano inválido: informe um ano, como ' . $anoPlan . '.', 422);
+        } else {
+            $ano = (int)$anoPedido;
+        }
+        if (!in_array($ano, $anos, true)) {
+            Json::erro(
+                'Ano fora do ciclo: lance premissas de ' . $anos[0] . ' a ' . end($anos) . '.',
+                422
             );
-            $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
         }
 
-        // `filial_id = 0` é a linha do NEGÓCIO, e agora a ÚNICA que existe: a
-        // coluna fica na chave porque mexer na chave primária de uma tabela em
-        // produção não paga o que ganha, mas toda premissa nova nasce com zero.
+        // Valida ANTES de escrever qualquer coisa: com a conferência depois, um
+        // valor inválido já tinha criado a projeção do ano e deixado o rastro.
         $bruto = $corpo['valor'] ?? null;
-        if ($bruto === null || $bruto === '') {
-            Database::executar(
-                'DELETE FROM projecao_premissa WHERE projecao_id = ? AND filial_id = 0 AND chave = ?',
-                [(int)$proj['id'], $chave]
-            );
-        } else {
+        $apagar = $bruto === null || $bruto === '';
+        if (!$apagar) {
             if (!is_numeric($bruto)) {
                 Json::erro('Informe um número.', 422);
             }
-            $v = (float)$bruto;
-            if (abs($v) > 100) {
+            if (abs((float)$bruto) > 100) {
                 Json::erro('Percentual fora de faixa: informe entre -100% e 100%.', 422);
             }
+        }
+
+        if ($apagar) {
             Database::executar(
-                'INSERT INTO projecao_premissa (projecao_id, filial_id, chave, percentual)
-                 VALUES (?, 0, ?, ?)
+                'DELETE FROM negocio_premissa WHERE negocio_id = ? AND ano = ? AND chave = ?',
+                [$negocioId, $ano, $chave]
+            );
+        } else {
+            Database::executar(
+                'INSERT INTO negocio_premissa (negocio_id, ano, chave, percentual)
+                 VALUES (?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE percentual = VALUES(percentual)',
-                [(int)$proj['id'], $chave, $v]
+                [$negocioId, $ano, $chave, (float)$bruto]
             );
         }
-        Database::executar(
-            'UPDATE projecao SET versao = versao + 1, atualizado_em = NOW(), atualizado_por = ?
-              WHERE id = ?',
-            [$u['id'], (int)$proj['id']]
-        );
+
+        // A projeção é a PROPOSTA do ano de planejamento, e só ela tem versão e
+        // autoria. Lançar premissa do ano da proposta continua marcando-a — quem
+        // tem a tela aberta é avisado de que algo mudou. Premissa de OUTRO ano
+        // não toca na projeção: não há proposta ali para versionar, e criar uma
+        // projeção de 2029 só para carregar um IPCA seria inventar um ano.
+        if ($ano === $anoPlan) {
+            $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+            if (!$proj) {
+                Database::executar(
+                    'INSERT INTO projecao (negocio_id, ano, atualizado_em, atualizado_por)
+                     VALUES (?, ?, NOW(), ?)',
+                    [$negocioId, $anoPlan, $u['id']]
+                );
+                $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+            }
+            Database::executar(
+                'UPDATE projecao SET versao = versao + 1, atualizado_em = NOW(), atualizado_por = ?
+                  WHERE id = ?',
+                [$u['id'], (int)$proj['id']]
+            );
+        }
 
         $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
     }
 
     /**
-     * As premissas lançadas do NEGÓCIO: IPCA, PIB e a meta de crescimento.
+     * Os anos em que se lançam premissas: do ano da proposta ao fim do ciclo
+     * que o cobre. A conta está em `Projecao::anosDasPremissas`; aqui só se
+     * pergunta ao banco onde o ciclo termina.
+     *
+     * @return int[]
+     */
+    private function anosDasPremissas(int $anoProposta): array
+    {
+        $ciclo = Database::um(
+            'SELECT MAX(ano_fim) AS fim FROM ciclo WHERE ? BETWEEN ano_base AND ano_fim',
+            [$anoProposta]
+        );
+        return Projecao::anosDasPremissas($anoProposta, isset($ciclo['fim']) ? (int)$ciclo['fim'] : null);
+    }
+
+    /**
+     * As premissas lançadas do NEGÓCIO, por ANO: IPCA, PIB e o crescimento
+     * desejado. Todo ano pedido volta com uma lista, vazia quando nada foi
+     * lançado — a tela não precisa distinguir "ano sem premissa" de "ano
+     * desconhecido".
      *
      * Sem parâmetro de filial, e é de propósito: a filial herda o conjunto do
-     * negócio (pedido do cliente, 2026-11-17). A consulta fixa `filial_id = 0`,
-     * então uma linha de premissa gravada por filial ANTES dessa decisão
-     * continua no banco, intacta, e NINGUÉM a lê — nem a tela do negócio, nem a
-     * da filial. Não reintroduza o parâmetro "para respeitar o valor antigo": a
+     * negócio (pedido do cliente, 2026-11-16). Lê SÓ `negocio_premissa`; a
+     * tabela antiga, `projecao_premissa`, é legado inerte — inclusive as linhas
+     * por filial que alguém gravou antes da decisão, que ficam lá, intactas, e
+     * NINGUÉM lê. Não reintroduza a leitura "para respeitar o valor antigo": a
      * filial voltaria a ter um IPCA que o negócio não conhece.
      *
-     * @return array<string,float> chave => percentual digitado
+     * @param  int[] $anos
+     * @return array<string,array<string,float>> ano => (chave => percentual digitado)
      */
-    private function premissasLancadas(int $projecaoId): array
+    private function premissasPorAno(int $negocioId, array $anos): array
     {
-        if (!$projecaoId) {
-            return [];
-        }
         $out = [];
+        foreach ($anos as $a) {
+            $out[$a] = [];
+        }
         foreach (Database::todos(
-            'SELECT chave, percentual FROM projecao_premissa WHERE projecao_id = ? AND filial_id = 0',
-            [$projecaoId]
+            'SELECT ano, chave, percentual FROM negocio_premissa WHERE negocio_id = ?',
+            [$negocioId]
         ) as $l) {
-            $out[$l['chave']] = (float)$l['percentual'];
+            $a = (int)$l['ano'];
+            if (isset($out[$a])) {
+                $out[$a][$l['chave']] = (float)$l['percentual'];
+            }
         }
         return $out;
     }
