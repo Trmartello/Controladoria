@@ -71,13 +71,96 @@ class ProjecaoController
         $ids = array_map(static fn ($n) => (int)$n['id'], $negocios);
         $negocioId = in_array($pedido, $ids, true) ? $pedido : $ids[0];
 
-        $filialId = (int)($_GET['filial_id'] ?? 0);
-        Json::ok($this->montar($negocioId, $ano, $corte, $filialId) + [
+        // O Corporativo é a soma dos negócios, e só quem enxerga todos eles
+        // pode vê-lo: um consolidado dos negócios do escopo de alguém seria um
+        // consolidado parcial lido como o da cooperativa.
+        $podeCorporativo = Auth::veTudo($u);
+        $comuns = [
             'extraido_em' => $fech['extraido_em'],
             'fonte' => $fech['fonte'],
             'negocios' => $negocios,
+            'pode_corporativo' => $podeCorporativo,
+        ];
+        if ($podeCorporativo && !empty($_GET['corporativo'])) {
+            Json::ok($this->montarCorporativo($negocios, $ano, $corte) + $comuns + ['pode_editar' => false]);
+            return;
+        }
+
+        $filialId = (int)($_GET['filial_id'] ?? 0);
+        Json::ok($this->montar($negocioId, $ano, $corte, $filialId) + $comuns + [
             'pode_editar' => $u['perfil'] !== 'LEITURA',
         ]);
+    }
+
+    /**
+     * O Corporativo: a DRE de TODOS os negócios somada, conta a conta.
+     *
+     * É conta derivada e não carga, de propósito: guardar a soma criaria a
+     * segunda cópia do mesmo número, e a primeira recarga de um negócio a
+     * deixaria velha sem ninguém ver. Cada negócio entra por `montar()` — a
+     * MESMA conta da tela dele, com a proposta lançada (ou a projeção, onde
+     * nada foi lançado) —, então o Corporativo nunca discorda da soma do que
+     * as telas dos negócios mostram. Não se lança nada aqui: a proposta é
+     * decidida nos negócios, e o Corporativo só a soma.
+     *
+     * Quantos negócios JÁ lançaram proposta vai junto: um consolidado em que
+     * só três de onze lançaram se lê como a meta da cooperativa, quando é
+     * metade projeção repetida.
+     */
+    private function montarCorporativo(array $negocios, int $ano, int $corte): array
+    {
+        $soma = [];
+        $semMeta = [];
+        $lancaram = 0;
+        foreach ($negocios as $n) {
+            $m = $this->montar((int)$n['id'], $ano, $corte);
+            foreach ($m['linhas'] as $l) {
+                $c = $l['codigo'];
+                if (!isset($soma[$c])) {
+                    $soma[$c] = [
+                        'codigo' => $c, 'nome' => $l['nome'], 'nivel' => $l['nivel'],
+                        'pai_codigo' => $l['pai_codigo'], 'percentual' => $l['percentual'],
+                        'realizado' => 0.0, 'projetado' => 0.0, 'projecao' => 0.0,
+                        'proposta' => 0.0, 'proposta_origem' => 'CONSOLIDADO', 'proposta_lancado' => null,
+                    ];
+                }
+                foreach (['realizado', 'projetado', 'projecao'] as $k) {
+                    $soma[$c][$k] += (float)$l[$k];
+                }
+                // Linha sem regra de proposta (Despesas Totais, os percentuais)
+                // continua sem regra no consolidado: somar os que têm e calar
+                // sobre os que não têm seria inventar o número.
+                if ($soma[$c]['proposta'] !== null) {
+                    $soma[$c]['proposta'] = ($l['proposta'] ?? null) === null
+                        ? null : $soma[$c]['proposta'] + (float)$l['proposta'];
+                    if ($soma[$c]['proposta'] === null) {
+                        $soma[$c]['proposta_origem'] = $l['proposta_origem'];
+                    }
+                }
+            }
+            $semMeta = array_merge($semMeta, $m['meses_sem_meta']);
+            if ($m['atualizado_em']) {
+                $lancaram++;
+            }
+        }
+        return [
+            'corporativo' => true,
+            'ano' => $ano,
+            'ano_planejamento' => $ano + 1,
+            'mes_fechado_ate' => $corte,
+            'negocio_id' => 0,
+            'meses_sem_meta' => array_values(array_unique($semMeta)),
+            'versao' => 0,
+            'modo' => 'NEGOCIO',
+            'filiais' => [],
+            'filiais_corte' => null,
+            'filial' => null,
+            'atualizado_em' => null,
+            'atualizado_por' => null,
+            'negocios_consolidados' => count($negocios),
+            'negocios_com_proposta' => $lancaram,
+            'linhas' => array_values($soma),
+        ];
     }
 
     /**

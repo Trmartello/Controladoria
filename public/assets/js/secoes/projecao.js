@@ -94,16 +94,31 @@ const SecaoProjecao = {
     const alvo = dossie
       ? (App.contexto.corporativo ? 0 : Number(App.contexto.negocioId) || 0)
       : this.negocioId;
-    if (dossie && !alvo) {
-      el.innerHTML = `<h1>Projeção de Resultados</h1>
-        <p class="text-muted">A projeção é por <strong>negócio</strong>: a DRE gerencial não tem
-        linha corporativa. O consolidado dos negócios está no Painel.</p>`;
+    // O Corporativo é a soma dos negócios (pedido do cliente, 2026-11-17): na
+    // tela é uma escolha do seletor; no dossiê é o contexto do documento.
+    const corp = dossie ? !alvo : !!this.corporativo;
+    const q = corp
+      ? '?corporativo=1'
+      : (alvo
+        ? `?negocio_id=${alvo}${!dossie && this.filialId ? `&filial_id=${this.filialId}` : ''}`
+        : '');
+    const d = await App.api(`/api/projecao${q}`);
+    if (corp && d.corporativo) {
+      this.dados = d;
+      el.innerHTML = this.htmlCorporativo(d);
+      this.ligar(el);
       return;
     }
-    const q = alvo
-      ? `?negocio_id=${alvo}${!dossie && this.filialId ? `&filial_id=${this.filialId}` : ''}`
-      : '';
-    const d = await App.api(`/api/projecao${q}`);
+    // Quem não enxerga todos os negócios não recebe o consolidado: volta ao
+    // negócio, e no dossiê diz por quê em vez de imprimir um parcial.
+    if (corp) {
+      this.corporativo = false;
+      if (dossie) {
+        el.innerHTML = `<h1>Projeção de Resultados</h1>
+          <p class="text-muted">O consolidado dos negócios é do perfil que enxerga todos eles.</p>`;
+        return;
+      }
+    }
     // A API cai no primeiro negócio com DRE quando o pedido não tem. Numa tela
     // isso é conveniência; num DOCUMENTO seria imprimir o número de um negócio
     // sob o nome de outro.
@@ -137,8 +152,7 @@ const SecaoProjecao = {
     // imprimem — viram caixa vazia no papel. O que era escolha vira título.
     const dossie = !!App.modoDossie;
     const nomeNegocio = (d.negocios.find((n) => Number(n.id) === Number(d.negocio_id)) || {}).rotulo || '';
-    const opcoes = d.negocios.map((n) => `<option value="${n.id}"${
-      Number(n.id) === Number(d.negocio_id) ? ' selected' : ''}>${Modal.esc(n.rotulo)}</option>`).join('');
+    const opcoes = this.opcoesDeNegocio(d);
 
     const faltando = d.meses_sem_meta.length
       ? `<div class="alert alert-warning py-2 px-3 small mb-3">
@@ -413,6 +427,80 @@ const SecaoProjecao = {
     return !!d.pode_editar && !d.filial;
   },
 
+  /** As opções do seletor: o Corporativo (quando o perfil enxerga tudo) e cada negócio. */
+  opcoesDeNegocio(d) {
+    const corp = d.pode_corporativo
+      ? `<option value="corp"${d.corporativo ? ' selected' : ''}>Corporativo — todos os negócios</option>`
+      : '';
+    return corp + d.negocios.map((n) => `<option value="${n.id}"${
+      !d.corporativo && Number(n.id) === Number(d.negocio_id) ? ' selected' : ''}>${
+      Modal.esc(n.rotulo)}</option>`).join('');
+  },
+
+  /**
+   * O Corporativo: a DRE de todos os negócios somada, só para leitura.
+   *
+   * Não há campo de digitar, nem modo, nem filial, nem premissa: a proposta é
+   * decidida nos negócios e aqui só se soma. O que precisa estar escrito na
+   * tela é quantos negócios entram e quantos JÁ lançaram proposta — onde nada
+   * foi lançado a proposta vale a projeção, e um consolidado que não diz isso
+   * se lê como a meta da cooperativa.
+   */
+  htmlCorporativo(d) {
+    const dossie = !!App.modoDossie;
+    const faltando = d.meses_sem_meta.length
+      ? `<div class="alert alert-warning py-2 px-3 small mb-3">
+           <strong>Projeção incompleta.</strong> Há negócio sem orçamento lançado para
+           ${d.meses_sem_meta.map((m) => this.nomeMes(m)).join(', ')} de ${d.ano} —
+           esses meses entram como zero na coluna Projetado.
+         </div>`
+      : '';
+    const sem = d.negocios_consolidados - d.negocios_com_proposta;
+    return `
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+        <h1 class="mb-0 me-auto">Projeção de Resultados — ${d.ano}</h1>
+        ${dossie
+    ? '<span class="fs-5">Corporativo</span>'
+    : `<select id="projecao-negocio" class="form-select form-select-sm" style="max-width:18rem"
+          aria-label="Negócio">${this.opcoesDeNegocio(d)}</select>`}
+      </div>
+      <p class="text-muted mb-1">
+        <strong>Corporativo:</strong> a soma dos <strong>${d.negocios_consolidados} negócios</strong>
+        com DRE carregada. Realizado de <strong>jan a ${this.nomeMes(d.mes_fechado_ate)}</strong>
+        (meses fechados) e projetado de <strong>${this.nomeMes(d.mes_fechado_ate + 1)} a dez</strong>
+        pelo orçamento lançado. Nada se lança aqui: a proposta de <strong>${d.ano_planejamento}</strong>
+        é decidida em cada negócio.
+      </p>
+      <div id="projecao-corporativo-cobertura" class="alert ${sem ? 'alert-warning' : 'alert-light border'} py-2 px-3 small mb-3">
+        <strong>${d.negocios_com_proposta} de ${d.negocios_consolidados} negócios</strong> já lançaram proposta
+        para ${d.ano_planejamento}.${sem
+    ? ` Nos outros ${sem} a coluna Proposta vale a própria projeção (crescimento zero) —
+        não é meta, é a falta dela.` : ''}
+      </div>
+      ${faltando}
+      <div class="table-responsive tabela-projecao">
+        <table class="table table-sm align-middle">
+          <thead><tr>
+            <th>Conta</th>
+            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}</span></th>
+            <th class="text-end">Projetado<br><span class="fw-normal text-muted small">${this.nomeMes(d.mes_fechado_ate + 1)}–dez</span></th>
+            <th class="text-end">Projeção<br><span class="fw-normal text-muted small">do ano</span></th>
+            <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
+            <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
+            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
+          </tr></thead>
+          <tbody>${this.corpo(d)}</tbody>
+        </table>
+      </div>
+      <p class="text-muted small">
+        Valores em R$. A.V. = análise vertical sobre a Receita Operacional Líquida.
+        Cada conta é a soma da mesma conta nos negócios, com a proposta que cada um lançou.
+        Fonte: ${Modal.esc(d.fonte || 'Qlik')}${d.extraido_em
+  ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
+        Mês sem rateio é mês aberto e não entra como realizado.
+      </p>`;
+  },
+
   /**
    * A DRE das filiais é acumulada e só vale para o corte em que foi extraída.
    * Se o negócio já está em outubro e as filiais ainda em setembro, as duas
@@ -556,7 +644,9 @@ const SecaoProjecao = {
     const sel = el.querySelector('#projecao-negocio');
     if (sel && virgem(sel)) {
       sel.addEventListener('change', (ev) => {
-        this.negocioId = Number(ev.target.value);
+        // 'corp' é o consolidado; qualquer outro valor é um negócio e desliga-o.
+        this.corporativo = ev.target.value === 'corp';
+        if (!this.corporativo) this.negocioId = Number(ev.target.value);
         this.carregar();
       });
     }

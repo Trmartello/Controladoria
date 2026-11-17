@@ -5221,17 +5221,22 @@ async function provasProjecaoNoPainel(page, largura) {
   t(`${l} o cartão diz de quantos negócios é o consolidado`,
     /de \d+ neg/.test(v.cartaoRol), v.cartaoRol.slice(0, 100));
 
-  const comProjecao = v.linhas.filter((x) => x.temProjecao);
+  const comProjecao = v.linhas.filter((x) => x.temProjecao && !x.rotulo.includes('Corporativo'));
   t(`${l} os negócios com DRE trazem número`, comProjecao.length >= 10, String(comProjecao.length));
 
-  const corp = v.linhas.find((x) => x.rotulo.includes('Corporativo'));
-  t(`${l} o Corporativo fica com "—" (a projeção é por negócio)`,
-    !corp || !corp.temProjecao, JSON.stringify(corp));
-
-  // O cartão é a SOMA das linhas: se divergir, um dos dois está mentindo.
+  // O Corporativo é a SOMA dos negócios (pedido do cliente, 2026-11-17) — era
+  // "—" porque a DRE gerencial não tem linha corporativa, e agora é a conta
+  // derivada que a tela de Projeção também mostra.
   const somaRol = comProjecao.reduce((s, x) => s + (x.rol || 0), 0);
+  const corp = v.linhas.find((x) => x.rotulo.includes('Corporativo'));
+  t(`${l} o Corporativo traz a soma dos negócios`,
+    !!corp && corp.temProjecao && Math.abs((corp.rol || 0) - somaRol) <= 50,
+    JSON.stringify(corp) + ` vs ${somaRol}`);
+
+  // O cartão é a SOMA dos NEGÓCIOS — sem o Corporativo, que já é essa soma: se
+  // divergir, um dos dois está mentindo (e com ele dentro o cartão dobraria).
   const noCartao = Number(String(v.cartaoRol.match(/R\$ ([\d.]+)/)?.[1] || '').replace(/\./g, ''));
-  t(`${l} o cartão é a soma das linhas da tabela`,
+  t(`${l} o cartão é a soma das linhas dos negócios, sem contar o Corporativo`,
     Math.abs(somaRol - noCartao) <= 50, `${somaRol} vs ${noCartao}`);
 
   t(`${l} o rodapé aponta a seção da DRE linha a linha`,
@@ -5265,6 +5270,8 @@ async function provasProjecaoNoDossie(page, largura) {
       App.contexto.negocioId = null;
       await SecaoProjecao.carregar();
       saida.corporativo = el.textContent.replace(/\s+/g, ' ').trim();
+      saida.corporativoLinhas = el.querySelectorAll('.tabela-projecao tbody tr').length;
+      saida.corporativoCampos = el.querySelectorAll('input, select').length;
 
       App.contexto.corporativo = false;
       App.contexto.negocioId = 999999;
@@ -5283,8 +5290,9 @@ async function provasProjecaoNoDossie(page, largura) {
     r.mostraONome && r.linhas >= 45, `${r.negocio}: ${r.linhas} linha(s)`);
   t(`${l} e sai como PÁGINA: sem campo de digitar nem seletor`,
     r.campos === 0, `${r.campos} campo(s)`);
-  t(`${l} no corporativo ela se declara ausente em vez de somar o que não existe`,
-    r.corporativo.includes('por negócio'), r.corporativo.slice(0, 90));
+  t(`${l} no corporativo ela sai CONSOLIDADA (a soma dos negócios), como página`,
+    r.corporativo.includes('Corporativo') && r.corporativoLinhas >= 45 && r.corporativoCampos === 0,
+    `${r.corporativoLinhas} linha(s), ${r.corporativoCampos} campo(s): ${r.corporativo.slice(0, 70)}`);
   t(`${l} em negócio sem DRE ela diz isso, em vez de imprimir outro negócio`,
     !r.semDreTemTabela && r.semDre.includes('não tem a DRE carregada'), r.semDre.slice(0, 90));
 }
@@ -5573,7 +5581,7 @@ async function provasProjecaoCorteDasFiliais(page, largura) {
   const estado = await page.evaluate(async () => {
     const s = document.querySelector('#projecao-negocio');
     const out = [];
-    for (const o of [...s.options]) {
+    for (const o of [...s.options].filter((x) => x.value !== 'corp')) {
       const d = await App.api(`/api/projecao?negocio_id=${o.value}`);
       out.push({ id: o.value, rotulo: o.textContent, corte: d.mes_fechado_ate,
         filiais: d.filiais.length, filiaisCorte: d.filiais_corte });
@@ -5618,6 +5626,107 @@ async function provasProjecaoCorteDasFiliais(page, largura) {
     const txt = await faixa(emDia[0].id);
     t(`${l} negócio com filiais em dia NÃO mostra a faixa`, txt === null, String(txt));
   }
+}
+
+/**
+ * O Corporativo na Projeção (pedido do cliente, 2026-11-17): "traga os dados
+ * de todos os negócios e consolide o resultado no Corporativo".
+ *
+ * A prova NÃO confia na soma que o servidor devolve: ela refaz a soma, conta a
+ * conta, a partir da resposta de CADA negócio — as mesmas telas que o usuário
+ * abre. E ancora o total em um número que não veio do sistema (a ROL realizada
+ * de jan–out, somada mês a mês no Qlik em 17/11/2026), porque somar certo
+ * números errados também fecha.
+ */
+async function provasProjecaoCorporativo(page, largura) {
+  const l = `[${largura}] Corporativo:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+
+  const r = await page.evaluate(async () => {
+    const corp = await App.api('/api/projecao?corporativo=1');
+    const ids = corp.negocios.map((n) => n.id);
+    const porNegocio = [];
+    for (const id of ids) porNegocio.push(await App.api(`/api/projecao?negocio_id=${id}`));
+    const diverge = [];
+    for (const lc of corp.linhas) {
+      for (const k of ['realizado', 'projetado', 'projecao', 'proposta']) {
+        const partes = porNegocio.map((d) => (d.linhas.find((x) => x.codigo === lc.codigo) || {})[k]);
+        const esperado = partes.some((v) => v === null || v === undefined)
+          ? null : partes.reduce((a, v) => a + v, 0);
+        const ok = esperado === null ? lc[k] === null : Math.abs(lc[k] - esperado) <= 0.5;
+        if (!ok) diverge.push(`${lc.codigo}.${k}: ${lc[k]} ≠ ${esperado}`);
+      }
+    }
+    const painel = await App.api(`/api/painel?ciclo_id=${App.contexto.cicloId}`);
+    const linhaCorp = painel.linhas.find((x) => x.negocio_id === null);
+    const somaNeg = (c) => painel.linhas.filter((x) => x.negocio_id !== null)
+      .reduce((a, x) => a + (x[c] || 0), 0);
+    return {
+      corporativo: corp.corporativo === true, nLinhas: corp.linhas.length, nNegocios: ids.length,
+      declarados: corp.negocios_consolidados, filiais: corp.filiais.length,
+      podeEditar: corp.pode_editar, diverge,
+      rolRealizado: (corp.linhas.find((x) => x.codigo === '3') || {}).realizado,
+      painelCorp: linhaCorp ? linhaCorp.projecao_rol : undefined,
+      painelCorpLiquido: linhaCorp ? linhaCorp.projecao_liquido : undefined,
+      painelSoma: somaNeg('projecao_rol'), painelSomaLiquido: somaNeg('projecao_liquido'),
+      cardRol: painel.consolidado.projecao_rol, cardLiquido: painel.consolidado.projecao_liquido,
+      comProjecao: painel.consolidado.com_projecao,
+      projecaoRolCorp: (corp.linhas.find((x) => x.codigo === '3') || {}).projecao,
+      liquidoCorp: (corp.linhas.find((x) => x.codigo === '16') || {}).projecao,
+    };
+  });
+  t(`${l} a API devolve o consolidado, só para leitura e sem filiais`,
+    r.corporativo && r.nLinhas >= 45 && r.filiais === 0 && r.podeEditar === false,
+    `${r.nLinhas} linha(s), filiais ${r.filiais}, editar ${r.podeEditar}`);
+  t(`${l} diz de quantos negócios é a soma, e são todos os do seletor`,
+    r.declarados === r.nNegocios && r.nNegocios >= 2, `${r.declarados} de ${r.nNegocios}`);
+  t(`${l} cada conta é a soma da mesma conta nos negócios (realizado, projetado, projeção e proposta)`,
+    r.diverge.length === 0, r.diverge.slice(0, 3).join(' | '));
+  // Âncora externa: ROL realizada jan–out, 11 negócios, somada mês a mês no Qlik
+  // (2.885.752.746). Tolerância de R$ 200: arredondamento ao real por negócio e mês.
+  t(`${l} a ROL realizada bate com a soma mês a mês do Qlik (R$ 2.885.752.746)`,
+    Math.abs(r.rolRealizado - 2885752746) <= 200, String(r.rolRealizado));
+  t(`${l} o Painel mostra no Corporativo a MESMA projeção da tela (ROL e resultado líquido)`,
+    Math.abs(r.painelCorp - r.projecaoRolCorp) <= 0.5 && Math.abs(r.painelCorpLiquido - r.liquidoCorp) <= 0.5,
+    `${r.painelCorp} / ${r.projecaoRolCorp}; ${r.painelCorpLiquido} / ${r.liquidoCorp}`);
+  t(`${l} e o cartão do Painel NÃO conta o Corporativo duas vezes`,
+    Math.abs(r.cardRol - r.painelSoma) <= 0.5 && Math.abs(r.cardLiquido - r.painelSomaLiquido) <= 0.5
+      && r.comProjecao === r.nNegocios,
+    `cartão ${r.cardRol} vs soma dos negócios ${r.painelSoma}; ${r.comProjecao} negócio(s) com DRE`);
+
+  // A tela: a opção está no seletor, a tabela é só leitura e diz a cobertura.
+  const escolher = (v) => page.evaluate((valor) => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => (valor === 'corp' ? x.value === 'corp' : x.textContent.includes(valor)));
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+  }, v);
+  await escolher('corp');
+  const mostrou = await esperar(page, "!!document.querySelector('#projecao-corporativo-cobertura')", 15000);
+  t(`${l} escolher o Corporativo no seletor abre a visão consolidada`, mostrou);
+  const tela = await page.evaluate(() => ({
+    selecionado: document.querySelector('#projecao-negocio').value,
+    campos: document.querySelectorAll('.tabela-projecao input').length,
+    linhas: document.querySelectorAll('.tabela-projecao tbody tr').length,
+    cobertura: document.querySelector('#projecao-corporativo-cobertura').textContent.replace(/\s+/g, ' ').trim(),
+    temModo: !!document.querySelector('input[name="projecao-modo"]'),
+    temFilial: !!document.querySelector('#projecao-filial'),
+    temPremissas: !!document.querySelector('.painel-premissas'),
+  }));
+  t(`${l} a tabela não tem campo de digitar, nem modo, nem filial, nem premissa`,
+    tela.campos === 0 && !tela.temModo && !tela.temFilial && !tela.temPremissas && tela.selecionado === 'corp',
+    JSON.stringify(tela));
+  t(`${l} e diz quantos negócios já lançaram proposta`,
+    /\d+ de \d+ negócios já lançaram proposta/.test(tela.cobertura), tela.cobertura.slice(0, 90));
+
+  // E voltar a um negócio devolve a tela editável.
+  await escolher('PECUARIA');
+  const voltou = await esperar(page,
+    "!document.querySelector('#projecao-corporativo-cobertura') && document.querySelectorAll('.tabela-projecao input.celula-proposta').length > 0", 15000);
+  t(`${l} voltar a um negócio devolve a tela de lançar`, voltou);
 }
 
 /**
@@ -9080,6 +9189,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoPremissas(page, 'desktop');
   await provasProjecaoFilial(page, 'desktop');
   await provasProjecaoCorteDasFiliais(page, 'desktop');
+  await provasProjecaoCorporativo(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
   await provasProjecaoNoDossie(page, 'desktop');
@@ -9141,6 +9251,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoPremissas(pageM, 'celular');
   await provasProjecaoFilial(pageM, 'celular');
   await provasProjecaoCorteDasFiliais(pageM, 'celular');
+  await provasProjecaoCorporativo(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
   await provasProjecaoNoDossie(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');

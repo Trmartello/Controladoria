@@ -92,9 +92,29 @@ class RelatorioController
             $linhas[$i]['modo_projecao'] = $r['modo'] ?? null;
         }
 
+        // O Corporativo é a soma dos negócios com DRE — a mesma conta da tela de
+        // Projeção em modo Corporativo. Entra DEPOIS de os negócios estarem
+        // preenchidos e FORA das somas abaixo: o consolidado do cartão já é a
+        // soma dos negócios, e contar a linha do Corporativo de novo o dobraria.
+        $porNegocio = array_values(array_filter($linhas, static fn ($l) => $l['negocio_id'] !== null));
+        foreach ($linhas as $i => $l) {
+            if ($l['negocio_id'] !== null) {
+                continue;
+            }
+            $comDre = array_filter($porNegocio, static fn ($x) => $x['projecao_rol'] !== null);
+            if ($comDre) {
+                foreach (['projecao_rol', 'proposta_rol', 'projecao_liquido', 'proposta_liquido'] as $campo) {
+                    $linhas[$i][$campo] = array_sum(array_map(
+                        static fn ($x) => (float)($x[$campo] ?? 0),
+                        $comDre
+                    ));
+                }
+            }
+        }
+
         $somaProj = static fn (string $campo) => array_sum(array_map(
             static fn ($l) => (float)($l[$campo] ?? 0),
-            $linhas
+            array_filter($linhas, static fn ($l) => $l['negocio_id'] !== null)
         ));
 
         $consolidado = [
@@ -115,7 +135,7 @@ class RelatorioController
             // cooperativa. O número aparece na tela ao lado do valor.
             'com_projecao'     => count(array_filter(
                 $linhas,
-                static fn ($l) => $l['projecao_rol'] !== null
+                static fn ($l) => $l['negocio_id'] !== null && $l['projecao_rol'] !== null
             )),
             'ano_projecao'     => $fech ? (int)$fech['ano'] : null,
             'ano_proposta'     => $fech ? (int)$fech['ano'] + 1 : null,
