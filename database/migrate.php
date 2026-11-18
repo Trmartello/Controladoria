@@ -927,6 +927,30 @@ foreach ([
     }
 }
 
+// ---- Quadro de colaboradores por negócio (pedido do cliente, 2026-11-18) ----
+// Mesma natureza da DRE — número de fora, carga pedida no chat, sobrescreve —,
+// com a marca por chave só para não repetir o trabalho a cada deploy.
+require_once __DIR__ . '/../app/Services/CargaPessoas.php';
+foreach ([
+    'pessoas_2026_11.php',
+] as $arquivo) {
+    $p = require __DIR__ . '/' . $arquivo;
+    if (App\Services\CargaConteudo::jaAplicada($pdo, $p['chave'])) {
+        continue;
+    }
+    $r = App\Services\CargaPessoas::aplicar($pdo, $p);
+    App\Services\CargaConteudo::marcar(
+        $pdo,
+        $p['chave'],
+        "Quadro de colaboradores {$p['ano']}: {$r['negocios']} negócio(s), {$r['valores']} valor(es)"
+    );
+    echo "migrate: carga de pessoas {$p['chave']} — {$r['negocios']} negócio(s), {$r['valores']} valor(es).\n";
+    if ($r['ignorados']) {
+        echo 'migrate: negócio(s) fora do cadastro ignorado(s) na carga de pessoas: '
+            . implode(', ', $r['ignorados']) . ".\n";
+    }
+}
+
 // ---- Cargas de conteúdo: cenário macroeconômico e PESTEL ----
 // O seeds.sql só age com o contexto vazio e essas telas já têm itens escritos
 // à mão, então a carga nunca chegaria por lá. Aqui ela chega no deploy — UMA

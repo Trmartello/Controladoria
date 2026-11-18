@@ -213,6 +213,7 @@ const SecaoProjecao = {
       ${this.avisoFiliaisDefasadas(d)}
       ${this.faixaDoModo(d)}
       ${this.painel(d)}
+      ${d.filial ? '' : this.cartaoPessoas(d)}
       ${faltando}
       <div id="projecao-aviso" class="alert alert-danger py-2 px-3 small mb-2 d-none"></div>
       <div class="table-responsive tabela-projecao">
@@ -374,6 +375,139 @@ const SecaoProjecao = {
   },
 
   /**
+   * Pessoas e benefícios do negócio (pedido do cliente, 2026-11-18): quantos
+   * colaboradores são do negócio e quanto ele paga de alimentação e de abono.
+   *
+   * O quadro vem da DRE — o ÚLTIMO mês do ano atual — e já é de colaboradores
+   * EQUIVALENTES: quem divide o tempo entre dois negócios entra em cada um pela
+   * sua parte, então cada negócio paga a sua e o custo sai direto de
+   * colaboradores × valor. O texto da tela diz isso, porque é a dúvida que um
+   * número "inteiro" daria. Os valores e os percentuais são digitados por negócio
+   * e por ano (o ano é o do seletor das premissas); vazio vale o padrão, que
+   * aparece como o placeholder.
+   *
+   * Nada daqui entra na proposta: a DRE não tem linha de pessoal, então este é
+   * o cartão onde o valor com pessoas é PREVISTO, e não uma conta que mexa nas
+   * linhas da tabela.
+   */
+  cartaoPessoas(d) {
+    if (!d.pessoas) return '';
+    if (d.corporativo) return this.cartaoPessoasCorporativo(d);
+    const ano = this.anoDoPainel(d);
+    const calc = d.pessoas.por_ano[ano] || null;
+    const dig = d.pessoas.digitados[ano] || {};
+    const base = d.pessoas.base;
+    const editavel = this.premissaEditavel(d);
+    const dinheiro = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+    const num = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
+    const padrao = d.pessoas.padrao || {};
+    const campo = (chave, rotulo, unidade, dica, placeholder) => (App.modoDossie
+      ? `<div class="col-6 col-md-auto"><div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
+          <div class="fw-bold">${dig[chave] === undefined ? `${placeholder} <span class="text-muted small">(padrão)</span>` : num(dig[chave])}</div></div>`
+      : `<div class="col-6 col-md-auto">
+          <label class="form-label small text-muted mb-0" for="beneficio-${chave}"
+            title="${Modal.esc(dica)}">${rotulo}</label>
+          <div class="input-group input-group-sm">
+            ${unidade === 'R$' ? '<span class="input-group-text">R$</span>' : ''}
+            <input type="text" class="form-control celula-beneficio" id="beneficio-${chave}"
+              inputmode="decimal" autocomplete="off" data-chave="${chave}"
+              value="${num(dig[chave])}" placeholder="${placeholder}" ${editavel ? '' : 'disabled'}>
+            ${unidade === '%' ? '<span class="input-group-text">%</span>' : ''}
+          </div>
+        </div>`);
+
+    const quadro = base
+      ? `Quadro atual: <strong>${Number(base.colaboradores).toLocaleString('pt-BR')}</strong> colaboradores
+         (DRE, ${this.nomeMes(base.mes)}/${base.ano}${base.mes < 12 ? ' — último mês carregado; dezembro ainda não existe' : ''}).`
+      : 'Não há quadro de colaboradores carregado para este negócio.';
+
+    const resultado = calc ? `
+      <div class="table-responsive mt-2">
+        <table class="table table-sm mb-1 tabela-pessoas">
+          <thead><tr><th></th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
+          <tbody>
+            <tr><td>Alimentação (${dinheiro(calc.valores.ALIMENTACAO)} × ${Number(calc.colaboradores).toLocaleString('pt-BR')})</td>
+              <td class="text-end">${dinheiro(calc.mensal.alimentacao)}</td><td class="text-end" data-pessoas="alimentacao">${dinheiro(calc.anual.alimentacao)}</td></tr>
+            <tr><td>Abono de assiduidade</td>
+              <td class="text-end">${dinheiro(calc.mensal.assiduidade)}</td><td class="text-end" data-pessoas="assiduidade">${dinheiro(calc.anual.assiduidade)}</td></tr>
+            <tr><td>Abono de resultado <span class="text-muted small">(só nos meses em que o negócio atinge o resultado)</span></td>
+              <td class="text-end">${dinheiro(calc.mensal.resultado)}</td><td class="text-end" data-pessoas="resultado">${dinheiro(calc.anual.resultado)}</td></tr>
+            <tr class="fw-bold"><td>Despesa prevista com benefícios</td>
+              <td class="text-end">${dinheiro(calc.mensal.total)}</td><td class="text-end" data-pessoas="total">${dinheiro(calc.anual.total)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="small text-muted">
+        Se o negócio <strong>nunca</strong> atingir o resultado: <strong data-pessoas="sem_resultado">${dinheiro(calc.sem_resultado_anual)}</strong> no ano.
+        Teto (todos cumprem a assiduidade e o resultado vem todo mês): <strong data-pessoas="maximo">${dinheiro(calc.maximo_anual)}</strong>.
+      </div>` : '';
+
+    return `
+      <div class="card mb-3 painel-pessoas"><div class="card-body py-2 px-3">
+        <div class="d-flex flex-wrap align-items-baseline gap-2 mb-1">
+          <h2 class="h6 mb-0">Pessoas e benefícios — ${ano}</h2>
+          <span class="small text-muted" id="pessoas-quadro">${quadro}</span>
+        </div>
+        <div class="small text-muted mb-2">
+          O número já é de colaboradores <strong>equivalentes</strong>: quem divide o tempo entre dois
+          negócios (30/70, 50/50) entra em cada um pela sua parte, e cada negócio paga a sua.
+          O planejamento de ${d.ano_planejamento} parte do quadro atual.
+        </div>
+        <div class="row g-3 align-items-end">
+          ${campo('COLABORADORES', 'Colaboradores planejados', 'pessoas',
+    'Deixe vazio para usar o quadro atual da DRE; digite para planejar contratação ou desligamento.',
+    base ? String(base.colaboradores) : '—')}
+          ${campo('ALIMENTACAO', 'Alimentação (por mês)', 'R$',
+    'Valor por colaborador, por mês, nos 12 meses.', num(padrao.ALIMENTACAO))}
+          ${campo('ASSIDUIDADE', 'Abono assiduidade (por mês)', 'R$',
+    'Pago ao colaborador que cumpre os quesitos de assiduidade.', num(padrao.ASSIDUIDADE))}
+          ${campo('RESULTADO', 'Abono resultado (por mês)', 'R$',
+    'Pago só no mês em que o negócio atinge o resultado planejado.', num(padrao.RESULTADO))}
+          ${campo('PCT_ASSIDUIDADE', '% que cumprem a assiduidade', '%',
+    'Previsão: que parte dos colaboradores cumpre os quesitos. 100% é o orçamento cheio.', num(padrao.PCT_ASSIDUIDADE))}
+          ${campo('PCT_RESULTADO', '% dos meses com resultado', '%',
+    'Previsão: em que parte dos meses o negócio atinge o resultado. 100% é o orçamento cheio.', num(padrao.PCT_RESULTADO))}
+        </div>
+        ${resultado}
+      </div></div>`;
+  },
+
+  /** O Corporativo só totaliza: a soma dos negócios, sem campo nenhum. */
+  cartaoPessoasCorporativo(d) {
+    const ano = d.ano_planejamento;
+    const c = (d.pessoas.por_ano || {})[ano];
+    const dinheiro = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+    if (!c) {
+      return `<div class="card mb-3 painel-pessoas"><div class="card-body py-2 px-3 small text-muted">
+        Pessoas e benefícios: nenhum negócio tem quadro de colaboradores carregado.</div></div>`;
+    }
+    const base = d.pessoas.base;
+    return `
+      <div class="card mb-3 painel-pessoas"><div class="card-body py-2 px-3">
+        <h2 class="h6 mb-1">Pessoas e benefícios — ${ano}</h2>
+        <div class="small text-muted mb-2" id="pessoas-quadro">
+          Soma de <strong>${c.negocios} negócios</strong> com quadro:
+          <strong>${Number(c.colaboradores).toLocaleString('pt-BR')}</strong> colaboradores equivalentes
+          ${base ? `(DRE, ${this.nomeMes(base.mes)}/${base.ano}).` : '.'}
+          Não inclui as áreas de apoio (Apoio Operacional e Administração Matriz).
+        </div>
+        <table class="table table-sm mb-1 tabela-pessoas">
+          <thead><tr><th></th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
+          <tbody>
+            <tr><td>Alimentação</td><td class="text-end">${dinheiro(c.mensal.alimentacao)}</td><td class="text-end" data-pessoas="alimentacao">${dinheiro(c.anual.alimentacao)}</td></tr>
+            <tr><td>Abono de assiduidade</td><td class="text-end">${dinheiro(c.mensal.assiduidade)}</td><td class="text-end" data-pessoas="assiduidade">${dinheiro(c.anual.assiduidade)}</td></tr>
+            <tr><td>Abono de resultado</td><td class="text-end">${dinheiro(c.mensal.resultado)}</td><td class="text-end" data-pessoas="resultado">${dinheiro(c.anual.resultado)}</td></tr>
+            <tr class="fw-bold"><td>Despesa prevista com benefícios</td><td class="text-end">${dinheiro(c.mensal.total)}</td><td class="text-end" data-pessoas="total">${dinheiro(c.anual.total)}</td></tr>
+          </tbody>
+        </table>
+        <div class="small text-muted">
+          Sem nenhum abono de resultado: <strong data-pessoas="sem_resultado">${dinheiro(c.sem_resultado_anual)}</strong> no ano.
+          Teto: <strong data-pessoas="maximo">${dinheiro(c.maximo_anual)}</strong>. Os valores e as previsões são lançados em cada negócio.
+        </div>
+      </div></div>`;
+  },
+
+  /**
    * O resíduo a distribuir, com o ruído do arredondamento fora.
    *
    * Abaixo de R$ 20 não é resíduo: é a diferença entre duas extrações que
@@ -481,6 +615,7 @@ const SecaoProjecao = {
     ? ` Nos outros ${sem} a coluna Proposta vale a própria projeção (crescimento zero) —
         não é meta, é a falta dela.` : ''}
       </div>
+      ${this.cartaoPessoas(d)}
       ${faltando}
       <div class="table-responsive tabela-projecao">
         <table class="table table-sm align-middle">
@@ -673,6 +808,9 @@ const SecaoProjecao = {
       selAno.addEventListener('change', (ev) => {
         this.anoPremissa = Number(ev.target.value);
         el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
+        // Pessoas e benefícios acompanham o ano das premissas.
+        const cartao = el.querySelector('.painel-pessoas');
+        if (cartao) cartao.outerHTML = this.cartaoPessoas(this.dados);
         this.ligar(el);
         el.querySelector('#premissa-ano')?.focus();
       });
@@ -709,6 +847,15 @@ const SecaoProjecao = {
         if (ev.key === 'Escape') { inp.value = inp.dataset.original ?? inp.value; inp.blur(); }
       });
       inp.dataset.original = inp.value;
+    });
+    el.querySelectorAll('.celula-beneficio').forEach((inp) => {
+      inp.dataset.original = inp.value;
+      if (!virgem(inp)) return;
+      inp.addEventListener('blur', () => this.gravarBeneficio(inp));
+      inp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+        if (ev.key === 'Escape') { inp.value = inp.dataset.original ?? inp.value; inp.blur(); }
+      });
     });
     el.querySelectorAll('.celula-premissa').forEach((inp) => {
       inp.dataset.original = inp.value;
@@ -753,6 +900,38 @@ const SecaoProjecao = {
       painel.outerHTML = this.painel(this.dados);
       this.ligar(el);
       el.querySelector(`#premissa-${inp.dataset.chave}`)?.focus();
+    } catch (e) {
+      this.avisar(e.message);
+      inp.value = inp.dataset.original ?? '';
+    } finally {
+      inp.classList.remove('celula-gravando');
+    }
+  },
+
+  /** Grava um valor de pessoas e benefícios no ano que o painel mostra. */
+  async gravarBeneficio(inp) {
+    const bruto = inp.value.trim();
+    if (bruto === (inp.dataset.original ?? '')) return;
+    const limpo = bruto.replace(/R\$|%/g, '').replace(/\./g, '').replace(',', '.').trim();
+    if (limpo !== '' && !Number.isFinite(Number(limpo))) {
+      this.avisar('Informe um número.');
+      inp.value = inp.dataset.original ?? '';
+      return;
+    }
+    inp.classList.add('celula-gravando');
+    try {
+      const r = await App.api('/api/projecao/beneficio', {
+        negocio_id: this.negocioId,
+        ano: this.anoDoPainel(this.dados),
+        chave: inp.dataset.chave,
+        valor: limpo === '' ? null : Number(limpo),
+      });
+      this.dados = { ...this.dados, ...r };
+      this.avisar('');
+      const el = document.getElementById('secao-projecao');
+      el.querySelector('.painel-pessoas').outerHTML = this.cartaoPessoas(this.dados);
+      this.ligar(el);
+      el.querySelector(`#beneficio-${inp.dataset.chave}`)?.focus();
     } catch (e) {
       this.avisar(e.message);
       inp.value = inp.dataset.original ?? '';

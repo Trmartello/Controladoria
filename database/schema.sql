@@ -1005,3 +1005,33 @@ CREATE TABLE IF NOT EXISTS dre_valor_filial (
   CONSTRAINT fk_dvf_filial FOREIGN KEY (filial_id) REFERENCES filial(id) ON DELETE CASCADE,
   CONSTRAINT fk_dvf_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- O quadro de colaboradores por NEGÓCIO e por mês, vindo da DRE gerencial (campo
+-- `Número Funcionarios`). Já é "equivalente": quem divide o tempo entre dois
+-- negócios entra em cada um pela sua parte (confirmado pelo cliente em
+-- 2026-11-18). A base do planejamento de pessoas é o ÚLTIMO mês carregado do
+-- ano-base, então dezembro, quando vier, é só mais uma linha — a base anda sozinha.
+CREATE TABLE IF NOT EXISTS negocio_pessoas_mes (
+  negocio_id    INT NOT NULL,
+  ano           SMALLINT NOT NULL,
+  mes           TINYINT NOT NULL,
+  colaboradores INT NOT NULL,
+  PRIMARY KEY (negocio_id, ano, mes),
+  CONSTRAINT fk_npm_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- O que o cliente DIGITA no planejamento de pessoas e benefícios, por NEGÓCIO e por
+-- ANO: o número de colaboradores planejado (quando difere do quadro atual), os
+-- valores por colaborador/mês e os percentuais de previsão. Só o digitado é
+-- guardado: o padrão (alimentação R$ 500, abono de assiduidade R$ 200, abono de
+-- resultado R$ 500) mora em `Projecao::BENEFICIOS_PADRAO`, e guardar uma cópia dele
+-- aqui criaria duas fontes para o mesmo número. `valor` serve a reais, a
+-- percentuais e a pessoas — o que cada `chave` significa está em `Projecao`.
+CREATE TABLE IF NOT EXISTS negocio_beneficio (
+  negocio_id INT NOT NULL,
+  ano        SMALLINT NOT NULL,
+  chave      VARCHAR(24) NOT NULL,
+  valor      DECIMAL(14,2) NOT NULL,
+  PRIMARY KEY (negocio_id, ano, chave),
+  CONSTRAINT fk_nb_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
