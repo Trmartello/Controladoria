@@ -2796,7 +2796,7 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   também são leitura. No bloco de CADA FILIAL a planilha faz o oposto: ali os
   percentuais são digitados e a proposta sai deles (`AD10 = AA10 * Z14%`) — **e
   é desse papel que o sistema se afasta, por decisão do cliente** (ver abaixo).
-  Só IPCA, PIB, o crescimento desejado e o **crescimento das despesas com pessoas** (`PESSOAS`, pedido de 2026-11-17 — registro como o desejado: não move proposta, e a DRE não tem linha de pessoal para ligá-lo) são gravados (`negocio_premissa`):
+  Só IPCA, PIB, o crescimento desejado e o **crescimento das despesas com pessoas** (`PESSOAS`, pedido de 2026-11-17) são gravados (`negocio_premissa`):
   deixar "Cresc. Total" também ser digitado criaria duas fontes para o mesmo
   número — o painel e a célula da receita —, e a divergência entre elas
   apareceria como meta errada na reunião. Quem quer lançar crescimento **da
@@ -2857,16 +2857,33 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   não o devolveu. **A tabela antiga fica como está, inerte**: nenhuma consulta a
   lê, e uma linha por filial gravada antes de 2026-11-16 continua lá, para quem
   quiser recuperar um valor. Não reintroduza a leitura dela.
-  **O "Crescimento desejado" (`CRESCIMENTO`) é REGISTRO: não move proposta
-  nenhuma.** É a mesma natureza de IPCA e PIB, que também só alimentam a
-  decomposição e nunca um valor — e convive com o "Cresc. Total" lido porque um
-  é o que se QUER e o outro é o que as linhas SOMAM. O cliente o chamou de
-  "desejado", o que confirma o sentido de alvo, mas "percentual de crescimento"
-  pode significar também um **motor** (um padrão de reajuste da receita para as
-  linhas sem proposta, como o bloco de filial da planilha faz), e isso mudaria
-  números de proposta — por isso não foi assumido, e a pergunta está feita a ele.
-  **Se virar motor, a regra "só o que é digitado é gravado" continua valendo; o
-  que muda é que a linha sem proposta deixa de valer a projeção.**
+  **As premissas MOVEM a proposta** (pedido do cliente, 2026-11-18 — a pergunta
+  "registro ou motor?" que estava em aberto foi respondida: motor). *"O
+  crescimento atual deve considerar o PIB, o IPCA, mais o percentual de
+  crescimento desejado"* e *"o percentual de crescimento com despesas com
+  pessoas deve impactar somente na linha despesas com pessoa"*. Por omissão —
+  onde a linha **não foi lançada** — a **Receita de Vendas (1.1)** cresce
+  **IPCA + PIB + crescimento desejado**, SOMADOS (é a conta que o painel desfaz
+  ao ler o Cresc. Real = Total − IPCA − PIB, então com a proposta nascida daqui o
+  Cresc. Total é a soma dos três e o **Cresc. Real é exatamente o desejado**), e
+  as **Despesas com Pessoal (8.5)** crescem **só** o percentual de pessoas — que
+  não toca em nenhuma outra linha, e IPCA e PIB também não tocam nela
+  (`Projecao::crescimentosPadrao`). **Nenhuma outra linha cresce por omissão**:
+  custos, deduções e demais despesas seguem valendo a projeção até alguém lançar
+  (não foram pedidos, e inventar uma regra de crescimento para elas mudaria a
+  meta sem decisão — a pergunta está feita ao cliente). **O digitado numa linha
+  sempre manda.** Premissa ausente não é 0%: sem nenhuma lançada, a linha vale a
+  projeção, como sempre valeu. A origem nova é `PREMISSA` (a linha exporta
+  `proposta_padrao` com o percentual), e a tela a mostra como o resto do que vale
+  por omissão: célula vazia, número no placeholder, reajuste com o percentual no
+  placeholder. A filial herda as premissas e o Painel faz a MESMA conta
+  (`resumoDosNegocios` lê `negocio_premissa`) — se divergissem, ninguém saberia em
+  qual acreditar. **A regra "só o que é digitado é gravado" continua valendo.**
+  Provas: `testes/projecao_crescimento.php` (conta de mão: R$ 100 mi × 1,12) e
+  `provasCrescimentoPorPremissa` (API, tela, Painel e filial). As suítes da
+  MECÂNICA do lançamento (`Proposta`, `Filial`) rodam dentro de
+  `comPremissasNeutras`: partem de um negócio sem premissa, ou "célula vazia vale
+  a projeção" deixaria de ser verdade na massa.
   Provas em `provasProjecaoPremissasDoNegocio` (navegador: herança, travado,
   recusa da API, modo "por filial", ano, versão, faixa e formato) e em
   `testes/projecao_premissas.php` (a migração e as linhas legadas, que só se
@@ -2976,9 +2993,13 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mora em `Projecao::BENEFICIOS_PADRAO`, não no banco: duas fontes para o mesmo
   número. A tela mostra ao lado o **piso** (se o negócio nunca atingir o
   resultado, só alimentação + assiduidade) e o **teto**, porque o abono de
-  resultado é o risco que o negócio carrega. **Não entra na proposta**: a DRE não
-  tem linha de pessoal, então o cartão é onde o valor com pessoas é PREVISTO, e
-  gravar aqui não mexe na versão da proposta. O Corporativo só soma (cartão
+  resultado é o risco que o negócio carrega. **O vale e o abono NÃO entram na proposta**: a DRE não
+  tem linha de pessoal separada dos benefícios, e a projeção de Despesas com Pessoal
+  (8.5) já pode conter o vale atual — somar R$ 500 × colaboradores × 12 por cima
+  dobraria. O cartão é onde o valor com benefícios é PREVISTO; o percentual de
+  crescimento das despesas com pessoas, esse sim, move a linha 8.5. Os valores em
+  reais (vale R$ 500, abono R$ 200 + R$ 500 = R$ 700 em 2027) ficam no painel das
+  premissas, junto com os percentuais; gravar não mexe na versão da proposta. O Corporativo só soma (cartão
   somente leitura). **Fora do escopo, por decisão do cliente:** as áreas de apoio
   (18 Apoio Operacional, 87 pessoas; 20 Administração Matriz, 127) — que a DRE
   traz mas não são negócios — e os negócios sem quadro (Fruticultura, Juros s/

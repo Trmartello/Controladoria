@@ -60,15 +60,19 @@ class Projecao
      * desejado devem ser por negócio e por ano").
      *
      * IPCA e PIB são as duas únicas células digitadas do painel da planilha no
-     * nível consolidado. `CRESCIMENTO` é o crescimento DESEJADO da receita, e é
-     * REGISTRO: não move a proposta de linha nenhuma. É a mesma natureza de
-     * IPCA e PIB, que também só alimentam a decomposição e nunca um valor.
+     * nível consolidado. `CRESCIMENTO` é o crescimento DESEJADO da receita (real,
+     * acima da inflação e da economia).
      *
-     * `PESSOAS` é o crescimento previsto das despesas com pessoas (pedido do
-     * cliente, 2026-11-17), e tem a mesma natureza: REGISTRO por negócio e por
-     * ano, que vale para todas as filiais e não move proposta nenhuma. A DRE
-     * não tem linha de pessoal separada (ela mora dentro de Despesas com
-     * Vendas, Administrativas etc.), então não há linha à qual ele se ligue.
+     * **As premissas movem a proposta** (pedido do cliente, 2026-11-18: "o
+     * crescimento atual deve considerar o PIB, o IPCA, mais o percentual de
+     * crescimento desejado"; "o percentual de crescimento com despesas com
+     * pessoas deve impactar somente na linha despesas com pessoa"). Até 17/11 o
+     * desejado era REGISTRO; agora, por omissão, a Receita de Vendas cresce IPCA +
+     * PIB + desejado e as Despesas com Pessoal (8.5) crescem `PESSOAS` — e SÓ
+     * elas: ver `crescimentosPadrao`. O que foi digitado numa linha manda.
+     *
+     * `PESSOAS` é o crescimento das despesas com pessoas, por negócio e por ano.
+     * Vale para todas as filiais, e atua apenas na linha Despesas com Pessoal.
      */
     public const PREMISSAS = ['IPCA', 'PIB', 'CRESCIMENTO', 'PESSOAS'];
 
@@ -152,6 +156,52 @@ class Projecao
             // O teto: todos cumprem a assiduidade e o negócio atinge o resultado todo mês.
             'maximo_anual' => round($colab * ($v['ALIMENTACAO'] + $v['ASSIDUIDADE'] + $v['RESULTADO']) * $m, 2),
         ];
+    }
+
+    /** A subconta da Receita de Vendas, que cresce com IPCA + PIB + crescimento desejado. */
+    public const LINHA_RECEITA = '1.1';
+    /** A subconta de Despesas com Pessoal, que cresce com o percentual das despesas com pessoas. */
+    public const LINHA_PESSOAL = '8.5';
+
+    /**
+     * Quanto cada linha CRESCE por omissão, a partir das premissas do negócio
+     * no ano da proposta (pedido do cliente, 2026-11-18).
+     *
+     *  - **Receita de Vendas**: IPCA + PIB + crescimento desejado, SOMADOS. É a
+     *    mesma conta que o painel desfaz ao ler "Cresc. Real" (total − IPCA −
+     *    PIB), então com a proposta nascida daqui o Cresc. Real é o crescimento
+     *    desejado, e o Cresc. Total é a soma dos três.
+     *  - **Despesas com Pessoal**: SÓ o percentual das despesas com pessoas. Ele
+     *    não toca em nenhuma outra linha, e IPCA e PIB também não tocam nela.
+     *  - Nenhuma outra linha cresce por omissão: seguem valendo a projeção até
+     *    que alguém lance (custos e demais despesas não foram pedidos, e inventar
+     *    uma regra de crescimento para elas mudaria a meta sem que ninguém tenha
+     *    decidido).
+     *
+     * O que foi DIGITADO numa linha sempre manda: o crescimento por omissão só
+     * preenche as linhas em branco. Sem nenhuma premissa lançada não há
+     * crescimento nenhum (e a linha vale a projeção, como sempre valeu): uma
+     * premissa ausente não é "0%", é "não decidida".
+     *
+     * @param array<string,float|string|null> $digitadas chave => percentual digitado, do ano da proposta
+     * @return array<string,float> código da linha => percentual de crescimento
+     */
+    public static function crescimentosPadrao(array $digitadas): array
+    {
+        $saida = [];
+        $geral = null;
+        foreach (['IPCA', 'PIB', 'CRESCIMENTO'] as $k) {
+            if (isset($digitadas[$k])) {
+                $geral = ($geral ?? 0.0) + (float)$digitadas[$k];
+            }
+        }
+        if ($geral !== null) {
+            $saida[self::LINHA_RECEITA] = $geral;
+        }
+        if (isset($digitadas['PESSOAS'])) {
+            $saida[self::LINHA_PESSOAL] = (float)$digitadas['PESSOAS'];
+        }
+        return $saida;
     }
 
     /**
@@ -251,9 +301,8 @@ class Projecao
         return [
             'IPCA' => $ipca,
             'PIB' => $pib,
-            // Só devolvida, nunca usada em conta: ver `PREMISSAS`.
+            // Devolvidas como digitadas; quem as usa em conta é `crescimentosPadrao`.
             'CRESCIMENTO' => $meta,
-            // Idem: registro do crescimento das despesas com pessoas.
             'PESSOAS' => $pessoas,
             'CRESC_TOTAL' => $total,
             // Sem IPCA e PIB lançados não há o que decompor: devolver o próprio
@@ -281,9 +330,18 @@ class Projecao
      *
      * @param array|null $lancado ['entrada'=>'VALOR'|'PERCENTUAL','valor'=>?,'percentual'=>?]
      */
-    public static function valorProposto(float $projecao, ?array $lancado): array
+    public static function valorProposto(float $projecao, ?array $lancado, ?float $padrao = null): array
     {
         if (!$lancado) {
+            // Sem lançamento a linha vale a projeção — a menos que as premissas
+            // do negócio digam quanto ela cresce (`crescimentosPadrao`). Essa
+            // origem é PREMISSA, e não PROJECAO: a tela precisa dizer que o
+            // número nasceu de IPCA + PIB + crescimento desejado (ou do
+            // crescimento das despesas com pessoas), e não de omissão.
+            if ($padrao !== null) {
+                return ['valor' => $projecao * (1 + $padrao / 100), 'origem' => 'PREMISSA',
+                        'percentual' => $padrao, 'lancado' => null];
+            }
             return ['valor' => $projecao, 'origem' => 'PROJECAO',
                     'percentual' => null, 'lancado' => null];
         }
@@ -303,17 +361,24 @@ class Projecao
      * @param array $linhas  cada uma com `codigo`, `nivel`, `percentual`, `projecao`
      * @param array $lancados codigo => ['entrada'=>…, 'valor'=>…, 'percentual'=>…]
      */
-    public static function aplicar(array $linhas, array $lancados): array
+    public static function aplicar(array $linhas, array $lancados, array $crescimentos = []): array
     {
         // As editáveis, uma a uma; os blocos saem de `derivar`.
         foreach ($linhas as $i => $l) {
             if (!self::editavel($l)) {
                 continue;
             }
-            $r = self::valorProposto((float)$l['projecao'], $lancados[$l['codigo']] ?? null);
+            $r = self::valorProposto(
+                (float)$l['projecao'],
+                $lancados[$l['codigo']] ?? null,
+                $crescimentos[$l['codigo']] ?? null
+            );
             $linhas[$i]['proposta'] = $r['valor'];
             $linhas[$i]['proposta_origem'] = $r['origem'];
             $linhas[$i]['proposta_lancado'] = $r['lancado'];
+            // O crescimento por omissão que gerou o número, para a tela mostrar
+            // de onde ele veio (null quando a linha foi lançada ou não cresce).
+            $linhas[$i]['proposta_padrao'] = $r['origem'] === 'PREMISSA' ? $r['percentual'] : null;
         }
 
         return self::derivar($linhas);
@@ -420,6 +485,19 @@ class Projecao
             }
         }
 
+        // As premissas do ano da proposta, por negócio: elas decidem quanto a
+        // Receita e as Despesas com Pessoal crescem por omissão, e o Painel tem
+        // de fazer a MESMA conta da tela — se divergisse, ninguém saberia em
+        // qual das duas acreditar.
+        $premissasPorNegocio = [];
+        foreach (Database::todos(
+            'SELECT negocio_id, chave, percentual FROM negocio_premissa
+              WHERE ano = ? AND negocio_id IN (' . $marcas . ')',
+            array_merge([$anoPlan], $negocioIds)
+        ) as $p) {
+            $premissasPorNegocio[(int)$p['negocio_id']][$p['chave']] = (float)$p['percentual'];
+        }
+
         $filiais = Database::todos(
             'SELECT f.negocio_id, v.filial_id, v.conta_id, v.realizado, v.projetado
                FROM filial f JOIN dre_valor_filial v ON v.filial_id = f.id
@@ -455,16 +533,17 @@ class Projecao
             $proj = $projPorNegocio[$id] ?? null;
             $modo = $proj['modo'] ?? 'NEGOCIO';
             $lanc = $proj ? ($lancPorProj[(int)$proj['id']] ?? []) : [];
+            $cresc = self::crescimentosPadrao($premissasPorNegocio[$id] ?? []);
 
             if ($modo === 'FILIAL' && !empty($dreFilial[$id])) {
                 $propostas = [];
                 foreach ($dreFilial[$id] as $filialId => $porConta) {
-                    $lf = self::aplicar($monta($porConta), $lanc[$filialId] ?? []);
+                    $lf = self::aplicar($monta($porConta), $lanc[$filialId] ?? [], $cresc);
                     $propostas[$filialId] = array_column($lf, 'proposta', 'codigo');
                 }
                 $linhas = self::somarFiliais($linhas, $propostas);
             } else {
-                $linhas = self::aplicar($linhas, $lanc[0] ?? []);
+                $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc);
             }
 
             $proje = [];
