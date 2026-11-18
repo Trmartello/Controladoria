@@ -311,7 +311,7 @@ const SecaoProjecao = {
           title="${Modal.esc(dica)}">${rotulo}</label>
         <div class="input-group input-group-sm premissa-campo">
           <input type="text" class="form-control celula-premissa" id="premissa-${chave}"
-            inputmode="decimal" data-sinal autocomplete="off" data-chave="${chave}"
+            inputmode="decimal" autocomplete="off" data-chave="${chave}"
             value="${digitadas[chave] === null || digitadas[chave] === undefined ? '' : String(digitadas[chave]).replace('.', ',')}"
             placeholder="—" ${editavel ? '' : 'disabled'}>
           <span class="input-group-text">%</span>
@@ -908,6 +908,13 @@ const SecaoProjecao = {
     const limpo = bruto.replace('%', '').replace(',', '.').trim();
     if (limpo !== '' && !Number.isFinite(Number(limpo))) {
       this.avisar('Premissa inválida: informe um número.');
+      inp.value = inp.dataset.original ?? '';
+      return;
+    }
+    // Percentual de crescimento é positivo: recusa aqui, com a explicação, em vez
+    // de mandar ao servidor o que ele vai recusar.
+    if (limpo !== '' && Number(limpo) < 0) {
+      this.avisar('O percentual de crescimento deve ser positivo: informe de 0% a 100%.');
       inp.value = inp.dataset.original ?? '';
       return;
     }

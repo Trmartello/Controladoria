@@ -583,8 +583,11 @@ class ProjecaoController
             if (!is_numeric($bruto)) {
                 Json::erro('Informe um número.', 422);
             }
-            if (abs((float)$bruto) > 100) {
-                Json::erro('Percentual fora de faixa: informe entre -100% e 100%.', 422);
+            // Crescimento é POSITIVO (pedido do cliente, 2026-11-18): o zero vale — é
+            // a decisão de não crescer —, o negativo não. Valores negativos que
+            // já estejam gravados continuam sendo lidos como estão.
+            if ((float)$bruto < 0 || (float)$bruto > 100) {
+                Json::erro('Percentual fora de faixa: o percentual de crescimento deve ser positivo, entre 0% e 100%.', 422);
             }
         }
 
