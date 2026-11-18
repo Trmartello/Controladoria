@@ -207,6 +207,225 @@ class Projecao
         ];
     }
 
+    /**
+     * As DIRETRIZES DO PLANEJAMENTO, por ano (documento "Diretrizes para o
+     * Planejamento 2027", Concórdia, 16/11/2026, assinado pela presidência).
+     *
+     * O que está aqui vale para TODOS os negócios naquele ano e não se digita:
+     * a tela mostra o valor com o selo da diretriz, e a gravação o recusa
+     * (decisão do cliente, 2026-11-18: "fixos em 2027"). O que alguém tenha
+     * digitado antes continua no banco, mas deixa de valer naquele ano. O
+     * crescimento REAL (`CRESCIMENTO`) fica fora de propósito — o documento o
+     * deixa "a ser definido com as gerências de cada negócio".
+     *
+     *  - Pessoal: reajuste de 5,50% (`PESSOAS`).
+     *  - Vale alimentação R$ 500 por colaborador/mês, DENTRO da despesa de pessoal.
+     *  - Prêmio assiduidade R$ 200 e prêmio metas R$ 500 por colaborador que
+     *    cumprir os requisitos.
+     *  - PPR: 1,5 salário, provisionado mensalmente em 1/12 (`ppr_salarios`).
+     *  - IPCA 4,50% (Focus de 06/11/2026) e PIB agropecuário 1,50%.
+     *  - Demais despesas operacionais: sem crescimento sobre 2026 — que é o que a
+     *    proposta já faz por omissão (vale a projeção).
+     *  - Nenhum negócio ou filial com meta negativa de resultado líquido — ver
+     *    `ProjecaoController::conferirResultado`.
+     *  - Sobras líquidas mínimas de 2,0% — a meta do desafio (`desafio_ano`).
+     */
+    public const DIRETRIZES = [
+        2027 => [
+            'fonte' => 'Diretrizes para o Planejamento 2027 (16/11/2026)',
+            'premissas' => ['IPCA' => 4.5, 'PIB' => 1.5, 'PESSOAS' => 5.5],
+            'beneficios' => ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0],
+            'ppr_salarios' => 1.5,
+        ],
+    ];
+
+    /** A diretriz de um ano, ou null. */
+    public static function diretriz(int $ano): ?array
+    {
+        return self::DIRETRIZES[$ano] ?? null;
+    }
+
+    /** As premissas que VALEM num ano: as digitadas, com as da diretriz por cima. */
+    public static function premissasEfetivas(int $ano, array $digitadas): array
+    {
+        return array_replace($digitadas, self::diretriz($ano)['premissas'] ?? []);
+    }
+
+    /** Os benefícios que VALEM num ano: os digitados, com os da diretriz por cima. */
+    public static function beneficiosEfetivos(int $ano, array $digitados): array
+    {
+        return array_replace($digitados, self::diretriz($ano)['beneficios'] ?? []);
+    }
+
+    /** A chave é fixada pela diretriz naquele ano? (premissa ou benefício) */
+    public static function fixadaPelaDiretriz(int $ano, string $chave): ?float
+    {
+        $d = self::diretriz($ano);
+        if (!$d) {
+            return null;
+        }
+        return $d['premissas'][$chave] ?? $d['beneficios'][$chave] ?? null;
+    }
+
+    /**
+     * DESPESAS COM PESSOAL do ano da proposta, pela diretriz (pedido do cliente,
+     * 2026-11-18): "Despesa com pessoal 5,5%", vale de R$ 500 DENTRO dela, os
+     * prêmios de R$ 200 + R$ 500, e o PPR de 1,5 salário "calculado
+     * automaticamente pelo sistema", a partir da folha do mês atual.
+     *
+     * A linha 8.5 da DRE é a soma das contas 3.07.01.21* — e já traz, em 2026, o
+     * vale PAT, o prêmio por desempenho e a provisão do PPR. Somar o PPR de 2027
+     * por cima contaria o PPR duas vezes, e reajustar a linha inteira em 5,5%
+     * reajustaria um vale que a diretriz manda MANTER. Então a conta troca as
+     * peças:
+     *
+     *   8.5 de 2027 = (projeção de 2026 − vale, prêmio e PPR de 2026) × (1 + 5,5%)
+     *               + (vale + prêmios de 2027) × parte da folha que está na despesa
+     *               + PPR de 2027
+     *
+     *  - As peças de 2026 entram pela PARTE que têm nas 3.07.01.21* de jan até o
+     *    corte (`pessoal_ate`), aplicada à projeção da linha: na Agropecuária, as
+     *    3.07.01.21* somam R$ 4,6 mi a mais que a linha 8.5, e subtrair o valor
+     *    absoluto tiraria da linha o que nunca esteve nela.
+     *  - Vale e prêmios de 2027 são os do cartão de pessoas (`pessoas()`), com os
+     *    valores da diretriz, × a parte da folha que é DESPESA: quem é custo (as
+     *    contas 4.03, na produção de Cereais, Rações, UTM e UBS) tem vale e prêmio
+     *    no custo, que acompanha a receita.
+     *  - O PPR de 2027 é a folha do mês (salários e remunerações, despesa + custo)
+     *    × (1 + 5,5%) × 1,5 — inteiro na 8.5, onde a provisão de 2026 de todos os
+     *    colaboradores já está.
+     *
+     * Devolve o PERCENTUAL que isso dá sobre a projeção — é ele que cresce a linha
+     * no negócio e nas filiais (a filial não tem folha própria: herda o % do
+     * negócio, e a soma das filiais continua fechando com ele). Null quando não há
+     * com o que calcular (sem folha carregada, sem diretriz de PPR ou sem
+     * despesa de pessoal), e aí vale o reajuste puro.
+     *
+     * @param array|null $folha  linha de `negocio_folha`
+     * @param array|null $calc   saída de `pessoas()` para o ano
+     */
+    public static function pessoalDaDiretriz(float $projecao85, ?array $folha, ?array $calc, float $reajuste, ?float $pprSalarios): ?array
+    {
+        if (!$folha || $pprSalarios === null || $projecao85 >= 0 || (float)$folha['pessoal_ate'] <= 0) {
+            return null;
+        }
+        $g = $reajuste / 100;
+        $pecas26 = (float)$folha['vale_ate'] + (float)$folha['premio_ate'] + (float)$folha['ppr_ate'];
+        $parte26 = min(1.0, max(0.0, $pecas26 / (float)$folha['pessoal_ate']));
+        $base = -$projecao85 * (1 - $parte26);
+        $salDesp = (float)$folha['salario_despesa'];
+        $salCusto = (float)$folha['salario_custo'];
+        $parteDespesa = $salDesp + $salCusto > 0 ? $salDesp / ($salDesp + $salCusto) : 1.0;
+        $beneficios = $calc ? (float)$calc['anual']['total'] * $parteDespesa : 0.0;
+        $ppr = ($salDesp + $salCusto) * (1 + $g) * $pprSalarios;
+        $total = $base * (1 + $g) + $beneficios + $ppr;
+        return [
+            'percentual' => ($total / -$projecao85 - 1) * 100,
+            'projecao' => $projecao85,
+            'parte_2026' => $parte26,
+            'pecas_2026' => -$projecao85 * $parte26,
+            'base' => $base,
+            'base_reajustada' => $base * (1 + $g),
+            'parte_despesa' => $parteDespesa,
+            'beneficios' => $beneficios,
+            'ppr' => $ppr,
+            'ppr_mensal' => $ppr / 12,
+            'folha_mensal' => $salDesp + $salCusto,
+            'folha_mes' => (int)$folha['mes_ate'],
+            'folha_ano' => (int)$folha['ano'],
+            'proposta' => -$total,
+        ];
+    }
+
+    /**
+     * O que a despesa de pessoal precisa saber de VÁRIOS negócios: a folha do
+     * ano-base e a previsão de benefícios do ano da proposta (quadro do último
+     * mês carregado, com os valores da diretriz por cima do digitado). Três
+     * consultas para todos — o Painel chama com doze negócios de uma vez.
+     *
+     * @return array<int,array{folha:?array, calc:?array}>
+     */
+    public static function dadosDePessoal(array $negocioIds, int $anoBase, int $anoPlan): array
+    {
+        $saida = [];
+        foreach ($negocioIds as $id) {
+            $saida[(int)$id] = ['folha' => null, 'calc' => null];
+        }
+        if (!$saida) {
+            return [];
+        }
+        $marcas = implode(',', array_fill(0, count($saida), '?'));
+        $ids = array_keys($saida);
+        foreach (Database::todos(
+            'SELECT * FROM negocio_folha WHERE ano = ? AND negocio_id IN (' . $marcas . ')',
+            array_merge([$anoBase], $ids)
+        ) as $f) {
+            $saida[(int)$f['negocio_id']]['folha'] = $f;
+        }
+        $bases = [];
+        foreach (Database::todos(
+            'SELECT p.negocio_id, p.ano, p.mes, p.colaboradores FROM negocio_pessoas_mes p
+              WHERE p.ano = ? AND p.negocio_id IN (' . $marcas . ')
+                AND p.mes = (SELECT MAX(q.mes) FROM negocio_pessoas_mes q
+                              WHERE q.negocio_id = p.negocio_id AND q.ano = p.ano)',
+            array_merge([$anoBase], $ids)
+        ) as $b) {
+            $bases[(int)$b['negocio_id']] = ['ano' => (int)$b['ano'], 'mes' => (int)$b['mes'],
+                'colaboradores' => (int)$b['colaboradores']];
+        }
+        $dig = [];
+        foreach (Database::todos(
+            'SELECT negocio_id, chave, valor FROM negocio_beneficio WHERE ano = ? AND negocio_id IN (' . $marcas . ')',
+            array_merge([$anoPlan], $ids)
+        ) as $d) {
+            $dig[(int)$d['negocio_id']][$d['chave']] = (float)$d['valor'];
+        }
+        foreach ($ids as $id) {
+            $saida[$id]['calc'] = self::pessoas($bases[$id] ?? null, self::beneficiosEfetivos($anoPlan, $dig[$id] ?? []));
+        }
+        return $saida;
+    }
+
+    /**
+     * Quanto cada linha cresce por omissão num negócio, com TUDO o que vale no
+     * ano: as premissas digitadas com a diretriz por cima (`crescimentosPadrao`)
+     * e, para as Despesas com Pessoal, o percentual da conta da diretriz
+     * (`pessoalDaDiretriz`) no lugar do reajuste puro. É a mesma chamada na tela
+     * da Projeção e no Painel — se as duas contassem diferente, ninguém saberia
+     * em qual acreditar.
+     *
+     * @return array{0: array<string,float>, 1: ?array} [crescimentos, detalhe do pessoal]
+     */
+    public static function crescimentosDoNegocio(int $anoPlan, array $digitadas, float $projecao85, ?array $pessoal): array
+    {
+        $efetivas = self::premissasEfetivas($anoPlan, $digitadas);
+        $cresc = self::crescimentosPadrao($efetivas);
+        $detalhe = null;
+        if (isset($efetivas['PESSOAS'])) {
+            $detalhe = self::pessoalDaDiretriz(
+                $projecao85,
+                $pessoal['folha'] ?? null,
+                $pessoal['calc'] ?? null,
+                (float)$efetivas['PESSOAS'],
+                self::diretriz($anoPlan)['ppr_salarios'] ?? null
+            );
+            if ($detalhe) {
+                $cresc[self::LINHA_PESSOAL] = $detalhe['percentual'];
+            }
+        }
+        return [$cresc, $detalhe];
+    }
+
+    /**
+     * As linhas que ACOMPANHAM A RECEITA na proposta, por omissão (decisão do
+     * cliente, 2026-11-18): deduções e custo das vendas crescem na mesma
+     * proporção da Receita de Vendas, o que mantém a margem bruta de 2026. Antes
+     * elas ficavam na projeção enquanto a receita crescia 6% — e o resultado
+     * proposto saía inflado (Pecuária com 7,5% de margem). Ganho de margem
+     * passa a ser decisão LANÇADA na linha, não efeito colateral.
+     */
+    public const ACOMPANHAM_RECEITA = ['2.1', '2.2', '2.3', '4.1'];
+
     /** A subconta da Receita de Vendas, que cresce com IPCA + PIB + crescimento desejado. */
     public const LINHA_RECEITA = '1.1';
     /** A subconta de Despesas com Pessoal, que cresce com o percentual das despesas com pessoas. */
@@ -222,10 +441,12 @@ class Projecao
      *    desejado, e o Cresc. Total é a soma dos três.
      *  - **Despesas com Pessoal**: SÓ o percentual das despesas com pessoas. Ele
      *    não toca em nenhuma outra linha, e IPCA e PIB também não tocam nela.
-     *  - Nenhuma outra linha cresce por omissão: seguem valendo a projeção até
-     *    que alguém lance (custos e demais despesas não foram pedidos, e inventar
-     *    uma regra de crescimento para elas mudaria a meta sem que ninguém tenha
-     *    decidido).
+     *  - Deduções e custo das vendas ACOMPANHAM a receita (`ACOMPANHAM_RECEITA`,
+     *    em `aplicar`, decisão de 2026-11-18); as demais despesas seguem a
+     *    projeção ("sem previsão de crescimento", diretriz de 2027).
+     *  - No ano com diretriz, quem chama é `crescimentosDoNegocio`, que põe a
+     *    diretriz por cima do digitado e troca o % das Despesas com Pessoal pelo
+     *    da conta de `pessoalDaDiretriz` (PPR, vale e prêmios).
      *
      * O que foi DIGITADO numa linha sempre manda: o crescimento por omissão só
      * preenche as linhas em branco. Sem nenhuma premissa lançada não há
@@ -428,6 +649,32 @@ class Projecao
             // O crescimento por omissão que gerou o número, para a tela mostrar
             // de onde ele veio (null quando a linha foi lançada ou não cresce).
             $linhas[$i]['proposta_padrao'] = $r['origem'] === 'PREMISSA' ? $r['percentual'] : null;
+            $linhas[$i]['proposta_regra'] = $r['origem'] === 'PREMISSA'
+                ? ($l['codigo'] === self::LINHA_PESSOAL ? 'PESSOAL' : 'PREMISSA') : null;
+        }
+
+        // Deduções e custo acompanham a receita (ACOMPANHAM_RECEITA), onde não
+        // foram lançados: a proporção é a da Receita de Vendas — lançada ou por
+        // premissa, tanto faz.
+        $idx = array_flip(array_column($linhas, 'codigo'));
+        $rec = isset($idx[self::LINHA_RECEITA]) ? $linhas[$idx[self::LINHA_RECEITA]] : null;
+        if ($rec && (float)$rec['projecao'] != 0.0 && isset($rec['proposta'])) {
+            $fator = (float)$rec['proposta'] / (float)$rec['projecao'];
+            if (abs($fator - 1) > 1e-12) {
+                foreach (self::ACOMPANHAM_RECEITA as $c) {
+                    if (!isset($idx[$c])) {
+                        continue;
+                    }
+                    $l = &$linhas[$idx[$c]];
+                    if (($l['proposta_origem'] ?? null) === 'PROJECAO') {
+                        $l['proposta'] = (float)$l['projecao'] * $fator;
+                        $l['proposta_origem'] = 'PREMISSA';
+                        $l['proposta_padrao'] = ($fator - 1) * 100;
+                        $l['proposta_regra'] = 'RECEITA';
+                    }
+                    unset($l);
+                }
+            }
         }
 
         return self::derivar($linhas);
@@ -547,6 +794,8 @@ class Projecao
             $premissasPorNegocio[(int)$p['negocio_id']][$p['chave']] = (float)$p['percentual'];
         }
 
+        $pessoal = self::dadosDePessoal($negocioIds, $ano, $anoPlan);
+
         $filiais = Database::todos(
             'SELECT f.negocio_id, v.filial_id, v.conta_id, v.realizado, v.projetado
                FROM filial f JOIN dre_valor_filial v ON v.filial_id = f.id
@@ -582,7 +831,13 @@ class Projecao
             $proj = $projPorNegocio[$id] ?? null;
             $modo = $proj['modo'] ?? 'NEGOCIO';
             $lanc = $proj ? ($lancPorProj[(int)$proj['id']] ?? []) : [];
-            $cresc = self::crescimentosPadrao($premissasPorNegocio[$id] ?? []);
+            $p85 = 0.0;
+            foreach ($linhas as $l) {
+                if ($l['codigo'] === self::LINHA_PESSOAL) {
+                    $p85 = (float)$l['projecao'];
+                }
+            }
+            [$cresc] = self::crescimentosDoNegocio($anoPlan, $premissasPorNegocio[$id] ?? [], $p85, $pessoal[$id] ?? null);
 
             if ($modo === 'FILIAL' && !empty($dreFilial[$id])) {
                 $propostas = [];

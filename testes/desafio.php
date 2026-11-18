@@ -63,8 +63,8 @@ prova('Pecuária no cenário otimista do negócio: R$ 774.720.004 de receita bru
 $cer = $d['por_negocio'][$ids['1']] ?? null;
 prova('Cereais volta à margem de 2025 (1,72%), e não à do plano de 2026 (0,82%)',
     $cer && abs($cer['margem'] - 1.7239) < 0.0005, json_encode($cer['margem'] ?? null));
-prova('Usina sem receita: sem margem, e com resultado (R$ 419.169)',
-    ($u = $d['por_negocio'][$ids['17']] ?? null) && $u['margem'] === null && $u['resultado'] == 419169);
+prova('Usina sem receita: sem margem, e com resultado (R$ 421.184, 2026 realista + IPCA de 4,5% da diretriz)',
+    ($u = $d['por_negocio'][$ids['17']] ?? null) && $u['margem'] === null && $u['resultado'] == 421184);
 
 $propostas = [];
 foreach ($ids as $cod => $id) {
@@ -74,12 +74,12 @@ foreach ($ids as $cod => $id) {
 }
 $c = invocar($ctrl, 'desafioCorporativo', 2027, $propostas);
 $t = $c['total']['desafio'];
-prova('total do desafio: ROB R$ 3.694.590.776, ROL R$ 3.563.582.221, resultado R$ 63.685.718',
-    $t['receita_bruta'] == 3694590776 && $t['receita_liquida'] == 3563582221 && $t['resultado'] == 63685718,
+prova('total do desafio: ROB R$ 3.694.590.776, ROL R$ 3.563.582.221, resultado R$ 63.687.733',
+    $t['receita_bruta'] == 3694590776 && $t['receita_liquida'] == 3563582221 && $t['resultado'] == 63687733,
     "{$t['receita_bruta']} / {$t['receita_liquida']} / {$t['resultado']}");
-prova('margem líquida do desafio: 1,79%', abs($t['margem'] - 1.7871) < 0.0005, (string)round($t['margem'], 4));
-prova('os 2% sobre a ROL do desafio são R$ 71,27 mi, e faltam R$ 7,59 mi',
-    abs($t['resultado_meta'] - 71271644.42) < 1 && abs($t['falta'] - 7585926.42) < 1,
+prova('margem líquida do desafio: 1,79%', abs($t['margem'] - 1.7872) < 0.0005, (string)round($t['margem'], 4));
+prova('os 2% sobre a ROL do desafio são R$ 71,27 mi, e faltam R$ 7,58 mi',
+    abs($t['resultado_meta'] - 71271644.42) < 1 && abs($t['falta'] - 7583911.42) < 1,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 prova('o lado da proposta usa a MESMA meta sobre a ROL dela (proposta zerada → falta zero)',
     $c['total']['proposta']['falta'] == 0.0 && $c['total']['proposta']['margem'] === null);
@@ -97,8 +97,8 @@ foreach ($d['por_negocio'] as $id => $x) {
         continue;
     }
     if ((string)$cod === '17') {
-        if (abs($x['resultado'] - $vis['16']['real_realista'] * 1.04) > 1800) {
-            $divergem[] = "17: " . round($x['resultado']) . ' vs ' . round($vis['16']['real_realista'] * 1.04);
+        if (abs($x['resultado'] - $vis['16']['real_realista'] * 1.045) > 1800) {
+            $divergem[] = "17: " . round($x['resultado']) . ' vs ' . round($vis['16']['real_realista'] * 1.045);
         }
         continue;
     }
@@ -115,7 +115,7 @@ foreach ($d['por_negocio'] as $id => $x) {
         $margemPior[] = "{$cod}: " . round($x['margem'], 4) . ' < ' . round($m26, 4);
     }
 }
-prova('receita bruta = 2026 realista (desta tela) × 1,06 em 9 negócios, ao real; Usina = resultado realista × 1,04',
+prova('receita bruta = 2026 realista (desta tela) × 1,06 em 9 negócios, ao real; Usina = resultado realista × 1,045',
     !$divergem, implode(' | ', $divergem));
 prova('preservar margem: nenhum negócio com margem de desafio pior que a de 2026 realista',
     !$margemPior, implode(' | ', $margemPior));

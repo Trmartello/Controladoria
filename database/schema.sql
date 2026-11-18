@@ -1037,6 +1037,27 @@ CREATE TABLE IF NOT EXISTS negocio_beneficio (
   CONSTRAINT fk_nb_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- A FOLHA de cada negócio, para a despesa de pessoal da diretriz (pedido do
+-- cliente, 2026-11-18: PPR de 1,5 salário "considerando a folha de pagamento do
+-- mês atual, com o salário base como referência"). Do Qlik DRE Gerencial, por
+-- conta contábil: o total das 3.07.01.21* (a linha 8.5) de jan até o corte e, nele,
+-- o vale PAT, o prêmio por desempenho e a provisão do PPR; e os SALÁRIOS E
+-- REMUNERAÇÕES do mês do corte, na despesa (3.07.01.21.01.01) e no custo
+-- (4.03.01.01.01). Ver `Projecao::pessoalDaDiretriz` e database/folha_*.php.
+CREATE TABLE IF NOT EXISTS negocio_folha (
+  negocio_id      INT NOT NULL,
+  ano             SMALLINT NOT NULL,
+  mes_ate         TINYINT NOT NULL,
+  pessoal_ate     DECIMAL(18,2) NOT NULL,
+  vale_ate        DECIMAL(18,2) NOT NULL,
+  premio_ate      DECIMAL(18,2) NOT NULL,
+  ppr_ate         DECIMAL(18,2) NOT NULL,
+  salario_despesa DECIMAL(18,2) NOT NULL,
+  salario_custo   DECIMAL(18,2) NOT NULL,
+  PRIMARY KEY (negocio_id, ano),
+  CONSTRAINT fk_nf_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- O DESAFIO que a Controladoria propõe a cada negócio para o ano do planejamento
 -- (pedido do cliente, 2026-11-18): receita bruta, receita líquida e resultado
 -- líquido. É REFERÊNCIA decidida, não conta viva: sai da visão realista do ano
