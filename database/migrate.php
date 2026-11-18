@@ -886,15 +886,8 @@ foreach ([
     // A DRE por FILIAL entra depois da do negócio, e não por acaso: a carga
     // confere que a soma das filiais bate com o negócio, e para isso o negócio
     // já precisa estar no banco — E NO MESMO CORTE (a filial é acumulada e a
-    // carga recusa corte diferente do gravado).
-    'dre_filiais_supermercados_2026_09.php',
-    'dre_filiais_agropecuarias_2026_09.php',
-    // Outubro fechou em 17/11/2026. O negócio e a Pecuária já foram
-    // re-extraídos; Supermercados e Agropecuárias seguem em setembro até a
-    // re-extração deles (a tela avisa — `filiais_corte`). Por isso as cargas
-    // de setembro ficam NESTA ordem: num banco novo elas precisam entrar
-    // antes de o corte andar, e as de outubro as sobrescrevem depois. Quando
-    // as duas últimas forem re-extraídas, as de setembro saem daqui.
+    // carga recusa corte diferente do gravado). As cargas de setembro das
+    // filiais saíram em 18/11/2026: todas as filiais estão no corte 10.
     'dre_2026_fechamento_10.php',
     'dre_filiais_pecuaria_2026_10.php',
     // A ESTRUTURA NOVA da DRE gerencial (2026-11-18): rateio corporativo dividido
@@ -902,6 +895,20 @@ foreach ([
     // Líquido em 18. Regrava todas as linhas dos negócios; as filiais passam por
     // `migrarFiliaisParaEstruturaNova`, logo abaixo do laço.
     'dre_2026_fechamento_10_nova.php',
+    // As filiais de TODOS os negócios no corte 10 (pedido do cliente, 2026-11-18:
+    // "realizado de jan a out e nov a dez o planejado, para todas as filiais de
+    // todos os negócios"). Extraídas na estrutura do app DRE - Gerencial; a carga
+    // confere contra o negócio traduzido e converte para a estrutura nova.
+    'dre_filiais_leite_2026_10.php',
+    'dre_filiais_combustiveis_2026_10.php',
+    'dre_filiais_resf_leite_2026_10.php',
+    'dre_filiais_utm_2026_10.php',
+    'dre_filiais_usina_2026_10.php',
+    'dre_filiais_supermercados_2026_10.php',
+    'dre_filiais_ubs_2026_10.php',
+    'dre_filiais_racoes_2026_10.php',
+    'dre_filiais_cereais_2026_10.php',
+    'dre_filiais_agropecuarias_2026_10.php',
 ] as $arquivo) {
     $dre = require __DIR__ . '/' . $arquivo;
     if (App\Services\CargaConteudo::jaAplicada($pdo, $dre['chave'])) {

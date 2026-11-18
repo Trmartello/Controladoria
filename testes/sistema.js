@@ -5462,9 +5462,10 @@ async function provasProjecaoFilial(page, largura) {
 
   // ── Cada negócio tem as filiais da SUA carga ──────────────────────────────
   // As provas acima medem o modo filial com um negócio. Estas medem a carga:
-  // três negócios têm DRE por filial e os outros oito não, e o seletor tem de
-  // dizer exatamente isso. Sem elas, uma carga que saísse do `migrate.php`
-  // deixaria a bateria verde e a tela planejando só o total, sem aviso nenhum.
+  // desde 18/11/2026 os ONZE negócios têm DRE por filial no corte 10 (173
+  // filiais), e o seletor tem de dizer exatamente quantas. Sem elas, uma carga
+  // que saísse do `migrate.php` deixaria a bateria verde e a tela planejando só
+  // o total, sem aviso nenhum.
   const contarFiliais = async (pedaco) => {
     const achou = await page.evaluate((p) => {
       const s = document.querySelector('#projecao-negocio');
@@ -5482,15 +5483,17 @@ async function provasProjecaoFilial(page, largura) {
     });
   };
   const porNegocio = {};
-  for (const [pedaco, esperado] of [
-    ['PECUARIA', 6], ['SUPERMERCADO', 19], ['AGROPECUARIA', 77], ['CEREAIS', 0],
-  ]) {
+  const esperados = [
+    ['CEREAIS', 42], ['2 - PECUARIA', 6], ['- LEITE', 5], ['RACOES', 5], ['UTM', 2], ['AGROPECUARIA', 79],
+    ['SUPERMERCADO', 23], ['COMBUSTIVEIS', 4], ['RESF', 3], ['UBS', 1], ['USINA', 3],
+  ];
+  for (const [pedaco, esperado] of esperados) {
     porNegocio[pedaco] = await contarFiliais(pedaco);
     t(`${l} ${pedaco} tem ${esperado} filial(is) no seletor`,
       porNegocio[pedaco] === esperado, String(porNegocio[pedaco]));
   }
-  t(`${l} e negócio sem carga por filial não oferece o modo filial`,
-    porNegocio.CEREAIS === 0, String(porNegocio.CEREAIS));
+  t(`${l} e os onze negócios somam as 173 filiais da carga do corte 10`,
+    Object.values(porNegocio).reduce((a, b) => a + (b || 0), 0) === 173, JSON.stringify(porNegocio));
 }
 
 async function provasProjecaoPremissas(page, largura) {
@@ -6675,6 +6678,7 @@ async function provasLancamentosEJuros(page, largura) {
       fechada,
       resumo: pdd?.querySelector('summary').textContent.replace(/\s+/g, ' ').trim() || '',
       colunas: primeira ? primeira.querySelectorAll('td').length : 0,
+      abertura: ['oportunidade', 'risco', 'saldo'].map((k) => pdd?.querySelector(`[data-abertura="${k}"]`)?.textContent.trim() || ''),
       filial: primeira?.querySelectorAll('td')[1]?.textContent.trim() || '',
       risco: document.querySelector('#juros-recebidos [data-juros="risco"]')?.textContent.trim(),
       acima: document.querySelectorAll('#juros-recebidos tr[data-juros-lancamento]').length,
@@ -6685,8 +6689,14 @@ async function provasLancamentosEJuros(page, largura) {
   });
   t(`${l} cada linha do quadro tem o seu expansor de lançamentos, fechado até ser aberto`,
     a.linhas > 0 && a.expansores === a.linhas && a.fechada, JSON.stringify([a.linhas, a.expansores, a.fechada]));
-  t(`${l} a PDD abre os lançamentos com data, filial, conta, histórico, complemento e valor`,
-    /^Lançamentos — \d+ de R\$ 10\.000 ou mais/.test(a.resumo) && a.colunas === 6 && /^\d+ — /.test(a.filial), JSON.stringify(a));
+  t(`${l} a PDD abre os lançamentos com data, filial, conta, histórico, complemento, valor, oportunidade e risco`,
+    /^Lançamentos — \d+ de R\$ 10\.000 ou mais/.test(a.resumo) && a.colunas === 8 && /^\d+ — /.test(a.filial), JSON.stringify(a));
+  {
+    const [op, ri, sa] = a.abertura.map((v) => num(v));
+    t(`${l} a abertura totaliza oportunidades, riscos e saldo (saldo = oportunidades − riscos)`,
+      op > 0 && /^−/.test(a.abertura[1]) && Math.abs(op - ri - (/^−/.test(a.abertura[2]) ? -sa : sa)) <= 1,
+      JSON.stringify(a.abertura));
+  }
   t(`${l} juros: 45 documentos acima de R$ 30 mil, risco 3.526.819, o maior é Rafael Dalmina (filial 128)`,
     a.acima === 45 && num(a.risco) === 3526819 && /128 — .*RAFAEL DALMINA/.test(a.maior), JSON.stringify([a.acima, a.risco, a.maior]));
   t(`${l} e os clientes que somam mais de R$ 30 mil no ano estão listados`, a.clientes === 49, String(a.clientes));

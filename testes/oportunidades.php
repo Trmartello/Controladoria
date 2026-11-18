@@ -325,6 +325,10 @@ $pdd = array_values(array_filter($qa['linhas'], static fn ($l) => $l['codigo'] =
 prova('no quadro, a PDD das Agropecuárias abre os lançamentos dela (os 40 maiores, com filial e complemento)',
     $pdd['lancamentos']['quantos'] > 40 && count($pdd['lancamentos']['itens']) === 40
     && $pdd['lancamentos']['itens'][0]['cod_filial'] !== '' && abs($pdd['lancamentos']['itens'][0]['valor']) >= abs($pdd['lancamentos']['itens'][1]['valor']));
+$lx = $pdd['lancamentos'];
+prova('a abertura totaliza todos os lançamentos: oportunidade (despesas) + risco (receitas/reversões) = saldo = −soma',
+    $lx['oportunidade'] > 0 && $lx['risco'] < 0 && abs($lx['oportunidade'] + $lx['risco'] - $lx['saldo']) < 0.01
+    && abs($lx['saldo'] + $lx['soma']) < 0.01, json_encode([$lx['oportunidade'], $lx['risco'], $lx['saldo'], $lx['soma']]));
 $ev = array_values(array_filter($qa['linhas'], static fn ($l) => $l['tipo'] === 'EVENTO'));
 prova('no evento, só lançamentos da linha nos meses fora do padrão',
     !array_filter($ev, static function ($l) {

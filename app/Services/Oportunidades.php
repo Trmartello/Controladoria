@@ -299,7 +299,7 @@ class Oportunidades
      * dela. Valores no sinal da DRE. Os 40 maiores, com quantos e quanto somam
      * todos os do piso para cima.
      *
-     * @return array{itens:array, quantos:int, soma:float, minimo:float}
+     * @return array{itens:array, quantos:int, soma:float, minimo:float, oportunidade:float, risco:float, saldo:float}
      */
     public static function lancamentos(int $negocioId, int $ano, int $corte, array $filtro, ?string $codFilial = null): array
     {
@@ -321,7 +321,13 @@ class Oportunidades
             $onde .= ' AND cod_filial = ?';
             $p[] = $codFilial;
         }
-        $tot = Database::um("SELECT COUNT(*) n, COALESCE(SUM(valor), 0) s FROM dre_lancamento WHERE {$onde}", $p);
+        // Totais de TODOS os lançamentos do piso para cima (não só dos 40 mostrados),
+        // com a régua do quadro: despesa (+ no Qlik) que não se repetir é
+        // oportunidade; receita ou reversão (−) é risco.
+        $tot = Database::um("SELECT COUNT(*) n, COALESCE(SUM(valor), 0) s,
+            COALESCE(SUM(CASE WHEN valor > 0 THEN valor ELSE 0 END), 0) op,
+            COALESCE(SUM(CASE WHEN valor < 0 THEN valor ELSE 0 END), 0) ri
+            FROM dre_lancamento WHERE {$onde}", $p);
         $itens = array_map(static fn ($r) => [
             'data' => $r['data'], 'mes' => (int)$r['mes'], 'cod_filial' => $r['cod_filial'], 'filial' => $r['filial'],
             'conta' => $r['conta'], 'conta_nome' => trim($r['conta_nome']), 'historico' => trim($r['historico']),
@@ -329,7 +335,8 @@ class Oportunidades
         ], Database::todos(
             "SELECT * FROM dre_lancamento WHERE {$onde} ORDER BY ABS(valor) DESC, data LIMIT 40", $p
         ));
-        return ['itens' => $itens, 'quantos' => (int)$tot['n'], 'soma' => -(float)$tot['s'], 'minimo' => self::LANCAMENTO_MINIMO];
+        return ['itens' => $itens, 'quantos' => (int)$tot['n'], 'soma' => -(float)$tot['s'], 'minimo' => self::LANCAMENTO_MINIMO,
+            'oportunidade' => (float)$tot['op'], 'risco' => (float)$tot['ri'], 'saldo' => (float)$tot['op'] + (float)$tot['ri']];
     }
 
     /** "000902500 0350688-ALTAIR LORENZETT" → ['0350688', 'ALTAIR LORENZETT']; o resto, inteiro. */
