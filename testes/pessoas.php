@@ -156,9 +156,13 @@ prova('mês de outro ano não é base do ano atual', $p['base']['ano'] === 2026 
 $pdo->prepare('INSERT INTO negocio_beneficio (negocio_id, ano, chave, valor) VALUES (?, 2027, ?, ?), (?, 2028, ?, ?)')
     ->execute([$negocioId, 'ALIMENTACAO', 600, $negocioId, 'ALIMENTACAO', 700]);
 $p = $ler->invoke($ctrl, $negocioId, 2026, [2027, 2028]);
-prova('o valor digitado vale só no ano em que foi lançado (2027 = 600, 2028 = 700)',
-    perto($p['por_ano']['2027']['anual']['alimentacao'], 58 * 600 * 12) && perto($p['por_ano']['2028']['anual']['alimentacao'], 58 * 700 * 12),
+// 2027 tem DIRETRIZ (Diretrizes para o Planejamento 2027): o vale é R$ 500 para
+// todos e o digitado ali, mesmo gravado, não vale. Em 2028, sem diretriz, vale.
+prova('em 2027 manda a diretriz (R$ 500, apesar dos 600 gravados); em 2028 vale o digitado (700)',
+    perto($p['por_ano']['2027']['anual']['alimentacao'], 58 * 500 * 12) && perto($p['por_ano']['2028']['anual']['alimentacao'], 58 * 700 * 12),
     $p['por_ano']['2027']['anual']['alimentacao'] . ' / ' . $p['por_ano']['2028']['anual']['alimentacao']);
+prova('e o digitado de 2027 continua guardado (a diretriz não apaga nada)',
+    perto($p['digitados']['2027']['ALIMENTACAO'] ?? 0, 600));
 
 // ── Limpeza ─────────────────────────────────────────────────────────────────
 $pdo->prepare('DELETE FROM negocio WHERE id = ?')->execute([$negocioId]);

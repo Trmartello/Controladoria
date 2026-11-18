@@ -220,6 +220,7 @@ const SecaoProjecao = {
       ${this.painel(d)}
       ${d.filial ? '' : this.cartaoPessoas(d)}
       ${faltando}
+      <div id="projecao-meta-negativa-box">${this.alertaMetaNegativa(d)}</div>
       <div id="projecao-aviso" class="alert alert-danger py-2 px-3 small mb-2 d-none"></div>
       ${this.botaoNivel()}
       <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}">
@@ -308,7 +309,16 @@ const SecaoProjecao = {
     const valores = efetivo ? efetivo.valores : padrao;
     const plano = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
     const reais = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
-    const campo = (chave, rotulo, dica) => (App.modoDossie
+    const diretriz = ((d.diretriz || {})[ano]) || null;
+    const fixa = (chave) => (diretriz && diretriz.premissas && diretriz.premissas[chave] !== undefined
+      ? diretriz.premissas[chave] : null);
+    const campo = (chave, rotulo, dica) => (fixa(chave) !== null
+      ? `<div class="col-6 col-md-auto">
+           <div class="small text-muted mb-0" title="${Modal.esc(dica)}">${rotulo}</div>
+           <div class="fw-bold campo-diretriz" data-diretriz="${chave}" title="${Modal.esc(diretriz.fonte)}">
+             ${num(fixa(chave), 2)} <span class="badge selo-diretriz">diretriz</span></div>
+         </div>`
+      : App.modoDossie
       ? `<div class="col-6 col-md-auto">
            <div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
            <div class="fw-bold">${num(digitadas[chave], 2)}</div>
@@ -347,7 +357,16 @@ const SecaoProjecao = {
     // três campos cinzentos parecem quebrados.
     const tres = `<strong>IPCA</strong>, <strong>PIB</strong>, <strong>Crescimento desejado</strong>,
       <strong>Cresc. despesas com pessoas</strong> e o <strong>vale e o abono</strong> de ${ano}`;
-    const nota = d.filial
+    const nota = diretriz && !d.filial
+      ? `<span class="nota-crescimento">O percentual de crescimento é <strong>sobre o faturamento</strong> (Receita de Vendas):
+          ele cresce <strong>IPCA + PIB + crescimento desejado</strong>, e o restante é <strong>proporcional</strong> —
+          deduções e custo das vendas acompanham o faturamento na mesma proporção (a margem bruta de ${d.ano} se mantém).</span>
+          As <strong>Despesas com Pessoal</strong> seguem a conta da diretriz (cartão Pessoas e benefícios) e as demais
+          despesas ficam na projeção. A célula digitada sempre manda.
+          ${noAnoDaProposta
+    ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
+          são lidos da coluna Proposta.` : ''}`
+      : d.filial
       ? `${tres} vêm do negócio e valem para todas as filiais — para alterá-los, volte ao negócio.
           ${noAnoDaProposta ? 'Os três valores lidos ao lado são desta filial.' : ''}`
       : `${tres} são lançados aqui e valem para o negócio e todas as filiais.
@@ -361,6 +380,13 @@ const SecaoProjecao = {
           como <code>5%</code>.`
     : ''}`;
 
+    const notaDiretriz = diretriz
+      ? `<div class="small mt-2 nota-diretriz"><span class="badge selo-diretriz">diretriz</span>
+          <strong>${Modal.esc(diretriz.fonte)}</strong>: IPCA, PIB, o reajuste de pessoal, o vale e os prêmios de ${ano}
+          valem para todos os negócios e não se digitam. O <strong>crescimento real</strong> se define com cada negócio.
+          Custos e deduções acompanham a receita (margem bruta de ${d.ano} mantida), as demais despesas não crescem, e
+          nenhum negócio ou filial pode ter meta negativa de resultado líquido.</div>`
+      : '';
     const leituras = noAnoDaProposta
       ? `<div class="w-100 d-md-none"></div>
           ${leitura(lidas.CRESC_REAL, 'Cresc. Real',
@@ -391,9 +417,10 @@ const SecaoProjecao = {
         <div class="row g-3 align-items-end">
           ${campo('IPCA', 'IPCA', `Inflação prevista para ${ano}. Vale para o negócio e todas as filiais.`)}
           ${campo('PIB', 'PIB', `Crescimento da economia previsto para ${ano}. Vale para o negócio e todas as filiais.`)}
-          ${campo('CRESCIMENTO', 'Crescimento desejado',
-    `O crescimento REAL que se deseja para a receita em ${ano}, acima da inflação e da economia. A Receita de `
-    + 'Vendas cresce IPCA + PIB + este percentual. Vale para o negócio e todas as filiais.')}
+          ${campo('CRESCIMENTO', 'Crescimento desejado <span class="text-muted">(sobre o faturamento)</span>',
+    `O crescimento REAL que se deseja para o FATURAMENTO (Receita de Vendas) em ${ano}, acima da inflação e da `
+    + 'economia. O faturamento cresce IPCA + PIB + este percentual; deduções e custo das vendas acompanham na '
+    + 'mesma proporção. Vale para o negócio e todas as filiais.')}
           ${campo('PESSOAS', 'Cresc. despesas com pessoas',
     `O crescimento das despesas com pessoas em ${ano}. Atua SÓ na linha Despesas com Pessoal (8.5): `
     + 'IPCA, PIB e o crescimento desejado não tocam nela. Vale para o negócio e todas as filiais.')}
@@ -406,7 +433,8 @@ const SecaoProjecao = {
           ${abonoTotal}
           ${leituras}
         </div>
-        <div class="small text-muted mt-2">${nota}</div>`);
+        <div class="small text-muted mt-2">${nota}</div>
+        ${notaDiretriz}`);
   },
 
   /**
@@ -419,6 +447,15 @@ const SecaoProjecao = {
     const dig = ((d.pessoas || {}).digitados || {})[ano] || {};
     const editavel = this.premissaEditavel(d);
     const num = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
+    const diretriz = ((d.diretriz || {})[ano]) || null;
+    const fixo = diretriz && diretriz.beneficios ? diretriz.beneficios[chave] : undefined;
+    if (fixo !== undefined) {
+      return `<div class="col-6 col-md-auto">
+          <div class="small text-muted mb-0" title="${Modal.esc(dica)}">${rotulo}</div>
+          <div class="fw-bold campo-diretriz" data-diretriz="${chave}" title="${Modal.esc(diretriz.fonte)}">
+            R$ ${Number(fixo).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} <span class="badge selo-diretriz">diretriz</span></div>
+        </div>`;
+    }
     return App.modoDossie
       ? `<div class="col-6 col-md-auto"><div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
           <div class="fw-bold">${dig[chave] === undefined ? `${placeholder} <span class="text-muted small">(padrão)</span>` : num(dig[chave])}</div></div>`
@@ -509,7 +546,41 @@ const SecaoProjecao = {
           ${campo('PCT_RESULTADO', '% dos meses com resultado', '%',
     'Previsão: em que parte dos meses o negócio atinge o resultado. 100% é o orçamento cheio.', num(padrao.PCT_RESULTADO))}
         </div>
-        ${resultado}`);
+        ${resultado}
+        ${ano === d.ano_planejamento ? this.composicaoPessoal(d) : ''}`);
+  },
+
+  /**
+   * A linha Despesas com Pessoal (8.5) da proposta, pela diretriz: a base de
+   * 2026 sem vale, prêmio e PPR, reajustada; o vale e os prêmios de 2027 (a parte
+   * da despesa); e o PPR de 1,5 salário sobre a folha do mês. É a conta do
+   * servidor (`Projecao::pessoalDaDiretriz`), só mostrada.
+   */
+  composicaoPessoal(d) {
+    const p = d.pessoal_diretriz;
+    if (!p) return '';
+    const r = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+    const pct = (v) => `${(100 * v).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+    const reaj = (((d.diretriz || {})[d.ano_planejamento] || {}).premissas || {}).PESSOAS;
+    return `<div class="table-responsive mt-2">
+        <table class="table table-sm mb-1 tabela-pessoal-diretriz">
+          <thead><tr><th>Despesas com Pessoal ${d.ano_planejamento} (linha 8.5), pela diretriz</th><th class="text-end">No ano</th></tr></thead>
+          <tbody>
+            <tr><td>Projeção de ${d.ano}</td><td class="text-end">${r(-p.projecao)}</td></tr>
+            <tr><td class="ps-3 text-muted">− vale, prêmio e PPR de ${d.ano} (${pct(p.parte_2026)} da folha)</td><td class="text-end text-muted">−${r(p.pecas_2026)}</td></tr>
+            <tr><td>Base reajustada${reaj !== undefined ? ` em ${String(reaj).replace('.', ',')}%` : ''}</td><td class="text-end" data-pessoal="base">${r(p.base_reajustada)}</td></tr>
+            <tr><td>+ vale e prêmios de ${d.ano_planejamento}${p.parte_despesa < 0.999 ? ` <span class="text-muted small">(${pct(p.parte_despesa)}: a parte da folha que é despesa; o resto está no custo)</span>` : ''}</td>
+              <td class="text-end" data-pessoal="beneficios">${r(p.beneficios)}</td></tr>
+            <tr><td>+ PPR: 1,5 salário sobre a folha de ${this.nomeMes(p.folha_mes)}/${p.folha_ano} (${r(p.folha_mensal)}) reajustada
+              <span class="text-muted small">— ${r(p.ppr_mensal)} provisionados por mês</span></td>
+              <td class="text-end" data-pessoal="ppr">${r(p.ppr)}</td></tr>
+            <tr class="fw-bold"><td>Proposta da linha 8.5 <span class="fw-normal text-muted small">(${(p.percentual >= 0 ? '+' : '') + p.percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% sobre a projeção)</span></td>
+              <td class="text-end" data-pessoal="total">${r(-p.proposta)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="small text-muted">Folha e peças de ${d.ano}: Qlik DRE Gerencial, contas 3.07.01.21* (despesa) e 4.03.01.01.01 (custo).
+        Lançar na própria linha 8.5 substitui esta conta.</div>`;
   },
 
   /** O Corporativo só totaliza: a soma dos negócios, sem campo nenhum. */
@@ -856,7 +927,8 @@ const SecaoProjecao = {
           <td class="text-end">${des ? this.moeda(des.receita_bruta) : '—'}</td>
           <td class="text-end fw-bold">${des ? this.moeda(des.resultado) : '—'}</td>
           <td class="text-end">${des ? m2(des.margem) : '—'}</td>
-          <td class="text-end">${pro.resultado === null ? '—' : this.moeda(pro.resultado)}</td>
+          <td class="text-end${pro.resultado !== null && pro.resultado < -1 ? ' text-danger fw-bold meta-negativa' : ''}"
+            ${pro.resultado !== null && pro.resultado < -1 ? 'title="Meta negativa: a diretriz não permite"' : ''}>${pro.resultado === null ? '—' : this.moeda(pro.resultado)}</td>
           <td class="text-end">${m2(pro.margem)}</td>
           <td class="text-end ${this.corDif(dif)}">${dif === null ? '—' : this.comSinal(dif)}</td>
         </tr>`;
@@ -1109,6 +1181,8 @@ const SecaoProjecao = {
         }
       }, true);
     }
+    const caixaNeg = el.querySelector('#projecao-meta-negativa-box');
+    if (caixaNeg && this.dados) caixaNeg.innerHTML = this.alertaMetaNegativa(this.dados);
     const nivel = el.querySelector('#projecao-nivel');
     if (nivel && virgem(nivel)) nivel.addEventListener('click', () => this.alternarNivel());
     const sel = el.querySelector('#projecao-negocio');
@@ -1325,6 +1399,23 @@ const SecaoProjecao = {
       b.setAttribute('aria-pressed', this.recolhido ? 'true' : 'false');
       b.textContent = this.recolhido ? '▸ Mostrar subcontas' : '▾ Recolher subcontas';
     }
+  },
+
+  /**
+   * "Nenhum negócio ou filial poderá estabelecer meta negativa de resultado
+   * líquido" (diretriz de 2027). O servidor recusa o lançamento que PIORA um
+   * resultado negativo; aqui se diz, enquanto ele estiver no vermelho, que a
+   * proposta não pode ficar assim.
+   */
+  alertaMetaNegativa(d) {
+    if (!d || d.corporativo) return '';
+    const l = (this.visao(d).linhas || []).find((x) => x.codigo === '16');
+    if (!l || l.proposta === null || l.proposta >= -1) return '';
+    return `<div class="alert alert-danger py-2 px-3 small mb-2" id="projecao-meta-negativa">
+        <strong>Meta negativa não permitida.</strong> O resultado líquido proposto ${d.filial ? 'desta filial' : 'deste negócio'}
+        para ${d.ano_planejamento} está em <strong>−R$ ${this.moeda(Math.abs(l.proposta))}</strong>. Pela diretriz, nenhum negócio ou
+        filial pode estabelecer meta negativa: lançamentos que pioram o resultado são recusados até ele voltar a ser positivo.
+      </div>`;
   },
 
   avisar(msg) {

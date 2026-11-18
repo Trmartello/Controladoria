@@ -250,7 +250,21 @@ class ProjecaoController
         // por omissão (`Projecao::crescimentosPadrao`). A filial herda as do negócio:
         // o mesmo conjunto vale nas duas contas, ou a soma das filiais deixaria de
         // fechar com o negócio.
-        $cresc = Projecao::crescimentosPadrao($digitadas);
+        // E a diretriz do ano manda por cima (IPCA, PIB, pessoal), com a conta da
+        // despesa de pessoal no lugar do reajuste puro — `crescimentosDoNegocio`
+        // é a mesma do Painel.
+        $p85 = 0.0;
+        foreach ($linhas as $l) {
+            if ($l['codigo'] === Projecao::LINHA_PESSOAL) {
+                $p85 = (float)$l['projecao'];
+            }
+        }
+        [$cresc, $pessoalDiretriz] = Projecao::crescimentosDoNegocio(
+            $anoProposta,
+            $digitadas,
+            $p85,
+            Projecao::dadosDePessoal([$negocioId], $ano, $anoProposta)[$negocioId] ?? null
+        );
 
         // A proposta de CADA filial, sempre — ela serve a duas perguntas: no
         // modo filial é ela que forma o total do negócio; no modo negócio é
@@ -313,6 +327,10 @@ class ProjecaoController
             // um, de uma vez: trocar de ano na tela não pede ida ao servidor.
             'anos_premissa' => $anosPremissa,
             'premissas_por_ano' => $porAno,
+            // O que a diretriz fixa em cada ano (só leitura na tela) e a conta da
+            // despesa de pessoal de 2027 que ela produz.
+            'diretriz' => $this->diretrizesDosAnos($anosPremissa),
+            'pessoal_diretriz' => $pessoalDiretriz,
             // Pessoas e benefícios do NEGÓCIO, por ano (a filial não tem o seu: o
             // quadro e os valores são do negócio, que já traz a parte dele).
             'pessoas' => $this->pessoasDoNegocio($negocioId, $ano, $anosPremissa),
@@ -441,6 +459,63 @@ class ProjecaoController
         return $t;
     }
 
+    /**
+     * "Nenhum negócio ou filial poderá estabelecer meta negativa de resultado
+     * líquido" (Diretrizes para o Planejamento 2027). Decisão do cliente
+     * (2026-11-18): RECUSAR a gravação que deixa o resultado líquido proposto
+     * negativo E PIOR do que estava — no negócio e, quando se lança numa filial,
+     * nela também. A que melhora passa, mesmo ainda no vermelho: há negócios que
+     * já partem de proposta negativa (a projeção de Cereais em 2026 é −R$ 9,4 mi),
+     * e exigir que o primeiro lançamento resolva tudo travaria o caminho de saída.
+     *
+     * Uso: `$antes = $this->resultadosLiquidos(...)`, abrir a transação, gravar,
+     * e `conferirResultado($antes, ...)`, que confirma ou desfaz e recusa.
+     *
+     * @return array{negocio: ?float, filial: ?float}
+     */
+    private function resultadosLiquidos(int $negocioId, int $ano, int $corte, int $filialId): array
+    {
+        $m = $this->montar($negocioId, $ano, $corte, $filialId);
+        $rl = static function (?array $linhas): ?float {
+            foreach ($linhas ?? [] as $l) {
+                if ($l['codigo'] === '16') {
+                    return $l['proposta'] === null ? null : (float)$l['proposta'];
+                }
+            }
+            return null;
+        };
+        return ['negocio' => $rl($m['linhas']), 'filial' => $filialId ? $rl($m['filial']['linhas'] ?? null) : null];
+    }
+
+    private static function reais(float $v): string
+    {
+        return ($v < 0 ? '−' : '') . 'R$ ' . number_format(abs($v), 0, ',', '.');
+    }
+
+    private function conferirResultado(array $antes, int $negocioId, int $ano, int $corte, int $filialId): void
+    {
+        $pdo = Database::conn();
+        $depois = $this->resultadosLiquidos($negocioId, $ano, $corte, $filialId);
+        foreach (['negocio' => 'do negócio', 'filial' => 'da filial'] as $k => $quem) {
+            $d = $depois[$k];
+            $a = $antes[$k];
+            // R$ 1 de folga: as linhas arredondam ao real em pontos diferentes.
+            if ($d !== null && $d < -1 && ($a === null || $d < $a - 1)) {
+                $pdo->rollBack();
+                Json::erro(
+                    'Meta negativa não permitida: com este lançamento o resultado líquido proposto '
+                    . $quem . ' fica em ' . self::reais($d)
+                    . ($a !== null ? ' (era ' . self::reais($a) . ')' : '')
+                    . '. Pela diretriz de 2027, nenhum negócio ou filial pode estabelecer meta negativa de '
+                    . 'resultado líquido — lance o que melhora o resultado antes do que o piora.',
+                    422,
+                    'META_NEGATIVA'
+                );
+            }
+        }
+        $pdo->commit();
+    }
+
     /** A resposta de toda gravação: a tela inteira, recalculada. */
     private function responderComATela(int $negocioId, int $ano, int $corte, int $filialId): void
     {
@@ -490,6 +565,8 @@ class ProjecaoController
         }
 
         $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+        $antes = $this->resultadosLiquidos($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
+        Database::conn()->beginTransaction();
         if (!$proj) {
             Database::executar(
                 'INSERT INTO projecao (negocio_id, ano, modo, atualizado_em, atualizado_por)
@@ -503,6 +580,7 @@ class ProjecaoController
                 [$modo, $u['id'], (int)$proj['id']]
             );
         }
+        $this->conferirResultado($antes, $negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
         $this->responderComATela(
             $negocioId,
             (int)$fech['ano'],
@@ -579,6 +657,19 @@ class ProjecaoController
                 409
             );
         }
+        $entrada = ($corpo['entrada'] ?? 'VALOR') === 'PERCENTUAL' ? 'PERCENTUAL' : 'VALOR';
+        $bruto = $corpo['valor'] ?? null;
+        if ($bruto !== null && $bruto !== '') {
+            if (!is_numeric($bruto)) {
+                Json::erro('Informe um número.', 422);
+            }
+            if ($entrada === 'PERCENTUAL' && abs((float)$bruto) > 1000) {
+                Json::erro('Percentual fora de faixa: informe entre -1000% e 1000%.', 422);
+            }
+        }
+
+        $antes = $this->resultadosLiquidos($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
+        Database::conn()->beginTransaction();
         if (!$proj) {
             Database::executar(
                 'INSERT INTO projecao (negocio_id, ano, atualizado_em, atualizado_por)
@@ -588,8 +679,6 @@ class ProjecaoController
             $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
         }
 
-        $entrada = ($corpo['entrada'] ?? 'VALOR') === 'PERCENTUAL' ? 'PERCENTUAL' : 'VALOR';
-        $bruto = $corpo['valor'] ?? null;
         if ($bruto === null || $bruto === '') {
             // Apagar a célula devolve a linha à projeção (crescimento zero), que
             // é o estado de quem nunca a tocou — e não zero, que seria uma
@@ -599,13 +688,7 @@ class ProjecaoController
                 [(int)$proj['id'], $filialId, (int)$conta['id']]
             );
         } else {
-            if (!is_numeric($bruto)) {
-                Json::erro('Informe um número.', 422);
-            }
             $v = (float)$bruto;
-            if ($entrada === 'PERCENTUAL' && abs($v) > 1000) {
-                Json::erro('Percentual fora de faixa: informe entre -1000% e 1000%.', 422);
-            }
             Database::executar(
                 'INSERT INTO projecao_valor (projecao_id, filial_id, conta_id, entrada, valor, percentual)
                  VALUES (?, ?, ?, ?, ?, ?)
@@ -621,6 +704,7 @@ class ProjecaoController
               WHERE id = ?',
             [$u['id'], (int)$proj['id']]
         );
+        $this->conferirResultado($antes, $negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
 
         $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
     }
@@ -697,6 +781,16 @@ class ProjecaoController
             );
         }
 
+        // A diretriz do ano fixa esta premissa para todos os negócios.
+        $fixa = Projecao::fixadaPelaDiretriz($ano, $chave);
+        if ($fixa !== null) {
+            Json::erro(
+                'Fixado pela diretriz de ' . $ano . ' (' . Projecao::diretriz($ano)['fonte'] . '): '
+                . number_format($fixa, 2, ',', '.') . '% para todos os negócios.',
+                422
+            );
+        }
+
         // Valida ANTES de escrever qualquer coisa: com a conferência depois, um
         // valor inválido já tinha criado a projeção do ano e deixado o rastro.
         $bruto = $corpo['valor'] ?? null;
@@ -713,6 +807,8 @@ class ProjecaoController
             }
         }
 
+        $antes = $this->resultadosLiquidos($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
+        Database::conn()->beginTransaction();
         if ($apagar) {
             Database::executar(
                 'DELETE FROM negocio_premissa WHERE negocio_id = ? AND ano = ? AND chave = ?',
@@ -748,6 +844,7 @@ class ProjecaoController
                 [$u['id'], (int)$proj['id']]
             );
         }
+        $this->conferirResultado($antes, $negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
 
         $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
     }
@@ -800,6 +897,15 @@ class ProjecaoController
             Json::erro('Ano fora do ciclo: lance de ' . $anos[0] . ' a ' . end($anos) . '.', 422);
         }
 
+        $fixa = Projecao::fixadaPelaDiretriz($ano, $chave);
+        if ($fixa !== null) {
+            Json::erro(
+                'Fixado pela diretriz de ' . $ano . ' (' . Projecao::diretriz($ano)['fonte'] . '): R$ '
+                . number_format($fixa, 2, ',', '.') . ' por colaborador ao mês, para todos os negócios.',
+                422
+            );
+        }
+
         // Valida ANTES de escrever.
         $bruto = $corpo['valor'] ?? null;
         $apagar = $bruto === null || $bruto === '';
@@ -822,6 +928,8 @@ class ProjecaoController
             }
         }
 
+        $antes = $this->resultadosLiquidos($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
+        Database::conn()->beginTransaction();
         if ($apagar) {
             Database::executar(
                 'DELETE FROM negocio_beneficio WHERE negocio_id = ? AND ano = ? AND chave = ?',
@@ -834,6 +942,7 @@ class ProjecaoController
                 [$negocioId, $ano, $chave, (float)$bruto]
             );
         }
+        $this->conferirResultado($antes, $negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
         $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
     }
 
@@ -922,6 +1031,16 @@ class ProjecaoController
      *
      * @param int[] $anos
      */
+    /** A diretriz de cada ano do painel (null onde não há). */
+    private function diretrizesDosAnos(array $anos): array
+    {
+        $out = [];
+        foreach ($anos as $a) {
+            $out[(string)$a] = Projecao::diretriz((int)$a);
+        }
+        return $out;
+    }
+
     private function pessoasDoNegocio(int $negocioId, int $anoBase, array $anos): array
     {
         $b = Database::um(
@@ -946,7 +1065,7 @@ class ProjecaoController
         }
         $porAno = [];
         foreach ($anos as $a) {
-            $porAno[(string)$a] = Projecao::pessoas($base, $digitados[(string)$a]);
+            $porAno[(string)$a] = Projecao::pessoas($base, Projecao::beneficiosEfetivos((int)$a, $digitados[(string)$a]));
         }
         return ['base' => $base, 'digitados' => $digitados, 'por_ano' => $porAno,
             'padrao' => Projecao::BENEFICIOS_PADRAO];
@@ -998,6 +1117,10 @@ class ProjecaoController
             if (isset($out[$a])) {
                 $out[$a][$l['chave']] = (float)$l['percentual'];
             }
+        }
+        // O que VALE em cada ano: a diretriz por cima do digitado.
+        foreach ($out as $a => $dig) {
+            $out[$a] = Projecao::premissasEfetivas((int)$a, $dig);
         }
         return $out;
     }

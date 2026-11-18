@@ -951,6 +951,23 @@ foreach ([
     }
 }
 
+// ---- Folha por negócio, para a despesa de pessoal da diretriz (2026-11-18) ----
+require_once __DIR__ . '/../app/Services/CargaFolha.php';
+foreach ([
+    'folha_2026_10.php',
+] as $arquivo) {
+    $f = require __DIR__ . '/' . $arquivo;
+    if (App\Services\CargaConteudo::jaAplicada($pdo, $f['chave'])) {
+        continue;
+    }
+    $r = App\Services\CargaFolha::aplicar($pdo, $f);
+    App\Services\CargaConteudo::marcar($pdo, $f['chave'], "Folha {$f['ano']} até o mês {$f['mes_ate']}: {$r['negocios']} negócio(s)");
+    echo "migrate: carga de folha {$f['chave']} — {$r['negocios']} negócio(s).\n";
+    if ($r['ignorados']) {
+        echo 'migrate: negócio(s) fora do cadastro ignorado(s) na carga de folha: ' . implode(', ', $r['ignorados']) . ".\n";
+    }
+}
+
 // ---- Desafio do ano por negócio (pedido do cliente, 2026-11-18) ----
 // Referência decidida, só de leitura na Projeção. Sobrescreve o ano inteiro; a
 // marca por chave evita refazer a cada deploy, e um desafio novo vem com chave nova.

@@ -4700,3 +4700,7 @@ details.expansor[open] > summary .expansor-resumo { display: none; }
   details.expansor > summary::before { content: none; }
 }
 .tabela-desafio td[data-desafio], .tabela-desafio tr td:first-child { white-space: nowrap; }
+
+/* Selo do valor fixado pela diretriz do planejamento (não se digita). */
+.selo-diretriz { background: var(--verde-coperdia); color: #fff; font-weight: 500; font-size: .7rem; vertical-align: middle; }
+.campo-diretriz { line-height: 1.9; }

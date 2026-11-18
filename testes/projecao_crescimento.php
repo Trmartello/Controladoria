@@ -71,11 +71,17 @@ prova('Receita: R$ 100 mi × 1,12 = R$ 112 mi, de origem PREMISSA', perto($l['1.
     json_encode([$l['1.1']['proposta'], $l['1.1']['proposta_origem']]));
 prova('Despesas com Pessoal: −R$ 10 mi × 1,055 = −R$ 10,55 mi (a despesa AUMENTA, fica mais negativa)',
     perto($l['8.5']['proposta'], -10.55), (string)$l['8.5']['proposta']);
-prova('custos e demais despesas ficam na projeção, de origem PROJECAO',
-    perto($l['4.1']['proposta'], -60.0) && perto($l['8.1']['proposta'], -5.0)
-    && $l['4.1']['proposta_origem'] === 'PROJECAO' && $l['8.1']['proposta_origem'] === 'PROJECAO');
+// Custo e deduções ACOMPANHAM A RECEITA (decisão do cliente, 2026-11-18): a
+// margem bruta de 2026 se mantém. As demais despesas ficam na projeção (diretriz:
+// "sem previsão de crescimento").
+prova('o custo acompanha a receita: −R$ 60 mi × 1,12 = −R$ 67,2 mi (margem bruta mantida)',
+    perto($l['4.1']['proposta'], -67.2) && $l['4.1']['proposta_origem'] === 'PREMISSA'
+    && ($l['4.1']['proposta_regra'] ?? null) === 'RECEITA', json_encode([$l['4.1']['proposta'], $l['4.1']['proposta_regra'] ?? null]));
+prova('as demais despesas ficam na projeção, de origem PROJECAO',
+    perto($l['8.1']['proposta'], -5.0) && $l['8.1']['proposta_origem'] === 'PROJECAO');
 prova('a linha guarda o percentual que a gerou (para a tela mostrar de onde veio)',
-    perto((float)$l['1.1']['proposta_padrao'], 12.0) && $l['4.1']['proposta_padrao'] === null);
+    perto((float)$l['1.1']['proposta_padrao'], 12.0) && perto((float)$l['4.1']['proposta_padrao'], 12.0)
+    && $l['8.1']['proposta_padrao'] === null);
 
 // O que foi digitado MANDA.
 $lanc = ['1.1' => ['entrada' => 'PERCENTUAL', 'percentual' => 3.0, 'valor' => null]];
@@ -105,7 +111,7 @@ $linhas = Projecao::aplicar(
 $p = Projecao::premissas($linhas, ['IPCA' => 5, 'PIB' => 6, 'CRESCIMENTO' => 1]);
 prova('Cresc. Total = 12% (a soma dos três) e Cresc. Real = 1% (exatamente o desejado)',
     perto($p['CRESC_TOTAL'], 12.0) && perto($p['CRESC_REAL'], 1.0), json_encode([$p['CRESC_TOTAL'], $p['CRESC_REAL']]));
-prova('% Custos segue 0%: custos não crescem por omissão', perto($p['PCT_CUSTOS'], 0.0), json_encode($p['PCT_CUSTOS']));
+prova('% Custos = 12%: o custo cresce com a receita (margem bruta mantida)', perto($p['PCT_CUSTOS'], 12.0), json_encode($p['PCT_CUSTOS']));
 
 echo "\n" . count($bad) . " falha(s), {$ok} verde(s).\n";
 if ($bad) {

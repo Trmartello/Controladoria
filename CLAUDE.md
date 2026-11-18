@@ -3109,6 +3109,49 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   Provas: `testes/desafio.php` (carga, total, os 2%, e a ORIGEM — receita = visão
   realista desta tela × 1,06 e margem nunca pior que a de 2026 realista) e
   `provasDesafioEExpansores`.
+  **Diretrizes do Planejamento 2027** (documento de 16/11/2026, pedido do cliente
+  em 2026-11-18). Moram em `Projecao::DIRETRIZES[2027]` e valem para TODOS os
+  negócios, **fixas** (decisão do cliente): IPCA 4,50%, PIB agropecuário 1,50%,
+  reajuste de pessoal 5,50%, vale R$ 500, prêmio assiduidade R$ 200, prêmio metas
+  R$ 500, PPR de 1,5 salário. `premissasEfetivas`/`beneficiosEfetivos` põem a
+  diretriz por cima do digitado (o digitado fica no banco e deixa de valer naquele
+  ano; 2028 em diante continua editável); a gravação recusa a chave fixada
+  (422, "Fixado pela diretriz") e a tela a mostra com o selo **diretriz**. O
+  crescimento real (`CRESCIMENTO`) continua do negócio. Decisões que vieram junto:
+  - **Deduções e custo das vendas acompanham a receita** (`ACOMPANHAM_RECEITA` =
+    2.1, 2.2, 2.3, 4.1, em `aplicar`): sem lançamento, valem projeção × (proposta
+    ÷ projeção da 1.1) — margem bruta de 2026 mantida. Antes ficavam paradas
+    enquanto a receita crescia 6%, e a Pecuária aparecia com 7,5% de margem.
+    Origem `PREMISSA`, `proposta_regra = 'RECEITA'`.
+  - **Despesas com Pessoal pela diretriz** (`pessoalDaDiretriz`): a linha 8.5 é
+    exatamente as contas 3.07.01.21*, e em 2026 já traz vale PAT, prêmio por
+    desempenho e a provisão do PPR — somar o PPR de 2027 por cima o contaria duas
+    vezes. A conta troca as peças: (projeção − a PARTE de vale/prêmio/PPR nas
+    3.07.01.21* até o corte) × 1,055 + (vale + prêmios do cartão de pessoas) × a
+    parte da folha que é despesa + PPR (folha de salários do mês, despesa 3.07 +
+    custo 4.03, × 1,055 × 1,5). Vira um % sobre a projeção, que cresce a linha no
+    negócio, nas filiais (que herdam o % — não têm folha própria) e no Painel
+    (`crescimentosDoNegocio` é chamada pelos dois). A folha vem de
+    `database/folha_2026_10.php` (`negocio_folha`, `CargaFolha`, sobrescreve o
+    ano): outubro é "o mês atual" porque novembro está aberto. As contas 6.03.0x
+    espelham as 3.07 (ato cooperativo) e NÃO entram. Na Agropecuária as 3.07.01.21*
+    somam R$ 4,6 mi a mais que a linha 8.5 — por isso as peças entram como parte,
+    não em reais. O cartão Pessoas e benefícios mostra a conta inteira.
+  - **Meta negativa de resultado líquido: bloquear piora** (decisão do cliente).
+    `resultadosLiquidos` antes, transação, gravação, `conferirResultado` depois:
+    recusa (422, código `META_NEGATIVA`) o lançamento que deixa a linha 16
+    proposta negativa E pior do que estava — no negócio e na filial em que se
+    lança. Melhora sempre passa, ainda no vermelho (Cereais parte de −R$ 6,8 mi
+    com a diretriz). Vale para valor, premissa, benefício e modo. A tela mostra
+    `#projecao-meta-negativa` enquanto a proposta estiver negativa; o Corporativo
+    marca em vermelho a proposta negativa de cada negócio no quadro do desafio.
+    Limpeza de prova que precise piorar um resultado negativo vai pelo banco.
+  - **Desafio**: IPCA 4,5% + PIB agro 1,5% somam os mesmos 6% da página aprovada;
+    só a Usina mudou (× 1,045). Total R$ 63,69 mi, faltam R$ 7,58 mi para os 2%.
+  - **Fora, por ora**: o vale e os prêmios da folha de CUSTO (4.03) seguem no custo,
+    que acompanha a receita; nada disso é contábil fino — é a régua do plano.
+  Provas: `testes/diretriz_2027.php` (documento, conta de mão do pessoal, Painel =
+  tela nos 11 negócios, carga da folha) e `provasDiretriz2027` na bateria.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas
