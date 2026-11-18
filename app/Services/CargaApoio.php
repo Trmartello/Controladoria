@@ -64,6 +64,70 @@ class CargaApoio
             });
     }
 
+    /**
+     * A DRE da filial mês a mês nas linhas dos eventos pontuais
+     * (`database/eventos_filiais_mensal_*.php`). Recusa filial ou conta que não
+     * existam e mês fora de jan..mes_ate; regrava o ano inteiro.
+     *
+     * @return array{negocios:int, linhas:int, ignorados:array}
+     */
+    public static function filiaisMensal(PDO $pdo, array $dados): array
+    {
+        [$ano, $mes, $valores] = self::cabecalho($dados, 'DRE mensal das filiais');
+        $contas = [];
+        foreach ($pdo->query('SELECT id, codigo FROM dre_conta')->fetchAll(PDO::FETCH_ASSOC) as $c) {
+            $contas[$c['codigo']] = (int)$c['id'];
+        }
+        $ins = $pdo->prepare('INSERT INTO dre_valor_filial_mes (filial_id, conta_id, ano, mes, valor) VALUES (?, ?, ?, ?, ?)');
+        $dono = !$pdo->inTransaction();
+        if ($dono) {
+            $pdo->beginTransaction();
+        }
+        try {
+            $pdo->prepare('DELETE FROM dre_valor_filial_mes WHERE ano = ?')->execute([$ano]);
+            $negocios = 0;
+            $linhas = 0;
+            $ignorados = [];
+            foreach ($valores as $cod => $filas) {
+                $neg = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ?');
+                $neg->execute([(string)$cod]);
+                $negId = $neg->fetchColumn();
+                if (!$negId) {
+                    $ignorados[] = (string)$cod;
+                    continue;
+                }
+                $negocios++;
+                $fil = $pdo->prepare('SELECT id FROM filial WHERE negocio_id = ? AND cod_filial = ?');
+                foreach ($filas as [$codFilial, $conta, $meses]) {
+                    if (!isset($contas[$conta])) {
+                        throw new RuntimeException("DRE mensal das filiais com conta desconhecida: {$conta}.");
+                    }
+                    if (count($meses) !== $mes) {
+                        throw new RuntimeException("DRE mensal das filiais: {$cod}/{$codFilial}/{$conta} sem os {$mes} meses.");
+                    }
+                    $fil->execute([(int)$negId, (string)$codFilial]);
+                    $filialId = $fil->fetchColumn();
+                    if (!$filialId) {
+                        throw new RuntimeException("DRE mensal das filiais: filial {$codFilial} não existe no negócio {$cod}.");
+                    }
+                    foreach (array_values($meses) as $i => $v) {
+                        $ins->execute([(int)$filialId, $contas[$conta], $ano, $i + 1, (float)$v]);
+                    }
+                    $linhas++;
+                }
+            }
+            if ($dono) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($dono) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+        return ['negocios' => $negocios, 'linhas' => $linhas, 'ignorados' => $ignorados];
+    }
+
     private static function cabecalho(array $dados, string $nome): array
     {
         $ano = (int)($dados['ano'] ?? 0);

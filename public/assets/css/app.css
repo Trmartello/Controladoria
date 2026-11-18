@@ -4733,3 +4733,8 @@ details.expansor[open] > summary .expansor-resumo { display: none; }
    células editáveis, para não ser confundido com "digite aqui". */
 .tabela-tributos-dre td.linha-muda, span.linha-muda { background: #fde4a8; }
 .tabela-tributos-dre td { white-space: nowrap; }
+
+/* DRE no formato de 2027 (pedido do cliente, 2026-11-18): a CBS informativa
+   acima da Receita Bruta, e o nome das linhas que mudaram, em amarelo. */
+.tabela-projecao tr.linha-cbs > td { background: #fde4a8; font-style: italic; }
+.tabela-projecao td.linha-muda-nome { background: #fde4a8; }

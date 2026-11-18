@@ -225,6 +225,11 @@ const SecaoProjecao = {
       <div id="projecao-meta-negativa-box">${this.alertaMetaNegativa(d)}</div>
       <div id="projecao-aviso" class="alert alert-danger py-2 px-3 small mb-2 d-none"></div>
       ${this.botaoNivel()}
+      <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
+        A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
+        acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
+        ${d.ano}, convertido para comparar. A Receita Líquida e o que vem abaixo não mudam. O que se lança na Receita de
+        Vendas e no Imposto s/ Vendas é no formato novo (sem a CBS); a CBS da proposta acompanha a receita.</div>
       <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
@@ -745,6 +750,11 @@ const SecaoProjecao = {
       ${this.cartaoPessoas(d)}
       ${faltando}
       ${this.botaoNivel()}
+      <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
+        A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
+        acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
+        ${d.ano}, convertido para comparar. A Receita Líquida e o que vem abaixo não mudam. O que se lança na Receita de
+        Vendas e no Imposto s/ Vendas é no formato novo (sem a CBS); a CBS da proposta acompanha a receita.</div>
       <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
@@ -1180,10 +1190,18 @@ const SecaoProjecao = {
   cartaoOportunidades(d) {
     if (d.corporativo) return this.cartaoOportunidadesCorporativo(d);
     const o = d.oportunidades;
-    if (!o || d.filial) return '';
-    const it = o.itens;
-    const picos = (o.picos || []).slice(0, 8);
-    if (!it && !picos.length) return '';
+    if (!o) return '';
+    // Na FILIAL (pedido do cliente, 2026-11-18): os eventos pontuais dela, mês a
+    // mês; os itens por conta contábil são do negócio e ficam no negócio.
+    const naFilial = !!d.filial;
+    const it = naFilial ? null : o.itens;
+    const picos = ((naFilial ? d.filial.picos : o.picos) || []).slice(0, 12);
+    if (!it && !picos.length) {
+      return naFilial ? this.expansor('oportunidades', 'painel-oportunidades', `Oportunidades e riscos para ${d.ano_planejamento} — esta filial`,
+        'nenhum mês fora do padrão', `<div class="small text-muted" id="filial-sem-picos">Nenhum mês fora do padrão nesta filial em ${d.ano}
+          (despesas operacionais, outros valores e resultado financeiro, acima de R$ 50 mil). Os itens não recorrentes por conta contábil
+          estão no negócio.</div>`) : '';
+    }
     const g = o.grupos || {};
     const efeito = (v) => `<span class="${v > 0 ? 'text-success' : 'text-danger'}">${v > 0 ? '+' : '−'}${this.moeda(Math.abs(v))}</span>`;
     const tabItens = it ? `
@@ -1205,28 +1223,34 @@ const SecaoProjecao = {
         </table>
       </div>` : '';
     const tabPicos = picos.length ? `
-      <div class="small fw-bold mb-1 mt-3">Meses fora do padrão nas despesas operacionais (${d.ano}, jan–${this.nomeMes(d.mes_fechado_ate)})</div>
+      <div class="small fw-bold mb-1 ${naFilial ? '' : 'mt-3'}">Eventos pontuais — meses fora do padrão${naFilial ? ' nesta filial' : ''}
+        (${d.ano}, jan–${this.nomeMes(d.mes_fechado_ate)})</div>
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-1 tabela-picos">
-          <thead><tr><th>Linha</th><th class="text-end">Padrão mensal<br><span class="fw-normal text-muted small">mediana</span></th>
+          <thead><tr><th>Linha</th><th>Grupo</th><th class="text-end">Padrão mensal<br><span class="fw-normal text-muted small">mediana</span></th>
             <th>Meses fora do padrão</th>
-            <th class="text-end">Acima do padrão<br><span class="fw-normal text-muted small">compra pontual?</span></th>
-            <th class="text-end">Abaixo do padrão<br><span class="fw-normal text-muted small">falta no plano?</span></th></tr></thead>
+            <th class="text-end">Oportunidade<br><span class="fw-normal text-muted small">se não se repetir</span></th>
+            <th class="text-end">Risco<br><span class="fw-normal text-muted small">se não se repetir</span></th></tr></thead>
           <tbody>${picos.map((p) => `<tr data-pico="${Modal.esc(p.codigo)}">
               <td>${Modal.esc(p.nome)} <span class="text-muted small">${Modal.esc(p.codigo)}</span></td>
+              <td class="small">${Modal.esc(p.grupo || '')}</td>
               <td class="text-end">${this.moeda(p.mediana)}</td>
               <td class="small">${p.meses.map((m) => `${this.nomeMes(m.mes)}: ${this.moeda(m.valor)}`).join(' · ')}</td>
-              <td class="text-end">${p.acima ? `<span class="text-success">+${this.moeda(p.acima)}</span>` : ''}</td>
-              <td class="text-end">${p.abaixo ? `<span class="text-danger">−${this.moeda(Math.abs(p.abaixo))}</span>` : ''}</td></tr>`).join('')}
+              <td class="text-end">${p.oportunidade ? `<span class="text-success">+${this.moeda(p.oportunidade)}</span>` : ''}</td>
+              <td class="text-end">${p.risco ? `<span class="text-danger">−${this.moeda(Math.abs(p.risco))}</span>` : ''}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>
-      <div class="small text-muted">Mês que se afasta da mediana do ano em mais da metade dela (e de R$ 50 mil). É sinal para
-        investigar — pode ser sazonalidade legítima —, e não soma com os itens acima (a mesma despesa pode aparecer nos dois).</div>` : '';
+      <div class="small text-muted">Valores eventuais do ano, em <strong>despesas operacionais, outros valores e resultado
+        financeiro</strong>: o mês que se afasta da mediana do ano em mais da metade dela (e de R$ 50 mil) — uma receita de
+        juros concentrada num mês, uma despesa que não se repete. Se o evento não voltar em ${d.ano_planejamento}, uma receita
+        acima do padrão é <strong>risco</strong> e uma despesa acima do padrão é <strong>oportunidade</strong>. É sinal para
+        investigar — pode ser sazonalidade legítima${naFilial ? '' : ' —, e não soma com os itens acima (a mesma despesa pode aparecer nos dois)'}.</div>` : '';
     const resumo = it
       ? `oportunidade ${this.mi(it.oportunidade, true)} · risco ${this.mi(it.risco)}${picos.length ? ` · ${picos.length} linha(s) com mês fora do padrão` : ''}`
       : `${picos.length} linha(s) com mês fora do padrão`;
-    return this.expansor('oportunidades', 'painel-oportunidades', `Oportunidades e riscos para ${d.ano_planejamento}`, resumo, `
+    return this.expansor('oportunidades', 'painel-oportunidades',
+      `Oportunidades e riscos para ${d.ano_planejamento}${naFilial ? ' — esta filial' : ''}`, resumo, `
         ${tabItens}${tabPicos}
         <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: se um item não vai se repetir (ou se falta algo
           que ${d.ano} não teve), lance na linha da DRE correspondente.</div>`);
@@ -1441,10 +1465,13 @@ const SecaoProjecao = {
       }
 
       const negativa = l.codigo === '18' && l.proposta !== null && l.proposta < -1;
-      return `<tr class="${bloco ? 'fw-bold linha-bloco' : 'linha-subconta'}${negativa ? ' resultado-negativo' : ''}"
+      // Formato de 2027 (`Reforma::formatoNovo`): a CBS é linha informativa acima
+      // da Receita Bruta, e o nome das linhas que mudaram vai em amarelo.
+      const informativa = !!l.informativa;
+      return `<tr class="${informativa ? 'linha-cbs' : (bloco ? 'fw-bold linha-bloco' : 'linha-subconta')}${negativa ? ' resultado-negativo' : ''}"
         data-conta="${Modal.esc(l.codigo)}" data-nivel="${l.nivel}"
         data-origem="${Modal.esc(l.proposta_origem || '')}">
-        <td class="${bloco ? '' : 'ps-4 text-muted'}">${Modal.esc(l.nome)}</td>
+        <td class="${bloco || informativa ? '' : 'ps-4 text-muted'}${l.formato_novo || informativa ? ' linha-muda-nome' : ''}">${Modal.esc(l.nome)}</td>
         <td class="text-end ${l.percentual ? '' : negativo(l.realizado)}">${valor(l, 'realizado')}</td>
         <td class="text-end ${l.percentual ? '' : negativo(l.projetado)}">${valor(l, 'projetado')}</td>
         <td class="text-end ${l.percentual ? '' : negativo(l.projecao)}">${valor(l, 'projecao')}</td>

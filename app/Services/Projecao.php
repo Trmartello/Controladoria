@@ -656,9 +656,14 @@ class Projecao
      *
      * @param array $linhas  cada uma com `codigo`, `nivel`, `percentual`, `projecao`
      * @param array $lancados codigo => ['entrada'=>…, 'valor'=>…, 'percentual'=>…]
+     * @param float|null $taxaPisCofins a taxa de PIS/COFINS sobre a Receita de Vendas
+     *        (`Reforma::pisCofinsDoNegocio`): com ela, o que se LANÇA na 1.1 e na 2.3 é
+     *        no formato de 2027 — sem o PIS/COFINS (a CBS) — e o motor o devolve ao
+     *        formato da carga para calcular.
      */
-    public static function aplicar(array $linhas, array $lancados, array $crescimentos = []): array
+    public static function aplicar(array $linhas, array $lancados, array $crescimentos = [], ?float $taxaPisCofins = null): array
     {
+        $t = $taxaPisCofins !== null && $taxaPisCofins > 0 && $taxaPisCofins < 1 ? $taxaPisCofins : null;
         // As editáveis, uma a uma; os blocos saem de `derivar`.
         foreach ($linhas as $i => $l) {
             if (!self::editavel($l)) {
@@ -669,6 +674,11 @@ class Projecao
                 $lancados[$l['codigo']] ?? null,
                 $crescimentos[$l['codigo']] ?? null
             );
+            // Formato de 2027: a Receita de Vendas LANÇADA em valor é sem a CBS; o
+            // motor calcula com ela dentro (a CBS acompanha a receita).
+            if ($t !== null && $l['codigo'] === '1.1' && $r['origem'] === 'VALOR') {
+                $r['valor'] /= (1 - $t);
+            }
             $linhas[$i]['proposta'] = $r['valor'];
             $linhas[$i]['proposta_origem'] = $r['origem'];
             $linhas[$i]['proposta_lancado'] = $r['lancado'];
@@ -701,6 +711,21 @@ class Projecao
                     unset($l);
                 }
             }
+        }
+
+        // Formato de 2027 na 2.3: o lançado (valor ou reajuste) é SÓ ICMS e ISS; o
+        // PIS/COFINS (a CBS) entra por cima, na proporção da Receita de Vendas
+        // proposta — o mesmo que `Reforma::formatoNovo` tira para mostrar.
+        if ($t !== null && isset($idx['2.3'], $idx['1.1'])) {
+            $l23 = &$linhas[$idx['2.3']];
+            $pcProp = $t * (float)$linhas[$idx['1.1']]['proposta'];
+            if (($l23['proposta_origem'] ?? null) === 'VALOR') {
+                $l23['proposta'] = (float)$l23['proposta_lancado'] - $pcProp;
+            } elseif (($l23['proposta_origem'] ?? null) === 'PERCENTUAL') {
+                $semPc = (float)$l23['projecao'] + $t * (float)$linhas[$idx['1.1']]['projecao'];
+                $l23['proposta'] = $semPc * (1 + (float)$l23['proposta_lancado'] / 100) - $pcProp;
+            }
+            unset($l23);
         }
 
         // A REFORMA (LC 214): em 2027 a CBS entra no lugar do PIS/COFINS PELO MESMO
@@ -830,6 +855,9 @@ class Projecao
         }
 
         $pessoal = self::dadosDePessoal($negocioIds, $ano, $anoPlan);
+        // Os tributos de 2026: a taxa de PIS/COFINS que converte o que se lança na
+        // 1.1 e na 2.3 (formato de 2027) — a mesma conta da tela.
+        $tributos = Oportunidades::tributos($negocioIds, $ano);
 
         $filiais = Database::todos(
             'SELECT f.negocio_id, v.filial_id, v.conta_id, v.realizado, v.projetado
@@ -873,16 +901,17 @@ class Projecao
                 }
             }
             [$cresc] = self::crescimentosDoNegocio($anoPlan, $premissasPorNegocio[$id] ?? [], $p85, $pessoal[$id] ?? null);
+            $taxaPc = Reforma::pisCofinsDoNegocio($linhas, $tributos[$id] ?? null, $corte)['taxa'];
 
             if ($modo === 'FILIAL' && !empty($dreFilial[$id])) {
                 $propostas = [];
                 foreach ($dreFilial[$id] as $filialId => $porConta) {
-                    $lf = self::aplicar($monta($porConta), $lanc[$filialId] ?? [], $cresc);
+                    $lf = self::aplicar($monta($porConta), $lanc[$filialId] ?? [], $cresc, $taxaPc);
                     $propostas[$filialId] = array_column($lf, 'proposta', 'codigo');
                 }
                 $linhas = self::somarFiliais($linhas, $propostas);
             } else {
-                $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc);
+                $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc, $taxaPc);
             }
 
             $proje = [];

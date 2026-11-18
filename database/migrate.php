@@ -1002,6 +1002,15 @@ foreach ([
     }
 }
 
+// ---- DRE mensal das filiais nas linhas dos eventos pontuais (2026-11-18) ----
+// Depois das cargas das filiais: a carga referencia filiais do cadastro.
+$a = require __DIR__ . '/eventos_filiais_mensal_2026_10.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
+    $r = App\Services\CargaApoio::filiaisMensal($pdo, $a);
+    App\Services\CargaConteudo::marcar($pdo, $a['chave'], "DRE mensal das filiais {$a['ano']} até o mês {$a['mes_ate']}: {$r['linhas']} linha(s)");
+    echo "migrate: DRE mensal das filiais {$a['chave']} — {$r['negocios']} negócio(s), {$r['linhas']} linha(s).\n";
+}
+
 // ---- Desafio do ano por negócio (pedido do cliente, 2026-11-18) ----
 // Referência decidida, só de leitura na Projeção. Sobrescreve o ano inteiro; a
 // marca por chave evita refazer a cada deploy, e um desafio novo vem com chave nova.
