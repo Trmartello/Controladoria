@@ -2932,10 +2932,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   faltando passaria despercebida, com cada tela certa e o total errado. Na
   Pecuária isso pegou **Morrinhos**, que tem R$ 1.448 em duas linhas e não está
   na planilha do cliente — sem ela a soma não fechava.
-  **Três negócios estão carregados por filial**: Pecuária (6), Supermercados
-  (19) e Agropecuárias (77), pedidos nessa ordem pelo cliente. Os outros oito
-  entram quando ele pedir, e a tela diz isso a quem tentar trocar o modo sem
-  dados. A extração é **uma coluna por filial** (dimensão `=If(Nível<=2,
+  **Os onze negócios estão carregados por filial, no corte 10** (pedido do cliente,
+  18/11/2026: "realizado de jan a out e nov a dez o planejado, para todas as filiais de
+  todos os negócios"): Agropecuárias 79, Cereais 42, Supermercados 23, Pecuária 6,
+  Leite 5, Rações 5, Combustíveis 4, Resf. Leite 3, Usina 3, UTM 2 e UBS 1 — 173
+  filiais. Cada arquivo passou pela prova do resto (o negócio sem as filiais da lista
+  dá zero em todas as contas) e pela conferência contra o negócio (maior desvio R$ 6,
+  Agropecuárias, conta 8.2). Filiais com resíduo de rateio entram mesmo pequenas (nos
+  Supermercados, Passos Maia R$ 71, Braço do Norte R$ 4…): sem elas a soma não fecha.
+  Filial com todos os pares 0/0 no corte sai (Agropecuárias e Cereais: Capinzal UBS e
+  Loja Campo Alegre, que só têm movimento em nov/dez ou centavos). Sinais estranhos
+  ficaram como o Qlik dá e estão no docblock de cada arquivo (custo positivo em
+  filiais de Rações e da UTM). Extração: lotes de **5 a 8 filiais** por consulta —
+  com outras consultas rodando ao mesmo tempo, 10 estoura os 60 s. A extração é **uma coluna por filial** (dimensão `=If(Nível<=2,
   [Cód Indicador])`, uma medida `realizado/orçado` por filial), em lotes de
   doze — `Concat(Aggr(...))` para trazer todas de uma vez devolve `NaN` neste
   app, e o teto de 50 linhas por chamada obriga a buscar a sobra por paginação
@@ -3397,15 +3406,14 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   cara: uma coluna por filial, e **consulta com mais de ~12 colunas estoura os
   60 s do Qlik** (19 filiais de uma vez deram timeout; 6 e 10 passaram), então as
   Agropecuárias (77) são ~7 lotes de ~17 mil tokens de dados cada. Em 17/11
-  foram re-extraídos o negócio (11) e a **Pecuária**; **Supermercados e
-  Agropecuárias continuam no corte 9**. Em vez de esconder essas filiais (o
+  foram re-extraídos o negócio (11) e a **Pecuária**; Supermercados e
+  Agropecuárias ficaram no corte 9 até 18/11, quando todas as filiais de todos os
+  negócios foram extraídas no corte 10 e as cargas `_09` saíram do repositório. Em vez de esconder essas filiais (o
   total do modo filial sumiria calado) ou mostrá-las como se fossem de outubro,
   `montar()` devolve `filiais_corte` e a tela exibe a faixa amarela *"As filiais
-  estão no fechamento de setembro"* (`#projecao-filiais-defasadas`). Para zerar a
-  pendência: re-extrair os dois no corte 10, criar `dre_filiais_*_2026_10.php`,
-  apagar os `_09` e tirá-los do `migrate.php` — a ordem de lá (negócio 09 →
-  filiais 09 → negócio 10 → filiais 10) existe porque num banco novo as filiais
-  de setembro precisam entrar antes de o corte andar. `testes/carga_dre.php`
+  estão no fechamento de setembro"* (`#projecao-filiais-defasadas`). A faixa continua
+  no código para o próximo corte: quando novembro fechar, o negócio anda e as
+  filiais ficam defasadas até serem re-extraídas — todas, nos onze negócios. `testes/carga_dre.php`
   recarrega o negócio do corte de cada arquivo de filial antes de prová-lo.
   **A carga de filiais apaga antes de gravar** (transação, por negócio e ano): ela
   omite o que é zero, e o upsert só sobrescreve o que está no arquivo — sem o
