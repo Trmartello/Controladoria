@@ -3311,6 +3311,41 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
   totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
   quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
+  **Lançamentos por trás de cada linha do quadro** (pedido do cliente, 2026-11-18:
+  "um expansor onde eu identifique o lançamento e a filial que referenciam o valor").
+  Abaixo de cada item ou evento, uma linha recolhida (`tr.linha-lancamentos`, um
+  `<details>`) com os lançamentos de **R$ 10 mil ou mais** que formam o valor — data,
+  filial, conta, histórico e complemento (documento e cliente), os 40 maiores e
+  quantos/quanto somam todos (`Oportunidades::lancamentos`). Item: pela conta, no ano.
+  Evento: pela LINHA da DRE nos meses fora do padrão, sem as contas que já são item.
+  Na filial, só os dela.
+  - A linha de cada lançamento sai da **estrutura da DRE Gerencial**: a reduzida está
+    no começo de `[Descrição Indicador]` (ex.: `3153 JUROS ATIVOS SOCIO` sob 11.1); o
+    mapa vai na carga (`linhas`). Não há campo que ligue os fatos à estrutura direto.
+  - "Lançamento" é o **documento**: a consulta agrupa negócio × filial × data ×
+    reduzida × histórico × complemento. O mesmo documento veio em duas extrações com
+    pisos diferentes (R$ 5 mil e R$ 100 mil) e somas diferentes — a carga deduplica
+    pela chave SEM o valor e fica com a fonte de menor piso (`dre_lancamento` não
+    pode ter a chave repetida; prova na seção 6).
+  - Só se extraiu o que o quadro usa: itens (todas as contas do catálogo, ano todo),
+    as 45 combinações negócio × linha × meses dos eventos (de negócio e de filial) e
+    os juros; a linha inteira a R$ 10 mil seriam 6.201 lançamentos, quase todos
+    recorrentes (salários, juros de capital de giro). Quando o corte andar e os
+    eventos mudarem, a lista de combinações muda junto.
+  **Juros recebidos — sócio (3153) e não sócio (3155)** (pedido do cliente: "acima de
+  R$ 30 mil é risco; quero saber onde tem e de que cliente se trata"). Seção
+  `#juros-recebidos` no fim do cartão de oportunidades (`Oportunidades::juros`): o
+  total do ano (de `juros_recebido`, todos os lançamentos, por filial e conta), os
+  documentos acima de R$ 30 mil com data, filial, cliente e valor — a soma deles é o
+  **risco** — e, recolhidos, os clientes que somam mais de R$ 30 mil (dos documentos
+  de R$ 5 mil ou mais). O cliente sai do complemento `<documento> <código>-<nome>`
+  (`Oportunidades::cliente`). Out/26: Agropecuárias R$ 10,9 mi de juros, risco R$ 3,5
+  mi em 45 documentos (Rafael Dalmina, filial 128, R$ 877 mil); Leite R$ 7,2 mi, quase
+  tudo a renegociação de Altair Lorenzett (filial 16, out) — que tem a PDD de R$ 5,6 mi
+  como contrapartida; Corporativo R$ 10,8 mi de risco. O risco **não** entra no saldo
+  do quadro: a linha 11.1 já aparece lá quando o mês sai do padrão. Negócios fora do
+  cadastro (20 — PERDCOMP, Syngenta/BASF; 18) ficam fora da carga.
+  Carga `database/lancamentos_2026_10.php` → `dre_lancamento` e `juros_recebido`.
   **Oportunidades do ESTOQUE, logo abaixo da DRE** (pedido do cliente, 2026-11-18:
   "totalize as oportunidades e traga logo abaixo do resultado líquido — o montante a
   ser trabalhado ao longo do ano, que pode ser desafiado no negócio"). Cartão

@@ -1136,6 +1136,48 @@ CREATE TABLE IF NOT EXISTS estoque_perda_mes (
   CONSTRAINT fk_epm_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- LANÇAMENTOS que explicam o quadro de oportunidades (pedido do cliente,
+-- 2026-11-18: "um expansor onde eu identifique o lançamento e a filial que
+-- referenciam o valor"): os de R$ 10 mil ou mais nas linhas 8, 9 e 11 e nas
+-- contas dos itens não recorrentes, e os juros recebidos (3153 sócio, 3155 não
+-- sócio) de R$ 5 mil ou mais. Sinal do Qlik: + despesa, − receita.
+-- Carga: database/lancamentos_*.php.
+CREATE TABLE IF NOT EXISTS dre_lancamento (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  negocio_id  INT NOT NULL,
+  ano         SMALLINT NOT NULL,
+  mes         TINYINT NOT NULL,
+  data        DATE NOT NULL,
+  cod_filial  VARCHAR(10) NOT NULL,
+  filial      VARCHAR(120) NOT NULL,
+  conta       VARCHAR(32) NOT NULL,
+  reduzida    VARCHAR(10) NOT NULL,
+  conta_nome  VARCHAR(120) NOT NULL,
+  linha_dre   VARCHAR(10) NULL,
+  historico   VARCHAR(120) NOT NULL,
+  complemento VARCHAR(255) NOT NULL,
+  valor       DECIMAL(18,2) NOT NULL,
+  KEY ix_lanc_linha (negocio_id, ano, linha_dre, mes),
+  KEY ix_lanc_conta (negocio_id, ano, conta),
+  KEY ix_lanc_reduzida (negocio_id, ano, reduzida),
+  CONSTRAINT fk_lanc_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Juros recebidos no ano (sem piso de valor), por filial e conta: o total contra
+-- o qual se mede a concentração dos lançamentos grandes.
+CREATE TABLE IF NOT EXISTS juros_recebido (
+  negocio_id  INT NOT NULL,
+  ano         SMALLINT NOT NULL,
+  mes_ate     TINYINT NOT NULL,
+  cod_filial  VARCHAR(10) NOT NULL,
+  filial      VARCHAR(120) NOT NULL,
+  reduzida    VARCHAR(10) NOT NULL,
+  total       DECIMAL(18,2) NOT NULL,
+  lancamentos INT NOT NULL,
+  PRIMARY KEY (negocio_id, ano, cod_filial, reduzida),
+  CONSTRAINT fk_juros_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Produtos parados: valor do estoque sem venda há mais de `dias_minimo` dias, por
 -- filial, na posição de `data_base`. filial_id NULL = nome do Qlik sem filial
 -- no cadastro (entra só no total do negócio).

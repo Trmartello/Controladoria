@@ -1021,6 +1021,14 @@ if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
     echo "migrate: estoque {$a['chave']} — {$r['negocios']} negócio(s), {$r['linhas']} série(s), {$r['parados']} parado(s).\n";
 }
 
+// ---- Lançamentos do quadro de oportunidades e juros recebidos (2026-11-18) ----
+$a = require __DIR__ . '/lancamentos_2026_10.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
+    $r = App\Services\CargaApoio::lancamentos($pdo, $a);
+    App\Services\CargaConteudo::marcar($pdo, $a['chave'], "Lançamentos {$a['ano']} até o mês {$a['mes_ate']}: {$r['lancamentos']} lançamento(s), {$r['juros']} total(is) de juros");
+    echo "migrate: lançamentos {$a['chave']} — {$r['lancamentos']} lançamento(s), {$r['juros']} total(is) de juros, {$r['ignorados']} de negócio fora do cadastro.\n";
+}
+
 // ---- Desafio do ano por negócio (pedido do cliente, 2026-11-18) ----
 // Referência decidida, só de leitura na Projeção. Sobrescreve o ano inteiro; a
 // marca por chave evita refazer a cada deploy, e um desafio novo vem com chave nova.

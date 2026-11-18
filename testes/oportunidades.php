@@ -290,5 +290,51 @@ prova('nada das cargas de estoque recusadas foi gravado',
     (int)Database::um('SELECT COUNT(*) n FROM estoque_perda_mes WHERE ano = 2099')['n'] === 0
     && (int)Database::um("SELECT COUNT(*) n FROM estoque_parado WHERE data_base = '2099-01-01'")['n'] === 0);
 
+// ── 6. Lançamentos do quadro e juros recebidos (pedido do cliente, 2026-11-18) ──
+echo "\n6. Lançamentos e juros recebidos\n";
+prova('o cliente sai do complemento: "<documento> <código>-<nome>"',
+    Oportunidades::cliente('000902500 0350688-ALTAIR LORENZETT') === ['0350688', 'ALTAIR LORENZETT']
+    && Oportunidades::cliente('REF RENEGOCIACAO 10/2026') === ['', 'REF RENEGOCIACAO 10/2026']);
+$dup = Database::um("SELECT COUNT(*) n FROM (SELECT negocio_id, data, cod_filial, reduzida, historico, complemento, COUNT(*) c
+    FROM dre_lancamento GROUP BY negocio_id, data, cod_filial, reduzida, historico, complemento HAVING c > 1) x")['n'];
+prova('cada documento entra uma vez (as fontes de pisos diferentes não se repetem)', (int)$dup === 0, (string)$dup);
+prova('todo lançamento tem a linha da DRE (mapa da estrutura ou catálogo de itens)',
+    (int)Database::um('SELECT COUNT(*) n FROM dre_lancamento WHERE linha_dre IS NULL')['n'] === 0);
+prova('juros ativos sócio e não sócio caem na linha 11.1 (Receitas Financeiras)',
+    array_column(Database::todos("SELECT DISTINCT linha_dre FROM dre_lancamento WHERE reduzida IN ('3153','3155')"), 'linha_dre') === ['11.1']);
+$ja = Oportunidades::juros($ids['8'], 2026);
+prova('Agropecuárias: juros sócio 8.936.188,37 e não sócio 1.930.724,11 (todos os lançamentos do ano)',
+    abs($ja['socio'] - 8936188.37) < 0.01 && abs($ja['nao_socio'] - 1930724.11) < 0.01, json_encode([$ja['socio'], $ja['nao_socio']]));
+prova('Agropecuárias: 45 documentos acima de R$ 30 mil somam o risco de 3.526.819,47, o maior primeiro',
+    count($ja['acima']) === 45 && abs($ja['risco'] - 3526819.47) < 0.01 && $ja['acima'][0]['cliente'] === 'RAFAEL DALMINA'
+    && $ja['acima'][0]['valor'] >= $ja['acima'][1]['valor'], json_encode([count($ja['acima']), $ja['risco']]));
+prova('Agropecuárias: o cliente que mais pagou juros é Rafael Dalmina (877.493,90 em 2 documentos, filial 128)',
+    $ja['clientes'][0]['cliente_cod'] === '0328398' && abs($ja['clientes'][0]['valor'] - 877493.90) < 0.01
+    && $ja['clientes'][0]['lancamentos'] === 2 && $ja['clientes'][0]['filiais'][0]['cod_filial'] === '128');
+prova('todo cliente listado passa de R$ 30 mil', !array_filter($ja['clientes'], static fn ($c) => $c['valor'] < 30000));
+$jl = Oportunidades::juros($ids['4'], 2026);
+prova('Leite: R$ 7,23 mi de risco em 3 documentos — a renegociação de outubro (Altair Lorenzett, filial 16)',
+    count($jl['acima']) === 3 && abs($jl['risco'] - 7229619.27) < 0.01 && $jl['clientes'][0]['cliente'] === 'ALTAIR LORENZETT');
+prova('Supermercados: nenhum juro acima de R$ 30 mil', ($js = Oportunidades::juros($ids['9'], 2026)) && !$js['acima'] && $js['risco'] == 0.0);
+$jf = Oportunidades::juros($ids['8'], 2026, '128');
+prova('na filial 128 (Cruzaltinha), só os dela: 4 documentos, 1.094.364,53',
+    count($jf['acima']) === 4 && abs($jf['risco'] - 1094364.53) < 0.01
+    && !array_filter($jf['acima'], static fn ($a) => $a['cod_filial'] !== '128'));
+$qa = Oportunidades::quadro($ids['8'], 2026, 10);
+$pdd = array_values(array_filter($qa['linhas'], static fn ($l) => $l['codigo'] === '3.11.03.01.01'))[0];
+prova('no quadro, a PDD das Agropecuárias abre os lançamentos dela (os 40 maiores, com filial e complemento)',
+    $pdd['lancamentos']['quantos'] > 40 && count($pdd['lancamentos']['itens']) === 40
+    && $pdd['lancamentos']['itens'][0]['cod_filial'] !== '' && abs($pdd['lancamentos']['itens'][0]['valor']) >= abs($pdd['lancamentos']['itens'][1]['valor']));
+$ev = array_values(array_filter($qa['linhas'], static fn ($l) => $l['tipo'] === 'EVENTO'));
+prova('no evento, só lançamentos da linha nos meses fora do padrão',
+    !array_filter($ev, static function ($l) {
+        $meses = array_column($l['meses'], 'mes');
+        return array_filter($l['lancamentos']['itens'], static fn ($i) => !in_array($i['mes'], $meses, true));
+    }));
+$x = require __DIR__ . '/../database/lancamentos_2026_10.php';
+$x['ano'] = 2099;
+prova('lançamento com data fora do ano é recusado', str_contains($recusa(fn () => CargaApoio::lancamentos($pdo, $x)), 'data ou mês inválido'));
+prova('e nada foi gravado', (int)Database::um('SELECT COUNT(*) n FROM dre_lancamento WHERE ano = 2099')['n'] === 0);
+
 echo "\n" . count($bad) . " falha(s), {$ok} verde(s).\n";
 exit($bad ? 1 : 0);

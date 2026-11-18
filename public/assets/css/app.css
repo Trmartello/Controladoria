@@ -4741,3 +4741,8 @@ details.expansor[open] > summary .expansor-resumo { display: none; }
 
 /* Oportunidades do estoque (abaixo da DRE): mês acima da média mensal. */
 .tabela-estoque td.estoque-acima { background: #e3f4e6; font-weight: 600; }
+
+/* Lançamentos por trás de cada linha do quadro de oportunidades. */
+tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
+.lancamentos-do-quadro > summary { cursor: pointer; color: #0b5d3b; padding: .15rem 0; }
+.tabela-lancamentos td, .tabela-lancamentos th { font-size: .8rem; padding: .15rem .35rem; }

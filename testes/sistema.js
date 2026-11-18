@@ -6646,6 +6646,70 @@ async function provasTributosComoEComoFica(page, largura) {
 }
 
 /**
+ * Os LANÇAMENTOS por trás de cada linha do quadro de oportunidades e os JUROS
+ * RECEBIDOS acima de R$ 30 mil, com a filial e o cliente (pedido do cliente,
+ * 2026-11-18).
+ */
+async function provasLancamentosEJuros(page, largura) {
+  const l = `[${largura}] Lançamentos e juros:`;
+  const escolher = async (txt) => {
+    await page.evaluate((x) => {
+      document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+      const s = document.querySelector('#sel-negocio');
+      s.value = x === 'CORP' ? 'CORP' : [...s.options].find((o) => o.textContent.trim().endsWith(x)).value;
+      s.dispatchEvent(new Event('change'));
+    }, txt);
+    await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('.painel-oportunidades')", 40000);
+  };
+  const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+  await escolher('- AGROPECUARIAS');
+  const a = await page.evaluate(() => {
+    document.querySelector('.painel-oportunidades').open = true;
+    const pdd = document.querySelector('tr.linha-lancamentos[data-lancamentos="ITEM:3.11.03.01.01"] details');
+    const fechada = pdd && !pdd.open;
+    if (pdd) pdd.open = true;
+    const primeira = pdd?.querySelector('.tabela-lancamentos > tbody > tr');
+    return {
+      linhas: document.querySelectorAll('.tabela-oportunidades-quadro tr[data-item], .tabela-oportunidades-quadro tr[data-pico]').length,
+      expansores: document.querySelectorAll('.tabela-oportunidades-quadro tr.linha-lancamentos').length,
+      fechada,
+      resumo: pdd?.querySelector('summary').textContent.replace(/\s+/g, ' ').trim() || '',
+      colunas: primeira ? primeira.querySelectorAll('td').length : 0,
+      filial: primeira?.querySelectorAll('td')[1]?.textContent.trim() || '',
+      risco: document.querySelector('#juros-recebidos [data-juros="risco"]')?.textContent.trim(),
+      acima: document.querySelectorAll('#juros-recebidos tr[data-juros-lancamento]').length,
+      maior: document.querySelector('#juros-recebidos tr[data-juros-lancamento]')?.textContent.replace(/\s+/g, ' ').trim() || '',
+      clientes: document.querySelectorAll('#juros-recebidos tr[data-juros-cliente]').length,
+      rolagem: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  t(`${l} cada linha do quadro tem o seu expansor de lançamentos, fechado até ser aberto`,
+    a.linhas > 0 && a.expansores === a.linhas && a.fechada, JSON.stringify([a.linhas, a.expansores, a.fechada]));
+  t(`${l} a PDD abre os lançamentos com data, filial, conta, histórico, complemento e valor`,
+    /^Lançamentos — \d+ de R\$ 10\.000 ou mais/.test(a.resumo) && a.colunas === 6 && /^\d+ — /.test(a.filial), JSON.stringify(a));
+  t(`${l} juros: 45 documentos acima de R$ 30 mil, risco 3.526.819, o maior é Rafael Dalmina (filial 128)`,
+    a.acima === 45 && num(a.risco) === 3526819 && /128 — .*RAFAEL DALMINA/.test(a.maior), JSON.stringify([a.acima, a.risco, a.maior]));
+  t(`${l} e os clientes que somam mais de R$ 30 mil no ano estão listados`, a.clientes === 49, String(a.clientes));
+  t(`${l} sem rolagem horizontal da página`, !a.rolagem);
+
+  await escolher('- LEITE');
+  const lt = await page.evaluate(() => ({
+    risco: document.querySelector('#juros-recebidos [data-juros="risco"]')?.textContent.trim(),
+    maior: document.querySelector('#juros-recebidos tr[data-juros-lancamento]')?.textContent.replace(/\s+/g, ' ').trim() || '',
+  }));
+  t(`${l} Leite: risco 7.229.619 — Altair Lorenzett, renegociação de outubro na filial 16`,
+    num(lt.risco) === 7229619 && /16 — .*ALTAIR LORENZETT/.test(lt.maior), JSON.stringify(lt));
+
+  await escolher('CORP');
+  const c = await page.evaluate(() => ({
+    risco: document.querySelector('#juros-recebidos tr[data-negocio-juros="total"] [data-juros="risco"]')?.textContent.trim(),
+    negocios: document.querySelectorAll('#juros-recebidos tr[data-negocio-juros]').length,
+  }));
+  t(`${l} Corporativo: juros por negócio, com o risco total de 10.790.912 (Agro, Leite e Pecuária)`,
+    num(c.risco.split('(')[0]) === 10790912 && c.negocios >= 4, JSON.stringify(c));
+}
+
+/**
  * O MONTANTE DE OPORTUNIDADES DO ESTOQUE logo abaixo da DRE (pedido do cliente,
  * 2026-11-18): perdas e acerto de estoque contra a média mensal, e os produtos
  * parados (Agropecuárias > 2 anos, Supermercados > 1 ano), totalizados — no
@@ -10684,6 +10748,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasTributosComoEComoFica(page, 'desktop');
   await provasFormato2027EEventos(page, 'desktop');
   await provasEstoque(page, 'desktop');
+  await provasLancamentosEJuros(page, 'desktop');
   await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
@@ -10759,6 +10824,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasDiretriz2027(pageM, 'celular');
   await provasApoioDesafio(pageM, 'celular');
   await provasEstoque(pageM, 'celular');
+  await provasLancamentosEJuros(pageM, 'celular');
   await provasVisaoDoAno(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
