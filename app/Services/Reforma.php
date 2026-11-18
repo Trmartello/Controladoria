@@ -17,9 +17,10 @@ namespace App\Services;
  *    posto não a destaca na revenda.
  *  - ATO COOPERATIVO: no regime específico das cooperativas (art. 271), opcional,
  *    a alíquota é ZERO no fornecimento do associado à cooperativa e da cooperativa
- *    ao associado — então a venda a SÓCIO não é base. A opção para valer em 2027
- *    se fazia de 01/09 a 31/10/2026; se a Copérdia NÃO optou, a venda a sócio
- *    também é tributada: a tela mostra esse cenário ao lado (`cbs_sem_regime`).
+ *    ao associado — então a venda a SÓCIO não é base. A Copérdia OPTOU pelo regime
+ *    para 2027 (confirmado pelo cliente em 2026-11-18; a opção se fazia de 01/09 a
+ *    31/10/2026). `cbs_sem_regime` continua calculado como referência na API, mas
+ *    saiu da tela: é um cenário que não se aplica.
  *  - REDUÇÕES: 60% para insumos agropecuários do Anexo IX (art. 138) — rações,
  *    sementes, fertilizantes, defensivos — e para produtos agropecuários in natura;
  *    zero para a cesta básica nacional. Por negócio, em `NEGOCIOS`, como HIPÓTESE
