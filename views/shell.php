@@ -320,6 +320,7 @@
   <script src="<?= versao_asset('/assets/js/secoes/cascata.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/projetos.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/investimentos.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/sinal.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/metas.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/projecao.js') ?>"></script>
   <script src="<?= versao_asset('/assets/js/secoes/relatorio.js') ?>"></script>

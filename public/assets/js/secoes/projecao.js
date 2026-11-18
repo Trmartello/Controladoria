@@ -302,7 +302,7 @@ const SecaoProjecao = {
           title="${Modal.esc(dica)}">${rotulo}</label>
         <div class="input-group input-group-sm premissa-campo">
           <input type="text" class="form-control celula-premissa" id="premissa-${chave}"
-            inputmode="decimal" autocomplete="off" data-chave="${chave}"
+            inputmode="decimal" data-sinal autocomplete="off" data-chave="${chave}"
             value="${digitadas[chave] === null || digitadas[chave] === undefined ? '' : String(digitadas[chave]).replace('.', ',')}"
             placeholder="—" ${editavel ? '' : 'disabled'}>
           <span class="input-group-text">%</span>
@@ -573,7 +573,7 @@ const SecaoProjecao = {
       let proposta;
       if (editavel) {
         proposta = `<input type="text" class="celula-valor celula-proposta${
-          l.proposta_origem === 'PERCENTUAL' ? ' celula-espelhada' : ''}" inputmode="decimal"
+          l.proposta_origem === 'PERCENTUAL' ? ' celula-espelhada' : ''}" inputmode="decimal" data-sinal
           autocomplete="off" value="${Modal.esc(this.textoLancado(l))}"
           placeholder="${this.moeda(l.projecao)}"
           data-conta="${Modal.esc(l.codigo)}"
@@ -603,7 +603,7 @@ const SecaoProjecao = {
       if (editavel) {
         reajuste = `<input type="text" class="celula-valor celula-reajuste${
           l.proposta_origem === 'VALOR' ? ' celula-espelhada' : ''}${
-          pior ? ' celula-pior' : ''}" inputmode="decimal"
+          pior ? ' celula-pior' : ''}" inputmode="decimal" data-sinal
           autocomplete="off" value="${Modal.esc(this.textoReajuste(l))}"
           placeholder="0,00%"
           data-conta="${Modal.esc(l.codigo)}"

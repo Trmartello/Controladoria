@@ -5827,6 +5827,111 @@ async function provasProjecaoPessoas(page, largura) {
 }
 
 /**
+ * A tecla de sinal no celular (pedido do cliente, 2026-11-18): o teclado
+ * numérico do iPhone não tem o "−", e quem lançava valor negativo pelo celular
+ * simplesmente não podia.
+ *
+ * No celular a prova faz o caminho inteiro, com TOQUE de verdade: foca a célula,
+ * digita, toca na tecla, e confere que (a) o foco não saiu do campo — um blur
+ * gravaria o valor pela metade —, (b) o texto virou negativo e voltou ao tocar
+ * de novo, e (c) o que o BANCO guarda é o valor negativo. No desktop a prova é
+ * o oposto: a tecla não pode aparecer, onde o teclado já tem o sinal.
+ */
+async function provasSinalNoCelular(page, largura) {
+  const l = `[${largura}] Tecla de sinal:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+
+  const negocioId = await page.evaluate(() => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return o.value;
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const SEL = '.tabela-projecao input.celula-proposta[data-conta="8.1"]';
+  const focar = () => page.evaluate((sel) => {
+    const i = document.querySelector(sel);
+    if (!i) return false;
+    i.scrollIntoView({ block: 'center' });
+    i.focus();
+    return true;
+  }, SEL);
+  const estado = () => page.evaluate((sel) => {
+    const b = document.getElementById('sinal-tecla');
+    const i = document.querySelector(sel);
+    const r = b && !b.hidden ? b.getBoundingClientRect() : null;
+    return {
+      toque: window.matchMedia('(pointer: coarse)').matches,
+      visivel: !!r && r.width > 0,
+      dentro: !!r && r.left >= 0 && r.top >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight,
+      valor: i ? i.value : null,
+      focado: !!i && document.activeElement === i,
+    };
+  }, SEL);
+
+  if (!(await focar())) {
+    t(`${l} a célula de proposta existe e é editável`, false);
+    return;
+  }
+  await new Promise((r) => setTimeout(r, 300));
+  const e0 = await estado();
+
+  if (!e0.toque) {
+    t(`${l} em tela SEM toque (teclado com sinal) a tecla não aparece`, !e0.visivel, JSON.stringify(e0));
+    await page.evaluate(() => document.activeElement.blur());
+    return;
+  }
+
+  t(`${l} em tela de toque a tecla aparece ao focar o campo, dentro da tela`,
+    e0.visivel && e0.dentro, JSON.stringify(e0));
+  if (!e0.visivel) {
+    // Sem a tecla não há o que tocar: registra a falha e segue, em vez de
+    // derrubar a bateria inteira numa exceção.
+    await page.evaluate(() => document.activeElement.blur());
+    return;
+  }
+
+  // Digita 500 sem sair do campo, e toca na tecla.
+  await page.evaluate((sel) => { document.querySelector(sel).value = '500'; }, SEL);
+  await page.tap('#sinal-tecla');
+  let e = await estado();
+  t(`${l} tocar na tecla deixa o valor negativo e o foco CONTINUA no campo`,
+    e.valor === '-500' && e.focado, JSON.stringify(e));
+  await page.tap('#sinal-tecla');
+  e = await estado();
+  t(`${l} tocar de novo volta ao positivo`, e.valor === '500' && e.focado, JSON.stringify(e));
+  await page.tap('#sinal-tecla');
+
+  // Sai do campo: é o blur que grava.
+  await page.evaluate(() => document.activeElement.blur());
+  await new Promise((r) => setTimeout(r, 1500));
+  const guardado = await page.evaluate(async ([n]) => {
+    const d = await App.api(`/api/projecao?negocio_id=${n}`);
+    const x = d.linhas.find((q) => q.codigo === '8.1');
+    return { proposta: x.proposta, origem: x.proposta_origem };
+  }, [negocioId]);
+  t(`${l} e o banco guarda o valor NEGATIVO lançado pelo celular`,
+    guardado.proposta === -500 && guardado.origem === 'VALOR', JSON.stringify(guardado));
+  const esconde = await estado();
+  t(`${l} sem foco a tecla some`, esconde.visivel === false, JSON.stringify(esconde));
+
+  // Devolve a massa: célula vazia vale a projeção.
+  await focar();
+  await page.evaluate((sel) => { const i = document.querySelector(sel); i.value = ''; i.blur(); }, SEL);
+  await new Promise((r) => setTimeout(r, 1500));
+  const limpo = await page.evaluate(async ([n]) => {
+    const d = await App.api(`/api/projecao?negocio_id=${n}`);
+    return d.linhas.find((q) => q.codigo === '8.1').proposta_origem;
+  }, [negocioId]);
+  t(`${l} a massa volta ao que era`, limpo === 'PROJECAO', limpo);
+}
+
+/**
  * IPCA, PIB e o CRESCIMENTO DESEJADO valem para o negócio inteiro e para todas
  * as filiais dele, com um valor para cada ANO (pedido do cliente, 2026-11-16:
  * "quando lançar o PIB e o IPCA, deve ficar fixo, gravado, registrado, ou seja,
@@ -9288,6 +9393,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoCorteDasFiliais(page, 'desktop');
   await provasProjecaoCorporativo(page, 'desktop');
   await provasProjecaoPessoas(page, 'desktop');
+  await provasSinalNoCelular(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
   await provasProjecaoNoDossie(page, 'desktop');
@@ -9351,6 +9457,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoCorteDasFiliais(pageM, 'celular');
   await provasProjecaoCorporativo(pageM, 'celular');
   await provasProjecaoPessoas(pageM, 'celular');
+  await provasSinalNoCelular(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
   await provasProjecaoNoDossie(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');
