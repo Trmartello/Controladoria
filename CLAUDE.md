@@ -3226,52 +3226,42 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     (`SKILL.md`, `references/qlik-ambiente.md`, `references/dre-e-contas.md`); a cópia
     da sessão é sincronizada do claude.ai, então o pacote `.skill` foi entregue ao
     cliente para subir lá.
-  **CBS de 2027 pela LC 214/2025** (decisão do cliente, 2026-11-18: "aplique a CBS
-  conforme a LC 214"), em `App\Services\Reforma`, conta MACRO por negócio:
-  alíquota **11,3%** (referência do TCU, Acórdão 2933/2026, pendente de resolução do
-  Senado; CBS −0,1 p.p. em 2027 pelo art. 347 + IBS de teste 0,1%); base = venda a
-  **não sócio** (a venda a sócio é ato cooperativo com alíquota zero no **regime
-  específico do art. 271**, opcional — **a Copérdia OPTOU** para 2027, confirmado
-  pelo cliente em 2026-11-18; a opção se fazia de 01/09 a 31/10/2026); redução de 60% para insumos do Anexo
-  IX e produtos in natura e mix por negócio em `Reforma::NEGOCIOS` (hipóteses
-  declaradas); crédito sobre o custo das vendas a não sócio, nulo no que se compra
-  do associado; combustíveis monofásicos (CBS zero no posto). Na **proposta**, a
-  linha 2.3 sem lançamento troca o PIS/COFINS de 2026 (que ela carrega pela
-  proporção da receita) pela CBS (`proposta_regra = 'CBS'`), igual na tela, nas
-  filiais e no Painel. No **desafio**, que é congelado, entra a linha "resultado
-  líquido com a CBS". Com o regime específico o efeito total é a favor (+R$ 7,2 mi
-  no resultado da proposta consolidada). Sem ele a venda a sócio viraria base e a
-  CBS explodiria (Pecuária ~R$ 40 mi, Cereais ~R$ 25 mi) — por isso a tela mostrou
-  esse cenário até a confirmação; depois dela saiu da tela (coluna "CBS sem o
-  regime" e o aviso em vermelho). `cbs_sem_regime` segue na API como referência:
-  não o devolva à tela sem o cliente pedir.
-  Provas: `testes/estrutura_dre_nova.php` (estrutura, identidades nos negócios e
-  nas filiais, líquido igual ao da DRE atual, conversão idempotente, CBS de mão,
-  troca na 2.3, desafio com CBS).
+  **CBS de 2027: entra pelo MESMO valor do PIS/COFINS** (decisão do cliente,
+  2026-11-18, revendo a estimativa do PR #95: "levando o PIS/COFINS de 7 milhões
+  onde estão os 2 milhões"). A Copérdia **optou pelo regime específico das
+  cooperativas** (art. 271 da LC 214, confirmado pelo cliente em 2026-11-18): a
+  venda a sócio segue fora da base. No planejamento a reforma muda a LINHA, não o
+  número: a proposta não troca nada na 2.3 (ela acompanha a receita e carrega o
+  PIS/COFINS de 2026 na proporção), e a CBS só aparece no formato novo.
+  - **Por que a estimativa saiu (não a reponha sem dado novo):** o PR #95 fazia, em
+    `Reforma::cbs`, débito (11,3% com reduções, sobre a venda a não sócio) MENOS
+    crédito sobre o custo, e trocava o PIS/COFINS da 2.3 por esse líquido. Mas o
+    PIS/COFINS da DRE é o débito BRUTO — os créditos de PIS/COFINS já estão no custo
+    (4.1) —, então a troca comparava bruto com líquido, contava o crédito duas vezes
+    e inflava a RL (Agropecuárias: CBS R$ 2,2 mi no lugar de PIS/COFINS R$ 7,1 mi;
+    +R$ 7,2 mi no consolidado). Estimar direito exige o crédito de PIS/COFINS de
+    2026 por negócio (para tirar do custo) e a CBS BRUTA na linha. Junto saíram a
+    linha "CBS estimada" e o "resultado com a CBS" do desafio, as colunas de CBS e
+    efeito do Corporativo e o quadro "efeito abaixo da RL".
   **Tributos na DRE: como é × como fica** (pedido do cliente, 2026-11-18, com um
   slide da controladoria de modelo: "trazer a estrutura oficial, como é e como
-  fica... isso vai impactar nos indicadores abaixo da Receita Líquida"). Cartão
-  `cartaoTributosDre` (expansor `tributos`, aberto por omissão) no negócio, na
-  filial e no Corporativo, com a estrutura OFICIAL nas duas versões: hoje (RB,
-  Deduções, 2.1, 2.2, 2.3 = ICMS e ISS + PIS/COFINS, RL) e no formato da reforma —
-  CBS como linha **informativa acima da Receita Bruta** (tributo por fora), RB sem
-  ela, 2.3 só ICMS e ISS. Amarelo (`.linha-muda`, #fde4a8, mais forte que o
-  amarelo-claro do "digite aqui") = linha que muda. Colunas: realizado, projeção
-  de 2026 e proposta. Em 2026 é só reclassificação (RL igual); na proposta a CBS
-  substitui o PIS/COFINS com outro valor e o quadro "efeito abaixo da Receita
-  Líquida" mostra a diferença até o resultado líquido e a margem.
+  fica"). Cartão `cartaoTributosDre` (expansor `tributos`, aberto por omissão) no
+  negócio, na filial e no Corporativo, com a estrutura OFICIAL nas duas versões:
+  hoje (RB, Deduções, 2.1, 2.2, 2.3 = ICMS e ISS + PIS/COFINS, RL) e no formato da
+  reforma — CBS como linha **informativa acima da Receita Bruta** (tributo por
+  fora), RB sem ela, 2.3 só ICMS e ISS. Amarelo (`.linha-muda`, #fde4a8, mais forte
+  que o amarelo-claro do "digite aqui") = linha que muda. Colunas: realizado,
+  projeção de 2026 e proposta — **reclassificação em todas**: RB e deduções caem o
+  mesmo valor e a RL não muda.
   - Conta em `Reforma::comoEComoFica` (soma em `somarComoEComoFica`). PIS/COFINS do
-    realizado = carga de tributos quando no mesmo corte; o resto do ano e a
-    proposta, pela taxa de 2026 sobre a 1.1; na filial, sempre pela taxa (corte −1).
-  - Na proposta com a CBS aplicada a TABELA já é o "como fica" (a 2.3 traz ICMS +
-    CBS); o "como é" desfaz a troca. Com a 2.3 lançada à mão a tabela segue na lei
-    atual e o cartão avisa (`.aviso-tributos`). No modo por filial a 2.3 do negócio
-    carrega a soma das trocas das filiais, para não aplicar a CBS duas vezes.
+    realizado = carga de tributos quando no mesmo corte; o resto do ano pela taxa de
+    2026 sobre a 1.1; na proposta, o da projeção na proporção da 1.1 (o que a 2.3
+    carrega); na filial, sempre pela taxa do negócio (corte −1).
   - O realizado jan–out do Corporativo reproduz o slide (RB 2.992,6 · deduções
     106,9 · ICMS e ISS 44,0 · PIS/COFINS 15,6 · RL 2.885,8 → CBS 15,6 · RB 2.977,1 ·
     deduções 91,3). Provas: `testes/estrutura_dre_nova.php` (exemplo de mão do
-    cliente, o slide, identidades da proposta, soma do Corporativo) e
-    `provasTributosComoEComoFica`.
+    cliente, com a proposta crescendo 10%; o slide; CBS = PIS/COFINS da proposta;
+    2.3 sem troca; soma do Corporativo) e `provasTributosComoEComoFica`.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas

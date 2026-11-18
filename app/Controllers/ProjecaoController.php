@@ -118,16 +118,11 @@ class ProjecaoController
         // base (último mês) — o Corporativo não planeja, só totaliza.
         $pessoasSoma = ['por_ano' => [], 'base' => null];
         $propostas = [];
-        $cbsPorNegocio = [];
         $tributosDre = [];
         foreach ($negocios as $n) {
             $m = $this->montar((int)$n['id'], $ano, $corte);
             $tributosDre[(int)$n['id']] = $m['tributos_dre'];
             $propostas[(int)$n['id']] = self::resumoDaProposta($m['linhas']);
-            $cbsPorNegocio[(int)$n['id']] = [
-                'desafio' => $m['desafio']['desafio']['cbs'] ?? null,
-                'proposta' => $m['desafio']['proposta']['cbs'] ?? null,
-            ];
             foreach ($m['linhas'] as $l) {
                 $c = $l['codigo'];
                 if (!isset($soma[$c])) {
@@ -200,7 +195,7 @@ class ProjecaoController
             // A visão do ano por negócio e o total — o mesmo quadro do Painel Balanço.
             'visao_ano_negocios' => $this->visaoDoAno(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
             'visao_ano_total' => $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
-            'desafio' => $this->desafioCorporativo($ano + 1, $propostas, $cbsPorNegocio),
+            'desafio' => $this->desafioCorporativo($ano + 1, $propostas),
             'tributos_dre' => Reforma::somarComoEComoFica($tributosDre),
             'oportunidades_negocios' => Oportunidades::itens(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano),
             'linhas' => array_values($soma),
@@ -280,18 +275,15 @@ class ProjecaoController
         // A proposta de CADA filial, sempre — ela serve a duas perguntas: no
         // modo filial é ela que forma o total do negócio; no modo negócio é
         // ela que diz quanto já foi distribuído.
-        // A reforma tributária (LC 214): a linha 2.3 troca o PIS/COFINS de 2026
-        // pela CBS de 2027, com a mistura sócio × não sócio do negócio — a mesma
-        // nas filiais, que não têm a sua.
-        $codNegocio = (string)(Database::um('SELECT cod_negocio FROM negocio WHERE id = ?', [$negocioId])['cod_negocio'] ?? '');
-        $tributacao = ['cod' => $codNegocio, 'trib' => Oportunidades::tributos([$negocioId], $ano)[$negocioId] ?? null];
+        // Os tributos de 2026 do negócio (PIS/COFINS, mistura sócio × não sócio):
+        // só para o "como é × como fica" — a filial usa a taxa do negócio.
+        $tributacao = Oportunidades::tributos([$negocioId], $ano)[$negocioId] ?? null;
         $porFilial = [];
         foreach ($filiais as $f) {
             $lf = Projecao::aplicar(
                 $this->linhasDaFilial((int)$f['id'], $ano, $corte),
                 $this->lancados($projId, (int)$f['id']),
-                $cresc,
-                $tributacao
+                $cresc
             );
             $porFilial[(int)$f['id']] = $lf;
         }
@@ -302,26 +294,7 @@ class ProjecaoController
 
         $linhas = $modo === 'FILIAL' && $filiais
             ? Projecao::somarFiliais($linhas, $propostasFilial)
-            : Projecao::aplicar($linhas, $this->lancados($projId), $cresc, $tributacao);
-        // No modo por filial a 2.3 do negócio é a SOMA das filiais, cada uma já
-        // com a troca do PIS/COFINS pela CBS: o negócio carrega a soma das trocas,
-        // para o "como é × como fica" não aplicar a CBS uma segunda vez.
-        if ($modo === 'FILIAL' && $filiais) {
-            $trocas = array_values(array_filter(array_map(
-                static fn ($ls) => array_column($ls, null, 'codigo')['2.3']['cbs'] ?? null,
-                $porFilial
-            )));
-            if ($trocas) {
-                foreach ($linhas as $i => $l) {
-                    if ($l['codigo'] === '2.3') {
-                        $linhas[$i]['cbs'] = [
-                            'pis_cofins' => array_sum(array_column($trocas, 'pis_cofins')),
-                            'cbs' => array_sum(array_column($trocas, 'cbs')),
-                        ];
-                    }
-                }
-            }
-        }
+            : Projecao::aplicar($linhas, $this->lancados($projId), $cresc);
         // Quanto das filiais já está lançado, conta a conta: é o que permite à
         // tela mostrar o resíduo a distribuir sem travar nada — distribuir não
         // é requisito para salvar (decisão do cliente, 2026-11-05).
@@ -446,17 +419,6 @@ class ProjecaoController
         $trib = Oportunidades::tributos([$negocioId], $anoPlan - 1)[$negocioId] ?? null;
         $desafio['pis_cofins'] = self::pisCofinsSobre($desafio['receita_bruta'], $trib);
         $prop['pis_cofins'] = self::pisCofinsSobre($prop['receita_bruta'], $trib);
-        // A CBS de 2027 (LC 214) sobre o desafio e sobre a proposta. No desafio o
-        // custo é estimado pela relação custo/ROL de 2026; na proposta, é a linha 4.1.
-        $cod = (string)(Database::um('SELECT cod_negocio FROM negocio WHERE id = ?', [$negocioId])['cod_negocio'] ?? '');
-        $l = array_column($linhas, null, 'codigo');
-        $custoRol = isset($l['3'], $l['4']) && (float)$l['3']['projecao'] != 0.0 ? -(float)$l['4']['projecao'] / (float)$l['3']['projecao'] : 0.0;
-        $desafio['cbs'] = Reforma::cbs($cod, $trib, $desafio['receita_bruta'], $desafio['receita_liquida'] * $custoRol);
-        $prop['cbs'] = Reforma::cbs($cod, $trib, $prop['receita_bruta'], -(float)($l['4']['proposta'] ?? 0));
-        if ($desafio['cbs']) {
-            $desafio['resultado_com_cbs'] = $desafio['resultado'] + $desafio['cbs']['impacto'];
-            $desafio['margem_com_cbs'] = $desafio['receita_liquida'] ? $desafio['resultado_com_cbs'] / $desafio['receita_liquida'] * 100 : null;
-        }
         return $d + ['desafio' => $desafio, 'proposta' => $prop, 'tributos' => $trib,
             'escada' => self::escadaDoDesafio($desafio, $linhas)];
     }
@@ -532,7 +494,7 @@ class ProjecaoController
      *
      * @param array<int,array> $propostas resumo da proposta de cada negócio consolidado
      */
-    private function desafioCorporativo(int $anoPlan, array $propostas, array $cbsPorNegocio = []): ?array
+    private function desafioCorporativo(int $anoPlan, array $propostas): ?array
     {
         $d = $this->desafioDoAno($anoPlan);
         if (!$d) {
@@ -546,7 +508,6 @@ class ProjecaoController
         $tribs = Oportunidades::tributos(array_keys($propostas), $anoPlan - 1);
         $tribTotal = ['venda_socio' => 0.0, 'venda_nao_socio' => 0.0, 'pis' => 0.0, 'cofins' => 0.0, 'icms' => 0.0];
         $negocios = [];
-        $cbsTotal = [];
         foreach ($propostas as $id => $p) {
             $desafio = $d['por_negocio'][$id] ?? null;
             foreach (array_keys($zero) as $k) {
@@ -569,13 +530,7 @@ class ProjecaoController
                     $tribTotal[$k] += $trib[$k];
                 }
             }
-            $cbs = $cbsPorNegocio[$id] ?? ['desafio' => null, 'proposta' => null];
-            foreach (['desafio', 'proposta'] as $lado) {
-                foreach (['pis_cofins', 'cbs', 'impacto', 'cbs_sem_regime', 'impacto_sem_regime'] as $k) {
-                    $cbsTotal[$lado][$k] = ($cbsTotal[$lado][$k] ?? 0.0) + (float)($cbs[$lado][$k] ?? 0);
-                }
-            }
-            $negocios[$id] = ['desafio' => $desafio, 'proposta' => $p, 'tributos' => $trib, 'cbs' => $cbs];
+            $negocios[$id] = ['desafio' => $desafio, 'proposta' => $p, 'tributos' => $trib];
         }
         $vendas = $tribTotal['venda_socio'] + $tribTotal['venda_nao_socio'];
         $tribTotal['parte_nao_socio'] = $vendas > 0 ? $tribTotal['venda_nao_socio'] / $vendas : null;
@@ -601,9 +556,7 @@ class ProjecaoController
                         ? $totProposta['resultado_antes_rateios'] / $totProposta['receita_liquida'] * 100 : null,
                 ],
                 'tributos' => $tribTotal,
-                'cbs' => $cbsTotal,
             ],
-            'reforma' => ['aliquota' => Reforma::ALIQUOTA, 'fonte' => Reforma::FONTE],
         ];
     }
 

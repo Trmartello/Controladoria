@@ -6493,7 +6493,7 @@ async function provasApoioDesafio(page, largura) {
       l5: Math.round(linha('5')), l13: Math.round(linha('15')), l14: Math.round(linha('14')), l16: Math.round(linha('16')),
       lbProp: num(td('lucro_bruto')[2]), rnProp: num(td('resultado_negocio')[2]), ratProp: num(td('rateios_negocio')[2]),
       admProp: num(td('rateios_adm')[2]),
-      cbs: td('cbs'), comCbs: td('resultado_com_cbs'), notaCbs: document.querySelector('#desafio-cbs')?.textContent || '',
+      pisCofins: td('pis_cofins'), notaTrib: document.querySelector('#desafio-tributos')?.textContent.replace(/\s+/g, ' ') || '',
       pdd: !!document.querySelector('.tabela-nao-recorrentes tr[data-conta-contabil="3.11.03.01.01"]'),
       oport: num(document.querySelector('[data-oport="oportunidade"]')?.textContent),
       risco: document.querySelector('[data-oport="risco"]')?.textContent.trim(),
@@ -6506,19 +6506,19 @@ async function provasApoioDesafio(page, largura) {
   t(`${l} o cartão se chama "Desafio 2027 para o negócio"`, /^Desafio \d{4} para o negócio$/.test(n.titulo || ''), n.titulo);
   t(`${l} a escada da DRE: faturamento, receita líquida, margem bruta, despesas, resultado do negócio, rateios, resultado líquido e margem líquida`,
     ['receita_bruta', 'receita_liquida', 'lucro_bruto', 'margem_bruta', 'despesas', 'resultado_antes_rateios', 'rateios_negocio',
-      'resultado_negocio', 'margem_negocio', 'rateios_adm', 'resultado', 'margem', 'cbs', 'resultado_com_cbs']
+      'resultado_negocio', 'margem_negocio', 'rateios_adm', 'resultado', 'margem', 'pis_cofins']
       .every((k) => n.degraus.includes(k)), n.degraus.join(','));
   t(`${l} os degraus do meio do desafio vêm marcados como estimados (≈)`,
     /^≈/.test(n.lb[1]) && /^≈/.test(n.rn[1]) && /^≈/.test(n.rat[1]), `${n.lb[1]} | ${n.rn[1]} | ${n.rat[1]}`);
   t(`${l} e a coluna da proposta é a DRE dela na estrutura nova (linhas 5, 14, 15 e 16)`,
     Math.abs(n.lbProp - n.l5) <= 1 && Math.abs(n.rnProp - n.l13) <= 1 && Math.abs(n.ratProp - n.l14) <= 1 && Math.abs(n.admProp - n.l16) <= 1,
     JSON.stringify([n.lbProp, n.l5, n.rnProp, n.l13, n.ratProp, n.l14, n.admProp, n.l16]));
-  // A Copérdia optou pelo regime específico (confirmado em 2026-11-18): a nota o
-  // diz, e o cenário "sem o regime" não aparece mais.
-  t(`${l} a CBS de 2027 (LC 214) aparece no desafio e na proposta, com o regime específico pelo qual a Copérdia optou`,
-    /\d/.test(n.cbs[1] || '') && /\d/.test(n.cbs[2] || '') && /\d/.test(n.comCbs[1] || '')
-      && /LC 214/.test(n.notaCbs) && /art\. 271/.test(n.notaCbs) && /Copérdia optou/.test(n.notaCbs.replace(/\s+/g, ' '))
-      && !/não optou|sem o regime/i.test(n.notaCbs), n.notaCbs.slice(0, 160));
+  // A CBS entra pelo MESMO valor do PIS/COFINS (decisão do cliente, 2026-11-18):
+  // o desafio não tem mais a CBS estimada nem o "resultado com a CBS".
+  t(`${l} o desafio mostra o PIS/COFINS (que vira a CBS pelo mesmo valor) e não tem mais a CBS estimada`,
+    /\d/.test(n.pisCofins[1] || '') && /\d/.test(n.pisCofins[2] || '')
+      && !n.degraus.includes('cbs') && !n.degraus.includes('resultado_com_cbs') && /pelo mesmo valor/.test(n.notaTrib),
+    `${n.degraus.join(',')} · ${n.notaTrib.slice(0, 120)}`);
   t(`${l} oportunidades: a PDD da Agropecuária aparece, e a oportunidade soma R$ 8.295.910`,
     n.pdd && n.oport === 8295910 && /675\.108/.test(n.risco || ''), `${n.oport} / ${n.risco}`);
   t(`${l} e há meses fora do padrão nas despesas`, n.picos > 0, String(n.picos));
@@ -6545,8 +6545,9 @@ async function provasApoioDesafio(page, largura) {
   t(`${l} e a margem do negócio (antes dos rateios) da proposta no total`, /%$/.test(c.margemNegocio || ''), c.margemNegocio);
   t(`${l} PIS e COFINS de 2026 destacados: R$ 2.773.788 e R$ 12.783.362, 0,52% do faturamento`,
     c.trib[4] === '2.773.788' && c.trib[5] === '12.783.362' && c.trib[6] === '0,52%', c.trib.join(' | '));
-  t(`${l} a Copérdia optou pelo regime específico: a tabela não tem mais a coluna "CBS sem o regime", e a nota o diz`,
-    !c.cabTrib.some((h) => /sem o regime/i.test(h)) && /optou pelo regime específico/.test(c.notaTrib),
+  t(`${l} a Copérdia optou pelo regime específico, e a CBS do desafio é o PIS/COFINS sobre ele (sem "efeito" nem "sem o regime")`,
+    !c.cabTrib.some((h) => /sem o regime|Efeito/i.test(h)) && /= PIS \+ COFINS sobre o desafio/.test(c.cabTrib.slice(-1)[0] || '')
+      && /optou pelo regime específico/.test(c.notaTrib) && /pelo mesmo valor/.test(c.notaTrib),
     `${c.cabTrib.slice(-2).join(' | ')} · ${c.notaTrib.slice(0, 100)}`);
   t(`${l} oportunidades por negócio (10) com o total`, c.oportNegocios === 10 && /\+/.test(c.oportTotal[1] || ''), c.oportTotal.join(' | '));
 }
@@ -6558,9 +6559,11 @@ async function provasApoioDesafio(page, largura) {
  *  - no Corporativo, o realizado jan–out reproduz o slide (RB 2.992,6, deduções
  *    106,9, ICMS e ISS 44,0, PIS/COFINS 15,6, RL 2.885,8 → CBS 15,6, RB 2.977,1,
  *    deduções 91,3, a mesma RL) e as linhas que mudam estão em amarelo;
- *  - a RL "como fica" da proposta é a da tabela (que já tem a CBS);
- *  - num negócio, lançar a 2.3 à mão avisa que a tabela seguiu na lei atual e o
- *    cartão se repinta sem recarregar; apagar devolve.
+ *  - na proposta a CBS é o PIS/COFINS dela, pelo MESMO valor (decisão do
+ *    cliente, 2026-11-18: "levando o PIS/COFINS de 7 milhões onde estão os 2
+ *    milhões"), e a RL é a da tabela nos dois lados;
+ *  - num negócio, crescer a receita 10% (o caso do print: Agropecuárias) leva a
+ *    CBS junto — projeção × 1,10 — e o cartão se repinta sem recarregar.
  */
 async function provasTributosComoEComoFica(page, largura) {
   const l = `[${largura}] Como é × como fica:`;
@@ -6588,10 +6591,12 @@ async function provasTributosComoEComoFica(page, largura) {
         fundo: getComputedStyle(cel('tributos-como-e', 'pis_cofins', 'realizado')).backgroundColor,
       },
       rlFicaProp: val('tributos-como-fica', 'receita_liquida', 'proposta'),
+      rlEProp: val('tributos-como-e', 'receita_liquida', 'proposta'),
       rlTabela: Math.round(d.linhas.find((x) => x.codigo === '3').proposta),
-      liqFica: n(document.querySelector('#tributos-abaixo tr[data-linha="resultado"] td:nth-child(3)')?.textContent),
-      liqTabela: Math.round(d.linhas.find((x) => x.codigo === '18').proposta),
-      aviso: [...document.querySelectorAll('.painel-tributos .aviso-tributos')].map((x) => x.textContent.trim()).join(' | '),
+      cbsProp: val('tributos-como-fica', 'tributo', 'proposta'),
+      pcProp: val('tributos-como-e', 'pis_cofins', 'proposta'),
+      pcProj: val('tributos-como-e', 'pis_cofins', 'projecao'),
+      abaixo: !!document.querySelector('#tributos-abaixo'),
     };
   });
   const c = await ler();
@@ -6604,11 +6609,12 @@ async function provasTributosComoEComoFica(page, largura) {
   t(`${l} amarelo nas linhas que mudam (PIS/COFINS, CBS, RB), e não na RL do realizado (não muda)`,
     c.amarelo.pis && c.amarelo.cbs && c.amarelo.rb && !c.amarelo.rlReal && c.amarelo.fundo === 'rgb(253, 228, 168)',
     JSON.stringify(c.amarelo));
-  t(`${l} a RL e o resultado líquido "como fica" da proposta são os da tabela (que já tem a CBS)`,
-    Math.abs(c.rlFicaProp - c.rlTabela) <= 1 && Math.abs(c.liqFica - c.liqTabela) <= 1,
-    JSON.stringify([c.rlFicaProp, c.rlTabela, c.liqFica, c.liqTabela]));
+  t(`${l} proposta: a CBS é o PIS/COFINS dela (mesmo valor) e a RL "como é" = "como fica" = a da tabela`,
+    c.cbsProp > 0 && Math.abs(c.cbsProp - c.pcProp) <= 1 && Math.abs(c.rlFicaProp - c.rlTabela) <= 1
+    && Math.abs(c.rlEProp - c.rlTabela) <= 1 && !c.abaixo,
+    JSON.stringify([c.cbsProp, c.pcProp, c.rlFicaProp, c.rlEProp, c.rlTabela, c.abaixo]));
 
-  // Num negócio: a 2.3 lançada à mão sai da regra da CBS.
+  // Num negócio: crescer a receita leva o PIS/COFINS — e a CBS — junto.
   await page.evaluate(() => {
     document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
     const s = document.querySelector('#sel-negocio');
@@ -6616,24 +6622,25 @@ async function provasTributosComoEComoFica(page, largura) {
     s.dispatchEvent(new Event('change'));
   });
   await esperar(page, "document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith('- AGROPECUARIAS') && !!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('.painel-tributos')", 30000);
-  const antes = await ler();
-  t(`${l} no negócio, sem lançamento na 2.3: a CBS está na tabela, sem aviso`,
-    antes.aviso === '' && Math.abs(antes.rlFicaProp - antes.rlTabela) <= 1, JSON.stringify([antes.aviso, antes.rlFicaProp, antes.rlTabela]));
   const digitar = async (v) => {
     await page.evaluate((x) => {
-      const i = document.querySelector('[data-conta="2.3"] .celula-proposta');
+      const i = document.querySelector('[data-conta="1.1"] .celula-proposta');
       i.focus(); i.value = x; i.blur();
     }, v);
     await new Promise((r) => setTimeout(r, 1500));
     return ler();
   };
-  const mao = await digitar('-1000000');
-  t(`${l} 2.3 lançada à mão: o cartão se repinta e avisa que a tabela seguiu na lei atual (a RL "como fica" já não é a da tabela)`,
-    /lançada à mão/.test(mao.aviso) && Math.abs(mao.rlFicaProp - mao.rlTabela) > 1, JSON.stringify([mao.aviso, mao.rlFicaProp, mao.rlTabela]));
+  const antes = await ler();
+  const dez = await digitar('10%');
+  t(`${l} Agropecuárias com a receita +10%: CBS = PIS/COFINS da proposta = projeção × 1,10, e o cartão se repinta`,
+    Math.abs(dez.cbsProp - dez.pcProp) <= 1 && Math.abs(dez.cbsProp - dez.pcProj * 1.1) <= 2 && Math.abs(dez.cbsProp - antes.cbsProp) > 1,
+    JSON.stringify([dez.cbsProp, dez.pcProp, dez.pcProj, antes.cbsProp]));
+  t(`${l} e a RL da proposta é a mesma nos dois formatos e na tabela`,
+    Math.abs(dez.rlFicaProp - dez.rlTabela) <= 1 && Math.abs(dez.rlEProp - dez.rlTabela) <= 1,
+    JSON.stringify([dez.rlFicaProp, dez.rlEProp, dez.rlTabela]));
   const volta = await digitar('');
-  t(`${l} apagar o lançamento devolve a CBS à tabela`,
-    volta.aviso === '' && Math.abs(volta.rlFicaProp - volta.rlTabela) <= 1 && Math.abs(volta.rlTabela - antes.rlTabela) <= 1,
-    JSON.stringify([volta.aviso, volta.rlTabela, antes.rlTabela]));
+  t(`${l} apagar o lançamento devolve a proposta`, Math.abs(volta.rlTabela - antes.rlTabela) <= 1 && Math.abs(volta.cbsProp - antes.cbsProp) <= 1,
+    JSON.stringify([volta.rlTabela, antes.rlTabela]));
 }
 
 /**
