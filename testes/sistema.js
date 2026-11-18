@@ -5814,7 +5814,7 @@ async function provasProjecaoPessoas(page, largura) {
   // Recusas.
   const alto = await lancar(101, anoP);
   const texto = await lancar('abc', anoP);
-  t(`${l} recusa fora de ±100% e o que não é número`,
+  t(`${l} recusa fora de 0–100% e o que não é número`,
     /fora de faixa/.test(alto) && /número/.test(texto), `${alto} | ${texto}`);
   const naFilial = await page.evaluate(async ([n]) => {
     const d = await App.api(`/api/projecao?negocio_id=${n}`);
@@ -6225,6 +6225,80 @@ async function provasCrescimentoPorPremissa(page, largura) {
 }
 
 /**
+ * Percentual de crescimento é POSITIVO (pedido do cliente, 2026-11-18): IPCA,
+ * PIB, crescimento desejado e crescimento das despesas com pessoas aceitam de
+ * 0% a 100%. O zero vale — é a decisão de não crescer —, o negativo não, e a
+ * recusa diz o porquê. A tecla "−/+" do celular não aparece nesses campos: ela
+ * existe para quem precisa do sinal, e aqui o sinal é recusado.
+ *
+ * Roda dentro de `comPremissasNeutras`: lança e apaga premissas do negócio de prova.
+ */
+async function provasCrescimentoPositivo(page, largura) {
+  const l = `[${largura}] Crescimento positivo:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+
+  const negocioId = await page.evaluate(() => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return o.value;
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const tenta = (chave, valor) => page.evaluate(async ([n, c, v]) => {
+    const d = await App.api(`/api/projecao?negocio_id=${n}`);
+    try {
+      await App.api('/api/projecao/premissa', { negocio_id: Number(n), chave: c, valor: v, ano: d.ano_planejamento });
+      return 'OK';
+    } catch (e) { return e.message; }
+  }, [negocioId, chave, valor]);
+  const guardado = (chave) => page.evaluate(async ([n, c]) => {
+    const d = await App.api(`/api/projecao?negocio_id=${n}`);
+    return (d.premissas_por_ano[d.ano_planejamento] || {})[c] ?? null;
+  }, [negocioId, chave]);
+
+  for (const chave of ['IPCA', 'PIB', 'CRESCIMENTO', 'PESSOAS']) {
+    const neg = await tenta(chave, -1);
+    const pouco = await tenta(chave, -0.01);
+    t(`${l} ${chave}: negativo (−1 e −0,01) é recusado, dizendo que deve ser positivo`,
+      /positivo/.test(neg) && /positivo/.test(pouco), `${neg.slice(0, 60)} | ${pouco.slice(0, 30)}`);
+    const zero = await tenta(chave, 0);
+    const cem = await tenta(chave, 100);
+    const acima = await tenta(chave, 100.5);
+    t(`${l} ${chave}: 0% e 100% valem, 100,5% não`,
+      zero === 'OK' && cem === 'OK' && /fora de faixa/.test(acima), `${zero} | ${cem} | ${acima.slice(0, 30)}`);
+    await tenta(chave, 7);
+    await tenta(chave, -3);
+    t(`${l} ${chave}: o recusado não sobrescreve o valor gravado (continua 7)`, (await guardado(chave)) === 7, String(await guardado(chave)));
+    await tenta(chave, null);
+  }
+
+  // A tela: digitar negativo é recusado, com a explicação, e o campo volta.
+  const tela = await page.evaluate(async () => {
+    const i = document.querySelector('#premissa-IPCA');
+    i.focus(); i.value = '-5'; i.blur();
+    await new Promise((r) => setTimeout(r, 1000));
+    const aviso = document.getElementById('projecao-aviso');
+    return {
+      valor: document.querySelector('#premissa-IPCA').value,
+      aviso: aviso && !aviso.classList.contains('d-none') ? aviso.textContent.trim() : '',
+      sinal: document.querySelector('#premissa-IPCA').hasAttribute('data-sinal'),
+    };
+  });
+  t(`${l} digitar −5 no IPCA pela tela é recusado e o campo volta ao que era`,
+    tela.valor === '' && /positivo/.test(tela.aviso), JSON.stringify(tela));
+  t(`${l} e o campo de premissa não oferece a tecla de sinal (a proposta, sim)`,
+    tela.sinal === false && await page.evaluate(() => !!document.querySelector('.celula-proposta[data-sinal]')),
+    JSON.stringify(tela));
+  const nada = await guardado('IPCA');
+  t(`${l} e nada foi gravado`, nada === null, String(nada));
+}
+
+/**
  * IPCA, PIB e o CRESCIMENTO DESEJADO valem para o negócio inteiro e para todas
  * as filiais dele, com um valor para cada ANO (pedido do cliente, 2026-11-16:
  * "quando lançar o PIB e o IPCA, deve ficar fixo, gravado, registrado, ou seja,
@@ -6407,7 +6481,7 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
       { negocio_id: Number(n), chave: 'CRESCIMENTO', valor }).then(() => 'ACEITOU').catch((e) => e.message);
     return { alto: await tenta(101), texto: await tenta('abc') };
   }, negocioId);
-  t(`${l} o crescimento desejado recusa percentual fora de ±100%`, /fora de faixa/.test(invalidos.alto), invalidos.alto);
+  t(`${l} o crescimento desejado recusa percentual fora de 0–100%`, /fora de faixa/.test(invalidos.alto), invalidos.alto);
   t(`${l} e recusa o que não é número`, /número/.test(invalidos.texto), invalidos.texto);
 
   // ── Um valor para cada ANO ────────────────────────────────────────────────
@@ -9727,6 +9801,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoCorporativo(page, 'desktop');
   await provasProjecaoPessoas(page, 'desktop');
   await comPremissasNeutras(page, () => provasCrescimentoPorPremissa(page, 'desktop'));
+  await comPremissasNeutras(page, () => provasCrescimentoPositivo(page, 'desktop'));
   await provasSinalNoCelular(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
@@ -9793,6 +9868,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoCorporativo(pageM, 'celular');
   await provasProjecaoPessoas(pageM, 'celular');
   await comPremissasNeutras(pageM, () => provasCrescimentoPorPremissa(pageM, 'celular'));
+  await comPremissasNeutras(pageM, () => provasCrescimentoPositivo(pageM, 'celular'));
   await provasSinalNoCelular(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');

@@ -2857,6 +2857,16 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   não o devolveu. **A tabela antiga fica como está, inerte**: nenhuma consulta a
   lê, e uma linha por filial gravada antes de 2026-11-16 continua lá, para quem
   quiser recuperar um valor. Não reintroduza a leitura dela.
+  **Percentual de crescimento é POSITIVO** (pedido do cliente, 2026-11-18): IPCA,
+  PIB, crescimento desejado e crescimento das despesas com pessoas aceitam de
+  **0% a 100%** (`gravarPremissa`). O zero vale — é a decisão de não crescer —,
+  o negativo é recusado com "deve ser positivo", pela API e pela tela (que
+  recusa antes de enviar e devolve o campo). Esses campos **não** têm a tecla
+  "−/+" do celular: ela existe onde o sinal é aceito. Fica de fora a coluna
+  **Reajuste** por linha, que continua aceitando negativo — reduzir uma linha é
+  decisão legítima, e é outro campo. Premissa negativa que JÁ estava gravada
+  continua sendo lida como está (`crescimentosPadrao` a soma), e some quando
+  alguém a regrava. Provas: `provasCrescimentoPositivo`.
   **As premissas MOVEM a proposta** (pedido do cliente, 2026-11-18 — a pergunta
   "registro ou motor?" que estava em aberto foi respondida: motor). *"O
   crescimento atual deve considerar o PIB, o IPCA, mais o percentual de
