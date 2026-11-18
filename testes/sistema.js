@@ -6432,6 +6432,84 @@ async function provasDiretriz2027(page, largura) {
 }
 
 /**
+ * O apoio ao desafio (pedido do cliente, 2026-11-18): a escada da DRE no cartão
+ * "Desafio para o negócio", PIS/COFINS destacados, as oportunidades e riscos de
+ * 2027, e as células de lançar em amarelo-claro.
+ */
+async function provasApoioDesafio(page, largura) {
+  const l = `[${largura}] Apoio ao desafio:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abriu`, abriu);
+  if (!abriu) return;
+  const escolher = async (txt) => {
+    await page.evaluate((x) => {
+      document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+      const s = document.querySelector('#sel-negocio');
+      s.value = x === 'CORP' ? 'CORP' : [...s.options].find((o) => o.textContent.trim().endsWith(x)).value;
+      s.dispatchEvent(new Event('change'));
+    }, txt);
+    await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])')", 40000);
+  };
+  await escolher('- AGROPECUARIAS');
+  const n = await page.evaluate(() => {
+    const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => c.textContent.trim());
+    const d = SecaoProjecao.dados;
+    const linha = (c) => d.linhas.find((x) => x.codigo === c).proposta;
+    const cel = document.querySelector('.tabela-projecao tr[data-conta="1.1"] .celula-proposta');
+    return {
+      titulo: document.querySelector('.painel-desafio summary h2')?.textContent.trim(),
+      degraus: [...document.querySelectorAll('.tabela-desafio tr[data-desafio]')].map((r) => r.dataset.desafio),
+      lb: td('lucro_bruto'), rn: td('resultado_negocio'), rat: td('rateios'),
+      l5: Math.round(linha('5')), l13: Math.round(linha('13')), l14: Math.round(linha('14')),
+      lbProp: num(td('lucro_bruto')[2]), rnProp: num(td('resultado_negocio')[2]), ratProp: num(td('rateios')[2]),
+      pdd: !!document.querySelector('.tabela-nao-recorrentes tr[data-conta-contabil="3.11.03.01.01"]'),
+      oport: num(document.querySelector('[data-oport="oportunidade"]')?.textContent),
+      risco: document.querySelector('[data-oport="risco"]')?.textContent.trim(),
+      picos: document.querySelectorAll('.tabela-picos tr[data-pico]').length,
+      fundo: cel ? getComputedStyle(cel).backgroundColor : null,
+      fundoBloco: getComputedStyle(document.querySelector('.tabela-projecao tr[data-conta="1"] td:nth-child(6)')).backgroundColor,
+      legenda: !!document.querySelector('.legenda-editavel'),
+    };
+  });
+  t(`${l} o cartão se chama "Desafio 2027 para o negócio"`, /^Desafio \d{4} para o negócio$/.test(n.titulo || ''), n.titulo);
+  t(`${l} a escada da DRE: faturamento, receita líquida, margem bruta, despesas, resultado do negócio, rateios, resultado líquido e margem líquida`,
+    ['receita_bruta', 'receita_liquida', 'lucro_bruto', 'margem_bruta', 'despesas', 'resultado_negocio', 'margem_negocio', 'rateios', 'resultado', 'margem']
+      .every((k) => n.degraus.includes(k)), n.degraus.join(','));
+  t(`${l} os degraus do meio do desafio vêm marcados como estimados (≈)`,
+    /^≈/.test(n.lb[1]) && /^≈/.test(n.rn[1]) && /^≈/.test(n.rat[1]), `${n.lb[1]} | ${n.rn[1]} | ${n.rat[1]}`);
+  t(`${l} e a coluna da proposta é a DRE dela (linhas 5, 13 e 14)`,
+    Math.abs(n.lbProp - n.l5) <= 1 && Math.abs(n.rnProp - n.l13) <= 1 && Math.abs(n.ratProp - n.l14) <= 1,
+    JSON.stringify([n.lbProp, n.l5, n.rnProp, n.l13, n.ratProp, n.l14]));
+  t(`${l} oportunidades: a PDD da Agropecuária aparece, e a oportunidade soma R$ 8.295.910`,
+    n.pdd && n.oport === 8295910 && /675\.108/.test(n.risco || ''), `${n.oport} / ${n.risco}`);
+  t(`${l} e há meses fora do padrão nas despesas`, n.picos > 0, String(n.picos));
+  t(`${l} a célula de lançar é amarelo-claro, e o bloco calculado não`,
+    n.fundo === 'rgb(255, 246, 214)' && n.fundoBloco !== 'rgb(255, 246, 214)' && n.legenda, `${n.fundo} / ${n.fundoBloco}`);
+
+  await escolher('CORP');
+  await esperar(page, "!!document.querySelector('.tabela-tributos')", 40000);
+  const c = await page.evaluate(() => {
+    const td = (q) => [...document.querySelectorAll(q + ' td')].map((x) => x.textContent.trim());
+    return {
+      titulo: document.querySelector('.painel-desafio summary h2')?.textContent.trim(),
+      trib: td('.tabela-tributos tr[data-negocio-tributo="total"]'),
+      rolDesafio: document.querySelector('.tabela-desafio tr[data-negocio-desafio="total"] [data-col="rol-desafio"]')?.textContent.trim(),
+      margemNegocio: document.querySelector('.tabela-desafio tr[data-negocio-desafio="total"] [data-col="margem-negocio"]')?.textContent.trim(),
+      oportTotal: td('.tabela-oportunidades tr[data-negocio-oport="total"]'),
+      oportNegocios: document.querySelectorAll('.tabela-oportunidades tr[data-negocio-oport]:not([data-negocio-oport="total"])').length,
+    };
+  });
+  t(`${l} Corporativo: "Desafio 2027 para os negócios", com a receita líquida do desafio (R$ 3.563.582.221)`,
+    /para os negócios/.test(c.titulo || '') && c.rolDesafio === '3.563.582.221', `${c.titulo} | ${c.rolDesafio}`);
+  t(`${l} e a margem do negócio (antes dos rateios) da proposta no total`, /%$/.test(c.margemNegocio || ''), c.margemNegocio);
+  t(`${l} PIS e COFINS de 2026 destacados: R$ 2.773.788 e R$ 12.783.362, 0,52% do faturamento`,
+    c.trib[4] === '2.773.788' && c.trib[5] === '12.783.362' && c.trib[6] === '0,52%', c.trib.join(' | '));
+  t(`${l} oportunidades por negócio (10) com o total`, c.oportNegocios === 10 && /\+/.test(c.oportTotal[1] || ''), c.oportTotal.join(' | '));
+}
+
+/**
  * A Projeção agora ESCREVE no negócio do menu (um negócio só no sistema), então
  * as provas dela deixam o contexto num negócio. As que vêm depois contam com o
  * Corporativo do login (`entrar()`): devolve-se o menu a ele.
@@ -6604,7 +6682,8 @@ async function provasDesafioEExpansores(page, largura) {
     const tot = [...document.querySelectorAll('.tabela-desafio [data-negocio-desafio="total"] td')].map((c) => c.textContent.trim());
     return {
       negocios: document.querySelectorAll('.tabela-desafio tbody tr[data-negocio-desafio]:not([data-negocio-desafio="total"])').length,
-      robTotal: tot[1], rlTotal: tot[2], margem: tot[3],
+      // Colunas: receita bruta, receita líquida, PIS + COFINS, resultado, margem (do desafio).
+      robTotal: tot[1], rolTotal: tot[2], rlTotal: tot[4], margem: tot[5],
       metaDesafio: document.querySelector('.meta-margem [data-meta="desafio"]')?.textContent.replace(/\s+/g, ' ') || '',
       metaProposta: document.querySelector('.meta-margem [data-meta="proposta"]')?.textContent.replace(/\s+/g, ' ') || '',
       expansores: [...document.querySelectorAll('details.expansor')].map((d) => d.dataset.expansor).join(','),
@@ -6615,8 +6694,8 @@ async function provasDesafioEExpansores(page, largura) {
   t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 71,27 mi, faltam R$ 7,58 mi`,
     /2% seriam R\$ 71,27 mi/.test(corp.metaDesafio) && /faltam R\$ 7,58 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
-  t(`${l} Corporativo: visão, desafio e pessoas como expansores (sem premissas: nada se lança ali)`,
-    corp.expansores === 'visao,desafio,pessoas', corp.expansores);
+  t(`${l} Corporativo: visão, desafio, oportunidades e pessoas como expansores (sem premissas: nada se lança ali)`,
+    corp.expansores === 'visao,desafio,oportunidades,pessoas', corp.expansores);
 
   // Devolve o estado das outras provas: tudo aberto.
   await page.evaluate(() => {
@@ -10297,6 +10376,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasNegocioUnico(page, 'desktop');
   await provasDesafioEExpansores(page, 'desktop');
   await provasDiretriz2027(page, 'desktop');
+  await provasApoioDesafio(page, 'desktop');
   await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
@@ -10370,6 +10450,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasNegocioUnico(pageM, 'celular');
   await provasDesafioEExpansores(pageM, 'celular');
   await provasDiretriz2027(pageM, 'celular');
+  await provasApoioDesafio(pageM, 'celular');
   await provasVisaoDoAno(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');

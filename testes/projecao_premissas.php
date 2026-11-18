@@ -123,6 +123,7 @@ echo "\nLeitura por ano\n";
 require_once __DIR__ . '/../app/Core/Json.php';
 require_once __DIR__ . '/../app/Core/Auth.php';
 require_once __DIR__ . '/../app/Services/Bloqueio.php';
+require_once __DIR__ . '/../app/Services/Oportunidades.php';
 require_once __DIR__ . '/../app/Controllers/ProjecaoController.php';
 $ctrl = new App\Controllers\ProjecaoController();
 $ler = new ReflectionMethod($ctrl, 'premissasPorAno');

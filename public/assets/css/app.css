@@ -413,6 +413,23 @@ table.tabela-cadastro td { vertical-align: middle; }
 .tabela-projecao .celula-valor.celula-salva { background: #e7f5ee; border-color: #9ed7bc; }
 .tabela-metas .celula-valor.celula-erro,
 .tabela-projecao .celula-valor.celula-erro { background: #fdecea; border-color: #e5a7a1; }
+/* Na PROJEÇÃO a célula que se digita é AMARELO-CLARO (pedido do cliente,
+   2026-11-18: "destacar as células que precisam ser preenchidas, ou que podem
+   ou devem ser editadas"). Lá a tabela é preenchida tanto quanto lida — e, entre
+   40 linhas, quem lança precisa achar de relance onde a mão entra. O mesmo
+   amarelo nos campos do painel de premissas e do cartão de pessoas. Campo
+   travado (perfil leitura, filial herdando) fica sem a cor: amarelo é convite. */
+.tabela-projecao .celula-valor:not(:disabled) { background: #fff6d6; border-color: #f0dfa0; }
+.tabela-projecao .celula-valor:not(:disabled):hover { border-color: #d9c06a; }
+.painel-premissas .celula-premissa:not(:disabled),
+.painel-premissas .celula-beneficio:not(:disabled),
+.painel-pessoas .celula-beneficio:not(:disabled) { background: #fff6d6; border-color: #f0dfa0; }
+.painel-premissas .celula-premissa:not(:disabled):focus,
+.painel-premissas .celula-beneficio:not(:disabled):focus,
+.painel-pessoas .celula-beneficio:not(:disabled):focus { background: #fff; }
+.legenda-editavel { display: inline-block; width: .9rem; height: .9rem; vertical-align: -.1rem;
+  background: #fff6d6; border: 1px solid #f0dfa0; border-radius: 3px; }
+
 /* Total do ano em execução: não se digita (o lançamento é no mês), e o
    cinza-itálico diz isso antes de alguém tentar. */
 .tabela-metas td.celula-derivada { color: #5d6b64; font-style: italic; }

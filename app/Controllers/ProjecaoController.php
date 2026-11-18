@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\Oportunidades;
 use App\Services\Projecao;
 
 /**
@@ -192,6 +193,7 @@ class ProjecaoController
             'visao_ano_negocios' => $this->visaoDoAno(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
             'visao_ano_total' => $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
             'desafio' => $this->desafioCorporativo($ano + 1, $propostas),
+            'oportunidades_negocios' => Oportunidades::itens(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano),
             'linhas' => array_values($soma),
         ];
     }
@@ -340,6 +342,13 @@ class ProjecaoController
             // O desafio da Controladoria para o ano da proposta, ao lado do que a
             // proposta dá hoje. Só leitura.
             'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas),
+            // Oportunidades e riscos de 2027: itens não recorrentes de 2026 e meses
+            // fora do padrão nas despesas. Só leitura.
+            'oportunidades' => [
+                'itens' => Oportunidades::itens([$negocioId], $ano)[$negocioId] ?? null,
+                'picos' => Oportunidades::picos($negocioId, $ano, $corte),
+                'grupos' => Oportunidades::GRUPOS,
+            ],
             'filiais' => $filiais,
             'filiais_corte' => $filiaisCorte,
             'filial' => $filialAberta,
@@ -390,7 +399,57 @@ class ProjecaoController
         }
         $desafio = $d['por_negocio'][$negocioId];
         unset($d['por_negocio']);
-        return $d + ['desafio' => $desafio, 'proposta' => self::resumoDaProposta($linhas)];
+        $prop = self::resumoDaProposta($linhas);
+        $trib = Oportunidades::tributos([$negocioId], $anoPlan - 1)[$negocioId] ?? null;
+        $desafio['pis_cofins'] = self::pisCofinsSobre($desafio['receita_bruta'], $trib);
+        $prop['pis_cofins'] = self::pisCofinsSobre($prop['receita_bruta'], $trib);
+        return $d + ['desafio' => $desafio, 'proposta' => $prop, 'tributos' => $trib,
+            'escada' => self::escadaDoDesafio($desafio, $linhas)];
+    }
+
+    /**
+     * A ESCADA da DRE no cartão do desafio (pedido do cliente, 2026-11-18):
+     * faturamento, receita líquida, margem bruta, despesas, resultado do negócio,
+     * rateios, resultado líquido e margem líquida — do desafio e da proposta.
+     *
+     * O desafio só FIXOU três números (faturamento, receita líquida e resultado
+     * líquido). Os degraus do meio saem da projeção de 2026 e vão marcados como
+     * ESTIMADOS: a margem bruta mantém o percentual de 2026 sobre a receita
+     * líquida do desafio ("preservar margem"); despesas e rateios ficam na
+     * projeção (sem crescimento, como a diretriz pede para as despesas); o
+     * resultado do negócio é o líquido do desafio menos os rateios — e a
+     * diferença entre ele e a margem bruta menos as despesas é o que as demais
+     * linhas (outros valores, financeiro, impostos) teriam de dar.
+     */
+    private static function escadaDoDesafio(array $desafio, array $linhas): array
+    {
+        $l = array_column($linhas, null, 'codigo');
+        $proj = static fn ($c) => isset($l[$c]) ? (float)$l[$c]['projecao'] : 0.0;
+        $prop = static fn ($c) => isset($l[$c]) && $l[$c]['proposta'] !== null ? (float)$l[$c]['proposta'] : null;
+        $rolProj = $proj('3');
+        $lbD = $rolProj != 0.0 ? $proj('5') / $rolProj * $desafio['receita_liquida'] : null;
+        $rateiosD = $proj('14');
+        $rnD = $desafio['resultado'] - $rateiosD;
+        $pct = static fn ($a, $b) => $a !== null && $b ? $a / $b * 100 : null;
+        $propRol = $prop('3');
+        return [
+            'desafio' => [
+                'receita_bruta' => $desafio['receita_bruta'], 'receita_liquida' => $desafio['receita_liquida'],
+                'lucro_bruto' => $lbD, 'margem_bruta' => $pct($lbD, $desafio['receita_liquida']),
+                'despesas' => $proj('7'), 'resultado_negocio' => $rnD,
+                'margem_negocio' => $pct($rnD, $desafio['receita_liquida']),
+                'rateios' => $rateiosD, 'resultado' => $desafio['resultado'], 'margem' => $desafio['margem'],
+                'demais' => $lbD === null ? null : $rnD - $lbD - $proj('7'),
+            ],
+            'proposta' => [
+                'receita_bruta' => $prop('1'), 'receita_liquida' => $propRol,
+                'lucro_bruto' => $prop('5'), 'margem_bruta' => $pct($prop('5'), $propRol),
+                'despesas' => $prop('7'), 'resultado_negocio' => $prop('13'),
+                'margem_negocio' => $pct($prop('13'), $propRol),
+                'rateios' => $prop('14'), 'resultado' => $prop('16'), 'margem' => $pct($prop('16'), $propRol),
+            ],
+            'estimados' => ['lucro_bruto', 'margem_bruta', 'despesas', 'resultado_negocio', 'margem_negocio', 'rateios'],
+        ];
     }
 
     /**
@@ -408,7 +467,11 @@ class ProjecaoController
         }
         $zero = ['receita_bruta' => 0.0, 'receita_liquida' => 0.0, 'resultado' => 0.0];
         $totDesafio = $zero;
-        $totProposta = $zero;
+        $totProposta = $zero + ['resultado_negocio' => 0.0];
+        $pcDesafio = 0.0;
+        $pcProposta = 0.0;
+        $tribs = Oportunidades::tributos(array_keys($propostas), $anoPlan - 1);
+        $tribTotal = ['venda_socio' => 0.0, 'venda_nao_socio' => 0.0, 'pis' => 0.0, 'cofins' => 0.0, 'icms' => 0.0];
         $negocios = [];
         foreach ($propostas as $id => $p) {
             $desafio = $d['por_negocio'][$id] ?? null;
@@ -418,8 +481,27 @@ class ProjecaoController
                     $totDesafio[$k] += $desafio[$k];
                 }
             }
-            $negocios[$id] = ['desafio' => $desafio, 'proposta' => $p];
+            $totProposta['resultado_negocio'] += (float)($p['resultado_negocio'] ?? 0);
+            $trib = $tribs[$id] ?? null;
+            if ($desafio) {
+                $desafio['pis_cofins'] = self::pisCofinsSobre($desafio['receita_bruta'], $trib);
+                $pcDesafio += $desafio['pis_cofins']['total'] ?? 0.0;
+            }
+            $p['pis_cofins'] = self::pisCofinsSobre($p['receita_bruta'], $trib);
+            $pcProposta += $p['pis_cofins']['total'] ?? 0.0;
+            if ($trib) {
+                foreach (array_keys($tribTotal) as $k) {
+                    $tribTotal[$k] += $trib[$k];
+                }
+            }
+            $negocios[$id] = ['desafio' => $desafio, 'proposta' => $p, 'tributos' => $trib];
         }
+        $vendas = $tribTotal['venda_socio'] + $tribTotal['venda_nao_socio'];
+        $tribTotal['parte_nao_socio'] = $vendas > 0 ? $tribTotal['venda_nao_socio'] / $vendas : null;
+        $tribTotal['taxa_pis_cofins'] = $vendas > 0 ? ($tribTotal['pis'] + $tribTotal['cofins']) / $vendas : null;
+        $tribTotal['taxa_pis_cofins_nao_socio'] = $tribTotal['venda_nao_socio'] > 0
+            ? ($tribTotal['pis'] + $tribTotal['cofins']) / $tribTotal['venda_nao_socio'] : null;
+        $tribTotal['mes_ate'] = $tribs ? reset($tribs)['mes_ate'] : null;
         $meta = $d['meta_margem'];
         $alvo = static fn (array $t) => [
             'resultado_meta' => $t['receita_liquida'] * $meta / 100,
@@ -429,8 +511,13 @@ class ProjecaoController
         return $d + [
             'negocios' => $negocios,
             'total' => [
-                'desafio' => self::comMargem($totDesafio) + $alvo($totDesafio),
-                'proposta' => self::comMargem($totProposta) + $alvo($totProposta),
+                'desafio' => self::comMargem($totDesafio) + $alvo($totDesafio) + ['pis_cofins' => ['total' => $pcDesafio]],
+                'proposta' => self::comMargem($totProposta) + $alvo($totProposta) + [
+                    'pis_cofins' => ['total' => $pcProposta],
+                    'margem_negocio' => $totProposta['receita_liquida']
+                        ? $totProposta['resultado_negocio'] / $totProposta['receita_liquida'] * 100 : null,
+                ],
+                'tributos' => $tribTotal,
             ],
         ];
     }
@@ -443,11 +530,36 @@ class ProjecaoController
     {
         $p = array_column($linhas, 'proposta', 'codigo');
         $v = static fn ($c) => isset($p[$c]) && $p[$c] !== null ? (float)$p[$c] : null;
-        return self::comMargem([
+        $r = self::comMargem([
             'receita_bruta' => $v('1'),
             'receita_liquida' => $v('3'),
             'resultado' => $v('16'),
         ]);
+        // A margem do NEGÓCIO, antes dos rateios (linha 13, "11 - RESULTADO DO
+        // NEGÓCIO"): o que o negócio entrega antes de pagar a estrutura central.
+        $r['resultado_negocio'] = $v('13');
+        $r['margem_negocio'] = $r['receita_liquida'] && $r['resultado_negocio'] !== null
+            ? $r['resultado_negocio'] / $r['receita_liquida'] * 100 : null;
+        return $r;
+    }
+
+    /**
+     * PIS e COFINS estimados sobre uma receita bruta, pela taxa que o negócio
+     * pagou de jan até o corte (`Oportunidades::tributos`). Conta MACRO, para o
+     * cliente refazer com a regra da reforma: supõe a mesma mistura de vendas a
+     * sócio e a não sócio de 2026.
+     */
+    private static function pisCofinsSobre(?float $receitaBruta, ?array $trib): ?array
+    {
+        if ($receitaBruta === null || !$trib || $trib['taxa_pis_cofins'] === null) {
+            return null;
+        }
+        return [
+            'pis' => $receitaBruta * $trib['taxa_pis'],
+            'cofins' => $receitaBruta * $trib['taxa_cofins'],
+            'total' => $receitaBruta * $trib['taxa_pis_cofins'],
+            'taxa' => $trib['taxa_pis_cofins'],
+        ];
     }
 
     /** Margem líquida em %: resultado ÷ receita líquida. Sem receita, não há margem. */

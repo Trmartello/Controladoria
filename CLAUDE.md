@@ -3152,6 +3152,40 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     que acompanha a receita; nada disso é contábil fino — é a régua do plano.
   Provas: `testes/diretriz_2027.php` (documento, conta de mão do pessoal, Painel =
   tela nos 11 negócios, carga da folha) e `provasDiretriz2027` na bateria.
+  **Apoio ao desafio** (pedidos do cliente de 2026-11-18, mesma rodada):
+  - O cartão chama-se **"Desafio 2027 para o negócio"** (não "da Controladoria") e
+    mostra a ESCADA da DRE: faturamento, receita líquida, margem bruta (e %),
+    despesas operacionais, resultado do negócio (linha 13, "11 - RESULTADO DO
+    NEGÓCIO", antes dos rateios, e %), total dos rateios, resultado líquido e %
+    margem líquida — desafio × proposta. O desafio só FIXA faturamento, receita
+    líquida e resultado líquido; os degraus do meio saem com **≈**, estimados da
+    projeção de 2026 (`escadaDoDesafio`: margem bruta com o % de 2026, despesas e
+    rateios na projeção, resultado do negócio = líquido − rateios). No
+    Corporativo, "Desafio 2027 para os negócios", com a receita líquida e a
+    margem do negócio da proposta.
+  - **PIS e COFINS destacados** para a conta macro da reforma tributária (CBS no
+    lugar de PIS/COFINS em 2027): `database/tributos_2026_10.php`
+    (`negocio_tributo`) traz, por negócio e jan–out, vendas a sócio e a não sócio
+    (somam a receita bruta) e PIS, COFINS e ICMS sobre vendas (fecham com a linha
+    2.3). PIS/COFINS só incidem na venda a não sócio. A tela estima o PIS + COFINS
+    do desafio e da proposta pela taxa de 2026 — o sistema NÃO aplica regra de CBS:
+    a alíquota e o tratamento do ato cooperativo são decisão do cliente.
+  - **Oportunidades e riscos para 2027** (`App\Services\Oportunidades`, expansor
+    aberto por omissão): itens não recorrentes de 2026 por conta contábil
+    (`database/nao_recorrentes_2026_10.php`, `negocio_nao_recorrente`, catálogo em
+    `Oportunidades::CONTAS`) — PDD, baixas, indenizações, multas, provisões de
+    custo, receitas pontuais. Despesa que não se repetir é oportunidade (+);
+    receita ou reversão que não se repetir é risco (−) — a reversão de R$ 8,5 mi
+    de provisão de custo na Pecuária é o maior. E os **meses fora do padrão** nas
+    subcontas 8.x (afastamento da mediana > metade dela e > R$ 50 mil): sinal para
+    investigar, nunca somado aos itens. Nada entra na proposta sozinho.
+  - **Células de lançar em amarelo-claro** (`#fff6d6`) na tabela, nas premissas
+    e no cartão de pessoas, com legenda no rodapé; campo travado fica sem a cor.
+  - **O % de crescimento é sobre o faturamento** e o resto é proporcional: o
+    rótulo e a nota das premissas dizem isso.
+  Provas: `testes/oportunidades.php` (tributos contra a DRE, taxa, estimativa do
+  desafio, margem do negócio, itens e sinais, picos de mão, cargas) e
+  `provasApoioDesafio`.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas
