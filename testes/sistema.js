@@ -6299,6 +6299,70 @@ async function provasCrescimentoPositivo(page, largura) {
 }
 
 /**
+ * Recolher e mostrar as subcontas (pedido do cliente, 2026-11-18): o botão
+ * deixa à vista só os blocos da DRE, para ver como os números fecham, e devolve
+ * as linhas de lançamento no segundo clique. É só visualização — os números não
+ * mudam —, e a escolha sobrevive à troca de negócio.
+ */
+async function provasRecolherNivel(page, largura) {
+  const l = `[${largura}] Recolher subcontas:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-nivel')", 20000);
+  t(`${l} a tela tem o botão`, abriu);
+  if (!abriu) return;
+  const escolher = (txt) => page.evaluate((x) => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((q) => q.textContent.includes(x));
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+  }, txt);
+  await escolher('PECUARIA');
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const ler = () => page.evaluate(() => {
+    const vis = (tr) => tr.offsetParent !== null;
+    const sub = [...document.querySelectorAll('.tabela-projecao tbody tr.linha-subconta')];
+    const blo = [...document.querySelectorAll('.tabela-projecao tbody tr.linha-bloco')];
+    const rob = document.querySelector('.tabela-projecao tbody tr[data-conta="1"] td:nth-child(4)')?.textContent.trim();
+    const b = document.querySelector('#projecao-nivel');
+    return {
+      sub: sub.length, subVisiveis: sub.filter(vis).length,
+      blocos: blo.length, blocosVisiveis: blo.filter(vis).length,
+      rob, texto: b?.textContent.trim(), pressed: b?.getAttribute('aria-pressed'),
+      salvo: (() => { try { return localStorage.getItem('projecao.recolhido'); } catch (e) { return 'x'; } })(),
+    };
+  });
+  const clicar = async () => { await page.click('#projecao-nivel'); await new Promise((r) => setTimeout(r, 300)); };
+
+  const a = await ler();
+  if (a.pressed === 'true') { await clicar(); }
+  const aberto = await ler();
+  t(`${l} aberto, mostra as subcontas e os blocos`,
+    aberto.sub > 20 && aberto.subVisiveis === aberto.sub && aberto.blocosVisiveis === aberto.blocos && /Recolher/.test(aberto.texto),
+    JSON.stringify(aberto));
+
+  await clicar();
+  const fechado = await ler();
+  t(`${l} recolhido, esconde TODAS as subcontas e mantém os blocos`,
+    fechado.subVisiveis === 0 && fechado.blocosVisiveis === fechado.blocos && fechado.pressed === 'true' && /Mostrar/.test(fechado.texto),
+    JSON.stringify(fechado));
+  t(`${l} e os números não mudam (é só visualização)`, fechado.rob === aberto.rob && !!fechado.rob, `${aberto.rob} / ${fechado.rob}`);
+  t(`${l} a escolha fica guardada para quem olha`, fechado.salvo === '1', String(fechado.salvo));
+
+  await escolher('SUPERMERCADOS');
+  await new Promise((r) => setTimeout(r, 1500));
+  const outro = await ler();
+  t(`${l} trocar de negócio mantém recolhido`, outro.subVisiveis === 0 && outro.pressed === 'true', JSON.stringify(outro));
+
+  await clicar();
+  const reaberto = await ler();
+  t(`${l} o segundo clique devolve as subcontas`,
+    reaberto.subVisiveis === reaberto.sub && reaberto.pressed === 'false' && reaberto.salvo === '0', JSON.stringify(reaberto));
+  await escolher('PECUARIA');
+  await new Promise((r) => setTimeout(r, 1200));
+}
+
+/**
  * IPCA, PIB e o CRESCIMENTO DESEJADO valem para o negócio inteiro e para todas
  * as filiais dele, com um valor para cada ANO (pedido do cliente, 2026-11-16:
  * "quando lançar o PIB e o IPCA, deve ficar fixo, gravado, registrado, ou seja,
@@ -9803,6 +9867,7 @@ async function provasSaidaDoModal(page, largura) {
   await comPremissasNeutras(page, () => provasCrescimentoPorPremissa(page, 'desktop'));
   await comPremissasNeutras(page, () => provasCrescimentoPositivo(page, 'desktop'));
   await provasSinalNoCelular(page, 'desktop');
+  await provasRecolherNivel(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
@@ -9870,6 +9935,7 @@ async function provasSaidaDoModal(page, largura) {
   await comPremissasNeutras(pageM, () => provasCrescimentoPorPremissa(pageM, 'celular'));
   await comPremissasNeutras(pageM, () => provasCrescimentoPositivo(pageM, 'celular'));
   await provasSinalNoCelular(pageM, 'celular');
+  await provasRecolherNivel(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
   await provasProjecaoNoDossie(pageM, 'celular');

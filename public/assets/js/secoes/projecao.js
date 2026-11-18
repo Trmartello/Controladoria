@@ -216,7 +216,8 @@ const SecaoProjecao = {
       ${d.filial ? '' : this.cartaoPessoas(d)}
       ${faltando}
       <div id="projecao-aviso" class="alert alert-danger py-2 px-3 small mb-2 d-none"></div>
-      <div class="table-responsive tabela-projecao">
+      ${this.botaoNivel()}
+      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
@@ -650,7 +651,8 @@ const SecaoProjecao = {
       </div>
       ${this.cartaoPessoas(d)}
       ${faltando}
-      <div class="table-responsive tabela-projecao">
+      ${this.botaoNivel()}
+      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
@@ -813,6 +815,8 @@ const SecaoProjecao = {
       n.dataset.ligado = '1';
       return true;
     };
+    const nivel = el.querySelector('#projecao-nivel');
+    if (nivel && virgem(nivel)) nivel.addEventListener('click', () => this.alternarNivel());
     const sel = el.querySelector('#projecao-negocio');
     if (sel && virgem(sel)) {
       sel.addEventListener('change', (ev) => {
@@ -979,6 +983,50 @@ const SecaoProjecao = {
       inp.value = inp.dataset.original ?? '';
     } finally {
       inp.classList.remove('celula-gravando');
+    }
+  },
+
+  /**
+   * Recolher e mostrar as subcontas (pedido do cliente, 2026-11-18): para ver
+   * como os números FECHAM, a tabela mostra só os blocos (receita, deduções,
+   * custos, despesas, resultado…) e esconde as linhas de lançamento.
+   *
+   * É só visualização — nenhuma conta muda, e as subcontas continuam no DOM
+   * (a classe `recolhida` as esconde por CSS), então o que estiver digitado
+   * nelas não se perde. A escolha é conveniência de quem olha, por isso fica no
+   * `localStorage` (com try/catch: em janela privada ele pode não existir) e
+   * sobrevive à troca de negócio e ao recarregar. No dossiê não há botão: o
+   * documento sai sempre completo.
+   */
+  estaRecolhido() {
+    if (App.modoDossie) return false;
+    if (this.recolhido === undefined) {
+      try { this.recolhido = localStorage.getItem('projecao.recolhido') === '1'; } catch (e) { this.recolhido = false; }
+    }
+    return !!this.recolhido;
+  },
+
+  botaoNivel() {
+    if (App.modoDossie) return '';
+    const r = this.estaRecolhido();
+    return `<div class="d-flex justify-content-end mb-1">
+        <button type="button" id="projecao-nivel" class="btn btn-sm btn-outline-secondary"
+          aria-pressed="${r ? 'true' : 'false'}"
+          title="Mostrar só os blocos da DRE, para ver como os números fecham">
+          ${r ? '▸ Mostrar subcontas' : '▾ Recolher subcontas'}
+        </button>
+      </div>`;
+  },
+
+  alternarNivel() {
+    this.recolhido = !this.estaRecolhido();
+    try { localStorage.setItem('projecao.recolhido', this.recolhido ? '1' : '0'); } catch (e) { /* sem armazenamento: vale só nesta tela */ }
+    const el = document.getElementById('secao-projecao');
+    el.querySelector('.tabela-projecao')?.classList.toggle('recolhida', this.recolhido);
+    const b = el.querySelector('#projecao-nivel');
+    if (b) {
+      b.setAttribute('aria-pressed', this.recolhido ? 'true' : 'false');
+      b.textContent = this.recolhido ? '▸ Mostrar subcontas' : '▾ Recolher subcontas';
     }
   },
 
