@@ -3016,6 +3016,26 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   cota capital, Usina). Quadro de nov/2026: 1.350 nos 10 negócios (1.564 com as
   áreas de apoio). Provas: `testes/pessoas.php` (conta de mão e carga) e
   `provasPessoasEBeneficios` (tela, gravação, Corporativo).
+  **Visão do ano e visão realista** (pedido do cliente, 2026-11-18): o quadro do
+  artefato "Painel Balanço out/26" dentro da Projeção, **só leitura** — realizado
+  até o corte, planejado antes e depois dele, real + plan., planejado do ano,
+  diferença, e a **visão realista** dos meses que faltam (em âmbar, porque é
+  estimativa da Controladoria e não número do Qlik). No negócio são duas linhas
+  (receita bruta e resultado líquido); no Corporativo, um quadro por linha com
+  todos os negócios e o total. A regra é a do painel, em `Projecao::visaoRealista`:
+  **receita bruta** = planejado dos meses que faltam × aderência até o corte
+  (realizado ÷ planejado); **resultado líquido** = planejado + desvio médio
+  mensal até o corte × meses que faltam. Só essas duas linhas — estender a
+  estimativa às demais exigiria uma regra para custos e despesas que ninguém
+  definiu. O total é a **soma** dos negócios, não a regra aplicada ao total (a
+  aderência do total não é a média das aderências). `testes/visao_realista.php`
+  prova a paridade com o painel **aplicando a regra às entradas que o painel
+  usou** (ao centavo, nos 11 negócios) — com os dados do banco há uma diferença
+  conhecida de ±R$ 1,7 mil em 6 e 8: entre a extração do painel (15/11) e a carga
+  (17/11) o Qlik moveu R$ 8,6 mil de resultado realizado da Fábrica de Rações para
+  as Agropecuárias; o total não mudou. **A.V. da proposta**: coluna logo depois da
+  Proposta, cada linha sobre a ROL proposta — é ela que diz se a meta preserva a
+  margem (diretriz do horizonte 1). Provas: `provasVisaoDoAno`.
   **Recolher e mostrar as subcontas** (pedido do cliente, 2026-11-18): o botão
   `#projecao-nivel`, acima da tabela, deixa à vista só os blocos da DRE (nível 1)
   para ver como os números fecham. É só visualização: a classe `recolhida` esconde

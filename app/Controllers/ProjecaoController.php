@@ -186,6 +186,9 @@ class ProjecaoController
             'negocios_consolidados' => count($negocios),
             'negocios_com_proposta' => $lancaram,
             'pessoas' => $pessoasSoma,
+            // A visão do ano por negócio e o total — o mesmo quadro do Painel Balanço.
+            'visao_ano_negocios' => $this->visaoDoAno(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
+            'visao_ano_total' => $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
             'linhas' => array_values($soma),
         ];
     }
@@ -310,6 +313,9 @@ class ProjecaoController
             // Pessoas e benefícios do NEGÓCIO, por ano (a filial não tem o seu: o
             // quadro e os valores são do negócio, que já traz a parte dele).
             'pessoas' => $this->pessoasDoNegocio($negocioId, $ano, $anosPremissa),
+            // Realizado × planejado do ano corrente e a visão realista, para a
+            // receita bruta e o resultado líquido. Só leitura.
+            'visao_ano' => $this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null,
             'filiais' => $filiais,
             'filiais_corte' => $filiaisCorte,
             'filial' => $filialAberta,
@@ -713,6 +719,82 @@ class ProjecaoController
             );
         }
         $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
+    }
+
+    /**
+     * A visão do ano corrente por negócio: realizado até o corte, planejado
+     * antes e depois dele e a visão realista (`Projecao::visaoRealista`), para a
+     * receita bruta (`1`) e o resultado líquido (`16`).
+     *
+     * @param int[] $negocioIds
+     * @return array<int,array{1:array,16:array}>
+     */
+    private function visaoDoAno(array $negocioIds, int $ano, int $corte): array
+    {
+        $brutos = $this->brutosDoAno($negocioIds, $ano, $corte);
+        $saida = [];
+        foreach ($brutos as $id => $porConta) {
+            foreach (['1', '16'] as $c) {
+                $saida[$id][$c] = Projecao::visaoRealista(
+                    $porConta[$c] ?? ['realizado' => 0, 'plan_ate' => 0, 'plan_resto' => 0],
+                    $c,
+                    $corte
+                );
+            }
+        }
+        return $saida;
+    }
+
+    /**
+     * O total dos negócios: a SOMA das colunas de cada um — inclusive a visão
+     * realista. Aplicar a regra sobre os totais daria outro número (a aderência
+     * do total não é a média das aderências), e o quadro deixaria de somar.
+     */
+    private function visaoDoAnoTotal(array $negocioIds, int $ano, int $corte): array
+    {
+        $tot = [];
+        foreach ($this->visaoDoAno($negocioIds, $ano, $corte) as $porConta) {
+            foreach ($porConta as $c => $v) {
+                foreach ($v as $k => $x) {
+                    if ($k === 'dif_pct') {
+                        continue;
+                    }
+                    $tot[$c][$k] = ($tot[$c][$k] ?? 0.0) + (float)$x;
+                }
+            }
+        }
+        foreach ($tot as $c => $v) {
+            $tot[$c]['dif_pct'] = $v['plan_ano'] != 0.0 ? $v['dif'] / abs($v['plan_ano']) : null;
+        }
+        return $tot;
+    }
+
+    /** realizado / planejado até o corte / planejado depois dele, por negócio e conta. */
+    private function brutosDoAno(array $negocioIds, int $ano, int $corte): array
+    {
+        if (!$negocioIds) {
+            return [];
+        }
+        $marcas = implode(',', array_fill(0, count($negocioIds), '?'));
+        $linhas = Database::todos(
+            "SELECT v.negocio_id, c.codigo,
+                    COALESCE(SUM(CASE WHEN v.tipo = 'REAL' AND v.mes <= ? THEN v.valor END), 0) AS realizado,
+                    COALESCE(SUM(CASE WHEN v.tipo = 'META' AND v.mes <= ? THEN v.valor END), 0) AS plan_ate,
+                    COALESCE(SUM(CASE WHEN v.tipo = 'META' AND v.mes >  ? THEN v.valor END), 0) AS plan_resto
+               FROM dre_valor v JOIN dre_conta c ON c.id = v.conta_id
+              WHERE v.ano = ? AND c.codigo IN ('1', '16') AND v.negocio_id IN ($marcas)
+              GROUP BY v.negocio_id, c.codigo",
+            array_merge([$corte, $corte, $corte, $ano], $negocioIds)
+        );
+        $saida = [];
+        foreach ($linhas as $l) {
+            $saida[(int)$l['negocio_id']][$l['codigo']] = [
+                'realizado' => (float)$l['realizado'],
+                'plan_ate' => (float)$l['plan_ate'],
+                'plan_resto' => (float)$l['plan_resto'],
+            ];
+        }
+        return $saida;
     }
 
     /**
