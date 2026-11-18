@@ -48,23 +48,17 @@ class Reforma
      * @param array      $linhas as linhas da tela (codigo, realizado, projecao, proposta)
      * @param array|null $trib   `Oportunidades::tributos` do negócio
      */
-    public static function comoEComoFica(array $linhas, ?array $trib, int $corte): array
+    public static function comoEComoFica(array $linhas, ?array $trib, int $corte, ?float $taxaFixa = null): array
     {
         $l = array_column($linhas, null, 'codigo');
         $v = static fn (string $c, string $k): float => (float)($l[$c][$k] ?? 0);
-        $taxa = (float)($trib['taxa_pis_cofins'] ?? 0);
 
-        // O PIS/COFINS de cada coluna.
-        $pcReal = $trib && (int)($trib['mes_ate'] ?? 0) === $corte
-            ? (float)$trib['pis'] + (float)$trib['cofins']
-            : $taxa * $v('1.1', 'realizado');
-        $pcProj = $pcReal + $taxa * ($v('1.1', 'projecao') - $v('1.1', 'realizado'));
-
-        // Na proposta, o PIS/COFINS que a 2.3 carrega: ela acompanha a receita, então
-        // é o da projeção na mesma proporção da Receita de Vendas.
-        $pcProp = $v('1.1', 'projecao') != 0.0
-            ? $pcProj * $v('1.1', 'proposta') / $v('1.1', 'projecao')
-            : $taxa * $v('1.1', 'proposta');
+        // O PIS/COFINS de cada coluna (ver `pisCofinsDoNegocio`). Na proposta, a
+        // taxa da projeção sobre a Receita de Vendas proposta — o que a 2.3 carrega.
+        $base = self::pisCofinsDoNegocio($linhas, $trib, $corte, $taxaFixa);
+        $pcReal = $base['realizado'];
+        $pcProj = $base['projecao'];
+        $pcProp = $base['taxa'] * $v('1.1', 'proposta');
 
         $colunas = [];
         foreach ([
@@ -89,7 +83,94 @@ class Reforma
                     'impostos' => $icms, 'icms_iss' => $icms, 'receita_liquida' => $rl],
             ];
         }
-        return ['tem_tributos' => $trib !== null, 'colunas' => $colunas];
+        return ['tem_tributos' => $trib !== null || $taxaFixa !== null, 'taxa' => $base['taxa'], 'colunas' => $colunas];
+    }
+
+    /**
+     * O PIS/COFINS de 2026 do negócio por coluna, e a TAXA que vale na proposta
+     * (PIS/COFINS da projeção ÷ Receita de Vendas da projeção).
+     *
+     * Realizado: o da carga de tributos quando ela está no mesmo corte; senão a
+     * taxa de 2026 sobre a Receita de Vendas. O resto do ano, pela taxa. Com
+     * `$taxaFixa` (a filial, que não tem carga de tributos própria), toda coluna
+     * é essa taxa sobre a Receita de Vendas dela — a do negócio.
+     *
+     * @return array{realizado: float, projecao: float, taxa: float}
+     */
+    public static function pisCofinsDoNegocio(array $linhas, ?array $trib, int $corte, ?float $taxaFixa = null): array
+    {
+        $l = array_column($linhas, null, 'codigo');
+        $real = (float)($l['1.1']['realizado'] ?? 0);
+        $proj = (float)($l['1.1']['projecao'] ?? 0);
+        if ($taxaFixa !== null) {
+            return ['realizado' => $taxaFixa * $real, 'projecao' => $taxaFixa * $proj, 'taxa' => $taxaFixa];
+        }
+        $taxa = (float)($trib['taxa_pis_cofins'] ?? 0);
+        $pcReal = $trib && (int)($trib['mes_ate'] ?? 0) === $corte
+            ? (float)$trib['pis'] + (float)$trib['cofins']
+            : $taxa * $real;
+        $pcProj = $pcReal + $taxa * ($proj - $real);
+        return ['realizado' => $pcReal, 'projecao' => $pcProj, 'taxa' => $proj != 0.0 ? $pcProj / $proj : $taxa];
+    }
+
+    /**
+     * A DRE da tela no FORMATO DE 2027 (pedido do cliente, 2026-11-18: "converta o
+     * resultado de 2026 para como vai ficar em 2027 ... fazer toda a exibição igual"):
+     * a linha informativa da CBS ACIMA da Receita Bruta, Receita Bruta e Receita de
+     * Vendas sem o PIS/COFINS, Deduções e Imposto s/ Vendas só com ICMS e ISS. A
+     * Receita Líquida e tudo abaixo dela não mudam.
+     *
+     * É a ÚLTIMA coisa antes da resposta: o motor, o banco, o Painel e o desafio
+     * seguem no formato da carga (a DRE de 2026, com o PIS/COFINS dentro da 2.3).
+     * Os LANÇAMENTOS da 1.1 e da 2.3 já são no formato novo — quem converte é
+     * `Projecao::aplicar`, com a mesma taxa.
+     *
+     * @param array $tributosDre o `comoEComoFica` da mesma visão (negócio, filial ou Corporativo)
+     */
+    public static function formatoNovo(array $linhas, array $tributosDre): array
+    {
+        $col = $tributosDre['colunas'] ?? [];
+        if (!$col) {
+            return $linhas;
+        }
+        $t = (float)($tributosDre['taxa'] ?? 0);
+        $pc = [
+            'realizado' => (float)$col['realizado']['como_e']['pis_cofins'],
+            'projecao' => (float)$col['projecao']['como_e']['pis_cofins'],
+            'proposta' => (float)$col['proposta']['como_e']['pis_cofins'],
+        ];
+        $pc['projetado'] = $pc['projecao'] - $pc['realizado'];
+        $idx = array_flip(array_column($linhas, 'codigo'));
+        $dist11 = isset($idx['1.1']) ? ($linhas[$idx['1.1']]['distribuido'] ?? null) : null;
+
+        foreach ($linhas as $i => $l) {
+            $sinal = in_array($l['codigo'], ['1', '1.1'], true) ? -1.0
+                : (in_array($l['codigo'], ['2', '2.3'], true) ? 1.0 : 0.0);
+            if ($sinal === 0.0) {
+                continue;
+            }
+            foreach ($pc as $k => $x) {
+                if (isset($l[$k]) && $l[$k] !== null) {
+                    $linhas[$i][$k] = (float)$l[$k] + $sinal * $x;
+                }
+            }
+            if (($l['distribuido'] ?? null) !== null && $dist11 !== null) {
+                $linhas[$i]['distribuido'] = (float)$l['distribuido'] + $sinal * $t * (float)$dist11;
+            }
+            if ($l['codigo'] === '2.3') {
+                $linhas[$i]['nome'] = $l['nome'] . ' (ICMS e ISS)';
+            }
+            $linhas[$i]['formato_novo'] = true;
+        }
+        $cbs = [
+            'codigo' => 'CBS', 'nome' => 'CBS (PIS/COFINS em 2026) — informativa', 'nivel' => 1,
+            'pai_codigo' => null, 'percentual' => 0, 'informativa' => true,
+            'realizado' => $pc['realizado'], 'projetado' => $pc['projetado'], 'projecao' => $pc['projecao'],
+            'proposta' => $pc['proposta'], 'proposta_origem' => 'INFORMATIVA', 'proposta_lancado' => null,
+            'distribuido' => $dist11 !== null ? $t * (float)$dist11 : null,
+        ];
+        array_splice($linhas, $idx['1'] ?? 0, 0, [$cbs]);
+        return $linhas;
     }
 
     /** A soma de vários `comoEComoFica` (o Corporativo). */

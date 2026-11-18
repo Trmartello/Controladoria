@@ -3262,6 +3262,42 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     deduções 91,3). Provas: `testes/estrutura_dre_nova.php` (exemplo de mão do
     cliente, com a proposta crescendo 10%; o slide; CBS = PIS/COFINS da proposta;
     2.3 sem troca; soma do Corporativo) e `provasTributosComoEComoFica`.
+  **A tabela da Projeção no FORMATO DE 2027** (pedido do cliente, 2026-11-18:
+  "converta o resultado de 2026 para como vai ficar em 2027 ... fazer toda a
+  exibição igual"). A DRE do negócio, da filial e do Corporativo sai com a linha
+  informativa **CBS (PIS/COFINS em 2026)** acima da Receita Bruta, e com Receita
+  Bruta, Receita de Vendas, Deduções e "Imposto s/ Vendas (ICMS e ISS)" SEM ela, em
+  todas as colunas (realizado, projetado, projeção, proposta, a distribuir); a RL e
+  o que vem abaixo não mudam. Amarelo no nome das linhas que mudaram.
+  - É só a TELA: `Reforma::formatoNovo`, chamado por `ProjecaoController::paraTela`
+    na última hora (índice e resposta das gravações). `montar`, o banco, o Painel, o
+    desafio e o Corporativo (que soma `montar`) seguem no formato da carga.
+  - O que se LANÇA na 1.1 e na 2.3 é no formato novo: `Projecao::aplicar(…, $taxa)`
+    devolve ao formato da carga — 1.1 em valor ÷ (1 − taxa); 2.3 em valor ou reajuste
+    é só ICMS e ISS, e o motor soma a CBS (taxa × Receita de Vendas proposta). A taxa
+    é `Reforma::pisCofinsDoNegocio` (PIS/COFINS da projeção ÷ 1.1 da projeção), a
+    mesma na tela, nas filiais (a do negócio) e no Painel (`resumoDosNegocios`).
+    Lançamentos de 1.1/2.3 em VALOR gravados antes de 2026-11-18 passaram a ser lidos
+    no formato novo (diferença da ordem de 0,5% da receita).
+  **Eventos pontuais — também na filial** (pedido do cliente, 2026-11-18: "quando
+  olhar oportunidades da filial, olhe também valores eventuais ... uma receita de
+  juros muito alta concentrada num único mês"). `Oportunidades::picos` varre 8.x,
+  9.x e 11.x (`PICO_GRUPOS`; receita, deduções e custo ficam fora — sazonalidade da
+  safra) no negócio (`dre_valor`) e na FILIAL (`dre_valor_filial_mes`, nova). Efeito
+  se não se repetir = −desvio: receita acima do padrão é risco, despesa acima é
+  oportunidade (chaves `oportunidade`/`risco`, que substituíram `acima`/`abaixo`).
+  - Carga `database/eventos_filiais_mensal_2026_10.php`: Qlik DRE Gerencial (Filiais),
+    `[Cód. Filial]` × `[Cód Indicador]`, jan–out, só combinações com algum mês acima
+    de R$ 50 mil (o piso da detecção), dos três negócios com DRE por filial (183).
+    Conferida contra a acumulada (soma até o corte, ≤ R$ 12). `CargaApoio::filiaisMensal`
+    recusa filial/conta desconhecida.
+  - A filial aberta mostra o cartão "Oportunidades e riscos — esta filial" só com os
+    eventos dela (os itens por conta contábil são do negócio). Exemplo: Matriz das
+    Agropecuárias, receitas financeiras acima de R$ 1 mi em mar/mai/jun → risco
+    R$ 2,6 mi; despesa financeira de R$ 3,1 mi em março → oportunidade.
+  - Provas: `testes/oportunidades.php` (juros de mão, filial 1, carga fecha com a
+    acumulada), `testes/estrutura_dre_nova.php` (formato novo e lançamentos) e
+    `provasFormato2027EEventos`.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas

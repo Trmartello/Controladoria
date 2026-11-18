@@ -1007,6 +1007,23 @@ CREATE TABLE IF NOT EXISTS dre_valor_filial (
   CONSTRAINT fk_dvf_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- A DRE da filial MÊS A MÊS, só onde moram os eventos pontuais (8.x, 9.x, 11.x)
+-- e só onde algum mês passa do piso da detecção — ver
+-- database/eventos_filiais_mensal_2026_10.php. Serve às oportunidades e riscos da
+-- filial (receita de juros concentrada num mês e afins); a DRE da filial para a
+-- proposta continua sendo a acumulada (dre_valor_filial).
+CREATE TABLE IF NOT EXISTS dre_valor_filial_mes (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  filial_id  INT NOT NULL,
+  conta_id   INT NOT NULL,
+  ano        SMALLINT NOT NULL,
+  mes        TINYINT NOT NULL,
+  valor      DECIMAL(18,2) NOT NULL,
+  UNIQUE KEY uk_dre_valor_filial_mes (filial_id, conta_id, ano, mes),
+  CONSTRAINT fk_dvfm_filial FOREIGN KEY (filial_id) REFERENCES filial(id) ON DELETE CASCADE,
+  CONSTRAINT fk_dvfm_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- O quadro de colaboradores por NEGÓCIO e por mês, vindo da DRE gerencial (campo
 -- `Número Funcionarios`). Já é "equivalente": quem divide o tempo entre dois
 -- negócios entra em cada um pela sua parte (confirmado pelo cliente em

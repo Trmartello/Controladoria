@@ -6644,6 +6644,86 @@ async function provasTributosComoEComoFica(page, largura) {
 }
 
 /**
+ * A TABELA no formato de 2027 e os EVENTOS PONTUAIS da filial (pedidos do
+ * cliente, 2026-11-18):
+ *  - a DRE da Projeção sai com a CBS informativa acima da Receita Bruta, a
+ *    Receita de Vendas e o Imposto s/ Vendas SEM ela, e a RL igual; o que se
+ *    lança na Receita de Vendas é no formato novo (digitou 1,4 bi, vê 1,4 bi);
+ *  - a filial mostra os meses fora do padrão DELA — a Matriz das Agropecuárias,
+ *    com a receita de juros concentrada em mar/mai/jun, como risco.
+ */
+async function provasFormato2027EEventos(page, largura) {
+  const l = `[${largura}] Formato 2027 e eventos:`;
+  await page.evaluate(() => {
+    document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+    const s = document.querySelector('#sel-negocio');
+    s.value = [...s.options].find((o) => o.textContent.trim().endsWith('- AGROPECUARIAS')).value;
+    s.dispatchEvent(new Event('change'));
+    App.mostrarSecao('projecao');
+  });
+  const abriu = await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha]) tr[data-conta=\"CBS\"]')", 40000);
+  t(`${l} a tabela tem a linha informativa da CBS`, abriu);
+  if (!abriu) return;
+  const ler = () => page.evaluate(() => {
+    const n = (x) => Number(String(x || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+    const tr = (c) => document.querySelector(`.tabela-projecao tr[data-conta="${c}"]`);
+    const cel = (c, i) => tr(c)?.cells[i];
+    const prop = (c) => { const i = cel(c, 5)?.querySelector('input'); return n(i ? (i.value || i.placeholder) : cel(c, 5)?.textContent); };
+    const codigos = [...document.querySelectorAll('.tabela-projecao tbody tr')].map((r) => r.dataset.conta);
+    const d = SecaoProjecao.dados;
+    const t = d.tributos_dre.colunas;
+    return {
+      ordem: codigos.slice(0, 3),
+      fundoCbs: getComputedStyle(cel('CBS', 0)).backgroundColor,
+      nome23: cel('2.3', 0)?.textContent.trim(),
+      amarelo11: cel('1.1', 0)?.classList.contains('linha-muda-nome'),
+      cbsProj: n(cel('CBS', 3)?.textContent), pcProj: Math.round(t.projecao.como_e.pis_cofins),
+      rbProj: n(cel('1', 3)?.textContent), rbFicaProj: Math.round(t.projecao.como_fica.receita_bruta),
+      rlProj: n(cel('3', 3)?.textContent), rlProp: n(cel('3', 5)?.textContent),
+      p11: prop('1.1'), cbsProp: n(cel('CBS', 5)?.textContent),
+      nota: !!document.querySelector('.nota-formato-2027'),
+    };
+  });
+  const a = await ler();
+  t(`${l} a CBS vem logo acima da Receita Bruta, em amarelo; a 2.3 é "(ICMS e ISS)" e a Receita de Vendas, marcada`,
+    a.ordem[0] === 'CBS' && a.ordem[1] === '1' && a.fundoCbs === 'rgb(253, 228, 168)' && /ICMS e ISS/.test(a.nome23 || '') && a.amarelo11 && a.nota,
+    JSON.stringify(a));
+  t(`${l} a projeção de 2026 convertida: CBS = PIS/COFINS, e a Receita Bruta é a "como fica" do cartão`,
+    Math.abs(a.cbsProj - a.pcProj) <= 1 && Math.abs(a.rbProj - a.rbFicaProj) <= 1, JSON.stringify([a.cbsProj, a.pcProj, a.rbProj, a.rbFicaProj]));
+  const digitar = async (v) => {
+    await page.evaluate((x) => {
+      const i = document.querySelector('.tabela-projecao [data-conta="1.1"] .celula-proposta');
+      i.focus(); i.value = x; i.blur();
+    }, v);
+    await new Promise((r) => setTimeout(r, 1500));
+    return ler();
+  };
+  const v = await digitar('1.400.000.000');
+  t(`${l} Receita de Vendas lançada em 1,4 bi (formato novo): a tela mostra 1,4 bi e a CBS da proposta acompanha`,
+    Math.abs(v.p11 - 1400000000) <= 1 && v.cbsProp > a.cbsProp, JSON.stringify([v.p11, v.cbsProp, a.cbsProp]));
+  const volta = await digitar('');
+  t(`${l} apagar devolve a proposta`, Math.abs(volta.rlProp - a.rlProp) <= 1, JSON.stringify([volta.rlProp, a.rlProp]));
+
+  // A filial 1 (Matriz) das Agropecuárias: os eventos pontuais DELA.
+  await page.evaluate(async () => {
+    const d = SecaoProjecao.dados;
+    const f = d.filiais.find((x) => String(x.cod_filial) === '1');
+    SecaoProjecao.filialId = f ? Number(f.id) : 0;
+    await SecaoProjecao.carregar();
+  });
+  await esperar(page, "!!document.querySelector('.painel-oportunidades')", 30000);
+  const f = await page.evaluate(() => ({
+    titulo: document.querySelector('.painel-oportunidades summary h2')?.textContent.trim(),
+    juros: document.querySelector('.painel-oportunidades tr[data-pico="11.1"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
+    itens: !!document.querySelector('.painel-oportunidades .tabela-nao-recorrentes'),
+  }));
+  t(`${l} na filial, o cartão é dela, e a receita de juros concentrada (mar/mai/jun) aparece como risco`,
+    /esta filial/.test(f.titulo || '') && /mar: 1\.109\.220/.test(f.juros) && /mai: 1\.223\.945/.test(f.juros) && /−2\.585\.105/.test(f.juros) && !f.itens,
+    JSON.stringify(f));
+  await page.evaluate(async () => { SecaoProjecao.filialId = 0; await SecaoProjecao.carregar(); });
+}
+
+/**
  * A Projeção agora ESCREVE no negócio do menu (um negócio só no sistema), então
  * as provas dela deixam o contexto num negócio. As que vêm depois contam com o
  * Corporativo do login (`entrar()`): devolve-se o menu a ele.
@@ -10524,6 +10604,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasDiretriz2027(page, 'desktop');
   await provasApoioDesafio(page, 'desktop');
   await provasTributosComoEComoFica(page, 'desktop');
+  await provasFormato2027EEventos(page, 'desktop');
   await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');

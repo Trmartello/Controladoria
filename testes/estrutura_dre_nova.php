@@ -189,5 +189,58 @@ prova('o Corporativo soma os negócios (CBS da proposta = soma das CBS)',
         Database::todos('SELECT n.id FROM negocio n WHERE EXISTS (SELECT 1 FROM dre_valor v WHERE v.negocio_id = n.id)')
     ))) < 1);
 
+echo "\nA tabela no formato de 2027 (CBS acima da Receita Bruta)\n";
+$tela = (new ReflectionMethod($ctrl, 'paraTela'))->invoke(null, $d);
+$lt = array_column($tela['linhas'], null, 'codigo');
+$codigosTela = array_column($tela['linhas'], 'codigo');
+$pcCol = static fn ($c) => $d['tributos_dre']['colunas'][$c]['como_e']['pis_cofins'];
+prova('a linha informativa da CBS vem logo ACIMA da Receita Bruta',
+    array_search('CBS', $codigosTela, true) === array_search('1', $codigosTela, true) - 1 && !empty($lt['CBS']['informativa']),
+    implode(',', array_slice($codigosTela, 0, 4)));
+$okCols = true;
+foreach (['realizado', 'projecao', 'proposta'] as $c) {
+    $okCols = $okCols
+        && abs($lt['CBS'][$c] - $pcCol($c)) < 1
+        && abs($lt['1'][$c] - ($l['1'][$c] - $pcCol($c))) < 1 && abs($lt['1.1'][$c] - ($l['1.1'][$c] - $pcCol($c))) < 1
+        && abs($lt['2'][$c] - ($l['2'][$c] + $pcCol($c))) < 1 && abs($lt['2.3'][$c] - ($l['2.3'][$c] + $pcCol($c))) < 1
+        && abs($lt['3'][$c] - $l['3'][$c]) < 1e-6 && abs($lt['18'][$c] - $l['18'][$c]) < 1e-6;
+}
+prova('em todas as colunas: RB e Receita de Vendas sem o PIS/COFINS, Deduções e 2.3 sem ele, RL e líquido iguais', $okCols);
+prova('o projetado também (projeção − realizado)', abs($lt['CBS']['projetado'] - ($pcCol('projecao') - $pcCol('realizado'))) < 1
+    && abs($lt['1.1']['projetado'] - ($l['1.1']['projetado'] - $lt['CBS']['projetado'])) < 1);
+prova('a 2.3 se chama "Imposto s/ Vendas (ICMS e ISS)" e as linhas que mudaram vão marcadas',
+    str_ends_with($lt['2.3']['nome'], '(ICMS e ISS)') && !empty($lt['1']['formato_novo']) && empty($lt['3']['formato_novo']));
+prova('e é só a TELA: o montar segue no formato da carga (o Corporativo e o Painel somam isso)',
+    !in_array('CBS', array_column($d['linhas'], 'codigo'), true) && abs($l['1.1']['projecao'] - $lt['1.1']['projecao'] - $pcCol('projecao')) < 1);
+
+// Os lançamentos da 1.1 e da 2.3 são no formato novo (sem a CBS).
+$base = (new ReflectionMethod($ctrl, 'linhasDaDre'))->invoke($ctrl, $agro, 2026, 10);
+$trAgro = App\Services\Oportunidades::tributos([$agro], 2026)[$agro];
+$tx = Reforma::pisCofinsDoNegocio($base, $trAgro, 10)['taxa'];
+$naTela = static function (array $lanc) use ($base, $trAgro, $tx) {
+    $r = Projecao::aplicar($base, $lanc, [], $tx);
+    return [array_column($r, null, 'codigo'),
+        array_column(Reforma::formatoNovo($r, Reforma::comoEComoFica($r, $trAgro, 10)), null, 'codigo')];
+};
+[$g, $n] = $naTela(['1.1' => ['entrada' => 'VALOR', 'valor' => 1400000000.0, 'percentual' => null]]);
+prova('Receita de Vendas lançada em valor (1,4 bi, sem a CBS): a tela mostra 1,4 bi e o motor calcula com a CBS dentro',
+    abs($n['1.1']['proposta'] - 1400000000) < 1 && abs($g['1.1']['proposta'] - 1400000000 / (1 - $tx)) < 1
+    && abs($n['CBS']['proposta'] - $tx * $g['1.1']['proposta']) < 1,
+    json_encode([$n['1.1']['proposta'], $g['1.1']['proposta'], $tx]));
+[$g, $n] = $naTela(['2.3' => ['entrada' => 'VALOR', 'valor' => -15000000.0, 'percentual' => null]]);
+prova('Imposto s/ Vendas lançado em valor (−15 mi, só ICMS e ISS): a tela mostra −15 mi, e o motor soma a CBS da proposta',
+    abs($n['2.3']['proposta'] + 15000000) < 1 && abs($g['2.3']['proposta'] - (-15000000 - $tx * $g['1.1']['proposta'])) < 1,
+    json_encode([$n['2.3']['proposta'], $g['2.3']['proposta']]));
+[$g, $n] = $naTela(['2.3' => ['entrada' => 'PERCENTUAL', 'valor' => null, 'percentual' => 10.0]]);
+$bl = array_column($base, null, 'codigo');
+prova('Imposto s/ Vendas com reajuste de 10%: é sobre o ICMS e ISS da projeção (formato novo)',
+    abs($n['2.3']['proposta'] - ($bl['2.3']['projecao'] + $tx * $bl['1.1']['projecao']) * 1.1) < 1, (string)$n['2.3']['proposta']);
+[$g0] = $naTela([]);
+prova('sem lançamento, a taxa não muda nada (a 2.3 acompanha a receita, com a CBS dentro)',
+    (static function () use ($g0, $base) {
+        $semTaxa = array_column(Projecao::aplicar($base, [], [], null), null, 'codigo');
+        return abs($g0['2.3']['proposta'] - $semTaxa['2.3']['proposta']) < 1e-6 && abs($g0['18']['proposta'] - $semTaxa['18']['proposta']) < 1e-6;
+    })());
+
 echo "\n" . count($bad) . " falha(s), {$ok} verde(s).\n";
 exit($bad ? 1 : 0);

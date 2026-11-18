@@ -84,12 +84,12 @@ class ProjecaoController
             'pode_corporativo' => $podeCorporativo,
         ];
         if ($podeCorporativo && !empty($_GET['corporativo'])) {
-            Json::ok($this->montarCorporativo($negocios, $ano, $corte) + $comuns + ['pode_editar' => false]);
+            Json::ok(self::paraTela($this->montarCorporativo($negocios, $ano, $corte)) + $comuns + ['pode_editar' => false]);
             return;
         }
 
         $filialId = (int)($_GET['filial_id'] ?? 0);
-        Json::ok($this->montar($negocioId, $ano, $corte, $filialId) + $comuns + [
+        Json::ok(self::paraTela($this->montar($negocioId, $ano, $corte, $filialId)) + $comuns + [
             'pode_editar' => $u['perfil'] !== 'LEITURA',
         ]);
     }
@@ -275,15 +275,19 @@ class ProjecaoController
         // A proposta de CADA filial, sempre — ela serve a duas perguntas: no
         // modo filial é ela que forma o total do negócio; no modo negócio é
         // ela que diz quanto já foi distribuído.
-        // Os tributos de 2026 do negócio (PIS/COFINS, mistura sócio × não sócio):
-        // só para o "como é × como fica" — a filial usa a taxa do negócio.
+        // Os tributos de 2026 do negócio (PIS/COFINS, mistura sócio × não sócio) e
+        // a taxa de PIS/COFINS sobre a Receita de Vendas: o formato de 2027 da tela
+        // (a CBS fora das deduções) e o que se lança na 1.1 e na 2.3. A filial usa a
+        // taxa do negócio.
         $tributacao = Oportunidades::tributos([$negocioId], $ano)[$negocioId] ?? null;
+        $taxaPc = Reforma::pisCofinsDoNegocio($linhas, $tributacao, $corte)['taxa'];
         $porFilial = [];
         foreach ($filiais as $f) {
             $lf = Projecao::aplicar(
                 $this->linhasDaFilial((int)$f['id'], $ano, $corte),
                 $this->lancados($projId, (int)$f['id']),
-                $cresc
+                $cresc,
+                $taxaPc
             );
             $porFilial[(int)$f['id']] = $lf;
         }
@@ -294,7 +298,7 @@ class ProjecaoController
 
         $linhas = $modo === 'FILIAL' && $filiais
             ? Projecao::somarFiliais($linhas, $propostasFilial)
-            : Projecao::aplicar($linhas, $this->lancados($projId), $cresc);
+            : Projecao::aplicar($linhas, $this->lancados($projId), $cresc, $taxaPc);
         // Quanto das filiais já está lançado, conta a conta: é o que permite à
         // tela mostrar o resíduo a distribuir sem travar nada — distribuir não
         // é requisito para salvar (decisão do cliente, 2026-11-05).
@@ -322,7 +326,10 @@ class ProjecaoController
                 'premissas' => Projecao::premissas($porFilial[$filialId], $digitadas),
                 // O PIS/COFINS da filial sai sempre pela taxa do negócio (a carga
                 // de tributos é por negócio): corte −1 desliga o valor da carga.
-                'tributos_dre' => Reforma::comoEComoFica($porFilial[$filialId], $tributacao, -1),
+                'tributos_dre' => Reforma::comoEComoFica($porFilial[$filialId], $tributacao, $corte, $taxaPc),
+                // Os eventos pontuais DA FILIAL (pedido do cliente, 2026-11-18),
+                // da DRE mensal dela (`dre_valor_filial_mes`).
+                'picos' => Oportunidades::picos($negocioId, $ano, $corte, $filialId),
             ];
         }
 
@@ -617,7 +624,24 @@ class ProjecaoController
     /** A resposta de toda gravação: a tela inteira, recalculada. */
     private function responderComATela(int $negocioId, int $ano, int $corte, int $filialId): void
     {
-        Json::ok($this->montar($negocioId, $ano, $corte, $filialId));
+        Json::ok(self::paraTela($this->montar($negocioId, $ano, $corte, $filialId)));
+    }
+
+    /**
+     * A tela no FORMATO DE 2027 (`Reforma::formatoNovo`): a DRE do negócio, da
+     * filial ou do Corporativo com a CBS acima da Receita Bruta. É a última
+     * coisa antes da resposta — `montar` segue no formato da carga, que é o que o
+     * Corporativo soma e o que o desafio e o Painel usam.
+     */
+    private static function paraTela(array $p): array
+    {
+        if (!empty($p['linhas']) && !empty($p['tributos_dre'])) {
+            $p['linhas'] = Reforma::formatoNovo($p['linhas'], $p['tributos_dre']);
+        }
+        if (!empty($p['filial']['linhas']) && !empty($p['filial']['tributos_dre'])) {
+            $p['filial']['linhas'] = Reforma::formatoNovo($p['filial']['linhas'], $p['filial']['tributos_dre']);
+        }
+        return $p;
     }
 
     private function filialDoNegocio(int $filialId, int $negocioId): bool

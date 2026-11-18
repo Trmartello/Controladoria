@@ -126,11 +126,46 @@ foreach ([1 => -100000, 2 => -100000, 3 => -100000, 4 => -400000, 5 => -100000, 
 }
 $p = Oportunidades::picos($nid, 2099, 7);
 prova('o mês de −400 mil fica R$ 300 mil acima do padrão (mediana −100 mil)',
-    count($p) === 1 && abs($p[0]['acima'] - 300000) < 1 && abs($p[0]['mediana'] + 100000) < 1, json_encode($p[0] ?? null));
-prova('e o mês de −20 mil (abaixo do padrão em 80 mil) vira sinal de falta no plano',
-    abs(($p[0]['abaixo'] ?? 0) + 80000) < 1 && count($p[0]['meses'] ?? []) === 2);
+    count($p) === 1 && abs($p[0]['oportunidade'] - 300000) < 1 && abs($p[0]['mediana'] + 100000) < 1
+    && $p[0]['grupo'] === 'Despesas operacionais', json_encode($p[0] ?? null));
+prova('e o mês de −20 mil (abaixo do padrão em 80 mil) vira risco (pode faltar no plano)',
+    abs(($p[0]['risco'] ?? 0) + 80000) < 1 && count($p[0]['meses'] ?? []) === 2);
 prova('meses depois do corte não entram', count(Oportunidades::picos($nid, 2099, 3)) === 0);
+
+// O caso do cliente: receita de JUROS concentrada num mês (11.1 Receitas
+// Financeiras: 50 mil por mês e 1,2 mi em maio). Se não se repetir em 2027 é
+// RISCO de R$ 1,15 mi — e a despesa financeira pontual, oportunidade.
+$c111 = (int)Database::um("SELECT id FROM dre_conta WHERE codigo = '11.1'")['id'];
+$c112 = (int)Database::um("SELECT id FROM dre_conta WHERE codigo = '11.2'")['id'];
+foreach ([1 => 50000, 2 => 50000, 3 => 50000, 4 => 50000, 5 => 1200000, 6 => 50000, 7 => 50000] as $mes => $v) {
+    $ins->execute([$nid, $c111, $mes, $v]);
+    $ins->execute([$nid, $c112, $mes, $mes === 3 ? -900000 : -20000]);
+}
+$p = array_column(Oportunidades::picos($nid, 2099, 7), null, 'codigo');
+prova('receita de juros concentrada num mês (maio, 1,2 mi) é RISCO de R$ 1,15 mi se não se repetir',
+    isset($p['11.1']) && abs($p['11.1']['risco'] + 1150000) < 1 && $p['11.1']['oportunidade'] == 0
+    && $p['11.1']['meses'][0]['mes'] === 5 && $p['11.1']['grupo'] === 'Resultado financeiro', json_encode($p['11.1'] ?? null));
+prova('e a despesa financeira pontual (março, −900 mil) é OPORTUNIDADE de R$ 880 mil',
+    isset($p['11.2']) && abs($p['11.2']['oportunidade'] - 880000) < 1);
 $pdo->exec("DELETE FROM negocio WHERE id = {$nid}");
+
+// ── 3b. A FILIAL, mês a mês (carga eventos_filiais_mensal) ──────────────────────
+$fil = Database::um("SELECT f.id FROM filial f JOIN negocio n ON n.id = f.negocio_id WHERE n.cod_negocio = '8' AND f.cod_filial = '1'");
+$pf = array_column(Oportunidades::picos(0, 2026, 10, (int)$fil['id']), null, 'codigo');
+prova('Agropecuárias, filial 1: a despesa financeira de −R$ 3,08 mi em março sai como oportunidade',
+    isset($pf['11.2']) && in_array(3, array_column($pf['11.2']['meses'], 'mes'), true) && $pf['11.2']['oportunidade'] > 2500000,
+    json_encode($pf['11.2'] ?? null));
+prova('e a receita de juros acima de R$ 1 mi em mar/mai/jun sai como risco',
+    isset($pf['11.1']) && $pf['11.1']['risco'] < -1000000 && count(array_intersect([3, 5, 6], array_column($pf['11.1']['meses'], 'mes'))) === 3,
+    json_encode(array_column($pf['11.1']['meses'] ?? [], 'mes')));
+$nMes = (int)Database::um('SELECT COUNT(DISTINCT filial_id, conta_id) n FROM dre_valor_filial_mes WHERE ano = 2026')['n'];
+prova('a carga mensal das filiais está no banco (183 combinações filial × linha)', $nMes === 183, (string)$nMes);
+$soma = Database::um("SELECT SUM(m.valor) s, vf.realizado r FROM dre_valor_filial_mes m
+    JOIN dre_valor_filial vf ON vf.filial_id = m.filial_id AND vf.conta_id = m.conta_id AND vf.ano = m.ano
+    JOIN dre_conta c ON c.id = m.conta_id
+   WHERE m.filial_id = ? AND c.codigo = '11.2' AND m.ano = 2026 AND m.mes <= vf.corte GROUP BY vf.realizado", [(int)$fil['id']]);
+prova('e o mensal fecha com a DRE acumulada da filial (jan até o corte dela)', $soma && abs((float)$soma['s'] - (float)$soma['r']) < 12,
+    json_encode($soma));
 
 // ── 4. As cargas ────────────────────────────────────────────────────────────
 $recusa = function (callable $f): string {
