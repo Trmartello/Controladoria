@@ -67,6 +67,17 @@ function vigiar(page, rotulo, erros) {
 
 /** Faz login e devolve a página já com o contexto corporativo escolhido. */
 async function entrar(ctx, rotulo, erros) {
+  // Os cartões da Projeção são expansores e, por omissão, vêm quase todos
+  // fechados; as provas antigas digitam neles. Abertos aqui — só se a página
+  // ainda não guardou escolha nenhuma —, e as provas dos expansores gravam o
+  // estado que querem medir.
+  await ctx.addInitScript(() => {
+    try {
+      if (localStorage.getItem('projecao.expansores') === null) {
+        localStorage.setItem('projecao.expansores', JSON.stringify({ visao: true, desafio: true, premissas: true, pessoas: true }));
+      }
+    } catch { /* sem armazenamento */ }
+  });
   const page = await ctx.newPage();
   if (erros) vigiar(page, rotulo, erros);
   await page.goto(`${BASE}/login`);

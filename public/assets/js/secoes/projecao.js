@@ -86,17 +86,16 @@ const SecaoProjecao = {
 
   async carregar() {
     const el = document.getElementById('secao-projecao');
-    // No DOSSIÊ quem manda é o contexto do documento, não o seletor da tela:
-    // o dossiê percorre os negócios trocando `App.contexto` e fotografando
-    // cada seção. Sem isto, todas as páginas sairiam com o último negócio que
-    // alguém tivesse aberto aqui.
+    // O negócio é UM SÓ no sistema (pedido do cliente, 2026-11-18: "esses campos
+    // devem ser o mesmo"): quem manda é o contexto do menu (`App.contexto`), na
+    // tela e no dossiê. Antes a Projeção guardava um negócio próprio, e o topo
+    // dizia "12 - P. Resf. Leite" sobre uma tela de Cereais. O seletor desta
+    // tela continua, por conveniência, mas só ESCREVE no contexto — ver `ligar`.
     const dossie = !!App.modoDossie;
-    const alvo = dossie
-      ? (App.contexto.corporativo ? 0 : Number(App.contexto.negocioId) || 0)
-      : this.negocioId;
-    // O Corporativo é a soma dos negócios (pedido do cliente, 2026-11-17): na
-    // tela é uma escolha do seletor; no dossiê é o contexto do documento.
-    const corp = dossie ? !alvo : !!this.corporativo;
+    const corp = !!App.contexto.corporativo;
+    const alvo = corp ? 0 : Number(App.contexto.negocioId) || 0;
+    // A filial aberta só vale para o negócio em que foi aberta.
+    if (alvo !== this.negocioId) this.filialId = 0;
     const q = corp
       ? '?corporativo=1'
       : (alvo
@@ -109,23 +108,27 @@ const SecaoProjecao = {
       this.ligar(el);
       return;
     }
-    // Quem não enxerga todos os negócios não recebe o consolidado: volta ao
-    // negócio, e no dossiê diz por quê em vez de imprimir um parcial.
+    // Quem não enxerga todos os negócios não recebe o consolidado: diz por quê
+    // em vez de mostrar um parcial.
     if (corp) {
-      this.corporativo = false;
-      if (dossie) {
-        el.innerHTML = `<h1>Projeção de Resultados</h1>
-          <p class="text-muted">O consolidado dos negócios é do perfil que enxerga todos eles.</p>`;
-        return;
-      }
-    }
-    // A API cai no primeiro negócio com DRE quando o pedido não tem. Numa tela
-    // isso é conveniência; num DOCUMENTO seria imprimir o número de um negócio
-    // sob o nome de outro.
-    if (dossie && Number(d.negocio_id) !== Number(alvo)) {
       el.innerHTML = `<h1>Projeção de Resultados</h1>
-        <p class="text-muted">Este negócio ainda não tem a DRE carregada — a carga vem do Qlik,
+        <p class="text-muted">O consolidado dos negócios é do perfil que enxerga todos eles.</p>`;
+      return;
+    }
+    // A API cai no primeiro negócio com DRE quando o pedido não tem. Mostrar esse
+    // outro negócio seria o número de um sob o nome do outro (o do menu) — então
+    // a tela diz que este não tem DRE e oferece os que têm.
+    if (d.negocios && d.negocios.length && Number(d.negocio_id) !== Number(alvo)) {
+      el.innerHTML = `<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <h1 class="mb-0 me-auto">Projeção de Resultados</h1>
+          ${dossie ? '' : `<select id="projecao-negocio" class="form-select form-select-sm" style="max-width:18rem"
+            aria-label="Negócio"><option value="" selected>— escolha um negócio com DRE —</option>${
+  this.opcoesDeNegocio({ ...d, negocio_id: 0 })}</select>`}
+        </div>
+        <p class="text-muted" id="projecao-sem-dre">Este negócio ainda não tem a DRE carregada — a carga vem do Qlik,
         pela controladoria, e é feita por negócio.</p>`;
+      this.negocioId = alvo;
+      this.ligar(el);
       return;
     }
 
@@ -211,6 +214,7 @@ const SecaoProjecao = {
       </p>
       <p class="mb-2">${assinatura}</p>
       ${this.cartaoVisaoAno(d)}
+      ${this.cartaoDesafio(d)}
       ${this.avisoFiliaisDefasadas(d)}
       ${this.faixaDoModo(d)}
       ${this.painel(d)}
@@ -378,8 +382,11 @@ const SecaoProjecao = {
         Vale alimentação: <strong>${reais(valores.ALIMENTACAO)}</strong> por colaborador/mês.
       </div>`;
 
-    return `
-      <div class="card mb-3 painel-premissas"><div class="card-body py-2 px-3">
+    const pctCurto = (v) => (v === null || v === undefined ? '—' : `${String(v).replace('.', ',')}%`);
+    const resumo = `${ano} · IPCA ${pctCurto(digitadas.IPCA)} · PIB ${pctCurto(digitadas.PIB)}
+      · desejado ${pctCurto(digitadas.CRESCIMENTO)} · pessoas ${pctCurto(digitadas.PESSOAS)}
+      · vale ${reais(valores.ALIMENTACAO)} · abono ${reais(Number(valores.ASSIDUIDADE) + Number(valores.RESULTADO))}`;
+    return this.expansor('premissas', 'painel-premissas', 'Premissas e benefícios', resumo, `
         ${seletorAno}
         <div class="row g-3 align-items-end">
           ${campo('IPCA', 'IPCA', `Inflação prevista para ${ano}. Vale para o negócio e todas as filiais.`)}
@@ -399,8 +406,7 @@ const SecaoProjecao = {
           ${abonoTotal}
           ${leituras}
         </div>
-        <div class="small text-muted mt-2">${nota}</div>
-      </div></div>`;
+        <div class="small text-muted mt-2">${nota}</div>`);
   },
 
   /**
@@ -484,12 +490,11 @@ const SecaoProjecao = {
         Teto (todos cumprem a assiduidade e o resultado vem todo mês): <strong data-pessoas="maximo">${dinheiro(calc.maximo_anual)}</strong>.
       </div>` : '';
 
-    return `
-      <div class="card mb-3 painel-pessoas"><div class="card-body py-2 px-3">
-        <div class="d-flex flex-wrap align-items-baseline gap-2 mb-1">
-          <h2 class="h6 mb-0">Pessoas e benefícios — ${ano}</h2>
-          <span class="small text-muted" id="pessoas-quadro">${quadro}</span>
-        </div>
+    const resumo = calc
+      ? `${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores · ${dinheiro(calc.anual.total)} no ano`
+      : (base ? `${Number(base.colaboradores).toLocaleString('pt-BR')} colaboradores` : 'sem quadro carregado');
+    return this.expansor('pessoas', 'painel-pessoas', `Pessoas e benefícios — ${ano}`, resumo, `
+        <div class="small text-muted mb-1" id="pessoas-quadro">${quadro}</div>
         <div class="small text-muted mb-2">
           O número já é de colaboradores <strong>equivalentes</strong>: quem divide o tempo entre dois
           negócios (30/70, 50/50) entra em cada um pela sua parte, e cada negócio paga a sua.
@@ -504,8 +509,7 @@ const SecaoProjecao = {
           ${campo('PCT_RESULTADO', '% dos meses com resultado', '%',
     'Previsão: em que parte dos meses o negócio atinge o resultado. 100% é o orçamento cheio.', num(padrao.PCT_RESULTADO))}
         </div>
-        ${resultado}
-      </div></div>`;
+        ${resultado}`);
   },
 
   /** O Corporativo só totaliza: a soma dos negócios, sem campo nenhum. */
@@ -518,9 +522,8 @@ const SecaoProjecao = {
         Pessoas e benefícios: nenhum negócio tem quadro de colaboradores carregado.</div></div>`;
     }
     const base = d.pessoas.base;
-    return `
-      <div class="card mb-3 painel-pessoas"><div class="card-body py-2 px-3">
-        <h2 class="h6 mb-1">Pessoas e benefícios — ${ano}</h2>
+    return this.expansor('pessoas', 'painel-pessoas', `Pessoas e benefícios — ${ano}`,
+      `${Number(c.colaboradores).toLocaleString('pt-BR')} colaboradores · ${dinheiro(c.anual.total)} no ano`, `
         <div class="small text-muted mb-2" id="pessoas-quadro">
           Soma de <strong>${c.negocios} negócios</strong> com quadro:
           <strong>${Number(c.colaboradores).toLocaleString('pt-BR')}</strong> colaboradores equivalentes
@@ -539,8 +542,7 @@ const SecaoProjecao = {
         <div class="small text-muted">
           Sem nenhum abono de resultado: <strong data-pessoas="sem_resultado">${dinheiro(c.sem_resultado_anual)}</strong> no ano.
           Teto: <strong data-pessoas="maximo">${dinheiro(c.maximo_anual)}</strong>. Os valores e as previsões são lançados em cada negócio.
-        </div>
-      </div></div>`;
+        </div>`);
   },
 
   /**
@@ -652,6 +654,7 @@ const SecaoProjecao = {
         não é meta, é a falta dela.` : ''}
       </div>
       ${this.cartaoVisaoAno(d)}
+      ${this.cartaoDesafio(d)}
       ${this.cartaoPessoas(d)}
       ${faltando}
       ${this.botaoNivel()}
@@ -740,9 +743,10 @@ const SecaoProjecao = {
   cartaoVisaoAno(d) {
     if (d.corporativo) return this.cartaoVisaoAnoCorporativo(d);
     if (!d.visao_ano || d.filial) return '';
-    return `
-      <div class="card mb-3 painel-visao-ano"><div class="card-body py-2 px-3">
-        <h2 class="h6 mb-2">${d.ano}: realizado, planejado e visão realista</h2>
+    const v = d.visao_ano;
+    const resumo = `real + realista: receita ${this.mi(v['1'].real_realista)} · resultado ${this.mi(v['16'].real_realista)}
+      (${this.mi(v['16'].realista_x_plano, true)} contra o plano)`;
+    return this.expansor('visao', 'painel-visao-ano', `${d.ano}: realizado, planejado e visão realista`, resumo, `
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0 tabela-visao-ano">
             <thead>${this.colunasVisao(d)}</thead>
@@ -752,8 +756,7 @@ const SecaoProjecao = {
             </tbody>
           </table>
         </div>
-        ${this.notaVisao(d)}
-      </div></div>`;
+        ${this.notaVisao(d)}`);
   },
 
   cartaoVisaoAnoCorporativo(d) {
@@ -771,13 +774,182 @@ const SecaoProjecao = {
           </table>
         </div>`;
     };
-    return `
-      <div class="card mb-3 painel-visao-ano"><div class="card-body py-2 px-3">
-        <h2 class="h6 mb-1">${d.ano}: realizado, planejado e visão realista, por negócio</h2>
+    const t = d.visao_ano_total || {};
+    const resumo = t['1'] && t['16']
+      ? `real + realista: receita ${this.mi(t['1'].real_realista)} · resultado ${this.mi(t['16'].real_realista)}
+        (${this.mi(t['16'].realista_x_plano, true)} contra o plano)`
+      : '';
+    return this.expansor('visao', 'painel-visao-ano', `${d.ano}: realizado, planejado e visão realista, por negócio`, resumo, `
         ${tabela('1', 'Receita operacional bruta')}
         ${tabela('16', 'Resultado líquido')}
-        ${this.notaVisao(d)}
-      </div></div>`;
+        ${this.notaVisao(d)}`);
+  },
+
+  /**
+   * O DESAFIO da Controladoria para o ano da proposta (pedido do cliente,
+   * 2026-11-18: "os 2% são margem líquida, carregue o desafio na projeção").
+   * Só leitura: é referência decidida e congelada (`negocio_desafio`), e fica ao
+   * lado do que a proposta lançada dá hoje, com a diferença. Na filial não
+   * aparece — o desafio é do negócio.
+   */
+  cartaoDesafio(d) {
+    if (d.corporativo) return this.cartaoDesafioCorporativo(d);
+    const x = d.desafio;
+    if (!x || d.filial) return '';
+    const des = x.desafio;
+    const pro = x.proposta;
+    const linha = (rotulo, k, chave) => {
+      const a = des[k];
+      const b = pro[k];
+      const dif = a === null || b === null ? null : b - a;
+      return `<tr data-desafio="${chave}">
+          <td>${rotulo}</td>
+          <td class="text-end fw-bold">${this.moeda(a)}</td>
+          <td class="text-end">${b === null ? '—' : this.moeda(b)}</td>
+          <td class="text-end ${this.corDif(dif)}">${dif === null ? '—' : this.comSinal(dif)}</td>
+        </tr>`;
+    };
+    const difMargem = des.margem === null || pro.margem === null ? null : pro.margem - des.margem;
+    const resumo = `resultado ${this.mi(des.resultado)}${des.margem === null ? '' : ` · margem ${this.pct(des.margem / 100, 2)}`}
+      — a proposta dá ${this.mi(pro.resultado)}${pro.margem === null ? '' : ` (${this.pct(pro.margem / 100, 2)})`}`;
+    return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} da Controladoria`, resumo, `
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-1 tabela-desafio">
+            <thead><tr><th></th>
+              <th class="text-end">Desafio<br><span class="fw-normal text-muted small">${x.ano}</span></th>
+              <th class="text-end">Proposta<br><span class="fw-normal text-muted small">lançada hoje</span></th>
+              <th class="text-end">Diferença<br><span class="fw-normal text-muted small">proposta − desafio</span></th>
+            </tr></thead>
+            <tbody>
+              ${linha('Receita operacional bruta', 'receita_bruta', 'receita_bruta')}
+              ${linha('Receita operacional líquida', 'receita_liquida', 'receita_liquida')}
+              ${linha('Resultado líquido', 'resultado', 'resultado')}
+              <tr data-desafio="margem"><td>Margem líquida <span class="text-muted small">(sobre a ROL)</span></td>
+                <td class="text-end fw-bold">${this.pct(des.margem === null ? null : des.margem / 100, 2)}</td>
+                <td class="text-end">${this.pct(pro.margem === null ? null : pro.margem / 100, 2)}</td>
+                <td class="text-end ${difMargem === null ? '' : (difMargem >= 0 ? 'text-success' : 'text-danger')}">${difMargem === null ? '—'
+  : `${difMargem > 0 ? '+' : ''}${difMargem.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.`}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="small text-muted" id="desafio-nota">
+          <strong>${Modal.esc(des.nota)}</strong> ${this.notaDesafio(x)}
+        </div>`);
+  },
+
+  notaDesafio(x) {
+    return `Diretriz do Horizonte 1: <strong>preservar margem</strong> — pode crescer, sem perder margem.
+      ${Modal.esc(x.metodo)} A meta da direção é <strong>${this.pct(x.meta_margem / 100, 0)} de margem líquida</strong>
+      para a cooperativa. Referência decidida em ${String(x.decidido_em).split('-').reverse().join('/')}, só de leitura:
+      recarregar a DRE não a move.`;
+  },
+
+  cartaoDesafioCorporativo(d) {
+    const x = d.desafio;
+    if (!x) return '';
+    const nomes = Object.fromEntries((d.negocios || []).map((n) => [String(n.id), n.rotulo]));
+    const m2 = (v) => this.pct(v === null || v === undefined ? null : v / 100, 2);
+    const linha = (rotulo, des, pro, classe = '', attr = '') => {
+      const dif = des && pro.resultado !== null ? pro.resultado - des.resultado : null;
+      return `<tr class="${classe}" ${attr}>
+          <td>${rotulo}</td>
+          <td class="text-end">${des ? this.moeda(des.receita_bruta) : '—'}</td>
+          <td class="text-end fw-bold">${des ? this.moeda(des.resultado) : '—'}</td>
+          <td class="text-end">${des ? m2(des.margem) : '—'}</td>
+          <td class="text-end">${pro.resultado === null ? '—' : this.moeda(pro.resultado)}</td>
+          <td class="text-end">${m2(pro.margem)}</td>
+          <td class="text-end ${this.corDif(dif)}">${dif === null ? '—' : this.comSinal(dif)}</td>
+        </tr>`;
+    };
+    const ordem = Object.keys(x.negocios).sort((a, b) => ((x.negocios[b].desafio || {}).resultado || 0) - ((x.negocios[a].desafio || {}).resultado || 0));
+    const linhas = ordem.map((id) => linha(Modal.esc(nomes[id] || id), x.negocios[id].desafio, x.negocios[id].proposta, '', `data-negocio-desafio="${id}"`)).join('');
+    const t = x.total;
+    const meta = (lado, rotulo) => {
+      const falta = lado.falta;
+      return `<li data-meta="${rotulo === 'desafio' ? 'desafio' : 'proposta'}">
+          Sobre a ROL ${rotulo === 'desafio' ? 'do desafio' : 'da proposta lançada'} (${this.mi(lado.receita_liquida)}),
+          ${this.pct(x.meta_margem / 100, 0)} seriam <strong>${this.mi(lado.resultado_meta)}</strong>;
+          ${rotulo === 'desafio' ? 'o desafio' : 'a proposta'} chega a <strong>${this.mi(lado.resultado)}</strong> (${m2(lado.margem)}):
+          ${falta > 0 ? `<strong class="text-danger">faltam ${this.mi(falta)}</strong>` : `<strong class="text-success">sobram ${this.mi(-falta)}</strong>`}.
+        </li>`;
+    };
+    const resumo = `resultado ${this.mi(t.desafio.resultado)} · margem ${m2(t.desafio.margem)}
+      — meta de ${this.pct(x.meta_margem / 100, 0)}: ${t.desafio.falta > 0 ? `faltam ${this.mi(t.desafio.falta)}` : 'atingida'}`;
+    return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} da Controladoria, por negócio`, resumo, `
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-1 tabela-desafio">
+            <thead><tr><th></th>
+              <th class="text-end">Receita bruta<br><span class="fw-normal text-muted small">desafio</span></th>
+              <th class="text-end">Resultado<br><span class="fw-normal text-muted small">desafio</span></th>
+              <th class="text-end">Margem<br><span class="fw-normal text-muted small">desafio</span></th>
+              <th class="text-end">Resultado<br><span class="fw-normal text-muted small">proposta</span></th>
+              <th class="text-end">Margem<br><span class="fw-normal text-muted small">proposta</span></th>
+              <th class="text-end">Diferença<br><span class="fw-normal text-muted small">proposta − desafio</span></th>
+            </tr></thead>
+            <tbody>${linhas}${linha('Total dos negócios', t.desafio, t.proposta, 'fw-bold table-light', 'data-negocio-desafio="total"')}</tbody>
+          </table>
+        </div>
+        <p class="small fw-bold mb-1 mt-2">Meta da direção: ${this.pct(x.meta_margem / 100, 0)} de margem líquida</p>
+        <ul class="small mb-1 meta-margem">${meta(t.desafio, 'desafio')}${meta(t.proposta, 'proposta')}</ul>
+        <div class="small text-muted">${this.notaDesafio(x)} Cada negócio vê o seu desafio na própria tela.</div>`);
+  },
+
+  /** Reais em milhões, para os resumos dos expansores. `sinal` força o + nos positivos. */
+  mi(v, sinal = false) {
+    if (v === null || v === undefined || !isFinite(v)) return '—';
+    const t = `R$ ${(Math.abs(v) / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mi`;
+    if (v < 0 && t !== 'R$ 0,00 mi') return `−${t}`;
+    return sinal && v > 0 ? `+${t}` : t;
+  },
+
+  comSinal(v) {
+    return `${Math.round(v) > 0 ? '+' : ''}${this.moeda(v)}`;
+  },
+
+  corDif(v) {
+    if (v === null || Math.abs(v) < 5e4) return '';
+    return v > 0 ? 'text-success' : 'text-danger';
+  },
+
+  /**
+   * Os cartões de cima da tela — visão do ano, desafio, premissas, pessoas —
+   * são EXPANSORES (pedido do cliente, 2026-11-18: "para otimizar a tela").
+   * Fechado, cada um mostra no título o número que importa, então a tabela da
+   * proposta sobe sem que se perca o que está acima dela.
+   *
+   * É `<details>`, não JS: abre e fecha sem código, e o que estiver digitado
+   * dentro continua no DOM. O estado de cada um é conveniência de quem olha e
+   * fica no `localStorage`, como o de recolher subcontas; por omissão só o
+   * desafio vem aberto. No dossiê tudo sai aberto — papel não se expande.
+   */
+  EXPANSORES_PADRAO: { visao: false, desafio: true, premissas: false, pessoas: false },
+
+  expansorAberto(chave) {
+    if (App.modoDossie) return true;
+    if (this.expansores === undefined) {
+      try {
+        const salvo = JSON.parse(localStorage.getItem('projecao.expansores') || '{}');
+        this.expansores = salvo && typeof salvo === 'object' ? salvo : {};
+      } catch (e) { this.expansores = {}; }
+    }
+    const v = this.expansores[chave];
+    return typeof v === 'boolean' ? v : !!this.EXPANSORES_PADRAO[chave];
+  },
+
+  guardarExpansor(chave, aberto) {
+    this.expansorAberto(chave);
+    this.expansores[chave] = !!aberto;
+    try { localStorage.setItem('projecao.expansores', JSON.stringify(this.expansores)); } catch (e) { /* sem armazenamento: vale só nesta tela */ }
+  },
+
+  expansor(chave, classe, titulo, resumo, corpo) {
+    return `<details class="card mb-3 expansor ${classe}" data-expansor="${chave}"${this.expansorAberto(chave) ? ' open' : ''}>
+        <summary class="px-3 py-2">
+          <h2 class="h6 mb-0">${titulo}</h2>
+          ${resumo ? `<span class="small text-muted expansor-resumo">${resumo}</span>` : ''}
+        </summary>
+        <div class="card-body pt-0 pb-2 px-3">${corpo}</div>
+      </details>`;
   },
 
   /**
@@ -926,15 +1098,29 @@ const SecaoProjecao = {
       n.dataset.ligado = '1';
       return true;
     };
+    // O toggle do <details> não borbulha: escuta-se na captura, uma vez só no
+    // contêiner da seção (que sobrevive às trocas de negócio).
+    if (!el.dataset.expansores) {
+      el.dataset.expansores = '1';
+      el.addEventListener('toggle', (ev) => {
+        const t = ev.target;
+        if (t instanceof HTMLDetailsElement && t.dataset.expansor && !App.modoDossie) {
+          this.guardarExpansor(t.dataset.expansor, t.open);
+        }
+      }, true);
+    }
     const nivel = el.querySelector('#projecao-nivel');
     if (nivel && virgem(nivel)) nivel.addEventListener('click', () => this.alternarNivel());
     const sel = el.querySelector('#projecao-negocio');
     if (sel && virgem(sel)) {
       sel.addEventListener('change', (ev) => {
-        // 'corp' é o consolidado; qualquer outro valor é um negócio e desliga-o.
-        this.corporativo = ev.target.value === 'corp';
-        if (!this.corporativo) this.negocioId = Number(ev.target.value);
-        this.carregar();
+        // Escreve no contexto do MENU e deixa ele recarregar a seção: o negócio
+        // é um só, e o topo, as outras telas e esta mudam juntos.
+        const v = ev.target.value === 'corp' ? 'CORP' : ev.target.value;
+        const global = document.getElementById('sel-negocio');
+        if (!v || !global || ![...global.options].some((o) => o.value === v)) return;
+        global.value = v;
+        global.dispatchEvent(new Event('change'));
       });
     }
     // A gravação vem do `blur`, como nas células de Metas: quem percorre a
