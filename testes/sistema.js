@@ -6494,10 +6494,11 @@ async function provasApoioDesafio(page, largura) {
       lbProp: num(td('lucro_bruto')[2]), rnProp: num(td('resultado_negocio')[2]), ratProp: num(td('rateios_negocio')[2]),
       admProp: num(td('rateios_adm')[2]),
       pisCofins: td('pis_cofins'), notaTrib: document.querySelector('#desafio-tributos')?.textContent.replace(/\s+/g, ' ') || '',
-      pdd: !!document.querySelector('.tabela-nao-recorrentes tr[data-conta-contabil="3.11.03.01.01"]'),
+      pdd: document.querySelector('.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"]')?.textContent.replace(/\s+/g, ' ') || '',
+      saldo: document.querySelector('[data-oport="saldo"]')?.textContent.trim(),
       oport: num(document.querySelector('[data-oport="oportunidade"]')?.textContent),
       risco: document.querySelector('[data-oport="risco"]')?.textContent.trim(),
-      picos: document.querySelectorAll('.tabela-picos tr[data-pico]').length,
+      picos: document.querySelectorAll('.tabela-oportunidades-quadro tr[data-pico]').length,
       fundo: cel ? getComputedStyle(cel).backgroundColor : null,
       fundoBloco: getComputedStyle(document.querySelector('.tabela-projecao tr[data-conta="1"] td:nth-child(6)')).backgroundColor,
       legenda: !!document.querySelector('.legenda-editavel'),
@@ -6519,8 +6520,9 @@ async function provasApoioDesafio(page, largura) {
     /\d/.test(n.pisCofins[1] || '') && /\d/.test(n.pisCofins[2] || '')
       && !n.degraus.includes('cbs') && !n.degraus.includes('resultado_com_cbs') && /pelo mesmo valor/.test(n.notaTrib),
     `${n.degraus.join(',')} · ${n.notaTrib.slice(0, 120)}`);
-  t(`${l} oportunidades: a PDD da Agropecuária aparece, e a oportunidade soma R$ 8.295.910`,
-    n.pdd && n.oport === 8295910 && /675\.108/.test(n.risco || ''), `${n.oport} / ${n.risco}`);
+  t(`${l} quadro único: a PDD da Agropecuária com os meses (out: −4.541.651), total de oportunidades R$ 17.129.168, de riscos −4.069.919 e saldo`,
+    /out: -4\.541\.651/.test(n.pdd) && n.oport === 17129168 && /4\.069\.919/.test(n.risco || '') && /\+13\.059\.249/.test(n.saldo || ''),
+    `${n.oport} / ${n.risco} / ${n.saldo} / ${n.pdd.slice(0, 120)}`);
   t(`${l} e há meses fora do padrão nas despesas`, n.picos > 0, String(n.picos));
   t(`${l} a célula de lançar é amarelo-claro, e o bloco calculado não`,
     n.fundo === 'rgb(255, 246, 214)' && n.fundoBloco !== 'rgb(255, 246, 214)' && n.legenda, `${n.fundo} / ${n.fundoBloco}`);
@@ -6549,7 +6551,7 @@ async function provasApoioDesafio(page, largura) {
     !c.cabTrib.some((h) => /sem o regime|Efeito/i.test(h)) && /= PIS \+ COFINS sobre o desafio/.test(c.cabTrib.slice(-1)[0] || '')
       && /optou pelo regime específico/.test(c.notaTrib) && /pelo mesmo valor/.test(c.notaTrib),
     `${c.cabTrib.slice(-2).join(' | ')} · ${c.notaTrib.slice(0, 100)}`);
-  t(`${l} oportunidades por negócio (10) com o total`, c.oportNegocios === 10 && /\+/.test(c.oportTotal[1] || ''), c.oportTotal.join(' | '));
+  t(`${l} oportunidades por negócio (11, itens + eventos pontuais) com o total`, c.oportNegocios === 11 && /\+/.test(c.oportTotal[1] || ''), c.oportTotal.join(' | '));
 }
 
 /**
@@ -6644,6 +6646,82 @@ async function provasTributosComoEComoFica(page, largura) {
 }
 
 /**
+ * O MONTANTE DE OPORTUNIDADES DO ESTOQUE logo abaixo da DRE (pedido do cliente,
+ * 2026-11-18): perdas e acerto de estoque contra a média mensal, e os produtos
+ * parados (Agropecuárias > 2 anos, Supermercados > 1 ano), totalizados — no
+ * negócio, na filial e no Corporativo.
+ */
+async function provasEstoque(page, largura) {
+  const l = `[${largura}] Estoque abaixo da DRE:`;
+  const escolher = async (txt) => {
+    await page.evaluate((x) => {
+      document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+      const s = document.querySelector('#sel-negocio');
+      s.value = x === 'CORP' ? 'CORP' : [...s.options].find((o) => o.textContent.trim().endsWith(x)).value;
+      s.dispatchEvent(new Event('change'));
+    }, txt);
+    await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('#projecao-estoque')", 40000);
+  };
+  const ler = () => page.evaluate(() => {
+    const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+    const box = document.querySelector('#projecao-estoque');
+    // Logo abaixo da DRE: entre o bloco e a tabela, só o rodapé da própria tabela.
+    let ant = box?.previousElementSibling;
+    const rodape = ant?.tagName === 'P';
+    if (rodape) ant = ant.previousElementSibling;
+    return {
+      depoisDaDre: rodape && !!ant?.classList.contains('tabela-projecao'),
+      titulo: box?.querySelector('h2')?.textContent.trim(),
+      total: num(box?.querySelector('[data-estoque-total="total"]')?.textContent),
+      resultado: num(box?.querySelector('[data-estoque-total="resultado"]')?.textContent),
+      caixa: num(box?.querySelector('[data-estoque-total="caixa"]')?.textContent),
+      perda: box?.querySelector('tr[data-estoque="PERDA"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
+      parado: box?.querySelector('tr[data-estoque="PARADO"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
+      acimaAcerto: box ? box.querySelectorAll('tr[data-estoque="ACERTO"] td.estoque-acima').length : -1,
+      filiais: box ? box.querySelectorAll('.tabela-estoque-filiais tr[data-estoque-filial]').length : -1,
+      negocios: box ? [...box.querySelectorAll('tr[data-negocio-estoque]')].map((r) => r.dataset.negocioEstoque) : [],
+      peso: document.querySelector('#estoque-peso')?.textContent.replace(/\s+/g, ' ').trim() || '',
+      rolagem: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  await escolher('- AGROPECUARIAS');
+  const a = await ler();
+  t(`${l} Agropecuárias: o bloco vem logo depois da DRE, com o título do ano do planejamento`,
+    a.depoisDaDre && /^Oportunidades do estoque a trabalhar em \d{4}$/.test(a.titulo || ''), JSON.stringify([a.depoisDaDre, a.titulo]));
+  t(`${l} montante 4.407.317 = no resultado 360.438 + no caixa (parado) 4.046.880`,
+    a.total === 4407317 && a.resultado === 360438 && a.caixa === 4046880, JSON.stringify([a.total, a.resultado, a.caixa]));
+  t(`${l} perdas com os meses, o total e a média; parado há mais de 2 anos com 21.829 itens`,
+    /-48\.306/.test(a.perda) && /-622\.404/.test(a.perda) && /-62\.240/.test(a.perda) && /\+92\.037/.test(a.perda)
+    && /mais de 2 anos/.test(a.parado) && /21\.829 itens/.test(a.parado), JSON.stringify([a.perda, a.parado]));
+  t(`${l} os 5 meses de acerto acima da média estão destacados, e as dez filiais com mais oportunidade listadas`,
+    a.acimaAcerto === 5 && a.filiais === 10, JSON.stringify([a.acimaAcerto, a.filiais]));
+  t(`${l} o montante no resultado é posto contra o resultado líquido projetado`, /1,7%/.test(a.peso), a.peso);
+  t(`${l} sem rolagem horizontal da página`, !a.rolagem);
+
+  await escolher('- SUPERMERCADOS');
+  const s = await ler();
+  t(`${l} Supermercados: parado há mais de 1 ano (309.424) e montante 548.657`,
+    /mais de 1 ano/.test(s.parado) && s.caixa === 309424 && s.total === 548657, JSON.stringify([s.parado, s.caixa, s.total]));
+  // Na filial (Super Concórdia), a média e o parado DELA.
+  await page.evaluate(async () => {
+    const f = SecaoProjecao.dados.filiais.find((x) => String(x.cod_filial) === '33');
+    SecaoProjecao.filialId = f ? Number(f.id) : 0;
+    await SecaoProjecao.carregar();
+  });
+  await esperar(page, "/esta filial/.test(document.querySelector('#projecao-estoque h2')?.textContent || '')", 30000);
+  const f = await ler();
+  t(`${l} na filial Super Concórdia: o bloco é dela (perdas acima da média 63.256, parado 16.717), sem ranking de filiais`,
+    f.resultado === 63256 && f.caixa === 16717 && f.filiais === 0, JSON.stringify([f.resultado, f.caixa, f.filiais]));
+  await page.evaluate(async () => { SecaoProjecao.filialId = 0; await SecaoProjecao.carregar(); });
+
+  await escolher('CORP');
+  const c = await ler();
+  t(`${l} Corporativo: um por negócio com o total 5.217.800 (resultado 861.496 + caixa 4.356.304), sem Rações (crédito)`,
+    c.total === 5217800 && c.resultado === 861496 && c.caixa === 4356304 && c.negocios.includes('total') && c.negocios.length === 9,
+    JSON.stringify([c.total, c.resultado, c.caixa, c.negocios]));
+}
+
+/**
  * A TABELA no formato de 2027 e os EVENTOS PONTUAIS da filial (pedidos do
  * cliente, 2026-11-18):
  *  - a DRE da Projeção sai com a CBS informativa acima da Receita Bruta, a
@@ -6715,7 +6793,7 @@ async function provasFormato2027EEventos(page, largura) {
   const f = await page.evaluate(() => ({
     titulo: document.querySelector('.painel-oportunidades summary h2')?.textContent.trim(),
     juros: document.querySelector('.painel-oportunidades tr[data-pico="11.1"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
-    itens: !!document.querySelector('.painel-oportunidades .tabela-nao-recorrentes'),
+    itens: !!document.querySelector('.painel-oportunidades tr[data-item]'),
   }));
   t(`${l} na filial, o cartão é dela, e a receita de juros concentrada (mar/mai/jun) aparece como risco`,
     /esta filial/.test(f.titulo || '') && /mar: 1\.109\.220/.test(f.juros) && /mai: 1\.223\.945/.test(f.juros) && /−2\.585\.105/.test(f.juros) && !f.itens,
@@ -10605,6 +10683,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasApoioDesafio(page, 'desktop');
   await provasTributosComoEComoFica(page, 'desktop');
   await provasFormato2027EEventos(page, 'desktop');
+  await provasEstoque(page, 'desktop');
   await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
@@ -10679,6 +10758,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasDesafioEExpansores(pageM, 'celular');
   await provasDiretriz2027(pageM, 'celular');
   await provasApoioDesafio(pageM, 'celular');
+  await provasEstoque(pageM, 'celular');
   await provasVisaoDoAno(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');

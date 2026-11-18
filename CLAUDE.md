@@ -3298,6 +3298,53 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   - Provas: `testes/oportunidades.php` (juros de mão, filial 1, carga fecha com a
     acumulada), `testes/estrutura_dre_nova.php` (formato novo e lançamentos) e
     `provasFormato2027EEventos`.
+  **Quadro ÚNICO de oportunidades e riscos** (pedido do cliente, 2026-11-18: "traga
+  todas as oportunidades nesse mesmo formato, detalhando os meses, e totalize"):
+  `Oportunidades::quadro` junta os itens não recorrentes por conta contábil e os
+  eventos pontuais das linhas numa tabela só (item/linha, grupo, linha da DRE,
+  padrão mensal, meses em que aconteceu, oportunidade, risco) com **Total de
+  oportunidades, Total de riscos e Saldo**. Para os totais não contarem nada duas
+  vezes, o item SAI da série da linha antes da busca por picos (`picos(…, $ajuste)`):
+  a PDD de outubro do Leite (R$ 5,6 mi) é item, e a linha 9.2 só mostra o que sobra
+  naquele mês (−R$ 1,58 mi). Isso exige o mês de cada item: carga
+  `database/nao_recorrentes_mensal_2026_10.php` → `negocio_nao_recorrente_mes` (as
+  mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
+  totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
+  quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
+  **Oportunidades do ESTOQUE, logo abaixo da DRE** (pedido do cliente, 2026-11-18:
+  "totalize as oportunidades e traga logo abaixo do resultado líquido — o montante a
+  ser trabalhado ao longo do ano, que pode ser desafiado no negócio"). Cartão
+  `#projecao-estoque`, sempre aberto, depois do rodapé da tabela da DRE, com três
+  indicadores (`Oportunidades::estoque`):
+  - **Perdas** — conta 3.07.01.01.06 MERCADORIAS DETERIORADAS (reduzida 3081) — e
+    **Acerto de estoque** — 3.11.03.03.01 ACERTOS DE ESTOQUES (3148). **As duas caem
+    no Custo das Vendas, linha 4.1** (indicadores 4.1.14 e 4.1.40 da estrutura da DRE
+    Gerencial) — não em 8.1 nem em 9.2; a primeira versão supôs 9.2 por analogia com
+    a baixa de créditos (3.11.03.03.02) e a linha 9.2 do Leite mostrou que não: abril
+    tinha R$ 53,9 mil de acerto e a 9.2 estava zerada. Como o quadro de oportunidades
+    só varre 8, 9 e 11, nada aqui conta duas vezes.
+    Regra (`acimaDaMedia`): média mensal de jan até o corte (mês sem lançamento vale
+    zero) e a oportunidade é a soma do que cada mês passou da média — trazer os meses
+    ruins à média, sem exigir dos bons. Série que no ano é crédito (sobra de
+    inventário maior que a falta, como o acerto de Rações) não tem oportunidade.
+  - **Produtos parados** — `Produtos Parados` (`c51b995c-…`), medida `R$ Estoque`
+    por `Filial`: **Agropecuárias > 2 anos (730 dias), Supermercados > 1 ano (365)**.
+    É **caixa, não resultado**: o total mostra "No resultado", "No caixa" e o
+    montante (soma dos dois), e diz a diferença.
+  - Na filial, a média e o parado DELA; no negócio, o ranking das filiais (dez
+    abertas, o resto recolhido — a soma das filiais passa a do negócio, porque o mês
+    ruim de uma não se compensa com o bom de outra); no Corporativo, uma linha por
+    negócio com o total. Números de out/26: Agropecuárias R$ 360 mil no resultado +
+    R$ 4,05 mi parados = R$ 4,41 mi; Supermercados R$ 239 mil + R$ 309 mil = R$ 549
+    mil; Corporativo R$ 5,22 mi.
+  - Carga `database/estoque_oportunidade_2026_10.php` → `estoque_perda_mes` (negócio
+    com `filial_id = 0` e filiais dos negócios 8 e 9; soma das filiais = negócio,
+    arredondamento ≤ R$ 3 por mês) e `estoque_parado` (por filial, data-base). O app
+    Produtos Parados **não tem código de filial**: o nome foi casado com o cadastro sem
+    acento (`HERVAL DO OESTE` = Herval d'Oeste); dois postos de combustível (R$ 302)
+    não casaram e ficam com `filial_id NULL`, só no total do negócio. A extração é
+    pesada: selecione um `Negócio` e calcule uma medida só, depois limpe as seleções.
+    Provas: `testes/oportunidades.php` (seção 5) e `provasEstoque` no `sistema.js`.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas

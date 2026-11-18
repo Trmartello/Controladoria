@@ -989,6 +989,7 @@ require_once __DIR__ . '/../app/Services/CargaApoio.php';
 foreach ([
     ['tributos_2026_10.php', 'tributos', 'tributos'],
     ['nao_recorrentes_2026_10.php', 'naoRecorrentes', 'itens não recorrentes'],
+    ['nao_recorrentes_mensal_2026_10.php', 'naoRecorrentesMensal', 'itens não recorrentes mês a mês'],
 ] as [$arquivo, $metodo, $nome]) {
     $a = require __DIR__ . '/' . $arquivo;
     if (App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
@@ -1009,6 +1010,15 @@ if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
     $r = App\Services\CargaApoio::filiaisMensal($pdo, $a);
     App\Services\CargaConteudo::marcar($pdo, $a['chave'], "DRE mensal das filiais {$a['ano']} até o mês {$a['mes_ate']}: {$r['linhas']} linha(s)");
     echo "migrate: DRE mensal das filiais {$a['chave']} — {$r['negocios']} negócio(s), {$r['linhas']} linha(s).\n";
+}
+
+// ---- Estoque como oportunidade: perdas, acerto e parados (2026-11-18) ----
+// Depois do cadastro das filiais: a carga resolve filial por código.
+$a = require __DIR__ . '/estoque_oportunidade_2026_10.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
+    $r = App\Services\CargaApoio::estoque($pdo, $a);
+    App\Services\CargaConteudo::marcar($pdo, $a['chave'], "Estoque (perdas, acerto e parados) {$a['ano']} até o mês {$a['mes_ate']}: {$r['linhas']} série(s), {$r['parados']} filial(is) com parado");
+    echo "migrate: estoque {$a['chave']} — {$r['negocios']} negócio(s), {$r['linhas']} série(s), {$r['parados']} parado(s).\n";
 }
 
 // ---- Desafio do ano por negócio (pedido do cliente, 2026-11-18) ----

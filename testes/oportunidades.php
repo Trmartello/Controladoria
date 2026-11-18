@@ -167,6 +167,39 @@ $soma = Database::um("SELECT SUM(m.valor) s, vf.realizado r FROM dre_valor_filia
 prova('e o mensal fecha com a DRE acumulada da filial (jan até o corte dela)', $soma && abs((float)$soma['s'] - (float)$soma['r']) < 12,
     json_encode($soma));
 
+// ── 3c. O QUADRO ÚNICO (itens + eventos, com os meses e os totais) ─────────
+$leite = (int)Database::um("SELECT id FROM negocio WHERE cod_negocio = '4'")['id'];
+$q = Oportunidades::quadro($leite, 2026, 10);
+$ql = [];
+foreach ($q['linhas'] as $l) {
+    $ql[$l['tipo'] . ':' . $l['codigo']] = $l;
+}
+prova('Leite: a PDD é ITEM com os meses (out: −5.597.104) e efeito +7.182.466',
+    isset($ql['ITEM:3.11.03.01.01']) && abs($ql['ITEM:3.11.03.01.01']['oportunidade'] - 7182466) < 1
+    && in_array(['mes' => 10, 'valor' => -5597104.0], $ql['ITEM:3.11.03.01.01']['meses'], false),
+    json_encode($ql['ITEM:3.11.03.01.01']['meses'] ?? null));
+prova('e a linha 9.2 só mostra o que SOBRA em outubro sem a PDD (−1.578.000), não os −7,18 mi de novo',
+    isset($ql['EVENTO:9.2']) && count($ql['EVENTO:9.2']['meses']) === 1 && abs($ql['EVENTO:9.2']['meses'][0]['valor'] + 1578000) < 1,
+    json_encode($ql['EVENTO:9.2'] ?? null));
+prova('a receita de juros de outubro (R$ 7,23 mi) é risco',
+    isset($ql['EVENTO:11.1']) && abs($ql['EVENTO:11.1']['risco'] + 7230092) < 1);
+prova('totais: oportunidades = soma das linhas, riscos idem, saldo = os dois (Leite +9.025.328 / −7.693.715)',
+    abs($q['oportunidade'] - array_sum(array_column($q['linhas'], 'oportunidade'))) < 1e-6
+    && abs($q['risco'] - array_sum(array_column($q['linhas'], 'risco'))) < 1e-6
+    && abs($q['oportunidade'] - 9025328) < 2 && abs($q['risco'] + 7693715) < 2 && abs($q['saldo'] - $q['oportunidade'] - $q['risco']) < 1e-6,
+    round($q['oportunidade']) . ' / ' . round($q['risco']));
+$mensal = Database::um("SELECT COUNT(DISTINCT negocio_id, conta) n FROM negocio_nao_recorrente_mes WHERE ano = 2026")['n'];
+$totais = Database::um("SELECT COUNT(*) n FROM negocio_nao_recorrente WHERE ano = 2026")['n'];
+prova('a carga mensal dos itens tem as mesmas 62 combinações da de totais', (int)$mensal === 62 && (int)$totais === 62, "{$mensal} / {$totais}");
+$dif = Database::um("SELECT COUNT(*) n FROM negocio_nao_recorrente t
+    LEFT JOIN (SELECT negocio_id, ano, conta, SUM(valor) s FROM negocio_nao_recorrente_mes GROUP BY negocio_id, ano, conta) m
+      ON m.negocio_id = t.negocio_id AND m.ano = t.ano AND m.conta = t.conta
+   WHERE t.ano = 2026 AND (m.s IS NULL OR ABS(m.s - t.valor) > 5)")['n'];
+prova('e o mês a mês de cada item soma o total da carga (R$ 5: dez meses arredondados ao real)', (int)$dif === 0, (string)$dif);
+$qf = Oportunidades::quadro(0, 2026, 10, (int)$fil['id']);
+prova('na filial o quadro tem só eventos (os itens por conta são do negócio), com total',
+    $qf['linhas'] && !array_filter($qf['linhas'], static fn ($l) => $l['tipo'] === 'ITEM') && $qf['risco'] < 0 && $qf['oportunidade'] > 0);
+
 // ── 4. As cargas ────────────────────────────────────────────────────────────
 $recusa = function (callable $f): string {
     try {
@@ -195,6 +228,67 @@ CargaApoio::naoRecorrentes($pdo, $nr);
 prova('recarregar sobrescreve o ano (a conta que saiu da carga sai do banco)',
     !Database::um("SELECT 1 FROM negocio_nao_recorrente WHERE ano = 2099 AND negocio_id = ? AND conta = '3.11.03.01.01'", [$ids['8']]));
 $pdo->exec('DELETE FROM negocio_nao_recorrente WHERE ano = 2099');
+
+// ── 5. Estoque: perdas, acerto e parados (pedido do cliente, 2026-11-18) ──────
+echo "\n5. Estoque como oportunidade\n";
+$a = Oportunidades::acimaDaMedia([1 => 100, 2 => 300, 3 => 200], 4);
+prova('a média conta o mês sem lançamento como zero (600 / 4 = 150) e devolve no sinal da DRE',
+    abs($a['media'] + 150) < 0.01 && abs($a['total'] + 600) < 0.01 && count($a['meses']) === 4, json_encode($a));
+prova('a oportunidade é o que passou da média: (300−150) + (200−150) = 200, marcada nos meses',
+    abs($a['oportunidade'] - 200) < 0.01 && $a['meses'][1]['excesso'] == 150 && $a['meses'][0]['excesso'] == 0);
+$c = Oportunidades::acimaDaMedia([1 => -500, 2 => 100], 2);
+prova('série que no ano é crédito (sobra de inventário) não tem oportunidade', $c['oportunidade'] == 0.0, json_encode($c));
+prova('as duas contas caem no Custo das Vendas (4.1), como na estrutura da DRE Gerencial',
+    array_unique(array_column(Oportunidades::ESTOQUE_CONTAS, 2)) === ['4.1']);
+
+$ea = Oportunidades::estoque($ids['8'], 2026, 10);
+$es = Oportunidades::estoque($ids['9'], 2026, 10);
+$linha = static fn ($e, $t) => array_values(array_filter($e['linhas'], static fn ($l) => $l['tipo'] === $t))[0] ?? null;
+prova('Agropecuárias: perdas R$ 622.404 no ano, média 62.240, oportunidade 92.037',
+    round(-$linha($ea, 'PERDA')['total']) == 622404 && round(-$linha($ea, 'PERDA')['media']) == 62240
+    && round($linha($ea, 'PERDA')['oportunidade']) == 92037, json_encode([$linha($ea, 'PERDA')['total'], $linha($ea, 'PERDA')['oportunidade']]));
+prova('Agropecuárias: acerto R$ 67.506 líquido, oportunidade 268.401 (jan, mai, jun, ago e out acima da média)',
+    round($linha($ea, 'ACERTO')['oportunidade']) == 268401
+    && array_column(array_filter($linha($ea, 'ACERTO')['meses'], static fn ($m) => $m['excesso'] > 0), 'mes') === [1, 5, 6, 8, 10]);
+prova('Agropecuárias: parado há mais de 2 anos R$ 4.046.879,81 em 21.829 itens',
+    abs($ea['parado']['valor'] - 4046879.81) < 0.01 && $ea['parado']['itens'] === 21829 && $ea['parado']['dias'] === 730);
+prova('Agropecuárias: montante = resultado (360.438) + caixa (4.046.880) = 4.407.317',
+    round($ea['resultado']) == 360438 && round($ea['total']) == 4407317 && abs($ea['total'] - $ea['resultado'] - $ea['caixa']) < 0.01);
+prova('Supermercados: parado há mais de 1 ano R$ 309.424,36; montante 548.657',
+    abs($es['parado']['valor'] - 309424.36) < 0.01 && $es['parado']['dias'] === 365 && round($es['total']) == 548657);
+prova('o parado das filiais + o que não casou com o cadastro (postos, R$ 159) = o do negócio',
+    abs(array_sum(array_column($ea['filiais'], 'parado')) + 159.07 - $ea['parado']['valor']) < 0.01);
+prova('ranking das filiais em ordem decrescente de total, Canoinhas primeiro',
+    $ea['filiais'][0]['nome'] === 'Canoinhas' && $ea['filiais'][0]['total'] >= $ea['filiais'][1]['total']);
+$filC = Database::um("SELECT id FROM filial WHERE negocio_id = ? AND cod_filial = '33'", [$ids['9']]);
+$ef = Oportunidades::estoque($ids['9'], 2026, 10, (int)$filC['id']);
+prova('na filial (Super Concórdia): perdas pela média DELA, parado dela, sem ranking',
+    round($ef['resultado']) == 63256 && abs($ef['caixa'] - 16716.71) < 0.01 && !isset($ef['filiais']));
+$soma = Database::um("SELECT SUM(valor) s FROM estoque_perda_mes WHERE negocio_id = ? AND filial_id > 0 AND ano = 2026", [$ids['9']])['s'];
+$neg = Database::um("SELECT SUM(valor) s FROM estoque_perda_mes WHERE negocio_id = ? AND filial_id = 0 AND ano = 2026", [$ids['9']])['s'];
+prova('as filiais somam o negócio (arredondamento ≤ R$ 30 no ano)', abs($soma - $neg) <= 30, "$soma × $neg");
+prova('negócio sem nada carregado não tem o bloco', Oportunidades::estoque($ids['17'] ?? 0, 2026, 10) === null);
+prova('Rações: acerto que é crédito o ano todo dá oportunidade zero',
+    ($e6 = Oportunidades::estoque($ids['6'], 2026, 10)) && $e6['resultado'] == 0.0);
+
+$es0 = require __DIR__ . '/../database/estoque_oportunidade_2026_10.php';
+$x = $es0;
+$x['ano'] = 2099;
+$x['parados']['data_base'] = '2099-01-01';
+$x['perdas']['8']['9.9.9'] = array_fill(0, 10, 1);
+prova('estoque: conta fora do catálogo é recusada', str_contains($recusa(fn () => CargaApoio::estoque($pdo, $x)), 'fora do catálogo'));
+$x = $es0;
+$x['ano'] = 2099;
+$x['parados']['data_base'] = '2099-01-01';
+$x['perdas_filiais']['8'][] = ['99999', '3.07.01.01.06', array_fill(0, 10, 1)];
+prova('estoque: filial fora do cadastro é recusada', str_contains($recusa(fn () => CargaApoio::estoque($pdo, $x)), 'não existe'));
+$x = $es0;
+$x['ano'] = 2099;
+$x['perdas']['9']['3.07.01.01.06'] = [1, 2, 3];
+prova('estoque: série sem os meses do corte é recusada', str_contains($recusa(fn () => CargaApoio::estoque($pdo, $x)), 'sem os 10 meses'));
+prova('nada das cargas de estoque recusadas foi gravado',
+    (int)Database::um('SELECT COUNT(*) n FROM estoque_perda_mes WHERE ano = 2099')['n'] === 0
+    && (int)Database::um("SELECT COUNT(*) n FROM estoque_parado WHERE data_base = '2099-01-01'")['n'] === 0);
 
 echo "\n" . count($bad) . " falha(s), {$ok} verde(s).\n";
 exit($bad ? 1 : 0);

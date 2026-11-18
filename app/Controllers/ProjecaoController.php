@@ -119,9 +119,27 @@ class ProjecaoController
         $pessoasSoma = ['por_ano' => [], 'base' => null];
         $propostas = [];
         $tributosDre = [];
+        $oportunidades = [];
+        $estoque = [];
         foreach ($negocios as $n) {
             $m = $this->montar((int)$n['id'], $ano, $corte);
             $tributosDre[(int)$n['id']] = $m['tributos_dre'];
+            $q = $m['oportunidades']['quadro'];
+            if ($q['linhas']) {
+                $oportunidades[(int)$n['id']] = [
+                    'mes_ate' => $q['mes_ate'], 'oportunidade' => $q['oportunidade'], 'risco' => $q['risco'],
+                    'itens' => array_map(static fn ($l) => ['rotulo' => $l['nome']], array_slice($q['linhas'], 0, 3)),
+                ];
+            }
+            if ($m['estoque']) {
+                $e = $m['estoque'];
+                $estoque[(int)$n['id']] = [
+                    'perdas' => array_sum(array_map(static fn ($l) => $l['tipo'] === 'PERDA' ? $l['oportunidade'] : 0.0, $e['linhas'])),
+                    'acerto' => array_sum(array_map(static fn ($l) => $l['tipo'] === 'ACERTO' ? $l['oportunidade'] : 0.0, $e['linhas'])),
+                    'parado' => $e['caixa'], 'parado_dias' => $e['parado']['dias'] ?? null,
+                    'resultado' => $e['resultado'], 'total' => $e['total'],
+                ];
+            }
             $propostas[(int)$n['id']] = self::resumoDaProposta($m['linhas']);
             foreach ($m['linhas'] as $l) {
                 $c = $l['codigo'];
@@ -197,7 +215,10 @@ class ProjecaoController
             'visao_ano_total' => $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
             'desafio' => $this->desafioCorporativo($ano + 1, $propostas),
             'tributos_dre' => Reforma::somarComoEComoFica($tributosDre),
-            'oportunidades_negocios' => Oportunidades::itens(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano),
+            // Por negócio, os totais do quadro único (itens + eventos pontuais).
+            'oportunidades_negocios' => $oportunidades,
+            // Por negócio, o montante do estoque (perdas, acerto, parados).
+            'estoque_negocios' => $estoque,
             'linhas' => array_values($soma),
         ];
     }
@@ -330,6 +351,9 @@ class ProjecaoController
                 // Os eventos pontuais DA FILIAL (pedido do cliente, 2026-11-18),
                 // da DRE mensal dela (`dre_valor_filial_mes`).
                 'picos' => Oportunidades::picos($negocioId, $ano, $corte, $filialId),
+                'quadro' => Oportunidades::quadro($negocioId, $ano, $corte, $filialId),
+                // Perdas, acerto e estoque parado DA FILIAL.
+                'estoque' => Oportunidades::estoque($negocioId, $ano, $corte, $filialId),
             ];
         }
 
@@ -370,8 +394,14 @@ class ProjecaoController
             'oportunidades' => [
                 'itens' => Oportunidades::itens([$negocioId], $ano)[$negocioId] ?? null,
                 'picos' => Oportunidades::picos($negocioId, $ano, $corte),
+                // O quadro único (itens + eventos, com os meses e os totais).
+                'quadro' => Oportunidades::quadro($negocioId, $ano, $corte),
                 'grupos' => Oportunidades::GRUPOS,
             ],
+            // O montante de oportunidades do ESTOQUE (perdas e acerto acima da média,
+            // produtos parados), totalizado abaixo da DRE (pedido do cliente,
+            // 2026-11-18). Só leitura.
+            'estoque' => Oportunidades::estoque($negocioId, $ano, $corte),
             'filiais' => $filiais,
             'filiais_corte' => $filiaisCorte,
             'filial' => $filialAberta,
