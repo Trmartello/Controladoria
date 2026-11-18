@@ -4666,3 +4666,11 @@ body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
    Só os blocos ficam à vista, para ver como a DRE fecha (botão #projecao-nivel).
    As linhas continuam no DOM — o que estiver digitado nelas não se perde. */
 .tabela-projecao.recolhida tr.linha-subconta { display: none; }
+
+/* ===== Visão realista do ano (só leitura) =====
+   Destacada em âmbar, como no Painel Balanço: é estimativa da Controladoria, e a
+   cor a separa do que é realizado e planejado do Qlik. */
+.tabela-visao-ano th.visao-realista,
+.tabela-visao-ano td.visao-realista { background: #f6e7c6; }
+.tabela-visao-ano td, .tabela-visao-ano th { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tabela-visao-ano td:first-child { white-space: normal; }

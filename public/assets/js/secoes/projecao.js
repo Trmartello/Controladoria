@@ -210,6 +210,7 @@ const SecaoProjecao = {
         (<code>11,43</code>) na coluna <strong>Reajuste</strong>. Uma preenche a outra.
       </p>
       <p class="mb-2">${assinatura}</p>
+      ${this.cartaoVisaoAno(d)}
       ${this.avisoFiliaisDefasadas(d)}
       ${this.faixaDoModo(d)}
       ${this.painel(d)}
@@ -226,6 +227,7 @@ const SecaoProjecao = {
             <th class="text-end">Projeção<br><span class="fw-normal text-muted small">do ano</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
+            <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL proposta</span></th>
             <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
             ${!d.filial && d.filiais.length && d.modo === 'NEGOCIO'
     ? '<th class="text-end">A distribuir<br><span class="fw-normal text-muted small">entre as filiais</span></th>'
@@ -649,6 +651,7 @@ const SecaoProjecao = {
     ? ` Nos outros ${sem} a coluna Proposta vale a própria projeção (crescimento zero) —
         não é meta, é a falta dela.` : ''}
       </div>
+      ${this.cartaoVisaoAno(d)}
       ${this.cartaoPessoas(d)}
       ${faltando}
       ${this.botaoNivel()}
@@ -661,6 +664,7 @@ const SecaoProjecao = {
             <th class="text-end">Projeção<br><span class="fw-normal text-muted small">do ano</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
+            <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL proposta</span></th>
             <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
           </tr></thead>
           <tbody>${this.corpo(d)}</tbody>
@@ -673,6 +677,107 @@ const SecaoProjecao = {
   ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
         Mês sem rateio é mês aberto e não entra como realizado.
       </p>`;
+  },
+
+  /**
+   * Realizado × planejado do ano corrente e a VISÃO REALISTA (pedido do cliente,
+   * 2026-11-18): o mesmo quadro do "Painel Balanço out/26", para a receita bruta e
+   * o resultado líquido. Só leitura — é estimativa da Controladoria, e não se
+   * lança nada nela. No negócio, duas linhas; no Corporativo, um quadro por linha
+   * com todos os negócios e o total.
+   */
+  colunasVisao(d) {
+    const ate = this.nomeMes(d.mes_fechado_ate);
+    const prox = this.nomeMes(d.mes_fechado_ate + 1);
+    const a = String(d.ano).slice(2);
+    return `<tr>
+        <th></th>
+        <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${ate}/${a}</span></th>
+        <th class="text-end">Planejado<br><span class="fw-normal text-muted small">jan–${ate}/${a}</span></th>
+        <th class="text-end">Planejado<br><span class="fw-normal text-muted small">${prox}–dez/${a}</span></th>
+        <th class="text-end">Real + Plan.<br><span class="fw-normal text-muted small">${d.ano}</span></th>
+        <th class="text-end">Planejado<br><span class="fw-normal text-muted small">${d.ano} (ano)</span></th>
+        <th class="text-end">Diferença<br><span class="fw-normal text-muted small">R$</span></th>
+        <th class="text-end">Diferença<br><span class="fw-normal text-muted small">%</span></th>
+        <th class="text-end visao-realista">Visão realista<br><span class="fw-normal small">${prox}–dez/${a}</span></th>
+        <th class="text-end visao-realista">Real + Realista<br><span class="fw-normal small">${d.ano}</span></th>
+        <th class="text-end visao-realista">Realista × plano<br><span class="fw-normal small">${d.ano} · R$</span></th>
+      </tr>`;
+  },
+
+  linhaVisao(rotulo, v, classe = '') {
+    if (!v) return '';
+    const m = (x) => this.moeda(x);
+    const cor = (x) => (Math.abs(x) < 5e4 ? '' : (x > 0 ? 'text-success' : 'text-danger'));
+    const sinal = (x) => `${Math.round(x) > 0 ? '+' : ''}${m(x)}`;
+    const pc = v.dif_pct === null || v.dif_pct === undefined ? '—'
+      : `${v.dif_pct > 0 ? '+' : ''}${this.pct(v.dif_pct)}`;
+    return `<tr class="${classe}">
+        <td>${rotulo}</td>
+        <td class="text-end">${m(v.realizado)}</td>
+        <td class="text-end">${m(v.plan_ate)}</td>
+        <td class="text-end">${m(v.plan_resto)}</td>
+        <td class="text-end fw-bold">${m(v.real_plan)}</td>
+        <td class="text-end">${m(v.plan_ano)}</td>
+        <td class="text-end ${cor(v.dif)}">${sinal(v.dif)}</td>
+        <td class="text-end ${cor(v.dif)}">${pc}</td>
+        <td class="text-end visao-realista" data-realista="resto">${m(v.realista_resto)}</td>
+        <td class="text-end visao-realista fw-bold" data-realista="ano">${m(v.real_realista)}</td>
+        <td class="text-end visao-realista ${cor(v.realista_x_plano)}" data-realista="x-plano">${sinal(v.realista_x_plano)}</td>
+      </tr>`;
+  },
+
+  notaVisao(d) {
+    return `<div class="small text-muted mt-1">
+        <strong>Visão realista</strong> — estimativa da Controladoria, não é número do Qlik, e só de leitura:
+        a <strong>receita bruta</strong> de ${this.nomeMes(d.mes_fechado_ate + 1)}–dez é o planejado desses meses ×
+        a aderência da receita até ${this.nomeMes(d.mes_fechado_ate)} (realizado ÷ planejado); o
+        <strong>resultado líquido</strong> é o planejado + o desvio médio mensal até ${this.nomeMes(d.mes_fechado_ate)}
+        × os meses que faltam — supõe que o negócio continue errando o plano no mesmo ritmo. Sinal positivo é favorável.
+      </div>`;
+  },
+
+  cartaoVisaoAno(d) {
+    if (d.corporativo) return this.cartaoVisaoAnoCorporativo(d);
+    if (!d.visao_ano || d.filial) return '';
+    return `
+      <div class="card mb-3 painel-visao-ano"><div class="card-body py-2 px-3">
+        <h2 class="h6 mb-2">${d.ano}: realizado, planejado e visão realista</h2>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0 tabela-visao-ano">
+            <thead>${this.colunasVisao(d)}</thead>
+            <tbody>
+              ${this.linhaVisao('Receita operacional bruta', d.visao_ano['1'], '')}
+              ${this.linhaVisao('Resultado líquido', d.visao_ano['16'], '')}
+            </tbody>
+          </table>
+        </div>
+        ${this.notaVisao(d)}
+      </div></div>`;
+  },
+
+  cartaoVisaoAnoCorporativo(d) {
+    const negs = d.visao_ano_negocios || {};
+    const nomes = Object.fromEntries((d.negocios || []).map((n) => [String(n.id), n.rotulo]));
+    const tabela = (conta, titulo) => {
+      const linhas = (d.negocios || [])
+        .filter((n) => negs[n.id] && !(negs[n.id][conta].plan_ano === 0 && negs[n.id][conta].realizado === 0))
+        .map((n) => this.linhaVisao(Modal.esc(nomes[String(n.id)]), negs[n.id][conta])).join('');
+      return `<p class="small fw-bold text-uppercase text-muted mb-1 mt-2">${titulo}</p>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0 tabela-visao-ano" data-conta-visao="${conta}">
+            <thead>${this.colunasVisao(d)}</thead>
+            <tbody>${linhas}${this.linhaVisao('Total dos negócios', (d.visao_ano_total || {})[conta], 'fw-bold table-light linha-total-visao')}</tbody>
+          </table>
+        </div>`;
+    };
+    return `
+      <div class="card mb-3 painel-visao-ano"><div class="card-body py-2 px-3">
+        <h2 class="h6 mb-1">${d.ano}: realizado, planejado e visão realista, por negócio</h2>
+        ${tabela('1', 'Receita operacional bruta')}
+        ${tabela('16', 'Resultado líquido')}
+        ${this.notaVisao(d)}
+      </div></div>`;
   },
 
   /**
@@ -732,6 +837,11 @@ const SecaoProjecao = {
       return alvo ? this.pct(alvo[campo] / base) : '—';
     };
     const av = (linha) => (linha.percentual || !rol ? '' : this.pct(linha.projecao / rol));
+    // A.V. da PROPOSTA: cada linha sobre a ROL proposta — é ela que diz se a meta
+    // preserva a margem (diretriz do horizonte 1), lado a lado com a A.V. da projeção.
+    const rolProposta = linhaRol.proposta || 0;
+    const avProp = (linha) => (linha.percentual || !rolProposta || linha.proposta === null || linha.proposta === undefined
+      ? '' : this.pct(linha.proposta / rolProposta));
 
     return linhas.map((l) => {
       const bloco = l.nivel === 1;
@@ -792,6 +902,7 @@ const SecaoProjecao = {
         <td class="text-end text-muted small">${av(l)}</td>
         <td class="text-end celula-proposta-td ${
   ['PROJECAO', 'PREMISSA'].includes(l.proposta_origem) ? 'proposta-por-omissao' : ''}">${proposta}</td>
+        <td class="text-end text-muted small celula-av-proposta">${avProp(l)}</td>
         <td class="text-end small celula-reajuste-td">${reajuste}</td>
         ${mostrarDistribuir ? this.celulaDistribuir(l) : ''}
       </tr>`;

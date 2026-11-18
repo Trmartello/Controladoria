@@ -5322,15 +5322,15 @@ async function provasProjecaoFilial(page, largura) {
       if (!tr) return null;
       const td = [...tr.querySelectorAll('td')];
       const inp = td[5].querySelector('input');
-      const rea = td[6].querySelector('input');
+      const rea = td[7].querySelector('input');
       return {
         projecao: n(td[3].textContent),
         proposta: inp ? n(inp.value) : n(td[5].textContent),
         digitado: inp ? inp.value : null,
         // A coluna Reajuste: campo nas subcontas, leitura nos blocos.
-        reajuste: rea ? rea.value : td[6].textContent.trim(),
+        reajuste: rea ? rea.value : td[7].textContent.trim(),
         editavel: !!inp,
-        distribuir: td[7] ? n(td[7].textContent) : undefined,
+        distribuir: td[8] ? n(td[8].textContent) : undefined,
       };
     };
     return {
@@ -6164,7 +6164,7 @@ async function provasCrescimentoPorPremissa(page, largura) {
     const tr = document.querySelector('.tabela-projecao tbody tr[data-conta="1.1"]');
     const td = [...tr.querySelectorAll('td')];
     const prop = td[5].querySelector('input');
-    const rea = td[6].querySelector('input');
+    const rea = td[7].querySelector('input');
     const n = (s) => Number(String(s).replace(/\./g, '').replace(',', '.').replace('%', '').trim());
     return {
       valor: prop.value, placeholder: prop.placeholder, reajuste: rea.value, reajustePlaceholder: rea.placeholder,
@@ -6360,6 +6360,87 @@ async function provasRecolherNivel(page, largura) {
     reaberto.subVisiveis === reaberto.sub && reaberto.pressed === 'false' && reaberto.salvo === '0', JSON.stringify(reaberto));
   await escolher('PECUARIA');
   await new Promise((r) => setTimeout(r, 1200));
+}
+
+/**
+ * A visão do ano e o A.V. da proposta (pedido do cliente, 2026-11-18).
+ *
+ * O quadro "realizado, planejado e visão realista" é o do Painel Balanço out/26,
+ * agora dentro da Projeção, e é SÓ LEITURA. A prova lê a tela e confere contra a
+ * API (o número que o servidor calcula) e contra a âncora do painel: resultado
+ * líquido realista de nov–dez dos 11 negócios ≈ R$ 13.824.615.
+ */
+async function provasVisaoDoAno(page, largura) {
+  const l = `[${largura}] Visão do ano:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+  const escolher = (v) => page.evaluate((valor) => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => (valor === 'corp' ? x.value === 'corp' : x.textContent.includes(valor)));
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return o.value;
+  }, v);
+  const n = await escolher('PECUARIA');
+  await esperar(page, "!!document.querySelector('.painel-visao-ano')", 15000);
+  await new Promise((r) => setTimeout(r, 500));
+
+  const r = await page.evaluate(async (id) => {
+    const d = await App.api(`/api/projecao?negocio_id=${id}`);
+    const card = document.querySelector('.painel-visao-ano');
+    const linhas = [...card.querySelectorAll('tbody tr')];
+    const cel = (tr, k) => tr.querySelector(`[data-realista="${k}"]`)?.textContent.trim();
+    const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+    // A.V. da proposta da receita bruta: proposta(1) ÷ proposta(3).
+    const tr1 = document.querySelector('.tabela-projecao tbody tr[data-conta="1"]');
+    const p1 = d.linhas.find((x) => x.codigo === '1').proposta;
+    const p3 = d.linhas.find((x) => x.codigo === '3').proposta;
+    return {
+      cabecalhos: card.querySelectorAll('thead th').length,
+      linhas: linhas.length,
+      campos: card.querySelectorAll('input, select, textarea').length,
+      rob: cel(linhas[0], 'resto'), robApi: fmt(d.visao_ano['1'].realista_resto),
+      rl: cel(linhas[1], 'resto'), rlApi: fmt(d.visao_ano['16'].realista_resto),
+      rlAno: cel(linhas[1], 'ano'), rlAnoApi: fmt(d.visao_ano['16'].real_realista),
+      thAv: [...document.querySelectorAll('.tabela-projecao thead th')].map((th) => th.textContent.replace(/\s+/g, ' ').trim()),
+      avProposta: tr1.querySelector('.celula-av-proposta')?.textContent.trim(),
+      avEsperado: (100 * p1 / p3).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%',
+    };
+  }, n);
+  t(`${l} no negócio, o quadro tem receita bruta e resultado líquido, com as 11 colunas do painel`,
+    r.linhas === 2 && r.cabecalhos === 11, JSON.stringify([r.linhas, r.cabecalhos]));
+  t(`${l} e é só leitura (nenhum campo)`, r.campos === 0, String(r.campos));
+  t(`${l} a visão realista na tela é o número do servidor (receita, resultado e o ano)`,
+    r.rob === r.robApi && r.rl === r.rlApi && r.rlAno === r.rlAnoApi, JSON.stringify([r.rob, r.robApi, r.rl, r.rlApi]));
+  const iProp = r.thAv.findIndex((x) => x.startsWith('Proposta'));
+  t(`${l} a A.V. da proposta vem logo depois da Proposta`, /A\.V\.\s*sobre a ROL proposta/.test(r.thAv[iProp + 1] || ''), r.thAv.join(' | '));
+  t(`${l} e é a proposta da linha sobre a ROL proposta`, r.avProposta === r.avEsperado, `${r.avProposta} / ${r.avEsperado}`);
+
+  // Corporativo: um quadro por linha, com todos os negócios e o total.
+  await escolher('corp');
+  await esperar(page, "!!document.querySelector('.tabela-visao-ano[data-conta-visao=\"16\"]')", 15000);
+  const c = await page.evaluate(async () => {
+    const d = await App.api('/api/projecao?corporativo=1');
+    const t16 = document.querySelector('.tabela-visao-ano[data-conta-visao="16"]');
+    const tot = t16.querySelector('tr.linha-total-visao');
+    const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+    return {
+      linhas: t16.querySelectorAll('tbody tr').length,
+      negocios: Object.keys(d.visao_ano_negocios).length,
+      total: tot.querySelector('[data-realista="resto"]').textContent.trim(),
+      totalApi: fmt(d.visao_ano_total['16'].realista_resto),
+      bruto: d.visao_ano_total['16'].realista_resto,
+      campos: document.querySelectorAll('.painel-visao-ano input').length,
+    };
+  });
+  t(`${l} no Corporativo, uma linha por negócio e o total, sem campo nenhum`,
+    c.linhas === c.negocios + 1 && c.campos === 0, JSON.stringify([c.linhas, c.negocios, c.campos]));
+  t(`${l} o total do resultado realista de nov–dez é o do Painel Balanço (≈ R$ 13.824.615)`,
+    c.total === c.totalApi && Math.abs(c.bruto - 13824615) < 50, `${c.total} / ${c.bruto}`);
+  await escolher('PECUARIA');
+  await new Promise((r2) => setTimeout(r2, 1000));
 }
 
 /**
@@ -6756,7 +6837,7 @@ async function provasProjecaoProposta(page, largura) {
     document.querySelectorAll('.tabela-projecao tbody tr').forEach((tr) => {
       const td = [...tr.querySelectorAll('td')];
       const inp = td[5].querySelector('input');
-      const rea = td[6].querySelector('input');
+      const rea = td[7].querySelector('input');
       o[tr.dataset.conta] = {
         projecao: n(td[3].textContent),
         digitado: inp ? inp.value : null,
@@ -6764,8 +6845,8 @@ async function provasProjecaoProposta(page, largura) {
         // o número nos dois casos — antes o campo podia conter "10%".
         proposta: inp ? n(inp.value) : n(td[5].textContent),
         // A coluna Reajuste: campo nas subcontas, leitura nos blocos.
-        cresc: rea ? n(rea.value) : n(td[6].textContent),
-        reajuste: rea ? rea.value : td[6].textContent.trim(),
+        cresc: rea ? n(rea.value) : n(td[7].textContent),
+        reajuste: rea ? rea.value : td[7].textContent.trim(),
         espelhada: inp ? inp.classList.contains('celula-espelhada') : null,
         espelhadaReajuste: rea ? rea.classList.contains('celula-espelhada') : null,
         origem: tr.dataset.origem,
@@ -9868,6 +9949,7 @@ async function provasSaidaDoModal(page, largura) {
   await comPremissasNeutras(page, () => provasCrescimentoPositivo(page, 'desktop'));
   await provasSinalNoCelular(page, 'desktop');
   await provasRecolherNivel(page, 'desktop');
+  await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
@@ -9936,6 +10018,7 @@ async function provasSaidaDoModal(page, largura) {
   await comPremissasNeutras(pageM, () => provasCrescimentoPositivo(pageM, 'celular'));
   await provasSinalNoCelular(pageM, 'celular');
   await provasRecolherNivel(pageM, 'celular');
+  await provasVisaoDoAno(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
   await provasProjecaoNoDossie(pageM, 'celular');

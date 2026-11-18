@@ -158,6 +158,55 @@ class Projecao
         ];
     }
 
+    /**
+     * A VISÃO REALISTA do ano corrente para UMA linha (pedido do cliente,
+     * 2026-11-18): a mesma regra do "Painel Balanço out/26", que a direção já viu.
+     * É estimativa da Controladoria, e não número do Qlik — por isso só leitura.
+     *
+     *  - **Receita bruta** (`1`): o planejado dos meses que faltam × a ADERÊNCIA da
+     *    receita no que já fechou (realizado ÷ planejado até o corte). Receita
+     *    escala: quem vendeu 92% do plano até outubro vende 92% em nov–dez.
+     *  - **Resultado líquido** (`16`): o planejado dos meses que faltam + o DESVIO
+     *    MÉDIO MENSAL até o corte × os meses que faltam. Supõe que o negócio
+     *    continue errando o plano no mesmo ritmo do ano — em reais, porque
+     *    resultado não escala com nada (pode trocar de sinal).
+     *
+     * Só essas duas linhas: estender a estimativa às demais exigiria uma regra
+     * para custos e despesas que ninguém definiu, e inventá-la seria o erro que
+     * este sistema evita.
+     *
+     * @param array{realizado:float, plan_ate:float, plan_resto:float} $v
+     * @return array todas as colunas do quadro, em reais
+     */
+    public static function visaoRealista(array $v, string $conta, int $corte): array
+    {
+        $real = (float)$v['realizado'];
+        $ate = (float)$v['plan_ate'];
+        $resto = (float)$v['plan_resto'];
+        $faltam = 12 - $corte;
+        if ($conta === '1') {
+            // Sem plano até o corte não há aderência: vale o planejado.
+            $realista = $ate != 0.0 ? $resto * ($real / $ate) : $resto;
+        } else {
+            $realista = $corte > 0 ? $resto + ($real - $ate) / $corte * $faltam : $resto;
+        }
+        $planAno = $ate + $resto;
+        $realPlan = $real + $resto;
+        $realReal = $real + $realista;
+        return [
+            'realizado' => $real,
+            'plan_ate' => $ate,
+            'plan_resto' => $resto,
+            'real_plan' => $realPlan,
+            'plan_ano' => $planAno,
+            'dif' => $realPlan - $planAno,
+            'dif_pct' => $planAno != 0.0 ? ($realPlan - $planAno) / abs($planAno) : null,
+            'realista_resto' => $realista,
+            'real_realista' => $realReal,
+            'realista_x_plano' => $realReal - $planAno,
+        ];
+    }
+
     /** A subconta da Receita de Vendas, que cresce com IPCA + PIB + crescimento desejado. */
     public const LINHA_RECEITA = '1.1';
     /** A subconta de Despesas com Pessoal, que cresce com o percentual das despesas com pessoas. */
