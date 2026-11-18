@@ -2954,6 +2954,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   Nota de leitura: o resultado líquido consolidado é **sem participação
   societária** (convenção da controladoria) — não é comparável com as sobras de
   R$ 75 mi que a cooperativa divulga, que as incluem.
+  **Valor negativo no celular: a tecla "−/+" (`sinal.js`).** O teclado numérico do
+  iPhone (`inputmode="decimal"`) **não tem o sinal de menos**, e quem lançava
+  despesa, variação ou resultado negativo pelo celular não podia (pedido do
+  cliente, 2026-11-18). Trocar o campo para teclado de texto resolveria o sinal e
+  custaria três toques a mais em cada número positivo — a maioria. O campo que
+  aceita negativo leva `data-sinal` (Projeção: proposta, reajuste e premissas;
+  Metas: as células) e, **só em tela de toque** (`pointer: coarse`) e enquanto
+  tem o foco, ganha uma tecla flutuante ao lado. Ela inverte o sinal do texto
+  em `pointerdown` com `preventDefault` — **não pode tirar o foco**, porque a
+  gravação mora no `blur` e gravaria o valor pela metade. Fica de fora o campo de
+  dinheiro dos formulários (`.campo-moeda`): o filtro dele recusa o sinal de
+  propósito, porque ali negativo é erro. Campo novo que aceite negativo: ponha
+  `data-sinal`; sem ele o celular volta a não ter como lançá-lo.
   **No Dossiê a Projeção segue o negócio do DOCUMENTO**, não o seletor da tela
   (`App.modoDossie` + `App.contexto`), e se declara ausente onde não há DRE em
   vez de imprimir o número de um negócio sob o nome de outro — a API cai no

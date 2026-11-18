@@ -4640,3 +4640,24 @@ body.arrastando-ficha { user-select: none; -webkit-user-select: none; }
    qualquer coluna além da primeira. Nada no console denunciava isso: o laço
    rodava, a conta dava certo, e a tela não andava. */
 body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
+
+/* ===== Tecla de sinal (−/+) dos campos numéricos no celular =====
+   Só existe em tela de toque e só enquanto o campo tem o foco (ver sinal.js):
+   o teclado numérico do iPhone não tem o "−". Fica acima de tudo, inclusive do
+   cabeçalho fixo da tabela, porque é a tecla de um campo que está aberto. */
+.sinal-tecla {
+  position: fixed;
+  z-index: 1090;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--verde-coperdia);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--verde-coperdia);
+  font-weight: 700;
+  font-size: .95rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+  touch-action: manipulation;
+}
+.sinal-tecla[hidden] { display: none; }

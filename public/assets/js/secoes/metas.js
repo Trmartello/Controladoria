@@ -298,7 +298,7 @@ const SecaoMetas = {
     }
     const quando = anual ? ano : `${MESES_CURTOS[mes - 1]}/${ano}`;
     return `<td class="${classe}" ${marcas}>
-      <input type="text" class="celula-valor" inputmode="decimal" autocomplete="off"
+      <input type="text" class="celula-valor" inputmode="decimal" data-sinal autocomplete="off"
         value="${Modal.esc(this.fmt(bruto))}" data-bruto="${bruto ?? ''}"
         data-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="${mes}"
         aria-label="${tipo === 'META' ? 'Meta' : 'Realizado'} de ${quando} — ${Modal.esc(ind.nome)}">
