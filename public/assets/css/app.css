@@ -4738,3 +4738,6 @@ details.expansor[open] > summary .expansor-resumo { display: none; }
    acima da Receita Bruta, e o nome das linhas que mudaram, em amarelo. */
 .tabela-projecao tr.linha-cbs > td { background: #fde4a8; font-style: italic; }
 .tabela-projecao td.linha-muda-nome { background: #fde4a8; }
+
+/* Oportunidades do estoque (abaixo da DRE): mês acima da média mensal. */
+.tabela-estoque td.estoque-acima { background: #e3f4e6; font-weight: 600; }

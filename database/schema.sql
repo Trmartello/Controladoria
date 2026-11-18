@@ -1107,6 +1107,51 @@ CREATE TABLE IF NOT EXISTS negocio_nao_recorrente (
   CONSTRAINT fk_nnr_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Os mesmos itens não recorrentes, MÊS A MÊS — para o quadro único de
+-- oportunidades e riscos mostrar o mês e para tirar o item da série da linha
+-- antes da busca por meses fora do padrão (sem contar o mesmo valor duas vezes).
+-- Ver database/nao_recorrentes_mensal_*.php.
+CREATE TABLE IF NOT EXISTS negocio_nao_recorrente_mes (
+  negocio_id INT NOT NULL,
+  ano        SMALLINT NOT NULL,
+  conta      VARCHAR(32) NOT NULL,
+  mes        TINYINT NOT NULL,
+  valor      DECIMAL(18,2) NOT NULL,
+  PRIMARY KEY (negocio_id, ano, conta, mes),
+  CONSTRAINT fk_nnrm_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ESTOQUE como oportunidade do ano do planejamento (pedido do cliente,
+-- 2026-11-18): perdas (3.07.01.01.06) e acerto de estoque (3.11.03.03.01) mês a
+-- mês, do negócio (filial_id = 0) e das filiais, e o estoque parado por filial.
+-- Carga: database/estoque_oportunidade_*.php. Sinal do Qlik: + despesa, − crédito.
+CREATE TABLE IF NOT EXISTS estoque_perda_mes (
+  negocio_id INT NOT NULL,
+  filial_id  INT NOT NULL DEFAULT 0,
+  ano        SMALLINT NOT NULL,
+  conta      VARCHAR(32) NOT NULL,
+  mes        TINYINT NOT NULL,
+  valor      DECIMAL(18,2) NOT NULL,
+  PRIMARY KEY (negocio_id, filial_id, ano, conta, mes),
+  CONSTRAINT fk_epm_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Produtos parados: valor do estoque sem venda há mais de `dias_minimo` dias, por
+-- filial, na posição de `data_base`. filial_id NULL = nome do Qlik sem filial
+-- no cadastro (entra só no total do negócio).
+CREATE TABLE IF NOT EXISTS estoque_parado (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  negocio_id  INT NOT NULL,
+  filial_id   INT NULL,
+  data_base   DATE NOT NULL,
+  dias_minimo SMALLINT NOT NULL,
+  nome_origem VARCHAR(120) NOT NULL,
+  valor       DECIMAL(18,2) NOT NULL,
+  itens       INT NOT NULL,
+  UNIQUE KEY uk_estoque_parado (negocio_id, data_base, nome_origem),
+  CONSTRAINT fk_ep_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- O DESAFIO que a Controladoria propõe a cada negócio para o ano do planejamento
 -- (pedido do cliente, 2026-11-18): receita bruta, receita líquida e resultado
 -- líquido. É REFERÊNCIA decidida, não conta viva: sai da visão realista do ano

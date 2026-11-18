@@ -258,7 +258,8 @@ const SecaoProjecao = {
         Fonte: ${Modal.esc(d.fonte || 'Qlik')}${d.extraido_em
   ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
         Mês sem rateio é mês aberto e não entra como realizado.
-      </p>`;
+      </p>
+      ${this.cartaoEstoque(d)}`;
   },
 
   /**
@@ -776,7 +777,8 @@ const SecaoProjecao = {
         Fonte: ${Modal.esc(d.fonte || 'Qlik')}${d.extraido_em
   ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
         Mês sem rateio é mês aberto e não entra como realizado.
-      </p>`;
+      </p>
+      ${this.cartaoEstoque(d)}`;
   },
 
   /**
@@ -1182,78 +1184,67 @@ const SecaoProjecao = {
   },
 
   /**
-   * OPORTUNIDADES E RISCOS de 2027 (pedido do cliente, 2026-11-18): o que 2026
-   * teve de não recorrente — provisões, perdas, indenizações, multas, receitas
-   * pontuais — e os meses fora do padrão nas despesas. Só leitura: quem decide se
-   * um item se repete é o negócio, lançando na linha.
+   * OPORTUNIDADES E RISCOS de 2027 — o QUADRO ÚNICO (pedido do cliente,
+   * 2026-11-18: "traga todas as oportunidades nesse mesmo formato, detalhando os
+   * meses, e totalize"): os itens não recorrentes por conta contábil e os eventos
+   * pontuais das linhas, cada um com os meses em que aconteceu, a oportunidade e o
+   * risco se não se repetir, e no pé o total de oportunidades, o de riscos e o
+   * saldo. Os itens já saíram da série das linhas (`Oportunidades::quadro`), então
+   * os totais não contam nada duas vezes. Na filial, só os eventos dela.
+   * Só leitura: quem decide se um item se repete é o negócio, lançando na linha.
    */
   cartaoOportunidades(d) {
     if (d.corporativo) return this.cartaoOportunidadesCorporativo(d);
-    const o = d.oportunidades;
-    if (!o) return '';
-    // Na FILIAL (pedido do cliente, 2026-11-18): os eventos pontuais dela, mês a
-    // mês; os itens por conta contábil são do negócio e ficam no negócio.
     const naFilial = !!d.filial;
-    const it = naFilial ? null : o.itens;
-    const picos = ((naFilial ? d.filial.picos : o.picos) || []).slice(0, 12);
-    if (!it && !picos.length) {
-      return naFilial ? this.expansor('oportunidades', 'painel-oportunidades', `Oportunidades e riscos para ${d.ano_planejamento} — esta filial`,
-        'nenhum mês fora do padrão', `<div class="small text-muted" id="filial-sem-picos">Nenhum mês fora do padrão nesta filial em ${d.ano}
-          (despesas operacionais, outros valores e resultado financeiro, acima de R$ 50 mil). Os itens não recorrentes por conta contábil
-          estão no negócio.</div>`) : '';
+    const q = naFilial ? d.filial.quadro : (d.oportunidades || {}).quadro;
+    if (!q) return '';
+    const titulo = `Oportunidades e riscos para ${d.ano_planejamento}${naFilial ? ' — esta filial' : ''}`;
+    if (!q.linhas.length) {
+      return naFilial ? this.expansor('oportunidades', 'painel-oportunidades', titulo, 'nenhum item ou mês fora do padrão',
+        `<div class="small text-muted" id="filial-sem-picos">Nenhum mês fora do padrão nesta filial em ${d.ano}
+          (despesas operacionais, outros valores e resultado financeiro, acima de R$ 50 mil). Os itens não recorrentes por conta
+          contábil estão no negócio.</div>`) : '';
     }
-    const g = o.grupos || {};
-    const efeito = (v) => `<span class="${v > 0 ? 'text-success' : 'text-danger'}">${v > 0 ? '+' : '−'}${this.moeda(Math.abs(v))}</span>`;
-    const tabItens = it ? `
-      <div class="small fw-bold mb-1">Itens não recorrentes de ${d.ano} (jan–${this.nomeMes(it.mes_ate)}), por conta contábil</div>
+    const m = (v) => this.moeda(v);
+    const linhas = q.linhas.map((l) => {
+      const item = l.tipo === 'ITEM';
+      return `<tr ${item ? `data-item="${Modal.esc(l.codigo)}"` : `data-pico="${Modal.esc(l.codigo)}"`}>
+        <td>${Modal.esc(l.nome)} <span class="text-muted small">${Modal.esc(l.codigo)}</span></td>
+        <td class="small">${Modal.esc(l.grupo || '')}${item ? '' : ' <span class="text-muted">· mês fora do padrão</span>'}</td>
+        <td class="text-end small">${Modal.esc(l.linha_dre || '')}</td>
+        <td class="text-end">${l.mediana === null || l.mediana === undefined ? '<span class="text-muted">—</span>' : m(l.mediana)}</td>
+        <td class="small">${l.meses.length ? l.meses.map((x) => `${this.nomeMes(x.mes)}: ${m(x.valor)}`).join(' · ') : '<span class="text-muted">sem o mês</span>'}</td>
+        <td class="text-end">${l.oportunidade ? `<span class="text-success">+${m(l.oportunidade)}</span>` : ''}</td>
+        <td class="text-end">${l.risco ? `<span class="text-danger">−${m(Math.abs(l.risco))}</span>` : ''}</td></tr>`;
+    }).join('');
+    const resumo = `oportunidades ${this.mi(q.oportunidade, true)} · riscos ${this.mi(q.risco)} · saldo ${this.mi(q.saldo, true)}`;
+    return this.expansor('oportunidades', 'painel-oportunidades', titulo, resumo, `
+      <div class="small fw-bold mb-1">${naFilial ? 'Eventos pontuais desta filial' : 'Itens não recorrentes e eventos pontuais'}
+        de ${d.ano} (jan–${this.nomeMes(q.mes_ate)})</div>
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-1 tabela-nao-recorrentes">
-          <thead><tr><th>Item</th><th>Grupo</th><th class="text-end">Linha da DRE</th>
-            <th class="text-end">${d.ano} (jan–${this.nomeMes(it.mes_ate)})</th>
-            <th class="text-end">Se não se repetir em ${d.ano_planejamento}</th></tr></thead>
-          <tbody>${it.itens.map((i) => `<tr data-conta-contabil="${Modal.esc(i.conta)}">
-              <td>${Modal.esc(i.rotulo)} <span class="text-muted small">${Modal.esc(i.conta)}</span></td>
-              <td class="small">${Modal.esc(g[i.grupo] || i.grupo)}</td>
-              <td class="text-end small">${Modal.esc(i.linha_dre || '')}</td>
-              <td class="text-end">${i.valor > 0 ? '' : '−'}${this.moeda(Math.abs(i.valor))} <span class="text-muted small">${i.valor > 0 ? 'despesa' : 'receita'}</span></td>
-              <td class="text-end">${efeito(i.efeito)}</td></tr>`).join('')}
-            <tr class="fw-bold table-light"><td colspan="4">Oportunidade (despesa que pode não se repetir)</td><td class="text-end text-success" data-oport="oportunidade">+${this.moeda(it.oportunidade)}</td></tr>
-            <tr class="fw-bold table-light"><td colspan="4">Risco (receita ou reversão que pode não se repetir)</td><td class="text-end text-danger" data-oport="risco">−${this.moeda(Math.abs(it.risco))}</td></tr>
-          </tbody>
-        </table>
-      </div>` : '';
-    const tabPicos = picos.length ? `
-      <div class="small fw-bold mb-1 ${naFilial ? '' : 'mt-3'}">Eventos pontuais — meses fora do padrão${naFilial ? ' nesta filial' : ''}
-        (${d.ano}, jan–${this.nomeMes(d.mes_fechado_ate)})</div>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-1 tabela-picos">
-          <thead><tr><th>Linha</th><th>Grupo</th><th class="text-end">Padrão mensal<br><span class="fw-normal text-muted small">mediana</span></th>
-            <th>Meses fora do padrão</th>
+        <table class="table table-sm align-middle mb-1 tabela-oportunidades-quadro">
+          <thead><tr><th>Item / linha</th><th>Grupo</th><th class="text-end">Linha da DRE</th>
+            <th class="text-end">Padrão mensal<br><span class="fw-normal text-muted small">mediana</span></th>
+            <th>Meses em que aconteceu</th>
             <th class="text-end">Oportunidade<br><span class="fw-normal text-muted small">se não se repetir</span></th>
             <th class="text-end">Risco<br><span class="fw-normal text-muted small">se não se repetir</span></th></tr></thead>
-          <tbody>${picos.map((p) => `<tr data-pico="${Modal.esc(p.codigo)}">
-              <td>${Modal.esc(p.nome)} <span class="text-muted small">${Modal.esc(p.codigo)}</span></td>
-              <td class="small">${Modal.esc(p.grupo || '')}</td>
-              <td class="text-end">${this.moeda(p.mediana)}</td>
-              <td class="small">${p.meses.map((m) => `${this.nomeMes(m.mes)}: ${this.moeda(m.valor)}`).join(' · ')}</td>
-              <td class="text-end">${p.oportunidade ? `<span class="text-success">+${this.moeda(p.oportunidade)}</span>` : ''}</td>
-              <td class="text-end">${p.risco ? `<span class="text-danger">−${this.moeda(Math.abs(p.risco))}</span>` : ''}</td></tr>`).join('')}
+          <tbody>${linhas}
+            <tr class="fw-bold table-light"><td colspan="5">Total de oportunidades</td>
+              <td class="text-end text-success" data-oport="oportunidade">+${m(q.oportunidade)}</td><td></td></tr>
+            <tr class="fw-bold table-light"><td colspan="5">Total de riscos</td><td></td>
+              <td class="text-end text-danger" data-oport="risco">−${m(Math.abs(q.risco))}</td></tr>
+            <tr class="fw-bold"><td colspan="5">Saldo (oportunidades − riscos)</td>
+              <td class="text-end ${q.saldo >= 0 ? 'text-success' : 'text-danger'}" colspan="2" data-oport="saldo">${q.saldo >= 0 ? '+' : '−'}${m(Math.abs(q.saldo))}</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="small text-muted">Valores eventuais do ano, em <strong>despesas operacionais, outros valores e resultado
-        financeiro</strong>: o mês que se afasta da mediana do ano em mais da metade dela (e de R$ 50 mil) — uma receita de
-        juros concentrada num mês, uma despesa que não se repete. Se o evento não voltar em ${d.ano_planejamento}, uma receita
-        acima do padrão é <strong>risco</strong> e uma despesa acima do padrão é <strong>oportunidade</strong>. É sinal para
-        investigar — pode ser sazonalidade legítima${naFilial ? '' : ' —, e não soma com os itens acima (a mesma despesa pode aparecer nos dois)'}.</div>` : '';
-    const resumo = it
-      ? `oportunidade ${this.mi(it.oportunidade, true)} · risco ${this.mi(it.risco)}${picos.length ? ` · ${picos.length} linha(s) com mês fora do padrão` : ''}`
-      : `${picos.length} linha(s) com mês fora do padrão`;
-    return this.expansor('oportunidades', 'painel-oportunidades',
-      `Oportunidades e riscos para ${d.ano_planejamento}${naFilial ? ' — esta filial' : ''}`, resumo, `
-        ${tabItens}${tabPicos}
-        <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: se um item não vai se repetir (ou se falta algo
-          que ${d.ano} não teve), lance na linha da DRE correspondente.</div>`);
+      <div class="small text-muted">${naFilial ? '' : `<strong>Itens</strong> (conta contábil): provisões, perdas, indenizações, multas e
+        receitas pontuais, com o mês em que foram lançados. `}<strong>Meses fora do padrão</strong>: em despesas operacionais, outros
+        valores e resultado financeiro, o mês que se afasta da mediana do ano em mais da metade dela (e de R$ 50 mil) — uma receita de
+        juros concentrada num mês, uma despesa que não se repete${naFilial ? '' : '; calculados sem os itens acima, para nada contar duas vezes'}. Se não se repetir em ${d.ano_planejamento}, despesa é <strong>oportunidade</strong> e receita ou reversão é
+        <strong>risco</strong>. Meses no sinal da DRE (despesa negativa).</div>
+      <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: se um item não vai se repetir (ou se falta algo
+        que ${d.ano} não teve), lance na linha da DRE correspondente.</div>`);
   },
 
   cartaoOportunidadesCorporativo(d) {
@@ -1279,8 +1270,8 @@ const SecaoProjecao = {
       `oportunidade ${this.mi(op, true)} · risco ${this.mi(ri)}`, `
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-1 tabela-oportunidades">
-            <thead><tr><th></th><th class="text-end">Oportunidade<br><span class="fw-normal text-muted small">despesa que pode não se repetir</span></th>
-              <th class="text-end">Risco<br><span class="fw-normal text-muted small">receita/reversão que pode não se repetir</span></th>
+            <thead><tr><th></th><th class="text-end">Oportunidades<br><span class="fw-normal text-muted small">se não se repetir</span></th>
+              <th class="text-end">Riscos<br><span class="fw-normal text-muted small">se não se repetir</span></th>
               <th class="text-end">Líquido</th><th>Maiores itens</th></tr></thead>
             <tbody>${linhas}
               <tr class="fw-bold table-light" data-negocio-oport="total"><td>Total dos negócios</td>
@@ -1289,8 +1280,138 @@ const SecaoProjecao = {
             </tbody>
           </table>
         </div>
-        <div class="small text-muted">Itens não recorrentes de ${d.ano} (jan–${this.nomeMes(mes)}) por conta contábil: provisões, perdas,
-          indenizações, multas e receitas pontuais. O detalhe, e os meses fora do padrão nas despesas, estão na tela de cada negócio.</div>`);
+        <div class="small text-muted">Por negócio, o quadro de oportunidades e riscos de ${d.ano} (jan–${this.nomeMes(mes)}): itens não
+          recorrentes por conta contábil e meses fora do padrão, sem contar nada duas vezes. O detalhe, mês a mês, está na tela de cada negócio.</div>`);
+  },
+
+  /**
+   * O MONTANTE DE OPORTUNIDADES DO ESTOQUE, logo abaixo da DRE (pedido do
+   * cliente, 2026-11-18: "totalizasse as oportunidades e trouxesse logo abaixo do
+   * resultado líquido, para evidenciar o montante a ser trabalhado ao longo do
+   * ano, que pode ser desafiado no negócio"). Perdas e acerto de estoque mês a
+   * mês contra a média, e o estoque parado; o total separa o que é RESULTADO do
+   * que é CAIXA. Só leitura, sempre aberto.
+   */
+  cartaoEstoque(d) {
+    if (d.corporativo) return this.cartaoEstoqueCorporativo(d);
+    const naFilial = !!d.filial;
+    const e = naFilial ? d.filial.estoque : d.estoque;
+    if (!e) return '';
+    const m = (v) => this.moeda(v);
+    const meses = Array.from({ length: e.mes_ate }, (_, i) => i + 1);
+    const cab = meses.map((x) => `<th class="text-end">${this.nomeMes(x)}</th>`).join('');
+    const linhas = e.linhas.map((l) => `<tr data-estoque="${Modal.esc(l.tipo)}">
+        <td>${Modal.esc(l.nome)} <span class="text-muted small">${Modal.esc(l.conta)} · linha ${Modal.esc(l.linha_dre)}</span></td>
+        ${l.meses.map((x) => `<td class="text-end${x.excesso > 0 ? ' estoque-acima' : ''}"${x.excesso > 0
+    ? ` title="${this.moeda(x.excesso)} acima da média"` : ''}>${m(x.valor)}</td>`).join('')}
+        <td class="text-end fw-bold">${m(l.total)}</td>
+        <td class="text-end">${m(l.media)}</td>
+        <td class="text-end">${l.oportunidade >= 0.5 ? `<span class="text-success">+${m(l.oportunidade)}</span>`
+    : '<span class="text-muted" title="No ano, a sobra de inventário superou a falta: não há o que trazer à média.">—</span>'}</td></tr>`).join('');
+    const vazio = `<td colspan="${e.mes_ate + 2}"></td>`;
+    const p = e.parado;
+    const parado = p ? `<tr data-estoque="PARADO">
+        <td>Produtos parados há mais de ${p.dias >= 730 ? `${Math.round(p.dias / 365)} anos` : p.dias >= 365 ? '1 ano' : `${p.dias} dias`}
+          <span class="text-muted small">${p.itens.toLocaleString('pt-BR')} itens · posição de ${p.data_base.split('-').reverse().join('/')}</span></td>
+        <td colspan="${e.mes_ate + 2}" class="small text-muted">valor do estoque (custo) sem venda no período</td>
+        <td class="text-end text-success">+${m(p.valor)}</td></tr>` : '';
+    const liq = (this.visao(d).linhas || []).find((x) => x.codigo === '18');
+    const peso = liq && Math.abs(liq.projecao) >= 1
+      ? `<div class="small mt-1" id="estoque-peso">No resultado, o montante equivale a <strong>${(e.resultado / Math.abs(liq.projecao) * 100)
+        .toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</strong> do resultado líquido projetado de ${d.ano}
+        (${liq.projecao < 0 ? '−' : ''}R$ ${m(Math.abs(liq.projecao))}).</div>` : '';
+    return `<div class="card mb-3 border-success" id="projecao-estoque">
+      <div class="card-body py-2 px-3">
+        <h2 class="h6 mb-1">Oportunidades do estoque a trabalhar em ${d.ano_planejamento}${naFilial ? ' — esta filial' : ''}</h2>
+        <div class="small text-muted mb-2">Perdas e acerto de estoque de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}), mês a mês, no sinal
+          da DRE: o que cada mês passou da <strong>média mensal</strong> é a oportunidade — trazer os meses ruins à média. Em verde-claro,
+          os meses acima dela.${p ? ' E o estoque parado, que é caixa a liberar.' : ''}</div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-1 tabela-estoque">
+            <thead><tr><th>Indicador</th>${cab}<th class="text-end">Total</th><th class="text-end">Média<br><span class="fw-normal text-muted small">mensal</span></th>
+              <th class="text-end">Oportunidade<br><span class="fw-normal text-muted small">acima da média</span></th></tr></thead>
+            <tbody>${linhas}${parado}
+              <tr class="fw-bold table-light"><td>No resultado <span class="fw-normal small text-muted">perdas e acerto acima da média</span></td>${vazio}
+                <td class="text-end text-success" data-estoque-total="resultado">+${m(e.resultado)}</td></tr>
+              ${p ? `<tr class="fw-bold table-light"><td>No caixa <span class="fw-normal small text-muted">estoque parado</span></td>${vazio}
+                <td class="text-end text-success" data-estoque-total="caixa">+${m(e.caixa)}</td></tr>` : ''}
+              <tr class="fw-bold"><td>Montante de oportunidades a trabalhar em ${d.ano_planejamento}</td>${vazio}
+                <td class="text-end text-success fs-6" data-estoque-total="total">+${m(e.total)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        ${peso}
+        ${naFilial ? '' : this.estoqueDasFiliais(e)}
+        <div class="small text-muted mt-1">Fontes: Qlik DRE - Gerencial (contas 3.07.01.01.06 e 3.11.03.03.01) e Produtos Parados
+          (mais de 2 anos nas Agropecuárias, mais de 1 ano nos Supermercados). O estoque parado é <strong>caixa</strong>, não resultado:
+          vendê-lo libera capital, e o resultado depende do preço. Perdas e acerto estão no <strong>Custo das Vendas</strong> (linha 4.1),
+          que o quadro de oportunidades não varre: nada aqui está contado duas vezes. Nada daqui entra sozinho na proposta — é o tamanho
+          do desafio.</div>
+      </div>
+    </div>`;
+  },
+
+  /** No negócio, as filiais com mais oportunidade no estoque (as dez maiores; o resto, recolhido). */
+  estoqueDasFiliais(e) {
+    const f = e.filiais || [];
+    if (!f.length) return '';
+    const m = (v) => (v >= 0.5 ? this.moeda(v) : '<span class="text-muted">—</span>');
+    const linha = (x) => `<tr data-estoque-filial="${Modal.esc(x.cod_filial)}"><td>${Modal.esc(x.cod_filial)} — ${Modal.esc(x.nome)}</td>
+      <td class="text-end">${m(x.perdas)}</td><td class="text-end">${m(x.acerto)}</td><td class="text-end">${m(x.parado)}</td>
+      <td class="text-end fw-bold">${this.moeda(x.total)}</td></tr>`;
+    const cab = `<thead><tr><th>Filial</th><th class="text-end">Perdas<br><span class="fw-normal text-muted small">acima da média</span></th>
+      <th class="text-end">Acerto<br><span class="fw-normal text-muted small">acima da média</span></th>
+      <th class="text-end">Parado</th><th class="text-end">Total</th></tr></thead>`;
+    const resto = f.slice(10);
+    return `<div class="small fw-bold mt-2 mb-1">Onde está, por filial</div>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-estoque-filiais">${cab}
+        <tbody>${f.slice(0, 10).map(linha).join('')}</tbody></table></div>
+      ${resto.length ? `<details class="small"><summary>mais ${resto.length} filiais</summary>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-1">${cab}<tbody>${resto.map(linha).join('')}</tbody></table></div>
+      </details>` : ''}
+      <div class="small text-muted">Na filial, a média é a da própria filial: a soma das filiais passa a do negócio, porque o mês
+        ruim de uma não se compensa com o bom de outra. Abra a filial para ver os meses.</div>`;
+  },
+
+  cartaoEstoqueCorporativo(d) {
+    const por = d.estoque_negocios || {};
+    // Negócio sem nada a trabalhar (o acerto de Rações é crédito o ano todo) não ocupa linha.
+    const ids = Object.keys(por).filter((id) => por[id].total >= 0.5);
+    if (!ids.length) return '';
+    const nomes = Object.fromEntries((d.negocios || []).map((n) => [String(n.id), n.rotulo]));
+    const t = { perdas: 0, acerto: 0, parado: 0, resultado: 0, total: 0 };
+    const m = (v) => (v >= 0.5 ? this.moeda(v) : '<span class="text-muted">—</span>');
+    const linhas = ids.sort((a, b) => por[b].total - por[a].total).map((id) => {
+      const x = por[id];
+      Object.keys(t).forEach((k) => { t[k] += x[k]; });
+      return `<tr data-negocio-estoque="${id}"><td>${Modal.esc(nomes[id] || id)}</td>
+        <td class="text-end">${m(x.perdas)}</td><td class="text-end">${m(x.acerto)}</td>
+        <td class="text-end fw-bold">${m(x.resultado)}</td><td class="text-end">${m(x.parado)}</td>
+        <td class="text-end fw-bold">${this.moeda(x.total)}</td></tr>`;
+    }).join('');
+    return `<div class="card mb-3 border-success" id="projecao-estoque">
+      <div class="card-body py-2 px-3">
+        <h2 class="h6 mb-1">Oportunidades do estoque a trabalhar em ${d.ano_planejamento}, por negócio</h2>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-1 tabela-estoque">
+            <thead><tr><th></th><th class="text-end">Perdas<br><span class="fw-normal text-muted small">acima da média</span></th>
+              <th class="text-end">Acerto<br><span class="fw-normal text-muted small">acima da média</span></th>
+              <th class="text-end">No resultado</th><th class="text-end">No caixa<br><span class="fw-normal text-muted small">estoque parado</span></th>
+              <th class="text-end">Montante</th></tr></thead>
+            <tbody>${linhas}
+              <tr class="fw-bold table-light" data-negocio-estoque="total"><td>Total dos negócios</td>
+                <td class="text-end">${m(t.perdas)}</td><td class="text-end">${m(t.acerto)}</td>
+                <td class="text-end text-success" data-estoque-total="resultado">+${this.moeda(t.resultado)}</td>
+                <td class="text-end text-success" data-estoque-total="caixa">+${this.moeda(t.parado)}</td>
+                <td class="text-end text-success fs-6" data-estoque-total="total">+${this.moeda(t.total)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="small text-muted">Por negócio: perdas e acerto de estoque de ${d.ano}, o que os meses passaram da média mensal, e o
+          estoque parado (mais de 2 anos nas Agropecuárias, mais de 1 ano nos Supermercados), que é caixa, não resultado. Os meses e as
+          filiais estão na tela de cada negócio.</div>
+      </div>
+    </div>`;
   },
 
   /** Reais em milhões, para os resumos dos expansores. `sinal` força o + nos positivos. */

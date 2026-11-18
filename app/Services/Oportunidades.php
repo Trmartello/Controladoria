@@ -51,6 +51,18 @@ class Oportunidades
         '3.11.01.01.03' => ['RECEITA', 'Receita de indenizações e ressarcimentos', '9.1'],
     ];
 
+    /**
+     * ESTOQUE como oportunidade (pedido do cliente, 2026-11-18): as duas contas da
+     * DRE Gerencial em que o estoque vira resultado. conta => [tipo, rótulo, linha].
+     * As duas caem no CUSTO DAS VENDAS (estrutura da DRE Gerencial: 3081 em
+     * 4.1.14, 3148 em 4.1.40) — não em despesas nem em Provisões e Perdas.
+     * A oportunidade de cada uma é o que passou da MÉDIA mensal (`acimaDaMedia`).
+     */
+    public const ESTOQUE_CONTAS = [
+        '3.07.01.01.06' => ['PERDA', 'Perdas — mercadorias deterioradas', '4.1'],
+        '3.11.03.03.01' => ['ACERTO', 'Acerto de estoque (inventário)', '4.1'],
+    ];
+
     public const GRUPOS = [
         'PROVISAO' => 'Provisões', 'PERDA' => 'Perdas e baixas', 'INDENIZACAO' => 'Indenizações',
         'MULTA' => 'Multas', 'RECEITA' => 'Receitas pontuais',
@@ -126,7 +138,7 @@ class Oportunidades
      *
      * @return array<int, array{codigo:string, nome:string, grupo:string, meses:array, oportunidade:float, risco:float, mediana:float}>
      */
-    public static function picos(int $negocioId, int $ano, int $corte, int $filialId = 0): array
+    public static function picos(int $negocioId, int $ano, int $corte, int $filialId = 0, array $ajuste = []): array
     {
         $filtro = "(c.codigo LIKE '8.%' OR c.codigo LIKE '9.%' OR c.codigo LIKE '11.%')";
         $linhas = $filialId
@@ -145,7 +157,10 @@ class Oportunidades
         $porConta = [];
         foreach ($linhas as $l) {
             $porConta[$l['codigo']]['nome'] = $l['nome'];
-            $porConta[$l['codigo']]['meses'][(int)$l['mes']] = (float)$l['valor'];
+            // `$ajuste` (do `quadro`): o que os itens não recorrentes já explicam
+            // na linha, no sinal da carga (+ despesa). Tirado da série, o mesmo
+            // valor não aparece duas vezes — como item e como pico.
+            $porConta[$l['codigo']]['meses'][(int)$l['mes']] = (float)$l['valor'] + ($ajuste[$l['codigo']][(int)$l['mes']] ?? 0.0);
         }
         $saida = [];
         foreach ($porConta as $codigo => $c) {
@@ -179,6 +194,223 @@ class Oportunidades
         }
         usort($saida, static fn ($a, $b) => ($b['oportunidade'] - $b['risco']) <=> ($a['oportunidade'] - $a['risco']));
         return $saida;
+    }
+
+    /**
+     * O QUADRO ÚNICO de oportunidades e riscos de 2027 (pedido do cliente,
+     * 2026-11-18: "traga todas as oportunidades nesse mesmo formato — os meses em
+     * que aconteceram, as oportunidades, os riscos — e totalize"): os itens não
+     * recorrentes por conta contábil e os eventos pontuais das linhas, no mesmo
+     * formato, com o total de oportunidades e o total de riscos.
+     *
+     * Os itens saem da série da linha antes da busca por meses fora do padrão
+     * (`picos(…, $ajuste)`): a PDD de outubro do Leite é item, e o que sobra na
+     * linha 9.2 naquele mês é outro evento — somar os dois não conta nada duas
+     * vezes. Na FILIAL só há os eventos (os itens por conta são do negócio).
+     *
+     * Sinais: os meses vêm no sinal da DRE (despesa negativa); o efeito em 2027, se
+     * não se repetir, é + oportunidade / − risco.
+     *
+     * @return array{mes_ate:int, linhas:array, oportunidade:float, risco:float, saldo:float}
+     */
+    public static function quadro(int $negocioId, int $ano, int $corte, int $filialId = 0): array
+    {
+        $linhas = [];
+        $ajuste = [];
+        if (!$filialId) {
+            $porConta = [];
+            foreach (Database::todos(
+                'SELECT conta, mes, valor FROM negocio_nao_recorrente_mes
+                  WHERE negocio_id = ? AND ano = ? AND mes <= ? ORDER BY conta, mes',
+                [$negocioId, $ano, $corte]
+            ) as $r) {
+                $porConta[$r['conta']][(int)$r['mes']] = (float)$r['valor'];
+            }
+            // Sem a carga mensal, os totais (sem mês e sem tirar da série).
+            if (!$porConta) {
+                foreach ((self::itens([$negocioId], $ano)[$negocioId]['itens'] ?? []) as $i) {
+                    $porConta[$i['conta']] = ['total' => (float)$i['valor']];
+                }
+            }
+            foreach ($porConta as $conta => $meses) {
+                $cat = self::CONTAS[$conta] ?? ['OUTRO', $conta, null];
+                $total = array_sum($meses);
+                if (abs($total) < 0.5) {
+                    continue;
+                }
+                $comMes = !isset($meses['total']);
+                if ($comMes && $cat[2]) {
+                    foreach ($meses as $m => $v) {
+                        $ajuste[$cat[2]][$m] = ($ajuste[$cat[2]][$m] ?? 0.0) + $v;
+                    }
+                }
+                $linhas[] = [
+                    'tipo' => 'ITEM', 'codigo' => (string)$conta, 'nome' => $cat[1],
+                    'grupo' => self::GRUPOS[$cat[0]] ?? $cat[0], 'linha_dre' => $cat[2], 'mediana' => null,
+                    'meses' => $comMes ? array_values(array_map(
+                        static fn ($m, $v) => ['mes' => $m, 'valor' => -$v],
+                        array_keys(array_filter($meses)), array_values(array_filter($meses))
+                    )) : [],
+                    'oportunidade' => $total > 0 ? $total : 0.0,
+                    'risco' => $total < 0 ? $total : 0.0,
+                ];
+            }
+        }
+        foreach (self::picos($negocioId, $ano, $corte, $filialId, $ajuste) as $p) {
+            $linhas[] = [
+                'tipo' => 'EVENTO', 'codigo' => $p['codigo'], 'nome' => $p['nome'], 'grupo' => $p['grupo'],
+                'linha_dre' => $p['codigo'], 'mediana' => $p['mediana'],
+                'meses' => array_map(static fn ($m) => ['mes' => $m['mes'], 'valor' => $m['valor']], $p['meses']),
+                'oportunidade' => $p['oportunidade'], 'risco' => $p['risco'],
+            ];
+        }
+        usort($linhas, static fn ($a, $b) => ($b['oportunidade'] - $b['risco']) <=> ($a['oportunidade'] - $a['risco']));
+        $op = array_sum(array_column($linhas, 'oportunidade'));
+        $ri = array_sum(array_column($linhas, 'risco'));
+        return ['mes_ate' => $corte, 'linhas' => $linhas, 'oportunidade' => $op, 'risco' => $ri, 'saldo' => $op + $ri];
+    }
+
+    /**
+     * O MONTANTE DE OPORTUNIDADES DO ESTOQUE a trabalhar no ano do planejamento
+     * (pedido do cliente, 2026-11-18), totalizado logo abaixo da DRE:
+     *
+     *  - **Perdas** e **acerto de estoque**, mês a mês: a média mensal de jan até o
+     *    corte, e a oportunidade é o que cada mês passou dela — trazer os meses
+     *    ruins à média, sem exigir dos bons. Série que no ano é crédito (sobra de
+     *    inventário maior que a falta) não tem oportunidade.
+     *  - **Produtos parados**: o valor do estoque sem venda há mais de 2 anos
+     *    (Agropecuárias) ou 1 ano (Supermercados). É CAIXA, não resultado — o
+     *    total mostra os dois separados, e a soma dos dois.
+     *
+     * Na filial, as séries e o parado dela; no negócio, os do negócio e o ranking
+     * das filiais. Null quando o negócio não tem nada carregado.
+     */
+    public static function estoque(int $negocioId, int $ano, int $corte, int $filialId = 0): ?array
+    {
+        $linhas = [];
+        foreach (self::seriesDeEstoque($negocioId, $ano, $corte, $filialId) as $conta => $meses) {
+            $cat = self::ESTOQUE_CONTAS[$conta];
+            $linhas[] = ['tipo' => $cat[0], 'conta' => $conta, 'nome' => $cat[1], 'linha_dre' => $cat[2]]
+                + self::acimaDaMedia($meses, $corte);
+        }
+        $parado = self::parado($negocioId, $filialId);
+        if (!$linhas && !$parado) {
+            return null;
+        }
+        $resultado = array_sum(array_column($linhas, 'oportunidade'));
+        $caixa = $parado ? $parado['valor'] : 0.0;
+        $saida = [
+            'mes_ate' => $corte, 'linhas' => $linhas, 'parado' => $parado,
+            'resultado' => $resultado, 'caixa' => $caixa, 'total' => $resultado + $caixa,
+        ];
+        if (!$filialId) {
+            $saida['filiais'] = self::estoquePorFilial($negocioId, $ano, $corte);
+        }
+        return $saida;
+    }
+
+    /**
+     * Média mensal e o que passou dela, de uma série no sinal do Qlik (+ despesa).
+     * Mês sem lançamento vale zero — é um mês sem perda, e conta na média. Os
+     * valores de saída estão no sinal da DRE (despesa negativa).
+     *
+     * @return array{media:float, total:float, meses:array, oportunidade:float}
+     */
+    public static function acimaDaMedia(array $meses, int $corte): array
+    {
+        $serie = [];
+        for ($m = 1; $m <= $corte; $m++) {
+            $serie[$m] = (float)($meses[$m] ?? 0.0);
+        }
+        $total = array_sum($serie);
+        $media = $corte ? $total / $corte : 0.0;
+        $saida = [];
+        $op = 0.0;
+        foreach ($serie as $m => $v) {
+            $excesso = $media > 0 && $v > $media ? $v - $media : 0.0;
+            $op += $excesso;
+            $saida[] = ['mes' => $m, 'valor' => $v ? -$v : 0.0, 'excesso' => $excesso];
+        }
+        return ['media' => -$media, 'total' => -$total, 'meses' => $saida, 'oportunidade' => $op];
+    }
+
+    /** conta => [mês => valor no sinal do Qlik], do negócio (filial 0) ou da filial. */
+    private static function seriesDeEstoque(int $negocioId, int $ano, int $corte, int $filialId): array
+    {
+        $series = [];
+        foreach (Database::todos(
+            'SELECT conta, mes, valor FROM estoque_perda_mes
+              WHERE negocio_id = ? AND filial_id = ? AND ano = ? AND mes <= ? ORDER BY conta, mes',
+            [$negocioId, $filialId, $ano, $corte]
+        ) as $r) {
+            if (isset(self::ESTOQUE_CONTAS[$r['conta']])) {
+                $series[$r['conta']][(int)$r['mes']] = (float)$r['valor'];
+            }
+        }
+        // Na ordem do catálogo: perdas antes do acerto, sempre.
+        return array_intersect_key(array_replace(array_fill_keys(array_keys(self::ESTOQUE_CONTAS), null), $series), $series);
+    }
+
+    /** O estoque parado da última posição carregada, do negócio ou da filial. */
+    private static function parado(int $negocioId, int $filialId): ?array
+    {
+        $base = Database::um(
+            'SELECT MAX(data_base) AS data_base FROM estoque_parado WHERE negocio_id = ?', [$negocioId]
+        )['data_base'] ?? null;
+        if (!$base) {
+            return null;
+        }
+        $r = Database::um(
+            'SELECT MAX(dias_minimo) AS dias, COUNT(*) AS n, COALESCE(SUM(valor), 0) AS valor, COALESCE(SUM(itens), 0) AS itens
+               FROM estoque_parado WHERE negocio_id = ? AND data_base = ?' . ($filialId ? ' AND filial_id = ?' : ''),
+            $filialId ? [$negocioId, $base, $filialId] : [$negocioId, $base]
+        );
+        if (!$r || !(int)$r['n']) {
+            return null;
+        }
+        return ['data_base' => $base, 'dias' => (int)$r['dias'], 'valor' => (float)$r['valor'], 'itens' => (int)$r['itens']];
+    }
+
+    /** As filiais do negócio com o que cada uma tem de oportunidade, da maior para a menor. */
+    private static function estoquePorFilial(int $negocioId, int $ano, int $corte): array
+    {
+        $por = [];
+        $nova = static fn ($r) => ['filial_id' => (int)$r['id'], 'cod_filial' => $r['cod_filial'], 'nome' => $r['nome'],
+            'perdas' => 0.0, 'acerto' => 0.0, 'parado' => 0.0, 'itens' => 0];
+        $series = [];
+        foreach (Database::todos(
+            'SELECT f.id, f.cod_filial, f.nome, e.conta, e.mes, e.valor FROM estoque_perda_mes e
+               JOIN filial f ON f.id = e.filial_id
+              WHERE e.negocio_id = ? AND e.ano = ? AND e.mes <= ?',
+            [$negocioId, $ano, $corte]
+        ) as $r) {
+            $por[(int)$r['id']] ??= $nova($r);
+            $series[(int)$r['id']][$r['conta']][(int)$r['mes']] = (float)$r['valor'];
+        }
+        foreach ($series as $id => $contas) {
+            foreach ($contas as $conta => $meses) {
+                $chave = self::ESTOQUE_CONTAS[$conta][0] === 'PERDA' ? 'perdas' : 'acerto';
+                $por[$id][$chave] += self::acimaDaMedia($meses, $corte)['oportunidade'];
+            }
+        }
+        foreach (Database::todos(
+            'SELECT f.id, f.cod_filial, f.nome, p.valor, p.itens FROM estoque_parado p
+               JOIN filial f ON f.id = p.filial_id
+              WHERE p.negocio_id = ? AND p.data_base = (SELECT MAX(data_base) FROM estoque_parado WHERE negocio_id = ?)',
+            [$negocioId, $negocioId]
+        ) as $r) {
+            $por[(int)$r['id']] ??= $nova($r);
+            $por[(int)$r['id']]['parado'] += (float)$r['valor'];
+            $por[(int)$r['id']]['itens'] += (int)$r['itens'];
+        }
+        foreach ($por as &$f) {
+            $f['resultado'] = $f['perdas'] + $f['acerto'];
+            $f['total'] = $f['resultado'] + $f['parado'];
+        }
+        unset($f);
+        $por = array_values(array_filter($por, static fn ($f) => $f['total'] >= 0.5));
+        usort($por, static fn ($a, $b) => $b['total'] <=> $a['total']);
+        return $por;
     }
 
     private static function mediana(array $v): float
