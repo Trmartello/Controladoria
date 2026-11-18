@@ -1272,7 +1272,18 @@ const SecaoProjecao = {
         <td>${Modal.esc(i.conta_nome)} <span class="text-muted">${Modal.esc(i.conta)}</span></td>
         <td>${Modal.esc(i.historico)}</td>
         <td>${Modal.esc(i.complemento)}</td>
-        <td class="text-end text-nowrap">${m(i.valor)}</td></tr>`).join('');
+        <td class="text-end text-nowrap">${m(i.valor)}</td>
+        <td class="text-end text-nowrap">${i.valor < 0 ? `<span class="text-success">+${m(-i.valor)}</span>` : ''}</td>
+        <td class="text-end text-nowrap">${i.valor > 0 ? `<span class="text-danger">−${m(i.valor)}</span>` : ''}</td></tr>`).join('');
+    // Os totais da abertura (pedido do cliente, 2026-11-18): de TODOS os lançamentos
+    // do piso para cima, não só dos mostrados — mesma régua do quadro.
+    const totais = `
+          <tr class="fw-bold table-light"><td colspan="6">Total de oportunidades${x.quantos > x.itens.length ? ` (os ${x.quantos} lançamentos)` : ''}</td>
+            <td class="text-end text-success text-nowrap" data-abertura="oportunidade">+${m(x.oportunidade)}</td><td></td></tr>
+          <tr class="fw-bold table-light"><td colspan="6">Total de riscos</td><td></td>
+            <td class="text-end text-danger text-nowrap" data-abertura="risco">−${m(Math.abs(x.risco))}</td></tr>
+          <tr class="fw-bold"><td colspan="6">Saldo (oportunidades − riscos)</td>
+            <td class="text-end text-nowrap ${x.saldo >= 0 ? 'text-success' : 'text-danger'}" colspan="2" data-abertura="saldo">${x.saldo >= 0 ? '+' : '−'}${m(Math.abs(x.saldo))}</td></tr>`;
     const mais = x.quantos > x.itens.length
       ? `<div class="text-muted">Mostrando os ${x.itens.length} maiores de ${x.quantos}.</div>` : '';
     // Quanto do valor da linha nesses meses os lançamentos grandes explicam: o resto
@@ -1285,8 +1296,10 @@ const SecaoProjecao = {
         <summary>Lançamentos — ${x.quantos} de R$ ${m(x.minimo)} ou mais, somando ${m(x.soma)}${item ? '' : ' nos meses fora do padrão'}${cobre}</summary>
         <div class="table-responsive"><table class="table table-sm table-borderless mb-1 tabela-lancamentos">
           <thead><tr><th>Data</th><th>Filial</th><th>Conta</th><th>Histórico</th><th>Complemento (documento e cliente)</th>
-            <th class="text-end">Valor</th></tr></thead>
-          <tbody>${linhas}</tbody></table></div>${mais}
+            <th class="text-end">Valor</th><th class="text-end">Oportunidade</th><th class="text-end">Risco</th></tr></thead>
+          <tbody>${linhas}${totais}</tbody></table></div>${mais}
+        <div class="text-muted">Se o lançamento não se repetir: despesa é oportunidade, receita ou reversão é risco.
+          ${item ? '' : 'Os totais são dos lançamentos inteiros dos meses fora do padrão; o quadro conta só o que passou do padrão.'}</div>
       </details></td></tr>`;
   },
 

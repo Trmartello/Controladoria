@@ -6675,6 +6675,7 @@ async function provasLancamentosEJuros(page, largura) {
       fechada,
       resumo: pdd?.querySelector('summary').textContent.replace(/\s+/g, ' ').trim() || '',
       colunas: primeira ? primeira.querySelectorAll('td').length : 0,
+      abertura: ['oportunidade', 'risco', 'saldo'].map((k) => pdd?.querySelector(`[data-abertura="${k}"]`)?.textContent.trim() || ''),
       filial: primeira?.querySelectorAll('td')[1]?.textContent.trim() || '',
       risco: document.querySelector('#juros-recebidos [data-juros="risco"]')?.textContent.trim(),
       acima: document.querySelectorAll('#juros-recebidos tr[data-juros-lancamento]').length,
@@ -6685,8 +6686,14 @@ async function provasLancamentosEJuros(page, largura) {
   });
   t(`${l} cada linha do quadro tem o seu expansor de lançamentos, fechado até ser aberto`,
     a.linhas > 0 && a.expansores === a.linhas && a.fechada, JSON.stringify([a.linhas, a.expansores, a.fechada]));
-  t(`${l} a PDD abre os lançamentos com data, filial, conta, histórico, complemento e valor`,
-    /^Lançamentos — \d+ de R\$ 10\.000 ou mais/.test(a.resumo) && a.colunas === 6 && /^\d+ — /.test(a.filial), JSON.stringify(a));
+  t(`${l} a PDD abre os lançamentos com data, filial, conta, histórico, complemento, valor, oportunidade e risco`,
+    /^Lançamentos — \d+ de R\$ 10\.000 ou mais/.test(a.resumo) && a.colunas === 8 && /^\d+ — /.test(a.filial), JSON.stringify(a));
+  {
+    const [op, ri, sa] = a.abertura.map((v) => num(v));
+    t(`${l} a abertura totaliza oportunidades, riscos e saldo (saldo = oportunidades − riscos)`,
+      op > 0 && /^−/.test(a.abertura[1]) && Math.abs(op - ri - (/^−/.test(a.abertura[2]) ? -sa : sa)) <= 1,
+      JSON.stringify(a.abertura));
+  }
   t(`${l} juros: 45 documentos acima de R$ 30 mil, risco 3.526.819, o maior é Rafael Dalmina (filial 128)`,
     a.acima === 45 && num(a.risco) === 3526819 && /128 — .*RAFAEL DALMINA/.test(a.maior), JSON.stringify([a.acima, a.risco, a.maior]));
   t(`${l} e os clientes que somam mais de R$ 30 mil no ano estão listados`, a.clientes === 49, String(a.clientes));
