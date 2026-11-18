@@ -897,6 +897,11 @@ foreach ([
     // as duas últimas forem re-extraídas, as de setembro saem daqui.
     'dre_2026_fechamento_10.php',
     'dre_filiais_pecuaria_2026_10.php',
+    // A ESTRUTURA NOVA da DRE gerencial (2026-11-18): rateio corporativo dividido
+    // em negócio e administrativo, "14 - Resultado do negócio", e Resultado
+    // Líquido em 18. Regrava todas as linhas dos negócios; as filiais passam por
+    // `migrarFiliaisParaEstruturaNova`, logo abaixo do laço.
+    'dre_2026_fechamento_10_nova.php',
 ] as $arquivo) {
     $dre = require __DIR__ . '/' . $arquivo;
     if (App\Services\CargaConteudo::jaAplicada($pdo, $dre['chave'])) {
@@ -924,6 +929,15 @@ foreach ([
     if ($r['ignorados']) {
         echo 'migrate: negócio(s) fora do cadastro ignorado(s) na carga de DRE: '
             . implode(', ', $r['ignorados']) . ".\n";
+    }
+}
+
+// ---- DRE das filiais na estrutura nova (2026-11-18) ----
+// Idempotente: só converte filial sem a linha 16.1 cujo negócio já tem 16.1.
+foreach ([2026] as $anoDre) {
+    $n = App\Services\CargaDre::migrarFiliaisParaEstruturaNova($pdo, $anoDre);
+    if ($n) {
+        echo "migrate: DRE de {$n} filial(is) de {$anoDre} levada à estrutura nova (rateio dividido na proporção do negócio).\n";
     }
 }
 

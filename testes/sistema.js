@@ -5337,7 +5337,7 @@ async function provasProjecaoFilial(page, largura) {
       modo: document.querySelector('input[name="projecao-modo"]:checked')?.value,
       filiais: document.querySelectorAll('#projecao-filial option').length - 1,
       naTela: document.querySelector('#projecao-filial')?.value,
-      receita: linha('1.1'), rol: linha('3'), liquido: linha('16'),
+      receita: linha('1.1'), rol: linha('3'), liquido: linha('18'),
       aviso: document.querySelector('#projecao-aviso').classList.contains('d-none')
         ? '' : document.querySelector('#projecao-aviso').textContent.trim(),
     };
@@ -5395,7 +5395,7 @@ async function provasProjecaoFilial(page, largura) {
     const d = await App.api(`/api/projecao?negocio_id=${id}`);
     for (const f of d.filiais) {
       const x = await App.api(`/api/projecao?negocio_id=${id}&filial_id=${f.id}`);
-      const rl = x.filial.linhas.find((q) => q.codigo === '16').proposta;
+      const rl = x.filial.linhas.find((q) => q.codigo === '18').proposta;
       const rec = x.filial.linhas.find((q) => q.codigo === '1.1').projecao;
       if (rl > 1000 && rec > 0) return f.nome;
     }
@@ -5516,9 +5516,12 @@ async function provasProjecaoPremissas(page, largura) {
     const o = {};
     document.querySelectorAll('[data-premissa]').forEach((e) => { o[e.dataset.premissa] = n(e.textContent); });
     return {
-      // 2027 tem diretriz: IPCA e PIB são texto com selo, não campo.
-      ipca: document.querySelector('[data-diretriz="IPCA"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
-      pib: document.querySelector('[data-diretriz="PIB"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
+      // 2027: IPCA e PIB são CAMPOS do negócio, preenchidos com a sugestão da
+      // diretriz e com o selo enquanto ninguém digitou.
+      ipca: document.querySelector('#premissa-IPCA')?.value ?? null,
+      pib: document.querySelector('#premissa-PIB')?.value ?? null,
+      seloIpca: !!document.querySelector('[data-sugerida="IPCA"]'),
+      seloPib: !!document.querySelector('[data-sugerida="PIB"]'),
       real: o['Cresc. Real'], total: o['Cresc. Total'], custos: o['% Custos'],
       aviso: document.querySelector('#projecao-aviso').classList.contains('d-none')
         ? '' : document.querySelector('#projecao-aviso').textContent.trim(),
@@ -5532,10 +5535,10 @@ async function provasProjecaoPremissas(page, largura) {
     return ler();
   };
 
-  // Em 2027 IPCA e PIB são os da diretriz (4,50 e 1,50), e não se digitam.
+  // Em 2027 IPCA e PIB vêm SUGERIDOS pela diretriz (4,5 e 1,5), em campo.
   let v = await ler();
-  t(`${l} em 2027 IPCA e PIB vêm da diretriz (4,50% e 1,50%)`,
-    /4,50%/.test(v.ipca) && /1,50%/.test(v.pib), JSON.stringify({ ipca: v.ipca, pib: v.pib }));
+  t(`${l} em 2027 IPCA e PIB vêm preenchidos com a diretriz (4,5 e 1,5), com o selo, e editáveis`,
+    v.ipca === '4,5' && v.pib === '1,5' && v.seloIpca && v.seloPib, JSON.stringify(v));
 
   // ── O Cresc. Total da planilha do cliente, com o IPCA e o PIB da diretriz ─
   v = await digitar('[data-conta="1.1"] .celula-proposta', '13,79%');
@@ -5543,6 +5546,15 @@ async function provasProjecaoPremissas(page, largura) {
     Math.abs(v.total - 13.79) < 0.02, String(v.total));
   t(`${l} Cresc. Real = Total − IPCA − PIB (13,79 − 4,50 − 1,50 = 7,79%)`,
     Math.abs(v.real - 7.79) < 0.02, String(v.real));
+
+  // O negócio ajusta o IPCA (pedido do cliente, 2026-11-18): vale o dele, o selo
+  // sai só do IPCA, e apagar devolve a sugestão da diretriz.
+  v = await digitar('#premissa-IPCA', '5');
+  t(`${l} o negócio digita o IPCA (5%): o Cresc. Real passa a descontá-lo (13,79 − 5 − 1,5 = 7,29%)`,
+    v.ipca === '5' && !v.seloIpca && v.seloPib && Math.abs(v.real - 7.29) < 0.02, JSON.stringify(v));
+  v = await digitar('#premissa-IPCA', '');
+  t(`${l} apagar o IPCA devolve o 4,5 da diretriz, com o selo`,
+    v.ipca === '4,5' && v.seloIpca && Math.abs(v.real - 7.79) < 0.02, JSON.stringify(v));
 
   // 14%: um pouco acima da receita. Os 18,7% da planilha levariam o resultado da
   // Pecuária ao vermelho, e a diretriz recusa meta negativa.
@@ -5576,7 +5588,7 @@ async function provasProjecaoPremissas(page, largura) {
   await digitar('[data-conta="8.5"] .celula-proposta', '');
   v = await digitar('[data-conta="1.1"] .celula-proposta', '');
   t(`${l} e as premissas sobrevivem ao fim dos lançamentos`,
-    /4,50%/.test(v.ipca) && /1,50%/.test(v.pib), JSON.stringify({ ipca: v.ipca, pib: v.pib }));
+    v.ipca === '4,5' && v.pib === '1,5', JSON.stringify({ ipca: v.ipca, pib: v.pib }));
 }
 
 /**
@@ -5694,7 +5706,7 @@ async function provasProjecaoCorporativo(page, largura) {
       cardRol: painel.consolidado.projecao_rol, cardLiquido: painel.consolidado.projecao_liquido,
       comProjecao: painel.consolidado.com_projecao,
       projecaoRolCorp: (corp.linhas.find((x) => x.codigo === '3') || {}).projecao,
-      liquidoCorp: (corp.linhas.find((x) => x.codigo === '16') || {}).projecao,
+      liquidoCorp: (corp.linhas.find((x) => x.codigo === '18') || {}).projecao,
     };
   });
   t(`${l} a API devolve o consolidado, só para leitura e sem filiais`,
@@ -6236,7 +6248,7 @@ async function provasCrescimentoPorPremissa(page, largura) {
     const d = await App.api(`/api/projecao?negocio_id=${n}`);
     const linha = p.linhas.find((x) => x.negocio_id !== null && String(x.negocio_id) === String(n));
     const g = (c) => d.linhas.find((x) => x.codigo === c).proposta;
-    return { rolPainel: linha.proposta_rol, rol: g('3'), liqPainel: linha.proposta_liquido, liq: g('16') };
+    return { rolPainel: linha.proposta_rol, rol: g('3'), liqPainel: linha.proposta_liquido, liq: g('18') };
   }, [negocioId]);
   t(`${l} o Painel faz a mesma conta da tela (ROL e resultado líquido da proposta)`,
     Math.abs(painel.rolPainel - painel.rol) < 0.5 && Math.abs(painel.liqPainel - painel.liq) < 0.5, JSON.stringify(painel));
@@ -6365,7 +6377,8 @@ async function provasDiretriz2027(page, largura) {
     const d = SecaoProjecao.dados;
     const linha = (c) => d.linhas.find((x) => x.codigo === c);
     return {
-      ipca: tx('[data-diretriz="IPCA"]'), pib: tx('[data-diretriz="PIB"]'), pessoas: tx('[data-diretriz="PESSOAS"]'),
+      ipca: document.querySelector('#premissa-IPCA')?.value, pib: document.querySelector('#premissa-PIB')?.value,
+      seloIpca: !!document.querySelector('[data-sugerida="IPCA"]'), pessoas: tx('[data-diretriz="PESSOAS"]'),
       vale: tx('[data-diretriz="ALIMENTACAO"]'), assid: tx('[data-diretriz="ASSIDUIDADE"]'), result: tx('[data-diretriz="RESULTADO"]'),
       campoIpca: !!document.querySelector('#premissa-IPCA'), campoDesejado: !!document.querySelector('#premissa-CRESCIMENTO'),
       campoVale: !!document.querySelector('#beneficio-ALIMENTACAO'), campoColab: !!document.querySelector('#beneficio-COLABORADORES'),
@@ -6373,8 +6386,8 @@ async function provasDiretriz2027(page, largura) {
       api: d.pessoal_diretriz, l85: linha('8.5'), l11: linha('1.1'), l41: linha('4.1'), l81: linha('8.1'),
     };
   });
-  t(`${l} IPCA 4,50%, PIB 1,50% e pessoal 5,50% com o selo da diretriz, sem campo de digitar`,
-    /4,50%.*diretriz/.test(tela.ipca) && /1,50%.*diretriz/.test(tela.pib) && /5,50%.*diretriz/.test(tela.pessoas) && !tela.campoIpca,
+  t(`${l} pessoal 5,50% fixo com o selo da diretriz; IPCA 4,5 e PIB 1,5 sugeridos, em campo editável`,
+    /5,50%.*diretriz/.test(tela.pessoas) && tela.campoIpca && tela.ipca === '4,5' && tela.pib === '1,5' && tela.seloIpca,
     `${tela.ipca} | ${tela.pib} | ${tela.pessoas}`);
   t(`${l} vale R$ 500, assiduidade R$ 200, metas R$ 500, também fixos`,
     /R\$ 500/.test(tela.vale) && /R\$ 200/.test(tela.assid) && /R\$ 500/.test(tela.result) && !tela.campoVale,
@@ -6396,34 +6409,49 @@ async function provasDiretriz2027(page, largura) {
     const id = Number(document.querySelector('#projecao-negocio').value);
     const tenta = async (url, corpo) => { try { await App.api(url, corpo); return 'aceita'; } catch (e) { return e.message; } };
     return {
-      ipca: await tenta('/api/projecao/premissa', { negocio_id: id, ano: 2027, chave: 'IPCA', valor: 7 }),
+      pessoas: await tenta('/api/projecao/premissa', { negocio_id: id, ano: 2027, chave: 'PESSOAS', valor: 7 }),
       vale: await tenta('/api/projecao/beneficio', { negocio_id: id, ano: 2027, chave: 'ALIMENTACAO', valor: 650 }),
     };
   });
   t(`${l} a API recusa mudar o que a diretriz fixa`,
-    /Fixado pela diretriz de 2027/.test(recusas.ipca) && /Fixado pela diretriz de 2027/.test(recusas.vale), JSON.stringify(recusas));
+    /Fixado pela diretriz de 2027/.test(recusas.pessoas) && /Fixado pela diretriz de 2027/.test(recusas.vale), JSON.stringify(recusas));
 
-  // A trava: um lançamento que leva o resultado ao vermelho é recusado, e não grava.
-  const trava = await page.evaluate(async () => {
+  // Sem trava (decisão do cliente, 2026-11-18: "o lançamento deve permitir todos
+  // os sinais; se o resultado líquido for negativo, deve sinalizar"): o lançamento
+  // que leva o resultado ao vermelho GRAVA, e a tela o destaca. Depois se apaga.
+  const sinal = await page.evaluate(async () => {
     const id = Number(document.querySelector('#projecao-negocio').value);
-    const rl = (d) => d.linhas.find((x) => x.codigo === '16').proposta;
     const antes = await App.api(`/api/projecao?negocio_id=${id}`);
+    if (antes.modo === 'FILIAL') return { modo: 'FILIAL' };
+    const rl = (d) => d.linhas.find((x) => x.codigo === '18').proposta;
     let msg = 'aceita';
     try {
-      await App.api('/api/projecao/valor', { negocio_id: id, filial_id: 0, conta: '8.1', entrada: 'VALOR', valor: -1e11, versao: antes.versao });
+      await App.api('/api/projecao/valor', { negocio_id: id, filial_id: 0, conta: '8.1', entrada: 'VALOR', valor: -1e10, versao: antes.versao });
     } catch (e) { msg = e.message; }
-    const depois = await App.api(`/api/projecao?negocio_id=${id}`);
-    return { msg, antes: rl(antes), depois: rl(depois), v81: depois.linhas.find((x) => x.codigo === '8.1').proposta, modo: antes.modo };
+    await SecaoProjecao.carregar();
+    const depois = SecaoProjecao.dados;
+    const tela = {
+      alerta: !!document.querySelector('#projecao-meta-negativa'),
+      linha: !!document.querySelector('.tabela-projecao tr[data-conta="18"].resultado-negativo'),
+      fundo: getComputedStyle(document.querySelector('.tabela-projecao tr[data-conta="18"] td')).backgroundColor,
+    };
+    await App.api('/api/projecao/valor', { negocio_id: id, filial_id: 0, conta: '8.1', entrada: 'VALOR', valor: null, versao: depois.versao });
+    const fim = await App.api(`/api/projecao?negocio_id=${id}`);
+    await SecaoProjecao.carregar();
+    return { msg, antes: rl(antes), depois: rl(depois), fim: rl(fim), ...tela };
   });
-  t(`${l} lançamento que deixa o resultado líquido negativo e pior é recusado ("Meta negativa não permitida")`,
-    trava.modo === 'FILIAL' || (/Meta negativa não permitida/.test(trava.msg) && Math.abs(trava.depois - trava.antes) < 1 && trava.v81 > -1e10),
-    JSON.stringify(trava).slice(0, 220));
+  t(`${l} lançamento que deixa o resultado líquido negativo é ACEITO (todos os sinais valem)`,
+    sinal.modo === 'FILIAL' || (sinal.msg === 'aceita' && sinal.depois < -1e9), JSON.stringify(sinal).slice(0, 200));
+  t(`${l} e a tela o destaca: alerta e a linha do resultado líquido em vermelho-claro`,
+    sinal.modo === 'FILIAL' || (sinal.alerta && sinal.linha && sinal.fundo === 'rgb(253, 236, 234)'), JSON.stringify(sinal).slice(0, 200));
+  t(`${l} apagar o lançamento devolve o resultado ao que era`,
+    sinal.modo === 'FILIAL' || Math.abs(sinal.fim - sinal.antes) < 1, `${sinal.antes} → ${sinal.fim}`);
 
   // O alerta acompanha o sinal do resultado proposto, em dois negócios.
   for (const nome of ['- PECUARIA', '- CEREAIS']) {
     await escolher(nome);
     const a = await page.evaluate(() => ({
-      rl: SecaoProjecao.dados.linhas.find((x) => x.codigo === '16').proposta,
+      rl: SecaoProjecao.dados.linhas.find((x) => x.codigo === '18').proposta,
       alerta: !!document.querySelector('#projecao-meta-negativa'),
     }));
     t(`${l} ${nome.slice(2)}: o alerta de meta negativa aparece só quando o resultado proposto é negativo`,
@@ -6461,9 +6489,11 @@ async function provasApoioDesafio(page, largura) {
     return {
       titulo: document.querySelector('.painel-desafio summary h2')?.textContent.trim(),
       degraus: [...document.querySelectorAll('.tabela-desafio tr[data-desafio]')].map((r) => r.dataset.desafio),
-      lb: td('lucro_bruto'), rn: td('resultado_negocio'), rat: td('rateios'),
-      l5: Math.round(linha('5')), l13: Math.round(linha('13')), l14: Math.round(linha('14')),
-      lbProp: num(td('lucro_bruto')[2]), rnProp: num(td('resultado_negocio')[2]), ratProp: num(td('rateios')[2]),
+      lb: td('lucro_bruto'), rn: td('resultado_negocio'), rat: td('rateios_negocio'), adm: td('rateios_adm'),
+      l5: Math.round(linha('5')), l13: Math.round(linha('15')), l14: Math.round(linha('14')), l16: Math.round(linha('16')),
+      lbProp: num(td('lucro_bruto')[2]), rnProp: num(td('resultado_negocio')[2]), ratProp: num(td('rateios_negocio')[2]),
+      admProp: num(td('rateios_adm')[2]),
+      cbs: td('cbs'), comCbs: td('resultado_com_cbs'), notaCbs: document.querySelector('#desafio-cbs')?.textContent || '',
       pdd: !!document.querySelector('.tabela-nao-recorrentes tr[data-conta-contabil="3.11.03.01.01"]'),
       oport: num(document.querySelector('[data-oport="oportunidade"]')?.textContent),
       risco: document.querySelector('[data-oport="risco"]')?.textContent.trim(),
@@ -6475,13 +6505,17 @@ async function provasApoioDesafio(page, largura) {
   });
   t(`${l} o cartão se chama "Desafio 2027 para o negócio"`, /^Desafio \d{4} para o negócio$/.test(n.titulo || ''), n.titulo);
   t(`${l} a escada da DRE: faturamento, receita líquida, margem bruta, despesas, resultado do negócio, rateios, resultado líquido e margem líquida`,
-    ['receita_bruta', 'receita_liquida', 'lucro_bruto', 'margem_bruta', 'despesas', 'resultado_negocio', 'margem_negocio', 'rateios', 'resultado', 'margem']
+    ['receita_bruta', 'receita_liquida', 'lucro_bruto', 'margem_bruta', 'despesas', 'resultado_antes_rateios', 'rateios_negocio',
+      'resultado_negocio', 'margem_negocio', 'rateios_adm', 'resultado', 'margem', 'cbs', 'resultado_com_cbs']
       .every((k) => n.degraus.includes(k)), n.degraus.join(','));
   t(`${l} os degraus do meio do desafio vêm marcados como estimados (≈)`,
     /^≈/.test(n.lb[1]) && /^≈/.test(n.rn[1]) && /^≈/.test(n.rat[1]), `${n.lb[1]} | ${n.rn[1]} | ${n.rat[1]}`);
-  t(`${l} e a coluna da proposta é a DRE dela (linhas 5, 13 e 14)`,
-    Math.abs(n.lbProp - n.l5) <= 1 && Math.abs(n.rnProp - n.l13) <= 1 && Math.abs(n.ratProp - n.l14) <= 1,
-    JSON.stringify([n.lbProp, n.l5, n.rnProp, n.l13, n.ratProp, n.l14]));
+  t(`${l} e a coluna da proposta é a DRE dela na estrutura nova (linhas 5, 14, 15 e 16)`,
+    Math.abs(n.lbProp - n.l5) <= 1 && Math.abs(n.rnProp - n.l13) <= 1 && Math.abs(n.ratProp - n.l14) <= 1 && Math.abs(n.admProp - n.l16) <= 1,
+    JSON.stringify([n.lbProp, n.l5, n.rnProp, n.l13, n.ratProp, n.l14, n.admProp, n.l16]));
+  t(`${l} a CBS de 2027 (LC 214) aparece no desafio e na proposta, com o cenário sem o regime específico`,
+    /\d/.test(n.cbs[1] || '') && /\d/.test(n.cbs[2] || '') && /\d/.test(n.comCbs[1] || '')
+      && /LC 214/.test(n.notaCbs) && /art\. 271/.test(n.notaCbs) && /não optou/.test(n.notaCbs), n.notaCbs.slice(0, 120));
   t(`${l} oportunidades: a PDD da Agropecuária aparece, e a oportunidade soma R$ 8.295.910`,
     n.pdd && n.oport === 8295910 && /675\.108/.test(n.risco || ''), `${n.oport} / ${n.risco}`);
   t(`${l} e há meses fora do padrão nas despesas`, n.picos > 0, String(n.picos));
@@ -6514,6 +6548,91 @@ async function provasApoioDesafio(page, largura) {
  * as provas dela deixam o contexto num negócio. As que vêm depois contam com o
  * Corporativo do login (`entrar()`): devolve-se o menu a ele.
  */
+/**
+ * COMO É × COMO FICA dos tributos (pedido do cliente, 2026-11-18, com o slide
+ * da controladoria): o PIS/COFINS sai das deduções e vira a linha da CBS acima
+ * da Receita Bruta. A prova lê a TELA:
+ *  - no Corporativo, o realizado jan–out reproduz o slide (RB 2.992,6, deduções
+ *    106,9, ICMS e ISS 44,0, PIS/COFINS 15,6, RL 2.885,8 → CBS 15,6, RB 2.977,1,
+ *    deduções 91,3, a mesma RL) e as linhas que mudam estão em amarelo;
+ *  - a RL "como fica" da proposta é a da tabela (que já tem a CBS);
+ *  - num negócio, lançar a 2.3 à mão avisa que a tabela seguiu na lei atual e o
+ *    cartão se repinta sem recarregar; apagar devolve.
+ */
+async function provasTributosComoEComoFica(page, largura) {
+  const l = `[${largura}] Como é × como fica:`;
+  await voltarAoCorporativo(page);
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('.painel-tributos #tributos-como-fica')", 60000);
+  t(`${l} o cartão está no Corporativo, aberto`, abriu);
+  if (!abriu) return;
+  const ler = () => page.evaluate(() => {
+    const n = (x) => Number(String(x || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+    const cel = (tab, linha, col) => document.querySelector(`#${tab} tr[data-linha="${linha}"] td[data-col="${col}"]`);
+    const val = (tab, linha, col) => n(cel(tab, linha, col)?.textContent);
+    const mi = (v) => Math.round(v / 1e5) / 10;
+    const d = SecaoProjecao.dados;
+    return {
+      e: Object.fromEntries(['receita_bruta', 'deducoes', 'impostos', 'icms_iss', 'pis_cofins', 'receita_liquida']
+        .map((k) => [k, mi(val('tributos-como-e', k, 'realizado'))])),
+      f: Object.fromEntries(['tributo', 'receita_bruta', 'deducoes', 'impostos', 'receita_liquida']
+        .map((k) => [k, mi(val('tributos-como-fica', k, 'realizado'))])),
+      amarelo: {
+        pis: cel('tributos-como-e', 'pis_cofins', 'realizado')?.classList.contains('linha-muda'),
+        cbs: cel('tributos-como-fica', 'tributo', 'proposta')?.classList.contains('linha-muda'),
+        rb: cel('tributos-como-fica', 'receita_bruta', 'projecao')?.classList.contains('linha-muda'),
+        rlReal: cel('tributos-como-fica', 'receita_liquida', 'realizado')?.classList.contains('linha-muda'),
+        fundo: getComputedStyle(cel('tributos-como-e', 'pis_cofins', 'realizado')).backgroundColor,
+      },
+      rlFicaProp: val('tributos-como-fica', 'receita_liquida', 'proposta'),
+      rlTabela: Math.round(d.linhas.find((x) => x.codigo === '3').proposta),
+      liqFica: n(document.querySelector('#tributos-abaixo tr[data-linha="resultado"] td:nth-child(3)')?.textContent),
+      liqTabela: Math.round(d.linhas.find((x) => x.codigo === '18').proposta),
+      aviso: [...document.querySelectorAll('.painel-tributos .aviso-tributos')].map((x) => x.textContent.trim()).join(' | '),
+    };
+  });
+  const c = await ler();
+  t(`${l} Corporativo jan–out, como é: RB 2.992,6 · deduções 106,9 · 2.3 59,6 = ICMS e ISS 44,0 + PIS/COFINS 15,6 · RL 2.885,8`,
+    c.e.receita_bruta === 2992.6 && c.e.deducoes === 106.9 && c.e.impostos === 59.6 && c.e.icms_iss === 44
+    && c.e.pis_cofins === 15.6 && c.e.receita_liquida === 2885.8, JSON.stringify(c.e));
+  t(`${l} como fica: CBS 15,6 · RB 2.977,1 · deduções 91,3 · 2.3 44,0 · a mesma RL 2.885,8`,
+    c.f.tributo === 15.6 && c.f.receita_bruta === 2977.1 && c.f.deducoes === 91.3 && c.f.impostos === 44
+    && c.f.receita_liquida === 2885.8, JSON.stringify(c.f));
+  t(`${l} amarelo nas linhas que mudam (PIS/COFINS, CBS, RB), e não na RL do realizado (não muda)`,
+    c.amarelo.pis && c.amarelo.cbs && c.amarelo.rb && !c.amarelo.rlReal && c.amarelo.fundo === 'rgb(253, 228, 168)',
+    JSON.stringify(c.amarelo));
+  t(`${l} a RL e o resultado líquido "como fica" da proposta são os da tabela (que já tem a CBS)`,
+    Math.abs(c.rlFicaProp - c.rlTabela) <= 1 && Math.abs(c.liqFica - c.liqTabela) <= 1,
+    JSON.stringify([c.rlFicaProp, c.rlTabela, c.liqFica, c.liqTabela]));
+
+  // Num negócio: a 2.3 lançada à mão sai da regra da CBS.
+  await page.evaluate(() => {
+    document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+    const s = document.querySelector('#sel-negocio');
+    s.value = [...s.options].find((o) => o.textContent.trim().endsWith('- AGROPECUARIAS')).value;
+    s.dispatchEvent(new Event('change'));
+  });
+  await esperar(page, "document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith('- AGROPECUARIAS') && !!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('.painel-tributos')", 30000);
+  const antes = await ler();
+  t(`${l} no negócio, sem lançamento na 2.3: a CBS está na tabela, sem aviso`,
+    antes.aviso === '' && Math.abs(antes.rlFicaProp - antes.rlTabela) <= 1, JSON.stringify([antes.aviso, antes.rlFicaProp, antes.rlTabela]));
+  const digitar = async (v) => {
+    await page.evaluate((x) => {
+      const i = document.querySelector('[data-conta="2.3"] .celula-proposta');
+      i.focus(); i.value = x; i.blur();
+    }, v);
+    await new Promise((r) => setTimeout(r, 1500));
+    return ler();
+  };
+  const mao = await digitar('-1000000');
+  t(`${l} 2.3 lançada à mão: o cartão se repinta e avisa que a tabela seguiu na lei atual (a RL "como fica" já não é a da tabela)`,
+    /lançada à mão/.test(mao.aviso) && Math.abs(mao.rlFicaProp - mao.rlTabela) > 1, JSON.stringify([mao.aviso, mao.rlFicaProp, mao.rlTabela]));
+  const volta = await digitar('');
+  t(`${l} apagar o lançamento devolve a CBS à tabela`,
+    volta.aviso === '' && Math.abs(volta.rlFicaProp - volta.rlTabela) <= 1 && Math.abs(volta.rlTabela - antes.rlTabela) <= 1,
+    JSON.stringify([volta.aviso, volta.rlTabela, antes.rlTabela]));
+}
+
 async function voltarAoCorporativo(page) {
   await page.evaluate(() => {
     const s = document.querySelector('#sel-negocio');
@@ -6645,7 +6764,7 @@ async function provasDesafioEExpansores(page, largura) {
   const api = await page.evaluate(async () => {
     const id = document.querySelector('#projecao-negocio').value;
     const d = await App.api(`/api/projecao?negocio_id=${id}`);
-    return { des: d.desafio && d.desafio.desafio, pro: d.desafio && d.desafio.proposta, rl: (d.linhas.find((x) => x.codigo === '16') || {}).proposta };
+    return { des: d.desafio && d.desafio.desafio, pro: d.desafio && d.desafio.proposta, rl: (d.linhas.find((x) => x.codigo === '18') || {}).proposta };
   });
   const tela = await page.evaluate(() => {
     const n = (s) => Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.'));
@@ -6694,8 +6813,8 @@ async function provasDesafioEExpansores(page, largura) {
   t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 71,27 mi, faltam R$ 7,58 mi`,
     /2% seriam R\$ 71,27 mi/.test(corp.metaDesafio) && /faltam R\$ 7,58 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
-  t(`${l} Corporativo: visão, desafio, oportunidades e pessoas como expansores (sem premissas: nada se lança ali)`,
-    corp.expansores === 'visao,desafio,oportunidades,pessoas', corp.expansores);
+  t(`${l} Corporativo: visão, desafio, oportunidades, tributos e pessoas como expansores (sem premissas: nada se lança ali)`,
+    corp.expansores === 'visao,desafio,oportunidades,tributos,pessoas', corp.expansores);
 
   // Devolve o estado das outras provas: tudo aberto.
   await page.evaluate(() => {
@@ -6808,8 +6927,8 @@ async function provasVisaoDoAno(page, largura) {
       linhas: linhas.length,
       campos: card.querySelectorAll('input, select, textarea').length,
       rob: cel(linhas[0], 'resto'), robApi: fmt(d.visao_ano['1'].realista_resto),
-      rl: cel(linhas[1], 'resto'), rlApi: fmt(d.visao_ano['16'].realista_resto),
-      rlAno: cel(linhas[1], 'ano'), rlAnoApi: fmt(d.visao_ano['16'].real_realista),
+      rl: cel(linhas[1], 'resto'), rlApi: fmt(d.visao_ano['18'].realista_resto),
+      rlAno: cel(linhas[1], 'ano'), rlAnoApi: fmt(d.visao_ano['18'].real_realista),
       thAv: [...document.querySelectorAll('.tabela-projecao thead th')].map((th) => th.textContent.replace(/\s+/g, ' ').trim()),
       avProposta: tr1.querySelector('.celula-av-proposta')?.textContent.trim(),
       avEsperado: (100 * p1 / p3).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%',
@@ -6829,15 +6948,15 @@ async function provasVisaoDoAno(page, largura) {
   await esperar(page, "!!document.querySelector('.tabela-visao-ano[data-conta-visao=\"16\"]')", 15000);
   const c = await page.evaluate(async () => {
     const d = await App.api('/api/projecao?corporativo=1');
-    const t16 = document.querySelector('.tabela-visao-ano[data-conta-visao="16"]');
+    const t16 = document.querySelector('.tabela-visao-ano[data-conta-visao="18"]');
     const tot = t16.querySelector('tr.linha-total-visao');
     const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
     return {
       linhas: t16.querySelectorAll('tbody tr').length,
       negocios: Object.keys(d.visao_ano_negocios).length,
       total: tot.querySelector('[data-realista="resto"]').textContent.trim(),
-      totalApi: fmt(d.visao_ano_total['16'].realista_resto),
-      bruto: d.visao_ano_total['16'].realista_resto,
+      totalApi: fmt(d.visao_ano_total['18'].realista_resto),
+      bruto: d.visao_ano_total['18'].realista_resto,
       campos: document.querySelectorAll('.painel-visao-ano input').length,
     };
   });
@@ -6895,8 +7014,8 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
       return x === '—' || x === '' ? null : Number(x);
     };
     const campo = (c) => document.querySelector(`#premissa-${c}`);
-    // No ano com DIRETRIZ, IPCA e PIB são texto com selo (sem campo): o valor vem
-    // do texto, no mesmo formato do campo ('4,5').
+    // IPCA e PIB são campo (sugeridos pela diretriz); o que a diretriz FIXA é
+    // texto com selo: o valor vem do texto, no mesmo formato do campo ('4,5').
     const valor = (c) => {
       if (campo(c)) return campo(c).value;
       const fx = document.querySelector(`.painel-premissas [data-diretriz="${c}"]`);
@@ -6988,16 +7107,20 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
   })());
 
   // ── A filial herda: mesmo valor, travado ──────────────────────────────────
+  // O negócio ajusta o IPCA (pedido do cliente, 2026-11-18: "cada negócio pode
+  // editar; as filiais recebem sem poder editar") — a filial tem de mostrar o
+  // valor DO NEGÓCIO, e não o da diretriz.
+  await digitar('IPCA', '5');
   const eneas = await verFilial('ENEAS');
   const naEneas = await painel();
-  t(`${l} a filial mostra o IPCA, o PIB e o crescimento desejado do negócio`,
-    naEneas.ipca === '4,5' && naEneas.pib === '1,5' && naEneas.meta === '12', JSON.stringify(naEneas));
-  t(`${l} e o campo do desejado fica TRAVADO nela (IPCA e PIB nem são campo)`,
-    naEneas.travados[2] === true && naEneas.travados.every((x) => x !== false), JSON.stringify(naEneas.travados));
+  t(`${l} a filial mostra o IPCA que o negócio ajustou (5), o PIB e o crescimento desejado do negócio`,
+    naEneas.ipca === '5' && naEneas.pib === '1,5' && naEneas.meta === '12', JSON.stringify(naEneas));
+  t(`${l} e IPCA, PIB e desejado ficam TRAVADOS nela`,
+    naEneas.travados.every((x) => x === true), JSON.stringify(naEneas.travados));
   // Os derivados são DA FILIAL, mas com o IPCA e o PIB do negócio.
   if (naEneas.total !== null && naEneas.real !== null) {
     t(`${l} Cresc. Real da filial = o Cresc. Total dela − IPCA − PIB do negócio`,
-      Math.abs(naEneas.real - (naEneas.total - 4.5 - 1.5)) < 0.02,
+      Math.abs(naEneas.real - (naEneas.total - 5 - 1.5)) < 0.02,
       `real ${naEneas.real} · total ${naEneas.total}`);
   }
   await verFilial('0');
@@ -7012,7 +7135,7 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
     await verFilial(outra);
     const naOutra = await painel();
     t(`${l} e é o MESMO valor em outra filial (${outra.slice(0, 24)})`,
-      naOutra.ipca === '4,5' && naOutra.pib === '1,5' && naOutra.meta === '12',
+      naOutra.ipca === '5' && naOutra.pib === '1,5' && naOutra.meta === '12',
       JSON.stringify(naOutra));
     await verFilial('0');
   }
@@ -7029,7 +7152,9 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
   t(`${l} lançar uma premissa POR FILIAL pela API é recusado, dizendo o que fazer`,
     /negócio inteiro/.test(recusa), recusa.slice(0, 80));
   t(`${l} e o valor do negócio continua o mesmo (não foi redirecionado calado)`,
-    depoisDaRecusa.neg.IPCA === 4.5, JSON.stringify(depoisDaRecusa.neg));
+    depoisDaRecusa.neg.IPCA === 5, JSON.stringify(depoisDaRecusa.neg));
+  await digitar('IPCA', '');
+  t(`${l} apagar o IPCA no negócio devolve o 4,5 da diretriz`, (await doBanco()).neg.IPCA === 4.5);
 
   // ── Faixa e formato ───────────────────────────────────────────────────────
   const invalidos = await page.evaluate(async (n) => {
@@ -7200,7 +7325,9 @@ async function comPremissasNeutras(page, fn) {
     // O que a diretriz do ano fixa não se apaga nem se regrava (a API recusa):
     // fica fora do que se guarda e se devolve.
     const fixas = Object.keys((((d.diretriz || {})[d.ano_planejamento]) || {}).premissas || {});
-    const dig = Object.fromEntries(Object.entries(d.premissas_por_ano[d.ano_planejamento] || {})
+    // Só o que o negócio DIGITOU: o IPCA e o PIB sugeridos pela diretriz não são
+    // lançamento, e devolvê-los como digitados apagaria o selo da sugestão.
+    const dig = Object.fromEntries(Object.entries((d.premissas_digitadas_por_ano || {})[d.ano_planejamento] || {})
       .filter(([k]) => !fixas.includes(k)));
     for (const chave of Object.keys(dig)) {
       await App.api('/api/projecao/premissa', { negocio_id: Number(n.id), chave, valor: null, ano: d.ano_planejamento });
@@ -7362,8 +7489,8 @@ async function provasProjecaoProposta(page, largura) {
     Math.abs(v['3'].proposta - (v['1'].proposta + v['2'].proposta)) <= 2,
     `${v['3'].proposta} vs ${v['1'].proposta + v['2'].proposta}`);
   t(`${l} e o resultado líquido proposto sobe junto`,
-    v['16'].proposta > inicio['16'].proposta,
-    `${v['16'].proposta} vs ${inicio['16'].proposta}`);
+    v['18'].proposta > inicio['18'].proposta,
+    `${v['18'].proposta} vs ${inicio['18'].proposta}`);
 
   // ── Lançar por VALOR ────────────────────────────────────────────────────
   v = await lancar('4.1', '-800.000.000');
@@ -7372,9 +7499,12 @@ async function provasProjecaoProposta(page, largura) {
   t(`${l} lucro bruto proposto = ROL + custos`,
     Math.abs(v['5'].proposta - (v['3'].proposta + v['4'].proposta)) <= 2,
     `${v['5'].proposta} vs ${v['3'].proposta + v['4'].proposta}`);
-  t(`${l} resultado líquido proposto = resultado do negócio + rateios`,
-    Math.abs(v['16'].proposta - (v['13'].proposta + v['14'].proposta)) <= 2,
-    `${v['16'].proposta} vs ${v['13'].proposta + v['14'].proposta}`);
+  t(`${l} resultado líquido proposto = resultado do negócio + rateios administrativos (estrutura nova)`,
+    Math.abs(v['18'].proposta - (v['15'].proposta + v['16'].proposta)) <= 2,
+    `${v['18'].proposta} vs ${v['15'].proposta + v['16'].proposta}`);
+  t(`${l} resultado do negócio proposto = resultado após impostos + rateios do negócio`,
+    Math.abs(v['15'].proposta - (v['13'].proposta + v['14'].proposta)) <= 2,
+    `${v['15'].proposta} vs ${v['13'].proposta + v['14'].proposta}`);
 
   // ── O bloco não aceita lançamento ───────────────────────────────────────
   // (Pela API, porque a tela nem desenha o campo — e é a API que precisa
@@ -7406,12 +7536,12 @@ async function provasProjecaoProposta(page, largura) {
     `${v['1'].proposta} vs ${inicio['1'].proposta}`);
   v = await lancar('4.1', '');
   t(`${l} e a DRE inteira volta ao ponto de partida`,
-    Math.abs(v['16'].proposta - inicio['16'].proposta) <= 20,
-    `${v['16'].proposta} vs ${inicio['16'].proposta}`);
+    Math.abs(v['18'].proposta - inicio['18'].proposta) <= 20,
+    `${v['18'].proposta} vs ${inicio['18'].proposta}`);
 
   // ── A linha que o sistema não sabe recompor ─────────────────────────────
   t(`${l} "Despesas Totais" não recebe proposta inventada`,
-    v['15'].proposta === null && !v['15'].editavel, JSON.stringify(v['15']));
+    v['17'].proposta === null && !v['17'].editavel, JSON.stringify(v['17']));
 }
 
 async function provasProjecao(page, largura) {
@@ -7461,7 +7591,7 @@ async function provasProjecao(page, largura) {
 
   const v = await ler();
   t(`${l} a DRE inteira está na tela, bloco e subconta`,
-    v.total >= 45 && v.linhas['1'] && v.linhas['1.1'] && v.linhas['16'] && v.linhas['14.3'],
+    v.total >= 45 && v.linhas['1'] && v.linhas['1.1'] && v.linhas['18'] && v.linhas['14.3'] && v.linhas['16.1'],
     `${v.total} linha(s)`);
   t(`${l} todos os negócios com DRE aparecem no seletor`, v.negocios >= 10, String(v.negocios));
 
@@ -7476,8 +7606,9 @@ async function provasProjecao(page, largura) {
   const ident = [
     ['ROL = receita bruta + deduções', '3', ['1', '2']],
     ['lucro bruto = ROL + custos', '5', ['3', '4']],
-    ['resultado do negócio = resultado antes dos impostos + IRPJ/CSLL', '13', ['12', '12.1']],
-    ['resultado líquido = resultado do negócio + rateios', '16', ['13', '14']],
+    ['resultado após impostos = resultado antes dos impostos + IRPJ/CSLL', '13', ['12', '12.1']],
+    ['resultado do negócio = após impostos + rateios do negócio', '15', ['13', '14']],
+    ['resultado líquido = resultado do negócio + rateios administrativos', '18', ['15', '16']],
   ];
   // Tolerância de R$ 20 e não de centavos: a extração arredonda cada valor
   // MENSAL ao real, e a coluna da projeção soma doze deles por linha — num
@@ -10377,6 +10508,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasDesafioEExpansores(page, 'desktop');
   await provasDiretriz2027(page, 'desktop');
   await provasApoioDesafio(page, 'desktop');
+  await provasTributosComoEComoFica(page, 'desktop');
   await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');

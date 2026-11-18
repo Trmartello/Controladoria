@@ -21,6 +21,7 @@ require_once __DIR__ . '/../app/Core/Auth.php';
 require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
+require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Controllers/ProjecaoController.php';
 
 use App\Core\Database;
@@ -110,8 +111,8 @@ $divergem = [];
 foreach ($painel as $cod => [$rob, $rl]) {
     $x = $v[$ids[$cod]] ?? null;
     $tolRl = in_array((string)$cod, ['6', '8'], true) ? 1800 : 5; // chave numérica vira int no PHP
-    if (!$x || abs($x['1']['realista_resto'] - $rob) > 5 || abs($x['16']['realista_resto'] - $rl) > $tolRl) {
-        $divergem[] = "{$cod}: " . ($x ? round($x['1']['realista_resto']) . '/' . round($x['16']['realista_resto']) : 'ausente');
+    if (!$x || abs($x['1']['realista_resto'] - $rob) > 5 || abs($x['18']['realista_resto'] - $rl) > $tolRl) {
+        $divergem[] = "{$cod}: " . ($x ? round($x['1']['realista_resto']) . '/' . round($x['18']['realista_resto']) : 'ausente');
     }
 }
 prova('com os dados do banco, os 11 negócios ficam no painel (R$ 5; ±R$ 1,8 mil em 6 e 8, o lançamento que mudou de negócio)',
@@ -124,9 +125,9 @@ prova('total do painel: receita bruta realista de nov–dez R$ 580.915.670 e rea
     abs($t['1']['realista_resto'] - 580915670) < 20 && abs($t['1']['real_realista'] - 3573546829) < 20,
     round($t['1']['realista_resto']) . ' / ' . round($t['1']['real_realista']));
 prova('total do painel: resultado líquido realista de nov–dez R$ 13.824.615, real + realista R$ 38.751.812, realista × plano −R$ 37.139.090',
-    abs($t['16']['realista_resto'] - 13824615) < 20 && abs($t['16']['real_realista'] - 38751812) < 20
-    && abs($t['16']['realista_x_plano'] + 37139090) < 20,
-    round($t['16']['realista_resto']) . ' / ' . round($t['16']['real_realista']) . ' / ' . round($t['16']['realista_x_plano']));
+    abs($t['18']['realista_resto'] - 13824615) < 20 && abs($t['18']['real_realista'] - 38751812) < 20
+    && abs($t['18']['realista_x_plano'] + 37139090) < 20,
+    round($t['18']['realista_resto']) . ' / ' . round($t['18']['real_realista']) . ' / ' . round($t['18']['realista_x_plano']));
 prova('o total é a SOMA dos negócios, e não a regra aplicada ao total',
     abs($t['1']['realista_resto'] - array_sum(array_map(static fn ($x) => $x['1']['realista_resto'], $v))) < 0.01);
 

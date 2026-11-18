@@ -49,6 +49,16 @@ class CargaDre
             throw new RuntimeException('Carga de DRE sem estrutura de contas.');
         }
         $codigos = array_column($estrutura, 1);
+        // Estrutura VELHA da DRE (sem 16.1) sobre um banco já na NOVA: os códigos
+        // 15, 16 e 17 mudaram de sentido, e regravar a velha deixaria o resultado
+        // líquido no código do rateio administrativo — sem erro nenhum. Recusa.
+        if (!in_array('16.1', $codigos, true)
+            && $pdo->query("SELECT 1 FROM dre_conta WHERE codigo = '16.1'")->fetchColumn()) {
+            throw new RuntimeException(
+                'Carga de DRE na estrutura VELHA (sem "Rateios Corporativos Administrativo", 16.1) sobre um banco '
+                . 'já na estrutura nova da DRE gerencial: extraia do app "DRE - Gerencial Nova".'
+            );
+        }
         $porNegocio = self::agrupar($dados['valores'] ?? [], $codigos, count($mesesReal));
         self::exigirMesesFechados($porNegocio, $mesesReal);
 
@@ -174,7 +184,12 @@ class CargaDre
             }
             $porFilial[$cod][$codConta] = [(float)$r, (float)$p];
         }
-        self::exigirSomaDasFiliais($pdo, $negocioId, $ano, $corte, $porFilial, $contas);
+        // Carga de filial na ESTRUTURA VELHA da DRE (sem 16.1/18/19) com o negócio
+        // já na NOVA (2026-11-18): confere contra o negócio traduzido para os
+        // sentidos velhos e, depois de gravar, converte (`migrarFiliaisParaEstruturaNova`).
+        $velha = isset($contas['16.1']) && !self::cargaTemContas($porFilial, ['16.1', '18', '19'])
+            && self::negocioTemConta($pdo, $negocioId, $ano, $contas['16.1']);
+        self::exigirSomaDasFiliais($pdo, $negocioId, $ano, $corte, $porFilial, $contas, $velha);
 
         $insF = $pdo->prepare(
             'INSERT INTO filial (negocio_id, cod_filial, nome) VALUES (?, ?, ?)
@@ -220,6 +235,9 @@ class CargaDre
                     $gravados++;
                 }
             }
+            if ($velha) {
+                self::migrarFiliaisParaEstruturaNova($pdo, $ano);
+            }
             if ($abriu) {
                 $pdo->commit();
             }
@@ -229,7 +247,26 @@ class CargaDre
             }
             throw $e;
         }
-        return ['filiais' => count($dados['filiais']), 'valores' => $gravados];
+        return ['filiais' => count($dados['filiais']), 'valores' => $gravados, 'convertida' => $velha];
+    }
+
+    private static function cargaTemContas(array $porFilial, array $codigos): bool
+    {
+        foreach ($porFilial as $linhas) {
+            foreach ($codigos as $c) {
+                if (isset($linhas[$c])) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static function negocioTemConta(PDO $pdo, int $negocioId, int $ano, int $contaId): bool
+    {
+        $st = $pdo->prepare('SELECT 1 FROM dre_valor WHERE negocio_id = ? AND ano = ? AND conta_id = ? LIMIT 1');
+        $st->execute([$negocioId, $ano, $contaId]);
+        return (bool)$st->fetchColumn();
     }
 
     /**
@@ -245,7 +282,8 @@ class CargaDre
         int $ano,
         int $corte,
         array $porFilial,
-        array $contas
+        array $contas,
+        bool $velha = false
     ): void {
         $st = $pdo->prepare(
             'SELECT c.codigo,
@@ -256,7 +294,31 @@ class CargaDre
               GROUP BY c.id, c.codigo'
         );
         $st->execute([$corte, $corte, $negocioId, $ano]);
-        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $l) {
+        $linhasNegocio = $st->fetchAll(PDO::FETCH_ASSOC);
+        if ($velha) {
+            // Os sentidos VELHOS dos códigos, a partir do negócio na estrutura nova:
+            // 14 velho = 14 + 16 novos; 14.3 velho = 14.3 + 16.1; 15/16/17 velhos =
+            // 17/18/19 novos. 16.1, 18 e 19 não existem na carga velha.
+            $n = [];
+            foreach ($linhasNegocio as $l) {
+                $n[$l['codigo']] = [(float)$l['realizado'], (float)$l['projetado']];
+            }
+            $soma = static fn ($a, $b) => [($n[$a][0] ?? 0) + ($n[$b][0] ?? 0), ($n[$a][1] ?? 0) + ($n[$b][1] ?? 0)];
+            $mapa = ['14' => $soma('14', '16'), '14.3' => $soma('14.3', '16.1'),
+                '15' => $n['17'] ?? [0, 0], '16' => $n['18'] ?? [0, 0], '17' => $n['19'] ?? [0, 0]];
+            $traduzidas = [];
+            foreach ($linhasNegocio as $l) {
+                if (in_array($l['codigo'], ['16.1', '18', '19'], true)) {
+                    continue;
+                }
+                if (isset($mapa[$l['codigo']])) {
+                    [$l['realizado'], $l['projetado']] = $mapa[$l['codigo']];
+                }
+                $traduzidas[] = $l;
+            }
+            $linhasNegocio = $traduzidas;
+        }
+        foreach ($linhasNegocio as $l) {
             $somaR = 0.0;
             $somaP = 0.0;
             foreach ($porFilial as $linhas) {
@@ -275,6 +337,121 @@ class CargaDre
                 ));
             }
         }
+    }
+
+    /**
+     * Leva a DRE das FILIAIS para a estrutura nova da DRE gerencial ("DRE -
+     * Gerencial Nova", 2026-11-18), em que o rateio corporativo se divide em
+     * NEGÓCIO (14.3) e ADMINISTRATIVO (16.1), nasce o "14 - Resultado do negócio"
+     * (15) e Despesas Totais, Resultado Líquido e Margem descem para 17, 18 e 19.
+     *
+     * A carga das filiais é acumulada e cara de re-extrair (uma coluna por
+     * filial), então ela não volta do Qlik agora: o 14.3 de cada filial se divide
+     * na MESMA proporção que o negócio dela teve no mesmo período — realizado até
+     * o corte da filial, orçado depois dele. É aproximação declarada, até a
+     * re-extração das filiais no app novo; as demais linhas são só remanejadas
+     * (o resultado líquido da filial não muda).
+     *
+     * Idempotente e independente da ordem: só converte a filial que ainda NÃO
+     * tem linha 16.1 no ano (estrutura velha), e só se o negócio dela já estiver
+     * na estrutura nova (tem 16.1). Carga de filial extraída do app novo já vem
+     * com 16.1 e passa intacta.
+     *
+     * @return int filiais convertidas
+     */
+    public static function migrarFiliaisParaEstruturaNova(PDO $pdo, int $ano): int
+    {
+        $id = [];
+        foreach ($pdo->query('SELECT id, codigo FROM dre_conta')->fetchAll(PDO::FETCH_ASSOC) as $l) {
+            $id[$l['codigo']] = (int)$l['id'];
+        }
+        foreach (['13', '14', '14.1', '14.2', '14.3', '15', '16', '16.1', '17', '18', '19'] as $c) {
+            if (!isset($id[$c])) {
+                return 0; // estrutura nova ainda não carregada
+            }
+        }
+        $filiais = $pdo->prepare(
+            'SELECT DISTINCT v.filial_id, f.negocio_id, v.corte FROM dre_valor_filial v
+               JOIN filial f ON f.id = v.filial_id
+              WHERE v.ano = ? AND NOT EXISTS (SELECT 1 FROM dre_valor_filial w
+                     WHERE w.filial_id = v.filial_id AND w.ano = v.ano AND w.conta_id = ?)'
+        );
+        $filiais->execute([$ano, $id['16.1']]);
+        $lista = $filiais->fetchAll(PDO::FETCH_ASSOC);
+        if (!$lista) {
+            return 0;
+        }
+        $proporcao = $pdo->prepare(
+            "SELECT
+               COALESCE(SUM(CASE WHEN tipo = 'REAL' AND mes <= ? AND conta_id = ? THEN valor END), 0) AS r_neg,
+               COALESCE(SUM(CASE WHEN tipo = 'REAL' AND mes <= ? AND conta_id = ? THEN valor END), 0) AS r_adm,
+               COALESCE(SUM(CASE WHEN tipo = 'META' AND mes >  ? AND conta_id = ? THEN valor END), 0) AS p_neg,
+               COALESCE(SUM(CASE WHEN tipo = 'META' AND mes >  ? AND conta_id = ? THEN valor END), 0) AS p_adm,
+               COUNT(CASE WHEN conta_id = ? THEN 1 END) AS tem_adm
+               FROM dre_valor WHERE negocio_id = ? AND ano = ?"
+        );
+        $ler = $pdo->prepare('SELECT conta_id, realizado, projetado FROM dre_valor_filial WHERE filial_id = ? AND ano = ?');
+        $gravar = $pdo->prepare(
+            'INSERT INTO dre_valor_filial (filial_id, conta_id, ano, corte, realizado, projetado) VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE corte = VALUES(corte), realizado = VALUES(realizado), projetado = VALUES(projetado)'
+        );
+        $porId = array_flip($id);
+        $convertidas = 0;
+        $abriu = !$pdo->inTransaction();
+        if ($abriu) {
+            $pdo->beginTransaction();
+        }
+        try {
+            foreach ($lista as $f) {
+                $corte = (int)$f['corte'];
+                $proporcao->execute([$corte, $id['14.3'], $corte, $id['16.1'], $corte, $id['14.3'], $corte, $id['16.1'],
+                    $id['16.1'], (int)$f['negocio_id'], $ano]);
+                $p = $proporcao->fetch(PDO::FETCH_ASSOC);
+                if (!(int)$p['tem_adm']) {
+                    continue; // o negócio ainda está na estrutura velha
+                }
+                $parte = static function (float $neg, float $adm): float {
+                    $tot = $neg + $adm;
+                    return abs($tot) < 0.005 ? 1.0 : $neg / $tot;
+                };
+                $pr = $parte((float)$p['r_neg'], (float)$p['r_adm']);
+                $pp = $parte((float)$p['p_neg'], (float)$p['p_adm']);
+                $ler->execute([(int)$f['filial_id'], $ano]);
+                $velho = [];
+                foreach ($ler->fetchAll(PDO::FETCH_ASSOC) as $l) {
+                    $c = $porId[(int)$l['conta_id']] ?? null;
+                    if ($c !== null) {
+                        $velho[$c] = [(float)$l['realizado'], (float)$l['projetado']];
+                    }
+                }
+                $v = static fn ($c) => $velho[$c] ?? [0.0, 0.0];
+                $novo = [];
+                $neg143 = [$v('14.3')[0] * $pr, $v('14.3')[1] * $pp];
+                $novo['14.3'] = $neg143;
+                $novo['16.1'] = [$v('14.3')[0] - $neg143[0], $v('14.3')[1] - $neg143[1]];
+                $novo['16'] = $novo['16.1'];
+                $novo['14'] = [$v('14.1')[0] + $v('14.2')[0] + $neg143[0], $v('14.1')[1] + $v('14.2')[1] + $neg143[1]];
+                $novo['15'] = [$v('13')[0] + $novo['14'][0], $v('13')[1] + $novo['14'][1]];
+                // Os códigos velhos 15, 16 e 17 mudaram de sentido: o valor deles
+                // desce para 17, 18 e 19 ANTES de serem regravados acima.
+                $novo['17'] = $v('15');
+                $novo['18'] = $v('16');
+                $novo['19'] = $v('17');
+                foreach ($novo as $c => [$r, $pj]) {
+                    $gravar->execute([(int)$f['filial_id'], $id[$c], $ano, $corte, round($r, 2), round($pj, 2)]);
+                }
+                $convertidas++;
+            }
+            if ($abriu) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($abriu && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+        return $convertidas;
     }
 
     /**

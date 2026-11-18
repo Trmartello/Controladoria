@@ -56,7 +56,9 @@ function recusa(PDO $pdo, array $dados): ?string
     }
 }
 
-$base = require __DIR__ . '/../database/dre_2026_fechamento_10.php';
+// A base é a carga na ESTRUTURA NOVA da DRE gerencial (2026-11-18): é a que está
+// no banco, e uma carga na estrutura velha é recusada por cima dela (prova 6b).
+$base = require __DIR__ . '/../database/dre_2026_fechamento_10_nova.php';
 
 // ── 1. Mês sem rateio é mês ABERTO ──────────────────────────────────────────
 // A regra que a planilha do cliente não tinha: em 05/11 outubro trazia R$ 373,2
@@ -123,6 +125,17 @@ $depois = $pdo->query('SELECT COUNT(*) FROM dre_valor')->fetchColumn();
 prova('reaplicar a mesma carga não duplica linha', $antes === $depois, "{$antes} → {$depois}");
 prova('e grava os 11 negócios', $r['negocios'] === 11, (string)$r['negocios']);
 
+// ── 6b. Carga na estrutura VELHA não passa por cima da nova ──────────────────
+// Os códigos 15, 16 e 17 mudaram de sentido: regravar a velha poria o resultado
+// líquido no código do rateio administrativo, sem erro nenhum.
+$msg = recusa($pdo, require __DIR__ . '/../database/dre_2026_fechamento_10.php');
+prova('carga de DRE na estrutura velha é recusada sobre o banco na nova',
+    $msg !== null && str_contains($msg, 'estrutura VELHA'), (string)$msg);
+$liq = (float)$pdo->query("SELECT SUM(v.valor) FROM dre_valor v JOIN dre_conta c ON c.id = v.conta_id
+    WHERE c.codigo = '18' AND v.ano = 2026 AND v.tipo = 'REAL' AND v.mes <= 10")->fetchColumn();
+prova('e o resultado líquido jan–out continua o da DRE (R$ 24.927.200, igual nas duas estruturas)',
+    abs($liq - 24927200) < 5, (string)round($liq));
+
 // ── 7. Filiais: a soma tem de bater com o negócio ───────────────────────────
 // Uma filial faltando passa despercebida — cada tela fica certa e o total
 // errado. É o modo de falha que esta guarda existe para pegar.
@@ -160,14 +173,13 @@ prova('carga de filiais com corte diferente do fechamento é recusada',
 $arquivos = glob(__DIR__ . '/../database/dre_filiais_*.php');
 sort($arquivos);
 prova('há carga de filiais no repositório', $arquivos !== [], count($arquivos) . ' arquivo(s)');
+// Desde a estrutura nova o negócio só existe nela (a carga velha é recusada), e
+// ela traz o realizado mês a mês: para conferir um arquivo de outro corte, o
+// fechamento é posto naquele corte e volta no fim (prova 10).
 foreach ($arquivos as $a) {
     $d = require $a;
-    $negocioDoCorte = __DIR__ . '/../database/dre_2026_fechamento_' . sprintf('%02d', $d['corte']) . '.php';
-    if (!is_file($negocioDoCorte)) {
-        prova(basename($a, '.php') . ': existe a carga do negócio no mesmo corte', false, basename($negocioDoCorte));
-        continue;
-    }
-    App\Services\CargaDre::aplicar($pdo, require $negocioDoCorte);
+    App\Services\CargaDre::aplicar($pdo, $base);
+    $pdo->prepare('UPDATE dre_fechamento SET mes_fechado_ate = ? WHERE ano = ?')->execute([(int)$d['corte'], (int)$d['ano']]);
     $msg = recusa($pdo, $d);
     prova(
         'a soma das filiais de ' . basename($a, '.php') . ' fecha com o negócio',

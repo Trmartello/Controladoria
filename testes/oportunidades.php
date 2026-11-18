@@ -18,6 +18,7 @@ require_once __DIR__ . '/../app/Core/Auth.php';
 require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
+require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Services/CargaApoio.php';
 require_once __DIR__ . '/../app/Controllers/ProjecaoController.php';
 
@@ -92,9 +93,10 @@ prova('desafio de Supermercados: PIS + COFINS estimado = R$ 282,8 mi × 2,93% (�
     (string)round($des['pis_cofins']['total']));
 $pro = $m['desafio']['proposta'];
 $l = array_column($m['linhas'], null, 'codigo');
-prova('a margem do negócio da proposta é a linha 13 (antes dos rateios) ÷ ROL',
-    abs($pro['margem_negocio'] - $l['13']['proposta'] / $l['3']['proposta'] * 100) < 1e-9,
-    round($pro['margem_negocio'], 3) . '%');
+prova('estrutura nova: margem antes dos rateios = linha 13 ÷ ROL, e margem do negócio = linha 15 ÷ ROL',
+    abs($pro['margem_antes_rateios'] - $l['13']['proposta'] / $l['3']['proposta'] * 100) < 1e-9
+    && abs($pro['margem_negocio'] - $l['15']['proposta'] / $l['3']['proposta'] * 100) < 1e-9,
+    round($pro['margem_antes_rateios'], 3) . '% / ' . round($pro['margem_negocio'], 3) . '%');
 
 // ── 2. Itens não recorrentes ────────────────────────────────────────────────
 $it = Oportunidades::itens(array_values($ids), $ano);
