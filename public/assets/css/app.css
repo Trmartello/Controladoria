@@ -4661,3 +4661,8 @@ body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
   touch-action: manipulation;
 }
 .sinal-tecla[hidden] { display: none; }
+
+/* ===== Projeção: recolher as subcontas =====
+   Só os blocos ficam à vista, para ver como a DRE fecha (botão #projecao-nivel).
+   As linhas continuam no DOM — o que estiver digitado nelas não se perde. */
+.tabela-projecao.recolhida tr.linha-subconta { display: none; }

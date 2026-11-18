@@ -3016,6 +3016,14 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   cota capital, Usina). Quadro de nov/2026: 1.350 nos 10 negócios (1.564 com as
   áreas de apoio). Provas: `testes/pessoas.php` (conta de mão e carga) e
   `provasPessoasEBeneficios` (tela, gravação, Corporativo).
+  **Recolher e mostrar as subcontas** (pedido do cliente, 2026-11-18): o botão
+  `#projecao-nivel`, acima da tabela, deixa à vista só os blocos da DRE (nível 1)
+  para ver como os números fecham. É só visualização: a classe `recolhida` esconde
+  `tr.linha-subconta` por CSS, as linhas continuam no DOM (o digitado não se
+  perde) e nenhuma conta muda. A escolha é conveniência de quem olha
+  (`localStorage['projecao.recolhido']`, com try/catch) e sobrevive à troca de
+  negócio; no dossiê não há botão e o documento sai completo. Vale também no
+  Corporativo. Prova: `provasRecolherNivel`.
   **Valor negativo no celular: a tecla "−/+" (`sinal.js`).** O teclado numérico do
   iPhone (`inputmode="decimal"`) **não tem o sinal de menos**, e quem lançava
   despesa, variação ou resultado negativo pelo celular não podia (pedido do
