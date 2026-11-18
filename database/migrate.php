@@ -968,6 +968,26 @@ foreach ([
     }
 }
 
+// ---- Apoio ao desafio: tributos sobre vendas e itens não recorrentes (2026-11-18) ----
+require_once __DIR__ . '/../app/Core/Database.php';
+require_once __DIR__ . '/../app/Services/Oportunidades.php';
+require_once __DIR__ . '/../app/Services/CargaApoio.php';
+foreach ([
+    ['tributos_2026_10.php', 'tributos', 'tributos'],
+    ['nao_recorrentes_2026_10.php', 'naoRecorrentes', 'itens não recorrentes'],
+] as [$arquivo, $metodo, $nome]) {
+    $a = require __DIR__ . '/' . $arquivo;
+    if (App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
+        continue;
+    }
+    $r = App\Services\CargaApoio::$metodo($pdo, $a);
+    App\Services\CargaConteudo::marcar($pdo, $a['chave'], "Carga de {$nome} {$a['ano']} até o mês {$a['mes_ate']}: {$r['negocios']} negócio(s)");
+    echo "migrate: carga de {$nome} {$a['chave']} — {$r['negocios']} negócio(s).\n";
+    if ($r['ignorados']) {
+        echo "migrate: negócio(s) fora do cadastro ignorado(s) na carga de {$nome}: " . implode(', ', $r['ignorados']) . ".\n";
+    }
+}
+
 // ---- Desafio do ano por negócio (pedido do cliente, 2026-11-18) ----
 // Referência decidida, só de leitura na Projeção. Sobrescreve o ano inteiro; a
 // marca por chave evita refazer a cada deploy, e um desafio novo vem com chave nova.

@@ -1058,6 +1058,38 @@ CREATE TABLE IF NOT EXISTS negocio_folha (
   CONSTRAINT fk_nf_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- VENDAS E TRIBUTOS SOBRE VENDAS de jan até o corte, por negócio (pedido do
+-- cliente, 2026-11-18): PIS e COFINS destacados no painel do desafio, para a
+-- conta da reforma tributária ser feita de forma macro. Venda a sócio (ato
+-- cooperativo, sem PIS/COFINS) e a não sócio. Ver database/tributos_*.php.
+CREATE TABLE IF NOT EXISTS negocio_tributo (
+  negocio_id      INT NOT NULL,
+  ano             SMALLINT NOT NULL,
+  mes_ate         TINYINT NOT NULL,
+  venda_socio     DECIMAL(18,2) NOT NULL,
+  venda_nao_socio DECIMAL(18,2) NOT NULL,
+  pis             DECIMAL(18,2) NOT NULL,
+  cofins          DECIMAL(18,2) NOT NULL,
+  icms            DECIMAL(18,2) NOT NULL,
+  PRIMARY KEY (negocio_id, ano),
+  CONSTRAINT fk_nt_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ITENS NÃO RECORRENTES de jan até o corte, por negócio e conta contábil
+-- (provisões, perdas, indenizações, multas, receitas pontuais): as
+-- oportunidades e os riscos de 2027 (pedido do cliente, 2026-11-18). Sinal do
+-- Qlik: + despesa, − receita/reversão. O que cada conta é mora em
+-- `Oportunidades::CONTAS`. Ver database/nao_recorrentes_*.php.
+CREATE TABLE IF NOT EXISTS negocio_nao_recorrente (
+  negocio_id INT NOT NULL,
+  ano        SMALLINT NOT NULL,
+  mes_ate    TINYINT NOT NULL,
+  conta      VARCHAR(32) NOT NULL,
+  valor      DECIMAL(18,2) NOT NULL,
+  PRIMARY KEY (negocio_id, ano, conta),
+  CONSTRAINT fk_nnr_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- O DESAFIO que a Controladoria propõe a cada negócio para o ano do planejamento
 -- (pedido do cliente, 2026-11-18): receita bruta, receita líquida e resultado
 -- líquido. É REFERÊNCIA decidida, não conta viva: sai da visão realista do ano

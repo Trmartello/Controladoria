@@ -215,6 +215,7 @@ const SecaoProjecao = {
       <p class="mb-2">${assinatura}</p>
       ${this.cartaoVisaoAno(d)}
       ${this.cartaoDesafio(d)}
+      ${this.cartaoOportunidades(d)}
       ${this.avisoFiliaisDefasadas(d)}
       ${this.faixaDoModo(d)}
       ${this.painel(d)}
@@ -242,9 +243,10 @@ const SecaoProjecao = {
         </table>
       </div>
       <p class="text-muted small">
+        <span class="legenda-editavel"></span> Célula em amarelo-claro é onde se lança.
         Valores em R$. A.V. = análise vertical sobre a Receita Operacional Líquida.
         A proposta é lançada nas <strong>subcontas</strong>; as linhas em negrito são a soma delas.
-        Célula vazia vale a projeção (crescimento zero). Proposta e Reajuste são o
+        Célula vazia vale o padrão: a projeção, ou o que as premissas e a diretriz dão. Proposta e Reajuste são o
         <strong>mesmo lançamento</strong> visto de dois jeitos: a que você digita manda,
         a outra sai em cinza-itálico porque é a conta dela.
         Fonte: ${Modal.esc(d.fonte || 'Qlik')}${d.extraido_em
@@ -726,6 +728,7 @@ const SecaoProjecao = {
       </div>
       ${this.cartaoVisaoAno(d)}
       ${this.cartaoDesafio(d)}
+      ${this.cartaoOportunidades(d)}
       ${this.cartaoPessoas(d)}
       ${faltando}
       ${this.botaoNivel()}
@@ -869,21 +872,43 @@ const SecaoProjecao = {
     if (!x || d.filial) return '';
     const des = x.desafio;
     const pro = x.proposta;
-    const linha = (rotulo, k, chave) => {
-      const a = des[k];
-      const b = pro[k];
-      const dif = a === null || b === null ? null : b - a;
-      return `<tr data-desafio="${chave}">
+    const e = x.escada || { desafio: {}, proposta: {}, estimados: [] };
+    const est = new Set(e.estimados || []);
+    const pp = (v) => (v === null || v === undefined ? null : v / 100);
+    // A escada da DRE (pedido do cliente, 2026-11-18). `pct` marca as linhas de
+    // percentual: a diferença sai em pontos percentuais, não em reais.
+    const degraus = [
+      ['receita_bruta', 'Faturamento <span class="text-muted small">(receita operacional bruta)</span>'],
+      ['receita_liquida', 'Receita líquida'],
+      ['lucro_bruto', 'Margem bruta <span class="text-muted small">(lucro operacional bruto)</span>'],
+      ['margem_bruta', '<span class="ps-3">% margem bruta <span class="text-muted small">(sobre a receita líquida)</span></span>', true],
+      ['despesas', 'Despesas operacionais'],
+      ['resultado_negocio', 'Resultado do negócio <span class="text-muted small">(linha 11, antes dos rateios)</span>'],
+      ['margem_negocio', '<span class="ps-3">% margem do negócio</span>', true],
+      ['rateios', 'Total dos rateios'],
+      ['resultado', 'Resultado líquido do negócio', false, true],
+      ['margem', '% margem líquida <span class="text-muted small">(sobre a receita líquida)</span>', true, true],
+    ];
+    const celula = (v, pct) => (v === null || v === undefined ? '—' : (pct ? this.pct(pp(v), 2) : this.moeda(v)));
+    const linha = ([k, rotulo, pct, forte]) => {
+      const a = e.desafio[k];
+      const b = e.proposta[k];
+      const dif = a === null || a === undefined || b === null || b === undefined ? null : b - a;
+      const estimado = est.has(k);
+      const textoDif = dif === null ? '—' : (pct
+        ? `${dif > 0 ? '+' : ''}${dif.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.`
+        : this.comSinal(dif));
+      const cor = dif === null ? '' : (pct ? (dif >= 0 ? 'text-success' : 'text-danger') : this.corDif(dif));
+      return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}">
           <td>${rotulo}</td>
-          <td class="text-end fw-bold">${this.moeda(a)}</td>
-          <td class="text-end">${b === null ? '—' : this.moeda(b)}</td>
-          <td class="text-end ${this.corDif(dif)}">${dif === null ? '—' : this.comSinal(dif)}</td>
+          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção de 2026"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
+          <td class="text-end">${celula(b, pct)}</td>
+          <td class="text-end ${estimado ? 'text-muted' : cor}">${estimado ? '' : textoDif}</td>
         </tr>`;
     };
-    const difMargem = des.margem === null || pro.margem === null ? null : pro.margem - des.margem;
     const resumo = `resultado ${this.mi(des.resultado)}${des.margem === null ? '' : ` · margem ${this.pct(des.margem / 100, 2)}`}
       — a proposta dá ${this.mi(pro.resultado)}${pro.margem === null ? '' : ` (${this.pct(pro.margem / 100, 2)})`}`;
-    return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} da Controladoria`, resumo, `
+    return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} para o negócio`, resumo, `
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-1 tabela-desafio">
             <thead><tr><th></th>
@@ -892,20 +917,34 @@ const SecaoProjecao = {
               <th class="text-end">Diferença<br><span class="fw-normal text-muted small">proposta − desafio</span></th>
             </tr></thead>
             <tbody>
-              ${linha('Receita operacional bruta', 'receita_bruta', 'receita_bruta')}
-              ${linha('Receita operacional líquida', 'receita_liquida', 'receita_liquida')}
-              ${linha('Resultado líquido', 'resultado', 'resultado')}
-              <tr data-desafio="margem"><td>Margem líquida <span class="text-muted small">(sobre a ROL)</span></td>
-                <td class="text-end fw-bold">${this.pct(des.margem === null ? null : des.margem / 100, 2)}</td>
-                <td class="text-end">${this.pct(pro.margem === null ? null : pro.margem / 100, 2)}</td>
-                <td class="text-end ${difMargem === null ? '' : (difMargem >= 0 ? 'text-success' : 'text-danger')}">${difMargem === null ? '—'
-  : `${difMargem > 0 ? '+' : ''}${difMargem.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.`}</td></tr>
+              ${degraus.map(linha).join('')}
+              <tr data-desafio="pis_cofins" class="small"><td>PIS + COFINS <span class="text-muted">(estimado pela taxa de ${x.ano - 1})</span></td>
+                <td class="text-end text-muted">${des.pis_cofins ? this.moeda(des.pis_cofins.total) : '—'}</td>
+                <td class="text-end">${pro.pis_cofins ? this.moeda(pro.pis_cofins.total) : '—'}</td>
+                <td class="text-end"></td></tr>
             </tbody>
           </table>
         </div>
+        <div class="small text-muted mb-1">O desafio fixa <strong>faturamento, receita líquida e resultado líquido</strong>. Os valores com
+          <strong>≈</strong> são estimados a partir da projeção de ${x.ano - 1}: a margem bruta mantém o percentual de ${x.ano - 1}; despesas e
+          rateios ficam na projeção (sem crescimento); o resultado do negócio é o líquido do desafio menos os rateios.</div>
+        ${this.notaTributos(x.tributos, x.ano)}
         <div class="small text-muted" id="desafio-nota">
           <strong>${Modal.esc(des.nota)}</strong> ${this.notaDesafio(x)}
         </div>`);
+  },
+
+  /** A base da conta macro da reforma: o que o negócio pagou de PIS/COFINS em 2026. */
+  notaTributos(t, ano) {
+    if (!t) return '';
+    const p = (v, c = 2) => this.pct(v === null || v === undefined ? null : v, c);
+    return `<div class="small mb-1" id="desafio-tributos">
+        <strong>Tributos sobre vendas em ${ano - 1}</strong> (jan–${this.nomeMes(t.mes_ate)}): PIS ${this.mi(t.pis)} e COFINS ${this.mi(t.cofins)}
+        — <strong>${p(t.taxa_pis_cofins)}</strong> do faturamento; incidem só sobre a venda a não sócio
+        (${p(t.parte_nao_socio, 1)} das vendas), onde são ${p(t.taxa_pis_cofins_nao_socio)}. ICMS: ${this.mi(t.icms)}.
+        O PIS + COFINS estimado acima é o faturamento × a taxa de ${ano - 1}: refaça a conta com a regra da reforma
+        (CBS no lugar de PIS e COFINS) para chegar ao tributo de ${ano}.
+      </div>`;
   },
 
   notaDesafio(x) {
@@ -925,8 +964,12 @@ const SecaoProjecao = {
       return `<tr class="${classe}" ${attr}>
           <td>${rotulo}</td>
           <td class="text-end">${des ? this.moeda(des.receita_bruta) : '—'}</td>
+          <td class="text-end" data-col="rol-desafio">${des ? this.moeda(des.receita_liquida) : '—'}</td>
+          <td class="text-end text-muted" data-col="pis-cofins">${des && des.pis_cofins ? this.moeda(des.pis_cofins.total) : '—'}</td>
           <td class="text-end fw-bold">${des ? this.moeda(des.resultado) : '—'}</td>
           <td class="text-end">${des ? m2(des.margem) : '—'}</td>
+          <td class="text-end" data-col="rol-proposta">${pro.receita_liquida === null || pro.receita_liquida === undefined ? '—' : this.moeda(pro.receita_liquida)}</td>
+          <td class="text-end" data-col="margem-negocio">${m2(pro.margem_negocio)}</td>
           <td class="text-end${pro.resultado !== null && pro.resultado < -1 ? ' text-danger fw-bold meta-negativa' : ''}"
             ${pro.resultado !== null && pro.resultado < -1 ? 'title="Meta negativa: a diretriz não permite"' : ''}>${pro.resultado === null ? '—' : this.moeda(pro.resultado)}</td>
           <td class="text-end">${m2(pro.margem)}</td>
@@ -947,13 +990,17 @@ const SecaoProjecao = {
     };
     const resumo = `resultado ${this.mi(t.desafio.resultado)} · margem ${m2(t.desafio.margem)}
       — meta de ${this.pct(x.meta_margem / 100, 0)}: ${t.desafio.falta > 0 ? `faltam ${this.mi(t.desafio.falta)}` : 'atingida'}`;
-    return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} da Controladoria, por negócio`, resumo, `
+    return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} para os negócios`, resumo, `
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-1 tabela-desafio">
             <thead><tr><th></th>
               <th class="text-end">Receita bruta<br><span class="fw-normal text-muted small">desafio</span></th>
+              <th class="text-end">Receita líquida<br><span class="fw-normal text-muted small">desafio</span></th>
+              <th class="text-end">PIS + COFINS<br><span class="fw-normal text-muted small">desafio · estimado</span></th>
               <th class="text-end">Resultado<br><span class="fw-normal text-muted small">desafio</span></th>
               <th class="text-end">Margem<br><span class="fw-normal text-muted small">desafio</span></th>
+              <th class="text-end">Receita líquida<br><span class="fw-normal text-muted small">proposta</span></th>
+              <th class="text-end">Margem do negócio<br><span class="fw-normal text-muted small">proposta · antes dos rateios</span></th>
               <th class="text-end">Resultado<br><span class="fw-normal text-muted small">proposta</span></th>
               <th class="text-end">Margem<br><span class="fw-normal text-muted small">proposta</span></th>
               <th class="text-end">Diferença<br><span class="fw-normal text-muted small">proposta − desafio</span></th>
@@ -961,9 +1008,151 @@ const SecaoProjecao = {
             <tbody>${linhas}${linha('Total dos negócios', t.desafio, t.proposta, 'fw-bold table-light', 'data-negocio-desafio="total"')}</tbody>
           </table>
         </div>
+        ${this.tabelaTributos(x, nomes)}
         <p class="small fw-bold mb-1 mt-2">Meta da direção: ${this.pct(x.meta_margem / 100, 0)} de margem líquida</p>
         <ul class="small mb-1 meta-margem">${meta(t.desafio, 'desafio')}${meta(t.proposta, 'proposta')}</ul>
         <div class="small text-muted">${this.notaDesafio(x)} Cada negócio vê o seu desafio na própria tela.</div>`);
+  },
+
+  /**
+   * Vendas e PIS/COFINS de 2026 por negócio — a base para refazer de forma macro
+   * a conta com a regra da reforma tributária (pedido do cliente, 2026-11-18).
+   */
+  tabelaTributos(x, nomes) {
+    const t = x.total.tributos;
+    if (!t || !t.mes_ate) return '';
+    const p = (v, c = 2) => this.pct(v === null || v === undefined ? null : v, c);
+    const linha = (rot, r, classe = '', attr = '') => `<tr class="${classe}" ${attr}>
+        <td>${rot}</td>
+        <td class="text-end">${this.moeda(r.venda_socio)}</td>
+        <td class="text-end">${this.moeda(r.venda_nao_socio)}</td>
+        <td class="text-end">${p(r.parte_nao_socio, 1)}</td>
+        <td class="text-end">${this.moeda(r.pis)}</td>
+        <td class="text-end">${this.moeda(r.cofins)}</td>
+        <td class="text-end fw-bold">${p(r.taxa_pis_cofins)}</td>
+        <td class="text-end">${p(r.taxa_pis_cofins_nao_socio)}</td>
+        <td class="text-end">${this.moeda(r.icms)}</td>
+      </tr>`;
+    const ordem = Object.keys(x.negocios).filter((id) => x.negocios[id].tributos)
+      .sort((a, b) => (x.negocios[b].tributos.pis + x.negocios[b].tributos.cofins) - (x.negocios[a].tributos.pis + x.negocios[a].tributos.cofins));
+    return `<div class="small fw-bold mb-1 mt-3">Tributos sobre vendas em ${x.ano - 1} (jan–${this.nomeMes(t.mes_ate)}) — base para a regra da reforma</div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-1 tabela-tributos">
+          <thead><tr><th></th>
+            <th class="text-end">Vendas<br><span class="fw-normal text-muted small">a sócios</span></th>
+            <th class="text-end">Vendas<br><span class="fw-normal text-muted small">a não sócios</span></th>
+            <th class="text-end">Não sócio<br><span class="fw-normal text-muted small">% das vendas</span></th>
+            <th class="text-end">PIS</th>
+            <th class="text-end">COFINS</th>
+            <th class="text-end">PIS + COFINS<br><span class="fw-normal text-muted small">% do faturamento</span></th>
+            <th class="text-end">PIS + COFINS<br><span class="fw-normal text-muted small">% da venda a não sócio</span></th>
+            <th class="text-end">ICMS</th>
+          </tr></thead>
+          <tbody>${ordem.map((id) => linha(Modal.esc(nomes[id] || id), x.negocios[id].tributos, '', `data-negocio-tributo="${id}"`)).join('')}
+            ${linha('Total dos negócios', t, 'fw-bold table-light', 'data-negocio-tributo="total"')}</tbody>
+        </table>
+      </div>
+      <div class="small text-muted">PIS e COFINS incidem só sobre a venda a não sócio (o ato cooperativo não é tributado).
+        A coluna "PIS + COFINS · estimado" do desafio é o faturamento do desafio × a taxa do negócio em ${x.ano - 1}:
+        para a regra da reforma (CBS), troque a taxa e refaça. Fonte: Qlik DRE Gerencial, por conta contábil.</div>`;
+  },
+
+  /**
+   * OPORTUNIDADES E RISCOS de 2027 (pedido do cliente, 2026-11-18): o que 2026
+   * teve de não recorrente — provisões, perdas, indenizações, multas, receitas
+   * pontuais — e os meses fora do padrão nas despesas. Só leitura: quem decide se
+   * um item se repete é o negócio, lançando na linha.
+   */
+  cartaoOportunidades(d) {
+    if (d.corporativo) return this.cartaoOportunidadesCorporativo(d);
+    const o = d.oportunidades;
+    if (!o || d.filial) return '';
+    const it = o.itens;
+    const picos = (o.picos || []).slice(0, 8);
+    if (!it && !picos.length) return '';
+    const g = o.grupos || {};
+    const efeito = (v) => `<span class="${v > 0 ? 'text-success' : 'text-danger'}">${v > 0 ? '+' : '−'}${this.moeda(Math.abs(v))}</span>`;
+    const tabItens = it ? `
+      <div class="small fw-bold mb-1">Itens não recorrentes de ${d.ano} (jan–${this.nomeMes(it.mes_ate)}), por conta contábil</div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-1 tabela-nao-recorrentes">
+          <thead><tr><th>Item</th><th>Grupo</th><th class="text-end">Linha da DRE</th>
+            <th class="text-end">${d.ano} (jan–${this.nomeMes(it.mes_ate)})</th>
+            <th class="text-end">Se não se repetir em ${d.ano_planejamento}</th></tr></thead>
+          <tbody>${it.itens.map((i) => `<tr data-conta-contabil="${Modal.esc(i.conta)}">
+              <td>${Modal.esc(i.rotulo)} <span class="text-muted small">${Modal.esc(i.conta)}</span></td>
+              <td class="small">${Modal.esc(g[i.grupo] || i.grupo)}</td>
+              <td class="text-end small">${Modal.esc(i.linha_dre || '')}</td>
+              <td class="text-end">${i.valor > 0 ? '' : '−'}${this.moeda(Math.abs(i.valor))} <span class="text-muted small">${i.valor > 0 ? 'despesa' : 'receita'}</span></td>
+              <td class="text-end">${efeito(i.efeito)}</td></tr>`).join('')}
+            <tr class="fw-bold table-light"><td colspan="4">Oportunidade (despesa que pode não se repetir)</td><td class="text-end text-success" data-oport="oportunidade">+${this.moeda(it.oportunidade)}</td></tr>
+            <tr class="fw-bold table-light"><td colspan="4">Risco (receita ou reversão que pode não se repetir)</td><td class="text-end text-danger" data-oport="risco">−${this.moeda(Math.abs(it.risco))}</td></tr>
+          </tbody>
+        </table>
+      </div>` : '';
+    const tabPicos = picos.length ? `
+      <div class="small fw-bold mb-1 mt-3">Meses fora do padrão nas despesas operacionais (${d.ano}, jan–${this.nomeMes(d.mes_fechado_ate)})</div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-1 tabela-picos">
+          <thead><tr><th>Linha</th><th class="text-end">Padrão mensal<br><span class="fw-normal text-muted small">mediana</span></th>
+            <th>Meses fora do padrão</th>
+            <th class="text-end">Acima do padrão<br><span class="fw-normal text-muted small">compra pontual?</span></th>
+            <th class="text-end">Abaixo do padrão<br><span class="fw-normal text-muted small">falta no plano?</span></th></tr></thead>
+          <tbody>${picos.map((p) => `<tr data-pico="${Modal.esc(p.codigo)}">
+              <td>${Modal.esc(p.nome)} <span class="text-muted small">${Modal.esc(p.codigo)}</span></td>
+              <td class="text-end">${this.moeda(p.mediana)}</td>
+              <td class="small">${p.meses.map((m) => `${this.nomeMes(m.mes)}: ${this.moeda(m.valor)}`).join(' · ')}</td>
+              <td class="text-end">${p.acima ? `<span class="text-success">+${this.moeda(p.acima)}</span>` : ''}</td>
+              <td class="text-end">${p.abaixo ? `<span class="text-danger">−${this.moeda(Math.abs(p.abaixo))}</span>` : ''}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="small text-muted">Mês que se afasta da mediana do ano em mais da metade dela (e de R$ 50 mil). É sinal para
+        investigar — pode ser sazonalidade legítima —, e não soma com os itens acima (a mesma despesa pode aparecer nos dois).</div>` : '';
+    const resumo = it
+      ? `oportunidade ${this.mi(it.oportunidade, true)} · risco ${this.mi(it.risco)}${picos.length ? ` · ${picos.length} linha(s) com mês fora do padrão` : ''}`
+      : `${picos.length} linha(s) com mês fora do padrão`;
+    return this.expansor('oportunidades', 'painel-oportunidades', `Oportunidades e riscos para ${d.ano_planejamento}`, resumo, `
+        ${tabItens}${tabPicos}
+        <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: se um item não vai se repetir (ou se falta algo
+          que ${d.ano} não teve), lance na linha da DRE correspondente.</div>`);
+  },
+
+  cartaoOportunidadesCorporativo(d) {
+    const por = d.oportunidades_negocios || {};
+    const ids = Object.keys(por);
+    if (!ids.length) return '';
+    const nomes = Object.fromEntries((d.negocios || []).map((n) => [String(n.id), n.rotulo]));
+    let op = 0;
+    let ri = 0;
+    const linhas = ids.sort((a, b) => (por[b].oportunidade - por[b].risco) - (por[a].oportunidade - por[a].risco)).map((id) => {
+      const x = por[id];
+      op += x.oportunidade;
+      ri += x.risco;
+      const top = x.itens.slice(0, 2).map((i) => Modal.esc(i.rotulo)).join('; ');
+      return `<tr data-negocio-oport="${id}"><td>${Modal.esc(nomes[id] || id)}</td>
+        <td class="text-end text-success">+${this.moeda(x.oportunidade)}</td>
+        <td class="text-end text-danger">−${this.moeda(Math.abs(x.risco))}</td>
+        <td class="text-end fw-bold">${this.moeda(x.oportunidade + x.risco)}</td>
+        <td class="small text-muted">${top}</td></tr>`;
+    }).join('');
+    const mes = por[ids[0]].mes_ate;
+    return this.expansor('oportunidades', 'painel-oportunidades', `Oportunidades e riscos para ${d.ano_planejamento}, por negócio`,
+      `oportunidade ${this.mi(op, true)} · risco ${this.mi(ri)}`, `
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-1 tabela-oportunidades">
+            <thead><tr><th></th><th class="text-end">Oportunidade<br><span class="fw-normal text-muted small">despesa que pode não se repetir</span></th>
+              <th class="text-end">Risco<br><span class="fw-normal text-muted small">receita/reversão que pode não se repetir</span></th>
+              <th class="text-end">Líquido</th><th>Maiores itens</th></tr></thead>
+            <tbody>${linhas}
+              <tr class="fw-bold table-light" data-negocio-oport="total"><td>Total dos negócios</td>
+                <td class="text-end text-success">+${this.moeda(op)}</td><td class="text-end text-danger">−${this.moeda(Math.abs(ri))}</td>
+                <td class="text-end">${this.moeda(op + ri)}</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="small text-muted">Itens não recorrentes de ${d.ano} (jan–${this.nomeMes(mes)}) por conta contábil: provisões, perdas,
+          indenizações, multas e receitas pontuais. O detalhe, e os meses fora do padrão nas despesas, estão na tela de cada negócio.</div>`);
   },
 
   /** Reais em milhões, para os resumos dos expansores. `sinal` força o + nos positivos. */
@@ -994,7 +1183,7 @@ const SecaoProjecao = {
    * fica no `localStorage`, como o de recolher subcontas; por omissão só o
    * desafio vem aberto. No dossiê tudo sai aberto — papel não se expande.
    */
-  EXPANSORES_PADRAO: { visao: false, desafio: true, premissas: false, pessoas: false },
+  EXPANSORES_PADRAO: { visao: false, desafio: true, oportunidades: true, premissas: false, pessoas: false },
 
   expansorAberto(chave) {
     if (App.modoDossie) return true;
