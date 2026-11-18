@@ -4721,3 +4721,15 @@ details.expansor[open] > summary .expansor-resumo { display: none; }
 /* Selo do valor fixado pela diretriz do planejamento (não se digita). */
 .selo-diretriz { background: var(--verde-coperdia); color: #fff; font-weight: 500; font-size: .7rem; vertical-align: middle; }
 .campo-diretriz { line-height: 1.9; }
+
+/* Resultado líquido proposto NEGATIVO (diretriz de 2027: "nenhum negócio ou
+   filial poderá estabelecer meta negativa"). O lançamento é aceito — decisão do
+   cliente, 2026-11-18 —, mas a linha fica marcada até a proposta ser revista. */
+.tabela-projecao tr.resultado-negativo > td { background: #fdecea; }
+.tabela-projecao tr.resultado-negativo > td.celula-proposta-td { color: var(--bs-danger, #b02a37); font-weight: 700; }
+
+/* Como é × como fica dos tributos (pedido do cliente, 2026-11-18): amarelo =
+   linha que muda de lugar ou de valor. Mais forte que o amarelo-claro das
+   células editáveis, para não ser confundido com "digite aqui". */
+.tabela-tributos-dre td.linha-muda, span.linha-muda { background: #fde4a8; }
+.tabela-tributos-dre td { white-space: nowrap; }

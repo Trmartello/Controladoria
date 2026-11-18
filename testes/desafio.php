@@ -21,6 +21,7 @@ require_once __DIR__ . '/../app/Core/Auth.php';
 require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
+require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Services/CargaDesafio.php';
 require_once __DIR__ . '/../app/Controllers/ProjecaoController.php';
 
@@ -98,8 +99,8 @@ foreach ($d['por_negocio'] as $id => $x) {
         continue;
     }
     if ((string)$cod === '17') {
-        if (abs($x['resultado'] - $vis['16']['real_realista'] * 1.045) > 1800) {
-            $divergem[] = "17: " . round($x['resultado']) . ' vs ' . round($vis['16']['real_realista'] * 1.045);
+        if (abs($x['resultado'] - $vis['18']['real_realista'] * 1.045) > 1800) {
+            $divergem[] = "17: " . round($x['resultado']) . ' vs ' . round($vis['18']['real_realista'] * 1.045);
         }
         continue;
     }
@@ -109,7 +110,7 @@ foreach ($d['por_negocio'] as $id => $x) {
     }
     // Margem nunca pior que a de 2026 realista (ROL de 2026 pela mesma relação ROL/ROB).
     $rol26 = $vis['1']['real_realista'] * $x['receita_liquida'] / $x['receita_bruta'];
-    $m26 = $vis['16']['real_realista'] / $rol26 * 100;
+    $m26 = $vis['18']['real_realista'] / $rol26 * 100;
     // ±R$ 1,8 mil no resultado de 6 e 8 (lançamento que mudou de negócio entre a
     // extração do painel e a carga) vira ±0,001 p.p. de margem.
     if ($x['margem'] < $m26 - 0.002) {

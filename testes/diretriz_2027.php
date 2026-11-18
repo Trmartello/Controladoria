@@ -18,6 +18,7 @@ require_once __DIR__ . '/../app/Core/Auth.php';
 require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
+require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Services/CargaFolha.php';
 require_once __DIR__ . '/../app/Controllers/ProjecaoController.php';
 
@@ -45,15 +46,20 @@ function perto(float $a, float $b, float $tol = 0.01): bool
 
 // ── 1. O documento ──────────────────────────────────────────────────────────
 $d = Projecao::diretriz(2027);
-prova('a diretriz de 2027 é a do documento: IPCA 4,50, PIB agro 1,50, pessoal 5,50',
-    $d['premissas'] === ['IPCA' => 4.5, 'PIB' => 1.5, 'PESSOAS' => 5.5], json_encode($d['premissas']));
+prova('a diretriz de 2027 é a do documento: pessoal 5,50 fixo; IPCA 4,50 e PIB agro 1,50 sugeridos',
+    $d['premissas'] === ['PESSOAS' => 5.5] && $d['sugeridas'] === ['IPCA' => 4.5, 'PIB' => 1.5],
+    json_encode([$d['premissas'], $d['sugeridas']]));
 prova('vale R$ 500, prêmio assiduidade R$ 200, prêmio metas R$ 500, PPR de 1,5 salário',
     $d['beneficios'] === ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0] && $d['ppr_salarios'] === 1.5);
-prova('o crescimento real NÃO é fixo: "a ser definido com as gerências de cada negócio"',
-    Projecao::fixadaPelaDiretriz(2027, 'CRESCIMENTO') === null && Projecao::fixadaPelaDiretriz(2027, 'IPCA') === 4.5);
-prova('a diretriz vale por cima do digitado, e só no ano dela',
-    Projecao::premissasEfetivas(2027, ['IPCA' => 6.0, 'CRESCIMENTO' => 2.0]) === ['IPCA' => 4.5, 'CRESCIMENTO' => 2.0, 'PIB' => 1.5, 'PESSOAS' => 5.5]
+prova('crescimento real, IPCA e PIB NÃO são fixos (cada negócio edita); pessoal é',
+    Projecao::fixadaPelaDiretriz(2027, 'CRESCIMENTO') === null && Projecao::fixadaPelaDiretriz(2027, 'IPCA') === null
+    && Projecao::fixadaPelaDiretriz(2027, 'PIB') === null && Projecao::fixadaPelaDiretriz(2027, 'PESSOAS') === 5.5);
+prova('o IPCA digitado pelo negócio vale; o PESSOAL da diretriz vale por cima; só no ano dela',
+    Projecao::premissasEfetivas(2027, ['IPCA' => 6.0, 'PESSOAS' => 9.0, 'CRESCIMENTO' => 2.0])
+        == ['IPCA' => 6.0, 'PIB' => 1.5, 'PESSOAS' => 5.5, 'CRESCIMENTO' => 2.0]
     && Projecao::premissasEfetivas(2028, ['IPCA' => 6.0]) === ['IPCA' => 6.0]);
+prova('sem digitado, IPCA e PIB são os sugeridos pela diretriz (4,5 e 1,5)',
+    Projecao::premissasEfetivas(2027, []) == ['IPCA' => 4.5, 'PIB' => 1.5, 'PESSOAS' => 5.5]);
 prova('quantidade e previsão de colaboradores continuam do negócio',
     Projecao::fixadaPelaDiretriz(2027, 'COLABORADORES') === null && Projecao::fixadaPelaDiretriz(2027, 'PCT_RESULTADO') === null);
 
@@ -103,14 +109,14 @@ prova('a linha 8.5 da tela é a da conta (origem PREMISSA, regra PESSOAL), salvo
     || in_array($l['8.5']['proposta_origem'], ['VALOR', 'PERCENTUAL', 'FILIAIS'], true),
     json_encode([$l['8.5']['proposta'], $l['8.5']['proposta_origem'], $m['pessoal_diretriz']['proposta']]));
 
-$painel = Projecao::resumoDosNegocios(array_values($ids), $ano, $corte, $ano + 1, ['4.1', '8.5', '16']);
+$painel = Projecao::resumoDosNegocios(array_values($ids), $ano, $corte, $ano + 1, ['2.3', '4.1', '8.5', '18']);
 $divergem = [];
 foreach ($ids as $cod => $id) {
     if (!isset($painel[$id])) {
         continue;
     }
     $t = array_column($montar->invoke($ctrl, $id, $ano, $corte, 0)['linhas'], 'proposta', 'codigo');
-    foreach (['4.1', '8.5', '16'] as $c) {
+    foreach (['2.3', '4.1', '8.5', '18'] as $c) {
         if (abs(($painel[$id]['proposta'][$c] ?? 0) - ($t[$c] ?? 0)) > 1) {
             $divergem[] = "{$cod}/{$c}: " . round($painel[$id]['proposta'][$c] ?? 0) . ' ≠ ' . round($t[$c] ?? 0);
         }
@@ -120,47 +126,7 @@ prova('o Painel faz a MESMA conta da tela (custo, pessoal e resultado) nos ' . c
     count($painel) >= 10 && !$divergem, implode(' | ', $divergem));
 
 $pdo = Database::conn();
-// ── 3b. A trava do resultado negativo deixa MELHORAR ainda no vermelho ──────
-// (o lado da recusa sai pela API, com o 422, na bateria: aqui a recusa encerraria
-// o processo.) Cereais parte de proposta negativa com a diretriz.
-$res = new ReflectionMethod($ctrl, 'resultadosLiquidos');
-$res->setAccessible(true);
-$conf = new ReflectionMethod($ctrl, 'conferirResultado');
-$conf->setAccessible(true);
-$cer = $ids['1'];
-$antes = $res->invoke($ctrl, $cer, $ano, $corte, 0);
-if ($antes['negocio'] !== null && $antes['negocio'] < -1) {
-    $proj = Database::um('SELECT id FROM projecao WHERE negocio_id = ? AND ano = ?', [$cer, $ano + 1]);
-    $criou = false;
-    if (!$proj) {
-        $pdo->prepare('INSERT INTO projecao (negocio_id, ano) VALUES (?, ?)')->execute([$cer, $ano + 1]);
-        $proj = Database::um('SELECT id FROM projecao WHERE negocio_id = ? AND ano = ?', [$cer, $ano + 1]);
-        $criou = true;
-    }
-    $conta81 = (int)Database::um("SELECT id FROM dre_conta WHERE codigo = '8.1'")['id'];
-    $tinha = Database::um('SELECT * FROM projecao_valor WHERE projecao_id = ? AND filial_id = 0 AND conta_id = ?', [(int)$proj['id'], $conta81]);
-    $pdo->beginTransaction();
-    $pdo->prepare('INSERT INTO projecao_valor (projecao_id, filial_id, conta_id, entrada, valor, percentual) VALUES (?, 0, ?, \'PERCENTUAL\', NULL, -20)
-                   ON DUPLICATE KEY UPDATE entrada = \'PERCENTUAL\', valor = NULL, percentual = -20')
-        ->execute([(int)$proj['id'], $conta81]);
-    $conf->invoke($ctrl, $antes, $cer, $ano, $corte, 0);   // sem exceção = aceito e confirmado
-    $depois = $res->invoke($ctrl, $cer, $ano, $corte, 0);
-    prova('Cereais no vermelho: cortar 20% das despesas com vendas MELHORA o resultado e passa',
-        $depois['negocio'] > $antes['negocio'] && !$pdo->inTransaction(),
-        round($antes['negocio']) . ' → ' . round($depois['negocio']));
-    // Limpeza pelo banco: desfazer pela API seria piorar um resultado negativo.
-    $pdo->prepare('DELETE FROM projecao_valor WHERE projecao_id = ? AND filial_id = 0 AND conta_id = ?')->execute([(int)$proj['id'], $conta81]);
-    if ($tinha) {
-        $pdo->prepare('INSERT INTO projecao_valor (projecao_id, filial_id, conta_id, entrada, valor, percentual) VALUES (?, 0, ?, ?, ?, ?)')
-            ->execute([(int)$proj['id'], $conta81, $tinha['entrada'], $tinha['valor'], $tinha['percentual']]);
-    }
-    if ($criou) {
-        $pdo->prepare('DELETE FROM projecao WHERE id = ?')->execute([(int)$proj['id']]);
-    }
-} else {
-    prova('Cereais parte de proposta negativa com a diretriz (pré-condição da prova da trava)', false, json_encode($antes));
-}
-
+$pdo = Database::conn();
 // ── 4. A carga da folha ─────────────────────────────────────────────────────
 $carga = require __DIR__ . '/../database/folha_2026_10.php';
 $recusa = function (array $x) use ($pdo): string {

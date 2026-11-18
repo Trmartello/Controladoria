@@ -3110,14 +3110,24 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   realista desta tela × 1,06 e margem nunca pior que a de 2026 realista) e
   `provasDesafioEExpansores`.
   **Diretrizes do Planejamento 2027** (documento de 16/11/2026, pedido do cliente
-  em 2026-11-18). Moram em `Projecao::DIRETRIZES[2027]` e valem para TODOS os
-  negócios, **fixas** (decisão do cliente): IPCA 4,50%, PIB agropecuário 1,50%,
-  reajuste de pessoal 5,50%, vale R$ 500, prêmio assiduidade R$ 200, prêmio metas
-  R$ 500, PPR de 1,5 salário. `premissasEfetivas`/`beneficiosEfetivos` põem a
-  diretriz por cima do digitado (o digitado fica no banco e deixa de valer naquele
-  ano; 2028 em diante continua editável); a gravação recusa a chave fixada
-  (422, "Fixado pela diretriz") e a tela a mostra com o selo **diretriz**. O
-  crescimento real (`CRESCIMENTO`) continua do negócio. Decisões que vieram junto:
+  em 2026-11-18). Moram em `Projecao::DIRETRIZES[2027]`, em dois grupos:
+  - **Fixas** para todos os negócios (`premissas` e `beneficios`): reajuste de
+    pessoal 5,50%, vale R$ 500, prêmio assiduidade R$ 200, prêmio metas R$ 500, PPR
+    de 1,5 salário. `premissasEfetivas`/`beneficiosEfetivos` põem a diretriz por
+    cima do digitado; a gravação recusa (422, "Fixado pela diretriz") e a tela mostra
+    o valor com o selo **diretriz**.
+  - **Sugeridas** (`sugeridas`): IPCA 4,50% e PIB agropecuário 1,50%. Decisão do
+    cliente, 2026-11-18, REVENDO a de horas antes ("fixos em 2027"): "deixe os
+    percentuais de IPCA e PIB e % de crescimento do faturamento para que cada
+    negócio possa editar; porém as filiais devem receber isso sem poder editar".
+    Ficam POR BAIXO do digitado: o campo vem preenchido com 4,5/1,5 e o selo
+    **diretriz** (`[data-sugerida]`) até o negócio digitar o seu; apagar devolve a
+    sugestão. O payload traz `premissas_digitadas_por_ano` (só o digitado) ao lado
+    de `premissas_por_ano` (o que vale) — é o que separa sugestão de lançamento, e o
+    que `comPremissasNeutras` guarda e devolve.
+  A filial herda as três do negócio, com o campo travado (a API já recusava
+  premissa com `filial_id`). O crescimento real (`CRESCIMENTO`) é do negócio.
+  2028 em diante continua todo editável. Decisões que vieram junto:
   - **Deduções e custo das vendas acompanham a receita** (`ACOMPANHAM_RECEITA` =
     2.1, 2.2, 2.3, 4.1, em `aplicar`): sem lançamento, valem projeção × (proposta
     ÷ projeção da 1.1) — margem bruta de 2026 mantida. Antes ficavam paradas
@@ -3137,15 +3147,14 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     espelham as 3.07 (ato cooperativo) e NÃO entram. Na Agropecuária as 3.07.01.21*
     somam R$ 4,6 mi a mais que a linha 8.5 — por isso as peças entram como parte,
     não em reais. O cartão Pessoas e benefícios mostra a conta inteira.
-  - **Meta negativa de resultado líquido: bloquear piora** (decisão do cliente).
-    `resultadosLiquidos` antes, transação, gravação, `conferirResultado` depois:
-    recusa (422, código `META_NEGATIVA`) o lançamento que deixa a linha 16
-    proposta negativa E pior do que estava — no negócio e na filial em que se
-    lança. Melhora sempre passa, ainda no vermelho (Cereais parte de −R$ 6,8 mi
-    com a diretriz). Vale para valor, premissa, benefício e modo. A tela mostra
-    `#projecao-meta-negativa` enquanto a proposta estiver negativa; o Corporativo
-    marca em vermelho a proposta negativa de cada negócio no quadro do desafio.
-    Limpeza de prova que precise piorar um resultado negativo vai pelo banco.
+  - **Meta negativa de resultado líquido: SINALIZAR, não bloquear** (decisão do
+    cliente, 2026-11-18, revendo a anterior: "o lançamento deve permitir todos os
+    sinais; porém se o resultado líquido for negativo deve sinalizar"). Não há
+    trava: todo lançamento grava. Com a linha 18 proposta negativa, a tela mostra
+    `#projecao-meta-negativa` e a linha do resultado líquido fica em vermelho-claro
+    (`tr.resultado-negativo`); o Corporativo marca a proposta negativa de cada
+    negócio. (A trava de "bloquear piora" existiu por algumas horas no PR #93 e
+    saiu no seguinte — não a reponha.)
   - **Desafio**: IPCA 4,5% + PIB agro 1,5% somam os mesmos 6% da página aprovada;
     só a Usina mudou (× 1,045). Total R$ 63,69 mi, faltam R$ 7,58 mi para os 2%.
   - **Fora, por ora**: o vale e os prêmios da folha de CUSTO (4.03) seguem no custo,
@@ -3186,6 +3195,80 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   Provas: `testes/oportunidades.php` (tributos contra a DRE, taxa, estimativa do
   desafio, margem do negócio, itens e sinais, picos de mão, cargas) e
   `provasApoioDesafio`.
+  **Estrutura NOVA da DRE gerencial** (pedido do cliente, 2026-11-18). Regra das
+  fontes: **2026 → `DRE - Gerencial` de Filiais** (`0a23b6b3-…`, a de sempre);
+  **2027 em diante → `DRE - Gerencial Nova`** (`3aa6bf76-3186-4f9d-96b9-46891cf41d04`,
+  espaço Desenvolvimento), e a DRE atual deixa de existir em 2027. O planejamento
+  de 2027 já é feito na estrutura nova — então a Projeção inteira (2026 e a
+  proposta) está nela. O que mudou, conferido no app novo (jan–out): linhas 1 a 13
+  e o resultado líquido IDÊNTICOS; o rateio corporativo se divide em **Negócio
+  (14.3, dentro de "12 - Rateios do negócio")** e **Administrativo (16.1, em "15 -
+  Rateios administrativo")**; nasce **"14 - Resultado do negócio" (15) = 13 + 14**;
+  a 13 vira "11 - Resultado após impostos"; Despesas Totais, Resultado Líquido e
+  Margem descem para **17, 18 e 19**. No código: `Projecao::DERIVADAS` ('15', '16',
+  '18'), `SEM_PROPOSTA = ['17']`, constantes `LINHA_RESULTADO = '18'` e afins — use
+  as constantes, nunca o número solto. **Armadilha:** 15, 16 e 17 existem nas duas
+  estruturas com sentidos diferentes.
+  - Carga: `database/dre_2026_fechamento_10_nova.php`, GERADA (não editar à mão) a
+    partir da carga de 17/11 + o 14.3 novo por negócio e mês do app novo; 16.1 = 14.3
+    velho − novo (bate com o app); identidade 18 = 15 + 16 conferida em tudo.
+  - `CargaDre::aplicar` RECUSA carga na estrutura velha (sem 16.1) sobre banco já na
+    nova. `aplicarFiliais` aceita filial na estrutura velha: confere contra o negócio
+    traduzido para os sentidos velhos e converte depois de gravar.
+  - Filiais: `CargaDre::migrarFiliaisParaEstruturaNova` (no migrate, idempotente:
+    só converte filial sem 16.1 cujo negócio tem 16.1) divide o 14.3 de cada filial
+    na proporção do negócio no mesmo período — **aproximação** até as filiais serem
+    re-extraídas do app novo; o líquido da filial não muda.
+  - Desafio: a escada mostra resultado antes dos rateios, rateios do negócio,
+    resultado do negócio, rateios administrativos e líquido; o Corporativo, margem
+    antes dos rateios e margem do negócio.
+  - A skill `coperdia-strategic-finance-skill` foi atualizada com esta regra
+    (`SKILL.md`, `references/qlik-ambiente.md`, `references/dre-e-contas.md`); a cópia
+    da sessão é sincronizada do claude.ai, então o pacote `.skill` foi entregue ao
+    cliente para subir lá.
+  **CBS de 2027 pela LC 214/2025** (decisão do cliente, 2026-11-18: "aplique a CBS
+  conforme a LC 214"), em `App\Services\Reforma`, conta MACRO por negócio:
+  alíquota **11,3%** (referência do TCU, Acórdão 2933/2026, pendente de resolução do
+  Senado; CBS −0,1 p.p. em 2027 pelo art. 347 + IBS de teste 0,1%); base = venda a
+  **não sócio** (a venda a sócio é ato cooperativo com alíquota zero no **regime
+  específico do art. 271**, opcional — prazo de opção para 2027 era 31/10/2026, e a
+  tela mostra o cenário SEM o regime ao lado); redução de 60% para insumos do Anexo
+  IX e produtos in natura e mix por negócio em `Reforma::NEGOCIOS` (hipóteses
+  declaradas); crédito sobre o custo das vendas a não sócio, nulo no que se compra
+  do associado; combustíveis monofásicos (CBS zero no posto). Na **proposta**, a
+  linha 2.3 sem lançamento troca o PIS/COFINS de 2026 (que ela carrega pela
+  proporção da receita) pela CBS (`proposta_regra = 'CBS'`), igual na tela, nas
+  filiais e no Painel. No **desafio**, que é congelado, entra a linha "resultado
+  líquido com a CBS". Com o regime específico o efeito total é pequeno e a favor;
+  **sem ele, a venda a sócio vira base e a CBS explode** (Pecuária ~R$ 40 mi,
+  Cereais ~R$ 25 mi) — a confirmação da opção é do cliente.
+  Provas: `testes/estrutura_dre_nova.php` (estrutura, identidades nos negócios e
+  nas filiais, líquido igual ao da DRE atual, conversão idempotente, CBS de mão,
+  troca na 2.3, desafio com CBS).
+  **Tributos na DRE: como é × como fica** (pedido do cliente, 2026-11-18, com um
+  slide da controladoria de modelo: "trazer a estrutura oficial, como é e como
+  fica... isso vai impactar nos indicadores abaixo da Receita Líquida"). Cartão
+  `cartaoTributosDre` (expansor `tributos`, aberto por omissão) no negócio, na
+  filial e no Corporativo, com a estrutura OFICIAL nas duas versões: hoje (RB,
+  Deduções, 2.1, 2.2, 2.3 = ICMS e ISS + PIS/COFINS, RL) e no formato da reforma —
+  CBS como linha **informativa acima da Receita Bruta** (tributo por fora), RB sem
+  ela, 2.3 só ICMS e ISS. Amarelo (`.linha-muda`, #fde4a8, mais forte que o
+  amarelo-claro do "digite aqui") = linha que muda. Colunas: realizado, projeção
+  de 2026 e proposta. Em 2026 é só reclassificação (RL igual); na proposta a CBS
+  substitui o PIS/COFINS com outro valor e o quadro "efeito abaixo da Receita
+  Líquida" mostra a diferença até o resultado líquido e a margem.
+  - Conta em `Reforma::comoEComoFica` (soma em `somarComoEComoFica`). PIS/COFINS do
+    realizado = carga de tributos quando no mesmo corte; o resto do ano e a
+    proposta, pela taxa de 2026 sobre a 1.1; na filial, sempre pela taxa (corte −1).
+  - Na proposta com a CBS aplicada a TABELA já é o "como fica" (a 2.3 traz ICMS +
+    CBS); o "como é" desfaz a troca. Com a 2.3 lançada à mão a tabela segue na lei
+    atual e o cartão avisa (`.aviso-tributos`). No modo por filial a 2.3 do negócio
+    carrega a soma das trocas das filiais, para não aplicar a CBS duas vezes.
+  - O realizado jan–out do Corporativo reproduz o slide (RB 2.992,6 · deduções
+    106,9 · ICMS e ISS 44,0 · PIS/COFINS 15,6 · RL 2.885,8 → CBS 15,6 · RB 2.977,1 ·
+    deduções 91,3). Provas: `testes/estrutura_dre_nova.php` (exemplo de mão do
+    cliente, o slide, identidades da proposta, soma do Corporativo) e
+    `provasTributosComoEComoFica`.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas

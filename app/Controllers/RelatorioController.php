@@ -87,8 +87,8 @@ class RelatorioController
             $r = $resumo[(int)($l['negocio_id'] ?? 0)] ?? null;
             $linhas[$i]['projecao_rol'] = $r ? ($r['projecao']['3'] ?? null) : null;
             $linhas[$i]['proposta_rol'] = $r ? ($r['proposta']['3'] ?? null) : null;
-            $linhas[$i]['projecao_liquido'] = $r ? ($r['projecao']['16'] ?? null) : null;
-            $linhas[$i]['proposta_liquido'] = $r ? ($r['proposta']['16'] ?? null) : null;
+            $linhas[$i]['projecao_liquido'] = $r ? ($r['projecao'][Projecao::LINHA_RESULTADO] ?? null) : null;
+            $linhas[$i]['proposta_liquido'] = $r ? ($r['proposta'][Projecao::LINHA_RESULTADO] ?? null) : null;
             $linhas[$i]['modo_projecao'] = $r['modo'] ?? null;
         }
 

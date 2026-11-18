@@ -124,6 +124,7 @@ require_once __DIR__ . '/../app/Core/Json.php';
 require_once __DIR__ . '/../app/Core/Auth.php';
 require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
+require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Controllers/ProjecaoController.php';
 $ctrl = new App\Controllers\ProjecaoController();
 $ler = new ReflectionMethod($ctrl, 'premissasPorAno');
@@ -140,10 +141,11 @@ $anos = Projecao::anosDasPremissas(2027, 2030);
 $porAno = $ler->invoke($ctrl, $negocioId, $anos);
 prova('a leitura devolve UM conjunto para cada ano pedido',
     array_keys($porAno) === [2027, 2028, 2029, 2030], json_encode(array_keys($porAno)));
-// 2027 tem DIRETRIZ: IPCA 4,5, PIB 1,5 e pessoal 5,5 valem para todos, por cima
-// do digitado (6 e 5). O crescimento desejado é do negócio.
-prova('2027 traz a diretriz (IPCA 4,5, PIB 1,5, pessoal 5,5) por cima do digitado, e o desejado do negócio',
-    ($porAno[2027]['IPCA'] ?? null) === 4.5 && ($porAno[2027]['PIB'] ?? null) === 1.5
+// 2027 tem DIRETRIZ: o pessoal 5,5 vale para todos, por cima do digitado; IPCA
+// e PIB são SUGERIDOS — o IPCA 6 e o PIB 5 que o negócio digitou valem
+// (decisão do cliente, 2026-11-18). O crescimento desejado é do negócio.
+prova('2027: IPCA e PIB digitados pelo negócio (6 e 5) valem, pessoal fixo (5,5) e o desejado do negócio',
+    ($porAno[2027]['IPCA'] ?? null) === 6.0 && ($porAno[2027]['PIB'] ?? null) === 5.0
     && ($porAno[2027]['PESSOAS'] ?? null) === 5.5
     && ($porAno[2027]['CRESCIMENTO'] ?? null) === 12.0, json_encode($porAno[2027]));
 prova('2028 traz o SEU valor, sem herdar o de 2027', $porAno[2028] === ['IPCA' => 3.5], json_encode($porAno[2028]));
@@ -175,13 +177,13 @@ $linhasFilial = [
 $painel = Projecao::premissas($linhasFilial, $porAno[2027]);
 prova('Cresc. Total da filial é o DELA (20%), lido das linhas dela',
     abs($painel['CRESC_TOTAL'] - 20.0) < 1e-9, (string)$painel['CRESC_TOTAL']);
-prova('Cresc. Real da filial desconta o IPCA e o PIB que VALEM no negócio (20 − 4,5 − 1,5 = 14)',
-    abs($painel['CRESC_REAL'] - 14.0) < 1e-9, (string)$painel['CRESC_REAL']);
+prova('Cresc. Real da filial desconta o IPCA e o PIB que VALEM no negócio (20 − 6 − 5 = 9)',
+    abs($painel['CRESC_REAL'] - 9.0) < 1e-9, (string)$painel['CRESC_REAL']);
 prova('e o crescimento desejado chega ao painel da filial como registro (12)',
     $painel['CRESCIMENTO'] === 12.0, json_encode($painel['CRESCIMENTO']));
 
 // O crescimento desejado NÃO entra em conta: com ou sem ele, os derivados são os mesmos.
-$semDesejado = Projecao::premissas($linhasFilial, ['IPCA' => 4.5, 'PIB' => 1.5]);
+$semDesejado = Projecao::premissas($linhasFilial, ['IPCA' => 6.0, 'PIB' => 5.0]);
 prova('o crescimento desejado não move nenhum derivado',
     $semDesejado['CRESC_TOTAL'] === $painel['CRESC_TOTAL']
     && $semDesejado['CRESC_REAL'] === $painel['CRESC_REAL']

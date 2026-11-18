@@ -44,11 +44,25 @@ class Projecao
         '12' => ['10', '11'],
         '13' => ['12', '12.1'],
         '14' => ['14.1', '14.2', '14.3'],
-        '16' => ['13', '14'],
+        // Estrutura NOVA da DRE gerencial (2026-11-18): o rateio corporativo se
+        // divide em negócio (14.3) e administrativo (16.1); "14 - Resultado do
+        // negócio" (15) = após impostos + rateios do negócio; o líquido (18) =
+        // resultado do negócio + rateios administrativos.
+        '15' => ['13', '14'],
+        '16' => ['16.1'],
+        '18' => ['15', '16'],
     ];
 
-    /** Linha que o Qlik entrega pronta e que não sabemos recompor. */
-    public const SEM_PROPOSTA = ['15'];
+    /** Linhas-chave da DRE (estrutura nova). */
+    public const LINHA_APOS_IMPOSTOS = '13';
+    public const LINHA_RATEIOS_NEGOCIO = '14';
+    public const LINHA_RESULTADO_NEGOCIO = '15';
+    public const LINHA_RATEIOS_ADM = '16';
+    public const LINHA_RESULTADO = '18';
+    public const LINHA_MARGEM = '19';
+
+    /** Linha que o Qlik entrega pronta e que não sabemos recompor (Despesas Totais). */
+    public const SEM_PROPOSTA = ['17'];
 
     /**
      * As premissas que a pessoa DIGITA no painel. São TRÊS, e valem para o
@@ -211,11 +225,16 @@ class Projecao
      * As DIRETRIZES DO PLANEJAMENTO, por ano (documento "Diretrizes para o
      * Planejamento 2027", Concórdia, 16/11/2026, assinado pela presidência).
      *
-     * O que está aqui vale para TODOS os negócios naquele ano e não se digita:
-     * a tela mostra o valor com o selo da diretriz, e a gravação o recusa
-     * (decisão do cliente, 2026-11-18: "fixos em 2027"). O que alguém tenha
-     * digitado antes continua no banco, mas deixa de valer naquele ano. O
-     * crescimento REAL (`CRESCIMENTO`) fica fora de propósito — o documento o
+     * Dois tipos de valor:
+     *  - `premissas` e `beneficios` FIXOS: valem para TODOS os negócios naquele
+     *    ano e não se digitam — a tela mostra o valor com o selo da diretriz e a
+     *    gravação o recusa (decisão do cliente, 2026-11-18: "fixos em 2027").
+     *  - `sugeridas`: IPCA e PIB. Vêm preenchidos com o valor da diretriz, mas
+     *    CADA NEGÓCIO pode ajustar (decisão do cliente, 2026-11-18, revendo a
+     *    anterior: "deixe os percentuais de IPCA e PIB e % de crescimento do
+     *    faturamento para que cada negócio possa editar; porém as filiais devem
+     *    receber isso sem poder editar"). Apagar o digitado devolve a diretriz.
+     * O crescimento REAL (`CRESCIMENTO`) fica fora de propósito — o documento o
      * deixa "a ser definido com as gerências de cada negócio".
      *
      *  - Pessoal: reajuste de 5,50% (`PESSOAS`).
@@ -226,14 +245,16 @@ class Projecao
      *  - IPCA 4,50% (Focus de 06/11/2026) e PIB agropecuário 1,50%.
      *  - Demais despesas operacionais: sem crescimento sobre 2026 — que é o que a
      *    proposta já faz por omissão (vale a projeção).
-     *  - Nenhum negócio ou filial com meta negativa de resultado líquido — ver
-     *    `ProjecaoController::conferirResultado`.
+     *  - Nenhum negócio ou filial com meta negativa de resultado líquido — a
+     *    tela DESTACA o resultado negativo, sem travar o lançamento (decisão do
+     *    cliente, 2026-11-18).
      *  - Sobras líquidas mínimas de 2,0% — a meta do desafio (`desafio_ano`).
      */
     public const DIRETRIZES = [
         2027 => [
             'fonte' => 'Diretrizes para o Planejamento 2027 (16/11/2026)',
-            'premissas' => ['IPCA' => 4.5, 'PIB' => 1.5, 'PESSOAS' => 5.5],
+            'premissas' => ['PESSOAS' => 5.5],
+            'sugeridas' => ['IPCA' => 4.5, 'PIB' => 1.5],
             'beneficios' => ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0],
             'ppr_salarios' => 1.5,
         ],
@@ -245,10 +266,15 @@ class Projecao
         return self::DIRETRIZES[$ano] ?? null;
     }
 
-    /** As premissas que VALEM num ano: as digitadas, com as da diretriz por cima. */
+    /**
+     * As premissas que VALEM num ano: as sugeridas pela diretriz (IPCA e PIB),
+     * com as digitadas do negócio por cima, e as FIXAS da diretriz por cima de
+     * tudo.
+     */
     public static function premissasEfetivas(int $ano, array $digitadas): array
     {
-        return array_replace($digitadas, self::diretriz($ano)['premissas'] ?? []);
+        $d = self::diretriz($ano) ?? [];
+        return array_replace($d['sugeridas'] ?? [], $digitadas, $d['premissas'] ?? []);
     }
 
     /** Os benefícios que VALEM num ano: os digitados, com os da diretriz por cima. */
@@ -631,7 +657,7 @@ class Projecao
      * @param array $linhas  cada uma com `codigo`, `nivel`, `percentual`, `projecao`
      * @param array $lancados codigo => ['entrada'=>…, 'valor'=>…, 'percentual'=>…]
      */
-    public static function aplicar(array $linhas, array $lancados, array $crescimentos = []): array
+    public static function aplicar(array $linhas, array $lancados, array $crescimentos = [], ?array $tributacao = null): array
     {
         // As editáveis, uma a uma; os blocos saem de `derivar`.
         foreach ($linhas as $i => $l) {
@@ -675,6 +701,28 @@ class Projecao
                     unset($l);
                 }
             }
+        }
+
+        // A REFORMA (LC 214, decisão do cliente de 2026-11-18): em 2027 a CBS
+        // substitui o PIS e a COFINS. Onde a linha 2.3 não foi lançada, ela sai
+        // da proporção da receita (que carrega o PIS/COFINS de 2026) e troca esse
+        // PIS/COFINS pela CBS estimada (`Reforma::cbs`) sobre a receita e o custo
+        // DESTA proposta. O ICMS da linha segue.
+        if ($tributacao && isset($idx['2.3'], $idx['1.1'], $idx['4.1'])) {
+            $l23 = &$linhas[$idx['2.3']];
+            if (in_array($l23['proposta_origem'] ?? null, ['PROJECAO', 'PREMISSA'], true)) {
+                $rob = (float)($linhas[$idx['1.1']]['proposta'] ?? 0);
+                $custo = -(float)($linhas[$idx['4.1']]['proposta'] ?? 0);
+                $c = Reforma::cbs((string)$tributacao['cod'], $tributacao['trib'] ?? null, $rob, max(0.0, $custo));
+                if ($c) {
+                    $l23['proposta'] = (float)$l23['proposta'] + $c['pis_cofins'] - $c['cbs'];
+                    $l23['proposta_origem'] = 'PREMISSA';
+                    $l23['proposta_regra'] = 'CBS';
+                    $l23['proposta_padrao'] = (float)$l23['projecao'] != 0.0 ? ($l23['proposta'] / (float)$l23['projecao'] - 1) * 100 : null;
+                    $l23['cbs'] = $c;
+                }
+            }
+            unset($l23);
         }
 
         return self::derivar($linhas);
@@ -725,7 +773,7 @@ class Projecao
         int $ano,
         int $corte,
         int $anoPlan,
-        array $contasAlvo = ['3', '16']
+        array $contasAlvo = ['3', '18']
     ): array {
         if (!$negocioIds) {
             return [];
@@ -795,6 +843,11 @@ class Projecao
         }
 
         $pessoal = self::dadosDePessoal($negocioIds, $ano, $anoPlan);
+        $tributos = Oportunidades::tributos($negocioIds, $ano);
+        $codigos = [];
+        foreach (Database::todos('SELECT id, cod_negocio FROM negocio WHERE id IN (' . $marcas . ')', $negocioIds) as $n) {
+            $codigos[(int)$n['id']] = (string)$n['cod_negocio'];
+        }
 
         $filiais = Database::todos(
             'SELECT f.negocio_id, v.filial_id, v.conta_id, v.realizado, v.projetado
@@ -838,16 +891,17 @@ class Projecao
                 }
             }
             [$cresc] = self::crescimentosDoNegocio($anoPlan, $premissasPorNegocio[$id] ?? [], $p85, $pessoal[$id] ?? null);
+            $trib = isset($codigos[$id]) ? ['cod' => $codigos[$id], 'trib' => $tributos[$id] ?? null] : null;
 
             if ($modo === 'FILIAL' && !empty($dreFilial[$id])) {
                 $propostas = [];
                 foreach ($dreFilial[$id] as $filialId => $porConta) {
-                    $lf = self::aplicar($monta($porConta), $lanc[$filialId] ?? [], $cresc);
+                    $lf = self::aplicar($monta($porConta), $lanc[$filialId] ?? [], $cresc, $trib);
                     $propostas[$filialId] = array_column($lf, 'proposta', 'codigo');
                 }
                 $linhas = self::somarFiliais($linhas, $propostas);
             } else {
-                $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc);
+                $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc, $trib);
             }
 
             $proje = [];
