@@ -73,6 +73,88 @@ class Projecao
     public const PREMISSAS = ['IPCA', 'PIB', 'CRESCIMENTO', 'PESSOAS'];
 
     /**
+     * Planejamento de PESSOAS E BENEFÍCIOS por negócio (pedido do cliente,
+     * 2026-11-18): quanto o negócio paga de alimentação e de abono aos
+     * colaboradores que são dele.
+     *
+     * As regras, como o cliente as deu:
+     *  - **Alimentação**: R$ 500 por colaborador, por mês, os 12 meses.
+     *  - **Abono mensal**, em DUAS partes: R$ 200 de **assiduidade** (o
+     *    colaborador que cumpre os quesitos) e R$ 500 de **resultado**, que só se
+     *    paga no mês em que o negócio atinge o resultado planejado — "quando não
+     *    atinge, não ganha".
+     *  - **Quem divide o tempo entre negócios** (30/70, 50/50) é pago pelos dois,
+     *    cada um pela sua parte. Isso já está no número de colaboradores: a DRE
+     *    traz cada negócio com as pessoas EQUIVALENTES dele (confirmado pelo
+     *    cliente), então o custo do negócio sai direto de `colaboradores × valor`,
+     *    sem rateio por cima — ratear de novo dividiria duas vezes.
+     *  - **A base é o último mês do ano atual**: o quadro de dezembro de 2026
+     *    planeja 2027. Enquanto dezembro não existe, é o último mês carregado.
+     *
+     * O padrão dos valores mora AQUI, e só o que o cliente digita vai para
+     * `negocio_beneficio`: guardar o padrão também criaria duas fontes para o
+     * mesmo número, e a mudança do padrão não alcançaria quem o gravou.
+     * `PCT_ASSIDUIDADE` e `PCT_RESULTADO` são a PREVISÃO: que parte dos
+     * colaboradores cumpre a assiduidade, e em que parte dos meses o negócio
+     * atinge o resultado. O padrão é 100%, que é o orçamento cheio (o abono pago
+     * todo mês a todos) — e a tela mostra ao lado o que seria SEM o abono de
+     * resultado, porque é esse o risco que o negócio carrega.
+     *
+     * `COLABORADORES` é o quadro planejado quando difere do atual (contratação,
+     * desligamento); vazio, vale o quadro da DRE.
+     */
+    public const BENEFICIOS = ['COLABORADORES', 'ALIMENTACAO', 'ASSIDUIDADE', 'RESULTADO',
+        'PCT_ASSIDUIDADE', 'PCT_RESULTADO'];
+    public const BENEFICIOS_PADRAO = [
+        'ALIMENTACAO' => 500.0,
+        'ASSIDUIDADE' => 200.0,
+        'RESULTADO' => 500.0,
+        'PCT_ASSIDUIDADE' => 100.0,
+        'PCT_RESULTADO' => 100.0,
+    ];
+    /** Meses do ano em que se pagam alimentação e abono. */
+    public const BENEFICIOS_MESES = 12;
+
+    /**
+     * A previsão de benefícios de UM negócio em UM ano.
+     *
+     * @param array|null $base      ['ano','mes','colaboradores'] do quadro da DRE, ou null se não há
+     * @param array      $digitados chave => valor lançado pelo cliente para o ano
+     * @return array|null null quando não há com o que calcular (sem quadro e sem número digitado)
+     */
+    public static function pessoas(?array $base, array $digitados): ?array
+    {
+        $colabBase = $base ? (float)$base['colaboradores'] : null;
+        $colab = isset($digitados['COLABORADORES']) ? (float)$digitados['COLABORADORES'] : $colabBase;
+        if ($colab === null) {
+            return null;
+        }
+        $v = [];
+        foreach (self::BENEFICIOS_PADRAO as $chave => $padrao) {
+            $v[$chave] = isset($digitados[$chave]) ? (float)$digitados[$chave] : $padrao;
+        }
+        $m = self::BENEFICIOS_MESES;
+        $alim = $colab * $v['ALIMENTACAO'];
+        $assid = $colab * ($v['PCT_ASSIDUIDADE'] / 100) * $v['ASSIDUIDADE'];
+        $result = $colab * ($v['PCT_RESULTADO'] / 100) * $v['RESULTADO'];
+        $mensal = ['alimentacao' => $alim, 'assiduidade' => $assid, 'resultado' => $result,
+            'total' => $alim + $assid + $result];
+        $anual = array_map(static fn ($x) => round($x * $m, 2), $mensal);
+        return [
+            'colaboradores' => $colab,
+            'colaboradores_base' => $colabBase,
+            'base' => $base,
+            'valores' => $v,
+            'mensal' => array_map(static fn ($x) => round($x, 2), $mensal),
+            'anual' => $anual,
+            // O piso: o que o negócio paga se NUNCA atingir o resultado.
+            'sem_resultado_anual' => round(($alim + $assid) * $m, 2),
+            // O teto: todos cumprem a assiduidade e o negócio atinge o resultado todo mês.
+            'maximo_anual' => round($colab * ($v['ALIMENTACAO'] + $v['ASSIDUIDADE'] + $v['RESULTADO']) * $m, 2),
+        ];
+    }
+
+    /**
      * Os anos em que se lançam premissas: do ANO DA PROPOSTA ao último do ciclo.
      *
      * Começa no ano da proposta porque é o primeiro que ainda se planeja — o

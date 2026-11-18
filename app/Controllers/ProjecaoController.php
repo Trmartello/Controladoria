@@ -112,6 +112,9 @@ class ProjecaoController
         $soma = [];
         $semMeta = [];
         $lancaram = 0;
+        // Pessoas e benefícios: a soma dos negócios que têm quadro, e o quadro
+        // base (último mês) — o Corporativo não planeja, só totaliza.
+        $pessoasSoma = ['por_ano' => [], 'base' => null];
         foreach ($negocios as $n) {
             $m = $this->montar((int)$n['id'], $ano, $corte);
             foreach ($m['linhas'] as $l) {
@@ -142,6 +145,29 @@ class ProjecaoController
             if ($m['atualizado_em']) {
                 $lancaram++;
             }
+            if ($m['pessoas']['base']) {
+                $pessoasSoma['base'] = $m['pessoas']['base'];
+            }
+            foreach ($m['pessoas']['por_ano'] as $anoP => $calc) {
+                if (!$calc) {
+                    continue;
+                }
+                $acc = &$pessoasSoma['por_ano'][$anoP];
+                $acc ??= ['colaboradores' => 0.0, 'negocios' => 0,
+                    'mensal' => array_fill_keys(['alimentacao', 'assiduidade', 'resultado', 'total'], 0.0),
+                    'anual' => array_fill_keys(['alimentacao', 'assiduidade', 'resultado', 'total'], 0.0),
+                    'sem_resultado_anual' => 0.0, 'maximo_anual' => 0.0];
+                $acc['colaboradores'] += $calc['colaboradores'];
+                $acc['negocios']++;
+                foreach (['mensal', 'anual'] as $grupo) {
+                    foreach ($calc[$grupo] as $k => $x) {
+                        $acc[$grupo][$k] += $x;
+                    }
+                }
+                $acc['sem_resultado_anual'] += $calc['sem_resultado_anual'];
+                $acc['maximo_anual'] += $calc['maximo_anual'];
+                unset($acc);
+            }
         }
         return [
             'corporativo' => true,
@@ -159,6 +185,7 @@ class ProjecaoController
             'atualizado_por' => null,
             'negocios_consolidados' => count($negocios),
             'negocios_com_proposta' => $lancaram,
+            'pessoas' => $pessoasSoma,
             'linhas' => array_values($soma),
         ];
     }
@@ -273,6 +300,9 @@ class ProjecaoController
             // um, de uma vez: trocar de ano na tela não pede ida ao servidor.
             'anos_premissa' => $anosPremissa,
             'premissas_por_ano' => $porAno,
+            // Pessoas e benefícios do NEGÓCIO, por ano (a filial não tem o seu: o
+            // quadro e os valores são do negócio, que já traz a parte dele).
+            'pessoas' => $this->pessoasDoNegocio($negocioId, $ano, $anosPremissa),
             'filiais' => $filiais,
             'filiais_corte' => $filiaisCorte,
             'filial' => $filialAberta,
@@ -588,6 +618,130 @@ class ProjecaoController
         }
 
         $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
+    }
+
+    /**
+     * Lança um valor do planejamento de pessoas e benefícios: o número de
+     * colaboradores planejado, os valores por colaborador/mês ou os percentuais
+     * de previsão (`Projecao::BENEFICIOS`).
+     *
+     * É do NEGÓCIO e de UM ANO, como as premissas. **Não mexe na versão da
+     * proposta**: pessoas e benefícios não são linha da DRE nem entram na
+     * proposta, e marcá-la como alterada avisaria quem tem a tela aberta de uma
+     * mudança que não está nela. Valor vazio apaga o lançado e devolve o padrão.
+     */
+    public function gravarBeneficio(): void
+    {
+        $u = Auth::exigirLogin();
+        if ($u['perfil'] === 'LEITURA') {
+            Json::erro('Perfil somente leitura.', 403);
+        }
+        $corpo = Json::corpo();
+        $negocioId = (int)($corpo['negocio_id'] ?? 0);
+        $chave = strtoupper(trim((string)($corpo['chave'] ?? '')));
+
+        $escopo = Auth::escopoNegocios($u);
+        if ($escopo !== null && !in_array($negocioId, $escopo, true)) {
+            Json::erro('Sem acesso a este negócio.', 403);
+        }
+        if (!Database::um('SELECT id FROM negocio WHERE id = ?', [$negocioId])) {
+            Json::erro('Negócio não encontrado.', 404);
+        }
+        if (!in_array($chave, Projecao::BENEFICIOS, true)) {
+            Json::erro('Campo de pessoas e benefícios desconhecido: ' . $chave . '.', 422);
+        }
+        $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
+        if (!$fech) {
+            Json::erro('Nenhuma DRE carregada.', 409);
+        }
+        $anoPlan = (int)$fech['ano'] + 1;
+        $anos = $this->anosDasPremissas($anoPlan);
+        $anoPedido = $corpo['ano'] ?? null;
+        if ($anoPedido === null || $anoPedido === '') {
+            $ano = $anoPlan;
+        } elseif (!is_numeric($anoPedido) || (int)$anoPedido != $anoPedido) {
+            Json::erro('Ano inválido: informe um ano, como ' . $anoPlan . '.', 422);
+        } else {
+            $ano = (int)$anoPedido;
+        }
+        if (!in_array($ano, $anos, true)) {
+            Json::erro('Ano fora do ciclo: lance de ' . $anos[0] . ' a ' . end($anos) . '.', 422);
+        }
+
+        // Valida ANTES de escrever.
+        $bruto = $corpo['valor'] ?? null;
+        $apagar = $bruto === null || $bruto === '';
+        if (!$apagar) {
+            if (!is_numeric($bruto)) {
+                Json::erro('Informe um número.', 422);
+            }
+            $v = (float)$bruto;
+            if (str_starts_with($chave, 'PCT_')) {
+                if ($v < 0 || $v > 100) {
+                    Json::erro('Percentual fora de faixa: informe entre 0% e 100%.', 422);
+                }
+            } elseif ($v < 0 || $v > 100000) {
+                Json::erro(
+                    $chave === 'COLABORADORES'
+                        ? 'Número de colaboradores fora de faixa: informe entre 0 e 100.000.'
+                        : 'Valor fora de faixa: informe entre R$ 0 e R$ 100.000 por colaborador ao mês.',
+                    422
+                );
+            }
+        }
+
+        if ($apagar) {
+            Database::executar(
+                'DELETE FROM negocio_beneficio WHERE negocio_id = ? AND ano = ? AND chave = ?',
+                [$negocioId, $ano, $chave]
+            );
+        } else {
+            Database::executar(
+                'INSERT INTO negocio_beneficio (negocio_id, ano, chave, valor) VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE valor = VALUES(valor)',
+                [$negocioId, $ano, $chave, (float)$bruto]
+            );
+        }
+        $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
+    }
+
+    /**
+     * Pessoas e benefícios de UM negócio: o quadro da DRE (último mês do ano
+     * atual), o que foi digitado em cada ano e a previsão de cada ano.
+     *
+     * A previsão sai de `Projecao::pessoas` — a conta mora num lugar só, e é a
+     * mesma que o Corporativo soma.
+     *
+     * @param int[] $anos
+     */
+    private function pessoasDoNegocio(int $negocioId, int $anoBase, array $anos): array
+    {
+        $b = Database::um(
+            'SELECT ano, mes, colaboradores FROM negocio_pessoas_mes
+              WHERE negocio_id = ? AND ano = ? ORDER BY mes DESC LIMIT 1',
+            [$negocioId, $anoBase]
+        );
+        $base = $b ? ['ano' => (int)$b['ano'], 'mes' => (int)$b['mes'],
+            'colaboradores' => (int)$b['colaboradores']] : null;
+
+        $digitados = [];
+        foreach ($anos as $a) {
+            $digitados[(string)$a] = [];
+        }
+        foreach (Database::todos(
+            'SELECT ano, chave, valor FROM negocio_beneficio WHERE negocio_id = ?',
+            [$negocioId]
+        ) as $l) {
+            if (isset($digitados[(string)$l['ano']])) {
+                $digitados[(string)$l['ano']][$l['chave']] = (float)$l['valor'];
+            }
+        }
+        $porAno = [];
+        foreach ($anos as $a) {
+            $porAno[(string)$a] = Projecao::pessoas($base, $digitados[(string)$a]);
+        }
+        return ['base' => $base, 'digitados' => $digitados, 'por_ano' => $porAno,
+            'padrao' => Projecao::BENEFICIOS_PADRAO];
     }
 
     /**

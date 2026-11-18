@@ -5932,6 +5932,151 @@ async function provasSinalNoCelular(page, largura) {
 }
 
 /**
+ * Pessoas e benefícios por negócio (pedido do cliente, 2026-11-18): o quadro de
+ * colaboradores da DRE e o que o negócio paga de alimentação e de abono.
+ *
+ * Os números são de MÃO, e dois deles vêm do Qlik: Supermercados tem 406
+ * colaboradores em novembro de 2026, e os dez negócios com quadro somam 1.350.
+ * 406 × R$ 500 × 12 = R$ 2.436.000 de alimentação; sem o abono de resultado, a
+ * despesa cai de R$ 5.846.400 para R$ 3.410.400. Uma prova que refizesse a conta
+ * com a mesma fórmula do código passaria sem provar nada.
+ */
+async function provasPessoasEBeneficios(page, largura) {
+  const l = `[${largura}] Pessoas e benefícios:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abre`, abriu);
+  if (!abriu) return;
+
+  const escolher = (v) => page.evaluate((valor) => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((x) => (valor === 'corp' ? x.value === 'corp' : x.textContent.includes(valor)));
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return o.value;
+  }, v);
+  const aguardar = (fn) => esperar(page, fn, 15000);
+
+  const negocioId = await escolher('SUPERMERCADOS');
+  await aguardar("!!document.querySelector('.painel-pessoas .celula-beneficio')");
+  await new Promise((r) => setTimeout(r, 600));
+
+  const api = (n) => page.evaluate(async (id) => {
+    const d = await App.api(`/api/projecao?negocio_id=${id}`);
+    return { ano: d.ano_planejamento, pessoas: d.pessoas };
+  }, n);
+  const a0 = await api(negocioId);
+  const ano = a0.ano;
+  const calc = a0.pessoas.por_ano[ano];
+  t(`${l} o quadro vem da DRE: Supermercados tem 406 colaboradores em novembro`,
+    a0.pessoas.base && a0.pessoas.base.colaboradores === 406 && a0.pessoas.base.mes === 11,
+    JSON.stringify(a0.pessoas.base));
+  t(`${l} alimentação do ano: 406 × R$ 500 × 12 = R$ 2.436.000`, Math.abs(calc.anual.alimentacao - 2436000) < 0.5,
+    String(calc.anual.alimentacao));
+  t(`${l} sem o abono de resultado a despesa cai de R$ 5.846.400 para R$ 3.410.400`,
+    Math.abs(calc.anual.total - 5846400) < 0.5 && Math.abs(calc.sem_resultado_anual - 3410400) < 0.5,
+    `${calc.anual.total} / ${calc.sem_resultado_anual}`);
+
+  const tela = () => page.evaluate(() => {
+    const c = document.querySelector('.painel-pessoas');
+    const v = (k) => c.querySelector(`[data-pessoas="${k}"]`)?.textContent.replace(/\s+/g, ' ').trim() ?? null;
+    return {
+      quadro: c.querySelector('#pessoas-quadro')?.textContent.replace(/\s+/g, ' ').trim(),
+      campos: [...c.querySelectorAll('.celula-beneficio')].map((i) => i.dataset.chave),
+      travados: [...c.querySelectorAll('.celula-beneficio')].filter((i) => i.disabled).length,
+      alimentacao: v('alimentacao'), resultado: v('resultado'), total: v('total'), semResultado: v('sem_resultado'),
+      colabPlaceholder: c.querySelector('#beneficio-COLABORADORES')?.placeholder,
+      explica: c.textContent.includes('equivalentes'),
+    };
+  });
+  let e = await tela();
+  t(`${l} o cartão mostra o quadro (406) e diz que é do último mês carregado`,
+    /406/.test(e.quadro) && /nov/i.test(e.quadro) && e.colabPlaceholder === '406', JSON.stringify(e.quadro));
+  t(`${l} e explica que o número já é de colaboradores equivalentes (a divisão entre negócios)`, e.explica);
+  t(`${l} tem os seis campos, todos habilitados`,
+    e.campos.join() === 'COLABORADORES,ALIMENTACAO,ASSIDUIDADE,RESULTADO,PCT_ASSIDUIDADE,PCT_RESULTADO' && e.travados === 0,
+    e.campos.join());
+  t(`${l} a tela mostra a conta: R$ 2.436.000 de alimentação e R$ 5.846.400 no total`,
+    /2\.436\.000/.test(e.alimentacao) && /5\.846\.400/.test(e.total) && /3\.410\.400/.test(e.semResultado),
+    JSON.stringify([e.alimentacao, e.total, e.semResultado]));
+
+  // Digitar pela TELA: o abono de resultado em 50% dos meses.
+  await page.evaluate(() => {
+    const i = document.querySelector('#beneficio-PCT_RESULTADO'); i.focus(); i.value = '50'; i.blur();
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+  let a = await api(negocioId);
+  t(`${l} digitar na tela GRAVA no banco e a previsão muda (resultado: R$ 1.218.000)`,
+    a.pessoas.digitados[ano].PCT_RESULTADO === 50 && Math.abs(a.pessoas.por_ano[ano].anual.resultado - 1218000) < 0.5,
+    JSON.stringify(a.pessoas.digitados[ano]));
+  e = await tela();
+  t(`${l} e o cartão se repinta com o número novo`, /1\.218\.000/.test(e.resultado) && /4\.628\.400/.test(e.total),
+    JSON.stringify([e.resultado, e.total]));
+
+  // Por ano: outro ano não herda.
+  const outroAno = a.pessoas.por_ano && Object.keys(a.pessoas.por_ano).find((k) => Number(k) !== ano);
+  const post = (corpo) => page.evaluate(async (c) => {
+    try { await App.api('/api/projecao/beneficio', c); return 'OK'; } catch (er) { return er.message; }
+  }, { negocio_id: Number(negocioId), ...corpo });
+  t(`${l} lança em outro ano pela API`, (await post({ chave: 'ALIMENTACAO', valor: 700, ano: Number(outroAno) })) === 'OK');
+  a = await api(negocioId);
+  t(`${l} cada ano tem o seu valor (${ano} segue em R$ 500, ${outroAno} em R$ 700)`,
+    Math.abs(a.pessoas.por_ano[ano].anual.alimentacao - 2436000) < 0.5
+      && Math.abs(a.pessoas.por_ano[outroAno].anual.alimentacao - 406 * 700 * 12) < 0.5,
+    `${a.pessoas.por_ano[ano].anual.alimentacao} / ${a.pessoas.por_ano[outroAno].anual.alimentacao}`);
+
+  // Recusas.
+  const r1 = await post({ chave: 'PCT_RESULTADO', valor: 150 });
+  const r2 = await post({ chave: 'ALIMENTACAO', valor: -5 });
+  const r3 = await post({ chave: 'SALARIO', valor: 1 });
+  const r4 = await post({ chave: 'ALIMENTACAO', valor: 'abc' });
+  t(`${l} recusa percentual fora de 0–100, valor negativo, campo desconhecido e texto`,
+    /fora de faixa/.test(r1) && /fora de faixa/.test(r2) && /desconhecido/.test(r3) && /número/.test(r4),
+    [r1, r2, r3, r4].map((x) => x.slice(0, 28)).join(' | '));
+
+  // Corporativo: só totaliza.
+  await escolher('corp');
+  await aguardar("!!document.querySelector('#projecao-corporativo-cobertura')");
+  const corp = await page.evaluate(async () => {
+    const c = await App.api('/api/projecao?corporativo=1');
+    const soma = { colab: 0, total: 0, n: 0 };
+    for (const n of c.negocios) {
+      const d = await App.api(`/api/projecao?negocio_id=${n.id}`);
+      const p = d.pessoas.por_ano[c.ano_planejamento];
+      if (p) { soma.colab += p.colaboradores; soma.total += p.anual.total; soma.n++; }
+      if ((d.pessoas.digitados[c.ano_planejamento] || {}).COLABORADORES !== undefined) soma.override = true;
+    }
+    return {
+      colab: c.pessoas.por_ano[c.ano_planejamento].colaboradores,
+      total: c.pessoas.por_ano[c.ano_planejamento].anual.total,
+      negocios: c.pessoas.por_ano[c.ano_planejamento].negocios,
+      soma,
+      campos: document.querySelectorAll('.painel-pessoas .celula-beneficio').length,
+      card: !!document.querySelector('.painel-pessoas'),
+      texto: document.querySelector('#pessoas-quadro')?.textContent.replace(/\s+/g, ' ').trim(),
+    };
+  });
+  t(`${l} o Corporativo SOMA os negócios (colaboradores e despesa), sem campo nenhum`,
+    corp.card && corp.campos === 0 && corp.colab === corp.soma.colab && Math.abs(corp.total - corp.soma.total) < 1 && corp.negocios === corp.soma.n,
+    JSON.stringify(corp));
+  // Âncora externa: só vale enquanto ninguém planejou contratação/desligamento
+  // (COLABORADORES digitado) — senão o total deixa de ser o quadro da DRE, de
+  // propósito, e a prova se declara não aplicável em vez de passar no vazio.
+  t(corp.soma.override
+    ? `${l} (há COLABORADORES digitado neste banco: a âncora dos 1.350 não se aplica)`
+    : `${l} sem nenhum número digitado, são os 1.350 colaboradores dos 10 negócios (âncora do Qlik)`,
+  corp.soma.override === true || corp.colab === 1350, String(corp.colab));
+
+  // Devolve a massa: valor vazio apaga o lançado.
+  await post({ chave: 'PCT_RESULTADO', valor: null });
+  await post({ chave: 'ALIMENTACAO', valor: null, ano: Number(outroAno) });
+  a = await api(negocioId);
+  t(`${l} a massa volta ao que era`,
+    Object.keys(a.pessoas.digitados[ano]).length === 0 && Object.keys(a.pessoas.digitados[outroAno]).length === 0,
+    JSON.stringify(a.pessoas.digitados));
+}
+
+/**
  * IPCA, PIB e o CRESCIMENTO DESEJADO valem para o negócio inteiro e para todas
  * as filiais dele, com um valor para cada ANO (pedido do cliente, 2026-11-16:
  * "quando lançar o PIB e o IPCA, deve ficar fixo, gravado, registrado, ou seja,
@@ -9394,6 +9539,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoCorporativo(page, 'desktop');
   await provasProjecaoPessoas(page, 'desktop');
   await provasSinalNoCelular(page, 'desktop');
+  await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
   await provasProjecaoNoDossie(page, 'desktop');
@@ -9458,6 +9604,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoCorporativo(pageM, 'celular');
   await provasProjecaoPessoas(pageM, 'celular');
   await provasSinalNoCelular(pageM, 'celular');
+  await provasPessoasEBeneficios(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
   await provasProjecaoNoDossie(pageM, 'celular');
   await provasMenuRecolhido(pageM, 'celular');

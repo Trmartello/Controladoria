@@ -2954,6 +2954,37 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   Nota de leitura: o resultado líquido consolidado é **sem participação
   societária** (convenção da controladoria) — não é comparável com as sobras de
   R$ 75 mi que a cooperativa divulga, que as incluem.
+  **Pessoas e benefícios** (pedido do cliente, 2026-11-18): cartão na Projeção,
+  por NEGÓCIO e por ANO, com o quadro de colaboradores e o que o negócio paga de
+  alimentação e de abono. Regras como o cliente as deu: **alimentação R$ 500** por
+  colaborador por mês (12 meses); **abono mensal** em duas partes — **R$ 200 de
+  assiduidade** (quem cumpre os quesitos) e **R$ 500 de resultado**, pago **só no
+  mês em que o negócio atinge o resultado planejado** ("quando não atinge, não
+  ganha"). O **quadro vem da DRE** (`Número Funcionarios`, campo da tabela de
+  fatos do DRE Gerencial, somado por negócio e mês — `negocio_pessoas_mes`,
+  `database/pessoas_*.php`, `CargaPessoas`, carga pedida no chat como a da DRE) e
+  a base do planejamento é o **ÚLTIMO mês do ano atual** (dezembro de 2026
+  planeja 2027; enquanto dezembro não existe, é novembro, e a base anda sozinha
+  quando a carga de dezembro chega — mesmo que o número caia). **A divisão entre
+  negócios já está no número** (confirmado pelo cliente: quem trabalha 30/70
+  entra em cada negócio pela sua parte, arredondada): o valor é de colaboradores
+  EQUIVALENTES e o custo sai direto de `colaboradores × valor`, **sem rateio por
+  cima** — ratear de novo dividiria duas vezes. O que o cliente digita
+  (`negocio_beneficio`, só o digitado): colaboradores planejados (contratação ou
+  desligamento), os três valores e dois percentuais de PREVISÃO (`PCT_ASSIDUIDADE`,
+  `PCT_RESULTADO`, padrão 100% = orçamento cheio). O **padrão** (R$ 500/200/500)
+  mora em `Projecao::BENEFICIOS_PADRAO`, não no banco: duas fontes para o mesmo
+  número. A tela mostra ao lado o **piso** (se o negócio nunca atingir o
+  resultado, só alimentação + assiduidade) e o **teto**, porque o abono de
+  resultado é o risco que o negócio carrega. **Não entra na proposta**: a DRE não
+  tem linha de pessoal, então o cartão é onde o valor com pessoas é PREVISTO, e
+  gravar aqui não mexe na versão da proposta. O Corporativo só soma (cartão
+  somente leitura). **Fora do escopo, por decisão do cliente:** as áreas de apoio
+  (18 Apoio Operacional, 87 pessoas; 20 Administração Matriz, 127) — que a DRE
+  traz mas não são negócios — e os negócios sem quadro (Fruticultura, Juros s/
+  cota capital, Usina). Quadro de nov/2026: 1.350 nos 10 negócios (1.564 com as
+  áreas de apoio). Provas: `testes/pessoas.php` (conta de mão e carga) e
+  `provasPessoasEBeneficios` (tela, gravação, Corporativo).
   **Valor negativo no celular: a tecla "−/+" (`sinal.js`).** O teclado numérico do
   iPhone (`inputmode="decimal"`) **não tem o sinal de menos**, e quem lançava
   despesa, variação ou resultado negativo pelo celular não podia (pedido do
