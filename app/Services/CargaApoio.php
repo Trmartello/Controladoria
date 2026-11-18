@@ -273,6 +273,88 @@ class CargaApoio
         return ['negocios' => count($negocios), 'linhas' => count($series), 'parados' => count($parados)];
     }
 
+    /**
+     * Lançamentos do quadro de oportunidades e juros recebidos
+     * (`database/lancamentos_*.php`). A linha da DRE de cada lançamento sai do
+     * mapa reduzida → linha da estrutura da DRE Gerencial que vem na carga (e,
+     * para as contas de itens, de `Oportunidades::CONTAS`). Negócio fora do
+     * cadastro (o 20, administrativo) é contado e ignorado. Regrava o ano.
+     *
+     * @return array{lancamentos:int, juros:int, ignorados:int}
+     */
+    public static function lancamentos(PDO $pdo, array $dados): array
+    {
+        $ano = (int)($dados['ano'] ?? 0);
+        $mes = (int)($dados['mes_ate'] ?? 0);
+        if ($ano < 2000 || $mes < 1 || $mes > 12 || empty($dados['lancamentos'])) {
+            throw new RuntimeException('Carga de lançamentos sem ano, com mês inválido ou sem lançamentos.');
+        }
+        $linhaDe = [];
+        foreach ($dados['linhas'] ?? [] as $linha => $reduzidas) {
+            foreach ($reduzidas as $r) {
+                $linhaDe[(string)$r] = (string)$linha;
+            }
+        }
+        $ids = [];
+        foreach ($pdo->query('SELECT id, cod_negocio FROM negocio')->fetchAll(PDO::FETCH_ASSOC) as $n) {
+            $ids[(string)$n['cod_negocio']] = (int)$n['id'];
+        }
+        $linhas = [];
+        $ignorados = 0;
+        foreach ($dados['lancamentos'] as $i => $l) {
+            if (count($l) !== 11) {
+                throw new RuntimeException("Carga de lançamentos: a linha {$i} não tem as 11 colunas.");
+            }
+            [$neg, $fil, $filial, $data, $m, $red, $conta, $nome, $hist, $compl, $valor] = $l;
+            if (!isset($ids[(string)$neg])) {
+                $ignorados++;
+                continue;
+            }
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$data) || (int)$m < 1 || (int)$m > $mes
+                || (int)substr((string)$data, 0, 4) !== $ano || (int)substr((string)$data, 5, 2) !== (int)$m) {
+                throw new RuntimeException("Carga de lançamentos: data ou mês inválido na linha {$i} ({$data}, mês {$m}).");
+            }
+            $linhas[] = [$ids[(string)$neg], $ano, (int)$m, $data, (string)$fil, mb_substr((string)$filial, 0, 120),
+                (string)$conta, (string)$red, mb_substr((string)$nome, 0, 120),
+                $linhaDe[(string)$red] ?? (Oportunidades::CONTAS[(string)$conta][2] ?? null),
+                mb_substr((string)$hist, 0, 120), mb_substr((string)$compl, 0, 255), (float)$valor];
+        }
+        $juros = [];
+        foreach ($dados['juros_totais'] ?? [] as $j) {
+            [$neg, $fil, $filial, $red, $total, $n] = $j;
+            if (isset($ids[(string)$neg])) {
+                $juros[] = [$ids[(string)$neg], $ano, $mes, (string)$fil, mb_substr((string)$filial, 0, 120), (string)$red, (float)$total, (int)$n];
+            }
+        }
+        $dono = !$pdo->inTransaction();
+        if ($dono) {
+            $pdo->beginTransaction();
+        }
+        try {
+            $pdo->prepare('DELETE FROM dre_lancamento WHERE ano = ?')->execute([$ano]);
+            $pdo->prepare('DELETE FROM juros_recebido WHERE ano = ?')->execute([$ano]);
+            $ins = $pdo->prepare('INSERT INTO dre_lancamento (negocio_id, ano, mes, data, cod_filial, filial, conta, reduzida,
+                conta_nome, linha_dre, historico, complemento, valor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            foreach ($linhas as $l) {
+                $ins->execute($l);
+            }
+            $insJ = $pdo->prepare('INSERT INTO juros_recebido (negocio_id, ano, mes_ate, cod_filial, filial, reduzida, total, lancamentos)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+            foreach ($juros as $j) {
+                $insJ->execute($j);
+            }
+            if ($dono) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($dono) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+        return ['lancamentos' => count($linhas), 'juros' => count($juros), 'ignorados' => $ignorados];
+    }
+
     private static function cabecalho(array $dados, string $nome): array
     {
         $ano = (int)($dados['ano'] ?? 0);

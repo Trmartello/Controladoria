@@ -68,6 +68,13 @@ class Oportunidades
         'MULTA' => 'Multas', 'RECEITA' => 'Receitas pontuais',
     ];
 
+    /** Lançamentos que explicam o quadro: só os deste tamanho para cima (R$). */
+    public const LANCAMENTO_MINIMO = 10000.0;
+    /** Juros recebido acima disto num lançamento é RISCO (pedido do cliente, 2026-11-18). */
+    public const JUROS_RISCO = 30000.0;
+    /** Juros ativos: reduzida => quem paga. */
+    public const JUROS_CONTAS = ['3153' => 'sócio', '3155' => 'não sócio'];
+
     /** Meses fora do padrão: afastamento mínimo, relativo à mediana e em reais. */
     public const PICO_RELATIVO = 0.5;
     public const PICO_MINIMO = 50000.0;
@@ -265,9 +272,133 @@ class Oportunidades
             ];
         }
         usort($linhas, static fn ($a, $b) => ($b['oportunidade'] - $b['risco']) <=> ($a['oportunidade'] - $a['risco']));
+        // Os lançamentos que formam cada valor (pedido do cliente, 2026-11-18): o
+        // item, pela conta; o evento, pela linha nos meses fora do padrão — sem as
+        // contas que já são item, que saíram da série da linha.
+        $codFilial = $filialId
+            ? (string)(Database::um('SELECT cod_filial FROM filial WHERE id = ?', [$filialId])['cod_filial'] ?? '')
+            : null;
+        $contasItem = array_values(array_unique(array_map(static fn ($l) => $l['codigo'],
+            array_filter($linhas, static fn ($l) => $l['tipo'] === 'ITEM'))));
+        foreach ($linhas as &$l) {
+            $l['lancamentos'] = $l['tipo'] === 'ITEM'
+                ? self::lancamentos($negocioId, $ano, $corte, ['conta' => $l['codigo']], $codFilial)
+                : self::lancamentos($negocioId, $ano, $corte, ['linha' => $l['codigo'],
+                    'meses' => array_column($l['meses'], 'mes'), 'sem' => $contasItem], $codFilial);
+        }
+        unset($l);
         $op = array_sum(array_column($linhas, 'oportunidade'));
         $ri = array_sum(array_column($linhas, 'risco'));
         return ['mes_ate' => $corte, 'linhas' => $linhas, 'oportunidade' => $op, 'risco' => $ri, 'saldo' => $op + $ri];
+    }
+
+    /**
+     * Os lançamentos de R$ 10 mil ou mais por trás de um valor do quadro: pela
+     * conta (`['conta' => …]`) ou pela linha da DRE em alguns meses (`['linha' =>
+     * …, 'meses' => […], 'sem' => [contas a deixar de fora]]`); na filial, só os
+     * dela. Valores no sinal da DRE. Os 40 maiores, com quantos e quanto somam
+     * todos os do piso para cima.
+     *
+     * @return array{itens:array, quantos:int, soma:float, minimo:float}
+     */
+    public static function lancamentos(int $negocioId, int $ano, int $corte, array $filtro, ?string $codFilial = null): array
+    {
+        $onde = 'negocio_id = ? AND ano = ? AND mes <= ? AND ABS(valor) >= ?';
+        $p = [$negocioId, $ano, $corte, self::LANCAMENTO_MINIMO];
+        if (isset($filtro['conta'])) {
+            $onde .= ' AND conta = ?';
+            $p[] = $filtro['conta'];
+        } else {
+            $meses = array_map('intval', $filtro['meses'] ?: [0]);
+            $onde .= ' AND linha_dre = ? AND mes IN (' . implode(',', array_fill(0, count($meses), '?')) . ')';
+            $p = array_merge($p, [$filtro['linha']], $meses);
+            if (!empty($filtro['sem'])) {
+                $onde .= ' AND conta NOT IN (' . implode(',', array_fill(0, count($filtro['sem']), '?')) . ')';
+                $p = array_merge($p, $filtro['sem']);
+            }
+        }
+        if ($codFilial !== null) {
+            $onde .= ' AND cod_filial = ?';
+            $p[] = $codFilial;
+        }
+        $tot = Database::um("SELECT COUNT(*) n, COALESCE(SUM(valor), 0) s FROM dre_lancamento WHERE {$onde}", $p);
+        $itens = array_map(static fn ($r) => [
+            'data' => $r['data'], 'mes' => (int)$r['mes'], 'cod_filial' => $r['cod_filial'], 'filial' => $r['filial'],
+            'conta' => $r['conta'], 'conta_nome' => trim($r['conta_nome']), 'historico' => trim($r['historico']),
+            'complemento' => trim($r['complemento']), 'valor' => -(float)$r['valor'],
+        ], Database::todos(
+            "SELECT * FROM dre_lancamento WHERE {$onde} ORDER BY ABS(valor) DESC, data LIMIT 40", $p
+        ));
+        return ['itens' => $itens, 'quantos' => (int)$tot['n'], 'soma' => -(float)$tot['s'], 'minimo' => self::LANCAMENTO_MINIMO];
+    }
+
+    /** "000902500 0350688-ALTAIR LORENZETT" → ['0350688', 'ALTAIR LORENZETT']; o resto, inteiro. */
+    public static function cliente(string $complemento): array
+    {
+        if (preg_match('/^\d+\s+(\d+)-(.+)$/u', trim($complemento), $m)) {
+            return [$m[1], trim($m[2])];
+        }
+        return ['', trim($complemento)];
+    }
+
+    /**
+     * JUROS RECEBIDOS — sócio (3153) e não sócio (3155) — e onde eles se
+     * concentram (pedido do cliente, 2026-11-18: "valores acima de R$ 30 mil são
+     * risco; quero saber onde tem e de que cliente se trata"). O total do ano é de
+     * todos os lançamentos; os lançamentos e os clientes vêm da carga dos de R$ 5
+     * mil ou mais. Receita no sinal da DRE (positiva). Null sem a carga.
+     */
+    public static function juros(int $negocioId, int $ano, ?string $codFilial = null): ?array
+    {
+        $f = $codFilial !== null ? ' AND cod_filial = ?' : '';
+        $p = $codFilial !== null ? [$negocioId, $ano, $codFilial] : [$negocioId, $ano];
+        $tot = Database::todos(
+            "SELECT reduzida, MAX(mes_ate) mes_ate, SUM(total) total, SUM(lancamentos) n FROM juros_recebido
+              WHERE negocio_id = ? AND ano = ?{$f} GROUP BY reduzida", $p
+        );
+        if (!$tot) {
+            return null;
+        }
+        $por = array_column($tot, null, 'reduzida');
+        $lanc = Database::todos(
+            "SELECT * FROM dre_lancamento WHERE negocio_id = ? AND ano = ? AND reduzida IN ('3153','3155') AND valor < 0{$f}
+              ORDER BY valor, data", $p
+        );
+        $acima = [];
+        $clientes = [];
+        foreach ($lanc as $r) {
+            $v = -(float)$r['valor'];
+            [$cod, $nome] = self::cliente($r['complemento']);
+            $quem = self::JUROS_CONTAS[$r['reduzida']] ?? $r['reduzida'];
+            if ($v >= self::JUROS_RISCO) {
+                $acima[] = ['data' => $r['data'], 'mes' => (int)$r['mes'], 'cod_filial' => $r['cod_filial'], 'filial' => $r['filial'],
+                    'tipo' => $quem, 'cliente_cod' => $cod, 'cliente' => $nome, 'historico' => trim($r['historico']), 'valor' => $v];
+            }
+            $k = $cod !== '' ? $cod : $nome;
+            $c = &$clientes[$k];
+            $c ??= ['cliente_cod' => $cod, 'cliente' => $nome, 'tipo' => $quem, 'valor' => 0.0, 'lancamentos' => 0, 'filiais' => []];
+            $c['valor'] += $v;
+            $c['lancamentos']++;
+            $c['filiais'][$r['cod_filial']] = $r['filial'];
+            unset($c);
+        }
+        $clientes = array_values(array_filter($clientes, static fn ($c) => $c['valor'] >= self::JUROS_RISCO));
+        foreach ($clientes as &$c) {
+            $c['filiais'] = array_values(array_map(static fn ($k, $n) => ['cod_filial' => (string)$k, 'filial' => $n],
+                array_keys($c['filiais']), $c['filiais']));
+        }
+        unset($c);
+        usort($clientes, static fn ($a, $b) => $b['valor'] <=> $a['valor']);
+        $socio = -(float)($por['3153']['total'] ?? 0);
+        $naoSocio = -(float)($por['3155']['total'] ?? 0);
+        return [
+            'mes_ate' => (int)max(array_column($tot, 'mes_ate')),
+            'socio' => $socio, 'nao_socio' => $naoSocio, 'total' => $socio + $naoSocio,
+            'lancamentos' => (int)array_sum(array_column($tot, 'n')),
+            'limite' => self::JUROS_RISCO,
+            'acima' => $acima, 'risco' => array_sum(array_column($acima, 'valor')),
+            'clientes' => $clientes,
+        ];
     }
 
     /**

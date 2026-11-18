@@ -121,6 +121,7 @@ class ProjecaoController
         $tributosDre = [];
         $oportunidades = [];
         $estoque = [];
+        $juros = [];
         foreach ($negocios as $n) {
             $m = $this->montar((int)$n['id'], $ano, $corte);
             $tributosDre[(int)$n['id']] = $m['tributos_dre'];
@@ -129,6 +130,14 @@ class ProjecaoController
                 $oportunidades[(int)$n['id']] = [
                     'mes_ate' => $q['mes_ate'], 'oportunidade' => $q['oportunidade'], 'risco' => $q['risco'],
                     'itens' => array_map(static fn ($l) => ['rotulo' => $l['nome']], array_slice($q['linhas'], 0, 3)),
+                ];
+            }
+            if ($j = $m['oportunidades']['juros']) {
+                $juros[(int)$n['id']] = [
+                    'socio' => $j['socio'], 'nao_socio' => $j['nao_socio'], 'total' => $j['total'],
+                    'risco' => $j['risco'], 'acima' => count($j['acima']),
+                    'maiores' => array_map(static fn ($c) => ['cliente' => $c['cliente'], 'valor' => $c['valor']],
+                        array_slice($j['clientes'], 0, 3)),
                 ];
             }
             if ($m['estoque']) {
@@ -219,6 +228,8 @@ class ProjecaoController
             'oportunidades_negocios' => $oportunidades,
             // Por negócio, o montante do estoque (perdas, acerto, parados).
             'estoque_negocios' => $estoque,
+            // Por negócio, os juros recebidos e os lançamentos acima de R$ 30 mil.
+            'juros_negocios' => $juros,
             'linhas' => array_values($soma),
         ];
     }
@@ -354,6 +365,9 @@ class ProjecaoController
                 'quadro' => Oportunidades::quadro($negocioId, $ano, $corte, $filialId),
                 // Perdas, acerto e estoque parado DA FILIAL.
                 'estoque' => Oportunidades::estoque($negocioId, $ano, $corte, $filialId),
+                // Juros recebidos DA FILIAL e os lançamentos acima de R$ 30 mil.
+                'juros' => Oportunidades::juros($negocioId, $ano,
+                    (string)(Database::um('SELECT cod_filial FROM filial WHERE id = ?', [$filialId])['cod_filial'] ?? '')),
             ];
         }
 
@@ -397,6 +411,8 @@ class ProjecaoController
                 // O quadro único (itens + eventos, com os meses e os totais).
                 'quadro' => Oportunidades::quadro($negocioId, $ano, $corte),
                 'grupos' => Oportunidades::GRUPOS,
+                // Juros recebidos (sócio e não sócio) e onde se concentram.
+                'juros' => Oportunidades::juros($negocioId, $ano),
             ],
             // O montante de oportunidades do ESTOQUE (perdas e acerto acima da média,
             // produtos parados), totalizado abaixo da DRE (pedido do cliente,

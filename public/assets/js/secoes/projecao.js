@@ -1203,7 +1203,7 @@ const SecaoProjecao = {
       return naFilial ? this.expansor('oportunidades', 'painel-oportunidades', titulo, 'nenhum item ou mês fora do padrão',
         `<div class="small text-muted" id="filial-sem-picos">Nenhum mês fora do padrão nesta filial em ${d.ano}
           (despesas operacionais, outros valores e resultado financeiro, acima de R$ 50 mil). Os itens não recorrentes por conta
-          contábil estão no negócio.</div>`) : '';
+          contábil estão no negócio.</div>${this.secaoJuros(d.filial.juros, true)}`) : '';
     }
     const m = (v) => this.moeda(v);
     const linhas = q.linhas.map((l) => {
@@ -1215,7 +1215,8 @@ const SecaoProjecao = {
         <td class="text-end">${l.mediana === null || l.mediana === undefined ? '<span class="text-muted">—</span>' : m(l.mediana)}</td>
         <td class="small">${l.meses.length ? l.meses.map((x) => `${this.nomeMes(x.mes)}: ${m(x.valor)}`).join(' · ') : '<span class="text-muted">sem o mês</span>'}</td>
         <td class="text-end">${l.oportunidade ? `<span class="text-success">+${m(l.oportunidade)}</span>` : ''}</td>
-        <td class="text-end">${l.risco ? `<span class="text-danger">−${m(Math.abs(l.risco))}</span>` : ''}</td></tr>`;
+        <td class="text-end">${l.risco ? `<span class="text-danger">−${m(Math.abs(l.risco))}</span>` : ''}</td></tr>
+        ${this.linhaDeLancamentos(l, item, 7)}`;
     }).join('');
     const resumo = `oportunidades ${this.mi(q.oportunidade, true)} · riscos ${this.mi(q.risco)} · saldo ${this.mi(q.saldo, true)}`;
     return this.expansor('oportunidades', 'painel-oportunidades', titulo, resumo, `
@@ -1244,7 +1245,86 @@ const SecaoProjecao = {
         juros concentrada num mês, uma despesa que não se repete${naFilial ? '' : '; calculados sem os itens acima, para nada contar duas vezes'}. Se não se repetir em ${d.ano_planejamento}, despesa é <strong>oportunidade</strong> e receita ou reversão é
         <strong>risco</strong>. Meses no sinal da DRE (despesa negativa).</div>
       <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: se um item não vai se repetir (ou se falta algo
-        que ${d.ano} não teve), lance na linha da DRE correspondente.</div>`);
+        que ${d.ano} não teve), lance na linha da DRE correspondente. Em cada linha, <strong>Lançamentos</strong> abre os de
+        R$ 10 mil ou mais que formam o valor: data, filial, conta, histórico e o complemento (documento e cliente).</div>
+      ${this.secaoJuros(naFilial ? d.filial.juros : (d.oportunidades || {}).juros, naFilial)}`);
+  },
+
+  /**
+   * A linha recolhida, logo abaixo de cada item ou evento do quadro, com os
+   * lançamentos que formam o valor (pedido do cliente, 2026-11-18: "um expansor
+   * onde eu identifique o lançamento e a filial"). Fechada por padrão.
+   */
+  linhaDeLancamentos(l, item, colunas) {
+    const x = l.lancamentos;
+    if (!x) return '';
+    const m = (v) => this.moeda(v);
+    const chave = Modal.esc(`${l.tipo}:${l.codigo}`);
+    if (!x.quantos) {
+      return `<tr class="linha-lancamentos" data-lancamentos="${chave}"><td colspan="${colunas}" class="small text-muted py-1">
+        Nenhum lançamento de R$ ${m(x.minimo)} ou mais ${item ? 'nesta conta' : 'nesta linha nesses meses'}: o valor é a soma de
+        lançamentos menores.</td></tr>`;
+    }
+    const data = (s) => s.split('-').reverse().join('/');
+    const linhas = x.itens.map((i) => `<tr>
+        <td class="text-nowrap">${data(i.data)}</td>
+        <td>${Modal.esc(i.cod_filial)} — ${Modal.esc(i.filial)}</td>
+        <td>${Modal.esc(i.conta_nome)} <span class="text-muted">${Modal.esc(i.conta)}</span></td>
+        <td>${Modal.esc(i.historico)}</td>
+        <td>${Modal.esc(i.complemento)}</td>
+        <td class="text-end text-nowrap">${m(i.valor)}</td></tr>`).join('');
+    const mais = x.quantos > x.itens.length
+      ? `<div class="text-muted">Mostrando os ${x.itens.length} maiores de ${x.quantos}.</div>` : '';
+    // Quanto do valor da linha nesses meses os lançamentos grandes explicam: o resto
+    // é a soma de lançamentos menores (fretes, comissões, folha por filial).
+    const base = (l.meses || []).reduce((a, b) => a + b.valor, 0);
+    const parte = Math.abs(base) >= 1 ? Math.round((x.soma / base) * 100) : null;
+    const cobre = parte !== null && parte >= 0 && parte <= 200 ? ` — ${parte}% do valor${item ? '' : ' desses meses'}` : '';
+    return `<tr class="linha-lancamentos" data-lancamentos="${chave}"><td colspan="${colunas}" class="py-0">
+      <details class="small lancamentos-do-quadro">
+        <summary>Lançamentos — ${x.quantos} de R$ ${m(x.minimo)} ou mais, somando ${m(x.soma)}${item ? '' : ' nos meses fora do padrão'}${cobre}</summary>
+        <div class="table-responsive"><table class="table table-sm table-borderless mb-1 tabela-lancamentos">
+          <thead><tr><th>Data</th><th>Filial</th><th>Conta</th><th>Histórico</th><th>Complemento (documento e cliente)</th>
+            <th class="text-end">Valor</th></tr></thead>
+          <tbody>${linhas}</tbody></table></div>${mais}
+      </details></td></tr>`;
+  },
+
+  /**
+   * JUROS RECEBIDOS, sócio e não sócio (pedido do cliente, 2026-11-18): o total
+   * do ano e os lançamentos acima de R$ 30 mil — risco, se não se repetirem —
+   * com a filial e o cliente; e os clientes que somam mais de R$ 30 mil.
+   */
+  secaoJuros(j, naFilial) {
+    if (!j) return '';
+    const m = (v) => this.moeda(v);
+    const data = (s) => s.split('-').reverse().join('/');
+    const lim = m(j.limite);
+    const acima = j.acima.map((a) => `<tr data-juros-lancamento="${Modal.esc(a.cliente_cod || a.cliente)}">
+        <td class="text-nowrap">${data(a.data)}</td><td>${Modal.esc(a.cod_filial)} — ${Modal.esc(a.filial)}</td>
+        <td>${a.cliente_cod ? `<span class="text-muted">${Modal.esc(a.cliente_cod)}</span> ` : ''}${Modal.esc(a.cliente)}</td>
+        <td>${Modal.esc(a.tipo)}</td><td class="text-end text-danger text-nowrap">${m(a.valor)}</td></tr>`).join('');
+    const clientes = j.clientes.map((c) => `<tr data-juros-cliente="${Modal.esc(c.cliente_cod || c.cliente)}">
+        <td>${c.cliente_cod ? `<span class="text-muted">${Modal.esc(c.cliente_cod)}</span> ` : ''}${Modal.esc(c.cliente)}</td>
+        <td>${Modal.esc(c.tipo)}</td>
+        <td class="small">${c.filiais.map((f) => `${Modal.esc(f.cod_filial)} — ${Modal.esc(f.filial)}`).join('; ')}</td>
+        <td class="text-end">${c.lancamentos}</td><td class="text-end text-nowrap">${m(c.valor)}</td></tr>`).join('');
+    return `<div class="mt-3" id="juros-recebidos">
+      <div class="small fw-bold mb-1">Juros recebidos de ${naFilial ? 'clientes desta filial' : 'clientes'} (jan–${this.nomeMes(j.mes_ate)})</div>
+      <div class="small mb-1">Sócio <strong>${m(j.socio)}</strong> · não sócio <strong>${m(j.nao_socio)}</strong> · total
+        <strong>${m(j.total)}</strong> em ${j.lancamentos.toLocaleString('pt-BR')} lançamentos.
+        ${j.acima.length ? `<span class="text-danger">Risco: <strong data-juros="risco">${m(j.risco)}</strong> em ${j.acima.length}
+        lançamento(s) acima de R$ ${lim}</span> — receita que depende de um cliente pagar com atraso; se não se repetir,
+        o resultado do ano seguinte cai.` : `Nenhum lançamento acima de R$ ${lim}.`}</div>
+      ${j.acima.length ? `<div class="table-responsive"><table class="table table-sm align-middle mb-2 tabela-juros">
+        <thead><tr><th>Data</th><th>Filial</th><th>Cliente</th><th>Conta</th><th class="text-end">Juros</th></tr></thead>
+        <tbody>${acima}</tbody></table></div>` : ''}
+      ${j.clientes.length ? `<details class="small"><summary>Clientes que somam mais de R$ ${lim} de juros no ano (${j.clientes.length})</summary>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-juros-clientes">
+          <thead><tr><th>Cliente</th><th>Conta</th><th>Filiais</th><th class="text-end">Lançamentos</th><th class="text-end">Juros</th></tr></thead>
+          <tbody>${clientes}</tbody></table></div>
+        <div class="text-muted">Somados os lançamentos de R$ 5 mil ou mais de cada cliente.</div></details>` : ''}
+    </div>`;
   },
 
   cartaoOportunidadesCorporativo(d) {
@@ -1281,7 +1361,39 @@ const SecaoProjecao = {
           </table>
         </div>
         <div class="small text-muted">Por negócio, o quadro de oportunidades e riscos de ${d.ano} (jan–${this.nomeMes(mes)}): itens não
-          recorrentes por conta contábil e meses fora do padrão, sem contar nada duas vezes. O detalhe, mês a mês, está na tela de cada negócio.</div>`);
+          recorrentes por conta contábil e meses fora do padrão, sem contar nada duas vezes. O detalhe, mês a mês, está na tela de cada negócio.</div>
+        ${this.jurosCorporativo(d)}`);
+  },
+
+  /** No Corporativo, os juros recebidos por negócio e o risco acima de R$ 30 mil. */
+  jurosCorporativo(d) {
+    const por = d.juros_negocios || {};
+    const ids = Object.keys(por).filter((id) => por[id].total >= 0.5);
+    if (!ids.length) return '';
+    const nomes = Object.fromEntries((d.negocios || []).map((n) => [String(n.id), n.rotulo]));
+    const m = (v) => this.moeda(v);
+    const t = { socio: 0, nao_socio: 0, total: 0, risco: 0, acima: 0 };
+    const linhas = ids.sort((a, b) => por[b].risco - por[a].risco || por[b].total - por[a].total).map((id) => {
+      const x = por[id];
+      Object.keys(t).forEach((k) => { t[k] += x[k]; });
+      return `<tr data-negocio-juros="${id}"><td>${Modal.esc(nomes[id] || id)}</td><td class="text-end">${m(x.socio)}</td>
+        <td class="text-end">${m(x.nao_socio)}</td><td class="text-end">${m(x.total)}</td>
+        <td class="text-end ${x.risco ? 'text-danger' : ''}">${x.risco ? `${m(x.risco)} <span class="small text-muted">(${x.acima})</span>` : '—'}</td>
+        <td class="small text-muted">${x.maiores.map((c) => Modal.esc(c.cliente)).join('; ')}</td></tr>`;
+    }).join('');
+    return `<div class="mt-3" id="juros-recebidos">
+      <div class="small fw-bold mb-1">Juros recebidos de clientes, por negócio</div>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-juros">
+        <thead><tr><th></th><th class="text-end">Sócio</th><th class="text-end">Não sócio</th><th class="text-end">Total</th>
+          <th class="text-end">Risco<br><span class="fw-normal text-muted small">lançamentos &gt; R$ 30 mil</span></th>
+          <th>Maiores clientes</th></tr></thead>
+        <tbody>${linhas}
+          <tr class="fw-bold table-light" data-negocio-juros="total"><td>Total dos negócios</td><td class="text-end">${m(t.socio)}</td>
+            <td class="text-end">${m(t.nao_socio)}</td><td class="text-end">${m(t.total)}</td>
+            <td class="text-end text-danger" data-juros="risco">${m(t.risco)} <span class="small text-muted">(${t.acima})</span></td><td></td></tr>
+        </tbody></table></div>
+      <div class="small text-muted">O cliente e a filial de cada lançamento acima de R$ 30 mil estão na tela de cada negócio.</div>
+    </div>`;
   },
 
   /**
