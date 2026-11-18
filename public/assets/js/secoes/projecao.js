@@ -277,9 +277,11 @@ const SecaoProjecao = {
    *
    * Isto se afasta da planilha, de propósito: ali cada bloco de filial tem o
    * seu IPCA e o seu PIB e os percentuais são digitados (`AD10 = AA10 * Z14%`).
-   * O cliente pediu um só por negócio e por ano. O "Crescimento desejado" é
-   * REGISTRO e não mexe em proposta nenhuma — convive com o Cresc. Total lido,
-   * porque um é o que se quer e o outro é o que as linhas somam.
+   * O cliente pediu um só por negócio e por ano. Desde 2026-11-18 as premissas
+   * movem a proposta: a Receita cresce IPCA + PIB + crescimento desejado, e as
+   * Despesas com Pessoal só o percentual de pessoas (por omissão, onde a linha
+   * não foi lançada). O Cresc. Total lido é, então, a soma dos três; e o Cresc.
+   * Real, o desejado.
    */
   painel(d) {
     const anoProposta = d.ano_planejamento;
@@ -293,6 +295,12 @@ const SecaoProjecao = {
       ? '—'
       : `${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`);
     const editavel = this.premissaEditavel(d);
+    // O padrão e o efetivo dos valores em reais (vale e abono) deste ano.
+    const padrao = (d.pessoas || {}).padrao || {};
+    const efetivo = ((d.pessoas || {}).por_ano || {})[ano];
+    const valores = efetivo ? efetivo.valores : padrao;
+    const plano = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
+    const reais = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
     const campo = (chave, rotulo, dica) => (App.modoDossie
       ? `<div class="col-6 col-md-auto">
            <div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
@@ -330,13 +338,16 @@ const SecaoProjecao = {
     // O que explica o painel muda com o nível (no negócio se lança, na filial se
     // herda) e com o ano (só o da proposta tem leituras). Sem a frase da filial,
     // três campos cinzentos parecem quebrados.
-    const tres = `<strong>IPCA</strong>, <strong>PIB</strong>, <strong>Crescimento desejado</strong> e
-      <strong>Cresc. despesas com pessoas</strong> de ${ano}`;
+    const tres = `<strong>IPCA</strong>, <strong>PIB</strong>, <strong>Crescimento desejado</strong>,
+      <strong>Cresc. despesas com pessoas</strong> e o <strong>vale e o abono</strong> de ${ano}`;
     const nota = d.filial
       ? `${tres} vêm do negócio e valem para todas as filiais — para alterá-los, volte ao negócio.
           ${noAnoDaProposta ? 'Os três valores lidos ao lado são desta filial.' : ''}`
       : `${tres} são lançados aqui e valem para o negócio e todas as filiais.
-          O crescimento desejado e o das despesas com pessoas são registro: não alteram a proposta.
+          Na proposta de ${d.ano_planejamento}, a <strong>Receita de Vendas</strong> cresce
+          <strong>IPCA + PIB + crescimento desejado</strong> e as <strong>Despesas com Pessoal</strong>
+          crescem só o percentual das despesas com pessoas — onde a linha não foi lançada.
+          A célula digitada sempre manda; as demais linhas ficam na projeção.
           ${noAnoDaProposta
     ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
           são lidos da coluna Proposta — o reajuste de cada linha se lança na própria linha,
@@ -353,8 +364,16 @@ const SecaoProjecao = {
     + 'o crescimento se lança na linha da Receita de Vendas.')}
           ${leitura(lidas.PCT_CUSTOS, '% Custos',
     'A proposta dos custos contra a projeção do ano. Lido da linha Custos das Vendas.')}`
-      : `<div class="col-12 small text-muted">A proposta existe só para <strong>${anoProposta}</strong>:
+      : `<div class="col-12 small text-muted aviso-leituras">A proposta existe só para <strong>${anoProposta}</strong>:
           Cresc. Real, Cresc. Total e % Custos saem das linhas dela e aparecem apenas nesse ano.</div>`;
+
+    // O abono do mês é a soma das duas partes: R$ 200 de assiduidade e R$ 500 se
+    // o negócio atingir o resultado — R$ 700 em 2027 (pedido do cliente).
+    const abonoTotal = `<div class="col-12 small text-muted" id="abono-total">
+        Abono por colaborador/mês em ${ano}: <strong>${reais(Number(valores.ASSIDUIDADE) + Number(valores.RESULTADO))}</strong>
+        (${reais(valores.ASSIDUIDADE)} de assiduidade + ${reais(valores.RESULTADO)} se o negócio atingir o resultado).
+        Vale alimentação: <strong>${reais(valores.ALIMENTACAO)}</strong> por colaborador/mês.
+      </div>`;
 
     return `
       <div class="card mb-3 painel-premissas"><div class="card-body py-2 px-3">
@@ -363,15 +382,48 @@ const SecaoProjecao = {
           ${campo('IPCA', 'IPCA', `Inflação prevista para ${ano}. Vale para o negócio e todas as filiais.`)}
           ${campo('PIB', 'PIB', `Crescimento da economia previsto para ${ano}. Vale para o negócio e todas as filiais.`)}
           ${campo('CRESCIMENTO', 'Crescimento desejado',
-    `O crescimento que se deseja para a receita em ${ano}. É registro: não altera a proposta de linha `
-    + 'nenhuma — compare com o Cresc. Total, que é o que as linhas somam. Vale para o negócio e todas as filiais.')}
+    `O crescimento REAL que se deseja para a receita em ${ano}, acima da inflação e da economia. A Receita de `
+    + 'Vendas cresce IPCA + PIB + este percentual. Vale para o negócio e todas as filiais.')}
           ${campo('PESSOAS', 'Cresc. despesas com pessoas',
-    `O crescimento previsto das despesas com pessoas em ${ano}. É registro: não altera a proposta de linha `
-    + 'nenhuma. Vale para o negócio e todas as filiais.')}
+    `O crescimento das despesas com pessoas em ${ano}. Atua SÓ na linha Despesas com Pessoal (8.5): `
+    + 'IPCA, PIB e o crescimento desejado não tocam nela. Vale para o negócio e todas as filiais.')}
+          ${this.campoBeneficio(d, ano, 'ALIMENTACAO', 'Vale alimentação (por mês)', 'R$',
+    'Valor por colaborador, por mês, nos 12 meses — o mesmo padrão para todos os colaboradores.', plano(padrao.ALIMENTACAO))}
+          ${this.campoBeneficio(d, ano, 'ASSIDUIDADE', 'Abono assiduidade (por mês)', 'R$',
+    'Pago ao colaborador que cumpre os quesitos de assiduidade.', plano(padrao.ASSIDUIDADE))}
+          ${this.campoBeneficio(d, ano, 'RESULTADO', 'Abono resultado (por mês)', 'R$',
+    'Pago só no mês em que o negócio atinge o resultado planejado.', plano(padrao.RESULTADO))}
+          ${abonoTotal}
           ${leituras}
         </div>
         <div class="small text-muted mt-2">${nota}</div>
       </div></div>`;
+  },
+
+  /**
+   * Um campo do planejamento de pessoas e benefícios (`negocio_beneficio`): o
+   * ano é o do painel, e vazio vale o padrão, que aparece como o placeholder.
+   * Mora num método porque os valores em reais ficam no painel das premissas e
+   * o resto no cartão de pessoas — dois lugares, uma só maneira de desenhar.
+   */
+  campoBeneficio(d, ano, chave, rotulo, unidade, dica, placeholder) {
+    const dig = ((d.pessoas || {}).digitados || {})[ano] || {};
+    const editavel = this.premissaEditavel(d);
+    const num = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
+    return App.modoDossie
+      ? `<div class="col-6 col-md-auto"><div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
+          <div class="fw-bold">${dig[chave] === undefined ? `${placeholder} <span class="text-muted small">(padrão)</span>` : num(dig[chave])}</div></div>`
+      : `<div class="col-6 col-md-auto">
+          <label class="form-label small text-muted mb-0" for="beneficio-${chave}"
+            title="${Modal.esc(dica)}">${rotulo}</label>
+          <div class="input-group input-group-sm">
+            ${unidade === 'R$' ? '<span class="input-group-text">R$</span>' : ''}
+            <input type="text" class="form-control celula-beneficio" id="beneficio-${chave}"
+              inputmode="decimal" autocomplete="off" data-chave="${chave}"
+              value="${num(dig[chave])}" placeholder="${placeholder}" ${editavel ? '' : 'disabled'}>
+            ${unidade === '%' ? '<span class="input-group-text">%</span>' : ''}
+          </div>
+        </div>`;
   },
 
   /**
@@ -401,20 +453,7 @@ const SecaoProjecao = {
     const dinheiro = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
     const num = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
     const padrao = d.pessoas.padrao || {};
-    const campo = (chave, rotulo, unidade, dica, placeholder) => (App.modoDossie
-      ? `<div class="col-6 col-md-auto"><div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
-          <div class="fw-bold">${dig[chave] === undefined ? `${placeholder} <span class="text-muted small">(padrão)</span>` : num(dig[chave])}</div></div>`
-      : `<div class="col-6 col-md-auto">
-          <label class="form-label small text-muted mb-0" for="beneficio-${chave}"
-            title="${Modal.esc(dica)}">${rotulo}</label>
-          <div class="input-group input-group-sm">
-            ${unidade === 'R$' ? '<span class="input-group-text">R$</span>' : ''}
-            <input type="text" class="form-control celula-beneficio" id="beneficio-${chave}"
-              inputmode="decimal" autocomplete="off" data-chave="${chave}"
-              value="${num(dig[chave])}" placeholder="${placeholder}" ${editavel ? '' : 'disabled'}>
-            ${unidade === '%' ? '<span class="input-group-text">%</span>' : ''}
-          </div>
-        </div>`);
+    const campo = (chave, rotulo, unidade, dica, placeholder) => this.campoBeneficio(d, ano, chave, rotulo, unidade, dica, placeholder);
 
     const quadro = base
       ? `Quadro atual: <strong>${Number(base.colaboradores).toLocaleString('pt-BR')}</strong> colaboradores
@@ -457,12 +496,6 @@ const SecaoProjecao = {
           ${campo('COLABORADORES', 'Colaboradores planejados', 'pessoas',
     'Deixe vazio para usar o quadro atual da DRE; digite para planejar contratação ou desligamento.',
     base ? String(base.colaboradores) : '—')}
-          ${campo('ALIMENTACAO', 'Alimentação (por mês)', 'R$',
-    'Valor por colaborador, por mês, nos 12 meses.', num(padrao.ALIMENTACAO))}
-          ${campo('ASSIDUIDADE', 'Abono assiduidade (por mês)', 'R$',
-    'Pago ao colaborador que cumpre os quesitos de assiduidade.', num(padrao.ASSIDUIDADE))}
-          ${campo('RESULTADO', 'Abono resultado (por mês)', 'R$',
-    'Pago só no mês em que o negócio atinge o resultado planejado.', num(padrao.RESULTADO))}
           ${campo('PCT_ASSIDUIDADE', '% que cumprem a assiduidade', '%',
     'Previsão: que parte dos colaboradores cumpre os quesitos. 100% é o orçamento cheio.', num(padrao.PCT_ASSIDUIDADE))}
           ${campo('PCT_RESULTADO', '% dos meses com resultado', '%',
@@ -710,7 +743,7 @@ const SecaoProjecao = {
         proposta = `<input type="text" class="celula-valor celula-proposta${
           l.proposta_origem === 'PERCENTUAL' ? ' celula-espelhada' : ''}" inputmode="decimal" data-sinal
           autocomplete="off" value="${Modal.esc(this.textoLancado(l))}"
-          placeholder="${this.moeda(l.projecao)}"
+          placeholder="${this.moeda(l.proposta)}"
           data-conta="${Modal.esc(l.codigo)}"
           aria-label="Proposta de ${d.ano_planejamento} para ${Modal.esc(l.nome)}">`;
       } else if (l.proposta === null || l.proposta === undefined) {
@@ -740,7 +773,7 @@ const SecaoProjecao = {
           l.proposta_origem === 'VALOR' ? ' celula-espelhada' : ''}${
           pior ? ' celula-pior' : ''}" inputmode="decimal" data-sinal
           autocomplete="off" value="${Modal.esc(this.textoReajuste(l))}"
-          placeholder="0,00%"
+          placeholder="${l.proposta_padrao !== null && l.proposta_padrao !== undefined ? this.pct(l.proposta_padrao / 100, 2) : '0,00%'}"
           data-conta="${Modal.esc(l.codigo)}"
           aria-label="Reajuste sobre a projeção para ${Modal.esc(l.nome)}">`;
       } else {
@@ -756,7 +789,7 @@ const SecaoProjecao = {
         <td class="text-end ${l.percentual ? '' : negativo(l.projecao)}">${valor(l, 'projecao')}</td>
         <td class="text-end text-muted small">${av(l)}</td>
         <td class="text-end celula-proposta-td ${
-  l.proposta_origem === 'PROJECAO' ? 'proposta-por-omissao' : ''}">${proposta}</td>
+  ['PROJECAO', 'PREMISSA'].includes(l.proposta_origem) ? 'proposta-por-omissao' : ''}">${proposta}</td>
         <td class="text-end small celula-reajuste-td">${reajuste}</td>
         ${mostrarDistribuir ? this.celulaDistribuir(l) : ''}
       </tr>`;
@@ -930,6 +963,8 @@ const SecaoProjecao = {
       this.avisar('');
       const el = document.getElementById('secao-projecao');
       el.querySelector('.painel-pessoas').outerHTML = this.cartaoPessoas(this.dados);
+      // Vale e abono moram no painel das premissas: ele é repintado junto.
+      el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
       this.ligar(el);
       el.querySelector(`#beneficio-${inp.dataset.chave}`)?.focus();
     } catch (e) {

@@ -232,6 +232,20 @@ class ProjecaoController
         ), 'corte'));
         $filiaisCorte = $cortesFilial ? min($cortesFilial) : null;
 
+        // As premissas digitadas são do NEGÓCIO e de CADA ANO. As derivadas (Cresc.
+        // Total, Cresc. Real, % Custos) só existem no ano da proposta, porque
+        // saem das linhas dela — por isso `premissas()` recebe as digitadas
+        // desse ano, e a tela ganha as dos outros em `premissas_por_ano`.
+        $anoProposta = $ano + 1;
+        $anosPremissa = $this->anosDasPremissas($anoProposta);
+        $porAno = $this->premissasPorAno($negocioId, $anosPremissa);
+        $digitadas = $porAno[(string)$anoProposta];
+        // As premissas decidem quanto a Receita e as Despesas com Pessoal crescem
+        // por omissão (`Projecao::crescimentosPadrao`). A filial herda as do negócio:
+        // o mesmo conjunto vale nas duas contas, ou a soma das filiais deixaria de
+        // fechar com o negócio.
+        $cresc = Projecao::crescimentosPadrao($digitadas);
+
         // A proposta de CADA filial, sempre — ela serve a duas perguntas: no
         // modo filial é ela que forma o total do negócio; no modo negócio é
         // ela que diz quanto já foi distribuído.
@@ -239,7 +253,8 @@ class ProjecaoController
         foreach ($filiais as $f) {
             $lf = Projecao::aplicar(
                 $this->linhasDaFilial((int)$f['id'], $ano, $corte),
-                $this->lancados($projId, (int)$f['id'])
+                $this->lancados($projId, (int)$f['id']),
+                $cresc
             );
             $porFilial[(int)$f['id']] = $lf;
         }
@@ -250,7 +265,7 @@ class ProjecaoController
 
         $linhas = $modo === 'FILIAL' && $filiais
             ? Projecao::somarFiliais($linhas, $propostasFilial)
-            : Projecao::aplicar($linhas, $this->lancados($projId));
+            : Projecao::aplicar($linhas, $this->lancados($projId), $cresc);
         // Quanto das filiais já está lançado, conta a conta: é o que permite à
         // tela mostrar o resíduo a distribuir sem travar nada — distribuir não
         // é requisito para salvar (decisão do cliente, 2026-11-05).
@@ -261,14 +276,6 @@ class ProjecaoController
             }
             $linhas[$i]['distribuido'] = $filiais ? $soma : null;
         }
-        // As premissas digitadas são do NEGÓCIO e de CADA ANO. As derivadas (Cresc.
-        // Total, Cresc. Real, % Custos) só existem no ano da proposta, porque
-        // saem das linhas dela — por isso `premissas()` recebe as digitadas
-        // desse ano, e a tela ganha as dos outros em `premissas_por_ano`.
-        $anoProposta = $ano + 1;
-        $anosPremissa = $this->anosDasPremissas($anoProposta);
-        $porAno = $this->premissasPorAno($negocioId, $anosPremissa);
-        $digitadas = $porAno[(string)$anoProposta];
         $premissas = Projecao::premissas($linhas, $digitadas);
 
         // A filial aberta na tela, quando há uma. O id vem por PARÂMETRO e não
