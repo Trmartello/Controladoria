@@ -115,57 +115,49 @@ prova('Pecuária: o resultado líquido realizado das filiais soma o do negócio 
     abs($somaFil - $liqPec) < 50, round($somaFil) . ' vs ' . round($liqPec));
 prova('a conversão é idempotente: rodar de novo não converte nada', CargaDre::migrarFiliaisParaEstruturaNova(Database::conn(), 2026) === 0);
 
-// ── 4. A CBS de 2027 (LC 214) ───────────────────────────────────────────────
-$trib = ['parte_nao_socio' => 0.2, 'taxa_pis_cofins' => 0.005];
-// Lojas (8): 11,3% × (1 − 60%) = 4,52%; base = 1.000 × 20% = 200 → débito 9,04;
-// crédito = custo 800 × 20% × 100% × 4,52% = 7,232 → CBS 1,808. PIS/COFINS = 5 → efeito +3,192.
-$c = Reforma::cbs('8', $trib, 1000.0, 800.0);
-prova('Lojas, de mão: alíquota efetiva 4,52%, débito 9,04, crédito 7,232, CBS 1,808',
-    abs($c['aliquota_efetiva'] - 4.52) < 1e-9 && abs($c['debito'] - 9.04) < 1e-9 && abs($c['credito'] - 7.232) < 1e-9 && abs($c['cbs'] - 1.808) < 1e-9,
-    json_encode([$c['aliquota_efetiva'], $c['debito'], $c['credito'], $c['cbs']]));
-prova('efeito no resultado = PIS/COFINS que sai − CBS que entra (5 − 1,808 = +3,192)', abs($c['impacto'] - 3.192) < 1e-9);
-prova('sem o regime específico (art. 271), a venda a sócio também é base (CBS 9,04 sobre 1.000)',
-    abs($c['cbs_sem_regime'] - (1000 * 0.0452 - 800 * 0.0452)) < 1e-9, (string)$c['cbs_sem_regime']);
-prova('combustíveis: monofásico, o posto não recolhe CBS', Reforma::cbs('11', $trib, 1000.0, 800.0)['cbs'] === 0.0);
-prova('grãos comprados do associado não dão crédito (Cereais: CBS = débito)',
-    abs(Reforma::cbs('1', $trib, 1000.0, 800.0)['credito']) < 1e-12);
-
-// ── 5. A troca na proposta (linha 2.3) ──────────────────────────────────────
+// ── 4. A CBS de 2027 entra pelo MESMO valor do PIS/COFINS ──────────────────
+// Decisão do cliente (2026-11-18): "levando o PIS/COFINS de 7 milhões onde estão
+// os 2 milhões". A proposta não troca nada na 2.3: ela acompanha a receita e
+// carrega o PIS/COFINS de 2026 na mesma proporção.
 $ctrl = new App\Controllers\ProjecaoController();
 $m = new ReflectionMethod($ctrl, 'montar');
 $m->setAccessible(true);
 $agro = (int)Database::um("SELECT id FROM negocio WHERE cod_negocio = '8'")['id'];
 $d = $m->invoke($ctrl, $agro, 2026, 10, 0);
 $l = array_column($d['linhas'], null, 'codigo');
-$c = $l['2.3']['cbs'] ?? null;
 $fator = $l['1.1']['proposta'] / $l['1.1']['projecao'];
-prova('Agropecuária: a linha 2.3 da proposta = projeção × fator da receita + PIS/COFINS de 2026 − CBS de 2027',
-    $c && abs($l['2.3']['proposta'] - ($l['2.3']['projecao'] * $fator + $c['pis_cofins'] - $c['cbs'])) < 1
-    && ($l['2.3']['proposta_regra'] ?? null) === 'CBS',
-    json_encode([$l['2.3']['proposta'], $c['pis_cofins'] ?? null, $c['cbs'] ?? null]));
-$dz = $d['desafio']['desafio'];
-prova('no desafio: resultado com a CBS = resultado + (PIS/COFINS − CBS)',
-    isset($dz['resultado_com_cbs']) && abs($dz['resultado_com_cbs'] - $dz['resultado'] - $dz['cbs']['impacto']) < 1e-6);
+prova('Agropecuárias: a 2.3 da proposta = projeção × fator da receita (sem troca pela CBS estimada)',
+    abs($l['2.3']['proposta'] - $l['2.3']['projecao'] * $fator) < 1 && !isset($l['2.3']['cbs'])
+    && ($l['2.3']['proposta_regra'] ?? null) !== 'CBS', json_encode([$l['2.3']['proposta'], $l['2.3']['projecao'], $fator]));
+prova('e o desafio não traz mais a CBS estimada nem o "resultado com a CBS"',
+    !isset($d['desafio']['desafio']['cbs']) && !isset($d['desafio']['desafio']['resultado_com_cbs'])
+    && !isset($d['desafio']['proposta']['cbs']));
 
 echo "\nComo é × como fica (o PIS/COFINS muda de linha)\n";
 // O exemplo do cliente, de mão: RB 100, ICMS 40, PIS/COFINS 10, devoluções 10.
 $mao = Reforma::comoEComoFica([
-    ['codigo' => '1', 'realizado' => 100.0, 'projecao' => 100.0, 'proposta' => 100.0],
-    ['codigo' => '1.1', 'realizado' => 100.0, 'projecao' => 100.0, 'proposta' => 100.0],
-    ['codigo' => '2', 'realizado' => -60.0, 'projecao' => -60.0, 'proposta' => -60.0],
-    ['codigo' => '2.1', 'realizado' => -10.0, 'projecao' => -10.0, 'proposta' => -10.0],
+    // A proposta cresce 10%, e a 2.3 acompanha (ICMS 44 + PIS/COFINS 11).
+    ['codigo' => '1', 'realizado' => 100.0, 'projecao' => 100.0, 'proposta' => 110.0],
+    ['codigo' => '1.1', 'realizado' => 100.0, 'projecao' => 100.0, 'proposta' => 110.0],
+    ['codigo' => '2', 'realizado' => -60.0, 'projecao' => -60.0, 'proposta' => -66.0],
+    ['codigo' => '2.1', 'realizado' => -10.0, 'projecao' => -10.0, 'proposta' => -11.0],
     ['codigo' => '2.2', 'realizado' => 0.0, 'projecao' => 0.0, 'proposta' => 0.0],
-    ['codigo' => '2.3', 'realizado' => -50.0, 'projecao' => -50.0, 'proposta' => -50.0],
-    ['codigo' => '3', 'realizado' => 40.0, 'projecao' => 40.0, 'proposta' => 40.0],
-], ['cod' => '17', 'trib' => ['mes_ate' => 10, 'pis' => 2.0, 'cofins' => 8.0, 'taxa_pis_cofins' => 0.1,
-    'parte_nao_socio' => 1.0, 'venda_socio' => 0.0, 'venda_nao_socio' => 100.0]], 10);
+    ['codigo' => '2.3', 'realizado' => -50.0, 'projecao' => -50.0, 'proposta' => -55.0],
+    ['codigo' => '3', 'realizado' => 40.0, 'projecao' => 40.0, 'proposta' => 44.0],
+], ['mes_ate' => 10, 'pis' => 2.0, 'cofins' => 8.0, 'taxa_pis_cofins' => 0.1,
+    'parte_nao_socio' => 1.0, 'venda_socio' => 0.0, 'venda_nao_socio' => 100.0], 10);
 $r = $mao['colunas']['realizado'];
 prova('exemplo do cliente: hoje RB 100, deduções 60, 2.3 = ICMS 40 + PIS/COFINS 10, RL 40',
     $r['como_e']['receita_bruta'] == 100 && $r['como_e']['deducoes'] == 60 && $r['como_e']['icms_iss'] == 40
     && $r['como_e']['pis_cofins'] == 10 && $r['como_e']['receita_liquida'] == 40, json_encode($r['como_e']));
 prova('e como fica: CBS 10 informativa, RB 90, deduções 50, 2.3 = ICMS 40, a MESMA RL 40',
     $r['como_fica']['tributo'] == 10 && $r['como_fica']['receita_bruta'] == 90 && $r['como_fica']['deducoes'] == 50
-    && $r['como_fica']['impostos'] == 40 && $r['como_fica']['receita_liquida'] == 40 && $r['efeito'] == 0, json_encode($r['como_fica']));
+    && $r['como_fica']['impostos'] == 40 && $r['como_fica']['receita_liquida'] == 40, json_encode($r['como_fica']));
+$rp = $mao['colunas']['proposta'];
+prova('na proposta (+10%), a CBS é o PIS/COFINS que ela carrega (11), não outro valor: RB 99, ICMS 44, a mesma RL 44',
+    abs($rp['como_e']['pis_cofins'] - 11) < 1e-9 && abs($rp['como_fica']['tributo'] - 11) < 1e-9
+    && abs($rp['como_fica']['receita_bruta'] - 99) < 1e-9 && abs($rp['como_fica']['impostos'] - 44) < 1e-9
+    && abs($rp['como_fica']['receita_liquida'] - 44) < 1e-9 && $rp['tributo_nome'] === 'CBS', json_encode($rp));
 
 // O consolidado de verdade: o realizado jan–out reproduz o slide da controladoria.
 $corp = (new ReflectionMethod($ctrl, 'montarCorporativo'))->invoke($ctrl,
@@ -181,19 +173,19 @@ prova('e como fica: CBS 15,6 · RB 2.977,1 · deduções 91,3 · 2.3 44,0 · RL 
     && $mi($t['como_fica']['impostos']) == 44.0 && $mi($t['como_fica']['receita_liquida']) == 2885.8,
     json_encode(array_map($mi, $t['como_fica'])));
 
-// Na proposta a tabela já está no "como fica": a RL e o líquido dela são os do lado da CBS.
+// Na proposta: a CBS é o PIS/COFINS da proposta, e a RL é a da tabela nos dois lados.
 $tp = $d['tributos_dre']['colunas']['proposta'];
-prova('Agropecuária 2027: o "como fica" é a tabela (RL e resultado líquido da proposta), com a CBS da 2.3',
-    $d['tributos_dre']['cbs_aplicada'] && abs($tp['como_fica']['receita_liquida'] - $l['3']['proposta']) < 1
-    && abs($tp['abaixo']['como_fica']['resultado'] - $l['18']['proposta']) < 1
-    && abs($tp['como_fica']['tributo'] - $c['cbs']) < 1, json_encode([$tp['como_fica']['receita_liquida'], $l['3']['proposta']]));
-prova('e o "como é" desfaz a troca: RL e resultado = tabela − (PIS/COFINS − CBS), igual em todas as linhas abaixo',
-    abs($tp['efeito'] - ($c['pis_cofins'] - $c['cbs'])) < 1
-    && abs($tp['abaixo']['como_e']['resultado'] - ($l['18']['proposta'] - $tp['efeito'])) < 1
-    && abs($tp['abaixo']['como_e']['lucro_bruto'] - ($l['5']['proposta'] - $tp['efeito'])) < 1);
-prova('o Corporativo soma os negócios (efeito da proposta = soma dos efeitos)',
-    abs($corp['tributos_dre']['colunas']['proposta']['efeito'] - array_sum(array_map(
-        static fn ($n) => (new ReflectionMethod($ctrl, 'montar'))->invoke($ctrl, (int)$n['id'], 2026, 10, 0)['tributos_dre']['colunas']['proposta']['efeito'],
+prova('Agropecuárias 2027: CBS = PIS/COFINS da proposta, e a RL "como é" = "como fica" = a da tabela',
+    abs($tp['como_fica']['tributo'] - $tp['como_e']['pis_cofins']) < 1e-6 && $tp['como_fica']['tributo'] > 0
+    && abs($tp['como_fica']['receita_liquida'] - $l['3']['proposta']) < 1 && abs($tp['como_e']['receita_liquida'] - $l['3']['proposta']) < 1,
+    json_encode([$tp['como_fica']['tributo'], $tp['como_e']['pis_cofins'], $tp['como_fica']['receita_liquida'], $l['3']['proposta']]));
+$tpj = $d['tributos_dre']['colunas']['projecao'];
+prova('e é o PIS/COFINS da projeção na proporção da receita (o que a 2.3 carrega)',
+    abs($tp['como_e']['pis_cofins'] - $tpj['como_e']['pis_cofins'] * $fator) < 1);
+prova('RB "como fica" = RB da tabela − CBS', abs($tp['como_fica']['receita_bruta'] - ($l['1']['proposta'] - $tp['como_fica']['tributo'])) < 1);
+prova('o Corporativo soma os negócios (CBS da proposta = soma das CBS)',
+    abs($corp['tributos_dre']['colunas']['proposta']['como_fica']['tributo'] - array_sum(array_map(
+        static fn ($n) => (new ReflectionMethod($ctrl, 'montar'))->invoke($ctrl, (int)$n['id'], 2026, 10, 0)['tributos_dre']['colunas']['proposta']['como_fica']['tributo'],
         Database::todos('SELECT n.id FROM negocio n WHERE EXISTS (SELECT 1 FROM dre_valor v WHERE v.negocio_id = n.id)')
     ))) < 1);
 

@@ -886,10 +886,10 @@ const SecaoProjecao = {
    * reforma, em que o PIS/COFINS (a CBS, em 2027) sai das deduções e vira uma
    * linha informativa ACIMA da Receita Bruta. Amarelo = linha que muda.
    *
-   * Em 2026 é só reclassificação (a RL não muda). Na proposta a CBS substitui o
-   * PIS/COFINS com outro valor, e a diferença desce da RL até o resultado
-   * líquido — o quadro de baixo mostra quanto. Contas no servidor
-   * (`Reforma::comoEComoFica`); aqui só se pinta.
+   * É reclassificação em todas as colunas, a proposta inclusive: a CBS entra no
+   * lugar do PIS/COFINS PELO MESMO VALOR (decisão do cliente, 2026-11-18: "levando
+   * o PIS/COFINS de 7 milhões onde estão os 2 milhões"), e a Receita Líquida não
+   * muda. Contas no servidor (`Reforma::comoEComoFica`); aqui só se pinta.
    */
   cartaoTributosDre(d) {
     const t = d.filial ? d.filial.tributos_dre : d.tributos_dre;
@@ -916,7 +916,6 @@ const SecaoProjecao = {
           </tr>`).join('')}
         </tbody>
       </table>`;
-    const efeitoProp = t.colunas.proposta.efeito;
     const comoE = tabela('como_e', [
       ['receita_bruta', 'Receita Bruta', 0, true],
       ['deducoes', '(-) Deduções', 0, true],
@@ -935,50 +934,27 @@ const SecaoProjecao = {
       ['avp', '2.2 Ajuste a Valor Presente', 3],
       ['impostos', '2.3 Imposto s/ Vendas', 3, false, true],
       ['icms_iss', 'ICMS e ISS', 5],
-      ['receita_liquida', 'Receita Líquida', 0, true, (c) => Math.abs(t.colunas[c].efeito) >= 1],
+      ['receita_liquida', 'Receita Líquida', 0, true],
     ], 'tributos-como-fica');
-
-    // Abaixo da Receita Líquida, só na proposta: lá a troca muda o valor.
-    const ab = t.colunas.proposta.abaixo;
-    const margem = (lado) => (ab[lado].receita_liquida ? ab[lado].resultado / ab[lado].receita_liquida : null);
-    const dif = (v) => (Math.abs(v) < 1 ? '0'
-      : `<span class="${v > 0 ? 'text-success' : 'text-danger'}">${v > 0 ? '+' : '−'}${m(Math.abs(v))}</span>`);
-    const abaixo = [
-      ['receita_liquida', 'Receita Líquida'],
-      ['lucro_bruto', 'Lucro operacional bruto'],
-      ['resultado_antes_rateios', 'Resultado antes dos rateios <span class="text-muted small">(11)</span>'],
-      ['resultado_negocio', 'Resultado do negócio <span class="text-muted small">(14)</span>'],
-      ['resultado', 'Resultado líquido'],
-    ].map(([k, r]) => `<tr data-linha="${k}"><td>${r}</td>
-        <td class="text-end">${m(ab.como_e[k])}</td><td class="text-end">${m(ab.como_fica[k])}</td>
-        <td class="text-end" data-col="diferenca">${dif(ab.como_fica[k] - ab.como_e[k])}</td></tr>`).join('');
-    const mE = margem('como_e');
-    const mF = margem('como_fica');
-    const pp = mE === null || mF === null ? '—'
-      : `${(100 * (mF - mE)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.`;
 
     const avisos = [];
     if (!t.tem_tributos) {
       avisos.push(`Sem a carga de tributos ${d.corporativo ? 'de nenhum negócio' : 'deste negócio'}: o PIS/COFINS não é conhecido e aparece como zero.`);
-    } else if (!t.cbs_aplicada) {
-      avisos.push(d.corporativo
-        ? 'Em algum negócio a linha 2.3 da proposta foi lançada à mão: lá a tabela segue com o PIS/COFINS, e o "como fica" mostra o que a CBS daria.'
-        : `A linha 2.3 da proposta foi lançada à mão: a tabela segue com o PIS/COFINS da lei atual, e o "como fica" mostra o que a CBS de ${ano} daria.`);
     }
     if (d.corporativo && (t.sem_tributos || []).length) {
       avisos.push(`${t.sem_tributos.length} negócio(s) sem carga de tributos entram sem PIS/COFINS.`);
     }
 
-    const resumo = `${ano}: CBS ${m(t.colunas.proposta.como_fica.tributo)} no lugar de PIS/COFINS ${m(t.colunas.proposta.como_e.pis_cofins)}
-      · efeito no resultado ${efeitoProp >= 0 ? '+' : '−'}${m(Math.abs(efeitoProp))}`;
+    const resumo = `${ano}: CBS ${m(t.colunas.proposta.como_fica.tributo)} acima da Receita Bruta, no lugar do PIS/COFINS
+      · Receita Líquida ${m(t.colunas.proposta.como_fica.receita_liquida)} (não muda)`;
     return this.expansor('tributos', 'painel-tributos', 'Tributos na DRE: como é × como fica', resumo, `
       <div class="small mb-2">O PIS/COFINS <strong>muda de linha</strong>: hoje está dentro das deduções (2.3 Imposto s/ Vendas);
         com a reforma a <strong>CBS</strong> é tributo <em>por fora</em> e vira uma linha <strong>informativa acima da Receita
         Bruta</strong>, que passa a ser o faturamento sem ela. Exemplo: hoje Receita Bruta 100, deduções 50 (ICMS 40 +
         PIS/COFINS 10), devoluções 10 e Receita Líquida 40; no novo formato, CBS 10, Receita Bruta 90, deduções 40 (ICMS),
         devoluções 10 e a mesma Receita Líquida 40.
-        Em ${d.ano} é só reclassificação; em <strong>${ano}</strong> a CBS substitui o PIS/COFINS com outro valor, e a diferença
-        muda a Receita Líquida e <strong>tudo o que está abaixo dela</strong>.
+        É <strong>reclassificação</strong> em ${d.ano} e na proposta de <strong>${ano}</strong>: a CBS entra pelo mesmo valor do
+        PIS/COFINS, então Receita Bruta e Deduções caem o mesmo tanto e a Receita Líquida — e tudo abaixo dela — não muda.
         <span class="linha-muda px-1">Amarelo</span> = linha que muda.</div>
       <div class="row g-3">
         <div class="col-xl-6"><div class="fw-bold small text-uppercase mb-1">Como é hoje</div>
@@ -986,22 +962,9 @@ const SecaoProjecao = {
         <div class="col-xl-6"><div class="fw-bold small text-uppercase mb-1">Como fica <span class="fw-normal text-muted">(reforma, a partir de ${ano})</span></div>
           <div class="table-responsive">${comoFica}</div></div>
       </div>
-      <div class="fw-bold small text-uppercase mt-3 mb-1">Efeito abaixo da Receita Líquida — proposta ${ano}</div>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-1" id="tributos-abaixo">
-          <thead><tr><th>R$</th><th class="text-end">Como é<br><span class="fw-normal text-muted small">com PIS/COFINS</span></th>
-            <th class="text-end">Como fica<br><span class="fw-normal text-muted small">com a CBS</span></th>
-            <th class="text-end">Diferença</th></tr></thead>
-          <tbody>${abaixo}
-            <tr data-linha="margem"><td>% margem líquida <span class="text-muted small">(sobre a receita líquida)</span></td>
-              <td class="text-end">${this.pct(mE, 2)}</td><td class="text-end">${this.pct(mF, 2)}</td>
-              <td class="text-end" data-col="diferenca">${pp}</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="small text-muted">CBS pela LC 214/2025 — mesmas hipóteses do quadro do desafio (regime específico das
-        cooperativas, pelo qual a Copérdia optou; reduções por negócio; crédito sobre o custo). PIS/COFINS do realizado: carga de tributos de ${d.ano};
-        projeção e proposta pela taxa de ${d.ano} sobre a Receita de Vendas.${d.filial ? ' Na filial, sempre pela taxa do negócio.' : ''}</div>
+      <div class="small text-muted mt-2">CBS pela LC 214/2025, com o regime específico das cooperativas (art. 271), pelo qual a
+        Copérdia optou. PIS/COFINS do realizado: carga de tributos de ${d.ano}; o resto do ano pela taxa de ${d.ano} sobre a Receita
+        de Vendas; na proposta, o que a linha 2.3 carrega (a projeção na proporção da receita).${d.filial ? ' Na filial, sempre pela taxa do negócio.' : ''}</div>
       ${avisos.map((a) => `<div class="small text-warning-emphasis mt-1 aviso-tributos">${a}</div>`).join('')}
     `);
   },
@@ -1061,18 +1024,10 @@ const SecaoProjecao = {
             </tr></thead>
             <tbody>
               ${degraus.map(linha).join('')}
-              <tr data-desafio="pis_cofins" class="small"><td>PIS + COFINS <span class="text-muted">(taxa de ${x.ano - 1}; deixa de existir em ${x.ano})</span></td>
+              <tr data-desafio="pis_cofins" class="small"><td>PIS + COFINS <span class="text-muted">(taxa de ${x.ano - 1}; em ${x.ano} vira a CBS, mesmo valor)</span></td>
                 <td class="text-end text-muted">${des.pis_cofins ? this.moeda(des.pis_cofins.total) : '—'}</td>
                 <td class="text-end">${pro.pis_cofins ? this.moeda(pro.pis_cofins.total) : '—'}</td>
                 <td class="text-end"></td></tr>
-              <tr data-desafio="cbs" class="small"><td>CBS ${x.ano} estimada <span class="text-muted">(LC 214, no lugar do PIS/COFINS)</span></td>
-                <td class="text-end text-muted">${des.cbs ? this.moeda(des.cbs.cbs) : '—'}</td>
-                <td class="text-end">${pro.cbs ? this.moeda(pro.cbs.cbs) : '—'}</td>
-                <td class="text-end"></td></tr>
-              <tr data-desafio="resultado_com_cbs" class="fw-bold"><td>Resultado líquido com a CBS</td>
-                <td class="text-end">${des.resultado_com_cbs === undefined ? '—' : this.moeda(des.resultado_com_cbs)}</td>
-                <td class="text-end">${pro.resultado === null ? '—' : this.moeda(pro.resultado)} <span class="fw-normal text-muted small">(já com a CBS)</span></td>
-                <td class="text-end ${des.resultado_com_cbs === undefined || pro.resultado === null ? '' : this.corDif(pro.resultado - des.resultado_com_cbs)}">${des.resultado_com_cbs === undefined || pro.resultado === null ? '—' : this.comSinal(pro.resultado - des.resultado_com_cbs)}</td></tr>
             </tbody>
           </table>
         </div>
@@ -1081,27 +1036,13 @@ const SecaoProjecao = {
           rateios (do negócio e administrativos) ficam na projeção, sem crescimento; o resultado do negócio é o líquido do desafio
           menos os rateios administrativos, e o resultado antes dos rateios é ele menos os rateios do negócio. Estrutura nova da DRE
           gerencial (a que vale em ${x.ano}).</div>
-        ${this.notaCbs(des.cbs, x.ano)}
         ${this.notaTributos(x.tributos, x.ano)}
         <div class="small text-muted" id="desafio-nota">
           <strong>${Modal.esc(des.nota)}</strong> ${this.notaDesafio(x)}
         </div>`);
   },
 
-  /** Como a CBS do negócio foi estimada (com o regime específico das cooperativas, pelo qual a Copérdia optou). */
-  notaCbs(c, ano) {
-    if (!c) return '';
-    const r = (v) => this.moeda(v);
-    return `<div class="small mb-1" id="desafio-cbs">
-        <strong>CBS ${ano} (LC 214/2025):</strong> alíquota de ${String(c.aliquota).replace('.', ',')}% (referência do TCU, pendente do Senado;
-        CBS −0,1 p.p. + IBS de teste 0,1%)${c.monofasico ? '' : `, com redução de ${c.reducao}% — efetiva de ${c.aliquota_efetiva.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`}.
-        ${Modal.esc(c.porque)} Base: a venda a <strong>não sócio</strong> (${this.pct(c.parte_nao_socio, 1)} das vendas) — a venda a sócio é ato
-        cooperativo com alíquota zero no <strong>regime específico (art. 271)</strong>, pelo qual a Copérdia
-        <strong>optou</strong> para ${ano}.
-      </div>`;
-  },
-
-  /** A base da conta macro da reforma: o que o negócio pagou de PIS/COFINS em 2026. */
+  /** O que o negócio pagou de PIS/COFINS em 2026 — o valor que a CBS herda em 2027. */
   notaTributos(t, ano) {
     if (!t) return '';
     const p = (v, c = 2) => this.pct(v === null || v === undefined ? null : v, c);
@@ -1109,7 +1050,8 @@ const SecaoProjecao = {
         <strong>Tributos sobre vendas em ${ano - 1}</strong> (jan–${this.nomeMes(t.mes_ate)}): PIS ${this.mi(t.pis)} e COFINS ${this.mi(t.cofins)}
         — <strong>${p(t.taxa_pis_cofins)}</strong> do faturamento; incidem só sobre a venda a não sócio
         (${p(t.parte_nao_socio, 1)} das vendas), onde são ${p(t.taxa_pis_cofins_nao_socio)}. ICMS: ${this.mi(t.icms)}.
-        Em ${ano} o PIS e a COFINS deixam de existir e entra a CBS (acima); a proposta já faz a troca na linha 2.3.
+        Em ${ano} o PIS e a COFINS dão lugar à CBS, que no planejamento entra <strong>pelo mesmo valor</strong>: muda a linha
+        (sai das deduções e vai para cima da Receita Bruta), não o número — ver "Tributos na DRE: como é × como fica".
       </div>`;
   },
 
@@ -1190,7 +1132,7 @@ const SecaoProjecao = {
     const t = x.total.tributos;
     if (!t || !t.mes_ate) return '';
     const p = (v, c = 2) => this.pct(v === null || v === undefined ? null : v, c);
-    const linha = (rot, r, classe = '', attr = '', cbs = null) => `<tr class="${classe}" ${attr}>
+    const linha = (rot, r, classe = '', attr = '', pcDesafio = null) => `<tr class="${classe}" ${attr}>
         <td>${rot}</td>
         <td class="text-end">${this.moeda(r.venda_socio)}</td>
         <td class="text-end">${this.moeda(r.venda_nao_socio)}</td>
@@ -1200,9 +1142,7 @@ const SecaoProjecao = {
         <td class="text-end fw-bold">${p(r.taxa_pis_cofins)}</td>
         <td class="text-end">${p(r.taxa_pis_cofins_nao_socio)}</td>
         <td class="text-end">${this.moeda(r.icms)}</td>
-        <td class="text-end text-muted">${cbs ? this.moeda(cbs.pis_cofins) : '—'}</td>
-        <td class="text-end">${cbs ? this.moeda(cbs.cbs) : '—'}</td>
-        <td class="text-end ${cbs ? this.corDif(cbs.impacto) : ''}" data-col="impacto-cbs">${cbs ? this.comSinal(cbs.impacto) : '—'}</td>
+        <td class="text-end" data-col="cbs-desafio">${pcDesafio === null || pcDesafio === undefined ? '—' : this.moeda(pcDesafio)}</td>
       </tr>`;
     const ordem = Object.keys(x.negocios).filter((id) => x.negocios[id].tributos)
       .sort((a, b) => (x.negocios[b].tributos.pis + x.negocios[b].tributos.cofins) - (x.negocios[a].tributos.pis + x.negocios[a].tributos.cofins));
@@ -1218,22 +1158,17 @@ const SecaoProjecao = {
             <th class="text-end">PIS + COFINS<br><span class="fw-normal text-muted small">% do faturamento</span></th>
             <th class="text-end">PIS + COFINS<br><span class="fw-normal text-muted small">% da venda a não sócio</span></th>
             <th class="text-end">ICMS</th>
-            <th class="text-end">PIS + COFINS<br><span class="fw-normal text-muted small">sobre o desafio</span></th>
-            <th class="text-end">CBS ${x.ano}<br><span class="fw-normal text-muted small">sobre o desafio · LC 214</span></th>
-            <th class="text-end">Efeito no<br><span class="fw-normal text-muted small">resultado do desafio</span></th>
+            <th class="text-end">CBS ${x.ano}<br><span class="fw-normal text-muted small">= PIS + COFINS sobre o desafio</span></th>
           </tr></thead>
           <tbody>${ordem.map((id) => linha(Modal.esc(nomes[id] || id), x.negocios[id].tributos, '', `data-negocio-tributo="${id}"`,
-    (x.negocios[id].cbs || {}).desafio)).join('')}
-            ${linha('Total dos negócios', t, 'fw-bold table-light', 'data-negocio-tributo="total"', (x.total.cbs || {}).desafio)}</tbody>
+    ((x.negocios[id].desafio || {}).pis_cofins || {}).total)).join('')}
+            ${linha('Total dos negócios', t, 'fw-bold table-light', 'data-negocio-tributo="total"', ((x.total.desafio || {}).pis_cofins || {}).total)}</tbody>
         </table>
       </div>
-      <div class="small text-muted">PIS e COFINS incidem só sobre a venda a não sócio (o ato cooperativo não é tributado) e deixam de
-        existir em ${x.ano}: a <strong>CBS</strong> (${Modal.esc((x.reforma || {}).fonte || 'LC 214/2025')}) entra no lugar — débito sobre a
-        venda a não sócio, com as reduções do agro (60% para insumos do Anexo IX e produtos in natura), menos o crédito sobre o custo
-        dessas vendas; combustíveis no regime monofásico. <strong>Efeito no resultado</strong> = PIS/COFINS que sai − CBS que entra.
-        A Copérdia <strong>optou pelo regime específico das cooperativas</strong> (art. 271) para ${x.ano}: a venda a sócio é ato
-        cooperativo com alíquota zero e não entra na base. A proposta de cada negócio já traz a troca na linha 2.3 (Imposto s/ Vendas).
-        Fonte das vendas e tributos: Qlik DRE Gerencial, por conta contábil.</div>`;
+      <div class="small text-muted">PIS e COFINS incidem só sobre a venda a não sócio (o ato cooperativo não é tributado) e dão lugar
+        à <strong>CBS</strong> em ${x.ano} (LC 214/2025). A Copérdia <strong>optou pelo regime específico das cooperativas</strong>
+        (art. 271): a venda a sócio segue fora da base. No planejamento a CBS entra <strong>pelo mesmo valor</strong> do PIS/COFINS
+        — muda a linha da DRE, não o número. Fonte das vendas e tributos: Qlik DRE Gerencial, por conta contábil.</div>`;
   },
 
   /**
