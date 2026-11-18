@@ -3231,17 +3231,20 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   alíquota **11,3%** (referência do TCU, Acórdão 2933/2026, pendente de resolução do
   Senado; CBS −0,1 p.p. em 2027 pelo art. 347 + IBS de teste 0,1%); base = venda a
   **não sócio** (a venda a sócio é ato cooperativo com alíquota zero no **regime
-  específico do art. 271**, opcional — prazo de opção para 2027 era 31/10/2026, e a
-  tela mostra o cenário SEM o regime ao lado); redução de 60% para insumos do Anexo
+  específico do art. 271**, opcional — **a Copérdia OPTOU** para 2027, confirmado
+  pelo cliente em 2026-11-18; a opção se fazia de 01/09 a 31/10/2026); redução de 60% para insumos do Anexo
   IX e produtos in natura e mix por negócio em `Reforma::NEGOCIOS` (hipóteses
   declaradas); crédito sobre o custo das vendas a não sócio, nulo no que se compra
   do associado; combustíveis monofásicos (CBS zero no posto). Na **proposta**, a
   linha 2.3 sem lançamento troca o PIS/COFINS de 2026 (que ela carrega pela
   proporção da receita) pela CBS (`proposta_regra = 'CBS'`), igual na tela, nas
   filiais e no Painel. No **desafio**, que é congelado, entra a linha "resultado
-  líquido com a CBS". Com o regime específico o efeito total é pequeno e a favor;
-  **sem ele, a venda a sócio vira base e a CBS explode** (Pecuária ~R$ 40 mi,
-  Cereais ~R$ 25 mi) — a confirmação da opção é do cliente.
+  líquido com a CBS". Com o regime específico o efeito total é a favor (+R$ 7,2 mi
+  no resultado da proposta consolidada). Sem ele a venda a sócio viraria base e a
+  CBS explodiria (Pecuária ~R$ 40 mi, Cereais ~R$ 25 mi) — por isso a tela mostrou
+  esse cenário até a confirmação; depois dela saiu da tela (coluna "CBS sem o
+  regime" e o aviso em vermelho). `cbs_sem_regime` segue na API como referência:
+  não o devolva à tela sem o cliente pedir.
   Provas: `testes/estrutura_dre_nova.php` (estrutura, identidades nos negócios e
   nas filiais, líquido igual ao da DRE atual, conversão idempotente, CBS de mão,
   troca na 2.3, desafio com CBS).

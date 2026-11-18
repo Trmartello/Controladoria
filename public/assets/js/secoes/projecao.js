@@ -1000,7 +1000,7 @@ const SecaoProjecao = {
         </table>
       </div>
       <div class="small text-muted">CBS pela LC 214/2025 — mesmas hipóteses do quadro do desafio (regime específico das
-        cooperativas, reduções por negócio, crédito sobre o custo). PIS/COFINS do realizado: carga de tributos de ${d.ano};
+        cooperativas, pelo qual a Copérdia optou; reduções por negócio; crédito sobre o custo). PIS/COFINS do realizado: carga de tributos de ${d.ano};
         projeção e proposta pela taxa de ${d.ano} sobre a Receita de Vendas.${d.filial ? ' Na filial, sempre pela taxa do negócio.' : ''}</div>
       ${avisos.map((a) => `<div class="small text-warning-emphasis mt-1 aviso-tributos">${a}</div>`).join('')}
     `);
@@ -1088,7 +1088,7 @@ const SecaoProjecao = {
         </div>`);
   },
 
-  /** Como a CBS do negócio foi estimada, e o cenário sem o regime específico das cooperativas. */
+  /** Como a CBS do negócio foi estimada (com o regime específico das cooperativas, pelo qual a Copérdia optou). */
   notaCbs(c, ano) {
     if (!c) return '';
     const r = (v) => this.moeda(v);
@@ -1096,8 +1096,8 @@ const SecaoProjecao = {
         <strong>CBS ${ano} (LC 214/2025):</strong> alíquota de ${String(c.aliquota).replace('.', ',')}% (referência do TCU, pendente do Senado;
         CBS −0,1 p.p. + IBS de teste 0,1%)${c.monofasico ? '' : `, com redução de ${c.reducao}% — efetiva de ${c.aliquota_efetiva.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`}.
         ${Modal.esc(c.porque)} Base: a venda a <strong>não sócio</strong> (${this.pct(c.parte_nao_socio, 1)} das vendas) — a venda a sócio é ato
-        cooperativo com alíquota zero no <strong>regime específico (art. 271)</strong>.
-        <span class="text-danger">Se a cooperativa não optou pelo regime para ${ano} (prazo: 31/10/${ano - 1}), a CBS do desafio seria de R$ ${r(c.cbs_sem_regime)}.</span>
+        cooperativo com alíquota zero no <strong>regime específico (art. 271)</strong>, pelo qual a Copérdia
+        <strong>optou</strong> para ${ano}.
       </div>`;
   },
 
@@ -1203,7 +1203,6 @@ const SecaoProjecao = {
         <td class="text-end text-muted">${cbs ? this.moeda(cbs.pis_cofins) : '—'}</td>
         <td class="text-end">${cbs ? this.moeda(cbs.cbs) : '—'}</td>
         <td class="text-end ${cbs ? this.corDif(cbs.impacto) : ''}" data-col="impacto-cbs">${cbs ? this.comSinal(cbs.impacto) : '—'}</td>
-        <td class="text-end text-danger">${cbs ? this.moeda(cbs.cbs_sem_regime) : '—'}</td>
       </tr>`;
     const ordem = Object.keys(x.negocios).filter((id) => x.negocios[id].tributos)
       .sort((a, b) => (x.negocios[b].tributos.pis + x.negocios[b].tributos.cofins) - (x.negocios[a].tributos.pis + x.negocios[a].tributos.cofins));
@@ -1222,7 +1221,6 @@ const SecaoProjecao = {
             <th class="text-end">PIS + COFINS<br><span class="fw-normal text-muted small">sobre o desafio</span></th>
             <th class="text-end">CBS ${x.ano}<br><span class="fw-normal text-muted small">sobre o desafio · LC 214</span></th>
             <th class="text-end">Efeito no<br><span class="fw-normal text-muted small">resultado do desafio</span></th>
-            <th class="text-end">CBS sem o regime<br><span class="fw-normal text-muted small">específico (art. 271)</span></th>
           </tr></thead>
           <tbody>${ordem.map((id) => linha(Modal.esc(nomes[id] || id), x.negocios[id].tributos, '', `data-negocio-tributo="${id}"`,
     (x.negocios[id].cbs || {}).desafio)).join('')}
@@ -1233,8 +1231,8 @@ const SecaoProjecao = {
         existir em ${x.ano}: a <strong>CBS</strong> (${Modal.esc((x.reforma || {}).fonte || 'LC 214/2025')}) entra no lugar — débito sobre a
         venda a não sócio, com as reduções do agro (60% para insumos do Anexo IX e produtos in natura), menos o crédito sobre o custo
         dessas vendas; combustíveis no regime monofásico. <strong>Efeito no resultado</strong> = PIS/COFINS que sai − CBS que entra.
-        <span class="text-danger">A última coluna é a CBS se a cooperativa NÃO tiver optado pelo regime específico (art. 271) até 31/10/${x.ano - 1}:
-        a venda a sócio passa a ser base.</span> A proposta de cada negócio já traz a troca na linha 2.3 (Imposto s/ Vendas).
+        A Copérdia <strong>optou pelo regime específico das cooperativas</strong> (art. 271) para ${x.ano}: a venda a sócio é ato
+        cooperativo com alíquota zero e não entra na base. A proposta de cada negócio já traz a troca na linha 2.3 (Imposto s/ Vendas).
         Fonte das vendas e tributos: Qlik DRE Gerencial, por conta contábil.</div>`;
   },
 

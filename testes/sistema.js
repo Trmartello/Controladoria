@@ -6513,9 +6513,12 @@ async function provasApoioDesafio(page, largura) {
   t(`${l} e a coluna da proposta é a DRE dela na estrutura nova (linhas 5, 14, 15 e 16)`,
     Math.abs(n.lbProp - n.l5) <= 1 && Math.abs(n.rnProp - n.l13) <= 1 && Math.abs(n.ratProp - n.l14) <= 1 && Math.abs(n.admProp - n.l16) <= 1,
     JSON.stringify([n.lbProp, n.l5, n.rnProp, n.l13, n.ratProp, n.l14, n.admProp, n.l16]));
-  t(`${l} a CBS de 2027 (LC 214) aparece no desafio e na proposta, com o cenário sem o regime específico`,
+  // A Copérdia optou pelo regime específico (confirmado em 2026-11-18): a nota o
+  // diz, e o cenário "sem o regime" não aparece mais.
+  t(`${l} a CBS de 2027 (LC 214) aparece no desafio e na proposta, com o regime específico pelo qual a Copérdia optou`,
     /\d/.test(n.cbs[1] || '') && /\d/.test(n.cbs[2] || '') && /\d/.test(n.comCbs[1] || '')
-      && /LC 214/.test(n.notaCbs) && /art\. 271/.test(n.notaCbs) && /não optou/.test(n.notaCbs), n.notaCbs.slice(0, 120));
+      && /LC 214/.test(n.notaCbs) && /art\. 271/.test(n.notaCbs) && /Copérdia optou/.test(n.notaCbs.replace(/\s+/g, ' '))
+      && !/não optou|sem o regime/i.test(n.notaCbs), n.notaCbs.slice(0, 160));
   t(`${l} oportunidades: a PDD da Agropecuária aparece, e a oportunidade soma R$ 8.295.910`,
     n.pdd && n.oport === 8295910 && /675\.108/.test(n.risco || ''), `${n.oport} / ${n.risco}`);
   t(`${l} e há meses fora do padrão nas despesas`, n.picos > 0, String(n.picos));
@@ -6533,6 +6536,8 @@ async function provasApoioDesafio(page, largura) {
       margemNegocio: document.querySelector('.tabela-desafio tr[data-negocio-desafio="total"] [data-col="margem-negocio"]')?.textContent.trim(),
       oportTotal: td('.tabela-oportunidades tr[data-negocio-oport="total"]'),
       oportNegocios: document.querySelectorAll('.tabela-oportunidades tr[data-negocio-oport]:not([data-negocio-oport="total"])').length,
+      cabTrib: [...document.querySelectorAll('.tabela-tributos thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
+      notaTrib: document.querySelector('.tabela-tributos')?.closest('.table-responsive')?.nextElementSibling?.textContent.replace(/\s+/g, ' ') || '',
     };
   });
   t(`${l} Corporativo: "Desafio 2027 para os negócios", com a receita líquida do desafio (R$ 3.563.582.221)`,
@@ -6540,14 +6545,12 @@ async function provasApoioDesafio(page, largura) {
   t(`${l} e a margem do negócio (antes dos rateios) da proposta no total`, /%$/.test(c.margemNegocio || ''), c.margemNegocio);
   t(`${l} PIS e COFINS de 2026 destacados: R$ 2.773.788 e R$ 12.783.362, 0,52% do faturamento`,
     c.trib[4] === '2.773.788' && c.trib[5] === '12.783.362' && c.trib[6] === '0,52%', c.trib.join(' | '));
+  t(`${l} a Copérdia optou pelo regime específico: a tabela não tem mais a coluna "CBS sem o regime", e a nota o diz`,
+    !c.cabTrib.some((h) => /sem o regime/i.test(h)) && /optou pelo regime específico/.test(c.notaTrib),
+    `${c.cabTrib.slice(-2).join(' | ')} · ${c.notaTrib.slice(0, 100)}`);
   t(`${l} oportunidades por negócio (10) com o total`, c.oportNegocios === 10 && /\+/.test(c.oportTotal[1] || ''), c.oportTotal.join(' | '));
 }
 
-/**
- * A Projeção agora ESCREVE no negócio do menu (um negócio só no sistema), então
- * as provas dela deixam o contexto num negócio. As que vêm depois contam com o
- * Corporativo do login (`entrar()`): devolve-se o menu a ele.
- */
 /**
  * COMO É × COMO FICA dos tributos (pedido do cliente, 2026-11-18, com o slide
  * da controladoria): o PIS/COFINS sai das deduções e vira a linha da CBS acima
@@ -6633,6 +6636,11 @@ async function provasTributosComoEComoFica(page, largura) {
     JSON.stringify([volta.aviso, volta.rlTabela, antes.rlTabela]));
 }
 
+/**
+ * A Projeção agora ESCREVE no negócio do menu (um negócio só no sistema), então
+ * as provas dela deixam o contexto num negócio. As que vêm depois contam com o
+ * Corporativo do login (`entrar()`): devolve-se o menu a ele.
+ */
 async function voltarAoCorporativo(page) {
   await page.evaluate(() => {
     const s = document.querySelector('#sel-negocio');
