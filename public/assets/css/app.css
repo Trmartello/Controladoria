@@ -4674,3 +4674,29 @@ body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
 .tabela-visao-ano td.visao-realista { background: #f6e7c6; }
 .tabela-visao-ano td, .tabela-visao-ano th { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tabela-visao-ano td:first-child { white-space: normal; }
+
+/* Expansores da Projeção (visão do ano, desafio, premissas, pessoas): <details>
+   com o título e um resumo na mesma linha. Fechado, o resumo diz o número que
+   importa; o marcador ▸/▾ é nosso, porque o nativo muda de navegador para navegador. */
+details.expansor > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: .75rem;
+  row-gap: .15rem;
+}
+details.expansor > summary::-webkit-details-marker { display: none; }
+details.expansor > summary::before {
+  content: '▸';
+  color: var(--bs-secondary-color, #6c757d);
+  width: .8rem;
+}
+details.expansor[open] > summary::before { content: '▾'; }
+details.expansor > summary:focus-visible { outline: 2px solid var(--verde-coperdia); outline-offset: -2px; }
+details.expansor[open] > summary .expansor-resumo { display: none; }
+@media print {
+  details.expansor > summary::before { content: none; }
+}
+.tabela-desafio td[data-desafio], .tabela-desafio tr td:first-child { white-space: nowrap; }

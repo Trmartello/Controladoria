@@ -951,6 +951,30 @@ foreach ([
     }
 }
 
+// ---- Desafio do ano por negócio (pedido do cliente, 2026-11-18) ----
+// Referência decidida, só de leitura na Projeção. Sobrescreve o ano inteiro; a
+// marca por chave evita refazer a cada deploy, e um desafio novo vem com chave nova.
+require_once __DIR__ . '/../app/Services/CargaDesafio.php';
+foreach ([
+    'desafio_2027.php',
+] as $arquivo) {
+    $d = require __DIR__ . '/' . $arquivo;
+    if (App\Services\CargaConteudo::jaAplicada($pdo, $d['chave'])) {
+        continue;
+    }
+    $r = App\Services\CargaDesafio::aplicar($pdo, $d);
+    App\Services\CargaConteudo::marcar(
+        $pdo,
+        $d['chave'],
+        "Desafio {$d['ano']}: {$r['negocios']} negócio(s), meta de {$d['meta_margem']}% de margem líquida"
+    );
+    echo "migrate: carga de desafio {$d['chave']} — {$r['negocios']} negócio(s).\n";
+    if ($r['ignorados']) {
+        echo 'migrate: negócio(s) fora do cadastro ignorado(s) na carga de desafio: '
+            . implode(', ', $r['ignorados']) . ".\n";
+    }
+}
+
 // ---- Cargas de conteúdo: cenário macroeconômico e PESTEL ----
 // O seeds.sql só age com o contexto vazio e essas telas já têm itens escritos
 // à mão, então a carga nunca chegaria por lá. Aqui ela chega no deploy — UMA

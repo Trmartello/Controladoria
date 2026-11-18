@@ -1036,3 +1036,29 @@ CREATE TABLE IF NOT EXISTS negocio_beneficio (
   PRIMARY KEY (negocio_id, ano, chave),
   CONSTRAINT fk_nb_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- O DESAFIO que a Controladoria propõe a cada negócio para o ano do planejamento
+-- (pedido do cliente, 2026-11-18): receita bruta, receita líquida e resultado
+-- líquido. É REFERÊNCIA decidida, não conta viva: sai da visão realista do ano
+-- corrente congelada no dia em que foi aprovada, e recarregar a DRE não o move —
+-- uma meta que anda sozinha com o fechamento deixa de ser meta. A margem não é
+-- guardada (é resultado ÷ receita líquida, e guardá-la seria a segunda fonte).
+-- Vem por carga (`database/desafio_*.php`) e só se lê na tela da Projeção.
+CREATE TABLE IF NOT EXISTS desafio_ano (
+  ano          SMALLINT NOT NULL PRIMARY KEY,
+  meta_margem  DECIMAL(6,2) NOT NULL,
+  metodo       TEXT NOT NULL,
+  fonte        VARCHAR(255) NOT NULL,
+  decidido_em  DATE NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS negocio_desafio (
+  negocio_id      INT NOT NULL,
+  ano             SMALLINT NOT NULL,
+  receita_bruta   DECIMAL(18,2) NOT NULL,
+  receita_liquida DECIMAL(18,2) NOT NULL,
+  resultado       DECIMAL(18,2) NOT NULL,
+  nota            VARCHAR(255) NOT NULL,
+  PRIMARY KEY (negocio_id, ano),
+  CONSTRAINT fk_nd_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

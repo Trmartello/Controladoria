@@ -115,8 +115,10 @@ class ProjecaoController
         // Pessoas e benefícios: a soma dos negócios que têm quadro, e o quadro
         // base (último mês) — o Corporativo não planeja, só totaliza.
         $pessoasSoma = ['por_ano' => [], 'base' => null];
+        $propostas = [];
         foreach ($negocios as $n) {
             $m = $this->montar((int)$n['id'], $ano, $corte);
+            $propostas[(int)$n['id']] = self::resumoDaProposta($m['linhas']);
             foreach ($m['linhas'] as $l) {
                 $c = $l['codigo'];
                 if (!isset($soma[$c])) {
@@ -189,6 +191,7 @@ class ProjecaoController
             // A visão do ano por negócio e o total — o mesmo quadro do Painel Balanço.
             'visao_ano_negocios' => $this->visaoDoAno(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
             'visao_ano_total' => $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
+            'desafio' => $this->desafioCorporativo($ano + 1, $propostas),
             'linhas' => array_values($soma),
         ];
     }
@@ -316,6 +319,9 @@ class ProjecaoController
             // Realizado × planejado do ano corrente e a visão realista, para a
             // receita bruta e o resultado líquido. Só leitura.
             'visao_ano' => $this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null,
+            // O desafio da Controladoria para o ano da proposta, ao lado do que a
+            // proposta dá hoje. Só leitura.
+            'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas),
             'filiais' => $filiais,
             'filiais_corte' => $filiaisCorte,
             'filial' => $filialAberta,
@@ -323,6 +329,116 @@ class ProjecaoController
             'atualizado_por' => $proj['atualizado_por_nome'] ?? null,
             'linhas' => $linhas,
         ];
+    }
+
+    /**
+     * O desafio do ano (`desafio_ano` + `negocio_desafio`), por id de negócio.
+     * Null quando não há desafio carregado para o ano — a tela some com o
+     * cartão em vez de mostrar uma meta zerada.
+     */
+    private function desafioDoAno(int $anoPlan): ?array
+    {
+        $cab = Database::um('SELECT ano, meta_margem, metodo, fonte, decidido_em FROM desafio_ano WHERE ano = ?', [$anoPlan]);
+        if (!$cab) {
+            return null;
+        }
+        $porNegocio = [];
+        foreach (Database::todos(
+            'SELECT negocio_id, receita_bruta, receita_liquida, resultado, nota FROM negocio_desafio WHERE ano = ?',
+            [$anoPlan]
+        ) as $r) {
+            $porNegocio[(int)$r['negocio_id']] = self::comMargem([
+                'receita_bruta' => (float)$r['receita_bruta'],
+                'receita_liquida' => (float)$r['receita_liquida'],
+                'resultado' => (float)$r['resultado'],
+            ]) + ['nota' => $r['nota']];
+        }
+        return [
+            'ano' => (int)$cab['ano'],
+            'meta_margem' => (float)$cab['meta_margem'],
+            'metodo' => $cab['metodo'],
+            'fonte' => $cab['fonte'],
+            'decidido_em' => $cab['decidido_em'],
+            'por_negocio' => $porNegocio,
+        ];
+    }
+
+    /** O desafio de UM negócio e a proposta dele hoje, lado a lado. */
+    private function desafioDoNegocio(int $negocioId, int $anoPlan, array $linhas): ?array
+    {
+        $d = $this->desafioDoAno($anoPlan);
+        if (!$d || !isset($d['por_negocio'][$negocioId])) {
+            return null;
+        }
+        $desafio = $d['por_negocio'][$negocioId];
+        unset($d['por_negocio']);
+        return $d + ['desafio' => $desafio, 'proposta' => self::resumoDaProposta($linhas)];
+    }
+
+    /**
+     * O desafio no Corporativo: cada negócio (desafio × proposta), o total, e a
+     * meta de margem líquida da direção sobre os dois totais — quanto resultado
+     * ela pediria e quanto falta.
+     *
+     * @param array<int,array> $propostas resumo da proposta de cada negócio consolidado
+     */
+    private function desafioCorporativo(int $anoPlan, array $propostas): ?array
+    {
+        $d = $this->desafioDoAno($anoPlan);
+        if (!$d) {
+            return null;
+        }
+        $zero = ['receita_bruta' => 0.0, 'receita_liquida' => 0.0, 'resultado' => 0.0];
+        $totDesafio = $zero;
+        $totProposta = $zero;
+        $negocios = [];
+        foreach ($propostas as $id => $p) {
+            $desafio = $d['por_negocio'][$id] ?? null;
+            foreach (array_keys($zero) as $k) {
+                $totProposta[$k] += (float)($p[$k] ?? 0);
+                if ($desafio) {
+                    $totDesafio[$k] += $desafio[$k];
+                }
+            }
+            $negocios[$id] = ['desafio' => $desafio, 'proposta' => $p];
+        }
+        $meta = $d['meta_margem'];
+        $alvo = static fn (array $t) => [
+            'resultado_meta' => $t['receita_liquida'] * $meta / 100,
+            'falta' => $t['receita_liquida'] * $meta / 100 - $t['resultado'],
+        ];
+        unset($d['por_negocio']);
+        return $d + [
+            'negocios' => $negocios,
+            'total' => [
+                'desafio' => self::comMargem($totDesafio) + $alvo($totDesafio),
+                'proposta' => self::comMargem($totProposta) + $alvo($totProposta),
+            ],
+        ];
+    }
+
+    /**
+     * Receita bruta (1), receita líquida (3) e resultado líquido (16) da coluna
+     * Proposta, com a margem. Conta sem proposta vale null — e a margem também.
+     */
+    private static function resumoDaProposta(array $linhas): array
+    {
+        $p = array_column($linhas, 'proposta', 'codigo');
+        $v = static fn ($c) => isset($p[$c]) && $p[$c] !== null ? (float)$p[$c] : null;
+        return self::comMargem([
+            'receita_bruta' => $v('1'),
+            'receita_liquida' => $v('3'),
+            'resultado' => $v('16'),
+        ]);
+    }
+
+    /** Margem líquida em %: resultado ÷ receita líquida. Sem receita, não há margem. */
+    private static function comMargem(array $t): array
+    {
+        $t['margem'] = $t['receita_liquida'] && $t['resultado'] !== null
+            ? $t['resultado'] / $t['receita_liquida'] * 100
+            : null;
+        return $t;
     }
 
     /** A resposta de toda gravação: a tela inteira, recalculada. */

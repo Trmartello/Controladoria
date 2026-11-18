@@ -3057,13 +3057,58 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   dinheiro dos formulários (`.campo-moeda`): o filtro dele recusa o sinal de
   propósito, porque ali negativo é erro. Campo novo que aceite negativo: ponha
   `data-sinal`; sem ele o celular volta a não ter como lançá-lo.
-  **No Dossiê a Projeção segue o negócio do DOCUMENTO**, não o seletor da tela
-  (`App.modoDossie` + `App.contexto`), e se declara ausente onde não há DRE em
-  vez de imprimir o número de um negócio sob o nome de outro — a API cai no
-  primeiro negócio com DRE quando o pedido não tem, o que é conveniência numa
-  tela e falsificação num documento. No dossiê a seção também vira PÁGINA:
-  sem seletor, sem rádio e sem campo de digitar, que no papel sairiam como
-  caixas vazias.
+  **O negócio da Projeção é o do MENU, na tela e no dossiê** (pedido do cliente,
+  2026-11-18: "esses campos devem ser o mesmo"). Antes a seção guardava um
+  negócio próprio, e o topo dizia "12 - P. Resf. Leite" sobre uma tela de
+  Cereais. Agora `carregar()` lê sempre `App.contexto`, e o seletor
+  `#projecao-negocio` continua só por conveniência (o do menu fica atrás do ☰):
+  ele **escreve** no `#sel-negocio` e dispara o `change` dele, que guarda o lugar,
+  repinta o topo e recarrega a seção — um caminho só. Negócio do menu sem DRE
+  carregada se declara ausente (`#projecao-sem-dre`, com o seletor para escolher
+  um que tenha) em vez de mostrar o primeiro negócio com DRE sob o nome dele — a
+  API cai nesse primeiro quando o pedido não tem, o que seria falsificação na
+  tela e no documento. No dossiê a seção também vira PÁGINA: sem seletor, sem
+  rádio e sem campo de digitar, que no papel sairiam como caixas vazias.
+  Prova: `provasNegocioUnico`.
+  **Cartões de cima em expansores** (pedido do cliente, 2026-11-18, "para
+  otimizar a tela"): visão do ano, desafio, premissas e pessoas são `<details
+  class="expansor">` (`SecaoProjecao.expansor()`); fechado, o título traz um
+  resumo com o número que importa (resultado real + realista, IPCA/PIB/vale/
+  abono, colaboradores e custo no ano). Por omissão só o **desafio** vem aberto;
+  a escolha de cada um fica em `localStorage['projecao.expansores']` (o `toggle`
+  não borbulha: é escutado na CAPTURA, uma vez, no `#secao-projecao`) e
+  sobrevive à troca de negócio e aos repintes por `outerHTML`, que relêem o
+  estado. No dossiê tudo sai aberto. **A bateria abre todos no login**
+  (`entrar()` em `testes/comum.js`, só se não houver escolha guardada): as provas
+  antigas digitam nas premissas e nas pessoas, e campo dentro de `<details>`
+  fechado não aceita clique. Prova nova de expansor grava o estado que quer
+  medir e devolve "tudo aberto" ao sair.
+  **Desafio de 2027 da Controladoria** (pedido do cliente, 2026-11-18: "os 2% são
+  margem líquida, carregue o desafio na projeção"). Referência **decidida e
+  congelada**, só de leitura: `desafio_ano` (meta de margem, método, fonte, data)
+  e `negocio_desafio` (receita bruta, receita líquida, resultado e a nota de onde
+  saiu; a margem é derivada, resultado ÷ ROL), carregados por
+  `database/desafio_2027.php` via `CargaDesafio`, que confere tudo e
+  **sobrescreve o ano inteiro** numa transação (negócio que sai da carga sai do
+  banco — sobrar somaria no total um desafio que ninguém decidiu). Recarregar a
+  DRE não o move: meta que anda com o fechamento deixa de ser meta. Método (o da
+  página publicada para aprovação, https://claude.ai/artifact/KPmsxFFV9Au84nexBjvtAD):
+  receita bruta = 2026 **realista** × 1,06 (IPCA 4% + PIB 2%); ROL pela relação
+  ROL/ROB de 2026; margem = a **maior** entre a de 2025 e a de 2026 realista
+  (diretriz do horizonte 1, preservar margem); Pecuária no **cenário otimista**
+  da planilha do negócio (R$ 774,7 mi) com a margem de 2026 realista; Usina sem
+  receita, resultado de 2026 realista + IPCA. Total: ROB R$ 3,69 bi, resultado
+  R$ 63,69 mi, **margem 1,79%** — os **2% de margem líquida** da direção dariam
+  R$ 71,27 mi sobre a mesma ROL: faltam R$ 7,59 mi. No negócio, o cartão compara
+  desafio × proposta lançada (linhas 1, 3 e 16 e a margem); no Corporativo, cada
+  negócio, o total e a meta de 2% sobre a ROL do desafio **e** sobre a da
+  proposta. Na filial não aparece. Três perguntas da página ficaram sem resposta e
+  valem como lá (macro igual para todos; Cereais pela margem de 2025, 1,72%, não
+  pela do plano de 2026, 0,82%; Pecuária com a margem de 2026 no otimista):
+  mudando uma, refaz-se a conta, **troca-se a `chave`** e o deploy recarrega.
+  Provas: `testes/desafio.php` (carga, total, os 2%, e a ORIGEM — receita = visão
+  realista desta tela × 1,06 e margem nunca pior que a de 2026 realista) e
+  `provasDesafioEExpansores`.
   **A linha 15 (Despesas Totais) não recebe proposta.** Ela vem do Qlik com
   valor próprio e não é soma de nenhuma combinação das linhas carregadas —
   foram testadas sete fórmulas candidatas contra 11 negócios × 9 meses, todas

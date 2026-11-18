@@ -6299,6 +6299,200 @@ async function provasCrescimentoPositivo(page, largura) {
 }
 
 /**
+ * A Projeção agora ESCREVE no negócio do menu (um negócio só no sistema), então
+ * as provas dela deixam o contexto num negócio. As que vêm depois contam com o
+ * Corporativo do login (`entrar()`): devolve-se o menu a ele.
+ */
+async function voltarAoCorporativo(page) {
+  await page.evaluate(() => {
+    const s = document.querySelector('#sel-negocio');
+    if (s && [...s.options].some((o) => o.value === 'CORP')) {
+      s.value = 'CORP';
+      s.dispatchEvent(new Event('change'));
+    }
+    App.contexto.cicloId = 1;
+    App.contexto.negocioId = null;
+    App.contexto.corporativo = true;
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+}
+
+/**
+ * UM negócio só (pedido do cliente, 2026-11-18: "esses campos devem ser o
+ * mesmo"): o seletor da Projeção e o do menu nunca discordam. Trocar no menu
+ * troca a tela; trocar na tela troca o menu e o topo; e um negócio do menu sem
+ * DRE diz isso em vez de mostrar outro negócio debaixo do nome dele.
+ */
+async function provasNegocioUnico(page, largura) {
+  const l = `[${largura}] Negócio único:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abriu`, abriu);
+  if (!abriu) return;
+  const pelo = (sel, txt) => page.evaluate(([q, x]) => {
+    const s = document.querySelector(q);
+    const o = [...s.options].find((op) => op.textContent.trim().endsWith(x));
+    if (!o) return false;
+    s.value = o.value;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }, [sel, txt]);
+  const ler = () => page.evaluate(() => ({
+    tela: document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim(),
+    menu: document.querySelector('#sel-negocio').selectedOptions[0]?.textContent.trim(),
+    topo: document.getElementById('topbar-contexto')?.textContent.trim(),
+    ctx: { ...App.contexto },
+    temTabela: !!document.querySelector('.tabela-projecao'),
+  }));
+
+  t(`${l} o menu tem o Leite`, await pelo('#sel-negocio', '- LEITE'));
+  await esperar(page, "document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.includes('LEITE')", 15000);
+  let x = await ler();
+  t(`${l} trocar no MENU troca a tela`, x.tela === x.menu && /LEITE$/.test(x.tela || ''), `${x.tela} | ${x.menu}`);
+
+  await pelo('#projecao-negocio', '- UBS');
+  await esperar(page, "document.querySelector('#sel-negocio').selectedOptions[0]?.textContent.includes('UBS')", 15000);
+  await esperar(page, "document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.includes('UBS')", 15000);
+  x = await ler();
+  t(`${l} trocar na TELA troca o menu, o topo e o contexto`,
+    /UBS$/.test(x.menu || '') && /UBS/.test(x.topo || '') && x.tela === x.menu && !x.ctx.corporativo
+    && String(x.ctx.negocioId) === (await page.evaluate(() => document.querySelector('#projecao-negocio').value)),
+    JSON.stringify(x));
+
+  await page.evaluate(() => { const s = document.querySelector('#projecao-negocio'); s.value = 'corp'; s.dispatchEvent(new Event('change')); });
+  await esperar(page, "App.contexto.corporativo && !!document.querySelector('#projecao-corporativo-cobertura')", 30000);
+  x = await ler();
+  t(`${l} o Corporativo da tela é o Corporativo do menu`, x.ctx.corporativo && x.menu === 'Corporativo' && /Corporativo/.test(x.tela || ''), JSON.stringify(x));
+
+  // Negócio sem DRE no contexto: a API cairia no primeiro com DRE — a tela não.
+  await page.evaluate(() => { App.contexto.corporativo = false; App.contexto.negocioId = 999999; return SecaoProjecao.carregar(); });
+  x = await page.evaluate(() => ({
+    aviso: !!document.querySelector('#projecao-sem-dre'),
+    tabela: !!document.querySelector('.tabela-projecao'),
+    sel: document.querySelector('#projecao-negocio')?.value,
+  }));
+  t(`${l} negócio do menu sem DRE: a tela diz que não tem, sem a tabela de outro negócio`, x.aviso && !x.tabela && x.sel === '', JSON.stringify(x));
+  // E do aviso se sai escolhendo um negócio com DRE.
+  await pelo('#projecao-negocio', '- CEREAIS');
+  await esperar(page, "!!document.querySelector('.tabela-projecao') && document.querySelector('#sel-negocio').selectedOptions[0]?.textContent.includes('CEREAIS')", 15000);
+  x = await ler();
+  t(`${l} do aviso se escolhe outro negócio, e o menu acompanha`, x.temTabela && /CEREAIS$/.test(x.menu || '') && x.tela === x.menu, JSON.stringify(x));
+}
+
+/**
+ * Os cartões de cima da Projeção são EXPANSORES (pedido do cliente, 2026-11-18,
+ * "para otimizar a tela"), e o DESAFIO de 2027 entra como um deles, só de leitura
+ * ("os 2% são margem líquida, carregue o desafio na projeção").
+ */
+async function provasDesafioEExpansores(page, largura) {
+  const l = `[${largura}] Desafio e expansores:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  t(`${l} a tela abriu`, abriu);
+  if (!abriu) return;
+  // Estado de fábrica: nenhuma escolha guardada.
+  const escolher = async (txt) => {
+    // Marca a tela de agora: trocar para o MESMO negócio também repinta, e sem a
+    // marca a espera abaixo passaria com a tela velha.
+    await page.evaluate((x) => {
+      document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+      const s = document.querySelector('#sel-negocio');
+      s.value = [...s.options].find((o) => o.textContent.trim().endsWith(x)).value;
+      s.dispatchEvent(new Event('change'));
+    }, txt);
+    await esperar(page, `document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith(${JSON.stringify(txt)}) && !!document.querySelector('.tabela-projecao:not([data-velha])')`, 30000);
+  };
+  await page.evaluate(() => { localStorage.setItem('projecao.expansores', '{}'); SecaoProjecao.expansores = undefined; });
+  await escolher('- CEREAIS');
+  const estado = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('details.expansor')].map((d) => [d.dataset.expansor, {
+    aberto: d.open,
+    resumo: d.querySelector('.expansor-resumo')?.textContent.replace(/\s+/g, ' ').trim() || '',
+    // `<details>` fechado esconde por content-visibility: offsetParent não vê isso.
+    campoVisivel: [...d.querySelectorAll('input')].some((i) => i.checkVisibility()),
+  }])));
+  let e = await estado();
+  t(`${l} quatro expansores no negócio: visão, desafio, premissas, pessoas`,
+    ['visao', 'desafio', 'premissas', 'pessoas'].every((k) => e[k]), Object.keys(e).join(','));
+  t(`${l} por omissão só o desafio vem aberto`,
+    e.desafio?.aberto && !e.visao?.aberto && !e.premissas?.aberto && !e.pessoas?.aberto, JSON.stringify(e));
+  t(`${l} fechado, o título resume: premissas (IPCA, PIB, vale, abono) e pessoas (colaboradores, custo no ano)`,
+    /IPCA .* PIB .* vale R\$ .* abono R\$/.test(e.premissas?.resumo || '') && /colaboradores · R\$ [\d.]+ no ano/.test(e.pessoas?.resumo || ''),
+    `${e.premissas?.resumo} | ${e.pessoas?.resumo}`);
+  t(`${l} fechado, os campos das premissas ficam escondidos`, e.premissas && !e.premissas.campoVisivel);
+
+  await page.click('details[data-expansor="premissas"] > summary');
+  await page.waitForTimeout(300);
+  e = await estado();
+  const salvo = await page.evaluate(() => JSON.parse(localStorage.getItem('projecao.expansores') || '{}'));
+  t(`${l} clicar no título abre, e a escolha fica guardada`, e.premissas.aberto && e.premissas.campoVisivel && salvo.premissas === true, JSON.stringify(salvo));
+  await escolher('- LEITE');
+  e = await estado();
+  t(`${l} a escolha sobrevive à troca de negócio`, e.premissas?.aberto && !e.visao?.aberto && e.desafio?.aberto);
+
+  // O desafio do negócio: os números da API, lado a lado com a proposta.
+  await escolher('- CEREAIS');
+  const api = await page.evaluate(async () => {
+    const id = document.querySelector('#projecao-negocio').value;
+    const d = await App.api(`/api/projecao?negocio_id=${id}`);
+    return { des: d.desafio && d.desafio.desafio, pro: d.desafio && d.desafio.proposta, rl: (d.linhas.find((x) => x.codigo === '16') || {}).proposta };
+  });
+  const tela = await page.evaluate(() => {
+    const n = (s) => Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.'));
+    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => c.textContent.trim());
+    return {
+      rob: n(td('receita_bruta')[1]), rl: n(td('resultado')[1]), rlProposta: n(td('resultado')[2]),
+      dif: n(td('resultado')[3]), margem: td('margem')[1],
+      campos: document.querySelectorAll('.painel-desafio input, .painel-desafio select, .painel-desafio [contenteditable]').length,
+      nota: document.querySelector('#desafio-nota')?.textContent || '',
+    };
+  });
+  t(`${l} Cereais: desafio de R$ 547.416.689 de receita bruta e R$ 9.101.824 de resultado, margem 1,72%`,
+    api.des && tela.rob === 547416689 && tela.rl === 9101824 && tela.margem === '1,72%', JSON.stringify(tela));
+  t(`${l} a coluna Proposta é a linha 16 da proposta, e a diferença é proposta − desafio`,
+    Math.round(api.rl) === tela.rlProposta && tela.dif === Math.round(api.rl) - 9101824, `${api.rl} | ${JSON.stringify(tela)}`);
+  t(`${l} o desafio é só de leitura (nenhum campo no cartão)`, tela.campos === 0);
+  t(`${l} a nota diz de onde saiu e lembra a meta de 2% de margem líquida`,
+    /Volta à margem de 2025/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recarregar a DRE não a move/.test(tela.nota), tela.nota.slice(0, 120));
+
+  // Na filial não há desafio: ele é do negócio.
+  const temFilial = await page.evaluate(() => (document.querySelector('#projecao-filial')?.options.length || 0) > 1);
+  if (temFilial) {
+    await page.evaluate(() => { const s = document.querySelector('#projecao-filial'); s.value = s.options[1].value; s.dispatchEvent(new Event('change')); });
+    await esperar(page, "!!SecaoProjecao.dados.filial", 15000);
+    t(`${l} na filial o cartão do desafio some`, !(await page.evaluate(() => !!document.querySelector('.painel-desafio'))));
+    await page.evaluate(() => { const s = document.querySelector('#projecao-filial'); s.value = '0'; s.dispatchEvent(new Event('change')); });
+    await esperar(page, "!SecaoProjecao.dados.filial", 15000);
+  }
+
+  // O Corporativo: cada negócio, o total e a meta de 2%.
+  await page.evaluate(() => { const s = document.querySelector('#sel-negocio'); s.value = 'CORP'; s.dispatchEvent(new Event('change')); });
+  await esperar(page, "!!document.querySelector('.tabela-desafio [data-negocio-desafio=\"total\"]')", 30000);
+  const corp = await page.evaluate(() => {
+    const tot = [...document.querySelectorAll('.tabela-desafio [data-negocio-desafio="total"] td')].map((c) => c.textContent.trim());
+    return {
+      negocios: document.querySelectorAll('.tabela-desafio tbody tr[data-negocio-desafio]:not([data-negocio-desafio="total"])').length,
+      robTotal: tot[1], rlTotal: tot[2], margem: tot[3],
+      metaDesafio: document.querySelector('.meta-margem [data-meta="desafio"]')?.textContent.replace(/\s+/g, ' ') || '',
+      metaProposta: document.querySelector('.meta-margem [data-meta="proposta"]')?.textContent.replace(/\s+/g, ' ') || '',
+      expansores: [...document.querySelectorAll('details.expansor')].map((d) => d.dataset.expansor).join(','),
+    };
+  });
+  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.694.590.776, resultado 63.685.718, margem 1,79%)`,
+    corp.negocios === 11 && corp.robTotal === '3.694.590.776' && corp.rlTotal === '63.685.718' && corp.margem === '1,79%', JSON.stringify(corp));
+  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 71,27 mi, faltam R$ 7,59 mi`,
+    /2% seriam R\$ 71,27 mi/.test(corp.metaDesafio) && /faltam R\$ 7,59 mi/.test(corp.metaDesafio), corp.metaDesafio);
+  t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
+  t(`${l} Corporativo: visão, desafio e pessoas como expansores (sem premissas: nada se lança ali)`,
+    corp.expansores === 'visao,desafio,pessoas', corp.expansores);
+
+  // Devolve o estado das outras provas: tudo aberto.
+  await page.evaluate(() => {
+    localStorage.setItem('projecao.expansores', JSON.stringify({ visao: true, desafio: true, premissas: true, pessoas: true }));
+    SecaoProjecao.expansores = undefined;
+  });
+}
+
+/**
  * Recolher e mostrar as subcontas (pedido do cliente, 2026-11-18): o botão
  * deixa à vista só os blocos da DRE, para ver como os números fecham, e devolve
  * as linhas de lançamento no segundo clique. É só visualização — os números não
@@ -7005,6 +7199,15 @@ async function provasProjecao(page, largura) {
   const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
   t(`${l} a tela abre com o seletor de negócio`, abriu);
   if (!abriu) return;
+  // A tela segue o negócio do MENU, e o login da bateria entra no Corporativo:
+  // estas provas são as do negócio, então escolhem o primeiro da lista.
+  const primeiro = await page.evaluate(() => {
+    const s = document.querySelector('#projecao-negocio');
+    const o = [...s.options].find((q) => q.value && q.value !== 'corp');
+    if (s.value !== o.value) { s.value = o.value; s.dispatchEvent(new Event('change')); }
+    return o.value;
+  });
+  await esperar(page, `document.querySelector('#projecao-negocio')?.value === '${primeiro}' && !document.querySelector('#projecao-corporativo-cobertura') && !!document.querySelector('.tabela-projecao')`, 20000);
 
   const ler = () => page.evaluate(() => {
     const num = (s) => {
@@ -9949,11 +10152,14 @@ async function provasSaidaDoModal(page, largura) {
   await comPremissasNeutras(page, () => provasCrescimentoPositivo(page, 'desktop'));
   await provasSinalNoCelular(page, 'desktop');
   await provasRecolherNivel(page, 'desktop');
+  await provasNegocioUnico(page, 'desktop');
+  await provasDesafioEExpansores(page, 'desktop');
   await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
   await provasProjecaoNoDossie(page, 'desktop');
+  await voltarAoCorporativo(page);
   await provasOrdenarCenario(page);
   await provasOrdenarFatores(page);
   await provasOrdenarIndicadores(page);
@@ -10018,10 +10224,13 @@ async function provasSaidaDoModal(page, largura) {
   await comPremissasNeutras(pageM, () => provasCrescimentoPositivo(pageM, 'celular'));
   await provasSinalNoCelular(pageM, 'celular');
   await provasRecolherNivel(pageM, 'celular');
+  await provasNegocioUnico(pageM, 'celular');
+  await provasDesafioEExpansores(pageM, 'celular');
   await provasVisaoDoAno(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
   await provasProjecaoNoDossie(pageM, 'celular');
+  await voltarAoCorporativo(pageM);
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');
