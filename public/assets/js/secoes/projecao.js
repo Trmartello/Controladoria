@@ -251,6 +251,7 @@ const SecaoProjecao = {
           <tbody>${this.corpo(d)}</tbody>
         </table>
       </div>
+      <div id="projecao-piso-box">${this.alertaPisoFaturamento(d)}</div>
       <p class="text-muted small">
         <span class="legenda-editavel"></span> Célula em amarelo-claro é onde se lança.
         Valores em R$. A.V. = análise vertical sobre a Receita Operacional Líquida.
@@ -1748,7 +1749,8 @@ const SecaoProjecao = {
       let proposta;
       if (editavel) {
         proposta = `<input type="text" class="celula-valor celula-proposta${
-          l.proposta_origem === 'PERCENTUAL' ? ' celula-espelhada' : ''}" inputmode="decimal" data-sinal
+          l.proposta_origem === 'PERCENTUAL' ? ' celula-espelhada' : ''}${
+          l.abaixo_piso ? ' celula-pior' : ''}" inputmode="decimal" data-sinal
           autocomplete="off" value="${Modal.esc(this.textoLancado(l))}"
           placeholder="${this.moeda(l.proposta)}"
           data-conta="${Modal.esc(l.codigo)}"
@@ -1778,7 +1780,7 @@ const SecaoProjecao = {
       if (editavel) {
         reajuste = `<input type="text" class="celula-valor celula-reajuste${
           l.proposta_origem === 'VALOR' ? ' celula-espelhada' : ''}${
-          pior ? ' celula-pior' : ''}" inputmode="decimal" data-sinal
+          pior || l.abaixo_piso ? ' celula-pior' : ''}" inputmode="decimal" data-sinal
           autocomplete="off" value="${Modal.esc(this.textoReajuste(l))}"
           placeholder="${l.proposta_padrao !== null && l.proposta_padrao !== undefined ? this.pct(l.proposta_padrao / 100, 2) : '0,00%'}"
           data-conta="${Modal.esc(l.codigo)}"
@@ -1838,6 +1840,8 @@ const SecaoProjecao = {
     }
     const caixaNeg = el.querySelector('#projecao-meta-negativa-box');
     if (caixaNeg && this.dados) caixaNeg.innerHTML = this.alertaMetaNegativa(this.dados);
+    const caixaPiso = el.querySelector('#projecao-piso-box');
+    if (caixaPiso && this.dados) caixaPiso.innerHTML = this.alertaPisoFaturamento(this.dados);
     const nivel = el.querySelector('#projecao-nivel');
     if (nivel && virgem(nivel)) nivel.addEventListener('click', () => this.alternarNivel());
     const imprimir = el.querySelector('#projecao-imprimir-dre');
@@ -1984,6 +1988,8 @@ const SecaoProjecao = {
       if (tbody) tbody.innerHTML = this.corpo(this.dados);
       const negativa = el.querySelector('#projecao-meta-negativa-box');
       if (negativa) negativa.innerHTML = this.alertaMetaNegativa(this.dados);
+      const piso = el.querySelector('#projecao-piso-box');
+      if (piso) piso.innerHTML = this.alertaPisoFaturamento(this.dados);
       this.repintarTributos(el);
       this.ligar(el);
       el.querySelector(`#premissa-${inp.dataset.chave}`)?.focus();
@@ -2116,6 +2122,30 @@ const SecaoProjecao = {
         <strong>Resultado líquido negativo.</strong> A proposta ${d.filial ? 'desta filial' : 'deste negócio'}
         para ${d.ano_planejamento} está em <strong>−R$ ${this.moeda(Math.abs(l.proposta))}</strong>. A diretriz de ${d.ano_planejamento}
         não admite meta negativa de resultado líquido: reveja a proposta. A linha está destacada na tabela.
+      </div>`;
+  },
+
+  /**
+   * O piso do faturamento (pedido do cliente, 2026-11-19): a Receita de Vendas
+   * proposta não pode ficar abaixo do crescimento real total do negócio — IPCA
+   * + PIB + crescimento desejado, os parâmetros do painel. Acima pode, é o
+   * negócio se desafiando mais. Abaixo, o lançamento fica (o número é do
+   * negócio) e esta caixa, embaixo da DRE, aponta a inconsistência em vermelho.
+   * A conta é do servidor (`Projecao::aplicar`, `abaixo_piso`), no formato do
+   * motor; aqui só se diz.
+   */
+  alertaPisoFaturamento(d) {
+    if (!d || d.corporativo) return '';
+    const l = (this.visao(d).linhas || []).find((x) => x.codigo === '1.1');
+    if (!l || !l.abaixo_piso || !l.projecao) return '';
+    const piso = Number(l.piso_percentual) || 0;
+    const cresc = l.proposta / l.projecao - 1;
+    return `<div class="alert alert-danger py-2 px-3 small mb-2" id="projecao-piso-faturamento">
+        <strong>Inconsistência no faturamento.</strong> A Receita de Vendas proposta para ${d.ano_planejamento}
+        (R$ ${this.moeda(l.proposta)}, ${this.pct(cresc, 2)} sobre a projeção) está <strong>abaixo do crescimento real
+        total do negócio</strong>: IPCA + PIB + crescimento do faturamento somam ${this.pct(piso / 100, 2)}, ou
+        R$ ${this.moeda(l.projecao * (1 + piso / 100))}. O faturamento pode ficar igual ou acima disso, nunca abaixo:
+        reveja o lançamento ou os parâmetros de crescimento.
       </div>`;
   },
 

@@ -6722,6 +6722,50 @@ async function lancamentoDaProposta(page, sufixo, conta, texto) {
 }
 
 /**
+ * O piso do faturamento (pedido do cliente, 2026-11-19): a Receita de Vendas
+ * proposta não pode ficar abaixo de IPCA + PIB + crescimento do faturamento.
+ * Abaixo, o lançamento fica e a DRE aponta em vermelho, embaixo da tabela;
+ * acima, nada a dizer. As Agropecuárias têm IPCA 4,5 e PIB 1,5 gravados: o piso
+ * é 6% (ou mais, com o crescimento desejado).
+ */
+async function provasPisoFaturamento(page, largura) {
+  const l = `[${largura}] Piso do faturamento:`;
+  const reajuste = async (texto) => {
+    await page.evaluate((v) => {
+      const i = document.querySelector('.tabela-projecao [data-conta="1.1"] .celula-reajuste');
+      i.focus(); i.value = v; i.blur();
+    }, texto);
+    await new Promise((r) => setTimeout(r, 1800));
+  };
+  const original = await lancamentoDaProposta(page, 'AGROPECUARIAS', '1.1', null);
+  const reajOriginal = await page.evaluate(() =>
+    document.querySelector('.tabela-projecao [data-conta="1.1"] .celula-reajuste')?.value ?? '');
+  const editaveis = await page.evaluate(() =>
+    document.querySelectorAll('.tabela-projecao .linha-subconta .celula-proposta').length);
+  t(`${l} as aberturas da DRE seguem com campo de lançamento`, editaveis > 10, String(editaveis));
+
+  await reajuste('1');
+  const abaixo = await page.evaluate(() => ({
+    alerta: document.querySelector('#projecao-piso-box #projecao-piso-faturamento')?.textContent || '',
+    marcada: !!document.querySelector('.tabela-projecao [data-conta="1.1"] .celula-pior'),
+    depoisDaTabela: !!document.querySelector('.tabela-projecao ~ #projecao-piso-box'),
+  }));
+  t(`${l} reajuste de 1% (abaixo de IPCA + PIB): inconsistência em vermelho embaixo da DRE`,
+    abaixo.alerta.includes('abaixo do crescimento real') && abaixo.marcada && abaixo.depoisDaTabela, JSON.stringify(abaixo));
+
+  await reajuste('20');
+  const acima = await page.evaluate(() => !!document.querySelector('#projecao-piso-faturamento'));
+  t(`${l} reajuste de 20% (acima do piso): o negócio se desafia mais, sem aviso`, !acima);
+
+  // Devolve o que estava: vazio volta ao padrão (as premissas), que é o piso.
+  if (reajOriginal) await reajuste(reajOriginal);
+  else if (original) await lancamentoDaProposta(page, 'AGROPECUARIAS', '1.1', original);
+  else await reajuste('');
+  const fim = await page.evaluate(() => !!document.querySelector('#projecao-piso-faturamento'));
+  t(`${l} de volta ao padrão das premissas, sem inconsistência`, !fim);
+}
+
+/**
  * Pedidos do cliente de 2026-11-19: o CENÁRIO realista da planilha da Pecuária na
  * Receita de Vendas (convertido para o formato novo, sem a CBS), a IMPRESSÃO da
  * DRE da proposta aberta e o DESTAQUE das aberturas (expansores).
@@ -10971,6 +11015,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasLancamentosEJuros(page, 'desktop');
   await lancamentoDaProposta(page, '2 - PECUARIA', '1.1', receitaPecuaria);
   await provasCenarioEImpressao(page, 'desktop');
+  await provasPisoFaturamento(page, 'desktop');
   await lancamentoDaProposta(page, '2 - PECUARIA', '1.1', '');
   await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
@@ -11054,6 +11099,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasLancamentosEJuros(pageM, 'celular');
   await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', receitaPecuariaM);
   await provasCenarioEImpressao(pageM, 'celular');
+  await provasPisoFaturamento(pageM, 'celular');
   await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', '');
   await provasVisaoDoAno(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');
