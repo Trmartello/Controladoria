@@ -6757,6 +6757,20 @@ async function provasPisoFaturamento(page, largura) {
   const acima = await page.evaluate(() => !!document.querySelector('#projecao-piso-faturamento'));
   t(`${l} reajuste de 20% (acima do piso): o negócio se desafia mais, sem aviso`, !acima);
 
+  // Pontos de milhar enquanto se digita (pedido do cliente, 2026-11-19), com o
+  // teclado de verdade; Escape devolve o que estava, sem gravar nada.
+  const sel = '.tabela-projecao [data-conta="8.1"] .celula-proposta';
+  await page.click(sel, { clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('500000');
+  const milhar = await page.$eval(sel, (i) => i.value);
+  await page.keyboard.type(',5');
+  const decimal = await page.$eval(sel, (i) => i.value);
+  await page.keyboard.press('Escape');
+  t(`${l} digitar 500000 mostra 500.000 na hora, e a vírgula decimal passa intacta`,
+    milhar === '500.000' && decimal === '500.000,5', JSON.stringify([milhar, decimal]));
+  await new Promise((r) => setTimeout(r, 600));
+
   // Devolve o que estava: vazio volta ao padrão (as premissas), que é o piso.
   if (reajOriginal) await reajuste(reajOriginal);
   else if (original) await lancamentoDaProposta(page, 'AGROPECUARIAS', '1.1', original);
@@ -10564,6 +10578,25 @@ async function provasMesAMes(page, largura) {
   t(`${l} mês sem meta nem real fica em "—"`,
     mar && mar.txt === '—' && mar.cor === 'text-muted', JSON.stringify(mar));
 
+  // A linha % acompanha o lançamento SEM recarregar (relato do cliente,
+  // 2026-11-19: "100%" debaixo de um real vazio). Digita no real de março, onde
+  // a meta não existe, e em janeiro, onde existe.
+  const digitaReal = async (mes, texto) => {
+    const sel = `[data-celula-ind="${indA}"][data-tipo="REAL"][data-ano="${exec}"][data-mes="${mes}"] .celula-valor`;
+    await page.click(sel, { clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    if (texto) await page.keyboard.type(texto);
+    await page.evaluate((s) => document.querySelector(s).blur(), sel);
+    await new Promise((r) => setTimeout(r, 1500));
+  };
+  await digitaReal(1, '100');
+  const janCem = await pct(1);
+  await digitaReal(1, '');
+  const janVazio = await pct(1);
+  t(`${l} a linha % repinta ao lançar (100 sobre 100 = 100%) e ao apagar o real (volta a "—")`,
+    janCem && janCem.txt === '100%' && janVazio && janVazio.txt === '—', JSON.stringify([janCem, janVazio]));
+  await digitaReal(1, '80');
+
   // O ano acompanha, na MESMA janela que as duas linhas de cima usam: a conta
   // do percentual sai do número que a célula mostra, não de outro.
   const noAno = await page.evaluate(([i, a]) => {
@@ -10578,19 +10611,20 @@ async function provasMesAMes(page, largura) {
     noAno.pct === `${Math.round(100 * (Number(noAno.real) / Number(noAno.meta)))}%`,
     JSON.stringify(noAno));
 
-  // ── «Menor melhor» inverte a divisão ─────────────────────────────────────
+  // ── «Menor melhor»: a conta é a mesma (realizado ÷ meta), a COR é que inverte
+  // (decisão do cliente, 2026-11-19) ─────────────────────────────────────────
   await page.evaluate((id) => App.api(`/api/indicadores/${id}`, {
     planejamento_id: 1, nome: 'Indicador atingimento QA', unidade: 'R$ mil', agregacao: 'SOMA',
     sentido: 'MENOR_MELHOR',
   }).then(() => SecaoMetas.carregar()), indA);
   await esperar(page, `!!document.querySelector('[data-atingimento-ind="${indA}"]')`, 15000);
   const janMenor = await pct(1);
-  t(`${l} em "menor melhor", gastar 80 de 100 é 125% e fica verde`,
-    janMenor && janMenor.txt === '125%' && janMenor.cor === 'text-success',
+  t(`${l} em "menor melhor", gastar 80 de 100 é 80% (realizado ÷ meta) e fica verde`,
+    janMenor && janMenor.txt === '80%' && janMenor.cor === 'text-success',
     JSON.stringify(janMenor));
   const fevMenor = await pct(2);
-  t(`${l} e estourar a meta fica abaixo de 100%, em vermelho`,
-    fevMenor && fevMenor.txt === '83%' && fevMenor.cor === 'text-danger',
+  t(`${l} e estourar a meta dá 120%, em vermelho`,
+    fevMenor && fevMenor.txt === '120%' && fevMenor.cor === 'text-danger',
     JSON.stringify(fevMenor));
 
   // ── Negativo não vira percentual, mas a COR continua dizendo a verdade ───

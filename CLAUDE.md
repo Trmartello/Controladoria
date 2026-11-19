@@ -1065,10 +1065,11 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   um segundo número dentro da célula do Real, porque ali mora o campo de
   lançamento — o percentual encostado nele viraria coisa que parece digitável.
   Três decisões que não devem ser desfeitas:
-  **O sentido inverte a divisão.** Em «maior melhor» é `real ÷ meta`; em «menor
-  melhor» é `meta ÷ real`, senão gastar metade do orçado apareceria como 50% de
-  atingimento, quando é o dobro do resultado pedido. O verdadeiro/falso que dá a
-  COR sai da mesma comparação de `metaReal`, então cor e número nunca discordam.
+  **O percentual é sempre `realizado ÷ meta`** (decisão do cliente, 2026-11-19;
+  até ali «menor melhor» dividia ao contrário, `meta ÷ real`). O número diz
+  quanto do pedido se realizou; quem diz se é bom é a COR, que sai da mesma
+  comparação de `metaReal` — em «menor melhor», 80% da meta é verde e 120% é
+  vermelho. Realizado negativo também fica sem percentual (regra abaixo).
   **Negativo não vira percentual.** Meta de resultado financeiro e de dívida é
   negativa, e `−50 ÷ −100 = 50%` diria "metade do caminho" a quem, em «maior
   melhor», já superou a meta. Não há divisão honesta aí: a célula mostra "—" e
@@ -3320,6 +3321,11 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
   totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
   quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
+  **Pontos de milhar enquanto se digita** na Proposta (pedido do cliente,
+  2026-11-19): `formatarDigitando` regroupa só os pontos que ele mesmo pôs. Se a
+  pessoa digita um ponto (decimal à inglesa, `11.43%`), a célula fica como ela
+  escreveu até sair dela; com `%` não mexe. O `gravar` já lia o ponto como
+  milhar num valor, então o número gravado não muda.
   **Piso do faturamento** (pedido do cliente, 2026-11-19): a Receita de Vendas
   proposta não pode ficar abaixo de IPCA + PIB + crescimento do faturamento (o
   "crescimento real total do negócio"); acima pode — é o negócio se desafiando

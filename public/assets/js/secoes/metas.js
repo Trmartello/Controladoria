@@ -339,11 +339,11 @@ const SecaoMetas = {
    *
    * Duas coisas que não devem ser desfeitas:
    *
-   * **O sentido inverte a divisão.** Em «maior melhor» é `real ÷ meta`; em
-   * «menor melhor» é `meta ÷ real`, senão gastar metade do orçado apareceria
-   * como 50% de atingimento, quando é o dobro do resultado pedido. O
-   * `atingiu` (verdadeiro/falso) sai da MESMA comparação que `metaReal` já
-   * usa — a cor e o número nunca discordam.
+   * **O percentual é sempre `realizado ÷ meta`** (decisão do cliente,
+   * 2026-11-19 — até ali «menor melhor» dividia ao contrário, `meta ÷ real`).
+   * O número diz quanto do que foi pedido se realizou, nos dois sentidos; quem
+   * diz se isso é bom é a COR: o `atingiu` sai da MESMA comparação que
+   * `metaReal` já usa, e em «menor melhor» ficar em 80% da meta é verde.
    *
    * **Sinal negativo não vira percentual.** Meta de resultado financeiro e de
    * dívida é negativa, e `−50 ÷ −100 = 50%` diria "metade do caminho" para
@@ -367,7 +367,7 @@ const SecaoMetas = {
     if (vm === 0) {
       return { pct: null, atingiu, motivo: 'Meta zero: não há percentual a calcular.' };
     }
-    if (vm < 0 || (menor && vr <= 0)) {
+    if (vm < 0 || vr < 0) {
       return {
         pct: null,
         atingiu,
@@ -375,7 +375,7 @@ const SecaoMetas = {
           + 'A cor continua indicando se a meta foi atingida.',
       };
     }
-    return { pct: menor ? vm / vr : vr / vm, atingiu, motivo: '' };
+    return { pct: vr / vm, atingiu, motivo: '' };
   },
 
   celulaAtingimento(ind, ano, meta, real, mes = 0) {
@@ -387,8 +387,8 @@ const SecaoMetas = {
       ? '—'
       : `${(100 * pct).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%`;
     const quando = mes ? `${MESES_CURTOS[mes - 1]}/${ano}` : String(ano);
-    const regra = ind.sentido === 'MENOR_MELHOR' ? 'meta ÷ realizado' : 'realizado ÷ meta';
-    const dica = motivo || `Atingimento de ${quando} (${regra}).`;
+    const dica = motivo || `Atingimento de ${quando} (realizado ÷ meta${
+      ind.sentido === 'MENOR_MELHOR' ? '; menor melhor: até 100% é verde' : ''}).`;
     return `<td class="valor${mes ? ' celula-mes' : ''} celula-atingimento ${cor}"
       data-atingimento-ind="${ind.id}" data-ano="${ano}" data-mes="${mes}"
       title="${Modal.esc(dica)}">${texto}</td>`;
@@ -579,6 +579,14 @@ const SecaoMetas = {
       const novo = document.querySelector(
         `[data-celula-ind="${ind.id}"][data-tipo="${tipo}"][data-ano="${ano}"][data-mes="${mes}"] .celula-valor`);
       if (novo) this.ligarCelula(novo);
+    });
+    // A linha % também: ela divide o que as duas linhas de cima mostram, e sem
+    // repintar ficava com o percentual de ANTES do lançamento — lançar 1 no real
+    // e apagar deixava "100%" debaixo de um real vazio até recarregar a página.
+    [...document.querySelectorAll(`[data-atingimento-ind="${ind.id}"]`)].forEach((td) => {
+      const ano = Number(td.dataset.ano);
+      const doAno = (serie) => (serie || []).find((x) => x.ano == ano) || null;
+      td.outerHTML = this.celulaAtingimento(ind, ano, doAno(ind.metas), doAno(ind.reais), Number(td.dataset.mes));
     });
   },
 
