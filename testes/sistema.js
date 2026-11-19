@@ -9633,12 +9633,13 @@ async function provasLugarGuardado(page, largura) {
  * com texto (armadilha já paga, ver CLAUDE.md).
  */
 /**
- * Indicador em PERCENTUAL lança até TRÊS casas após a vírgula (pedido do
- * cliente, 2026-11-19); os outros continuam com duas. A prova vai do teclado ao
- * banco e volta: o filtro de digitação, a coluna DECIMAL(18,3) e a formatação.
+ * Todo indicador lança até TRÊS casas após a vírgula (pedido do cliente,
+ * 2026-11-19: primeiro os em %, depois o custo por litro em "R$ / Litro"). A
+ * prova vai do teclado ao banco e volta: o filtro de digitação, a coluna
+ * DECIMAL(18,3) e a formatação — num indicador em % e num em R$ / Litro.
  */
 async function provasCasasPercentual(page, largura) {
-  const l = `[${largura}] Três casas em %:`;
+  const l = `[${largura}] Três casas nos indicadores:`;
   const anos = await page.evaluate(async () => {
     const d = await App.api('/api/indicadores?planejamento_id=1');
     const todos = [];
@@ -9655,7 +9656,7 @@ async function provasCasasPercentual(page, largura) {
       planejamento_id: 1, nome: `Divergência QA ${Date.now()}`, unidade: '%', agregacao: 'MEDIA',
     });
     const rs = await App.api('/api/indicadores', {
-      planejamento_id: 1, nome: `Valor QA ${Date.now()}`, unidade: 'R$ mil', agregacao: 'SOMA',
+      planejamento_id: 1, nome: `Custo por litro QA ${Date.now()}`, unidade: 'R$ / Litro', agregacao: 'MEDIA',
     });
     App.mostrarSecao('metas');
     return { pct: pct.id, rs: rs.id };
@@ -9672,19 +9673,21 @@ async function provasCasasPercentual(page, largura) {
     return visto;
   };
   const vistoPct = await digitar(sel(ids.pct), '0,1259');
-  const vistoRs = await digitar(sel(ids.rs), '10,555');
+  const vistoRs = await digitar(sel(ids.rs), '0,0355');
   t(`${l} no indicador em % o campo aceita três casas (a quarta não entra)`, vistoPct === '0,125', vistoPct);
-  t(`${l} nos outros indicadores continuam duas`, vistoRs === '10,55', vistoRs);
+  t(`${l} e no de R$ / Litro também (custo por litro de 0,035)`, vistoRs === '0,035', vistoRs);
   const gravado = await page.evaluate(async (d) => {
     const r = await App.api('/api/indicadores?planejamento_id=1');
     const v = (id) => ((r.indicadores.find((x) => x.id == id).metas || []).find((m) => m.ano === d.ano) || {}).valor ?? null;
     return { pct: v(d.pct), rs: v(d.rs) };
   }, { ...ids, ano });
-  t(`${l} o banco guarda as três casas (0,125), sem arredondar`, Number(gravado.pct) === 0.125, JSON.stringify(gravado));
+  t(`${l} o banco guarda as três casas (0,125 e 0,035), sem arredondar`,
+    Number(gravado.pct) === 0.125 && Number(gravado.rs) === 0.035, JSON.stringify(gravado));
   await page.evaluate(() => SecaoMetas.carregar());
   await esperar(page, `!!document.querySelector('${sel(ids.pct)}')`, 15000);
-  const tela = await page.evaluate((c) => document.querySelector(c).value, sel(ids.pct));
-  t(`${l} e a tabela mostra 0,125 depois de repintar`, tela === '0,125', tela);
+  const tela = await page.evaluate((s) => [document.querySelector(s[0]).value, document.querySelector(s[1]).value],
+    [sel(ids.pct), sel(ids.rs)]);
+  t(`${l} e a tabela mostra 0,125 e 0,035 depois de repintar`, tela[0] === '0,125' && tela[1] === '0,035', JSON.stringify(tela));
   // Limpa o que criou: indicador de prova sobrando enche a tabela das provas seguintes.
   await page.evaluate(async (d) => {
     await App.api(`/api/indicadores/${d.pct}/excluir`, { planejamento_id: 1 });

@@ -176,12 +176,15 @@ const SecaoMetas = {
   },
 
   /**
-   * Casas decimais do indicador (pedido do cliente, 2026-11-19: "quando o
-   * indicador for em percentual, preciso lançar até três casas após a vírgula").
-   * Indicador em % (a unidade tem "%") aceita e mostra três; os outros, duas.
+   * Casas decimais dos indicadores: TRÊS, em todos (pedido do cliente,
+   * 2026-11-19). Primeiro pedido foi para os em %; no mesmo dia veio o "Custo
+   * Operacional por Litro" (R$ / Litro, meta 0,04), que também precisa da
+   * terceira casa — e decidir pela unidade deixava de fora toda unidade
+   * fracionada que não tivesse "%" no nome. O filtro de digitação, a formatação e
+   * o "Revisar metas" seguem este número.
    */
-  casas(ind) {
-    return String(ind?.unidade || '').includes('%') ? 3 : 2;
+  casas() {
+    return 3;
   },
 
   /**
@@ -988,9 +991,9 @@ const SecaoMetas = {
     }
     for (const ano of anos) {
       valores[`ano_${ano}`] = serie[ano] ?? '';
-      // `passo`: em % são três casas (pedido do cliente, 2026-11-19); sem ele o
-      // campo numérico do navegador marca 0,125 como inválido.
-      campos.push({ nome: `ano_${ano}`, rotulo: String(ano), tipo: 'number', passo: this.casas(ind) === 3 ? '0.001' : 'any' });
+      // `passo`: três casas (pedido do cliente, 2026-11-19); sem ele o campo
+      // numérico do navegador marca 0,125 como inválido.
+      campos.push({ nome: `ano_${ano}`, rotulo: String(ano), tipo: 'number', passo: '0.001' });
     }
     campos.push({ nome: 'nova_versao', rotulo: 'Gravar como revisão (preserva a versão anterior)', tipo: 'checkbox',
       ajuda: 'Desmarcado, corrige a versão atual — o mesmo que digitar na célula da tabela.' });
