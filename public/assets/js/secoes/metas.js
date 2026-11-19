@@ -169,10 +169,19 @@ const SecaoMetas = {
     return this.agregarAte(entrada.meses, agregacao, corte);
   },
 
-  fmt(v) {
+  fmt(v, casas = 2) {
     return v === null || v === undefined || v === ''
       ? '—'
-      : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+      : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: casas });
+  },
+
+  /**
+   * Casas decimais do indicador (pedido do cliente, 2026-11-19: "quando o
+   * indicador for em percentual, preciso lançar até três casas após a vírgula").
+   * Indicador em % (a unidade tem "%") aceita e mostra três; os outros, duas.
+   */
+  casas(ind) {
+    return String(ind?.unidade || '').includes('%') ? 3 : 2;
   },
 
   /**
@@ -270,6 +279,7 @@ const SecaoMetas = {
 
   celula(ind, tipo, ano, entrada, mes = 0) {
     const anual = mes === 0;
+    const casas = this.casas(ind);
     const corte = anual && ano === this.anoExecucao ? this.mesDeCorte() : null;
     const bruto = this.valorDaCelula(ind, ano, entrada, mes);
     // **Um caminho de lançamento por ano** (decisão do cliente): o ano em
@@ -290,16 +300,16 @@ const SecaoMetas = {
           ? `Acumulado de janeiro a ${MESES_CURTOS[corte - 1]}, pela regra `
             + `"${this.ROTULO_AGREGACAO[ind.agregacao] || this.ROTULO_AGREGACAO.SOMA}"`
             + (cheio !== null && cheio !== undefined
-              ? `. No ano inteiro: ${this.fmt(cheio)}` : '')
+              ? `. No ano inteiro: ${this.fmt(cheio, casas)}` : '')
             + '. Para mudar, lance no mês.'
           : 'Total dos meses deste ano — para mudar, lance no mês')}"`
         : '';
-      return `<td class="${classe}" ${marcas}${dica}>${this.fmt(bruto)}</td>`;
+      return `<td class="${classe}" ${marcas}${dica}>${this.fmt(bruto, casas)}</td>`;
     }
     const quando = anual ? ano : `${MESES_CURTOS[mes - 1]}/${ano}`;
     return `<td class="${classe}" ${marcas}>
       <input type="text" class="celula-valor" inputmode="decimal" data-sinal autocomplete="off"
-        value="${Modal.esc(this.fmt(bruto))}" data-bruto="${bruto ?? ''}"
+        value="${Modal.esc(this.fmt(bruto, casas))}" data-bruto="${bruto ?? ''}" data-casas="${casas}"
         data-ind="${ind.id}" data-tipo="${tipo}" data-ano="${ano}" data-mes="${mes}"
         aria-label="${tipo === 'META' ? 'Meta' : 'Realizado'} de ${quando} — ${Modal.esc(ind.nome)}">
     </td>`;
@@ -459,14 +469,14 @@ const SecaoMetas = {
           ? `Acumulado de janeiro a ${MESES_CURTOS[corte - 1]} de ${this.anoExecucao}, `
             + `pela regra "${this.ROTULO_AGREGACAO[i.agregacao] || this.ROTULO_AGREGACAO.SOMA}".`
             + (meta?.valorAno !== null && meta?.valorAno !== undefined
-              ? ` Meta do ano inteiro: ${this.fmt(meta.valorAno)}.` : '')
+              ? ` Meta do ano inteiro: ${this.fmt(meta.valorAno, this.casas(i))}.` : '')
           : '';
         return `<div class="d-flex justify-content-between align-items-baseline gap-2 mt-1">
           <span class="small">${Modal.esc(i.nome)} <span class="text-muted">(${Modal.esc(i.unidade)})</span></span>
           <span class="text-nowrap small ${atingiu === null ? 'text-muted' : atingiu ? 'text-success fw-bold' : 'text-danger fw-bold'}"
             ${dica ? `title="${Modal.esc(dica)}"` : ''}>
-            ${real ? `${this.fmt(real.valor)} <span class="text-muted">(${Modal.esc(String(janela))})</span>` : 'sem real'}
-            ${meta ? ` / meta ${this.fmt(meta.valor)}` : ''}
+            ${real ? `${this.fmt(real.valor, this.casas(i))} <span class="text-muted">(${Modal.esc(String(janela))})</span>` : 'sem real'}
+            ${meta ? ` / meta ${this.fmt(meta.valor, this.casas(i))}` : ''}
           </span>
         </div>`;
       }).join('');
@@ -503,7 +513,7 @@ const SecaoMetas = {
     const vazio = texto === '';
     if (!vazio && !Number.isFinite(Number(texto))) {
       this.avisar('Valor inválido: informe um número.');
-      inp.value = this.fmt(inp.dataset.bruto || null);
+      inp.value = this.fmt(inp.dataset.bruto || null, Number(inp.dataset.casas) || 2);
       inp.classList.add('celula-erro');
       return;
     }
@@ -525,7 +535,7 @@ const SecaoMetas = {
       ind.metas = r.metas;
       ind.reais = r.reais;
       inp.dataset.bruto = vazio ? '' : String(Number(texto));
-      inp.value = this.fmt(vazio ? null : Number(texto));
+      inp.value = this.fmt(vazio ? null : Number(texto), Number(inp.dataset.casas) || 2);
       this.avisar('');
       inp.classList.add('celula-salva');
       setTimeout(() => inp.classList.remove('celula-salva'), 1200);
@@ -538,7 +548,7 @@ const SecaoMetas = {
     } catch (e) {
       this.avisar(e.message);
       inp.classList.add('celula-erro');
-      inp.value = this.fmt(inp.dataset.bruto || null);
+      inp.value = this.fmt(inp.dataset.bruto || null, Number(inp.dataset.casas) || 2);
     } finally {
       inp.classList.remove('celula-gravando');
     }
@@ -796,7 +806,7 @@ const SecaoMetas = {
     // O mesmo filtro de digitação do campo de dinheiro, com NEGATIVOS
     // permitidos: meta de resultado financeiro e de dívida é negativa. A raiz é
     // a própria célula, que tem este campo e mais nenhum.
-    Modal.ligarMoedas(inp.parentElement, { seletor: '.celula-valor', negativos: true });
+    Modal.ligarMoedas(inp.parentElement, { seletor: '.celula-valor', negativos: true, casas: Number(inp.dataset.casas) || 2 });
     {
       // Com foco, o número CRU (sem separador de milhar): editar "1.500,50" é
       // pisar em cima da formatação, e a primeira tecla apagaria um número
@@ -821,7 +831,7 @@ const SecaoMetas = {
           this.gravarCelula(inp);
           return;
         }
-        inp.value = this.fmt(inp.dataset.bruto || null);
+        inp.value = this.fmt(inp.dataset.bruto || null, Number(inp.dataset.casas) || 2);
       });
       inp.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
@@ -978,7 +988,9 @@ const SecaoMetas = {
     }
     for (const ano of anos) {
       valores[`ano_${ano}`] = serie[ano] ?? '';
-      campos.push({ nome: `ano_${ano}`, rotulo: String(ano), tipo: 'number' });
+      // `passo`: em % são três casas (pedido do cliente, 2026-11-19); sem ele o
+      // campo numérico do navegador marca 0,125 como inválido.
+      campos.push({ nome: `ano_${ano}`, rotulo: String(ano), tipo: 'number', passo: this.casas(ind) === 3 ? '0.001' : 'any' });
     }
     campos.push({ nome: 'nova_versao', rotulo: 'Gravar como revisão (preserva a versão anterior)', tipo: 'checkbox',
       ajuda: 'Desmarcado, corrige a versão atual — o mesmo que digitar na célula da tabela.' });

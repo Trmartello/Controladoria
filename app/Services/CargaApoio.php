@@ -355,6 +355,63 @@ class CargaApoio
         return ['lancamentos' => count($linhas), 'juros' => count($juros), 'ignorados' => $ignorados];
     }
 
+    /**
+     * Um CENÁRIO de faturamento de planilha do negócio vira a proposta da Receita
+     * de Vendas (`database/cenario_*.php`): lança o valor no formato novo (sem a
+     * CBS) na linha do negócio, sobe a versão da projeção (quem estiver com a tela
+     * aberta recebe 409 em vez de sobrescrever calado) e guarda o cenário.
+     *
+     * @return array{negocio:string, valor:float}
+     */
+    public static function cenario(PDO $pdo, array $dados): array
+    {
+        $ano = (int)($dados['ano'] ?? 0);
+        $valor = (float)($dados['receita_vendas'] ?? 0);
+        $fat = (float)($dados['faturamento_antigo'] ?? 0);
+        $t = (float)($dados['taxa_pis_cofins'] ?? -1);
+        if ($ano < 2000 || $valor <= 0 || $t < 0 || $t >= 1 || abs($fat * (1 - $t) - $valor) > 1) {
+            throw new RuntimeException('Cenário sem ano, sem valor, ou com receita ≠ faturamento × (1 − taxa).');
+        }
+        $st = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ?');
+        $st->execute([(string)$dados['negocio']]);
+        $negId = (int)$st->fetchColumn();
+        $st = $pdo->prepare('SELECT id FROM dre_conta WHERE codigo = ?');
+        $st->execute([(string)$dados['conta']]);
+        $contaId = (int)$st->fetchColumn();
+        if (!$negId || !$contaId) {
+            throw new RuntimeException('Cenário para negócio ou conta fora do cadastro.');
+        }
+        $dono = !$pdo->inTransaction();
+        if ($dono) {
+            $pdo->beginTransaction();
+        }
+        try {
+            $pdo->prepare("INSERT INTO projecao (negocio_id, ano, modo, versao) VALUES (?, ?, 'NEGOCIO', 1)
+                ON DUPLICATE KEY UPDATE id = id")->execute([$negId, $ano]);
+            $st = $pdo->prepare('SELECT id FROM projecao WHERE negocio_id = ? AND ano = ?');
+            $st->execute([$negId, $ano]);
+            $projId = (int)$st->fetchColumn();
+            $pdo->prepare("INSERT INTO projecao_valor (projecao_id, filial_id, conta_id, entrada, valor, percentual)
+                VALUES (?, 0, ?, 'VALOR', ?, NULL)
+                ON DUPLICATE KEY UPDATE entrada = 'VALOR', valor = VALUES(valor), percentual = NULL")
+                ->execute([$projId, $contaId, round($valor, 2)]);
+            $pdo->prepare('UPDATE projecao SET versao = versao + 1, atualizado_em = NOW() WHERE id = ?')->execute([$projId]);
+            $pdo->prepare('REPLACE INTO projecao_cenario (negocio_id, ano, conta, cenario, fonte, taxa_pis_cofins,
+                faturamento_antigo, receita_vendas, itens, aplicado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())')
+                ->execute([$negId, $ano, (string)$dados['conta'], (string)$dados['cenario'], (string)$dados['fonte'],
+                    $t, $fat, $valor, json_encode($dados['itens'], JSON_UNESCAPED_UNICODE)]);
+            if ($dono) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($dono) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+        return ['negocio' => (string)$dados['negocio'], 'valor' => $valor];
+    }
+
     private static function cabecalho(array $dados, string $nome): array
     {
         $ano = (int)($dados['ano'] ?? 0);

@@ -870,6 +870,17 @@ if (!App\Services\CargaConteudo::jaAplicada($pdo, $chavePremissas)) {
     echo "migrate: {$copiadas} premissa(s) de IPCA/PIB/crescimento passaram a ser por negócio e ano.\n";
 }
 
+// ---- Três casas decimais nos valores dos indicadores (pedido do cliente, 2026-11-19) ----
+// "Quando o indicador for em percentual, preciso lançar até três casas após a
+// vírgula." A coluna nasceu DECIMAL(15,2) e cortava a terceira casa calada; o
+// `CREATE TABLE IF NOT EXISTS` não altera tabela existente, então muda aqui.
+$escala = $pdo->query("SELECT NUMERIC_SCALE FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'indicador_valor' AND COLUMN_NAME = 'valor'")->fetchColumn();
+if ($escala !== false && (int)$escala < 3) {
+    $pdo->exec('ALTER TABLE indicador_valor MODIFY valor DECIMAL(18,3) NOT NULL');
+    echo "migrate: indicador_valor.valor passou a ter três casas decimais.\n";
+}
+
 // ---- Carga da DRE gerencial (Projeção de Resultados) ----
 // Número, não texto: aqui a carga SOBRESCREVE (`ON DUPLICATE KEY UPDATE`), ao
 // contrário das cargas de conteúdo abaixo, que nunca repõem o que alguém
@@ -1034,6 +1045,17 @@ if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
     $r = App\Services\CargaApoio::lancamentos($pdo, $a);
     App\Services\CargaConteudo::marcar($pdo, $a['chave'], "Lançamentos {$a['ano']} até o mês {$a['mes_ate']}: {$r['lancamentos']} lançamento(s), {$r['juros']} total(is) de juros");
     echo "migrate: lançamentos {$a['chave']} — {$r['lancamentos']} lançamento(s), {$r['juros']} total(is) de juros, {$r['ignorados']} de negócio fora do cadastro.\n";
+}
+
+// ---- Cenário de faturamento da Pecuária para 2027 (pedido do cliente, 2026-11-19) ----
+// A planilha do negócio, cenário realista, convertida para o formato novo (sem a
+// CBS) e lançada na Receita de Vendas da proposta. Uma vez só (chave): depois disso
+// o número é do negócio, que pode relançar na tela.
+$a = require __DIR__ . '/cenario_pecuaria_2027.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
+    $r = App\Services\CargaApoio::cenario($pdo, $a);
+    App\Services\CargaConteudo::marcar($pdo, $a['chave'], "Cenário {$a['cenario']} do negócio {$r['negocio']} em {$a['ano']}: Receita de Vendas {$r['valor']}");
+    echo "migrate: cenário {$a['chave']} — Receita de Vendas {$r['valor']} lançada.\n";
 }
 
 // ---- Desafio do ano por negócio (pedido do cliente, 2026-11-18) ----
