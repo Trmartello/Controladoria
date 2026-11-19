@@ -3320,6 +3320,17 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
   totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
   quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
+  **Piso do faturamento** (pedido do cliente, 2026-11-19): a Receita de Vendas
+  proposta não pode ficar abaixo de IPCA + PIB + crescimento do faturamento (o
+  "crescimento real total do negócio"); acima pode — é o negócio se desafiando
+  mais. Abaixo, o lançamento FICA (não se recusa) e a tela marca a célula e
+  aponta a inconsistência em vermelho embaixo da DRE (`#projecao-piso-box`). A
+  conta é do servidor (`Projecao::aplicar` → `abaixo_piso`, `piso_percentual`),
+  no formato do motor, com a CBS dentro dos dois lados — comparar na tela, que
+  mostra a receita sem a CBS, daria outro número. As demais aberturas seguem
+  lançáveis como sempre. Campos de lançamento "sumidos" na DRE do negócio quase
+  sempre são o modo **Planejar por filial** (o negócio vira a soma das filiais e
+  se lança em cada filial) — não é regra nova.
   **Selo verde "diretriz" = valor igual ao da diretriz** (pedido do cliente, 2026-11-19:
   "se eu digitar 4,5, que é conforme a diretriz, ele marca; caso contrário, o campinho
   verde sai"). Antes o selo de IPCA e PIB saía assim que o negócio digitava — mesmo

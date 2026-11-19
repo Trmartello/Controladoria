@@ -93,6 +93,31 @@ $lanc = ['8.5' => ['entrada' => 'VALOR', 'valor' => -9.0, 'percentual' => null]]
 $l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0, '8.5' => 5.5]));
 prova('um valor digitado em Pessoal vence o percentual de pessoas', perto($l['8.5']['proposta'], -9.0) && $l['8.5']['proposta_origem'] === 'VALOR');
 
+// ── O piso do faturamento (pedido do cliente, 2026-11-19) ──────────────────
+// A Receita não pode ficar abaixo de IPCA + PIB + crescimento desejado; acima
+// pode. Abaixo, o lançamento FICA e a linha sai marcada para a tela apontar.
+$l = $por(Projecao::aplicar($dre(), [], ['1.1' => 12.0]));
+prova('pela premissa a Receita fica no piso: sem inconsistência, e a linha guarda o piso (12%)',
+    $l['1.1']['abaixo_piso'] === false && perto((float)$l['1.1']['piso_percentual'], 12.0));
+$lanc = ['1.1' => ['entrada' => 'PERCENTUAL', 'percentual' => 3.0, 'valor' => null]];
+$l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0]));
+prova('reajuste de 3% com piso de 12%: abaixo do piso, e o lançamento continua valendo (103)',
+    $l['1.1']['abaixo_piso'] === true && perto($l['1.1']['proposta'], 103.0));
+$lanc = ['1.1' => ['entrada' => 'VALOR', 'valor' => 130.0, 'percentual' => null]];
+$l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0]));
+prova('valor acima do piso (130 contra 112): o negócio se desafia mais, sem inconsistência',
+    $l['1.1']['abaixo_piso'] === false);
+$lanc = ['1.1' => ['entrada' => 'VALOR', 'valor' => 99.0, 'percentual' => null]];
+$l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0], 0.1));
+prova('no formato de 2027 a comparação é com a CBS dentro: 99 sem CBS = 110 com ela, abaixo de 112',
+    $l['1.1']['abaixo_piso'] === true && perto($l['1.1']['proposta'], 110.0), (string)$l['1.1']['proposta']);
+$lanc = ['1.1' => ['entrada' => 'VALOR', 'valor' => 108.0, 'percentual' => null]];
+$l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0], 0.1));
+prova('e 108 sem CBS = 120 com ela fica acima do piso: o lançado não é comparado sem a CBS',
+    $l['1.1']['abaixo_piso'] === false, (string)$l['1.1']['proposta']);
+$l = $por(Projecao::aplicar($dre(), [], []));
+prova('sem premissas não há piso, nem inconsistência', !isset($l['1.1']['abaixo_piso']));
+
 // Sem premissas, tudo como sempre foi.
 $l = $por(Projecao::aplicar($dre(), [], []));
 prova('sem premissas a linha vale a projeção, como sempre valeu',

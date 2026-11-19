@@ -687,6 +687,19 @@ class Projecao
             $linhas[$i]['proposta_padrao'] = $r['origem'] === 'PREMISSA' ? $r['percentual'] : null;
             $linhas[$i]['proposta_regra'] = $r['origem'] === 'PREMISSA'
                 ? ($l['codigo'] === self::LINHA_PESSOAL ? 'PESSOAL' : 'PREMISSA') : null;
+            // O PISO do faturamento (pedido do cliente, 2026-11-19): a Receita de
+            // Vendas não pode ficar abaixo do crescimento real total do negócio
+            // — IPCA + PIB + crescimento desejado. Acima pode (o negócio se
+            // desafia mais); abaixo, a tela aponta a inconsistência. Não recusa
+            // o lançamento: o número é do negócio, e a diretriz é cobrada à
+            // vista de todos em vez de travada no campo. Comparado no formato
+            // do motor (com a CBS dentro dos dois lados), por isso aqui e não na
+            // tela, que mostra a receita sem a CBS.
+            if ($l['codigo'] === self::LINHA_RECEITA && isset($crescimentos[$l['codigo']])) {
+                $piso = (float)$l['projecao'] * (1 + (float)$crescimentos[$l['codigo']] / 100);
+                $linhas[$i]['piso_percentual'] = (float)$crescimentos[$l['codigo']];
+                $linhas[$i]['abaixo_piso'] = (float)$l['projecao'] > 0 && $r['valor'] < $piso - 1;
+            }
         }
 
         // Deduções e custo acompanham a receita (ACOMPANHAM_RECEITA), onde não
