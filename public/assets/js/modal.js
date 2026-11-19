@@ -903,7 +903,8 @@ const Modal = {
         // `min`/`max` valem para number e date: o teclado numérico do celular
         // não impede um sinal de menos — o limite no campo impede
         const limites = `${c.min !== undefined ? ` min="${this.esc(c.min)}"` : ''}${
-          c.max !== undefined ? ` max="${this.esc(c.max)}"` : ''}`;
+          c.max !== undefined ? ` max="${this.esc(c.max)}"` : ''}${
+          c.tipo === 'number' && c.passo !== undefined ? ` step="${this.esc(c.passo)}"` : ''}`;
         const input = `<input type="${c.tipo || 'text'}" class="form-control" id="${id}" value="${this.esc(v)}"${exemplo}${lista}${limites}>${datalist}`;
         controle = (c.tipo || 'text') === 'text' && this.suporteVoz
           ? `<div class="campo-voz">${input}${this.botaoDitar(id)}</div>`
@@ -1288,12 +1289,14 @@ const Modal = {
    * caminho de volta. Aceitar os dois e mostrar um só evita o campo que recusa
    * exatamente a tecla que a pessoa aprendeu a usar para centavos.
    */
-  ligarMoedas(raiz, { seletor = '.campo-moeda', negativos = false } = {}) {
+  ligarMoedas(raiz, { seletor = '.campo-moeda', negativos = false, casas = 2 } = {}) {
     // `negativos` nasceu para a tabela de metas, onde o número negativo é
     // legítimo (resultado financeiro, dívida, margem negativa). No campo de
     // ganhos ele segue recusado — é regra de lá, com prova própria —, e por
     // isso quem decide é o CHAMADOR, não o filtro.
-    const forma = negativos ? /^-?\d*(,\d{0,2})?$/ : /^\d*(,\d{0,2})?$/;
+    // `casas`: dois centavos no dinheiro; a tabela de metas pede três nos
+    // indicadores em % (pedido do cliente, 2026-11-19).
+    const forma = new RegExp(`^${negativos ? '-?' : ''}\\d*(,\\d{0,${Math.max(0, Math.trunc(casas))}})?$`);
     raiz.querySelectorAll(seletor).forEach((inp) => {
       inp.addEventListener('beforeinput', (ev) => {
         const bruto = ev.data ?? ev.dataTransfer?.getData('text') ?? '';

@@ -414,6 +414,9 @@ class ProjecaoController
                 // Juros recebidos (sócio e não sócio) e onde se concentram.
                 'juros' => Oportunidades::juros($negocioId, $ano),
             ],
+            // Cenário de faturamento carregado de planilha do negócio (pedido do
+            // cliente, 2026-11-19): de onde veio a Receita de Vendas da proposta.
+            'cenario' => $this->cenarioDoNegocio($negocioId, $ano + 1),
             // O montante de oportunidades do ESTOQUE (perdas e acerto acima da média,
             // produtos parados), totalizado abaixo da DRE (pedido do cliente,
             // 2026-11-18). Só leitura.
@@ -424,6 +427,31 @@ class ProjecaoController
             'atualizado_em' => $proj['atualizado_em'] ?? null,
             'atualizado_por' => $proj['atualizado_por_nome'] ?? null,
             'linhas' => $linhas,
+        ];
+    }
+
+    /** O cenário de planilha lançado na proposta do ano, se houver. */
+    private function cenarioDoNegocio(int $negocioId, int $anoPlan): ?array
+    {
+        $c = Database::um('SELECT * FROM projecao_cenario WHERE negocio_id = ? AND ano = ? ORDER BY aplicado_em DESC LIMIT 1',
+            [$negocioId, $anoPlan]);
+        if (!$c) {
+            return null;
+        }
+        $itens = [];
+        foreach (json_decode($c['itens'], true) ?: [] as $nome => [$p, $r, $o]) {
+            $itens[] = ['nome' => $nome, 'pessimista' => (float)$p, 'realista' => (float)$r, 'otimista' => (float)$o];
+        }
+        return [
+            'conta' => $c['conta'], 'cenario' => $c['cenario'], 'fonte' => $c['fonte'],
+            'taxa' => (float)$c['taxa_pis_cofins'], 'faturamento' => (float)$c['faturamento_antigo'],
+            'receita_vendas' => (float)$c['receita_vendas'], 'cbs' => (float)$c['faturamento_antigo'] - (float)$c['receita_vendas'],
+            'aplicado_em' => $c['aplicado_em'], 'itens' => $itens,
+            'totais' => [
+                'pessimista' => array_sum(array_column($itens, 'pessimista')),
+                'realista' => array_sum(array_column($itens, 'realista')),
+                'otimista' => array_sum(array_column($itens, 'otimista')),
+            ],
         ];
     }
 

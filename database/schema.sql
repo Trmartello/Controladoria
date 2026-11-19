@@ -258,7 +258,8 @@ CREATE TABLE IF NOT EXISTS indicador_valor (
   mes           TINYINT NOT NULL DEFAULT 0,
   tipo          ENUM('META','REAL') NOT NULL,
   versao_meta   TINYINT NOT NULL DEFAULT 1,
-  valor         DECIMAL(15,2) NOT NULL,
+  -- Três casas: indicador em % lança até três após a vírgula (2026-11-19).
+  valor         DECIMAL(18,3) NOT NULL,
   UNIQUE KEY uk_ind_ano_mes (indicador_id, ano, mes, tipo, versao_meta),
   CONSTRAINT fk_iv_indicador FOREIGN KEY (indicador_id) REFERENCES indicador(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1134,6 +1135,25 @@ CREATE TABLE IF NOT EXISTS estoque_perda_mes (
   valor      DECIMAL(18,2) NOT NULL,
   PRIMARY KEY (negocio_id, filial_id, ano, conta, mes),
   CONSTRAINT fk_epm_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- CENÁRIOS de faturamento carregados de planilha do negócio para a proposta da
+-- Receita de Vendas (pedido do cliente, 2026-11-19). Guarda o faturamento no
+-- formato antigo, a taxa de PIS/COFINS usada e o valor lançado no formato novo,
+-- e os itens dos três cenários — a tela mostra de onde veio o número.
+CREATE TABLE IF NOT EXISTS projecao_cenario (
+  negocio_id         INT NOT NULL,
+  ano                SMALLINT NOT NULL,
+  conta              VARCHAR(16) NOT NULL,
+  cenario            VARCHAR(20) NOT NULL,
+  fonte              VARCHAR(255) NOT NULL,
+  taxa_pis_cofins    DECIMAL(12,10) NOT NULL,
+  faturamento_antigo DECIMAL(18,2) NOT NULL,
+  receita_vendas     DECIMAL(18,2) NOT NULL,
+  itens              JSON NOT NULL,
+  aplicado_em        DATETIME NOT NULL,
+  PRIMARY KEY (negocio_id, ano, conta),
+  CONSTRAINT fk_pc_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- LANÇAMENTOS que explicam o quadro de oportunidades (pedido do cliente,

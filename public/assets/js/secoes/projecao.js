@@ -224,6 +224,9 @@ const SecaoProjecao = {
       ${faltando}
       <div id="projecao-meta-negativa-box">${this.alertaMetaNegativa(d)}</div>
       <div id="projecao-aviso" class="alert alert-danger py-2 px-3 small mb-2 d-none"></div>
+      ${this.cartaoCenario(d)}
+      <div id="projecao-dre-bloco">
+      ${this.cabecalhoImpressao(d, d.filial ? `Filial ${(d.filiais.find((f) => Number(f.id) === Number(d.filial.id)) || {}).nome || ''}` : '')}
       ${this.botaoNivel()}
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
         A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
@@ -259,6 +262,7 @@ const SecaoProjecao = {
   ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
         Mês sem rateio é mês aberto e não entra como realizado.
       </p>
+      </div>
       ${this.cartaoEstoque(d)}`;
   },
 
@@ -750,6 +754,8 @@ const SecaoProjecao = {
       ${this.cartaoTributosDre(d)}
       ${this.cartaoPessoas(d)}
       ${faltando}
+      <div id="projecao-dre-bloco">
+      ${this.cabecalhoImpressao(d, 'Corporativo — todos os negócios')}
       ${this.botaoNivel()}
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
         A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
@@ -778,6 +784,7 @@ const SecaoProjecao = {
   ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
         Mês sem rateio é mês aberto e não entra como realizado.
       </p>
+      </div>
       ${this.cartaoEstoque(d)}`;
   },
 
@@ -1548,6 +1555,58 @@ const SecaoProjecao = {
     </div>`;
   },
 
+  /** O cabeçalho que só aparece no papel: de quem é a DRE e quando foi impressa. */
+  cabecalhoImpressao(d, complemento) {
+    const neg = (d.negocios || []).find((n) => Number(n.id) === Number(d.negocio_id));
+    return `<div id="projecao-dre-cabecalho" class="cabecalho-impressao-dre">
+      <div class="fw-bold fs-5">Copérdia — Proposta da DRE ${d.ano_planejamento}</div>
+      <div>${Modal.esc(d.corporativo ? '' : (neg ? neg.rotulo : ''))}${complemento ? `${d.corporativo ? '' : ' · '}${Modal.esc(complemento)}` : ''}
+        · realizado jan–${this.nomeMes(d.mes_fechado_ate)}/${d.ano}, projetado ${this.nomeMes(d.mes_fechado_ate + 1)}–dez
+        · impresso em <span data-impresso-em></span></div>
+    </div>`;
+  },
+
+  /**
+   * O CENÁRIO de planilha que formou a Receita de Vendas da proposta (pedido do
+   * cliente, 2026-11-19: Pecuária, cenário realista): o faturamento da planilha
+   * está no formato antigo (com o PIS/COFINS), e o lançado é ele sem a CBS — a
+   * mesma conversão do cartão "Tributos na DRE: como é × como fica".
+   */
+  cartaoCenario(d) {
+    const c = d.cenario;
+    if (!c || d.corporativo || d.filial) return '';
+    const m = (v) => this.moeda(v);
+    const nomes = { PESSIMISTA: 'pessimista', REALISTA: 'realista', OTIMISTA: 'otimista' };
+    const escolhido = (k) => (nomes[c.cenario] === k ? ' class="table-success fw-bold"' : '');
+    const itens = c.itens.map((i) => `<tr><td>${Modal.esc(i.nome)}</td>
+        <td class="text-end">${m(i.pessimista)}</td><td class="text-end${nomes[c.cenario] === 'realista' ? ' fw-bold' : ''}">${m(i.realista)}</td>
+        <td class="text-end">${m(i.otimista)}</td></tr>`).join('');
+    return this.expansor('cenario', 'painel-cenario', `Cenário de faturamento ${d.ano_planejamento} — ${nomes[c.cenario] || c.cenario}`,
+      `Receita de Vendas ${this.mi(c.receita_vendas)} (sem a CBS)`, `
+      <div class="small mb-2">A Receita de Vendas da proposta veio do cenário <strong>${nomes[c.cenario] || c.cenario}</strong> da
+        planilha do negócio. A planilha está no <strong>formato antigo</strong>, com o PIS/COFINS dentro do faturamento; o que se
+        lança é o formato novo, sem a CBS — como no cartão "Tributos na DRE: como é × como fica".</div>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-2 tabela-cenario-conversao" style="max-width:40rem">
+        <tbody>
+          <tr><td>Faturamento da planilha (formato antigo)</td><td class="text-end" data-cenario="faturamento">${m(c.faturamento)}</td></tr>
+          <tr class="linha-muda"><td>(−) CBS — o PIS/COFINS, ${(c.taxa * 100).toLocaleString('pt-BR', { maximumFractionDigits: 4 })}% do faturamento</td>
+            <td class="text-end" data-cenario="cbs">−${m(c.cbs)}</td></tr>
+          <tr class="fw-bold"><td>Receita de Vendas lançada (formato novo)</td><td class="text-end" data-cenario="receita">${m(c.receita_vendas)}</td></tr>
+        </tbody></table></div>
+      <details class="small"><summary>Os três cenários da planilha, item a item</summary>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-cenario">
+          <thead><tr><th>Item</th><th class="text-end">Pessimista</th><th class="text-end">Realista</th><th class="text-end">Otimista</th></tr></thead>
+          <tbody>${itens}
+            <tr class="table-light"><td class="fw-bold">Total (formato antigo)</td>
+              <td${escolhido('pessimista')} style="text-align:right">${m(c.totais.pessimista)}</td>
+              <td${escolhido('realista')} style="text-align:right">${m(c.totais.realista)}</td>
+              <td${escolhido('otimista')} style="text-align:right">${m(c.totais.otimista)}</td></tr>
+          </tbody></table></div>
+        <div class="text-muted">Fonte: ${Modal.esc(c.fonte)}. Carregado em ${c.aplicado_em.slice(0, 10).split('-').reverse().join('/')};
+          depois disso o número é do negócio — relançar na Receita de Vendas substitui este.</div>
+      </details>`);
+  },
+
   /** Reais em milhões, para os resumos dos expansores. `sinal` força o + nos positivos. */
   mi(v, sinal = false) {
     if (v === null || v === undefined || !isFinite(v)) return '—';
@@ -1772,6 +1831,8 @@ const SecaoProjecao = {
     if (caixaNeg && this.dados) caixaNeg.innerHTML = this.alertaMetaNegativa(this.dados);
     const nivel = el.querySelector('#projecao-nivel');
     if (nivel && virgem(nivel)) nivel.addEventListener('click', () => this.alternarNivel());
+    const imprimir = el.querySelector('#projecao-imprimir-dre');
+    if (imprimir && virgem(imprimir)) imprimir.addEventListener('click', () => this.imprimirDre());
     const sel = el.querySelector('#projecao-negocio');
     if (sel && virgem(sel)) {
       sel.addEventListener('change', (ev) => {
@@ -1974,13 +2035,42 @@ const SecaoProjecao = {
   botaoNivel() {
     if (App.modoDossie) return '';
     const r = this.estaRecolhido();
-    return `<div class="d-flex justify-content-end mb-1">
+    return `<div class="d-flex justify-content-end gap-2 mb-1 d-print-none">
+        <button type="button" id="projecao-imprimir-dre" class="btn btn-sm btn-success"
+          title="Imprime (ou salva em PDF) a DRE da proposta com todas as subcontas abertas">
+          🖨 Imprimir DRE (PDF)
+        </button>
         <button type="button" id="projecao-nivel" class="btn btn-sm btn-outline-secondary"
           aria-pressed="${r ? 'true' : 'false'}"
           title="Mostrar só os blocos da DRE, para ver como os números fecham">
           ${r ? '▸ Mostrar subcontas' : '▾ Recolher subcontas'}
         </button>
       </div>`;
+  },
+
+  /**
+   * Imprime a DRE da proposta ABERTA (pedido do cliente, 2026-11-19: "a
+   * possibilidade de imprimir em PDF esta proposta da DRE aberta"): abre todas as
+   * subcontas, deixa na página só o bloco da DRE (`body.imprimir-dre`, ver o
+   * `@media print` do app.css), chama a caixa de impressão — que é quem salva o
+   * PDF — e devolve a tela como estava.
+   */
+  imprimirDre() {
+    const el = document.getElementById('secao-projecao');
+    const tab = el?.querySelector('.tabela-projecao');
+    if (!tab) return;
+    const estava = tab.classList.contains('recolhida');
+    tab.classList.remove('recolhida');
+    const cab = el.querySelector('#projecao-dre-cabecalho');
+    if (cab) cab.querySelector('[data-impresso-em]').textContent = new Date().toLocaleString('pt-BR');
+    document.body.classList.add('imprimir-dre');
+    const volta = () => {
+      document.body.classList.remove('imprimir-dre');
+      if (estava) tab.classList.add('recolhida');
+      window.removeEventListener('afterprint', volta);
+    };
+    window.addEventListener('afterprint', volta);
+    window.print();
   },
 
   alternarNivel() {

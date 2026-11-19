@@ -6480,7 +6480,9 @@ async function provasApoioDesafio(page, largura) {
       s.value = x === 'CORP' ? 'CORP' : [...s.options].find((o) => o.textContent.trim().endsWith(x)).value;
       s.dispatchEvent(new Event('change'));
     }, txt);
-    await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])')", 40000);
+    // Espera a tela DO NEGÓCIO PEDIDO: a troca repinta antes de buscar, e uma tabela
+    // sem a marca de velha ainda pode ser a do negócio anterior.
+    await esperar(page, `(${JSON.stringify(txt)} === 'CORP' ? document.querySelector('#projecao-negocio')?.value === 'corp' : !!document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith(${JSON.stringify(txt)})) && !!document.querySelector('.tabela-projecao:not([data-velha])')`, 40000);
   };
   await escolher('- AGROPECUARIAS');
   const n = await page.evaluate(() => {
@@ -6649,6 +6651,94 @@ async function provasTributosComoEComoFica(page, largura) {
 }
 
 /**
+ * Guarda e devolve um lançamento de proposta do negócio. As provas da Projeção
+ * (proposta, premissas, crescimento, filial) foram escritas a partir do "sem
+ * lançamento" e apagam o que digitam; desde 2026-11-19 a Receita de Vendas da
+ * Pecuária chega lançada pelo cenário da planilha. A bateria tira o lançamento
+ * antes do grupo da Projeção e o devolve antes da prova do cenário — sem isso, o
+ * cenário sumiria do banco a cada rodada.
+ */
+async function lancamentoDaProposta(page, sufixo, conta, texto) {
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  await page.evaluate((x) => {
+    document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+    const s = document.querySelector('#sel-negocio');
+    s.value = [...s.options].find((o) => o.textContent.trim().endsWith(x)).value;
+    s.dispatchEvent(new Event('change'));
+  }, sufixo);
+  await esperar(page, `!!document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith(${JSON.stringify(sufixo)}) && !!document.querySelector('.tabela-projecao:not([data-velha]) [data-conta="${conta}"] .celula-proposta')`, 40000);
+  const antes = await page.evaluate(([c, v]) => {
+    const i = document.querySelector(`.tabela-projecao [data-conta="${c}"] .celula-proposta`);
+    const tinha = i.value;
+    if (v !== null && v !== tinha) { i.focus(); i.value = v; i.blur(); }
+    return tinha;
+  }, [conta, texto]);
+  if (texto !== null && texto !== antes) await new Promise((r) => setTimeout(r, 1800));
+  return antes;
+}
+
+/**
+ * Pedidos do cliente de 2026-11-19: o CENÁRIO realista da planilha da Pecuária na
+ * Receita de Vendas (convertido para o formato novo, sem a CBS), a IMPRESSÃO da
+ * DRE da proposta aberta e o DESTAQUE das aberturas (expansores).
+ */
+async function provasCenarioEImpressao(page, largura) {
+  const l = `[${largura}] Cenário e impressão:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  await page.evaluate(() => {
+    document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+    const s = document.querySelector('#sel-negocio');
+    s.value = [...s.options].find((o) => o.textContent.trim().endsWith('2 - PECUARIA')).value;
+    s.dispatchEvent(new Event('change'));
+  });
+  await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('.painel-cenario')", 40000);
+  // O sinal de menos da tela é o tipográfico (−), não o hífen.
+  const num = (x) => Number(String(x || '').replace(/\u2212/g, '-').replace(/[^\d,-]/g, '').replace(',', '.'));
+  const c = await page.evaluate(() => ({
+    fat: document.querySelector('[data-cenario="faturamento"]')?.textContent,
+    cbs: document.querySelector('[data-cenario="cbs"]')?.textContent,
+    rec: document.querySelector('[data-cenario="receita"]')?.textContent,
+    rb: document.querySelector('.tabela-projecao tr[data-conta="1"] td:nth-child(6)')?.textContent,
+    cenarios: document.querySelectorAll('.painel-cenario .tabela-cenario tbody tr').length,
+    borda: getComputedStyle(document.querySelector('details.expansor')).borderLeftWidth,
+    fundo: getComputedStyle(document.querySelector('details.expansor > summary')).backgroundColor,
+  }));
+  t(`${l} Pecuária: faturamento realista 732.218.694 (formato antigo) − CBS 419.969 = Receita de Vendas 731.798.725`,
+    num(c.fat) === 732218694 && num(c.cbs) === -419969 && num(c.rec) === 731798725, JSON.stringify(c));
+  t(`${l} a proposta da Receita Bruta na DRE é a receita convertida`, num(c.rb) === 731798725, String(c.rb));
+  t(`${l} os três cenários da planilha item a item (17 itens + total)`, c.cenarios === 18, String(c.cenarios));
+  t(`${l} as aberturas têm destaque: faixa verde de 5px e fundo no título`,
+    c.borda === '5px' && c.fundo !== 'rgba(0, 0, 0, 0)', JSON.stringify([c.borda, c.fundo]));
+
+  // Imprimir: abre as subcontas, deixa só o bloco da DRE e devolve a tela depois.
+  const p = await page.evaluate(() => {
+    const tab = document.querySelector('.tabela-projecao');
+    if (!tab.classList.contains('recolhida')) document.querySelector('#projecao-nivel').click();
+    let chamou = false;
+    const original = window.print;
+    window.print = () => { chamou = true; };
+    document.querySelector('#projecao-imprimir-dre').click();
+    const durante = {
+      chamou, aberta: !tab.classList.contains('recolhida'), corpo: document.body.classList.contains('imprimir-dre'),
+      data: document.querySelector('#projecao-dre-cabecalho [data-impresso-em]').textContent,
+      titulo: document.querySelector('#projecao-dre-cabecalho').textContent.replace(/\s+/g, ' ').trim(),
+      dentro: !!document.querySelector('#projecao-dre-bloco .tabela-projecao'),
+    };
+    window.dispatchEvent(new Event('afterprint'));
+    window.print = original;
+    const depois = { recolhida: tab.classList.contains('recolhida'), corpo: document.body.classList.contains('imprimir-dre') };
+    document.querySelector('#projecao-nivel').click();
+    return { durante, depois };
+  });
+  t(`${l} o botão chama a impressão com a DRE aberta e o cabeçalho do negócio e da data`,
+    p.durante.chamou && p.durante.aberta && p.durante.corpo && /\d{2}\/\d{2}\/\d{4}/.test(p.durante.data)
+    && /Proposta da DRE 2027/.test(p.durante.titulo) && /PECUARIA/.test(p.durante.titulo) && p.durante.dentro, JSON.stringify(p.durante));
+  t(`${l} depois da impressão a tela volta como estava (recolhida)`, p.depois.recolhida && !p.depois.corpo, JSON.stringify(p.depois));
+}
+
+/**
  * Os LANÇAMENTOS por trás de cada linha do quadro de oportunidades e os JUROS
  * RECEBIDOS acima de R$ 30 mil, com a filial e o cliente (pedido do cliente,
  * 2026-11-18).
@@ -6662,7 +6752,7 @@ async function provasLancamentosEJuros(page, largura) {
       s.value = x === 'CORP' ? 'CORP' : [...s.options].find((o) => o.textContent.trim().endsWith(x)).value;
       s.dispatchEvent(new Event('change'));
     }, txt);
-    await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('.painel-oportunidades')", 40000);
+    await esperar(page, `(${JSON.stringify(txt)} === 'CORP' ? document.querySelector('#projecao-negocio')?.value === 'corp' : !!document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith(${JSON.stringify(txt)})) && !!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('.painel-oportunidades')`, 40000);
   };
   const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
   await escolher('- AGROPECUARIAS');
@@ -6734,17 +6824,18 @@ async function provasEstoque(page, largura) {
       s.value = x === 'CORP' ? 'CORP' : [...s.options].find((o) => o.textContent.trim().endsWith(x)).value;
       s.dispatchEvent(new Event('change'));
     }, txt);
-    await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('#projecao-estoque')", 40000);
+    await esperar(page, `(${JSON.stringify(txt)} === 'CORP' ? document.querySelector('#projecao-negocio')?.value === 'corp' : !!document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith(${JSON.stringify(txt)})) && !!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('#projecao-estoque')`, 40000);
   };
   const ler = () => page.evaluate(() => {
     const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
     const box = document.querySelector('#projecao-estoque');
     // Logo abaixo da DRE: entre o bloco e a tabela, só o rodapé da própria tabela.
-    let ant = box?.previousElementSibling;
-    const rodape = ant?.tagName === 'P';
-    if (rodape) ant = ant.previousElementSibling;
+    // Desde 2026-11-19 a DRE (tabela + rodapé) mora em #projecao-dre-bloco, o que vai
+    // para a impressão; o cartão do estoque vem logo depois dele.
+    const ant = box?.previousElementSibling;
     return {
-      depoisDaDre: rodape && !!ant?.classList.contains('tabela-projecao'),
+      depoisDaDre: ant?.id === 'projecao-dre-bloco' && ant.lastElementChild?.tagName === 'P'
+        && !!ant.querySelector('.tabela-projecao'),
       titulo: box?.querySelector('h2')?.textContent.trim(),
       total: num(box?.querySelector('[data-estoque-total="total"]')?.textContent),
       resultado: num(box?.querySelector('[data-estoque-total="resultado"]')?.textContent),
@@ -7653,6 +7744,13 @@ async function provasProjecaoProposta(page, largura) {
   const lancarReajuste = (conta, texto) => digitarEm(conta, texto, 'celula-reajuste');
 
   let v = await ler();
+  // A Receita de Vendas pode chegar JÁ LANÇADA — o cenário de planilha da
+  // Pecuária (2026-11-19) é um lançamento de verdade. A prova mede a mecânica a
+  // partir do "sem lançamento", então tira o que houver e devolve no fim:
+  // apagar o trabalho de um negócio para provar a tela seria a prova estragando
+  // o que ela protege.
+  const jaLancado = v['1.1'].digitado || '';
+  if (jaLancado) v = await lancar('1.1', '');
   const editaveis = Object.values(v).filter((x) => x.editavel).length;
   const derivadas = Object.values(v).filter((x) => x.origem === 'DERIVADA').length;
   t(`${l} quem recebe lançamento é a subconta, e o bloco é derivado`,
@@ -7789,6 +7887,11 @@ async function provasProjecaoProposta(page, largura) {
   // ── A linha que o sistema não sabe recompor ─────────────────────────────
   t(`${l} "Despesas Totais" não recebe proposta inventada`,
     v['17'].proposta === null && !v['17'].editavel, JSON.stringify(v['17']));
+  if (jaLancado) {
+    v = await lancar('1.1', jaLancado);
+    t(`${l} e o lançamento que já existia volta para a Receita de Vendas`,
+      v['1.1'].origem === 'VALOR' && v['1.1'].digitado === jaLancado, `${v['1.1'].digitado} vs ${jaLancado}`);
+  }
 }
 
 async function provasProjecao(page, largura) {
@@ -9529,6 +9632,66 @@ async function provasLugarGuardado(page, largura) {
  * Limpar é `ControlOrMeta+A` + digitar — `fill(campo, '')` é no-op num campo
  * com texto (armadilha já paga, ver CLAUDE.md).
  */
+/**
+ * Indicador em PERCENTUAL lança até TRÊS casas após a vírgula (pedido do
+ * cliente, 2026-11-19); os outros continuam com duas. A prova vai do teclado ao
+ * banco e volta: o filtro de digitação, a coluna DECIMAL(18,3) e a formatação.
+ */
+async function provasCasasPercentual(page, largura) {
+  const l = `[${largura}] Três casas em %:`;
+  const anos = await page.evaluate(async () => {
+    const d = await App.api('/api/indicadores?planejamento_id=1');
+    const todos = [];
+    for (let a = Number(d.ciclo.ano_base); a <= Number(d.ciclo.ano_fim); a++) todos.push(a);
+    return todos.filter((a) => a !== d.ano_execucao);
+  });
+  if (!anos.length) {
+    ok.push(`${l} pulada — o ciclo não tem ano fora do ano em execução`);
+    return;
+  }
+  const ano = anos[0];
+  const ids = await page.evaluate(async () => {
+    const pct = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: `Divergência QA ${Date.now()}`, unidade: '%', agregacao: 'MEDIA',
+    });
+    const rs = await App.api('/api/indicadores', {
+      planejamento_id: 1, nome: `Valor QA ${Date.now()}`, unidade: 'R$ mil', agregacao: 'SOMA',
+    });
+    App.mostrarSecao('metas');
+    return { pct: pct.id, rs: rs.id };
+  });
+  await esperar(page, `!!document.querySelector('[data-celula-ind="${ids.pct}"]') && !!document.querySelector('[data-celula-ind="${ids.rs}"]')`, 15000);
+  const sel = (id) => `[data-celula-ind="${id}"][data-tipo="META"][data-ano="${ano}"] input`;
+  const digitar = async (campo, texto) => {
+    await page.click(campo);
+    await page.keyboard.press('ControlOrMeta+A');
+    await page.keyboard.type(texto);
+    const visto = await page.evaluate((c) => document.querySelector(c).value, campo);
+    await page.keyboard.press('Tab');
+    await esperar(page, `!document.querySelector('${campo}').classList.contains('celula-gravando')`);
+    return visto;
+  };
+  const vistoPct = await digitar(sel(ids.pct), '0,1259');
+  const vistoRs = await digitar(sel(ids.rs), '10,555');
+  t(`${l} no indicador em % o campo aceita três casas (a quarta não entra)`, vistoPct === '0,125', vistoPct);
+  t(`${l} nos outros indicadores continuam duas`, vistoRs === '10,55', vistoRs);
+  const gravado = await page.evaluate(async (d) => {
+    const r = await App.api('/api/indicadores?planejamento_id=1');
+    const v = (id) => ((r.indicadores.find((x) => x.id == id).metas || []).find((m) => m.ano === d.ano) || {}).valor ?? null;
+    return { pct: v(d.pct), rs: v(d.rs) };
+  }, { ...ids, ano });
+  t(`${l} o banco guarda as três casas (0,125), sem arredondar`, Number(gravado.pct) === 0.125, JSON.stringify(gravado));
+  await page.evaluate(() => SecaoMetas.carregar());
+  await esperar(page, `!!document.querySelector('${sel(ids.pct)}')`, 15000);
+  const tela = await page.evaluate((c) => document.querySelector(c).value, sel(ids.pct));
+  t(`${l} e a tabela mostra 0,125 depois de repintar`, tela === '0,125', tela);
+  // Limpa o que criou: indicador de prova sobrando enche a tabela das provas seguintes.
+  await page.evaluate(async (d) => {
+    await App.api(`/api/indicadores/${d.pct}/excluir`, { planejamento_id: 1 });
+    await App.api(`/api/indicadores/${d.rs}/excluir`, { planejamento_id: 1 });
+  }, ids).catch(() => {});
+}
+
 async function provasCelulaMetas(page, largura) {
   const l = `[${largura}] Célula de metas:`;
   // Os anos usados aqui são ANUAIS de propósito: o ano em execução é lançado
@@ -10740,6 +10903,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasPlanoDiretoAnalise(page);
   await provasCenarioPlanoAcao(page);
   await provasDatasAvulsas(page);
+  const receitaPecuaria = await lancamentoDaProposta(page, '2 - PECUARIA', '1.1', '');
   await provasProjecao(page, 'desktop');
   await comPremissasNeutras(page, () => provasProjecaoProposta(page, 'desktop'));
   await provasProjecaoPremissas(page, 'desktop');
@@ -10759,11 +10923,16 @@ async function provasSaidaDoModal(page, largura) {
   await provasFormato2027EEventos(page, 'desktop');
   await provasEstoque(page, 'desktop');
   await provasLancamentosEJuros(page, 'desktop');
+  await lancamentoDaProposta(page, '2 - PECUARIA', '1.1', receitaPecuaria);
+  await provasCenarioEImpressao(page, 'desktop');
+  await lancamentoDaProposta(page, '2 - PECUARIA', '1.1', '');
   await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
   await provasProjecaoPremissasDoNegocio(page, 'desktop');
   await provasProjecaoNoPainel(page, 'desktop');
   await provasProjecaoNoDossie(page, 'desktop');
+  // Fim do grupo da Projeção: o lançamento do cenário volta para o banco.
+  await lancamentoDaProposta(page, '2 - PECUARIA', '1.1', receitaPecuaria);
   await voltarAoCorporativo(page);
   await provasOrdenarCenario(page);
   await provasOrdenarFatores(page);
@@ -10776,6 +10945,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasMenuRecolhido(page, 'desktop');
   await provasLugarGuardado(page, 'desktop');
   await provasCelulaMetas(page, 'desktop');
+  await provasCasasPercentual(page, 'desktop');
   await provasHorizonteIndicador(page, 'desktop');
   await provasAcumuladoAteOMes(page, 'desktop');
   await provasMesAMes(page, 'desktop');
@@ -10818,6 +10988,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasTratarForaDaOrdem(pageM, 'celular');
   await provasJanelaModal(pageM, 'celular');
   await provasSaidaDoModal(pageM, 'celular');
+  const receitaPecuariaM = await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', '');
   await provasProjecao(pageM, 'celular');
   await comPremissasNeutras(pageM, () => provasProjecaoProposta(pageM, 'celular'));
   await provasProjecaoPremissas(pageM, 'celular');
@@ -10835,14 +11006,19 @@ async function provasSaidaDoModal(page, largura) {
   await provasApoioDesafio(pageM, 'celular');
   await provasEstoque(pageM, 'celular');
   await provasLancamentosEJuros(pageM, 'celular');
+  await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', receitaPecuariaM);
+  await provasCenarioEImpressao(pageM, 'celular');
+  await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', '');
   await provasVisaoDoAno(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');
   await provasProjecaoNoPainel(pageM, 'celular');
   await provasProjecaoNoDossie(pageM, 'celular');
+  await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', receitaPecuariaM);
   await voltarAoCorporativo(pageM);
   await provasMenuRecolhido(pageM, 'celular');
   await provasLugarGuardado(pageM, 'celular');
   await provasCelulaMetas(pageM, 'celular');
+  await provasCasasPercentual(pageM, 'celular');
   await provasHorizonteIndicador(pageM, 'celular');
   await provasAcumuladoAteOMes(pageM, 'celular');
   await provasMesAMes(pageM, 'celular');

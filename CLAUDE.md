@@ -3320,6 +3320,38 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
   totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
   quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
+  **Indicador em % aceita três casas decimais** (pedido do cliente, 2026-11-19: "quando o
+  indicador for em percentual, preciso poder lançar até três casas após a vírgula").
+  `indicador_valor.valor` passou de DECIMAL(15,2) — que cortava a terceira casa calada —
+  para DECIMAL(18,3) (o `migrate.php` faz o `ALTER` quando a escala é menor que 3). Na
+  tela, `SecaoMetas.casas(ind)` dá 3 quando a unidade tem "%", 2 nos outros: o filtro de
+  digitação (`Modal.ligarMoedas`, opção `casas`), a formatação (`fmt(v, casas)`) e o
+  campo do "Revisar metas" (`passo`) seguem esse número. Prova: `provasCasasPercentual`.
+  **Cenário de faturamento de planilha na proposta** (pedido do cliente, 2026-11-19:
+  "carregue o cenário realista da Pecuária para o planejamento; a planilha está no
+  formato da DRE antiga, precisa converter"). A planilha do negócio (`PECUÁRIA VOLUMES
+  e FATURAMENTO Planejamento 2027.xlsx`, aba "Projetado 2027", linhas 24–40) foi
+  recalculada pelas fórmulas dela: pessimista R$ 686,5 mi, **realista R$ 732.218.693,78**
+  (D41), otimista R$ 774,7 mi. O faturamento está no **formato antigo** (PIS/COFINS
+  dentro); o lançado na Receita de Vendas (1.1) é o **formato novo**: `faturamento × (1 −
+  taxa)`, com a taxa de PIS/COFINS que o sistema usa para o negócio (Pecuária 0,05736%) —
+  R$ 731.798.724,64 de Receita Bruta e R$ 419.969 de CBS, que somam o faturamento.
+  `database/cenario_pecuaria_2027.php` → `CargaApoio::cenario`: lança VALOR na linha do
+  negócio (sobrescreve; em 19/11 a 1.1 estava sem lançamento), sobe a `versao` da
+  projeção (tela aberta recebe 409) e guarda o cenário em `projecao_cenario`, que a
+  tela mostra no cartão "Cenário de faturamento 2027" (conversão + os três cenários item a
+  item). Roda uma vez (chave): depois o número é do negócio. Provas:
+  `testes/cenario.php` e `provasCenarioEImpressao`.
+  **Imprimir a DRE da proposta** (pedido do cliente, 2026-11-19: "imprimir em PDF esta
+  proposta da DRE aberta"): botão "🖨 Imprimir DRE (PDF)" ao lado de "Recolher
+  subcontas". Abre as subcontas, liga `body.imprimir-dre` e chama a caixa de impressão
+  do navegador (é ela que salva o PDF); o `@media print` deixa só `#projecao-dre-bloco`
+  (cabeçalho com negócio/filial, período e data, nota do formato 2027, tabela e
+  rodapé), em A4 paisagem (`@page dre-paisagem`). No `afterprint` a tela volta como
+  estava. Atenção: o `page.pdf()` do Playwright também dispara `afterprint`.
+  **Expansores com destaque** (pedido do cliente, 2026-11-19): faixa verde de 5px à
+  esquerda, fundo verde-claro no título, título em verde e negrito, seta maior e o
+  resumo numa pílula — `details.expansor` no app.css.
   **Lançamentos por trás de cada linha do quadro** (pedido do cliente, 2026-11-18:
   "um expansor onde eu identifique o lançamento e a filial que referenciam o valor").
   Abaixo de cada item ou evento, uma linha recolhida (`tr.linha-lancamentos`, um
