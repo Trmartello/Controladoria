@@ -1430,9 +1430,13 @@ const SecaoProjecao = {
         ${l.meses.map((x) => `<td class="text-end${x.excesso > 0 ? ' estoque-acima' : ''}"${x.excesso > 0
     ? ` title="${this.moeda(x.excesso)} acima da média"` : ''}>${m(x.valor)}</td>`).join('')}
         <td class="text-end fw-bold">${m(l.total)}</td>
-        <td class="text-end">${m(l.media)}</td>
+        <td class="text-end">${m(l.media)}${l.regua === 'FILIAIS'
+    ? `<div class="small text-muted text-nowrap">${naFilial ? 'entre' : `${l.acima} de`} ${l.filiais} filia${l.filiais === 1 ? 'l' : 'is'}${naFilial ? '' : ' acima'}</div>` : ''}</td>
         <td class="text-end">${l.oportunidade >= 0.5 ? `<span class="text-success">+${m(l.oportunidade)}</span>`
-    : '<span class="text-muted" title="No ano, a sobra de inventário superou a falta: não há o que trazer à média.">—</span>'}</td></tr>`).join('');
+    : `<span class="text-muted" title="${l.regua === 'FILIAIS'
+      ? (naFilial ? 'A filial está na média das filiais ou abaixo dela.' : 'Nenhuma filial passa da média das filiais.')
+      : 'No ano, a sobra de inventário superou a falta: não há o que trazer à média.'}">—</span>`}</td></tr>`).join('');
+    const entreFiliais = e.linhas.some((l) => l.regua === 'FILIAIS');
     const vazio = `<td colspan="${e.mes_ate + 2}"></td>`;
     const p = e.parado;
     const parado = p ? `<tr data-estoque="PARADO">
@@ -1448,12 +1452,17 @@ const SecaoProjecao = {
     return `<div class="card mb-3 border-success" id="projecao-estoque">
       <div class="card-body py-2 px-3">
         <h2 class="h6 mb-1">Oportunidades do estoque a trabalhar em ${d.ano_planejamento}${naFilial ? ' — esta filial' : ''}</h2>
-        <div class="small text-muted mb-2">Perdas e acerto de estoque de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}), mês a mês, no sinal
-          da DRE: o que cada mês passou da <strong>média mensal</strong> é a oportunidade — trazer os meses ruins à média. Em verde-claro,
-          os meses acima dela.${p ? ' E o estoque parado, que é caixa a liberar.' : ''}</div>
+        <div class="small text-muted mb-2">${entreFiliais
+    ? `Perdas e acerto de estoque de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}), mês a mês, no sinal da DRE. A régua é a
+          <strong>média entre as filiais</strong> do negócio (em reais, no ano): ${naFilial
+      ? 'o que esta filial passou dela é a oportunidade.'
+      : 'cada filial acima dela tem como oportunidade o que passou, e o negócio é a soma das filiais.'}`
+    : `Perdas e acerto de estoque de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}), mês a mês, no sinal da DRE: o que cada mês passou da
+          <strong>média mensal</strong> é a oportunidade. Em verde-claro, os meses acima dela.`}${p ? ' E o estoque parado, que é caixa a liberar.' : ''}</div>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-1 tabela-estoque">
-            <thead><tr><th>Indicador</th>${cab}<th class="text-end">Total</th><th class="text-end">Média<br><span class="fw-normal text-muted small">mensal</span></th>
+            <thead><tr><th>Indicador</th>${cab}<th class="text-end">Total</th><th class="text-end">Média<br><span class="fw-normal text-muted small">${entreFiliais
+    ? 'entre as filiais (ano)' : 'mensal'}</span></th>
               <th class="text-end">Oportunidade<br><span class="fw-normal text-muted small">acima da média</span></th></tr></thead>
             <tbody>${linhas}${parado}
               <tr class="fw-bold table-light"><td>No resultado <span class="fw-normal small text-muted">perdas e acerto acima da média</span></td>${vazio}
@@ -1494,8 +1503,8 @@ const SecaoProjecao = {
       ${resto.length ? `<details class="small"><summary>mais ${resto.length} filiais</summary>
         <div class="table-responsive"><table class="table table-sm align-middle mb-1">${cab}<tbody>${resto.map(linha).join('')}</tbody></table></div>
       </details>` : ''}
-      <div class="small text-muted">Na filial, a média é a da própria filial: a soma das filiais passa a do negócio, porque o mês
-        ruim de uma não se compensa com o bom de outra. Abra a filial para ver os meses.</div>`;
+      <div class="small text-muted">Perdas e acerto: o que cada filial passou da média entre as filiais — a soma é a oportunidade do
+        negócio. Abra a filial para ver os meses dela.</div>`;
   },
 
   cartaoEstoqueCorporativo(d) {
