@@ -22,13 +22,13 @@
 
 return [
     'chave' => 'plano_operacional_racoes_2026',
+    'rotulo' => 'Fábrica de Rações, plano operacional 2026',
     'negocio' => '6',
     'ano' => 2027,
-    'projeto' => [
-        'titulo' => 'Plano Operacional 2026',
-        'descricao' => 'Ações do plano operacional de 2026 da Fábrica de Rações (planilha do negócio).',
-        'responsavel' => 'Ricardo',
-    ],
+    'projetos' => [[
+    'titulo' => 'Plano Operacional 2026',
+    'descricao' => 'Ações do plano operacional de 2026 da Fábrica de Rações (planilha do negócio).',
+    'responsavel' => 'Ricardo',
     'iniciativa' => 'Modernização da fábrica',
     'acoes' => [
         [
@@ -55,4 +55,5 @@ return [
             'comentario' => 'Equipamento sendo instalado essa semana, conforme relatado no proj. Estrat.',
         ],
     ],
+    ]],
 ];
