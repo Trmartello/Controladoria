@@ -331,9 +331,18 @@ const SecaoProjecao = {
     const brutas = ((d.premissas_digitadas_por_ano || {})[ano]) || {};
     const sugerida = (chave) => (diretriz && diretriz.sugeridas && diretriz.sugeridas[chave] !== undefined
       ? diretriz.sugeridas[chave] : null);
-    const seloSugerida = (chave) => (sugerida(chave) !== null && brutas[chave] === undefined
+    // O selo verde diz se o valor do campo É O DA DIRETRIZ (pedido do cliente,
+    // 2026-11-19: "se eu digitar 4,5, que é conforme a diretriz, ele marca; caso
+    // contrário, o campinho verde sai"). Vale para o sugerido sem digitação e para o
+    // digitado igual a ele; digitado diferente fica sem selo.
+    const igualDiretriz = (chave) => sugerida(chave) !== null
+      && (brutas[chave] === undefined || brutas[chave] === null
+        || Math.abs(Number(brutas[chave]) - Number(sugerida(chave))) < 1e-6);
+    const seloSugerida = (chave) => (igualDiretriz(chave)
       ? ` <span class="badge selo-diretriz selo-sugerida" data-sugerida="${chave}"
-           title="${Modal.esc(`Sugerido por ${diretriz.fonte}. O negócio pode ajustar; apagar devolve ${num(sugerida(chave), 2)}.`)}">diretriz</span>`
+           title="${Modal.esc(brutas[chave] === undefined || brutas[chave] === null
+    ? `Sugerido por ${diretriz.fonte}. O negócio pode ajustar; apagar devolve ${num(sugerida(chave), 2)}.`
+    : `Igual ao valor das ${diretriz.fonte}: ${num(sugerida(chave), 2)}.`)}">diretriz</span>`
       : '');
     const campo = (chave, rotulo, dica) => (fixa(chave) !== null
       ? `<div class="col-6 col-md-auto">

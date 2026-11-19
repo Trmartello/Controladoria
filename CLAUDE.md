@@ -3320,6 +3320,15 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
   totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
   quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
+  **Selo verde "diretriz" = valor igual ao da diretriz** (pedido do cliente, 2026-11-19:
+  "se eu digitar 4,5, que é conforme a diretriz, ele marca; caso contrário, o campinho
+  verde sai"). Antes o selo de IPCA e PIB saía assim que o negócio digitava — mesmo
+  digitando o próprio 4,5. Agora aparece quando o valor do campo é igual ao sugerido pela
+  diretriz (IPCA 4,5, PIB 1,5), digitado ou não, e some quando é diferente: é o sinal de
+  premissa fora da diretriz. No mesmo dia, IPCA 4,5% e PIB 1,5% foram **gravados como
+  premissas das Agropecuárias em 2027** (`migrate.php`, chave
+  `premissas_agro_2027_diretriz`, uma vez só). Prova: `provasProjecaoPremissas`
+  (digitar 4,5 devolve o selo; PIB 2 o tira).
   **Premissas mexem na DRE na hora, e o crescimento desejado aceita negativo** (pedidos
   do cliente, 2026-11-19: "quando eu mudo o IPCA, o PIB ou o percentual de crescimento do
   faturamento, deve impactar diretamente na DRE abaixo"; "o crescimento do faturamento

@@ -1058,6 +1058,25 @@ if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
     echo "migrate: cenário {$a['chave']} — Receita de Vendas {$r['valor']} lançada.\n";
 }
 
+// ---- IPCA e PIB da diretriz gravados nas Agropecuárias (pedido do cliente, 2026-11-19) ----
+// "Grave esses indicadores de IPCA e do PIB para o negócio agropecuário": os
+// valores das Diretrizes para o Planejamento 2027 — IPCA 4,50% (Focus de
+// 06/11/2026) e PIB agropecuário 1,50% (Focus) — passam a ser DIGITADOS do
+// negócio em 2027, e não só sugeridos; com o valor igual ao da diretriz, a tela
+// mantém o selo verde. Uma vez só (chave): depois disso o valor é do negócio.
+if (!App\Services\CargaConteudo::jaAplicada($pdo, 'premissas_agro_2027_diretriz')) {
+    $agro = $pdo->query("SELECT id FROM negocio WHERE cod_negocio = '8'")->fetchColumn();
+    if ($agro) {
+        $ins = $pdo->prepare('INSERT INTO negocio_premissa (negocio_id, ano, chave, percentual) VALUES (?, 2027, ?, ?)
+            ON DUPLICATE KEY UPDATE percentual = VALUES(percentual)');
+        foreach (['IPCA' => 4.5, 'PIB' => 1.5] as $chave => $v) {
+            $ins->execute([(int)$agro, $chave, $v]);
+        }
+        App\Services\CargaConteudo::marcar($pdo, 'premissas_agro_2027_diretriz', 'Agropecuárias 2027: IPCA 4,5% e PIB 1,5% da diretriz');
+        echo "migrate: Agropecuárias 2027 — IPCA 4,5% e PIB 1,5% gravados (diretriz).\n";
+    }
+}
+
 // ---- Desafio do ano por negócio (pedido do cliente, 2026-11-18) ----
 // Referência decidida, só de leitura na Projeção. Sobrescreve o ano inteiro; a
 // marca por chave evita refazer a cada deploy, e um desafio novo vem com chave nova.

@@ -5555,9 +5555,18 @@ async function provasProjecaoPremissas(page, largura) {
   v = await digitar('#premissa-IPCA', '5');
   t(`${l} o negócio digita o IPCA (5%): o Cresc. Real passa a descontá-lo (13,79 − 5 − 1,5 = 7,29%)`,
     v.ipca === '5' && !v.seloIpca && v.seloPib && Math.abs(v.real - 7.29) < 0.02, JSON.stringify(v));
+  // Digitar o MESMO valor da diretriz devolve o selo (pedido do cliente, 2026-11-19):
+  // o selo diz "igual à diretriz", não "ninguém digitou".
+  v = await digitar('#premissa-IPCA', '4,5');
+  t(`${l} digitar 4,5 no IPCA (igual à diretriz) mostra o selo de novo`,
+    v.ipca === '4,5' && v.seloIpca && v.seloPib, JSON.stringify(v));
+  v = await digitar('#premissa-PIB', '2');
+  t(`${l} e o PIB diferente da diretriz (2%) perde o selo; o IPCA mantém`,
+    v.pib === '2' && !v.seloPib && v.seloIpca, JSON.stringify(v));
+  v = await digitar('#premissa-PIB', '');
   v = await digitar('#premissa-IPCA', '');
   t(`${l} apagar o IPCA devolve o 4,5 da diretriz, com o selo`,
-    v.ipca === '4,5' && v.seloIpca && Math.abs(v.real - 7.79) < 0.02, JSON.stringify(v));
+    v.ipca === '4,5' && v.seloIpca && v.seloPib && Math.abs(v.real - 7.79) < 0.02, JSON.stringify(v));
 
   // 14%: um pouco acima da receita. Os 18,7% da planilha levariam o resultado da
   // Pecuária ao vermelho, e a diretriz recusa meta negativa.
