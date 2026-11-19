@@ -6757,6 +6757,20 @@ async function provasPisoFaturamento(page, largura) {
   const acima = await page.evaluate(() => !!document.querySelector('#projecao-piso-faturamento'));
   t(`${l} reajuste de 20% (acima do piso): o negócio se desafia mais, sem aviso`, !acima);
 
+  // Pontos de milhar enquanto se digita (pedido do cliente, 2026-11-19), com o
+  // teclado de verdade; Escape devolve o que estava, sem gravar nada.
+  const sel = '.tabela-projecao [data-conta="8.1"] .celula-proposta';
+  await page.click(sel, { clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('500000');
+  const milhar = await page.$eval(sel, (i) => i.value);
+  await page.keyboard.type(',5');
+  const decimal = await page.$eval(sel, (i) => i.value);
+  await page.keyboard.press('Escape');
+  t(`${l} digitar 500000 mostra 500.000 na hora, e a vírgula decimal passa intacta`,
+    milhar === '500.000' && decimal === '500.000,5', JSON.stringify([milhar, decimal]));
+  await new Promise((r) => setTimeout(r, 600));
+
   // Devolve o que estava: vazio volta ao padrão (as premissas), que é o piso.
   if (reajOriginal) await reajuste(reajOriginal);
   else if (original) await lancamentoDaProposta(page, 'AGROPECUARIAS', '1.1', original);

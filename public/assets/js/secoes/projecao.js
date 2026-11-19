@@ -1911,6 +1911,11 @@ const SecaoProjecao = {
       inp.dataset.original = inp.value;
       if (!virgem(inp)) return;
       inp.addEventListener('blur', () => this.gravar(inp));
+      // Valor em reais: os pontos de milhar aparecem enquanto se digita.
+      if (inp.classList.contains('celula-proposta')) {
+        inp.addEventListener('focus', () => { delete inp.dataset.pontoDigitado; });
+        inp.addEventListener('input', (ev) => this.formatarDigitando(inp, ev));
+      }
       inp.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
         if (ev.key === 'Escape') { inp.value = inp.dataset.original ?? inp.value; inp.blur(); }
@@ -2147,6 +2152,40 @@ const SecaoProjecao = {
         R$ ${this.moeda(l.projecao * (1 + piso / 100))}. O faturamento pode ficar igual ou acima disso, nunca abaixo:
         reveja o lançamento ou os parâmetros de crescimento.
       </div>`;
+  },
+
+  /**
+   * Pontos de milhar ENQUANTO se digita na Proposta (pedido do cliente,
+   * 2026-11-19: "500000" não diz a grandeza; "500.000" diz).
+   *
+   * Só regroupa os pontos que ela mesma pôs: quem digita um PONTO está usando
+   * outra convenção (decimal à inglesa, ou o próprio milhar) e, a partir dali,
+   * a célula fica como a pessoa escreveu até sair dela — reagrupar "11.43"
+   * viraria "1.143" e mudaria o número. Com `%` (o atalho de percentual) não
+   * mexe. A vírgula é o decimal e passa intacta; o sinal de menos também.
+   * O cursor fica depois do mesmo algarismo em que estava.
+   */
+  formatarDigitando(inp, ev) {
+    if (ev && ev.data && ev.data.includes('.')) inp.dataset.pontoDigitado = '1';
+    const v = inp.value;
+    if (inp.dataset.pontoDigitado || v.includes('%')) return;
+    const m = v.replace(/\./g, '').match(/^\s*(-?)(\d*)(,\d*)?\s*$/);
+    if (!m) return;
+    const [, sinal, inteiro, decimal = ''] = m;
+    const agrupado = inteiro.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const novo = sinal + agrupado + decimal;
+    if (novo === v) return;
+    // Posição do cursor medida em caracteres que não são ponto.
+    const pos = inp.selectionStart ?? v.length;
+    const antes = v.slice(0, pos).replace(/\./g, '').length;
+    inp.value = novo;
+    let i = 0;
+    let conta = 0;
+    while (i < novo.length && conta < antes) {
+      if (novo[i] !== '.') conta++;
+      i++;
+    }
+    try { inp.setSelectionRange(i, i); } catch (e) { /* campo sem seleção: segue */ }
   },
 
   avisar(msg) {
