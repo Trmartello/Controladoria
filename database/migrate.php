@@ -1077,6 +1077,106 @@ if (!App\Services\CargaConteudo::jaAplicada($pdo, 'premissas_agro_2027_diretriz'
     }
 }
 
+// ---- Cascata de Escolhas da Fábrica de Rações = a do Leite (pedido do cliente, 2026-11-19) ----
+// "Copie a forma como foi preenchida do leite e leve para o negócio fábrica de
+// rações. Exatamente igual." Copia célula a célula (horizonte × driver × eixo,
+// escolha e renúncia) do Leite para a Rações no mesmo ciclo; célula que a
+// Rações já tinha é SOBRESCRITA (é o pedido: igual ao Leite), mantendo o id e
+// o que estiver pendurado nela. Não copia vínculos com fatores e indicadores:
+// são do Leite. Uma vez só (chave): depois disso a cascata é da Rações.
+if (!App\Services\CargaConteudo::jaAplicada($pdo, 'cascata_racoes_igual_leite_2026_11_19')) {
+    try {
+        $planosLeite = App\Services\CargaConteudo::planosDoNegocio($pdo, '4', null);
+        $planosRacoes = App\Services\CargaConteudo::planosDoNegocio($pdo, '6', null);
+        $cicloDe = $pdo->prepare('SELECT ciclo_id FROM planejamento WHERE id = ?');
+        $porCiclo = [];
+        foreach ($planosRacoes as $pr) {
+            $cicloDe->execute([$pr]);
+            $porCiclo[(int)$cicloDe->fetchColumn()] = $pr;
+        }
+        $copia = $pdo->prepare(
+            'INSERT INTO cascata_escolha (planejamento_id, horizonte_id, driver_id, eixo_id, escolha, renuncia)
+             SELECT ?, horizonte_id, driver_id, eixo_id, escolha, renuncia
+               FROM cascata_escolha WHERE planejamento_id = ?
+             ON DUPLICATE KEY UPDATE escolha = VALUES(escolha), renuncia = VALUES(renuncia)'
+        );
+        $celulas = 0;
+        foreach ($planosLeite as $pl) {
+            $cicloDe->execute([$pl]);
+            $destino = $porCiclo[(int)$cicloDe->fetchColumn()] ?? null;
+            if ($destino) {
+                $copia->execute([$destino, $pl]);
+                $celulas += (int)$pdo->query("SELECT COUNT(*) FROM cascata_escolha WHERE planejamento_id = {$pl}")->fetchColumn();
+            }
+        }
+        App\Services\CargaConteudo::marcar($pdo, 'cascata_racoes_igual_leite_2026_11_19',
+            "Cascata da Fábrica de Rações copiada do Leite: {$celulas} célula(s)");
+        echo "migrate: cascata da Fábrica de Rações copiada do Leite — {$celulas} célula(s).\n";
+    } catch (RuntimeException $e) {
+        echo 'migrate: cópia da cascata Leite → Rações adiada: ' . $e->getMessage() . "\n";
+    }
+}
+
+// ---- Plano operacional 2026 da Fábrica de Rações no plano de ação (pedido do cliente, 2026-11-19) ----
+// Projeto, frente e três ações da planilha do negócio; ver o arquivo da carga.
+$po = require __DIR__ . '/plano_operacional_racoes_2026.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $po['chave'])) {
+    try {
+        $planoId = App\Services\CargaConteudo::planosDoNegocio($pdo, $po['negocio'], $po['ano'])[0] ?? null;
+        $jaTem = $pdo->prepare('SELECT id FROM projeto WHERE planejamento_id = ? AND titulo = ?');
+        $jaTem->execute([$planoId, $po['projeto']['titulo']]);
+        if ($planoId && !$jaTem->fetchColumn()) {
+            $pdo->beginTransaction();
+            $horiz = $pdo->prepare('SELECT h.id FROM horizonte h JOIN planejamento p ON p.ciclo_id = h.ciclo_id
+                WHERE p.id = ? AND ? BETWEEN h.ano_inicio AND h.ano_fim ORDER BY h.ordem, h.id LIMIT 1');
+            $horiz->execute([$planoId, $po['ano']]);
+            $pdo->prepare("INSERT INTO projeto (planejamento_id, tipo, ano, titulo, descricao, responsavel,
+                    horizonte_id, classificacao, status, ordem)
+                VALUES (?, 'OPERACIONAL', ?, ?, ?, ?, ?, 'NORMAL', 'NAO_INICIADO', 0)")
+                ->execute([$planoId, $po['ano'], $po['projeto']['titulo'], $po['projeto']['descricao'],
+                    $po['projeto']['responsavel'], $horiz->fetchColumn() ?: null]);
+            $projetoId = (int)$pdo->lastInsertId();
+            $pdo->prepare("INSERT INTO iniciativa (projeto_id, titulo, descricao, status, ordem)
+                VALUES (?, ?, '', 'ABERTA', 0)")->execute([$projetoId, $po['iniciativa']]);
+            $iniciativaId = (int)$pdo->lastInsertId();
+            // Mesmo critério de `ProjetoController::usuarioPorNome`: o nome tem
+            // de bater inteiro com um usuário que enxerga o negócio.
+            $usuario = $pdo->prepare("SELECT u.id FROM usuario u
+                LEFT JOIN usuario_negocio un ON un.usuario_id = u.id
+                JOIN planejamento p ON p.id = ?
+                WHERE u.ativo = 1 AND u.nome = ?
+                  AND (u.perfil IN ('ADMIN', 'CONTROLADORIA', 'DIRECAO') OR un.negocio_id = p.negocio_id)
+                LIMIT 1");
+            $acao = $pdo->prepare("INSERT INTO desdobramento (projeto_id, iniciativa_id, o_que, por_que, quem,
+                    quem_usuario_id, recorrencia, quando_, data_inicio, data_fim, onde, como, status, prioridade,
+                    progresso, concluido_em, ordem)
+                VALUES (?, ?, ?, '', ?, ?, 'DATAS', '', NULL, ?, '', '', ?, 'MEDIA', ?, ?, ?)");
+            $periodo = $pdo->prepare('INSERT INTO desdobramento_periodo (desdobramento_id, data_inicio, data_fim, concluido_em)
+                VALUES (?, NULL, ?, ?)');
+            $comentario = $pdo->prepare("INSERT INTO comentario (ref_tipo, ref_id, autor_id, texto)
+                VALUES ('DESDOBRAMENTO', ?, NULL, ?)");
+            foreach ($po['acoes'] as $i => $a) {
+                $usuario->execute([$planoId, $a['quem']]);
+                $concluido = $a['status'] === 'CONCLUIDO' ? $a['prazo'] . ' 00:00:00' : null;
+                $acao->execute([$projetoId, $iniciativaId, $a['o_que'], $a['quem'], $usuario->fetchColumn() ?: null,
+                    $a['prazo'], $a['status'], $concluido ? 100 : 0, $concluido, $i]);
+                $acaoId = (int)$pdo->lastInsertId();
+                $periodo->execute([$acaoId, $a['prazo'], $concluido]);
+                $comentario->execute([$acaoId, $a['comentario']]);
+            }
+            $pdo->commit();
+            echo "migrate: Fábrica de Rações — projeto \"{$po['projeto']['titulo']}\" com "
+                . count($po['acoes']) . " ação(ões) no plano de ação.\n";
+        }
+        App\Services\CargaConteudo::marcar($pdo, $po['chave'], 'Fábrica de Rações: plano operacional 2026 no plano de ação');
+    } catch (RuntimeException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        echo 'migrate: plano operacional 2026 da Rações adiado: ' . $e->getMessage() . "\n";
+    }
+}
+
 // ---- Desafio do ano por negócio (pedido do cliente, 2026-11-18) ----
 // Referência decidida, só de leitura na Projeção. Sobrescreve o ano inteiro; a
 // marca por chave evita refazer a cada deploy, e um desafio novo vem com chave nova.
