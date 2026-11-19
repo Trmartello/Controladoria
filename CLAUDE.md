@@ -3367,20 +3367,28 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     a baixa de créditos (3.11.03.03.02) e a linha 9.2 do Leite mostrou que não: abril
     tinha R$ 53,9 mil de acerto e a 9.2 estava zerada. Como o quadro de oportunidades
     só varre 8, 9 e 11, nada aqui conta duas vezes.
-    Regra (`acimaDaMedia`): média mensal de jan até o corte (mês sem lançamento vale
-    zero) e a oportunidade é a soma do que cada mês passou da média — trazer os meses
-    ruins à média, sem exigir dos bons. Série que no ano é crédito (sobra de
-    inventário maior que a falta, como o acerto de Rações) não tem oportunidade.
+    Regra (19/11/2026, pedido do cliente: "a média deve ser a média dentre as
+    filiais, não a média do negócio ou a da própria filial"; régua em REAIS, escolhida
+    por ele contra a alternativa em % do faturamento): por conta, soma-se o ano
+    (jan–corte) de cada filial com movimento, faz-se a **média simples entre as
+    filiais** e cada filial acima dela tem como oportunidade `total − média`; o
+    negócio é a soma das filiais (`mediaEntreFiliais`). Média que é crédito vale
+    zero na régua (a filial com falta líquida tem a falta inteira como oportunidade).
+    Negócio com uma filial só (UBS, UTM) não tem oportunidade — a média é ela. Os
+    meses ficam na tela como informação, sem destaque. A régua antiga (média mensal,
+    `acimaDaMedia`) só vale para negócio sem série por filial (`regua = 'MES'`).
+    Out/26: Agropecuárias R$ 749 mil no resultado (perdas 313.873 — média 9.725 em
+    64 filiais, 17 acima; acerto 435.621), Supermercados R$ 524 mil, Corporativo
+    R$ 5,73 mi com o parado. Perdas e acerto por filial vêm de TODOS os negócios
+    (os sete além de 8 e 9 extraídos em 19/11; soma das filiais = negócio).
   - **Produtos parados** — `Produtos Parados` (`c51b995c-…`), medida `R$ Estoque`
     por `Filial`: **Agropecuárias > 2 anos (730 dias), Supermercados > 1 ano (365)**.
     É **caixa, não resultado**: o total mostra "No resultado", "No caixa" e o
     montante (soma dos dois), e diz a diferença.
-  - Na filial, a média e o parado DELA; no negócio, o ranking das filiais (dez
-    abertas, o resto recolhido — a soma das filiais passa a do negócio, porque o mês
-    ruim de uma não se compensa com o bom de outra); no Corporativo, uma linha por
-    negócio com o total. Números de out/26: Agropecuárias R$ 360 mil no resultado +
-    R$ 4,05 mi parados = R$ 4,41 mi; Supermercados R$ 239 mil + R$ 309 mil = R$ 549
-    mil; Corporativo R$ 5,22 mi.
+  - Na filial, o que ela passou da média das filiais e o parado DELA; no negócio, o
+    ranking das filiais (dez abertas, o resto recolhido; a soma do ranking é o
+    resultado do negócio); no Corporativo, uma linha por
+    negócio com o total.
   - Carga `database/estoque_oportunidade_2026_10.php` → `estoque_perda_mes` (negócio
     com `filial_id = 0` e filiais dos negócios 8 e 9; soma das filiais = negócio,
     arredondamento ≤ R$ 3 por mês) e `estoque_parado` (por filial, data-base). O app

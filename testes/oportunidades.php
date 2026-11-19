@@ -244,26 +244,36 @@ prova('as duas contas caem no Custo das Vendas (4.1), como na estrutura da DRE G
 $ea = Oportunidades::estoque($ids['8'], 2026, 10);
 $es = Oportunidades::estoque($ids['9'], 2026, 10);
 $linha = static fn ($e, $t) => array_values(array_filter($e['linhas'], static fn ($l) => $l['tipo'] === $t))[0] ?? null;
-prova('Agropecuárias: perdas R$ 622.404 no ano, média 62.240, oportunidade 92.037',
-    round(-$linha($ea, 'PERDA')['total']) == 622404 && round(-$linha($ea, 'PERDA')['media']) == 62240
-    && round($linha($ea, 'PERDA')['oportunidade']) == 92037, json_encode([$linha($ea, 'PERDA')['total'], $linha($ea, 'PERDA')['oportunidade']]));
-prova('Agropecuárias: acerto R$ 67.506 líquido, oportunidade 268.401 (jan, mai, jun, ago e out acima da média)',
-    round($linha($ea, 'ACERTO')['oportunidade']) == 268401
-    && array_column(array_filter($linha($ea, 'ACERTO')['meses'], static fn ($m) => $m['excesso'] > 0), 'mes') === [1, 5, 6, 8, 10]);
+prova('a régua é a MÉDIA ENTRE AS FILIAIS: Agropecuárias, perdas R$ 622.404 no ano, média de 9.725 em 64 filiais, 17 acima, oportunidade 313.873',
+    $linha($ea, 'PERDA')['regua'] === 'FILIAIS' && round(-$linha($ea, 'PERDA')['total']) == 622404
+    && round(-$linha($ea, 'PERDA')['media']) == 9725 && $linha($ea, 'PERDA')['filiais'] === 64 && $linha($ea, 'PERDA')['acima'] === 17
+    && round($linha($ea, 'PERDA')['oportunidade']) == 313873, json_encode([$linha($ea, 'PERDA')['media'], $linha($ea, 'PERDA')['oportunidade']]));
+$me = Oportunidades::mediaEntreFiliais($ids['8'], 2026, 10)['3.07.01.01.06'];
+prova('a oportunidade do negócio é a soma do que cada filial passou da média (excesso = total − média)',
+    abs(array_sum($me['excesso']) - $me['oportunidade']) < 0.01
+    && !array_filter($me['excesso'], static fn ($x) => $x < 0)
+    && abs($me['media'] - array_sum($me['totais']) / count($me['totais'])) < 0.01);
+prova('acerto das Agropecuárias: média entre filiais é crédito (−938 de perda), régua zero — 40 de 72 filiais com falta, 435.621',
+    round($linha($ea, 'ACERTO')['oportunidade']) == 435621 && $linha($ea, 'ACERTO')['acima'] === 40 && $linha($ea, 'ACERTO')['filiais'] === 72);
+prova('os meses ficam como informação, sem destaque (a régua é o ano da filial)',
+    !array_filter($linha($ea, 'PERDA')['meses'], static fn ($m) => $m['excesso'] > 0) && count($linha($ea, 'PERDA')['meses']) === 10);
 prova('Agropecuárias: parado há mais de 2 anos R$ 4.046.879,81 em 21.829 itens',
     abs($ea['parado']['valor'] - 4046879.81) < 0.01 && $ea['parado']['itens'] === 21829 && $ea['parado']['dias'] === 730);
-prova('Agropecuárias: montante = resultado (360.438) + caixa (4.046.880) = 4.407.317',
-    round($ea['resultado']) == 360438 && round($ea['total']) == 4407317 && abs($ea['total'] - $ea['resultado'] - $ea['caixa']) < 0.01);
-prova('Supermercados: parado há mais de 1 ano R$ 309.424,36; montante 548.657',
-    abs($es['parado']['valor'] - 309424.36) < 0.01 && $es['parado']['dias'] === 365 && round($es['total']) == 548657);
+prova('Agropecuárias: montante = resultado (749.493) + caixa (4.046.880) = 4.796.373',
+    round($ea['resultado']) == 749493 && round($ea['total']) == 4796373 && abs($ea['total'] - $ea['resultado'] - $ea['caixa']) < 0.01);
+prova('Supermercados: parado há mais de 1 ano R$ 309.424,36; montante 833.459',
+    abs($es['parado']['valor'] - 309424.36) < 0.01 && $es['parado']['dias'] === 365 && round($es['total']) == 833459);
+prova('o ranking das filiais soma o resultado do negócio', abs(array_sum(array_column($ea['filiais'], 'resultado')) - $ea['resultado']) < 0.01);
 prova('o parado das filiais + o que não casou com o cadastro (postos, R$ 159) = o do negócio',
     abs(array_sum(array_column($ea['filiais'], 'parado')) + 159.07 - $ea['parado']['valor']) < 0.01);
 prova('ranking das filiais em ordem decrescente de total, Canoinhas primeiro',
     $ea['filiais'][0]['nome'] === 'Canoinhas' && $ea['filiais'][0]['total'] >= $ea['filiais'][1]['total']);
 $filC = Database::um("SELECT id FROM filial WHERE negocio_id = ? AND cod_filial = '33'", [$ids['9']]);
 $ef = Oportunidades::estoque($ids['9'], 2026, 10, (int)$filC['id']);
-prova('na filial (Super Concórdia): perdas pela média DELA, parado dela, sem ranking',
-    round($ef['resultado']) == 63256 && abs($ef['caixa'] - 16716.71) < 0.01 && !isset($ef['filiais']));
+prova('na filial (Super Concórdia): perdas de 221.040 contra a média de 90.777 das filiais = 130.263; parado dela; sem ranking',
+    round($ef['resultado']) == 130263 && abs($ef['caixa'] - 16716.71) < 0.01 && !isset($ef['filiais']));
+$ub = Oportunidades::estoque($ids['13'], 2026, 10);
+prova('negócio com uma filial só (UBS): a média é ela mesma, sem oportunidade', $ub && $ub['resultado'] == 0.0);
 $soma = Database::um("SELECT SUM(valor) s FROM estoque_perda_mes WHERE negocio_id = ? AND filial_id > 0 AND ano = 2026", [$ids['9']])['s'];
 $neg = Database::um("SELECT SUM(valor) s FROM estoque_perda_mes WHERE negocio_id = ? AND filial_id = 0 AND ano = 2026", [$ids['9']])['s'];
 prova('as filiais somam o negócio (arredondamento ≤ R$ 30 no ano)', abs($soma - $neg) <= 30, "$soma × $neg");

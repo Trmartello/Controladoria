@@ -6762,20 +6762,20 @@ async function provasEstoque(page, largura) {
   const a = await ler();
   t(`${l} Agropecuárias: o bloco vem logo depois da DRE, com o título do ano do planejamento`,
     a.depoisDaDre && /^Oportunidades do estoque a trabalhar em \d{4}$/.test(a.titulo || ''), JSON.stringify([a.depoisDaDre, a.titulo]));
-  t(`${l} montante 4.407.317 = no resultado 360.438 + no caixa (parado) 4.046.880`,
-    a.total === 4407317 && a.resultado === 360438 && a.caixa === 4046880, JSON.stringify([a.total, a.resultado, a.caixa]));
-  t(`${l} perdas com os meses, o total e a média; parado há mais de 2 anos com 21.829 itens`,
-    /-48\.306/.test(a.perda) && /-622\.404/.test(a.perda) && /-62\.240/.test(a.perda) && /\+92\.037/.test(a.perda)
-    && /mais de 2 anos/.test(a.parado) && /21\.829 itens/.test(a.parado), JSON.stringify([a.perda, a.parado]));
-  t(`${l} os 5 meses de acerto acima da média estão destacados, e as dez filiais com mais oportunidade listadas`,
-    a.acimaAcerto === 5 && a.filiais === 10, JSON.stringify([a.acimaAcerto, a.filiais]));
-  t(`${l} o montante no resultado é posto contra o resultado líquido projetado`, /1,7%/.test(a.peso), a.peso);
+  t(`${l} montante 4.796.373 = no resultado 749.493 + no caixa (parado) 4.046.880`,
+    a.total === 4796373 && a.resultado === 749493 && a.caixa === 4046880, JSON.stringify([a.total, a.resultado, a.caixa]));
+  t(`${l} perdas com os meses, o total e a MÉDIA ENTRE AS FILIAIS (9.725, 17 de 64 acima); parado há mais de 2 anos`,
+    /-48\.306/.test(a.perda) && /-622\.404/.test(a.perda) && /-9\.725/.test(a.perda) && /17 de 64 filiais acima/.test(a.perda)
+    && /\+313\.873/.test(a.perda) && /mais de 2 anos/.test(a.parado) && /21\.829 itens/.test(a.parado), JSON.stringify([a.perda, a.parado]));
+  t(`${l} sem destaque de mês (a régua é o ano da filial), e as dez filiais com mais oportunidade listadas`,
+    a.acimaAcerto === 0 && a.filiais === 10, JSON.stringify([a.acimaAcerto, a.filiais]));
+  t(`${l} o montante no resultado é posto contra o resultado líquido projetado`, /3,6%/.test(a.peso), a.peso);
   t(`${l} sem rolagem horizontal da página`, !a.rolagem);
 
   await escolher('- SUPERMERCADOS');
   const s = await ler();
-  t(`${l} Supermercados: parado há mais de 1 ano (309.424) e montante 548.657`,
-    /mais de 1 ano/.test(s.parado) && s.caixa === 309424 && s.total === 548657, JSON.stringify([s.parado, s.caixa, s.total]));
+  t(`${l} Supermercados: parado há mais de 1 ano (309.424) e montante 833.459`,
+    /mais de 1 ano/.test(s.parado) && s.caixa === 309424 && s.total === 833459, JSON.stringify([s.parado, s.caixa, s.total]));
   // Na filial (Super Concórdia), a média e o parado DELA.
   await page.evaluate(async () => {
     const f = SecaoProjecao.dados.filiais.find((x) => String(x.cod_filial) === '33');
@@ -6784,14 +6784,14 @@ async function provasEstoque(page, largura) {
   });
   await esperar(page, "/esta filial/.test(document.querySelector('#projecao-estoque h2')?.textContent || '')", 30000);
   const f = await ler();
-  t(`${l} na filial Super Concórdia: o bloco é dela (perdas acima da média 63.256, parado 16.717), sem ranking de filiais`,
-    f.resultado === 63256 && f.caixa === 16717 && f.filiais === 0, JSON.stringify([f.resultado, f.caixa, f.filiais]));
+  t(`${l} na filial Super Concórdia: o que ela passou da média das filiais (130.263) e o parado dela (16.717), sem ranking`,
+    f.resultado === 130263 && f.caixa === 16717 && f.filiais === 0, JSON.stringify([f.resultado, f.caixa, f.filiais]));
   await page.evaluate(async () => { SecaoProjecao.filialId = 0; await SecaoProjecao.carregar(); });
 
   await escolher('CORP');
   const c = await ler();
-  t(`${l} Corporativo: um por negócio com o total 5.217.800 (resultado 861.496 + caixa 4.356.304), sem Rações (crédito)`,
-    c.total === 5217800 && c.resultado === 861496 && c.caixa === 4356304 && c.negocios.includes('total') && c.negocios.length === 9,
+  t(`${l} Corporativo: um por negócio com o total 5.730.463 (resultado 1.374.159 + caixa 4.356.304), só quem tem oportunidade`,
+    c.total === 5730463 && c.resultado === 1374159 && c.caixa === 4356304 && c.negocios.includes('total') && c.negocios.length === 7,
     JSON.stringify([c.total, c.resultado, c.caixa, c.negocios]));
 }
 

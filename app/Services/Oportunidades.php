@@ -412,24 +412,44 @@ class Oportunidades
      * O MONTANTE DE OPORTUNIDADES DO ESTOQUE a trabalhar no ano do planejamento
      * (pedido do cliente, 2026-11-18), totalizado logo abaixo da DRE:
      *
-     *  - **Perdas** e **acerto de estoque**, mês a mês: a média mensal de jan até o
-     *    corte, e a oportunidade é o que cada mês passou dela — trazer os meses
-     *    ruins à média, sem exigir dos bons. Série que no ano é crédito (sobra de
-     *    inventário maior que a falta) não tem oportunidade.
+     *  - **Perdas** e **acerto de estoque**: a régua é a MÉDIA ENTRE AS FILIAIS do
+     *    negócio, em reais no ano (pedido do cliente, 2026-11-19: "a média deve ser
+     *    a média dentre as filiais, não a do negócio nem a da própria filial").
+     *    Cada filial acima dela tem como oportunidade o que passou; o negócio é a
+     *    soma das filiais. Entram na média as filiais com movimento na conta.
+     *    Média que é crédito (sobra de inventário) vale zero na régua: a filial
+     *    com falta líquida tem a falta inteira como oportunidade.
      *  - **Produtos parados**: o valor do estoque sem venda há mais de 2 anos
      *    (Agropecuárias) ou 1 ano (Supermercados). É CAIXA, não resultado — o
      *    total mostra os dois separados, e a soma dos dois.
      *
-     * Na filial, as séries e o parado dela; no negócio, os do negócio e o ranking
-     * das filiais. Null quando o negócio não tem nada carregado.
+     * Na filial, as séries, a oportunidade e o parado dela contra a média das
+     * filiais; no negócio, a soma e o ranking das filiais. Negócio sem série por
+     * filial cai na régua antiga (média mensal do ano), marcada em `regua`.
+     * Null quando o negócio não tem nada carregado.
      */
     public static function estoque(int $negocioId, int $ano, int $corte, int $filialId = 0): ?array
     {
+        $entre = self::mediaEntreFiliais($negocioId, $ano, $corte);
         $linhas = [];
         foreach (self::seriesDeEstoque($negocioId, $ano, $corte, $filialId) as $conta => $meses) {
             $cat = self::ESTOQUE_CONTAS[$conta];
-            $linhas[] = ['tipo' => $cat[0], 'conta' => $conta, 'nome' => $cat[1], 'linha_dre' => $cat[2]]
-                + self::acimaDaMedia($meses, $corte);
+            $l = ['tipo' => $cat[0], 'conta' => $conta, 'nome' => $cat[1], 'linha_dre' => $cat[2]]
+                + self::acimaDaMedia($meses, $corte) + ['regua' => 'MES'];
+            if (isset($entre[$conta])) {
+                $m = $entre[$conta];
+                $l['regua'] = 'FILIAIS';
+                $l['media'] = $m['media'] ? -$m['media'] : 0.0;
+                $l['filiais'] = $m['filiais'];
+                $l['acima'] = $m['acima'];
+                $l['oportunidade'] = $filialId ? ($m['excesso'][$filialId] ?? 0.0) : $m['oportunidade'];
+                // Os meses ficam como informação: a régua é o ano da filial, não o mês.
+                foreach ($l['meses'] as &$x) {
+                    $x['excesso'] = 0.0;
+                }
+                unset($x);
+            }
+            $linhas[] = $l;
         }
         $parado = self::parado($negocioId, $filialId);
         if (!$linhas && !$parado) {
@@ -442,7 +462,40 @@ class Oportunidades
             'resultado' => $resultado, 'caixa' => $caixa, 'total' => $resultado + $caixa,
         ];
         if (!$filialId) {
-            $saida['filiais'] = self::estoquePorFilial($negocioId, $ano, $corte);
+            $saida['filiais'] = self::estoquePorFilial($negocioId, $ano, $corte, $entre);
+        }
+        return $saida;
+    }
+
+    /**
+     * A régua de perdas e acerto: por conta, o total do ano de cada filial com
+     * movimento (sinal do Qlik, + perda), a MÉDIA simples entre elas e o que cada
+     * uma passou da média — `max(0, total − max(média, 0))`.
+     *
+     * @return array<string, array{media:float, filiais:int, acima:int, oportunidade:float, totais:array, excesso:array}>
+     */
+    public static function mediaEntreFiliais(int $negocioId, int $ano, int $corte): array
+    {
+        $totais = [];
+        foreach (Database::todos(
+            'SELECT filial_id, conta, SUM(valor) t FROM estoque_perda_mes
+              WHERE negocio_id = ? AND ano = ? AND mes <= ? AND filial_id > 0 GROUP BY filial_id, conta',
+            [$negocioId, $ano, $corte]
+        ) as $r) {
+            if (isset(self::ESTOQUE_CONTAS[$r['conta']])) {
+                $totais[$r['conta']][(int)$r['filial_id']] = (float)$r['t'];
+            }
+        }
+        $saida = [];
+        foreach ($totais as $conta => $porFilial) {
+            $media = array_sum($porFilial) / count($porFilial);
+            $regua = max($media, 0.0);
+            $excesso = array_map(static fn ($t) => max(0.0, $t - $regua), $porFilial);
+            $saida[$conta] = [
+                'media' => $media, 'filiais' => count($porFilial),
+                'acima' => count(array_filter($excesso, static fn ($x) => $x > 0.005)),
+                'oportunidade' => array_sum($excesso), 'totais' => $porFilial, 'excesso' => $excesso,
+            ];
         }
         return $saida;
     }
@@ -510,25 +563,23 @@ class Oportunidades
     }
 
     /** As filiais do negócio com o que cada uma tem de oportunidade, da maior para a menor. */
-    private static function estoquePorFilial(int $negocioId, int $ano, int $corte): array
+    private static function estoquePorFilial(int $negocioId, int $ano, int $corte, array $entre): array
     {
         $por = [];
         $nova = static fn ($r) => ['filial_id' => (int)$r['id'], 'cod_filial' => $r['cod_filial'], 'nome' => $r['nome'],
             'perdas' => 0.0, 'acerto' => 0.0, 'parado' => 0.0, 'itens' => 0];
-        $series = [];
-        foreach (Database::todos(
-            'SELECT f.id, f.cod_filial, f.nome, e.conta, e.mes, e.valor FROM estoque_perda_mes e
-               JOIN filial f ON f.id = e.filial_id
-              WHERE e.negocio_id = ? AND e.ano = ? AND e.mes <= ?',
-            [$negocioId, $ano, $corte]
-        ) as $r) {
-            $por[(int)$r['id']] ??= $nova($r);
-            $series[(int)$r['id']][$r['conta']][(int)$r['mes']] = (float)$r['valor'];
+        $nomes = [];
+        foreach (Database::todos('SELECT id, cod_filial, nome FROM filial WHERE negocio_id = ?', [$negocioId]) as $r) {
+            $nomes[(int)$r['id']] = $r;
         }
-        foreach ($series as $id => $contas) {
-            foreach ($contas as $conta => $meses) {
-                $chave = self::ESTOQUE_CONTAS[$conta][0] === 'PERDA' ? 'perdas' : 'acerto';
-                $por[$id][$chave] += self::acimaDaMedia($meses, $corte)['oportunidade'];
+        foreach ($entre as $conta => $m) {
+            $chave = self::ESTOQUE_CONTAS[$conta][0] === 'PERDA' ? 'perdas' : 'acerto';
+            foreach ($m['excesso'] as $id => $x) {
+                if (!isset($nomes[$id])) {
+                    continue;
+                }
+                $por[$id] ??= $nova($nomes[$id]);
+                $por[$id][$chave] += $x;
             }
         }
         foreach (Database::todos(
