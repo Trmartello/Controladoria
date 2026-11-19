@@ -989,11 +989,14 @@ class ProjecaoController
             if (!is_numeric($bruto)) {
                 Json::erro('Informe um número.', 422);
             }
-            // Crescimento é POSITIVO (pedido do cliente, 2026-11-18): o zero vale — é
-            // a decisão de não crescer —, o negativo não. Valores negativos que
-            // já estejam gravados continuam sendo lidos como estão.
-            if ((float)$bruto < 0 || (float)$bruto > 100) {
-                Json::erro('Percentual fora de faixa: o percentual de crescimento deve ser positivo, entre 0% e 100%.', 422);
+            // IPCA e PIB são positivos (pedido do cliente, 2026-11-18): o zero vale.
+            // O CRESCIMENTO desejado do faturamento aceita NEGATIVO (pedido do
+            // cliente, 2026-11-19): um negócio pode planejar encolher a receita.
+            $minimo = $chave === 'CRESCIMENTO' ? -100.0 : 0.0;
+            if ((float)$bruto < $minimo || (float)$bruto > 100) {
+                Json::erro($chave === 'CRESCIMENTO'
+                    ? 'Percentual fora de faixa: o crescimento do faturamento vai de −100% a 100%.'
+                    : 'Percentual fora de faixa: o percentual de crescimento deve ser positivo, entre 0% e 100%.', 422);
             }
         }
 

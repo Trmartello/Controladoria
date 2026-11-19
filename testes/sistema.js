@@ -6272,16 +6272,20 @@ async function provasCrescimentoPorPremissa(page, largura) {
 }
 
 /**
- * Percentual de crescimento é POSITIVO (pedido do cliente, 2026-11-18): IPCA,
- * PIB, crescimento desejado e crescimento das despesas com pessoas aceitam de
- * 0% a 100%. O zero vale — é a decisão de não crescer —, o negativo não, e a
- * recusa diz o porquê. A tecla "−/+" do celular não aparece nesses campos: ela
- * existe para quem precisa do sinal, e aqui o sinal é recusado.
+ * Faixa das premissas: IPCA, PIB e crescimento das despesas com pessoas aceitam
+ * de 0% a 100% — o zero vale, o negativo não, e a recusa diz o porquê. O
+ * CRESCIMENTO DESEJADO do faturamento aceita NEGATIVO (pedido do cliente,
+ * 2026-11-19: um negócio pode planejar encolher a receita), de −100% a 100%, e
+ * por isso o campo dele oferece a tecla "−/+" do celular.
+ *
+ * E o efeito na DRE (pedido do mesmo dia): mudar IPCA, PIB ou o crescimento
+ * desejado repinta a proposta na hora — o reajuste da Receita de Vendas é a soma
+ * dos três.
  *
  * Roda dentro de `comPremissasNeutras`: lança e apaga premissas do negócio de prova.
  */
 async function provasCrescimentoPositivo(page, largura) {
-  const l = `[${largura}] Crescimento positivo:`;
+  const l = `[${largura}] Faixa das premissas:`;
   await page.evaluate(() => App.mostrarSecao('projecao'));
   const abriu = await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
   t(`${l} a tela abre`, abriu);
@@ -6314,7 +6318,7 @@ async function provasCrescimentoPositivo(page, largura) {
     return (d.premissas_por_ano[ano] || {})[c] ?? null;
   }, [negocioId, chave]);
 
-  for (const chave of ['IPCA', 'PIB', 'CRESCIMENTO', 'PESSOAS']) {
+  for (const chave of ['IPCA', 'PIB', 'PESSOAS']) {
     const neg = await tenta(chave, -1);
     const pouco = await tenta(chave, -0.01);
     t(`${l} ${chave}: negativo (−1 e −0,01) é recusado, dizendo que deve ser positivo`,
@@ -6329,27 +6333,57 @@ async function provasCrescimentoPositivo(page, largura) {
     t(`${l} ${chave}: o recusado não sobrescreve o valor gravado (continua 7)`, (await guardado(chave)) === 7, String(await guardado(chave)));
     await tenta(chave, null);
   }
+  {
+    const neg = await tenta('CRESCIMENTO', -5);
+    const gravadoNeg = await guardado('CRESCIMENTO');
+    const piso = await tenta('CRESCIMENTO', -100);
+    const abaixo = await tenta('CRESCIMENTO', -100.5);
+    const acima = await tenta('CRESCIMENTO', 100.5);
+    t(`${l} CRESCIMENTO: negativo vale (−5% gravado; −100% é o piso, −100,5% e 100,5% não)`,
+      neg === 'OK' && gravadoNeg === -5 && piso === 'OK' && /fora de faixa/.test(abaixo) && /fora de faixa/.test(acima),
+      `${neg} | ${gravadoNeg} | ${piso} | ${abaixo.slice(0, 30)} | ${acima.slice(0, 30)}`);
+    await tenta('CRESCIMENTO', null);
+  }
 
-  // A tela: digitar negativo é recusado, com a explicação, e o campo volta. O
-  // campo é o do crescimento desejado (no ano da proposta, IPCA e PIB são fixos).
-  const tela = await page.evaluate(async () => {
-    const i = document.querySelector('#premissa-CRESCIMENTO');
-    i.focus(); i.value = '-5'; i.blur();
-    await new Promise((r) => setTimeout(r, 1000));
-    const aviso = document.getElementById('projecao-aviso');
+  // A tela: digitar −2 no crescimento desejado grava e a DRE muda NA HORA — o
+  // reajuste da Receita de Vendas é IPCA + PIB + o desejado, e as linhas que
+  // acompanham a receita vão junto. Sem recarregar a página.
+  await page.evaluate(() => { const s = document.querySelector('#projecao-negocio'); s.dispatchEvent(new Event('change', { bubbles: true })); });
+  await new Promise((r) => setTimeout(r, 2000));
+  const lerTela = () => page.evaluate(() => {
+    const n = (x) => Number(String(x || '').replace('%', '').replace(/\./g, '').replace(',', '.').trim());
+    const cel = (c, k) => document.querySelector(`.tabela-projecao [data-conta="${c}"] .${k}`);
+    const ipca = n(document.querySelector('#premissa-IPCA')?.value ?? document.querySelector('[data-premissa="IPCA"]')?.textContent);
+    // Sem lançamento, o reajuste por omissão mora no PLACEHOLDER do campo.
+    const reaj = (c) => { const i = cel(c, 'celula-reajuste'); return n(i?.value || i?.placeholder); };
     return {
-      valor: document.querySelector('#premissa-CRESCIMENTO').value,
-      aviso: aviso && !aviso.classList.contains('d-none') ? aviso.textContent.trim() : '',
-      sinal: document.querySelector('#premissa-CRESCIMENTO').hasAttribute('data-sinal'),
+      reajuste: reaj('1.1'),
+      custo: reaj('4.1'),
+      sinal: document.querySelector('#premissa-CRESCIMENTO')?.hasAttribute('data-sinal'),
+      ipca,
     };
   });
-  t(`${l} digitar −5 no crescimento desejado pela tela é recusado e o campo volta ao que era`,
-    tela.valor === '' && /positivo/.test(tela.aviso), JSON.stringify(tela));
-  t(`${l} e o campo de premissa não oferece a tecla de sinal (a proposta, sim)`,
-    tela.sinal === false && await page.evaluate(() => !!document.querySelector('.celula-proposta[data-sinal]')),
-    JSON.stringify(tela));
+  const antes = await lerTela();
+  const digitar = async (v) => {
+    await page.evaluate(async (x) => {
+      const i = document.querySelector('#premissa-CRESCIMENTO');
+      i.focus(); i.value = x; i.blur();
+      await new Promise((r) => setTimeout(r, 1500));
+    }, v);
+    return lerTela();
+  };
+  const menos = await digitar('-2');
+  const mais = await digitar('2');
+  t(`${l} o crescimento desejado oferece a tecla de sinal no celular`, antes.sinal === true, JSON.stringify(antes));
+  t(`${l} −2% no crescimento desejado muda a DRE na hora: a Receita de Vendas cai 2 pontos de reajuste, e o custo acompanha`,
+    Math.abs(menos.reajuste - (antes.reajuste - 2)) < 0.011 && Math.abs(menos.custo - menos.reajuste) < 0.011,
+    JSON.stringify([antes, menos]));
+  t(`${l} +2% sobe 4 pontos a partir do −2% (sem recarregar a página)`,
+    Math.abs(mais.reajuste - (menos.reajuste + 4)) < 0.011 && Math.abs(mais.custo - mais.reajuste) < 0.011,
+    JSON.stringify([menos, mais]));
+  await digitar('');
   const nada = await guardado('CRESCIMENTO');
-  t(`${l} e nada foi gravado`, nada === null, String(nada));
+  t(`${l} apagar o desejado volta ao vazio`, nada === null, String(nada));
 }
 
 /**

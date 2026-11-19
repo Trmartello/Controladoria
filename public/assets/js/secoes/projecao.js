@@ -351,7 +351,7 @@ const SecaoProjecao = {
           title="${Modal.esc(dica)}">${rotulo}${seloSugerida(chave)}</label>
         <div class="input-group input-group-sm premissa-campo">
           <input type="text" class="form-control celula-premissa" id="premissa-${chave}"
-            inputmode="decimal" autocomplete="off" data-chave="${chave}"
+            inputmode="decimal" autocomplete="off" data-chave="${chave}"${chave === 'CRESCIMENTO' ? ' data-sinal' : ''}
             value="${digitadas[chave] === null || digitadas[chave] === undefined ? '' : String(digitadas[chave]).replace('.', ',')}"
             placeholder="—" ${editavel ? '' : 'disabled'}>
           <span class="input-group-text">%</span>
@@ -1940,9 +1940,10 @@ const SecaoProjecao = {
       inp.value = inp.dataset.original ?? '';
       return;
     }
-    // Percentual de crescimento é positivo: recusa aqui, com a explicação, em vez
-    // de mandar ao servidor o que ele vai recusar.
-    if (limpo !== '' && Number(limpo) < 0) {
+    // IPCA e PIB são positivos: recusa aqui, com a explicação, em vez de mandar
+    // ao servidor o que ele vai recusar. O CRESCIMENTO desejado do faturamento
+    // aceita negativo (pedido do cliente, 2026-11-19).
+    if (limpo !== '' && Number(limpo) < 0 && inp.dataset.chave !== 'CRESCIMENTO') {
       this.avisar('O percentual de crescimento deve ser positivo: informe de 0% a 100%.');
       inp.value = inp.dataset.original ?? '';
       return;
@@ -1961,12 +1962,19 @@ const SecaoProjecao = {
       this.versao = r.versao;
       this.dados = { ...this.dados, ...r };
       this.avisar('');
-      // O painel inteiro é repintado: mexer no IPCA muda o Cresc. Real, que é
-      // conta do servidor. A tabela não precisa, mas o repinte é barato e
-      // mantém a tela e o banco dizendo a mesma coisa.
+      // O painel E A TABELA são repintados (pedido do cliente, 2026-11-19: "quando
+      // eu mudo o IPCA, o PIB ou o crescimento do faturamento, deve impactar
+      // direto na DRE abaixo"). IPCA + PIB + crescimento desejado é o reajuste da
+      // Receita de Vendas, e deduções e custo a acompanham: o servidor já devolve
+      // a proposta recalculada. Repintar só o painel deixava o Cresc. Total
+      // dizendo 8% e a DRE com os 6% de antes, até recarregar a página.
       const el = document.getElementById('secao-projecao');
       const painel = el.querySelector('.painel-premissas');
       painel.outerHTML = this.painel(this.dados);
+      const tbody = el.querySelector('.tabela-projecao tbody');
+      if (tbody) tbody.innerHTML = this.corpo(this.dados);
+      const negativa = el.querySelector('#projecao-meta-negativa-box');
+      if (negativa) negativa.innerHTML = this.alertaMetaNegativa(this.dados);
       this.repintarTributos(el);
       this.ligar(el);
       el.querySelector(`#premissa-${inp.dataset.chave}`)?.focus();

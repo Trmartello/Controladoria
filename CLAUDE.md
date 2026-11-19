@@ -3320,6 +3320,17 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
   totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
   quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
+  **Premissas mexem na DRE na hora, e o crescimento desejado aceita negativo** (pedidos
+  do cliente, 2026-11-19: "quando eu mudo o IPCA, o PIB ou o percentual de crescimento do
+  faturamento, deve impactar diretamente na DRE abaixo"; "o crescimento do faturamento
+  deve aceitar percentual negativo"). O motor já somava IPCA + PIB + desejado no reajuste
+  da Receita de Vendas, e o servidor já devolvia a proposta recalculada — mas o
+  `gravarPremissa` da tela repintava só o painel ("a tabela não precisa"), e o Cresc.
+  Total dizia 8% com a DRE nos 6% de antes, até recarregar. Agora repinta também o corpo
+  da tabela e o alerta de resultado negativo. O CRESCIMENTO aceita de −100% a 100% (tela e
+  servidor), com a tecla "−/+" no celular; IPCA, PIB e pessoal continuam de 0% a 100%.
+  Prova: `provasCrescimentoPositivo` (agora "Faixa das premissas": −2% e +2% mudam o
+  reajuste da Receita de Vendas e do custo sem recarregar).
   **Indicadores aceitam três casas decimais — todos** (pedido do cliente, 2026-11-19:
   primeiro "quando o indicador for em percentual, preciso lançar até três casas após a
   vírgula"; no mesmo dia, o "Custo Operacional por Litro", em R$ / Litro, também não
