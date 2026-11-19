@@ -10592,19 +10592,20 @@ async function provasMesAMes(page, largura) {
     noAno.pct === `${Math.round(100 * (Number(noAno.real) / Number(noAno.meta)))}%`,
     JSON.stringify(noAno));
 
-  // ── «Menor melhor» inverte a divisão ─────────────────────────────────────
+  // ── «Menor melhor»: a conta é a mesma (realizado ÷ meta), a COR é que inverte
+  // (decisão do cliente, 2026-11-19) ─────────────────────────────────────────
   await page.evaluate((id) => App.api(`/api/indicadores/${id}`, {
     planejamento_id: 1, nome: 'Indicador atingimento QA', unidade: 'R$ mil', agregacao: 'SOMA',
     sentido: 'MENOR_MELHOR',
   }).then(() => SecaoMetas.carregar()), indA);
   await esperar(page, `!!document.querySelector('[data-atingimento-ind="${indA}"]')`, 15000);
   const janMenor = await pct(1);
-  t(`${l} em "menor melhor", gastar 80 de 100 é 125% e fica verde`,
-    janMenor && janMenor.txt === '125%' && janMenor.cor === 'text-success',
+  t(`${l} em "menor melhor", gastar 80 de 100 é 80% (realizado ÷ meta) e fica verde`,
+    janMenor && janMenor.txt === '80%' && janMenor.cor === 'text-success',
     JSON.stringify(janMenor));
   const fevMenor = await pct(2);
-  t(`${l} e estourar a meta fica abaixo de 100%, em vermelho`,
-    fevMenor && fevMenor.txt === '83%' && fevMenor.cor === 'text-danger',
+  t(`${l} e estourar a meta dá 120%, em vermelho`,
+    fevMenor && fevMenor.txt === '120%' && fevMenor.cor === 'text-danger',
     JSON.stringify(fevMenor));
 
   // ── Negativo não vira percentual, mas a COR continua dizendo a verdade ───
