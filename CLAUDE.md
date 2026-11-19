@@ -3320,13 +3320,16 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
   totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
   quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
-  **Indicador em % aceita três casas decimais** (pedido do cliente, 2026-11-19: "quando o
-  indicador for em percentual, preciso poder lançar até três casas após a vírgula").
-  `indicador_valor.valor` passou de DECIMAL(15,2) — que cortava a terceira casa calada —
-  para DECIMAL(18,3) (o `migrate.php` faz o `ALTER` quando a escala é menor que 3). Na
-  tela, `SecaoMetas.casas(ind)` dá 3 quando a unidade tem "%", 2 nos outros: o filtro de
-  digitação (`Modal.ligarMoedas`, opção `casas`), a formatação (`fmt(v, casas)`) e o
-  campo do "Revisar metas" (`passo`) seguem esse número. Prova: `provasCasasPercentual`.
+  **Indicadores aceitam três casas decimais — todos** (pedido do cliente, 2026-11-19:
+  primeiro "quando o indicador for em percentual, preciso lançar até três casas após a
+  vírgula"; no mesmo dia, o "Custo Operacional por Litro", em R$ / Litro, também não
+  aceitava a terceira — decidir pela unidade deixava de fora toda unidade fracionada sem
+  "%" no nome). `indicador_valor.valor` passou de DECIMAL(15,2) — que cortava a terceira
+  casa calada — para DECIMAL(18,3) (o `migrate.php` faz o `ALTER` quando a escala é menor
+  que 3). Na tela, `SecaoMetas.casas()` dá 3: o filtro de digitação (`Modal.ligarMoedas`,
+  opção `casas`; o dinheiro dos outros formulários segue com dois centavos), a formatação
+  (`fmt(v, casas)`) e o campo do "Revisar metas" (`passo` 0.001). Prova:
+  `provasCasasPercentual` (um indicador em % e um em R$ / Litro).
   **Cenário de faturamento de planilha na proposta** (pedido do cliente, 2026-11-19:
   "carregue o cenário realista da Pecuária para o planejamento; a planilha está no
   formato da DRE antiga, precisa converter"). A planilha do negócio (`PECUÁRIA VOLUMES
