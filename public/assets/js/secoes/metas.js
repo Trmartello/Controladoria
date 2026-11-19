@@ -580,6 +580,14 @@ const SecaoMetas = {
         `[data-celula-ind="${ind.id}"][data-tipo="${tipo}"][data-ano="${ano}"][data-mes="${mes}"] .celula-valor`);
       if (novo) this.ligarCelula(novo);
     });
+    // A linha % também: ela divide o que as duas linhas de cima mostram, e sem
+    // repintar ficava com o percentual de ANTES do lançamento — lançar 1 no real
+    // e apagar deixava "100%" debaixo de um real vazio até recarregar a página.
+    [...document.querySelectorAll(`[data-atingimento-ind="${ind.id}"]`)].forEach((td) => {
+      const ano = Number(td.dataset.ano);
+      const doAno = (serie) => (serie || []).find((x) => x.ano == ano) || null;
+      td.outerHTML = this.celulaAtingimento(ind, ano, doAno(ind.metas), doAno(ind.reais), Number(td.dataset.mes));
+    });
   },
 
   async carregar() {

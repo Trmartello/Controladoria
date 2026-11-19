@@ -10578,6 +10578,25 @@ async function provasMesAMes(page, largura) {
   t(`${l} mês sem meta nem real fica em "—"`,
     mar && mar.txt === '—' && mar.cor === 'text-muted', JSON.stringify(mar));
 
+  // A linha % acompanha o lançamento SEM recarregar (relato do cliente,
+  // 2026-11-19: "100%" debaixo de um real vazio). Digita no real de março, onde
+  // a meta não existe, e em janeiro, onde existe.
+  const digitaReal = async (mes, texto) => {
+    const sel = `[data-celula-ind="${indA}"][data-tipo="REAL"][data-ano="${exec}"][data-mes="${mes}"] .celula-valor`;
+    await page.click(sel, { clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    if (texto) await page.keyboard.type(texto);
+    await page.evaluate((s) => document.querySelector(s).blur(), sel);
+    await new Promise((r) => setTimeout(r, 1500));
+  };
+  await digitaReal(1, '100');
+  const janCem = await pct(1);
+  await digitaReal(1, '');
+  const janVazio = await pct(1);
+  t(`${l} a linha % repinta ao lançar (100 sobre 100 = 100%) e ao apagar o real (volta a "—")`,
+    janCem && janCem.txt === '100%' && janVazio && janVazio.txt === '—', JSON.stringify([janCem, janVazio]));
+  await digitaReal(1, '80');
+
   // O ano acompanha, na MESMA janela que as duas linhas de cima usam: a conta
   // do percentual sai do número que a célula mostra, não de outro.
   const noAno = await page.evaluate(([i, a]) => {
