@@ -1333,10 +1333,15 @@ const SecaoCenario = {
     const aberto = this.anexosAbertos.has(Number(i.id));
     // O "+" fica na própria linha do expansor, à direita (pedido do cliente,
     // 2026-11-20): incluir não exige abrir o bloco.
+    // E o ✎ ao lado (pedido do cliente, 2026-11-20): edita o registro quando
+    // há um só; com vários, abre o bloco, onde cada registro tem o seu ✎.
     const mais = App.podeEditar()
-      ? `<button type="button" class="btn btn-sm btn-outline-success px-2 py-0 ms-auto btn-novo-anexo"
+      ? `<span class="ms-auto d-flex gap-1">${registros ? `<button type="button"
+          class="btn btn-sm btn-outline-secondary px-2 py-0 btn-editar-anexo" data-editar-anexo="${i.id}"
+          title="Editar anexo ou apontamento" aria-label="Editar anexo ou apontamento">✎</button>` : ''}
+        <button type="button" class="btn btn-sm btn-outline-success px-2 py-0 btn-novo-anexo"
           data-novo-anexo="${i.id}" title="Novo anexo ou apontamento"
-          aria-label="Novo anexo ou apontamento">+</button>` : '';
+          aria-label="Novo anexo ou apontamento">+</button></span>` : '';
     return `<details class="expansor-anexos mt-1" data-anexos-cenario="${i.id}"${aberto ? ' open' : ''}>
       <summary class="small d-flex align-items-center gap-1"><span class="seta-expansor" aria-hidden="true"></span>
         <svg width="12" height="12" focusable="false" aria-hidden="true"><use href="#i-clipe"/></svg>
@@ -1635,6 +1640,18 @@ const SecaoCenario = {
       if (d.open) this.abrirAnexos(id);
       // O "+" mora DENTRO do summary: sem o preventDefault, o clique também
       // abriria ou fecharia o expansor.
+      d.querySelector('[data-editar-anexo]')?.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const lista = await App.api(
+          `/api/comentarios?planejamento_id=${this.plan.id}&ref_tipo=CENARIO&ref_id=${id}`);
+        if (lista.length === 1) {
+          Comentarios.modal({ planId: this.plan.id, refTipo: 'CENARIO', refId: id, comentario: lista[0],
+            aoSalvar: () => { this.anexosAbertos.add(id); this.carregar(); } });
+        } else if (!d.open) {
+          d.open = true;
+        }
+      });
       d.querySelector('[data-novo-anexo]')?.addEventListener('click', (ev) => {
         ev.preventDefault();
         ev.stopPropagation();

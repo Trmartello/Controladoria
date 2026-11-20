@@ -140,6 +140,52 @@ class ComentarioController
     }
 
     /**
+     * Edita um registro: troca o texto e ACRESCENTA arquivos (pedido do
+     * cliente, 2026-11-20 — "editar o existente", ao lado do "+"). Tirar um
+     * arquivo continua sendo o × do próprio anexo (`excluirAnexo`).
+     *
+     * Mesma permissão de apagar: só o autor ou um ADMIN — é o registro de
+     * alguém. O teto de arquivos vale para o registro inteiro (os que já tem
+     * mais os novos), e o registro não pode ficar sem texto e sem arquivo.
+     */
+    public function editar(int $id): void
+    {
+        $planId = (int)($_POST['planejamento_id'] ?? 0);
+        $u = Auth::exigirLogin();
+        Auth::exigirEdicaoPlanejamento($planId);
+
+        $c = Database::um('SELECT * FROM comentario WHERE id = ?', [$id]);
+        if (!$c) {
+            Json::erro('Registro não encontrado.', 404);
+        }
+        $this->validarRef((string)$c['ref_tipo'], (int)$c['ref_id'], $planId);
+        if ((int)$c['autor_id'] !== (int)$u['id'] && ($u['perfil'] ?? '') !== 'ADMIN') {
+            Json::erro('Só o autor do registro (ou um administrador) pode editá-lo.', 403);
+        }
+
+        $texto = trim((string)($_POST['texto'] ?? ''));
+        $arquivos = $this->arquivosEnviados();
+        $jaTem = (int)(Database::um('SELECT COUNT(*) AS n FROM comentario_anexo WHERE comentario_id = ?', [$id])['n'] ?? 0);
+        if ($texto === '' && !$arquivos && !$jaTem) {
+            Json::erro('Escreva o texto ou anexe um arquivo.');
+        }
+        if ($jaTem + count($arquivos) > self::MAX_ARQUIVOS) {
+            Json::erro('Máximo de ' . self::MAX_ARQUIVOS . ' arquivos por registro (este já tem ' . $jaTem . ').');
+        }
+        $validados = array_map(fn ($a) => $this->validarArquivo($a), $arquivos);
+
+        Database::executar('UPDATE comentario SET texto = ? WHERE id = ?', [$texto, $id]);
+        foreach ($validados as $a) {
+            Database::executar(
+                'INSERT INTO comentario_anexo (comentario_id, nome, tipo, tamanho, conteudo)
+                 VALUES (?, ?, ?, ?, ?)',
+                [$id, $a['nome'], $a['tipo'], $a['tamanho'], $a['conteudo']]
+            );
+        }
+        Json::ok(['id' => $id, 'anexos' => count($validados)]);
+    }
+
+    /**
      * Apaga o comentário (e os anexos, por ON DELETE CASCADE). Só o autor ou um
      * ADMIN: comentário de acompanhamento é registro de alguém, e quem edita o
      * planejamento não herda o direito de apagar o registro dos outros.

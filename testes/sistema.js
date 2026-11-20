@@ -689,6 +689,35 @@ async function provasAnexosCenario(page, largura) {
   t(`${l} a foto ocupa a largura do cartão, sem margem lateral`,
     aberto.larguraFoto >= aberto.larguraCartao - 4, JSON.stringify(aberto));
 
+  // Tocar na foto amplia DENTRO do sistema, com um Fechar de verdade (relato
+  // do cliente: a aba nova mostrava o "×" desenhado no print, que não fecha).
+  await page.click(`#comentarios-CENARIO-${m.item} .anexo-figura a`);
+  const abriuVisor = await esperar(page, "!!document.querySelector('.visor-anexo img')", 5000);
+  await page.click('.visor-anexo [data-fechar-visor]');
+  const fechouVisor = await esperar(page, "!document.querySelector('.visor-anexo')", 3000);
+  t(`${l} a foto amplia na própria tela e o Fechar fecha`, abriuVisor && fechouVisor,
+    JSON.stringify({ abriuVisor, fechouVisor }));
+
+  // Editar o existente (pedido do cliente, 2026-11-20): o ✎ da linha do
+  // expansor abre o registro único com o texto preenchido; salvar troca o
+  // texto e mantém os anexos.
+  await page.click(`${sel} [data-editar-anexo]`);
+  const abriuEdicao = await esperar(page,
+    "/endividamento/.test(document.querySelector('.modal.show #campo-texto')?.value || '')", 10000);
+  await new Promise((r) => setTimeout(r, 500));
+  await page.evaluate(() => {
+    const c = document.querySelector('.modal.show #campo-texto');
+    c.value = 'Gráfico revisado do endividamento';
+    c.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.click('#modal-salvar');
+  const editou = await esperar(page,
+    `/revisado/.test(document.getElementById('comentarios-CENARIO-${m.item}')?.textContent || '')`, 10000);
+  const depoisEdicao = await page.evaluate((s) => document.querySelector(`${s} [data-anexos-resumo]`)?.textContent.trim(), sel);
+  t(`${l} o ✎ edita o registro: texto trocado, anexos mantidos`,
+    abriuEdicao && editou && /1 imagem · 1 anexo/.test(depoisEdicao || ''),
+    JSON.stringify({ abriuEdicao, editou, depoisEdicao }));
+
   const fim = await page.evaluate(async (x) => {
     const mover = await App.api(`/api/cenario/${x.item}/mover`, { planejamento_id: x.plan, etapa: 'SWOT', categoria: 'FORCA' })
       .then(() => 'moveu').catch((e) => e.message);

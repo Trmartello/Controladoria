@@ -72,13 +72,44 @@ const Comentarios = {
           title="Remover esta imagem" aria-label="Remover a imagem ${Modal.esc(a.nome)}">×</button>`
       : '';
     return `<figure class="anexo-figura">
-      <a href="${url}" target="_blank" rel="noopener" title="Abrir ${Modal.esc(a.nome)} em tamanho original">
+      <a href="${url}" target="_blank" rel="noopener" data-ampliar="${url}" data-ampliar-nome="${Modal.esc(a.nome)}"
+          title="Ampliar ${Modal.esc(a.nome)}">
         <img src="${url}" alt="${Modal.esc(a.nome)}" loading="lazy">
       </a>
       <figcaption class="small text-muted d-flex gap-2 align-items-center">
         <span class="text-truncate">${Modal.esc(a.nome)} (${this.tamanho(a.tamanho)})</span>${excluir}
       </figcaption>
     </figure>`;
+  },
+
+  /**
+   * A foto ampliada DENTRO do sistema, com um "Fechar" de verdade (relato do
+   * cliente, 2026-11-20): o link abria o arquivo puro numa aba nova, e um
+   * print que já trazia um "×" desenhado parecia ter botão de fechar — que era
+   * só imagem, e não fechava nada. Aqui o fechar é do sistema: botão, toque
+   * fora da imagem ou Esc. "Abrir original" segue disponível.
+   */
+  ampliar(url, nome = '') {
+    document.querySelector('.visor-anexo')?.remove();
+    const visor = document.createElement('div');
+    visor.className = 'visor-anexo';
+    visor.setAttribute('role', 'dialog');
+    visor.setAttribute('aria-modal', 'true');
+    visor.setAttribute('aria-label', nome || 'Imagem anexada');
+    visor.innerHTML = `<div class="visor-barra">
+        <span class="visor-nome text-truncate">${Modal.esc(nome)}</span>
+        <a class="btn btn-sm btn-outline-light" href="${url}" target="_blank" rel="noopener">Abrir original</a>
+        <button type="button" class="btn btn-sm btn-light fw-bold" data-fechar-visor>✕ Fechar</button>
+      </div>
+      <div class="visor-palco"><img src="${url}" alt="${Modal.esc(nome)}"></div>`;
+    const fechar = () => { visor.remove(); document.removeEventListener('keydown', tecla); };
+    const tecla = (ev) => { if (ev.key === 'Escape') fechar(); };
+    visor.querySelector('[data-fechar-visor]').addEventListener('click', fechar);
+    // Toque fora da imagem (no palco escuro) também fecha.
+    visor.querySelector('.visor-palco').addEventListener('click', (ev) => { if (ev.target === ev.currentTarget) fechar(); });
+    document.addEventListener('keydown', tecla);
+    document.body.appendChild(visor);
+    visor.querySelector('[data-fechar-visor]').focus();
   },
 
   /**
@@ -118,7 +149,10 @@ const Comentarios = {
       const anexos = (figuras ? `<div class="figuras-anexos">${figuras}</div>` : '')
         + (resto.length ? `<div class="grade-anexos">${resto
           .map((a) => this.miniaturaAnexo(a, planId, podeApagar, ultimoSemTexto)).join('')}</div>` : '');
-      const apagar = podeApagar ? `<button class="btn btn-sm btn-link p-0 text-danger"
+      const apagar = podeApagar ? `<button class="btn btn-sm btn-link p-0 text-secondary"
+              data-editar-comentario="${c.id}" title="Editar registro"
+              aria-label="Editar registro">✎</button>
+            <button class="btn btn-sm btn-link p-0 text-danger"
               data-excluir-comentario="${c.id}" title="Excluir registro"
               aria-label="Excluir registro">×</button>` : '';
       // Compacto (o cenário, pedido do cliente de 2026-11-20): sem avatar nem
@@ -169,6 +203,16 @@ const Comentarios = {
     alvo.querySelector('[data-novo-comentario]')
       ?.addEventListener('click', () => this.modal({ planId, refTipo, refId, aoSalvar: depois, titulo: r.novo }));
 
+    alvo.querySelectorAll('[data-ampliar]').forEach((a) => a.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      this.ampliar(a.dataset.ampliar, a.dataset.ampliarNome);
+    }));
+
+    alvo.querySelectorAll('[data-editar-comentario]').forEach((b) => b.addEventListener('click', () => {
+      const c = lista.find((x) => Number(x.id) === Number(b.dataset.editarComentario));
+      if (c) this.modal({ planId, refTipo, refId, aoSalvar: depois, comentario: c });
+    }));
+
     alvo.querySelectorAll('[data-excluir-comentario]').forEach((b) =>
       b.addEventListener('click', async () => {
         if (!confirm('Excluir este registro? Os anexos dele saem junto.')) return;
@@ -207,9 +251,14 @@ const Comentarios = {
    * confere. Os arquivos não passam por `coletar()` (arquivo não viaja em
    * JSON): o `enviar` os lê direto do campo, por `Modal.arquivosDe`.
    */
-  modal({ planId, refTipo, refId, aoSalvar, titulo = 'Novo comentário' }) {
+  modal({ planId, refTipo, refId, aoSalvar, titulo = 'Novo comentário', comentario = null }) {
+    // Com `comentario`, é EDIÇÃO (pedido do cliente, 2026-11-20): o texto vem
+    // preenchido e os arquivos escolhidos se SOMAM aos que o registro já tem —
+    // tirar um arquivo continua sendo o × do próprio anexo.
+    const jaTem = comentario ? (comentario.anexos || []).length : 0;
     Modal.abrir({
-      titulo,
+      titulo: comentario ? (refTipo === 'CENARIO' ? 'Editar anexo ou apontamento' : 'Editar comentário') : titulo,
+      valores: comentario ? { texto: comentario.texto || '' } : undefined,
       campos: [
         { nome: 'texto', rotulo: refTipo === 'CENARIO' ? 'Apontamento' : 'Comentário', tipo: 'textarea', linhas: 4,
           exemplo: refTipo === 'CENARIO'
@@ -217,21 +266,25 @@ const Comentarios = {
             : 'Descreva o andamento, bloqueios ou próximos passos...' },
         { nome: 'arquivos', rotulo: 'Anexos', tipo: 'arquivos', multiplo: true,
           aceita: '.jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt',
-          ajuda: 'Até 5 arquivos por registro, 5 MB cada — imagem, PDF, Word, Excel, PowerPoint, CSV ou TXT.' },
+          ajuda: comentario
+            ? `Os arquivos escolhidos se somam aos ${jaTem} que o registro já tem (até 5 no total, 5 MB cada). Para tirar um, use o × dele.`
+            : 'Até 5 arquivos por registro, 5 MB cada — imagem, PDF, Word, Excel, PowerPoint, CSV ou TXT.' },
       ],
       enviar: async (corpo) => {
         const texto = (corpo.texto || '').trim();
         const arquivos = Modal.arquivosDe('arquivos');
         // A recusa acontece AQUI, não no clique: lançada, ela aparece no aviso
         // do modal (`mostrarErro`), que é onde quem acabou de salvar está olhando.
-        if (!texto && !arquivos.length) throw new Error('Escreva o texto ou anexe um arquivo.');
+        if (!texto && !arquivos.length && !jaTem) throw new Error('Escreva o texto ou anexe um arquivo.');
         const dados = new FormData();
         dados.append('planejamento_id', planId);
-        dados.append('ref_tipo', refTipo);
-        dados.append('ref_id', refId);
+        if (!comentario) {
+          dados.append('ref_tipo', refTipo);
+          dados.append('ref_id', refId);
+        }
         dados.append('texto', texto);
         for (const arquivo of arquivos) dados.append('arquivos[]', arquivo);
-        const resposta = await fetch('/api/comentarios', {
+        const resposta = await fetch(comentario ? `/api/comentarios/${comentario.id}` : '/api/comentarios', {
           method: 'POST',
           headers: { 'X-CSRF-Token': App.csrf },
           body: dados,
