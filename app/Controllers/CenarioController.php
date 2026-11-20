@@ -34,8 +34,21 @@ class CenarioController
         // precisa de consulta própria (`Fatores::acoesQuePrendem`). Aqui só
         // existe um caminho: o item virou ação, ou não virou.
         $sql = "SELECT c.*, ci.id AS coleta_item_id, ca.nome AS coleta_autor, co.n AS coleta_vozes,
-                       COALESCE(qz.n, 0) AS quiz_vozes, ds.o_que AS acao_titulo
+                       COALESCE(qz.n, 0) AS quiz_vozes, ds.o_que AS acao_titulo,
+                       COALESCE(cm.n, 0) AS comentarios, COALESCE(ax.n, 0) AS anexos,
+                       COALESCE(ax.imagens, 0) AS imagens
                 FROM cenario_item c
+                -- Anexos e apontamentos do item (pedido do cliente, 2026-11-20):
+                -- os mesmos comentários com arquivo do plano de ação, com
+                -- ref_tipo CENARIO. As contagens vão para o resumo do expansor.
+                LEFT JOIN (
+                  SELECT ref_id, COUNT(*) AS n FROM comentario
+                  WHERE ref_tipo = 'CENARIO' GROUP BY ref_id) cm ON cm.ref_id = c.id
+                LEFT JOIN (
+                  SELECT cc.ref_id, COUNT(*) AS n,
+                         SUM(a.tipo IN ('image/jpeg', 'image/png', 'image/gif', 'image/webp')) AS imagens
+                  FROM comentario_anexo a JOIN comentario cc ON cc.id = a.comentario_id
+                  WHERE cc.ref_tipo = 'CENARIO' GROUP BY cc.ref_id) ax ON ax.ref_id = c.id
                 LEFT JOIN desdobramento ds ON ds.id = c.desdobramento_id
                 -- Uma ideia só por item: com vozes agrupadas na oficina, várias
                 -- ideias apontam para o mesmo registro e o JOIN duplicaria a linha
@@ -346,6 +359,16 @@ class CenarioController
                 . ($acao ? ' (ação: “' . $acao['o_que'] . '”)' : ''));
         }
 
+        // Anexos e apontamentos ficam no cenário: o fator não tem onde
+        // pendurá-los, e mover calado os deixaria órfãos (ou apagaria arquivo
+        // que alguém subiu). A mesma recusa explícita da ação, acima.
+        $temAnexo = Database::um(
+            "SELECT COUNT(*) AS n FROM comentario WHERE ref_tipo = 'CENARIO' AND ref_id = ?", [$id]);
+        if ((int)($temAnexo['n'] ?? 0) > 0) {
+            Json::erro('Este item tem anexos ou apontamentos, que ficam na Análise de Cenário. '
+                . 'Exclua-os antes de movê-lo para outra análise.');
+        }
+
         $novo = (int)Database::executar(
             'INSERT INTO fator (planejamento_id, ano, etapa, categoria, ordem, descricao, acao_em, acao_por)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -385,8 +408,28 @@ class CenarioController
         // descartá-la, não devolvê-la ao painel como sugestão nova
         // (`Quiz::excluirVozes`).
         Quiz::excluirVozes('CENARIO', [$id]);
+        self::apagarAnexos([$id]);
         Database::executar('DELETE FROM cenario_item WHERE id = ?', [$id]);
         Json::ok();
+    }
+
+    /**
+     * Os anexos e apontamentos do item (comentários com `ref_tipo` CENARIO)
+     * saem com ele. `ref_id` é polimórfico e não tem chave estrangeira: sem
+     * este DELETE eles ficariam no banco, inalcançáveis, ocupando o LONGBLOB.
+     * Os arquivos descem com o comentário, pelo CASCADE de `comentario_anexo`.
+     */
+    public static function apagarAnexos(array $ids): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (!$ids) {
+            return;
+        }
+        Database::executar(
+            "DELETE FROM comentario WHERE ref_tipo = 'CENARIO' AND ref_id IN ("
+            . implode(',', array_fill(0, count($ids), '?')) . ')',
+            $ids
+        );
     }
 
     /**

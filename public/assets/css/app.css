@@ -1106,6 +1106,15 @@ input[type=range].faixa-verde:focus-visible {
 }
 
 /* Grade de anexos: quantos couberem na largura, em cartões de tamanho fixo */
+/* Anexos e apontamentos de cada item da Análise de Cenário (2026-11-20): um
+   expansor discreto debaixo do texto, que fechado só diz quanto há. */
+.expansor-anexos > summary {
+  cursor: pointer; color: var(--verde-coperdia); list-style: revert;
+  padding: 2px 0; user-select: none;
+}
+.expansor-anexos > summary:focus-visible { outline: 2px solid var(--verde-coperdia); outline-offset: 2px; }
+.expansor-anexos[open] > summary { margin-bottom: 4px; }
+
 .grade-anexos {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));

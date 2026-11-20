@@ -555,7 +555,9 @@ CREATE TABLE IF NOT EXISTS diario_bordo (
 -- arquivo junto (a foto da obra, a proposta em PDF, a planilha do orçamento).
 CREATE TABLE IF NOT EXISTS comentario (
   id           INT AUTO_INCREMENT PRIMARY KEY,
-  ref_tipo     ENUM('PROJETO','DESDOBRAMENTO','INVESTIMENTO','CASCATA') NOT NULL,
+  -- CENARIO: anexos e apontamentos de cada item da Análise de Cenário
+  -- (pedido do cliente, 2026-11-20).
+  ref_tipo     ENUM('PROJETO','DESDOBRAMENTO','INVESTIMENTO','CASCATA','CENARIO') NOT NULL,
   ref_id       INT NOT NULL,
   -- Anulável de propósito: excluir um usuário não pode levar junto o que ele
   -- escreveu. Na exclusão o registro vai para a pessoa indicada, ou fica sem

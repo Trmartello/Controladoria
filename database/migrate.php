@@ -421,6 +421,19 @@ if ($tipoDestinoCi2 && !str_contains((string)$tipoDestinoCi2, 'CASCATA')) {
     echo "migrate: coleta_item.destino_tipo agora aceita CASCATA (célula da cascata).\n";
 }
 
+// Anexos e apontamentos nos itens da Análise de Cenário (pedido do cliente,
+// 2026-11-20): o mesmo comentário com arquivo do plano de ação, apontando para
+// o item do cenário.
+$tipoRefComentario = $pdo->query(
+    "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'comentario' AND COLUMN_NAME = 'ref_tipo'"
+)->fetchColumn();
+if ($tipoRefComentario && !str_contains((string)$tipoRefComentario, 'CENARIO')) {
+    $pdo->exec("ALTER TABLE comentario MODIFY COLUMN ref_tipo
+                ENUM('PROJETO','DESDOBRAMENTO','INVESTIMENTO','CASCATA','CENARIO') NOT NULL");
+    echo "migrate: comentario.ref_tipo agora aceita CENARIO (anexos da Análise de Cenário).\n";
+}
+
 // ---- A sala propõe CRUZAMENTOS (TOWS) ----
 // A resposta deste alvo não é só texto: a pessoa escolhe dois fatores da SWOT e
 // escreve a estratégia do encontro deles. Daí o par na própria linha da voz.

@@ -335,6 +335,7 @@ class ComentarioController
                                 WHERE d.id = ? AND p.planejamento_id = ?',
             'INVESTIMENTO'  => 'SELECT id FROM investimento WHERE id = ? AND planejamento_id = ?',
             'CASCATA'       => 'SELECT id FROM cascata_escolha WHERE id = ? AND planejamento_id = ?',
+            'CENARIO'       => 'SELECT id FROM cenario_item WHERE id = ? AND planejamento_id = ?',
             default         => null,
         };
         if ($sql === null) {
