@@ -661,8 +661,14 @@ async function provasAnexosCenario(page, largura) {
   const aindaFechado = await page.evaluate((s) => document.querySelector(s).open === false, sel);
   t(`${l} o + da linha do expansor abre o formulário sem abrir o bloco`, comMais && aindaFechado,
     JSON.stringify({ comMais, aindaFechado }));
-  await page.evaluate(() => bootstrap.Modal.getInstance(document.querySelector('.modal.show'))?.hide());
-  await new Promise((r) => setTimeout(r, 600));
+  // O Bootstrap ignora o hide() pedido durante a animação de abertura: espera
+  // a animação, fecha pela API e confere que fechou antes do próximo clique.
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    await new Promise((r) => setTimeout(r, 500));
+    await page.evaluate(() => document.querySelectorAll('.modal.show')
+      .forEach((x) => window.bootstrap?.Modal.getInstance(x)?.hide()));
+    if (await esperar(page, "!document.querySelector('.modal.show')", 1500)) break;
+  }
 
   await page.click(`${sel} > summary`);
   await esperar(page, `!!document.querySelector('#comentarios-CENARIO-${m.item} .anexo-figura img')`, 15000);
