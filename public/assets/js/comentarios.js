@@ -60,6 +60,28 @@ const Comentarios = {
   },
 
   /**
+   * A imagem em tamanho de leitura: ocupa a largura do bloco, com altura
+   * limitada, e o clique abre o original numa aba. O nome, o tamanho e o ×
+   * ficam na legenda.
+   */
+  figuraAnexo(a, planId, podeApagar = false, ultimoSemTexto = false) {
+    const url = `/api/anexos/${a.id}?planejamento_id=${planId}`;
+    const excluir = podeApagar
+      ? `<button type="button" class="anexo-excluir-legenda btn btn-sm btn-link p-0 text-danger"
+          data-excluir-anexo="${a.id}" data-anexo-nome="${Modal.esc(a.nome)}"${ultimoSemTexto ? ' data-ultimo="1"' : ''}
+          title="Remover esta imagem" aria-label="Remover a imagem ${Modal.esc(a.nome)}">×</button>`
+      : '';
+    return `<figure class="anexo-figura">
+      <a href="${url}" target="_blank" rel="noopener" title="Abrir ${Modal.esc(a.nome)} em tamanho original">
+        <img src="${url}" alt="${Modal.esc(a.nome)}" loading="lazy">
+      </a>
+      <figcaption class="small text-muted d-flex gap-2 align-items-center">
+        <span class="text-truncate">${Modal.esc(a.nome)} (${this.tamanho(a.tamanho)})</span>${excluir}
+      </figcaption>
+    </figure>`;
+  },
+
+  /**
    * Lista os registros de um item dentro de `alvo`, com o "+" de novo registro
    * e os × de apagar. `aoMudar` roda depois de criar ou apagar — quem chama
    * decide o que repintar (o bloco, ou também as contagens do item).
@@ -67,7 +89,7 @@ const Comentarios = {
    * `rotulos` troca as palavras sem trocar o comportamento: no plano de ação o
    * bloco é "Comentários"; no cenário, "Anexos e apontamentos".
    */
-  async render(alvo, { planId, refTipo, refId, aoMudar, rotulos = {} }) {
+  async render(alvo, { planId, refTipo, refId, aoMudar, rotulos = {}, imagensAbertas = false }) {
     if (!alvo) return;
     const r = {
       titulo: 'Comentários', novo: 'Novo comentário', vazio: 'Nenhum comentário ainda.',
@@ -76,7 +98,7 @@ const Comentarios = {
     const lista = await App.api(
       `/api/comentarios?planejamento_id=${planId}&ref_tipo=${refTipo}&ref_id=${refId}`);
     const eu = App.sessao.usuario;
-    const depois = aoMudar || (() => this.render(alvo, { planId, refTipo, refId, aoMudar, rotulos }));
+    const depois = aoMudar || (() => this.render(alvo, { planId, refTipo, refId, aoMudar, rotulos, imagensAbertas }));
 
     const itens = lista.map((c) => {
       const inicial = (c.autor || '?').trim().charAt(0).toUpperCase();
@@ -85,9 +107,16 @@ const Comentarios = {
       // é a regra do servidor. A tela precisa saber disso ANTES de perguntar,
       // para avisar do que vai acontecer em vez de só relatar depois.
       const ultimoSemTexto = (c.anexos || []).length === 1 && !(c.texto || '').trim();
-      const anexos = (c.anexos || []).length
-        ? `<div class="grade-anexos">${c.anexos
-            .map((a) => this.miniaturaAnexo(a, planId, podeApagar, ultimoSemTexto)).join('')}</div>` : '';
+      // Com `imagensAbertas` (o cenário), a FOTO aparece inteira, na largura
+      // do bloco: é um gráfico para ler ali mesmo, sem abrir o anexo (pedido
+      // do cliente, 2026-11-20). Documento continua na grade de miniaturas.
+      const todos = c.anexos || [];
+      const fotos = imagensAbertas ? todos.filter((a) => a.imagem) : [];
+      const resto = imagensAbertas ? todos.filter((a) => !a.imagem) : todos;
+      const figuras = fotos.map((a) => this.figuraAnexo(a, planId, podeApagar, ultimoSemTexto)).join('');
+      const anexos = (figuras ? `<div class="figuras-anexos">${figuras}</div>` : '')
+        + (resto.length ? `<div class="grade-anexos">${resto
+          .map((a) => this.miniaturaAnexo(a, planId, podeApagar, ultimoSemTexto)).join('')}</div>` : '');
       return `<div class="comentario d-flex gap-2">
         <span class="avatar-inicial" aria-hidden="true">${Modal.esc(inicial)}</span>
         <div class="flex-grow-1 min-w-0">

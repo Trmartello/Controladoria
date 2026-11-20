@@ -1344,6 +1344,7 @@ const SecaoCenario = {
     Comentarios.render(alvo, {
       planId: this.plan.id, refTipo: 'CENARIO', refId: id,
       aoMudar: () => this.carregar(),
+      imagensAbertas: true,
       rotulos: { titulo: 'Anexos e apontamentos', novo: 'Novo anexo ou apontamento',
         vazio: 'Nenhum anexo ainda. Use o + para incluir uma imagem, PDF ou planilha.' },
     });

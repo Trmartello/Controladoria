@@ -658,12 +658,19 @@ async function provasAnexosCenario(page, largura) {
   await esperar(page, `!!document.querySelector('#comentarios-CENARIO-${m.item} .card .anexo-mini')`, 15000);
   const aberto = await page.evaluate((id) => {
     const b = document.getElementById(`comentarios-CENARIO-${id}`);
+    const img = b.querySelector('.anexo-figura img');
+    const caixa = b.querySelector('.card-body');
     return { titulo: /Anexos e apontamentos/i.test(b.textContent), miniaturas: b.querySelectorAll('.anexo-mini').length,
-      imagem: !!b.querySelector('.anexo-mini img'), texto: /endividamento/.test(b.textContent),
-      novo: !!b.querySelector('[data-novo-comentario]') };
+      foto: !!img, larguraFoto: img ? Math.round(img.getBoundingClientRect().width) : 0,
+      larguraBloco: caixa ? Math.round(caixa.getBoundingClientRect().width) : 0,
+      texto: /endividamento/.test(b.textContent), novo: !!b.querySelector('[data-novo-comentario]') };
   }, m.item);
-  t(`${l} aberto, lista o apontamento com a miniatura da imagem e o anexo`,
-    aberto.titulo && aberto.miniaturas === 2 && aberto.imagem && aberto.texto && aberto.novo, JSON.stringify(aberto));
+  t(`${l} aberto, lista o apontamento, o anexo na grade e a foto fora dela`,
+    aberto.titulo && aberto.miniaturas === 1 && aberto.foto && aberto.texto && aberto.novo, JSON.stringify(aberto));
+  // Pedido do cliente (2026-11-20): a foto já aparece redimensionada no
+  // expansor, legível sem abrir o anexo — ocupa a largura do bloco.
+  t(`${l} a foto ocupa a largura do bloco (lê-se o gráfico sem abrir o anexo)`,
+    aberto.larguraFoto > 0.8 * (aberto.larguraBloco - 40), JSON.stringify(aberto));
 
   const fim = await page.evaluate(async (x) => {
     const mover = await App.api(`/api/cenario/${x.item}/mover`, { planejamento_id: x.plan, etapa: 'SWOT', categoria: 'FORCA' })
