@@ -1305,6 +1305,51 @@ const Diag = {
 // sala responde por lado (situação atual / tendência) e o texto que vira item
 // é o que ELE redige ao aceitar — as vozes ficam registradas como origem.
 const SecaoCenario = {
+  /** Itens com o expansor de anexos aberto — sobrevivem à repintura da tela. */
+  anexosAbertos: new Set(),
+
+  /**
+   * Anexos e apontamentos do item (pedido do cliente, 2026-11-20): "colocar
+   * uma imagem que represente um gráfico, ou até um PDF, um Excel", num
+   * expansor que, fechado, só diz QUANTO há. Os registros são os comentários
+   * com anexo do plano de ação (`Comentarios`, ref_tipo CENARIO).
+   *
+   * O resumo separa imagem de documento porque é o que o cliente pediu ver
+   * ("quantas imagens, quantos anexos"); registro só de texto aparece como
+   * apontamento. Sem nada e sem poder editar, o expansor nem aparece.
+   */
+  expansorAnexos(i) {
+    const anexos = Number(i.anexos) || 0;
+    const imagens = Number(i.imagens) || 0;
+    const outros = anexos - imagens;
+    const registros = Number(i.comentarios) || 0;
+    if (!registros && !App.podeEditar()) return '';
+    const partes = [
+      Vinculos.quantos(imagens, 'imagem', 'imagens'),
+      Vinculos.quantos(outros, 'anexo', 'anexos'),
+    ].filter(Boolean);
+    if (!partes.length && registros) partes.push(Vinculos.quantos(registros, 'apontamento', 'apontamentos'));
+    const resumo = partes.length ? partes.join(' · ') : 'nenhum ainda';
+    const aberto = this.anexosAbertos.has(Number(i.id));
+    return `<details class="expansor-anexos mt-1" data-anexos-cenario="${i.id}"${aberto ? ' open' : ''}>
+      <summary class="small"><svg width="12" height="12" focusable="false" aria-hidden="true"><use href="#i-clipe"/></svg>
+        Anexos e apontamentos <span class="text-muted" data-anexos-resumo>· ${Modal.esc(resumo)}</span></summary>
+      <div class="mt-1" id="comentarios-CENARIO-${i.id}"></div>
+    </details>`;
+  },
+
+  /** Abre o bloco de um item: lista os registros e, a cada mudança, recarrega a tela (contagens). */
+  abrirAnexos(id) {
+    const alvo = document.getElementById(`comentarios-CENARIO-${id}`);
+    Comentarios.render(alvo, {
+      planId: this.plan.id, refTipo: 'CENARIO', refId: id,
+      aoMudar: () => this.carregar(),
+      imagensAbertas: true,
+      rotulos: { titulo: 'Anexos e apontamentos', novo: 'Novo anexo ou apontamento',
+        vazio: 'Nenhum anexo ainda. Use o + para incluir uma imagem, PDF ou planilha.' },
+    });
+  },
+
   /**
    * Os dois tipos do cenário, com rótulo e cor — catálogo único.
    *
@@ -1457,6 +1502,7 @@ const SecaoCenario = {
                   ${SecaoCenario.botaoExcluir(i)}
                 </span>` : ''}
               </div>` : ''}
+          ${SecaoCenario.expansorAnexos(i)}
         </div></div>`).join('');
       const cor = 'var(--verde-coperdia)';
       return `<div class="col-md-6" data-coluna-categoria="${tipo}">
@@ -1570,6 +1616,15 @@ const SecaoCenario = {
     // O cenário vai direto ao plano de ação, como PESTEL, Porter e SWOT — mesmo
     // selo, mesmo gesto, outra rota (é outra tabela).
     Diag.ligarPlanoAcao(el, plan.id, 'cenario', 'item');
+    // Anexos e apontamentos: o bloco carrega ao abrir o expansor (e volta
+    // aberto depois da repintura que um novo anexo provoca).
+    el.querySelectorAll('[data-anexos-cenario]').forEach((d) => {
+      const id = Number(d.dataset.anexosCenario);
+      d.addEventListener('toggle', () => {
+        if (d.open) { this.anexosAbertos.add(id); this.abrirAnexos(id); } else this.anexosAbertos.delete(id);
+      });
+      if (d.open) this.abrirAnexos(id);
+    });
     if (!App.podeEditar()) return;
     // `sugestao` chega do painel da sala: o texto entra como RASCUNHO (o
     // condutor redige antes de salvar) e o id viaja em `sugestoes`, que é o

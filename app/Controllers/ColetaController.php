@@ -190,6 +190,7 @@ class ColetaController
                 // Como o registro está sendo excluído, elas saem de vez
                 // (`Quiz::excluirVozes`), e não voltam ao painel como novas.
                 Quiz::excluirVozes('CENARIO', [$destinoId]);
+                CenarioController::apagarAnexos([$destinoId]);
                 Database::executar(
                     'DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]
                 );
@@ -661,6 +662,7 @@ class ColetaController
             // UPDATE do grupo, mais abaixo, só alcança a família da tempestade)
             if ($tipo === 'CENARIO') {
                 Quiz::soltarVozes('CENARIO', [$destinoId]);
+                CenarioController::apagarAnexos([$destinoId]);
                 Database::executar('DELETE FROM cenario_item WHERE id = ? AND planejamento_id = ?', [$destinoId, $planId]);
             } else {
                 // Desmarcar apaga o fator: se ele já virou ação, a ação ficaria

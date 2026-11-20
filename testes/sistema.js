@@ -612,6 +612,81 @@ async function provasCartaoAcao(page, largura) {
  * outro passaria numa massa em que cada comentário tem um anexo, e mentiria
  * justamente no caso real: o comentário que sobe cinco fotos de uma vez.
  */
+/**
+ * Anexos e apontamentos nos itens da Análise de Cenário (pedido do cliente,
+ * 2026-11-20): debaixo de cada item, um expansor que, fechado, só diz quantas
+ * imagens e quantos anexos há; aberto, lista os registros com as miniaturas.
+ * Mover um item com anexos para outra análise é recusado (o fator não tem onde
+ * pendurá-los); excluir o item leva os anexos junto.
+ */
+async function provasAnexosCenario(page, largura) {
+  const l = `[${largura}] Anexos do cenário:`;
+  await page.evaluate(() => App.mostrarSecao('cenario'));
+  await esperar(page, "!!document.querySelector('#secao-cenario h1')", 20000);
+  const m = await page.evaluate(async () => {
+    const plan = await App.planejamento();
+    const ano = Diag.ano();
+    const item = await App.api('/api/cenario', { planejamento_id: plan.id, ano,
+      tipo: 'SITUACAO_ATUAL', ordem: 0, descricao: 'Item de cenário com anexos (prova)' });
+    // Um PNG de 1×1 de verdade (a lista branca do servidor confere a extensão)
+    // e um TXT: uma imagem e um anexo.
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const dados = new FormData();
+    dados.append('planejamento_id', plan.id);
+    dados.append('ref_tipo', 'CENARIO');
+    dados.append('ref_id', item.id);
+    dados.append('texto', 'Gráfico do endividamento das famílias');
+    dados.append('arquivos[]', new File([png], 'grafico.png', { type: 'image/png' }));
+    dados.append('arquivos[]', new File(['dado de prova'], 'base.txt', { type: 'text/plain' }));
+    const r = await fetch('/api/comentarios', { method: 'POST', headers: { 'X-CSRF-Token': App.csrf }, body: dados });
+    const j = await r.json().catch(() => ({}));
+    await SecaoCenario.carregar();
+    return { plan: plan.id, item: item.id, envio: r.ok && j.ok !== false ? true : (j.erro || r.status) };
+  });
+  t(`${l} o registro com imagem e anexo é aceito`, m.envio === true, String(m.envio));
+
+  const sel = `#secao-cenario [data-anexos-cenario="${m.item}"]`;
+  await esperar(page, `!!document.querySelector('${sel}')`, 15000);
+  const fechado = await page.evaluate((s) => {
+    const d = document.querySelector(s);
+    return { aberto: d.open, resumo: d.querySelector('[data-anexos-resumo]')?.textContent.trim() };
+  }, sel);
+  t(`${l} fechado, o expansor só diz quanto há: 1 imagem · 1 anexo`,
+    fechado.aberto === false && /1 imagem · 1 anexo/.test(fechado.resumo || ''), JSON.stringify(fechado));
+
+  await page.click(`${sel} > summary`);
+  await esperar(page, `!!document.querySelector('#comentarios-CENARIO-${m.item} .card .anexo-mini')`, 15000);
+  const aberto = await page.evaluate((id) => {
+    const b = document.getElementById(`comentarios-CENARIO-${id}`);
+    const img = b.querySelector('.anexo-figura img');
+    const caixa = b.querySelector('.card-body');
+    return { titulo: /Anexos e apontamentos/i.test(b.textContent), miniaturas: b.querySelectorAll('.anexo-mini').length,
+      foto: !!img, larguraFoto: img ? Math.round(img.getBoundingClientRect().width) : 0,
+      larguraBloco: caixa ? Math.round(caixa.getBoundingClientRect().width) : 0,
+      texto: /endividamento/.test(b.textContent), novo: !!b.querySelector('[data-novo-comentario]') };
+  }, m.item);
+  t(`${l} aberto, lista o apontamento, o anexo na grade e a foto fora dela`,
+    aberto.titulo && aberto.miniaturas === 1 && aberto.foto && aberto.texto && aberto.novo, JSON.stringify(aberto));
+  // Pedido do cliente (2026-11-20): a foto já aparece redimensionada no
+  // expansor, legível sem abrir o anexo — ocupa a largura do bloco.
+  t(`${l} a foto ocupa a largura do bloco (lê-se o gráfico sem abrir o anexo)`,
+    aberto.larguraFoto > 0.8 * (aberto.larguraBloco - 40), JSON.stringify(aberto));
+
+  const fim = await page.evaluate(async (x) => {
+    const mover = await App.api(`/api/cenario/${x.item}/mover`, { planejamento_id: x.plan, etapa: 'SWOT', categoria: 'FORCA' })
+      .then(() => 'moveu').catch((e) => e.message);
+    await App.api(`/api/cenario/${x.item}/excluir`, { planejamento_id: x.plan });
+    const depois = await App.api(`/api/comentarios?planejamento_id=${x.plan}&ref_tipo=CENARIO&ref_id=${x.item}`)
+      .then(() => 'ainda listou').catch((e) => e.message);
+    await SecaoCenario.carregar();
+    return { mover, depois };
+  }, m);
+  t(`${l} mover para outra análise é recusado enquanto houver anexos`,
+    /anexos ou apontamentos/.test(fim.mover), fim.mover);
+  t(`${l} excluir o item leva os anexos junto (o item some e com ele a lista)`,
+    /não encontrado/i.test(fim.depois), fim.depois);
+}
+
 async function provasSeloComentarios(page) {
   const l = '[desktop] Selo de comentários:';
 
@@ -11007,6 +11082,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasCartaoCruzamento(page);
   await provasCartaoAcao(page, 'desktop');
   await provasSeloComentarios(page);
+  await provasAnexosCenario(page, 'desktop');
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
   await provasExcluirComOrigens(page);

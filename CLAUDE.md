@@ -3321,6 +3321,17 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
   totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
   quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
+  **Anexos e apontamentos na Análise de Cenário** (pedido do cliente,
+  2026-11-20): cada item (situação atual e tendência) tem um expansor que,
+  fechado, só diz quantas imagens e quantos anexos há; aberto, lista os
+  registros. São os mesmos comentários com arquivo do plano de ação
+  (`comentario` com `ref_tipo = 'CENARIO'`), e o código da tela saiu de
+  `projetos.js` para `assets/js/comentarios.js`, usado pelos dois. Excluir o
+  item apaga os registros (`CenarioController::apagarAnexos`, também na
+  Coleta); MOVER item com anexos para PESTEL/Porter/SWOT é recusado, porque o
+  fator não tem onde pendurá-los. No cenário a FOTO aparece inteira, na largura
+  do expansor (`imagensAbertas`, `figuraAnexo`), para ler o gráfico sem abrir o
+  anexo; documento segue como miniatura na grade.
   **Pontos de milhar enquanto se digita** na Proposta (pedido do cliente,
   2026-11-19): `formatarDigitando` regroupa só os pontos que ele mesmo pôs. Se a
   pessoa digita um ponto (decimal à inglesa, `11.43%`), a célula fica como ela

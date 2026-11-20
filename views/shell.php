@@ -305,6 +305,7 @@
   <!-- O aviso de exclusão é o mesmo em toda tela que apaga algo com vínculo:
        carrega antes das seções, que o consomem -->
   <script src="<?= versao_asset('/assets/js/vinculos.js') ?>"></script>
+  <script src="<?= versao_asset('/assets/js/comentarios.js') ?>"></script>
   <!-- Arrastar para reordenar: o mesmo gesto no cadastro (linhas) e no cenário
        (cartões). Carrega antes das seções, que o consomem. -->
   <script src="<?= versao_asset('/assets/js/ordenar.js') ?>"></script>

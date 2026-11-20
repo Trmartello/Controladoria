@@ -3333,52 +3333,12 @@ const SecaoProjetos = {
       + `${String(data).split('-').reverse().join('/')}.`);
   },
 
-  /** dd/mm/aaaa hh:mm a partir do DATETIME que o banco devolve. */
-  quando(iso) {
-    if (!iso) return '';
-    const [data, hora] = String(iso).split(' ');
-    return `${data.split('-').reverse().join('/')}${hora ? ` ${hora.slice(0, 5)}` : ''}`;
-  },
-
-  /** 162,9 KB / 2,1 MB — o mesmo jeito de escrever tamanho do resto do sistema. */
-  tamanho(bytes) {
-    const n = Number(bytes) || 0;
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} KB`;
-    return `${(n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
-  },
-
-  /**
-   * A miniatura do anexo. Imagem mostra a própria imagem; documento mostra o
-   * selo da extensão, com a cor do tipo — o ícone genérico de "arquivo" obriga
-   * a ler o nome para saber se é a proposta ou a planilha.
-   * A imagem é a original, encolhida por CSS: não há GD na imagem do PHP para
-   * gerar miniatura no servidor, e o teto de 5 MB por arquivo segura o peso.
-   */
+  // Datas, tamanhos e miniaturas dos anexos moram em `Comentarios`
+  // (assets/js/comentarios.js), que o cenário também usa.
+  quando(iso) { return Comentarios.quando(iso); },
+  tamanho(bytes) { return Comentarios.tamanho(bytes); },
   miniaturaAnexo(a, podeApagar = false, ultimoSemTexto = false) {
-    const url = `/api/anexos/${a.id}?planejamento_id=${this.plan.id}`;
-    const ext = (a.nome.split('.').pop() || '').toUpperCase().slice(0, 4);
-    const corpo = a.imagem
-      ? `<img src="${url}" alt="${Modal.esc(a.nome)}" loading="lazy">`
-      : `<span class="selo-ext selo-ext-${ext.toLowerCase()}">${Modal.esc(ext)}</span>`;
-    // O × é IRMÃO do link, nunca filho: botão dentro de <a> é HTML inválido, e
-    // o clique acabaria abrindo o anexo em vez de removê-lo.
-    const excluir = podeApagar
-      ? `<button type="button" class="anexo-excluir" data-excluir-anexo="${a.id}"
-          data-anexo-nome="${Modal.esc(a.nome)}"${ultimoSemTexto ? ' data-ultimo="1"' : ''}
-          title="Remover este anexo" aria-label="Remover o anexo ${Modal.esc(a.nome)}">×</button>`
-      : '';
-    // `download` no link do documento: ele já desce como anexo pelo servidor, e
-    // o atributo evita a aba em branco que o navegador abre antes de baixar.
-    return `<span class="anexo-item">
-      <a class="anexo-mini" href="${url}" target="_blank" rel="noopener"
-          ${a.imagem ? '' : 'download'} title="${Modal.esc(a.nome)}">
-        <span class="anexo-face">${corpo}</span>
-        <span class="anexo-nome">${Modal.esc(a.nome)}</span>
-        <span class="anexo-tamanho">(${this.tamanho(a.tamanho)})</span>
-      </a>
-      ${excluir}
-    </span>`;
+    return Comentarios.miniaturaAnexo(a, this.plan.id, podeApagar, ultimoSemTexto);
   },
 
   /**
@@ -3423,140 +3383,17 @@ const SecaoProjetos = {
 
   /**
    * Comentários com anexos — sucederam o diário de bordo. O bloco é o mesmo nos
-   * dois níveis que o usam (projeto e ação): escritos separados, divergiriam na
-   * primeira mudança.
+   * dois níveis que o usam (projeto e ação) e também no cenário: o código mora
+   * em `Comentarios.render`.
    */
   async renderComentarios() {
     const { refTipo, refId } = this.comentariosAbertos;
-    const alvo = document.getElementById(`comentarios-${refTipo}-${refId}`);
-    if (!alvo) return;
-    const lista = await App.api(
-      `/api/comentarios?planejamento_id=${this.plan.id}&ref_tipo=${refTipo}&ref_id=${refId}`);
-    const eu = App.sessao.usuario;
-
-    const itens = lista.map((c) => {
-      const inicial = (c.autor || '?').trim().charAt(0).toUpperCase();
-      const podeApagar = Number(c.autor_id) === Number(eu.id) || eu.perfil === 'ADMIN';
-      // Remover o único anexo de um comentário sem texto apaga o comentário —
-      // é a regra do servidor. A tela precisa saber disso ANTES de perguntar,
-      // para avisar do que vai acontecer em vez de só relatar depois.
-      const ultimoSemTexto = (c.anexos || []).length === 1 && !(c.texto || '').trim();
-      const anexos = (c.anexos || []).length
-        ? `<div class="grade-anexos">${c.anexos
-            .map((a) => this.miniaturaAnexo(a, podeApagar, ultimoSemTexto)).join('')}</div>` : '';
-      return `<div class="comentario d-flex gap-2">
-        <span class="avatar-inicial" aria-hidden="true">${Modal.esc(inicial)}</span>
-        <div class="flex-grow-1 min-w-0">
-          <div class="d-flex align-items-baseline gap-2 flex-wrap">
-            <strong class="small">${Modal.esc(c.autor)}</strong>
-            <span class="small text-muted flex-grow-1">${this.quando(c.criado_em)}</span>
-            ${podeApagar ? `<button class="btn btn-sm btn-link p-0 text-danger"
-              data-excluir-comentario="${c.id}" title="Excluir comentário"
-              aria-label="Excluir comentário">×</button>` : ''}
-          </div>
-          ${c.texto ? `<div class="small texto-comentario">${Modal.esc(c.texto)}</div>` : ''}
-          ${anexos}
-        </div>
-      </div>`;
-    }).join('');
-
-    // Abrir os comentários mostra o que JÁ EXISTE (pedido do cliente): o
-    // formulário saiu da frente da lista — quem clicava em "Comentários"
-    // queria ler, e a caixa de novo comentário empurrava os registros para
-    // baixo da dobra. Escrever é o gesto do "+" ao lado do título, que abre o
-    // formulário em modal (`modalComentario`) — e ali o textarea já vem com o
-    // ditado por voz e o crescer-com-o-texto de todo formulário do sistema.
-    const btnNovo = App.podeEditar()
-      ? `<button class="btn btn-sm btn-verde px-2 py-0" data-novo-comentario
-          title="Novo comentário" aria-label="Novo comentário">+</button>` : '';
-
-    alvo.innerHTML = `<div class="card bg-light"><div class="card-body py-2">
-      <div class="d-flex align-items-center gap-2 mb-2">
-        <strong class="small text-uppercase">Comentários</strong>
-        ${btnNovo}
-        <span class="small text-muted ms-auto">${lista.length} registro(s)</span>
-      </div>
-      ${itens || '<div class="text-muted small">Nenhum comentário ainda.</div>'}
-    </div></div>`;
-
-    alvo.querySelector('[data-novo-comentario]')
-      ?.addEventListener('click', () => this.modalComentario(refTipo, refId));
-
-    alvo.querySelectorAll('[data-excluir-comentario]').forEach((b) =>
-      b.addEventListener('click', async () => {
-        if (!confirm('Excluir este comentário? Os anexos dele saem junto.')) return;
-        try {
-          await App.api(`/api/comentarios/${b.dataset.excluirComentario}/excluir`,
-            { planejamento_id: this.plan.id });
-        } catch (e) {
-          alert(e.message);
-        }
-        this.renderComentarios();
-      }));
-
-    // Remover UM anexo. Antes disso, tirar o arquivo errado custava o
-    // comentário inteiro — apagar tudo e reescrever, com o texto junto.
-    alvo.querySelectorAll('[data-excluir-anexo]').forEach((b) =>
-      b.addEventListener('click', async () => {
-        const nome = b.dataset.anexoNome || 'este anexo';
-        const pergunta = b.dataset.ultimo
-          ? `Remover “${nome}”? É o único anexo e o comentário não tem texto — `
-            + 'o comentário sai junto.'
-          : `Remover o anexo “${nome}”? O comentário e os demais anexos ficam.`;
-        if (!confirm(pergunta)) return;
-        try {
-          await App.api(`/api/anexos/${b.dataset.excluirAnexo}/excluir`,
-            { planejamento_id: this.plan.id });
-        } catch (e) {
-          alert(e.message);
-        }
-        this.renderComentarios();
-      }));
+    await Comentarios.render(document.getElementById(`comentarios-${refTipo}-${refId}`), {
+      planId: this.plan.id, refTipo, refId, aoMudar: () => this.renderComentarios(),
+    });
   },
 
-  /**
-   * O formulário do novo comentário, em modal — texto e anexos.
-   *
-   * É a fábrica de sempre (`Modal.abrir`), com `enviar` próprio: o corpo é
-   * multipart porque leva arquivo, e `App.api` só fala JSON — este é o único
-   * `fetch` na mão do sistema, com o mesmo header de CSRF, que é o que a rota
-   * confere. Os arquivos não passam por `coletar()` (arquivo não viaja em
-   * JSON): o `enviar` os lê direto do campo, por `Modal.arquivosDe`.
-   */
   modalComentario(refTipo, refId) {
-    Modal.abrir({
-      titulo: 'Novo comentário',
-      campos: [
-        { nome: 'texto', rotulo: 'Comentário', tipo: 'textarea', linhas: 4,
-          exemplo: 'Descreva o andamento, bloqueios ou próximos passos...' },
-        { nome: 'arquivos', rotulo: 'Anexos', tipo: 'arquivos', multiplo: true,
-          aceita: '.jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt',
-          ajuda: 'Até 5 arquivos por comentário, 5 MB cada — imagem, PDF, Word, Excel, PowerPoint, CSV ou TXT.' },
-      ],
-      enviar: async (corpo) => {
-        const texto = (corpo.texto || '').trim();
-        const arquivos = Modal.arquivosDe('arquivos');
-        // A recusa acontece AQUI, não no clique: lançada, ela aparece no aviso
-        // do modal (`mostrarErro`), que é onde quem acabou de salvar está olhando.
-        if (!texto && !arquivos.length) throw new Error('Escreva o comentário ou anexe um arquivo.');
-        const dados = new FormData();
-        dados.append('planejamento_id', this.plan.id);
-        dados.append('ref_tipo', refTipo);
-        dados.append('ref_id', refId);
-        dados.append('texto', texto);
-        for (const arquivo of arquivos) dados.append('arquivos[]', arquivo);
-        const resposta = await fetch('/api/comentarios', {
-          method: 'POST',
-          headers: { 'X-CSRF-Token': App.csrf },
-          body: dados,
-        });
-        const json = await resposta.json().catch(() => ({}));
-        if (!resposta.ok || json.ok === false) {
-          throw new Error(json.erro || 'Não foi possível enviar o comentário.');
-        }
-        return json;
-      },
-      aoSalvar: () => this.renderComentarios(),
-    });
+    Comentarios.modal({ planId: this.plan.id, refTipo, refId, aoSalvar: () => this.renderComentarios() });
   },
 };
