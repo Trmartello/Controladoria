@@ -3331,7 +3331,9 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   Coleta); MOVER item com anexos para PESTEL/Porter/SWOT é recusado, porque o
   fator não tem onde pendurá-los. No cenário a FOTO aparece inteira, na largura
   do expansor (`imagensAbertas`, `figuraAnexo`), para ler o gráfico sem abrir o
-  anexo; documento segue como miniatura na grade.
+  anexo; documento segue como miniatura na grade. O "+" fica na linha do
+  expansor, à direita (inclui sem abrir o bloco), e o bloco aberto é
+  `compacto`: sem cabeçalho nem avatar, e a foto encosta nas bordas do cartão.
   **Pontos de milhar enquanto se digita** na Proposta (pedido do cliente,
   2026-11-19): `formatarDigitando` regroupa só os pontos que ele mesmo pôs. Se a
   pessoa digita um ponto (decimal à inglesa, `11.43%`), a célula fica como ela

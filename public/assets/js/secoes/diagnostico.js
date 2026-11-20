@@ -1331,10 +1331,18 @@ const SecaoCenario = {
     if (!partes.length && registros) partes.push(Vinculos.quantos(registros, 'apontamento', 'apontamentos'));
     const resumo = partes.length ? partes.join(' · ') : 'nenhum ainda';
     const aberto = this.anexosAbertos.has(Number(i.id));
+    // O "+" fica na própria linha do expansor, à direita (pedido do cliente,
+    // 2026-11-20): incluir não exige abrir o bloco.
+    const mais = App.podeEditar()
+      ? `<button type="button" class="btn btn-sm btn-outline-success px-2 py-0 ms-auto btn-novo-anexo"
+          data-novo-anexo="${i.id}" title="Novo anexo ou apontamento"
+          aria-label="Novo anexo ou apontamento">+</button>` : '';
     return `<details class="expansor-anexos mt-1" data-anexos-cenario="${i.id}"${aberto ? ' open' : ''}>
-      <summary class="small"><svg width="12" height="12" focusable="false" aria-hidden="true"><use href="#i-clipe"/></svg>
-        Anexos e apontamentos <span class="text-muted" data-anexos-resumo>· ${Modal.esc(resumo)}</span></summary>
-      <div class="mt-1" id="comentarios-CENARIO-${i.id}"></div>
+      <summary class="small d-flex align-items-center gap-1"><span class="seta-expansor" aria-hidden="true"></span>
+        <svg width="12" height="12" focusable="false" aria-hidden="true"><use href="#i-clipe"/></svg>
+        <span>Anexos e apontamentos <span class="text-muted" data-anexos-resumo>· ${Modal.esc(resumo)}</span></span>
+        ${mais}</summary>
+      <div class="mt-1 corpo-anexos" id="comentarios-CENARIO-${i.id}"></div>
     </details>`;
   },
 
@@ -1345,6 +1353,7 @@ const SecaoCenario = {
       planId: this.plan.id, refTipo: 'CENARIO', refId: id,
       aoMudar: () => this.carregar(),
       imagensAbertas: true,
+      compacto: true,
       rotulos: { titulo: 'Anexos e apontamentos', novo: 'Novo anexo ou apontamento',
         vazio: 'Nenhum anexo ainda. Use o + para incluir uma imagem, PDF ou planilha.' },
     });
@@ -1624,6 +1633,15 @@ const SecaoCenario = {
         if (d.open) { this.anexosAbertos.add(id); this.abrirAnexos(id); } else this.anexosAbertos.delete(id);
       });
       if (d.open) this.abrirAnexos(id);
+      // O "+" mora DENTRO do summary: sem o preventDefault, o clique também
+      // abriria ou fecharia o expansor.
+      d.querySelector('[data-novo-anexo]')?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        Comentarios.modal({ planId: this.plan.id, refTipo: 'CENARIO', refId: id,
+          titulo: 'Novo anexo ou apontamento',
+          aoSalvar: () => { this.anexosAbertos.add(id); this.carregar(); } });
+      });
     });
     if (!App.podeEditar()) return;
     // `sugestao` chega do painel da sala: o texto entra como RASCUNHO (o
