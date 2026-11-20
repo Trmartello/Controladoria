@@ -1109,9 +1109,20 @@ input[type=range].faixa-verde:focus-visible {
 /* Anexos e apontamentos de cada item da Análise de Cenário (2026-11-20): um
    expansor discreto debaixo do texto, que fechado só diz quanto há. */
 .expansor-anexos > summary {
-  cursor: pointer; color: var(--verde-coperdia); list-style: revert;
+  cursor: pointer; color: var(--verde-coperdia); list-style: none;
   padding: 2px 0; user-select: none;
 }
+.expansor-anexos > summary::-webkit-details-marker { display: none; }
+/* A seta própria: com o "+" no summary (flex), o marcador nativo some. */
+.expansor-anexos .seta-expansor::before { content: "▸"; display: inline-block; width: .9em; }
+.expansor-anexos[open] .seta-expansor::before { content: "▾"; }
+/* Compacto: os registros sem moldura, e a foto encostando nas bordas do
+   cartão do item — a margem negativa devolve o px-3 do card-body. */
+.registros-compactos { display: grid; gap: .6rem; }
+.registro-compacto + .registro-compacto { border-top: 1px solid var(--bs-border-color, #dee2e6); padding-top: .5rem; }
+.corpo-anexos .anexo-figura { margin-inline: -1rem; }
+.corpo-anexos .anexo-figura img { border-radius: 0; border-inline: 0; }
+.corpo-anexos .anexo-figura figcaption { padding-inline: 1rem; }
 .expansor-anexos > summary:focus-visible { outline: 2px solid var(--verde-coperdia); outline-offset: 2px; }
 .expansor-anexos[open] > summary { margin-bottom: 4px; }
 /* A foto do anexo em tamanho de leitura (cenário): largura do bloco, altura

@@ -89,7 +89,7 @@ const Comentarios = {
    * `rotulos` troca as palavras sem trocar o comportamento: no plano de ação o
    * bloco é "Comentários"; no cenário, "Anexos e apontamentos".
    */
-  async render(alvo, { planId, refTipo, refId, aoMudar, rotulos = {}, imagensAbertas = false }) {
+  async render(alvo, { planId, refTipo, refId, aoMudar, rotulos = {}, imagensAbertas = false, compacto = false }) {
     if (!alvo) return;
     const r = {
       titulo: 'Comentários', novo: 'Novo comentário', vazio: 'Nenhum comentário ainda.',
@@ -98,7 +98,8 @@ const Comentarios = {
     const lista = await App.api(
       `/api/comentarios?planejamento_id=${planId}&ref_tipo=${refTipo}&ref_id=${refId}`);
     const eu = App.sessao.usuario;
-    const depois = aoMudar || (() => this.render(alvo, { planId, refTipo, refId, aoMudar, rotulos, imagensAbertas }));
+    const depois = aoMudar
+      || (() => this.render(alvo, { planId, refTipo, refId, aoMudar, rotulos, imagensAbertas, compacto }));
 
     const itens = lista.map((c) => {
       const inicial = (c.autor || '?').trim().charAt(0).toUpperCase();
@@ -117,15 +118,28 @@ const Comentarios = {
       const anexos = (figuras ? `<div class="figuras-anexos">${figuras}</div>` : '')
         + (resto.length ? `<div class="grade-anexos">${resto
           .map((a) => this.miniaturaAnexo(a, planId, podeApagar, ultimoSemTexto)).join('')}</div>` : '');
+      const apagar = podeApagar ? `<button class="btn btn-sm btn-link p-0 text-danger"
+              data-excluir-comentario="${c.id}" title="Excluir registro"
+              aria-label="Excluir registro">×</button>` : '';
+      // Compacto (o cenário, pedido do cliente de 2026-11-20): sem avatar nem
+      // recuo — a foto usa a largura inteira, e quem lê quer o gráfico, não a
+      // moldura. Autor e data viram uma linha discreta acima.
+      if (compacto) {
+        return `<div class="registro-compacto">
+          <div class="d-flex align-items-baseline gap-2 small text-muted">
+            <span class="flex-grow-1 text-truncate">${Modal.esc(c.autor)} · ${this.quando(c.criado_em)}</span>${apagar}
+          </div>
+          ${c.texto ? `<div class="small texto-comentario">${Modal.esc(c.texto)}</div>` : ''}
+          ${anexos}
+        </div>`;
+      }
       return `<div class="comentario d-flex gap-2">
         <span class="avatar-inicial" aria-hidden="true">${Modal.esc(inicial)}</span>
         <div class="flex-grow-1 min-w-0">
           <div class="d-flex align-items-baseline gap-2 flex-wrap">
             <strong class="small">${Modal.esc(c.autor)}</strong>
             <span class="small text-muted flex-grow-1">${this.quando(c.criado_em)}</span>
-            ${podeApagar ? `<button class="btn btn-sm btn-link p-0 text-danger"
-              data-excluir-comentario="${c.id}" title="Excluir registro"
-              aria-label="Excluir registro">×</button>` : ''}
+            ${apagar}
           </div>
           ${c.texto ? `<div class="small texto-comentario">${Modal.esc(c.texto)}</div>` : ''}
           ${anexos}
@@ -139,7 +153,11 @@ const Comentarios = {
       ? `<button class="btn btn-sm btn-verde px-2 py-0" data-novo-comentario
           title="${Modal.esc(r.novo)}" aria-label="${Modal.esc(r.novo)}">+</button>` : '';
 
-    alvo.innerHTML = `<div class="card bg-light"><div class="card-body py-2">
+    // Compacto: só os registros. O "+" mora fora, na linha do expansor, e
+    // título e contagem já estão nela — repeti-los aqui era moldura sem uso.
+    alvo.innerHTML = compacto
+      ? `<div class="registros-compactos">${itens || `<div class="text-muted small">${Modal.esc(r.vazio)}</div>`}</div>`
+      : `<div class="card bg-light"><div class="card-body py-2">
       <div class="d-flex align-items-center gap-2 mb-2">
         <strong class="small text-uppercase">${Modal.esc(r.titulo)}</strong>
         ${btnNovo}

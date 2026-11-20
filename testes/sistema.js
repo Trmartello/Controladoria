@@ -654,23 +654,40 @@ async function provasAnexosCenario(page, largura) {
   t(`${l} fechado, o expansor só diz quanto há: 1 imagem · 1 anexo`,
     fechado.aberto === false && /1 imagem · 1 anexo/.test(fechado.resumo || ''), JSON.stringify(fechado));
 
+  // O "+" mora na linha do expansor (pedido do cliente, 2026-11-20): clicar
+  // nele abre o formulário SEM abrir nem fechar o expansor.
+  await page.click(`${sel} [data-novo-anexo]`);
+  const comMais = await esperar(page, "!!document.querySelector('.modal.show #campo-texto')", 10000);
+  const aindaFechado = await page.evaluate((s) => document.querySelector(s).open === false, sel);
+  t(`${l} o + da linha do expansor abre o formulário sem abrir o bloco`, comMais && aindaFechado,
+    JSON.stringify({ comMais, aindaFechado }));
+  // O Bootstrap ignora o hide() pedido durante a animação de abertura: espera
+  // a animação, fecha pela API e confere que fechou antes do próximo clique.
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    await new Promise((r) => setTimeout(r, 500));
+    await page.evaluate(() => document.querySelectorAll('.modal.show')
+      .forEach((x) => window.bootstrap?.Modal.getInstance(x)?.hide()));
+    if (await esperar(page, "!document.querySelector('.modal.show')", 1500)) break;
+  }
+
   await page.click(`${sel} > summary`);
-  await esperar(page, `!!document.querySelector('#comentarios-CENARIO-${m.item} .card .anexo-mini')`, 15000);
+  await esperar(page, `!!document.querySelector('#comentarios-CENARIO-${m.item} .anexo-figura img')`, 15000);
+  await new Promise((r) => setTimeout(r, 400));
   const aberto = await page.evaluate((id) => {
     const b = document.getElementById(`comentarios-CENARIO-${id}`);
     const img = b.querySelector('.anexo-figura img');
-    const caixa = b.querySelector('.card-body');
-    return { titulo: /Anexos e apontamentos/i.test(b.textContent), miniaturas: b.querySelectorAll('.anexo-mini').length,
-      foto: !!img, larguraFoto: img ? Math.round(img.getBoundingClientRect().width) : 0,
-      larguraBloco: caixa ? Math.round(caixa.getBoundingClientRect().width) : 0,
-      texto: /endividamento/.test(b.textContent), novo: !!b.querySelector('[data-novo-comentario]') };
+    const cartao = b.closest('.card');
+    return { semMoldura: !b.querySelector('.card') && !/registro\(s\)/.test(b.textContent),
+      miniaturas: b.querySelectorAll('.anexo-mini').length, foto: !!img,
+      larguraFoto: img ? Math.round(img.getBoundingClientRect().width) : 0,
+      larguraCartao: cartao ? Math.round(cartao.getBoundingClientRect().width) : 0,
+      texto: /endividamento/.test(b.textContent) };
   }, m.item);
-  t(`${l} aberto, lista o apontamento, o anexo na grade e a foto fora dela`,
-    aberto.titulo && aberto.miniaturas === 1 && aberto.foto && aberto.texto && aberto.novo, JSON.stringify(aberto));
-  // Pedido do cliente (2026-11-20): a foto já aparece redimensionada no
-  // expansor, legível sem abrir o anexo — ocupa a largura do bloco.
-  t(`${l} a foto ocupa a largura do bloco (lê-se o gráfico sem abrir o anexo)`,
-    aberto.larguraFoto > 0.8 * (aberto.larguraBloco - 40), JSON.stringify(aberto));
+  t(`${l} aberto, só os registros: o texto, o anexo na grade e a foto fora dela, sem moldura nem cabeçalho`,
+    aberto.semMoldura && aberto.miniaturas === 1 && aberto.foto && aberto.texto, JSON.stringify(aberto));
+  // A foto vai de borda a borda do cartão do item: lê-se o gráfico sem abrir.
+  t(`${l} a foto ocupa a largura do cartão, sem margem lateral`,
+    aberto.larguraFoto >= aberto.larguraCartao - 4, JSON.stringify(aberto));
 
   const fim = await page.evaluate(async (x) => {
     const mover = await App.api(`/api/cenario/${x.item}/mover`, { planejamento_id: x.plan, etapa: 'SWOT', categoria: 'FORCA' })
