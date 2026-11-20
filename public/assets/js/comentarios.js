@@ -190,7 +190,7 @@ const Comentarios = {
     // Compacto: só os registros. O "+" mora fora, na linha do expansor, e
     // título e contagem já estão nela — repeti-los aqui era moldura sem uso.
     alvo.innerHTML = compacto
-      ? `<div class="registros-compactos">${itens || `<div class="text-muted small">${Modal.esc(r.vazio)}</div>`}</div>`
+      ? `<div class="registros-compactos">${itens || (r.vazio ? `<div class="text-muted small">${Modal.esc(r.vazio)}</div>` : '')}</div>`
       : `<div class="card bg-light"><div class="card-body py-2">
       <div class="d-flex align-items-center gap-2 mb-2">
         <strong class="small text-uppercase">${Modal.esc(r.titulo)}</strong>
@@ -257,10 +257,10 @@ const Comentarios = {
     // tirar um arquivo continua sendo o × do próprio anexo.
     const jaTem = comentario ? (comentario.anexos || []).length : 0;
     Modal.abrir({
-      titulo: comentario ? (refTipo === 'CENARIO' ? 'Editar anexo ou apontamento' : 'Editar comentário') : titulo,
+      titulo: comentario ? (refTipo === 'CENARIO' ? 'Editar anexo' : 'Editar comentário') : titulo,
       valores: comentario ? { texto: comentario.texto || '' } : undefined,
       campos: [
-        { nome: 'texto', rotulo: refTipo === 'CENARIO' ? 'Apontamento' : 'Comentário', tipo: 'textarea', linhas: 4,
+        { nome: 'texto', rotulo: refTipo === 'CENARIO' ? 'Descrição' : 'Comentário', tipo: 'textarea', linhas: 4,
           exemplo: refTipo === 'CENARIO'
             ? 'O que este anexo mostra, ou uma observação sobre o item...'
             : 'Descreva o andamento, bloqueios ou próximos passos...' },

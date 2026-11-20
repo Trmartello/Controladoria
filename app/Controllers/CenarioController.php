@@ -365,7 +365,7 @@ class CenarioController
         $temAnexo = Database::um(
             "SELECT COUNT(*) AS n FROM comentario WHERE ref_tipo = 'CENARIO' AND ref_id = ?", [$id]);
         if ((int)($temAnexo['n'] ?? 0) > 0) {
-            Json::erro('Este item tem anexos ou apontamentos, que ficam na Análise de Cenário. '
+            Json::erro('Este item tem anexos, que ficam na Análise de Cenário. '
                 . 'Exclua-os antes de movê-lo para outra análise.');
         }
 

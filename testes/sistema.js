@@ -728,7 +728,7 @@ async function provasAnexosCenario(page, largura) {
     return { mover, depois };
   }, m);
   t(`${l} mover para outra análise é recusado enquanto houver anexos`,
-    /anexos ou apontamentos/.test(fim.mover), fim.mover);
+    /tem anexos/.test(fim.mover), fim.mover);
   t(`${l} excluir o item leva os anexos junto (o item some e com ele a lista)`,
     /não encontrado/i.test(fim.depois), fim.depois);
 }
