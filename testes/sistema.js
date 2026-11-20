@@ -689,6 +689,15 @@ async function provasAnexosCenario(page, largura) {
   t(`${l} a foto ocupa a largura do cartão, sem margem lateral`,
     aberto.larguraFoto >= aberto.larguraCartao - 4, JSON.stringify(aberto));
 
+  // Tocar na foto amplia DENTRO do sistema, com um Fechar de verdade (relato
+  // do cliente: a aba nova mostrava o "×" desenhado no print, que não fecha).
+  await page.click(`#comentarios-CENARIO-${m.item} .anexo-figura a`);
+  const abriuVisor = await esperar(page, "!!document.querySelector('.visor-anexo img')", 5000);
+  await page.click('.visor-anexo [data-fechar-visor]');
+  const fechouVisor = await esperar(page, "!document.querySelector('.visor-anexo')", 3000);
+  t(`${l} a foto amplia na própria tela e o Fechar fecha`, abriuVisor && fechouVisor,
+    JSON.stringify({ abriuVisor, fechouVisor }));
+
   const fim = await page.evaluate(async (x) => {
     const mover = await App.api(`/api/cenario/${x.item}/mover`, { planejamento_id: x.plan, etapa: 'SWOT', categoria: 'FORCA' })
       .then(() => 'moveu').catch((e) => e.message);

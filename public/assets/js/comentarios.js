@@ -72,13 +72,44 @@ const Comentarios = {
           title="Remover esta imagem" aria-label="Remover a imagem ${Modal.esc(a.nome)}">×</button>`
       : '';
     return `<figure class="anexo-figura">
-      <a href="${url}" target="_blank" rel="noopener" title="Abrir ${Modal.esc(a.nome)} em tamanho original">
+      <a href="${url}" target="_blank" rel="noopener" data-ampliar="${url}" data-ampliar-nome="${Modal.esc(a.nome)}"
+          title="Ampliar ${Modal.esc(a.nome)}">
         <img src="${url}" alt="${Modal.esc(a.nome)}" loading="lazy">
       </a>
       <figcaption class="small text-muted d-flex gap-2 align-items-center">
         <span class="text-truncate">${Modal.esc(a.nome)} (${this.tamanho(a.tamanho)})</span>${excluir}
       </figcaption>
     </figure>`;
+  },
+
+  /**
+   * A foto ampliada DENTRO do sistema, com um "Fechar" de verdade (relato do
+   * cliente, 2026-11-20): o link abria o arquivo puro numa aba nova, e um
+   * print que já trazia um "×" desenhado parecia ter botão de fechar — que era
+   * só imagem, e não fechava nada. Aqui o fechar é do sistema: botão, toque
+   * fora da imagem ou Esc. "Abrir original" segue disponível.
+   */
+  ampliar(url, nome = '') {
+    document.querySelector('.visor-anexo')?.remove();
+    const visor = document.createElement('div');
+    visor.className = 'visor-anexo';
+    visor.setAttribute('role', 'dialog');
+    visor.setAttribute('aria-modal', 'true');
+    visor.setAttribute('aria-label', nome || 'Imagem anexada');
+    visor.innerHTML = `<div class="visor-barra">
+        <span class="visor-nome text-truncate">${Modal.esc(nome)}</span>
+        <a class="btn btn-sm btn-outline-light" href="${url}" target="_blank" rel="noopener">Abrir original</a>
+        <button type="button" class="btn btn-sm btn-light fw-bold" data-fechar-visor>✕ Fechar</button>
+      </div>
+      <div class="visor-palco"><img src="${url}" alt="${Modal.esc(nome)}"></div>`;
+    const fechar = () => { visor.remove(); document.removeEventListener('keydown', tecla); };
+    const tecla = (ev) => { if (ev.key === 'Escape') fechar(); };
+    visor.querySelector('[data-fechar-visor]').addEventListener('click', fechar);
+    // Toque fora da imagem (no palco escuro) também fecha.
+    visor.querySelector('.visor-palco').addEventListener('click', (ev) => { if (ev.target === ev.currentTarget) fechar(); });
+    document.addEventListener('keydown', tecla);
+    document.body.appendChild(visor);
+    visor.querySelector('[data-fechar-visor]').focus();
   },
 
   /**
@@ -168,6 +199,11 @@ const Comentarios = {
 
     alvo.querySelector('[data-novo-comentario]')
       ?.addEventListener('click', () => this.modal({ planId, refTipo, refId, aoSalvar: depois, titulo: r.novo }));
+
+    alvo.querySelectorAll('[data-ampliar]').forEach((a) => a.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      this.ampliar(a.dataset.ampliar, a.dataset.ampliarNome);
+    }));
 
     alvo.querySelectorAll('[data-excluir-comentario]').forEach((b) =>
       b.addEventListener('click', async () => {
