@@ -3321,7 +3321,7 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   mesmas 62 combinações da carga de totais, soma conferida; sem ela o quadro usa os
   totais, sem mês). Na filial, só os eventos dela; no Corporativo, os totais do
   quadro por negócio (11 negócios). Provas em `testes/oportunidades.php` (seção 3c).
-  **Anexos e apontamentos na Análise de Cenário** (pedido do cliente,
+  **Anexos na Análise de Cenário** (pedido do cliente,
   2026-11-20): cada item (situação atual e tendência) tem um expansor que,
   fechado, só diz quantas imagens e quantos anexos há; aberto, lista os
   registros. São os mesmos comentários com arquivo do plano de ação

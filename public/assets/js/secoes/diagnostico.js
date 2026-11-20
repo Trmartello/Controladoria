@@ -1328,7 +1328,7 @@ const SecaoCenario = {
       Vinculos.quantos(imagens, 'imagem', 'imagens'),
       Vinculos.quantos(outros, 'anexo', 'anexos'),
     ].filter(Boolean);
-    if (!partes.length && registros) partes.push(Vinculos.quantos(registros, 'apontamento', 'apontamentos'));
+    if (!partes.length && registros) partes.push(Vinculos.quantos(registros, 'registro', 'registros'));
     const resumo = partes.length ? partes.join(' · ') : 'nenhum ainda';
     const aberto = this.anexosAbertos.has(Number(i.id));
     // O "+" fica na própria linha do expansor, à direita (pedido do cliente,
@@ -1338,14 +1338,14 @@ const SecaoCenario = {
     const mais = App.podeEditar()
       ? `<span class="ms-auto d-flex gap-1">${registros ? `<button type="button"
           class="btn btn-sm btn-outline-secondary px-2 py-0 btn-editar-anexo" data-editar-anexo="${i.id}"
-          title="Editar anexo ou apontamento" aria-label="Editar anexo ou apontamento">✎</button>` : ''}
+          title="Editar anexo" aria-label="Editar anexo">✎</button>` : ''}
         <button type="button" class="btn btn-sm btn-outline-success px-2 py-0 btn-novo-anexo"
-          data-novo-anexo="${i.id}" title="Novo anexo ou apontamento"
-          aria-label="Novo anexo ou apontamento">+</button></span>` : '';
+          data-novo-anexo="${i.id}" title="Novo anexo"
+          aria-label="Novo anexo">+</button></span>` : '';
     return `<details class="expansor-anexos mt-1" data-anexos-cenario="${i.id}"${aberto ? ' open' : ''}>
       <summary class="small d-flex align-items-center gap-1"><span class="seta-expansor" aria-hidden="true"></span>
         <svg width="12" height="12" focusable="false" aria-hidden="true"><use href="#i-clipe"/></svg>
-        <span>Anexos e apontamentos <span class="text-muted" data-anexos-resumo>· ${Modal.esc(resumo)}</span></span>
+        <span>Anexos <span class="text-muted" data-anexos-resumo>· ${Modal.esc(resumo)}</span></span>
         ${mais}</summary>
       <div class="mt-1 corpo-anexos" id="comentarios-CENARIO-${i.id}"></div>
     </details>`;
@@ -1359,8 +1359,8 @@ const SecaoCenario = {
       aoMudar: () => this.carregar(),
       imagensAbertas: true,
       compacto: true,
-      rotulos: { titulo: 'Anexos e apontamentos', novo: 'Novo anexo ou apontamento',
-        vazio: 'Nenhum anexo ainda. Use o + para incluir uma imagem, PDF ou planilha.' },
+      rotulos: { titulo: 'Anexos', novo: 'Novo anexo',
+        vazio: '' },
     });
   },
 
@@ -1656,7 +1656,7 @@ const SecaoCenario = {
         ev.preventDefault();
         ev.stopPropagation();
         Comentarios.modal({ planId: this.plan.id, refTipo: 'CENARIO', refId: id,
-          titulo: 'Novo anexo ou apontamento',
+          titulo: 'Novo anexo',
           aoSalvar: () => { this.anexosAbertos.add(id); this.carregar(); } });
       });
     });
