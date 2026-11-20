@@ -487,6 +487,9 @@ try {
         case (bool)preg_match('#^POST /api/comentarios/(\d+)/excluir$#', $rota, $m):
             (new ComentarioController())->excluir((int)$m[1]); break;
         // Devolve BYTES (não JSON): a rota escreve os próprios cabeçalhos.
+        // Editar um registro (texto e arquivos novos): multipart, como o criar
+        case (bool)preg_match('#^POST /api/comentarios/(\d+)$#', $rota, $m):
+            (new ComentarioController())->editar((int)$m[1]); break;
         case (bool)preg_match('#^GET /api/anexos/(\d+)$#', $rota, $m):
             (new ComentarioController())->baixar((int)$m[1]); break;
         // Remove UM anexo sem apagar o comentário que o carrega.

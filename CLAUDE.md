@@ -3337,6 +3337,10 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   Tocar na foto abre o visor do próprio sistema (`Comentarios.ampliar`), com
   Fechar, toque fora e Esc — e não mais a aba do arquivo puro, onde um print
   com "×" desenhado parecia ter botão e não fechava nada.
+  Ao lado do "+" fica o ✎ (edita o registro quando há um só; com vários, abre o
+  bloco, onde cada registro tem o seu ✎). Editar = `POST /api/comentarios/{id}`
+  (multipart): troca o texto e SOMA arquivos, até 5 no registro; só autor ou
+  ADMIN, como apagar. Tirar arquivo continua sendo o × do anexo.
   **Pontos de milhar enquanto se digita** na Proposta (pedido do cliente,
   2026-11-19): `formatarDigitando` regroupa só os pontos que ele mesmo pôs. Se a
   pessoa digita um ponto (decimal à inglesa, `11.43%`), a célula fica como ela
