@@ -910,7 +910,34 @@ class ProjecaoController
             [$u['id'], (int)$proj['id']]
         );
 
-        $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
+        // O PISO do faturamento TRAVA NA DIGITAÇÃO (pedido do cliente,
+        // 2026-11-21): a Receita de Vendas lançada abaixo de IPCA + PIB +
+        // crescimento desejado não fica gravada — a linha volta ao piso (a
+        // premissa) e a resposta diz por quê. A conta é a do motor (`aplicar`,
+        // `abaixo_piso`, com a CBS e o formato de cada entrada), por isso se
+        // grava, se mede e, abaixo, se apaga: refazê-la aqui seria uma segunda
+        // conta para o mesmo número. Lançamento que já estava abaixo (a carga
+        // da Pecuária, ou a premissa que subiu depois) NÃO é mexido: continua
+        // apontado em vermelho até alguém decidir — mover R$ 148 mi de uma meta
+        // sem ninguém digitar nada não é o que "não permitir lançar" pede.
+        $tela = $this->montar($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
+        if ($codigo === Projecao::LINHA_RECEITA && $bruto !== null && $bruto !== '') {
+            $linhasEscopo = $filialId ? ($tela['filial']['linhas'] ?? []) : $tela['linhas'];
+            $rec = array_column($linhasEscopo, null, 'codigo')[Projecao::LINHA_RECEITA] ?? null;
+            if ($rec && !empty($rec['abaixo_piso'])) {
+                Database::executar(
+                    'DELETE FROM projecao_valor WHERE projecao_id = ? AND filial_id = ? AND conta_id = ?',
+                    [(int)$proj['id'], $filialId, (int)$conta['id']]
+                );
+                $tela = $this->montar($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
+                $tela['aviso_piso'] = sprintf(
+                    'A Receita de Vendas não pode ficar abaixo de IPCA + PIB + crescimento desejado (%s%%). '
+                    . 'O valor digitado foi recusado e a linha voltou ao piso.',
+                    number_format((float)$rec['piso_percentual'], 2, ',', '.')
+                );
+            }
+        }
+        Json::ok(self::paraTela($tela));
     }
 
     /**

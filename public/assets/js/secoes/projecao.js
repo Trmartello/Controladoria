@@ -145,6 +145,7 @@ const SecaoProjecao = {
     // uma filial aberta): quem manda é o que o servidor devolveu.
     this.filialId = d.filial ? d.filial.id : 0;
     this.dados = d;
+    this.avisoPiso = '';
 
     el.innerHTML = this.html(d);
     this.ligar(el);
@@ -220,7 +221,6 @@ const SecaoProjecao = {
       ${this.avisoFiliaisDefasadas(d)}
       ${this.faixaDoModo(d)}
       ${this.painel(d)}
-      ${d.filial ? '' : this.cartaoPessoas(d)}
       ${faltando}
       <div id="projecao-meta-negativa-box">${this.alertaMetaNegativa(d)}</div>
       <div id="projecao-aviso" class="alert alert-danger py-2 px-3 small mb-2 d-none"></div>
@@ -446,7 +446,17 @@ const SecaoProjecao = {
     const resumo = `${ano} · IPCA ${pctCurto(digitadas.IPCA)} · PIB ${pctCurto(digitadas.PIB)}
       · desejado ${pctCurto(digitadas.CRESCIMENTO)} · pessoas ${pctCurto(digitadas.PESSOAS)}
       · vale ${reais(valores.ALIMENTACAO)} · abono ${reais(Number(valores.ASSIDUIDADE) + Number(valores.RESULTADO))}`;
-    return this.expansor('premissas', 'painel-premissas', 'Premissas e benefícios', resumo, `
+    // Pessoas e benefícios moram NESTE bloco desde 2026-11-21 (pedido do
+    // cliente: "esses dois quadrantes se referem à mesma coisa"): os campos de
+    // quadro e de previsão vêm logo abaixo dos valores, e o resultado sai em
+    // duas contas separadas — o que vai para o faturamento e o que vai para as
+    // Despesas com Pessoal. Na filial não há pessoas (o quadro é do negócio).
+    const comPessoas = !d.filial && !!d.pessoas;
+    const calc = comPessoas ? (d.pessoas.por_ano || {})[ano] : null;
+    const resumoPessoas = calc
+      ? ` · ${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores · benefícios ${reais(calc.anual.total)} no ano`
+      : '';
+    return this.expansor('premissas', 'painel-premissas', `Premissas, pessoas e benefícios — ${ano}`, resumo + resumoPessoas, `
         ${seletorAno}
         <div class="row g-3 align-items-end">
           ${campo('IPCA', 'IPCA', `Inflação prevista para ${ano}. Vale para o negócio e todas as filiais.`)}
@@ -467,8 +477,120 @@ const SecaoProjecao = {
           ${abonoTotal}
           ${leituras}
         </div>
+        ${comPessoas ? this.camposPessoas(d, ano) : ''}
+        ${this.resultadoPremissas(d, ano, comPessoas)}
         <div class="small text-muted mt-2">${nota}</div>
         ${notaDiretriz}`);
+  },
+
+  /**
+   * Os campos de PESSOAS do bloco de premissas: o quadro atual da DRE e os três
+   * lançados por negócio e por ano (colaboradores planejados, % que cumprem a
+   * assiduidade, % dos meses com resultado). O quadro já é de colaboradores
+   * EQUIVALENTES — quem divide o tempo entre dois negócios entra em cada um pela
+   * sua parte —, e o texto diz isso, porque é a dúvida que um número inteiro daria.
+   */
+  camposPessoas(d, ano) {
+    const base = d.pessoas.base;
+    const padrao = d.pessoas.padrao || {};
+    const num = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
+    const campo = (chave, rotulo, unidade, dica, placeholder) => this.campoBeneficio(d, ano, chave, rotulo, unidade, dica, placeholder);
+    const quadro = base
+      ? `Quadro atual: <strong>${Number(base.colaboradores).toLocaleString('pt-BR')}</strong> colaboradores
+         equivalentes (DRE, ${this.nomeMes(base.mes)}/${base.ano}${base.mes < 12 ? ' — último mês carregado' : ''}):
+         quem divide o tempo entre dois negócios (30/70, 50/50) entra em cada um pela sua parte.`
+      : 'Não há quadro de colaboradores carregado para este negócio.';
+    return `<div class="bloco-pessoas mt-3 pt-2 border-top">
+        <div class="small text-muted mb-1" id="pessoas-quadro">${quadro}</div>
+        <div class="row g-3 align-items-end">
+          ${campo('COLABORADORES', 'Colaboradores planejados', 'pessoas',
+    'Deixe vazio para usar o quadro atual da DRE; digite para planejar contratação ou desligamento.',
+    base ? String(base.colaboradores) : '—')}
+          ${campo('PCT_ASSIDUIDADE', '% que cumprem a assiduidade', '%',
+    'Previsão: que parte dos colaboradores cumpre os quesitos. 100% é o orçamento cheio.', num(padrao.PCT_ASSIDUIDADE))}
+          ${campo('PCT_RESULTADO', '% dos meses com resultado', '%',
+    'Previsão: em que parte dos meses o negócio atinge o resultado. 100% é o orçamento cheio.', num(padrao.PCT_RESULTADO))}
+        </div>
+      </div>`;
+  },
+
+  /**
+   * O RESULTADO das premissas, em duas contas separadas e totalizadas (pedido do
+   * cliente, 2026-11-21):
+   *
+   *  - **Faturamento** (Receita de Vendas, 1.1): a projeção do ano, quanto cada
+   *    premissa acrescenta (IPCA, PIB, crescimento desejado) e o PISO de
+   *    ${ano}, que a linha da DRE não pode ficar abaixo; a proposta da DRE e o
+   *    impacto em reais.
+   *  - **Despesas com Pessoal** (8.5): os benefícios previstos (vale e abonos) e a
+   *    conta da diretriz que dá a linha — que não se digita na DRE.
+   *
+   * As duas contas usam as linhas da TELA (formato de 2027, sem a CBS na
+   * receita): o percentual é o mesmo do motor, e os reais batem com a tabela.
+   */
+  resultadoPremissas(d, ano, comPessoas) {
+    const noAnoDaProposta = ano === d.ano_planejamento;
+    const fat = noAnoDaProposta ? this.contaFaturamento(d) : '';
+    const pes = comPessoas ? this.contaPessoal(d, ano) : '';
+    if (!fat && !pes) return '';
+    return `<div class="row g-3 mt-1 resultado-premissas">
+        ${fat ? `<div class="col-lg-5">${fat}</div>` : ''}
+        ${pes ? `<div class="${fat ? 'col-lg-7' : 'col-12'}">${pes}</div>` : ''}
+      </div>`;
+  },
+
+  /** O que as premissas fazem com o FATURAMENTO: projeção, acréscimos e o piso. */
+  contaFaturamento(d) {
+    const l = (this.visao(d).linhas || []).find((x) => x.codigo === '1.1');
+    if (!l || !l.projecao) return '';
+    const ef = (d.premissas_por_ano || {})[d.ano_planejamento] || {};
+    const r = (v) => `R$ ${this.moeda(v)}`;
+    const p = (v) => `${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+    const proj = Number(l.projecao);
+    const parte = (chave, rotulo) => (ef[chave] === null || ef[chave] === undefined ? ''
+      : `<tr><td>+ ${rotulo} (${p(ef[chave])})</td><td class="text-end">${r(proj * Number(ef[chave]) / 100)}</td></tr>`);
+    const pisoPct = l.piso_percentual !== undefined && l.piso_percentual !== null ? Number(l.piso_percentual) : null;
+    const piso = pisoPct === null ? null : proj * (1 + pisoPct / 100);
+    const prop = Number(l.proposta);
+    const acima = piso !== null && prop > piso + 1;
+    return `<table class="table table-sm mb-1 tabela-faturamento">
+        <thead><tr><th>Faturamento ${d.ano_planejamento} (Receita de Vendas)</th><th class="text-end">No ano</th></tr></thead>
+        <tbody>
+          <tr><td>Projeção de ${d.ano}</td><td class="text-end">${r(proj)}</td></tr>
+          ${parte('IPCA', 'IPCA')}${parte('PIB', 'PIB')}${parte('CRESCIMENTO', 'Crescimento desejado')}
+          ${piso === null ? '' : `<tr class="fw-bold"><td>Mínimo de ${d.ano_planejamento} <span class="fw-normal text-muted small">(+${p(pisoPct)}: a DRE não aceita menos)</span></td>
+            <td class="text-end" data-faturamento="piso">${r(piso)}</td></tr>`}
+          ${acima ? `<tr><td>Proposta lançada na DRE <span class="text-muted small">(acima do mínimo)</span></td>
+            <td class="text-end" data-faturamento="proposta">${r(prop)}</td></tr>` : ''}
+          <tr class="fw-bold"><td>Impacto no faturamento</td>
+            <td class="text-end" data-faturamento="impacto">${prop >= proj ? '+' : ''}${r(prop - proj)}</td></tr>
+        </tbody>
+      </table>`;
+  },
+
+  /** O que as premissas fazem com as DESPESAS COM PESSOAL: benefícios e a linha 8.5. */
+  contaPessoal(d, ano) {
+    const calc = (d.pessoas.por_ano || {})[ano] || null;
+    const dinheiro = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+    const beneficios = calc ? `
+        <table class="table table-sm mb-1 tabela-pessoas">
+          <thead><tr><th>Benefícios ${ano} (${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores)</th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
+          <tbody>
+            <tr><td>Alimentação (${dinheiro(calc.valores.ALIMENTACAO)} × ${Number(calc.colaboradores).toLocaleString('pt-BR')})</td>
+              <td class="text-end">${dinheiro(calc.mensal.alimentacao)}</td><td class="text-end" data-pessoas="alimentacao">${dinheiro(calc.anual.alimentacao)}</td></tr>
+            <tr><td>Abono de assiduidade</td>
+              <td class="text-end">${dinheiro(calc.mensal.assiduidade)}</td><td class="text-end" data-pessoas="assiduidade">${dinheiro(calc.anual.assiduidade)}</td></tr>
+            <tr><td>Abono de resultado <span class="text-muted small">(só nos meses em que o negócio atinge o resultado)</span></td>
+              <td class="text-end">${dinheiro(calc.mensal.resultado)}</td><td class="text-end" data-pessoas="resultado">${dinheiro(calc.anual.resultado)}</td></tr>
+            <tr class="fw-bold"><td>Despesa prevista com benefícios</td>
+              <td class="text-end">${dinheiro(calc.mensal.total)}</td><td class="text-end" data-pessoas="total">${dinheiro(calc.anual.total)}</td></tr>
+          </tbody>
+        </table>
+        <div class="small text-muted mb-2">
+          Se o negócio <strong>nunca</strong> atingir o resultado: <strong data-pessoas="sem_resultado">${dinheiro(calc.sem_resultado_anual)}</strong> no ano.
+          Teto (todos cumprem a assiduidade e o resultado vem todo mês): <strong data-pessoas="maximo">${dinheiro(calc.maximo_anual)}</strong>.
+        </div>` : '';
+    return `${beneficios}${ano === d.ano_planejamento ? this.composicaoPessoal(d) : ''}`;
   },
 
   /**
@@ -507,82 +629,13 @@ const SecaoProjecao = {
   },
 
   /**
-   * Pessoas e benefícios do negócio (pedido do cliente, 2026-11-18): quantos
-   * colaboradores são do negócio e quanto ele paga de alimentação e de abono.
-   *
-   * O quadro vem da DRE — o ÚLTIMO mês do ano atual — e já é de colaboradores
-   * EQUIVALENTES: quem divide o tempo entre dois negócios entra em cada um pela
-   * sua parte, então cada negócio paga a sua e o custo sai direto de
-   * colaboradores × valor. O texto da tela diz isso, porque é a dúvida que um
-   * número "inteiro" daria. Os valores e os percentuais são digitados por negócio
-   * e por ano (o ano é o do seletor das premissas); vazio vale o padrão, que
-   * aparece como o placeholder.
-   *
-   * No ano da proposta, isto ENTRA na DRE: a despesa prevista com benefícios é
-   * uma peça da linha Despesas com Pessoal (8.5), pela conta da diretriz
-   * (`composicaoPessoal`). Mudar um campo daqui recalcula a linha, que não se
-   * digita (pedido do cliente, 2026-11-21).
+   * Pessoas e benefícios no CORPORATIVO (só soma). No negócio, desde
+   * 2026-11-21, os campos e a conta moram no bloco de premissas (`painel`,
+   * `camposPessoas`, `contaPessoal`).
    */
   cartaoPessoas(d) {
     if (!d.pessoas) return '';
-    if (d.corporativo) return this.cartaoPessoasCorporativo(d);
-    const ano = this.anoDoPainel(d);
-    const calc = d.pessoas.por_ano[ano] || null;
-    const dig = d.pessoas.digitados[ano] || {};
-    const base = d.pessoas.base;
-    const editavel = this.premissaEditavel(d);
-    const dinheiro = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
-    const num = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
-    const padrao = d.pessoas.padrao || {};
-    const campo = (chave, rotulo, unidade, dica, placeholder) => this.campoBeneficio(d, ano, chave, rotulo, unidade, dica, placeholder);
-
-    const quadro = base
-      ? `Quadro atual: <strong>${Number(base.colaboradores).toLocaleString('pt-BR')}</strong> colaboradores
-         (DRE, ${this.nomeMes(base.mes)}/${base.ano}${base.mes < 12 ? ' — último mês carregado; dezembro ainda não existe' : ''}).`
-      : 'Não há quadro de colaboradores carregado para este negócio.';
-
-    const resultado = calc ? `
-      <div class="table-responsive mt-2">
-        <table class="table table-sm mb-1 tabela-pessoas">
-          <thead><tr><th></th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
-          <tbody>
-            <tr><td>Alimentação (${dinheiro(calc.valores.ALIMENTACAO)} × ${Number(calc.colaboradores).toLocaleString('pt-BR')})</td>
-              <td class="text-end">${dinheiro(calc.mensal.alimentacao)}</td><td class="text-end" data-pessoas="alimentacao">${dinheiro(calc.anual.alimentacao)}</td></tr>
-            <tr><td>Abono de assiduidade</td>
-              <td class="text-end">${dinheiro(calc.mensal.assiduidade)}</td><td class="text-end" data-pessoas="assiduidade">${dinheiro(calc.anual.assiduidade)}</td></tr>
-            <tr><td>Abono de resultado <span class="text-muted small">(só nos meses em que o negócio atinge o resultado)</span></td>
-              <td class="text-end">${dinheiro(calc.mensal.resultado)}</td><td class="text-end" data-pessoas="resultado">${dinheiro(calc.anual.resultado)}</td></tr>
-            <tr class="fw-bold"><td>Despesa prevista com benefícios</td>
-              <td class="text-end">${dinheiro(calc.mensal.total)}</td><td class="text-end" data-pessoas="total">${dinheiro(calc.anual.total)}</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="small text-muted">
-        Se o negócio <strong>nunca</strong> atingir o resultado: <strong data-pessoas="sem_resultado">${dinheiro(calc.sem_resultado_anual)}</strong> no ano.
-        Teto (todos cumprem a assiduidade e o resultado vem todo mês): <strong data-pessoas="maximo">${dinheiro(calc.maximo_anual)}</strong>.
-      </div>` : '';
-
-    const resumo = calc
-      ? `${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores · ${dinheiro(calc.anual.total)} no ano`
-      : (base ? `${Number(base.colaboradores).toLocaleString('pt-BR')} colaboradores` : 'sem quadro carregado');
-    return this.expansor('pessoas', 'painel-pessoas', `Pessoas e benefícios — ${ano}`, resumo, `
-        <div class="small text-muted mb-1" id="pessoas-quadro">${quadro}</div>
-        <div class="small text-muted mb-2">
-          O número já é de colaboradores <strong>equivalentes</strong>: quem divide o tempo entre dois
-          negócios (30/70, 50/50) entra em cada um pela sua parte, e cada negócio paga a sua.
-          O planejamento de ${d.ano_planejamento} parte do quadro atual.
-        </div>
-        <div class="row g-3 align-items-end">
-          ${campo('COLABORADORES', 'Colaboradores planejados', 'pessoas',
-    'Deixe vazio para usar o quadro atual da DRE; digite para planejar contratação ou desligamento.',
-    base ? String(base.colaboradores) : '—')}
-          ${campo('PCT_ASSIDUIDADE', '% que cumprem a assiduidade', '%',
-    'Previsão: que parte dos colaboradores cumpre os quesitos. 100% é o orçamento cheio.', num(padrao.PCT_ASSIDUIDADE))}
-          ${campo('PCT_RESULTADO', '% dos meses com resultado', '%',
-    'Previsão: em que parte dos meses o negócio atinge o resultado. 100% é o orçamento cheio.', num(padrao.PCT_RESULTADO))}
-        </div>
-        ${resultado}
-        ${ano === d.ano_planejamento ? this.composicaoPessoal(d) : ''}`);
+    return d.corporativo ? this.cartaoPessoasCorporativo(d) : '';
   },
 
   /**
@@ -610,8 +663,10 @@ const SecaoProjecao = {
             <tr><td>+ PPR: 1,5 salário sobre a folha de ${this.nomeMes(p.folha_mes)}/${p.folha_ano} (${r(p.folha_mensal)}) reajustada
               <span class="text-muted small">— ${r(p.ppr_mensal)} provisionados por mês</span></td>
               <td class="text-end" data-pessoal="ppr">${r(p.ppr)}</td></tr>
-            <tr class="fw-bold"><td>Proposta da linha 8.5 <span class="fw-normal text-muted small">(${(p.percentual >= 0 ? '+' : '') + p.percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% sobre a projeção)</span></td>
+            <tr class="fw-bold"><td>Despesas com Pessoal de ${d.ano_planejamento} (linha 8.5 da DRE) <span class="fw-normal text-muted small">(${(p.percentual >= 0 ? '+' : '') + p.percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% sobre a projeção)</span></td>
               <td class="text-end" data-pessoal="total">${r(-p.proposta)}</td></tr>
+            <tr class="fw-bold"><td>Impacto nas despesas</td>
+              <td class="text-end" data-pessoal="impacto">${-p.proposta >= -p.projecao ? '+' : ''}${r(-p.proposta + p.projecao)}</td></tr>
           </tbody>
         </table>
       </div>
@@ -1886,10 +1941,8 @@ const SecaoProjecao = {
     if (selAno && virgem(selAno)) {
       selAno.addEventListener('change', (ev) => {
         this.anoPremissa = Number(ev.target.value);
+        // Pessoas e benefícios moram no mesmo bloco e acompanham o ano.
         el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
-        // Pessoas e benefícios acompanham o ano das premissas.
-        const cartao = el.querySelector('.painel-pessoas');
-        if (cartao) cartao.outerHTML = this.cartaoPessoas(this.dados);
         this.ligar(el);
         el.querySelector('#premissa-ano')?.focus();
       });
@@ -2006,6 +2059,7 @@ const SecaoProjecao = {
         valor: limpo === '' ? null : Number(limpo),
       });
       this.versao = r.versao;
+      this.avisoPiso = '';
       this.dados = { ...this.dados, ...r };
       this.avisar('');
       // O painel E A TABELA são repintados (pedido do cliente, 2026-11-19: "quando
@@ -2044,14 +2098,14 @@ const SecaoProjecao = {
         valor: limpo === '' ? null : Number(limpo),
       });
       if (r.versao !== undefined) this.versao = r.versao;
+      this.avisoPiso = '';
       this.dados = { ...this.dados, ...r };
       this.avisar('');
       const el = document.getElementById('secao-projecao');
-      el.querySelector('.painel-pessoas').outerHTML = this.cartaoPessoas(this.dados);
       // A despesa com benefícios é peça das Despesas com Pessoal (8.5): a DRE
       // é repintada junto (pedido do cliente, 2026-11-21 — antes o cartão
-      // mudava e a linha ficava com o número de antes). Vale e abono moram no
-      // painel das premissas, que vem no mesmo pacote.
+      // mudava e a linha ficava com o número de antes). Pessoas e benefícios
+      // moram no painel das premissas, que vem no mesmo pacote.
       this.repintarProposta(el);
       el.querySelector(`#beneficio-${inp.dataset.chave}`)?.focus();
     } catch (e) {
@@ -2153,26 +2207,38 @@ const SecaoProjecao = {
   },
 
   /**
-   * O piso do faturamento (pedido do cliente, 2026-11-19): a Receita de Vendas
-   * proposta não pode ficar abaixo do crescimento real total do negócio — IPCA
-   * + PIB + crescimento desejado, os parâmetros do painel. Acima pode, é o
-   * negócio se desafiando mais. Abaixo, o lançamento fica (o número é do
-   * negócio) e esta caixa, embaixo da DRE, aponta a inconsistência em vermelho.
-   * A conta é do servidor (`Projecao::aplicar`, `abaixo_piso`), no formato do
-   * motor; aqui só se diz.
+   * O piso do faturamento: a Receita de Vendas proposta não fica abaixo de IPCA
+   * + PIB + crescimento desejado. Duas situações, duas caixas:
+   *
+   *  - **Digitado abaixo** (trava desde 2026-11-21, pedido do cliente: "se digitar
+   *    um valor menor, o sistema deve voltar os dados até totalizar o percentual
+   *    estimado"): o servidor recusa e a linha volta ao piso (`gravarValor`,
+   *    `aviso_piso`). Caixa amarela, que explica a volta até a próxima gravação.
+   *  - **Já estava abaixo** (uma carga, ou a premissa que subiu depois do
+   *    lançamento): o servidor não mexe no número de ninguém; a caixa vermelha
+   *    aponta a inconsistência (`aplicar`, `abaixo_piso`), como desde 2026-11-19.
    */
   alertaPisoFaturamento(d) {
     if (!d || d.corporativo) return '';
     const l = (this.visao(d).linhas || []).find((x) => x.codigo === '1.1');
-    if (!l || !l.abaixo_piso || !l.projecao) return '';
+    if (!l || !l.projecao) return '';
     const piso = Number(l.piso_percentual) || 0;
-    const cresc = l.proposta / l.projecao - 1;
-    return `<div class="alert alert-danger py-2 px-3 small mb-2" id="projecao-piso-faturamento">
+    const minimo = `R$ ${this.moeda(l.projecao * (1 + piso / 100))}`;
+    if (l.abaixo_piso) {
+      const cresc = l.proposta / l.projecao - 1;
+      return `<div class="alert alert-danger py-2 px-3 small mb-2" id="projecao-piso-faturamento">
         <strong>Inconsistência no faturamento.</strong> A Receita de Vendas proposta para ${d.ano_planejamento}
         (R$ ${this.moeda(l.proposta)}, ${this.pct(cresc, 2)} sobre a projeção) está <strong>abaixo do crescimento real
         total do negócio</strong>: IPCA + PIB + crescimento do faturamento somam ${this.pct(piso / 100, 2)}, ou
-        R$ ${this.moeda(l.projecao * (1 + piso / 100))}. O faturamento pode ficar igual ou acima disso, nunca abaixo:
-        reveja o lançamento ou os parâmetros de crescimento.
+        ${minimo}. O faturamento pode ficar igual ou acima disso, nunca abaixo: um novo lançamento menor que isso
+        é recusado. Reveja o lançamento ou os parâmetros de crescimento.
+      </div>`;
+    }
+    if (!this.avisoPiso) return '';
+    return `<div class="alert alert-warning py-2 px-3 small mb-2" id="projecao-piso-faturamento">
+        <strong>Faturamento no mínimo.</strong> ${Modal.esc(this.avisoPiso)}
+        Mínimo de ${d.ano_planejamento}: <strong>${minimo}</strong> (${this.pct(piso / 100, 2)} sobre a projeção).
+        Acima disso, o negócio pode lançar o que quiser.
       </div>`;
   },
 
@@ -2249,19 +2315,20 @@ const SecaoProjecao = {
         versao: this.versao,
       });
       this.versao = r.versao;
+      // A Receita abaixo do piso volta ao piso no servidor, e a resposta diz
+      // por quê (`aviso_piso`): a caixa embaixo da DRE mostra até a próxima
+      // gravação.
+      this.avisoPiso = r.aviso_piso || '';
+      delete r.aviso_piso;
       this.dados = { ...this.dados, ...r };
       this.avisar('');
-      // Repinta só o CORPO da tabela: a tela inteira mataria o foco de quem
-      // está descendo a coluna com Tab, e o cabeçalho não mudou.
+      // Repinta o CORPO da tabela, não a tela inteira (que mataria o foco de
+      // quem está descendo a coluna com Tab), e tudo o que lê a proposta: o
+      // painel (Cresc. Total, % Custos, o faturamento mínimo), os alertas e os
+      // tributos. Deixá-los parados mostraria dois números discordando.
       const el = document.getElementById('secao-projecao');
       const tbody = document.querySelector('.tabela-projecao tbody');
-      tbody.innerHTML = this.corpo(this.dados);
-      // O painel lê a proposta: mexer numa linha muda o Cresc. Total e o
-      // % Custos. Deixá-lo parado mostraria dois números discordando na mesma
-      // tela — que é o defeito que esta seção inteira existe para não ter.
-      el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
-      this.repintarTributos(el);
-      this.ligar(el);
+      this.repintarProposta(el);
       // O pisca verde volta para a célula que a pessoa digitou, e não sempre
       // para a Proposta: quem lançou na coluna de Reajuste veria o verde na
       // célula ao lado, como se o sistema tivesse gravado outra coisa.

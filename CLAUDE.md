@@ -3370,6 +3370,32 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   lançáveis como sempre. Campos de lançamento "sumidos" na DRE do negócio quase
   sempre são o modo **Planejar por filial** (o negócio vira a soma das filiais e
   se lança em cada filial) — não é regra nova.
+  **O piso TRAVA na digitação** (pedido do cliente, 2026-11-21: "se ele digitar
+  um valor menor, o sistema deve voltar os dados até totalizar o percentual
+  estimado"). `gravarValor` grava a 1.1, monta a tela e, se a linha do escopo
+  (negócio ou filial) saiu `abaixo_piso`, APAGA o lançamento e responde com
+  `aviso_piso`: a linha volta à premissa (exatamente o piso) e a tela mostra a
+  caixa AMARELA "Faturamento no mínimo" até a próxima gravação. Grava-mede-apaga
+  porque a conta é a do motor (CBS, valor × percentual); refazê-la no controller
+  seria a segunda conta do mesmo número. **Lançamento que JÁ estava abaixo não é
+  mexido** — a Receita da Pecuária veio da planilha do cenário (R$ 732 mi) com
+  piso de ~R$ 880 mi, e subi-la R$ 148 mi sem ninguém digitar não é "não permitir
+  lançar": esse caso continua com a caixa VERMELHA de 2026-11-19 e a célula
+  marcada. Se o cliente quiser forçar também esses, é trocar o `abaixo_piso` em
+  `aplicar` por voltar ao piso — e avisar a Pecuária antes. Na bateria,
+  `comPisoAberto` baixa o piso (IPCA 0, PIB 0, crescimento −100%) só para
+  devolver o lançamento que as provas tiram.
+  **Premissas, pessoas e benefícios num bloco só** (pedido do cliente,
+  2026-11-21: "esses dois quadrantes se referem à mesma coisa"). O cartão
+  separado "Pessoas e benefícios" saiu do negócio (no Corporativo continua, só
+  soma): o quadro e os três campos (colaboradores, % assiduidade, % meses com
+  resultado) vêm em `.bloco-pessoas` dentro de `.painel-premissas`, e o
+  resultado sai em duas contas totalizadas lado a lado (`resultadoPremissas`):
+  **Faturamento** (`contaFaturamento`, `.tabela-faturamento`: projeção, + IPCA,
+  + PIB, + crescimento desejado, = mínimo de 2027, proposta se acima, impacto) e
+  **Despesas com Pessoal** (`contaPessoal`: benefícios previstos + a conta da
+  linha 8.5 e o impacto). As contas usam as linhas da tela (receita sem a CBS):
+  o percentual é o do motor e os reais batem com a tabela.
   **Selo verde "diretriz" = valor igual ao da diretriz** (pedido do cliente, 2026-11-19:
   "se eu digitar 4,5, que é conforme a diretriz, ele marca; caso contrário, o campinho
   verde sai"). Antes o selo de IPCA e PIB saía assim que o negócio digitava — mesmo
