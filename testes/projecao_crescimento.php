@@ -84,10 +84,10 @@ prova('a linha guarda o percentual que a gerou (para a tela mostrar de onde veio
     && $l['8.1']['proposta_padrao'] === null);
 
 // O que foi digitado MANDA.
-$lanc = ['1.1' => ['entrada' => 'PERCENTUAL', 'percentual' => 3.0, 'valor' => null]];
+$lanc = ['1.1' => ['entrada' => 'PERCENTUAL', 'percentual' => 15.0, 'valor' => null]];
 $l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0, '8.5' => 5.5]));
-prova('um reajuste digitado na Receita vence o crescimento por omissão (3%, e não 12%)',
-    perto($l['1.1']['proposta'], 103.0) && $l['1.1']['proposta_origem'] === 'PERCENTUAL' && $l['1.1']['proposta_padrao'] === null,
+prova('um reajuste digitado na Receita (acima do piso) vence o crescimento por omissão (15%, e não 12%)',
+    perto($l['1.1']['proposta'], 115.0) && $l['1.1']['proposta_origem'] === 'PERCENTUAL' && $l['1.1']['proposta_padrao'] === null,
     json_encode([$l['1.1']['proposta'], $l['1.1']['proposta_origem']]));
 $lanc = ['8.5' => ['entrada' => 'VALOR', 'valor' => -9.0, 'percentual' => null]];
 $l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0, '8.5' => 5.5]));
@@ -100,30 +100,38 @@ prova('sem percentual de pessoas, a linha Pessoal continua aceitando o digitado'
 prova('a trava segue a premissa de pessoas: com diretriz (2027) sempre; sem diretriz, só se digitada',
     Projecao::pessoalTravado(2027, []) && !Projecao::pessoalTravado(2029, []) && Projecao::pessoalTravado(2029, ['PESSOAS' => 4.0]));
 
-// ── O piso do faturamento (pedido do cliente, 2026-11-19) ──────────────────
+// ── O piso do faturamento (2026-11-19; trava desde 2026-11-21) ─────────────
 // A Receita não pode ficar abaixo de IPCA + PIB + crescimento desejado; acima
-// pode. Abaixo, o lançamento FICA e a linha sai marcada para a tela apontar.
+// pode. Lançamento abaixo NÃO VALE: a linha fica no piso e sai marcada
+// (`piso_aplicado`, com o valor recusado em `lancado_abaixo`).
 $l = $por(Projecao::aplicar($dre(), [], ['1.1' => 12.0]));
-prova('pela premissa a Receita fica no piso: sem inconsistência, e a linha guarda o piso (12%)',
-    $l['1.1']['abaixo_piso'] === false && perto((float)$l['1.1']['piso_percentual'], 12.0));
+prova('pela premissa a Receita fica no piso, e a linha guarda o piso (12%)',
+    $l['1.1']['piso_aplicado'] === false && perto((float)$l['1.1']['piso_percentual'], 12.0) && perto($l['1.1']['proposta'], 112.0));
 $lanc = ['1.1' => ['entrada' => 'PERCENTUAL', 'percentual' => 3.0, 'valor' => null]];
 $l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0]));
-prova('reajuste de 3% com piso de 12%: abaixo do piso, e o lançamento continua valendo (103)',
-    $l['1.1']['abaixo_piso'] === true && perto($l['1.1']['proposta'], 103.0));
+prova('reajuste de 3% com piso de 12%: não vale, a linha fica no piso (112) e guarda o recusado (103)',
+    $l['1.1']['piso_aplicado'] === true && perto($l['1.1']['proposta'], 112.0) && $l['1.1']['proposta_origem'] === 'PREMISSA'
+    && perto($l['1.1']['lancado_abaixo'], 103.0), json_encode([$l['1.1']['proposta'], $l['1.1']['proposta_origem']]));
+prova('e o custo acompanha a receita do PISO, não a do lançamento recusado',
+    perto($l['4.1']['proposta'] / $l['4.1']['projecao'], 1.12), (string)$l['4.1']['proposta']);
 $lanc = ['1.1' => ['entrada' => 'VALOR', 'valor' => 130.0, 'percentual' => null]];
 $l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0]));
-prova('valor acima do piso (130 contra 112): o negócio se desafia mais, sem inconsistência',
-    $l['1.1']['abaixo_piso'] === false);
+prova('valor acima do piso (130 contra 112): o negócio se desafia mais, e o lançado vale',
+    $l['1.1']['piso_aplicado'] === false && perto($l['1.1']['proposta'], 130.0) && $l['1.1']['proposta_origem'] === 'VALOR');
 $lanc = ['1.1' => ['entrada' => 'VALOR', 'valor' => 99.0, 'percentual' => null]];
 $l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0], 0.1));
-prova('no formato de 2027 a comparação é com a CBS dentro: 99 sem CBS = 110 com ela, abaixo de 112',
-    $l['1.1']['abaixo_piso'] === true && perto($l['1.1']['proposta'], 110.0), (string)$l['1.1']['proposta']);
+prova('no formato de 2027 a comparação é com a CBS dentro: 99 sem CBS = 110 com ela, abaixo de 112 → piso',
+    $l['1.1']['piso_aplicado'] === true && perto($l['1.1']['proposta'], 112.0), (string)$l['1.1']['proposta']);
 $lanc = ['1.1' => ['entrada' => 'VALOR', 'valor' => 108.0, 'percentual' => null]];
 $l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0], 0.1));
 prova('e 108 sem CBS = 120 com ela fica acima do piso: o lançado não é comparado sem a CBS',
-    $l['1.1']['abaixo_piso'] === false, (string)$l['1.1']['proposta']);
+    $l['1.1']['piso_aplicado'] === false && perto($l['1.1']['proposta'], 120.0), (string)$l['1.1']['proposta']);
+$lanc = ['1.1' => ['entrada' => 'PERCENTUAL', 'percentual' => -5.0, 'valor' => null]];
+$l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => -8.0]));
+prova('com crescimento desejado negativo o piso é negativo: −5% acima de −8% vale',
+    $l['1.1']['piso_aplicado'] === false && perto($l['1.1']['proposta'], 95.0));
 $l = $por(Projecao::aplicar($dre(), [], []));
-prova('sem premissas não há piso, nem inconsistência', !isset($l['1.1']['abaixo_piso']));
+prova('sem premissas não há piso', !isset($l['1.1']['piso_aplicado']));
 
 // Sem premissas, tudo como sempre foi.
 $l = $por(Projecao::aplicar($dre(), [], []));

@@ -787,10 +787,34 @@ class Projecao
             // vista de todos em vez de travada no campo. Comparado no formato
             // do motor (com a CBS dentro dos dois lados), por isso aqui e não na
             // tela, que mostra a receita sem a CBS.
+            //
+            // Desde 2026-11-21 o piso TRAVA, inclusive o que já estava lançado e
+            // nas filiais (pedido do cliente: "não deve permitir o lançamento
+            // menor… o sistema deve voltar os dados até totalizar o percentual
+            // estimado"; "já faça para as filiais também"). Lançamento abaixo do
+            // piso NÃO VALE: a linha fica no piso (a premissa) e sai marcada
+            // (`piso_aplicado`, com o valor recusado em `lancado_abaixo`, no
+            // formato do motor) para a tela explicar. O lançamento continua
+            // guardado: se a premissa baixar, ele volta a valer.
             if ($l['codigo'] === self::LINHA_RECEITA && isset($crescimentos[$l['codigo']])) {
                 $piso = (float)$l['projecao'] * (1 + (float)$crescimentos[$l['codigo']] / 100);
                 $linhas[$i]['piso_percentual'] = (float)$crescimentos[$l['codigo']];
-                $linhas[$i]['abaixo_piso'] = (float)$l['projecao'] > 0 && $r['valor'] < $piso - 1;
+                $linhas[$i]['piso_aplicado'] = false;
+                $linhas[$i]['abaixo_piso'] = false;
+                if ((float)$l['projecao'] > 0 && $r['origem'] !== 'PREMISSA' && $r['origem'] !== 'PROJECAO' && $r['valor'] < $piso - 1) {
+                    $linhas[$i]['lancado_abaixo'] = $r['valor'];
+                    // O lançamento como foi guardado (entrada, valor, percentual): é o
+                    // que a tela devolve se alguém quiser relançá-lo, e o que a
+                    // bateria guarda e põe de volta.
+                    $linhas[$i]['lancado_recusado'] = $lancados[$l['codigo']] ?? null;
+                    $r = self::valorProposto((float)$l['projecao'], null, (float)$crescimentos[$l['codigo']]);
+                    $linhas[$i]['proposta'] = $r['valor'];
+                    $linhas[$i]['proposta_origem'] = $r['origem'];
+                    $linhas[$i]['proposta_lancado'] = null;
+                    $linhas[$i]['proposta_padrao'] = $r['percentual'];
+                    $linhas[$i]['proposta_regra'] = 'PREMISSA';
+                    $linhas[$i]['piso_aplicado'] = true;
+                }
             }
         }
 

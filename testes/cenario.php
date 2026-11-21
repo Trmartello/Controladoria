@@ -72,15 +72,21 @@ $lanc = Database::um("SELECT v.* FROM projecao_valor v JOIN projecao p ON p.id =
 prova('a Receita de Vendas da proposta está lançada como VALOR, no formato novo (sem a CBS)',
     // R$ 1: a bateria de tela tira e devolve o lançamento digitando o valor em reais.
     $lanc && $lanc['entrada'] === 'VALOR' && abs((float)$lanc['valor'] - $c['receita_vendas']) < 1, json_encode($lanc));
-prova('no formato antigo (o que o motor usa por dentro) a proposta é o faturamento da planilha',
-    $l11['proposta_origem'] === 'VALOR' && abs($l11['proposta'] - $c['faturamento_antigo']) < 2, (string)$l11['proposta']);
+// O cenário da planilha ficou ABAIXO do mínimo de 2027 (IPCA + PIB + crescimento
+// desejado): desde 2026-11-21 ele não vale — a linha fica no piso e guarda o
+// recusado (formato do motor, com a CBS) em `lancado_abaixo`.
+prova('o cenário da planilha (formato antigo, o do motor) ficou abaixo do piso e é guardado como recusado',
+    !empty($l11['piso_aplicado']) && abs($l11['lancado_abaixo'] - $c['faturamento_antigo']) < 2, (string)($l11['lancado_abaixo'] ?? ''));
+prova('e a proposta da Receita de Vendas é o piso: projeção × (1 + IPCA + PIB + desejado)',
+    $l11['proposta_origem'] === 'PREMISSA' && abs($l11['proposta'] - $l11['projecao'] * (1 + $l11['piso_percentual'] / 100)) < 1
+    && $l11['proposta'] > $c['faturamento_antigo'], (string)$l11['proposta']);
 $tela = (new ReflectionMethod($ctrl, 'paraTela'));
 $tela->setAccessible(true);
 $t = $tela->invoke(null, $d);
 $rb = array_values(array_filter($t['linhas'], static fn ($l) => $l['codigo'] === '1'))[0];
 $cbs = array_values(array_filter($t['linhas'], static fn ($l) => $l['codigo'] === 'CBS'))[0] ?? null;
-prova('na tela (formato 2027): Receita Bruta 731.798.725 e CBS 419.969 — a soma é o faturamento',
-    abs($rb['proposta'] - $c['receita_vendas']) < 1 && $cbs && abs($cbs['proposta'] + $rb['proposta'] - $c['faturamento_antigo']) < 2,
+prova('na tela (formato 2027): Receita Bruta + CBS = a proposta do motor (o piso)',
+    $cbs && abs($cbs['proposta'] + $rb['proposta'] - $l11['proposta']) < 2 && $rb['proposta'] > $c['receita_vendas'],
     json_encode([$rb['proposta'], $cbs['proposta'] ?? null]));
 prova('o cenário vai para a tela com a conversão e os três totais',
     $d['cenario'] && $d['cenario']['cenario'] === 'REALISTA' && abs($d['cenario']['cbs'] - 419969.14) < 0.01

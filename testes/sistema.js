@@ -6922,8 +6922,16 @@ async function lancamentoDaProposta(page, sufixo, conta, texto) {
     s.dispatchEvent(new Event('change'));
   }, sufixo);
   await esperar(page, `!!document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith(${JSON.stringify(sufixo)}) && !!document.querySelector('.tabela-projecao:not([data-velha]) [data-conta="${conta}"] .celula-proposta')`, 40000);
-  const antes = await page.evaluate((c) =>
-    document.querySelector(`.tabela-projecao [data-conta="${c}"] .celula-proposta`).value, conta);
+  // O que está lançado: o texto da célula ou, se o lançamento ficou abaixo do
+  // piso do faturamento (a célula aparece vazia, porque ele não vale), o
+  // lançamento recusado que o servidor manda junto — sem isso a bateria o
+  // apagaria sem saber que existia.
+  const antes = await page.evaluate((c) => {
+    const l = (SecaoProjecao.visao(SecaoProjecao.dados).linhas || []).find((x) => x.codigo === c) || {};
+    const r = l.lancado_recusado;
+    if (r) return r.entrada === 'PERCENTUAL' ? `${String(r.percentual).replace('.', ',')}%` : SecaoProjecao.moeda(Number(r.valor));
+    return document.querySelector(`.tabela-projecao [data-conta="${c}"] .celula-proposta`).value;
+  }, conta);
   if (texto === null || texto === antes) return antes;
   const digitar = async () => {
     await esperar(page, `!!document.querySelector('.tabela-projecao [data-conta="${conta}"] .celula-proposta')`, 20000);
@@ -7143,13 +7151,20 @@ async function provasCenarioEImpressao(page, largura) {
     cbs: document.querySelector('[data-cenario="cbs"]')?.textContent,
     rec: document.querySelector('[data-cenario="receita"]')?.textContent,
     rb: document.querySelector('.tabela-projecao tr[data-conta="1"] td:nth-child(6)')?.textContent,
+    abaixo: document.querySelector('#cenario-abaixo-do-piso')?.textContent.replace(/\s+/g, ' ').trim() || '',
+    caixa: document.querySelector('#projecao-piso-faturamento.alert-warning')?.textContent.replace(/\s+/g, ' ').trim() || '',
     cenarios: document.querySelectorAll('.painel-cenario .tabela-cenario tbody tr').length,
     borda: getComputedStyle(document.querySelector('details.expansor')).borderLeftWidth,
     fundo: getComputedStyle(document.querySelector('details.expansor > summary')).backgroundColor,
   }));
   t(`${l} Pecuária: faturamento realista 732.218.694 (formato antigo) − CBS 419.969 = Receita de Vendas 731.798.725`,
     num(c.fat) === 732218694 && num(c.cbs) === -419969 && num(c.rec) === 731798725, JSON.stringify(c));
-  t(`${l} a proposta da Receita Bruta na DRE é a receita convertida`, num(c.rb) === 731798725, String(c.rb));
+  // O cenário ficou abaixo do mínimo de 2027 (IPCA + PIB + crescimento): desde
+  // 2026-11-21 a DRE usa o mínimo, e o cartão e a caixa embaixo da DRE dizem.
+  t(`${l} o cenário ficou abaixo do mínimo: a Receita Bruta da DRE é maior que ele, e o cartão avisa`,
+    num(c.rb) > 731798725 && /abaixo do mínimo/.test(c.abaixo), JSON.stringify([c.rb, c.abaixo.slice(0, 80)]));
+  t(`${l} e a caixa embaixo da DRE diz que o lançamento de R$ 731.798.725 não vale`,
+    /731\.798\.72\d/.test(c.caixa) && /não vale/.test(c.caixa), c.caixa.slice(0, 140));
   t(`${l} os três cenários da planilha item a item (17 itens + total)`, c.cenarios === 18, String(c.cenarios));
   t(`${l} as aberturas têm destaque: faixa verde de 5px e fundo no título`,
     c.borda === '5px' && c.fundo !== 'rgba(0, 0, 0, 0)', JSON.stringify([c.borda, c.fundo]));
@@ -8192,7 +8207,11 @@ async function provasProjecaoProposta(page, largura) {
   // partir do "sem lançamento", então tira o que houver e devolve no fim:
   // apagar o trabalho de um negócio para provar a tela seria a prova estragando
   // o que ela protege.
-  const jaLancado = v['1.1'].digitado || '';
+  const jaLancado = v['1.1'].digitado || await page.evaluate(() => {
+    // Lançamento abaixo do piso: a célula aparece vazia, mas ele existe.
+    const r = (SecaoProjecao.dados.linhas.find((x) => x.codigo === '1.1') || {}).lancado_recusado;
+    return r ? (r.entrada === 'PERCENTUAL' ? `${String(r.percentual).replace('.', ',')}%` : SecaoProjecao.moeda(Number(r.valor))) : '';
+  });
   if (jaLancado) v = await lancar('1.1', '');
   const editaveis = Object.values(v).filter((x) => x.editavel).length;
   const derivadas = Object.values(v).filter((x) => x.origem === 'DERIVADA').length;
