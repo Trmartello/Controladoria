@@ -825,6 +825,20 @@ class ProjecaoController
             );
         }
 
+        // As Despesas com Pessoal são consequência do cartão Pessoas e
+        // benefícios (pedido do cliente, 2026-11-21): com premissa de pessoas no
+        // ano — a diretriz de 2027 sempre traz uma —, a linha não se lança.
+        if ($codigo === Projecao::LINHA_PESSOAL && Projecao::pessoalTravado(
+            $anoPlan,
+            $this->premissasDigitadasPorAno($negocioId, [$anoPlan])[$anoPlan] ?? []
+        )) {
+            Json::erro(
+                'As Despesas com Pessoal são calculadas pelo cartão Pessoas e benefícios '
+                . '(reajuste, vale, abonos e PPR): mude os parâmetros lá, e não a linha da DRE.',
+                422
+            );
+        }
+
         $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
         if ($filialId && !$this->filialDoNegocio($filialId, $negocioId)) {
             Json::erro('Filial não é deste negócio.', 403);
@@ -896,7 +910,34 @@ class ProjecaoController
             [$u['id'], (int)$proj['id']]
         );
 
-        $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
+        // O PISO do faturamento TRAVA NA DIGITAÇÃO (pedido do cliente,
+        // 2026-11-21): a Receita de Vendas lançada abaixo de IPCA + PIB +
+        // crescimento desejado não fica gravada — a linha volta ao piso (a
+        // premissa) e a resposta diz por quê. A conta é a do motor (`aplicar`,
+        // `abaixo_piso`, com a CBS e o formato de cada entrada), por isso se
+        // grava, se mede e, abaixo, se apaga: refazê-la aqui seria uma segunda
+        // conta para o mesmo número. Lançamento que já estava abaixo (a carga
+        // da Pecuária, ou a premissa que subiu depois) NÃO é mexido: continua
+        // apontado em vermelho até alguém decidir — mover R$ 148 mi de uma meta
+        // sem ninguém digitar nada não é o que "não permitir lançar" pede.
+        $tela = $this->montar($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
+        if ($codigo === Projecao::LINHA_RECEITA && $bruto !== null && $bruto !== '') {
+            $linhasEscopo = $filialId ? ($tela['filial']['linhas'] ?? []) : $tela['linhas'];
+            $rec = array_column($linhasEscopo, null, 'codigo')[Projecao::LINHA_RECEITA] ?? null;
+            if ($rec && !empty($rec['abaixo_piso'])) {
+                Database::executar(
+                    'DELETE FROM projecao_valor WHERE projecao_id = ? AND filial_id = ? AND conta_id = ?',
+                    [(int)$proj['id'], $filialId, (int)$conta['id']]
+                );
+                $tela = $this->montar($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
+                $tela['aviso_piso'] = sprintf(
+                    'A Receita de Vendas não pode ficar abaixo de IPCA + PIB + crescimento desejado (%s%%). '
+                    . 'O valor digitado foi recusado e a linha voltou ao piso.',
+                    number_format((float)$rec['piso_percentual'], 2, ',', '.')
+                );
+            }
+        }
+        Json::ok(self::paraTela($tela));
     }
 
     /**
@@ -1020,23 +1061,32 @@ class ProjecaoController
         // não toca na projeção: não há proposta ali para versionar, e criar uma
         // projeção de 2029 só para carregar um IPCA seria inventar um ano.
         if ($ano === $anoPlan) {
-            $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
-            if (!$proj) {
-                Database::executar(
-                    'INSERT INTO projecao (negocio_id, ano, atualizado_em, atualizado_por)
-                     VALUES (?, ?, NOW(), ?)',
-                    [$negocioId, $anoPlan, $u['id']]
-                );
-                $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
-            }
-            Database::executar(
-                'UPDATE projecao SET versao = versao + 1, atualizado_em = NOW(), atualizado_por = ?
-                  WHERE id = ?',
-                [$u['id'], (int)$proj['id']]
-            );
+            $this->subirVersao($negocioId, $anoPlan, (int)$u['id']);
         }
 
         $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
+    }
+
+    /**
+     * Marca a proposta do ano como alterada (cria a projeção se ainda não há):
+     * quem tem a tela aberta fica sabendo que os números mudaram.
+     */
+    private function subirVersao(int $negocioId, int $anoPlan, int $usuarioId): void
+    {
+        $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+        if (!$proj) {
+            Database::executar(
+                'INSERT INTO projecao (negocio_id, ano, atualizado_em, atualizado_por)
+                 VALUES (?, ?, NOW(), ?)',
+                [$negocioId, $anoPlan, $usuarioId]
+            );
+            $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
+        }
+        Database::executar(
+            'UPDATE projecao SET versao = versao + 1, atualizado_em = NOW(), atualizado_por = ?
+              WHERE id = ?',
+            [$usuarioId, (int)$proj['id']]
+        );
     }
 
     /**
@@ -1044,10 +1094,11 @@ class ProjecaoController
      * colaboradores planejado, os valores por colaborador/mês ou os percentuais
      * de previsão (`Projecao::BENEFICIOS`).
      *
-     * É do NEGÓCIO e de UM ANO, como as premissas. **Não mexe na versão da
-     * proposta**: pessoas e benefícios não são linha da DRE nem entram na
-     * proposta, e marcá-la como alterada avisaria quem tem a tela aberta de uma
-     * mudança que não está nela. Valor vazio apaga o lançado e devolve o padrão.
+     * É do NEGÓCIO e de UM ANO, como as premissas. No ano da proposta ele MEXE
+     * na proposta: as Despesas com Pessoal (8.5) são a conta da diretriz com os
+     * benefícios deste cartão (`Projecao::pessoalDaDiretriz`), então a versão
+     * sobe como na premissa e a resposta traz a DRE recalculada. Valor vazio
+     * apaga o lançado e devolve o padrão.
      */
     public function gravarBeneficio(): void
     {
@@ -1129,6 +1180,9 @@ class ProjecaoController
                  ON DUPLICATE KEY UPDATE valor = VALUES(valor)',
                 [$negocioId, $ano, $chave, (float)$bruto]
             );
+        }
+        if ($ano === $anoPlan) {
+            $this->subirVersao($negocioId, $anoPlan, (int)$u['id']);
         }
         $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
     }

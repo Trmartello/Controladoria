@@ -3019,7 +3019,9 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   dobraria. O cartão é onde o valor com benefícios é PREVISTO; o percentual de
   crescimento das despesas com pessoas, esse sim, move a linha 8.5. Os valores em
   reais (vale R$ 500, abono R$ 200 + R$ 500 = R$ 700 em 2027) ficam no painel das
-  premissas, junto com os percentuais; gravar não mexe na versão da proposta. O Corporativo só soma (cartão
+  premissas, junto com os percentuais. Desde a diretriz de 2027 (ver abaixo), a
+  despesa prevista com benefícios É peça da linha 8.5 (`pessoalDaDiretriz`), e
+  gravar aqui mexe na versão da proposta e recalcula a DRE. O Corporativo só soma (cartão
   somente leitura). **Fora do escopo, por decisão do cliente:** as áreas de apoio
   (18 Apoio Operacional, 87 pessoas; 20 Administração Matriz, 127) — que a DRE
   traz mas não são negócios — e os negócios sem quadro (Fruticultura, Juros s/
@@ -3157,6 +3159,17 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     espelham as 3.07 (ato cooperativo) e NÃO entram. Na Agropecuária as 3.07.01.21*
     somam R$ 4,6 mi a mais que a linha 8.5 — por isso as peças entram como parte,
     não em reais. O cartão Pessoas e benefícios mostra a conta inteira.
+  - **A linha 8.5 é CONSEQUÊNCIA, não se lança** (pedido do cliente,
+    2026-11-21: "se eu já atribuir os benefícios na parte superior, o valor deve
+    ser consequência na DRE"). Com premissa de pessoas no ano
+    (`Projecao::pessoalTravado` — a diretriz de 2027 sempre traz uma; em ano sem
+    diretriz, só se o negócio digitou o %), `aplicar` ignora o lançado na 8.5 e
+    marca `proposta_travada`; a tela desenha o número com cadeado, sem célula, e
+    `gravarValor` recusa a conta. Lançamentos antigos na 8.5 ficam no banco mas
+    não valem. E gravar um benefício (`gravarBeneficio`) agora SOBE a versão e a
+    tela repinta a DRE inteira (`repintarProposta`, o mesmo da premissa): antes
+    o cartão mudava (ex.: % de meses com resultado em 0) e a linha ficava com o
+    número de antes até recarregar a página.
   - **Meta negativa de resultado líquido: SINALIZAR, não bloquear** (decisão do
     cliente, 2026-11-18, revendo a anterior: "o lançamento deve permitir todos os
     sinais; porém se o resultado líquido for negativo deve sinalizar"). Não há
@@ -3357,6 +3370,32 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   lançáveis como sempre. Campos de lançamento "sumidos" na DRE do negócio quase
   sempre são o modo **Planejar por filial** (o negócio vira a soma das filiais e
   se lança em cada filial) — não é regra nova.
+  **O piso TRAVA na digitação** (pedido do cliente, 2026-11-21: "se ele digitar
+  um valor menor, o sistema deve voltar os dados até totalizar o percentual
+  estimado"). `gravarValor` grava a 1.1, monta a tela e, se a linha do escopo
+  (negócio ou filial) saiu `abaixo_piso`, APAGA o lançamento e responde com
+  `aviso_piso`: a linha volta à premissa (exatamente o piso) e a tela mostra a
+  caixa AMARELA "Faturamento no mínimo" até a próxima gravação. Grava-mede-apaga
+  porque a conta é a do motor (CBS, valor × percentual); refazê-la no controller
+  seria a segunda conta do mesmo número. **Lançamento que JÁ estava abaixo não é
+  mexido** — a Receita da Pecuária veio da planilha do cenário (R$ 732 mi) com
+  piso de ~R$ 880 mi, e subi-la R$ 148 mi sem ninguém digitar não é "não permitir
+  lançar": esse caso continua com a caixa VERMELHA de 2026-11-19 e a célula
+  marcada. Se o cliente quiser forçar também esses, é trocar o `abaixo_piso` em
+  `aplicar` por voltar ao piso — e avisar a Pecuária antes. Na bateria,
+  `comPisoAberto` baixa o piso (IPCA 0, PIB 0, crescimento −100%) só para
+  devolver o lançamento que as provas tiram.
+  **Premissas, pessoas e benefícios num bloco só** (pedido do cliente,
+  2026-11-21: "esses dois quadrantes se referem à mesma coisa"). O cartão
+  separado "Pessoas e benefícios" saiu do negócio (no Corporativo continua, só
+  soma): o quadro e os três campos (colaboradores, % assiduidade, % meses com
+  resultado) vêm em `.bloco-pessoas` dentro de `.painel-premissas`, e o
+  resultado sai em duas contas totalizadas lado a lado (`resultadoPremissas`):
+  **Faturamento** (`contaFaturamento`, `.tabela-faturamento`: projeção, + IPCA,
+  + PIB, + crescimento desejado, = mínimo de 2027, proposta se acima, impacto) e
+  **Despesas com Pessoal** (`contaPessoal`: benefícios previstos + a conta da
+  linha 8.5 e o impacto). As contas usam as linhas da tela (receita sem a CBS):
+  o percentual é o do motor e os reais batem com a tabela.
   **Selo verde "diretriz" = valor igual ao da diretriz** (pedido do cliente, 2026-11-19:
   "se eu digitar 4,5, que é conforme a diretriz, ele marca; caso contrário, o campinho
   verde sai"). Antes o selo de IPCA e PIB saía assim que o negócio digitava — mesmo

@@ -458,6 +458,18 @@ class Projecao
     public const LINHA_PESSOAL = '8.5';
 
     /**
+     * A linha Despesas com Pessoal (8.5) é calculada, e não lançada, quando o
+     * ano tem premissa de pessoas — da diretriz ou digitada (pedido do cliente,
+     * 2026-11-21: "se eu já atribuir os benefícios na parte superior, o valor
+     * deve ser consequência na DRE"). É a mesma condição que põe a 8.5 em
+     * `crescimentosDoNegocio`, e é ela que `aplicar` usa para ignorar o lançado.
+     */
+    public static function pessoalTravado(int $anoPlan, array $digitadas): bool
+    {
+        return isset(self::premissasEfetivas($anoPlan, $digitadas)['PESSOAS']);
+    }
+
+    /**
      * Quanto cada linha CRESCE por omissão, a partir das premissas do negócio
      * no ano da proposta (pedido do cliente, 2026-11-18).
      *
@@ -474,8 +486,9 @@ class Projecao
      *    diretriz por cima do digitado e troca o % das Despesas com Pessoal pelo
      *    da conta de `pessoalDaDiretriz` (PPR, vale e prêmios).
      *
-     * O que foi DIGITADO numa linha sempre manda: o crescimento por omissão só
-     * preenche as linhas em branco. Sem nenhuma premissa lançada não há
+     * O que foi DIGITADO numa linha sempre manda — menos nas Despesas com
+     * Pessoal, que com premissa de pessoas são calculadas (`pessoalTravado`): o
+     * crescimento por omissão só preenche as linhas em branco. Sem nenhuma premissa lançada não há
      * crescimento nenhum (e a linha vale a projeção, como sempre valeu): uma
      * premissa ausente não é "0%", é "não decidida".
      *
@@ -669,11 +682,18 @@ class Projecao
             if (!self::editavel($l)) {
                 continue;
             }
+            // As Despesas com Pessoal são CONSEQUÊNCIA do cartão Pessoas e
+            // benefícios e da premissa de pessoas (pedido do cliente,
+            // 2026-11-21): onde há premissa de pessoas, a linha não se lança, e
+            // um lançamento antigo nela é ignorado — senão a DRE mostraria um
+            // número digitado que o cartão não explica e ninguém consegue mudar.
+            $travada = $l['codigo'] === self::LINHA_PESSOAL && isset($crescimentos[$l['codigo']]);
             $r = self::valorProposto(
                 (float)$l['projecao'],
-                $lancados[$l['codigo']] ?? null,
+                $travada ? null : ($lancados[$l['codigo']] ?? null),
                 $crescimentos[$l['codigo']] ?? null
             );
+            $linhas[$i]['proposta_travada'] = $travada;
             // Formato de 2027: a Receita de Vendas LANÇADA em valor é sem a CBS; o
             // motor calcula com ela dentro (a CBS acompanha a receita).
             if ($t !== null && $l['codigo'] === '1.1' && $r['origem'] === 'VALOR') {

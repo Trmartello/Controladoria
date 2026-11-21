@@ -447,6 +447,10 @@ table.tabela-cadastro td { vertical-align: middle; }
 /* Proposta pior que a projeção — despesa que cresce, receita que cai. Mesmo
    vermelho que a coluna já usava quando era só de leitura. */
 .tabela-projecao .celula-valor.celula-pior { color: var(--bs-danger, #b02a37); }
+/* Despesas com Pessoal calculadas pelo cartão Pessoas e benefícios: número
+   sem célula de digitar, com o cadeado dizendo por quê (o título explica). */
+.tabela-projecao .proposta-calculada { cursor: help; }
+.tabela-projecao .proposta-calculada::before { content: "🔒"; font-size: .75em; margin-right: .3em; opacity: .6; }
 
 /* ===== O ano aberto mês a mês =====
    O botão do cabeçalho é o ano, não um ícone ao lado dele: o alvo de toque é a

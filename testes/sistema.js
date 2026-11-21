@@ -5700,7 +5700,7 @@ async function provasProjecaoPremissas(page, largura) {
   // célula ganhava um segundo `blur`, gravava duas vezes e a segunda chegava
   // com a versão velha — o usuário via "alguém gravou enquanto você editava"
   // sem ninguém ter gravado. Achado na sonda, não na bateria.
-  v = await digitar('[data-conta="8.5"] .celula-proposta', '5%');
+  v = await digitar('[data-conta="8.8"] .celula-proposta', '5%');
   t(`${l} gravar depois de mexer no painel não levanta conflito falso`,
     v.aviso === '', v.aviso);
 
@@ -5718,7 +5718,7 @@ async function provasProjecaoPremissas(page, largura) {
   // Devolve a massa ao ponto de partida — o custo PRIMEIRO: apagar a receita
   // antes dele poderia levar o resultado ao vermelho, e a diretriz recusa.
   await digitar('[data-conta="4.1"] .celula-proposta', '');
-  await digitar('[data-conta="8.5"] .celula-proposta', '');
+  await digitar('[data-conta="8.8"] .celula-proposta', '');
   v = await digitar('[data-conta="1.1"] .celula-proposta', '');
   t(`${l} e as premissas sobrevivem ao fim dos lançamentos`,
     v.ipca === '4,5' && v.pib === '1,5', JSON.stringify({ ipca: v.ipca, pib: v.pib }));
@@ -6141,7 +6141,7 @@ async function provasPessoasEBeneficios(page, largura) {
   const aguardar = (fn) => esperar(page, fn, 15000);
 
   const negocioId = await escolher('SUPERMERCADOS');
-  await aguardar("!!document.querySelector('.painel-pessoas .celula-beneficio')");
+  await aguardar("!!document.querySelector('.painel-premissas .bloco-pessoas .celula-beneficio')");
   await new Promise((r) => setTimeout(r, 600));
 
   const api = (n) => page.evaluate(async (id) => {
@@ -6161,14 +6161,18 @@ async function provasPessoasEBeneficios(page, largura) {
     `${calc.anual.total} / ${calc.sem_resultado_anual}`);
 
   const tela = () => page.evaluate(() => {
-    const c = document.querySelector('.painel-pessoas');
-    const v = (k) => c.querySelector(`[data-pessoas="${k}"]`)?.textContent.replace(/\s+/g, ' ').trim() ?? null;
+    // Desde 2026-11-21 pessoas e benefícios moram NO bloco das premissas
+    // (`.bloco-pessoas`), e não num cartão à parte.
+    const painel = document.querySelector('.painel-premissas');
+    const c = painel.querySelector('.bloco-pessoas');
+    const v = (k) => painel.querySelector(`[data-pessoas="${k}"]`)?.textContent.replace(/\s+/g, ' ').trim() ?? null;
     return {
       quadro: c.querySelector('#pessoas-quadro')?.textContent.replace(/\s+/g, ' ').trim(),
-      // Vale e abono moram no painel das premissas; o resto, neste cartão.
+      cartaoSeparado: !!document.querySelector('#secao-projecao .painel-pessoas'),
       campos: [...document.querySelectorAll('#secao-projecao .celula-beneficio')].map((i) => i.dataset.chave),
       noCartao: [...c.querySelectorAll('.celula-beneficio')].map((i) => i.dataset.chave),
-      noPainel: [...document.querySelectorAll('.painel-premissas .celula-beneficio')].map((i) => i.dataset.chave),
+      noPainel: [...painel.querySelectorAll('.celula-beneficio')].map((i) => i.dataset.chave)
+        .filter((k) => ['ALIMENTACAO', 'ASSIDUIDADE', 'RESULTADO'].includes(k)),
       fixosNoPainel: [...document.querySelectorAll('.painel-premissas [data-diretriz]')].map((i) => i.dataset.diretriz)
         .filter((k) => ['ALIMENTACAO', 'ASSIDUIDADE', 'RESULTADO'].includes(k)),
       abonoTotal: document.querySelector('#abono-total')?.textContent.replace(/\s+/g, ' ').trim(),
@@ -6182,6 +6186,8 @@ async function provasPessoasEBeneficios(page, largura) {
   t(`${l} o cartão mostra o quadro (406) e diz que é do último mês carregado`,
     /406/.test(e.quadro) && /nov/i.test(e.quadro) && e.colabPlaceholder === '406', JSON.stringify(e.quadro));
   t(`${l} e explica que o número já é de colaboradores equivalentes (a divisão entre negócios)`, e.explica);
+  t(`${l} pessoas e benefícios ficam no MESMO bloco das premissas, sem cartão separado`,
+    !e.cartaoSeparado && e.noCartao.length === 3, JSON.stringify({ separado: e.cartaoSeparado, campos: e.noCartao }));
   // Em 2027 vale e abono são da DIRETRIZ: aparecem no painel das premissas, fixos.
   t(`${l} vale alimentação e abono ficam no painel das premissas, fixos pela diretriz em ${ano}`,
     e.noPainel.length === 0 && e.fixosNoPainel.join() === 'ALIMENTACAO,ASSIDUIDADE,RESULTADO',
@@ -6206,7 +6212,7 @@ async function provasPessoasEBeneficios(page, largura) {
     a.pessoas.digitados[ano].PCT_RESULTADO === 50 && Math.abs(a.pessoas.por_ano[ano].anual.resultado - 1218000) < 0.5,
     JSON.stringify(a.pessoas.digitados[ano]));
   e = await tela();
-  t(`${l} e o cartão se repinta com o número novo`, /1\.218\.000/.test(e.resultado) && /4\.628\.400/.test(e.total),
+  t(`${l} e o bloco se repinta com o número novo`, /1\.218\.000/.test(e.resultado) && /4\.628\.400/.test(e.total),
     JSON.stringify([e.resultado, e.total]));
 
   // Por ano: outro ano não herda.
@@ -6359,12 +6365,13 @@ async function provasCrescimentoPorPremissa(page, largura) {
   // O digitado manda.
   await page.evaluate(() => {
     const i = document.querySelector('.tabela-projecao tbody tr[data-conta="1.1"] input.celula-reajuste');
-    i.focus(); i.value = '3'; i.blur();
+    i.focus(); i.value = '15'; i.blur();
   });
   await new Promise((r) => setTimeout(r, 1500));
   a = await api();
-  t(`${l} um reajuste digitado na Receita (3%) vence o crescimento por omissão (12%)`,
-    a.linhas['1.1'].proposta_origem === 'PERCENTUAL' && Math.abs(a.linhas['1.1'].proposta - a.linhas['1.1'].projecao * 1.03) < 1,
+  // 15%, e não um número abaixo: desde 2026-11-21 o piso (os 12%) trava a digitação.
+  t(`${l} um reajuste digitado na Receita (15%) vence o crescimento por omissão (12%)`,
+    a.linhas['1.1'].proposta_origem === 'PERCENTUAL' && Math.abs(a.linhas['1.1'].proposta - a.linhas['1.1'].projecao * 1.15) < 1,
     JSON.stringify([a.linhas['1.1'].proposta_origem, a.linhas['1.1'].proposta]));
   await page.evaluate(() => {
     const i = document.querySelector('.tabela-projecao tbody tr[data-conta="1.1"] input.celula-reajuste');
@@ -6582,6 +6589,58 @@ async function provasDiretriz2027(page, largura) {
   });
   t(`${l} a API recusa mudar o que a diretriz fixa`,
     /Fixado pela diretriz de 2027/.test(recusas.pessoas) && /Fixado pela diretriz de 2027/.test(recusas.vale), JSON.stringify(recusas));
+
+  // A linha 8.5 é CONSEQUÊNCIA do cartão Pessoas e benefícios (pedido do
+  // cliente, 2026-11-21): sem célula de digitar, a API recusa lançá-la, e mexer
+  // num benefício recalcula a linha na hora — antes o cartão mudava e a DRE
+  // ficava com o número de antes até recarregar a página.
+  const trava = await page.evaluate(async () => {
+    const id = Number(document.querySelector('#projecao-negocio').value);
+    const d = SecaoProjecao.dados;
+    let msg = 'aceita';
+    try {
+      await App.api('/api/projecao/valor', { negocio_id: id, filial_id: 0, conta: '8.5', entrada: 'VALOR', valor: -1, versao: d.versao });
+    } catch (e) { msg = e.message; }
+    const linha = document.querySelector('.tabela-projecao tr[data-conta="8.5"]');
+    return {
+      msg,
+      input: !!linha?.querySelector('input'),
+      calculada: !!linha?.querySelector('.proposta-calculada'),
+      travada: d.linhas.find((x) => x.codigo === '8.5')?.proposta_travada === true,
+    };
+  });
+  t(`${l} a linha Despesas com Pessoal não tem célula de digitar e mostra que é calculada`,
+    !trava.input && trava.calculada && trava.travada, JSON.stringify(trava));
+  t(`${l} e a API recusa lançar nela, apontando o cartão Pessoas e benefícios`,
+    /cartão Pessoas e benefícios/.test(trava.msg), trava.msg);
+
+  const lerPessoal = () => page.evaluate(() => {
+    const num = (t) => Number(String(t || '').replace(/[^0-9,-]/g, '').replace(',', '.'));
+    return {
+      card: num(document.querySelector('[data-pessoal="total"]')?.textContent),
+      dre: num(document.querySelector('.tabela-projecao tr[data-conta="8.5"] .proposta-calculada')?.textContent),
+      campo: document.querySelector('#beneficio-PCT_RESULTADO')?.value ?? null,
+    };
+  });
+  const p0 = await lerPessoal();
+  if (p0.campo !== null) {
+    const pct = p0.campo === '0' ? '50' : '0';
+    await page.evaluate((v) => {
+      const i = document.querySelector('#beneficio-PCT_RESULTADO'); i.focus(); i.value = v; i.blur();
+    }, pct);
+    await new Promise((r) => setTimeout(r, 1500));
+    const p1 = await lerPessoal();
+    t(`${l} mudar o % de meses com resultado recalcula o cartão E a linha 8.5 da DRE, que ficam iguais`,
+      p1.card !== p0.card && Math.abs(Math.abs(p1.dre) - p1.card) <= 1, JSON.stringify({ antes: p0, depois: p1 }));
+    await page.evaluate((v) => {
+      const i = document.querySelector('#beneficio-PCT_RESULTADO'); i.focus(); i.value = v; i.blur();
+    }, p0.campo);
+    await new Promise((r) => setTimeout(r, 1500));
+    const p2 = await lerPessoal();
+    t(`${l} e devolver o campo devolve a linha`, Math.abs(p2.dre - p0.dre) <= 1, JSON.stringify(p2));
+  } else {
+    t(`${l} o cartão tem o campo % dos meses com resultado`, false, 'campo ausente');
+  }
 
   // Sem trava (decisão do cliente, 2026-11-18: "o lançamento deve permitir todos
   // os sinais; se o resultado líquido for negativo, deve sinalizar"): o lançamento
@@ -6822,6 +6881,37 @@ async function provasTributosComoEComoFica(page, largura) {
  * antes do grupo da Projeção e o devolve antes da prova do cenário — sem isso, o
  * cenário sumiria do banco a cada rodada.
  */
+async function comPisoAberto(page, fn) {
+  // O piso do faturamento trava a DIGITAÇÃO abaixo de IPCA + PIB + crescimento
+  // desejado (2026-11-21). Devolver um lançamento que a prova tirou — a
+  // Pecuária chega com o cenário da planilha, abaixo do piso — exige baixar o
+  // piso só durante a devolução: IPCA e PIB 0 e crescimento −100%, e depois o
+  // que o negócio tinha digitado volta.
+  const guardado = await page.evaluate(async () => {
+    const id = Number(SecaoProjecao.negocioId);
+    const d = await App.api(`/api/projecao?negocio_id=${id}`);
+    const dig = (d.premissas_digitadas_por_ano || {})[d.ano_planejamento] || {};
+    for (const [chave, valor] of [['IPCA', 0], ['PIB', 0], ['CRESCIMENTO', -100]]) {
+      await App.api('/api/projecao/premissa', { negocio_id: id, chave, valor, ano: d.ano_planejamento });
+    }
+    await SecaoProjecao.carregar();
+    return { id, ano: d.ano_planejamento, dig };
+  });
+  await new Promise((r) => setTimeout(r, 1200));
+  try {
+    return await fn();
+  } finally {
+    await page.evaluate(async (g) => {
+      for (const chave of ['IPCA', 'PIB', 'CRESCIMENTO']) {
+        const v = g.dig[chave];
+        await App.api('/api/projecao/premissa', { negocio_id: g.id, chave, valor: v === undefined ? null : v, ano: g.ano });
+      }
+      await SecaoProjecao.carregar();
+    }, guardado);
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+}
+
 async function lancamentoDaProposta(page, sufixo, conta, texto) {
   await page.evaluate(() => App.mostrarSecao('projecao'));
   await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
@@ -6832,22 +6922,31 @@ async function lancamentoDaProposta(page, sufixo, conta, texto) {
     s.dispatchEvent(new Event('change'));
   }, sufixo);
   await esperar(page, `!!document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith(${JSON.stringify(sufixo)}) && !!document.querySelector('.tabela-projecao:not([data-velha]) [data-conta="${conta}"] .celula-proposta')`, 40000);
-  const antes = await page.evaluate(([c, v]) => {
-    const i = document.querySelector(`.tabela-projecao [data-conta="${c}"] .celula-proposta`);
-    const tinha = i.value;
-    if (v !== null && v !== tinha) { i.focus(); i.value = v; i.blur(); }
-    return tinha;
-  }, [conta, texto]);
-  if (texto !== null && texto !== antes) await new Promise((r) => setTimeout(r, 1800));
+  const antes = await page.evaluate((c) =>
+    document.querySelector(`.tabela-projecao [data-conta="${c}"] .celula-proposta`).value, conta);
+  if (texto === null || texto === antes) return antes;
+  const digitar = async () => {
+    await esperar(page, `!!document.querySelector('.tabela-projecao [data-conta="${conta}"] .celula-proposta')`, 20000);
+    await page.evaluate(([c, v]) => {
+      const i = document.querySelector(`.tabela-projecao [data-conta="${c}"] .celula-proposta`);
+      i.focus(); i.value = v; i.blur();
+    }, [conta, texto]);
+    await new Promise((r) => setTimeout(r, 1800));
+  };
+  // Devolver a Receita (1.1) pode estar abaixo do piso: só com o piso aberto.
+  if (conta === '1.1' && texto !== '') await comPisoAberto(page, digitar);
+  else await digitar();
   return antes;
 }
 
 /**
- * O piso do faturamento (pedido do cliente, 2026-11-19): a Receita de Vendas
- * proposta não pode ficar abaixo de IPCA + PIB + crescimento do faturamento.
- * Abaixo, o lançamento fica e a DRE aponta em vermelho, embaixo da tabela;
- * acima, nada a dizer. As Agropecuárias têm IPCA 4,5 e PIB 1,5 gravados: o piso
- * é 6% (ou mais, com o crescimento desejado).
+ * O piso do faturamento: a Receita de Vendas proposta não fica abaixo de IPCA +
+ * PIB + crescimento do faturamento. Desde 2026-11-21 ele TRAVA na digitação
+ * (pedido do cliente: "se digitar um valor menor, o sistema deve voltar os dados
+ * até totalizar o percentual estimado"): o lançamento abaixo é recusado, a linha
+ * volta ao piso e uma caixa amarela embaixo da DRE diz por quê. Acima, nada a
+ * dizer. As Agropecuárias têm IPCA 4,5 e PIB 1,5: o piso é 6% (ou mais, com o
+ * crescimento desejado).
  */
 async function provasPisoFaturamento(page, largura) {
   const l = `[${largura}] Piso do faturamento:`;
@@ -6866,17 +6965,51 @@ async function provasPisoFaturamento(page, largura) {
   t(`${l} as aberturas da DRE seguem com campo de lançamento`, editaveis > 10, String(editaveis));
 
   await reajuste('1');
-  const abaixo = await page.evaluate(() => ({
-    alerta: document.querySelector('#projecao-piso-box #projecao-piso-faturamento')?.textContent || '',
-    marcada: !!document.querySelector('.tabela-projecao [data-conta="1.1"] .celula-pior'),
-    depoisDaTabela: !!document.querySelector('.tabela-projecao ~ #projecao-piso-box'),
-  }));
-  t(`${l} reajuste de 1% (abaixo de IPCA + PIB): inconsistência em vermelho embaixo da DRE`,
-    abaixo.alerta.includes('abaixo do crescimento real') && abaixo.marcada && abaixo.depoisDaTabela, JSON.stringify(abaixo));
+  const abaixo = await page.evaluate(() => {
+    const d = SecaoProjecao.dados;
+    const r = d.linhas.find((x) => x.codigo === '1.1');
+    return {
+      alerta: document.querySelector('#projecao-piso-box #projecao-piso-faturamento')?.textContent.replace(/\s+/g, ' ') || '',
+      amarelo: !!document.querySelector('#projecao-piso-faturamento.alert-warning'),
+      depoisDaTabela: !!document.querySelector('.tabela-projecao ~ #projecao-piso-box'),
+      reajuste: document.querySelector('.tabela-projecao [data-conta="1.1"] .celula-reajuste')?.value ?? null,
+      origem: r.proposta_origem, cresc: r.proposta / r.projecao - 1, piso: Number(r.piso_percentual) / 100,
+    };
+  });
+  t(`${l} reajuste de 1% (abaixo de IPCA + PIB) é recusado: a linha volta ao piso, sem lançamento`,
+    abaixo.origem === 'PREMISSA' && abaixo.reajuste === '' && Math.abs(abaixo.cresc - abaixo.piso) < 1e-6 && abaixo.piso >= 0.06 - 1e-9,
+    JSON.stringify(abaixo));
+  t(`${l} e a caixa amarela embaixo da DRE explica a volta ao mínimo`,
+    abaixo.amarelo && abaixo.depoisDaTabela && /voltou ao piso/.test(abaixo.alerta), abaixo.alerta.slice(0, 160));
+  const noBanco = await page.evaluate(async () => {
+    const d = await App.api(`/api/projecao?negocio_id=${SecaoProjecao.negocioId}`);
+    return d.linhas.find((x) => x.codigo === '1.1').proposta_origem;
+  });
+  t(`${l} e nada fica gravado: recarregada, a linha é a da premissa`, noBanco === 'PREMISSA', noBanco);
 
   await reajuste('20');
-  const acima = await page.evaluate(() => !!document.querySelector('#projecao-piso-faturamento'));
-  t(`${l} reajuste de 20% (acima do piso): o negócio se desafia mais, sem aviso`, !acima);
+  const acima = await page.evaluate(() => ({
+    caixa: !!document.querySelector('#projecao-piso-faturamento'),
+    origem: SecaoProjecao.dados.linhas.find((x) => x.codigo === '1.1').proposta_origem,
+  }));
+  t(`${l} reajuste de 20% (acima do piso): grava, o negócio se desafia mais, sem aviso`,
+    !acima.caixa && acima.origem === 'PERCENTUAL', JSON.stringify(acima));
+
+  // O bloco das premissas mostra o faturamento: projeção, acréscimos e o mínimo.
+  const fat = await page.evaluate(() => {
+    const num = (t) => Number(String(t || '').replace(/[^0-9,-]/g, '').replace(',', '.'));
+    const r = SecaoProjecao.dados.linhas.find((x) => x.codigo === '1.1');
+    return {
+      piso: num(document.querySelector('.painel-premissas [data-faturamento="piso"]')?.textContent),
+      impacto: num(document.querySelector('.painel-premissas [data-faturamento="impacto"]')?.textContent),
+      esperadoPiso: r.projecao * (1 + Number(r.piso_percentual) / 100),
+      esperadoImpacto: r.proposta - r.projecao,
+      pessoal: !!document.querySelector('.painel-premissas .tabela-pessoal-diretriz'),
+    };
+  });
+  t(`${l} o bloco das premissas totaliza o faturamento (mínimo e impacto) ao lado das despesas com pessoal`,
+    Math.abs(fat.piso - fat.esperadoPiso) <= 1 && Math.abs(fat.impacto - fat.esperadoImpacto) <= 1 && fat.pessoal,
+    JSON.stringify(fat));
 
   // Pontos de milhar enquanto se digita (pedido do cliente, 2026-11-19), com o
   // teclado de verdade; Escape devolve o que estava, sem gravar nada.
@@ -6896,7 +7029,7 @@ async function provasPisoFaturamento(page, largura) {
   if (reajOriginal) await reajuste(reajOriginal);
   else if (original) await lancamentoDaProposta(page, 'AGROPECUARIAS', '1.1', original);
   else await reajuste('');
-  const fim = await page.evaluate(() => !!document.querySelector('#projecao-piso-faturamento'));
+  const fim = await page.evaluate(() => !!document.querySelector('#projecao-piso-faturamento.alert-danger'));
   t(`${l} de volta ao padrão das premissas, sem inconsistência`, !fim);
 }
 
@@ -7301,13 +7434,14 @@ async function provasDesafioEExpansores(page, largura) {
     campoVisivel: [...d.querySelectorAll('input')].some((i) => i.checkVisibility()),
   }])));
   let e = await estado();
-  t(`${l} quatro expansores no negócio: visão, desafio, premissas, pessoas`,
-    ['visao', 'desafio', 'premissas', 'pessoas'].every((k) => e[k]), Object.keys(e).join(','));
+  // Pessoas e benefícios moram no expansor das premissas desde 2026-11-21.
+  t(`${l} expansores no negócio: visão, desafio e premissas (com pessoas dentro, sem expansor próprio)`,
+    ['visao', 'desafio', 'premissas'].every((k) => e[k]) && !e.pessoas, Object.keys(e).join(','));
   t(`${l} por omissão só o desafio vem aberto`,
-    e.desafio?.aberto && !e.visao?.aberto && !e.premissas?.aberto && !e.pessoas?.aberto, JSON.stringify(e));
-  t(`${l} fechado, o título resume: premissas (IPCA, PIB, vale, abono) e pessoas (colaboradores, custo no ano)`,
-    /IPCA .* PIB .* vale R\$ .* abono R\$/.test(e.premissas?.resumo || '') && /colaboradores · R\$ [\d.]+ no ano/.test(e.pessoas?.resumo || ''),
-    `${e.premissas?.resumo} | ${e.pessoas?.resumo}`);
+    e.desafio?.aberto && !e.visao?.aberto && !e.premissas?.aberto, JSON.stringify(e));
+  t(`${l} fechado, o título resume premissas (IPCA, PIB, vale, abono) e pessoas (colaboradores, benefícios no ano)`,
+    /IPCA .* PIB .* vale R\$ .* abono R\$/.test(e.premissas?.resumo || '') && /colaboradores · benefícios R\$ [\d.]+ no ano/.test(e.premissas?.resumo || ''),
+    e.premissas?.resumo);
   t(`${l} fechado, os campos das premissas ficam escondidos`, e.premissas && !e.premissas.campoVisivel);
 
   await page.click('details[data-expansor="premissas"] > summary');
@@ -8020,36 +8154,38 @@ async function provasProjecaoProposta(page, largura) {
     `proposta=${v['1.1'].espelhada} reajuste=${v['1.1'].espelhadaReajuste}`);
 
   // ── Digitar na coluna de Reajuste é o mesmo lançamento ──────────────────
-  const projPessoal = v['8.5'].projecao;
-  v = await lancarReajuste('8.5', '11,43');
+  const projDespesa = v['8.8'].projecao;
+  v = await lancarReajuste('8.8', '11,43');
   t(`${l} digitar na coluna Reajuste grava como percentual`,
-    v['8.5'].origem === 'PERCENTUAL', String(v['8.5'].origem));
+    v['8.8'].origem === 'PERCENTUAL', String(v['8.8'].origem));
   t(`${l} e a Proposta vira projeção × (1 + reajuste), como na planilha`,
-    Math.abs(v['8.5'].proposta - projPessoal * 1.1143) <= 2,
-    `${v['8.5'].proposta} vs ${Math.round(projPessoal * 1.1143)}`);
+    Math.abs(v['8.8'].proposta - projDespesa * 1.1143) <= 2,
+    `${v['8.8'].proposta} vs ${Math.round(projDespesa * 1.1143)}`);
   // Despesa é negativa: reajuste POSITIVO deixa a linha MAIS negativa — a
   // despesa cresce. É o que a planilha do cliente faz (Pessoal, 11,43%:
-  // −8.917.976 → −9.937.167), e o inverso disso seria uma economia.
+  // −8.917.976 → −9.937.167), e o inverso disso seria uma economia. A prova usa
+  // Serviços em Geral (8.8): Pessoal (8.5) é calculada e não se digita desde
+  // 2026-11-21.
   t(`${l} reajuste positivo numa despesa deixa a linha mais negativa`,
-    projPessoal < 0 && v['8.5'].proposta < projPessoal,
-    `${projPessoal} → ${v['8.5'].proposta}`);
+    projDespesa < 0 && v['8.8'].proposta < projDespesa,
+    `${projDespesa} → ${v['8.8'].proposta}`);
   t(`${l} o sinal de porcento é dispensável na coluna de Reajuste`,
-    Math.abs(v['8.5'].cresc - 11.43) < 0.05, String(v['8.5'].cresc));
+    Math.abs(v['8.8'].cresc - 11.43) < 0.05, String(v['8.8'].cresc));
 
   // Lançar por VALOR inverte quem espelha quem.
-  v = await lancar('8.5', `${Math.round(projPessoal * 1.05)}`);
+  v = await lancar('8.8', `${Math.round(projDespesa * 1.05)}`);
   t(`${l} lançar o valor inverte: agora quem espelha é o Reajuste`,
-    v['8.5'].origem === 'VALOR'
-    && v['8.5'].espelhada === false && v['8.5'].espelhadaReajuste === true,
-    `origem=${v['8.5'].origem} proposta=${v['8.5'].espelhada} reajuste=${v['8.5'].espelhadaReajuste}`);
+    v['8.8'].origem === 'VALOR'
+    && v['8.8'].espelhada === false && v['8.8'].espelhadaReajuste === true,
+    `origem=${v['8.8'].origem} proposta=${v['8.8'].espelhada} reajuste=${v['8.8'].espelhadaReajuste}`);
   t(`${l} e a coluna Reajuste mostra a conta de volta (5%)`,
-    Math.abs(v['8.5'].cresc - 5) < 0.05, String(v['8.5'].cresc));
+    Math.abs(v['8.8'].cresc - 5) < 0.05, String(v['8.8'].cresc));
 
   // Apagar o reajuste devolve a linha à projeção, como apagar a proposta.
-  v = await lancarReajuste('8.5', '');
+  v = await lancarReajuste('8.8', '');
   t(`${l} apagar o reajuste devolve a linha ao padrão`,
-    v['8.5'].origem === inicio['8.5'].origem && v['8.5'].reajuste === '' && Math.abs(v['8.5'].proposta - inicio['8.5'].proposta) <= 2,
-    `${v['8.5'].origem} / "${v['8.5'].reajuste}"`);
+    v['8.8'].origem === inicio['8.8'].origem && v['8.8'].reajuste === '' && Math.abs(v['8.8'].proposta - inicio['8.8'].proposta) <= 2,
+    `${v['8.8'].origem} / "${v['8.8'].reajuste}"`);
 
   // A cadeia inteira: ROL = receita + deduções, e o líquido muda junto.
   t(`${l} a ROL proposta acompanha (receita + deduções)`,
@@ -8089,7 +8225,7 @@ async function provasProjecaoProposta(page, largura) {
   const conflito = await page.evaluate(async (id) => {
     try {
       await App.api('/api/projecao/valor',
-        { negocio_id: Number(id), conta: '8.5', entrada: 'VALOR', valor: -1, versao: 1 });
+        { negocio_id: Number(id), conta: '8.8', entrada: 'VALOR', valor: -1, versao: 1 });
       return 'ACEITOU';
     } catch (e) { return e.message; }
   }, await page.evaluate(() => document.querySelector('#projecao-negocio').value));
@@ -8110,7 +8246,7 @@ async function provasProjecaoProposta(page, largura) {
   t(`${l} "Despesas Totais" não recebe proposta inventada`,
     v['17'].proposta === null && !v['17'].editavel, JSON.stringify(v['17']));
   if (jaLancado) {
-    v = await lancar('1.1', jaLancado);
+    v = await comPisoAberto(page, () => lancar('1.1', jaLancado));
     t(`${l} e o lançamento que já existia volta para a Receita de Vendas`,
       v['1.1'].origem === 'VALOR' && v['1.1'].digitado === jaLancado, `${v['1.1'].digitado} vs ${jaLancado}`);
   }
