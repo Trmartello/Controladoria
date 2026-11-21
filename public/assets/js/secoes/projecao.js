@@ -1694,6 +1694,17 @@ const SecaoProjecao = {
    * está no formato antigo (com o PIS/COFINS), e o lançado é ele sem a CBS — a
    * mesma conversão do cartão "Tributos na DRE: como é × como fica".
    */
+  /** O cenário da planilha abaixo do mínimo do ano: a DRE usa o mínimo, e o cartão diz. */
+  avisoCenarioAbaixoDoPiso(d) {
+    const l = (d.linhas || []).find((x) => x.codigo === '1.1');
+    if (!l || !l.piso_aplicado) return '';
+    return `<div class="alert alert-warning py-2 px-3 small mb-2" id="cenario-abaixo-do-piso">
+        O cenário da planilha (Receita de Vendas R$ ${this.moeda(d.cenario.receita_vendas)}) ficou <strong>abaixo do mínimo de
+        ${d.ano_planejamento}</strong> — IPCA + PIB + crescimento desejado, ${this.pct((Number(l.piso_percentual) || 0) / 100, 2)}
+        sobre a projeção. A DRE usa o mínimo, <strong>R$ ${this.moeda(l.proposta)}</strong>; o cenário continua guardado.
+      </div>`;
+  },
+
   cartaoCenario(d) {
     const c = d.cenario;
     if (!c || d.corporativo || d.filial) return '';
@@ -1705,6 +1716,7 @@ const SecaoProjecao = {
         <td class="text-end">${m(i.otimista)}</td></tr>`).join('');
     return this.expansor('cenario', 'painel-cenario', `Cenário de faturamento ${d.ano_planejamento} — ${nomes[c.cenario] || c.cenario}`,
       `Receita de Vendas ${this.mi(c.receita_vendas)} (sem a CBS)`, `
+      ${this.avisoCenarioAbaixoDoPiso(d)}
       <div class="small mb-2">A Receita de Vendas da proposta veio do cenário <strong>${nomes[c.cenario] || c.cenario}</strong> da
         planilha do negócio. A planilha está no <strong>formato antigo</strong>, com o PIS/COFINS dentro do faturamento; o que se
         lança é o formato novo, sem a CBS — como no cartão "Tributos na DRE: como é × como fica".</div>
@@ -2366,37 +2378,35 @@ const SecaoProjecao = {
 
   /**
    * O piso do faturamento: a Receita de Vendas proposta não fica abaixo de IPCA
-   * + PIB + crescimento desejado. Duas situações, duas caixas:
+   * + PIB + crescimento desejado — no negócio e em cada filial (pedidos do
+   * cliente de 2026-11-21: "o sistema deve voltar os dados até totalizar o
+   * percentual estimado"; "já faça para as filiais também"). Dois casos, a
+   * mesma caixa amarela, embaixo da DRE:
    *
-   *  - **Digitado abaixo** (trava desde 2026-11-21, pedido do cliente: "se digitar
-   *    um valor menor, o sistema deve voltar os dados até totalizar o percentual
-   *    estimado"): o servidor recusa e a linha volta ao piso (`gravarValor`,
-   *    `aviso_piso`). Caixa amarela, que explica a volta até a próxima gravação.
-   *  - **Já estava abaixo** (uma carga, ou a premissa que subiu depois do
-   *    lançamento): o servidor não mexe no número de ninguém; a caixa vermelha
-   *    aponta a inconsistência (`aplicar`, `abaixo_piso`), como desde 2026-11-19.
+   *  - **acabou de digitar abaixo**: o servidor recusou e apagou o valor
+   *    (`gravarValor`, `aviso_piso`); a caixa fica até a próxima gravação;
+   *  - **já estava abaixo** (uma carga, como o cenário da Pecuária, ou a premissa
+   *    que subiu depois): o lançamento continua guardado mas não vale, e a linha
+   *    está no mínimo (`aplicar`, `piso_aplicado`, `lancado_abaixo`).
    */
   alertaPisoFaturamento(d) {
     if (!d || d.corporativo) return '';
-    const l = (this.visao(d).linhas || []).find((x) => x.codigo === '1.1');
+    const v = this.visao(d);
+    const l = (v.linhas || []).find((x) => x.codigo === '1.1');
     if (!l || !l.projecao) return '';
     const piso = Number(l.piso_percentual) || 0;
-    const minimo = `R$ ${this.moeda(l.projecao * (1 + piso / 100))}`;
-    if (l.abaixo_piso) {
-      const cresc = l.proposta / l.projecao - 1;
-      return `<div class="alert alert-danger py-2 px-3 small mb-2" id="projecao-piso-faturamento">
-        <strong>Inconsistência no faturamento.</strong> A Receita de Vendas proposta para ${d.ano_planejamento}
-        (R$ ${this.moeda(l.proposta)}, ${this.pct(cresc, 2)} sobre a projeção) está <strong>abaixo do crescimento real
-        total do negócio</strong>: IPCA + PIB + crescimento do faturamento somam ${this.pct(piso / 100, 2)}, ou
-        ${minimo}. O faturamento pode ficar igual ou acima disso, nunca abaixo: um novo lançamento menor que isso
-        é recusado. Reveja o lançamento ou os parâmetros de crescimento.
-      </div>`;
+    const minimo = `R$ ${this.moeda(l.proposta)}`;
+    let texto = this.avisoPiso;
+    if (!texto && l.piso_aplicado) {
+      // O valor recusado está no formato do motor (com a CBS); a tela mostra sem ela.
+      const t = (v.filialId ? (d.filial.tributos_dre || {}) : (d.tributos_dre || {})).taxa || 0;
+      const lancado = Number(l.lancado_abaixo) * (1 - t);
+      texto = `O lançamento de R$ ${this.moeda(lancado)} na Receita de Vendas${d.filial ? ' desta filial' : ''} ficou abaixo de IPCA + PIB + crescimento desejado e não vale: a linha está no mínimo. O valor continua guardado e volta a valer se as premissas baixarem; para outro valor, lance de novo, igual ou acima do mínimo.`;
     }
-    if (!this.avisoPiso) return '';
+    if (!texto) return '';
     return `<div class="alert alert-warning py-2 px-3 small mb-2" id="projecao-piso-faturamento">
-        <strong>Faturamento no mínimo.</strong> ${Modal.esc(this.avisoPiso)}
+        <strong>Faturamento no mínimo.</strong> ${Modal.esc(texto)}
         Mínimo de ${d.ano_planejamento}: <strong>${minimo}</strong> (${this.pct(piso / 100, 2)} sobre a projeção).
-        Acima disso, o negócio pode lançar o que quiser.
       </div>`;
   },
 

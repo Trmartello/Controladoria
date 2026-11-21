@@ -924,15 +924,15 @@ class ProjecaoController
         // premissa) e a resposta diz por quê. A conta é a do motor (`aplicar`,
         // `abaixo_piso`, com a CBS e o formato de cada entrada), por isso se
         // grava, se mede e, abaixo, se apaga: refazê-la aqui seria uma segunda
-        // conta para o mesmo número. Lançamento que já estava abaixo (a carga
-        // da Pecuária, ou a premissa que subiu depois) NÃO é mexido: continua
-        // apontado em vermelho até alguém decidir — mover R$ 148 mi de uma meta
-        // sem ninguém digitar nada não é o que "não permitir lançar" pede.
+        // conta para o mesmo número. O lançamento que JÁ estava abaixo (a carga
+        // da Pecuária, ou a premissa que subiu depois) não é apagado, mas também
+        // não vale: `aplicar` põe a linha no piso (decisão do cliente,
+        // 2026-11-21, "já faça para as filiais também").
         $tela = $this->montar($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
         if ($codigo === Projecao::LINHA_RECEITA && $bruto !== null && $bruto !== '') {
             $linhasEscopo = $filialId ? ($tela['filial']['linhas'] ?? []) : $tela['linhas'];
             $rec = array_column($linhasEscopo, null, 'codigo')[Projecao::LINHA_RECEITA] ?? null;
-            if ($rec && !empty($rec['abaixo_piso'])) {
+            if ($rec && !empty($rec['piso_aplicado'])) {
                 Database::executar(
                     'DELETE FROM projecao_valor WHERE projecao_id = ? AND filial_id = ? AND conta_id = ?',
                     [(int)$proj['id'], $filialId, (int)$conta['id']]

@@ -227,5 +227,12 @@ $f = $pdo->query('SELECT * FROM dre_fechamento WHERE ano = 2026')->fetch(PDO::FE
 prova('o corte do fechamento fica no banco, não no código',
     $f && (int)$f['mes_fechado_ate'] === 10, json_encode($f));
 
+// Reaplicar as cargas de filial (prova 9) volta o rateio corporativo das filiais
+// à divisão aproximada da conversão; o migrate o deixa no do nível 3 (carga
+// `dre_nivel3_*`, 2026-11-21). Devolve o banco a esse estado, para as suítes que
+// vêm depois verem o que a produção tem.
+require_once __DIR__ . '/../app/Services/CargaNivel3.php';
+App\Services\CargaNivel3::corrigirRateioDasFiliais($pdo, 2026);
+
 echo "\n" . count($bad) . " falha(s), {$ok} verde(s).\n";
 exit($bad ? 1 : 0);

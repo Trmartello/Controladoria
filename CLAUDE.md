@@ -3370,6 +3370,17 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   lançáveis como sempre. Campos de lançamento "sumidos" na DRE do negócio quase
   sempre são o modo **Planejar por filial** (o negócio vira a soma das filiais e
   se lança em cada filial) — não é regra nova.
+  **E vale para o que já estava lançado, em todos os negócios e filiais**
+  (decisão do cliente, 2026-11-21: "já faça para as filiais também; todos os
+  negócios e todas as filiais"). Em `aplicar`, lançamento da 1.1 abaixo do piso
+  NÃO VALE: a linha fica no piso (origem PREMISSA), com `piso_aplicado`,
+  `lancado_abaixo` (o valor recusado, formato do motor) e `lancado_recusado` (o
+  lançamento como foi guardado). Ele não é apagado — volta a valer se a premissa
+  baixar —, a célula aparece vazia e a caixa amarela embaixo da DRE explica; o
+  cartão do cenário diz quando a planilha ficou abaixo (Pecuária: R$ 731,8 mi
+  contra mínimo de R$ 880 mi). A caixa vermelha de "inconsistência" saiu.
+  Bateria: `lancamentoDaProposta` e `provasProjecaoProposta` leem o
+  `lancado_recusado` para guardar e devolver o que a célula vazia esconde.
   **O piso TRAVA na digitação** (pedido do cliente, 2026-11-21: "se ele digitar
   um valor menor, o sistema deve voltar os dados até totalizar o percentual
   estimado"). `gravarValor` grava a 1.1, monta a tela e, se a linha do escopo
@@ -3403,6 +3414,10 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     negócio; o nível 3 traz a divisão real. Onde 14.3 + 16.1 fecha com a carga
     (R$ 100), o realizado das duas e dos blocos 14, 15 e 16 passa ao do nível 3
     (151 filiais). O projetado de nov–dez continua aproximado. Idempotente.
+    **Carga nova de filiais desfaz a correção** (ela reconverte o rateio por
+    proporção): carregue o nível 3 do mesmo corte junto, ou rode
+    `CargaNivel3::corrigirRateioDasFiliais`. A prova `carga_dre.php` reaplica as
+    cargas de filial e, por isso, termina rodando a correção.
   - Extração: o Qlik devolve resultado grande em ARQUIVO (não na conversa).
     Empacotar por `Concat(Aggr(...), ';')` com uma linha por negócio/filial e
     gerar o `.php` por script (`código=valor;…`) — nada redigitado. 23,7 mil
