@@ -3385,6 +3385,42 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `aplicar` por voltar ao piso — e avisar a Pecuária antes. Na bateria,
   `comPisoAberto` baixa o piso (IPCA 0, PIB 0, crescimento −100%) só para
   devolver o lançamento que as provas tiram.
+  **Nível 3 da DRE — a conta reduzida** (pedido do cliente, 2026-11-21: "na DRE
+  gerencial temos 3 níveis de abertura; o terceiro totaliza o segundo… ajuste
+  para que fique exatamente igual como está lá"). Decisões do cliente: o
+  lançamento continua no nível 2; o nível 3 é **só leitura e só realizado**
+  (o Qlik não tem orçado por conta reduzida — projetado, projeção e proposta
+  ficam em branco); vale no negócio, na filial e no Corporativo (soma).
+  - Carga: `database/dre_nivel3_2026_10.php` (`CargaNivel3`, chave
+    `dre_nivel3_2026_10`), do app **DRE - Gerencial Nova** com `Nível=3`:
+    catálogo `dre_reduzida` (422 contas: `Cód Indicador` como `8.5.12`,
+    reduzida, nome, linha do nível 2 e a ordem do `#` do Qlik) e
+    `dre_reduzida_valor` (realizado jan–corte por negócio, `filial_id = 0`, e por
+    filial). A carga confere soma das filiais = negócio (R$ 50) e recusa filial
+    fora do cadastro.
+  - **Corrige o rateio corporativo das filiais**: a conversão de 18/11
+    (`migrarFiliaisParaEstruturaNova`) dividiu 14.3 × 16.1 por proporção do
+    negócio; o nível 3 traz a divisão real. Onde 14.3 + 16.1 fecha com a carga
+    (R$ 100), o realizado das duas e dos blocos 14, 15 e 16 passa ao do nível 3
+    (151 filiais). O projetado de nov–dez continua aproximado. Idempotente.
+  - Extração: o Qlik devolve resultado grande em ARQUIVO (não na conversa).
+    Empacotar por `Concat(Aggr(...), ';')` com uma linha por negócio/filial e
+    gerar o `.php` por script (`código=valor;…`) — nada redigitado. 23,7 mil
+    valores por filial cabem em três chamadas.
+  - Tela: `Projecao::nivel3` (por linha, na ordem do Qlik) e
+    `nivel3FormatoNovo` (PIS/COFINS das vendas sai da 2.3 e vai para a linha da
+    CBS; a 1.1 ganha a linha que tira o PIS/COFINS), para o nível 3 somar o nível
+    2 que a tela mostra. O ▸ da linha abre as contas dela (`reduzidasAbertas`); o
+    botão `#projecao-nivel3` abre todas (`localStorage projecao.nivel3`).
+    Diferença acima de R$ 100 entre a linha e as reduzidas vai numa linha
+    própria, dita ("o Qlik foi recarregado depois da carga da DRE").
+  - Oportunidades: item e lançamento mostram a conta reduzida e o nome do Qlik
+    (`Oportunidades::reduzidaDaConta`, "3141 PROVISAO P/ DEVEDORES DUVIDOSOS"),
+    com a conta contábil de apoio; a "Linha da DRE" usa os nomes do Qlik (bloco
+    de nível 1 acima, sem as de percentual › linha — nunca o código interno
+    11.1, que não existe no Qlik) e é um link que leva à linha na DRE e abre a
+    reduzida. Juros recebidos: "3153 JUROS ATIVOS SOCIO".
+  - Provas: `testes/nivel3.php` e `provasNivel3` (Leite: 3037 = −1.398.030).
   **Premissas, pessoas e benefícios num bloco só** (pedido do cliente,
   2026-11-21: "esses dois quadrantes se referem à mesma coisa"). O cartão
   separado "Pessoas e benefícios" saiu do negócio (no Corporativo continua, só

@@ -458,6 +458,78 @@ class Projecao
     public const LINHA_PESSOAL = '8.5';
 
     /**
+     * O NÍVEL 3 da DRE — a conta reduzida, como a aba "#2 Planejado X Realizado"
+     * do Qlik (pedido do cliente, 2026-11-21): por linha do nível 2, as contas
+     * reduzidas com o realizado acumulado até o corte, na ordem do Qlik. Só
+     * leitura e só realizado: a proposta é lançada no nível 2, e o Qlik não tem
+     * orçado por conta reduzida — projetado, projeção e proposta ficam em branco.
+     *
+     * Vários negócios (o Corporativo) somam; `$filialId` 0 é o negócio inteiro.
+     * No formato da carga (PIS/COFINS dentro da 2.3): `nivel3FormatoNovo` leva à
+     * tela.
+     *
+     * @param int[] $negocioIds
+     * @return array<string, list<array{codigo:string, reduzida:string, nome:string, realizado:float}>>
+     */
+    public static function nivel3(array $negocioIds, int $ano, int $filialId = 0): array
+    {
+        $negocioIds = array_values(array_unique(array_map('intval', $negocioIds)));
+        if (!$negocioIds) {
+            return [];
+        }
+        $marcas = implode(',', array_fill(0, count($negocioIds), '?'));
+        $saida = [];
+        foreach (Database::todos(
+            "SELECT r.linha, r.codigo, r.reduzida, r.nome, SUM(v.realizado) AS realizado
+               FROM dre_reduzida_valor v JOIN dre_reduzida r ON r.codigo = v.codigo
+              WHERE v.ano = ? AND v.filial_id = ? AND v.negocio_id IN ({$marcas})
+              GROUP BY r.linha, r.codigo, r.reduzida, r.nome, r.ordem
+             HAVING ABS(SUM(v.realizado)) >= 0.5
+              ORDER BY r.ordem",
+            array_merge([$ano, $filialId], $negocioIds)
+        ) as $r) {
+            $saida[$r['linha']][] = ['codigo' => $r['codigo'], 'reduzida' => $r['reduzida'],
+                'nome' => $r['nome'], 'realizado' => (float)$r['realizado']];
+        }
+        return $saida;
+    }
+
+    /**
+     * O nível 3 no FORMATO DE 2027, o mesmo de `Reforma::formatoNovo`: o
+     * PIS/COFINS sobre as vendas sai da Receita de Vendas e do Imposto s/ Vendas
+     * e vira a linha informativa da CBS. As contas reduzidas de PIS e COFINS da
+     * 2.3 passam para baixo da CBS (no sinal dela, positivo), e a Receita de
+     * Vendas ganha a linha que tira o PIS/COFINS — para que, nas três, o nível 3
+     * continue somando o nível 2 que a tela mostra.
+     *
+     * @param array $tributosDre o `comoEComoFica` da mesma visão
+     */
+    public static function nivel3FormatoNovo(array $nivel3, array $tributosDre): array
+    {
+        $col = $tributosDre['colunas'] ?? [];
+        if (!$col || !$nivel3) {
+            return $nivel3;
+        }
+        $pc = (float)$col['realizado']['como_e']['pis_cofins'];
+        $ficam = [];
+        foreach ($nivel3['2.3'] ?? [] as $r) {
+            if (preg_match('/^(PIS|COFINS)\b/u', $r['nome'])) {
+                $nivel3['CBS'][] = ['realizado' => -$r['realizado']] + $r;
+            } else {
+                $ficam[] = $r;
+            }
+        }
+        if (isset($nivel3['2.3'])) {
+            $nivel3['2.3'] = $ficam;
+        }
+        if (isset($nivel3['1.1']) && abs($pc) >= 0.5) {
+            $nivel3['1.1'][] = ['codigo' => 'CBS', 'reduzida' => '', 'realizado' => -$pc,
+                'nome' => '(−) PIS/COFINS das vendas, que em 2027 é a CBS (linha informativa acima)'];
+        }
+        return $nivel3;
+    }
+
+    /**
      * A linha Despesas com Pessoal (8.5) é calculada, e não lançada, quando o
      * ano tem premissa de pessoas — da diretriz ou digitada (pedido do cliente,
      * 2026-11-21: "se eu já atribuir os benefícios na parte superior, o valor

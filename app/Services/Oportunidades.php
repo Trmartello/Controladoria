@@ -251,8 +251,13 @@ class Oportunidades
                         $ajuste[$cat[2]][$m] = ($ajuste[$cat[2]][$m] ?? 0.0) + $v;
                     }
                 }
+                $red = self::reduzidaDaConta((string)$conta);
                 $linhas[] = [
                     'tipo' => 'ITEM', 'codigo' => (string)$conta, 'nome' => $cat[1],
+                    // A conta reduzida e o nome como o Qlik mostram (pedido do
+                    // cliente, 2026-11-21): é por ela que o gestor acha o número
+                    // na DRE gerencial; a conta contábil fica de apoio.
+                    'reduzida' => $red['reduzida'] ?? null, 'reduzida_nome' => $red['nome'] ?? null,
                     'grupo' => self::GRUPOS[$cat[0]] ?? $cat[0], 'linha_dre' => $cat[2], 'mediana' => null,
                     'meses' => $comMes ? array_values(array_map(
                         static fn ($m, $v) => ['mes' => $m, 'valor' => -$v],
@@ -330,13 +335,39 @@ class Oportunidades
             FROM dre_lancamento WHERE {$onde}", $p);
         $itens = array_map(static fn ($r) => [
             'data' => $r['data'], 'mes' => (int)$r['mes'], 'cod_filial' => $r['cod_filial'], 'filial' => $r['filial'],
-            'conta' => $r['conta'], 'conta_nome' => trim($r['conta_nome']), 'historico' => trim($r['historico']),
+            'conta' => $r['conta'], 'conta_nome' => trim(preg_replace('/\s+/u', ' ', $r['conta_nome'])),
+            'reduzida' => $r['reduzida'], 'historico' => trim($r['historico']),
             'complemento' => trim($r['complemento']), 'valor' => -(float)$r['valor'],
         ], Database::todos(
             "SELECT * FROM dre_lancamento WHERE {$onde} ORDER BY ABS(valor) DESC, data LIMIT 40", $p
         ));
         return ['itens' => $itens, 'quantos' => (int)$tot['n'], 'soma' => -(float)$tot['s'], 'minimo' => self::LANCAMENTO_MINIMO,
             'oportunidade' => (float)$tot['op'], 'risco' => (float)$tot['ri'], 'saldo' => (float)$tot['op'] + (float)$tot['ri']];
+    }
+
+    /**
+     * A conta reduzida de uma conta contábil, e o nome com que o Qlik a lista na
+     * DRE gerencial: a reduzida sai dos lançamentos (`dre_lancamento`, que trazem
+     * as duas), o nome do catálogo do nível 3 (`dre_reduzida`) — ou, sem ele, o
+     * do lançamento. Null quando a conta não tem lançamento carregado.
+     *
+     * @return array{reduzida:string, nome:string}|null
+     */
+    public static function reduzidaDaConta(string $conta): ?array
+    {
+        static $cache = [];
+        if (array_key_exists($conta, $cache)) {
+            return $cache[$conta];
+        }
+        $r = Database::um('SELECT reduzida, conta_nome FROM dre_lancamento WHERE conta = ? AND reduzida <> \'\' LIMIT 1', [$conta]);
+        if (!$r) {
+            return $cache[$conta] = null;
+        }
+        $cat = Database::um('SELECT nome FROM dre_reduzida WHERE reduzida = ? LIMIT 1', [$r['reduzida']]);
+        return $cache[$conta] = [
+            'reduzida' => (string)$r['reduzida'],
+            'nome' => $cat ? (string)$cat['nome'] : trim(preg_replace('/\s+/u', ' ', (string)$r['conta_nome'])),
+        ];
     }
 
     /** "000902500 0350688-ALTAIR LORENZETT" → ['0350688', 'ALTAIR LORENZETT']; o resto, inteiro. */
@@ -377,13 +408,15 @@ class Oportunidades
             $v = -(float)$r['valor'];
             [$cod, $nome] = self::cliente($r['complemento']);
             $quem = self::JUROS_CONTAS[$r['reduzida']] ?? $r['reduzida'];
+            // A conta como o Qlik a lista: "3153 JUROS ATIVOS SOCIO".
+            $conta = $r['reduzida'] . ' ' . trim(preg_replace('/\s+/u', ' ', (string)$r['conta_nome']));
             if ($v >= self::JUROS_RISCO) {
                 $acima[] = ['data' => $r['data'], 'mes' => (int)$r['mes'], 'cod_filial' => $r['cod_filial'], 'filial' => $r['filial'],
-                    'tipo' => $quem, 'cliente_cod' => $cod, 'cliente' => $nome, 'historico' => trim($r['historico']), 'valor' => $v];
+                    'tipo' => $quem, 'conta' => $conta, 'cliente_cod' => $cod, 'cliente' => $nome, 'historico' => trim($r['historico']), 'valor' => $v];
             }
             $k = $cod !== '' ? $cod : $nome;
             $c = &$clientes[$k];
-            $c ??= ['cliente_cod' => $cod, 'cliente' => $nome, 'tipo' => $quem, 'valor' => 0.0, 'lancamentos' => 0, 'filiais' => []];
+            $c ??= ['cliente_cod' => $cod, 'cliente' => $nome, 'tipo' => $quem, 'conta' => $conta, 'valor' => 0.0, 'lancamentos' => 0, 'filiais' => []];
             $c['valor'] += $v;
             $c['lancamentos']++;
             $c['filiais'][$r['cod_filial']] = $r['filial'];

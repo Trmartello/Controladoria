@@ -233,7 +233,7 @@ const SecaoProjecao = {
         acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
         ${d.ano}, convertido para comparar. A Receita Líquida e o que vem abaixo não mudam. O que se lança na Receita de
         Vendas e no Imposto s/ Vendas é no formato novo (sem a CBS); a CBS da proposta acompanha a receita.</div>
-      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}">
+      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
@@ -829,7 +829,7 @@ const SecaoProjecao = {
         acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
         ${d.ano}, convertido para comparar. A Receita Líquida e o que vem abaixo não mudam. O que se lança na Receita de
         Vendas e no Imposto s/ Vendas é no formato novo (sem a CBS); a CBS da proposta acompanha a receita.</div>
-      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}">
+      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
@@ -1283,9 +1283,11 @@ const SecaoProjecao = {
     const linhas = q.linhas.map((l) => {
       const item = l.tipo === 'ITEM';
       return `<tr ${item ? `data-item="${Modal.esc(l.codigo)}"` : `data-pico="${Modal.esc(l.codigo)}"`}>
-        <td>${Modal.esc(l.nome)} <span class="text-muted small">${Modal.esc(l.codigo)}</span></td>
+        <td>${item && l.reduzida
+    ? `${this.contaQlik(`${l.reduzida} ${l.reduzida_nome}`)}<div class="text-muted small">${Modal.esc(l.nome)} · conta contábil ${Modal.esc(l.codigo)}</div>`
+    : Modal.esc(l.nome)}</td>
         <td class="small">${Modal.esc(l.grupo || '')}${item ? '' : ' <span class="text-muted">· mês fora do padrão</span>'}</td>
-        <td class="text-end small">${Modal.esc(l.linha_dre || '')}</td>
+        <td class="text-end small">${this.linkLinhaDre(d, l.linha_dre, item ? l.reduzida : null)}</td>
         <td class="text-end">${l.mediana === null || l.mediana === undefined ? '<span class="text-muted">—</span>' : m(l.mediana)}</td>
         <td class="small">${l.meses.length ? l.meses.map((x) => `${this.nomeMes(x.mes)}: ${m(x.valor)}`).join(' · ') : '<span class="text-muted">sem o mês</span>'}</td>
         <td class="text-end">${l.oportunidade ? `<span class="text-success">+${m(l.oportunidade)}</span>` : ''}</td>
@@ -1329,6 +1331,59 @@ const SecaoProjecao = {
    * lançamentos que formam o valor (pedido do cliente, 2026-11-18: "um expansor
    * onde eu identifique o lançamento e a filial"). Fechada por padrão.
    */
+  /**
+   * Uma conta como o Qlik a lista na DRE gerencial (pedido do cliente,
+   * 2026-11-21): a reduzida em destaque e o nome — "3153 JUROS ATIVOS SOCIO".
+   */
+  contaQlik(texto) {
+    const t = String(texto || '');
+    const m = t.match(/^(\d{3,5})\s+(.*)$/);
+    return m ? `<span class="reduzida-cod">${Modal.esc(m[1])}</span> ${Modal.esc(m[2])}` : Modal.esc(t);
+  },
+
+  /**
+   * A linha da DRE de um item ou evento, com os NOMES do Qlik — o bloco e a linha
+   * ("9 - RESULTADO FINANCEIRO › Receitas Financeiras"), e não o código interno
+   * do sistema (11.1), que o gestor não acha na DRE gerencial. É um link: leva à
+   * linha na DRE abaixo e, com a conta reduzida, abre o nível 3 dela.
+   */
+  linkLinhaDre(d, codigo, reduzida) {
+    if (!codigo) return '';
+    const linhas = this.visao(d).linhas || [];
+    const i = linhas.findIndex((x) => x.codigo === codigo);
+    if (i < 0) return Modal.esc(codigo);
+    const linha = linhas[i];
+    // O bloco é a linha de nível 1 logo acima, sem as de percentual: o código
+    // interno não serve (as 8.x moram em "6 - DESPESAS OPERACIONAIS", código 7;
+    // o 8 é o Desp./ROL).
+    const bloco = linha.nivel === 1 ? null
+      : linhas.slice(0, i).reverse().find((x) => x.nivel === 1 && !x.percentual && !x.informativa);
+    return `<a href="#" class="link-linha-dre" data-ir-conta="${Modal.esc(codigo)}"${reduzida ? ` data-ir-reduzida="${Modal.esc(reduzida)}"` : ''}
+        title="Ver na DRE da proposta, abaixo">${bloco && bloco !== linha ? `<span class="text-muted">${Modal.esc(bloco.nome)} ›</span> ` : ''}${Modal.esc(linha.nome)}</a>`;
+  },
+
+  /** Leva à linha da DRE (e à conta reduzida, abrindo o nível 3 dela) e a destaca. */
+  irParaLinhaDre(codigo, reduzida) {
+    const tab = document.querySelector('#secao-projecao .tabela-projecao');
+    if (!tab) return;
+    if (tab.classList.contains('recolhida')) this.alternarNivel();
+    let alvo = tab.querySelector(`tr[data-conta="${CSS.escape(codigo)}"]`);
+    if (reduzida) {
+      const r = tab.querySelector(`tr.linha-reduzida[data-pai="${CSS.escape(codigo)}"][data-reduzida="${CSS.escape(reduzida)}"]`);
+      if (r) {
+        if (!r.classList.contains('aberta') && !tab.classList.contains('nivel3')) {
+          this.alternarReduzidas(codigo, tab.querySelector(`[data-abre-reduzidas="${CSS.escape(codigo)}"]`));
+        }
+        alvo = r;
+      }
+    }
+    if (!alvo) return;
+    alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alvo.classList.remove('linha-destacada');
+    void alvo.offsetWidth;
+    alvo.classList.add('linha-destacada');
+  },
+
   linhaDeLancamentos(l, item, colunas) {
     const x = l.lancamentos;
     if (!x) return '';
@@ -1343,7 +1398,7 @@ const SecaoProjecao = {
     const linhas = x.itens.map((i) => `<tr>
         <td class="text-nowrap">${data(i.data)}</td>
         <td>${Modal.esc(i.cod_filial)} — ${Modal.esc(i.filial)}</td>
-        <td>${Modal.esc(i.conta_nome)} <span class="text-muted">${Modal.esc(i.conta)}</span></td>
+        <td title="${Modal.esc(`Conta contábil ${i.conta}`)}">${this.contaQlik(i.reduzida ? `${i.reduzida} ${i.conta_nome}` : i.conta_nome)}</td>
         <td>${Modal.esc(i.historico)}</td>
         <td>${Modal.esc(i.complemento)}</td>
         <td class="text-end text-nowrap">${m(i.valor)}</td>
@@ -1390,10 +1445,10 @@ const SecaoProjecao = {
     const acima = j.acima.map((a) => `<tr data-juros-lancamento="${Modal.esc(a.cliente_cod || a.cliente)}">
         <td class="text-nowrap">${data(a.data)}</td><td>${Modal.esc(a.cod_filial)} — ${Modal.esc(a.filial)}</td>
         <td>${a.cliente_cod ? `<span class="text-muted">${Modal.esc(a.cliente_cod)}</span> ` : ''}${Modal.esc(a.cliente)}</td>
-        <td>${Modal.esc(a.tipo)}</td><td class="text-end text-danger text-nowrap">${m(a.valor)}</td></tr>`).join('');
+        <td>${this.contaQlik(a.conta || a.tipo)}</td><td class="text-end text-danger text-nowrap">${m(a.valor)}</td></tr>`).join('');
     const clientes = j.clientes.map((c) => `<tr data-juros-cliente="${Modal.esc(c.cliente_cod || c.cliente)}">
         <td>${c.cliente_cod ? `<span class="text-muted">${Modal.esc(c.cliente_cod)}</span> ` : ''}${Modal.esc(c.cliente)}</td>
-        <td>${Modal.esc(c.tipo)}</td>
+        <td>${this.contaQlik(c.conta || c.tipo)}</td>
         <td class="small">${c.filiais.map((f) => `${Modal.esc(f.cod_filial)} — ${Modal.esc(f.filial)}`).join('; ')}</td>
         <td class="text-end">${c.lancamentos}</td><td class="text-end text-nowrap">${m(c.valor)}</td></tr>`).join('');
     return `<div class="mt-3" id="juros-recebidos">
@@ -1781,6 +1836,9 @@ const SecaoProjecao = {
     const CALCULADAS = { 6: '5', 8: '7', 19: '18' };
     const podeLancar = this.editavelAqui(d);
     const mostrarDistribuir = !d.filial && d.filiais.length && d.modo === 'NEGOCIO';
+    // O nível 3 (conta reduzida) da visão aberta: negócio, filial ou Corporativo.
+    const n3 = (d.filial ? d.filial.nivel3 : d.nivel3) || {};
+    if (!this.reduzidasAbertas) this.reduzidasAbertas = new Set();
 
     const valor = (linha, campo) => {
       if (!linha.percentual) return this.moeda(linha[campo]);
@@ -1858,10 +1916,18 @@ const SecaoProjecao = {
       // Formato de 2027 (`Reforma::formatoNovo`): a CBS é linha informativa acima
       // da Receita Bruta, e o nome das linhas que mudaram vai em amarelo.
       const informativa = !!l.informativa;
+      // O nível 3 (conta reduzida) desta linha, se houver: um botão ▸ abre as
+      // contas dela, e o botão de cima abre todas.
+      const reduzidas = n3[l.codigo] || [];
+      const abre = reduzidas.length && !l.percentual && (l.nivel === 2 || informativa)
+        ? `<button type="button" class="btn btn-link btn-sm p-0 me-1 abre-reduzidas d-print-none" data-abre-reduzidas="${Modal.esc(l.codigo)}"
+            aria-expanded="${this.reduzidasAbertas.has(l.codigo) ? 'true' : 'false'}"
+            title="Contas reduzidas desta linha, como no Qlik (nível 3)">${this.reduzidasAbertas.has(l.codigo) ? '▾' : '▸'}</button>`
+        : '';
       return `<tr class="${informativa ? 'linha-cbs' : (bloco ? 'fw-bold linha-bloco' : 'linha-subconta')}${negativa ? ' resultado-negativo' : ''}"
         data-conta="${Modal.esc(l.codigo)}" data-nivel="${l.nivel}"
         data-origem="${Modal.esc(l.proposta_origem || '')}">
-        <td class="${bloco || informativa ? '' : 'ps-4 text-muted'}${l.formato_novo || informativa ? ' linha-muda-nome' : ''}">${Modal.esc(l.nome)}</td>
+        <td class="${bloco || informativa ? '' : 'ps-4 text-muted'}${l.formato_novo || informativa ? ' linha-muda-nome' : ''}">${abre}${Modal.esc(l.nome)}</td>
         <td class="text-end ${l.percentual ? '' : negativo(l.realizado)}">${valor(l, 'realizado')}</td>
         <td class="text-end ${l.percentual ? '' : negativo(l.projetado)}">${valor(l, 'projetado')}</td>
         <td class="text-end ${l.percentual ? '' : negativo(l.projecao)}">${valor(l, 'projecao')}</td>
@@ -1871,8 +1937,39 @@ const SecaoProjecao = {
         <td class="text-end text-muted small celula-av-proposta">${avProp(l)}</td>
         <td class="text-end small celula-reajuste-td">${reajuste}</td>
         ${mostrarDistribuir ? this.celulaDistribuir(l) : ''}
-      </tr>`;
+      </tr>${abre ? this.linhasReduzidas(l, reduzidas, mostrarDistribuir) : ''}`;
     }).join('');
+  },
+
+  /**
+   * As contas reduzidas (nível 3) de uma linha do nível 2, logo abaixo dela —
+   * como a aba "#2 Planejado X Realizado" do Qlik as lista: reduzida e nome, e o
+   * realizado de jan até o corte (pedido do cliente, 2026-11-21). Só leitura:
+   * projetado, projeção e proposta ficam em branco, porque o orçamento é da
+   * linha e a meta se lança nela.
+   *
+   * Se o realizado das reduzidas não somar o da linha (o Qlik foi recarregado
+   * depois da carga da DRE), a diferença vai numa linha própria, dita — nunca
+   * escondida numa conta que não a tem.
+   */
+  linhasReduzidas(l, reduzidas, mostrarDistribuir) {
+    const aberta = this.reduzidasAbertas.has(l.codigo) ? ' aberta' : '';
+    // Projetado, projeção, A.V., proposta, A.V. da proposta e reajuste: em branco.
+    const vazias = `<td></td><td></td><td></td><td></td><td></td><td></td>${mostrarDistribuir ? '<td></td>' : ''}`;
+    const linha = (nome, v, attrs, extra = '') => `<tr class="linha-reduzida${aberta}${extra}" data-pai="${Modal.esc(l.codigo)}" ${attrs}>
+        <td class="ps-5 small">${nome}</td>
+        <td class="text-end small ${v < 0 ? 'text-danger' : ''}">${this.moeda(v)}</td>
+        ${vazias}
+      </tr>`;
+    const soma = reduzidas.reduce((a, r) => a + r.realizado, 0);
+    const resto = (Number(l.realizado) || 0) - soma;
+    return reduzidas.map((r) => linha(
+      `${r.reduzida ? `<span class="reduzida-cod">${Modal.esc(r.reduzida)}</span> ` : ''}${Modal.esc(r.nome)}`,
+      r.realizado, `data-reduzida="${Modal.esc(r.reduzida || r.codigo)}"`
+    )).join('') + (Math.abs(resto) >= 100 ? linha(
+      '<span class="text-muted fst-italic">Diferença entre a linha e as contas reduzidas (o Qlik foi recarregado depois da carga da DRE)</span>',
+      resto, 'data-reduzida-diferenca="1"', ' linha-reduzida-diferenca'
+    ) : '');
   },
 
   /**
@@ -1909,6 +2006,27 @@ const SecaoProjecao = {
     if (caixaPiso && this.dados) caixaPiso.innerHTML = this.alertaPisoFaturamento(this.dados);
     const nivel = el.querySelector('#projecao-nivel');
     if (nivel && virgem(nivel)) nivel.addEventListener('click', () => this.alternarNivel());
+    // A ida das oportunidades à linha da DRE: delegada no contêiner da seção, uma vez.
+    if (!el.dataset.linkDre) {
+      el.dataset.linkDre = '1';
+      el.addEventListener('click', (ev) => {
+        const a = ev.target.closest('.link-linha-dre');
+        if (!a) return;
+        ev.preventDefault();
+        this.irParaLinhaDre(a.dataset.irConta, a.dataset.irReduzida || null);
+      });
+    }
+    const nivel3 = el.querySelector('#projecao-nivel3');
+    if (nivel3 && virgem(nivel3)) nivel3.addEventListener('click', () => this.alternarNivel3());
+    // O ▸ de cada linha: delegado na tabela, que tem o corpo repintado a cada
+    // gravação (um ouvinte por botão se perderia no repinte).
+    const tabela = el.querySelector('.tabela-projecao');
+    if (tabela && virgem(tabela)) {
+      tabela.addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-abre-reduzidas]');
+        if (b) this.alternarReduzidas(b.dataset.abreReduzidas, b);
+      });
+    }
     const imprimir = el.querySelector('#projecao-imprimir-dre');
     if (imprimir && virgem(imprimir)) imprimir.addEventListener('click', () => this.imprimirDre());
     const sel = el.querySelector('#projecao-negocio');
@@ -2128,6 +2246,41 @@ const SecaoProjecao = {
    * sobrevive à troca de negócio e ao recarregar. No dossiê não há botão: o
    * documento sai sempre completo.
    */
+  /** O nível 3 aberto em todas as linhas (o botão de cima), lembrado no navegador. */
+  nivel3Aberto() {
+    if (App.modoDossie) return false;
+    if (this.n3Aberto === undefined) {
+      try { this.n3Aberto = localStorage.getItem('projecao.nivel3') === '1'; } catch (e) { this.n3Aberto = false; }
+    }
+    return !!this.n3Aberto;
+  },
+
+  /** Abre ou fecha as contas reduzidas de TODAS as linhas. */
+  alternarNivel3() {
+    this.n3Aberto = !this.nivel3Aberto();
+    try { localStorage.setItem('projecao.nivel3', this.n3Aberto ? '1' : '0'); } catch (e) { /* vale só nesta tela */ }
+    const el = document.getElementById('secao-projecao');
+    el.querySelector('.tabela-projecao')?.classList.toggle('nivel3', this.n3Aberto);
+    const b = el.querySelector('#projecao-nivel3');
+    if (b) {
+      b.setAttribute('aria-pressed', this.n3Aberto ? 'true' : 'false');
+      b.textContent = this.n3Aberto ? '▾ Fechar contas reduzidas' : '▸ Abrir contas reduzidas (nível 3)';
+    }
+  },
+
+  /** Abre ou fecha as contas reduzidas de UMA linha (o ▸ ao lado do nome). */
+  alternarReduzidas(codigo, botao) {
+    if (!this.reduzidasAbertas) this.reduzidasAbertas = new Set();
+    const abrir = !this.reduzidasAbertas.has(codigo);
+    if (abrir) this.reduzidasAbertas.add(codigo); else this.reduzidasAbertas.delete(codigo);
+    document.querySelectorAll(`.tabela-projecao tr.linha-reduzida[data-pai="${CSS.escape(codigo)}"]`)
+      .forEach((tr) => tr.classList.toggle('aberta', abrir));
+    if (botao) {
+      botao.textContent = abrir ? '▾' : '▸';
+      botao.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+    }
+  },
+
   estaRecolhido() {
     if (App.modoDossie) return false;
     if (this.recolhido === undefined) {
@@ -2143,6 +2296,11 @@ const SecaoProjecao = {
         <button type="button" id="projecao-imprimir-dre" class="btn btn-sm btn-success"
           title="Imprime (ou salva em PDF) a DRE da proposta com todas as subcontas abertas">
           🖨 Imprimir DRE (PDF)
+        </button>
+        <button type="button" id="projecao-nivel3" class="btn btn-sm btn-outline-secondary"
+          aria-pressed="${this.nivel3Aberto() ? 'true' : 'false'}"
+          title="Abre as contas reduzidas de todas as linhas, como o nível 3 do Qlik (só o realizado)">
+          ${this.nivel3Aberto() ? '▾ Fechar contas reduzidas' : '▸ Abrir contas reduzidas (nível 3)'}
         </button>
         <button type="button" id="projecao-nivel" class="btn btn-sm btn-outline-secondary"
           aria-pressed="${r ? 'true' : 'false'}"

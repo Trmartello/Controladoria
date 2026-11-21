@@ -4729,6 +4729,20 @@ body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
    Só os blocos ficam à vista, para ver como a DRE fecha (botão #projecao-nivel).
    As linhas continuam no DOM — o que estiver digitado nelas não se perde. */
 .tabela-projecao.recolhida tr.linha-subconta { display: none; }
+/* Nível 3 da DRE: as contas reduzidas, como no Qlik (pedido do cliente,
+   2026-11-21). Fechadas por omissão; o ▸ da linha abre as dela e o botão de
+   cima abre todas. Recolher as subcontas esconde o nível 3 junto. */
+.tabela-projecao tr.linha-reduzida { display: none; }
+.tabela-projecao.nivel3 tr.linha-reduzida,
+.tabela-projecao tr.linha-reduzida.aberta { display: table-row; }
+.tabela-projecao.recolhida tr.linha-reduzida { display: none; }
+.tabela-projecao tr.linha-reduzida td { background: var(--bs-tertiary-bg, #f8f9fa); padding-top: .15rem; padding-bottom: .15rem; }
+.tabela-projecao tr.linha-reduzida td:first-child { color: #4a5550; }
+.tabela-projecao .reduzida-cod { font-variant-numeric: tabular-nums; font-weight: 600; color: #1f4d2b; }
+.tabela-projecao .abre-reduzidas { text-decoration: none; line-height: 1; min-width: 1.1rem; }
+/* Ida da oportunidade para a linha da DRE: a linha pisca ao chegar. */
+.tabela-projecao tr.linha-destacada td { animation: linha-destacada 2.4s ease-out; }
+@keyframes linha-destacada { from { background: #fde4a8; } to { background: transparent; } }
 
 /* ===== Visão realista do ano (só leitura) =====
    Destacada em âmbar, como no Painel Balanço: é estimativa da Controladoria, e a

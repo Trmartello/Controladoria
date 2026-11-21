@@ -1010,6 +1010,36 @@ CREATE TABLE IF NOT EXISTS dre_valor_filial (
   CONSTRAINT fk_dvf_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- O NÍVEL 3 da DRE gerencial: a conta reduzida (pedido do cliente, 2026-11-21:
+-- "na DRE gerencial temos 3 níveis de abertura; o terceiro totaliza o segundo").
+-- O catálogo é o do Qlik (`Cód Indicador` do nível 3, como "8.5.12"): reduzida,
+-- nome, a linha do nível 2 que ela soma e a ordem em que o Qlik a lista. Só
+-- leitura e só realizado — o lançamento é no nível 2, e o Qlik não tem orçado
+-- por conta reduzida.
+CREATE TABLE IF NOT EXISTS dre_reduzida (
+  codigo     VARCHAR(12) NOT NULL PRIMARY KEY,
+  reduzida   VARCHAR(8) NOT NULL,
+  nome       VARCHAR(80) NOT NULL,
+  linha      VARCHAR(10) NOT NULL,
+  ordem      INT NOT NULL,
+  KEY idx_dre_reduzida_linha (linha, ordem),
+  KEY idx_dre_reduzida_red (reduzida)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- O realizado ACUMULADO até o corte por conta reduzida, do negócio inteiro
+-- (`filial_id = 0`) e de cada filial. Sem chave estrangeira na filial porque o
+-- zero é o negócio; a carga confere que a filial existe.
+CREATE TABLE IF NOT EXISTS dre_reduzida_valor (
+  negocio_id INT NOT NULL,
+  filial_id  INT NOT NULL DEFAULT 0,
+  ano        SMALLINT NOT NULL,
+  corte      TINYINT NOT NULL,
+  codigo     VARCHAR(12) NOT NULL,
+  realizado  DECIMAL(18,2) NOT NULL,
+  PRIMARY KEY (negocio_id, filial_id, ano, codigo),
+  CONSTRAINT fk_drv_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- A DRE da filial MÊS A MÊS, só onde moram os eventos pontuais (8.x, 9.x, 11.x)
 -- e só onde algum mês passa do piso da detecção — ver
 -- database/eventos_filiais_mensal_2026_10.php. Serve às oportunidades e riscos da
