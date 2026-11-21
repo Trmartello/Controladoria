@@ -91,7 +91,14 @@ prova('um reajuste digitado na Receita vence o crescimento por omissão (3%, e n
     json_encode([$l['1.1']['proposta'], $l['1.1']['proposta_origem']]));
 $lanc = ['8.5' => ['entrada' => 'VALOR', 'valor' => -9.0, 'percentual' => null]];
 $l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0, '8.5' => 5.5]));
-prova('um valor digitado em Pessoal vence o percentual de pessoas', perto($l['8.5']['proposta'], -9.0) && $l['8.5']['proposta_origem'] === 'VALOR');
+prova('com percentual de pessoas, a linha Pessoal é CALCULADA: o valor digitado nela é ignorado (pedido de 2026-11-21)',
+    perto($l['8.5']['proposta'], -10.55) && $l['8.5']['proposta_origem'] === 'PREMISSA' && $l['8.5']['proposta_travada'] === true,
+    json_encode([$l['8.5']['proposta'], $l['8.5']['proposta_origem']]));
+$l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0]));
+prova('sem percentual de pessoas, a linha Pessoal continua aceitando o digitado',
+    perto($l['8.5']['proposta'], -9.0) && $l['8.5']['proposta_origem'] === 'VALOR' && $l['8.5']['proposta_travada'] === false);
+prova('a trava segue a premissa de pessoas: com diretriz (2027) sempre; sem diretriz, só se digitada',
+    Projecao::pessoalTravado(2027, []) && !Projecao::pessoalTravado(2029, []) && Projecao::pessoalTravado(2029, ['PESSOAS' => 4.0]));
 
 // ── O piso do faturamento (pedido do cliente, 2026-11-19) ──────────────────
 // A Receita não pode ficar abaixo de IPCA + PIB + crescimento desejado; acima

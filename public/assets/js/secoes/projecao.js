@@ -394,8 +394,8 @@ const SecaoProjecao = {
       ? `<span class="nota-crescimento">O percentual de crescimento é <strong>sobre o faturamento</strong> (Receita de Vendas):
           ele cresce <strong>IPCA + PIB + crescimento desejado</strong>, e o restante é <strong>proporcional</strong> —
           deduções e custo das vendas acompanham o faturamento na mesma proporção (a margem bruta de ${d.ano} se mantém).</span>
-          As <strong>Despesas com Pessoal</strong> seguem a conta da diretriz (cartão Pessoas e benefícios) e as demais
-          despesas ficam na projeção. A célula digitada sempre manda.
+          As <strong>Despesas com Pessoal</strong> são a conta da diretriz (cartão Pessoas e benefícios) e não se digitam
+          na DRE; as demais despesas ficam na projeção. Nas outras linhas, a célula digitada sempre manda.
           ${noAnoDaProposta
     ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
           são lidos da coluna Proposta.` : ''}`
@@ -405,8 +405,8 @@ const SecaoProjecao = {
       : `${tres} são lançados aqui e valem para o negócio e todas as filiais.
           Na proposta de ${d.ano_planejamento}, a <strong>Receita de Vendas</strong> cresce
           <strong>IPCA + PIB + crescimento desejado</strong> e as <strong>Despesas com Pessoal</strong>
-          crescem só o percentual das despesas com pessoas — onde a linha não foi lançada.
-          A célula digitada sempre manda; as demais linhas ficam na projeção.
+          crescem só o percentual das despesas com pessoas (com ele lançado, a linha é calculada e não se digita).
+          Nas outras linhas, a célula digitada sempre manda; as demais ficam na projeção.
           ${noAnoDaProposta
     ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
           são lidos da coluna Proposta — o reajuste de cada linha se lança na própria linha,
@@ -518,9 +518,10 @@ const SecaoProjecao = {
    * e por ano (o ano é o do seletor das premissas); vazio vale o padrão, que
    * aparece como o placeholder.
    *
-   * Nada daqui entra na proposta: a DRE não tem linha de pessoal, então este é
-   * o cartão onde o valor com pessoas é PREVISTO, e não uma conta que mexa nas
-   * linhas da tabela.
+   * No ano da proposta, isto ENTRA na DRE: a despesa prevista com benefícios é
+   * uma peça da linha Despesas com Pessoal (8.5), pela conta da diretriz
+   * (`composicaoPessoal`). Mudar um campo daqui recalcula a linha, que não se
+   * digita (pedido do cliente, 2026-11-21).
    */
   cartaoPessoas(d) {
     if (!d.pessoas) return '';
@@ -588,7 +589,8 @@ const SecaoProjecao = {
    * A linha Despesas com Pessoal (8.5) da proposta, pela diretriz: a base de
    * 2026 sem vale, prêmio e PPR, reajustada; o vale e os prêmios de 2027 (a parte
    * da despesa); e o PPR de 1,5 salário sobre a folha do mês. É a conta do
-   * servidor (`Projecao::pessoalDaDiretriz`), só mostrada.
+   * servidor (`Projecao::pessoalDaDiretriz`), só mostrada — e é exatamente o
+   * valor da linha 8.5 da DRE, que não se digita.
    */
   composicaoPessoal(d) {
     const p = d.pessoal_diretriz;
@@ -614,7 +616,7 @@ const SecaoProjecao = {
         </table>
       </div>
       <div class="small text-muted">Folha e peças de ${d.ano}: Qlik DRE Gerencial, contas 3.07.01.21* (despesa) e 4.03.01.01.01 (custo).
-        Lançar na própria linha 8.5 substitui esta conta.</div>`;
+        A linha 8.5 da DRE é este total e não se digita: para mudá-lo, ajuste os campos acima.</div>`;
   },
 
   /** O Corporativo só totaliza: a soma dos negócios, sem campo nenhum. */
@@ -1742,7 +1744,11 @@ const SecaoProjecao = {
     return linhas.map((l) => {
       const bloco = l.nivel === 1;
       const negativo = (v) => (v < 0 ? 'text-danger' : '');
-      const editavel = l.nivel === 2 && !l.percentual && podeLancar;
+      // As Despesas com Pessoal com premissa de pessoas são calculadas pelo
+      // cartão Pessoas e benefícios (`proposta_travada`, pedido do cliente,
+      // 2026-11-21): mostram o número, sem célula de digitar.
+      const travada = !!l.proposta_travada;
+      const editavel = l.nivel === 2 && !l.percentual && podeLancar && !travada;
 
       // A proposta: célula de digitar quando a linha é subconta; o número
       // derivado quando é bloco; "—" quando não há regra para derivá-la.
@@ -1760,6 +1766,10 @@ const SecaoProjecao = {
           'Linha que o Qlik entrega pronta e que o sistema não sabe recompor — '
           + 'enquanto a regra dela não estiver no modelo, ela não recebe proposta.'
         )}">—</span>`;
+      } else if (travada) {
+        proposta = `<span class="proposta-calculada" title="${Modal.esc(
+          'Calculada pelo cartão Pessoas e benefícios (reajuste, vale, abonos e PPR): '
+          + 'para mudar, ajuste os parâmetros lá.')}">${this.moeda(l.proposta)}</span>`;
       } else if (l.percentual) {
         const alvo = linhas.find((x) => x.codigo === CALCULADAS[l.codigo]);
         const baseProp = (linhas.find((x) => x.codigo === '3') || {}).proposta || 0;
@@ -1943,6 +1953,24 @@ const SecaoProjecao = {
     });
   },
 
+  /**
+   * Tudo o que lê a proposta, depois de uma gravação que a recalcula no
+   * servidor (premissa ou benefício): o painel, o corpo da tabela, os alertas
+   * e o como é × como fica. Repintar só um pedaço deixaria dois números
+   * discordando na mesma tela até recarregar a página.
+   */
+  repintarProposta(el) {
+    el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
+    const tbody = el.querySelector('.tabela-projecao tbody');
+    if (tbody) tbody.innerHTML = this.corpo(this.dados);
+    const negativa = el.querySelector('#projecao-meta-negativa-box');
+    if (negativa) negativa.innerHTML = this.alertaMetaNegativa(this.dados);
+    const piso = el.querySelector('#projecao-piso-box');
+    if (piso) piso.innerHTML = this.alertaPisoFaturamento(this.dados);
+    this.repintarTributos(el);
+    this.ligar(el);
+  },
+
   /** O como é × como fica lê a proposta: repinta junto com ela. */
   repintarTributos(el) {
     const c = el.querySelector('.painel-tributos');
@@ -1987,16 +2015,7 @@ const SecaoProjecao = {
       // a proposta recalculada. Repintar só o painel deixava o Cresc. Total
       // dizendo 8% e a DRE com os 6% de antes, até recarregar a página.
       const el = document.getElementById('secao-projecao');
-      const painel = el.querySelector('.painel-premissas');
-      painel.outerHTML = this.painel(this.dados);
-      const tbody = el.querySelector('.tabela-projecao tbody');
-      if (tbody) tbody.innerHTML = this.corpo(this.dados);
-      const negativa = el.querySelector('#projecao-meta-negativa-box');
-      if (negativa) negativa.innerHTML = this.alertaMetaNegativa(this.dados);
-      const piso = el.querySelector('#projecao-piso-box');
-      if (piso) piso.innerHTML = this.alertaPisoFaturamento(this.dados);
-      this.repintarTributos(el);
-      this.ligar(el);
+      this.repintarProposta(el);
       el.querySelector(`#premissa-${inp.dataset.chave}`)?.focus();
     } catch (e) {
       this.avisar(e.message);
@@ -2024,13 +2043,16 @@ const SecaoProjecao = {
         chave: inp.dataset.chave,
         valor: limpo === '' ? null : Number(limpo),
       });
+      if (r.versao !== undefined) this.versao = r.versao;
       this.dados = { ...this.dados, ...r };
       this.avisar('');
       const el = document.getElementById('secao-projecao');
       el.querySelector('.painel-pessoas').outerHTML = this.cartaoPessoas(this.dados);
-      // Vale e abono moram no painel das premissas: ele é repintado junto.
-      el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
-      this.ligar(el);
+      // A despesa com benefícios é peça das Despesas com Pessoal (8.5): a DRE
+      // é repintada junto (pedido do cliente, 2026-11-21 — antes o cartão
+      // mudava e a linha ficava com o número de antes). Vale e abono moram no
+      // painel das premissas, que vem no mesmo pacote.
+      this.repintarProposta(el);
       el.querySelector(`#beneficio-${inp.dataset.chave}`)?.focus();
     } catch (e) {
       this.avisar(e.message);

@@ -3019,7 +3019,9 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   dobraria. O cartão é onde o valor com benefícios é PREVISTO; o percentual de
   crescimento das despesas com pessoas, esse sim, move a linha 8.5. Os valores em
   reais (vale R$ 500, abono R$ 200 + R$ 500 = R$ 700 em 2027) ficam no painel das
-  premissas, junto com os percentuais; gravar não mexe na versão da proposta. O Corporativo só soma (cartão
+  premissas, junto com os percentuais. Desde a diretriz de 2027 (ver abaixo), a
+  despesa prevista com benefícios É peça da linha 8.5 (`pessoalDaDiretriz`), e
+  gravar aqui mexe na versão da proposta e recalcula a DRE. O Corporativo só soma (cartão
   somente leitura). **Fora do escopo, por decisão do cliente:** as áreas de apoio
   (18 Apoio Operacional, 87 pessoas; 20 Administração Matriz, 127) — que a DRE
   traz mas não são negócios — e os negócios sem quadro (Fruticultura, Juros s/
@@ -3157,6 +3159,17 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     espelham as 3.07 (ato cooperativo) e NÃO entram. Na Agropecuária as 3.07.01.21*
     somam R$ 4,6 mi a mais que a linha 8.5 — por isso as peças entram como parte,
     não em reais. O cartão Pessoas e benefícios mostra a conta inteira.
+  - **A linha 8.5 é CONSEQUÊNCIA, não se lança** (pedido do cliente,
+    2026-11-21: "se eu já atribuir os benefícios na parte superior, o valor deve
+    ser consequência na DRE"). Com premissa de pessoas no ano
+    (`Projecao::pessoalTravado` — a diretriz de 2027 sempre traz uma; em ano sem
+    diretriz, só se o negócio digitou o %), `aplicar` ignora o lançado na 8.5 e
+    marca `proposta_travada`; a tela desenha o número com cadeado, sem célula, e
+    `gravarValor` recusa a conta. Lançamentos antigos na 8.5 ficam no banco mas
+    não valem. E gravar um benefício (`gravarBeneficio`) agora SOBE a versão e a
+    tela repinta a DRE inteira (`repintarProposta`, o mesmo da premissa): antes
+    o cartão mudava (ex.: % de meses com resultado em 0) e a linha ficava com o
+    número de antes até recarregar a página.
   - **Meta negativa de resultado líquido: SINALIZAR, não bloquear** (decisão do
     cliente, 2026-11-18, revendo a anterior: "o lançamento deve permitir todos os
     sinais; porém se o resultado líquido for negativo deve sinalizar"). Não há

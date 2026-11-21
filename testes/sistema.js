@@ -5700,7 +5700,7 @@ async function provasProjecaoPremissas(page, largura) {
   // célula ganhava um segundo `blur`, gravava duas vezes e a segunda chegava
   // com a versão velha — o usuário via "alguém gravou enquanto você editava"
   // sem ninguém ter gravado. Achado na sonda, não na bateria.
-  v = await digitar('[data-conta="8.5"] .celula-proposta', '5%');
+  v = await digitar('[data-conta="8.8"] .celula-proposta', '5%');
   t(`${l} gravar depois de mexer no painel não levanta conflito falso`,
     v.aviso === '', v.aviso);
 
@@ -5718,7 +5718,7 @@ async function provasProjecaoPremissas(page, largura) {
   // Devolve a massa ao ponto de partida — o custo PRIMEIRO: apagar a receita
   // antes dele poderia levar o resultado ao vermelho, e a diretriz recusa.
   await digitar('[data-conta="4.1"] .celula-proposta', '');
-  await digitar('[data-conta="8.5"] .celula-proposta', '');
+  await digitar('[data-conta="8.8"] .celula-proposta', '');
   v = await digitar('[data-conta="1.1"] .celula-proposta', '');
   t(`${l} e as premissas sobrevivem ao fim dos lançamentos`,
     v.ipca === '4,5' && v.pib === '1,5', JSON.stringify({ ipca: v.ipca, pib: v.pib }));
@@ -6582,6 +6582,58 @@ async function provasDiretriz2027(page, largura) {
   });
   t(`${l} a API recusa mudar o que a diretriz fixa`,
     /Fixado pela diretriz de 2027/.test(recusas.pessoas) && /Fixado pela diretriz de 2027/.test(recusas.vale), JSON.stringify(recusas));
+
+  // A linha 8.5 é CONSEQUÊNCIA do cartão Pessoas e benefícios (pedido do
+  // cliente, 2026-11-21): sem célula de digitar, a API recusa lançá-la, e mexer
+  // num benefício recalcula a linha na hora — antes o cartão mudava e a DRE
+  // ficava com o número de antes até recarregar a página.
+  const trava = await page.evaluate(async () => {
+    const id = Number(document.querySelector('#projecao-negocio').value);
+    const d = SecaoProjecao.dados;
+    let msg = 'aceita';
+    try {
+      await App.api('/api/projecao/valor', { negocio_id: id, filial_id: 0, conta: '8.5', entrada: 'VALOR', valor: -1, versao: d.versao });
+    } catch (e) { msg = e.message; }
+    const linha = document.querySelector('.tabela-projecao tr[data-conta="8.5"]');
+    return {
+      msg,
+      input: !!linha?.querySelector('input'),
+      calculada: !!linha?.querySelector('.proposta-calculada'),
+      travada: d.linhas.find((x) => x.codigo === '8.5')?.proposta_travada === true,
+    };
+  });
+  t(`${l} a linha Despesas com Pessoal não tem célula de digitar e mostra que é calculada`,
+    !trava.input && trava.calculada && trava.travada, JSON.stringify(trava));
+  t(`${l} e a API recusa lançar nela, apontando o cartão Pessoas e benefícios`,
+    /cartão Pessoas e benefícios/.test(trava.msg), trava.msg);
+
+  const lerPessoal = () => page.evaluate(() => {
+    const num = (t) => Number(String(t || '').replace(/[^0-9,-]/g, '').replace(',', '.'));
+    return {
+      card: num(document.querySelector('[data-pessoal="total"]')?.textContent),
+      dre: num(document.querySelector('.tabela-projecao tr[data-conta="8.5"] .proposta-calculada')?.textContent),
+      campo: document.querySelector('#beneficio-PCT_RESULTADO')?.value ?? null,
+    };
+  });
+  const p0 = await lerPessoal();
+  if (p0.campo !== null) {
+    const pct = p0.campo === '0' ? '50' : '0';
+    await page.evaluate((v) => {
+      const i = document.querySelector('#beneficio-PCT_RESULTADO'); i.focus(); i.value = v; i.blur();
+    }, pct);
+    await new Promise((r) => setTimeout(r, 1500));
+    const p1 = await lerPessoal();
+    t(`${l} mudar o % de meses com resultado recalcula o cartão E a linha 8.5 da DRE, que ficam iguais`,
+      p1.card !== p0.card && Math.abs(Math.abs(p1.dre) - p1.card) <= 1, JSON.stringify({ antes: p0, depois: p1 }));
+    await page.evaluate((v) => {
+      const i = document.querySelector('#beneficio-PCT_RESULTADO'); i.focus(); i.value = v; i.blur();
+    }, p0.campo);
+    await new Promise((r) => setTimeout(r, 1500));
+    const p2 = await lerPessoal();
+    t(`${l} e devolver o campo devolve a linha`, Math.abs(p2.dre - p0.dre) <= 1, JSON.stringify(p2));
+  } else {
+    t(`${l} o cartão tem o campo % dos meses com resultado`, false, 'campo ausente');
+  }
 
   // Sem trava (decisão do cliente, 2026-11-18: "o lançamento deve permitir todos
   // os sinais; se o resultado líquido for negativo, deve sinalizar"): o lançamento
@@ -8020,36 +8072,38 @@ async function provasProjecaoProposta(page, largura) {
     `proposta=${v['1.1'].espelhada} reajuste=${v['1.1'].espelhadaReajuste}`);
 
   // ── Digitar na coluna de Reajuste é o mesmo lançamento ──────────────────
-  const projPessoal = v['8.5'].projecao;
-  v = await lancarReajuste('8.5', '11,43');
+  const projDespesa = v['8.8'].projecao;
+  v = await lancarReajuste('8.8', '11,43');
   t(`${l} digitar na coluna Reajuste grava como percentual`,
-    v['8.5'].origem === 'PERCENTUAL', String(v['8.5'].origem));
+    v['8.8'].origem === 'PERCENTUAL', String(v['8.8'].origem));
   t(`${l} e a Proposta vira projeção × (1 + reajuste), como na planilha`,
-    Math.abs(v['8.5'].proposta - projPessoal * 1.1143) <= 2,
-    `${v['8.5'].proposta} vs ${Math.round(projPessoal * 1.1143)}`);
+    Math.abs(v['8.8'].proposta - projDespesa * 1.1143) <= 2,
+    `${v['8.8'].proposta} vs ${Math.round(projDespesa * 1.1143)}`);
   // Despesa é negativa: reajuste POSITIVO deixa a linha MAIS negativa — a
   // despesa cresce. É o que a planilha do cliente faz (Pessoal, 11,43%:
-  // −8.917.976 → −9.937.167), e o inverso disso seria uma economia.
+  // −8.917.976 → −9.937.167), e o inverso disso seria uma economia. A prova usa
+  // Serviços em Geral (8.8): Pessoal (8.5) é calculada e não se digita desde
+  // 2026-11-21.
   t(`${l} reajuste positivo numa despesa deixa a linha mais negativa`,
-    projPessoal < 0 && v['8.5'].proposta < projPessoal,
-    `${projPessoal} → ${v['8.5'].proposta}`);
+    projDespesa < 0 && v['8.8'].proposta < projDespesa,
+    `${projDespesa} → ${v['8.8'].proposta}`);
   t(`${l} o sinal de porcento é dispensável na coluna de Reajuste`,
-    Math.abs(v['8.5'].cresc - 11.43) < 0.05, String(v['8.5'].cresc));
+    Math.abs(v['8.8'].cresc - 11.43) < 0.05, String(v['8.8'].cresc));
 
   // Lançar por VALOR inverte quem espelha quem.
-  v = await lancar('8.5', `${Math.round(projPessoal * 1.05)}`);
+  v = await lancar('8.8', `${Math.round(projDespesa * 1.05)}`);
   t(`${l} lançar o valor inverte: agora quem espelha é o Reajuste`,
-    v['8.5'].origem === 'VALOR'
-    && v['8.5'].espelhada === false && v['8.5'].espelhadaReajuste === true,
-    `origem=${v['8.5'].origem} proposta=${v['8.5'].espelhada} reajuste=${v['8.5'].espelhadaReajuste}`);
+    v['8.8'].origem === 'VALOR'
+    && v['8.8'].espelhada === false && v['8.8'].espelhadaReajuste === true,
+    `origem=${v['8.8'].origem} proposta=${v['8.8'].espelhada} reajuste=${v['8.8'].espelhadaReajuste}`);
   t(`${l} e a coluna Reajuste mostra a conta de volta (5%)`,
-    Math.abs(v['8.5'].cresc - 5) < 0.05, String(v['8.5'].cresc));
+    Math.abs(v['8.8'].cresc - 5) < 0.05, String(v['8.8'].cresc));
 
   // Apagar o reajuste devolve a linha à projeção, como apagar a proposta.
-  v = await lancarReajuste('8.5', '');
+  v = await lancarReajuste('8.8', '');
   t(`${l} apagar o reajuste devolve a linha ao padrão`,
-    v['8.5'].origem === inicio['8.5'].origem && v['8.5'].reajuste === '' && Math.abs(v['8.5'].proposta - inicio['8.5'].proposta) <= 2,
-    `${v['8.5'].origem} / "${v['8.5'].reajuste}"`);
+    v['8.8'].origem === inicio['8.8'].origem && v['8.8'].reajuste === '' && Math.abs(v['8.8'].proposta - inicio['8.8'].proposta) <= 2,
+    `${v['8.8'].origem} / "${v['8.8'].reajuste}"`);
 
   // A cadeia inteira: ROL = receita + deduções, e o líquido muda junto.
   t(`${l} a ROL proposta acompanha (receita + deduções)`,
@@ -8089,7 +8143,7 @@ async function provasProjecaoProposta(page, largura) {
   const conflito = await page.evaluate(async (id) => {
     try {
       await App.api('/api/projecao/valor',
-        { negocio_id: Number(id), conta: '8.5', entrada: 'VALOR', valor: -1, versao: 1 });
+        { negocio_id: Number(id), conta: '8.8', entrada: 'VALOR', valor: -1, versao: 1 });
       return 'ACEITOU';
     } catch (e) { return e.message; }
   }, await page.evaluate(() => document.querySelector('#projecao-negocio').value));

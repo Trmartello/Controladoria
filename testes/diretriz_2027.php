@@ -103,10 +103,10 @@ $m = $montar->invoke($ctrl, $ids['2'], $ano, $corte, 0);
 prova('Pecuária: PPR de 2027 = R$ 375.803 × 1,055 × 1,5 = R$ 594.708',
     $m['pessoal_diretriz'] && perto($m['pessoal_diretriz']['ppr'], 375803 * 1.055 * 1.5, 1), (string)round($m['pessoal_diretriz']['ppr'] ?? 0));
 $l = array_column($m['linhas'], null, 'codigo');
-prova('a linha 8.5 da tela é a da conta (origem PREMISSA, regra PESSOAL), salvo lançamento',
+prova('a linha 8.5 da tela é a da conta (origem PREMISSA, regra PESSOAL) — não se lança mais nela',
     ($l['8.5']['proposta_origem'] === 'PREMISSA' && ($l['8.5']['proposta_regra'] ?? '') === 'PESSOAL'
         && perto($l['8.5']['proposta'], $m['pessoal_diretriz']['proposta'], 1))
-    || in_array($l['8.5']['proposta_origem'], ['VALOR', 'PERCENTUAL', 'FILIAIS'], true),
+    || $l['8.5']['proposta_origem'] === 'FILIAIS',
     json_encode([$l['8.5']['proposta'], $l['8.5']['proposta_origem'], $m['pessoal_diretriz']['proposta']]));
 
 $painel = Projecao::resumoDosNegocios(array_values($ids), $ano, $corte, $ano + 1, ['2.3', '4.1', '8.5', '18']);
