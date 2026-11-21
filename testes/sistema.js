@@ -6365,12 +6365,13 @@ async function provasCrescimentoPorPremissa(page, largura) {
   // O digitado manda.
   await page.evaluate(() => {
     const i = document.querySelector('.tabela-projecao tbody tr[data-conta="1.1"] input.celula-reajuste');
-    i.focus(); i.value = '3'; i.blur();
+    i.focus(); i.value = '15'; i.blur();
   });
   await new Promise((r) => setTimeout(r, 1500));
   a = await api();
-  t(`${l} um reajuste digitado na Receita (3%) vence o crescimento por omissão (12%)`,
-    a.linhas['1.1'].proposta_origem === 'PERCENTUAL' && Math.abs(a.linhas['1.1'].proposta - a.linhas['1.1'].projecao * 1.03) < 1,
+  // 15%, e não um número abaixo: desde 2026-11-21 o piso (os 12%) trava a digitação.
+  t(`${l} um reajuste digitado na Receita (15%) vence o crescimento por omissão (12%)`,
+    a.linhas['1.1'].proposta_origem === 'PERCENTUAL' && Math.abs(a.linhas['1.1'].proposta - a.linhas['1.1'].projecao * 1.15) < 1,
     JSON.stringify([a.linhas['1.1'].proposta_origem, a.linhas['1.1'].proposta]));
   await page.evaluate(() => {
     const i = document.querySelector('.tabela-projecao tbody tr[data-conta="1.1"] input.celula-reajuste');
@@ -7433,13 +7434,14 @@ async function provasDesafioEExpansores(page, largura) {
     campoVisivel: [...d.querySelectorAll('input')].some((i) => i.checkVisibility()),
   }])));
   let e = await estado();
-  t(`${l} quatro expansores no negócio: visão, desafio, premissas, pessoas`,
-    ['visao', 'desafio', 'premissas', 'pessoas'].every((k) => e[k]), Object.keys(e).join(','));
+  // Pessoas e benefícios moram no expansor das premissas desde 2026-11-21.
+  t(`${l} expansores no negócio: visão, desafio e premissas (com pessoas dentro, sem expansor próprio)`,
+    ['visao', 'desafio', 'premissas'].every((k) => e[k]) && !e.pessoas, Object.keys(e).join(','));
   t(`${l} por omissão só o desafio vem aberto`,
-    e.desafio?.aberto && !e.visao?.aberto && !e.premissas?.aberto && !e.pessoas?.aberto, JSON.stringify(e));
-  t(`${l} fechado, o título resume: premissas (IPCA, PIB, vale, abono) e pessoas (colaboradores, custo no ano)`,
-    /IPCA .* PIB .* vale R\$ .* abono R\$/.test(e.premissas?.resumo || '') && /colaboradores · R\$ [\d.]+ no ano/.test(e.pessoas?.resumo || ''),
-    `${e.premissas?.resumo} | ${e.pessoas?.resumo}`);
+    e.desafio?.aberto && !e.visao?.aberto && !e.premissas?.aberto, JSON.stringify(e));
+  t(`${l} fechado, o título resume premissas (IPCA, PIB, vale, abono) e pessoas (colaboradores, benefícios no ano)`,
+    /IPCA .* PIB .* vale R\$ .* abono R\$/.test(e.premissas?.resumo || '') && /colaboradores · benefícios R\$ [\d.]+ no ano/.test(e.premissas?.resumo || ''),
+    e.premissas?.resumo);
   t(`${l} fechado, os campos das premissas ficam escondidos`, e.premissas && !e.premissas.campoVisivel);
 
   await page.click('details[data-expansor="premissas"] > summary');
