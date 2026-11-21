@@ -5384,14 +5384,14 @@ async function provasProjecaoNoDossie(page, largura) {
       const el = document.getElementById('secao-projecao');
       saida.negocio = alvo.rotulo;
       saida.mostraONome = el.textContent.includes(alvo.rotulo);
-      saida.linhas = el.querySelectorAll('.tabela-projecao tbody tr').length;
+      saida.linhas = el.querySelectorAll('.tabela-projecao tbody tr[data-conta]').length;
       saida.campos = el.querySelectorAll('input, select').length;
 
       App.contexto.corporativo = true;
       App.contexto.negocioId = null;
       await SecaoProjecao.carregar();
       saida.corporativo = el.textContent.replace(/\s+/g, ' ').trim();
-      saida.corporativoLinhas = el.querySelectorAll('.tabela-projecao tbody tr').length;
+      saida.corporativoLinhas = el.querySelectorAll('.tabela-projecao tbody tr[data-conta]').length;
       saida.corporativoCampos = el.querySelectorAll('input, select').length;
 
       App.contexto.corporativo = false;
@@ -5874,7 +5874,7 @@ async function provasProjecaoCorporativo(page, largura) {
   const tela = await page.evaluate(() => ({
     selecionado: document.querySelector('#projecao-negocio').value,
     campos: document.querySelectorAll('.tabela-projecao input').length,
-    linhas: document.querySelectorAll('.tabela-projecao tbody tr').length,
+    linhas: document.querySelectorAll('.tabela-projecao tbody tr[data-conta]').length,
     cobertura: document.querySelector('#projecao-corporativo-cobertura').textContent.replace(/\s+/g, ' ').trim(),
     temModo: !!document.querySelector('input[name="projecao-modo"]'),
     temFilial: !!document.querySelector('#projecao-filial'),
@@ -7034,6 +7034,93 @@ async function provasPisoFaturamento(page, largura) {
 }
 
 /**
+ * O NÍVEL 3 da DRE (pedido do cliente, 2026-11-21): as contas reduzidas embaixo
+ * de cada linha, como a aba "#2 Planejado X Realizado" do Qlik — só o realizado,
+ * somando a linha —, e as oportunidades com a conta reduzida e o nome da linha
+ * como o Qlik mostra, levando à DRE. Âncoras do Qlik (Leite, jan–out/2026):
+ * 3037 SALARIOS E REMUNERACOES = −1.398.030.
+ */
+async function provasNivel3(page, largura) {
+  const l = `[${largura}] Nível 3 da DRE:`;
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  await page.evaluate(() => {
+    document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+    try { localStorage.setItem('projecao.nivel3', '0'); localStorage.setItem('projecao.recolhido', '0'); } catch (e) { /* */ }
+    SecaoProjecao.n3Aberto = undefined; SecaoProjecao.recolhido = undefined;
+    const s = document.querySelector('#sel-negocio');
+    s.value = [...s.options].find((o) => o.textContent.trim().endsWith('- LEITE')).value;
+    s.dispatchEvent(new Event('change'));
+  });
+  await esperar(page, "document.querySelector('#projecao-negocio')?.selectedOptions[0]?.textContent.trim().endsWith('- LEITE') && !!document.querySelector('.tabela-projecao:not([data-velha]) [data-abre-reduzidas]')", 40000);
+  const ler = () => page.evaluate(() => {
+    const n = (t) => Number(String(t || '').replace(/[^0-9,-]/g, '').replace(',', '.'));
+    const vis = (tr) => tr && getComputedStyle(tr).display !== 'none';
+    const linhas = {};
+    document.querySelectorAll('.tabela-projecao tr[data-conta]').forEach((tr) => {
+      const filhos = [...document.querySelectorAll(`.tabela-projecao tr.linha-reduzida[data-pai="${CSS.escape(tr.dataset.conta)}"]`)];
+      if (!filhos.length) return;
+      linhas[tr.dataset.conta] = {
+        valor: n(tr.children[1].textContent), soma: filhos.reduce((a, r) => a + n(r.children[1].textContent), 0),
+        visiveis: filhos.filter(vis).length, total: filhos.length,
+        vazias: filhos.every((r) => [...r.children].slice(2).every((td) => td.textContent.trim() === '')),
+      };
+    });
+    const sal = document.querySelector('.tabela-projecao tr.linha-reduzida[data-pai="8.5"][data-reduzida="3037"]');
+    return { linhas, sal: sal ? { texto: sal.children[0].textContent.replace(/\s+/g, ' ').trim(), valor: n(sal.children[1].textContent) } : null };
+  });
+  let a = await ler();
+  const contas = Object.keys(a.linhas);
+  t(`${l} as linhas da DRE têm contas reduzidas, fechadas por omissão`,
+    contas.length >= 15 && contas.every((c) => a.linhas[c].visiveis === 0), `${contas.length} linhas`);
+  t(`${l} 3037 SALARIOS E REMUNERACOES embaixo de Despesas com Pessoal, −1.398.030 como no Qlik`,
+    a.sal && /^3037 SALARIOS E REMUNERACOES/.test(a.sal.texto) && Math.abs(a.sal.valor + 1398030) <= 1, JSON.stringify(a.sal));
+  // Cada conta reduzida vem arredondada ao real: a tolerância é meio real por conta.
+  const fora = contas.filter((c) => Math.abs(a.linhas[c].valor - a.linhas[c].soma) > Math.max(5, a.linhas[c].total * 0.5));
+  t(`${l} em toda linha, as contas reduzidas somam o realizado da linha (inclusive a CBS e a Receita no formato 2027)`,
+    !fora.length, fora.map((c) => `${c}: ${a.linhas[c].valor} × ${a.linhas[c].soma}`).join('; '));
+  t(`${l} só o realizado: projetado, projeção e proposta ficam em branco`, contas.every((c) => a.linhas[c].vazias));
+
+  await page.click('.tabela-projecao [data-abre-reduzidas="8.5"]');
+  await new Promise((r) => setTimeout(r, 200));
+  a = await ler();
+  t(`${l} o ▸ da linha abre só as contas dela`,
+    a.linhas['8.5'].visiveis === a.linhas['8.5'].total && a.linhas['4.1'].visiveis === 0, JSON.stringify(a.linhas['8.5']));
+  await page.click('#projecao-nivel3');
+  await new Promise((r) => setTimeout(r, 200));
+  a = await ler();
+  t(`${l} o botão de cima abre o nível 3 de todas as linhas`, contas.every((c) => a.linhas[c].visiveis === a.linhas[c].total));
+  await page.click('#projecao-nivel3');
+  await page.click('.tabela-projecao [data-abre-reduzidas="8.5"]');
+
+  // As oportunidades: conta reduzida e o nome da linha como no Qlik.
+  const op = await page.evaluate(() => {
+    const d = document.querySelector('details[data-expansor="oportunidades"]'); if (d) d.open = true;
+    const pdd = document.querySelector('.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"]');
+    return {
+      pdd: pdd?.children[0].textContent.replace(/\s+/g, ' ').trim() || '',
+      linhaPdd: pdd?.children[2].textContent.replace(/\s+/g, ' ').trim() || '',
+      codigoInterno: [...document.querySelectorAll('.tabela-oportunidades-quadro .link-linha-dre')].some((a) => /\b\d+\.\d+\b/.test(a.textContent)),
+      descontoDesp: [...document.querySelectorAll('.tabela-oportunidades-quadro .link-linha-dre')].some((a) => /Desp\.\/ROL/.test(a.textContent)),
+      contaLanc: document.querySelector('.tabela-lancamentos tbody tr td:nth-child(3)')?.textContent.replace(/\s+/g, ' ').trim() || '',
+    };
+  });
+  t(`${l} a PDD aparece como no Qlik: 3141 PROVISAO P/ DEVEDORES DUVIDOSOS, em 7 - OUTROS VALORES › Provisões e Perdas`,
+    /^3141 PROVISAO P\/ DEVEDORES DUVIDOSOS/.test(op.pdd) && op.linhaPdd === '7 - OUTROS VALORES › Provisões e Perdas', JSON.stringify(op));
+  t(`${l} nenhuma linha da DRE com o código interno (11.1) nem com o Desp./ROL no lugar do bloco`, !op.codigoInterno && !op.descontoDesp);
+  t(`${l} os lançamentos mostram a conta reduzida (ex.: 3153 JUROS ATIVOS SOCIO)`, /^\d{4} [A-Z]/.test(op.contaLanc), op.contaLanc);
+  await page.click('.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"] .link-linha-dre');
+  await new Promise((r) => setTimeout(r, 900));
+  const foi = await page.evaluate(() => {
+    const t = document.querySelector('.tabela-projecao tr.linha-destacada');
+    return t ? { pai: t.dataset.pai, red: t.dataset.reduzida, visivel: getComputedStyle(t).display !== 'none' } : null;
+  });
+  t(`${l} o link leva à conta 3141 dentro de Provisões e Perdas, aberta e destacada na DRE`,
+    foi && foi.pai === '9.2' && foi.red === '3141' && foi.visivel, JSON.stringify(foi));
+  await page.click('.tabela-projecao [data-abre-reduzidas="9.2"]');
+}
+
+/**
  * Pedidos do cliente de 2026-11-19: o CENÁRIO realista da planilha da Pecuária na
  * Receita de Vendas (convertido para o formato novo, sem a CBS), a IMPRESSÃO da
  * DRE da proposta aberta e o DESTAQUE das aberturas (expansores).
@@ -7267,7 +7354,7 @@ async function provasFormato2027EEventos(page, largura) {
     const tr = (c) => document.querySelector(`.tabela-projecao tr[data-conta="${c}"]`);
     const cel = (c, i) => tr(c)?.cells[i];
     const prop = (c) => { const i = cel(c, 5)?.querySelector('input'); return n(i ? (i.value || i.placeholder) : cel(c, 5)?.textContent); };
-    const codigos = [...document.querySelectorAll('.tabela-projecao tbody tr')].map((r) => r.dataset.conta);
+    const codigos = [...document.querySelectorAll('.tabela-projecao tbody tr[data-conta]')].map((r) => r.dataset.conta);
     const d = SecaoProjecao.dados;
     const t = d.tributos_dre.colunas;
     return {
@@ -8067,7 +8154,7 @@ async function provasProjecaoProposta(page, largura) {
       return x === '—' || x === '' ? null : Number(x);
     };
     const o = {};
-    document.querySelectorAll('.tabela-projecao tbody tr').forEach((tr) => {
+    document.querySelectorAll('.tabela-projecao tbody tr[data-conta]').forEach((tr) => {
       const td = [...tr.querySelectorAll('td')];
       const inp = td[5].querySelector('input');
       const rea = td[7].querySelector('input');
@@ -8274,7 +8361,7 @@ async function provasProjecao(page, largura) {
       return limpo === '—' || limpo === '' ? null : Number(limpo);
     };
     const linhas = {};
-    document.querySelectorAll('.tabela-projecao tbody tr').forEach((tr) => {
+    document.querySelectorAll('.tabela-projecao tbody tr[data-conta]').forEach((tr) => {
       const td = [...tr.querySelectorAll('td')];
       linhas[tr.dataset.conta] = {
         nivel: Number(tr.dataset.nivel),
@@ -8291,7 +8378,7 @@ async function provasProjecao(page, largura) {
       escolhido: document.querySelector('#projecao-negocio').value,
       rotulo: document.querySelector('#projecao-negocio').selectedOptions[0].textContent,
       linhas,
-      total: document.querySelectorAll('.tabela-projecao tbody tr').length,
+      total: document.querySelectorAll('.tabela-projecao tbody tr[data-conta]').length,
       rodape: document.querySelector('#secao-projecao p.small').textContent.replace(/\s+/g, ' '),
       cabecalho: document.querySelector('#secao-projecao p.text-muted').textContent.replace(/\s+/g, ' '),
     };
@@ -11308,6 +11395,7 @@ async function provasSaidaDoModal(page, largura) {
   await lancamentoDaProposta(page, '2 - PECUARIA', '1.1', receitaPecuaria);
   await provasCenarioEImpressao(page, 'desktop');
   await provasPisoFaturamento(page, 'desktop');
+  await provasNivel3(page, 'desktop');
   await lancamentoDaProposta(page, '2 - PECUARIA', '1.1', '');
   await provasVisaoDoAno(page, 'desktop');
   await provasPessoasEBeneficios(page, 'desktop');
@@ -11392,6 +11480,7 @@ async function provasSaidaDoModal(page, largura) {
   await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', receitaPecuariaM);
   await provasCenarioEImpressao(pageM, 'celular');
   await provasPisoFaturamento(pageM, 'celular');
+  await provasNivel3(pageM, 'celular');
   await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', '');
   await provasVisaoDoAno(pageM, 'celular');
   await provasPessoasEBeneficios(pageM, 'celular');

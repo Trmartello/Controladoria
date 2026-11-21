@@ -230,6 +230,8 @@ class ProjecaoController
             'estoque_negocios' => $estoque,
             // Por negócio, os juros recebidos e os lançamentos acima de R$ 30 mil.
             'juros_negocios' => $juros,
+            // O nível 3 é a soma dos negócios, conta reduzida a conta reduzida.
+            'nivel3' => Projecao::nivel3(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano),
             'linhas' => array_values($soma),
         ];
     }
@@ -368,6 +370,8 @@ class ProjecaoController
                 // Juros recebidos DA FILIAL e os lançamentos acima de R$ 30 mil.
                 'juros' => Oportunidades::juros($negocioId, $ano,
                     (string)(Database::um('SELECT cod_filial FROM filial WHERE id = ?', [$filialId])['cod_filial'] ?? '')),
+                // O nível 3 (conta reduzida) DA FILIAL.
+                'nivel3' => Projecao::nivel3([$negocioId], $ano, $filialId),
             ];
         }
 
@@ -394,6 +398,8 @@ class ProjecaoController
             // Pessoas e benefícios do NEGÓCIO, por ano (a filial não tem o seu: o
             // quadro e os valores são do negócio, que já traz a parte dele).
             'pessoas' => $this->pessoasDoNegocio($negocioId, $ano, $anosPremissa),
+            // O nível 3 (conta reduzida), só leitura (pedido do cliente, 2026-11-21).
+            'nivel3' => Projecao::nivel3([$negocioId], $ano),
             // Realizado × planejado do ano corrente e a visão realista, para a
             // receita bruta e o resultado líquido. Só leitura.
             'visao_ano' => $this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null,
@@ -711,9 +717,11 @@ class ProjecaoController
     {
         if (!empty($p['linhas']) && !empty($p['tributos_dre'])) {
             $p['linhas'] = Reforma::formatoNovo($p['linhas'], $p['tributos_dre']);
+            $p['nivel3'] = Projecao::nivel3FormatoNovo($p['nivel3'] ?? [], $p['tributos_dre']);
         }
         if (!empty($p['filial']['linhas']) && !empty($p['filial']['tributos_dre'])) {
             $p['filial']['linhas'] = Reforma::formatoNovo($p['filial']['linhas'], $p['filial']['tributos_dre']);
+            $p['filial']['nivel3'] = Projecao::nivel3FormatoNovo($p['filial']['nivel3'] ?? [], $p['filial']['tributos_dre']);
         }
         return $p;
     }

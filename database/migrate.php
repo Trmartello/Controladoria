@@ -972,6 +972,33 @@ foreach ([2026] as $anoDre) {
     }
 }
 
+// ---- Nível 3 da DRE: a conta reduzida (pedido do cliente, 2026-11-21) ----
+// Depois das filiais e da estrutura nova: a carga confere filial a filial e
+// corrige a divisão do rateio corporativo (14.3 × 16.1) que a conversão acima fez
+// por aproximação. Sobrescreve, como a DRE; a marca só evita repetir a cada deploy.
+require_once __DIR__ . '/../app/Services/CargaNivel3.php';
+foreach ([
+    'dre_nivel3_2026_10.php',
+] as $arquivo) {
+    $n3 = require __DIR__ . '/' . $arquivo;
+    if (App\Services\CargaConteudo::jaAplicada($pdo, $n3['chave'])) {
+        continue;
+    }
+    $r = App\Services\CargaNivel3::aplicar($pdo, $n3);
+    App\Services\CargaConteudo::marcar(
+        $pdo,
+        $n3['chave'],
+        "DRE nível 3 {$n3['ano']}: {$r['contas']} conta(s) reduzida(s), {$r['negocios']} negócio(s), "
+        . "{$r['filiais']} filial(is), {$r['valores']} valor(es)"
+    );
+    echo "migrate: carga do nível 3 {$n3['chave']} — {$r['contas']} conta(s) reduzida(s), {$r['negocios']} negócio(s), "
+        . "{$r['filiais']} filial(is), {$r['valores']} valor(es); rateio corporativo corrigido em "
+        . "{$r['rateios_corrigidos']} filial(is).\n";
+    if ($r['ignorados']) {
+        echo 'migrate: negócio(s) fora do cadastro ignorado(s) na carga do nível 3: ' . implode(', ', $r['ignorados']) . ".\n";
+    }
+}
+
 // ---- Quadro de colaboradores por negócio (pedido do cliente, 2026-11-18) ----
 // Mesma natureza da DRE — número de fora, carga pedida no chat, sobrescreve —,
 // com a marca por chave só para não repetir o trabalho a cada deploy.
