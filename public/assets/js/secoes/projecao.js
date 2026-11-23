@@ -1771,7 +1771,7 @@ const SecaoProjecao = {
     const liq = (this.visao(d).linhas || []).find((x) => x.codigo === '18');
     const peso = liq && Math.abs(liq.projecao) >= 1
       ? `<div class="small mt-1" id="estoque-peso">No resultado, o montante equivale a <strong>${(e.resultado / Math.abs(liq.projecao) * 100)
-        .toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</strong> do resultado líquido projetado de ${d.ano}
+        .toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</strong> do resultado líquido da base de 12 meses (${this.rotuloDoze(d)})
         (${liq.projecao < 0 ? '−' : ''}R$ ${m(Math.abs(liq.projecao))}).</div>` : '';
     return `<div class="card mb-3 border-success" id="projecao-estoque">
       <div class="card-body py-2 px-3">

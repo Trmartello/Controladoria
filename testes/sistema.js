@@ -7452,7 +7452,10 @@ async function provasEstoque(page, largura) {
     && /\+313\.873/.test(a.perda) && /mais de 2 anos/.test(a.parado) && /21\.829 itens/.test(a.parado), JSON.stringify([a.perda, a.parado]));
   t(`${l} sem destaque de mês (a régua é o ano da filial), e as dez filiais com mais oportunidade listadas`,
     a.acimaAcerto === 0 && a.filiais === 10, JSON.stringify([a.acimaAcerto, a.filiais]));
-  t(`${l} o montante no resultado é posto contra o resultado líquido projetado`, /3,6%/.test(a.peso), a.peso);
+  // Contra a BASE DE 12 MESES desde 2026-11-23: 749.493 ÷ 15.185.864 = 4,9% (era 3,6% contra o
+  // resultado de jan–out + orçado de nov–dez).
+  t(`${l} o montante no resultado é posto contra o resultado líquido da base de 12 meses (R$ 15.185.864)`,
+    /4,9%/.test(a.peso) && /15\.185\.864/.test(a.peso) && /base de 12 meses/.test(a.peso), a.peso);
   t(`${l} sem rolagem horizontal da página`, !a.rolagem);
 
   await escolher('- SUPERMERCADOS');
