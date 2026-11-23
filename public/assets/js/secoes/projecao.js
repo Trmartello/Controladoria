@@ -41,6 +41,24 @@ const SecaoProjecao = {
   filialId: 0,
   versao: 0,
 
+  /**
+   * A BASE DE 12 MESES (pedido do cliente, 2026-11-23): a coluna que era o
+   * orçado de nov–dez do ano é o REALIZADO desses meses no ano anterior, e a
+   * "Projeção" é a soma — os 12 meses fechados mais recentes, base da proposta,
+   * do piso e do desafio. Os campos continuam `projetado` e `projecao`.
+   */
+  rotuloAnterior(d) {
+    const c = Number(d.mes_fechado_ate);
+    const aa = String(d.ano - 1).slice(2);
+    return c >= 12 ? '—' : `${this.nomeMes(c + 1)}${c + 1 < 12 ? `–dez` : ''}/${aa}`;
+  },
+
+  rotuloDoze(d) {
+    const c = Number(d.mes_fechado_ate);
+    return c >= 12 ? `jan–dez/${String(d.ano).slice(2)}`
+      : `${this.nomeMes(c + 1)}/${String(d.ano - 1).slice(2)}–${this.nomeMes(c)}/${String(d.ano).slice(2)}`;
+  },
+
   moeda(v) {
     return Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
   },
@@ -160,9 +178,9 @@ const SecaoProjecao = {
 
     const faltando = d.meses_sem_meta.length
       ? `<div class="alert alert-warning py-2 px-3 small mb-3">
-           <strong>Projeção incompleta.</strong> Não há orçamento lançado para
-           ${d.meses_sem_meta.map((m) => this.nomeMes(m)).join(', ')} de ${d.ano} —
-           esses meses entram como zero na coluna Projetado.
+           <strong>Base de 12 meses incompleta.</strong> Não há realizado carregado de
+           ${d.meses_sem_meta.map((m) => this.nomeMes(m)).join(', ')} de ${d.ano - 1} —
+           esses meses entram como zero na base.
          </div>`
       : '';
 
@@ -237,13 +255,13 @@ const SecaoProjecao = {
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
-            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}</span></th>
-            <th class="text-end">Projetado<br><span class="fw-normal text-muted small">${this.nomeMes(d.mes_fechado_ate + 1)}–dez</span></th>
-            <th class="text-end">Projeção<br><span class="fw-normal text-muted small">do ano</span></th>
+            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}/${String(d.ano).slice(2)}</span></th>
+            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">${this.rotuloAnterior(d)}</span></th>
+            <th class="text-end">Base 12 meses<br><span class="fw-normal text-muted small">${this.rotuloDoze(d)}</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL proposta</span></th>
-            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
+            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a base 12 meses</span></th>
             ${!d.filial && d.filiais.length && d.modo === 'NEGOCIO'
     ? '<th class="text-end">A distribuir<br><span class="fw-normal text-muted small">entre as filiais</span></th>'
     : ''}
@@ -428,10 +446,10 @@ const SecaoProjecao = {
     'Crescimento total menos IPCA e PIB — o que sobra depois da inflação e da economia. '
     + 'Precisa dos dois lançados para existir.')}
           ${leitura(lidas.CRESC_TOTAL, 'Cresc. Total',
-    'A proposta da receita contra a projeção do ano. Lido, não lançado: '
+    'A proposta da receita contra a base de 12 meses. Lido, não lançado: '
     + 'o crescimento se lança na linha da Receita de Vendas.')}
           ${leitura(lidas.PCT_CUSTOS, '% Custos',
-    'A proposta dos custos contra a projeção do ano. Lido da linha Custos das Vendas.')}`
+    'A proposta dos custos contra a base de 12 meses. Lido da linha Custos das Vendas.')}`
       : `<div class="col-12 small text-muted aviso-leituras">A proposta existe só para <strong>${anoProposta}</strong>:
           Cresc. Real, Cresc. Total e % Custos saem das linhas dela e aparecem apenas nesse ano.</div>`;
 
@@ -561,7 +579,7 @@ const SecaoProjecao = {
     return `<table class="table table-sm mb-1 tabela-faturamento">
         <thead><tr><th>Faturamento ${d.ano_planejamento} (Receita de Vendas)</th><th class="text-end">No ano</th></tr></thead>
         <tbody>
-          <tr><td>Projeção de ${d.ano}</td><td class="text-end">${r(proj)}</td></tr>
+          <tr><td>Base 12 meses (${this.rotuloDoze(d)})</td><td class="text-end">${r(proj)}</td></tr>
           ${parte('IPCA', 'IPCA')}${parte('PIB', 'PIB')}${parte('CRESCIMENTO', 'Crescimento desejado')}
           ${piso === null ? '' : `<tr class="fw-bold"><td>Mínimo de ${d.ano_planejamento} <span class="fw-normal text-muted small">(+${p(pisoPct)}: a DRE não aceita menos)</span></td>
             <td class="text-end" data-faturamento="piso">${r(piso)}</td></tr>`}
@@ -700,7 +718,7 @@ const SecaoProjecao = {
         <table class="table table-sm mb-1 tabela-pessoal-diretriz">
           <thead><tr><th>Despesas com Pessoal ${d.ano_planejamento} (linha 8.5), pela diretriz</th><th class="text-end">No ano</th></tr></thead>
           <tbody>
-            <tr><td>Projeção de ${d.ano}</td><td class="text-end">${r(-p.projecao)}</td></tr>
+            <tr><td>Base 12 meses (${this.rotuloDoze(d)})</td><td class="text-end">${r(-p.projecao)}</td></tr>
             <tr><td class="ps-3 text-muted">− vale, prêmio e PPR de ${d.ano} (${pct(p.parte_2026)} da folha)</td><td class="text-end text-muted">−${r(p.pecas_2026)}</td></tr>
             <tr><td>Base reajustada${reaj !== undefined ? ` em ${String(reaj).replace('.', ',')}%` : ''}${
   Math.abs((p.fator_quadro || 1) - 1) > 1e-9 ? ` <span class="text-muted small" data-pessoal="fator">(× ${pct(p.fator_quadro)}: o quadro planejado sobre o atual)</span>` : ''}</td><td class="text-end" data-pessoal="base">${r(p.base_reajustada)}</td></tr>
@@ -835,9 +853,9 @@ const SecaoProjecao = {
     const dossie = !!App.modoDossie;
     const faltando = d.meses_sem_meta.length
       ? `<div class="alert alert-warning py-2 px-3 small mb-3">
-           <strong>Projeção incompleta.</strong> Há negócio sem orçamento lançado para
-           ${d.meses_sem_meta.map((m) => this.nomeMes(m)).join(', ')} de ${d.ano} —
-           esses meses entram como zero na coluna Projetado.
+           <strong>Base de 12 meses incompleta.</strong> Há negócio sem realizado carregado de
+           ${d.meses_sem_meta.map((m) => this.nomeMes(m)).join(', ')} de ${d.ano - 1} —
+           esses meses entram como zero na base.
          </div>`
       : '';
     const sem = d.negocios_consolidados - d.negocios_com_proposta;
@@ -880,13 +898,13 @@ const SecaoProjecao = {
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
-            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}</span></th>
-            <th class="text-end">Projetado<br><span class="fw-normal text-muted small">${this.nomeMes(d.mes_fechado_ate + 1)}–dez</span></th>
-            <th class="text-end">Projeção<br><span class="fw-normal text-muted small">do ano</span></th>
+            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}/${String(d.ano).slice(2)}</span></th>
+            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">${this.rotuloAnterior(d)}</span></th>
+            <th class="text-end">Base 12 meses<br><span class="fw-normal text-muted small">${this.rotuloDoze(d)}</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL proposta</span></th>
-            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
+            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a base 12 meses</span></th>
           </tr></thead>
           <tbody>${this.corpo(d)}</tbody>
         </table>
@@ -1140,7 +1158,7 @@ const SecaoProjecao = {
       const cor = dif === null ? '' : (pct ? (dif >= 0 ? 'text-success' : 'text-danger') : this.corDif(dif));
       return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}">
           <td>${rotulo}</td>
-          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção de 2026"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
+          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da base de 12 meses"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
           <td class="text-end">${celula(b, pct)}</td>
           <td class="text-end ${estimado ? 'text-muted' : cor}">${estimado ? '' : textoDif}</td>
         </tr>`;

@@ -1110,14 +1110,16 @@ class Projecao
             $porId[(int)$c['id']] = $c['codigo'];
         }
 
+        // A BASE DE 12 MESES, a mesma da tela (`ProjecaoController::linhasDaDre`):
+        // jan–corte do ano + os meses depois do corte, REALIZADOS, no ano anterior.
         $valores = Database::todos(
             'SELECT negocio_id, conta_id,
-                    COALESCE(SUM(CASE WHEN tipo = \'REAL\' AND mes <= ? THEN valor END), 0) AS realizado,
-                    COALESCE(SUM(CASE WHEN tipo = \'META\' AND mes >  ? THEN valor END), 0) AS projetado
+                    COALESCE(SUM(CASE WHEN ano = ? AND mes <= ? THEN valor END), 0) AS realizado,
+                    COALESCE(SUM(CASE WHEN ano = ? AND mes >  ? THEN valor END), 0) AS projetado
                FROM dre_valor
-              WHERE ano = ? AND negocio_id IN (' . $marcas . ')
+              WHERE tipo = \'REAL\' AND ano IN (?, ?) AND negocio_id IN (' . $marcas . ')
               GROUP BY negocio_id, conta_id',
-            array_merge([$corte, $corte, $ano], $negocioIds)
+            array_merge([$ano, $corte, $ano - 1, $corte, $ano, $ano - 1], $negocioIds)
         );
         $dre = [];
         foreach ($valores as $v) {
@@ -1167,7 +1169,7 @@ class Projecao
         $tributos = Oportunidades::tributos($negocioIds, $ano);
 
         $filiais = Database::todos(
-            'SELECT f.negocio_id, v.filial_id, v.conta_id, v.realizado, v.projetado
+            'SELECT f.negocio_id, v.filial_id, v.conta_id, v.realizado
                FROM filial f JOIN dre_valor_filial v ON v.filial_id = f.id
               WHERE v.ano = ? AND f.negocio_id IN (' . $marcas . ')',
             array_merge([$ano], $negocioIds)
@@ -1175,7 +1177,24 @@ class Projecao
         $dreFilial = [];
         foreach ($filiais as $f) {
             $dreFilial[(int)$f['negocio_id']][(int)$f['filial_id']][$porId[(int)$f['conta_id']]] =
-                [(float)$f['realizado'], (float)$f['projetado']];
+                [(float)$f['realizado'], 0.0];
+        }
+        // Os meses do ano anterior (base de 12 meses), das filiais que a tela
+        // oferece — as com DRE do ano —, conta a conta como `linhasDaFilial`.
+        foreach (Database::todos(
+            'SELECT f.negocio_id, m.filial_id, m.conta_id, SUM(m.valor) AS valor
+               FROM filial f JOIN dre_valor_filial_mes m ON m.filial_id = f.id
+              WHERE m.ano = ? AND m.mes > ? AND f.negocio_id IN (' . $marcas . ')
+              GROUP BY f.negocio_id, m.filial_id, m.conta_id',
+            array_merge([$ano - 1, $corte], $negocioIds)
+        ) as $m) {
+            $n = (int)$m['negocio_id'];
+            $fid = (int)$m['filial_id'];
+            if (!isset($dreFilial[$n][$fid])) {
+                continue;
+            }
+            $c = $porId[(int)$m['conta_id']];
+            $dreFilial[$n][$fid][$c] = [$dreFilial[$n][$fid][$c][0] ?? 0.0, (float)$m['valor']];
         }
 
         $monta = static function (array $valoresPorConta) use ($contas): array {

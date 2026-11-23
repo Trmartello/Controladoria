@@ -1094,6 +1094,17 @@ if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
         echo 'migrate: filial(is) fora do cadastro de hoje ignorada(s) na DRE dos eventos: ' . implode(', ', $r['filiais_ignoradas']) . ".\n";
     }
 }
+// A DRE INTEIRA de nov–dez/25 (base de 12 meses da Projeção, 2026-11-23): depois da
+// dos eventos, que regrava só as 8.x/9.x/11.x desses meses — esta regrava todas.
+$a = require __DIR__ . '/dre_2025_11_12.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
+    $r = App\Services\CargaApoio::drePeriodo($pdo, $a);
+    App\Services\CargaConteudo::marcar($pdo, $a['chave'], "DRE {$a['ano']} meses " . implode(',', $a['meses']) . ": {$r['linhas']} valor(es)");
+    echo "migrate: DRE do período {$a['chave']} — {$r['negocios']} negócio(s), {$r['filiais']} filial(is), {$r['linhas']} valor(es).\n";
+    if ($r['filiais_ignoradas']) {
+        echo 'migrate: filial(is) fora do cadastro de hoje (ficam só no total do negócio): ' . implode(', ', $r['filiais_ignoradas']) . ".\n";
+    }
+}
 $a = require __DIR__ . '/dre_nivel3_12m_2026_10.php';
 if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
     $r = App\Services\CargaNivel3::aplicar12m($pdo, $a);

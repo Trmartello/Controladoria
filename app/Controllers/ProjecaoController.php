@@ -268,13 +268,14 @@ class ProjecaoController
     {
         $linhas = $this->linhasDaDre($negocioId, $ano, $corte);
 
-        // Mês aberto SEM orçamento lançado deixa a projeção incompleta. A tela
-        // precisa dizer QUAL mês falta: somar o que tem e apresentar como ano é
-        // o erro silencioso clássico de controladoria.
+        // Mês do ano anterior SEM realizado carregado deixa a base de 12 meses
+        // incompleta. A tela precisa dizer QUAL mês falta: somar o que tem e
+        // apresentar como 12 meses é o erro silencioso clássico de controladoria.
+        // (O nome `meses_sem_meta` ficou de quando a coluna era o orçado.)
         $comMeta = Database::todos(
             'SELECT DISTINCT mes FROM dre_valor
-              WHERE negocio_id = ? AND ano = ? AND tipo = \'META\' AND mes > ? AND valor <> 0',
-            [$negocioId, $ano, $corte]
+              WHERE negocio_id = ? AND ano = ? AND tipo = \'REAL\' AND mes > ? AND valor <> 0',
+            [$negocioId, $ano - 1, $corte]
         );
         $temMeta = array_map(static fn ($l) => (int)$l['mes'], $comMeta);
         $semMeta = array_values(array_diff(range($corte + 1, 12), $temMeta));
@@ -1545,15 +1546,20 @@ class ProjecaoController
      */
     private function linhasDaFilial(int $filialId, int $ano, int $corte): array
     {
+        // Base de 12 meses (ver `linhasDaDre`): o realizado acumulado do ano e os
+        // meses depois do corte no ano ANTERIOR, da DRE mensal da filial.
         $linhas = Database::todos(
             'SELECT c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual,
                     COALESCE(v.realizado, 0) AS realizado,
-                    COALESCE(v.projetado, 0) AS projetado
+                    COALESCE(m.valor, 0) AS projetado
                FROM dre_conta c
                LEFT JOIN dre_valor_filial v
                       ON v.conta_id = c.id AND v.filial_id = ? AND v.ano = ?
+               LEFT JOIN (SELECT conta_id, SUM(valor) AS valor FROM dre_valor_filial_mes
+                           WHERE filial_id = ? AND ano = ? AND mes > ? GROUP BY conta_id) m
+                      ON m.conta_id = c.id
               ORDER BY c.ordem',
-            [$filialId, $ano]
+            [$filialId, $ano, $filialId, $ano - 1, $corte]
         );
         foreach ($linhas as &$l) {
             $l['nivel'] = (int)$l['nivel'];
@@ -1565,18 +1571,27 @@ class ProjecaoController
         return $linhas;
     }
 
+    /**
+     * A DRE do negócio na BASE DE 12 MESES (pedido do cliente, 2026-11-23: "12
+     * meses nov/25–out/26 em tudo"): `realizado` é jan–corte do ano e
+     * `projetado` é o REALIZADO dos meses depois do corte no ano ANTERIOR
+     * (nov–dez/25), não mais o orçado de nov–dez do ano. `projecao` — a base da
+     * proposta, do piso e do desafio — é a soma: os 12 meses fechados mais
+     * recentes. Os nomes dos campos ficaram (a tela e o motor os leem em todo
+     * lugar); o que mudou foi o que eles carregam, e a tela diz.
+     */
     private function linhasDaDre(int $negocioId, int $ano, int $corte): array
     {
         $linhas = Database::todos(
             'SELECT c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual,
-                    COALESCE(SUM(CASE WHEN v.tipo = \'REAL\' AND v.mes <= ? THEN v.valor END), 0) AS realizado,
-                    COALESCE(SUM(CASE WHEN v.tipo = \'META\' AND v.mes >  ? THEN v.valor END), 0) AS projetado
+                    COALESCE(SUM(CASE WHEN v.ano = ? AND v.mes <= ? THEN v.valor END), 0) AS realizado,
+                    COALESCE(SUM(CASE WHEN v.ano = ? AND v.mes >  ? THEN v.valor END), 0) AS projetado
                FROM dre_conta c
                LEFT JOIN dre_valor v
-                      ON v.conta_id = c.id AND v.negocio_id = ? AND v.ano = ?
+                      ON v.conta_id = c.id AND v.negocio_id = ? AND v.tipo = \'REAL\' AND v.ano IN (?, ?)
               GROUP BY c.id, c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual, c.ordem
               ORDER BY c.ordem',
-            [$corte, $corte, $negocioId, $ano]
+            [$ano, $corte, $ano - 1, $corte, $negocioId, $ano, $ano - 1]
         );
         foreach ($linhas as &$l) {
             $l['nivel'] = (int)$l['nivel'];

@@ -503,22 +503,48 @@ class CargaApoio
      */
     public static function eventosPeriodo(PDO $pdo, array $dados): array
     {
+        return self::periodoDaDre($pdo, $dados, '/^(8|9|11)\./', 'DRE de eventos', 'fora das 8.x, 9.x e 11.x');
+    }
+
+    /**
+     * A DRE INTEIRA de meses de outro ano, do negócio (`dre_valor`, REAL) e das
+     * filiais (`dre_valor_filial_mes`): `database/dre_AAAA_MM_MM.php`. São os
+     * meses que fecham a BASE DE 12 MESES da Projeção (nov/ano−1 a out/ano;
+     * pedido do cliente, 2026-11-23: "12 meses em tudo"). Todas as linhas da
+     * DRE, menos as percentuais; os meses dados são regravados por inteiro.
+     * Filial fora do cadastro de hoje é ignorada (dita) — fica só no total do
+     * negócio, que vem do Qlik e não da soma das filiais.
+     *
+     * @return array{negocios:int, filiais:int, linhas:int, ignorados:array, filiais_ignoradas:array}
+     */
+    public static function drePeriodo(PDO $pdo, array $dados): array
+    {
+        return self::periodoDaDre($pdo, $dados, null, 'DRE do período', 'desconhecida ou percentual');
+    }
+
+    private static function periodoDaDre(PDO $pdo, array $dados, ?string $filtroLinha, string $nome, string $motivo): array
+    {
         $ano = (int)($dados['ano'] ?? 0);
         $meses = array_map('intval', $dados['meses'] ?? []);
         if ($ano < 2000 || !$meses) {
-            throw new RuntimeException('Carga da DRE de eventos sem ano ou sem meses.');
+            throw new RuntimeException("Carga da {$nome} sem ano ou sem meses.");
         }
+        // As linhas que a carga pode tocar: as do filtro (eventos) ou todas as
+        // não percentuais (a DRE inteira) — percentual é derivado na tela.
         $contas = [];
-        foreach ($pdo->query('SELECT id, codigo FROM dre_conta')->fetchAll(PDO::FETCH_ASSOC) as $c) {
-            $contas[$c['codigo']] = (int)$c['id'];
+        foreach ($pdo->query('SELECT id, codigo, percentual FROM dre_conta')->fetchAll(PDO::FETCH_ASSOC) as $c) {
+            $vale = $filtroLinha !== null ? (bool)preg_match($filtroLinha, (string)$c['codigo']) : !(int)$c['percentual'];
+            if ($vale) {
+                $contas[$c['codigo']] = (int)$c['id'];
+            }
         }
-        $confere = static function (array $porLinha, string $onde) use ($contas, $meses): void {
+        $confere = static function (array $porLinha, string $onde) use ($contas, $meses, $nome, $motivo): void {
             foreach ($porLinha as $linha => $serie) {
-                if (!isset($contas[$linha]) || !preg_match('/^(8|9|11)\./', (string)$linha)) {
-                    throw new RuntimeException("Carga da DRE de eventos com linha fora das 8.x, 9.x e 11.x em {$onde}: {$linha}.");
+                if (!isset($contas[$linha])) {
+                    throw new RuntimeException("Carga da {$nome} com linha {$motivo} em {$onde}: {$linha}.");
                 }
                 if (!is_array($serie) || count($serie) !== count($meses)) {
-                    throw new RuntimeException("Carga da DRE de eventos sem os meses em {$onde}, linha {$linha}.");
+                    throw new RuntimeException("Carga da {$nome} sem os meses em {$onde}, linha {$linha}.");
                 }
             }
         };
@@ -530,7 +556,7 @@ class CargaApoio
                 $confere($l, "filial {$cod}/{$f}");
             }
         }
-        $idsLinhas = array_values(array_filter($contas, static fn ($id, $c) => (bool)preg_match('/^(8|9|11)\./', (string)$c), ARRAY_FILTER_USE_BOTH));
+        $idsLinhas = array_values($contas);
         $marcasL = implode(',', array_fill(0, count($idsLinhas), '?'));
         $marcasM = implode(',', array_fill(0, count($meses), '?'));
         $busca = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ?');
