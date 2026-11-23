@@ -273,14 +273,13 @@ class ProjecaoController
     {
         $linhas = $this->linhasDaDre($negocioId, $ano, $corte);
 
-        // Mês do ano anterior SEM realizado carregado deixa a base de 12 meses
-        // incompleta. A tela precisa dizer QUAL mês falta: somar o que tem e
-        // apresentar como 12 meses é o erro silencioso clássico de controladoria.
-        // (O nome `meses_sem_meta` ficou de quando a coluna era o orçado.)
+        // Mês aberto SEM orçamento lançado deixa a projeção incompleta. A tela
+        // precisa dizer QUAL mês falta: somar o que tem e apresentar como ano é
+        // o erro silencioso clássico de controladoria.
         $comMeta = Database::todos(
             'SELECT DISTINCT mes FROM dre_valor
-              WHERE negocio_id = ? AND ano = ? AND tipo = \'REAL\' AND mes > ? AND valor <> 0',
-            [$negocioId, $ano - 1, $corte]
+              WHERE negocio_id = ? AND ano = ? AND tipo = \'META\' AND mes > ? AND valor <> 0',
+            [$negocioId, $ano, $corte]
         );
         $temMeta = array_map(static fn ($l) => (int)$l['mes'], $comMeta);
         $semMeta = array_values(array_diff(range($corte + 1, 12), $temMeta));
@@ -524,7 +523,7 @@ class ProjecaoController
      *
      * Desde 2026-11-23 o desafio é CALCULADO, não carregado (pedido do cliente:
      * "gere um novo desafio… e a partir dali ele continua fazendo a projeção"):
-     * é a proposta padrão de cada negócio — a base de 12 meses com as premissas
+     * é a proposta padrão de cada negócio — a projeção do ano com as premissas
      * do painel e os drivers de volume (`DesafioDrivers`), sem lançamento. Quem
      * o monta é `montar`, que já tem tudo à mão; aqui fica só o cabeçalho.
      * `negocio_desafio` (o desafio carregado de 18/11) não é mais lido.
@@ -553,7 +552,7 @@ class ProjecaoController
             'receita_liquida' => $r['receita_liquida'],
             'resultado' => $r['resultado'],
         ]) + [
-            'nota' => $driver['nota'] ?? 'Base de 12 meses × premissas (IPCA + PIB + crescimento).',
+            'nota' => $driver['nota'] ?? 'Projeção do ano × premissas (IPCA + PIB + crescimento).',
             'driver' => $driver['driver'] ?? 'PREMISSAS',
         ];
     }
@@ -1533,20 +1532,15 @@ class ProjecaoController
      */
     private function linhasDaFilial(int $filialId, int $ano, int $corte): array
     {
-        // Base de 12 meses (ver `linhasDaDre`): o realizado acumulado do ano e os
-        // meses depois do corte no ano ANTERIOR, da DRE mensal da filial.
         $linhas = Database::todos(
             'SELECT c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual,
                     COALESCE(v.realizado, 0) AS realizado,
-                    COALESCE(m.valor, 0) AS projetado
+                    COALESCE(v.projetado, 0) AS projetado
                FROM dre_conta c
                LEFT JOIN dre_valor_filial v
                       ON v.conta_id = c.id AND v.filial_id = ? AND v.ano = ?
-               LEFT JOIN (SELECT conta_id, SUM(valor) AS valor FROM dre_valor_filial_mes
-                           WHERE filial_id = ? AND ano = ? AND mes > ? GROUP BY conta_id) m
-                      ON m.conta_id = c.id
               ORDER BY c.ordem',
-            [$filialId, $ano, $filialId, $ano - 1, $corte]
+            [$filialId, $ano]
         );
         foreach ($linhas as &$l) {
             $l['nivel'] = (int)$l['nivel'];
@@ -1559,26 +1553,26 @@ class ProjecaoController
     }
 
     /**
-     * A DRE do negócio na BASE DE 12 MESES (pedido do cliente, 2026-11-23: "12
-     * meses nov/25–out/26 em tudo"): `realizado` é jan–corte do ano e
-     * `projetado` é o REALIZADO dos meses depois do corte no ano ANTERIOR
-     * (nov–dez/25), não mais o orçado de nov–dez do ano. `projecao` — a base da
-     * proposta, do piso e do desafio — é a soma: os 12 meses fechados mais
-     * recentes. Os nomes dos campos ficaram (a tela e o motor os leem em todo
-     * lugar); o que mudou foi o que eles carregam, e a tela diz.
+     * A DRE do negócio: `realizado` é jan–corte do ano e `projetado` é o
+     * PLANEJADO (orçado, `tipo = META`) dos meses depois do corte no MESMO ano;
+     * `projecao` — a base da proposta, do piso e do desafio — é a soma: a
+     * projeção do ano. (De 23/11/2026 por algumas horas a coluna do meio foi o
+     * realizado de nov–dez do ano anterior, a "base de 12 meses"; o cliente
+     * voltou atrás no mesmo dia: "jan–out deve ser de 2026 e nov–dez deve pegar
+     * o planejado de 2026".)
      */
     private function linhasDaDre(int $negocioId, int $ano, int $corte): array
     {
         $linhas = Database::todos(
             'SELECT c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual,
-                    COALESCE(SUM(CASE WHEN v.ano = ? AND v.mes <= ? THEN v.valor END), 0) AS realizado,
-                    COALESCE(SUM(CASE WHEN v.ano = ? AND v.mes >  ? THEN v.valor END), 0) AS projetado
+                    COALESCE(SUM(CASE WHEN v.tipo = \'REAL\' AND v.mes <= ? THEN v.valor END), 0) AS realizado,
+                    COALESCE(SUM(CASE WHEN v.tipo = \'META\' AND v.mes >  ? THEN v.valor END), 0) AS projetado
                FROM dre_conta c
                LEFT JOIN dre_valor v
-                      ON v.conta_id = c.id AND v.negocio_id = ? AND v.tipo = \'REAL\' AND v.ano IN (?, ?)
+                      ON v.conta_id = c.id AND v.negocio_id = ? AND v.ano = ?
               GROUP BY c.id, c.codigo, c.nome, c.nivel, c.pai_codigo, c.percentual, c.ordem
               ORDER BY c.ordem',
-            [$ano, $corte, $ano - 1, $corte, $negocioId, $ano, $ano - 1]
+            [$corte, $corte, $negocioId, $ano]
         );
         foreach ($linhas as &$l) {
             $l['nivel'] = (int)$l['nivel'];
