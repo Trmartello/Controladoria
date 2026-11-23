@@ -773,6 +773,83 @@ class Projecao
     public const CONTA_ACERTO_PPR = '3227';
 
     /**
+     * A DEPRECIAÇÃO (8.10) do ano da proposta vem da carga por negócio, filial e
+     * mês (`negocio_depreciacao`, conta reduzida 3128) e NÃO se lança (pedido do
+     * cliente, 2026-11-23: "este campo não deve permitir edição, pois esse já é
+     * o total da depreciação"). Negócio sem carga no ano: a linha volta a ser
+     * uma despesa lançável como as outras.
+     */
+    public const LINHA_DEPRECIACAO = '8.10';
+    public const CONTA_DEPRECIACAO = '3128';
+
+    /**
+     * A depreciação carregada para o ano, por negócio: o total do negócio
+     * (`filial_id` 0, que pode ter resto de filial fora do cadastro) e o de cada
+     * filial, mês a mês (1–12), no sinal da DRE. Negócio sem carga não aparece.
+     *
+     * @param int[] $negocioIds
+     * @return array<int, array{negocio: array<int,float>, filiais: array<int, array<int,float>>}>
+     */
+    public static function depreciacao(array $negocioIds, int $ano): array
+    {
+        $negocioIds = array_values(array_unique(array_map('intval', $negocioIds)));
+        if (!$negocioIds) {
+            return [];
+        }
+        $marcas = implode(',', array_fill(0, count($negocioIds), '?'));
+        $saida = [];
+        foreach (Database::todos(
+            "SELECT negocio_id, filial_id, mes, valor FROM negocio_depreciacao
+              WHERE ano = ? AND negocio_id IN ({$marcas}) ORDER BY mes",
+            array_merge([$ano], $negocioIds)
+        ) as $r) {
+            $n = (int)$r['negocio_id'];
+            $saida[$n] ??= ['negocio' => array_fill(1, 12, 0.0), 'filiais' => []];
+            if ((int)$r['filial_id'] === 0) {
+                $saida[$n]['negocio'][(int)$r['mes']] = (float)$r['valor'];
+            } else {
+                $saida[$n]['filiais'][(int)$r['filial_id']] ??= array_fill(1, 12, 0.0);
+                $saida[$n]['filiais'][(int)$r['filial_id']][(int)$r['mes']] = (float)$r['valor'];
+            }
+        }
+        return $saida;
+    }
+
+    /**
+     * As linhas de valor FIXO (travadas) de um negócio ou filial, no formato que
+     * `aplicar` e `somarFiliais` recebem. Filial sem depreciação carregada, num
+     * negócio que tem carga, vale ZERO: a carga é o total da depreciação.
+     *
+     * @param array|null $dep um item de `depreciacao()`
+     * @return array<string, array{valor: float, meses: array<int,float>, conta: string}>
+     */
+    public static function fixosDaDepreciacao(?array $dep, int $filialId = 0): array
+    {
+        if (!$dep) {
+            return [];
+        }
+        $meses = $filialId ? ($dep['filiais'][$filialId] ?? array_fill(1, 12, 0.0)) : $dep['negocio'];
+        return [self::LINHA_DEPRECIACAO => ['valor' => array_sum($meses), 'meses' => $meses,
+            'conta' => self::CONTA_DEPRECIACAO]];
+    }
+
+    /** Põe numa linha o valor fixo (travado), ignorando o que estiver lançado nela. */
+    private static function travar(array $linha, array $fixo, ?array $lancado): array
+    {
+        $linha['proposta'] = (float)$fixo['valor'];
+        $linha['proposta_origem'] = 'DEPRECIACAO';
+        $linha['proposta_lancado'] = null;
+        $linha['proposta_padrao'] = null;
+        $linha['proposta_regra'] = null;
+        $linha['proposta_travada'] = true;
+        $linha['proposta_meses'] = $fixo['meses'];
+        $linha['proposta_conta'] = $fixo['conta'];
+        // Um lançamento antigo continua guardado, mas não vale: a tela diz.
+        $linha['lancado_ignorado'] = $lancado;
+        return $linha;
+    }
+
+    /**
      * O NÍVEL 3 da DRE — a conta reduzida, como a aba "#2 Planejado X Realizado"
      * do Qlik (pedido do cliente, 2026-11-21): por linha do nível 2, as contas
      * reduzidas com o realizado acumulado até o corte, na ordem do Qlik. Só
@@ -1050,7 +1127,7 @@ class Projecao
      *        no formato de 2027 — sem o PIS/COFINS (a CBS) — e o motor o devolve ao
      *        formato da carga para calcular.
      */
-    public static function aplicar(array $linhas, array $lancados, array $crescimentos = [], ?float $taxaPisCofins = null): array
+    public static function aplicar(array $linhas, array $lancados, array $crescimentos = [], ?float $taxaPisCofins = null, array $fixos = []): array
     {
         $t = $taxaPisCofins !== null && $taxaPisCofins > 0 && $taxaPisCofins < 1 ? $taxaPisCofins : null;
         // As editáveis, uma a uma; os blocos saem de `derivar`.
@@ -1081,6 +1158,12 @@ class Projecao
             $linhas[$i]['proposta_padrao'] = $r['origem'] === 'PREMISSA' ? $r['percentual'] : null;
             $linhas[$i]['proposta_regra'] = $r['origem'] === 'PREMISSA'
                 ? ($l['codigo'] === self::LINHA_PESSOAL ? 'PESSOAL' : 'PREMISSA') : null;
+            // A DEPRECIAÇÃO carregada (`fixosDaDepreciacao`): o valor é o da carga
+            // e o lançado não vale (pedido do cliente, 2026-11-23).
+            if (isset($fixos[$l['codigo']])) {
+                $linhas[$i] = self::travar($linhas[$i], $fixos[$l['codigo']], $lancados[$l['codigo']] ?? null);
+                continue;
+            }
             // O PISO do faturamento (pedido do cliente, 2026-11-19): a Receita de
             // Vendas não pode ficar abaixo do crescimento real total do negócio
             // — IPCA + PIB + crescimento desejado. Acima pode (o negócio se
@@ -1180,10 +1263,16 @@ class Projecao
      *
      * @param array $porFilial [filialId => [codigo => proposta]]
      */
-    public static function somarFiliais(array $linhas, array $porFilial): array
+    public static function somarFiliais(array $linhas, array $porFilial, array $fixos = []): array
     {
         foreach ($linhas as $i => $l) {
             if (!self::editavel($l)) {
+                continue;
+            }
+            // A depreciação do negócio é a da carga, também no modo filial: o
+            // resto de filial fora do cadastro aparece como resíduo a distribuir.
+            if (isset($fixos[$l['codigo']])) {
+                $linhas[$i] = self::travar($l, $fixos[$l['codigo']], null);
                 continue;
             }
             $soma = 0.0;
@@ -1287,6 +1376,7 @@ class Projecao
 
         $pessoal = self::dadosDePessoal($negocioIds, $ano, $anoPlan);
         $acertos = self::pprRealizado($negocioIds, $ano);
+        $deps = self::depreciacao($negocioIds, $anoPlan);
         $cods = [];
         foreach (Database::todos('SELECT id, cod_negocio FROM negocio WHERE id IN (' . $marcas . ')', $negocioIds) as $n) {
             $cods[(int)$n['id']] = (string)$n['cod_negocio'];
@@ -1350,13 +1440,14 @@ class Projecao
                     // A 8.5 da filial sobre a projeção dela sem a 3227 dela — a mesma conta da tela.
                     $base = $monta($porConta);
                     $cf = self::crescimentosDaFilial($cresc, $base, (float)($acertosFilial[$filialId] ?? 0.0), $minimo);
-                    $lf = self::aplicar($base, $lanc[$filialId] ?? [], $cf, $taxaPc);
+                    $lf = self::aplicar($base, $lanc[$filialId] ?? [], $cf, $taxaPc,
+                        self::fixosDaDepreciacao($deps[$id] ?? null, (int)$filialId));
                     $porFilial[$filialId] = $lf;
                     $propostas[$filialId] = array_column($lf, 'proposta', 'codigo');
                 }
-                $linhas = self::somarFiliais($linhas, $propostas);
+                $linhas = self::somarFiliais($linhas, $propostas, self::fixosDaDepreciacao($deps[$id] ?? null));
             } else {
-                $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc, $taxaPc);
+                $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc, $taxaPc, self::fixosDaDepreciacao($deps[$id] ?? null));
             }
             // O mínimo das Despesas com Pessoal — a mesma conta da tela. As
             // filiais só entram no modo filial, quando são elas que formam o total.

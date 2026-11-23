@@ -71,16 +71,17 @@ prova('o cabeçalho não traz valores: quem calcula é a Projeção', $d && !iss
 // O Corporativo soma os desafios dos 11 negócios (números do banco local, out/26,
 // base = projeção de 2026, jan–out realizado + nov–dez planejado; conferidos por `testes/desafio_drivers.php` negócio a negócio).
 // Desde 2026-11-23 a 8.5 sai sem a conta reduzida 3227 (acerto do PPR): resultado de 45.565.066 para 45.755.843.
+// E a 8.10 é a DEPRECIAÇÃO carregada (R$ 18,33 mi contra R$ 4,99 mi projetados): 45.755.843 → 32.415.590.
 $negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
 $c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];
 prova('os 11 negócios entram no desafio do Corporativo', count($c['negocios']) === 11, (string)count($c['negocios']));
-prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado R$ 45.755.843',
-    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 45755843) < 2,
+prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado R$ 32.415.590',
+    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 32415590) < 2,
     round($t['receita_bruta']) . ' / ' . round($t['receita_liquida']) . ' / ' . round($t['resultado']));
-prova('margem líquida do desafio: 1,29%', abs($t['margem'] - 1.2895) < 0.0005, (string)round($t['margem'], 4));
-prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 25,21 mi',
-    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 25211129) < 2,
+prova('margem líquida do desafio: 0,91%', abs($t['margem'] - 0.9135) < 0.0005, (string)round($t['margem'], 4));
+prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 38,55 mi',
+    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 38551382) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 
 // ── 2. De onde sai: base de 12 meses × premissas, ou o driver ───────────────
@@ -97,8 +98,10 @@ prova('sem driver (e sem meta de volume no banco local): receita bruta = projeç
     !$cresceu, implode(' | ', $cresceu));
 $u = invocar($ctrl, 'montar', $ids['17'], $ano, $corte);
 $ud = $u['desafio']['desafio'];
-prova('Usina sem receita: sem margem, e com o resultado da projeção (R$ 434.800)',
-    $ud['margem'] === null && abs($ud['resultado'] - 434800) < 2, (string)round($ud['resultado']));
+// A Usina tem o resultado da projeção (R$ 434.800) com a depreciação carregada no lugar
+// da projetada: 497.438 → 357.688, R$ 139.750 a mais de resultado.
+prova('Usina sem receita: sem margem, e com o resultado da projeção com a depreciação carregada (R$ 574.550)',
+    $ud['margem'] === null && abs($ud['resultado'] - 574550) < 2, (string)round($ud['resultado']));
 $pec = invocar($ctrl, 'montar', $ids['2'], $ano, $corte)['desafio']['desafio'];
 prova('Pecuária no realista da planilha: R$ 732.218.694', abs($pec['receita_bruta'] - 732218693.78) < 1, (string)round($pec['receita_bruta']));
 

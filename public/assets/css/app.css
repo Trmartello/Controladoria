@@ -4842,3 +4842,8 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
   body.imprimir-dre .tabela-projecao td, body.imprimir-dre .tabela-projecao th,
   body.imprimir-dre .linha-muda, body.imprimir-dre tr.linha-cbs > td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Linha de valor carregado e travado (a Depreciação, 8.10, desde 2026-11-23):
+   número sem célula de digitar, com o cadeado; o título diz de onde vem. */
+.tabela-projecao .proposta-calculada { cursor: help; white-space: nowrap; }
+.tabela-projecao .proposta-calculada::before { content: "🔒"; font-size: .75em; margin-right: .3em; opacity: .6; }

@@ -1054,6 +1054,27 @@ foreach ([
     }
 }
 
+// ---- Depreciação do ano da proposta, por negócio, filial e mês (2026-11-23) ----
+require_once __DIR__ . '/../app/Services/CargaDepreciacao.php';
+foreach ([
+    'depreciacao_2027.php',
+] as $arquivo) {
+    $d = require __DIR__ . '/' . $arquivo;
+    if (App\Services\CargaConteudo::jaAplicada($pdo, $d['chave'])) {
+        continue;
+    }
+    $r = App\Services\CargaDepreciacao::aplicar($pdo, $d);
+    App\Services\CargaConteudo::marcar($pdo, $d['chave'],
+        "Depreciação {$d['ano']}: {$r['negocios']} negócio(s), {$r['filiais']} filial(is)");
+    echo "migrate: carga de depreciação {$d['chave']} — {$r['negocios']} negócio(s), {$r['filiais']} filial(is).\n";
+    foreach ($r['negocios_ignorados'] as $cod => $v) {
+        echo "migrate: depreciação do negócio {$cod} fora do cadastro ignorada (R$ " . number_format($v, 2, ',', '.') . ").\n";
+    }
+    foreach ($r['filiais_so_no_negocio'] as $k => $v) {
+        echo "migrate: depreciação da filial {$k} fora do cadastro do negócio — só no total do negócio (R$ " . number_format($v, 2, ',', '.') . ").\n";
+    }
+}
+
 // ---- Apoio ao desafio: tributos sobre vendas e itens não recorrentes (2026-11-18) ----
 require_once __DIR__ . '/../app/Core/Database.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';

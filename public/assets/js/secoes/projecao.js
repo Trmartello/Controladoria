@@ -2087,7 +2087,11 @@ const SecaoProjecao = {
     return linhas.map((l) => {
       const bloco = l.nivel === 1;
       const negativo = (v) => (v < 0 ? 'text-danger' : '');
-      const editavel = l.nivel === 2 && !l.percentual && podeLancar;
+      // A Depreciação carregada (8.10, conta 3128; pedido do cliente,
+      // 2026-11-23): é o total da depreciação por negócio, filial e mês e não
+      // se lança — número com cadeado, sem célula (`proposta_travada`).
+      const travada = !!l.proposta_travada;
+      const editavel = l.nivel === 2 && !l.percentual && podeLancar && !travada;
       // Despesas com Pessoal abaixo do mínimo (pedido do cliente, 2026-11-23):
       // grava, e a célula ganha o ⚠ para validar (`marcarMinimoPessoal`).
       const abaixoMinimo = !!l.abaixo_minimo_pessoal;
@@ -2103,6 +2107,14 @@ const SecaoProjecao = {
           placeholder="${this.moeda(l.proposta)}"
           data-conta="${Modal.esc(l.codigo)}"
           aria-label="Proposta de ${d.ano_planejamento} para ${Modal.esc(l.nome)}">`;
+      } else if (travada) {
+        const meses = Object.entries(l.proposta_meses || {})
+          .map(([m, v]) => `${this.nomeMes(Number(m))} ${this.moeda(v)}`).join(' · ');
+        proposta = `<span class="proposta-calculada" data-travada="${Modal.esc(l.codigo)}" title="${Modal.esc(
+          `Depreciação de ${d.ano_planejamento} carregada por negócio, filial e mês (conta reduzida ${l.proposta_conta}, `
+          + `bens existentes + investimentos). É o total da depreciação e não se lança. Mês a mês: ${meses}.`
+          + (l.lancado_ignorado ? ' Havia um lançamento anterior nesta linha: ele está guardado, mas não vale.' : '')
+        )}">${this.moeda(l.proposta)}</span>`;
       } else if (l.proposta === null || l.proposta === undefined) {
         proposta = `<span class="text-muted" title="${Modal.esc(
           'Linha que o Qlik entrega pronta e que o sistema não sabe recompor — '
