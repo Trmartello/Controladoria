@@ -98,9 +98,20 @@ prova('e o desafio não é a base parada: premissas e pessoal pela diretriz mexe
 $semLanc = Database::um('SELECT COUNT(*) n FROM projecao_valor v JOIN projecao p ON p.id = v.projecao_id WHERE p.negocio_id = ? AND p.ano = ?',
     [$id('9'), $anoPlan])['n'];
 $t = $tela('9');
-prova('Supermercados sem lançamento: proposta = desafio (a proposta nasce dele)',
-    (int)$semLanc > 0 || abs($t['desafio']['proposta']['resultado'] - $t['desafio']['desafio']['resultado']) < 1,
-    $fmt($t['desafio']['desafio']['resultado']));
+// Desde 2026-11-23 o desafio difere da proposta padrão num ponto só: nele as demais
+// despesas operacionais acompanham a receita; na proposta, sem lançamento, ficam na
+// projeção (diretriz). Sem lançamento, a diferença de resultado é exatamente esse
+// crescimento: demais despesas da projeção × (fator da receita − 1).
+$pjs = array_column($t['linhas'], 'projecao', 'codigo');
+$demais = 0.0;
+foreach (Projecao::acompanhamReceitaNoDesafio() as $c) {
+    $demais += $c[0] === '8' ? (float)($pjs[$c] ?? 0) : 0.0;
+}
+$fat = $t['desafio']['desafio']['receita_bruta'] / $pjs['1'];
+prova('Supermercados sem lançamento: mesma receita que o desafio, e o resultado só difere pelas demais despesas acompanhando a receita',
+    (int)$semLanc > 0 || (abs($t['desafio']['proposta']['receita_bruta'] - $t['desafio']['desafio']['receita_bruta']) < 1
+        && abs(($t['desafio']['desafio']['resultado'] - $t['desafio']['proposta']['resultado']) - $demais * ($fat - 1)) < 1),
+    $fmt($t['desafio']['proposta']['resultado']) . ' → ' . $fmt($t['desafio']['desafio']['resultado']) . ' (' . $fmt($demais * ($fat - 1)) . ')');
 
 // ── Pendentes: driver a definir ────────────────────────────────────────────
 foreach (['1' => 'Cereais', '7' => 'UTM', '13' => 'UBS'] as $cod => $nome) {

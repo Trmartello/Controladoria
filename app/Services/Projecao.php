@@ -254,7 +254,8 @@ class Projecao
      * negócio digita MENOS, e mais é recusado (`maximoDaDiretriz`).
      *  - IPCA 4,50% (Focus de 06/11/2026) e PIB agropecuário 1,50%.
      *  - Demais despesas operacionais: sem crescimento sobre 2026 — que é o que a
-     *    proposta já faz por omissão (vale a projeção).
+     *    proposta já faz por omissão (vale a projeção). O DESAFIO, não: nele elas
+     *    acompanham a receita (`acompanhamReceitaNoDesafio`, 2026-11-23).
      *  - Nenhum negócio ou filial com meta negativa de resultado líquido — a
      *    tela DESTACA o resultado negativo, sem travar o lançamento (decisão do
      *    cliente, 2026-11-18).
@@ -761,6 +762,33 @@ class Projecao
      */
     public const ACOMPANHAM_RECEITA = ['2.1', '2.2', '2.3', '4.1'];
 
+    /**
+     * No DESAFIO, as despesas operacionais também acompanham a receita (pedido do
+     * cliente, 2026-11-23: "o Desafio para o negócio deve levar em consideração um
+     * crescimento proporcional das despesas"): cada subconta da linha 7 cresce na
+     * proporção da Receita de Vendas, o que mantém a despesa sobre a receita de
+     * 2026. Ficam fora as Despesas com Pessoal (crescem pela diretriz) e a
+     * Depreciação (vale a carga). Os rateios (14.x, 16.1) seguem a projeção.
+     *
+     * As despesas só ACOMPANHAM PARA CIMA: onde a receita cai, ficam na projeção
+     * (pedido do cliente, 2026-11-23, sobre a Pecuária, cujo faturamento cai com o
+     * preço base do suíno: "as despesas não vão diminuir… nem as despesas da
+     * operação vão encolher proporcional à receita"). Custo e deduções
+     * (`ACOMPANHAM_RECEITA`) seguem a receita nos dois sentidos.
+     *
+     * Só no desafio: na PROPOSTA as demais despesas continuam na projeção por
+     * omissão — é a diretriz de 2027 ("sem crescimento sobre 2026") —, e o que o
+     * negócio lança manda. A Diferença da tela passa a mostrar também o quanto a
+     * proposta segura as despesas abaixo do crescimento da receita.
+     *
+     * @return string[]
+     */
+    public static function acompanhamReceitaNoDesafio(): array
+    {
+        $despesas = array_values(array_diff(self::DERIVADAS['7'], [self::LINHA_PESSOAL, self::LINHA_DEPRECIACAO]));
+        return array_merge(self::ACOMPANHAM_RECEITA, $despesas);
+    }
+
     /** A subconta da Receita de Vendas, que cresce com IPCA + PIB + crescimento desejado. */
     public const LINHA_RECEITA = '1.1';
     /** A subconta de Despesas com Pessoal, que cresce com o percentual das despesas com pessoas. */
@@ -1127,8 +1155,9 @@ class Projecao
      *        no formato de 2027 — sem o PIS/COFINS (a CBS) — e o motor o devolve ao
      *        formato da carga para calcular.
      */
-    public static function aplicar(array $linhas, array $lancados, array $crescimentos = [], ?float $taxaPisCofins = null, array $fixos = []): array
+    public static function aplicar(array $linhas, array $lancados, array $crescimentos = [], ?float $taxaPisCofins = null, array $fixos = [], ?array $acompanham = null): array
     {
+        $acompanham ??= self::ACOMPANHAM_RECEITA;
         $t = $taxaPisCofins !== null && $taxaPisCofins > 0 && $taxaPisCofins < 1 ? $taxaPisCofins : null;
         // As editáveis, uma a uma; os blocos saem de `derivar`.
         foreach ($linhas as $i => $l) {
@@ -1211,15 +1240,17 @@ class Projecao
         if ($rec && (float)$rec['projecao'] != 0.0 && isset($rec['proposta'])) {
             $fator = (float)$rec['proposta'] / (float)$rec['projecao'];
             if (abs($fator - 1) > 1e-12) {
-                foreach (self::ACOMPANHAM_RECEITA as $c) {
-                    if (!isset($idx[$c])) {
+                foreach ($acompanham as $c) {
+                    // Despesa (fora de ACOMPANHAM_RECEITA) só acompanha para cima.
+                    $f = in_array($c, self::ACOMPANHAM_RECEITA, true) ? $fator : max($fator, 1.0);
+                    if (!isset($idx[$c]) || abs($f - 1) <= 1e-12) {
                         continue;
                     }
                     $l = &$linhas[$idx[$c]];
                     if (($l['proposta_origem'] ?? null) === 'PROJECAO') {
-                        $l['proposta'] = (float)$l['projecao'] * $fator;
+                        $l['proposta'] = (float)$l['projecao'] * $f;
                         $l['proposta_origem'] = 'PREMISSA';
-                        $l['proposta_padrao'] = ($fator - 1) * 100;
+                        $l['proposta_padrao'] = ($f - 1) * 100;
                         $l['proposta_regra'] = 'RECEITA';
                     }
                     unset($l);

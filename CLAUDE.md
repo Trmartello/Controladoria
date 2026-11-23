@@ -35,14 +35,29 @@ lançamento nenhum (`$linhasDesafio` em `montar`). Composição:
 - receita: projeção × (1 + IPCA + PIB + % crescimento), ou o driver de volume;
 - pessoal pela diretriz;
 - custo e deduções acompanham a receita (margem bruta preservada);
-- demais despesas e rateios na projeção.
+- **demais despesas operacionais também acompanham a receita** (pedido do cliente,
+  2026-11-23: "o Desafio para o negócio deve levar em consideração um crescimento
+  proporcional das despesas"): cada subconta da linha 7, menos Pessoal (diretriz)
+  e Depreciação (carga), cresce na proporção da Receita de Vendas
+  (`Projecao::acompanhamReceitaNoDesafio`). **Só para cima**: onde a receita cai
+  (Pecuária, realista da planilha 11,8% abaixo da projeção, pelo preço base do suíno
+  de R$ 6,35 para R$ 5,13/kg), as despesas ficam na projeção — "as despesas não vão
+  diminuir… nem as despesas da operação vão encolher proporcional à receita"
+  (cliente, 2026-11-23). Custo e deduções seguem a receita nos dois sentidos;
+- rateios na projeção.
+
+Só no desafio. Na **proposta** a despesa não lançada continua na projeção (diretriz
+de 2027, "sem crescimento sobre 2026"), então a Diferença do cartão passa a mostrar
+também o quanto a proposta segura as despesas abaixo da receita.
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, R$ 34,6 mi de resultado, margem 0,97% (a meta de 2% pediria R$ 70,97
+faturamento, R$ 29,6 mi de resultado, margem 0,83% (a meta de 2% pediria R$ 70,97
 mi). Era R$ 45,6 mi e 1,28%; R$ 45,8 mi e 1,29% com a 3227 fora da base do pessoal;
 R$ 32,4 mi com a depreciação carregada na 8.10 (ver abaixo); R$ 34,6 mi com a
-depreciação regravada sem o grupo contábil 1272.
+depreciação regravada sem o grupo contábil 1272; R$ 30,9 mi com as despesas
+operacionais acompanhando a receita no desafio; R$ 29,6 mi com elas só acompanhando
+para cima (a Pecuária deixa de encolher as dela).
 
 **Drivers do faturamento** (`App\Services\DesafioDrivers`). Viram o crescimento
 padrão da 1.1 e, portanto, o PISO dela:
@@ -106,7 +121,7 @@ os mapeie para outro negócio. As filiais 47 e 100 de Cereais (fora do cadastro 
 cliente:** a carga dá R$ 16,16 mi (era R$ 18,33 mi com o grupo 1272) contra R$ 4,99 mi
 projetados na 8.10 para 2026 (Cereais 8,76 mi × 0,55 mi; Rações 2,99 × 0,12; UBS
 0,58 × 0,06; Pecuária cai a 6 mil) — o resultado do desafio cai de R$ 45,8 mi para
-R$ 34,6 mi. Em 2026 parte
+R$ 34,6 mi (antes de as despesas acompanharem a receita). Em 2026 parte
 da depreciação está fora da 3128 (3388/3389 variação fiscal × societária, 9852
 rateio em 4.1/14.3/16.1, 3342 direito de uso na 8.9): confirmar se a planilha
 não soma o que já está nessas contas. Provas: `testes/depreciacao.php`.

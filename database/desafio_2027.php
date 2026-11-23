@@ -23,14 +23,17 @@
  *    faz o mesmo em todos).
  *  - **Pessoal pela diretriz**: reajuste de 5,5%, vale R$ 500, prêmios R$ 200 e
  *    R$ 500 e PPR de até 1,5 salário (`Projecao::pessoalDaDiretriz`).
- *  - Demais despesas e rateios na base, sem crescimento. Usina: só resultado.
+ *  - **Demais despesas operacionais acompanham a receita, só para cima** (pedido do
+ *    cliente, 2026-11-23: `Projecao::acompanhamReceitaNoDesafio`): a despesa sobre a
+ *    receita de 2026 fica preservada; onde a receita cai (Pecuária), ficam na base.
+ *    Rateios na base, sem crescimento. Usina: só resultado.
  *
  * O desafio de 18/11 (2026 realista × 1,06, margem = a maior de 2025 e 2026,
  * Pecuária no otimista) fica no histórico do git; esta carga apaga os valores
  * dele de `negocio_desafio`.
  */
 return [
-    'chave' => 'desafio_2027_2026_11_23_calculado_projecao',
+    'chave' => 'desafio_2027_2026_11_23_despesas_acompanham',
     'ano' => 2027,
     'meta_margem' => 2.0,
     'decidido_em' => '2026-11-23',
@@ -41,5 +44,6 @@ return [
         . 'médio/L dos 12 meses × premissas; '
         . 'Postos de leite: cota × R$ 0,055/L; Rações: bovinos × R$ 100/t + o resto × premissas); custo e deduções '
         . 'acompanham a receita (margem bruta preservada); pessoal pela diretriz (5,5%, vale, prêmios e PPR); demais '
-        . 'despesas e rateios na base.',
+        . 'despesas operacionais acompanhando a receita (despesa sobre a receita preservada; se a receita cai, '
+        . 'ficam na base); rateios na base.',
 ];
