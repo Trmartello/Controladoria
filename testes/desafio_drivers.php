@@ -2,7 +2,7 @@
 
 /**
  * Provas do DESAFIO CALCULADO de 2027 (pedido do cliente, 2026-11-23): o desafio é a
- * proposta padrão — base de 12 meses (nov/25–out/26) × premissas, ou o driver de
+ * proposta padrão — projeção de 2026 (jan–out realizado + nov–dez planejado) × premissas, ou o driver de
  * volume (`DesafioDrivers`) — e é de onde a proposta parte.
  *
  *   DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
@@ -13,9 +13,9 @@
  *  - Cota de prova: 12 meses de 8.950 (mil litros) = 107.400.000 litros.
  *    Postos = 107.400.000 × R$ 0,055 = R$ 5.907.000; dezembro em 10.000 = +1.050.000
  *    litros × 0,055 = +R$ 57.750 → R$ 5.964.750.
- *    Leite = 107.400.000 × (Receita de Vendas da base ÷ 107.904.705 litros captados).
+ *    Leite = 107.400.000 × (Receita de Vendas de nov/25–out/26 ÷ 107.904.705 litros) × (1 + premissas).
  *  - Bovinos de prova: 12 meses de 4.800 t = 57.600 t. Rações = 57.600 × R$ 100 +
- *    (Receita de Vendas da base − 53.575,85 t × R$ 100) × (1 + premissas).
+ *    (Receita de Vendas da projeção − 53.575,85 t × R$ 100) × (1 + premissas).
  * Cria as metas no planejamento do Leite e das Agropecuárias e apaga no fim.
  */
 
@@ -82,7 +82,7 @@ $t = $tela('8');
 $e = $t['desafio']['escada']['desafio'];
 $base = array_column($t['linhas'], null, 'codigo');
 $mbBase = $base['5']['projecao'] / $base['3']['projecao'] * 100;
-prova('Agropecuárias: margem bruta do desafio = a da base de 12 meses (preservada)',
+prova('Agropecuárias: margem bruta do desafio = a da projeção de 2026 (preservada)',
     abs($e['margem_bruta'] - $mbBase) < 0.01, sprintf('%.3f%% × %.3f%%', $e['margem_bruta'], $mbBase));
 $dig = Database::todos('SELECT chave, percentual FROM negocio_premissa WHERE negocio_id = ? AND ano = ?', [$id('8'), $anoPlan]);
 $ef = Projecao::premissasEfetivas($anoPlan, array_column($dig, 'percentual', 'chave'));
@@ -105,7 +105,7 @@ prova('Supermercados sem lançamento: proposta = desafio (a proposta nasce dele)
 // ── Pendentes: driver a definir ────────────────────────────────────────────
 foreach (['1' => 'Cereais', '7' => 'UTM', '13' => 'UBS'] as $cod => $nome) {
     $d = $tela((string)$cod)['desafio']['desafio'];
-    prova("{$nome}: base × premissas, com a nota \"driver a definir\"",
+    prova("{$nome}: projeção × premissas, com a nota \"driver a definir\"",
         $d['driver'] === 'A_DEFINIR' && str_contains($d['nota'], 'driver de volume a definir'), $d['nota']);
 }
 
@@ -116,7 +116,7 @@ $plano = static fn (string $cod) => (int)Database::um(
 prova('o banco de provas não tem cota nem bovinos próprios (a prova cria os seus)',
     !DesafioCota::cotaDoLeite($anoPlan) && !DesafioDrivers::bovinosDoAno($anoPlan));
 $t12 = $tela('12');
-prova('sem a cota, os Postos vão por base × premissas e a nota diz',
+prova('sem a cota, os Postos vão por projeção × premissas e a nota diz',
     $t12['desafio']['desafio']['driver'] === 'SEM_META', $t12['desafio']['desafio']['nota']);
 
 $criar = static function (int $plan, string $nome, float $porMes) use ($pdo, $anoPlan): int {
@@ -142,10 +142,24 @@ try {
 
     $t = $tela('4');
     $b11 = $linha($t, '1.1')['projecao'];
-    $esperado = 107400000 * ($b11 / 107904705);
-    prova('Leite: Receita de Vendas = cota × preço médio por litro dos 12 meses',
+    // Preço dos 12 MESES REALIZADOS (R$ 313.732.042 ÷ 107.904.705 L), reajustado pelas
+    // premissas do Leite (IPCA 4,5 + PIB 1,5 sugeridos = 6%).
+    $rec12 = DesafioDrivers::receitaDozeMeses('4');
+    $esperado = 107400000 * ($rec12 / 107904705) * 1.06;
+    prova('Leite: Receita de Vendas = cota × preço médio dos 12 meses × (1 + IPCA + PIB + crescimento)',
         abs($t['driver']['valor'] - $esperado) < 1 && abs($t['driver']['crescimento'] - ($esperado / $b11 - 1) * 100) < 1e-9,
-        $fmt($esperado) . ' (R$ ' . number_format($b11 / 107904705, 4, ',', '.') . '/L)');
+        $fmt($esperado) . ' (R$ ' . number_format($rec12 / 107904705, 4, ',', '.') . '/L × 1,06)');
+    // As premissas mexem no Leite (pedido do cliente, 2026-11-23): +2% de crescimento.
+    $pdo->prepare("INSERT INTO negocio_premissa (negocio_id, ano, chave, percentual) VALUES (?, ?, 'CRESCIMENTO', 2)")
+        ->execute([$id('4'), $anoPlan]);
+    try {
+        $t2 = $tela('4');
+        prova('Leite: +2% de crescimento desejado move o faturamento do driver (× 1,08 em vez de × 1,06)',
+            abs($t2['driver']['valor'] - 107400000 * ($rec12 / 107904705) * 1.08) < 1, $fmt($t2['driver']['valor']));
+    } finally {
+        $pdo->prepare("DELETE FROM negocio_premissa WHERE negocio_id = ? AND ano = ? AND chave = 'CRESCIMENTO'")
+            ->execute([$id('4'), $anoPlan]);
+    }
     prova('Leite: a nota diz litros, preço e de onde veio o preço',
         str_contains($t['driver']['nota'], '107.904.705') && str_contains($t['driver']['nota'], 'preço médio'), $t['driver']['nota']);
 

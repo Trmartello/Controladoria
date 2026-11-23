@@ -4,8 +4,8 @@
  * Provas do DESAFIO de 2027 na Projeção (pedido do cliente, 2026-11-18: "os 2%
  * são margem líquida, carregue o desafio na projeção").
  *
- * Desde 2026-11-23 o desafio é CALCULADO (a proposta padrão sobre a base de 12
- * meses, `DesafioDrivers`). Três âncoras: (1) o cabeçalho carregado e o total do
+ * Desde 2026-11-23 o desafio é CALCULADO (a proposta padrão sobre a projeção de
+ * 2026, `DesafioDrivers`). Três âncoras: (1) o cabeçalho carregado e o total do
  * Corporativo com a conta dos 2%; (2) a ORIGEM — base × 1,06 sem driver, Usina só
  * resultado, Pecuária na planilha; (3) a carga de valores (o formato antigo) segue
  * estrita e sobrescreve o ano.
@@ -69,17 +69,17 @@ prova('a carga de 2027 é a do desafio calculado (sem valores)', !empty($carga['
 prova('o cabeçalho não traz valores: quem calcula é a Projeção', $d && !isset($d['por_negocio']));
 
 // O Corporativo soma os desafios dos 11 negócios (números do banco local, out/26,
-// base nov/25–out/26; conferidos por `testes/desafio_drivers.php` negócio a negócio).
+// base = projeção de 2026, jan–out realizado + nov–dez planejado; conferidos por `testes/desafio_drivers.php` negócio a negócio).
 $negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
 $c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];
 prova('os 11 negócios entram no desafio do Corporativo', count($c['negocios']) === 11, (string)count($c['negocios']));
-prova('total do desafio: ROB R$ 3.669.910.454, ROL R$ 3.528.506.155, resultado R$ 39.994.271',
-    abs($t['receita_bruta'] - 3669910454) < 2 && abs($t['receita_liquida'] - 3528506155) < 2 && abs($t['resultado'] - 39994271) < 2,
+prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado R$ 45.565.066',
+    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 45565066) < 2,
     round($t['receita_bruta']) . ' / ' . round($t['receita_liquida']) . ' / ' . round($t['resultado']));
-prova('margem líquida do desafio: 1,13%', abs($t['margem'] - 1.1335) < 0.0005, (string)round($t['margem'], 4));
-prova('os 2% sobre a ROL do desafio são R$ 70,57 mi, e faltam R$ 30,58 mi',
-    abs($t['resultado_meta'] - 70570123) < 2 && abs($t['falta'] - 30575852) < 2,
+prova('margem líquida do desafio: 1,28%', abs($t['margem'] - 1.2841) < 0.0005, (string)round($t['margem'], 4));
+prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 25,40 mi',
+    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 25401906) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 
 // ── 2. De onde sai: base de 12 meses × premissas, ou o driver ───────────────
@@ -92,12 +92,12 @@ foreach (['1', '6', '7', '8', '9', '11', '13'] as $cod) {
         $cresceu[] = "{$cod}: " . round($rb) . ' vs ' . round($base * 1.06);
     }
 }
-prova('sem driver (e sem meta de volume no banco local): receita bruta = base de 12 meses × 1,06 (IPCA 4,5 + PIB 1,5)',
+prova('sem driver (e sem meta de volume no banco local): receita bruta = projeção de 2026 × 1,06 (IPCA 4,5 + PIB 1,5)',
     !$cresceu, implode(' | ', $cresceu));
 $u = invocar($ctrl, 'montar', $ids['17'], $ano, $corte);
 $ud = $u['desafio']['desafio'];
-prova('Usina sem receita: sem margem, e com o resultado da base (R$ 411.930)',
-    $ud['margem'] === null && abs($ud['resultado'] - 411930) < 2, (string)round($ud['resultado']));
+prova('Usina sem receita: sem margem, e com o resultado da projeção (R$ 434.800)',
+    $ud['margem'] === null && abs($ud['resultado'] - 434800) < 2, (string)round($ud['resultado']));
 $pec = invocar($ctrl, 'montar', $ids['2'], $ano, $corte)['desafio']['desafio'];
 prova('Pecuária no realista da planilha: R$ 732.218.694', abs($pec['receita_bruta'] - 732218693.78) < 1, (string)round($pec['receita_bruta']));
 

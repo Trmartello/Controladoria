@@ -3487,24 +3487,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   digitado; dois Cancelar desistem e restauram a célula. Percentual não
   pergunta. Não inverter sozinho: há linhas que mudam de sinal de verdade.
   Prova na bateria (`provasProjecaoPremissas`).
-  **Base de 12 meses** (pedido do cliente, 2026-11-23: "12 meses nov/25–out/26
-  em tudo"). A coluna que era o orçado de nov–dez do ano é o REALIZADO desses
-  meses no ANO ANTERIOR, e `projecao` (base da proposta, do piso e do desafio) é
-  jan–corte do ano + (corte+1)–dez do ano anterior. Campos `projetado`/`projecao`
-  mantidos; cabeçalhos "Realizado jan–out/26", "Realizado nov–dez/25", "Base 12
-  meses nov/25–out/26" (`rotuloAnterior`, `rotuloDoze`). Negócio: `dre_valor`
-  REAL dos dois anos (`linhasDaDre`, `resumoDosNegocios`); filial: realizado
-  acumulado de `dre_valor_filial` + `dre_valor_filial_mes` do ano anterior
-  (`linhasDaFilial`, `resumoDosNegocios`). Dados: `database/dre_2025_11_12.php`
-  (`CargaApoio::drePeriodo`, DRE inteira menos percentuais, da DRE - Gerencial
-  Nova). 36 filiais de 2025 fora do cadastro (35 de Cereais, R$ 12,4 mi de receita
-  em nov–dez/25) ficam só no total do negócio. O orçado de nov–dez continua no
-  banco (visão realista). `meses_sem_meta` agora avisa mês do ano anterior sem
-  realizado. Quando o fechamento andar (nov/26), a base anda sozinha: precisa só
-  da DRE de dez/25 já carregada. Prova: `testes/base_12m.php`.
+  **Base da Projeção: jan–out realizado + nov–dez PLANEJADO do mesmo ano** (decisão
+  do cliente, 2026-11-23: "jan–out deve ser de 2026 e nov–dez deve pegar o planejado
+  de 2026"). Por algumas horas do mesmo dia (PR #124) a coluna do meio foi o realizado
+  de nov–dez do ano ANTERIOR ("base de 12 meses"); o cliente voltou atrás e a DRE da
+  Projeção (negócio, filial, Painel, Corporativo) é de novo a do PR #123: cabeçalhos
+  "Realizado jan–out/26 | Planejado nov–dez/26 | Projeção 2026" (`rotuloResto`,
+  `rotuloProjecao`). Não reponha a base de 12 meses na DRE sem o cliente. O que ficou
+  dela: a DRE de nov–dez/25 carregada (`database/dre_2025_11_12.php`,
+  `CargaApoio::drePeriodo`) — usada pelas oportunidades em 12 meses e pelo PREÇO
+  médio do Leite (`DesafioDrivers::receitaDozeMeses`). Prova: `testes/projecao_base.php`.
   **Desafio calculado** (pedido do cliente, 2026-11-23: "gere um novo desafio… e a
   partir dali ele continua fazendo a projeção"). O desafio é a PROPOSTA PADRÃO de
-  cada negócio: `montar` roda `Projecao::aplicar` sobre a base SEM lançamentos
+  cada negócio: `montar` roda `Projecao::aplicar` sobre a projeção do ano SEM lançamentos
   (`$linhasDesafio`) com os mesmos crescimentos — premissas do painel (IPCA, PIB,
   % crescimento), pessoal pela diretriz (5,5%, vale, prêmios, PPR), custo e
   deduções acompanhando a receita (margem bruta preservada), demais despesas na
@@ -3514,15 +3509,19 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `negocio_desafio` do ano, que não é mais lido). **Drivers** (`DesafioDrivers`,
   aplicados ao crescimento padrão da 1.1 — e por isso ao PISO — na tela e no
   Painel): Pecuária = realista da planilha (R$ 732.218.693,78); Leite = cota
-  Aurora × (Receita de Vendas da base ÷ 107.904.705 litros captados nov/25–out/26);
+  Aurora × (Receita de Vendas de nov/25–out/26 ÷ 107.904.705 litros captados) × (1 +
+  IPCA + PIB + crescimento) — as premissas reajustam o PREÇO (pedido do cliente,
+  2026-11-23: "atualizar… conforme alterações das premissas"); Pecuária e Postos
+  NÃO respondem às premissas (planilha já em 2027; Postos "sem reajuste"), e o painel
+  diz isso (`premissas` no driver);
   Postos de leite = cota × R$ 0,055; Rações = meta de bovinos das Agropecuárias
   (indicador com "bovino" no nome; < 1 milhão = toneladas) × R$ 100/t + (base −
   53.575,85 t × R$ 100) × premissas; Cereais, UTM e UBS = base × premissas com a
   nota "driver a definir". Sem a meta (cota, bovinos) o negócio cai em base ×
   premissas e a nota diz. Os volumes da base ficam em `DesafioDrivers::BASE`, por
   ano. Prova: `testes/desafio_drivers.php`. No banco local (out/26) o total dá
-  faturamento R$ 3,67 bi, resultado R$ 41,2 mi, margem 1,17% — e Cereais com
-  resultado negativo.
+  faturamento R$ 3,68 bi, resultado R$ 45,6 mi, margem 1,28% — e Cereais com
+  resultado negativo (−R$ 6,8 mi).
   **Desafio dos Postos de resfriamento pela cota Aurora** (histórico: desde o
   desafio calculado, quem aplica é `DesafioDrivers`; pedido do cliente,
   2026-11-23: "o posto recebe ~6 centavos por litro resfriado, e o valor só
