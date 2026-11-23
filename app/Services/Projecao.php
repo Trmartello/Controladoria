@@ -254,7 +254,8 @@ class Projecao
      * negócio digita MENOS, e mais é recusado (`maximoDaDiretriz`).
      *  - IPCA 4,50% (Focus de 06/11/2026) e PIB agropecuário 1,50%.
      *  - Demais despesas operacionais: sem crescimento sobre 2026 — que é o que a
-     *    proposta já faz por omissão (vale a projeção).
+     *    proposta já faz por omissão (vale a projeção). O DESAFIO, não: nele elas
+     *    acompanham a receita (`acompanhamReceitaNoDesafio`, 2026-11-23).
      *  - Nenhum negócio ou filial com meta negativa de resultado líquido — a
      *    tela DESTACA o resultado negativo, sem travar o lançamento (decisão do
      *    cliente, 2026-11-18).
@@ -761,6 +762,27 @@ class Projecao
      */
     public const ACOMPANHAM_RECEITA = ['2.1', '2.2', '2.3', '4.1'];
 
+    /**
+     * No DESAFIO, as despesas operacionais também acompanham a receita (pedido do
+     * cliente, 2026-11-23: "o Desafio para o negócio deve levar em consideração um
+     * crescimento proporcional das despesas"): cada subconta da linha 7 cresce na
+     * proporção da Receita de Vendas, o que mantém a despesa sobre a receita de
+     * 2026. Ficam fora as Despesas com Pessoal (crescem pela diretriz) e a
+     * Depreciação (vale a carga). Os rateios (14.x, 16.1) seguem a projeção.
+     *
+     * Só no desafio: na PROPOSTA as demais despesas continuam na projeção por
+     * omissão — é a diretriz de 2027 ("sem crescimento sobre 2026") —, e o que o
+     * negócio lança manda. A Diferença da tela passa a mostrar também o quanto a
+     * proposta segura as despesas abaixo do crescimento da receita.
+     *
+     * @return string[]
+     */
+    public static function acompanhamReceitaNoDesafio(): array
+    {
+        $despesas = array_values(array_diff(self::DERIVADAS['7'], [self::LINHA_PESSOAL, self::LINHA_DEPRECIACAO]));
+        return array_merge(self::ACOMPANHAM_RECEITA, $despesas);
+    }
+
     /** A subconta da Receita de Vendas, que cresce com IPCA + PIB + crescimento desejado. */
     public const LINHA_RECEITA = '1.1';
     /** A subconta de Despesas com Pessoal, que cresce com o percentual das despesas com pessoas. */
@@ -1127,8 +1149,9 @@ class Projecao
      *        no formato de 2027 — sem o PIS/COFINS (a CBS) — e o motor o devolve ao
      *        formato da carga para calcular.
      */
-    public static function aplicar(array $linhas, array $lancados, array $crescimentos = [], ?float $taxaPisCofins = null, array $fixos = []): array
+    public static function aplicar(array $linhas, array $lancados, array $crescimentos = [], ?float $taxaPisCofins = null, array $fixos = [], ?array $acompanham = null): array
     {
+        $acompanham ??= self::ACOMPANHAM_RECEITA;
         $t = $taxaPisCofins !== null && $taxaPisCofins > 0 && $taxaPisCofins < 1 ? $taxaPisCofins : null;
         // As editáveis, uma a uma; os blocos saem de `derivar`.
         foreach ($linhas as $i => $l) {
@@ -1211,7 +1234,7 @@ class Projecao
         if ($rec && (float)$rec['projecao'] != 0.0 && isset($rec['proposta'])) {
             $fator = (float)$rec['proposta'] / (float)$rec['projecao'];
             if (abs($fator - 1) > 1e-12) {
-                foreach (self::ACOMPANHAM_RECEITA as $c) {
+                foreach ($acompanham as $c) {
                     if (!isset($idx[$c])) {
                         continue;
                     }

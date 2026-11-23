@@ -370,9 +370,11 @@ class ProjecaoController
         );
 
         // O DESAFIO é a proposta padrão: a mesma base e os mesmos crescimentos,
-        // sem nenhum lançamento — o ponto de partida de onde a proposta anda.
+        // sem nenhum lançamento — o ponto de partida de onde a proposta anda. Com
+        // uma diferença (2026-11-23): nele as despesas operacionais acompanham a
+        // receita (`Projecao::acompanhamReceitaNoDesafio`).
         $fixos = Projecao::fixosDaDepreciacao($depreciacao);
-        $linhasDesafio = Projecao::aplicar($linhas, [], $cresc, $taxaPc, $fixos);
+        $linhasDesafio = Projecao::aplicar($linhas, [], $cresc, $taxaPc, $fixos, Projecao::acompanhamReceitaNoDesafio());
         $linhas = $modo === 'FILIAL' && $filiais
             ? Projecao::somarFiliais($linhas, $propostasFilial, $fixos)
             : Projecao::aplicar($linhas, $this->lancados($projId), $cresc, $taxaPc, $fixos);

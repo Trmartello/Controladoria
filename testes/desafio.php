@@ -31,6 +31,7 @@ require_once __DIR__ . '/../app/Controllers/ProjecaoController.php';
 
 use App\Core\Database;
 use App\Services\CargaDesafio;
+use App\Services\Projecao;
 
 $ok = 0;
 $bad = [];
@@ -44,6 +45,10 @@ function prova(string $nome, bool $cond, string $extra = ''): void
         $bad[] = $nome . ($extra ? " — {$extra}" : '');
         echo "  ✗ {$nome}" . ($extra ? " — {$extra}" : '') . "\n";
     }
+}
+function perto(float $a, float $b, float $tol = 0.01): bool
+{
+    return abs($a - $b) <= $tol;
 }
 function invocar(object $o, string $m, ...$args)
 {
@@ -73,16 +78,17 @@ prova('o cabeçalho não traz valores: quem calcula é a Projeção', $d && !iss
 // Desde 2026-11-23 a 8.5 sai sem a conta reduzida 3227 (acerto do PPR): resultado de 45.565.066 para 45.755.843.
 // E a 8.10 é a DEPRECIAÇÃO carregada (R$ 18,33 mi contra R$ 4,99 mi projetados): 45.755.843 → 32.415.590.
 // Regravada sem o grupo contábil 1272 dos bens (R$ 16,16 mi, 2026-11-23): 32.415.590 → 34.584.560.
+// Despesas operacionais acompanhando a receita no desafio (2026-11-23): 34.584.560 → 30.869.410.
 $negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
 $c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];
 prova('os 11 negócios entram no desafio do Corporativo', count($c['negocios']) === 11, (string)count($c['negocios']));
-prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado R$ 34.584.560',
-    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 34584560) < 2,
+prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado R$ 30.869.410',
+    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 30869410) < 2,
     round($t['receita_bruta']) . ' / ' . round($t['receita_liquida']) . ' / ' . round($t['resultado']));
-prova('margem líquida do desafio: 0,97%', abs($t['margem'] - 0.9747) < 0.0005, (string)round($t['margem'], 4));
-prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 36,38 mi',
-    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 36382412) < 2,
+prova('margem líquida do desafio: 0,87%', abs($t['margem'] - 0.8700) < 0.0005, (string)round($t['margem'], 4));
+prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 40,10 mi',
+    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 40097562) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 
 // ── 2. De onde sai: base de 12 meses × premissas, ou o driver ───────────────
@@ -105,6 +111,36 @@ prova('Usina sem receita: sem margem, e com o resultado da projeção com a depr
     $ud['margem'] === null && abs($ud['resultado'] - 574550) < 2, (string)round($ud['resultado']));
 $pec = invocar($ctrl, 'montar', $ids['2'], $ano, $corte)['desafio']['desafio'];
 prova('Pecuária no realista da planilha: R$ 732.218.694', abs($pec['receita_bruta'] - 732218693.78) < 1, (string)round($pec['receita_bruta']));
+
+// ── 2b. No desafio as despesas operacionais acompanham a receita (2026-11-23) ─
+// "O Desafio para o negócio deve levar em consideração um crescimento proporcional
+// das despesas": cada subconta da linha 7 cresce na proporção da Receita de Vendas,
+// menos o Pessoal (diretriz) e a Depreciação (carga). Rateios ficam na projeção. Na
+// PROPOSTA, despesa não lançada continua na projeção (diretriz de 2027).
+$l = static fn ($c, $p) => ['codigo' => $c, 'nome' => $c, 'nivel' => 2, 'percentual' => 0, 'realizado' => $p, 'projetado' => 0.0, 'projecao' => $p];
+$sint = [$l('1.1', 1000.0), $l('4.1', -600.0), $l('8.1', -100.0), $l('8.5', -200.0), $l('8.10', -30.0),
+    $l('8.11', -50.0), $l('8.17', 20.0), $l('14.3', -40.0), $l('16.1', -10.0)];
+$cr = ['1.1' => 10.0, '8.5' => 5.0];
+$fx = Projecao::fixosDaDepreciacao(['negocio' => array_fill(1, 12, -3.0), 'filiais' => []]);
+$des = array_column(Projecao::aplicar($sint, [], $cr, null, $fx, Projecao::acompanhamReceitaNoDesafio()), 'proposta', 'codigo');
+// De mão: receita +10% → 1.100; custo −660; 8.1 −110; 8.11 −55; 8.17 (recuperação) +22;
+// pessoal −200 × 1,05 = −210; depreciação = a carga, −36; rateios na projeção.
+prova('desafio: despesas operacionais +10% com a receita (8.1 −110, 8.11 −55, 8.17 +22), custo −660',
+    perto($des['8.1'], -110.0) && perto($des['8.11'], -55.0) && perto($des['8.17'], 22.0) && perto($des['4.1'], -660.0),
+    json_encode([$des['8.1'], $des['8.11'], $des['8.17'], $des['4.1']]));
+prova('desafio: pessoal pela premissa (−210), depreciação pela carga (−36), rateios na projeção (−40, −10)',
+    perto($des['8.5'], -210.0) && perto($des['8.10'], -36.0) && perto($des['14.3'], -40.0) && perto($des['16.1'], -10.0),
+    json_encode([$des['8.5'], $des['8.10'], $des['14.3'], $des['16.1']]));
+$prop = array_column(Projecao::aplicar($sint, [], $cr, null, $fx), 'proposta', 'codigo');
+prova('proposta (sem lançamento): as mesmas despesas ficam na projeção (8.1 −100, 8.11 −50), o custo acompanha (−660)',
+    perto($prop['8.1'], -100.0) && perto($prop['8.11'], -50.0) && perto($prop['4.1'], -660.0),
+    json_encode([$prop['8.1'], $prop['8.11'], $prop['4.1']]));
+// Agropecuárias no banco local: o número de antes e o de depois da regra, para a
+// mudança no Corporativo (acima) ter endereço.
+$ag = invocar($ctrl, 'montar', $ids['8'], $ano, $corte);
+$esc = $ag['desafio']['escada']['desafio'];
+prova('Agropecuárias: despesas do desafio R$ 91.823.889 (eram R$ 89.585.034 sem acompanhar a receita)',
+    abs($esc['despesas'] + 91823889) < 2, (string)round($esc['despesas']));
 
 // ── 3. A carga: estrita, e sobrescreve o ano inteiro ────────────────────────
 $pdo = Database::conn();
