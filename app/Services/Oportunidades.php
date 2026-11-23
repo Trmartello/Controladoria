@@ -297,6 +297,77 @@ class Oportunidades
         return ['mes_ate' => $corte, 'linhas' => $linhas, 'oportunidade' => $op, 'risco' => $ri, 'saldo' => $op + $ri];
     }
 
+    /** Valor mínimo (no ano em que aconteceu) para virar questionamento. */
+    public const QUESTIONAMENTO_MINIMO = 10000.0;
+    /** "Não aconteceu" no outro ano: abaixo desta fração do valor do ano em que aconteceu. */
+    public const QUESTIONAMENTO_FRACAO = 0.10;
+
+    /**
+     * QUESTIONAMENTOS (pedido do cliente, 2026-11-23: "além das variações, traga
+     * o apontamento do que está sendo realizado num ano e não foi no outro, ou
+     * vice-versa, para questionar se isso vai continuar acontecendo ou deixou de
+     * acontecer e deveria continuar"; comparação escolhida: 2025 × 2026
+     * realizado).
+     *
+     * Conta reduzida a conta reduzida (nível 3), no MESMO período dos dois anos
+     * (jan até o corte), do negócio ou da filial:
+     *  - **Parou**: R$ 10 mil ou mais em 2025 e, em 2026, menos de 10% disso
+     *    (inclui zero) — "deixou de acontecer: deveria continuar em 2027?";
+     *  - **Começou**: R$ 10 mil ou mais em 2026 e, em 2025, menos de 10% disso —
+     *    "vai continuar em 2027?".
+     * Ficam de fora os rateios corporativos (blocos 14 e 16): são divisão do custo
+     * da administração, não um fato do negócio para continuar ou parar. Ordem:
+     * maior valor primeiro. Só leitura — é pergunta, não número para o plano.
+     *
+     * @return array{ano:int, ano_anterior:int, corte:int, minimo:float, parou:list<array>, comecou:list<array>}|null
+     */
+    public static function questionamentos(int $negocioId, int $ano, int $filialId = 0): ?array
+    {
+        $anterior = $ano - 1;
+        $linhas = Database::todos(
+            "SELECT v.codigo, r.reduzida, r.nome, r.linha, r.ordem,
+                    SUM(CASE WHEN v.ano = ? THEN v.realizado ELSE 0 END) AS antes,
+                    SUM(CASE WHEN v.ano = ? THEN v.realizado ELSE 0 END) AS agora,
+                    MAX(CASE WHEN v.ano = ? THEN v.corte END) AS corte_antes,
+                    MAX(CASE WHEN v.ano = ? THEN v.corte END) AS corte_agora
+               FROM dre_reduzida_valor v
+               JOIN dre_reduzida r ON r.codigo = v.codigo
+              WHERE v.negocio_id = ? AND v.filial_id = ? AND v.ano IN (?, ?)
+              GROUP BY v.codigo, r.reduzida, r.nome, r.linha, r.ordem",
+            [$anterior, $ano, $anterior, $ano, $negocioId, $filialId, $anterior, $ano]
+        );
+        $cortes = array_filter(array_merge(array_column($linhas, 'corte_antes'), array_column($linhas, 'corte_agora')));
+        // Sem os dois anos carregados não há comparação — e anos em cortes
+        // diferentes não se comparam (seria jan–out contra jan–set).
+        if (!$linhas || !array_filter(array_column($linhas, 'corte_antes')) || !array_filter(array_column($linhas, 'corte_agora'))
+            || count(array_unique($cortes)) !== 1) {
+            return null;
+        }
+        $corte = (int)reset($cortes);
+        $parou = [];
+        $comecou = [];
+        foreach ($linhas as $l) {
+            if (preg_match('/^1[46]\./', (string)$l['linha'])) {
+                continue;
+            }
+            $a = (float)$l['antes'];
+            $b = (float)$l['agora'];
+            $item = [
+                'codigo' => $l['codigo'], 'reduzida' => $l['reduzida'], 'nome' => $l['nome'],
+                'linha' => $l['linha'], 'anterior' => round($a, 2), 'atual' => round($b, 2),
+            ];
+            if (abs($a) >= self::QUESTIONAMENTO_MINIMO && abs($b) < self::QUESTIONAMENTO_FRACAO * abs($a)) {
+                $parou[] = $item + ['pergunta' => "Aconteceu em {$anterior} e não em {$ano}: deixou de acontecer — deveria continuar em " . ($ano + 1) . '?'];
+            } elseif (abs($b) >= self::QUESTIONAMENTO_MINIMO && abs($a) < self::QUESTIONAMENTO_FRACAO * abs($b)) {
+                $comecou[] = $item + ['pergunta' => "Começou em {$ano} sem ter acontecido em {$anterior}: vai continuar em " . ($ano + 1) . '?'];
+            }
+        }
+        usort($parou, static fn ($x, $y) => abs($y['anterior']) <=> abs($x['anterior']));
+        usort($comecou, static fn ($x, $y) => abs($y['atual']) <=> abs($x['atual']));
+        return ['ano' => $ano, 'ano_anterior' => $anterior, 'corte' => $corte,
+            'minimo' => self::QUESTIONAMENTO_MINIMO, 'parou' => $parou, 'comecou' => $comecou];
+    }
+
     /**
      * Os lançamentos de R$ 10 mil ou mais por trás de um valor do quadro: pela
      * conta (`['conta' => …]`) ou pela linha da DRE em alguns meses (`['linha' =>

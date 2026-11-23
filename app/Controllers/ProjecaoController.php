@@ -124,6 +124,7 @@ class ProjecaoController
         $estoque = [];
         $juros = [];
         $pessoalAlertas = [];
+        $questionamentos = [];
         foreach ($negocios as $n) {
             $m = $this->montar((int)$n['id'], $ano, $corte);
             $tributosDre[(int)$n['id']] = $m['tributos_dre'];
@@ -133,6 +134,9 @@ class ProjecaoController
                     'mes_ate' => $q['mes_ate'], 'oportunidade' => $q['oportunidade'], 'risco' => $q['risco'],
                     'itens' => array_map(static fn ($l) => ['rotulo' => $l['nome']], array_slice($q['linhas'], 0, 3)),
                 ];
+            }
+            if ($qs = $m['oportunidades']['questionamentos']) {
+                $questionamentos[(int)$n['id']] = ['parou' => count($qs['parou']), 'comecou' => count($qs['comecou'])];
             }
             if ($j = $m['oportunidades']['juros']) {
                 $juros[(int)$n['id']] = [
@@ -243,6 +247,8 @@ class ProjecaoController
             'estoque_negocios' => $estoque,
             // Por negócio, os juros recebidos e os lançamentos acima de R$ 30 mil.
             'juros_negocios' => $juros,
+            // Quantos questionamentos (parou / começou, 2025 × 2026) por negócio.
+            'questionamentos_negocios' => $questionamentos,
             // Onde as Despesas com Pessoal ficaram abaixo do mínimo, por negócio.
             'pessoal_alertas_negocios' => $pessoalAlertas,
             // O nível 3 é a soma dos negócios, conta reduzida a conta reduzida.
@@ -398,6 +404,8 @@ class ProjecaoController
                     (string)(Database::um('SELECT cod_filial FROM filial WHERE id = ?', [$filialId])['cod_filial'] ?? '')),
                 // O nível 3 (conta reduzida) DA FILIAL.
                 'nivel3' => Projecao::nivel3([$negocioId], $ano, $filialId),
+                // O que parou ou começou de 2025 para 2026 NESTA filial.
+                'questionamentos' => Oportunidades::questionamentos($negocioId, $ano, $filialId),
             ];
         }
 
@@ -449,6 +457,8 @@ class ProjecaoController
                 'grupos' => Oportunidades::GRUPOS,
                 // Juros recebidos (sócio e não sócio) e onde se concentram.
                 'juros' => Oportunidades::juros($negocioId, $ano),
+                // O que parou ou começou de 2025 para 2026 (conta reduzida).
+                'questionamentos' => Oportunidades::questionamentos($negocioId, $ano),
             ],
             // Cenário de faturamento carregado de planilha do negócio (pedido do
             // cliente, 2026-11-19): de onde veio a Receita de Vendas da proposta.
@@ -1213,6 +1223,17 @@ class ProjecaoController
                     422
                 );
             }
+        }
+
+        // O TETO da diretriz (o PPR, pedido do cliente, 2026-11-23): menos pode,
+        // mais é recusado.
+        $teto = Projecao::maximoDaDiretriz($ano, $chave);
+        if (!$apagar && $teto !== null && (float)$bruto > $teto + 1e-9) {
+            Json::erro(
+                'O PPR de ' . $ano . ' não pode passar da diretriz (' . Projecao::diretriz($ano)['fonte'] . '): até '
+                . number_format($teto, 1, ',', '.') . ' salário. Valor menor pode.',
+                422
+            );
         }
 
         if ($apagar) {

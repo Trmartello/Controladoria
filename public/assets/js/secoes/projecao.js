@@ -477,7 +477,8 @@ const SecaoProjecao = {
     'Pago só no mês em que o negócio atinge o resultado planejado.', plano(padrao.RESULTADO))}
           ${this.campoBeneficio(d, ano, 'PPR_SALARIOS', 'PPR (salários no ano)', 'salários',
     'Quantos salários de PPR provisionar no ano, em 1/12 por mês, sobre a folha do mês (despesa + custo) com o '
-    + 'reajuste. Entra na linha Despesas com Pessoal (8.5). Vazio: sem PPR.', '—')}
+    + 'reajuste. Entra na linha Despesas com Pessoal (8.5). Com diretriz, vem preenchido com ela e só pode BAIXAR; '
+    + 'apagar volta à diretriz. Sem diretriz, vazio é sem PPR.', '—')}
           ${abonoTotal}
           ${leituras}
         </div>
@@ -627,6 +628,9 @@ const SecaoProjecao = {
     const num = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
     const diretriz = ((d.diretriz || {})[ano]) || null;
     const fixo = diretriz && diretriz.beneficios ? diretriz.beneficios[chave] : undefined;
+    // TETO da diretriz (o PPR, pedido do cliente, 2026-11-23): o campo vem
+    // preenchido com ela, o negócio pode baixar, e acima é recusado.
+    const teto = diretriz && diretriz.maximos ? diretriz.maximos[chave] : undefined;
     if (fixo !== undefined) {
       const n = Number(fixo).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
       const valor = unidade === 'R$' ? `R$ ${n}` : unidade === 'salários' ? this.salariosPpr(fixo) : n;
@@ -634,6 +638,22 @@ const SecaoProjecao = {
           <div class="small text-muted mb-0" title="${Modal.esc(dica)}">${rotulo}</div>
           <div class="fw-bold campo-diretriz" data-diretriz="${chave}" title="${Modal.esc(diretriz.fonte)}">
             ${valor} <span class="badge selo-diretriz">diretriz</span></div>
+        </div>`;
+    }
+    if (teto !== undefined) {
+      const vale = dig[chave] === undefined ? teto : Math.min(dig[chave], teto);
+      const selo = `<span class="badge selo-diretriz" title="${Modal.esc(`${diretriz.fonte}: até ${num(teto)}. Menos pode; mais, não.`)}">diretriz: até ${num(teto)}</span>`;
+      return App.modoDossie
+        ? `<div class="col-6 col-md-auto"><div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
+            <div class="fw-bold" data-diretriz="${chave}">${this.salariosPpr(vale)} ${selo}</div></div>`
+        : `<div class="col-6 col-md-auto">
+          <label class="form-label small text-muted mb-0" for="beneficio-${chave}" title="${Modal.esc(dica)}">${rotulo} ${selo}</label>
+          <div class="input-group input-group-sm">
+            <input type="text" class="form-control celula-beneficio" id="beneficio-${chave}"
+              inputmode="decimal" autocomplete="off" data-chave="${chave}" data-maximo="${teto}"
+              value="${num(vale)}" placeholder="${num(teto)}" ${editavel ? '' : 'disabled'}>
+            ${unidade === 'salários' ? '<span class="input-group-text">salários</span>' : ''}
+          </div>
         </div>`;
     }
     return App.modoDossie
@@ -1300,11 +1320,14 @@ const SecaoProjecao = {
     const q = naFilial ? d.filial.quadro : (d.oportunidades || {}).quadro;
     if (!q) return '';
     const titulo = `Oportunidades e riscos para ${d.ano_planejamento}${naFilial ? ' — esta filial' : ''}`;
+    const qs = naFilial ? d.filial.questionamentos : (d.oportunidades || {}).questionamentos;
+    const nQs = qs ? qs.parou.length + qs.comecou.length : 0;
+    const resumoQs = nQs ? ` · ${nQs} questionamento${nQs === 1 ? '' : 's'}` : '';
     if (!q.linhas.length) {
-      return naFilial ? this.expansor('oportunidades', 'painel-oportunidades', titulo, 'nenhum item ou mês fora do padrão',
+      return naFilial ? this.expansor('oportunidades', 'painel-oportunidades', titulo, `nenhum item ou mês fora do padrão${resumoQs}`,
         `<div class="small text-muted" id="filial-sem-picos">Nenhum mês fora do padrão nesta filial em ${d.ano}
           (despesas operacionais, outros valores e resultado financeiro, acima de R$ 50 mil). Os itens não recorrentes por conta
-          contábil estão no negócio.</div>${this.secaoJuros(d.filial.juros, true)}`) : '';
+          contábil estão no negócio.</div>${this.secaoQuestionamentos(d, qs)}${this.secaoJuros(d.filial.juros, true)}`) : '';
     }
     const m = (v) => this.moeda(v);
     const linhas = q.linhas.map((l) => {
@@ -1321,7 +1344,7 @@ const SecaoProjecao = {
         <td class="text-end">${l.risco ? `<span class="text-danger">−${m(Math.abs(l.risco))}</span>` : ''}</td></tr>
         ${this.linhaDeLancamentos(l, item, 7)}`;
     }).join('');
-    const resumo = `oportunidades ${this.mi(q.oportunidade, true)} · riscos ${this.mi(q.risco)} · saldo ${this.mi(q.saldo, true)}`;
+    const resumo = `oportunidades ${this.mi(q.oportunidade, true)} · riscos ${this.mi(q.risco)} · saldo ${this.mi(q.saldo, true)}${resumoQs}`;
     return this.expansor('oportunidades', 'painel-oportunidades', titulo, resumo, `
       <div class="small fw-bold mb-1">${naFilial ? 'Eventos pontuais desta filial' : 'Itens não recorrentes e eventos pontuais'}
         de ${d.ano} (jan–${this.nomeMes(q.mes_ate)})</div>
@@ -1350,7 +1373,53 @@ const SecaoProjecao = {
       <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: se um item não vai se repetir (ou se falta algo
         que ${d.ano} não teve), lance na linha da DRE correspondente. Em cada linha, <strong>Lançamentos</strong> abre os de
         R$ 10 mil ou mais que formam o valor: data, filial, conta, histórico e o complemento (documento e cliente).</div>
+      ${this.secaoQuestionamentos(d, qs)}
       ${this.secaoJuros(naFilial ? d.filial.juros : (d.oportunidades || {}).juros, naFilial)}`);
+  },
+
+  /**
+   * QUESTIONAMENTOS (pedido do cliente, 2026-11-23): o que aconteceu num ano e
+   * não no outro, conta reduzida a conta reduzida, 2025 × 2026 no mesmo período
+   * — o que PAROU ("deveria continuar?") e o que COMEÇOU ("vai continuar?").
+   * É pergunta para o negócio responder na proposta, não número que entra nela
+   * (`Oportunidades::questionamentos`).
+   */
+  secaoQuestionamentos(d, qs) {
+    if (!qs) return '';
+    const m = (v) => this.moeda(v);
+    const titulo = `Questionamentos: o que parou ou começou — ${qs.ano_anterior} × ${qs.ano} (jan–${this.nomeMes(qs.corte)})`;
+    // No celular os dois anos vão embaixo do nome (as colunas ficariam fora da
+    // tela); a pergunta é a do cabeçalho do grupo, sem repetir em cada linha.
+    const cor = (v) => (v < 0 ? 'text-danger' : '');
+    const linha = (x, tipo) => `<tr data-questionamento="${tipo}" data-reduzida="${Modal.esc(x.reduzida)}" title="${Modal.esc(x.pergunta)}">
+        <td>${this.contaQlik(`${x.reduzida} ${x.nome}`)}
+          <div class="small d-md-none">${qs.ano_anterior}: <span class="${cor(x.anterior)}">${m(x.anterior)}</span>
+            → ${qs.ano}: <span class="${cor(x.atual)}">${m(x.atual)}</span></div></td>
+        <td class="text-end small">${this.linkLinhaDre(d, x.linha, x.reduzida)}</td>
+        <td class="text-end d-none d-md-table-cell ${cor(x.anterior)}">${m(x.anterior)}</td>
+        <td class="text-end d-none d-md-table-cell ${cor(x.atual)}">${m(x.atual)}</td></tr>`;
+    const grupo = (lista, tipo, rotulo) => (lista.length
+      ? `<tr class="table-light fw-bold"><td colspan="4">${rotulo} (${lista.length})</td></tr>${lista.map((x) => linha(x, tipo)).join('')}`
+      : '');
+    const corpo = qs.parou.length || qs.comecou.length
+      ? `<div class="table-responsive">
+          <table class="table table-sm align-middle mb-1 tabela-questionamentos">
+            <thead><tr><th>Conta reduzida</th><th class="text-end">Linha da DRE</th>
+              <th class="text-end d-none d-md-table-cell">${qs.ano_anterior}</th><th class="text-end d-none d-md-table-cell">${qs.ano}</th></tr></thead>
+            <tbody>${grupo(qs.parou, 'PAROU', `Aconteceu em ${qs.ano_anterior} e parou em ${qs.ano} — deveria continuar em ${qs.ano + 1}?`)}${
+  grupo(qs.comecou, 'COMECOU', `Começou em ${qs.ano}, sem ter acontecido em ${qs.ano_anterior} — vai continuar em ${qs.ano + 1}?`)}</tbody>
+          </table>
+        </div>`
+      : `<div class="small text-muted" id="sem-questionamentos">Nenhuma conta parou ou começou entre ${qs.ano_anterior} e ${qs.ano}
+          (R$ ${m(qs.minimo)} ou mais).</div>`;
+    return `<div class="mt-3 secao-questionamentos">
+        <div class="small fw-bold mb-1">${titulo}</div>
+        ${corpo}
+        <div class="small text-muted">Conta reduzida a conta reduzida, no mesmo período dos dois anos. <strong>Parou</strong>: R$ ${m(qs.minimo)}
+          ou mais em ${qs.ano_anterior} e menos de 10% disso em ${qs.ano}. <strong>Começou</strong>: o inverso. Os rateios corporativos
+          (blocos 14 e 16) ficam de fora — são divisão da administração, não um fato do negócio. A resposta vai na proposta: se algo
+          que parou deve voltar, ou se o que começou não vai continuar, lance na linha da DRE.</div>
+      </div>`;
   },
 
   /**
@@ -1508,7 +1577,10 @@ const SecaoProjecao = {
       op += x.oportunidade;
       ri += x.risco;
       const top = x.itens.slice(0, 2).map((i) => Modal.esc(i.rotulo)).join('; ');
-      return `<tr data-negocio-oport="${id}"><td>${Modal.esc(nomes[id] || id)}</td>
+      const qn = (d.questionamentos_negocios || {})[id];
+      const qTxt = qn && (qn.parou + qn.comecou)
+        ? `<div class="small" data-questionamentos-negocio="${id}">questionamentos: ${qn.parou} parou · ${qn.comecou} começou</div>` : '';
+      return `<tr data-negocio-oport="${id}"><td>${Modal.esc(nomes[id] || id)}${qTxt}</td>
         <td class="text-end text-success">+${this.moeda(x.oportunidade)}</td>
         <td class="text-end text-danger">−${this.moeda(Math.abs(x.risco))}</td>
         <td class="text-end fw-bold">${this.moeda(x.oportunidade + x.risco)}</td>
@@ -1530,7 +1602,8 @@ const SecaoProjecao = {
           </table>
         </div>
         <div class="small text-muted">Por negócio, o quadro de oportunidades e riscos de ${d.ano} (jan–${this.nomeMes(mes)}): itens não
-          recorrentes por conta contábil e meses fora do padrão, sem contar nada duas vezes. O detalhe, mês a mês, está na tela de cada negócio.</div>
+          recorrentes por conta contábil e meses fora do padrão, sem contar nada duas vezes. O detalhe, mês a mês, está na tela de cada negócio.
+          Abaixo de cada negócio, quantas contas pararam ou começaram de ${d.ano - 1} para ${d.ano} (os questionamentos, na tela do negócio).</div>
         ${this.jurosCorporativo(d)}`);
   },
 
@@ -2243,6 +2316,12 @@ const SecaoProjecao = {
     const limpo = bruto.replace(/R\$|%/g, '').replace(/\./g, '').replace(',', '.').trim();
     if (limpo !== '' && !Number.isFinite(Number(limpo))) {
       this.avisar('Informe um número.');
+      inp.value = inp.dataset.original ?? '';
+      return;
+    }
+    // Teto da diretriz (PPR): acima não vai nem ao servidor, que também recusa.
+    if (limpo !== '' && inp.dataset.maximo !== undefined && Number(limpo) > Number(inp.dataset.maximo) + 1e-9) {
+      this.avisar(`Acima da diretriz: até ${String(inp.dataset.maximo).replace('.', ',')}. Valor menor pode.`);
       inp.value = inp.dataset.original ?? '';
       return;
     }

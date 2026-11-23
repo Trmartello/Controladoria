@@ -101,6 +101,12 @@ class CargaNivel3
             $idNegocio[(string)$cod] = (int)$id;
         }
         $idFilial = [];
+        // Ano HISTÓRICO (2025, para os questionamentos 2025 × 2026): filial que
+        // existia e não está no cadastro de hoje (mudou de negócio, fechou) não
+        // tem tela de filial — fica no total do negócio e é ignorada aqui, dita.
+        // Na carga do ano corrente, filial fora do cadastro continua sendo erro.
+        $ignorarSemCadastro = ($dados['filiais_sem_cadastro'] ?? null) === 'ignorar';
+        $filiaisIgnoradas = [];
         $buscaF = $pdo->prepare('SELECT id FROM filial WHERE negocio_id = ? AND cod_filial = ?');
         foreach ($filiais as $cod => $porFilial) {
             if (!isset($idNegocio[$cod])) {
@@ -109,6 +115,10 @@ class CargaNivel3
             foreach (array_keys($porFilial) as $fil) {
                 $buscaF->execute([$idNegocio[$cod], (string)$fil]);
                 $id = $buscaF->fetchColumn();
+                if ($id === false && $ignorarSemCadastro) {
+                    $filiaisIgnoradas[] = "{$cod}/{$fil}";
+                    continue;
+                }
                 if ($id === false) {
                     throw new RuntimeException(
                         "Carga do nível 3 com filial {$fil} do negócio {$cod} fora do cadastro: carregue a DRE da filial antes."
@@ -140,6 +150,9 @@ class CargaNivel3
                 $valores++;
             }
             foreach ($filiais[$cod] ?? [] as $fil => $porConta) {
+                if (!isset($idFilial[$cod][$fil])) {
+                    continue;
+                }
                 $nFiliais++;
                 foreach ($porConta as $c => $v) {
                     $ins->execute([$negId, $idFilial[$cod][$fil], $ano, $corte, $c, $v]);
@@ -150,8 +163,12 @@ class CargaNivel3
 
         return [
             'contas' => count($contas), 'negocios' => count($idNegocio), 'filiais' => $nFiliais,
-            'valores' => $valores, 'rateios_corrigidos' => self::corrigirRateioDasFiliais($pdo, $ano),
+            'valores' => $valores,
+            // A correção do rateio é da DRE de filial do ano corrente; o ano
+            // histórico não tem DRE de filial carregada (`corrigir_rateio` false).
+            'rateios_corrigidos' => ($dados['corrigir_rateio'] ?? true) ? self::corrigirRateioDasFiliais($pdo, $ano) : 0,
             'ignorados' => $ignorados,
+            'filiais_ignoradas' => $filiaisIgnoradas,
         ];
     }
 
