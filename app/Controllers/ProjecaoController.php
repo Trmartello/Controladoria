@@ -349,6 +349,9 @@ class ProjecaoController
         // A 3227 (acerto do PPR) de cada filial: a 8.5 da filial cresce sobre a
         // projeção DELA sem a 3227 (`Projecao::crescimentosDaFilial`).
         $acertosFilial = Projecao::pprRealizado([$negocioId], $ano)[$negocioId]['filiais'] ?? [];
+        // A depreciação carregada do ano da proposta (8.10, conta 3128): travada
+        // no negócio e em cada filial (`Projecao::fixosDaDepreciacao`).
+        $depreciacao = Projecao::depreciacao([$negocioId], $ano + 1)[$negocioId] ?? null;
         $porFilial = [];
         foreach ($filiais as $f) {
             $base = $this->linhasDaFilial((int)$f['id'], $ano, $corte);
@@ -356,7 +359,8 @@ class ProjecaoController
                 $base,
                 $this->lancados($projId, (int)$f['id']),
                 Projecao::crescimentosDaFilial($cresc, $base, (float)($acertosFilial[(int)$f['id']] ?? 0.0), $minimoPessoal),
-                $taxaPc
+                $taxaPc,
+                Projecao::fixosDaDepreciacao($depreciacao, (int)$f['id'])
             );
             $porFilial[(int)$f['id']] = $lf;
         }
@@ -367,10 +371,11 @@ class ProjecaoController
 
         // O DESAFIO é a proposta padrão: a mesma base e os mesmos crescimentos,
         // sem nenhum lançamento — o ponto de partida de onde a proposta anda.
-        $linhasDesafio = Projecao::aplicar($linhas, [], $cresc, $taxaPc);
+        $fixos = Projecao::fixosDaDepreciacao($depreciacao);
+        $linhasDesafio = Projecao::aplicar($linhas, [], $cresc, $taxaPc, $fixos);
         $linhas = $modo === 'FILIAL' && $filiais
-            ? Projecao::somarFiliais($linhas, $propostasFilial)
-            : Projecao::aplicar($linhas, $this->lancados($projId), $cresc, $taxaPc);
+            ? Projecao::somarFiliais($linhas, $propostasFilial, $fixos)
+            : Projecao::aplicar($linhas, $this->lancados($projId), $cresc, $taxaPc, $fixos);
         // O MÍNIMO das Despesas com Pessoal (pedido do cliente, 2026-11-23): no
         // negócio, o padrão com o quadro planejado; na filial, o quadro atual
         // dela × o custo por pessoa dela × o reajuste. Abaixo dele a linha grava
@@ -876,6 +881,19 @@ class ProjecaoController
 
         // As Despesas com Pessoal se lançam (desde 2026-11-23; entre 21 e 23/11
         // foram recusadas aqui): abaixo do mínimo, gravam com o ⚠ (`montar`).
+
+        // A DEPRECIAÇÃO carregada não se lança (pedido do cliente, 2026-11-23):
+        // é o total da depreciação, por negócio, filial e mês. Apagar (valor
+        // vazio) continua aceito, para limpar um lançamento de antes da carga.
+        $vazio = !isset($corpo['valor']) || $corpo['valor'] === '';
+        if ($codigo === Projecao::LINHA_DEPRECIACAO && !$vazio
+            && Projecao::depreciacao([$negocioId], $anoPlan)) {
+            Json::erro(
+                'A Depreciação (conta ' . Projecao::CONTA_DEPRECIACAO . ') vem da carga de depreciação '
+                . 'por negócio, filial e mês e não se lança: é o total da depreciação.',
+                422
+            );
+        }
 
         $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
         if ($filialId && !$this->filialDoNegocio($filialId, $negocioId)) {

@@ -1155,6 +1155,22 @@ CREATE TABLE IF NOT EXISTS negocio_folha (
   CONSTRAINT fk_nf_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- DEPRECIAÇÃO do ano da proposta por negócio, filial e mês (pedido do cliente,
+-- 2026-11-23): a linha 8.10 (conta reduzida 3128) da proposta, TRAVADA — é o
+-- total da depreciação, não se lança. `filial_id` 0 é o negócio (que pode ter um
+-- resto em filial fora do cadastro); `valor` no sinal da DRE (despesa negativa).
+-- Carga: `database/depreciacao_2027.php` (`CargaDepreciacao`, reescreve o ano).
+CREATE TABLE IF NOT EXISTS negocio_depreciacao (
+  negocio_id INT NOT NULL,
+  filial_id  INT NOT NULL DEFAULT 0,
+  ano        SMALLINT NOT NULL,
+  mes        TINYINT NOT NULL,
+  -- 4 casas, como a fonte (41,625): em centavos o total escapava R$ 1,45.
+  valor      DECIMAL(18,4) NOT NULL,
+  PRIMARY KEY (negocio_id, filial_id, ano, mes),
+  CONSTRAINT fk_ndep_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- VENDAS E TRIBUTOS SOBRE VENDAS de jan até o corte, por negócio (pedido do
 -- cliente, 2026-11-18): PIS e COFINS destacados no painel do desafio, para a
 -- conta da reforma tributária ser feita de forma macro. Venda a sócio (ato

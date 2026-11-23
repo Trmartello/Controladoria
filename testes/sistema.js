@@ -7748,10 +7748,10 @@ async function provasDesafioEExpansores(page, largura) {
     };
   });
   // Desafio calculado sobre a projeção de 2026 (2026-11-23).
-  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.680.001.039, resultado 45.755.843, margem 1,29%)`,
-    corp.negocios === 11 && corp.robTotal === '3.680.001.039' && corp.rlTotal === '45.755.843' && corp.margem === '1,29%', JSON.stringify(corp));
-  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 25,21 mi`,
-    /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 25,21 mi/.test(corp.metaDesafio), corp.metaDesafio);
+  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.680.001.039, resultado 32.415.590, margem 0,91%)`,
+    corp.negocios === 11 && corp.robTotal === '3.680.001.039' && corp.rlTotal === '32.415.590' && corp.margem === '0,91%', JSON.stringify(corp));
+  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 38,55 mi`,
+    /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 38,55 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
   t(`${l} Corporativo: visão, desafio, oportunidades, tributos e pessoas como expansores (sem premissas: nada se lança ali)`,
     corp.expansores === 'visao,desafio,oportunidades,tributos,pessoas', corp.expansores);
