@@ -39,8 +39,11 @@ lançamento nenhum (`$linhasDesafio` em `montar`). Composição:
   2026-11-23: "o Desafio para o negócio deve levar em consideração um crescimento
   proporcional das despesas"): cada subconta da linha 7, menos Pessoal (diretriz)
   e Depreciação (carga), cresce na proporção da Receita de Vendas
-  (`Projecao::acompanhamReceitaNoDesafio`). Onde a receita do driver cai (Pecuária,
-  realista da planilha abaixo da projeção), elas caem junto;
+  (`Projecao::acompanhamReceitaNoDesafio`). **Só para cima**: onde a receita cai
+  (Pecuária, realista da planilha 11,8% abaixo da projeção, pelo preço base do suíno
+  de R$ 6,35 para R$ 5,13/kg), as despesas ficam na projeção — "as despesas não vão
+  diminuir… nem as despesas da operação vão encolher proporcional à receita"
+  (cliente, 2026-11-23). Custo e deduções seguem a receita nos dois sentidos;
 - rateios na projeção.
 
 Só no desafio. Na **proposta** a despesa não lançada continua na projeção (diretriz
@@ -49,11 +52,12 @@ também o quanto a proposta segura as despesas abaixo da receita.
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, R$ 30,9 mi de resultado, margem 0,87% (a meta de 2% pediria R$ 70,97
+faturamento, R$ 29,6 mi de resultado, margem 0,83% (a meta de 2% pediria R$ 70,97
 mi). Era R$ 45,6 mi e 1,28%; R$ 45,8 mi e 1,29% com a 3227 fora da base do pessoal;
 R$ 32,4 mi com a depreciação carregada na 8.10 (ver abaixo); R$ 34,6 mi com a
 depreciação regravada sem o grupo contábil 1272; R$ 30,9 mi com as despesas
-operacionais acompanhando a receita no desafio.
+operacionais acompanhando a receita no desafio; R$ 29,6 mi com elas só acompanhando
+para cima (a Pecuária deixa de encolher as dela).
 
 **Drivers do faturamento** (`App\Services\DesafioDrivers`). Viram o crescimento
 padrão da 1.1 e, portanto, o PISO dela:

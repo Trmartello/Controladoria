@@ -1208,7 +1208,7 @@ const SecaoProjecao = {
           (jan–${this.nomeMes(d.mes_fechado_ate)} realizado + ${this.rotuloResto(d)} planejado) com as premissas do painel — IPCA, PIB e % de crescimento na receita (ou o driver de volume,
           abaixo), pessoal pela diretriz (reajuste, vale, prêmios e PPR) —, custo e deduções acompanhando a receita (margem
           bruta preservada), as demais despesas operacionais crescendo na mesma proporção da receita (despesa sobre a receita
-          preservada) e os rateios na base, sem crescimento. A coluna Proposta parte da projeção com o que o negócio lançou
+          preservada; se a receita cai, elas ficam na base) e os rateios na base, sem crescimento. A coluna Proposta parte da projeção com o que o negócio lançou
           (nela, despesa não lançada fica na base, pela diretriz), e a Diferença é o efeito dos lançamentos. Estrutura nova da DRE
           gerencial (a que vale em ${x.ano}).</div>
         ${this.notaTributos(x.tributos, x.ano)}

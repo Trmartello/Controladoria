@@ -770,6 +770,12 @@ class Projecao
      * 2026. Ficam fora as Despesas com Pessoal (crescem pela diretriz) e a
      * Depreciação (vale a carga). Os rateios (14.x, 16.1) seguem a projeção.
      *
+     * As despesas só ACOMPANHAM PARA CIMA: onde a receita cai, ficam na projeção
+     * (pedido do cliente, 2026-11-23, sobre a Pecuária, cujo faturamento cai com o
+     * preço base do suíno: "as despesas não vão diminuir… nem as despesas da
+     * operação vão encolher proporcional à receita"). Custo e deduções
+     * (`ACOMPANHAM_RECEITA`) seguem a receita nos dois sentidos.
+     *
      * Só no desafio: na PROPOSTA as demais despesas continuam na projeção por
      * omissão — é a diretriz de 2027 ("sem crescimento sobre 2026") —, e o que o
      * negócio lança manda. A Diferença da tela passa a mostrar também o quanto a
@@ -1235,14 +1241,16 @@ class Projecao
             $fator = (float)$rec['proposta'] / (float)$rec['projecao'];
             if (abs($fator - 1) > 1e-12) {
                 foreach ($acompanham as $c) {
-                    if (!isset($idx[$c])) {
+                    // Despesa (fora de ACOMPANHAM_RECEITA) só acompanha para cima.
+                    $f = in_array($c, self::ACOMPANHAM_RECEITA, true) ? $fator : max($fator, 1.0);
+                    if (!isset($idx[$c]) || abs($f - 1) <= 1e-12) {
                         continue;
                     }
                     $l = &$linhas[$idx[$c]];
                     if (($l['proposta_origem'] ?? null) === 'PROJECAO') {
-                        $l['proposta'] = (float)$l['projecao'] * $fator;
+                        $l['proposta'] = (float)$l['projecao'] * $f;
                         $l['proposta_origem'] = 'PREMISSA';
-                        $l['proposta_padrao'] = ($fator - 1) * 100;
+                        $l['proposta_padrao'] = ($f - 1) * 100;
                         $l['proposta_regra'] = 'RECEITA';
                     }
                     unset($l);
