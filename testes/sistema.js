@@ -5715,6 +5715,41 @@ async function provasProjecaoPremissas(page, largura) {
   t(`${l} lançar numa linha lida do painel é recusado`,
     recusa.includes('lida da proposta'), recusa.slice(0, 70));
 
+  // ── Sinal invertido pede confirmação (revisão de 2026-11-23) ────────────
+  // Os Custos do Leite apareceram lançados como +300.000.000 (% Custos de
+  // −199,88%). Valor com o sinal oposto ao da projeção abre um confirm: OK
+  // grava com o sinal da projeção; Cancelar e Cancelar de novo desiste.
+  const custoAntes = await page.evaluate(() => document.querySelector('[data-conta="4.1"] .celula-proposta').value);
+  const dialogos = [];
+  const responder = (respostas) => async (d) => {
+    dialogos.push(d.message());
+    await (respostas.shift() ? d.accept() : d.dismiss());
+  };
+  let resp = responder([true]);
+  page.on('dialog', resp);
+  await digitar('[data-conta="4.1"] .celula-proposta', '1.000.000');
+  page.off('dialog', resp);
+  const custoInvertido = await page.evaluate(() => document.querySelector('[data-conta="4.1"] .celula-proposta').value);
+  t(`${l} custo digitado POSITIVO pergunta antes de gravar, e o OK grava com o sinal da projeção`,
+    dialogos.length === 1 && dialogos[0].includes('sinal está invertido') && dialogos[0].includes('NEGATIVOS')
+      && /^[-−]\s?1\.000\.000/.test(custoInvertido),
+    JSON.stringify({ dialogos, custoInvertido }));
+  dialogos.length = 0;
+  resp = responder([false, false]);
+  page.on('dialog', resp);
+  await digitar('[data-conta="4.1"] .celula-proposta', '2.000.000');
+  page.off('dialog', resp);
+  const custoMantido = await page.evaluate(() => document.querySelector('[data-conta="4.1"] .celula-proposta').value);
+  t(`${l} cancelar as duas perguntas desiste: a célula volta ao que estava, sem gravar`,
+    dialogos.length === 2 && custoMantido === custoInvertido, JSON.stringify({ dialogos, custoMantido }));
+  // Sinal igual ao da projeção não pergunta nada.
+  dialogos.length = 0;
+  resp = responder([]);
+  page.on('dialog', resp);
+  await digitar('[data-conta="4.1"] .celula-proposta', custoAntes);
+  page.off('dialog', resp);
+  t(`${l} o sinal da projeção grava sem perguntar`, dialogos.length === 0, JSON.stringify(dialogos));
+
   // Devolve a massa ao ponto de partida — o custo PRIMEIRO: apagar a receita
   // antes dele poderia levar o resultado ao vermelho, e a diretriz recusa.
   await digitar('[data-conta="4.1"] .celula-proposta', '');

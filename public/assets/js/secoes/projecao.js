@@ -2719,6 +2719,28 @@ const SecaoProjecao = {
       return;
     }
     inp.classList.remove('celula-erro');
+    // SINAL INVERTIDO (achado da revisão de 2026-11-23: os Custos do Leite
+    // lançados como +300.000.000, com % Custos de −199,88%): valor com o sinal
+    // oposto ao da projeção da linha pede confirmação antes de gravar — o
+    // cliente escolheu perguntar, e não inverter sozinho, porque há linhas que
+    // mudam de sinal de verdade.
+    let valor = limpo === '' ? null : Number(limpo);
+    if (!ehPct && valor) {
+      const linha = (this.visao(this.dados).linhas || []).find((x) => x.codigo === inp.dataset.conta);
+      const proj = linha ? Number(linha.projecao) || 0 : 0;
+      if (proj && Math.sign(proj) !== Math.sign(valor)) {
+        const fmt = (v) => `${v < 0 ? '−' : '+'}${this.moeda(Math.abs(v))}`;
+        const nome = linha ? linha.nome : 'esta linha';
+        if (window.confirm(`${nome}: a projeção é ${fmt(proj)} e você digitou ${fmt(valor)} — o sinal está invertido.\n\n`
+          + `${proj < 0 ? 'Custos e despesas são NEGATIVOS na DRE.' : 'Esta linha é POSITIVA na DRE.'}\n\n`
+          + `OK: gravar ${fmt(-valor)} (o sinal da projeção).\nCancelar: decidir de novo.`)) {
+          valor = -valor;
+        } else if (!window.confirm(`Gravar ${fmt(valor)} assim mesmo, com o sinal contrário ao da projeção?`)) {
+          inp.value = inp.dataset.original ?? '';
+          return;
+        }
+      }
+    }
     inp.classList.add('celula-gravando');
     try {
       const r = await App.api('/api/projecao/valor', {
@@ -2726,7 +2748,7 @@ const SecaoProjecao = {
         filial_id: this.filialId,
         conta: inp.dataset.conta,
         entrada: ehPct ? 'PERCENTUAL' : 'VALOR',
-        valor: limpo === '' ? null : Number(limpo),
+        valor,
         versao: this.versao,
       });
       this.versao = r.versao;
