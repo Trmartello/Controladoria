@@ -52,7 +52,11 @@ prova('a diretriz de 2027 é a do documento: pessoal 5,50 fixo; IPCA 4,50 e PIB 
     $d['premissas'] === ['PESSOAS' => 5.5] && $d['sugeridas'] === ['IPCA' => 4.5, 'PIB' => 1.5],
     json_encode([$d['premissas'], $d['sugeridas']]));
 prova('vale R$ 500, prêmio assiduidade R$ 200, prêmio metas R$ 500, PPR de 1,5 salário',
-    $d['beneficios'] === ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0] && $d['ppr_salarios'] === 1.5);
+    $d['beneficios'] === ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0, 'PPR_SALARIOS' => 1.5]);
+// O número de salários do PPR é um CAMPO, como os da diretriz (pedido do cliente, 2026-11-23).
+prova('PPR_SALARIOS é um campo de benefícios, fixado em 2027 pela diretriz e livre nos outros anos',
+    in_array('PPR_SALARIOS', Projecao::BENEFICIOS, true) && Projecao::fixadaPelaDiretriz(2027, 'PPR_SALARIOS') === 1.5
+    && Projecao::fixadaPelaDiretriz(2028, 'PPR_SALARIOS') === null);
 prova('crescimento real, IPCA e PIB NÃO são fixos (cada negócio edita); pessoal é',
     Projecao::fixadaPelaDiretriz(2027, 'CRESCIMENTO') === null && Projecao::fixadaPelaDiretriz(2027, 'IPCA') === null
     && Projecao::fixadaPelaDiretriz(2027, 'PIB') === null && Projecao::fixadaPelaDiretriz(2027, 'PESSOAS') === 5.5);
@@ -86,6 +90,14 @@ prova('no ano da diretriz, a receita cresce IPCA + PIB (6%) e a 8.5 cresce o % d
     perto($cresc['1.1'], 6.0) && perto($cresc['8.5'], 0.95) && $det !== null, json_encode($cresc));
 [$cresc] = Projecao::crescimentosDoNegocio(2028, ['PESSOAS' => 4.0], -1000.0, ['folha' => $folha, 'calc' => $calc]);
 prova('em ano SEM diretriz (sem PPR definido) a 8.5 cresce só o reajuste digitado', perto($cresc['8.5'], 4.0) && !isset($cresc['1.1']), json_encode($cresc));
+// Em 2028 o negócio digita o PPR: 1 salário. Base 750 × 1,04 = 780; benefícios 60;
+// PPR = 100 × 1,04 × 1 = 104 → 944, ou −5,6% sobre os 1.000 da projeção.
+[$cresc, $det] = Projecao::crescimentosDoNegocio(2028, ['PESSOAS' => 4.0], -1000.0,
+    ['folha' => $folha, 'calc' => $calc, 'ppr_salarios' => 1.0]);
+prova('com o campo PPR digitado (1 salário em 2028), a conta usa o número digitado: PPR = 104, 8.5 = −944',
+    $det && perto($det['ppr'], 104.0) && perto($det['proposta'], -944.0) && $det['ppr_salarios'] === 1.0, json_encode([$det['ppr'] ?? null, $det['proposta'] ?? null]));
+[$cresc, $det] = Projecao::crescimentosDoNegocio(2027, [], -1000.0, ['folha' => $folha, 'calc' => $calc, 'ppr_salarios' => 1.5]);
+prova('em 2027 o campo vem da diretriz (1,5) e a conta é a de sempre (158,25)', $det && perto($det['ppr'], 158.25));
 
 // ── 3. Com o banco: Pecuária, e o Painel igual à tela ───────────────────────
 $ids = [];

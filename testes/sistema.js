@@ -6554,6 +6554,7 @@ async function provasDiretriz2027(page, largura) {
       ipca: document.querySelector('#premissa-IPCA')?.value, pib: document.querySelector('#premissa-PIB')?.value,
       seloIpca: !!document.querySelector('[data-sugerida="IPCA"]'), pessoas: tx('[data-diretriz="PESSOAS"]'),
       vale: tx('[data-diretriz="ALIMENTACAO"]'), assid: tx('[data-diretriz="ASSIDUIDADE"]'), result: tx('[data-diretriz="RESULTADO"]'),
+      pprCampo: tx('[data-diretriz="PPR_SALARIOS"]'), pprInput: !!document.querySelector('#beneficio-PPR_SALARIOS'),
       campoIpca: !!document.querySelector('#premissa-IPCA'), campoDesejado: !!document.querySelector('#premissa-CRESCIMENTO'),
       campoVale: !!document.querySelector('#beneficio-ALIMENTACAO'), campoColab: !!document.querySelector('#beneficio-COLABORADORES'),
       ppr: n(tx('[data-pessoal="ppr"]')), total: n(tx('[data-pessoal="total"]')),
@@ -6568,6 +6569,9 @@ async function provasDiretriz2027(page, largura) {
     /R\$ 500/.test(tela.vale) && /R\$ 200/.test(tela.assid) && /R\$ 500/.test(tela.result) && !tela.campoVale,
     `${tela.vale} | ${tela.assid} | ${tela.result}`);
   t(`${l} o crescimento desejado e o quadro de colaboradores continuam do negócio`, tela.campoDesejado && tela.campoColab);
+  // O número de salários do PPR é um campo como os da diretriz (pedido do cliente, 2026-11-23).
+  t(`${l} o PPR aparece como campo da diretriz: 1,5 salário, com o selo, sem caixa de digitar em 2027`,
+    /1,5 salário/.test(tela.pprCampo) && /diretriz/.test(tela.pprCampo) && !tela.pprInput, tela.pprCampo);
   t(`${l} o cartão de pessoas mostra o PPR (1,5 salário sobre a folha) e a proposta da 8.5, iguais aos da API`,
     tela.api && tela.ppr === Math.round(tela.api.ppr) && tela.total === Math.round(-tela.api.proposta) && tela.ppr > 0,
     JSON.stringify({ ppr: tela.ppr, total: tela.total }));
@@ -6591,15 +6595,21 @@ async function provasDiretriz2027(page, largura) {
     return {
       pessoas: await tenta('/api/projecao/premissa', { negocio_id: id, ano: 2027, chave: 'PESSOAS', valor: 7 }),
       vale: await tenta('/api/projecao/beneficio', { negocio_id: id, ano: 2027, chave: 'ALIMENTACAO', valor: 650 }),
+      ppr: await tenta('/api/projecao/beneficio', { negocio_id: id, ano: 2027, chave: 'PPR_SALARIOS', valor: 2 }),
+      // Ano sem diretriz: o negócio digita (e a prova apaga em seguida).
+      ppr2028: await tenta('/api/projecao/beneficio', { negocio_id: id, ano: 2028, chave: 'PPR_SALARIOS', valor: 2 }),
+      pprFaixa: await tenta('/api/projecao/beneficio', { negocio_id: id, ano: 2028, chave: 'PPR_SALARIOS', valor: 13 }),
+      pprApaga: await tenta('/api/projecao/beneficio', { negocio_id: id, ano: 2028, chave: 'PPR_SALARIOS', valor: '' }),
     };
   });
   t(`${l} a API recusa mudar o que a diretriz fixa`,
     /Fixado pela diretriz de 2027/.test(recusas.pessoas) && /Fixado pela diretriz de 2027/.test(recusas.vale), JSON.stringify(recusas));
+  t(`${l} o PPR de 2027 também é fixo (1,5 salário); em 2028 o negócio lança, de 0 a 12 salários`,
+    /Fixado pela diretriz de 2027.*1,5 salário/.test(recusas.ppr) && recusas.ppr2028 === 'aceita'
+      && /0 e 12 salários/.test(recusas.pprFaixa) && recusas.pprApaga === 'aceita', JSON.stringify(recusas));
 
-  // A linha 8.5 é CONSEQUÊNCIA do cartão Pessoas e benefícios (pedido do
-  // cliente, 2026-11-21): sem célula de digitar, a API recusa lançá-la, e mexer
-  // num benefício recalcula a linha na hora — antes o cartão mudava e a DRE
-  // ficava com o número de antes até recarregar a página.
+  // Mexer num benefício recalcula a linha 8.5 na hora — antes o cartão mudava
+  // e a DRE ficava com o número de antes até recarregar a página.
   // A 8.5 se LANÇA de novo (pedido do cliente, 2026-11-23): o padrão do cartão é
   // também o MÍNIMO; abaixo dele a linha grava e sai com o ⚠ para validar.
   const minimo = await page.evaluate(async () => {
