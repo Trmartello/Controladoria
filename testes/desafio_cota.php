@@ -3,13 +3,13 @@
 /**
  * Provas do desafio dos POSTOS DE RESFRIAMENTO pela cota Aurora do Leite
  * (pedido do cliente, 2026-11-23): faturamento = meta "Cota Aurora" do Leite ×
- * R$ 0,06 por litro, lida na hora do banco.
+ * R$ 0,055 por litro (era 0,06 até 2026-11-23), lida na hora do banco.
  *
  *   DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
  *     php testes/desafio_cota.php
  *
  * Os números são de MÃO: 12 meses de 8.950 (mil litros, como a tela mostra) =
- * 107.400.000 litros × R$ 0,06 = R$ 6.444.000. Cria a meta no planejamento do
+ * 107.400.000 litros × R$ 0,055 = R$ 5.907.000. Cria a meta no planejamento do
  * Leite e apaga no fim; o desafio carregado (`negocio_desafio`) não é tocado.
  */
 
@@ -77,9 +77,9 @@ try {
     $p = $d['por_negocio'][$postos];
     $razao = (float)$carregado['receita_liquida'] / (float)$carregado['receita_bruta'];
     $margem = (float)$carregado['resultado'] / (float)$carregado['receita_liquida'];
-    prova('faturamento dos Postos = 107.400.000 × R$ 0,06 = R$ 6.444.000', abs($p['receita_bruta'] - 6444000) < 0.01, (string)$p['receita_bruta']);
-    prova('receita líquida na relação ROL/ROB do desafio carregado', abs($p['receita_liquida'] - 6444000 * $razao) < 0.01);
-    prova('resultado na margem do desafio carregado (preservar margem)', abs($p['resultado'] - 6444000 * $razao * $margem) < 0.01);
+    prova('faturamento dos Postos = 107.400.000 × R$ 0,055 = R$ 5.907.000', abs($p['receita_bruta'] - 5907000) < 0.01, (string)$p['receita_bruta']);
+    prova('receita líquida na relação ROL/ROB do desafio carregado', abs($p['receita_liquida'] - 5907000 * $razao) < 0.01);
+    prova('resultado na margem do desafio carregado (preservar margem)', abs($p['resultado'] - 5907000 * $razao * $margem) < 0.01);
     prova('a nota diz de onde veio', str_contains($p['nota'], 'cota Aurora') && str_contains($p['nota'], '107.400.000'), $p['nota']);
     $outro = (int)(Database::um("SELECT id FROM negocio WHERE cod_negocio = '4'")['id'] ?? 0);
     $leite = Database::um('SELECT * FROM negocio_desafio WHERE negocio_id = ? AND ano = ?', [$outro, $ano]);
@@ -88,8 +88,8 @@ try {
     // Mudou a cota no site: o desafio acompanha, sem carga.
     $pdo->prepare("UPDATE indicador_valor SET valor = 10000 WHERE indicador_id = ? AND mes = 12")->execute([$ind]);
     $p = $desafioDoAno->invoke($ctrl, $ano)['por_negocio'][$postos];
-    prova('mudar a meta de dezembro (10.000) muda o desafio na hora: +1.050 mil litros × 0,06 = +R$ 63.000',
-        abs($p['receita_bruta'] - 6507000) < 0.01, (string)$p['receita_bruta']);
+    prova('mudar a meta de dezembro (10.000) muda o desafio na hora: +1.050 mil litros × 0,055 = +R$ 57.750',
+        abs($p['receita_bruta'] - 5964750) < 0.01, (string)$p['receita_bruta']);
 
     // Meta lançada em litros (e não em mil litros): lida como está.
     $pdo->prepare('DELETE FROM indicador_valor WHERE indicador_id = ?')->execute([$ind]);

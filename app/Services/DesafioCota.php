@@ -9,12 +9,13 @@ use App\Core\Database;
  * cliente, 2026-11-23): "o posto de leite depende do volume de leite coletado
  * pelo negócio leite… recebe um valor aproximado de 6 centavos ao litro para
  * cada litro resfriado, e esse valor só aumenta se o volume for maior, não pelo
- * aumento do valor por litro"; "pegue o indicador Cota Aurora… e projete 0,06
+ * aumento do valor por litro"; "pegue o indicador Cota Aurora… e projete 0,06"
+ * (revisto em 2026-11-23: "decidimos alterar para R$ 0,055")
  * para projetar o faturamento do negócio posto de resfriamento de leite".
  *
  * O faturamento do desafio dos Postos deixa de ser o de 2026 × (1 + IPCA + PIB)
  * e passa a ser **a cota Aurora do ano, da meta de indicadores do Leite, ×
- * R$ 0,06 por litro**. É lido na hora, do próprio banco: mudou a cota no site,
+ * R$ 0,055 por litro**. É lido na hora, do próprio banco: mudou a cota no site,
  * mudou o desafio dos Postos — sem carga nova, e a meta do Leite e o desafio do
  * Posto ficam sempre no mesmo volume.
  *
@@ -39,7 +40,7 @@ class DesafioCota
     /** O começo do nome do indicador na meta do Leite. */
     public const INDICADOR = 'cota aurora';
     /** O que o Posto recebe por litro resfriado, sem reajuste (o cliente). */
-    public const RS_POR_LITRO = 0.06;
+    public const RS_POR_LITRO = 0.055;
     /** Ano abaixo disto está em mil litros (ver "Unidade"). */
     public const LIMITE_MIL_LITROS = 10000000.0;
 
@@ -114,7 +115,7 @@ class DesafioCota
                 $cota['indicador'],
                 $ano,
                 number_format($cota['litros'], 0, ',', '.'),
-                number_format(self::RS_POR_LITRO, 2, ',', '.'),
+                number_format(self::RS_POR_LITRO, 3, ',', '.'),
                 $cota['em_mil_litros'] ? ' (meta lançada em mil litros)' : ''
             ),
             'cota' => $cota,
