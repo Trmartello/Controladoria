@@ -24,6 +24,8 @@ require_once __DIR__ . '/../app/Core/Json.php';
 require_once __DIR__ . '/../app/Core/Auth.php';
 require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
+require_once __DIR__ . '/../app/Services/Metas.php';
+require_once __DIR__ . '/../app/Services/DesafioCota.php';
 require_once __DIR__ . '/../app/Services/CargaPessoas.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
 require_once __DIR__ . '/../app/Services/Reforma.php';
@@ -95,10 +97,12 @@ $nov = $pdo->query(
     "SELECT n.cod_negocio, p.colaboradores FROM negocio_pessoas_mes p
        JOIN negocio n ON n.id = p.negocio_id WHERE p.ano = 2026 AND p.mes = 11"
 )->fetchAll(PDO::FETCH_KEY_PAIR);
-prova('âncora do Qlik: Supermercados tem 406 em novembro', (int)($nov['9'] ?? 0) === 406, (string)($nov['9'] ?? 'ausente'));
-prova('âncora do Qlik: Agropecuárias tem 548 em novembro', (int)($nov['8'] ?? 0) === 548, (string)($nov['8'] ?? 'ausente'));
-prova('âncora do Qlik: os 10 negócios com quadro somam 1.350 em novembro (1.564 com as áreas de apoio)',
-    array_sum($nov) === 1350 && count($nov) === 10, array_sum($nov) . ' em ' . count($nov));
+// Âncoras da carga de 23/11/2026 (`pessoas_2026_11_23.php`, o Qlik recarregado
+// depois de 18/11 mudou novembro em sete negócios).
+prova('âncora do Qlik: Supermercados tem 402 em novembro', (int)($nov['9'] ?? 0) === 402, (string)($nov['9'] ?? 'ausente'));
+prova('âncora do Qlik: Agropecuárias tem 542 em novembro', (int)($nov['8'] ?? 0) === 542, (string)($nov['8'] ?? 'ausente'));
+prova('âncora do Qlik: os 10 negócios com quadro somam 1.334 em novembro',
+    array_sum($nov) === 1334 && count($nov) === 10, array_sum($nov) . ' em ' . count($nov));
 
 // ── 3. A carga: confere antes de escrever, e sobrescreve ─────────────────────
 $cod = 'QPE' . substr((string)microtime(true), -5);
@@ -134,6 +138,21 @@ $m = $recusa(['ano' => 2026, 'meses' => [13], 'valores' => [$cod => [1]]]);
 prova('mês 13 é recusado', $m !== null && str_contains($m, 'mês inválido'), (string)$m);
 $v11 = (int)$pdo->query("SELECT colaboradores FROM negocio_pessoas_mes WHERE negocio_id = {$negocioId} AND ano = 2026 AND mes = 11")->fetchColumn();
 prova('carga recusada não deixa rastro (o mês continua com o valor anterior)', $v11 === 65 && $conta() === 2, "{$v11} / {$conta()}");
+
+// O quadro por FILIAL (2026-11-23): precisa fechar com o negócio no mês. (Só a
+// recusa se prova aqui: uma carga aceita reescreveria o quadro de 2026 inteiro.)
+$m = $recusa(['ano' => 2026, 'meses' => [11], 'valores' => [$cod => [10]], 'filiais_mes' => 11, 'filiais' => [$cod => ['1' => 3, '2' => 4]]]);
+prova('filiais que não somam o negócio no mês são recusadas (7 contra 10)', $m !== null && str_contains($m, 'somam 7'), (string)$m);
+$m = $recusa(['ano' => 2026, 'meses' => [11], 'valores' => [$cod => [10]], 'filiais_mes' => 10, 'filiais' => [$cod => ['1' => 10]]]);
+prova('quadro de filial num mês fora da série é recusado', $m !== null && str_contains($m, 'fora da série'), (string)$m);
+$fp = $pdo->query("SELECT n.cod_negocio, SUM(fp.colaboradores) FROM filial_pessoas fp JOIN filial f ON f.id = fp.filial_id
+    JOIN negocio n ON n.id = f.negocio_id WHERE fp.ano = 2026 GROUP BY n.cod_negocio")->fetchAll(PDO::FETCH_KEY_PAIR);
+$fechaFiliais = true;
+foreach ($nov as $c => $q) {
+    // A filial 1 do negócio 11 (1 pessoa) não tem DRE de filial e fica de fora da carga.
+    $fechaFiliais = $fechaFiliais && (int)($fp[(string)$c] ?? $fp[(int)$c] ?? 0) === (int)$q - ((string)$c === '11' ? 1 : 0);
+}
+prova('o quadro das filiais soma o do negócio em novembro (menos a 11/1, sem DRE de filial)', $fechaFiliais, json_encode($fp));
 
 // ── 4. A base é o ÚLTIMO mês carregado do ano atual ──────────────────────────
 $ctrl = new App\Controllers\ProjecaoController();

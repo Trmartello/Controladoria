@@ -1071,6 +1071,22 @@ CREATE TABLE IF NOT EXISTS negocio_pessoas_mes (
   CONSTRAINT fk_npm_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- O quadro de colaboradores por FILIAL, no último mês carregado do ano (pedido do
+-- cliente, 2026-11-23): é ele que dá o MÍNIMO das Despesas com Pessoal de cada
+-- filial — "o número de pessoas × o custo com 5,5%" —, e a filial não tem quadro
+-- planejado (decisão do cliente: "só o quadro atual da filial"). Mesma origem do
+-- quadro do negócio (`Número Funcionarios` da DRE gerencial); a soma das filiais
+-- de um negócio é o quadro dele no mesmo mês. A carga do ano o REESCREVE inteiro:
+-- filial que ficou sem ninguém some, em vez de ficar com o quadro de antes.
+CREATE TABLE IF NOT EXISTS filial_pessoas (
+  filial_id     INT NOT NULL,
+  ano           SMALLINT NOT NULL,
+  mes           TINYINT NOT NULL,
+  colaboradores INT NOT NULL,
+  PRIMARY KEY (filial_id, ano),
+  CONSTRAINT fk_fp_filial FOREIGN KEY (filial_id) REFERENCES filial(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- O que o cliente DIGITA no planejamento de pessoas e benefícios, por NEGÓCIO e por
 -- ANO: o número de colaboradores planejado (quando difere do quadro atual), os
 -- valores por colaborador/mês e os percentuais de previsão. Só o digitado é

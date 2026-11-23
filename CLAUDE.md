@@ -3159,17 +3159,41 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     espelham as 3.07 (ato cooperativo) e NÃO entram. Na Agropecuária as 3.07.01.21*
     somam R$ 4,6 mi a mais que a linha 8.5 — por isso as peças entram como parte,
     não em reais. O cartão Pessoas e benefícios mostra a conta inteira.
-  - **A linha 8.5 é CONSEQUÊNCIA, não se lança** (pedido do cliente,
-    2026-11-21: "se eu já atribuir os benefícios na parte superior, o valor deve
-    ser consequência na DRE"). Com premissa de pessoas no ano
-    (`Projecao::pessoalTravado` — a diretriz de 2027 sempre traz uma; em ano sem
-    diretriz, só se o negócio digitou o %), `aplicar` ignora o lançado na 8.5 e
-    marca `proposta_travada`; a tela desenha o número com cadeado, sem célula, e
-    `gravarValor` recusa a conta. Lançamentos antigos na 8.5 ficam no banco mas
-    não valem. E gravar um benefício (`gravarBeneficio`) agora SOBE a versão e a
-    tela repinta a DRE inteira (`repintarProposta`, o mesmo da premissa): antes
-    o cartão mudava (ex.: % de meses com resultado em 0) e a linha ficava com o
-    número de antes até recarregar a página.
+  - **A linha 8.5 se LANÇA, com MÍNIMO e ⚠** (pedido do cliente, 2026-11-23,
+    revendo o de 21/11 que a travava): o padrão é a conta da diretriz (cartão
+    Pessoas e benefícios) e é também o **mínimo**: "o valor pode ficar acima
+    (contratação, reajuste); se reduzir pessoas, não pode ser menor que o número
+    de pessoas × o custo com 5,5% — se for, o campo fica com um triângulo de
+    atenção para validar". Decisões do cliente: padrão **proporcional** ao quadro
+    planejado; abaixo do mínimo **só o ⚠, grava**; mínimo **em cada filial**
+    também, com **só o quadro atual da filial** e o **custo de cada filial**.
+    - Negócio: `crescimentosDoNegocio` devolve um 3º item (`minimo`) e passa o
+      fator `quadro planejado ÷ atual` a `pessoalDaDiretriz` (folha reajustada e
+      PPR × fator; os benefícios já vêm pelo quadro planejado). O padrão com o
+      fator é o mínimo. Sem folha, é `(1 + reajuste) × fator − 1`.
+    - Filial: mínimo = quadro atual dela × custo por pessoa dela (projeção ÷
+      quadro) × o reajuste com o quadro ATUAL (`percentual_atual`) — ou seja, a
+      projeção da filial × (1 + `percentual_atual`). Filial sem quadro não tem
+      mínimo. O ⚠ da filial só vale para o que foi LANÇADO (o padrão dela herda o
+      % do negócio, que já tem o fator — marcá-lo acusaria quem não digitou).
+    - `marcarMinimoPessoal` / `minimoPessoalDoNegocio` / `alertasPessoal` são a
+      conta única (tela, Painel via `resumoDosNegocios`, Corporativo). O total do
+      negócio no modo filial é comparado sempre. As listas (`pessoal_alertas`,
+      `pessoal_alertas_negocios`) só trazem filiais no modo filial.
+    - Tela: `⚠` na célula (`.aviso-minimo-pessoal`, a conta no título) e a caixa
+      `#projecao-pessoal-minimo`; no Painel, ⚠ ao lado do resultado proposto.
+    - Saíram `Projecao::pessoalTravado`, `proposta_travada`, o cadeado
+      (`.proposta-calculada`) e a recusa em `gravarValor`. Não os reponha sem o
+      cliente. Gravar um benefício continua subindo a versão e repintando a DRE.
+  - **Quadro por FILIAL** (`filial_pessoas`, carga `pessoas_2026_11_23.php`, do
+    Qlik em 23/11/2026, "traga os dados mais recentes de cada negócio e filial"):
+    o quadro de novembro de cada filial, conferido na geração contra a soma do
+    negócio e a contagem do Qlik (136 filiais). `CargaPessoas` recusa filiais que
+    não somam o negócio no mês e REESCREVE o ano inteiro de `filial_pessoas`
+    (filial que zerou some). A 11/1 (1 pessoa) não tem DRE de filial e fica fora,
+    avisada pelo migrate. A mesma carga atualizou a série dos negócios: novembro
+    mudou em sete (Agropecuárias 548 → 542, Supermercados 406 → 402; os dez somam
+    1.334). Gerada por script a partir da resposta do Qlik, sem redigitação.
   - **Meta negativa de resultado líquido: SINALIZAR, não bloquear** (decisão do
     cliente, 2026-11-18, revendo a anterior: "o lançamento deve permitir todos os
     sinais; porém se o resultado líquido for negativo deve sinalizar"). Não há

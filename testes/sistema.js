@@ -6118,10 +6118,10 @@ async function provasSinalNoCelular(page, largura) {
  * Pessoas e benefícios por negócio (pedido do cliente, 2026-11-18): o quadro de
  * colaboradores da DRE e o que o negócio paga de alimentação e de abono.
  *
- * Os números são de MÃO, e dois deles vêm do Qlik: Supermercados tem 406
- * colaboradores em novembro de 2026, e os dez negócios com quadro somam 1.350.
- * 406 × R$ 500 × 12 = R$ 2.436.000 de alimentação; sem o abono de resultado, a
- * despesa cai de R$ 5.846.400 para R$ 3.410.400. Uma prova que refizesse a conta
+ * Os números são de MÃO, e dois deles vêm do Qlik (carga de 23/11/2026): Supermercados tem 402
+ * colaboradores em novembro de 2026, e os dez negócios com quadro somam 1.334.
+ * 402 × R$ 500 × 12 = R$ 2.412.000 de alimentação; sem o abono de resultado, a
+ * despesa cai de R$ 5.788.800 para R$ 3.376.800. Uma prova que refizesse a conta
  * com a mesma fórmula do código passaria sem provar nada.
  */
 async function provasPessoasEBeneficios(page, largura) {
@@ -6151,13 +6151,13 @@ async function provasPessoasEBeneficios(page, largura) {
   const a0 = await api(negocioId);
   const ano = a0.ano;
   const calc = a0.pessoas.por_ano[ano];
-  t(`${l} o quadro vem da DRE: Supermercados tem 406 colaboradores em novembro`,
-    a0.pessoas.base && a0.pessoas.base.colaboradores === 406 && a0.pessoas.base.mes === 11,
+  t(`${l} o quadro vem da DRE: Supermercados tem 402 colaboradores em novembro`,
+    a0.pessoas.base && a0.pessoas.base.colaboradores === 402 && a0.pessoas.base.mes === 11,
     JSON.stringify(a0.pessoas.base));
-  t(`${l} alimentação do ano: 406 × R$ 500 × 12 = R$ 2.436.000`, Math.abs(calc.anual.alimentacao - 2436000) < 0.5,
+  t(`${l} alimentação do ano: 402 × R$ 500 × 12 = R$ 2.412.000`, Math.abs(calc.anual.alimentacao - 2412000) < 0.5,
     String(calc.anual.alimentacao));
-  t(`${l} sem o abono de resultado a despesa cai de R$ 5.846.400 para R$ 3.410.400`,
-    Math.abs(calc.anual.total - 5846400) < 0.5 && Math.abs(calc.sem_resultado_anual - 3410400) < 0.5,
+  t(`${l} sem o abono de resultado a despesa cai de R$ 5.788.800 para R$ 3.376.800`,
+    Math.abs(calc.anual.total - 5788800) < 0.5 && Math.abs(calc.sem_resultado_anual - 3376800) < 0.5,
     `${calc.anual.total} / ${calc.sem_resultado_anual}`);
 
   const tela = () => page.evaluate(() => {
@@ -6183,8 +6183,8 @@ async function provasPessoasEBeneficios(page, largura) {
     };
   });
   let e = await tela();
-  t(`${l} o cartão mostra o quadro (406) e diz que é do último mês carregado`,
-    /406/.test(e.quadro) && /nov/i.test(e.quadro) && e.colabPlaceholder === '406', JSON.stringify(e.quadro));
+  t(`${l} o cartão mostra o quadro (402) e diz que é do último mês carregado`,
+    /402/.test(e.quadro) && /nov/i.test(e.quadro) && e.colabPlaceholder === '402', JSON.stringify(e.quadro));
   t(`${l} e explica que o número já é de colaboradores equivalentes (a divisão entre negócios)`, e.explica);
   t(`${l} pessoas e benefícios ficam no MESMO bloco das premissas, sem cartão separado`,
     !e.cartaoSeparado && e.noCartao.length === 3, JSON.stringify({ separado: e.cartaoSeparado, campos: e.noCartao }));
@@ -6198,8 +6198,8 @@ async function provasPessoasEBeneficios(page, largura) {
   t(`${l} o abono de 2027 é R$ 700 (R$ 200 de assiduidade + R$ 500 de resultado) e o vale R$ 500`,
     /R\$ 700/.test(e.abonoTotal) && /R\$ 200 de assiduidade/.test(e.abonoTotal) && /R\$ 500 se o negócio/.test(e.abonoTotal)
       && /Vale alimentação: R\$ 500/.test(e.abonoTotal), e.abonoTotal);
-  t(`${l} a tela mostra a conta: R$ 2.436.000 de alimentação e R$ 5.846.400 no total`,
-    /2\.436\.000/.test(e.alimentacao) && /5\.846\.400/.test(e.total) && /3\.410\.400/.test(e.semResultado),
+  t(`${l} a tela mostra a conta: R$ 2.412.000 de alimentação e R$ 5.788.800 no total`,
+    /2\.412\.000/.test(e.alimentacao) && /5\.788\.800/.test(e.total) && /3\.376\.800/.test(e.semResultado),
     JSON.stringify([e.alimentacao, e.total, e.semResultado]));
 
   // Digitar pela TELA: o abono de resultado em 50% dos meses.
@@ -6208,11 +6208,11 @@ async function provasPessoasEBeneficios(page, largura) {
   });
   await new Promise((r) => setTimeout(r, 1500));
   let a = await api(negocioId);
-  t(`${l} digitar na tela GRAVA no banco e a previsão muda (resultado: R$ 1.218.000)`,
-    a.pessoas.digitados[ano].PCT_RESULTADO === 50 && Math.abs(a.pessoas.por_ano[ano].anual.resultado - 1218000) < 0.5,
+  t(`${l} digitar na tela GRAVA no banco e a previsão muda (resultado: R$ 1.206.000)`,
+    a.pessoas.digitados[ano].PCT_RESULTADO === 50 && Math.abs(a.pessoas.por_ano[ano].anual.resultado - 1206000) < 0.5,
     JSON.stringify(a.pessoas.digitados[ano]));
   e = await tela();
-  t(`${l} e o bloco se repinta com o número novo`, /1\.218\.000/.test(e.resultado) && /4\.628\.400/.test(e.total),
+  t(`${l} e o bloco se repinta com o número novo`, /1\.206\.000/.test(e.resultado) && /4\.582\.800/.test(e.total),
     JSON.stringify([e.resultado, e.total]));
 
   // Por ano: outro ano não herda.
@@ -6223,8 +6223,8 @@ async function provasPessoasEBeneficios(page, largura) {
   t(`${l} lança em outro ano pela API`, (await post({ chave: 'ALIMENTACAO', valor: 700, ano: Number(outroAno) })) === 'OK');
   a = await api(negocioId);
   t(`${l} cada ano tem o seu valor (${ano} segue em R$ 500, ${outroAno} em R$ 700)`,
-    Math.abs(a.pessoas.por_ano[ano].anual.alimentacao - 2436000) < 0.5
-      && Math.abs(a.pessoas.por_ano[outroAno].anual.alimentacao - 406 * 700 * 12) < 0.5,
+    Math.abs(a.pessoas.por_ano[ano].anual.alimentacao - 2412000) < 0.5
+      && Math.abs(a.pessoas.por_ano[outroAno].anual.alimentacao - 402 * 700 * 12) < 0.5,
     `${a.pessoas.por_ano[ano].anual.alimentacao} / ${a.pessoas.por_ano[outroAno].anual.alimentacao}`);
 
   // Recusas.
@@ -6267,9 +6267,9 @@ async function provasPessoasEBeneficios(page, largura) {
   // (COLABORADORES digitado) — senão o total deixa de ser o quadro da DRE, de
   // propósito, e a prova se declara não aplicável em vez de passar no vazio.
   t(corp.soma.override
-    ? `${l} (há COLABORADORES digitado neste banco: a âncora dos 1.350 não se aplica)`
-    : `${l} sem nenhum número digitado, são os 1.350 colaboradores dos 10 negócios (âncora do Qlik)`,
-  corp.soma.override === true || corp.colab === 1350, String(corp.colab));
+    ? `${l} (há COLABORADORES digitado neste banco: a âncora dos 1.334 não se aplica)`
+    : `${l} sem nenhum número digitado, são os 1.334 colaboradores dos 10 negócios (âncora do Qlik)`,
+  corp.soma.override === true || corp.colab === 1334, String(corp.colab));
 
   // Devolve a massa: valor vazio apaga o lançado.
   await post({ chave: 'PCT_RESULTADO', valor: null });
@@ -6526,8 +6526,8 @@ async function provasCrescimentoPositivo(page, largura) {
 /**
  * As DIRETRIZES DO PLANEJAMENTO 2027 na tela (pedido do cliente, 2026-11-18):
  * valores fixos com selo, a API recusando-os, a despesa de pessoal com o PPR
- * mostrada e igual à linha 8.5, o custo acompanhando a receita, e a trava do
- * resultado líquido negativo.
+ * mostrada e igual à linha 8.5 (o padrão e o mínimo dela, com o ⚠ abaixo), o
+ * custo acompanhando a receita, e o destaque do resultado líquido negativo.
  */
 async function provasDiretriz2027(page, largura) {
   const l = `[${largura}] Diretriz 2027:`;
@@ -6594,31 +6594,65 @@ async function provasDiretriz2027(page, largura) {
   // cliente, 2026-11-21): sem célula de digitar, a API recusa lançá-la, e mexer
   // num benefício recalcula a linha na hora — antes o cartão mudava e a DRE
   // ficava com o número de antes até recarregar a página.
-  const trava = await page.evaluate(async () => {
+  // A 8.5 se LANÇA de novo (pedido do cliente, 2026-11-23): o padrão do cartão é
+  // também o MÍNIMO; abaixo dele a linha grava e sai com o ⚠ para validar.
+  const minimo = await page.evaluate(async () => {
     const id = Number(document.querySelector('#projecao-negocio').value);
-    const d = SecaoProjecao.dados;
-    let msg = 'aceita';
-    try {
-      await App.api('/api/projecao/valor', { negocio_id: id, filial_id: 0, conta: '8.5', entrada: 'VALOR', valor: -1, versao: d.versao });
-    } catch (e) { msg = e.message; }
-    const linha = document.querySelector('.tabela-projecao tr[data-conta="8.5"]');
-    return {
-      msg,
-      input: !!linha?.querySelector('input'),
-      calculada: !!linha?.querySelector('.proposta-calculada'),
-      travada: d.linhas.find((x) => x.codigo === '8.5')?.proposta_travada === true,
+    const d0 = await App.api(`/api/projecao?negocio_id=${id}`);
+    const l0 = d0.linhas.find((x) => x.codigo === '8.5');
+    const estado = () => {
+      const linha = document.querySelector('.tabela-projecao tr[data-conta="8.5"]');
+      const l = SecaoProjecao.dados.linhas.find((x) => x.codigo === '8.5');
+      return {
+        input: !!linha?.querySelector('input.celula-proposta'),
+        aviso: !!linha?.querySelector('.aviso-minimo-pessoal'),
+        caixa: !!document.querySelector('#projecao-pessoal-minimo'),
+        abaixo: l.abaixo_minimo_pessoal === true,
+        origem: l.proposta_origem,
+        proposta: l.proposta,
+      };
     };
+    const lancar = async (valor) => {
+      const d = await App.api(`/api/projecao?negocio_id=${id}`);
+      let msg = 'aceita';
+      try {
+        await App.api('/api/projecao/valor', { negocio_id: id, filial_id: 0, conta: '8.5', entrada: 'VALOR', valor, versao: d.versao });
+      } catch (e) { msg = e.message; }
+      await SecaoProjecao.carregar();
+      return { msg, ...estado() };
+    };
+    if (d0.modo === 'FILIAL' || !l0.minimo_pessoal) return { pulou: d0.modo, minimo: l0.minimo_pessoal };
+    const r = {
+      minimo: l0.minimo_pessoal,
+      padrao: { ...estado(), igualMinimo: Math.abs(l0.proposta - l0.minimo_pessoal) <= 1 },
+      abaixo: await lancar(Math.round(l0.minimo_pessoal * 0.8)),
+      acima: await lancar(Math.round(l0.minimo_pessoal * 1.1)),
+    };
+    r.apagado = await lancar('');
+    return r;
   });
-  t(`${l} a linha Despesas com Pessoal não tem célula de digitar e mostra que é calculada`,
-    !trava.input && trava.calculada && trava.travada, JSON.stringify(trava));
-  t(`${l} e a API recusa lançar nela, apontando o cartão Pessoas e benefícios`,
-    /cartão Pessoas e benefícios/.test(trava.msg), trava.msg);
+  if (minimo.pulou !== undefined) {
+    t(`${l} a projeção do negócio de prova está no modo negócio e tem mínimo de pessoal`, false, JSON.stringify(minimo));
+  } else {
+    t(`${l} a linha Despesas com Pessoal tem célula de digitar, e o padrão é o próprio mínimo (sem ⚠)`,
+      minimo.padrao.input && minimo.padrao.igualMinimo && !minimo.padrao.aviso && !minimo.padrao.abaixo,
+      JSON.stringify(minimo.padrao));
+    t(`${l} lançar 20% abaixo do mínimo GRAVA e põe o ⚠ na célula e a caixa de validação`,
+      minimo.abaixo.msg === 'aceita' && minimo.abaixo.origem === 'VALOR' && minimo.abaixo.abaixo
+      && minimo.abaixo.aviso && minimo.abaixo.caixa, JSON.stringify(minimo.abaixo));
+    t(`${l} lançar 10% acima do mínimo (contratação, reajuste) grava sem ⚠`,
+      minimo.acima.msg === 'aceita' && minimo.acima.origem === 'VALOR' && !minimo.acima.abaixo
+      && !minimo.acima.aviso && !minimo.acima.caixa, JSON.stringify(minimo.acima));
+    t(`${l} apagar devolve a linha ao padrão`,
+      minimo.apagado.origem === 'PREMISSA' && Math.abs(minimo.apagado.proposta - minimo.minimo) <= 1,
+      JSON.stringify(minimo.apagado));
+  }
 
   const lerPessoal = () => page.evaluate(() => {
     const num = (t) => Number(String(t || '').replace(/[^0-9,-]/g, '').replace(',', '.'));
     return {
       card: num(document.querySelector('[data-pessoal="total"]')?.textContent),
-      dre: num(document.querySelector('.tabela-projecao tr[data-conta="8.5"] .proposta-calculada')?.textContent),
+      dre: num(document.querySelector('.tabela-projecao tr[data-conta="8.5"] input.celula-proposta')?.placeholder),
       campo: document.querySelector('#beneficio-PCT_RESULTADO')?.value ?? null,
     };
   });
@@ -8270,8 +8304,8 @@ async function provasProjecaoProposta(page, largura) {
   // Despesa é negativa: reajuste POSITIVO deixa a linha MAIS negativa — a
   // despesa cresce. É o que a planilha do cliente faz (Pessoal, 11,43%:
   // −8.917.976 → −9.937.167), e o inverso disso seria uma economia. A prova usa
-  // Serviços em Geral (8.8): Pessoal (8.5) é calculada e não se digita desde
-  // 2026-11-21.
+  // Serviços em Geral (8.8): Pessoal (8.5) tem o mínimo do quadro (⚠ desde
+  // 2026-11-23), que a prova de reajuste não precisa carregar.
   t(`${l} reajuste positivo numa despesa deixa a linha mais negativa`,
     projDespesa < 0 && v['8.8'].proposta < projDespesa,
     `${projDespesa} → ${v['8.8'].proposta}`);

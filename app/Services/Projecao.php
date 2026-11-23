@@ -327,10 +327,16 @@ class Projecao
      * com o que calcular (sem folha carregada, sem diretriz de PPR ou sem
      * despesa de pessoal), e aí vale o reajuste puro.
      *
+     * **O quadro planejado** (pedido do cliente, 2026-11-23): quando o cartão
+     * traz um número de colaboradores diferente do atual, a folha reajustada e o
+     * PPR andam na PROPORÇÃO do quadro (`$fatorQuadro` = planejado ÷ atual) — os
+     * benefícios já andam, porque `pessoas()` os conta pelo quadro planejado. Com
+     * o quadro atual o fator é 1 e nada muda.
+     *
      * @param array|null $folha  linha de `negocio_folha`
      * @param array|null $calc   saída de `pessoas()` para o ano
      */
-    public static function pessoalDaDiretriz(float $projecao85, ?array $folha, ?array $calc, float $reajuste, ?float $pprSalarios): ?array
+    public static function pessoalDaDiretriz(float $projecao85, ?array $folha, ?array $calc, float $reajuste, ?float $pprSalarios, float $fatorQuadro = 1.0): ?array
     {
         if (!$folha || $pprSalarios === null || $projecao85 >= 0 || (float)$folha['pessoal_ate'] <= 0) {
             return null;
@@ -343,15 +349,20 @@ class Projecao
         $salCusto = (float)$folha['salario_custo'];
         $parteDespesa = $salDesp + $salCusto > 0 ? $salDesp / ($salDesp + $salCusto) : 1.0;
         $beneficios = $calc ? (float)$calc['anual']['total'] * $parteDespesa : 0.0;
-        $ppr = ($salDesp + $salCusto) * (1 + $g) * $pprSalarios;
-        $total = $base * (1 + $g) + $beneficios + $ppr;
+        $f = $fatorQuadro > 0 ? $fatorQuadro : 1.0;
+        $ppr = ($salDesp + $salCusto) * (1 + $g) * $pprSalarios * $f;
+        $total = $base * (1 + $g) * $f + $beneficios + $ppr;
         return [
             'percentual' => ($total / -$projecao85 - 1) * 100,
+            // O mesmo percentual com o quadro ATUAL — o reajuste que o mínimo da
+            // filial usa (ela não tem quadro planejado).
+            'percentual_atual' => ($total / $f / -$projecao85 - 1) * 100,
+            'fator_quadro' => $f,
             'projecao' => $projecao85,
             'parte_2026' => $parte26,
             'pecas_2026' => -$projecao85 * $parte26,
             'base' => $base,
-            'base_reajustada' => $base * (1 + $g),
+            'base_reajustada' => $base * (1 + $g) * $f,
             'parte_despesa' => $parteDespesa,
             'beneficios' => $beneficios,
             'ppr' => $ppr,
@@ -420,26 +431,171 @@ class Projecao
      * da Projeção e no Painel — se as duas contassem diferente, ninguém saberia
      * em qual acreditar.
      *
-     * @return array{0: array<string,float>, 1: ?array} [crescimentos, detalhe do pessoal]
+     * **Quadro planejado diferente do atual** (pedido do cliente, 2026-11-23): o
+     * padrão da 8.5 anda na proporção do quadro — contratar sobe, desligar desce
+     * —, e é esse padrão que vira o MÍNIMO da linha (`marcarMinimoPessoal`): o
+     * número de pessoas planejado × o custo de hoje com o reajuste. O terceiro
+     * item da resposta diz o mínimo e de onde ele veio.
+     *
+     * @return array{0: array<string,float>, 1: ?array, 2: ?array} [crescimentos, detalhe do pessoal, mínimo]
      */
     public static function crescimentosDoNegocio(int $anoPlan, array $digitadas, float $projecao85, ?array $pessoal): array
     {
         $efetivas = self::premissasEfetivas($anoPlan, $digitadas);
         $cresc = self::crescimentosPadrao($efetivas);
         $detalhe = null;
+        $minimo = null;
         if (isset($efetivas['PESSOAS'])) {
+            $calc = $pessoal['calc'] ?? null;
+            $q0 = $calc ? (float)($calc['colaboradores_base'] ?? 0) : 0.0;
+            $qp = $calc ? (float)($calc['colaboradores'] ?? 0) : 0.0;
+            $fator = $q0 > 0 && $qp > 0 ? $qp / $q0 : 1.0;
             $detalhe = self::pessoalDaDiretriz(
                 $projecao85,
                 $pessoal['folha'] ?? null,
-                $pessoal['calc'] ?? null,
+                $calc,
                 (float)$efetivas['PESSOAS'],
-                self::diretriz($anoPlan)['ppr_salarios'] ?? null
+                self::diretriz($anoPlan)['ppr_salarios'] ?? null,
+                $fator
             );
             if ($detalhe) {
                 $cresc[self::LINHA_PESSOAL] = $detalhe['percentual'];
+                $atual = $detalhe['percentual_atual'];
+            } else {
+                $atual = (float)$efetivas['PESSOAS'];
+                $cresc[self::LINHA_PESSOAL] = ((1 + $atual / 100) * $fator - 1) * 100;
+            }
+            $minimo = [
+                'percentual' => $cresc[self::LINHA_PESSOAL],
+                'percentual_atual' => $atual,
+                'fator_quadro' => $fator,
+                'colaboradores' => $calc ? $qp : null,
+                'colaboradores_base' => $calc ? $q0 : null,
+            ];
+        }
+        return [$cresc, $detalhe, $minimo];
+    }
+
+    /**
+     * O MÍNIMO das Despesas com Pessoal (pedido do cliente, 2026-11-23): a linha
+     * é lançável — contratação e reajuste acima da diretriz a levam para cima —,
+     * mas não deveria ficar abaixo do número de pessoas × o custo com o
+     * reajuste. Abaixo, ela GRAVA e sai marcada (`abaixo_minimo_pessoal`) para
+     * a tela pôr o ⚠ e alguém validar: decisão do cliente, "só o ⚠, grava".
+     *
+     *  - **Negócio**: o mínimo é o padrão da linha, já na proporção do quadro
+     *    planejado (`crescimentosDoNegocio`).
+     *  - **Filial**: o quadro ATUAL da filial (não há quadro planejado por filial)
+     *    × o custo por pessoa DELA (projeção ÷ quadro) × o reajuste com o quadro
+     *    atual — o que dá a projeção da filial × (1 + `percentual_atual`). Filial
+     *    sem quadro não tem mínimo: não há pessoa para multiplicar.
+     *
+     * Despesa é negativa: "abaixo do mínimo" é menos despesa, um número MAIOR que
+     * o mínimo (R$ 1 de folga para o arredondamento). `$soLancado` restringe o ⚠
+     * ao que foi lançado na linha — o padrão da filial herda o % do negócio (com
+     * o quadro planejado), e marcar o padrão seria acusar quem não digitou nada;
+     * o total do negócio no modo filial é comparado sempre.
+     *
+     * @param array|null $quadro ['colaboradores' => int] da filial, para a tela dizer o custo por pessoa
+     */
+    public static function marcarMinimoPessoal(array $linhas, ?float $percentual, bool $soLancado = true, ?array $quadro = null): array
+    {
+        foreach ($linhas as $i => $l) {
+            if ($l['codigo'] !== self::LINHA_PESSOAL) {
+                continue;
+            }
+            $proj = (float)$l['projecao'];
+            $linhas[$i]['minimo_pessoal'] = null;
+            $linhas[$i]['abaixo_minimo_pessoal'] = false;
+            if ($quadro) {
+                $q = (int)$quadro['colaboradores'];
+                $linhas[$i]['quadro_pessoal'] = $q;
+                $linhas[$i]['custo_por_pessoa'] = $q > 0 ? $proj / $q : null;
+            }
+            if ($percentual === null || $proj >= 0 || ($l['proposta'] ?? null) === null) {
+                continue;
+            }
+            $min = $proj * (1 + $percentual / 100);
+            $linhas[$i]['minimo_pessoal'] = $min;
+            $linhas[$i]['minimo_pessoal_percentual'] = $percentual;
+            $lancado = in_array($l['proposta_origem'] ?? null, ['VALOR', 'PERCENTUAL'], true);
+            // R$ 1 de folga (ou um milionésimo do mínimo, em linhas pequenas).
+            $folga = min(1.0, abs($min) * 1e-6);
+            $linhas[$i]['abaixo_minimo_pessoal'] = (!$soLancado || $lancado) && (float)$l['proposta'] > $min + $folga;
+        }
+        return $linhas;
+    }
+
+    /**
+     * O quadro de cada filial no último mês carregado do ano (`filial_pessoas`).
+     *
+     * @param int[] $filialIds
+     * @return array<int,int> filial_id => colaboradores
+     */
+    public static function quadroDasFiliais(array $filialIds, int $ano): array
+    {
+        if (!$filialIds) {
+            return [];
+        }
+        $marcas = implode(',', array_fill(0, count($filialIds), '?'));
+        $saida = [];
+        foreach (Database::todos(
+            'SELECT filial_id, colaboradores FROM filial_pessoas WHERE ano = ? AND filial_id IN (' . $marcas . ')',
+            array_merge([$ano], array_map('intval', $filialIds))
+        ) as $r) {
+            $saida[(int)$r['filial_id']] = (int)$r['colaboradores'];
+        }
+        return $saida;
+    }
+
+    /**
+     * O mínimo da 8.5 no NEGÓCIO e nas FILIAIS dele, de uma vez — a mesma conta
+     * na tela da Projeção, no Painel e no Corporativo.
+     *
+     * @param array      $linhas    do negócio (já com a proposta: lançada ou somada das filiais)
+     * @param array      $porFilial filial_id => linhas da filial (já com a proposta)
+     * @param array|null $minimo    terceiro item de `crescimentosDoNegocio`
+     * @param array<int,int> $quadros filial_id => colaboradores
+     * @return array{0: array, 1: array} [linhas do negócio, linhas por filial], marcadas
+     */
+    public static function minimoPessoalDoNegocio(array $linhas, array $porFilial, ?array $minimo, array $quadros, bool $modoFilial): array
+    {
+        $pct = $minimo['percentual'] ?? null;
+        $pctAtual = $minimo['percentual_atual'] ?? null;
+        foreach ($porFilial as $fid => $lf) {
+            $q = $quadros[(int)$fid] ?? 0;
+            $porFilial[$fid] = self::marcarMinimoPessoal($lf, $q > 0 ? $pctAtual : null, true, ['colaboradores' => $q]);
+        }
+        return [self::marcarMinimoPessoal($linhas, $pct, !$modoFilial), $porFilial];
+    }
+
+    /**
+     * Onde a 8.5 ficou abaixo do mínimo, para listar (Painel, Corporativo).
+     *
+     * @return list<array{filial_id:int, proposta:float, minimo:float}> filial_id 0 é o negócio
+     */
+    public static function alertasPessoal(array $linhas, array $porFilial): array
+    {
+        $saida = [];
+        $acha = static function (array $ls): ?array {
+            foreach ($ls as $l) {
+                if ($l['codigo'] === self::LINHA_PESSOAL) {
+                    return $l;
+                }
+            }
+            return null;
+        };
+        $l = $acha($linhas);
+        if ($l && !empty($l['abaixo_minimo_pessoal'])) {
+            $saida[] = ['filial_id' => 0, 'proposta' => (float)$l['proposta'], 'minimo' => (float)$l['minimo_pessoal']];
+        }
+        foreach ($porFilial as $fid => $lf) {
+            $l = $acha($lf);
+            if ($l && !empty($l['abaixo_minimo_pessoal'])) {
+                $saida[] = ['filial_id' => (int)$fid, 'proposta' => (float)$l['proposta'], 'minimo' => (float)$l['minimo_pessoal']];
             }
         }
-        return [$cresc, $detalhe];
+        return $saida;
     }
 
     /**
@@ -529,17 +685,6 @@ class Projecao
         return $nivel3;
     }
 
-    /**
-     * A linha Despesas com Pessoal (8.5) é calculada, e não lançada, quando o
-     * ano tem premissa de pessoas — da diretriz ou digitada (pedido do cliente,
-     * 2026-11-21: "se eu já atribuir os benefícios na parte superior, o valor
-     * deve ser consequência na DRE"). É a mesma condição que põe a 8.5 em
-     * `crescimentosDoNegocio`, e é ela que `aplicar` usa para ignorar o lançado.
-     */
-    public static function pessoalTravado(int $anoPlan, array $digitadas): bool
-    {
-        return isset(self::premissasEfetivas($anoPlan, $digitadas)['PESSOAS']);
-    }
 
     /**
      * Quanto cada linha CRESCE por omissão, a partir das premissas do negócio
@@ -558,8 +703,8 @@ class Projecao
      *    diretriz por cima do digitado e troca o % das Despesas com Pessoal pelo
      *    da conta de `pessoalDaDiretriz` (PPR, vale e prêmios).
      *
-     * O que foi DIGITADO numa linha sempre manda — menos nas Despesas com
-     * Pessoal, que com premissa de pessoas são calculadas (`pessoalTravado`): o
+     * O que foi DIGITADO numa linha sempre manda (nas Despesas com Pessoal, com
+     * o ⚠ de `marcarMinimoPessoal` quando fica abaixo do mínimo): o
      * crescimento por omissão só preenche as linhas em branco. Sem nenhuma premissa lançada não há
      * crescimento nenhum (e a linha vale a projeção, como sempre valeu): uma
      * premissa ausente não é "0%", é "não decidida".
@@ -754,18 +899,16 @@ class Projecao
             if (!self::editavel($l)) {
                 continue;
             }
-            // As Despesas com Pessoal são CONSEQUÊNCIA do cartão Pessoas e
-            // benefícios e da premissa de pessoas (pedido do cliente,
-            // 2026-11-21): onde há premissa de pessoas, a linha não se lança, e
-            // um lançamento antigo nela é ignorado — senão a DRE mostraria um
-            // número digitado que o cartão não explica e ninguém consegue mudar.
-            $travada = $l['codigo'] === self::LINHA_PESSOAL && isset($crescimentos[$l['codigo']]);
+            // As Despesas com Pessoal se LANÇAM de novo desde 2026-11-23 (pedido
+            // do cliente): o padrão vem do cartão Pessoas e benefícios, e o
+            // lançado manda — acima (contratação, reajuste) livre, abaixo do
+            // mínimo com o ⚠ de `marcarMinimoPessoal`. Entre 21 e 23/11 a linha
+            // ficou travada no padrão; não a trave de volta sem o cliente.
             $r = self::valorProposto(
                 (float)$l['projecao'],
-                $travada ? null : ($lancados[$l['codigo']] ?? null),
+                $lancados[$l['codigo']] ?? null,
                 $crescimentos[$l['codigo']] ?? null
             );
-            $linhas[$i]['proposta_travada'] = $travada;
             // Formato de 2027: a Receita de Vendas LANÇADA em valor é sem a CBS; o
             // motor calcula com ela dentro (a CBS acompanha a receita).
             if ($t !== null && $l['codigo'] === '1.1' && $r['origem'] === 'VALOR') {
@@ -1029,19 +1172,29 @@ class Projecao
                     $p85 = (float)$l['projecao'];
                 }
             }
-            [$cresc] = self::crescimentosDoNegocio($anoPlan, $premissasPorNegocio[$id] ?? [], $p85, $pessoal[$id] ?? null);
+            [$cresc, , $minimo] = self::crescimentosDoNegocio($anoPlan, $premissasPorNegocio[$id] ?? [], $p85, $pessoal[$id] ?? null);
             $taxaPc = Reforma::pisCofinsDoNegocio($linhas, $tributos[$id] ?? null, $corte)['taxa'];
 
-            if ($modo === 'FILIAL' && !empty($dreFilial[$id])) {
+            $porFilial = [];
+            $modoFilial = $modo === 'FILIAL' && !empty($dreFilial[$id]);
+            if ($modoFilial) {
                 $propostas = [];
                 foreach ($dreFilial[$id] as $filialId => $porConta) {
                     $lf = self::aplicar($monta($porConta), $lanc[$filialId] ?? [], $cresc, $taxaPc);
+                    $porFilial[$filialId] = $lf;
                     $propostas[$filialId] = array_column($lf, 'proposta', 'codigo');
                 }
                 $linhas = self::somarFiliais($linhas, $propostas);
             } else {
                 $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc, $taxaPc);
             }
+            // O mínimo das Despesas com Pessoal — a mesma conta da tela. As
+            // filiais só entram no modo filial, quando são elas que formam o total.
+            [$linhas, $porFilial] = self::minimoPessoalDoNegocio(
+                $linhas, $porFilial, $minimo,
+                $modoFilial ? self::quadroDasFiliais(array_keys($porFilial), $ano) : [],
+                $modoFilial
+            );
 
             $proje = [];
             $prop = [];
@@ -1051,7 +1204,8 @@ class Projecao
                     $prop[$l['codigo']] = $l['proposta'] === null ? null : (float)$l['proposta'];
                 }
             }
-            $saida[$id] = ['projecao' => $proje, 'proposta' => $prop, 'modo' => $modo];
+            $saida[$id] = ['projecao' => $proje, 'proposta' => $prop, 'modo' => $modo,
+                'pessoal_alertas' => self::alertasPessoal($linhas, $porFilial)];
         }
         return $saida;
     }

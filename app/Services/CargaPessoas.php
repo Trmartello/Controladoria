@@ -6,7 +6,9 @@ use PDO;
 use RuntimeException;
 
 /**
- * Carga do quadro de colaboradores por negócio e mês (`negocio_pessoas_mes`).
+ * Carga do quadro de colaboradores por negócio e mês (`negocio_pessoas_mes`) e,
+ * quando o arquivo traz `filiais`, por filial no último mês (`filial_pessoas`,
+ * desde 2026-11-23: é o quadro que dá o mínimo da 8.5 de cada filial).
  *
  * Como a da DRE, esta carga SOBRESCREVE: é número de fora, não texto que
  * alguém edita — a de dezembro reescreve o que mudou em vez de empilhar uma
@@ -18,7 +20,7 @@ class CargaPessoas
 {
     /**
      * @param array $dados o `require` de um `database/pessoas_*.php`
-     * @return array{negocios:int, valores:int, ignorados:array}
+     * @return array{negocios:int, valores:int, ignorados:array, filiais:int, filiais_ignoradas:array}
      */
     public static function aplicar(PDO $pdo, array $dados): array
     {
@@ -50,6 +52,32 @@ class CargaPessoas
             }
         }
 
+        // O quadro por filial é o do mês `filiais_mes` e precisa FECHAR com o do
+        // negócio nesse mês: filial a mais ou a menos daria um mínimo da 8.5 que
+        // a soma das filiais não explica.
+        $filiais = $dados['filiais'] ?? [];
+        $mesFilial = (int)($dados['filiais_mes'] ?? 0);
+        if ($filiais) {
+            $posMes = array_search($mesFilial, $meses, true);
+            if ($posMes === false) {
+                throw new RuntimeException("Carga de pessoas com quadro de filial num mês fora da série: {$mesFilial}.");
+            }
+            foreach ($filiais as $cod => $porFilial) {
+                foreach ($porFilial as $f => $v) {
+                    if (!is_int($v) || $v < 0) {
+                        throw new RuntimeException("Carga de pessoas com valor inválido na filial {$cod}/{$f}: " . json_encode($v) . '.');
+                    }
+                }
+                $doNegocio = $valores[$cod][$posMes] ?? null;
+                if ($doNegocio === null || array_sum($porFilial) !== $doNegocio) {
+                    throw new RuntimeException(
+                        "Carga de pessoas: as filiais do negócio {$cod} somam " . array_sum($porFilial)
+                        . " no mês {$mesFilial}, e o negócio tem " . json_encode($doNegocio) . '.'
+                    );
+                }
+            }
+        }
+
         $busca = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ?');
         $ins = $pdo->prepare(
             'INSERT INTO negocio_pessoas_mes (negocio_id, ano, mes, colaboradores)
@@ -74,6 +102,32 @@ class CargaPessoas
                 $gravados++;
             }
         }
-        return ['negocios' => $negocios, 'valores' => $gravados, 'ignorados' => $ignorados];
+
+        $nFiliais = 0;
+        $filiaisIgnoradas = [];
+        if ($filiais) {
+            $pdo->prepare('DELETE FROM filial_pessoas WHERE ano = ?')->execute([$ano]);
+            $buscaF = $pdo->prepare(
+                'SELECT f.id FROM filial f JOIN negocio n ON n.id = f.negocio_id
+                  WHERE n.cod_negocio = ? AND f.cod_filial = ?'
+            );
+            $insF = $pdo->prepare('INSERT INTO filial_pessoas (filial_id, ano, mes, colaboradores) VALUES (?, ?, ?, ?)');
+            foreach ($filiais as $cod => $porFilial) {
+                foreach ($porFilial as $f => $v) {
+                    $buscaF->execute([(string)$cod, (string)$f]);
+                    $filialId = (int)$buscaF->fetchColumn();
+                    if (!$filialId) {
+                        // Filial sem DRE de filial não tem linha para planejar:
+                        // fica anotada (o migrate imprime) e o resto entra.
+                        $filiaisIgnoradas[] = "{$cod}/{$f}";
+                        continue;
+                    }
+                    $insF->execute([$filialId, $ano, $mesFilial, $v]);
+                    $nFiliais++;
+                }
+            }
+        }
+        return ['negocios' => $negocios, 'valores' => $gravados, 'ignorados' => $ignorados,
+            'filiais' => $nFiliais, 'filiais_ignoradas' => $filiaisIgnoradas];
     }
 }

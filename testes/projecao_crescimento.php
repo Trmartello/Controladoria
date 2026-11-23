@@ -91,14 +91,58 @@ prova('um reajuste digitado na Receita (acima do piso) vence o crescimento por o
     json_encode([$l['1.1']['proposta'], $l['1.1']['proposta_origem']]));
 $lanc = ['8.5' => ['entrada' => 'VALOR', 'valor' => -9.0, 'percentual' => null]];
 $l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0, '8.5' => 5.5]));
-prova('com percentual de pessoas, a linha Pessoal é CALCULADA: o valor digitado nela é ignorado (pedido de 2026-11-21)',
-    perto($l['8.5']['proposta'], -10.55) && $l['8.5']['proposta_origem'] === 'PREMISSA' && $l['8.5']['proposta_travada'] === true,
+prova('desde 2026-11-23 a linha Pessoal se LANÇA de novo: o digitado (−9) vale mesmo com percentual de pessoas',
+    perto($l['8.5']['proposta'], -9.0) && $l['8.5']['proposta_origem'] === 'VALOR' && !isset($l['8.5']['proposta_travada']),
     json_encode([$l['8.5']['proposta'], $l['8.5']['proposta_origem']]));
-$l = $por(Projecao::aplicar($dre(), $lanc, ['1.1' => 12.0]));
-prova('sem percentual de pessoas, a linha Pessoal continua aceitando o digitado',
-    perto($l['8.5']['proposta'], -9.0) && $l['8.5']['proposta_origem'] === 'VALOR' && $l['8.5']['proposta_travada'] === false);
-prova('a trava segue a premissa de pessoas: com diretriz (2027) sempre; sem diretriz, só se digitada',
-    Projecao::pessoalTravado(2027, []) && !Projecao::pessoalTravado(2029, []) && Projecao::pessoalTravado(2029, ['PESSOAS' => 4.0]));
+
+// ── O mínimo das Despesas com Pessoal (pedido do cliente, 2026-11-23) ───────
+// Mínimo = pessoas × custo com o reajuste. Abaixo dele, grava e marca o ⚠.
+$m = $por(Projecao::marcarMinimoPessoal($l, 5.5));
+prova('−9 contra o mínimo de −10,55 (projeção × 1,055): marcado abaixo do mínimo, e o valor fica',
+    $m['8.5']['abaixo_minimo_pessoal'] === true && perto($m['8.5']['minimo_pessoal'], -10.55) && perto($m['8.5']['proposta'], -9.0));
+$lanc = ['8.5' => ['entrada' => 'VALOR', 'valor' => -12.0, 'percentual' => null]];
+$m = $por(Projecao::marcarMinimoPessoal(Projecao::aplicar($dre(), $lanc, ['8.5' => 5.5]), 5.5));
+prova('−12 (contratação, reajuste maior): acima do mínimo, sem ⚠', $m['8.5']['abaixo_minimo_pessoal'] === false);
+$m = $por(Projecao::marcarMinimoPessoal(Projecao::aplicar($dre(), [], ['8.5' => 5.5]), 5.5));
+prova('o padrão (−10,55) é o próprio mínimo: sem ⚠', $m['8.5']['abaixo_minimo_pessoal'] === false && perto($m['8.5']['proposta'], -10.55));
+$lanc = ['8.5' => ['entrada' => 'PERCENTUAL', 'percentual' => 2.0, 'valor' => null]];
+$m = $por(Projecao::marcarMinimoPessoal(Projecao::aplicar($dre(), $lanc, ['8.5' => 5.5]), 5.5));
+prova('reajuste digitado de 2% (abaixo dos 5,5%) também sai com ⚠', $m['8.5']['abaixo_minimo_pessoal'] === true);
+$m = $por(Projecao::marcarMinimoPessoal(Projecao::aplicar($dre(), [], ['8.5' => 2.0]), 5.5, true));
+prova('na filial, o PADRÃO abaixo do mínimo (quadro planejado menor no negócio) não acusa: só o lançado',
+    $m['8.5']['abaixo_minimo_pessoal'] === false);
+$m = $por(Projecao::marcarMinimoPessoal(Projecao::aplicar($dre(), [], ['8.5' => 2.0]), 5.5, false));
+prova('o total do negócio no modo filial é comparado sempre (soma das filiais abaixo do mínimo)',
+    $m['8.5']['abaixo_minimo_pessoal'] === true);
+$m = $por(Projecao::marcarMinimoPessoal(Projecao::aplicar($dre(), $lanc, ['8.5' => 5.5]), null, true, ['colaboradores' => 0]));
+prova('filial sem quadro não tem mínimo', $m['8.5']['minimo_pessoal'] === null && $m['8.5']['abaixo_minimo_pessoal'] === false);
+$m = $por(Projecao::marcarMinimoPessoal(Projecao::aplicar($dre(), [], ['8.5' => 5.5]), 5.5, true, ['colaboradores' => 4]));
+prova('a filial com quadro mostra o custo por pessoa (projeção −10 ÷ 4 = −2,5)',
+    $m['8.5']['quadro_pessoal'] === 4 && perto((float)$m['8.5']['custo_por_pessoa'], -2.5));
+
+// O padrão na PROPORÇÃO do quadro planejado: 90 pessoas planejadas contra 100
+// hoje, sem folha (reajuste puro): (1,055 × 0,9 − 1) = −5,05%.
+[$cresc, , $min] = Projecao::crescimentosDoNegocio(2029, ['PESSOAS' => 5.5], -10.0,
+    ['folha' => null, 'calc' => ['colaboradores' => 90.0, 'colaboradores_base' => 100.0]]);
+prova('quadro planejado 90 de 100: o padrão da 8.5 cai na proporção (1,055 × 0,9 − 1 = −5,05%)',
+    perto($cresc['8.5'], -5.05) && perto($min['percentual'], -5.05) && perto($min['percentual_atual'], 5.5) && perto($min['fator_quadro'], 0.9),
+    json_encode($min));
+[$cresc, , $min] = Projecao::crescimentosDoNegocio(2029, ['PESSOAS' => 5.5], -10.0,
+    ['folha' => null, 'calc' => ['colaboradores' => 100.0, 'colaboradores_base' => 100.0]]);
+prova('com o quadro atual o fator é 1 e o padrão é o reajuste', perto($cresc['8.5'], 5.5) && perto($min['fator_quadro'], 1.0));
+[$cresc, , $min] = Projecao::crescimentosDoNegocio(2029, [], -10.0, null);
+prova('sem premissa de pessoas não há mínimo', !isset($cresc['8.5']) && $min === null);
+
+// Com a folha (a conta da diretriz): a folha reajustada e o PPR andam no fator, e
+// os benefícios já vêm pelo quadro planejado. Percentual "atual" = o total ÷ fator.
+$folha = ['pessoal_ate' => 100.0, 'vale_ate' => 10.0, 'premio_ate' => 0.0, 'ppr_ate' => 0.0,
+    'salario_despesa' => 5.0, 'salario_custo' => 0.0, 'mes_ate' => 10, 'ano' => 2026];
+$calc90 = ['anual' => ['total' => 9.0]];
+$d1 = Projecao::pessoalDaDiretriz(-100.0, $folha, ['anual' => ['total' => 10.0]], 5.5, 1.5, 1.0);
+$d9 = Projecao::pessoalDaDiretriz(-100.0, $folha, $calc90, 5.5, 1.5, 0.9);
+prova('com folha, 90% do quadro dá 90% do total (base, PPR e benefícios proporcionais)',
+    perto(-$d9['proposta'], 0.9 * -$d1['proposta']) && perto($d9['percentual_atual'], $d1['percentual']),
+    json_encode([$d1['proposta'], $d9['proposta'], $d1['percentual'], $d9['percentual_atual']]));
 
 // ── O piso do faturamento (2026-11-19; trava desde 2026-11-21) ─────────────
 // A Receita não pode ficar abaixo de IPCA + PIB + crescimento desejado; acima
