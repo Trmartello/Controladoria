@@ -26,6 +26,8 @@ $GLOBALS['config'] = require __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../app/Core/Database.php';
 require_once __DIR__ . '/../app/Core/Versao.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
+require_once __DIR__ . '/../app/Services/Metas.php';
+require_once __DIR__ . '/../app/Services/DesafioCota.php';
 
 use App\Core\Database;
 use App\Services\Projecao;

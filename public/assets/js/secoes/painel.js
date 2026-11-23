@@ -70,6 +70,14 @@ const SecaoPainel = {
       return '<td class="text-end text-muted">—</td><td class="text-end text-muted">—</td>';
     }
     const negativo = (v) => (v < 0 ? 'text-danger' : '');
+    // Despesas com Pessoal abaixo do mínimo (quadro × custo × reajuste) em
+    // algum lugar do negócio: o mesmo ⚠ da Projeção, para validar.
+    const alertas = l.pessoal_alertas || [];
+    const aviso = alertas.length
+      ? ` <span class="text-warning aviso-pessoal" title="${Modal.esc(
+        `Despesas com Pessoal abaixo do mínimo em ${alertas.length} ${alertas.length === 1 ? 'lugar' : 'lugares'} `
+        + '(pessoas × custo com o reajuste): validar na Projeção.')}">⚠</span>`
+      : '';
     return `<td class="text-end">
         <div>${this.moeda(l.projecao_rol)}</div>
         <div class="small ${negativo(l.projecao_liquido)}">${this.moeda(l.projecao_liquido)}</div>
@@ -77,7 +85,7 @@ const SecaoPainel = {
       <td class="text-end">
         <div>${this.moeda(l.proposta_rol)} <span class="small">${
   this.cresc(l.projecao_rol, l.proposta_rol)}</span></div>
-        <div class="small ${negativo(l.proposta_liquido)}">${this.moeda(l.proposta_liquido)}</div>
+        <div class="small ${negativo(l.proposta_liquido)}">${this.moeda(l.proposta_liquido)}${aviso}</div>
       </td>`;
   },
 

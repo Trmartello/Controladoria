@@ -15,6 +15,8 @@ require_once __DIR__ . '/../app/Core/Json.php';
 require_once __DIR__ . '/../app/Core/Auth.php';
 require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
+require_once __DIR__ . '/../app/Services/Metas.php';
+require_once __DIR__ . '/../app/Services/DesafioCota.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
 require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Services/CargaDre.php';

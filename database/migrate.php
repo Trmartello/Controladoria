@@ -1005,6 +1005,8 @@ foreach ([
 require_once __DIR__ . '/../app/Services/CargaPessoas.php';
 foreach ([
     'pessoas_2026_11.php',
+    // Atualizada (o Qlik foi recarregado) e com o quadro por FILIAL (2026-11-23).
+    'pessoas_2026_11_23.php',
 ] as $arquivo) {
     $p = require __DIR__ . '/' . $arquivo;
     if (App\Services\CargaConteudo::jaAplicada($pdo, $p['chave'])) {
@@ -1014,12 +1016,18 @@ foreach ([
     App\Services\CargaConteudo::marcar(
         $pdo,
         $p['chave'],
-        "Quadro de colaboradores {$p['ano']}: {$r['negocios']} negócio(s), {$r['valores']} valor(es)"
+        "Quadro de colaboradores {$p['ano']}: {$r['negocios']} negócio(s), {$r['valores']} valor(es), "
+        . "{$r['filiais']} filial(is)"
     );
-    echo "migrate: carga de pessoas {$p['chave']} — {$r['negocios']} negócio(s), {$r['valores']} valor(es).\n";
+    echo "migrate: carga de pessoas {$p['chave']} — {$r['negocios']} negócio(s), {$r['valores']} valor(es), "
+        . "{$r['filiais']} filial(is).\n";
     if ($r['ignorados']) {
         echo 'migrate: negócio(s) fora do cadastro ignorado(s) na carga de pessoas: '
             . implode(', ', $r['ignorados']) . ".\n";
+    }
+    if ($r['filiais_ignoradas']) {
+        echo 'migrate: filial(is) sem cadastro ignorada(s) na carga de pessoas (sem DRE de filial, sem o que planejar): '
+            . implode(', ', $r['filiais_ignoradas']) . ".\n";
     }
 }
 

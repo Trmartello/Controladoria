@@ -90,6 +90,9 @@ class RelatorioController
             $linhas[$i]['projecao_liquido'] = $r ? ($r['projecao'][Projecao::LINHA_RESULTADO] ?? null) : null;
             $linhas[$i]['proposta_liquido'] = $r ? ($r['proposta'][Projecao::LINHA_RESULTADO] ?? null) : null;
             $linhas[$i]['modo_projecao'] = $r['modo'] ?? null;
+            // Despesas com Pessoal abaixo do mínimo (pedido do cliente,
+            // 2026-11-23): o ⚠ da Projeção aparece também aqui.
+            $linhas[$i]['pessoal_alertas'] = $r['pessoal_alertas'] ?? [];
         }
 
         // O Corporativo é a soma dos negócios com DRE — a mesma conta da tela de
@@ -102,6 +105,10 @@ class RelatorioController
                 continue;
             }
             $comDre = array_filter($porNegocio, static fn ($x) => $x['projecao_rol'] !== null);
+            $linhas[$i]['pessoal_alertas'] = array_merge(...array_map(
+                static fn ($x) => $x['pessoal_alertas'] ?? [],
+                array_values($porNegocio) ?: [[]]
+            ));
             if ($comDre) {
                 foreach (['projecao_rol', 'proposta_rol', 'projecao_liquido', 'proposta_liquido'] as $campo) {
                     $linhas[$i][$campo] = array_sum(array_map(

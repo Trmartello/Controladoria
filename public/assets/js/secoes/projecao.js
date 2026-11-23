@@ -252,6 +252,7 @@ const SecaoProjecao = {
         </table>
       </div>
       <div id="projecao-piso-box">${this.alertaPisoFaturamento(d)}</div>
+      <div id="projecao-pessoal-box">${this.alertaPessoalMinimo(d)}</div>
       <p class="text-muted small">
         <span class="legenda-editavel"></span> Célula em amarelo-claro é onde se lança.
         Valores em R$. A.V. = análise vertical sobre a Receita Operacional Líquida.
@@ -394,8 +395,8 @@ const SecaoProjecao = {
       ? `<span class="nota-crescimento">O percentual de crescimento é <strong>sobre o faturamento</strong> (Receita de Vendas):
           ele cresce <strong>IPCA + PIB + crescimento desejado</strong>, e o restante é <strong>proporcional</strong> —
           deduções e custo das vendas acompanham o faturamento na mesma proporção (a margem bruta de ${d.ano} se mantém).</span>
-          As <strong>Despesas com Pessoal</strong> são a conta da diretriz (cartão Pessoas e benefícios) e não se digitam
-          na DRE; as demais despesas ficam na projeção. Nas outras linhas, a célula digitada sempre manda.
+          As <strong>Despesas com Pessoal</strong> partem da conta da diretriz (cartão Pessoas e benefícios), que é também o
+          <strong>mínimo</strong> da linha: acima se lança livre, abaixo grava com ⚠ para validar; as demais despesas ficam na projeção. Nas outras linhas, a célula digitada sempre manda.
           ${noAnoDaProposta
     ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
           são lidos da coluna Proposta.` : ''}`
@@ -405,7 +406,7 @@ const SecaoProjecao = {
       : `${tres} são lançados aqui e valem para o negócio e todas as filiais.
           Na proposta de ${d.ano_planejamento}, a <strong>Receita de Vendas</strong> cresce
           <strong>IPCA + PIB + crescimento desejado</strong> e as <strong>Despesas com Pessoal</strong>
-          crescem só o percentual das despesas com pessoas (com ele lançado, a linha é calculada e não se digita).
+          crescem só o percentual das despesas com pessoas — o padrão e o mínimo da linha (abaixo dele, grava com ⚠).
           Nas outras linhas, a célula digitada sempre manda; as demais ficam na projeção.
           ${noAnoDaProposta
     ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
@@ -523,7 +524,7 @@ const SecaoProjecao = {
    *    ${ano}, que a linha da DRE não pode ficar abaixo; a proposta da DRE e o
    *    impacto em reais.
    *  - **Despesas com Pessoal** (8.5): os benefícios previstos (vale e abonos) e a
-   *    conta da diretriz que dá a linha — que não se digita na DRE.
+   *    conta da diretriz que dá o padrão (e o mínimo) da linha na DRE.
    *
    * As duas contas usam as linhas da TELA (formato de 2027, sem a CBS na
    * receita): o percentual é o mesmo do motor, e os reais batem com a tabela.
@@ -572,9 +573,21 @@ const SecaoProjecao = {
   contaPessoal(d, ano) {
     const calc = (d.pessoas.por_ano || {})[ano] || null;
     const dinheiro = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+    // A provisão do PPR (1,5 salário, diretriz de 2027) ao lado dos benefícios
+    // (pedido do cliente, 2026-11-23: "não encontrei o provisionamento do PPR").
+    // Ela já estava na linha 8.5 — e portanto no resultado —, mas só aparecia
+    // na composição abaixo; aqui ela fica junto do que o negócio paga às pessoas.
+    const pd = ano === d.ano_planejamento ? d.pessoal_diretriz : null;
+    const ppr = pd && calc ? `
+            <tr data-pessoas-linha="ppr"><td>Provisão do PPR <span class="text-muted small">(1,5 salário sobre a folha de
+              ${this.nomeMes(pd.folha_mes)}/${pd.folha_ano}, ${dinheiro(pd.folha_mensal)}, reajustada)</span></td>
+              <td class="text-end">${dinheiro(pd.ppr_mensal)}</td><td class="text-end" data-pessoas="ppr">${dinheiro(pd.ppr)}</td></tr>
+            <tr class="fw-bold"><td>Benefícios + PPR <span class="fw-normal text-muted small">(na linha 8.5 e no resultado de ${ano})</span></td>
+              <td class="text-end">${dinheiro(calc.mensal.total + pd.ppr_mensal)}</td>
+              <td class="text-end" data-pessoas="total_ppr">${dinheiro(calc.anual.total + pd.ppr)}</td></tr>` : '';
     const beneficios = calc ? `
         <table class="table table-sm mb-1 tabela-pessoas">
-          <thead><tr><th>Benefícios ${ano} (${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores)</th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
+          <thead><tr><th>Benefícios${ppr ? ' e PPR' : ''} ${ano} (${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores)</th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
           <tbody>
             <tr><td>Alimentação (${dinheiro(calc.valores.ALIMENTACAO)} × ${Number(calc.colaboradores).toLocaleString('pt-BR')})</td>
               <td class="text-end">${dinheiro(calc.mensal.alimentacao)}</td><td class="text-end" data-pessoas="alimentacao">${dinheiro(calc.anual.alimentacao)}</td></tr>
@@ -583,7 +596,7 @@ const SecaoProjecao = {
             <tr><td>Abono de resultado <span class="text-muted small">(só nos meses em que o negócio atinge o resultado)</span></td>
               <td class="text-end">${dinheiro(calc.mensal.resultado)}</td><td class="text-end" data-pessoas="resultado">${dinheiro(calc.anual.resultado)}</td></tr>
             <tr class="fw-bold"><td>Despesa prevista com benefícios</td>
-              <td class="text-end">${dinheiro(calc.mensal.total)}</td><td class="text-end" data-pessoas="total">${dinheiro(calc.anual.total)}</td></tr>
+              <td class="text-end">${dinheiro(calc.mensal.total)}</td><td class="text-end" data-pessoas="total">${dinheiro(calc.anual.total)}</td></tr>${ppr}
           </tbody>
         </table>
         <div class="small text-muted mb-2">
@@ -642,8 +655,8 @@ const SecaoProjecao = {
    * A linha Despesas com Pessoal (8.5) da proposta, pela diretriz: a base de
    * 2026 sem vale, prêmio e PPR, reajustada; o vale e os prêmios de 2027 (a parte
    * da despesa); e o PPR de 1,5 salário sobre a folha do mês. É a conta do
-   * servidor (`Projecao::pessoalDaDiretriz`), só mostrada — e é exatamente o
-   * valor da linha 8.5 da DRE, que não se digita.
+   * servidor (`Projecao::pessoalDaDiretriz`), só mostrada — é o PADRÃO da linha
+   * 8.5 da DRE e o seu mínimo (desde 2026-11-23 a linha se lança de novo).
    */
   composicaoPessoal(d) {
     const p = d.pessoal_diretriz;
@@ -657,7 +670,8 @@ const SecaoProjecao = {
           <tbody>
             <tr><td>Projeção de ${d.ano}</td><td class="text-end">${r(-p.projecao)}</td></tr>
             <tr><td class="ps-3 text-muted">− vale, prêmio e PPR de ${d.ano} (${pct(p.parte_2026)} da folha)</td><td class="text-end text-muted">−${r(p.pecas_2026)}</td></tr>
-            <tr><td>Base reajustada${reaj !== undefined ? ` em ${String(reaj).replace('.', ',')}%` : ''}</td><td class="text-end" data-pessoal="base">${r(p.base_reajustada)}</td></tr>
+            <tr><td>Base reajustada${reaj !== undefined ? ` em ${String(reaj).replace('.', ',')}%` : ''}${
+  Math.abs((p.fator_quadro || 1) - 1) > 1e-9 ? ` <span class="text-muted small" data-pessoal="fator">(× ${pct(p.fator_quadro)}: o quadro planejado sobre o atual)</span>` : ''}</td><td class="text-end" data-pessoal="base">${r(p.base_reajustada)}</td></tr>
             <tr><td>+ vale e prêmios de ${d.ano_planejamento}${p.parte_despesa < 0.999 ? ` <span class="text-muted small">(${pct(p.parte_despesa)}: a parte da folha que é despesa; o resto está no custo)</span>` : ''}</td>
               <td class="text-end" data-pessoal="beneficios">${r(p.beneficios)}</td></tr>
             <tr><td>+ PPR: 1,5 salário sobre a folha de ${this.nomeMes(p.folha_mes)}/${p.folha_ano} (${r(p.folha_mensal)}) reajustada
@@ -671,7 +685,8 @@ const SecaoProjecao = {
         </table>
       </div>
       <div class="small text-muted">Folha e peças de ${d.ano}: Qlik DRE Gerencial, contas 3.07.01.21* (despesa) e 4.03.01.01.01 (custo).
-        A linha 8.5 da DRE é este total e não se digita: para mudá-lo, ajuste os campos acima.</div>`;
+        Este total é o PADRÃO da linha 8.5 e também o seu MÍNIMO: lance acima na DRE se houver contratação ou reajuste maior;
+        abaixo dele a linha grava com ⚠ para validar. A folha e o PPR andam na proporção do quadro planejado.</div>`;
   },
 
   /** O Corporativo só totaliza: a soma dos negócios, sem campo nenhum. */
@@ -1869,11 +1884,10 @@ const SecaoProjecao = {
     return linhas.map((l) => {
       const bloco = l.nivel === 1;
       const negativo = (v) => (v < 0 ? 'text-danger' : '');
-      // As Despesas com Pessoal com premissa de pessoas são calculadas pelo
-      // cartão Pessoas e benefícios (`proposta_travada`, pedido do cliente,
-      // 2026-11-21): mostram o número, sem célula de digitar.
-      const travada = !!l.proposta_travada;
-      const editavel = l.nivel === 2 && !l.percentual && podeLancar && !travada;
+      const editavel = l.nivel === 2 && !l.percentual && podeLancar;
+      // Despesas com Pessoal abaixo do mínimo (pedido do cliente, 2026-11-23):
+      // grava, e a célula ganha o ⚠ para validar (`marcarMinimoPessoal`).
+      const abaixoMinimo = !!l.abaixo_minimo_pessoal;
 
       // A proposta: célula de digitar quando a linha é subconta; o número
       // derivado quando é bloco; "—" quando não há regra para derivá-la.
@@ -1881,7 +1895,7 @@ const SecaoProjecao = {
       if (editavel) {
         proposta = `<input type="text" class="celula-valor celula-proposta${
           l.proposta_origem === 'PERCENTUAL' ? ' celula-espelhada' : ''}${
-          l.abaixo_piso ? ' celula-pior' : ''}" inputmode="decimal" data-sinal
+          l.abaixo_piso || abaixoMinimo ? ' celula-pior' : ''}" inputmode="decimal" data-sinal
           autocomplete="off" value="${Modal.esc(this.textoLancado(l))}"
           placeholder="${this.moeda(l.proposta)}"
           data-conta="${Modal.esc(l.codigo)}"
@@ -1891,10 +1905,6 @@ const SecaoProjecao = {
           'Linha que o Qlik entrega pronta e que o sistema não sabe recompor — '
           + 'enquanto a regra dela não estiver no modelo, ela não recebe proposta.'
         )}">—</span>`;
-      } else if (travada) {
-        proposta = `<span class="proposta-calculada" title="${Modal.esc(
-          'Calculada pelo cartão Pessoas e benefícios (reajuste, vale, abonos e PPR): '
-          + 'para mudar, ajuste os parâmetros lá.')}">${this.moeda(l.proposta)}</span>`;
       } else if (l.percentual) {
         const alvo = linhas.find((x) => x.codigo === CALCULADAS[l.codigo]);
         const baseProp = (linhas.find((x) => x.codigo === '3') || {}).proposta || 0;
@@ -1945,7 +1955,8 @@ const SecaoProjecao = {
         <td class="text-end ${l.percentual ? '' : negativo(l.projecao)}">${valor(l, 'projecao')}</td>
         <td class="text-end text-muted small">${av(l)}</td>
         <td class="text-end celula-proposta-td ${
-  ['PROJECAO', 'PREMISSA'].includes(l.proposta_origem) ? 'proposta-por-omissao' : ''}">${proposta}</td>
+  ['PROJECAO', 'PREMISSA'].includes(l.proposta_origem) ? 'proposta-por-omissao' : ''}">${
+  abaixoMinimo ? this.avisoMinimoPessoal(l) : ''}${proposta}</td>
         <td class="text-end text-muted small celula-av-proposta">${avProp(l)}</td>
         <td class="text-end small celula-reajuste-td">${reajuste}</td>
         ${mostrarDistribuir ? this.celulaDistribuir(l) : ''}
@@ -2016,6 +2027,8 @@ const SecaoProjecao = {
     if (caixaNeg && this.dados) caixaNeg.innerHTML = this.alertaMetaNegativa(this.dados);
     const caixaPiso = el.querySelector('#projecao-piso-box');
     if (caixaPiso && this.dados) caixaPiso.innerHTML = this.alertaPisoFaturamento(this.dados);
+    const caixaPessoal = el.querySelector('#projecao-pessoal-box');
+    if (caixaPessoal && this.dados) caixaPessoal.innerHTML = this.alertaPessoalMinimo(this.dados);
     const nivel = el.querySelector('#projecao-nivel');
     if (nivel && virgem(nivel)) nivel.addEventListener('click', () => this.alternarNivel());
     // A ida das oportunidades à linha da DRE: delegada no contêiner da seção, uma vez.
@@ -2150,6 +2163,8 @@ const SecaoProjecao = {
     if (negativa) negativa.innerHTML = this.alertaMetaNegativa(this.dados);
     const piso = el.querySelector('#projecao-piso-box');
     if (piso) piso.innerHTML = this.alertaPisoFaturamento(this.dados);
+    const pessoal = el.querySelector('#projecao-pessoal-box');
+    if (pessoal) pessoal.innerHTML = this.alertaPessoalMinimo(this.dados);
     this.repintarTributos(el);
     this.ligar(el);
   },
@@ -2389,6 +2404,57 @@ const SecaoProjecao = {
    *    que subiu depois): o lançamento continua guardado mas não vale, e a linha
    *    está no mínimo (`aplicar`, `piso_aplicado`, `lancado_abaixo`).
    */
+  /**
+   * O ⚠ da célula das Despesas com Pessoal abaixo do mínimo, com a conta no
+   * título: no negócio, o quadro planejado × o custo com o reajuste; na filial,
+   * o quadro atual dela × o custo por pessoa dela × o reajuste.
+   */
+  avisoMinimoPessoal(l) {
+    const r = (v) => `R$ ${this.moeda(Math.abs(Number(v) || 0))}`;
+    const quadro = l.quadro_pessoal
+      ? ` A filial tem ${l.quadro_pessoal} pessoa(s), a ${r(l.custo_por_pessoa)} por pessoa na projeção de ${this.dados ? this.dados.ano : ''}.`
+      : '';
+    const titulo = `Abaixo do mínimo: ${r(l.minimo_pessoal)} (pessoas × custo com o reajuste de `
+      + `${this.pct((Number(l.minimo_pessoal_percentual) || 0) / 100, 2)}).${quadro} `
+      + 'O valor foi gravado; valide-o (redução de quadro, desligamentos já feitos).';
+    return `<span class="aviso-minimo-pessoal text-warning me-1" title="${Modal.esc(titulo)}" aria-label="${Modal.esc(titulo)}">⚠</span>`;
+  },
+
+  /**
+   * A lista do que está abaixo do mínimo das Despesas com Pessoal (pedido do
+   * cliente, 2026-11-23): o negócio e as filiais (no modo filial), ou, no
+   * Corporativo, por negócio. Não recusa nada — é a lista do que validar.
+   */
+  alertaPessoalMinimo(d) {
+    if (!d) return '';
+    const r = (v) => `R$ ${this.moeda(Math.abs(Number(v) || 0))}`;
+    const item = (a, nome) => `<li>${Modal.esc(nome)}: ${r(a.proposta)}, mínimo ${r(a.minimo)}
+      <span class="text-muted">(${r(a.minimo - a.proposta)} abaixo)</span></li>`;
+    let itens = [];
+    if (d.corporativo) {
+      (d.pessoal_alertas_negocios || []).forEach((n) => {
+        n.itens.forEach((a) => itens.push(item(a, a.filial ? `${n.negocio} · filial ${a.filial}` : n.negocio)));
+      });
+    } else {
+      const nomes = {};
+      (d.filiais || []).forEach((f) => { nomes[f.id] = `${f.cod_filial} ${f.nome}`; });
+      itens = (d.pessoal_alertas || []).map((a) => item(a, a.filial_id ? `Filial ${nomes[a.filial_id] || a.filial_id}` : 'Negócio'));
+      // A filial aberta no modo negócio também se avisa (ela não entra na lista,
+      // que é do que forma o total, mas a célula dela tem o ⚠).
+      const lf = d.filial && (d.filial.linhas || []).find((x) => x.codigo === '8.5');
+      if (lf && lf.abaixo_minimo_pessoal && !(d.pessoal_alertas || []).some((a) => a.filial_id === d.filial.id)) {
+        itens.push(item({ proposta: lf.proposta, minimo: lf.minimo_pessoal }, `Filial ${nomes[d.filial.id] || d.filial.id}`));
+      }
+    }
+    if (!itens.length) return '';
+    return `<div class="alert alert-warning py-2 px-3 small mb-2" id="projecao-pessoal-minimo">
+        <strong>⚠ Despesas com Pessoal abaixo do mínimo — validar.</strong>
+        O mínimo é o número de pessoas × o custo de hoje com o reajuste de ${d.ano_planejamento}
+        (no negócio, o quadro planejado; na filial, o quadro atual dela). Os valores foram gravados.
+        <ul class="mb-0 mt-1">${itens.join('')}</ul>
+      </div>`;
+  },
+
   alertaPisoFaturamento(d) {
     if (!d || d.corporativo) return '';
     const v = this.visao(d);

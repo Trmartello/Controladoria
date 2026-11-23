@@ -123,6 +123,7 @@ class ProjecaoController
         $oportunidades = [];
         $estoque = [];
         $juros = [];
+        $pessoalAlertas = [];
         foreach ($negocios as $n) {
             $m = $this->montar((int)$n['id'], $ano, $corte);
             $tributosDre[(int)$n['id']] = $m['tributos_dre'];
@@ -151,6 +152,17 @@ class ProjecaoController
                 ];
             }
             $propostas[(int)$n['id']] = self::resumoDaProposta($m['linhas']);
+            if ($m['pessoal_alertas']) {
+                $nomesFilial = array_column($m['filiais'], 'nome', 'id');
+                $codsFilial = array_column($m['filiais'], 'cod_filial', 'id');
+                $pessoalAlertas[] = [
+                    'negocio_id' => (int)$n['id'],
+                    'negocio' => $n['rotulo'] ?? $n['nome'] ?? '',
+                    'itens' => array_map(static fn ($a) => $a + [
+                        'filial' => $a['filial_id'] ? trim(($codsFilial[$a['filial_id']] ?? '') . ' ' . ($nomesFilial[$a['filial_id']] ?? '')) : null,
+                    ], $m['pessoal_alertas']),
+                ];
+            }
             foreach ($m['linhas'] as $l) {
                 $c = $l['codigo'];
                 if (!isset($soma[$c])) {
@@ -231,6 +243,8 @@ class ProjecaoController
             'estoque_negocios' => $estoque,
             // Por negócio, os juros recebidos e os lançamentos acima de R$ 30 mil.
             'juros_negocios' => $juros,
+            // Onde as Despesas com Pessoal ficaram abaixo do mínimo, por negócio.
+            'pessoal_alertas_negocios' => $pessoalAlertas,
             // O nível 3 é a soma dos negócios, conta reduzida a conta reduzida.
             'nivel3' => Projecao::nivel3(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano),
             'linhas' => array_values($soma),
@@ -300,7 +314,7 @@ class ProjecaoController
                 $p85 = (float)$l['projecao'];
             }
         }
-        [$cresc, $pessoalDiretriz] = Projecao::crescimentosDoNegocio(
+        [$cresc, $pessoalDiretriz, $minimoPessoal] = Projecao::crescimentosDoNegocio(
             $anoProposta,
             $digitadas,
             $p85,
@@ -334,6 +348,17 @@ class ProjecaoController
         $linhas = $modo === 'FILIAL' && $filiais
             ? Projecao::somarFiliais($linhas, $propostasFilial)
             : Projecao::aplicar($linhas, $this->lancados($projId), $cresc, $taxaPc);
+        // O MÍNIMO das Despesas com Pessoal (pedido do cliente, 2026-11-23): no
+        // negócio, o padrão com o quadro planejado; na filial, o quadro atual
+        // dela × o custo por pessoa dela × o reajuste. Abaixo dele a linha grava
+        // e sai com o ⚠.
+        $quadros = Projecao::quadroDasFiliais(array_keys($porFilial), $ano);
+        [$linhas, $porFilial] = Projecao::minimoPessoalDoNegocio(
+            $linhas, $porFilial, $minimoPessoal, $quadros, $modo === 'FILIAL' && (bool)$filiais
+        );
+        // Onde está abaixo, para a tela listar: as filiais só no modo filial,
+        // que é quando o total do negócio sai delas.
+        $alertasPessoal = Projecao::alertasPessoal($linhas, $modo === 'FILIAL' ? $porFilial : []);
         // Quanto das filiais já está lançado, conta a conta: é o que permite à
         // tela mostrar o resíduo a distribuir sem travar nada — distribuir não
         // é requisito para salvar (decisão do cliente, 2026-11-05).
@@ -396,6 +421,10 @@ class ProjecaoController
             // despesa de pessoal de 2027 que ela produz.
             'diretriz' => $this->diretrizesDosAnos($anosPremissa),
             'pessoal_diretriz' => $pessoalDiretriz,
+            // O mínimo da 8.5 (quadro planejado × custo × reajuste) e onde ela
+            // ficou abaixo dele — negócio (filial_id 0) e filiais.
+            'pessoal_minimo' => $minimoPessoal,
+            'pessoal_alertas' => $alertasPessoal,
             // Pessoas e benefícios do NEGÓCIO, por ano (a filial não tem o seu: o
             // quadro e os valores são do negócio, que já traz a parte dele).
             'pessoas' => $this->pessoasDoNegocio($negocioId, $ano, $anosPremissa),
@@ -846,19 +875,8 @@ class ProjecaoController
             );
         }
 
-        // As Despesas com Pessoal são consequência do cartão Pessoas e
-        // benefícios (pedido do cliente, 2026-11-21): com premissa de pessoas no
-        // ano — a diretriz de 2027 sempre traz uma —, a linha não se lança.
-        if ($codigo === Projecao::LINHA_PESSOAL && Projecao::pessoalTravado(
-            $anoPlan,
-            $this->premissasDigitadasPorAno($negocioId, [$anoPlan])[$anoPlan] ?? []
-        )) {
-            Json::erro(
-                'As Despesas com Pessoal são calculadas pelo cartão Pessoas e benefícios '
-                . '(reajuste, vale, abonos e PPR): mude os parâmetros lá, e não a linha da DRE.',
-                422
-            );
-        }
+        // As Despesas com Pessoal se lançam (desde 2026-11-23; entre 21 e 23/11
+        // foram recusadas aqui): abaixo do mínimo, gravam com o ⚠ (`montar`).
 
         $proj = $this->projecaoDoNegocio($negocioId, $anoPlan);
         if ($filialId && !$this->filialDoNegocio($filialId, $negocioId)) {
