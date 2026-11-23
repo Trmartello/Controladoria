@@ -3185,6 +3185,11 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     - Saíram `Projecao::pessoalTravado`, `proposta_travada`, o cadeado
       (`.proposta-calculada`) e a recusa em `gravarValor`. Não os reponha sem o
       cliente. Gravar um benefício continua subindo a versão e repintando a DRE.
+  - **PPR à vista na tabela de benefícios** (pedido do cliente, 2026-11-23: "não
+    encontrei o provisionamento do PPR"). Ele já estava na 8.5 (e no resultado)
+    pela conta da diretriz, mas só aparecia na composição abaixo. `contaPessoal`
+    acrescenta "Provisão do PPR" (mês e ano, de `pessoal_diretriz`) e "Benefícios
+    + PPR" (`data-pessoas="ppr"` / `"total_ppr"`) no ano da proposta.
   - **Quadro por FILIAL** (`filial_pessoas`, carga `pessoas_2026_11_23.php`, do
     Qlik em 23/11/2026, "traga os dados mais recentes de cada negócio e filial"):
     o quadro de novembro de cada filial, conferido na geração contra a soma do

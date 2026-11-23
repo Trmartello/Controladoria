@@ -573,9 +573,21 @@ const SecaoProjecao = {
   contaPessoal(d, ano) {
     const calc = (d.pessoas.por_ano || {})[ano] || null;
     const dinheiro = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+    // A provisão do PPR (1,5 salário, diretriz de 2027) ao lado dos benefícios
+    // (pedido do cliente, 2026-11-23: "não encontrei o provisionamento do PPR").
+    // Ela já estava na linha 8.5 — e portanto no resultado —, mas só aparecia
+    // na composição abaixo; aqui ela fica junto do que o negócio paga às pessoas.
+    const pd = ano === d.ano_planejamento ? d.pessoal_diretriz : null;
+    const ppr = pd && calc ? `
+            <tr data-pessoas-linha="ppr"><td>Provisão do PPR <span class="text-muted small">(1,5 salário sobre a folha de
+              ${this.nomeMes(pd.folha_mes)}/${pd.folha_ano}, ${dinheiro(pd.folha_mensal)}, reajustada)</span></td>
+              <td class="text-end">${dinheiro(pd.ppr_mensal)}</td><td class="text-end" data-pessoas="ppr">${dinheiro(pd.ppr)}</td></tr>
+            <tr class="fw-bold"><td>Benefícios + PPR <span class="fw-normal text-muted small">(na linha 8.5 e no resultado de ${ano})</span></td>
+              <td class="text-end">${dinheiro(calc.mensal.total + pd.ppr_mensal)}</td>
+              <td class="text-end" data-pessoas="total_ppr">${dinheiro(calc.anual.total + pd.ppr)}</td></tr>` : '';
     const beneficios = calc ? `
         <table class="table table-sm mb-1 tabela-pessoas">
-          <thead><tr><th>Benefícios ${ano} (${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores)</th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
+          <thead><tr><th>Benefícios${ppr ? ' e PPR' : ''} ${ano} (${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores)</th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
           <tbody>
             <tr><td>Alimentação (${dinheiro(calc.valores.ALIMENTACAO)} × ${Number(calc.colaboradores).toLocaleString('pt-BR')})</td>
               <td class="text-end">${dinheiro(calc.mensal.alimentacao)}</td><td class="text-end" data-pessoas="alimentacao">${dinheiro(calc.anual.alimentacao)}</td></tr>
@@ -584,7 +596,7 @@ const SecaoProjecao = {
             <tr><td>Abono de resultado <span class="text-muted small">(só nos meses em que o negócio atinge o resultado)</span></td>
               <td class="text-end">${dinheiro(calc.mensal.resultado)}</td><td class="text-end" data-pessoas="resultado">${dinheiro(calc.anual.resultado)}</td></tr>
             <tr class="fw-bold"><td>Despesa prevista com benefícios</td>
-              <td class="text-end">${dinheiro(calc.mensal.total)}</td><td class="text-end" data-pessoas="total">${dinheiro(calc.anual.total)}</td></tr>
+              <td class="text-end">${dinheiro(calc.mensal.total)}</td><td class="text-end" data-pessoas="total">${dinheiro(calc.anual.total)}</td></tr>${ppr}
           </tbody>
         </table>
         <div class="small text-muted mb-2">

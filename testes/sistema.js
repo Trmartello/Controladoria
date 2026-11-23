@@ -6557,6 +6557,7 @@ async function provasDiretriz2027(page, largura) {
       campoIpca: !!document.querySelector('#premissa-IPCA'), campoDesejado: !!document.querySelector('#premissa-CRESCIMENTO'),
       campoVale: !!document.querySelector('#beneficio-ALIMENTACAO'), campoColab: !!document.querySelector('#beneficio-COLABORADORES'),
       ppr: n(tx('[data-pessoal="ppr"]')), total: n(tx('[data-pessoal="total"]')),
+      pprBenef: n(tx('[data-pessoas="ppr"]')), benef: n(tx('[data-pessoas="total"]')), benefPpr: n(tx('[data-pessoas="total_ppr"]')),
       api: d.pessoal_diretriz, l85: linha('8.5'), l11: linha('1.1'), l41: linha('4.1'), l81: linha('8.1'),
     };
   });
@@ -6570,6 +6571,11 @@ async function provasDiretriz2027(page, largura) {
   t(`${l} o cartão de pessoas mostra o PPR (1,5 salário sobre a folha) e a proposta da 8.5, iguais aos da API`,
     tela.api && tela.ppr === Math.round(tela.api.ppr) && tela.total === Math.round(-tela.api.proposta) && tela.ppr > 0,
     JSON.stringify({ ppr: tela.ppr, total: tela.total }));
+  // Pedido do cliente (2026-11-23): "não encontrei o provisionamento do PPR" —
+  // ele aparece também na tabela de benefícios, com o total benefícios + PPR.
+  t(`${l} a provisão do PPR aparece na tabela de benefícios, igual à da linha 8.5, com o total benefícios + PPR`,
+    tela.pprBenef === tela.ppr && tela.pprBenef > 0 && Math.abs(tela.benefPpr - (tela.benef + tela.pprBenef)) <= 1,
+    JSON.stringify({ ppr: tela.pprBenef, benef: tela.benef, soma: tela.benefPpr }));
   t(`${l} sem lançamento, a linha 8.5 vale a conta da diretriz`,
     tela.l85.proposta_origem !== 'PREMISSA' || Math.abs(tela.l85.proposta - tela.api.proposta) < 2,
     JSON.stringify([tela.l85.proposta, tela.l85.proposta_origem, tela.api && tela.api.proposta]));
