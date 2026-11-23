@@ -20,7 +20,8 @@
  *
  * O que a carga faz com o que não casa com o cadastro (ela avisa no migrate):
  *  - negócio que não existe no sistema (18 e 20, R$ 262 mil, só investimentos,
- *    filial 1) fica FORA — em que negócio entram é decisão do cliente;
+ *    filial 1) fica FORA — decisão do cliente (23/11/2026): "18 e 20 não devem
+ *    compor o sistema";
  *  - filial que não está no cadastro DAQUELE negócio (Cereais 47 e 100, R$ 553,56)
  *    entra só no total do negócio: a linha 8.10 do negócio é o total da
  *    depreciação, e a diferença aparece como resíduo a distribuir nas filiais.

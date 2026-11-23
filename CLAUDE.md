@@ -96,8 +96,9 @@ destinos contábeis 1 (Despesa) e 3 (Ativo Diferido)** — em
 mês, 4 casas como a fonte). Na proposta a 8.10 vale a carga no negócio, em cada
 filial (filial sem carga = 0) e no desafio, com cadeado e sem célula; o lançado
 não vale e a API recusa (apagar continua aceito). Negócio sem carga no ano: a
-8.10 volta a ser lançável. Ficaram de fora os negócios **18 e 20** (não existem no
-sistema, R$ 262 mil); as filiais 47 e 100 de Cereais (fora do cadastro dele, R$
+8.10 volta a ser lançável. Os negócios **18 e 20** da planilha (R$ 262 mil) ficam
+FORA — decisão do cliente, 2026-11-23: "18 e 20 não devem compor o sistema"; não
+os mapeie para outro negócio. As filiais 47 e 100 de Cereais (fora do cadastro dele, R$
 553,56) só entram no total do negócio (resíduo a distribuir). **Pendente com o
 cliente:** a carga dá R$ 18,33 mi contra R$ 4,99 mi projetados na 8.10 para 2026
 (Cereais 8,87 mi × 0,55 mi; Rações 2,99 × 0,12; UBS 0,58 × 0,06; Pecuária cai a

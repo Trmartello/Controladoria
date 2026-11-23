@@ -86,7 +86,8 @@ $total = 0.0;
 foreach ($dep as $d) {
     $total -= array_sum($d['negocio']);
 }
-prova('carregados R$ 18.333.368,98: o total menos os negócios 18 e 20, que não existem no sistema (R$ 262.261,55)',
+// Os negócios 18 e 20 "não devem compor o sistema" (decisão do cliente, 2026-11-23).
+prova('carregados R$ 18.333.368,98: o total menos os negócios 18 e 20, que não compõem o sistema (R$ 262.261,55)',
     perto($total, 18595630.53 - 31666.70 - 230594.85, 0.01), (string)round($total, 2));
 $soFiliais = static fn (int $id): float => -array_sum(array_map('array_sum', $dep[$id]['filiais'] ?? []));
 prova('as filiais somam o negócio; em Cereais faltam R$ 553,56 das filiais 47 e 100, fora do cadastro dele',
