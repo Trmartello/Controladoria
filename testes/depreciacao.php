@@ -7,8 +7,9 @@
  * depreciação").
  *
  * Os números de mão vêm da planilha de conferência entregue ao cliente
- * (`Depreciacao_2027_por_negocio_e_filial.xlsx`): bens existentes +
- * investimentos sem os destinos contábeis 1 e 3, 2027. Uma prova que refizesse a
+ * (`Depreciacao_bens_sem_grupo_1272.xlsx` + `Depreciacao_investimentos_por_filial_ano.xlsx`,
+ * aba "Negócio x ano", 2027): bens existentes sem o grupo contábil 1272 +
+ * investimentos sem os destinos contábeis 1 e 3. Uma prova que refizesse a
  * soma com o mesmo código passaria sem provar nada.
  *
  *   DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
@@ -67,12 +68,12 @@ $anoPlan = $ano + 1;
 
 // ── 1. A carga ──────────────────────────────────────────────────────────────
 $carga = require __DIR__ . '/../database/depreciacao_2027.php';
-prova('o arquivo é da conta 3128, de 2027, com o total da planilha (R$ 18.595.630,53)',
-    $carga['conta'] === '3128' && $carga['ano'] === 2027 && perto($carga['total'], 18595630.53));
+prova('o arquivo é da conta 3128, de 2027, com o total da planilha sem o grupo 1272 (R$ 16.426.659,98)',
+    $carga['conta'] === '3128' && $carga['ano'] === 2027 && perto($carga['total'], 16426659.98));
 $dep = Projecao::depreciacao(array_values($ids), $anoPlan);
-// De mão, da planilha de conferência (aba "Por negócio").
-$esperado = ['1' => 8872439.62, '2' => 6080.28, '4' => 52475.14, '6' => 2986822.68, '7' => 64700.14,
-    '8' => 3051070.35, '9' => 1512823.52, '11' => 631279.11, '12' => 220683.04, '13' => 577306.92,
+// De mão, das planilhas de conferência (aba "Negócio x ano", 2027, bens + investimentos).
+$esperado = ['1' => 8759257.62, '2' => 6080.28, '4' => 52475.14, '6' => 2986822.68, '7' => 64700.14,
+    '8' => 1819141.82, '9' => 1176372.73, '11' => 143869.89, '12' => 220683.04, '13' => 577306.92,
     '17' => 357688.18];
 $diverge = [];
 foreach ($esperado as $cod => $v) {
@@ -87,11 +88,11 @@ foreach ($dep as $d) {
     $total -= array_sum($d['negocio']);
 }
 // Os negócios 18 e 20 "não devem compor o sistema" (decisão do cliente, 2026-11-23).
-prova('carregados R$ 18.333.368,98: o total menos os negócios 18 e 20, que não compõem o sistema (R$ 262.261,55)',
-    perto($total, 18595630.53 - 31666.70 - 230594.85, 0.01), (string)round($total, 2));
+prova('carregados R$ 16.164.398,43: o total menos os negócios 18 e 20, que não compõem o sistema (R$ 262.261,55)',
+    perto($total, 16426659.98 - 31666.70 - 230594.85, 0.01), (string)round($total, 2));
 $soFiliais = static fn (int $id): float => -array_sum(array_map('array_sum', $dep[$id]['filiais'] ?? []));
 prova('as filiais somam o negócio; em Cereais faltam R$ 553,56 das filiais 47 e 100, fora do cadastro dele',
-    perto($soFiliais($ids['8']), 3051070.35) && perto($soFiliais($ids['9']), 1512823.52)
+    perto($soFiliais($ids['8']), 1819141.82) && perto($soFiliais($ids['9']), 1176372.73)
     && perto(-array_sum($dep[$ids['1']]['negocio']) - $soFiliais($ids['1']), 163.80 + 389.76),
     (string)round(-array_sum($dep[$ids['1']]['negocio']) - $soFiliais($ids['1']), 2));
 // Mês a mês: a Cereais, filial 10, de mão (bens + investimentos da planilha).
@@ -200,7 +201,7 @@ if ($criada) {
         $tela = array_column($montar->invoke($ctrl, $ids['1'], $ano, $corte, 0)['linhas'], 'proposta', 'codigo');
         $pn = Projecao::resumoDosNegocios([$ids['1']], $ano, $corte, $anoPlan, ['8.10', '18'])[$ids['1']]['proposta'];
         prova('modo filial: a 8.10 de Cereais é a carga inteira, e o Painel = tela (8.10 e resultado)',
-            perto(-$tela['8.10'], 8872439.62) && perto($pn['8.10'], $tela['8.10']) && perto($pn['18'], $tela['18'], 1),
+            perto(-$tela['8.10'], 8759257.62) && perto($pn['8.10'], $tela['8.10']) && perto($pn['18'], $tela['18'], 1),
             json_encode([$tela['8.10'], $pn['8.10'], $tela['18'], $pn['18']]));
     } finally {
         $criada

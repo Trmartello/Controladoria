@@ -72,16 +72,17 @@ prova('o cabeçalho não traz valores: quem calcula é a Projeção', $d && !iss
 // base = projeção de 2026, jan–out realizado + nov–dez planejado; conferidos por `testes/desafio_drivers.php` negócio a negócio).
 // Desde 2026-11-23 a 8.5 sai sem a conta reduzida 3227 (acerto do PPR): resultado de 45.565.066 para 45.755.843.
 // E a 8.10 é a DEPRECIAÇÃO carregada (R$ 18,33 mi contra R$ 4,99 mi projetados): 45.755.843 → 32.415.590.
+// Regravada sem o grupo contábil 1272 dos bens (R$ 16,16 mi, 2026-11-23): 32.415.590 → 34.584.560.
 $negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
 $c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];
 prova('os 11 negócios entram no desafio do Corporativo', count($c['negocios']) === 11, (string)count($c['negocios']));
-prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado R$ 32.415.590',
-    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 32415590) < 2,
+prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado R$ 34.584.560',
+    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 34584560) < 2,
     round($t['receita_bruta']) . ' / ' . round($t['receita_liquida']) . ' / ' . round($t['resultado']));
-prova('margem líquida do desafio: 0,91%', abs($t['margem'] - 0.9135) < 0.0005, (string)round($t['margem'], 4));
-prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 38,55 mi',
-    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 38551382) < 2,
+prova('margem líquida do desafio: 0,97%', abs($t['margem'] - 0.9747) < 0.0005, (string)round($t['margem'], 4));
+prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 36,38 mi',
+    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 36382412) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 
 // ── 2. De onde sai: base de 12 meses × premissas, ou o driver ───────────────
