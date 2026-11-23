@@ -148,26 +148,31 @@ class Oportunidades
     public static function picos(int $negocioId, int $ano, int $corte, int $filialId = 0, array $ajuste = []): array
     {
         $filtro = "(c.codigo LIKE '8.%' OR c.codigo LIKE '9.%' OR c.codigo LIKE '11.%')";
+        // A JANELA DE 12 MESES (pedido do cliente, 2026-11-23): de nov do ano
+        // anterior a out do atual — `[$ano - 1, mês > corte]` + `[$ano, mês ≤ corte]`.
+        $periodo = '((v.ano = ? AND v.mes > ?) OR (v.ano = ? AND v.mes <= ?))';
+        $pp = [$ano - 1, $corte, $ano, $corte];
         $linhas = $filialId
             ? Database::todos(
-                "SELECT c.codigo, c.nome, v.mes, v.valor FROM dre_valor_filial_mes v JOIN dre_conta c ON c.id = v.conta_id
-                  WHERE v.filial_id = ? AND v.ano = ? AND v.mes <= ? AND {$filtro}
-                  ORDER BY c.ordem, v.mes",
-                [$filialId, $ano, $corte]
+                "SELECT c.codigo, c.nome, v.ano, v.mes, v.valor FROM dre_valor_filial_mes v JOIN dre_conta c ON c.id = v.conta_id
+                  WHERE v.filial_id = ? AND {$periodo} AND {$filtro}
+                  ORDER BY c.ordem, v.ano, v.mes",
+                array_merge([$filialId], $pp)
             )
             : Database::todos(
-                "SELECT c.codigo, c.nome, v.mes, v.valor FROM dre_valor v JOIN dre_conta c ON c.id = v.conta_id
-                  WHERE v.negocio_id = ? AND v.ano = ? AND v.tipo = 'REAL' AND v.mes <= ? AND {$filtro}
-                  ORDER BY c.ordem, v.mes",
-                [$negocioId, $ano, $corte]
+                "SELECT c.codigo, c.nome, v.ano, v.mes, v.valor FROM dre_valor v JOIN dre_conta c ON c.id = v.conta_id
+                  WHERE v.negocio_id = ? AND v.tipo = 'REAL' AND {$periodo} AND {$filtro}
+                  ORDER BY c.ordem, v.ano, v.mes",
+                array_merge([$negocioId], $pp)
             );
         $porConta = [];
         foreach ($linhas as $l) {
             $porConta[$l['codigo']]['nome'] = $l['nome'];
             // `$ajuste` (do `quadro`): o que os itens não recorrentes já explicam
-            // na linha, no sinal da carga (+ despesa). Tirado da série, o mesmo
-            // valor não aparece duas vezes — como item e como pico.
-            $porConta[$l['codigo']]['meses'][(int)$l['mes']] = (float)$l['valor'] + ($ajuste[$l['codigo']][(int)$l['mes']] ?? 0.0);
+            // na linha, no sinal da carga (+ despesa), por 'ano-mês'. Tirado da
+            // série, o mesmo valor não aparece duas vezes — como item e como pico.
+            $k = self::chaveMes((int)$l['ano'], (int)$l['mes']);
+            $porConta[$l['codigo']]['meses'][$k] = (float)$l['valor'] + ($ajuste[$l['codigo']][$k] ?? 0.0);
         }
         $saida = [];
         foreach ($porConta as $codigo => $c) {
@@ -180,13 +185,14 @@ class Oportunidades
             $fora = [];
             $oportunidade = 0.0;
             $risco = 0.0;
-            foreach ($c['meses'] as $mes => $v) {
+            foreach ($c['meses'] as $k => $v) {
                 $d = $v - $med;
                 if (abs($d) <= $limite) {
                     continue;
                 }
+                [$a, $mes] = array_map('intval', explode('-', $k));
                 // Se o desvio não se repetir em 2027, o resultado muda em −d.
-                $fora[] = ['mes' => $mes, 'valor' => $v, 'desvio' => $d, 'efeito' => -$d];
+                $fora[] = ['ano' => $a, 'mes' => $mes, 'valor' => $v, 'desvio' => $d, 'efeito' => -$d];
                 if ($d < 0) {
                     $oportunidade += -$d;
                 } else {
@@ -226,13 +232,24 @@ class Oportunidades
         $ajuste = [];
         if (!$filialId) {
             $porConta = [];
+            $anterior = [];
+            // Janela de 12 meses (nov do ano anterior a out do atual) e os 12 meses
+            // ANTES dela, para comparar (pedido do cliente, 2026-11-23).
             foreach (Database::todos(
-                'SELECT conta, mes, valor FROM negocio_nao_recorrente_mes
-                  WHERE negocio_id = ? AND ano = ? AND mes <= ? ORDER BY conta, mes',
-                [$negocioId, $ano, $corte]
+                'SELECT conta, ano, mes, valor FROM negocio_nao_recorrente_mes
+                  WHERE negocio_id = ? AND ((ano = ? AND mes > ?) OR (ano = ? AND mes <= ?)) ORDER BY conta, ano, mes',
+                [$negocioId, $ano - 1, $corte, $ano, $corte]
             ) as $r) {
-                $porConta[$r['conta']][(int)$r['mes']] = (float)$r['valor'];
+                $porConta[$r['conta']][self::chaveMes((int)$r['ano'], (int)$r['mes'])] = (float)$r['valor'];
             }
+            foreach (Database::todos(
+                'SELECT conta, SUM(valor) s, COUNT(*) n FROM negocio_nao_recorrente_mes
+                  WHERE negocio_id = ? AND ((ano = ? AND mes > ?) OR (ano = ? AND mes <= ?)) GROUP BY conta',
+                [$negocioId, $ano - 2, $corte, $ano - 1, $corte]
+            ) as $r) {
+                $anterior[$r['conta']] = (float)$r['s'];
+            }
+            $avaliacoes = self::avaliacoes($negocioId, $ano + 1);
             // Sem a carga mensal, os totais (sem mês e sem tirar da série).
             if (!$porConta) {
                 foreach ((self::itens([$negocioId], $ano)[$negocioId]['itens'] ?? []) as $i) {
@@ -247,8 +264,8 @@ class Oportunidades
                 }
                 $comMes = !isset($meses['total']);
                 if ($comMes && $cat[2]) {
-                    foreach ($meses as $m => $v) {
-                        $ajuste[$cat[2]][$m] = ($ajuste[$cat[2]][$m] ?? 0.0) + $v;
+                    foreach ($meses as $k => $v) {
+                        $ajuste[$cat[2]][$k] = ($ajuste[$cat[2]][$k] ?? 0.0) + $v;
                     }
                 }
                 $red = self::reduzidaDaConta((string)$conta);
@@ -260,9 +277,17 @@ class Oportunidades
                     'reduzida' => $red['reduzida'] ?? null, 'reduzida_nome' => $red['nome'] ?? null,
                     'grupo' => self::GRUPOS[$cat[0]] ?? $cat[0], 'linha_dre' => $cat[2], 'mediana' => null,
                     'meses' => $comMes ? array_values(array_map(
-                        static fn ($m, $v) => ['mes' => $m, 'valor' => -$v],
+                        static function ($k, $v) {
+                            [$a, $m] = array_map('intval', explode('-', (string)$k));
+                            return ['ano' => $a, 'mes' => $m, 'valor' => -$v];
+                        },
                         array_keys(array_filter($meses)), array_values(array_filter($meses))
                     )) : [],
+                    // No sinal da DRE (despesa negativa): o total da janela e o dos 12
+                    // meses antes dela, para comparar.
+                    'total' => -$total,
+                    'anterior' => isset($anterior[$conta]) ? -$anterior[$conta] : 0.0,
+                    'avaliacao' => $avaliacoes[(string)$conta] ?? null,
                     'oportunidade' => $total > 0 ? $total : 0.0,
                     'risco' => $total < 0 ? $total : 0.0,
                 ];
@@ -272,7 +297,7 @@ class Oportunidades
             $linhas[] = [
                 'tipo' => 'EVENTO', 'codigo' => $p['codigo'], 'nome' => $p['nome'], 'grupo' => $p['grupo'],
                 'linha_dre' => $p['codigo'], 'mediana' => $p['mediana'],
-                'meses' => array_map(static fn ($m) => ['mes' => $m['mes'], 'valor' => $m['valor']], $p['meses']),
+                'meses' => array_map(static fn ($m) => ['ano' => $m['ano'], 'mes' => $m['mes'], 'valor' => $m['valor']], $p['meses']),
                 'oportunidade' => $p['oportunidade'], 'risco' => $p['risco'],
             ];
         }
@@ -289,12 +314,80 @@ class Oportunidades
             $l['lancamentos'] = $l['tipo'] === 'ITEM'
                 ? self::lancamentos($negocioId, $ano, $corte, ['conta' => $l['codigo']], $codFilial)
                 : self::lancamentos($negocioId, $ano, $corte, ['linha' => $l['codigo'],
-                    'meses' => array_column($l['meses'], 'mes'), 'sem' => $contasItem], $codFilial);
+                    // Os lançamentos carregados são do ano corrente (jan até o corte).
+                    'meses' => array_column(array_filter($l['meses'], static fn ($m) => (int)$m['ano'] === $ano), 'mes'),
+                    'sem' => $contasItem], $codFilial);
         }
         unset($l);
         $op = array_sum(array_column($linhas, 'oportunidade'));
         $ri = array_sum(array_column($linhas, 'risco'));
-        return ['mes_ate' => $corte, 'linhas' => $linhas, 'oportunidade' => $op, 'risco' => $ri, 'saldo' => $op + $ri];
+        // A avaliação dos itens (Considerar / Desconsiderar), totalizada.
+        $aval = ['considerar' => 0.0, 'desconsiderar' => 0.0, 'avaliados' => 0, 'pendentes' => 0];
+        foreach ($linhas as $l) {
+            if ($l['tipo'] !== 'ITEM') {
+                continue;
+            }
+            $dec = $l['avaliacao']['decisao'] ?? null;
+            if ($dec === 'CONSIDERAR') {
+                $aval['considerar'] += (float)$l['total'];
+                $aval['avaliados']++;
+            } elseif ($dec === 'DESCONSIDERAR') {
+                $aval['desconsiderar'] += (float)$l['total'];
+                $aval['avaliados']++;
+            } else {
+                $aval['pendentes']++;
+            }
+        }
+        return ['mes_ate' => $corte, 'ano' => $ano,
+            'periodo' => ['de' => self::janela($ano, $corte)[0], 'ate' => [$ano, $corte]],
+            'linhas' => $linhas, 'oportunidade' => $op, 'risco' => $ri, 'saldo' => $op + $ri, 'avaliacao' => $aval];
+    }
+
+    /** 'ano-mês' de uma série que atravessa anos ('2025-11'). */
+    public static function chaveMes(int $ano, int $mes): string
+    {
+        return sprintf('%04d-%02d', $ano, $mes);
+    }
+
+    /**
+     * Os 12 meses que terminam em (ano, corte) — nov do ano anterior a out do
+     * atual, com corte 10 —, em ordem: [[ano, mês], …].
+     *
+     * @return list<array{0:int, 1:int}>
+     */
+    public static function janela(int $ano, int $corte): array
+    {
+        $out = [];
+        for ($i = 11; $i >= 0; $i--) {
+            $m = $corte - $i;
+            $a = $ano;
+            while ($m < 1) {
+                $m += 12;
+                $a--;
+            }
+            $out[] = [$a, $m];
+        }
+        return $out;
+    }
+
+    /**
+     * As avaliações dos itens não recorrentes de um negócio para o ano do
+     * planejamento: conta => ['decisao', 'por', 'em'].
+     *
+     * @return array<string, array{decisao:string, por:?string, em:string}>
+     */
+    public static function avaliacoes(int $negocioId, int $anoPlan): array
+    {
+        $out = [];
+        foreach (Database::todos(
+            'SELECT a.conta, a.decisao, a.avaliado_em, u.nome
+               FROM negocio_item_avaliacao a LEFT JOIN usuario u ON u.id = a.avaliado_por
+              WHERE a.negocio_id = ? AND a.ano = ?',
+            [$negocioId, $anoPlan]
+        ) as $r) {
+            $out[(string)$r['conta']] = ['decisao' => $r['decisao'], 'por' => $r['nome'], 'em' => $r['avaliado_em']];
+        }
+        return $out;
     }
 
     /** Valor mínimo (no ano em que aconteceu) para virar questionamento. */
@@ -309,41 +402,41 @@ class Oportunidades
      * acontecer e deveria continuar"; comparação escolhida: 2025 × 2026
      * realizado).
      *
-     * Conta reduzida a conta reduzida (nível 3), no MESMO período dos dois anos
-     * (jan até o corte), do negócio ou da filial:
-     *  - **Parou**: R$ 10 mil ou mais em 2025 e, em 2026, menos de 10% disso
-     *    (inclui zero) — "deixou de acontecer: deveria continuar em 2027?";
-     *  - **Começou**: R$ 10 mil ou mais em 2026 e, em 2025, menos de 10% disso —
-     *    "vai continuar em 2027?".
+     * Conta reduzida a conta reduzida (nível 3), em JANELAS DE 12 MESES desde
+     * 2026-11-23 (nov do ano anterior a out do atual, contra os 12 meses antes;
+     * `dre_reduzida_12m`), do negócio ou da filial:
+     *  - **Parou**: R$ 10 mil ou mais nos 12 meses anteriores e, nos últimos 12,
+     *    menos de 10% disso (inclui zero) — "deixou de acontecer: deveria
+     *    continuar em 2027?";
+     *  - **Começou**: o inverso — "vai continuar em 2027?".
      * Ficam de fora os rateios corporativos (blocos 14 e 16): são divisão do custo
      * da administração, não um fato do negócio para continuar ou parar. Ordem:
      * maior valor primeiro. Só leitura — é pergunta, não número para o plano.
      *
      * @return array{ano:int, ano_anterior:int, corte:int, minimo:float, parou:list<array>, comecou:list<array>}|null
      */
-    public static function questionamentos(int $negocioId, int $ano, int $filialId = 0): ?array
+    public static function questionamentos(int $negocioId, int $ano, int $corte, int $filialId = 0): ?array
     {
+        // As duas janelas de 12 meses (pedido do cliente, 2026-11-23: "desde
+        // novembro do ano anterior até outubro do ano atual, e compare com o ano
+        // anterior"): a que termina no corte deste ano e a que termina no corte do
+        // ano anterior.
         $anterior = $ano - 1;
         $linhas = Database::todos(
             "SELECT v.codigo, r.reduzida, r.nome, r.linha, r.ordem,
-                    SUM(CASE WHEN v.ano = ? THEN v.realizado ELSE 0 END) AS antes,
-                    SUM(CASE WHEN v.ano = ? THEN v.realizado ELSE 0 END) AS agora,
-                    MAX(CASE WHEN v.ano = ? THEN v.corte END) AS corte_antes,
-                    MAX(CASE WHEN v.ano = ? THEN v.corte END) AS corte_agora
-               FROM dre_reduzida_valor v
+                    SUM(CASE WHEN v.ano_fim = ? THEN v.realizado ELSE 0 END) AS antes,
+                    SUM(CASE WHEN v.ano_fim = ? THEN v.realizado ELSE 0 END) AS agora,
+                    MAX(v.ano_fim = ?) AS tem_antes, MAX(v.ano_fim = ?) AS tem_agora
+               FROM dre_reduzida_12m v
                JOIN dre_reduzida r ON r.codigo = v.codigo
-              WHERE v.negocio_id = ? AND v.filial_id = ? AND v.ano IN (?, ?)
+              WHERE v.negocio_id = ? AND v.filial_id = ? AND v.mes_fim = ? AND v.ano_fim IN (?, ?)
               GROUP BY v.codigo, r.reduzida, r.nome, r.linha, r.ordem",
-            [$anterior, $ano, $anterior, $ano, $negocioId, $filialId, $anterior, $ano]
+            [$anterior, $ano, $anterior, $ano, $negocioId, $filialId, $corte, $anterior, $ano]
         );
-        $cortes = array_filter(array_merge(array_column($linhas, 'corte_antes'), array_column($linhas, 'corte_agora')));
-        // Sem os dois anos carregados não há comparação — e anos em cortes
-        // diferentes não se comparam (seria jan–out contra jan–set).
-        if (!$linhas || !array_filter(array_column($linhas, 'corte_antes')) || !array_filter(array_column($linhas, 'corte_agora'))
-            || count(array_unique($cortes)) !== 1) {
+        // Sem as duas janelas carregadas não há comparação.
+        if (!$linhas || !array_filter(array_column($linhas, 'tem_antes')) || !array_filter(array_column($linhas, 'tem_agora'))) {
             return null;
         }
-        $corte = (int)reset($cortes);
         $parou = [];
         $comecou = [];
         foreach ($linhas as $l) {
@@ -357,14 +450,18 @@ class Oportunidades
                 'linha' => $l['linha'], 'anterior' => round($a, 2), 'atual' => round($b, 2),
             ];
             if (abs($a) >= self::QUESTIONAMENTO_MINIMO && abs($b) < self::QUESTIONAMENTO_FRACAO * abs($a)) {
-                $parou[] = $item + ['pergunta' => "Aconteceu em {$anterior} e não em {$ano}: deixou de acontecer — deveria continuar em " . ($ano + 1) . '?'];
+                $parou[] = $item + ['pergunta' => 'Aconteceu nos 12 meses anteriores e não nos últimos 12: deixou de acontecer — deveria continuar em ' . ($ano + 1) . '?'];
             } elseif (abs($b) >= self::QUESTIONAMENTO_MINIMO && abs($a) < self::QUESTIONAMENTO_FRACAO * abs($b)) {
-                $comecou[] = $item + ['pergunta' => "Começou em {$ano} sem ter acontecido em {$anterior}: vai continuar em " . ($ano + 1) . '?'];
+                $comecou[] = $item + ['pergunta' => 'Começou nos últimos 12 meses sem ter acontecido nos 12 anteriores: vai continuar em ' . ($ano + 1) . '?'];
             }
         }
         usort($parou, static fn ($x, $y) => abs($y['anterior']) <=> abs($x['anterior']));
         usort($comecou, static fn ($x, $y) => abs($y['atual']) <=> abs($x['atual']));
+        $jA = self::janela($ano, $corte);
+        $jB = self::janela($anterior, $corte);
         return ['ano' => $ano, 'ano_anterior' => $anterior, 'corte' => $corte,
+            // As janelas, para a tela dizer "nov/24–out/25 × nov/25–out/26".
+            'periodo' => ['de' => $jA[0], 'ate' => $jA[11]], 'periodo_anterior' => ['de' => $jB[0], 'ate' => $jB[11]],
             'minimo' => self::QUESTIONAMENTO_MINIMO, 'parou' => $parou, 'comecou' => $comecou];
     }
 

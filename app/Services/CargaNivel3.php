@@ -173,6 +173,124 @@ class CargaNivel3
     }
 
     /**
+     * O nível 3 em JANELAS DE 12 MESES (`database/dre_nivel3_12m_*.php`, pedido do
+     * cliente de 2026-11-23: as oportunidades olham nov do ano anterior a out do
+     * atual, e os 12 meses antes) para `dre_reduzida_12m`. Por janela, as mesmas
+     * conferências da carga do ano: item no catálogo (o de `dre_reduzida` mais as
+     * `contas_extra`, que são gravadas nele), filiais somando o negócio. Filial fora
+     * do cadastro de hoje fica só no total do negócio (`filiais_sem_cadastro`).
+     * Regrava cada janela inteira.
+     *
+     * @return array{janelas:int, valores:int, filiais_ignoradas:array, ignorados:array}
+     */
+    public static function aplicar12m(PDO $pdo, array $dados): array
+    {
+        $janelas = $dados['janelas'] ?? [];
+        if (!$janelas) {
+            throw new RuntimeException('Carga do nível 3 em 12 meses sem janelas.');
+        }
+        $contas = [];
+        foreach ($pdo->query('SELECT codigo FROM dre_reduzida')->fetchAll(PDO::FETCH_COLUMN) as $c) {
+            $contas[$c] = true;
+        }
+        foreach (array_keys($dados['contas_extra'] ?? []) as $c) {
+            $contas[(string)$c] = true;
+        }
+        $ignorarSemCadastro = ($dados['filiais_sem_cadastro'] ?? null) === 'ignorar';
+        $ler = static function (string $lista, string $onde) use ($contas): array {
+            $out = [];
+            foreach (explode(';', $lista) as $item) {
+                if ($item === '') {
+                    continue;
+                }
+                [$cod, $v] = array_pad(explode('=', $item, 2), 2, null);
+                if (!isset($contas[$cod]) || !is_numeric($v)) {
+                    throw new RuntimeException("Carga do nível 3 em 12 meses com item inválido em {$onde}: {$item}.");
+                }
+                $out[$cod] = (float)$v;
+            }
+            return $out;
+        };
+        $lidas = [];
+        foreach ($janelas as $fim => $j) {
+            if (!preg_match('/^(\d{4})-(\d{2})$/', (string)$fim, $m)) {
+                throw new RuntimeException("Carga do nível 3 em 12 meses com janela inválida: {$fim}.");
+            }
+            $neg = [];
+            foreach ($j['negocios'] ?? [] as $cod => $lista) {
+                $neg[(string)$cod] = $ler($lista, "{$fim}, negócio {$cod}");
+            }
+            $fil = [];
+            foreach ($j['filiais'] ?? [] as $cod => $porFilial) {
+                foreach ($porFilial as $f => $lista) {
+                    $fil[(string)$cod][(string)$f] = $ler($lista, "{$fim}, filial {$cod}/{$f}");
+                }
+            }
+            foreach ($fil as $cod => $porFilial) {
+                $soma = [];
+                foreach ($porFilial as $vals) {
+                    foreach ($vals as $c => $v) {
+                        $soma[$c] = ($soma[$c] ?? 0.0) + $v;
+                    }
+                }
+                foreach (array_unique(array_merge(array_keys($soma), array_keys($neg[$cod] ?? []))) as $c) {
+                    if (abs(($soma[$c] ?? 0.0) - ($neg[$cod][$c] ?? 0.0)) > self::TOLERANCIA_FILIAIS) {
+                        throw new RuntimeException("Carga do nível 3 em 12 meses ({$fim}): no negócio {$cod}, a conta {$c} não fecha entre filiais e negócio.");
+                    }
+                }
+            }
+            $lidas[] = [(int)$m[1], (int)$m[2], $neg, $fil];
+        }
+
+        $insCat = $pdo->prepare(
+            'INSERT INTO dre_reduzida (codigo, reduzida, nome, linha, ordem) VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE codigo = codigo'
+        );
+        foreach ($dados['contas_extra'] ?? [] as $cod => [$red, $nome, $linha, $ordem]) {
+            $insCat->execute([(string)$cod, (string)$red, (string)$nome, (string)$linha, (int)$ordem]);
+        }
+        $busca = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ?');
+        $buscaF = $pdo->prepare('SELECT id FROM filial WHERE negocio_id = ? AND cod_filial = ?');
+        $apaga = $pdo->prepare('DELETE FROM dre_reduzida_12m WHERE ano_fim = ? AND mes_fim = ?');
+        $ins = $pdo->prepare('INSERT INTO dre_reduzida_12m (negocio_id, filial_id, ano_fim, mes_fim, codigo, realizado) VALUES (?, ?, ?, ?, ?, ?)');
+        $valores = 0;
+        $ignorados = [];
+        $filiaisIgnoradas = [];
+        foreach ($lidas as [$ano, $mes, $neg, $fil]) {
+            $apaga->execute([$ano, $mes]);
+            foreach (array_unique(array_merge(array_keys($neg), array_keys($fil))) as $cod) {
+                $busca->execute([(string)$cod]);
+                $negId = (int)$busca->fetchColumn();
+                if (!$negId) {
+                    $ignorados[(string)$cod] = true;
+                    continue;
+                }
+                foreach ($neg[$cod] ?? [] as $c => $v) {
+                    $ins->execute([$negId, 0, $ano, $mes, $c, $v]);
+                    $valores++;
+                }
+                foreach ($fil[$cod] ?? [] as $f => $vals) {
+                    $buscaF->execute([$negId, (string)$f]);
+                    $fid = (int)$buscaF->fetchColumn();
+                    if (!$fid) {
+                        if (!$ignorarSemCadastro) {
+                            throw new RuntimeException("Carga do nível 3 em 12 meses com filial {$f} do negócio {$cod} fora do cadastro.");
+                        }
+                        $filiaisIgnoradas["{$cod}/{$f}"] = true;
+                        continue;
+                    }
+                    foreach ($vals as $c => $v) {
+                        $ins->execute([$negId, $fid, $ano, $mes, $c, $v]);
+                        $valores++;
+                    }
+                }
+            }
+        }
+        return ['janelas' => count($lidas), 'valores' => $valores,
+            'filiais_ignoradas' => array_keys($filiaisIgnoradas), 'ignorados' => array_keys($ignorados)];
+    }
+
+    /**
      * O realizado de 14.3 e 16.1 de cada filial passa a ser o do nível 3, onde a
      * soma das duas fecha com a carga (ver o cabeçalho da classe). Idempotente.
      */

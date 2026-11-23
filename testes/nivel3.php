@@ -46,9 +46,10 @@ $leite = (int)Database::um("SELECT id FROM negocio WHERE cod_negocio = '4'")['id
 // ── 1. O catálogo e as âncoras ───────────────────────────────────────────────
 $cat = Database::um("SELECT * FROM dre_reduzida WHERE codigo = '8.5.2'");
 // 422 contas em 2026; com a carga de 2025 (questionamentos, 2026-11-23), as que só
-// existiram em 2025 entram também: 437.
-prova('o catálogo tem as 437 contas reduzidas do Qlik (2025 e 2026)',
-    (int)Database::um('SELECT COUNT(*) n FROM dre_reduzida')['n'] === 437);
+// existiram em 2025 entram também: 437; e as 6 que só aparecem em nov–dez/2024
+// (janelas de 12 meses): 443.
+prova('o catálogo tem as 443 contas reduzidas do Qlik (nov/2024 a out/2026)',
+    (int)Database::um('SELECT COUNT(*) n FROM dre_reduzida')['n'] === 443);
 prova('e 2026 continua com as 422 que tiveram valor no ano',
     (int)Database::um('SELECT COUNT(DISTINCT codigo) n FROM dre_reduzida_valor WHERE ano = 2026')['n'] <= 422);
 prova('8.5.2 é a 3037 SALARIOS E REMUNERACOES, da linha 8.5',

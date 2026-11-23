@@ -1075,6 +1075,35 @@ foreach ([
     }
 }
 
+// ---- Oportunidades em 12 meses: nov do ano anterior a out do atual (2026-11-23) ----
+// Os meses que faltam (itens não recorrentes de nov/24 a dez/25; DRE de nov–dez/25
+// nas linhas dos eventos, negócio e filial) e o nível 3 nas duas janelas de 12 meses.
+// Depois das cargas das filiais (referenciam o cadastro) e do nível 3 (catálogo).
+$a = require __DIR__ . '/nao_recorrentes_mensal_2024_11_2025_12.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
+    $r = App\Services\CargaApoio::naoRecorrentesPeriodo($pdo, $a);
+    App\Services\CargaConteudo::marcar($pdo, $a['chave'], "Itens não recorrentes de {$a['meses'][0]} a " . end($a['meses']) . ": {$r['negocios']} negócio(s)");
+    echo "migrate: itens não recorrentes {$a['chave']} — {$r['negocios']} negócio(s).\n";
+}
+$a = require __DIR__ . '/dre_eventos_2025_11_12.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
+    $r = App\Services\CargaApoio::eventosPeriodo($pdo, $a);
+    App\Services\CargaConteudo::marcar($pdo, $a['chave'], "DRE dos eventos {$a['ano']} meses " . implode(',', $a['meses']) . ": {$r['linhas']} valor(es)");
+    echo "migrate: DRE dos eventos {$a['chave']} — {$r['negocios']} negócio(s), {$r['filiais']} filial(is), {$r['linhas']} valor(es).\n";
+    if ($r['filiais_ignoradas']) {
+        echo 'migrate: filial(is) fora do cadastro de hoje ignorada(s) na DRE dos eventos: ' . implode(', ', $r['filiais_ignoradas']) . ".\n";
+    }
+}
+$a = require __DIR__ . '/dre_nivel3_12m_2026_10.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $a['chave'])) {
+    $r = App\Services\CargaNivel3::aplicar12m($pdo, $a);
+    App\Services\CargaConteudo::marcar($pdo, $a['chave'], "Nível 3 em 12 meses: {$r['janelas']} janela(s), {$r['valores']} valor(es)");
+    echo "migrate: nível 3 em 12 meses {$a['chave']} — {$r['janelas']} janela(s), {$r['valores']} valor(es).\n";
+    if ($r['filiais_ignoradas']) {
+        echo 'migrate: filial(is) fora do cadastro de hoje (ficam só no total do negócio): ' . implode(', ', $r['filiais_ignoradas']) . ".\n";
+    }
+}
+
 // ---- DRE mensal das filiais nas linhas dos eventos pontuais (2026-11-18) ----
 // Depois das cargas das filiais: a carga referencia filiais do cadastro.
 $a = require __DIR__ . '/eventos_filiais_mensal_2026_10.php';

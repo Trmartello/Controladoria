@@ -3190,6 +3190,30 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     pela conta da diretriz, mas só aparecia na composição abaixo. `contaPessoal`
     acrescenta "Provisão do PPR" (mês e ano, de `pessoal_diretriz`) e "Benefícios
     + PPR" (`data-pessoas="ppr"` / `"total_ppr"`) no ano da proposta.
+  - **Oportunidades em 12 MESES** (pedido do cliente, 2026-11-23: "pegue desde
+    novembro do ano anterior até outubro do ano atual, e compare o ano atual e o
+    anterior"; vale para TODAS as análises de oportunidade): itens não
+    recorrentes, meses fora do padrão (negócio e filial) e questionamentos olham
+    a janela `Oportunidades::janela(ano, corte)` — nov/2025 a out/2026 com corte
+    10 —, e itens e questionamentos se comparam com os 12 meses antes. Cargas:
+    `nao_recorrentes_mensal_2024_11_2025_12.php` (`CargaApoio::naoRecorrentesPeriodo`,
+    regrava só os meses dela), `dre_eventos_2025_11_12.php` (`eventosPeriodo`: DRE
+    8.x/9.x/11.x de nov–dez/2025 em `dre_valor` REAL e `dre_valor_filial_mes`) e
+    `dre_nivel3_12m_2026_10.php` (`CargaNivel3::aplicar12m` → `dre_reduzida_12m`,
+    somado no Qlik pela união `Ano=2026,Mês<=10 + Ano=2025,Mês>=11`). Tudo conferido
+    na geração (jan–out/2026 da extração igual ao já carregado; filiais = negócio).
+    Séries com mês de dois anos usam a chave 'ano-mês' (`chaveMes`) e os meses vêm
+    com `ano`; a tela escreve "nov/25". Os LANÇAMENTOS (expansor) ainda são só os
+    de jan–out do ano corrente — a nota da tela diz. Estoque e juros continuam em
+    jan–out. `dre_reduzida_valor` de 2025 (carga anterior) ficou sem uso.
+  - **Considerar / Desconsiderar os itens não recorrentes** (pedido do cliente,
+    2026-11-23): cada multa, provisão, indenização, perda ou receita pontual tem os
+    botões e a marca "✓ avaliado" (quem, quando). `negocio_item_avaliacao` por
+    negócio, ano do planejamento e conta; `POST /api/projecao/avaliacao` (vazio
+    desfaz). O quadro totaliza: considerados (vão se repetir: risco a planejar),
+    desconsiderados (oportunidade) e quantos faltam avaliar. Não muda a DRE.
+    (A marca de "ligado" no contêiner é `data-ligou-avaliacao`: chamá-la
+    `data-avaliar` fazia o `closest` disparar em qualquer clique da seção.)
   - **Questionamentos 2025 × 2026 nas Oportunidades** (pedido do cliente,
     2026-11-23: "traga o apontamento do que está sendo realizado num ano e não no
     outro, ou vice-versa, para questionar se vai continuar ou deixou de acontecer
