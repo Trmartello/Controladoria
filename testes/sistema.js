@@ -6336,13 +6336,13 @@ async function provasCrescimentoPorPremissa(page, largura) {
   t(`${l} a tela abre`, abriu);
   if (!abriu) return;
 
-  const negocioId = await page.evaluate(() => {
+  const negocioId = await page.evaluate((alvo) => {
     const s = document.querySelector('#projecao-negocio');
-    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    const o = [...s.options].find((x) => x.textContent.includes(alvo)) || s.options[0];
     s.value = o.value;
     s.dispatchEvent(new Event('change', { bubbles: true }));
     return o.value;
-  });
+  }, NEGOCIO_PREMISSAS);
   await new Promise((r) => setTimeout(r, 1500));
 
   const api = (extra = '') => page.evaluate(async ([n, e]) => {
@@ -6466,13 +6466,13 @@ async function provasCrescimentoPositivo(page, largura) {
   t(`${l} a tela abre`, abriu);
   if (!abriu) return;
 
-  const negocioId = await page.evaluate(() => {
+  const negocioId = await page.evaluate((alvo) => {
     const s = document.querySelector('#projecao-negocio');
-    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    const o = [...s.options].find((x) => x.textContent.includes(alvo)) || s.options[0];
     s.value = o.value;
     s.dispatchEvent(new Event('change', { bubbles: true }));
     return o.value;
-  });
+  }, NEGOCIO_PREMISSAS);
   await new Promise((r) => setTimeout(r, 1500));
 
   // O ano de cada chave: no da proposta, IPCA, PIB e pessoal são da DIRETRIZ e
@@ -6846,8 +6846,11 @@ async function provasApoioDesafio(page, largura) {
     ['receita_bruta', 'receita_liquida', 'lucro_bruto', 'margem_bruta', 'despesas', 'resultado_antes_rateios', 'rateios_negocio',
       'resultado_negocio', 'margem_negocio', 'rateios_adm', 'resultado', 'margem', 'pis_cofins']
       .every((k) => n.degraus.includes(k)), n.degraus.join(','));
-  t(`${l} os degraus do meio do desafio vêm marcados como estimados (≈)`,
-    /^≈/.test(n.lb[1]) && /^≈/.test(n.rn[1]) && /^≈/.test(n.rat[1]), `${n.lb[1]} | ${n.rn[1]} | ${n.rat[1]}`);
+  // Desafio CALCULADO (2026-11-23): a escada sai da DRE dele, sem ≈; e as Agropecuárias,
+  // sem lançamento, têm proposta = desafio (a proposta nasce dele).
+  t(`${l} os degraus do desafio saem da DRE dele (sem ≈), iguais aos da proposta sem lançamento`,
+    !/≈/.test(n.lb[1] + n.rn[1] + n.rat[1]) && n.lb[1] === n.lb[2] && n.rn[1] === n.rn[2] && n.rat[1] === n.rat[2],
+    `${n.lb.join('|')} · ${n.rn.join('|')} · ${n.rat.join('|')}`);
   t(`${l} e a coluna da proposta é a DRE dela na estrutura nova (linhas 5, 14, 15 e 16)`,
     Math.abs(n.lbProp - n.l5) <= 1 && Math.abs(n.rnProp - n.l13) <= 1 && Math.abs(n.ratProp - n.l14) <= 1 && Math.abs(n.admProp - n.l16) <= 1,
     JSON.stringify([n.lbProp, n.l5, n.rnProp, n.l13, n.ratProp, n.l14, n.admProp, n.l16]));
@@ -6905,8 +6908,8 @@ async function provasApoioDesafio(page, largura) {
       notaTrib: document.querySelector('.tabela-tributos')?.closest('.table-responsive')?.nextElementSibling?.textContent.replace(/\s+/g, ' ') || '',
     };
   });
-  t(`${l} Corporativo: "Desafio 2027 para os negócios", com a receita líquida do desafio (R$ 3.563.582.221)`,
-    /para os negócios/.test(c.titulo || '') && c.rolDesafio === '3.563.582.221', `${c.titulo} | ${c.rolDesafio}`);
+  t(`${l} Corporativo: "Desafio 2027 para os negócios", com a receita líquida do desafio (R$ 3.528.506.155)`,
+    /para os negócios/.test(c.titulo || '') && c.rolDesafio === '3.528.506.155', `${c.titulo} | ${c.rolDesafio}`);
   t(`${l} e a margem do negócio (antes dos rateios) da proposta no total`, /%$/.test(c.margemNegocio || ''), c.margemNegocio);
   t(`${l} PIS e COFINS de 2026 destacados: R$ 2.773.788 e R$ 12.783.362, 0,52% do faturamento`,
     c.trib[4] === '2.773.788' && c.trib[5] === '12.783.362' && c.trib[6] === '0,52%', c.trib.join(' | '));
@@ -7294,12 +7297,11 @@ async function provasCenarioEImpressao(page, largura) {
   }));
   t(`${l} Pecuária: faturamento realista 732.218.694 (formato antigo) − CBS 419.969 = Receita de Vendas 731.798.725`,
     num(c.fat) === 732218694 && num(c.cbs) === -419969 && num(c.rec) === 731798725, JSON.stringify(c));
-  // O cenário ficou abaixo do mínimo de 2027 (IPCA + PIB + crescimento): desde
-  // 2026-11-21 a DRE usa o mínimo, e o cartão e a caixa embaixo da DRE dizem.
-  t(`${l} o cenário ficou abaixo do mínimo: a Receita Bruta da DRE é maior que ele, e o cartão avisa`,
-    num(c.rb) > 731798725 && /abaixo do mínimo/.test(c.abaixo), JSON.stringify([c.rb, c.abaixo.slice(0, 80)]));
-  t(`${l} e a caixa embaixo da DRE diz que o lançamento de R$ 731.798.725 não vale`,
-    /731\.798\.72\d/.test(c.caixa) && /não vale/.test(c.caixa), c.caixa.slice(0, 140));
+  // Até 2026-11-22 o cenário ficava abaixo do mínimo (IPCA + PIB sobre a projeção) e
+  // não valia. Com o desafio calculado, o mínimo da Pecuária é o DRIVER — o próprio
+  // realista da planilha —: o cenário vale, é a Receita da DRE, e não há aviso.
+  t(`${l} o cenário vale: é o mínimo do driver, a Receita Bruta da DRE é ele e nada avisa`,
+    Math.abs(num(c.rb) - 731798725) <= 1 && !c.abaixo && !c.caixa, JSON.stringify([c.rb, c.abaixo.slice(0, 80), c.caixa.slice(0, 80)]));
   t(`${l} os três cenários da planilha item a item (17 itens + total)`, c.cenarios === 18, String(c.cenarios));
   t(`${l} as aberturas têm destaque: faixa verde de 5px e fundo no título`,
     c.borda === '5px' && c.fundo !== 'rgba(0, 0, 0, 0)', JSON.stringify([c.borda, c.fundo]));
@@ -7452,7 +7454,10 @@ async function provasEstoque(page, largura) {
     && /\+313\.873/.test(a.perda) && /mais de 2 anos/.test(a.parado) && /21\.829 itens/.test(a.parado), JSON.stringify([a.perda, a.parado]));
   t(`${l} sem destaque de mês (a régua é o ano da filial), e as dez filiais com mais oportunidade listadas`,
     a.acimaAcerto === 0 && a.filiais === 10, JSON.stringify([a.acimaAcerto, a.filiais]));
-  t(`${l} o montante no resultado é posto contra o resultado líquido projetado`, /3,6%/.test(a.peso), a.peso);
+  // Contra a BASE DE 12 MESES desde 2026-11-23: 749.493 ÷ 15.185.864 = 4,9% (era 3,6% contra o
+  // resultado de jan–out + orçado de nov–dez).
+  t(`${l} o montante no resultado é posto contra o resultado líquido da base de 12 meses (R$ 15.185.864)`,
+    /4,9%/.test(a.peso) && /15\.185\.864/.test(a.peso) && /base de 12 meses/.test(a.peso), a.peso);
   t(`${l} sem rolagem horizontal da página`, !a.rolagem);
 
   await escolher('- SUPERMERCADOS');
@@ -7711,13 +7716,15 @@ async function provasDesafioEExpansores(page, largura) {
       nota: document.querySelector('#desafio-nota')?.textContent || '',
     };
   });
-  t(`${l} Cereais: desafio de R$ 547.416.689 de receita bruta e R$ 9.101.824 de resultado, margem 1,72%`,
-    api.des && tela.rob === 547416689 && tela.rl === 9101824 && tela.margem === '1,72%', JSON.stringify(tela));
-  t(`${l} a coluna Proposta é a linha 16 da proposta, e a diferença é proposta − desafio`,
-    Math.round(api.rl) === tela.rlProposta && tela.dif === Math.round(api.rl) - 9101824, `${api.rl} | ${JSON.stringify(tela)}`);
+  // Desafio calculado (2026-11-23): base de 12 meses (R$ 574.551.934) × 1,06 = R$ 609.025.050;
+  // o resultado da proposta padrão fica NEGATIVO (−R$ 4.690.972, margem −0,80%).
+  t(`${l} Cereais: desafio de R$ 609.025.050 de receita bruta e −R$ 4.690.972 de resultado, margem −0,80%`,
+    api.des && tela.rob === 609025050 && tela.rl === -4690972 && /0,80%/.test(tela.margem), JSON.stringify(tela));
+  t(`${l} a coluna Proposta é a linha 18 da proposta, e a diferença é proposta − desafio`,
+    Math.round(api.rl) === tela.rlProposta && tela.dif === Math.round(api.rl) - tela.rl, `${api.rl} | ${JSON.stringify(tela)}`);
   t(`${l} o desafio é só de leitura (nenhum campo no cartão)`, tela.campos === 0);
   t(`${l} a nota diz de onde saiu e lembra a meta de 2% de margem líquida`,
-    /Volta à margem de 2025/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recarregar a DRE não a move/.test(tela.nota), tela.nota.slice(0, 120));
+    /driver de volume a definir/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recalculado da base/.test(tela.nota), tela.nota.slice(0, 160));
 
   // Na filial não há desafio: ele é do negócio.
   const temFilial = await page.evaluate(() => (document.querySelector('#projecao-filial')?.options.length || 0) > 1);
@@ -7743,10 +7750,11 @@ async function provasDesafioEExpansores(page, largura) {
       expansores: [...document.querySelectorAll('details.expansor')].map((d) => d.dataset.expansor).join(','),
     };
   });
-  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.694.590.776, resultado 63.687.733, margem 1,79%)`,
-    corp.negocios === 11 && corp.robTotal === '3.694.590.776' && corp.rlTotal === '63.687.733' && corp.margem === '1,79%', JSON.stringify(corp));
-  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 71,27 mi, faltam R$ 7,58 mi`,
-    /2% seriam R\$ 71,27 mi/.test(corp.metaDesafio) && /faltam R\$ 7,58 mi/.test(corp.metaDesafio), corp.metaDesafio);
+  // Desafio calculado sobre a base de 12 meses (2026-11-23).
+  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.669.910.454, resultado 39.994.271, margem 1,13%)`,
+    corp.negocios === 11 && corp.robTotal === '3.669.910.454' && corp.rlTotal === '39.994.271' && corp.margem === '1,13%', JSON.stringify(corp));
+  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,57 mi, faltam R$ 30,58 mi`,
+    /2% seriam R\$ 70,57 mi/.test(corp.metaDesafio) && /faltam R\$ 30,58 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
   t(`${l} Corporativo: visão, desafio, oportunidades, tributos e pessoas como expansores (sem premissas: nada se lança ali)`,
     corp.expansores === 'visao,desafio,oportunidades,tributos,pessoas', corp.expansores);
@@ -7934,13 +7942,13 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
   t(`${l} a tela abre`, abriu);
   if (!abriu) return;
 
-  const negocioId = await page.evaluate(() => {
+  const negocioId = await page.evaluate((alvo) => {
     const s = document.querySelector('#projecao-negocio');
-    const o = [...s.options].find((x) => x.textContent.includes('PECUARIA')) || s.options[0];
+    const o = [...s.options].find((x) => x.textContent.includes(alvo)) || s.options[0];
     s.value = o.value;
     s.dispatchEvent(new Event('change', { bubbles: true }));
     return o.value;
-  });
+  }, 'PECUARIA');
   await new Promise((r) => setTimeout(r, 1500));
 
   const painel = () => page.evaluate(() => {
@@ -8030,10 +8038,13 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
   // Cresc. Real é exatamente o desejado. A conta é de MÃO, e o Cresc. Real
   // continua sendo Total − IPCA − PIB, como sempre foi.
   const perto = (a, b) => a !== null && Math.abs(a - b) < 0.05;
-  t(`${l} sem o desejado: Cresc. Total = IPCA + PIB da diretriz (6%) e Cresc. Real = 0`,
-    perto(semMeta.total, 6) && perto(semMeta.real, 0), `total ${semMeta.total} · real ${semMeta.real}`);
-  t(`${l} com o desejado (12%): Cresc. Total = 4,5 + 1,5 + 12 = 18% e Cresc. Real = 12%`,
-    perto(comMeta.total, 18) && perto(comMeta.real, 12), `total ${comMeta.total} · real ${comMeta.real}`);
+  // Desde o desafio calculado (2026-11-23) a Pecuária tem a receita pelo DRIVER (o
+  // realista da planilha, −13,08% sobre a base de 12 meses): o desejado é gravado, mas
+  // não move a Receita dela. O mecanismo IPCA + PIB + desejado é provado nos
+  // Supermercados (`provasCrescimentoPorPremissa`).
+  t(`${l} na Pecuária a receita segue o driver (−13,08%), com ou sem o desejado`,
+    perto(semMeta.total, -13.08) && perto(comMeta.total, -13.08) && perto(semMeta.real, -19.08),
+    `total ${semMeta.total} / ${comMeta.total} · real ${semMeta.real}`);
   t(`${l} e apagá-la a devolve a vazio, sem levar IPCA e PIB junto`, await (async () => {
     await digitar('CRESCIMENTO', '');
     const b = await doBanco();
@@ -8252,10 +8263,16 @@ async function provasProjecaoPremissasDoNegocio(page, largura) {
  * distribuição não muda o total" — só mede o que diz se partir de um negócio em
  * que nenhuma premissa mexe nas linhas. A regra das premissas tem a suíte dela.
  */
-async function comPremissasNeutras(page, fn) {
-  const guardadas = await page.evaluate(async () => {
+// O negócio das provas do MECANISMO das premissas (IPCA + PIB + crescimento na
+// Receita de Vendas): um SEM driver de volume. Desde o desafio calculado
+// (2026-11-23) a Pecuária tem a receita pelo realista da planilha (`DesafioDrivers`)
+// e não responde mais ao IPCA — as provas do mecanismo passaram aos Supermercados.
+const NEGOCIO_PREMISSAS = 'SUPERMERCADO';
+
+async function comPremissasNeutras(page, fn, alvo = 'PECUARIA') {
+  const guardadas = await page.evaluate(async (alvoNome) => {
     const lista = await App.api('/api/projecao');
-    const n = lista.negocios.find((x) => x.rotulo.includes('PECUARIA')) || lista.negocios[0];
+    const n = lista.negocios.find((x) => x.rotulo.includes(alvoNome)) || lista.negocios[0];
     const d = await App.api(`/api/projecao?negocio_id=${n.id}`);
     // O que a diretriz do ano fixa não se apaga nem se regrava (a API recusa):
     // fica fora do que se guarda e se devolve.
@@ -8268,7 +8285,7 @@ async function comPremissasNeutras(page, fn) {
       await App.api('/api/projecao/premissa', { negocio_id: Number(n.id), chave, valor: null, ano: d.ano_planejamento });
     }
     return { id: Number(n.id), ano: d.ano_planejamento, dig, fixas };
-  });
+  }, alvo);
   try {
     await fn();
   } finally {
@@ -11538,8 +11555,8 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoCorteDasFiliais(page, 'desktop');
   await provasProjecaoCorporativo(page, 'desktop');
   await provasProjecaoPessoas(page, 'desktop');
-  await comPremissasNeutras(page, () => provasCrescimentoPorPremissa(page, 'desktop'));
-  await comPremissasNeutras(page, () => provasCrescimentoPositivo(page, 'desktop'));
+  await comPremissasNeutras(page, () => provasCrescimentoPorPremissa(page, 'desktop'), NEGOCIO_PREMISSAS);
+  await comPremissasNeutras(page, () => provasCrescimentoPositivo(page, 'desktop'), NEGOCIO_PREMISSAS);
   await provasSinalNoCelular(page, 'desktop');
   await provasRecolherNivel(page, 'desktop');
   await provasNegocioUnico(page, 'desktop');
@@ -11625,8 +11642,8 @@ async function provasSaidaDoModal(page, largura) {
   await provasProjecaoCorteDasFiliais(pageM, 'celular');
   await provasProjecaoCorporativo(pageM, 'celular');
   await provasProjecaoPessoas(pageM, 'celular');
-  await comPremissasNeutras(pageM, () => provasCrescimentoPorPremissa(pageM, 'celular'));
-  await comPremissasNeutras(pageM, () => provasCrescimentoPositivo(pageM, 'celular'));
+  await comPremissasNeutras(pageM, () => provasCrescimentoPorPremissa(pageM, 'celular'), NEGOCIO_PREMISSAS);
+  await comPremissasNeutras(pageM, () => provasCrescimentoPositivo(pageM, 'celular'), NEGOCIO_PREMISSAS);
   await provasSinalNoCelular(pageM, 'celular');
   await provasRecolherNivel(pageM, 'celular');
   await provasNegocioUnico(pageM, 'celular');

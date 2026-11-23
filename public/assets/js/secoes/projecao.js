@@ -41,6 +41,24 @@ const SecaoProjecao = {
   filialId: 0,
   versao: 0,
 
+  /**
+   * A BASE DE 12 MESES (pedido do cliente, 2026-11-23): a coluna que era o
+   * orçado de nov–dez do ano é o REALIZADO desses meses no ano anterior, e a
+   * "Projeção" é a soma — os 12 meses fechados mais recentes, base da proposta,
+   * do piso e do desafio. Os campos continuam `projetado` e `projecao`.
+   */
+  rotuloAnterior(d) {
+    const c = Number(d.mes_fechado_ate);
+    const aa = String(d.ano - 1).slice(2);
+    return c >= 12 ? '—' : `${this.nomeMes(c + 1)}${c + 1 < 12 ? `–dez` : ''}/${aa}`;
+  },
+
+  rotuloDoze(d) {
+    const c = Number(d.mes_fechado_ate);
+    return c >= 12 ? `jan–dez/${String(d.ano).slice(2)}`
+      : `${this.nomeMes(c + 1)}/${String(d.ano - 1).slice(2)}–${this.nomeMes(c)}/${String(d.ano).slice(2)}`;
+  },
+
   moeda(v) {
     return Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
   },
@@ -160,9 +178,9 @@ const SecaoProjecao = {
 
     const faltando = d.meses_sem_meta.length
       ? `<div class="alert alert-warning py-2 px-3 small mb-3">
-           <strong>Projeção incompleta.</strong> Não há orçamento lançado para
-           ${d.meses_sem_meta.map((m) => this.nomeMes(m)).join(', ')} de ${d.ano} —
-           esses meses entram como zero na coluna Projetado.
+           <strong>Base de 12 meses incompleta.</strong> Não há realizado carregado de
+           ${d.meses_sem_meta.map((m) => this.nomeMes(m)).join(', ')} de ${d.ano - 1} —
+           esses meses entram como zero na base.
          </div>`
       : '';
 
@@ -237,13 +255,13 @@ const SecaoProjecao = {
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
-            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}</span></th>
-            <th class="text-end">Projetado<br><span class="fw-normal text-muted small">${this.nomeMes(d.mes_fechado_ate + 1)}–dez</span></th>
-            <th class="text-end">Projeção<br><span class="fw-normal text-muted small">do ano</span></th>
+            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}/${String(d.ano).slice(2)}</span></th>
+            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">${this.rotuloAnterior(d)}</span></th>
+            <th class="text-end">Base 12 meses<br><span class="fw-normal text-muted small">${this.rotuloDoze(d)}</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL proposta</span></th>
-            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
+            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a base 12 meses</span></th>
             ${!d.filial && d.filiais.length && d.modo === 'NEGOCIO'
     ? '<th class="text-end">A distribuir<br><span class="fw-normal text-muted small">entre as filiais</span></th>'
     : ''}
@@ -428,10 +446,10 @@ const SecaoProjecao = {
     'Crescimento total menos IPCA e PIB — o que sobra depois da inflação e da economia. '
     + 'Precisa dos dois lançados para existir.')}
           ${leitura(lidas.CRESC_TOTAL, 'Cresc. Total',
-    'A proposta da receita contra a projeção do ano. Lido, não lançado: '
+    'A proposta da receita contra a base de 12 meses. Lido, não lançado: '
     + 'o crescimento se lança na linha da Receita de Vendas.')}
           ${leitura(lidas.PCT_CUSTOS, '% Custos',
-    'A proposta dos custos contra a projeção do ano. Lido da linha Custos das Vendas.')}`
+    'A proposta dos custos contra a base de 12 meses. Lido da linha Custos das Vendas.')}`
       : `<div class="col-12 small text-muted aviso-leituras">A proposta existe só para <strong>${anoProposta}</strong>:
           Cresc. Real, Cresc. Total e % Custos saem das linhas dela e aparecem apenas nesse ano.</div>`;
 
@@ -544,6 +562,14 @@ const SecaoProjecao = {
       </div>`;
   },
 
+  /**
+   * O faturamento padrão veio de um DRIVER de volume (`DesafioDrivers`: Pecuária,
+   * Leite, Postos de leite, Rações) e não de IPCA + PIB + crescimento.
+   */
+  temDriver(d) {
+    return !!(d && d.driver && d.driver.crescimento !== undefined && d.driver.crescimento !== null);
+  },
+
   /** O que as premissas fazem com o FATURAMENTO: projeção, acréscimos e o piso. */
   contaFaturamento(d) {
     const l = (this.visao(d).linhas || []).find((x) => x.codigo === '1.1');
@@ -561,14 +587,17 @@ const SecaoProjecao = {
     return `<table class="table table-sm mb-1 tabela-faturamento">
         <thead><tr><th>Faturamento ${d.ano_planejamento} (Receita de Vendas)</th><th class="text-end">No ano</th></tr></thead>
         <tbody>
-          <tr><td>Projeção de ${d.ano}</td><td class="text-end">${r(proj)}</td></tr>
-          ${parte('IPCA', 'IPCA')}${parte('PIB', 'PIB')}${parte('CRESCIMENTO', 'Crescimento desejado')}
-          ${piso === null ? '' : `<tr class="fw-bold"><td>Mínimo de ${d.ano_planejamento} <span class="fw-normal text-muted small">(+${p(pisoPct)}: a DRE não aceita menos)</span></td>
+          <tr><td>Base 12 meses (${this.rotuloDoze(d)})</td><td class="text-end">${r(proj)}</td></tr>
+          ${this.temDriver(d)
+    ? `<tr data-faturamento="driver"><td colspan="2" class="small">Driver de volume (no lugar de IPCA + PIB + crescimento):
+        ${Modal.esc(d.driver.nota)}</td></tr>`
+    : `${parte('IPCA', 'IPCA')}${parte('PIB', 'PIB')}${parte('CRESCIMENTO', 'Crescimento desejado')}`}
+          ${piso === null ? '' : `<tr class="fw-bold"><td>Mínimo de ${d.ano_planejamento} <span class="fw-normal text-muted small">(${pisoPct < 0 ? '−' : '+'}${p(Math.abs(pisoPct))}: a DRE não aceita menos)</span></td>
             <td class="text-end" data-faturamento="piso">${r(piso)}</td></tr>`}
           ${acima ? `<tr><td>Proposta lançada na DRE <span class="text-muted small">(acima do mínimo)</span></td>
             <td class="text-end" data-faturamento="proposta">${r(prop)}</td></tr>` : ''}
           <tr class="fw-bold"><td>Impacto no faturamento</td>
-            <td class="text-end" data-faturamento="impacto">${prop >= proj ? '+' : ''}${r(prop - proj)}</td></tr>
+            <td class="text-end" data-faturamento="impacto">${prop >= proj ? '+' : '−'}${r(Math.abs(prop - proj))}</td></tr>
         </tbody>
       </table>`;
   },
@@ -700,7 +729,7 @@ const SecaoProjecao = {
         <table class="table table-sm mb-1 tabela-pessoal-diretriz">
           <thead><tr><th>Despesas com Pessoal ${d.ano_planejamento} (linha 8.5), pela diretriz</th><th class="text-end">No ano</th></tr></thead>
           <tbody>
-            <tr><td>Projeção de ${d.ano}</td><td class="text-end">${r(-p.projecao)}</td></tr>
+            <tr><td>Base 12 meses (${this.rotuloDoze(d)})</td><td class="text-end">${r(-p.projecao)}</td></tr>
             <tr><td class="ps-3 text-muted">− vale, prêmio e PPR de ${d.ano} (${pct(p.parte_2026)} da folha)</td><td class="text-end text-muted">−${r(p.pecas_2026)}</td></tr>
             <tr><td>Base reajustada${reaj !== undefined ? ` em ${String(reaj).replace('.', ',')}%` : ''}${
   Math.abs((p.fator_quadro || 1) - 1) > 1e-9 ? ` <span class="text-muted small" data-pessoal="fator">(× ${pct(p.fator_quadro)}: o quadro planejado sobre o atual)</span>` : ''}</td><td class="text-end" data-pessoal="base">${r(p.base_reajustada)}</td></tr>
@@ -835,9 +864,9 @@ const SecaoProjecao = {
     const dossie = !!App.modoDossie;
     const faltando = d.meses_sem_meta.length
       ? `<div class="alert alert-warning py-2 px-3 small mb-3">
-           <strong>Projeção incompleta.</strong> Há negócio sem orçamento lançado para
-           ${d.meses_sem_meta.map((m) => this.nomeMes(m)).join(', ')} de ${d.ano} —
-           esses meses entram como zero na coluna Projetado.
+           <strong>Base de 12 meses incompleta.</strong> Há negócio sem realizado carregado de
+           ${d.meses_sem_meta.map((m) => this.nomeMes(m)).join(', ')} de ${d.ano - 1} —
+           esses meses entram como zero na base.
          </div>`
       : '';
     const sem = d.negocios_consolidados - d.negocios_com_proposta;
@@ -880,13 +909,13 @@ const SecaoProjecao = {
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
-            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}</span></th>
-            <th class="text-end">Projetado<br><span class="fw-normal text-muted small">${this.nomeMes(d.mes_fechado_ate + 1)}–dez</span></th>
-            <th class="text-end">Projeção<br><span class="fw-normal text-muted small">do ano</span></th>
+            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}/${String(d.ano).slice(2)}</span></th>
+            <th class="text-end">Realizado<br><span class="fw-normal text-muted small">${this.rotuloAnterior(d)}</span></th>
+            <th class="text-end">Base 12 meses<br><span class="fw-normal text-muted small">${this.rotuloDoze(d)}</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL proposta</span></th>
-            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção</span></th>
+            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a base 12 meses</span></th>
           </tr></thead>
           <tbody>${this.corpo(d)}</tbody>
         </table>
@@ -1140,7 +1169,7 @@ const SecaoProjecao = {
       const cor = dif === null ? '' : (pct ? (dif >= 0 ? 'text-success' : 'text-danger') : this.corDif(dif));
       return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}">
           <td>${rotulo}</td>
-          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção de 2026"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
+          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da base de 12 meses"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
           <td class="text-end">${celula(b, pct)}</td>
           <td class="text-end ${estimado ? 'text-muted' : cor}">${estimado ? '' : textoDif}</td>
         </tr>`;
@@ -1164,10 +1193,11 @@ const SecaoProjecao = {
             </tbody>
           </table>
         </div>
-        <div class="small text-muted mb-1">O desafio fixa <strong>faturamento, receita líquida e resultado líquido</strong>. Os valores com
-          <strong>≈</strong> são estimados a partir da projeção de ${x.ano - 1}: a margem bruta mantém o percentual de ${x.ano - 1}; despesas e
-          rateios (do negócio e administrativos) ficam na projeção, sem crescimento; o resultado do negócio é o líquido do desafio
-          menos os rateios administrativos, e o resultado antes dos rateios é ele menos os rateios do negócio. Estrutura nova da DRE
+        <div class="small text-muted mb-1">O desafio é a <strong>proposta padrão</strong> do negócio: a base de 12 meses
+          (${this.rotuloDoze(d)}) com as premissas do painel — IPCA, PIB e % de crescimento na receita (ou o driver de volume,
+          abaixo), pessoal pela diretriz (reajuste, vale, prêmios e PPR) —, custo e deduções acompanhando a receita (margem
+          bruta preservada) e as demais despesas e rateios na base, sem crescimento. É de onde a proposta parte: a coluna
+          Proposta é ele com o que o negócio lançou, e a Diferença é o efeito dos lançamentos. Estrutura nova da DRE
           gerencial (a que vale em ${x.ano}).</div>
         ${this.notaTributos(x.tributos, x.ano)}
         <div class="small text-muted" id="desafio-nota">
@@ -1191,8 +1221,8 @@ const SecaoProjecao = {
   notaDesafio(x) {
     return `Diretriz do Horizonte 1: <strong>preservar margem</strong> — pode crescer, sem perder margem.
       ${Modal.esc(x.metodo)} A meta da direção é <strong>${this.pct(x.meta_margem / 100, 0)} de margem líquida</strong>
-      para a cooperativa. Referência decidida em ${String(x.decidido_em).split('-').reverse().join('/')}, só de leitura:
-      recarregar a DRE não a move.`;
+      para a cooperativa. Método decidido em ${String(x.decidido_em).split('-').reverse().join('/')}; o desafio é
+      recalculado da base e das premissas — muda se as premissas do painel ou as metas de volume mudarem.`;
   },
 
   cartaoDesafioCorporativo(d) {
@@ -1753,7 +1783,7 @@ const SecaoProjecao = {
     const liq = (this.visao(d).linhas || []).find((x) => x.codigo === '18');
     const peso = liq && Math.abs(liq.projecao) >= 1
       ? `<div class="small mt-1" id="estoque-peso">No resultado, o montante equivale a <strong>${(e.resultado / Math.abs(liq.projecao) * 100)
-        .toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</strong> do resultado líquido projetado de ${d.ano}
+        .toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</strong> do resultado líquido da base de 12 meses (${this.rotuloDoze(d)})
         (${liq.projecao < 0 ? '−' : ''}R$ ${m(Math.abs(liq.projecao))}).</div>` : '';
     return `<div class="card mb-3 border-success" id="projecao-estoque">
       <div class="card-body py-2 px-3">
@@ -1877,8 +1907,8 @@ const SecaoProjecao = {
     if (!l || !l.piso_aplicado) return '';
     return `<div class="alert alert-warning py-2 px-3 small mb-2" id="cenario-abaixo-do-piso">
         O cenário da planilha (Receita de Vendas R$ ${this.moeda(d.cenario.receita_vendas)}) ficou <strong>abaixo do mínimo de
-        ${d.ano_planejamento}</strong> — IPCA + PIB + crescimento desejado, ${this.pct((Number(l.piso_percentual) || 0) / 100, 2)}
-        sobre a projeção. A DRE usa o mínimo, <strong>R$ ${this.moeda(l.proposta)}</strong>; o cenário continua guardado.
+        ${d.ano_planejamento}</strong> — ${this.temDriver(d) ? 'o driver de volume do desafio' : 'IPCA + PIB + crescimento desejado'}, ${this.pct((Number(l.piso_percentual) || 0) / 100, 2)}
+        sobre a base de 12 meses. A DRE usa o mínimo, <strong>R$ ${this.moeda(l.proposta)}</strong>; o cenário continua guardado.
       </div>`;
   },
 
@@ -2648,12 +2678,12 @@ const SecaoProjecao = {
       // O valor recusado está no formato do motor (com a CBS); a tela mostra sem ela.
       const t = (v.filialId ? (d.filial.tributos_dre || {}) : (d.tributos_dre || {})).taxa || 0;
       const lancado = Number(l.lancado_abaixo) * (1 - t);
-      texto = `O lançamento de R$ ${this.moeda(lancado)} na Receita de Vendas${d.filial ? ' desta filial' : ''} ficou abaixo de IPCA + PIB + crescimento desejado e não vale: a linha está no mínimo. O valor continua guardado e volta a valer se as premissas baixarem; para outro valor, lance de novo, igual ou acima do mínimo.`;
+      texto = `O lançamento de R$ ${this.moeda(lancado)} na Receita de Vendas${d.filial ? ' desta filial' : ''} ficou abaixo ${this.temDriver(d) ? 'do driver de volume do desafio' : 'de IPCA + PIB + crescimento desejado'} e não vale: a linha está no mínimo. O valor continua guardado e volta a valer se as premissas baixarem; para outro valor, lance de novo, igual ou acima do mínimo.`;
     }
     if (!texto) return '';
     return `<div class="alert alert-warning py-2 px-3 small mb-2" id="projecao-piso-faturamento">
         <strong>Faturamento no mínimo.</strong> ${Modal.esc(texto)}
-        Mínimo de ${d.ano_planejamento}: <strong>${minimo}</strong> (${this.pct(piso / 100, 2)} sobre a projeção).
+        Mínimo de ${d.ano_planejamento}: <strong>${minimo}</strong> (${this.pct(piso / 100, 2)} sobre a base de 12 meses).
       </div>`;
   },
 

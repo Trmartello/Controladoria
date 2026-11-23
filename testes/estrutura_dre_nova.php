@@ -17,6 +17,7 @@ require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
 require_once __DIR__ . '/../app/Services/Metas.php';
 require_once __DIR__ . '/../app/Services/DesafioCota.php';
+require_once __DIR__ . '/../app/Services/DesafioDrivers.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
 require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Services/CargaDre.php';

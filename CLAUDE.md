@@ -3095,7 +3095,9 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   antigas digitam nas premissas e nas pessoas, e campo dentro de `<details>`
   fechado não aceita clique. Prova nova de expansor grava o estado que quer
   medir e devolve "tudo aberto" ao sair.
-  **Desafio de 2027 da Controladoria** (pedido do cliente, 2026-11-18: "os 2% são
+  **Desafio de 2027 da Controladoria** (HISTÓRICO — substituído em 2026-11-23
+  pelo desafio CALCULADO, ver "Desafio calculado" mais abaixo; os valores
+  carregados não são mais lidos. Pedido do cliente, 2026-11-18: "os 2% são
   margem líquida, carregue o desafio na projeção"). Referência **decidida e
   congelada**, só de leitura: `desafio_ano` (meta de margem, método, fonte, data)
   e `negocio_desafio` (receita bruta, receita líquida, resultado e a nota de onde
@@ -3485,7 +3487,44 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   digitado; dois Cancelar desistem e restauram a célula. Percentual não
   pergunta. Não inverter sozinho: há linhas que mudam de sinal de verdade.
   Prova na bateria (`provasProjecaoPremissas`).
-  **Desafio dos Postos de resfriamento pela cota Aurora** (pedido do cliente,
+  **Base de 12 meses** (pedido do cliente, 2026-11-23: "12 meses nov/25–out/26
+  em tudo"). A coluna que era o orçado de nov–dez do ano é o REALIZADO desses
+  meses no ANO ANTERIOR, e `projecao` (base da proposta, do piso e do desafio) é
+  jan–corte do ano + (corte+1)–dez do ano anterior. Campos `projetado`/`projecao`
+  mantidos; cabeçalhos "Realizado jan–out/26", "Realizado nov–dez/25", "Base 12
+  meses nov/25–out/26" (`rotuloAnterior`, `rotuloDoze`). Negócio: `dre_valor`
+  REAL dos dois anos (`linhasDaDre`, `resumoDosNegocios`); filial: realizado
+  acumulado de `dre_valor_filial` + `dre_valor_filial_mes` do ano anterior
+  (`linhasDaFilial`, `resumoDosNegocios`). Dados: `database/dre_2025_11_12.php`
+  (`CargaApoio::drePeriodo`, DRE inteira menos percentuais, da DRE - Gerencial
+  Nova). 36 filiais de 2025 fora do cadastro (35 de Cereais, R$ 12,4 mi de receita
+  em nov–dez/25) ficam só no total do negócio. O orçado de nov–dez continua no
+  banco (visão realista). `meses_sem_meta` agora avisa mês do ano anterior sem
+  realizado. Quando o fechamento andar (nov/26), a base anda sozinha: precisa só
+  da DRE de dez/25 já carregada. Prova: `testes/base_12m.php`.
+  **Desafio calculado** (pedido do cliente, 2026-11-23: "gere um novo desafio… e a
+  partir dali ele continua fazendo a projeção"). O desafio é a PROPOSTA PADRÃO de
+  cada negócio: `montar` roda `Projecao::aplicar` sobre a base SEM lançamentos
+  (`$linhasDesafio`) com os mesmos crescimentos — premissas do painel (IPCA, PIB,
+  % crescimento), pessoal pela diretriz (5,5%, vale, prêmios, PPR), custo e
+  deduções acompanhando a receita (margem bruta preservada), demais despesas na
+  base. A coluna Proposta é ele com os lançamentos; a Diferença é o efeito
+  deles. A escada sai da DRE do desafio (`estimados` vazio). `desafio_ano` guarda
+  só o cabeçalho (`database/desafio_2027.php`, `calculado => true`; a carga apaga
+  `negocio_desafio` do ano, que não é mais lido). **Drivers** (`DesafioDrivers`,
+  aplicados ao crescimento padrão da 1.1 — e por isso ao PISO — na tela e no
+  Painel): Pecuária = realista da planilha (R$ 732.218.693,78); Leite = cota
+  Aurora × (Receita de Vendas da base ÷ 107.904.705 litros captados nov/25–out/26);
+  Postos de leite = cota × R$ 0,055; Rações = meta de bovinos das Agropecuárias
+  (indicador com "bovino" no nome; < 1 milhão = toneladas) × R$ 100/t + (base −
+  53.575,85 t × R$ 100) × premissas; Cereais, UTM e UBS = base × premissas com a
+  nota "driver a definir". Sem a meta (cota, bovinos) o negócio cai em base ×
+  premissas e a nota diz. Os volumes da base ficam em `DesafioDrivers::BASE`, por
+  ano. Prova: `testes/desafio_drivers.php`. No banco local (out/26) o total dá
+  faturamento R$ 3,67 bi, resultado R$ 41,2 mi, margem 1,17% — e Cereais com
+  resultado negativo.
+  **Desafio dos Postos de resfriamento pela cota Aurora** (histórico: desde o
+  desafio calculado, quem aplica é `DesafioDrivers`; pedido do cliente,
   2026-11-23: "o posto recebe ~6 centavos por litro resfriado, e o valor só
   aumenta com o volume"; "pegue o indicador Cota Aurora… e projete 0,06").
   `DesafioCota::aplicar`, chamado em `desafioDoAno`: o faturamento do desafio do

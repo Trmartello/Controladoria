@@ -37,9 +37,16 @@ class CargaDesafio
                 throw new RuntimeException("Carga de desafio sem {$k}.");
             }
         }
-        $valores = $dados['valores'] ?? [];
-        if (!$valores) {
+        // Desafio CALCULADO (desde 2026-11-23): a carga grava só o cabeçalho (meta,
+        // método, fonte) e apaga os valores carregados do ano — quem calcula é a
+        // Projeção (`ProjecaoController::montar`, `DesafioDrivers`).
+        $calculado = !empty($dados['calculado']);
+        $valores = $calculado ? [] : ($dados['valores'] ?? []);
+        if (!$valores && !$calculado) {
             throw new RuntimeException('Carga de desafio sem valores.');
+        }
+        if ($calculado && !empty($dados['valores'])) {
+            throw new RuntimeException('Carga de desafio calculado com valores: ou um, ou outro.');
         }
         foreach ($valores as $cod => $v) {
             foreach (self::CAMPOS as $c) {

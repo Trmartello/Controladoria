@@ -4,10 +4,11 @@
  * Provas do DESAFIO de 2027 na Projeção (pedido do cliente, 2026-11-18: "os 2%
  * são margem líquida, carregue o desafio na projeção").
  *
- * Três âncoras: (1) a carga — os números da página aprovada, o total e a conta
- * dos 2%; (2) a ORIGEM — o desafio sai da visão realista de 2026 que a mesma
- * tela mostra (× 1,06, margem nunca pior que a de 2026), então os dois não podem
- * contar histórias diferentes; (3) a carga é estrita e sobrescreve o ano.
+ * Desde 2026-11-23 o desafio é CALCULADO (a proposta padrão sobre a base de 12
+ * meses, `DesafioDrivers`). Três âncoras: (1) o cabeçalho carregado e o total do
+ * Corporativo com a conta dos 2%; (2) a ORIGEM — base × 1,06 sem driver, Usina só
+ * resultado, Pecuária na planilha; (3) a carga de valores (o formato antigo) segue
+ * estrita e sobrescreve o ano.
  *
  *   DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
  *     php testes/desafio.php
@@ -22,6 +23,7 @@ require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
 require_once __DIR__ . '/../app/Services/Metas.php';
 require_once __DIR__ . '/../app/Services/DesafioCota.php';
+require_once __DIR__ . '/../app/Services/DesafioDrivers.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
 require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Services/CargaDesafio.php';
@@ -56,73 +58,48 @@ foreach (Database::todos('SELECT id, cod_negocio FROM negocio') as $n) {
     $ids[$n['cod_negocio']] = (int)$n['id'];
 }
 $ctrl = new App\Controllers\ProjecaoController();
+$fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
+$ano = (int)$fech['ano'];
+$corte = (int)$fech['mes_fechado_ate'];
 
-// ── 1. O que está no banco é a página aprovada ──────────────────────────────
+// ── 1. O desafio CALCULADO (2026-11-23): só o cabeçalho é carga ─────────────
 $d = invocar($ctrl, 'desafioDoAno', 2027);
 prova('há desafio de 2027, com a meta de 2% de margem líquida', $d && $d['meta_margem'] == 2.0, json_encode($d['meta_margem'] ?? null));
-prova('os 11 negócios da página estão no banco', $d && count($d['por_negocio']) === 11, (string)count($d['por_negocio'] ?? []));
-$pec = $d['por_negocio'][$ids['2']] ?? null;
-prova('Pecuária no cenário otimista do negócio: R$ 774.720.004 de receita bruta',
-    $pec && $pec['receita_bruta'] == 774720004, json_encode($pec['receita_bruta'] ?? null));
-$cer = $d['por_negocio'][$ids['1']] ?? null;
-prova('Cereais volta à margem de 2025 (1,72%), e não à do plano de 2026 (0,82%)',
-    $cer && abs($cer['margem'] - 1.7239) < 0.0005, json_encode($cer['margem'] ?? null));
-prova('Usina sem receita: sem margem, e com resultado (R$ 421.184, 2026 realista + IPCA de 4,5% da diretriz)',
-    ($u = $d['por_negocio'][$ids['17']] ?? null) && $u['margem'] === null && $u['resultado'] == 421184);
+prova('a carga de 2027 é a do desafio calculado (sem valores)', !empty($carga['calculado']) && empty($carga['valores']));
+prova('o cabeçalho não traz valores: quem calcula é a Projeção', $d && !isset($d['por_negocio']));
 
-$propostas = [];
-foreach ($ids as $cod => $id) {
-    if (isset($d['por_negocio'][$id])) {
-        $propostas[$id] = ['receita_bruta' => 0.0, 'receita_liquida' => 0.0, 'resultado' => 0.0, 'margem' => null];
-    }
-}
-$c = invocar($ctrl, 'desafioCorporativo', 2027, $propostas);
+// O Corporativo soma os desafios dos 11 negócios (números do banco local, out/26,
+// base nov/25–out/26; conferidos por `testes/desafio_drivers.php` negócio a negócio).
+$negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
+$c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];
-prova('total do desafio: ROB R$ 3.694.590.776, ROL R$ 3.563.582.221, resultado R$ 63.687.733',
-    $t['receita_bruta'] == 3694590776 && $t['receita_liquida'] == 3563582221 && $t['resultado'] == 63687733,
-    "{$t['receita_bruta']} / {$t['receita_liquida']} / {$t['resultado']}");
-prova('margem líquida do desafio: 1,79%', abs($t['margem'] - 1.7872) < 0.0005, (string)round($t['margem'], 4));
-prova('os 2% sobre a ROL do desafio são R$ 71,27 mi, e faltam R$ 7,58 mi',
-    abs($t['resultado_meta'] - 71271644.42) < 1 && abs($t['falta'] - 7583911.42) < 1,
+prova('os 11 negócios entram no desafio do Corporativo', count($c['negocios']) === 11, (string)count($c['negocios']));
+prova('total do desafio: ROB R$ 3.669.910.454, ROL R$ 3.528.506.155, resultado R$ 39.994.271',
+    abs($t['receita_bruta'] - 3669910454) < 2 && abs($t['receita_liquida'] - 3528506155) < 2 && abs($t['resultado'] - 39994271) < 2,
+    round($t['receita_bruta']) . ' / ' . round($t['receita_liquida']) . ' / ' . round($t['resultado']));
+prova('margem líquida do desafio: 1,13%', abs($t['margem'] - 1.1335) < 0.0005, (string)round($t['margem'], 4));
+prova('os 2% sobre a ROL do desafio são R$ 70,57 mi, e faltam R$ 30,58 mi',
+    abs($t['resultado_meta'] - 70570123) < 2 && abs($t['falta'] - 30575852) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
-prova('o lado da proposta usa a MESMA meta sobre a ROL dela (proposta zerada → falta zero)',
-    $c['total']['proposta']['falta'] == 0.0 && $c['total']['proposta']['margem'] === null);
 
-// ── 2. O desafio sai da visão realista de 2026 que a tela mostra ────────────
-$fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
-$v = invocar($ctrl, 'visaoDoAno', array_values($ids), (int)$fech['ano'], (int)$fech['mes_fechado_ate']);
-$divergem = [];
-$margemPior = [];
-foreach ($d['por_negocio'] as $id => $x) {
-    $cod = array_search($id, $ids, true);
-    $vis = $v[$id] ?? null;
-    if (!$vis) {
-        $divergem[] = "{$cod}: sem visão";
-        continue;
-    }
-    if ((string)$cod === '17') {
-        if (abs($x['resultado'] - $vis['18']['real_realista'] * 1.045) > 1800) {
-            $divergem[] = "17: " . round($x['resultado']) . ' vs ' . round($vis['18']['real_realista'] * 1.045);
-        }
-        continue;
-    }
-    // ROB = 2026 realista × 1,06 — menos a Pecuária, que vem da planilha do negócio.
-    if ((string)$cod !== '2' && abs($x['receita_bruta'] - $vis['1']['real_realista'] * 1.06) > 10) {
-        $divergem[] = "{$cod}: " . round($x['receita_bruta']) . ' vs ' . round($vis['1']['real_realista'] * 1.06);
-    }
-    // Margem nunca pior que a de 2026 realista (ROL de 2026 pela mesma relação ROL/ROB).
-    $rol26 = $vis['1']['real_realista'] * $x['receita_liquida'] / $x['receita_bruta'];
-    $m26 = $vis['18']['real_realista'] / $rol26 * 100;
-    // ±R$ 1,8 mil no resultado de 6 e 8 (lançamento que mudou de negócio entre a
-    // extração do painel e a carga) vira ±0,001 p.p. de margem.
-    if ($x['margem'] < $m26 - 0.002) {
-        $margemPior[] = "{$cod}: " . round($x['margem'], 4) . ' < ' . round($m26, 4);
+// ── 2. De onde sai: base de 12 meses × premissas, ou o driver ───────────────
+$cresceu = [];
+foreach (['1', '6', '7', '8', '9', '11', '13'] as $cod) {
+    $m = invocar($ctrl, 'montar', $ids[$cod], $ano, $corte);
+    $base = array_column($m['linhas'], 'projecao', 'codigo')['1'];
+    $rb = $m['desafio']['desafio']['receita_bruta'];
+    if (abs($rb - $base * 1.06) > 2) {
+        $cresceu[] = "{$cod}: " . round($rb) . ' vs ' . round($base * 1.06);
     }
 }
-prova('receita bruta = 2026 realista (desta tela) × 1,06 em 9 negócios, ao real; Usina = resultado realista × 1,045',
-    !$divergem, implode(' | ', $divergem));
-prova('preservar margem: nenhum negócio com margem de desafio pior que a de 2026 realista',
-    !$margemPior, implode(' | ', $margemPior));
+prova('sem driver (e sem meta de volume no banco local): receita bruta = base de 12 meses × 1,06 (IPCA 4,5 + PIB 1,5)',
+    !$cresceu, implode(' | ', $cresceu));
+$u = invocar($ctrl, 'montar', $ids['17'], $ano, $corte);
+$ud = $u['desafio']['desafio'];
+prova('Usina sem receita: sem margem, e com o resultado da base (R$ 411.930)',
+    $ud['margem'] === null && abs($ud['resultado'] - 411930) < 2, (string)round($ud['resultado']));
+$pec = invocar($ctrl, 'montar', $ids['2'], $ano, $corte)['desafio']['desafio'];
+prova('Pecuária no realista da planilha: R$ 732.218.694', abs($pec['receita_bruta'] - 732218693.78) < 1, (string)round($pec['receita_bruta']));
 
 // ── 3. A carga: estrita, e sobrescreve o ano inteiro ────────────────────────
 $pdo = Database::conn();
@@ -134,8 +111,12 @@ $recusa = function (array $dados) use ($pdo): string {
         return $e->getMessage();
     }
 };
-$teste = $carga;
-$teste['ano'] = 2099;
+// Uma carga de valores (o formato do desafio de 18/11), para provar a carga estrita.
+$teste = ['chave' => 'teste', 'ano' => 2099, 'meta_margem' => 2.0, 'fonte' => 'teste', 'metodo' => 'teste',
+    'decidido_em' => '2026-11-23', 'valores' => []];
+foreach (['1', '2', '4', '6', '7', '8', '9', '11', '12', '13', '17'] as $cod) {
+    $teste['valores'][$cod] = ['receita_bruta' => 1000, 'receita_liquida' => 900, 'resultado' => 10, 'nota' => 'teste'];
+}
 $m = $teste;
 $m['valores']['1']['resultado'] = 9101824.5;
 prova('valor que não é inteiro em reais é recusado', str_contains($recusa($m), 'resultado inválido'), $recusa($m));
@@ -166,7 +147,7 @@ prova('negócio fora do cadastro não derruba a carga: fica anotado', $r['ignora
 $pdo->exec('DELETE FROM negocio_desafio WHERE ano = 2099');
 $pdo->exec('DELETE FROM desafio_ano WHERE ano = 2099');
 prova('o desafio de 2027 não foi tocado pela carga de teste',
-    count(invocar($ctrl, 'desafioDoAno', 2027)['por_negocio']) === 11);
+    (invocar($ctrl, 'desafioDoAno', 2027)['meta_margem'] ?? null) == 2.0);
 
 echo "\n" . count($bad) . " falha(s), {$ok} verde(s).\n";
 exit($bad ? 1 : 0);
