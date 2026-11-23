@@ -3190,15 +3190,35 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     pela conta da diretriz, mas só aparecia na composição abaixo. `contaPessoal`
     acrescenta "Provisão do PPR" (mês e ano, de `pessoal_diretriz`) e "Benefícios
     + PPR" (`data-pessoas="ppr"` / `"total_ppr"`) no ano da proposta.
-  - **O número de salários do PPR é um CAMPO** (`PPR_SALARIOS` em
-    `Projecao::BENEFICIOS`, pedido do cliente, 2026-11-23: "deve ser um campo,
-    assim como são os campos de diretrizes"). Em 2027 vem da diretriz
-    (`DIRETRIZES[2027]['beneficios']['PPR_SALARIOS'] = 1.5`, selo, a API recusa);
-    nos anos sem diretriz o negócio digita (0 a 12 salários, `negocio_beneficio`),
-    e vazio é sem PPR (a 8.5 cresce só o reajuste). `dadosDePessoal` devolve o
-    efetivo em `ppr_salarios`, que `crescimentosDoNegocio` passa à conta; o texto
-    da tela usa o número do campo, não "1,5" fixo. A antiga chave
-    `DIRETRIZES[2027]['ppr_salarios']` saiu — não a reponha (seriam duas fontes).
+  - **Questionamentos 2025 × 2026 nas Oportunidades** (pedido do cliente,
+    2026-11-23: "traga o apontamento do que está sendo realizado num ano e não no
+    outro, ou vice-versa, para questionar se vai continuar ou deixou de acontecer
+    e deveria continuar"; ele escolheu comparar 2025 × 2026 realizado).
+    `Oportunidades::questionamentos(negócio, ano, filial)`: conta reduzida a conta
+    reduzida, jan–corte dos dois anos (`dre_reduzida_valor`; anos em cortes
+    diferentes não se comparam e devolvem null). **Parou**: R$ 10 mil ou mais no
+    ano anterior e menos de 10% disso no atual; **Começou**: o inverso. Rateios
+    corporativos (blocos 14 e 16) ficam de fora. Tela: `secaoQuestionamentos`, no
+    cartão de oportunidades do negócio e da filial (no celular os valores vão sob
+    o nome); no Corporativo, a contagem por negócio (`questionamentos_negocios`).
+    Base: `dre_nivel3_2025_10.php` (Qlik DRE Gerencial Nova, nível 3 de 2025,
+    conferido contra as somas do Qlik). 37 filiais de 2025 não existem no cadastro
+    de hoje (o negócio 1 mudou de estrutura): `CargaNivel3` as ignora com
+    `filiais_sem_cadastro = 'ignorar'` (só no ano histórico) e elas ficam no total
+    do negócio; `corrigir_rateio = false` porque 2025 não tem DRE de filial.
+  - **O número de salários do PPR é um CAMPO com TETO** (`PPR_SALARIOS` em
+    `Projecao::BENEFICIOS`; pedidos do cliente de 2026-11-23: "deve ser um campo,
+    assim como são os campos de diretrizes" e, em seguida, "precisa ser editável,
+    caso o negócio resolva pagar menos PPR; a mais não deve permitir… já deve vir
+    preenchido"). A diretriz o traz em `DIRETRIZES[ano]['maximos']` — um terceiro
+    tipo, além de fixos e sugeridos: o padrão é a diretriz, o negócio digita
+    MENOS, e mais é recusado (`maximoDaDiretriz`, `gravarBeneficio`, e a tela já
+    barra antes de ir ao servidor). `beneficiosEfetivos` aplica o teto também ao
+    que está guardado (se a diretriz baixar, o digitado acima vale o teto).
+    Apagar volta à diretriz. Ano sem diretriz: o negócio digita de 0 a 12, vazio
+    é sem PPR. A diretriz de cada ano é o cliente quem passa (vai em
+    `DIRETRIZES`). `dadosDePessoal` devolve o efetivo em `ppr_salarios`; a chave
+    antiga `DIRETRIZES[2027]['ppr_salarios']` saiu — não a reponha.
   - **Quadro por FILIAL** (`filial_pessoas`, carga `pessoas_2026_11_23.php`, do
     Qlik em 23/11/2026, "traga os dados mais recentes de cada negócio e filial"):
     o quadro de novembro de cada filial, conferido na geração contra a soma do

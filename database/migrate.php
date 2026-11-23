@@ -979,6 +979,8 @@ foreach ([2026] as $anoDre) {
 require_once __DIR__ . '/../app/Services/CargaNivel3.php';
 foreach ([
     'dre_nivel3_2026_10.php',
+    // 2025 no mesmo período, para os questionamentos 2025 × 2026 (2026-11-23).
+    'dre_nivel3_2025_10.php',
 ] as $arquivo) {
     $n3 = require __DIR__ . '/' . $arquivo;
     if (App\Services\CargaConteudo::jaAplicada($pdo, $n3['chave'])) {
@@ -996,6 +998,10 @@ foreach ([
         . "{$r['rateios_corrigidos']} filial(is).\n";
     if ($r['ignorados']) {
         echo 'migrate: negócio(s) fora do cadastro ignorado(s) na carga do nível 3: ' . implode(', ', $r['ignorados']) . ".\n";
+    }
+    if ($r['filiais_ignoradas']) {
+        echo 'migrate: filial(is) de ' . $n3['ano'] . ' fora do cadastro de hoje (ficam só no total do negócio): '
+            . implode(', ', $r['filiais_ignoradas']) . ".\n";
     }
 }
 

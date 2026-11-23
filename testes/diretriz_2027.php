@@ -52,11 +52,17 @@ prova('a diretriz de 2027 é a do documento: pessoal 5,50 fixo; IPCA 4,50 e PIB 
     $d['premissas'] === ['PESSOAS' => 5.5] && $d['sugeridas'] === ['IPCA' => 4.5, 'PIB' => 1.5],
     json_encode([$d['premissas'], $d['sugeridas']]));
 prova('vale R$ 500, prêmio assiduidade R$ 200, prêmio metas R$ 500, PPR de 1,5 salário',
-    $d['beneficios'] === ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0, 'PPR_SALARIOS' => 1.5]);
-// O número de salários do PPR é um CAMPO, como os da diretriz (pedido do cliente, 2026-11-23).
-prova('PPR_SALARIOS é um campo de benefícios, fixado em 2027 pela diretriz e livre nos outros anos',
-    in_array('PPR_SALARIOS', Projecao::BENEFICIOS, true) && Projecao::fixadaPelaDiretriz(2027, 'PPR_SALARIOS') === 1.5
-    && Projecao::fixadaPelaDiretriz(2028, 'PPR_SALARIOS') === null);
+    $d['beneficios'] === ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0]
+    && $d['maximos'] === ['PPR_SALARIOS' => 1.5]);
+// O número de salários do PPR é um CAMPO com TETO na diretriz (pedido do cliente,
+// 2026-11-23): vem preenchido com ela, o negócio pode baixar, acima é recusado.
+prova('PPR_SALARIOS é um campo: em 2027 não é fixo, tem teto de 1,5; nos outros anos é livre',
+    in_array('PPR_SALARIOS', Projecao::BENEFICIOS, true) && Projecao::fixadaPelaDiretriz(2027, 'PPR_SALARIOS') === null
+    && Projecao::maximoDaDiretriz(2027, 'PPR_SALARIOS') === 1.5 && Projecao::maximoDaDiretriz(2028, 'PPR_SALARIOS') === null);
+prova('sem digitar, o PPR de 2027 vale a diretriz (1,5)', Projecao::beneficiosEfetivos(2027, [])['PPR_SALARIOS'] === 1.5);
+prova('o negócio pode BAIXAR: 1 salário digitado vale 1', Projecao::beneficiosEfetivos(2027, ['PPR_SALARIOS' => 1.0])['PPR_SALARIOS'] === 1.0);
+prova('acima da diretriz não passa do teto (2 guardado vale 1,5)', Projecao::beneficiosEfetivos(2027, ['PPR_SALARIOS' => 2.0])['PPR_SALARIOS'] === 1.5);
+prova('os benefícios fixos continuam por cima do digitado', Projecao::beneficiosEfetivos(2027, ['ALIMENTACAO' => 600.0])['ALIMENTACAO'] === 500.0);
 prova('crescimento real, IPCA e PIB NÃO são fixos (cada negócio edita); pessoal é',
     Projecao::fixadaPelaDiretriz(2027, 'CRESCIMENTO') === null && Projecao::fixadaPelaDiretriz(2027, 'IPCA') === null
     && Projecao::fixadaPelaDiretriz(2027, 'PIB') === null && Projecao::fixadaPelaDiretriz(2027, 'PESSOAS') === 5.5);

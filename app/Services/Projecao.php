@@ -244,10 +244,14 @@ class Projecao
      *  - Prêmio assiduidade R$ 200 e prêmio metas R$ 500 por colaborador que
      *    cumprir os requisitos.
      *  - PPR: 1,5 salário, provisionado mensalmente em 1/12 (`PPR_SALARIOS`, um
-     *    campo do bloco de premissas como o vale e os abonos — pedido do cliente,
-     *    2026-11-23: "o número de salários do PPR deve ser um campo, assim como
-     *    são os campos de diretrizes". Fixo em 2027; nos anos sem diretriz, o
-     *    negócio digita, e vazio é sem PPR).
+     *    campo do bloco de premissas). É um TETO, não um valor fixo (pedido do
+     *    cliente, 2026-11-23: "precisa ser editável, caso o negócio resolva pagar
+     *    menos PPR; a mais não deve permitir… já deve vir preenchido"): vem
+     *    preenchido com a diretriz, o negócio pode baixar, e acima é recusado.
+     *    Nos anos sem diretriz o negócio digita (0 a 12), e vazio é sem PPR.
+     *
+     * Um terceiro tipo de valor, então: `maximos` — o padrão é a diretriz, o
+     * negócio digita MENOS, e mais é recusado (`maximoDaDiretriz`).
      *  - IPCA 4,50% (Focus de 06/11/2026) e PIB agropecuário 1,50%.
      *  - Demais despesas operacionais: sem crescimento sobre 2026 — que é o que a
      *    proposta já faz por omissão (vale a projeção).
@@ -261,7 +265,8 @@ class Projecao
             'fonte' => 'Diretrizes para o Planejamento 2027 (16/11/2026)',
             'premissas' => ['PESSOAS' => 5.5],
             'sugeridas' => ['IPCA' => 4.5, 'PIB' => 1.5],
-            'beneficios' => ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0, 'PPR_SALARIOS' => 1.5],
+            'beneficios' => ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0],
+            'maximos' => ['PPR_SALARIOS' => 1.5],
         ],
     ];
 
@@ -282,10 +287,28 @@ class Projecao
         return array_replace($d['sugeridas'] ?? [], $digitadas, $d['premissas'] ?? []);
     }
 
-    /** Os benefícios que VALEM num ano: os digitados, com os da diretriz por cima. */
+    /**
+     * Os benefícios que VALEM num ano: os máximos da diretriz como padrão, os
+     * digitados por cima — sem passar do máximo (se a diretriz baixar depois, o
+     * digitado acima dela passa a valer o teto) — e os FIXOS da diretriz por
+     * cima de tudo.
+     */
     public static function beneficiosEfetivos(int $ano, array $digitados): array
     {
-        return array_replace($digitados, self::diretriz($ano)['beneficios'] ?? []);
+        $d = self::diretriz($ano) ?? [];
+        $maximos = $d['maximos'] ?? [];
+        $v = array_replace($maximos, $digitados);
+        foreach ($maximos as $k => $max) {
+            $v[$k] = min((float)$v[$k], (float)$max);
+        }
+        return array_replace($v, $d['beneficios'] ?? []);
+    }
+
+    /** O teto da diretriz para a chave naquele ano (o negócio digita menos), ou null. */
+    public static function maximoDaDiretriz(int $ano, string $chave): ?float
+    {
+        $m = self::diretriz($ano)['maximos'][$chave] ?? null;
+        return $m === null ? null : (float)$m;
     }
 
     /** A chave é fixada pela diretriz naquele ano? (premissa ou benefício) */
@@ -467,7 +490,7 @@ class Projecao
                 // por cima do digitado, `dadosDePessoal`); sem ele, sem PPR.
                 array_key_exists('ppr_salarios', (array)$pessoal)
                     ? $pessoal['ppr_salarios']
-                    : (self::diretriz($anoPlan)['beneficios']['PPR_SALARIOS'] ?? null),
+                    : self::maximoDaDiretriz($anoPlan, 'PPR_SALARIOS'),
                 $fator
             );
             if ($detalhe) {
