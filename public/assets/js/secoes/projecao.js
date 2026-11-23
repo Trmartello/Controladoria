@@ -562,6 +562,14 @@ const SecaoProjecao = {
       </div>`;
   },
 
+  /**
+   * O faturamento padrão veio de um DRIVER de volume (`DesafioDrivers`: Pecuária,
+   * Leite, Postos de leite, Rações) e não de IPCA + PIB + crescimento.
+   */
+  temDriver(d) {
+    return !!(d && d.driver && d.driver.crescimento !== undefined && d.driver.crescimento !== null);
+  },
+
   /** O que as premissas fazem com o FATURAMENTO: projeção, acréscimos e o piso. */
   contaFaturamento(d) {
     const l = (this.visao(d).linhas || []).find((x) => x.codigo === '1.1');
@@ -580,13 +588,16 @@ const SecaoProjecao = {
         <thead><tr><th>Faturamento ${d.ano_planejamento} (Receita de Vendas)</th><th class="text-end">No ano</th></tr></thead>
         <tbody>
           <tr><td>Base 12 meses (${this.rotuloDoze(d)})</td><td class="text-end">${r(proj)}</td></tr>
-          ${parte('IPCA', 'IPCA')}${parte('PIB', 'PIB')}${parte('CRESCIMENTO', 'Crescimento desejado')}
-          ${piso === null ? '' : `<tr class="fw-bold"><td>Mínimo de ${d.ano_planejamento} <span class="fw-normal text-muted small">(+${p(pisoPct)}: a DRE não aceita menos)</span></td>
+          ${this.temDriver(d)
+    ? `<tr data-faturamento="driver"><td colspan="2" class="small">Driver de volume (no lugar de IPCA + PIB + crescimento):
+        ${Modal.esc(d.driver.nota)}</td></tr>`
+    : `${parte('IPCA', 'IPCA')}${parte('PIB', 'PIB')}${parte('CRESCIMENTO', 'Crescimento desejado')}`}
+          ${piso === null ? '' : `<tr class="fw-bold"><td>Mínimo de ${d.ano_planejamento} <span class="fw-normal text-muted small">(${pisoPct < 0 ? '−' : '+'}${p(Math.abs(pisoPct))}: a DRE não aceita menos)</span></td>
             <td class="text-end" data-faturamento="piso">${r(piso)}</td></tr>`}
           ${acima ? `<tr><td>Proposta lançada na DRE <span class="text-muted small">(acima do mínimo)</span></td>
             <td class="text-end" data-faturamento="proposta">${r(prop)}</td></tr>` : ''}
           <tr class="fw-bold"><td>Impacto no faturamento</td>
-            <td class="text-end" data-faturamento="impacto">${prop >= proj ? '+' : ''}${r(prop - proj)}</td></tr>
+            <td class="text-end" data-faturamento="impacto">${prop >= proj ? '+' : '−'}${r(Math.abs(prop - proj))}</td></tr>
         </tbody>
       </table>`;
   },
@@ -1182,10 +1193,11 @@ const SecaoProjecao = {
             </tbody>
           </table>
         </div>
-        <div class="small text-muted mb-1">O desafio fixa <strong>faturamento, receita líquida e resultado líquido</strong>. Os valores com
-          <strong>≈</strong> são estimados a partir da projeção de ${x.ano - 1}: a margem bruta mantém o percentual de ${x.ano - 1}; despesas e
-          rateios (do negócio e administrativos) ficam na projeção, sem crescimento; o resultado do negócio é o líquido do desafio
-          menos os rateios administrativos, e o resultado antes dos rateios é ele menos os rateios do negócio. Estrutura nova da DRE
+        <div class="small text-muted mb-1">O desafio é a <strong>proposta padrão</strong> do negócio: a base de 12 meses
+          (${this.rotuloDoze(d)}) com as premissas do painel — IPCA, PIB e % de crescimento na receita (ou o driver de volume,
+          abaixo), pessoal pela diretriz (reajuste, vale, prêmios e PPR) —, custo e deduções acompanhando a receita (margem
+          bruta preservada) e as demais despesas e rateios na base, sem crescimento. É de onde a proposta parte: a coluna
+          Proposta é ele com o que o negócio lançou, e a Diferença é o efeito dos lançamentos. Estrutura nova da DRE
           gerencial (a que vale em ${x.ano}).</div>
         ${this.notaTributos(x.tributos, x.ano)}
         <div class="small text-muted" id="desafio-nota">
@@ -1209,8 +1221,8 @@ const SecaoProjecao = {
   notaDesafio(x) {
     return `Diretriz do Horizonte 1: <strong>preservar margem</strong> — pode crescer, sem perder margem.
       ${Modal.esc(x.metodo)} A meta da direção é <strong>${this.pct(x.meta_margem / 100, 0)} de margem líquida</strong>
-      para a cooperativa. Referência decidida em ${String(x.decidido_em).split('-').reverse().join('/')}, só de leitura:
-      recarregar a DRE não a move.`;
+      para a cooperativa. Método decidido em ${String(x.decidido_em).split('-').reverse().join('/')}; o desafio é
+      recalculado da base e das premissas — muda se as premissas do painel ou as metas de volume mudarem.`;
   },
 
   cartaoDesafioCorporativo(d) {
@@ -1895,8 +1907,8 @@ const SecaoProjecao = {
     if (!l || !l.piso_aplicado) return '';
     return `<div class="alert alert-warning py-2 px-3 small mb-2" id="cenario-abaixo-do-piso">
         O cenário da planilha (Receita de Vendas R$ ${this.moeda(d.cenario.receita_vendas)}) ficou <strong>abaixo do mínimo de
-        ${d.ano_planejamento}</strong> — IPCA + PIB + crescimento desejado, ${this.pct((Number(l.piso_percentual) || 0) / 100, 2)}
-        sobre a projeção. A DRE usa o mínimo, <strong>R$ ${this.moeda(l.proposta)}</strong>; o cenário continua guardado.
+        ${d.ano_planejamento}</strong> — ${this.temDriver(d) ? 'o driver de volume do desafio' : 'IPCA + PIB + crescimento desejado'}, ${this.pct((Number(l.piso_percentual) || 0) / 100, 2)}
+        sobre a base de 12 meses. A DRE usa o mínimo, <strong>R$ ${this.moeda(l.proposta)}</strong>; o cenário continua guardado.
       </div>`;
   },
 
@@ -2666,12 +2678,12 @@ const SecaoProjecao = {
       // O valor recusado está no formato do motor (com a CBS); a tela mostra sem ela.
       const t = (v.filialId ? (d.filial.tributos_dre || {}) : (d.tributos_dre || {})).taxa || 0;
       const lancado = Number(l.lancado_abaixo) * (1 - t);
-      texto = `O lançamento de R$ ${this.moeda(lancado)} na Receita de Vendas${d.filial ? ' desta filial' : ''} ficou abaixo de IPCA + PIB + crescimento desejado e não vale: a linha está no mínimo. O valor continua guardado e volta a valer se as premissas baixarem; para outro valor, lance de novo, igual ou acima do mínimo.`;
+      texto = `O lançamento de R$ ${this.moeda(lancado)} na Receita de Vendas${d.filial ? ' desta filial' : ''} ficou abaixo ${this.temDriver(d) ? 'do driver de volume do desafio' : 'de IPCA + PIB + crescimento desejado'} e não vale: a linha está no mínimo. O valor continua guardado e volta a valer se as premissas baixarem; para outro valor, lance de novo, igual ou acima do mínimo.`;
     }
     if (!texto) return '';
     return `<div class="alert alert-warning py-2 px-3 small mb-2" id="projecao-piso-faturamento">
         <strong>Faturamento no mínimo.</strong> ${Modal.esc(texto)}
-        Mínimo de ${d.ano_planejamento}: <strong>${minimo}</strong> (${this.pct(piso / 100, 2)} sobre a projeção).
+        Mínimo de ${d.ano_planejamento}: <strong>${minimo}</strong> (${this.pct(piso / 100, 2)} sobre a base de 12 meses).
       </div>`;
   },
 

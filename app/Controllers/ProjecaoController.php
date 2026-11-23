@@ -6,6 +6,7 @@ use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
 use App\Services\DesafioCota;
+use App\Services\DesafioDrivers;
 use App\Services\Oportunidades;
 use App\Services\Projecao;
 use App\Services\Reforma;
@@ -119,6 +120,7 @@ class ProjecaoController
         // base (último mês) — o Corporativo não planeja, só totaliza.
         $pessoasSoma = ['por_ano' => [], 'base' => null];
         $propostas = [];
+        $desafios = [];
         $tributosDre = [];
         $oportunidades = [];
         $estoque = [];
@@ -156,6 +158,9 @@ class ProjecaoController
                 ];
             }
             $propostas[(int)$n['id']] = self::resumoDaProposta($m['linhas']);
+            if (isset($m['desafio']['desafio'])) {
+                $desafios[(int)$n['id']] = $m['desafio']['desafio'];
+            }
             if ($m['pessoal_alertas']) {
                 $nomesFilial = array_column($m['filiais'], 'nome', 'id');
                 $codsFilial = array_column($m['filiais'], 'cod_filial', 'id');
@@ -239,7 +244,7 @@ class ProjecaoController
             // A visão do ano por negócio e o total — o mesmo quadro do Painel Balanço.
             'visao_ano_negocios' => $this->visaoDoAno(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
             'visao_ano_total' => $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
-            'desafio' => $this->desafioCorporativo($ano + 1, $propostas),
+            'desafio' => $this->desafioCorporativo($ano + 1, $propostas, $desafios),
             'tributos_dre' => Reforma::somarComoEComoFica($tributosDre),
             // Por negócio, os totais do quadro único (itens + eventos pontuais).
             'oportunidades_negocios' => $oportunidades,
@@ -327,6 +332,11 @@ class ProjecaoController
             $p85,
             Projecao::dadosDePessoal([$negocioId], $ano, $anoProposta)[$negocioId] ?? null
         );
+        // O DRIVER do faturamento (pedido do cliente, 2026-11-23): nos negócios que
+        // derivam de outro (Pecuária, Leite, Postos de leite, Rações), a Receita de
+        // Vendas padrão — e o piso dela — é a do volume, não IPCA + PIB.
+        $codNegocio = (string)(Database::um('SELECT cod_negocio FROM negocio WHERE id = ?', [$negocioId])['cod_negocio'] ?? '');
+        [$cresc, $driver] = DesafioDrivers::aplicar($cresc, $codNegocio, $anoProposta, $linhas);
 
         // A proposta de CADA filial, sempre — ela serve a duas perguntas: no
         // modo filial é ela que forma o total do negócio; no modo negócio é
@@ -352,6 +362,9 @@ class ProjecaoController
             $porFilial
         );
 
+        // O DESAFIO é a proposta padrão: a mesma base e os mesmos crescimentos,
+        // sem nenhum lançamento — o ponto de partida de onde a proposta anda.
+        $linhasDesafio = Projecao::aplicar($linhas, [], $cresc, $taxaPc);
         $linhas = $modo === 'FILIAL' && $filiais
             ? Projecao::somarFiliais($linhas, $propostasFilial)
             : Projecao::aplicar($linhas, $this->lancados($projId), $cresc, $taxaPc);
@@ -444,7 +457,9 @@ class ProjecaoController
             'visao_ano' => $this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null,
             // O desafio da Controladoria para o ano da proposta, ao lado do que a
             // proposta dá hoje. Só leitura.
-            'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas),
+            'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas, $linhasDesafio, $driver),
+            // De onde veio a Receita de Vendas padrão (driver de volume ou premissas).
+            'driver' => $driver,
             // Como é × como fica: o PIS/COFINS sai das deduções e vira a linha da
             // CBS acima da Receita Bruta (pedido do cliente, 2026-11-18).
             'tributos_dre' => Reforma::comoEComoFica($linhas, $tributacao, $corte),
@@ -503,9 +518,16 @@ class ProjecaoController
     }
 
     /**
-     * O desafio do ano (`desafio_ano` + `negocio_desafio`), por id de negócio.
-     * Null quando não há desafio carregado para o ano — a tela some com o
-     * cartão em vez de mostrar uma meta zerada.
+     * O cabeçalho do desafio do ano (`desafio_ano`: meta de margem, método,
+     * fonte). Null quando não há desafio para o ano — a tela some com o cartão
+     * em vez de mostrar uma meta zerada.
+     *
+     * Desde 2026-11-23 o desafio é CALCULADO, não carregado (pedido do cliente:
+     * "gere um novo desafio… e a partir dali ele continua fazendo a projeção"):
+     * é a proposta padrão de cada negócio — a base de 12 meses com as premissas
+     * do painel e os drivers de volume (`DesafioDrivers`), sem lançamento. Quem
+     * o monta é `montar`, que já tem tudo à mão; aqui fica só o cabeçalho.
+     * `negocio_desafio` (o desafio carregado de 18/11) não é mais lido.
      */
     private function desafioDoAno(int $anoPlan): ?array
     {
@@ -513,54 +535,43 @@ class ProjecaoController
         if (!$cab) {
             return null;
         }
-        $carregado = [];
-        foreach (Database::todos(
-            'SELECT negocio_id, receita_bruta, receita_liquida, resultado, nota FROM negocio_desafio WHERE ano = ?',
-            [$anoPlan]
-        ) as $r) {
-            $carregado[(int)$r['negocio_id']] = [
-                'receita_bruta' => (float)$r['receita_bruta'],
-                'receita_liquida' => (float)$r['receita_liquida'],
-                'resultado' => (float)$r['resultado'],
-                'nota' => $r['nota'],
-            ];
-        }
-        // Os Postos de resfriamento pela cota Aurora da meta do Leite × R$ 0,06
-        // por litro (pedido do cliente, 2026-11-23), lida na hora: mudou a cota
-        // no site, mudou o desafio.
-        $porNegocio = [];
-        foreach (DesafioCota::aplicar($carregado, $anoPlan) as $id => $d) {
-            $porNegocio[$id] = self::comMargem([
-                'receita_bruta' => $d['receita_bruta'],
-                'receita_liquida' => $d['receita_liquida'],
-                'resultado' => $d['resultado'],
-            ]) + ['nota' => $d['nota']] + (isset($d['cota']) ? ['cota' => $d['cota']] : []);
-        }
         return [
             'ano' => (int)$cab['ano'],
             'meta_margem' => (float)$cab['meta_margem'],
             'metodo' => $cab['metodo'],
             'fonte' => $cab['fonte'],
             'decidido_em' => $cab['decidido_em'],
-            'por_negocio' => $porNegocio,
+        ];
+    }
+
+    /** Os três números do desafio a partir das linhas da proposta padrão, com a nota do driver. */
+    private static function desafioDasLinhas(array $linhasDesafio, ?array $driver): array
+    {
+        $r = self::resumoDaProposta($linhasDesafio);
+        return self::comMargem([
+            'receita_bruta' => $r['receita_bruta'],
+            'receita_liquida' => $r['receita_liquida'],
+            'resultado' => $r['resultado'],
+        ]) + [
+            'nota' => $driver['nota'] ?? 'Base de 12 meses × premissas (IPCA + PIB + crescimento).',
+            'driver' => $driver['driver'] ?? 'PREMISSAS',
         ];
     }
 
     /** O desafio de UM negócio e a proposta dele hoje, lado a lado. */
-    private function desafioDoNegocio(int $negocioId, int $anoPlan, array $linhas): ?array
+    private function desafioDoNegocio(int $negocioId, int $anoPlan, array $linhas, array $linhasDesafio, ?array $driver): ?array
     {
         $d = $this->desafioDoAno($anoPlan);
-        if (!$d || !isset($d['por_negocio'][$negocioId])) {
+        if (!$d) {
             return null;
         }
-        $desafio = $d['por_negocio'][$negocioId];
-        unset($d['por_negocio']);
+        $desafio = self::desafioDasLinhas($linhasDesafio, $driver);
         $prop = self::resumoDaProposta($linhas);
         $trib = Oportunidades::tributos([$negocioId], $anoPlan - 1)[$negocioId] ?? null;
         $desafio['pis_cofins'] = self::pisCofinsSobre($desafio['receita_bruta'], $trib);
         $prop['pis_cofins'] = self::pisCofinsSobre($prop['receita_bruta'], $trib);
         return $d + ['desafio' => $desafio, 'proposta' => $prop, 'tributos' => $trib,
-            'escada' => self::escadaDoDesafio($desafio, $linhas)];
+            'escada' => self::escadaDoDesafio($linhasDesafio, $linhas)];
     }
 
     /**
@@ -568,64 +579,35 @@ class ProjecaoController
      * faturamento, receita líquida, margem bruta, despesas, resultado antes dos
      * rateios (linha 13), rateios do negócio (14), resultado do negócio (15),
      * rateios administrativos (16), resultado líquido (18) e margem líquida — do
-     * desafio e da proposta, já na estrutura NOVA da DRE (a que vale em 2027).
+     * desafio e da proposta, na estrutura NOVA da DRE (a que vale em 2027).
      *
-     * O desafio só FIXOU três números (faturamento, receita líquida e resultado
-     * líquido). Os degraus do meio saem da projeção de 2026 e vão marcados como
-     * ESTIMADOS: a margem bruta mantém o percentual de 2026 sobre a receita
-     * líquida do desafio ("preservar margem"); despesas e as duas camadas de
-     * rateio ficam na projeção (sem crescimento, como a diretriz pede para as
-     * despesas); o resultado do negócio é o líquido do desafio menos os rateios
-     * administrativos, e o resultado antes dos rateios é ele menos os rateios do
-     * negócio — a diferença entre esse e a margem bruta menos as despesas é o que
-     * as demais linhas (outros valores, financeiro, impostos) teriam de dar.
+     * Desde que o desafio é a proposta padrão (2026-11-23), os degraus do meio
+     * saem da DRE dele, linha a linha — nenhum é mais estimado. `estimados` fica
+     * vazio (a tela ainda sabe marcá-los, se um desafio carregado voltar).
      */
-    private static function escadaDoDesafio(array $desafio, array $linhas): array
+    private static function escadaDoDesafio(array $linhasDesafio, array $linhas): array
     {
-        $l = array_column($linhas, null, 'codigo');
-        $proj = static fn ($c) => isset($l[$c]) ? (float)$l[$c]['projecao'] : 0.0;
-        $prop = static fn ($c) => isset($l[$c]) && $l[$c]['proposta'] !== null ? (float)$l[$c]['proposta'] : null;
-        $pct = static fn ($a, $b) => $a !== null && $b ? $a / $b * 100 : null;
-        $rolProj = $proj('3');
-        $rolD = $desafio['receita_liquida'];
-        // Estrutura nova: líquido = resultado do negócio + rateios administrativos;
-        // resultado do negócio = após impostos + rateios do negócio. Os rateios
-        // ficam na projeção (sem crescimento); os resultados saem do líquido.
-        $lbD = $rolProj != 0.0 ? $proj('5') / $rolProj * $rolD : null;
-        $ratAdmD = $proj(Projecao::LINHA_RATEIOS_ADM);
-        $ratNegD = $proj(Projecao::LINHA_RATEIOS_NEGOCIO);
-        $rnD = $desafio['resultado'] - $ratAdmD;
-        $antesD = $rnD - $ratNegD;
-        $propRol = $prop('3');
-        return [
-            'desafio' => [
-                'receita_bruta' => $desafio['receita_bruta'], 'receita_liquida' => $rolD,
-                'lucro_bruto' => $lbD, 'margem_bruta' => $pct($lbD, $rolD),
-                'despesas' => $proj('7'),
-                'resultado_antes_rateios' => $antesD, 'margem_antes_rateios' => $pct($antesD, $rolD),
-                'rateios_negocio' => $ratNegD,
-                'resultado_negocio' => $rnD, 'margem_negocio' => $pct($rnD, $rolD),
-                'rateios_adm' => $ratAdmD,
-                'resultado' => $desafio['resultado'], 'margem' => $desafio['margem'],
-            ],
-            'proposta' => [
-                'receita_bruta' => $prop('1'), 'receita_liquida' => $propRol,
-                'lucro_bruto' => $prop('5'), 'margem_bruta' => $pct($prop('5'), $propRol),
-                'despesas' => $prop('7'),
-                'resultado_antes_rateios' => $prop(Projecao::LINHA_APOS_IMPOSTOS),
-                'margem_antes_rateios' => $pct($prop(Projecao::LINHA_APOS_IMPOSTOS), $propRol),
-                'rateios_negocio' => $prop(Projecao::LINHA_RATEIOS_NEGOCIO),
-                'resultado_negocio' => $prop(Projecao::LINHA_RESULTADO_NEGOCIO),
-                'margem_negocio' => $pct($prop(Projecao::LINHA_RESULTADO_NEGOCIO), $propRol),
-                'rateios_adm' => $prop(Projecao::LINHA_RATEIOS_ADM),
-                'resultado' => $prop(Projecao::LINHA_RESULTADO),
-                'margem' => $pct($prop(Projecao::LINHA_RESULTADO), $propRol),
-            ],
-            'estimados' => ['lucro_bruto', 'margem_bruta', 'despesas', 'resultado_antes_rateios', 'margem_antes_rateios',
-                'rateios_negocio', 'resultado_negocio', 'margem_negocio', 'rateios_adm'],
-        ];
+        $degraus = static function (array $ls): array {
+            $p = array_column($ls, 'proposta', 'codigo');
+            $v = static fn ($c) => isset($p[$c]) && $p[$c] !== null ? (float)$p[$c] : null;
+            $pct = static fn ($a, $b) => $a !== null && $b ? $a / $b * 100 : null;
+            $rol = $v('3');
+            return [
+                'receita_bruta' => $v('1'), 'receita_liquida' => $rol,
+                'lucro_bruto' => $v('5'), 'margem_bruta' => $pct($v('5'), $rol),
+                'despesas' => $v('7'),
+                'resultado_antes_rateios' => $v(Projecao::LINHA_APOS_IMPOSTOS),
+                'margem_antes_rateios' => $pct($v(Projecao::LINHA_APOS_IMPOSTOS), $rol),
+                'rateios_negocio' => $v(Projecao::LINHA_RATEIOS_NEGOCIO),
+                'resultado_negocio' => $v(Projecao::LINHA_RESULTADO_NEGOCIO),
+                'margem_negocio' => $pct($v(Projecao::LINHA_RESULTADO_NEGOCIO), $rol),
+                'rateios_adm' => $v(Projecao::LINHA_RATEIOS_ADM),
+                'resultado' => $v(Projecao::LINHA_RESULTADO),
+                'margem' => $pct($v(Projecao::LINHA_RESULTADO), $rol),
+            ];
+        };
+        return ['desafio' => $degraus($linhasDesafio), 'proposta' => $degraus($linhas), 'estimados' => []];
     }
-
 
     /**
      * O desafio no Corporativo: cada negócio (desafio × proposta), o total, e a
@@ -634,9 +616,12 @@ class ProjecaoController
      *
      * @param array<int,array> $propostas resumo da proposta de cada negócio consolidado
      */
-    private function desafioCorporativo(int $anoPlan, array $propostas): ?array
+    private function desafioCorporativo(int $anoPlan, array $propostas, array $desafios): ?array
     {
         $d = $this->desafioDoAno($anoPlan);
+        if ($d) {
+            $d['por_negocio'] = $desafios;
+        }
         if (!$d) {
             return null;
         }
@@ -980,9 +965,11 @@ class ProjecaoController
                     [(int)$proj['id'], $filialId, (int)$conta['id']]
                 );
                 $tela = $this->montar($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], $filialId);
+                $comDriver = isset($tela['driver']['crescimento']);
                 $tela['aviso_piso'] = sprintf(
-                    'A Receita de Vendas não pode ficar abaixo de IPCA + PIB + crescimento desejado (%s%%). '
+                    'A Receita de Vendas não pode ficar abaixo %s (%s%%). '
                     . 'O valor digitado foi recusado e a linha voltou ao piso.',
+                    $comDriver ? 'do driver de volume do desafio' : 'de IPCA + PIB + crescimento desejado',
                     number_format((float)$rec['piso_percentual'], 2, ',', '.')
                 );
             }

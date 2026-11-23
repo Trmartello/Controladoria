@@ -19,6 +19,7 @@ require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
 require_once __DIR__ . '/../app/Services/Metas.php';
 require_once __DIR__ . '/../app/Services/DesafioCota.php';
+require_once __DIR__ . '/../app/Services/DesafioDrivers.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
 require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Services/CargaApoio.php';
@@ -90,8 +91,9 @@ $montar = new ReflectionMethod($ctrl, 'montar');
 $montar->setAccessible(true);
 $m = $montar->invoke($ctrl, $ids['9'], $ano, $corte, 0);
 $des = $m['desafio']['desafio'];
-prova('desafio de Supermercados: PIS + COFINS estimado = R$ 282,8 mi × 2,93% (≈ R$ 8,3 mi)',
-    abs($des['pis_cofins']['total'] - $des['receita_bruta'] * $s['taxa_pis_cofins']) < 1 && abs($des['pis_cofins']['total'] - 8295400) < 1000,
+// Desafio calculado (2026-11-23): base de 12 meses × 1,06 = R$ 279,5 mi.
+prova('desafio de Supermercados: PIS + COFINS estimado = R$ 279,5 mi × 2,93% (≈ R$ 8,2 mi)',
+    abs($des['pis_cofins']['total'] - $des['receita_bruta'] * $s['taxa_pis_cofins']) < 1 && abs($des['pis_cofins']['total'] - 8197241) < 1000,
     (string)round($des['pis_cofins']['total']));
 $pro = $m['desafio']['proposta'];
 $l = array_column($m['linhas'], null, 'codigo');

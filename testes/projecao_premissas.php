@@ -28,6 +28,7 @@ require_once __DIR__ . '/../app/Core/Versao.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
 require_once __DIR__ . '/../app/Services/Metas.php';
 require_once __DIR__ . '/../app/Services/DesafioCota.php';
+require_once __DIR__ . '/../app/Services/DesafioDrivers.php';
 
 use App\Core\Database;
 use App\Services\Projecao;

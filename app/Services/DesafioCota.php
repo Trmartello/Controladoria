@@ -15,7 +15,9 @@ use App\Core\Database;
  *
  * O faturamento do desafio dos Postos deixa de ser o de 2026 × (1 + IPCA + PIB)
  * e passa a ser **a cota Aurora do ano, da meta de indicadores do Leite, ×
- * R$ 0,055 por litro**. É lido na hora, do próprio banco: mudou a cota no site,
+ * R$ 0,055 por litro** — e o do Leite, a mesma cota × o preço médio por litro
+ * dos 12 meses. Quem aplica é `DesafioDrivers` (desde 2026-11-23 o desafio é
+ * a proposta padrão; aqui fica a leitura da cota). É lido na hora, do próprio banco: mudou a cota no site,
  * mudou o desafio dos Postos — sem carga nova, e a meta do Leite e o desafio do
  * Posto ficam sempre no mesmo volume.
  *
@@ -27,10 +29,9 @@ use App\Core\Database;
  *    lido como mil litros (×1.000); acima, como litros. O Leite capta ~110
  *    milhões de litros por ano: em mil litros isso é ~110 mil, em litros ~110
  *    milhões — não há como confundir as duas faixas, e a tela diz qual foi lida.
- *  - A receita líquida segue a relação ROL/ROB do desafio carregado, e o
- *    resultado líquido a MARGEM dele (a diretriz "preservar margem", a mesma
- *    dos demais negócios). Sem a cota (indicador ausente ou sem meta no ano),
- *    vale o desafio carregado, inalterado.
+ *  - O resto da DRE é a proposta padrão (custo e deduções acompanham a
+ *    receita: margem bruta preservada). Sem a cota (indicador ausente ou sem
+ *    meta no ano), o negócio vai por base × premissas, e a nota diz.
  */
 class DesafioCota
 {
@@ -78,48 +79,5 @@ class DesafioCota
             'meses' => count((array)$doAno['meses']),
             'indicador' => (string)$ind['nome'],
         ];
-    }
-
-    /**
-     * Troca o desafio dos Postos pelo da cota, mantendo a relação ROL/ROB e a
-     * margem do desafio carregado.
-     *
-     * @param array<int,array> $porNegocio negocio_id => ['receita_bruta', 'receita_liquida', 'resultado', 'nota']
-     * @return array<int,array> o mesmo mapa, com os Postos refeitos (quando há cota)
-     */
-    public static function aplicar(array $porNegocio, int $ano): array
-    {
-        $postos = Database::um('SELECT id FROM negocio WHERE cod_negocio = ?', [self::NEGOCIO_POSTOS]);
-        $id = $postos ? (int)$postos['id'] : 0;
-        if (!$id || !isset($porNegocio[$id])) {
-            return $porNegocio;
-        }
-        $cota = self::cotaDoLeite($ano);
-        if (!$cota) {
-            return $porNegocio;
-        }
-        $d = $porNegocio[$id];
-        $rob = (float)$d['receita_bruta'];
-        $rol = (float)$d['receita_liquida'];
-        $razao = $rob > 0 ? $rol / $rob : 1.0;
-        $margem = $rol != 0.0 ? (float)$d['resultado'] / $rol : 0.0;
-        $novaRob = $cota['litros'] * self::RS_POR_LITRO;
-        $novaRol = $novaRob * $razao;
-        $porNegocio[$id] = [
-            'receita_bruta' => round($novaRob, 2),
-            'receita_liquida' => round($novaRol, 2),
-            'resultado' => round($novaRol * $margem, 2),
-            'nota' => sprintf(
-                'Faturamento pela cota Aurora do Leite (meta "%s" de %d): %s litros × R$ %s por litro resfriado%s; '
-                . 'margem do desafio preservada.',
-                $cota['indicador'],
-                $ano,
-                number_format($cota['litros'], 0, ',', '.'),
-                number_format(self::RS_POR_LITRO, 3, ',', '.'),
-                $cota['em_mil_litros'] ? ' (meta lançada em mil litros)' : ''
-            ),
-            'cota' => $cota,
-        ] + $d;
-        return $porNegocio;
     }
 }

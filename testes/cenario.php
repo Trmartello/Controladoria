@@ -21,6 +21,7 @@ require_once __DIR__ . '/../app/Services/Bloqueio.php';
 require_once __DIR__ . '/../app/Services/Projecao.php';
 require_once __DIR__ . '/../app/Services/Metas.php';
 require_once __DIR__ . '/../app/Services/DesafioCota.php';
+require_once __DIR__ . '/../app/Services/DesafioDrivers.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
 require_once __DIR__ . '/../app/Services/Reforma.php';
 require_once __DIR__ . '/../app/Services/CargaApoio.php';
@@ -74,14 +75,16 @@ $lanc = Database::um("SELECT v.* FROM projecao_valor v JOIN projecao p ON p.id =
 prova('a Receita de Vendas da proposta está lançada como VALOR, no formato novo (sem a CBS)',
     // R$ 1: a bateria de tela tira e devolve o lançamento digitando o valor em reais.
     $lanc && $lanc['entrada'] === 'VALOR' && abs((float)$lanc['valor'] - $c['receita_vendas']) < 1, json_encode($lanc));
-// O cenário da planilha ficou ABAIXO do mínimo de 2027 (IPCA + PIB + crescimento
-// desejado): desde 2026-11-21 ele não vale — a linha fica no piso e guarda o
-// recusado (formato do motor, com a CBS) em `lancado_abaixo`.
-prova('o cenário da planilha (formato antigo, o do motor) ficou abaixo do piso e é guardado como recusado',
-    !empty($l11['piso_aplicado']) && abs($l11['lancado_abaixo'] - $c['faturamento_antigo']) < 2, (string)($l11['lancado_abaixo'] ?? ''));
-prova('e a proposta da Receita de Vendas é o piso: projeção × (1 + IPCA + PIB + desejado)',
-    $l11['proposta_origem'] === 'PREMISSA' && abs($l11['proposta'] - $l11['projecao'] * (1 + $l11['piso_percentual'] / 100)) < 1
-    && $l11['proposta'] > $c['faturamento_antigo'], (string)$l11['proposta']);
+// Desde o desafio calculado (2026-11-23) o mínimo da Pecuária é o DRIVER — o
+// próprio cenário realista da planilha (`DesafioDrivers`). O lançamento deixa de
+// ficar abaixo do piso (até 2026-11-22 o piso era IPCA + PIB sobre a projeção):
+// vale como foi lançado, e é o mesmo número do desafio.
+prova('o cenário da planilha (formato antigo, o do motor) vale: é o próprio piso do driver, nada recusado',
+    empty($l11['piso_aplicado']) && $l11['proposta_origem'] === 'VALOR' && abs($l11['proposta'] - $c['faturamento_antigo']) < 2,
+    (string)$l11['proposta']);
+prova('e o piso da Receita de Vendas é o realista da planilha (R$ 732.218.694), não IPCA + PIB + desejado',
+    abs($l11['projecao'] * (1 + $l11['piso_percentual'] / 100) - 732218693.78) < 1 && ($d['driver']['driver'] ?? '') === 'PLANILHA',
+    (string)round($l11['projecao'] * (1 + $l11['piso_percentual'] / 100)));
 $tela = (new ReflectionMethod($ctrl, 'paraTela'));
 $tela->setAccessible(true);
 $t = $tela->invoke(null, $d);

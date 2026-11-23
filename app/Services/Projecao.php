@@ -1164,6 +1164,10 @@ class Projecao
         }
 
         $pessoal = self::dadosDePessoal($negocioIds, $ano, $anoPlan);
+        $cods = [];
+        foreach (Database::todos('SELECT id, cod_negocio FROM negocio WHERE id IN (' . $marcas . ')', $negocioIds) as $n) {
+            $cods[(int)$n['id']] = (string)$n['cod_negocio'];
+        }
         // Os tributos de 2026: a taxa de PIS/COFINS que converte o que se lança na
         // 1.1 e na 2.3 (formato de 2027) — a mesma conta da tela.
         $tributos = Oportunidades::tributos($negocioIds, $ano);
@@ -1227,6 +1231,8 @@ class Projecao
                 }
             }
             [$cresc, , $minimo] = self::crescimentosDoNegocio($anoPlan, $premissasPorNegocio[$id] ?? [], $p85, $pessoal[$id] ?? null);
+            // O driver do faturamento — a mesma conta da tela (`DesafioDrivers`).
+            [$cresc] = DesafioDrivers::aplicar($cresc, $cods[$id] ?? '', $anoPlan, $linhas);
             $taxaPc = Reforma::pisCofinsDoNegocio($linhas, $tributos[$id] ?? null, $corte)['taxa'];
 
             $porFilial = [];

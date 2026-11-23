@@ -6846,8 +6846,11 @@ async function provasApoioDesafio(page, largura) {
     ['receita_bruta', 'receita_liquida', 'lucro_bruto', 'margem_bruta', 'despesas', 'resultado_antes_rateios', 'rateios_negocio',
       'resultado_negocio', 'margem_negocio', 'rateios_adm', 'resultado', 'margem', 'pis_cofins']
       .every((k) => n.degraus.includes(k)), n.degraus.join(','));
-  t(`${l} os degraus do meio do desafio vêm marcados como estimados (≈)`,
-    /^≈/.test(n.lb[1]) && /^≈/.test(n.rn[1]) && /^≈/.test(n.rat[1]), `${n.lb[1]} | ${n.rn[1]} | ${n.rat[1]}`);
+  // Desafio CALCULADO (2026-11-23): a escada sai da DRE dele, sem ≈; e as Agropecuárias,
+  // sem lançamento, têm proposta = desafio (a proposta nasce dele).
+  t(`${l} os degraus do desafio saem da DRE dele (sem ≈), iguais aos da proposta sem lançamento`,
+    !/≈/.test(n.lb[1] + n.rn[1] + n.rat[1]) && n.lb[1] === n.lb[2] && n.rn[1] === n.rn[2] && n.rat[1] === n.rat[2],
+    `${n.lb.join('|')} · ${n.rn.join('|')} · ${n.rat.join('|')}`);
   t(`${l} e a coluna da proposta é a DRE dela na estrutura nova (linhas 5, 14, 15 e 16)`,
     Math.abs(n.lbProp - n.l5) <= 1 && Math.abs(n.rnProp - n.l13) <= 1 && Math.abs(n.ratProp - n.l14) <= 1 && Math.abs(n.admProp - n.l16) <= 1,
     JSON.stringify([n.lbProp, n.l5, n.rnProp, n.l13, n.ratProp, n.l14, n.admProp, n.l16]));
@@ -7714,13 +7717,15 @@ async function provasDesafioEExpansores(page, largura) {
       nota: document.querySelector('#desafio-nota')?.textContent || '',
     };
   });
-  t(`${l} Cereais: desafio de R$ 547.416.689 de receita bruta e R$ 9.101.824 de resultado, margem 1,72%`,
-    api.des && tela.rob === 547416689 && tela.rl === 9101824 && tela.margem === '1,72%', JSON.stringify(tela));
-  t(`${l} a coluna Proposta é a linha 16 da proposta, e a diferença é proposta − desafio`,
-    Math.round(api.rl) === tela.rlProposta && tela.dif === Math.round(api.rl) - 9101824, `${api.rl} | ${JSON.stringify(tela)}`);
+  // Desafio calculado (2026-11-23): base de 12 meses (R$ 574.551.934) × 1,06 = R$ 609.025.050;
+  // o resultado da proposta padrão fica NEGATIVO (−R$ 4.690.972, margem −0,80%).
+  t(`${l} Cereais: desafio de R$ 609.025.050 de receita bruta e −R$ 4.690.972 de resultado, margem −0,80%`,
+    api.des && tela.rob === 609025050 && tela.rl === -4690972 && /0,80%/.test(tela.margem), JSON.stringify(tela));
+  t(`${l} a coluna Proposta é a linha 18 da proposta, e a diferença é proposta − desafio`,
+    Math.round(api.rl) === tela.rlProposta && tela.dif === Math.round(api.rl) - tela.rl, `${api.rl} | ${JSON.stringify(tela)}`);
   t(`${l} o desafio é só de leitura (nenhum campo no cartão)`, tela.campos === 0);
   t(`${l} a nota diz de onde saiu e lembra a meta de 2% de margem líquida`,
-    /Volta à margem de 2025/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recarregar a DRE não a move/.test(tela.nota), tela.nota.slice(0, 120));
+    /driver de volume a definir/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recalculado da base/.test(tela.nota), tela.nota.slice(0, 160));
 
   // Na filial não há desafio: ele é do negócio.
   const temFilial = await page.evaluate(() => (document.querySelector('#projecao-filial')?.options.length || 0) > 1);
@@ -7746,10 +7751,11 @@ async function provasDesafioEExpansores(page, largura) {
       expansores: [...document.querySelectorAll('details.expansor')].map((d) => d.dataset.expansor).join(','),
     };
   });
-  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.694.590.776, resultado 63.687.733, margem 1,79%)`,
-    corp.negocios === 11 && corp.robTotal === '3.694.590.776' && corp.rlTotal === '63.687.733' && corp.margem === '1,79%', JSON.stringify(corp));
-  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 71,27 mi, faltam R$ 7,58 mi`,
-    /2% seriam R\$ 71,27 mi/.test(corp.metaDesafio) && /faltam R\$ 7,58 mi/.test(corp.metaDesafio), corp.metaDesafio);
+  // Desafio calculado sobre a base de 12 meses (2026-11-23).
+  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.669.910.454, resultado 39.994.271, margem 1,13%)`,
+    corp.negocios === 11 && corp.robTotal === '3.669.910.454' && corp.rlTotal === '39.994.271' && corp.margem === '1,13%', JSON.stringify(corp));
+  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,57 mi, faltam R$ 30,58 mi`,
+    /2% seriam R\$ 70,57 mi/.test(corp.metaDesafio) && /faltam R\$ 30,58 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
   t(`${l} Corporativo: visão, desafio, oportunidades, tributos e pessoas como expansores (sem premissas: nada se lança ali)`,
     corp.expansores === 'visao,desafio,oportunidades,tributos,pessoas', corp.expansores);
