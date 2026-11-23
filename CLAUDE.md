@@ -39,9 +39,10 @@ lançamento nenhum (`$linhasDesafio` em `montar`). Composição:
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, R$ 32,4 mi de resultado, margem 0,91% (a meta de 2% pediria R$ 70,97
+faturamento, R$ 34,6 mi de resultado, margem 0,97% (a meta de 2% pediria R$ 70,97
 mi). Era R$ 45,6 mi e 1,28%; R$ 45,8 mi e 1,29% com a 3227 fora da base do pessoal;
-R$ 32,4 mi com a depreciação carregada na 8.10 (ver abaixo).
+R$ 32,4 mi com a depreciação carregada na 8.10 (ver abaixo); R$ 34,6 mi com a
+depreciação regravada sem o grupo contábil 1272.
 
 **Drivers do faturamento** (`App\Services\DesafioDrivers`). Viram o crescimento
 padrão da 1.1 e, portanto, o PISO dela:
@@ -90,8 +91,10 @@ a distribuição entre filiais. Detalhe em "Regras de negócio", `pessoalDaDiret
 **Depreciação (8.10) CARREGADA e TRAVADA** (pedido do cliente, 2026-11-23: "Pegue
 na depreciação por negócio, por filial e por mês. Na conta número 3128. E este
 campo não deve permitir edição, pois esse já é o total da depreciação"). Fonte:
-duas planilhas do cliente somadas — bens existentes + investimentos **sem os
-destinos contábeis 1 (Despesa) e 3 (Ativo Diferido)** — em
+duas planilhas do cliente somadas — bens existentes **sem o grupo contábil 1272**
+(regravação pedida pelo cliente em 2026-11-23: "desconsidere o grupo 1272"; R$
+2,17 mi em 350 linhas, 44 filiais) + investimentos **sem os destinos contábeis 1
+(Despesa) e 3 (Ativo Diferido)** — em
 `database/depreciacao_2027.php` (`CargaDepreciacao` → `negocio_depreciacao`, mês a
 mês, 4 casas como a fonte). Na proposta a 8.10 vale a carga no negócio, em cada
 filial (filial sem carga = 0) e no desafio, com cadeado e sem célula; o lançado
@@ -100,9 +103,10 @@ não vale e a API recusa (apagar continua aceito). Negócio sem carga no ano: a
 FORA — decisão do cliente, 2026-11-23: "18 e 20 não devem compor o sistema"; não
 os mapeie para outro negócio. As filiais 47 e 100 de Cereais (fora do cadastro dele, R$
 553,56) só entram no total do negócio (resíduo a distribuir). **Pendente com o
-cliente:** a carga dá R$ 18,33 mi contra R$ 4,99 mi projetados na 8.10 para 2026
-(Cereais 8,87 mi × 0,55 mi; Rações 2,99 × 0,12; UBS 0,58 × 0,06; Pecuária cai a
-6 mil) — o resultado do desafio cai de R$ 45,8 mi para R$ 32,4 mi. Em 2026 parte
+cliente:** a carga dá R$ 16,16 mi (era R$ 18,33 mi com o grupo 1272) contra R$ 4,99 mi
+projetados na 8.10 para 2026 (Cereais 8,76 mi × 0,55 mi; Rações 2,99 × 0,12; UBS
+0,58 × 0,06; Pecuária cai a 6 mil) — o resultado do desafio cai de R$ 45,8 mi para
+R$ 34,6 mi. Em 2026 parte
 da depreciação está fora da 3128 (3388/3389 variação fiscal × societária, 9852
 rateio em 4.1/14.3/16.1, 3342 direito de uso na 8.9): confirmar se a planilha
 não soma o que já está nessas contas. Provas: `testes/depreciacao.php`.
