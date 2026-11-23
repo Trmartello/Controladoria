@@ -3396,6 +3396,23 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   `aplicar` por voltar ao piso — e avisar a Pecuária antes. Na bateria,
   `comPisoAberto` baixa o piso (IPCA 0, PIB 0, crescimento −100%) só para
   devolver o lançamento que as provas tiram.
+  **Desafio dos Postos de resfriamento pela cota Aurora** (pedido do cliente,
+  2026-11-23: "o posto recebe ~6 centavos por litro resfriado, e o valor só
+  aumenta com o volume"; "pegue o indicador Cota Aurora… e projete 0,06").
+  `DesafioCota::aplicar`, chamado em `desafioDoAno`: o faturamento do desafio do
+  negócio 12 passa a ser a meta **"Cota Aurora"** do planejamento do Leite
+  (negócio 4) no ano — soma dos meses, por `Metas::anexarSeries` — × **R$ 0,06**
+  por litro, sem reajuste. Lido NA HORA: mudou a cota no site, mudou o desafio,
+  sem carga. A meta está em **mil litros** na tela (jan = 8.950 = 8,95 mi de
+  litros): ano abaixo de 10 milhões é lido ×1.000; acima, como litros. ROL pela
+  relação ROL/ROB e resultado pela margem do desafio carregado ("preservar
+  margem"); sem a meta, vale o carregado. Vale no Corporativo (soma). Prova:
+  `testes/desafio_cota.php`. Revalidação de 2026-11-23 para os outros negócios de
+  volume (só no chat, não carregada): Fábrica de Rações por toneladas produzidas
+  × R$ 31,5/t (suínos do sistema Aurora vendidos pelo negócio 6 + bovinos,
+  suínos e aves dos fomentados, vendidos pelas Lojas) e UTM pelo volume de
+  produtos UTM vendido pelas Agropecuárias — falta a cota/alojamento de suínos
+  de 2027 da Pecuária.
   **Nível 3 da DRE — a conta reduzida** (pedido do cliente, 2026-11-21: "na DRE
   gerencial temos 3 níveis de abertura; o terceiro totaliza o segundo… ajuste
   para que fique exatamente igual como está lá"). Decisões do cliente: o
