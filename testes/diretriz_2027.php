@@ -147,7 +147,65 @@ prova('o Painel faz a MESMA conta da tela (custo, pessoal e resultado) nos ' . c
     count($painel) >= 10 && !$divergem, implode(' | ', $divergem));
 
 $pdo = Database::conn();
-$pdo = Database::conn();
+
+// ── 3b. A conta reduzida 3227 (acerto do PPR) fora da base ──────────────────
+// Pedido do cliente, 2026-11-23: "estornando esses 1 milhão de PPR da conta
+// reduzida 3227. A base tem que ir para 44 milhões e pouco. Faça isso para todos
+// os negócios e filiais". De mão: projeção −1.000; contas 780 até o corte, vale 80,
+// prêmio 40, PPR líquido 60 = provisão 80 − estorno 20 (a 3227 com +20).
+// Sem a 3227: base 1.020, contas 800, peças 80 + 40 + 80 = 25%.
+$folha3 = ['pessoal_ate' => 780, 'vale_ate' => 80, 'premio_ate' => 40, 'ppr_ate' => 60,
+    'salario_despesa' => 50, 'salario_custo' => 50, 'mes_ate' => 10, 'ano' => 2026];
+$p3 = Projecao::pessoalDaDiretriz(-1000.0, $folha3, $calc, 5.5, 1.5, 1.0, ['realizado' => 20.0]);
+// base = 1.020 × 75% = 765 × 1,055 = 807,075; + 60 + 158,25 = 1.025,325.
+prova('3227: a base sai sem o estorno (1.000 + 20 = 1.020) e tira vale, prêmio e a PROVISÃO (80) — 25%',
+    perto($p3['projecao_sem_ppr'], -1020.0) && perto($p3['ppr_provisao_2026'], 80.0) && perto($p3['parte_2026'], 0.25)
+    && perto($p3['pecas_2026'], 255.0) && perto($p3['base_reajustada'], 807.075), json_encode($p3));
+prova('3227: 8.5 = −1.025,325 (+2,53% sobre a projeção, +0,52% sobre a base sem a 3227)',
+    perto($p3['proposta'], -1025.325) && perto($p3['percentual'], 2.5325) && perto($p3['percentual_sem_ppr'], 1025.325 / 1020 * 100 - 100),
+    json_encode([$p3['proposta'], $p3['percentual'], $p3['percentual_sem_ppr']]));
+$p3b = Projecao::pessoalDaDiretriz(-1000.0, $folha3, $calc, 5.5, 1.5);
+prova('sem o nível 3 carregado vale a conta anterior (PPR líquido na parte, projeção inteira)',
+    perto($p3b['pecas_2026'], 1000 * 180 / 780) && perto($p3b['projecao_sem_ppr'], -1000.0) && perto($p3b['ppr_acerto'], 0.0));
+[$c3, , $min3] = Projecao::crescimentosDoNegocio(2027, [], -1000.0,
+    ['folha' => $folha3, 'calc' => $calc, 'ppr_salarios' => 1.5, 'ppr26' => ['realizado' => 20.0]]);
+$fA = [['codigo' => '8.5', 'projecao' => -100.0]];
+$fB = [['codigo' => '8.5', 'projecao' => -900.0]];
+$gA = Projecao::crescimentoPessoalDaFilial($c3, $fA, 20.0, $min3);
+$gB = Projecao::crescimentoPessoalDaFilial($c3, $fB, 0.0, $min3);
+prova('filial: cresce sobre a projeção DELA sem a 3227 DELA, e as filiais somam o negócio',
+    perto(100 * (1 + $gA / 100) + 900 * (1 + $gB / 100), 1025.325) && perto(100 * (1 + $gA / 100), 120 * 1025.325 / 1020)
+    && perto($gB, $min3['percentual_sem_ppr']), json_encode([$gA, $gB, $c3['8.5']]));
+
+// No banco: Agropecuárias (cód. 8), o exemplo do cliente — a 3227 tem +1.049.311
+// em jan–out/2026 e a projeção de 43.464.705 vira 44.514.016.
+$agro = $ids['8'];
+$ma = $montar->invoke($ctrl, $agro, $ano, $corte, 0);
+$pa = $ma['pessoal_diretriz'];
+prova('Agropecuárias: 3227 de +R$ 1.049.311 fora da base; base de 2026 = R$ 44.514.016',
+    $pa && perto($pa['ppr_acerto'], 1049311, 1) && perto(-$pa['projecao_sem_ppr'], -$pa['projecao'] + 1049311, 1)
+    && perto(-$pa['projecao_sem_ppr'], 44514016, 1), json_encode([$pa['ppr_acerto'] ?? null, $pa['projecao_sem_ppr'] ?? null]));
+prova('Agropecuárias: o PPR de 2026 que sai é a provisão (3419): R$ 2.710.489',
+    perto($pa['ppr_provisao_2026'], 2710489, 2), (string)($pa['ppr_provisao_2026'] ?? ''));
+$l85 = array_column($ma['linhas'], null, 'codigo')['8.5'];
+prova('Agropecuárias: as filiais, cada uma sem a 3227 dela, somam o negócio (R$ 10 de folga do arredondamento)',
+    $l85['distribuido'] !== null && abs($l85['distribuido'] - $pa['proposta']) < 10,
+    round($l85['distribuido']) . ' / ' . round($pa['proposta']));
+// O Painel no MODO FILIAL (é quando as filiais formam o total) faz a mesma conta da tela.
+$projAgro = Database::um('SELECT id, modo FROM projecao WHERE negocio_id = ? AND ano = ?', [$agro, $ano + 1]);
+if ($projAgro) {
+    $pdo->prepare('UPDATE projecao SET modo = ? WHERE id = ?')->execute(['FILIAL', $projAgro['id']]);
+    try {
+        $tela = array_column($montar->invoke($ctrl, $agro, $ano, $corte, 0)['linhas'], 'proposta', 'codigo');
+        $pn = Projecao::resumoDosNegocios([$agro], $ano, $corte, $ano + 1, ['8.5', '18'])[$agro]['proposta'] ?? [];
+        prova('modo filial: Painel = tela na 8.5 e no resultado das Agropecuárias',
+            abs(($pn['8.5'] ?? 0) - $tela['8.5']) < 1 && abs(($pn['18'] ?? 0) - $tela['18']) < 1,
+            json_encode([$pn, $tela['8.5'], $tela['18']]));
+    } finally {
+        $pdo->prepare('UPDATE projecao SET modo = ? WHERE id = ?')->execute([$projAgro['modo'], $projAgro['id']]);
+    }
+}
+
 // ── 4. A carga da folha ─────────────────────────────────────────────────────
 $carga = require __DIR__ . '/../database/folha_2026_10.php';
 $recusa = function (array $x) use ($pdo): string {

@@ -39,8 +39,8 @@ lançamento nenhum (`$linhasDesafio` em `montar`). Composição:
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, R$ 45,6 mi de resultado, margem 1,28% (a meta de 2% pediria R$ 70,97
-mi).
+faturamento, R$ 45,8 mi de resultado, margem 1,29% (a meta de 2% pediria R$ 70,97
+mi; era R$ 45,6 mi e 1,28% antes de a 3227 sair da base do pessoal).
 
 **Drivers do faturamento** (`App\Services\DesafioDrivers`). Viram o crescimento
 padrão da 1.1 e, portanto, o PISO dela:
@@ -75,6 +75,16 @@ Lançamento abaixo é recusado e a linha fica no piso (`piso_aplicado`).
 
 **Despesas com Pessoal (8.5).** Lançável. Abaixo do mínimo (quadro × custo × 5,5%)
 grava com ⚠ no negócio, na filial e no Painel.
+
+**A base da 8.5 sai SEM a conta reduzida 3227** (PARTICIPACAO NOS RESULTADOS, o
+acerto do PPR; pedido do cliente, 2026-11-23: "estornando esses 1 milhão de PPR da
+conta reduzida 3227. A base tem que ir para 44 milhões e pouco. Faça isso para
+todos os negócios e filiais"). Agropecuárias: 43.464.705 + 1.049.311 (estorno) =
+**44.514.016**. O "PPR de 2026" que sai da base passa a ser só a provisão (3419,
+R$ 2,71 mi nas Agropecuárias). Cada filial cresce sobre a projeção DELA sem a 3227
+DELA, e o mínimo da filial também. Como a conta anterior já tirava o PPR líquido
+(estorno dentro), o total do negócio quase não muda (Agropecuárias −R$ 78 mil); muda
+a distribuição entre filiais. Detalhe em "Regras de negócio", `pessoalDaDiretriz`.
 
 **Oportunidades.** Janela de 12 meses (nov/25–out/26) contra os 12 anteriores, com
 Considerar/Desconsiderar e a marca de avaliado (`negocio_item_avaliacao`). Os
@@ -3262,6 +3272,42 @@ questionamentos 2025 × 2026 vêm de `dre_reduzida_12m`.
     espelham as 3.07 (ato cooperativo) e NÃO entram. Na Agropecuária as 3.07.01.21*
     somam R$ 4,6 mi a mais que a linha 8.5 — por isso as peças entram como parte,
     não em reais. O cartão Pessoas e benefícios mostra a conta inteira.
+  - **A conta reduzida 3227 sai da base** (pedido do cliente, 2026-11-23, com o
+    print do Qlik das Agropecuárias: 8.5 jan–out = −35.502.339, com a 3227 em
+    +1.049.311 — "estornando esses 1 milhão de PPR da conta reduzida 3227. A base
+    tem que ir para 44 milhões e pouco. Faça isso para todos os negócios e
+    filiais"). O PPR de 2026 está em DUAS reduzidas da 8.5: **3419** (PROVISAO
+    PARTICIPACAO NOS RESULTADO, 8.5.12, a provisão) e **3227** (PARTICIPACAO NOS
+    RESULTADOS, 8.5.7, o acerto contra a provisão — estorno quando positiva). O
+    `ppr_ate` da folha é a soma das duas (conferido: Agropecuárias 2.710.490 −
+    1.049.311 = 1.661.178; Pecuária 653.125 + 48.204 = 701.329).
+    - Conta (`pessoalDaDiretriz`, parâmetro `$ppr26`, de `dadosDePessoal` →
+      `pprRealizado`, lido de `dre_reduzida_valor` pela reduzida, constante
+      `CONTA_ACERTO_PPR`): base = projeção − 3227 realizada (sinal da DRE);
+      contas = `pessoal_ate` sem a 3227; provisão = `ppr_ate` + 3227; peças =
+      (vale + prêmio + provisão) ÷ contas sem a 3227, aplicadas à base. Sem nível 3
+      carregado (`$ppr26` null) vale a conta anterior.
+    - **O total do negócio quase não muda, e isso é esperado**: a conta anterior
+      já tirava o PPR LÍQUIDO (provisão − estorno), o que equivale a devolver o
+      estorno. Agropecuárias: base reajustada 39.930.380 → 39.852.426 (−R$ 78
+      mil, porque a parte agora é aplicada à base maior). Somar o estorno à base
+      E continuar tirando o PPR líquido contaria o estorno duas vezes — não faça.
+      O que a mudança traz: a base mostrada (44.514.016) e a **distribuição entre
+      filiais**.
+    - **Filiais**: cada uma cresce sobre a projeção DELA sem a 3227 DELA, ao % do
+      negócio sem a 3227 (`percentual_sem_ppr`; `crescimentoPessoalDaFilial` /
+      `crescimentosDaFilial`, na tela e no Painel). Filial sem 3227 usa o mesmo
+      % (a dela é zero) — o % com a 3227 do negócio dentro faria a soma escapar.
+      As filiais somam o negócio (R$ 6 de folga, arredondamento). O mínimo da
+      filial é (projeção − 3227 dela) × (1 + `percentual_atual_sem_ppr`).
+      Agropecuárias: filiais com estorno grande passam de +16,25% para ~+18–19%
+      (filial 49: 3227 de +82.206).
+    - Tela: "+ estorno do PPR … fora da base (conta reduzida 3227)" e "Base de
+      2026 sem a 3227" (`data-pessoal="acerto-ppr"` / `"sem-acerto"`), e a linha
+      de peças diz "provisão do PPR". Desafio do banco local: resultado 45.565.066
+      → 45.755.843 (margem 1,28% → 1,29%, faltam R$ 25,21 mi para os 2%).
+    - Provas: `testes/diretriz_2027.php` seção 3b (conta de mão, filiais somando,
+      Agropecuárias 44.514.016 e provisão 2.710.489, Painel = tela no modo filial).
   - **A linha 8.5 se LANÇA, com MÍNIMO e ⚠** (pedido do cliente, 2026-11-23,
     revendo o de 21/11 que a travava): o padrão é a conta da diretriz (cartão
     Pessoas e benefícios) e é também o **mínimo**: "o valor pode ficar acima
@@ -3621,7 +3667,7 @@ questionamentos 2025 × 2026 vêm de `dre_reduzida_12m`.
   nota "driver a definir". Sem a meta (cota, bovinos) o negócio cai em base ×
   premissas e a nota diz. Os volumes da base ficam em `DesafioDrivers::BASE`, por
   ano. Prova: `testes/desafio_drivers.php`. No banco local (out/26) o total dá
-  faturamento R$ 3,68 bi, resultado R$ 45,6 mi, margem 1,28% — e Cereais com
+  faturamento R$ 3,68 bi, resultado R$ 45,8 mi, margem 1,29% — e Cereais com
   resultado negativo (−R$ 6,8 mi).
   **Desafio dos Postos de resfriamento pela cota Aurora** (histórico: desde o
   desafio calculado, quem aplica é `DesafioDrivers`; pedido do cliente,
