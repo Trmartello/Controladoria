@@ -412,6 +412,202 @@ class CargaApoio
         return ['negocio' => (string)$dados['negocio'], 'valor' => $valor];
     }
 
+    /**
+     * Itens não recorrentes MÊS A MÊS num período que atravessa anos
+     * (`database/nao_recorrentes_mensal_AAAA_MM_AAAA_MM.php`, pedido do cliente de
+     * 2026-11-23: as oportunidades olham os 12 meses de nov do ano anterior a out do
+     * atual, e os 12 antes). `meses` diz quais ('2024-11', …); regrava SÓ esses meses,
+     * de todos os negócios — os demais (a carga de jan–out do ano corrente) ficam.
+     *
+     * @return array{negocios:int, ignorados:array}
+     */
+    public static function naoRecorrentesPeriodo(PDO $pdo, array $dados): array
+    {
+        $meses = [];
+        foreach ($dados['meses'] ?? [] as $m) {
+            if (!preg_match('/^(\d{4})-(\d{2})$/', (string)$m, $x) || (int)$x[2] < 1 || (int)$x[2] > 12) {
+                throw new RuntimeException("Carga de não recorrentes com mês inválido: {$m}.");
+            }
+            $meses[] = [(int)$x[1], (int)$x[2]];
+        }
+        $valores = $dados['valores'] ?? [];
+        if (!$meses || !$valores) {
+            throw new RuntimeException('Carga de não recorrentes por período sem meses ou sem valores.');
+        }
+        foreach ($valores as $cod => $contas) {
+            foreach ($contas as $conta => $serie) {
+                if (!isset(Oportunidades::CONTAS[(string)$conta])) {
+                    throw new RuntimeException("Carga de não recorrentes com conta fora do catálogo no negócio {$cod}: {$conta}.");
+                }
+                if (!is_array($serie) || count($serie) !== count($meses)) {
+                    throw new RuntimeException("Carga de não recorrentes sem os " . count($meses) . " meses no negócio {$cod}, conta {$conta}.");
+                }
+                foreach ($serie as $v) {
+                    if (!is_int($v)) {
+                        throw new RuntimeException("Carga de não recorrentes com valor inválido no negócio {$cod}, conta {$conta}.");
+                    }
+                }
+            }
+        }
+        $busca = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ?');
+        $ids = [];
+        $ignorados = [];
+        foreach (array_keys($valores) as $cod) {
+            $busca->execute([(string)$cod]);
+            $id = (int)$busca->fetchColumn();
+            if ($id) {
+                $ids[(string)$cod] = $id;
+            } else {
+                $ignorados[] = (string)$cod;
+            }
+        }
+        $dono = !$pdo->inTransaction();
+        if ($dono) {
+            $pdo->beginTransaction();
+        }
+        try {
+            $apaga = $pdo->prepare('DELETE FROM negocio_nao_recorrente_mes WHERE ano = ? AND mes = ?');
+            foreach ($meses as [$a, $m]) {
+                $apaga->execute([$a, $m]);
+            }
+            $ins = $pdo->prepare('INSERT INTO negocio_nao_recorrente_mes (negocio_id, ano, conta, mes, valor) VALUES (?, ?, ?, ?, ?)');
+            foreach ($ids as $cod => $id) {
+                foreach ($valores[$cod] as $conta => $serie) {
+                    foreach (array_values($serie) as $i => $v) {
+                        if ($v !== 0) {
+                            $ins->execute([$id, $meses[$i][0], (string)$conta, $meses[$i][1], $v]);
+                        }
+                    }
+                }
+            }
+            if ($dono) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($dono) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+        return ['negocios' => count($ids), 'ignorados' => $ignorados];
+    }
+
+    /**
+     * A DRE de meses de OUTRO ano nas linhas dos eventos pontuais (8.x, 9.x, 11.x),
+     * do negócio (`dre_valor`, REAL) e das filiais (`dre_valor_filial_mes`):
+     * `database/dre_eventos_AAAA_MM_MM.php`, os meses que completam a janela de 12
+     * meses das oportunidades. Só essas linhas e esses meses são regravados. Filial
+     * fora do cadastro de hoje é ignorada (dita).
+     *
+     * @return array{negocios:int, filiais:int, linhas:int, ignorados:array, filiais_ignoradas:array}
+     */
+    public static function eventosPeriodo(PDO $pdo, array $dados): array
+    {
+        $ano = (int)($dados['ano'] ?? 0);
+        $meses = array_map('intval', $dados['meses'] ?? []);
+        if ($ano < 2000 || !$meses) {
+            throw new RuntimeException('Carga da DRE de eventos sem ano ou sem meses.');
+        }
+        $contas = [];
+        foreach ($pdo->query('SELECT id, codigo FROM dre_conta')->fetchAll(PDO::FETCH_ASSOC) as $c) {
+            $contas[$c['codigo']] = (int)$c['id'];
+        }
+        $confere = static function (array $porLinha, string $onde) use ($contas, $meses): void {
+            foreach ($porLinha as $linha => $serie) {
+                if (!isset($contas[$linha]) || !preg_match('/^(8|9|11)\./', (string)$linha)) {
+                    throw new RuntimeException("Carga da DRE de eventos com linha fora das 8.x, 9.x e 11.x em {$onde}: {$linha}.");
+                }
+                if (!is_array($serie) || count($serie) !== count($meses)) {
+                    throw new RuntimeException("Carga da DRE de eventos sem os meses em {$onde}, linha {$linha}.");
+                }
+            }
+        };
+        foreach ($dados['negocios'] ?? [] as $cod => $l) {
+            $confere($l, "negócio {$cod}");
+        }
+        foreach ($dados['filiais'] ?? [] as $cod => $fs) {
+            foreach ($fs as $f => $l) {
+                $confere($l, "filial {$cod}/{$f}");
+            }
+        }
+        $idsLinhas = array_values(array_filter($contas, static fn ($id, $c) => (bool)preg_match('/^(8|9|11)\./', (string)$c), ARRAY_FILTER_USE_BOTH));
+        $marcasL = implode(',', array_fill(0, count($idsLinhas), '?'));
+        $marcasM = implode(',', array_fill(0, count($meses), '?'));
+        $busca = $pdo->prepare('SELECT id FROM negocio WHERE cod_negocio = ?');
+        $buscaF = $pdo->prepare('SELECT id FROM filial WHERE negocio_id = ? AND cod_filial = ?');
+        $negocios = 0;
+        $filiais = 0;
+        $linhas = 0;
+        $ignorados = [];
+        $filiaisIgnoradas = [];
+        $dono = !$pdo->inTransaction();
+        if ($dono) {
+            $pdo->beginTransaction();
+        }
+        try {
+            $pdo->prepare("DELETE FROM dre_valor WHERE ano = ? AND tipo = 'REAL' AND mes IN ({$marcasM}) AND conta_id IN ({$marcasL})")
+                ->execute(array_merge([$ano], $meses, $idsLinhas));
+            $pdo->prepare("DELETE FROM dre_valor_filial_mes WHERE ano = ? AND mes IN ({$marcasM}) AND conta_id IN ({$marcasL})")
+                ->execute(array_merge([$ano], $meses, $idsLinhas));
+            $insN = $pdo->prepare("INSERT INTO dre_valor (negocio_id, conta_id, ano, mes, tipo, valor) VALUES (?, ?, ?, ?, 'REAL', ?)");
+            $insF = $pdo->prepare('INSERT INTO dre_valor_filial_mes (filial_id, conta_id, ano, mes, valor) VALUES (?, ?, ?, ?, ?)');
+            $idNeg = [];
+            foreach (array_unique(array_merge(array_keys($dados['negocios'] ?? []), array_keys($dados['filiais'] ?? []))) as $cod) {
+                $busca->execute([(string)$cod]);
+                $id = (int)$busca->fetchColumn();
+                if ($id) {
+                    $idNeg[(string)$cod] = $id;
+                } else {
+                    $ignorados[] = (string)$cod;
+                }
+            }
+            foreach ($dados['negocios'] ?? [] as $cod => $porLinha) {
+                if (!isset($idNeg[(string)$cod])) {
+                    continue;
+                }
+                $negocios++;
+                foreach ($porLinha as $linha => $serie) {
+                    foreach (array_values($serie) as $i => $v) {
+                        $insN->execute([$idNeg[(string)$cod], $contas[$linha], $ano, $meses[$i], (float)$v]);
+                        $linhas++;
+                    }
+                }
+            }
+            foreach ($dados['filiais'] ?? [] as $cod => $porFilial) {
+                if (!isset($idNeg[(string)$cod])) {
+                    continue;
+                }
+                foreach ($porFilial as $f => $porLinha) {
+                    $buscaF->execute([$idNeg[(string)$cod], (string)$f]);
+                    $fid = (int)$buscaF->fetchColumn();
+                    if (!$fid) {
+                        $filiaisIgnoradas[] = "{$cod}/{$f}";
+                        continue;
+                    }
+                    $filiais++;
+                    foreach ($porLinha as $linha => $serie) {
+                        foreach (array_values($serie) as $i => $v) {
+                            if ((float)$v != 0.0) {
+                                $insF->execute([$fid, $contas[$linha], $ano, $meses[$i], (float)$v]);
+                                $linhas++;
+                            }
+                        }
+                    }
+                }
+            }
+            if ($dono) {
+                $pdo->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($dono) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+        return ['negocios' => $negocios, 'filiais' => $filiais, 'linhas' => $linhas,
+            'ignorados' => $ignorados, 'filiais_ignoradas' => $filiaisIgnoradas];
+    }
+
     private static function cabecalho(array $dados, string $nome): array
     {
         $ano = (int)($dados['ano'] ?? 0);

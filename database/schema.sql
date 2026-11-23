@@ -1040,6 +1040,37 @@ CREATE TABLE IF NOT EXISTS dre_reduzida_valor (
   CONSTRAINT fk_drv_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- O NÍVEL 3 em JANELAS DE 12 MESES, terminando em (ano_fim, mes_fim): nov/2025 a
+-- out/2026 é (2026, 10). Base dos questionamentos das oportunidades desde o pedido
+-- do cliente de 2026-11-23 ("pegue desde novembro do ano anterior até outubro do
+-- ano atual, e compare com o ano anterior"). Somado no Qlik; filial_id 0 é o negócio.
+CREATE TABLE IF NOT EXISTS dre_reduzida_12m (
+  negocio_id INT NOT NULL,
+  filial_id  INT NOT NULL DEFAULT 0,
+  ano_fim    SMALLINT NOT NULL,
+  mes_fim    TINYINT NOT NULL,
+  codigo     VARCHAR(12) NOT NULL,
+  realizado  DECIMAL(18,2) NOT NULL,
+  PRIMARY KEY (negocio_id, filial_id, ano_fim, mes_fim, codigo),
+  CONSTRAINT fk_dr12_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A AVALIAÇÃO de cada item não recorrente (multas, provisões, indenizações,
+-- perdas, receitas pontuais) pelo negócio, para o ano do planejamento (pedido do
+-- cliente, 2026-11-23): CONSIDERAR (vai se repetir: risco a planejar) ou
+-- DESCONSIDERAR (não se repete: oportunidade). A linha existir é o item estar
+-- AVALIADO. Não muda a DRE sozinha.
+CREATE TABLE IF NOT EXISTS negocio_item_avaliacao (
+  negocio_id   INT NOT NULL,
+  ano          SMALLINT NOT NULL,
+  conta        VARCHAR(32) NOT NULL,
+  decisao      ENUM('CONSIDERAR','DESCONSIDERAR') NOT NULL,
+  avaliado_por INT NULL,
+  avaliado_em  DATETIME NOT NULL,
+  PRIMARY KEY (negocio_id, ano, conta),
+  CONSTRAINT fk_nia_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- A DRE da filial MÊS A MÊS, só onde moram os eventos pontuais (8.x, 9.x, 11.x)
 -- e só onde algum mês passa do piso da detecção — ver
 -- database/eventos_filiais_mensal_2026_10.php. Serve às oportunidades e riscos da

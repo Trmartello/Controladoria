@@ -176,20 +176,47 @@ $ql = [];
 foreach ($q['linhas'] as $l) {
     $ql[$l['tipo'] . ':' . $l['codigo']] = $l;
 }
-prova('Leite: a PDD é ITEM com os meses (out: −5.597.104) e efeito +7.182.466',
-    isset($ql['ITEM:3.11.03.01.01']) && abs($ql['ITEM:3.11.03.01.01']['oportunidade'] - 7182466) < 1
-    && in_array(['mes' => 10, 'valor' => -5597104.0], $ql['ITEM:3.11.03.01.01']['meses'], false),
+// Desde 2026-11-23 o quadro olha os 12 meses de nov/2025 a out/2026: a PDD do
+// Leite é jan–out/2026 (7.182.466) + nov/2025 (−40) = 7.182.426.
+prova('Leite: a PDD é ITEM com os meses da janela (out/26: −5.597.104; nov/25: +40) e efeito +7.182.426',
+    isset($ql['ITEM:3.11.03.01.01']) && abs($ql['ITEM:3.11.03.01.01']['oportunidade'] - 7182426) < 1
+    && in_array(['ano' => 2026, 'mes' => 10, 'valor' => -5597104.0], $ql['ITEM:3.11.03.01.01']['meses'], false)
+    && in_array(['ano' => 2025, 'mes' => 11, 'valor' => 40.0], $ql['ITEM:3.11.03.01.01']['meses'], false),
     json_encode($ql['ITEM:3.11.03.01.01']['meses'] ?? null));
 prova('e a linha 9.2 só mostra o que SOBRA em outubro sem a PDD (−1.578.000), não os −7,18 mi de novo',
     isset($ql['EVENTO:9.2']) && count($ql['EVENTO:9.2']['meses']) === 1 && abs($ql['EVENTO:9.2']['meses'][0]['valor'] + 1578000) < 1,
     json_encode($ql['EVENTO:9.2'] ?? null));
-prova('a receita de juros de outubro (R$ 7,23 mi) é risco',
-    isset($ql['EVENTO:11.1']) && abs($ql['EVENTO:11.1']['risco'] + 7230092) < 1);
-prova('totais: oportunidades = soma das linhas, riscos idem, saldo = os dois (Leite +9.025.328 / −7.693.715)',
+// A mediana passa a ser dos 12 meses (R$ 1.118): o risco é 7.231.275 − 1.118.
+prova('a receita de juros de outubro (R$ 7,23 mi) é risco, contra a mediana dos 12 meses',
+    isset($ql['EVENTO:11.1']) && abs($ql['EVENTO:11.1']['risco'] + 7230157) < 1, (string)($ql['EVENTO:11.1']['risco'] ?? ''));
+prova('totais: oportunidades = soma das linhas, riscos idem, saldo = os dois (Leite +8.999.983 / −7.731.667, 12 meses)',
     abs($q['oportunidade'] - array_sum(array_column($q['linhas'], 'oportunidade'))) < 1e-6
     && abs($q['risco'] - array_sum(array_column($q['linhas'], 'risco'))) < 1e-6
-    && abs($q['oportunidade'] - 9025328) < 2 && abs($q['risco'] + 7693715) < 2 && abs($q['saldo'] - $q['oportunidade'] - $q['risco']) < 1e-6,
+    && abs($q['oportunidade'] - 8999983) < 2 && abs($q['risco'] + 7731667) < 2 && abs($q['saldo'] - $q['oportunidade'] - $q['risco']) < 1e-6,
     round($q['oportunidade']) . ' / ' . round($q['risco']));
+prova('a janela do quadro é nov/2025 a out/2026', $q['periodo'] === ['de' => [2025, 11], 'ate' => [2026, 10]], json_encode($q['periodo']));
+prova('o item traz o total dos 12 meses e o dos 12 meses antes (sinal da DRE): PDD do Leite −7.182.426 contra −110 (dez/24: 70 + abr/25: 40)',
+    abs($ql['ITEM:3.11.03.01.01']['total'] + 7182426) < 1 && abs($ql['ITEM:3.11.03.01.01']['anterior'] + 110) < 1,
+    json_encode([$ql['ITEM:3.11.03.01.01']['total'], $ql['ITEM:3.11.03.01.01']['anterior']]));
+prova('sem avaliação, todos os itens estão a avaliar', $q['avaliacao']['avaliados'] === 0
+    && $q['avaliacao']['pendentes'] === count(array_filter($q['linhas'], static fn ($l) => $l['tipo'] === 'ITEM')));
+// Avaliar: considerar a PDD (vai se repetir) e desconsiderar outra conta.
+$pdo = Database::conn();
+$outra = array_values(array_filter($q['linhas'], static fn ($l) => $l['tipo'] === 'ITEM' && $l['codigo'] !== '3.11.03.01.01'))[0] ?? null;
+try {
+    $pdo->prepare("INSERT INTO negocio_item_avaliacao (negocio_id, ano, conta, decisao, avaliado_em) VALUES (?, 2027, '3.11.03.01.01', 'CONSIDERAR', NOW())")->execute([$leite]);
+    if ($outra) {
+        $pdo->prepare("INSERT INTO negocio_item_avaliacao (negocio_id, ano, conta, decisao, avaliado_em) VALUES (?, 2027, ?, 'DESCONSIDERAR', NOW())")->execute([$leite, $outra['codigo']]);
+    }
+    $q2 = Oportunidades::quadro($leite, 2026, 10);
+    prova('considerar a PDD a põe no total "a planejar" (−7.182.426) e a marca como avaliada',
+        abs($q2['avaliacao']['considerar'] + 7182426) < 1 && $q2['avaliacao']['avaliados'] === ($outra ? 2 : 1), json_encode($q2['avaliacao']));
+    prova('desconsiderar outra põe o total dela em "oportunidade"', !$outra || abs($q2['avaliacao']['desconsiderar'] - $outra['total']) < 1);
+    prova('a avaliação não muda os totais do quadro', abs($q2['oportunidade'] - $q['oportunidade']) < 1e-6 && abs($q2['risco'] - $q['risco']) < 1e-6);
+} finally {
+    $pdo->prepare('DELETE FROM negocio_item_avaliacao WHERE negocio_id = ? AND ano = 2027')->execute([$leite]);
+}
+
 $mensal = Database::um("SELECT COUNT(DISTINCT negocio_id, conta) n FROM negocio_nao_recorrente_mes WHERE ano = 2026")['n'];
 $totais = Database::um("SELECT COUNT(*) n FROM negocio_nao_recorrente WHERE ano = 2026")['n'];
 prova('a carga mensal dos itens tem as mesmas 62 combinações da de totais', (int)$mensal === 62 && (int)$totais === 62, "{$mensal} / {$totais}");

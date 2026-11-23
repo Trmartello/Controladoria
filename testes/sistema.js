@@ -6822,9 +6822,31 @@ async function provasApoioDesafio(page, largura) {
     /\d/.test(n.pisCofins[1] || '') && /\d/.test(n.pisCofins[2] || '')
       && !n.degraus.includes('cbs') && !n.degraus.includes('resultado_com_cbs') && /pelo mesmo valor/.test(n.notaTrib),
     `${n.degraus.join(',')} · ${n.notaTrib.slice(0, 120)}`);
-  t(`${l} quadro único: a PDD da Agropecuária com os meses (out: −4.541.651), total de oportunidades R$ 17.129.168, de riscos −4.069.919 e saldo`,
-    /out: -4\.541\.651/.test(n.pdd) && n.oport === 17129168 && /4\.069\.919/.test(n.risco || '') && /\+13\.059\.249/.test(n.saldo || ''),
-    `${n.oport} / ${n.risco} / ${n.saldo} / ${n.pdd.slice(0, 120)}`);
+  // Desde 2026-11-23, os 12 meses de nov/25 a out/26 (antes, jan–out/26: 17.129.168
+  // / −4.069.919): a PDD de out/26 é a mesma; nov–dez/25 entram nos totais.
+  t(`${l} quadro único (nov/25–out/26): a PDD da Agropecuária com os meses (out/26: −4.541.651), oportunidades R$ 19.097.015, riscos −4.305.536 e saldo`,
+    /out\/26: -4\.541\.651/.test(n.pdd) && /nov\/25/.test(n.pdd) && n.oport === 19097015 && /4\.305\.536/.test(n.risco || '') && /\+14\.791\.479/.test(n.saldo || ''),
+    `${n.oport} / ${n.risco} / ${n.saldo} / ${n.pdd.slice(0, 160)}`);
+  // Considerar / Desconsiderar e a marca de avaliado (pedido do cliente, 2026-11-23).
+  const aval = async () => page.evaluate(() => ({
+    marca: !!document.querySelector('tr[data-item="3.11.03.01.01"] .item-avaliado'),
+    aAvaliar: !!document.querySelector('tr[data-item="3.11.03.01.01"] .item-a-avaliar'),
+    considerar: document.querySelector('[data-avaliacao-total="considerar"] td:last-child')?.textContent.trim(),
+    pendentes: document.querySelector('[data-avaliacao-total="pendentes"] td:last-child')?.textContent.trim(),
+    compara: document.querySelector('[data-item-compara="3.11.03.01.01"]')?.textContent.replace(/\s+/g, ' ').trim(),
+  }));
+  const a0 = await aval();
+  await page.click('.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"] [data-decisao="CONSIDERAR"]');
+  await esperar(page, "!!document.querySelector('tr[data-item=\"3.11.03.01.01\"] .item-avaliado')", 10000);
+  const a1 = await aval();
+  await page.click('.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"] [aria-pressed="true"]');
+  await esperar(page, "!!document.querySelector('tr[data-item=\"3.11.03.01.01\"] .item-a-avaliar')", 10000);
+  const a2 = await aval();
+  t(`${l} o item mostra os 12 meses e os 12 meses antes, e começa "a avaliar"`,
+    a0.aAvaliar && /12 meses: -7\.585\.709/.test(a0.compara || '') && /12 meses antes: -6\.316\.562/.test(a0.compara || ''), JSON.stringify(a0));
+  t(`${l} Considerar a PDD a marca como avaliada e a põe no total "a planejar" (−7.585.709)`,
+    a1.marca && /-7\.585\.709/.test(a1.considerar || '') && a1.pendentes !== a0.pendentes, JSON.stringify(a1));
+  t(`${l} clicar de novo desfaz: volta a "a avaliar"`, a2.aAvaliar && a2.pendentes === a0.pendentes, JSON.stringify(a2));
   t(`${l} e há meses fora do padrão nas despesas`, n.picos > 0, String(n.picos));
   // Questionamentos 2025 × 2026 (pedido do cliente, 2026-11-23): o que parou e o que começou.
   t(`${l} questionamentos: a tela lista o que parou e o que começou, igual à API, com o link para a linha da DRE`,
@@ -7495,8 +7517,12 @@ async function provasFormato2027EEventos(page, largura) {
     juros: document.querySelector('.painel-oportunidades tr[data-pico="11.1"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
     itens: !!document.querySelector('.painel-oportunidades tr[data-item]'),
   }));
-  t(`${l} na filial, o cartão é dela, e a receita de juros concentrada (mar/mai/jun) aparece como risco`,
-    /esta filial/.test(f.titulo || '') && /mar: 1\.109\.220/.test(f.juros) && /mai: 1\.223\.945/.test(f.juros) && /−2\.585\.105/.test(f.juros) && !f.itens,
+  // Desde 2026-11-23 a mediana é dos 12 meses (nov/25–out/26): R$ 184.306. Acima
+  // de 184.306 + 92.153: mar, abr, mai, jun e ago (4.566.172 − 5 × 184.306 =
+  // 3.644.642 de risco); abaixo: fev, jul, set e out (+650.302 de oportunidade).
+  t(`${l} na filial, o cartão é dela, e a receita de juros concentrada aparece como risco (12 meses: −3.644.642)`,
+    /esta filial/.test(f.titulo || '') && /mar\/26: 1\.109\.220/.test(f.juros) && /mai\/26: 1\.223\.945/.test(f.juros) && /−3\.644\.642/.test(f.juros)
+      && /\+650\.302/.test(f.juros) && !f.itens,
     JSON.stringify(f));
   await page.evaluate(async () => { SecaoProjecao.filialId = 0; await SecaoProjecao.carregar(); });
 }

@@ -405,7 +405,7 @@ class ProjecaoController
                 // O nível 3 (conta reduzida) DA FILIAL.
                 'nivel3' => Projecao::nivel3([$negocioId], $ano, $filialId),
                 // O que parou ou começou de 2025 para 2026 NESTA filial.
-                'questionamentos' => Oportunidades::questionamentos($negocioId, $ano, $filialId),
+                'questionamentos' => Oportunidades::questionamentos($negocioId, $ano, $corte, $filialId),
             ];
         }
 
@@ -458,7 +458,7 @@ class ProjecaoController
                 // Juros recebidos (sócio e não sócio) e onde se concentram.
                 'juros' => Oportunidades::juros($negocioId, $ano),
                 // O que parou ou começou de 2025 para 2026 (conta reduzida).
-                'questionamentos' => Oportunidades::questionamentos($negocioId, $ano),
+                'questionamentos' => Oportunidades::questionamentos($negocioId, $ano, $corte),
             ],
             // Cenário de faturamento carregado de planilha do negócio (pedido do
             // cliente, 2026-11-19): de onde veio a Receita de Vendas da proposta.
@@ -1250,6 +1250,56 @@ class ProjecaoController
         }
         if ($ano === $anoPlan) {
             $this->subirVersao($negocioId, $anoPlan, (int)$u['id']);
+        }
+        $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
+    }
+
+    /**
+     * AVALIA um item não recorrente (multa, provisão, indenização, perda, receita
+     * pontual) para o ano do planejamento (pedido do cliente, 2026-11-23):
+     * `decisao` CONSIDERAR (vai se repetir: risco a planejar), DESCONSIDERAR (não se
+     * repete: oportunidade) ou vazia (volta a "a avaliar"). Grava quem e quando — é
+     * a marca de "já avaliado". Não muda a DRE: a resposta, se for o caso, se lança
+     * na linha.
+     */
+    public function gravarAvaliacao(): void
+    {
+        $u = Auth::exigirLogin();
+        if ($u['perfil'] === 'LEITURA') {
+            Json::erro('Perfil somente leitura.', 403);
+        }
+        $corpo = Json::corpo();
+        $negocioId = (int)($corpo['negocio_id'] ?? 0);
+        $conta = trim((string)($corpo['conta'] ?? ''));
+        $decisao = strtoupper(trim((string)($corpo['decisao'] ?? '')));
+        $escopo = Auth::escopoNegocios($u);
+        if ($escopo !== null && !in_array($negocioId, $escopo, true)) {
+            Json::erro('Sem acesso a este negócio.', 403);
+        }
+        if (!Database::um('SELECT id FROM negocio WHERE id = ?', [$negocioId])) {
+            Json::erro('Negócio não encontrado.', 404);
+        }
+        if (!isset(Oportunidades::CONTAS[$conta])) {
+            Json::erro('Item desconhecido: ' . $conta . '.', 422);
+        }
+        if ($decisao !== '' && !in_array($decisao, ['CONSIDERAR', 'DESCONSIDERAR'], true)) {
+            Json::erro('Decisão inválida: Considerar ou Desconsiderar.', 422);
+        }
+        $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
+        if (!$fech) {
+            Json::erro('Nenhuma DRE carregada.', 409);
+        }
+        $anoPlan = (int)$fech['ano'] + 1;
+        if ($decisao === '') {
+            Database::executar('DELETE FROM negocio_item_avaliacao WHERE negocio_id = ? AND ano = ? AND conta = ?',
+                [$negocioId, $anoPlan, $conta]);
+        } else {
+            Database::executar(
+                'INSERT INTO negocio_item_avaliacao (negocio_id, ano, conta, decisao, avaliado_por, avaliado_em)
+                 VALUES (?, ?, ?, ?, ?, NOW())
+                 ON DUPLICATE KEY UPDATE decisao = VALUES(decisao), avaliado_por = VALUES(avaliado_por), avaliado_em = NOW()',
+                [$negocioId, $anoPlan, $conta, $decisao, (int)$u['id']]
+            );
         }
         $this->responderComATela($negocioId, (int)$fech['ano'], (int)$fech['mes_fechado_ate'], 0);
     }
