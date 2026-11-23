@@ -6846,10 +6846,12 @@ async function provasApoioDesafio(page, largura) {
     ['receita_bruta', 'receita_liquida', 'lucro_bruto', 'margem_bruta', 'despesas', 'resultado_antes_rateios', 'rateios_negocio',
       'resultado_negocio', 'margem_negocio', 'rateios_adm', 'resultado', 'margem', 'pis_cofins']
       .every((k) => n.degraus.includes(k)), n.degraus.join(','));
-  // Desafio CALCULADO (2026-11-23): a escada sai da DRE dele, sem ≈; e as Agropecuárias,
-  // sem lançamento, têm proposta = desafio (a proposta nasce dele).
-  t(`${l} os degraus do desafio saem da DRE dele (sem ≈), iguais aos da proposta sem lançamento`,
-    !/≈/.test(n.lb[1] + n.rn[1] + n.rat[1]) && n.lb[1] === n.lb[2] && n.rn[1] === n.rn[2] && n.rat[1] === n.rat[2],
+  // Desafio CALCULADO (2026-11-23): a escada sai da DRE dele, sem ≈. Nas Agropecuárias sem
+  // lançamento, margem bruta e rateios são os da proposta; o resultado do negócio do desafio
+  // fica ABAIXO, porque nele as demais despesas acompanham a receita (na proposta, ficam na base).
+  const nn = (s) => Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.'));
+  t(`${l} os degraus do desafio saem da DRE dele (sem ≈): margem bruta e rateios iguais aos da proposta sem lançamento, resultado do negócio abaixo (despesas acompanham a receita)`,
+    !/≈/.test(n.lb[1] + n.rn[1] + n.rat[1]) && n.lb[1] === n.lb[2] && n.rat[1] === n.rat[2] && nn(n.rn[1]) < nn(n.rn[2]),
     `${n.lb.join('|')} · ${n.rn.join('|')} · ${n.rat.join('|')}`);
   t(`${l} e a coluna da proposta é a DRE dela na estrutura nova (linhas 5, 14, 15 e 16)`,
     Math.abs(n.lbProp - n.l5) <= 1 && Math.abs(n.rnProp - n.l13) <= 1 && Math.abs(n.ratProp - n.l14) <= 1 && Math.abs(n.admProp - n.l16) <= 1,
@@ -7714,11 +7716,14 @@ async function provasDesafioEExpansores(page, largura) {
     };
   });
   // Desafio calculado (2026-11-23): projeção de 2026 (R$ 524.073.362) × 1,06 = R$ 555.517.764;
-  // o resultado da proposta padrão fica NEGATIVO (−R$ 6.784.849, margem −1,27%).
-  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta e −R$ 6.784.849 de resultado, margem −1,27%`,
-    api.des && tela.rob === 555517764 && tela.rl === -6784849 && /1,27%/.test(tela.margem), JSON.stringify(tela));
+  // o resultado fica NEGATIVO: −R$ 6.784.849 no método, −R$ 14.953.633 com a depreciação
+  // carregada (R$ 8,76 mi na 8.10) e −R$ 16.143.501 (−3,01%) com as demais despesas
+  // acompanhando a receita (+6%).
+  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta e −R$ 16.143.501 de resultado, margem −3,01%`,
+    api.des && tela.rob === 555517764 && tela.rl === -16143501 && /3,01%/.test(tela.margem), JSON.stringify(tela));
+  // A diferença sai dos valores sem arredondar: compara com tolerância de R$ 1.
   t(`${l} a coluna Proposta é a linha 18 da proposta, e a diferença é proposta − desafio`,
-    Math.round(api.rl) === tela.rlProposta && tela.dif === Math.round(api.rl) - tela.rl, `${api.rl} | ${JSON.stringify(tela)}`);
+    Math.round(api.rl) === tela.rlProposta && Math.abs(tela.dif - (Math.round(api.rl) - tela.rl)) <= 1, `${api.rl} | ${JSON.stringify(tela)}`);
   t(`${l} o desafio é só de leitura (nenhum campo no cartão)`, tela.campos === 0);
   t(`${l} a nota diz de onde saiu e lembra a meta de 2% de margem líquida`,
     /driver de volume a definir/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recalculado da base/.test(tela.nota), tela.nota.slice(0, 160));
