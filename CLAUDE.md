@@ -13,6 +13,107 @@ responde a partir de `docs/BACKLOG-EVOLUCAO.md` **deste** repositório — a
 confusão já custou uma resposta errada. Fica em aberto com o cliente qual ciclo
 vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 
+## Projeção de Resultados 2027 — o que vale hoje (resumo, 2026-11-23)
+
+Índice das decisões do cliente na aba **Projeção de Resultados**. O detalhe e o
+histórico de cada uma estão em "Regras de negócio importantes"; este bloco existe
+porque elas mudaram muito num dia só, e uma delas foi revertida horas depois. Antes
+de mexer na Projeção, leia isto. Não reabra uma decisão daqui sem o cliente.
+
+**Base da DRE.** Colunas: **Realizado jan–out/26 | Planejado nov–dez/26 (orçado,
+`tipo = META`) | Projeção 2026**. A projeção do ano é a base da proposta, do piso da
+receita e do desafio, no negócio, na filial, no Painel e no Corporativo
+(`linhasDaDre`, `linhasDaFilial`, `Projecao::resumoDosNegocios`). A "base de 12
+meses nov/25–out/26" valeu por algumas horas (PR #124) e foi **revertida** (PR #125:
+"jan–out deve ser de 2026 e nov–dez deve pegar o planejado de 2026"). A DRE de
+nov–dez/25 continua carregada (`database/dre_2025_11_12.php`,
+`CargaApoio::drePeriodo`). Ela só alimenta as oportunidades em 12 meses e o preço
+médio do Leite.
+
+**Desafio 2027 = proposta padrão** (PR #124/#125). É a proposta de cada negócio sem
+lançamento nenhum (`$linhasDesafio` em `montar`). Composição:
+- receita: projeção × (1 + IPCA + PIB + % crescimento), ou o driver de volume;
+- pessoal pela diretriz;
+- custo e deduções acompanham a receita (margem bruta preservada);
+- demais despesas e rateios na projeção.
+
+`desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
+true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
+faturamento, R$ 45,6 mi de resultado, margem 1,28% (a meta de 2% pediria R$ 70,97
+mi).
+
+**Drivers do faturamento** (`App\Services\DesafioDrivers`). Viram o crescimento
+padrão da 1.1 e, portanto, o PISO dela:
+
+| Negócio | Faturamento | Premissas mexem? |
+|---|---|---|
+| Pecuária (2) | realista da planilha, R$ 732.218.693,78 (`BASE[2027]`) | não (já em 2027) |
+| Leite (4) | cota Aurora × (Receita de Vendas nov/25–out/26 ÷ 107.904.705 L) × (1 + IPCA + PIB + cresc.) | **sim**, no preço |
+| Postos de leite (12) | cota Aurora × **R$ 0,055**/L (`DesafioCota::RS_POR_LITRO`) | não ("sem reajuste") |
+| Rações (6) | meta de bovinos das Agropecuárias (indicador com "bovino"; < 1 mi = t) × R$ 100/t + (projeção − 53.575,85 t × 100) × premissas | sim, no resto |
+| Cereais (1), UTM (7), UBS (13) | projeção × premissas, nota "driver a definir" | sim |
+| Agropecuárias, Supermercados, Postos de Combustíveis | projeção × premissas (margem bruta preservada) | sim |
+| Usina (17) | sem receita: só resultado | — |
+
+Cota e bovinos são METAS DO SITE (lidas na hora). O banco local não as tem, então
+lá Leite, Postos e Rações caem em projeção × premissas com a nota "sem a meta".
+
+**Diretriz 2027** (`Projecao::DIRETRIZES`):
+- IPCA 4,5% e PIB 1,5%: sugeridos, editáveis por negócio; a filial herda.
+- Pessoal 5,5%, vale R$ 500, assiduidade R$ 200 e abono de resultado R$ 500: fixos.
+- PPR: até 1,5 salário. É um TETO (`maximos`): vem preenchido, o negócio pode
+  baixar, acima é recusado.
+
+**Lançamento.** Na mesma linha valem valor (Proposta) e % (Reajuste); o último
+gravado sobrescreve o outro. A célula espelhada fica em cinza itálico e é
+editável. Valor com sinal oposto ao da projeção pede confirmação (`gravar` no
+`projecao.js`, PR #123). Lançamentos já gravados com sinal trocado NÃO são
+corrigidos sozinhos.
+
+**Piso da Receita de Vendas.** Projeção × (1 + crescimento padrão), ou o driver.
+Lançamento abaixo é recusado e a linha fica no piso (`piso_aplicado`).
+
+**Despesas com Pessoal (8.5).** Lançável. Abaixo do mínimo (quadro × custo × 5,5%)
+grava com ⚠ no negócio, na filial e no Painel.
+
+**Oportunidades.** Janela de 12 meses (nov/25–out/26) contra os 12 anteriores, com
+Considerar/Desconsiderar e a marca de avaliado (`negocio_item_avaliacao`). Os
+questionamentos 2025 × 2026 vêm de `dre_reduzida_12m`.
+
+**Pendências com o cliente** (não implementar sem resposta):
+- Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica
+  ganha, de onde vem o volume, valorização da matéria-prima, faturamento).
+- Drivers de Cereais, UTM e UBS.
+- Cereais com desafio NEGATIVO (−R$ 6,8 mi no banco local): a diretriz não aceita
+  meta negativa; a tela só destaca.
+- **Produção:** os Custos do Leite estão lançados como +300.000.000 (sinal
+  trocado). Isso infla o Corporativo (linha 8 com cerca de R$ 793 mi). Quem corrige
+  é o negócio, relançando com sinal negativo; dá para oferecer um alerta de
+  "lançamento gravado com sinal oposto".
+- Tabelas da Projeção no celular (rolagem lateral): proposto, não aprovado.
+- Lançamentos de nov–dez/25 no quadro, estoque e juros em jan–out: oferecidos.
+
+**Fontes do Qlik usadas nos drivers e na DRE de nov–dez/25** (extraídas em
+23/11/2026):
+- DRE - Gerencial Nova `3aa6bf76-…`: `[Valor Realizado]` por `[Cód Indicador]`;
+  filiais com duas dimensões (`[Cód. Negócio]`, `[Cód. Filial]`) e
+  `Concat(Aggr(…))`, um mês por consulta, `Repeat('#',1500)` para a saída ir a
+  arquivo.
+- App Leite `e5ed18f6-0e4a-4c29-94e6-18b951d67fe9`: `[Qtde Líquida Item]`,
+  naturezas 1101 e 1102.
+- Comercial Global `4aed35d9-…`: Linha `'RACOES BOVINOS IND.'`, Qtde × Peso Padrão
+  ÷ 1.000.
+
+**Provas da Projeção:**
+- PHP: `projecao_base.php`, `desafio.php`, `desafio_drivers.php` (cria cota e
+  bovinos de prova), `cenario.php`, `oportunidades.php`, `diretriz_2027.php`,
+  `pessoas.php`, `questionamentos.php`.
+- Na bateria de tela (`sistema.js`), as provas do MECANISMO das premissas usam
+  `NEGOCIO_PREMISSAS = 'SUPERMERCADO'`, porque a Pecuária tem driver e não responde
+  ao IPCA. `comPremissasNeutras(page, fn, alvo)` recebe o negócio.
+- Depois da bateria, confira: `projecao_valor` só com `VALOR 731798725.00`
+  (Pecuária) e `negocio_item_avaliacao` vazia.
+
 ## Arquitetura
 
 - **Onde fica o quê**: `app/` (Core, Controllers, Services), `views/` na RAIZ —
@@ -3534,7 +3635,7 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
   litros): ano abaixo de 10 milhões é lido ×1.000; acima, como litros. ROL pela
   relação ROL/ROB e resultado pela margem do desafio carregado ("preservar
   margem"); sem a meta, vale o carregado. Vale no Corporativo (soma). Prova:
-  `testes/desafio_cota.php`. Revalidação de 2026-11-23 para os outros negócios de
+  `testes/desafio_drivers.php` (antes `desafio_cota.php`). Revalidação de 2026-11-23 para os outros negócios de
   volume (só no chat, não carregada): Fábrica de Rações por toneladas produzidas
   × R$ 31,5/t (suínos do sistema Aurora vendidos pelo negócio 6 + bovinos,
   suínos e aves dos fomentados, vendidos pelas Lojas) e UTM pelo volume de
@@ -3904,6 +4005,14 @@ php database/migrate.php
 # funcional (reentrada pelo nome) ficam vermelhas.
 SALA_AUSENTE_SEG=6 setsid nohup php -S 127.0.0.1:8099 -t public public/index.php \
   >php.log 2>&1 </dev/null & disown
+
+# Numa sessão de agente na nuvem, banco e servidor CAEM quando a sessão reinicia
+# (acontece sem aviso no meio do trabalho): antes de testar, confira com
+# `curl -s -o /dev/null -w '%{http_code}' 127.0.0.1:8099/` (302 = de pé) e
+# `pgrep -f mariadbd`; se o socket existir sem processo, `rm -f /tmp/ccm.sock` e suba.
+# A bateria de tela leva ~25 min: rode em segundo plano e NUNCA junto das suítes
+# PHP (as duas escrevem no mesmo banco). Mexer no código enquanto ela roda muda o
+# que ela testa — o servidor serve a árvore de trabalho; use um `git worktree`.
 
 # Derrubar ao fim (o pkill devolve 144 — é inofensivo)
 mysql --socket=/tmp/ccm.sock -uroot -e SHUTDOWN; pkill -f "php -S 127.0.0.1:8099"
