@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
+use App\Services\DesafioCota;
 use App\Services\Oportunidades;
 use App\Services\Projecao;
 use App\Services\Reforma;
@@ -472,16 +473,28 @@ class ProjecaoController
         if (!$cab) {
             return null;
         }
-        $porNegocio = [];
+        $carregado = [];
         foreach (Database::todos(
             'SELECT negocio_id, receita_bruta, receita_liquida, resultado, nota FROM negocio_desafio WHERE ano = ?',
             [$anoPlan]
         ) as $r) {
-            $porNegocio[(int)$r['negocio_id']] = self::comMargem([
+            $carregado[(int)$r['negocio_id']] = [
                 'receita_bruta' => (float)$r['receita_bruta'],
                 'receita_liquida' => (float)$r['receita_liquida'],
                 'resultado' => (float)$r['resultado'],
-            ]) + ['nota' => $r['nota']];
+                'nota' => $r['nota'],
+            ];
+        }
+        // Os Postos de resfriamento pela cota Aurora da meta do Leite × R$ 0,06
+        // por litro (pedido do cliente, 2026-11-23), lida na hora: mudou a cota
+        // no site, mudou o desafio.
+        $porNegocio = [];
+        foreach (DesafioCota::aplicar($carregado, $anoPlan) as $id => $d) {
+            $porNegocio[$id] = self::comMargem([
+                'receita_bruta' => $d['receita_bruta'],
+                'receita_liquida' => $d['receita_liquida'],
+                'resultado' => $d['resultado'],
+            ]) + ['nota' => $d['nota']] + (isset($d['cota']) ? ['cota' => $d['cota']] : []);
         }
         return [
             'ano' => (int)$cab['ano'],
