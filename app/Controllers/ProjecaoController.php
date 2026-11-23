@@ -346,12 +346,16 @@ class ProjecaoController
         // taxa do negócio.
         $tributacao = Oportunidades::tributos([$negocioId], $ano)[$negocioId] ?? null;
         $taxaPc = Reforma::pisCofinsDoNegocio($linhas, $tributacao, $corte)['taxa'];
+        // A 3227 (acerto do PPR) de cada filial: a 8.5 da filial cresce sobre a
+        // projeção DELA sem a 3227 (`Projecao::crescimentosDaFilial`).
+        $acertosFilial = Projecao::pprRealizado([$negocioId], $ano)[$negocioId]['filiais'] ?? [];
         $porFilial = [];
         foreach ($filiais as $f) {
+            $base = $this->linhasDaFilial((int)$f['id'], $ano, $corte);
             $lf = Projecao::aplicar(
-                $this->linhasDaFilial((int)$f['id'], $ano, $corte),
+                $base,
                 $this->lancados($projId, (int)$f['id']),
-                $cresc,
+                Projecao::crescimentosDaFilial($cresc, $base, (float)($acertosFilial[(int)$f['id']] ?? 0.0), $minimoPessoal),
                 $taxaPc
             );
             $porFilial[(int)$f['id']] = $lf;
@@ -373,7 +377,7 @@ class ProjecaoController
         // e sai com o ⚠.
         $quadros = Projecao::quadroDasFiliais(array_keys($porFilial), $ano);
         [$linhas, $porFilial] = Projecao::minimoPessoalDoNegocio(
-            $linhas, $porFilial, $minimoPessoal, $quadros, $modo === 'FILIAL' && (bool)$filiais
+            $linhas, $porFilial, $minimoPessoal, $quadros, $modo === 'FILIAL' && (bool)$filiais, $acertosFilial
         );
         // Onde está abaixo, para a tela listar: as filiais só no modo filial,
         // que é quando o total do negócio sai delas.

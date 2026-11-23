@@ -719,7 +719,8 @@ const SecaoProjecao = {
 
   /**
    * A linha Despesas com Pessoal (8.5) da proposta, pela diretriz: a base de
-   * 2026 sem vale, prêmio e PPR, reajustada; o vale e os prêmios de 2027 (a parte
+   * 2026 sem a conta reduzida 3227 (o acerto/estorno do PPR, pedido de
+   * 2026-11-23) e sem vale, prêmio e provisão do PPR, reajustada; o vale e os prêmios de 2027 (a parte
    * da despesa); e o PPR (campo `PPR_SALARIOS`) sobre a folha do mês. É a conta do
    * servidor (`Projecao::pessoalDaDiretriz`), só mostrada — é o PADRÃO da linha
    * 8.5 da DRE e o seu mínimo (desde 2026-11-23 a linha se lança de novo).
@@ -735,7 +736,11 @@ const SecaoProjecao = {
           <thead><tr><th>Despesas com Pessoal ${d.ano_planejamento} (linha 8.5), pela diretriz</th><th class="text-end">No ano</th></tr></thead>
           <tbody>
             <tr><td>${this.rotuloProjecao(d)} <span class="text-muted small">(jan–${this.nomeMes(d.mes_fechado_ate)} realizado + ${this.rotuloResto(d)} planejado)</span></td><td class="text-end">${r(-p.projecao)}</td></tr>
-            <tr><td class="ps-3 text-muted">− vale, prêmio e PPR de ${d.ano} (${pct(p.parte_2026)} da folha)</td><td class="text-end text-muted">−${r(p.pecas_2026)}</td></tr>
+            ${Math.abs(p.ppr_acerto || 0) >= 0.5 ? `
+            <tr><td class="ps-3 text-muted">${p.ppr_acerto > 0 ? '+ estorno' : '− acerto'} do PPR de jan–${this.nomeMes(d.mes_fechado_ate)}/${d.ano} fora da base <span class="small">(conta reduzida ${p.ppr_acerto_conta}, Participação nos Resultados)</span></td>
+              <td class="text-end text-muted" data-pessoal="acerto-ppr">${p.ppr_acerto > 0 ? '+' : '−'}${r(Math.abs(p.ppr_acerto))}</td></tr>
+            <tr><td>Base de ${d.ano} sem a ${p.ppr_acerto_conta}</td><td class="text-end" data-pessoal="sem-acerto">${r(-p.projecao_sem_ppr)}</td></tr>` : ''}
+            <tr><td class="ps-3 text-muted">− vale, prêmio e provisão do PPR de ${d.ano} (${pct(p.parte_2026)} da folha)</td><td class="text-end text-muted">−${r(p.pecas_2026)}</td></tr>
             <tr><td>Base reajustada${reaj !== undefined ? ` em ${String(reaj).replace('.', ',')}%` : ''}${
   Math.abs((p.fator_quadro || 1) - 1) > 1e-9 ? ` <span class="text-muted small" data-pessoal="fator">(× ${pct(p.fator_quadro)}: o quadro planejado sobre o atual)</span>` : ''}</td><td class="text-end" data-pessoal="base">${r(p.base_reajustada)}</td></tr>
             <tr><td>+ vale e prêmios de ${d.ano_planejamento}${p.parte_despesa < 0.999 ? ` <span class="text-muted small">(${pct(p.parte_despesa)}: a parte da folha que é despesa; o resto está no custo)</span>` : ''}</td>
@@ -751,6 +756,7 @@ const SecaoProjecao = {
         </table>
       </div>
       <div class="small text-muted">Folha e peças de ${d.ano}: Qlik DRE Gerencial, contas 3.07.01.21* (despesa) e 4.03.01.01.01 (custo).
+        A conta reduzida 3227 (acerto do PPR) sai da base no negócio e em cada filial; a provisão (3419) sai como PPR de ${d.ano}.
         Este total é o PADRÃO da linha 8.5 e também o seu MÍNIMO: lance acima na DRE se houver contratação ou reajuste maior;
         abaixo dele a linha grava com ⚠ para validar. A folha e o PPR andam na proporção do quadro planejado.</div>`;
   },

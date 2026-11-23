@@ -70,16 +70,17 @@ prova('o cabeçalho não traz valores: quem calcula é a Projeção', $d && !iss
 
 // O Corporativo soma os desafios dos 11 negócios (números do banco local, out/26,
 // base = projeção de 2026, jan–out realizado + nov–dez planejado; conferidos por `testes/desafio_drivers.php` negócio a negócio).
+// Desde 2026-11-23 a 8.5 sai sem a conta reduzida 3227 (acerto do PPR): resultado de 45.565.066 para 45.755.843.
 $negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
 $c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];
 prova('os 11 negócios entram no desafio do Corporativo', count($c['negocios']) === 11, (string)count($c['negocios']));
-prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado R$ 45.565.066',
-    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 45565066) < 2,
+prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado R$ 45.755.843',
+    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 45755843) < 2,
     round($t['receita_bruta']) . ' / ' . round($t['receita_liquida']) . ' / ' . round($t['resultado']));
-prova('margem líquida do desafio: 1,28%', abs($t['margem'] - 1.2841) < 0.0005, (string)round($t['margem'], 4));
-prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 25,40 mi',
-    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 25401906) < 2,
+prova('margem líquida do desafio: 1,29%', abs($t['margem'] - 1.2895) < 0.0005, (string)round($t['margem'], 4));
+prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 25,21 mi',
+    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 25211129) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 
 // ── 2. De onde sai: base de 12 meses × premissas, ou o driver ───────────────

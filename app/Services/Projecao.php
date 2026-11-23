@@ -361,18 +361,45 @@ class Projecao
      * benefícios já andam, porque `pessoas()` os conta pelo quadro planejado. Com
      * o quadro atual o fator é 1 e nada muda.
      *
+     * **A base sai SEM a conta reduzida 3227** (pedido do cliente, 2026-11-23:
+     * "estornando esses 1 milhão de PPR da conta reduzida 3227. A base tem que
+     * ir para 44 milhões e pouco. Faça isso para todos os negócios e filiais").
+     * O PPR de 2026 mora em duas reduzidas da 8.5: a 3419 (PROVISÃO PARTICIPAÇÃO
+     * NOS RESULTADOS, a provisão do ano) e a 3227 (PARTICIPAÇÃO NOS RESULTADOS, o
+     * acerto contra a provisão — nas Agropecuárias um ESTORNO de +R$ 1.049.311 em
+     * jan–out/2026). `ppr_ate` da folha é a soma das duas. Agora a projeção perde
+     * a 3227 realizada (`$ppr26['realizado']`, no sinal da DRE: estorno é +) e o
+     * "PPR de 2026" que sai da base é só a provisão (`ppr_ate` + 3227), na parte
+     * que ela tem nas contas sem a 3227. Nas Agropecuárias: 43.464.705 + 1.049.311
+     * = 44.514.016 de base. Como a conta anterior já tirava o PPR LÍQUIDO (com o
+     * estorno dentro), o total do negócio quase não se move; o que muda é a base
+     * mostrada e a DISTRIBUIÇÃO entre as filiais, que crescem sobre a projeção
+     * DELAS sem a 3227 delas (`percentual_sem_ppr`, `crescimentoPessoalDaFilial`).
+     * Sem o nível 3 carregado (`$ppr26` null) vale a conta anterior.
+     *
      * @param array|null $folha  linha de `negocio_folha`
      * @param array|null $calc   saída de `pessoas()` para o ano
+     * @param array|null $ppr26  ['realizado' => a 3227 do negócio de jan até o corte] (`pprRealizado`)
      */
-    public static function pessoalDaDiretriz(float $projecao85, ?array $folha, ?array $calc, float $reajuste, ?float $pprSalarios, float $fatorQuadro = 1.0): ?array
+    public static function pessoalDaDiretriz(float $projecao85, ?array $folha, ?array $calc, float $reajuste, ?float $pprSalarios, float $fatorQuadro = 1.0, ?array $ppr26 = null): ?array
     {
         if (!$folha || $pprSalarios === null || $projecao85 >= 0 || (float)$folha['pessoal_ate'] <= 0) {
             return null;
         }
         $g = $reajuste / 100;
-        $pecas26 = (float)$folha['vale_ate'] + (float)$folha['premio_ate'] + (float)$folha['ppr_ate'];
-        $parte26 = min(1.0, max(0.0, $pecas26 / (float)$folha['pessoal_ate']));
-        $base = -$projecao85 * (1 - $parte26);
+        // A 3227 sai da projeção e das contas; a provisão (3419) fica como o PPR de 2026.
+        $acerto = $ppr26 !== null ? (float)$ppr26['realizado'] : 0.0;
+        $semPpr = -$projecao85 + $acerto;
+        $pessoalAte = (float)$folha['pessoal_ate'] + $acerto;
+        if ($semPpr <= 0 || $pessoalAte <= 0) {
+            $acerto = 0.0;
+            $semPpr = -$projecao85;
+            $pessoalAte = (float)$folha['pessoal_ate'];
+        }
+        $provisao = (float)$folha['ppr_ate'] + $acerto;
+        $pecas26 = (float)$folha['vale_ate'] + (float)$folha['premio_ate'] + $provisao;
+        $parte26 = min(1.0, max(0.0, $pecas26 / $pessoalAte));
+        $base = $semPpr * (1 - $parte26);
         $salDesp = (float)$folha['salario_despesa'];
         $salCusto = (float)$folha['salario_custo'];
         $parteDespesa = $salDesp + $salCusto > 0 ? $salDesp / ($salDesp + $salCusto) : 1.0;
@@ -385,11 +412,20 @@ class Projecao
             // O mesmo percentual com o quadro ATUAL — o reajuste que o mínimo da
             // filial usa (ela não tem quadro planejado).
             'percentual_atual' => ($total / $f / -$projecao85 - 1) * 100,
+            // Os dois sobre a projeção SEM a 3227: é o que cada filial aplica à
+            // projeção dela sem a 3227 dela (`crescimentoPessoalDaFilial`).
+            'percentual_sem_ppr' => ($total / $semPpr - 1) * 100,
+            'percentual_atual_sem_ppr' => ($total / $f / $semPpr - 1) * 100,
             'fator_quadro' => $f,
             'ppr_salarios' => $pprSalarios,
             'projecao' => $projecao85,
+            // A 3227 realizada (sinal da DRE: estorno é +) e a projeção sem ela.
+            'ppr_acerto' => $acerto,
+            'ppr_acerto_conta' => self::CONTA_ACERTO_PPR,
+            'projecao_sem_ppr' => -$semPpr,
+            'ppr_provisao_2026' => $provisao,
             'parte_2026' => $parte26,
-            'pecas_2026' => -$projecao85 * $parte26,
+            'pecas_2026' => $semPpr * $parte26,
             'base' => $base,
             'base_reajustada' => $base * (1 + $g) * $f,
             'parte_despesa' => $parteDespesa,
@@ -446,7 +482,10 @@ class Projecao
         ) as $d) {
             $dig[(int)$d['negocio_id']][$d['chave']] = (float)$d['valor'];
         }
+        // A 3227 realizada do negócio (filial 0) até o corte: sai da base do pessoal.
+        $acertos = self::pprRealizado($ids, $anoBase);
         foreach ($ids as $id) {
+            $saida[$id]['ppr26'] = isset($acertos[$id]) ? ['realizado' => $acertos[$id]['negocio']] : null;
             $efetivos = self::beneficiosEfetivos($anoPlan, $dig[$id] ?? []);
             $saida[$id]['calc'] = self::pessoas($bases[$id] ?? null, $efetivos);
             $saida[$id]['ppr_salarios'] = isset($efetivos['PPR_SALARIOS']) ? (float)$efetivos['PPR_SALARIOS'] : null;
@@ -491,7 +530,8 @@ class Projecao
                 array_key_exists('ppr_salarios', (array)$pessoal)
                     ? $pessoal['ppr_salarios']
                     : self::maximoDaDiretriz($anoPlan, 'PPR_SALARIOS'),
-                $fator
+                $fator,
+                $pessoal['ppr26'] ?? null
             );
             if ($detalhe) {
                 $cresc[self::LINHA_PESSOAL] = $detalhe['percentual'];
@@ -503,12 +543,89 @@ class Projecao
             $minimo = [
                 'percentual' => $cresc[self::LINHA_PESSOAL],
                 'percentual_atual' => $atual,
+                // Sobre a projeção sem a 3227 — o que as filiais aplicam à delas
+                // (`crescimentoPessoalDaFilial`). Null: a filial herda o % acima.
+                'percentual_sem_ppr' => $detalhe['percentual_sem_ppr'] ?? null,
+                'percentual_atual_sem_ppr' => $detalhe['percentual_atual_sem_ppr'] ?? null,
                 'fator_quadro' => $fator,
                 'colaboradores' => $calc ? $qp : null,
                 'colaboradores_base' => $calc ? $q0 : null,
             ];
         }
         return [$cresc, $detalhe, $minimo];
+    }
+
+    /**
+     * A conta reduzida 3227 (acerto do PPR) realizada de jan até o corte, por
+     * negócio e por filial (`dre_reduzida_valor`, o nível 3). No sinal da DRE: o
+     * estorno é positivo. Negócio sem a conta no ano não aparece.
+     *
+     * @param int[] $negocioIds
+     * @return array<int, array{negocio: float, filiais: array<int,float>}>
+     */
+    public static function pprRealizado(array $negocioIds, int $ano): array
+    {
+        $negocioIds = array_values(array_unique(array_map('intval', $negocioIds)));
+        if (!$negocioIds) {
+            return [];
+        }
+        $marcas = implode(',', array_fill(0, count($negocioIds), '?'));
+        $saida = [];
+        foreach (Database::todos(
+            "SELECT v.negocio_id, v.filial_id, v.realizado
+               FROM dre_reduzida_valor v JOIN dre_reduzida r ON r.codigo = v.codigo
+              WHERE r.reduzida = ? AND r.linha = ? AND v.ano = ? AND v.negocio_id IN ({$marcas})",
+            array_merge([self::CONTA_ACERTO_PPR, self::LINHA_PESSOAL, $ano], $negocioIds)
+        ) as $r) {
+            $n = (int)$r['negocio_id'];
+            $saida[$n] ??= ['negocio' => 0.0, 'filiais' => []];
+            if ((int)$r['filial_id'] === 0) {
+                $saida[$n]['negocio'] += (float)$r['realizado'];
+            } else {
+                $saida[$n]['filiais'][(int)$r['filial_id']] = (float)$r['realizado'];
+            }
+        }
+        return $saida;
+    }
+
+    /**
+     * O crescimento da 8.5 NUMA FILIAL: a projeção dela sem a 3227 dela × (1 +
+     * o % do negócio sem a 3227), escrito como % sobre a projeção da filial — o
+     * motor (`aplicar`) só sabe crescer a projeção. Somadas, as filiais dão o
+     * negócio (as 3227 das filiais somam a do negócio). Sem a conta do negócio
+     * (`percentual_sem_ppr` null) ou sem despesa de pessoal, a filial herda o %
+     * do negócio como antes.
+     *
+     * @param array      $cresc   crescimentos do negócio
+     * @param array|null $minimo  terceiro item de `crescimentosDoNegocio`
+     */
+    public static function crescimentoPessoalDaFilial(array $cresc, array $linhasFilial, float $acertoFilial, ?array $minimo, string $chave = 'percentual_sem_ppr'): ?float
+    {
+        $pct = $minimo[$chave] ?? null;
+        $proj = 0.0;
+        foreach ($linhasFilial as $l) {
+            if ($l['codigo'] === self::LINHA_PESSOAL) {
+                $proj = (float)$l['projecao'];
+            }
+        }
+        $herdado = $chave === 'percentual_sem_ppr'
+            ? ($cresc[self::LINHA_PESSOAL] ?? null)
+            : ($minimo['percentual_atual'] ?? null);
+        // Filial sem a 3227 também usa o % sem ela (a dela é zero): o % com a
+        // 3227 do negócio dentro faria a soma das filiais escapar do negócio.
+        if ($pct === null || $proj >= 0 || $proj - $acertoFilial >= 0) {
+            return $herdado;
+        }
+        return (($proj - $acertoFilial) * (1 + $pct / 100) / $proj - 1) * 100;
+    }
+
+    /** `$cresc` com a 8.5 da filial (`crescimentoPessoalDaFilial`). */
+    public static function crescimentosDaFilial(array $cresc, array $linhasFilial, float $acertoFilial, ?array $minimo): array
+    {
+        if (isset($cresc[self::LINHA_PESSOAL])) {
+            $cresc[self::LINHA_PESSOAL] = self::crescimentoPessoalDaFilial($cresc, $linhasFilial, $acertoFilial, $minimo);
+        }
+        return $cresc;
     }
 
     /**
@@ -593,12 +710,13 @@ class Projecao
      * @param array<int,int> $quadros filial_id => colaboradores
      * @return array{0: array, 1: array} [linhas do negócio, linhas por filial], marcadas
      */
-    public static function minimoPessoalDoNegocio(array $linhas, array $porFilial, ?array $minimo, array $quadros, bool $modoFilial): array
+    public static function minimoPessoalDoNegocio(array $linhas, array $porFilial, ?array $minimo, array $quadros, bool $modoFilial, array $acertosFilial = []): array
     {
         $pct = $minimo['percentual'] ?? null;
-        $pctAtual = $minimo['percentual_atual'] ?? null;
         foreach ($porFilial as $fid => $lf) {
             $q = $quadros[(int)$fid] ?? 0;
+            // A projeção da filial sem a 3227 dela × (1 + o % atual sem a 3227).
+            $pctAtual = self::crescimentoPessoalDaFilial([], $lf, (float)($acertosFilial[(int)$fid] ?? 0.0), $minimo, 'percentual_atual_sem_ppr');
             $porFilial[$fid] = self::marcarMinimoPessoal($lf, $q > 0 ? $pctAtual : null, true, ['colaboradores' => $q]);
         }
         return [self::marcarMinimoPessoal($linhas, $pct, !$modoFilial), $porFilial];
@@ -647,6 +765,12 @@ class Projecao
     public const LINHA_RECEITA = '1.1';
     /** A subconta de Despesas com Pessoal, que cresce com o percentual das despesas com pessoas. */
     public const LINHA_PESSOAL = '8.5';
+    /**
+     * A conta reduzida do ACERTO do PPR (3227, PARTICIPACAO NOS RESULTADOS, na
+     * 8.5): sai da base da despesa de pessoal do ano da proposta, no negócio e em
+     * cada filial (pedido do cliente, 2026-11-23). A provisão é a 3419.
+     */
+    public const CONTA_ACERTO_PPR = '3227';
 
     /**
      * O NÍVEL 3 da DRE — a conta reduzida, como a aba "#2 Planejado X Realizado"
@@ -1162,6 +1286,7 @@ class Projecao
         }
 
         $pessoal = self::dadosDePessoal($negocioIds, $ano, $anoPlan);
+        $acertos = self::pprRealizado($negocioIds, $ano);
         $cods = [];
         foreach (Database::todos('SELECT id, cod_negocio FROM negocio WHERE id IN (' . $marcas . ')', $negocioIds) as $n) {
             $cods[(int)$n['id']] = (string)$n['cod_negocio'];
@@ -1218,10 +1343,14 @@ class Projecao
 
             $porFilial = [];
             $modoFilial = $modo === 'FILIAL' && !empty($dreFilial[$id]);
+            $acertosFilial = $acertos[$id]['filiais'] ?? [];
             if ($modoFilial) {
                 $propostas = [];
                 foreach ($dreFilial[$id] as $filialId => $porConta) {
-                    $lf = self::aplicar($monta($porConta), $lanc[$filialId] ?? [], $cresc, $taxaPc);
+                    // A 8.5 da filial sobre a projeção dela sem a 3227 dela — a mesma conta da tela.
+                    $base = $monta($porConta);
+                    $cf = self::crescimentosDaFilial($cresc, $base, (float)($acertosFilial[$filialId] ?? 0.0), $minimo);
+                    $lf = self::aplicar($base, $lanc[$filialId] ?? [], $cf, $taxaPc);
                     $porFilial[$filialId] = $lf;
                     $propostas[$filialId] = array_column($lf, 'proposta', 'codigo');
                 }
@@ -1234,7 +1363,8 @@ class Projecao
             [$linhas, $porFilial] = self::minimoPessoalDoNegocio(
                 $linhas, $porFilial, $minimo,
                 $modoFilial ? self::quadroDasFiliais(array_keys($porFilial), $ano) : [],
-                $modoFilial
+                $modoFilial,
+                $acertosFilial
             );
 
             $proje = [];
