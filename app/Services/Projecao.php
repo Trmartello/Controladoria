@@ -122,7 +122,9 @@ class Projecao
      * desligamento); vazio, vale o quadro da DRE.
      */
     public const BENEFICIOS = ['COLABORADORES', 'ALIMENTACAO', 'ASSIDUIDADE', 'RESULTADO',
-        'PCT_ASSIDUIDADE', 'PCT_RESULTADO'];
+        'PCT_ASSIDUIDADE', 'PCT_RESULTADO', 'PPR_SALARIOS'];
+    /** O teto do campo `PPR_SALARIOS` (salários no ano). */
+    public const PPR_SALARIOS_MAXIMO = 12.0;
     public const BENEFICIOS_PADRAO = [
         'ALIMENTACAO' => 500.0,
         'ASSIDUIDADE' => 200.0,
@@ -241,7 +243,11 @@ class Projecao
      *  - Vale alimentação R$ 500 por colaborador/mês, DENTRO da despesa de pessoal.
      *  - Prêmio assiduidade R$ 200 e prêmio metas R$ 500 por colaborador que
      *    cumprir os requisitos.
-     *  - PPR: 1,5 salário, provisionado mensalmente em 1/12 (`ppr_salarios`).
+     *  - PPR: 1,5 salário, provisionado mensalmente em 1/12 (`PPR_SALARIOS`, um
+     *    campo do bloco de premissas como o vale e os abonos — pedido do cliente,
+     *    2026-11-23: "o número de salários do PPR deve ser um campo, assim como
+     *    são os campos de diretrizes". Fixo em 2027; nos anos sem diretriz, o
+     *    negócio digita, e vazio é sem PPR).
      *  - IPCA 4,50% (Focus de 06/11/2026) e PIB agropecuário 1,50%.
      *  - Demais despesas operacionais: sem crescimento sobre 2026 — que é o que a
      *    proposta já faz por omissão (vale a projeção).
@@ -255,8 +261,7 @@ class Projecao
             'fonte' => 'Diretrizes para o Planejamento 2027 (16/11/2026)',
             'premissas' => ['PESSOAS' => 5.5],
             'sugeridas' => ['IPCA' => 4.5, 'PIB' => 1.5],
-            'beneficios' => ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0],
-            'ppr_salarios' => 1.5,
+            'beneficios' => ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0, 'PPR_SALARIOS' => 1.5],
         ],
     ];
 
@@ -358,6 +363,7 @@ class Projecao
             // filial usa (ela não tem quadro planejado).
             'percentual_atual' => ($total / $f / -$projecao85 - 1) * 100,
             'fator_quadro' => $f,
+            'ppr_salarios' => $pprSalarios,
             'projecao' => $projecao85,
             'parte_2026' => $parte26,
             'pecas_2026' => -$projecao85 * $parte26,
@@ -418,7 +424,9 @@ class Projecao
             $dig[(int)$d['negocio_id']][$d['chave']] = (float)$d['valor'];
         }
         foreach ($ids as $id) {
-            $saida[$id]['calc'] = self::pessoas($bases[$id] ?? null, self::beneficiosEfetivos($anoPlan, $dig[$id] ?? []));
+            $efetivos = self::beneficiosEfetivos($anoPlan, $dig[$id] ?? []);
+            $saida[$id]['calc'] = self::pessoas($bases[$id] ?? null, $efetivos);
+            $saida[$id]['ppr_salarios'] = isset($efetivos['PPR_SALARIOS']) ? (float)$efetivos['PPR_SALARIOS'] : null;
         }
         return $saida;
     }
@@ -455,7 +463,11 @@ class Projecao
                 $pessoal['folha'] ?? null,
                 $calc,
                 (float)$efetivas['PESSOAS'],
-                self::diretriz($anoPlan)['ppr_salarios'] ?? null,
+                // O número de salários do PPR: o campo `PPR_SALARIOS` (diretriz
+                // por cima do digitado, `dadosDePessoal`); sem ele, sem PPR.
+                array_key_exists('ppr_salarios', (array)$pessoal)
+                    ? $pessoal['ppr_salarios']
+                    : (self::diretriz($anoPlan)['beneficios']['PPR_SALARIOS'] ?? null),
                 $fator
             );
             if ($detalhe) {

@@ -1180,8 +1180,11 @@ class ProjecaoController
         $fixa = Projecao::fixadaPelaDiretriz($ano, $chave);
         if ($fixa !== null) {
             Json::erro(
-                'Fixado pela diretriz de ' . $ano . ' (' . Projecao::diretriz($ano)['fonte'] . '): R$ '
-                . number_format($fixa, 2, ',', '.') . ' por colaborador ao mês, para todos os negócios.',
+                'Fixado pela diretriz de ' . $ano . ' (' . Projecao::diretriz($ano)['fonte'] . '): '
+                . ($chave === 'PPR_SALARIOS'
+                    ? number_format($fixa, 1, ',', '.') . ' salário de PPR'
+                    : 'R$ ' . number_format($fixa, 2, ',', '.') . ' por colaborador ao mês')
+                . ', para todos os negócios.',
                 422
             );
         }
@@ -1197,6 +1200,10 @@ class ProjecaoController
             if (str_starts_with($chave, 'PCT_')) {
                 if ($v < 0 || $v > 100) {
                     Json::erro('Percentual fora de faixa: informe entre 0% e 100%.', 422);
+                }
+            } elseif ($chave === 'PPR_SALARIOS') {
+                if ($v < 0 || $v > Projecao::PPR_SALARIOS_MAXIMO) {
+                    Json::erro('PPR fora de faixa: informe entre 0 e 12 salários.', 422);
                 }
             } elseif ($v < 0 || $v > 100000) {
                 Json::erro(

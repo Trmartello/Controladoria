@@ -3190,6 +3190,15 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
     pela conta da diretriz, mas só aparecia na composição abaixo. `contaPessoal`
     acrescenta "Provisão do PPR" (mês e ano, de `pessoal_diretriz`) e "Benefícios
     + PPR" (`data-pessoas="ppr"` / `"total_ppr"`) no ano da proposta.
+  - **O número de salários do PPR é um CAMPO** (`PPR_SALARIOS` em
+    `Projecao::BENEFICIOS`, pedido do cliente, 2026-11-23: "deve ser um campo,
+    assim como são os campos de diretrizes"). Em 2027 vem da diretriz
+    (`DIRETRIZES[2027]['beneficios']['PPR_SALARIOS'] = 1.5`, selo, a API recusa);
+    nos anos sem diretriz o negócio digita (0 a 12 salários, `negocio_beneficio`),
+    e vazio é sem PPR (a 8.5 cresce só o reajuste). `dadosDePessoal` devolve o
+    efetivo em `ppr_salarios`, que `crescimentosDoNegocio` passa à conta; o texto
+    da tela usa o número do campo, não "1,5" fixo. A antiga chave
+    `DIRETRIZES[2027]['ppr_salarios']` saiu — não a reponha (seriam duas fontes).
   - **Quadro por FILIAL** (`filial_pessoas`, carga `pessoas_2026_11_23.php`, do
     Qlik em 23/11/2026, "traga os dados mais recentes de cada negócio e filial"):
     o quadro de novembro de cada filial, conferido na geração contra a soma do

@@ -475,6 +475,9 @@ const SecaoProjecao = {
     'Pago ao colaborador que cumpre os quesitos de assiduidade.', plano(padrao.ASSIDUIDADE))}
           ${this.campoBeneficio(d, ano, 'RESULTADO', 'Abono resultado (por mês)', 'R$',
     'Pago só no mês em que o negócio atinge o resultado planejado.', plano(padrao.RESULTADO))}
+          ${this.campoBeneficio(d, ano, 'PPR_SALARIOS', 'PPR (salários no ano)', 'salários',
+    'Quantos salários de PPR provisionar no ano, em 1/12 por mês, sobre a folha do mês (despesa + custo) com o '
+    + 'reajuste. Entra na linha Despesas com Pessoal (8.5). Vazio: sem PPR.', '—')}
           ${abonoTotal}
           ${leituras}
         </div>
@@ -569,17 +572,23 @@ const SecaoProjecao = {
       </table>`;
   },
 
+  /** "1,5 salário", "2 salários": o campo PPR_SALARIOS por extenso. */
+  salariosPpr(v) {
+    const n = Number(v) || 0;
+    return `${n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ${n < 2 ? 'salário' : 'salários'}`;
+  },
+
   /** O que as premissas fazem com as DESPESAS COM PESSOAL: benefícios e a linha 8.5. */
   contaPessoal(d, ano) {
     const calc = (d.pessoas.por_ano || {})[ano] || null;
     const dinheiro = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
-    // A provisão do PPR (1,5 salário, diretriz de 2027) ao lado dos benefícios
+    // A provisão do PPR (o campo PPR_SALARIOS; 1,5 salário pela diretriz de 2027) ao lado dos benefícios
     // (pedido do cliente, 2026-11-23: "não encontrei o provisionamento do PPR").
     // Ela já estava na linha 8.5 — e portanto no resultado —, mas só aparecia
     // na composição abaixo; aqui ela fica junto do que o negócio paga às pessoas.
     const pd = ano === d.ano_planejamento ? d.pessoal_diretriz : null;
     const ppr = pd && calc ? `
-            <tr data-pessoas-linha="ppr"><td>Provisão do PPR <span class="text-muted small">(1,5 salário sobre a folha de
+            <tr data-pessoas-linha="ppr"><td>Provisão do PPR <span class="text-muted small">(${this.salariosPpr(pd.ppr_salarios)} sobre a folha de
               ${this.nomeMes(pd.folha_mes)}/${pd.folha_ano}, ${dinheiro(pd.folha_mensal)}, reajustada)</span></td>
               <td class="text-end">${dinheiro(pd.ppr_mensal)}</td><td class="text-end" data-pessoas="ppr">${dinheiro(pd.ppr)}</td></tr>
             <tr class="fw-bold"><td>Benefícios + PPR <span class="fw-normal text-muted small">(na linha 8.5 e no resultado de ${ano})</span></td>
@@ -619,10 +628,12 @@ const SecaoProjecao = {
     const diretriz = ((d.diretriz || {})[ano]) || null;
     const fixo = diretriz && diretriz.beneficios ? diretriz.beneficios[chave] : undefined;
     if (fixo !== undefined) {
+      const n = Number(fixo).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+      const valor = unidade === 'R$' ? `R$ ${n}` : unidade === 'salários' ? this.salariosPpr(fixo) : n;
       return `<div class="col-6 col-md-auto">
           <div class="small text-muted mb-0" title="${Modal.esc(dica)}">${rotulo}</div>
           <div class="fw-bold campo-diretriz" data-diretriz="${chave}" title="${Modal.esc(diretriz.fonte)}">
-            R$ ${Number(fixo).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} <span class="badge selo-diretriz">diretriz</span></div>
+            ${valor} <span class="badge selo-diretriz">diretriz</span></div>
         </div>`;
     }
     return App.modoDossie
@@ -637,6 +648,7 @@ const SecaoProjecao = {
               inputmode="decimal" autocomplete="off" data-chave="${chave}"
               value="${num(dig[chave])}" placeholder="${placeholder}" ${editavel ? '' : 'disabled'}>
             ${unidade === '%' ? '<span class="input-group-text">%</span>' : ''}
+            ${unidade === 'salários' ? '<span class="input-group-text">salários</span>' : ''}
           </div>
         </div>`;
   },
@@ -654,7 +666,7 @@ const SecaoProjecao = {
   /**
    * A linha Despesas com Pessoal (8.5) da proposta, pela diretriz: a base de
    * 2026 sem vale, prêmio e PPR, reajustada; o vale e os prêmios de 2027 (a parte
-   * da despesa); e o PPR de 1,5 salário sobre a folha do mês. É a conta do
+   * da despesa); e o PPR (campo `PPR_SALARIOS`) sobre a folha do mês. É a conta do
    * servidor (`Projecao::pessoalDaDiretriz`), só mostrada — é o PADRÃO da linha
    * 8.5 da DRE e o seu mínimo (desde 2026-11-23 a linha se lança de novo).
    */
@@ -674,7 +686,7 @@ const SecaoProjecao = {
   Math.abs((p.fator_quadro || 1) - 1) > 1e-9 ? ` <span class="text-muted small" data-pessoal="fator">(× ${pct(p.fator_quadro)}: o quadro planejado sobre o atual)</span>` : ''}</td><td class="text-end" data-pessoal="base">${r(p.base_reajustada)}</td></tr>
             <tr><td>+ vale e prêmios de ${d.ano_planejamento}${p.parte_despesa < 0.999 ? ` <span class="text-muted small">(${pct(p.parte_despesa)}: a parte da folha que é despesa; o resto está no custo)</span>` : ''}</td>
               <td class="text-end" data-pessoal="beneficios">${r(p.beneficios)}</td></tr>
-            <tr><td>+ PPR: 1,5 salário sobre a folha de ${this.nomeMes(p.folha_mes)}/${p.folha_ano} (${r(p.folha_mensal)}) reajustada
+            <tr><td>+ PPR: ${this.salariosPpr(p.ppr_salarios)} sobre a folha de ${this.nomeMes(p.folha_mes)}/${p.folha_ano} (${r(p.folha_mensal)}) reajustada
               <span class="text-muted small">— ${r(p.ppr_mensal)} provisionados por mês</span></td>
               <td class="text-end" data-pessoal="ppr">${r(p.ppr)}</td></tr>
             <tr class="fw-bold"><td>Despesas com Pessoal de ${d.ano_planejamento} (linha 8.5 da DRE) <span class="fw-normal text-muted small">(${(p.percentual >= 0 ? '+' : '') + p.percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% sobre a projeção)</span></td>
