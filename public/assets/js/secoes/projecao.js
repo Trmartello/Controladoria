@@ -37,6 +37,9 @@
  */
 const SecaoProjecao = {
   negocioId: null,
+  // O AGRUPAMENTO no Corporativo (pedido do cliente, 2026-11-24): os ids dos
+  // negócios somados, ou null para todos. Fica no localStorage, por conveniência.
+  grupo: undefined,
   // 0 = a visão do NEGÓCIO; qualquer outro valor, a filial aberta.
   filialId: 0,
   versao: 0,
@@ -112,8 +115,10 @@ const SecaoProjecao = {
     const alvo = corp ? 0 : Number(App.contexto.negocioId) || 0;
     // A filial aberta só vale para o negócio em que foi aberta.
     if (alvo !== this.negocioId) this.filialId = 0;
+    // O dossiê imprime o Corporativo inteiro: o agrupamento é da tela.
+    const grupo = corp && !dossie ? this.grupoGuardado() : null;
     const q = corp
-      ? '?corporativo=1'
+      ? `?corporativo=1${grupo ? `&negocios=${grupo.join(',')}` : ''}`
       : (alvo
         ? `?negocio_id=${alvo}${!dossie && this.filialId ? `&filial_id=${this.filialId}` : ''}`
         : '');
@@ -852,10 +857,61 @@ const SecaoProjecao = {
     return !!d.pode_editar && !d.filial;
   },
 
+  /** O agrupamento guardado (ids) ou null = todos os negócios. */
+  grupoGuardado() {
+    if (this.grupo === undefined) {
+      try {
+        const g = JSON.parse(localStorage.getItem('projecao.grupo') || 'null');
+        this.grupo = Array.isArray(g) && g.length ? g.map(Number) : null;
+      } catch (e) { this.grupo = null; }
+    }
+    return this.grupo;
+  },
+
+  /** Troca o agrupamento (null = todos) e recarrega. */
+  async agrupar(ids) {
+    this.grupo = ids && ids.length ? ids : null;
+    try { localStorage.setItem('projecao.grupo', JSON.stringify(this.grupo)); } catch (e) { /* vale só nesta tela */ }
+    await this.carregar();
+  },
+
+  /** O nome do que está somado: "Corporativo — todos os negócios" ou "Agrupamento: LEITE + P. RESF. LEITE". */
+  nomeDoConsolidado(d) {
+    if (!d.grupo) return 'Corporativo — todos os negócios';
+    const nomes = d.negocios.filter((n) => d.grupo.includes(Number(n.id))).map((n) => n.rotulo);
+    return `Agrupamento: ${nomes.join(' + ')}`;
+  },
+
+  /**
+   * O quadro de marcar quais negócios entram na soma (pedido do cliente,
+   * 2026-11-24: "coloque um checkbox para eu clicar em quais negócios eu quero
+   * agrupar"). Todos marcados = o Corporativo. Aplicar recarrega a tela inteira
+   * com a soma dos marcados: DRE, desafio, oportunidades, tributos e pessoas.
+   */
+  quadroAgrupamento(d) {
+    if (App.modoDossie) return '';
+    const marcados = d.grupo || d.negocios.map((n) => Number(n.id));
+    const caixas = d.negocios.map((n) => `<div class="form-check form-check-inline me-3">
+        <input class="form-check-input" type="checkbox" id="grupo-neg-${n.id}" value="${n.id}" data-grupo-negocio
+          ${marcados.includes(Number(n.id)) ? 'checked' : ''}>
+        <label class="form-check-label small" for="grupo-neg-${n.id}">${Modal.esc(n.rotulo)}</label></div>`).join('');
+    return `<details class="card mb-3 painel-agrupamento"${d.grupo ? ' open' : ''}>
+        <summary class="card-header py-2 small fw-bold">Negócios no consolidado
+          <span class="fw-normal text-muted">— ${d.grupo ? `${d.grupo.length} de ${d.negocios.length} marcados` : 'todos'}; marque para agrupar</span></summary>
+        <div class="card-body py-2">
+          <div>${caixas}</div>
+          <div class="d-flex flex-wrap gap-2 mt-2">
+            <button type="button" class="btn btn-sm btn-primary" id="projecao-grupo-aplicar">Somar os marcados</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="projecao-grupo-todos">Todos os negócios</button>
+            <span class="small text-muted align-self-center" id="projecao-grupo-aviso"></span>
+          </div>
+        </div></details>`;
+  },
+
   /** As opções do seletor: o Corporativo (quando o perfil enxerga tudo) e cada negócio. */
   opcoesDeNegocio(d) {
     const corp = d.pode_corporativo
-      ? `<option value="corp"${d.corporativo ? ' selected' : ''}>Corporativo — todos os negócios</option>`
+      ? `<option value="corp"${d.corporativo ? ' selected' : ''}>Corporativo — ${d.corporativo && d.grupo ? 'agrupamento' : 'todos os negócios'}</option>`
       : '';
     return corp + d.negocios.map((n) => `<option value="${n.id}"${
       !d.corporativo && Number(n.id) === Number(d.negocio_id) ? ' selected' : ''}>${
@@ -889,9 +945,10 @@ const SecaoProjecao = {
     : `<select id="projecao-negocio" class="form-select form-select-sm" style="max-width:18rem"
           aria-label="Negócio">${this.opcoesDeNegocio(d)}</select>`}
       </div>
-      <p class="text-muted mb-1">
-        <strong>Corporativo:</strong> a soma dos <strong>${d.negocios_consolidados} negócios</strong>
-        com DRE carregada. Realizado de <strong>jan a ${this.nomeMes(d.mes_fechado_ate)}</strong>
+      <p class="text-muted mb-1" id="projecao-consolidado-nome">
+        <strong>${Modal.esc(d.grupo ? this.nomeDoConsolidado(d) : 'Corporativo')}:</strong> a soma ${d.grupo
+    ? `de <strong>${d.negocios_consolidados} negócio${d.negocios_consolidados === 1 ? '' : 's'}</strong> escolhido${d.negocios_consolidados === 1 ? '' : 's'}`
+    : `dos <strong>${d.negocios_consolidados} negócios</strong> com DRE carregada`}. Realizado de <strong>jan a ${this.nomeMes(d.mes_fechado_ate)}</strong>
         (meses fechados) e projetado de <strong>${this.nomeMes(d.mes_fechado_ate + 1)} a dez</strong>
         pelo orçamento lançado. Nada se lança aqui: a proposta de <strong>${d.ano_planejamento}</strong>
         é decidida em cada negócio.
@@ -902,6 +959,7 @@ const SecaoProjecao = {
     ? ` Nos outros ${sem} a coluna Proposta vale a própria projeção (crescimento zero) —
         não é meta, é a falta dela.` : ''}
       </div>
+      ${this.quadroAgrupamento(d)}
       ${this.cartaoVisaoAno(d)}
       ${this.cartaoDesafio(d)}
       ${this.cartaoOportunidades(d)}
@@ -909,7 +967,7 @@ const SecaoProjecao = {
       ${this.cartaoPessoas(d)}
       ${faltando}
       <div id="projecao-dre-bloco">
-      ${this.cabecalhoImpressao(d, 'Corporativo — todos os negócios')}
+      ${this.cabecalhoImpressao(d, this.nomeDoConsolidado(d))}
       ${this.botaoNivel()}
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
         A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
@@ -1527,16 +1585,32 @@ const SecaoProjecao = {
         <td class="text-end small">${this.linkLinhaDre(d, x.linha, x.reduzida)}</td>
         <td class="text-end d-none d-md-table-cell ${cor(x.anterior)}">${m(x.anterior)}</td>
         <td class="text-end d-none d-md-table-cell ${cor(x.atual)}">${m(x.atual)}</td></tr>`;
-    const grupo = (lista, tipo, rotulo) => (lista.length
-      ? `<tr class="table-light fw-bold"><td colspan="4">${rotulo} (${lista.length})</td></tr>${lista.map((x) => linha(x, tipo)).join('')}`
+    // O TOTAL de cada grupo e o geral (pedido do cliente, 2026-11-24: "traga um
+    // totalizador para essas contas"), nas duas janelas.
+    const soma = (lista, k) => lista.reduce((a, x) => a + (Number(x[k]) || 0), 0);
+    const total = (lista, tipo, rotulo, classe) => {
+      const a = soma(lista, 'anterior');
+      const b = soma(lista, 'atual');
+      return `<tr class="${classe}" data-questionamento-total="${tipo}"><td>${rotulo}
+          <div class="small d-md-none fw-normal">${ja}: <span class="${cor(a)}">${m(a)}</span> → ${jb}: <span class="${cor(b)}">${m(b)}</span></div></td>
+        <td></td><td class="text-end d-none d-md-table-cell ${cor(a)}">${m(a)}</td>
+        <td class="text-end d-none d-md-table-cell ${cor(b)}">${m(b)}</td></tr>`;
+    };
+    const grupo = (lista, tipo, rotulo, rotuloTotal) => (lista.length
+      ? `<tr class="table-light fw-bold"><td colspan="4">${rotulo} (${lista.length})</td></tr>${lista.map((x) => linha(x, tipo)).join('')}
+        ${total(lista, tipo, rotuloTotal, 'fw-bold')}`
       : '');
+    const todas = [...qs.parou, ...qs.comecou];
     const corpo = qs.parou.length || qs.comecou.length
       ? `<div class="table-responsive">
           <table class="table table-sm align-middle mb-1 tabela-questionamentos">
             <thead><tr><th>Conta reduzida</th><th class="text-end">Linha da DRE</th>
               <th class="text-end d-none d-md-table-cell">${ja}</th><th class="text-end d-none d-md-table-cell">${jb}</th></tr></thead>
-            <tbody>${grupo(qs.parou, 'PAROU', `Aconteceu em ${ja} e parou em ${jb} — deveria continuar em ${qs.ano + 1}?`)}${
-  grupo(qs.comecou, 'COMECOU', `Começou em ${jb}, sem ter acontecido em ${ja} — vai continuar em ${qs.ano + 1}?`)}</tbody>
+            <tbody>${grupo(qs.parou, 'PAROU', `Aconteceu em ${ja} e parou em ${jb} — deveria continuar em ${qs.ano + 1}?`,
+    `Total do que parou (${qs.parou.length})`)}${
+  grupo(qs.comecou, 'COMECOU', `Começou em ${jb}, sem ter acontecido em ${ja} — vai continuar em ${qs.ano + 1}?`,
+    `Total do que começou (${qs.comecou.length})`)}${
+  qs.parou.length && qs.comecou.length ? total(todas, 'TOTAL', `Total dos questionamentos (${todas.length})`, 'fw-bold table-light') : ''}</tbody>
           </table>
         </div>`
       : `<div class="small text-muted" id="sem-questionamentos">Nenhuma conta parou ou começou entre ${ja} e ${jb}
@@ -1685,11 +1759,18 @@ const SecaoProjecao = {
         o resultado do ano seguinte cai.` : `Nenhum lançamento acima de R$ ${lim}.`}</div>
       ${j.acima.length ? `<div class="table-responsive"><table class="table table-sm align-middle mb-2 tabela-juros">
         <thead><tr><th>Data</th><th>Filial</th><th>Cliente</th><th>Conta</th><th class="text-end">Juros</th></tr></thead>
-        <tbody>${acima}</tbody></table></div>` : ''}
+        <tbody>${acima}
+          <tr class="fw-bold table-light" data-juros-total="lancamentos"><td colspan="4">Total (${j.acima.length} lançamento${j.acima.length === 1 ? '' : 's'} acima de R$ ${lim})</td>
+            <td class="text-end text-danger text-nowrap">${m(j.acima.reduce((a, x) => a + (Number(x.valor) || 0), 0))}</td></tr>
+        </tbody></table></div>` : ''}
       ${j.clientes.length ? `<details class="small"><summary>Clientes que somam mais de R$ ${lim} de juros no ano (${j.clientes.length})</summary>
         <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-juros-clientes">
           <thead><tr><th>Cliente</th><th>Conta</th><th>Filiais</th><th class="text-end">Lançamentos</th><th class="text-end">Juros</th></tr></thead>
-          <tbody>${clientes}</tbody></table></div>
+          <tbody>${clientes}
+            <tr class="fw-bold table-light" data-juros-total="clientes"><td colspan="3">Total (${j.clientes.length} cliente${j.clientes.length === 1 ? '' : 's'})</td>
+              <td class="text-end">${j.clientes.reduce((a, c) => a + (Number(c.lancamentos) || 0), 0)}</td>
+              <td class="text-end text-nowrap">${m(j.clientes.reduce((a, c) => a + (Number(c.valor) || 0), 0))}</td></tr>
+          </tbody></table></div>
         <div class="text-muted">Somados os lançamentos de R$ 5 mil ou mais de cada cliente.</div></details>` : ''}
     </div>`;
   },
@@ -2293,6 +2374,22 @@ const SecaoProjecao = {
     }
     const imprimir = el.querySelector('#projecao-imprimir-dre');
     if (imprimir && virgem(imprimir)) imprimir.addEventListener('click', () => this.imprimirDre());
+    // O agrupamento de negócios no Corporativo.
+    const aplicar = el.querySelector('#projecao-grupo-aplicar');
+    if (aplicar && virgem(aplicar)) {
+      aplicar.addEventListener('click', () => {
+        const caixas = [...el.querySelectorAll('input[data-grupo-negocio]')];
+        const ids = caixas.filter((c) => c.checked).map((c) => Number(c.value));
+        const aviso = el.querySelector('#projecao-grupo-aviso');
+        if (!ids.length) {
+          if (aviso) aviso.textContent = 'Marque ao menos um negócio.';
+          return;
+        }
+        this.agrupar(ids.length === caixas.length ? null : ids);
+      });
+    }
+    const todos = el.querySelector('#projecao-grupo-todos');
+    if (todos && virgem(todos)) todos.addEventListener('click', () => this.agrupar(null));
     const sel = el.querySelector('#projecao-negocio');
     if (sel && virgem(sel)) {
       sel.addEventListener('change', (ev) => {

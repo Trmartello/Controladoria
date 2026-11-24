@@ -132,6 +132,17 @@ Desconsiderar em TODAS as linhas — itens e meses fora do padrão —, sem o se
 "avaliado" (2026-11-24; `negocio_item_avaliacao`). Os questionamentos 2025 × 2026
 vêm de `dre_reduzida_12m`.
 
+**Agrupamento no Corporativo** (pedido do cliente, 2026-11-24: "preciso poder
+selecionar e totalizar mais de um negócio, por exemplo Leite mais Postos de
+resfriamento de leite"). Na visão Corporativo, o quadro "Negócios no consolidado"
+tem uma caixa por negócio; "Somar os marcados" recarrega a tela com a soma só deles
+(`GET /api/projecao?corporativo=1&negocios=4,12`, `ProjecaoController::grupoPedido`:
+ids fora da lista são ignorados, e nenhum válido ou todos = o Corporativo). É a MESMA
+soma do Corporativo (`montarCorporativo` com a lista filtrada), então DRE, desafio,
+oportunidades, tributos e pessoas saem do agrupamento. O nome diz quais negócios
+são; a escolha fica no `localStorage` (`projecao.grupo`); o dossiê imprime sempre o
+Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócios).
+
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica
   ganha, de onde vem o volume, valorização da matéria-prima, faturamento).

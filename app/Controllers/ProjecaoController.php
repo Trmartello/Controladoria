@@ -86,7 +86,18 @@ class ProjecaoController
             'pode_corporativo' => $podeCorporativo,
         ];
         if ($podeCorporativo && !empty($_GET['corporativo'])) {
-            Json::ok(self::paraTela($this->montarCorporativo($negocios, $ano, $corte)) + $comuns + ['pode_editar' => false]);
+            // AGRUPAMENTO (pedido do cliente, 2026-11-24: "preciso poder selecionar e
+            // totalizar mais de um negócio — Leite mais Postos de resfriamento"): a
+            // mesma soma do Corporativo, só com os negócios marcados. Ids fora da
+            // lista com DRE são ignorados; nenhum válido = todos (o Corporativo).
+            $grupo = self::grupoPedido((string)($_GET['negocios'] ?? ''), $ids);
+            $somados = $grupo
+                ? array_values(array_filter($negocios, static fn ($n) => in_array((int)$n['id'], $grupo, true)))
+                : $negocios;
+            Json::ok(self::paraTela($this->montarCorporativo($somados, $ano, $corte)) + $comuns + [
+                'pode_editar' => false,
+                'grupo' => $grupo,
+            ]);
             return;
         }
 
@@ -94,6 +105,21 @@ class ProjecaoController
         Json::ok(self::paraTela($this->montar($negocioId, $ano, $corte, $filialId)) + $comuns + [
             'pode_editar' => $u['perfil'] !== 'LEITURA',
         ]);
+    }
+
+    /**
+     * Os negócios de um AGRUPAMENTO (`?negocios=4,12`), na ordem da lista com DRE.
+     * Devolve null quando o pedido não restringe nada — vazio, nenhum id válido ou
+     * todos os negócios —, e a tela mostra o Corporativo.
+     *
+     * @param int[] $validos os negócios com DRE que o perfil enxerga
+     * @return int[]|null
+     */
+    public static function grupoPedido(string $pedido, array $validos): ?array
+    {
+        $pedidos = array_map('intval', array_filter(array_map('trim', explode(',', $pedido)), 'strlen'));
+        $grupo = array_values(array_filter($validos, static fn ($id) => in_array($id, $pedidos, true)));
+        return $grupo && count($grupo) < count($validos) ? $grupo : null;
     }
 
     /**
