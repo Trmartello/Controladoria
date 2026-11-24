@@ -200,8 +200,14 @@ prova('a janela do quadro é nov/2025 a out/2026', $q['periodo'] === ['de' => [2
 prova('o item traz o total dos 12 meses e o dos 12 meses antes (sinal da DRE): PDD do Leite −7.182.426 contra −110 (dez/24: 70 + abr/25: 40)',
     abs($ql['ITEM:3.11.03.01.01']['total'] + 7182426) < 1 && abs($ql['ITEM:3.11.03.01.01']['anterior'] + 110) < 1,
     json_encode([$ql['ITEM:3.11.03.01.01']['total'], $ql['ITEM:3.11.03.01.01']['anterior']]));
-prova('sem avaliação, todos os itens estão a avaliar', $q['avaliacao']['avaliados'] === 0
-    && $q['avaliacao']['pendentes'] === count(array_filter($q['linhas'], static fn ($l) => $l['tipo'] === 'ITEM')));
+// Desde 2026-11-24 TODAS as linhas se avaliam, itens e meses fora do padrão.
+prova('sem avaliação, todas as linhas (itens e meses fora do padrão) estão sem marcação', $q['avaliacao']['avaliados'] === 0
+    && $q['avaliacao']['pendentes'] === count($q['linhas']), json_encode($q['avaliacao']));
+$evento = array_values(array_filter($q['linhas'], static fn ($l) => $l['tipo'] === 'EVENTO'))[0] ?? null;
+prova('cada linha tem a chave da avaliação: o item pela conta contábil, o mês fora do padrão por LINHA:<linha da DRE>',
+    $ql['ITEM:3.11.03.01.01']['chave_avaliacao'] === '3.11.03.01.01'
+    && (!$evento || $evento['chave_avaliacao'] === 'LINHA:' . $evento['codigo']),
+    json_encode([$ql['ITEM:3.11.03.01.01']['chave_avaliacao'], $evento['chave_avaliacao'] ?? null]));
 // Avaliar: considerar a PDD (vai se repetir) e desconsiderar outra conta.
 $pdo = Database::conn();
 $outra = array_values(array_filter($q['linhas'], static fn ($l) => $l['tipo'] === 'ITEM' && $l['codigo'] !== '3.11.03.01.01'))[0] ?? null;
@@ -210,9 +216,21 @@ try {
     if ($outra) {
         $pdo->prepare("INSERT INTO negocio_item_avaliacao (negocio_id, ano, conta, decisao, avaliado_em) VALUES (?, 2027, ?, 'DESCONSIDERAR', NOW())")->execute([$leite, $outra['codigo']]);
     }
+    if ($evento) {
+        $pdo->prepare("INSERT INTO negocio_item_avaliacao (negocio_id, ano, conta, decisao, avaliado_em) VALUES (?, 2027, ?, 'CONSIDERAR', NOW())")->execute([$leite, $evento['chave_avaliacao']]);
+    }
     $q2 = Oportunidades::quadro($leite, 2026, 10);
-    prova('considerar a PDD a põe no total "a planejar" (−7.182.426) e a marca como avaliada',
-        abs($q2['avaliacao']['considerar'] + 7182426) < 1 && $q2['avaliacao']['avaliados'] === ($outra ? 2 : 1), json_encode($q2['avaliacao']));
+    $ev2 = $evento ? array_values(array_filter($q2['linhas'], static fn ($l) => $l['chave_avaliacao'] === $evento['chave_avaliacao']))[0] : null;
+    // O mês fora do padrão entra em "considerados" pelo quanto se afasta do padrão,
+    // no sinal da DRE: −(oportunidade + risco).
+    prova('o mês fora do padrão também se marca, e entra nos considerados pelo afastamento do padrão',
+        !$evento || (($ev2['avaliacao']['decisao'] ?? null) === 'CONSIDERAR'
+            && abs($q2['avaliacao']['considerar'] - (-7182426 - ($evento['oportunidade'] + $evento['risco']))) < 1
+            && $q2['avaliacao']['avaliados'] === ($outra ? 3 : 2)),
+        json_encode([$q2['avaliacao'], $evento['oportunidade'] ?? null, $evento['risco'] ?? null]));
+    $pdd2 = array_values(array_filter($q2['linhas'], static fn ($l) => $l['chave_avaliacao'] === '3.11.03.01.01'))[0];
+    prova('considerar a PDD a marca como considerada (−7.182.426 nos 12 meses)',
+        ($pdd2['avaliacao']['decisao'] ?? null) === 'CONSIDERAR' && abs($pdd2['total'] + 7182426) < 1, json_encode($pdd2['avaliacao']));
     prova('desconsiderar outra põe o total dela em "oportunidade"', !$outra || abs($q2['avaliacao']['desconsiderar'] - $outra['total']) < 1);
     prova('a avaliação não muda os totais do quadro', abs($q2['oportunidade'] - $q['oportunidade']) < 1e-6 && abs($q2['risco'] - $q['risco']) < 1e-6);
 } finally {

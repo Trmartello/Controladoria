@@ -1266,12 +1266,13 @@ class ProjecaoController
     }
 
     /**
-     * AVALIA um item não recorrente (multa, provisão, indenização, perda, receita
-     * pontual) para o ano do planejamento (pedido do cliente, 2026-11-23):
-     * `decisao` CONSIDERAR (vai se repetir: risco a planejar), DESCONSIDERAR (não se
-     * repete: oportunidade) ou vazia (volta a "a avaliar"). Grava quem e quando — é
-     * a marca de "já avaliado". Não muda a DRE: a resposta, se for o caso, se lança
-     * na linha.
+     * AVALIA uma linha das oportunidades para o ano do planejamento (pedido do
+     * cliente, 2026-11-23; estendido a TODAS as linhas em 2026-11-24): o item não
+     * recorrente pela conta contábil, o mês fora do padrão pela linha da DRE
+     * (`LINHA:8.15`, `Oportunidades::chaveAvaliacao`). `decisao` CONSIDERAR (vai se
+     * repetir: tratar no planejamento), DESCONSIDERAR (não se repete) ou vazia
+     * (desmarca). Grava quem e quando. Não muda a DRE: a resposta, se for o caso,
+     * se lança na linha.
      */
     public function gravarAvaliacao(): void
     {
@@ -1290,7 +1291,12 @@ class ProjecaoController
         if (!Database::um('SELECT id FROM negocio WHERE id = ?', [$negocioId])) {
             Json::erro('Negócio não encontrado.', 404);
         }
-        if (!isset(Oportunidades::CONTAS[$conta])) {
+        $linha = str_starts_with($conta, Oportunidades::PREFIXO_LINHA)
+            ? substr($conta, strlen(Oportunidades::PREFIXO_LINHA)) : null;
+        $conhecido = $linha !== null
+            ? (bool)Database::um('SELECT id FROM dre_conta WHERE codigo = ? AND nivel = 2', [$linha])
+            : isset(Oportunidades::CONTAS[$conta]);
+        if (!$conhecido) {
             Json::erro('Item desconhecido: ' . $conta . '.', 422);
         }
         if ($decisao !== '' && !in_array($decisao, ['CONSIDERAR', 'DESCONSIDERAR'], true)) {

@@ -230,6 +230,10 @@ class Oportunidades
     {
         $linhas = [];
         $ajuste = [];
+        // Considerar / Desconsiderar vale para TODAS as linhas do negócio (pedido do
+        // cliente, 2026-11-24): itens pela conta contábil, meses fora do padrão pela
+        // linha da DRE (`chaveAvaliacao`). Na filial não se avalia: é do negócio.
+        $avaliacoes = $filialId ? [] : self::avaliacoes($negocioId, $ano + 1);
         if (!$filialId) {
             $porConta = [];
             $anterior = [];
@@ -249,7 +253,6 @@ class Oportunidades
             ) as $r) {
                 $anterior[$r['conta']] = (float)$r['s'];
             }
-            $avaliacoes = self::avaliacoes($negocioId, $ano + 1);
             // Sem a carga mensal, os totais (sem mês e sem tirar da série).
             if (!$porConta) {
                 foreach ((self::itens([$negocioId], $ano)[$negocioId]['itens'] ?? []) as $i) {
@@ -271,6 +274,7 @@ class Oportunidades
                 $red = self::reduzidaDaConta((string)$conta);
                 $linhas[] = [
                     'tipo' => 'ITEM', 'codigo' => (string)$conta, 'nome' => $cat[1],
+                    'chave_avaliacao' => self::chaveAvaliacao('ITEM', (string)$conta),
                     // A conta reduzida e o nome como o Qlik mostram (pedido do
                     // cliente, 2026-11-21): é por ela que o gestor acha o número
                     // na DRE gerencial; a conta contábil fica de apoio.
@@ -294,8 +298,10 @@ class Oportunidades
             }
         }
         foreach (self::picos($negocioId, $ano, $corte, $filialId, $ajuste) as $p) {
+            $chave = self::chaveAvaliacao('EVENTO', (string)$p['codigo']);
             $linhas[] = [
                 'tipo' => 'EVENTO', 'codigo' => $p['codigo'], 'nome' => $p['nome'], 'grupo' => $p['grupo'],
+                'chave_avaliacao' => $chave, 'avaliacao' => $avaliacoes[$chave] ?? null,
                 'linha_dre' => $p['codigo'], 'mediana' => $p['mediana'],
                 'meses' => array_map(static fn ($m) => ['ano' => $m['ano'], 'mes' => $m['mes'], 'valor' => $m['valor']], $p['meses']),
                 'oportunidade' => $p['oportunidade'], 'risco' => $p['risco'],
@@ -321,18 +327,18 @@ class Oportunidades
         unset($l);
         $op = array_sum(array_column($linhas, 'oportunidade'));
         $ri = array_sum(array_column($linhas, 'risco'));
-        // A avaliação dos itens (Considerar / Desconsiderar), totalizada.
+        // A avaliação (Considerar / Desconsiderar) de TODAS as linhas, totalizada no
+        // sinal da DRE: o item pelo total dos 12 meses; o mês fora do padrão pelo
+        // quanto ele se afasta do padrão (−(oportunidade + risco)). Na filial, nada.
         $aval = ['considerar' => 0.0, 'desconsiderar' => 0.0, 'avaliados' => 0, 'pendentes' => 0];
-        foreach ($linhas as $l) {
-            if ($l['tipo'] !== 'ITEM') {
-                continue;
-            }
+        foreach ($filialId ? [] : $linhas as $l) {
+            $valor = $l['tipo'] === 'ITEM' ? (float)$l['total'] : -((float)$l['oportunidade'] + (float)$l['risco']);
             $dec = $l['avaliacao']['decisao'] ?? null;
             if ($dec === 'CONSIDERAR') {
-                $aval['considerar'] += (float)$l['total'];
+                $aval['considerar'] += $valor;
                 $aval['avaliados']++;
             } elseif ($dec === 'DESCONSIDERAR') {
-                $aval['desconsiderar'] += (float)$l['total'];
+                $aval['desconsiderar'] += $valor;
                 $aval['avaliados']++;
             } else {
                 $aval['pendentes']++;
@@ -341,6 +347,20 @@ class Oportunidades
         return ['mes_ate' => $corte, 'ano' => $ano,
             'periodo' => ['de' => self::janela($ano, $corte)[0], 'ate' => [$ano, $corte]],
             'linhas' => $linhas, 'oportunidade' => $op, 'risco' => $ri, 'saldo' => $op + $ri, 'avaliacao' => $aval];
+    }
+
+    /** Prefixo da chave de avaliação de um mês fora do padrão: a linha da DRE ('LINHA:8.15'). */
+    public const PREFIXO_LINHA = 'LINHA:';
+
+    /**
+     * A chave com que a avaliação de uma linha do quadro se grava em
+     * `negocio_item_avaliacao.conta`: o item, pela conta contábil (como sempre foi,
+     * então o que já foi avaliado continua valendo); o mês fora do padrão, pela
+     * linha da DRE com o prefixo `LINHA:`, que não colide com conta contábil.
+     */
+    public static function chaveAvaliacao(string $tipo, string $codigo): string
+    {
+        return $tipo === 'ITEM' ? $codigo : self::PREFIXO_LINHA . $codigo;
     }
 
     /** 'ano-mês' de uma série que atravessa anos ('2025-11'). */
