@@ -6867,26 +6867,34 @@ async function provasApoioDesafio(page, largura) {
   t(`${l} quadro único (nov/25–out/26): a PDD da Agropecuária com os meses (out/26: −4.541.651), oportunidades R$ 19.097.015, riscos −4.305.536 e saldo`,
     /out\/26: -4\.541\.651/.test(n.pdd) && /nov\/25/.test(n.pdd) && n.oport === 19097015 && /4\.305\.536/.test(n.risco || '') && /\+14\.791\.479/.test(n.saldo || ''),
     `${n.oport} / ${n.risco} / ${n.saldo} / ${n.pdd.slice(0, 160)}`);
-  // Considerar / Desconsiderar e a marca de avaliado (pedido do cliente, 2026-11-23).
-  const aval = async () => page.evaluate(() => ({
-    marca: !!document.querySelector('tr[data-item="3.11.03.01.01"] .item-avaliado'),
-    aAvaliar: !!document.querySelector('tr[data-item="3.11.03.01.01"] .item-a-avaliar'),
+  // Considerar / Desconsiderar (pedido do cliente, 2026-11-23) em TODAS as linhas, sem o
+  // selo "avaliado / a avaliar" (2026-11-24): o botão marcado é a resposta. E o item mostra
+  // os períodos: "nov/25–out/26" e "nov/24–out/25".
+  const pdd = '.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"]';
+  const aval = async () => page.evaluate((sel) => ({
+    marcado: document.querySelector(`${sel} [data-decisao][aria-pressed="true"]`)?.textContent.trim() || '',
+    selo: !!document.querySelector('.tabela-oportunidades-quadro .item-avaliado, .tabela-oportunidades-quadro .item-a-avaliar'),
+    linhas: document.querySelectorAll('.tabela-oportunidades-quadro tr[data-item], .tabela-oportunidades-quadro tr[data-pico]').length,
+    comBotoes: document.querySelectorAll('.tabela-oportunidades-quadro tr[data-item] .avaliacao-item, .tabela-oportunidades-quadro tr[data-pico] .avaliacao-item').length,
+    picosComBotoes: document.querySelectorAll('.tabela-oportunidades-quadro tr[data-pico] [data-avaliar^="LINHA:"]').length,
     considerar: document.querySelector('[data-avaliacao-total="considerar"] td:last-child')?.textContent.trim(),
     pendentes: document.querySelector('[data-avaliacao-total="pendentes"] td:last-child')?.textContent.trim(),
     compara: document.querySelector('[data-item-compara="3.11.03.01.01"]')?.textContent.replace(/\s+/g, ' ').trim(),
-  }));
+  }), pdd);
   const a0 = await aval();
-  await page.click('.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"] [data-decisao="CONSIDERAR"]');
-  await esperar(page, "!!document.querySelector('tr[data-item=\"3.11.03.01.01\"] .item-avaliado')", 10000);
+  await page.click(`${pdd} [data-decisao="CONSIDERAR"]`);
+  await esperar(page, `!!document.querySelector('${pdd.replace(/"/g, '\\"')} [aria-pressed="true"]')`, 10000);
   const a1 = await aval();
-  await page.click('.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"] [aria-pressed="true"]');
-  await esperar(page, "!!document.querySelector('tr[data-item=\"3.11.03.01.01\"] .item-a-avaliar')", 10000);
+  await page.click(`${pdd} [aria-pressed="true"]`);
+  await esperar(page, `!document.querySelector('${pdd.replace(/"/g, '\\"')} [aria-pressed="true"]')`, 10000);
   const a2 = await aval();
-  t(`${l} o item mostra os 12 meses e os 12 meses antes, e começa "a avaliar"`,
-    a0.aAvaliar && /12 meses: -7\.585\.709/.test(a0.compara || '') && /12 meses antes: -6\.316\.562/.test(a0.compara || ''), JSON.stringify(a0));
-  t(`${l} Considerar a PDD a marca como avaliada e a põe no total "a planejar" (−7.585.709)`,
-    a1.marca && /-7\.585\.709/.test(a1.considerar || '') && a1.pendentes !== a0.pendentes, JSON.stringify(a1));
-  t(`${l} clicar de novo desfaz: volta a "a avaliar"`, a2.aAvaliar && a2.pendentes === a0.pendentes, JSON.stringify(a2));
+  t(`${l} o item mostra os períodos e os valores: nov/25–out/26 e nov/24–out/25, e começa sem marcação`,
+    !a0.marcado && /nov\/25–out\/26: -7\.585\.709/.test(a0.compara || '') && /nov\/24–out\/25: -6\.316\.562/.test(a0.compara || ''), JSON.stringify(a0));
+  t(`${l} todas as linhas (itens e meses fora do padrão) têm Considerar / Desconsiderar, e não há mais o selo "avaliado"`,
+    a0.linhas > 0 && a0.comBotoes === a0.linhas && a0.picosComBotoes > 0 && !a0.selo, JSON.stringify(a0));
+  t(`${l} Considerar a PDD deixa o botão marcado e a põe nos considerados (−7.585.709)`,
+    a1.marcado === 'Considerar' && /-7\.585\.709/.test(a1.considerar || '') && a1.pendentes !== a0.pendentes, JSON.stringify(a1));
+  t(`${l} clicar de novo desmarca`, !a2.marcado && a2.pendentes === a0.pendentes, JSON.stringify(a2));
   t(`${l} e há meses fora do padrão nas despesas`, n.picos > 0, String(n.picos));
   // Questionamentos 2025 × 2026 (pedido do cliente, 2026-11-23): o que parou e o que começou.
   t(`${l} questionamentos: a tela lista o que parou e o que começou, igual à API, com o link para a linha da DRE`,
@@ -7555,13 +7563,14 @@ async function provasFormato2027EEventos(page, largura) {
     titulo: document.querySelector('.painel-oportunidades summary h2')?.textContent.trim(),
     juros: document.querySelector('.painel-oportunidades tr[data-pico="11.1"]')?.textContent.replace(/\s+/g, ' ').trim() || '',
     itens: !!document.querySelector('.painel-oportunidades tr[data-item]'),
+    botoes: !!document.querySelector('.painel-oportunidades .avaliacao-item'),
   }));
   // Desde 2026-11-23 a mediana é dos 12 meses (nov/25–out/26): R$ 184.306. Acima
   // de 184.306 + 92.153: mar, abr, mai, jun e ago (4.566.172 − 5 × 184.306 =
   // 3.644.642 de risco); abaixo: fev, jul, set e out (+650.302 de oportunidade).
   t(`${l} na filial, o cartão é dela, e a receita de juros concentrada aparece como risco (12 meses: −3.644.642)`,
     /esta filial/.test(f.titulo || '') && /mar\/26: 1\.109\.220/.test(f.juros) && /mai\/26: 1\.223\.945/.test(f.juros) && /−3\.644\.642/.test(f.juros)
-      && /\+650\.302/.test(f.juros) && !f.itens,
+      && /\+650\.302/.test(f.juros) && !f.itens && !f.botoes,
     JSON.stringify(f));
   await page.evaluate(async () => { SecaoProjecao.filialId = 0; await SecaoProjecao.carregar(); });
 }

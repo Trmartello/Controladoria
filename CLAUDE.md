@@ -127,8 +127,10 @@ rateio em 4.1/14.3/16.1, 3342 direito de uso na 8.9): confirmar se a planilha
 não soma o que já está nessas contas. Provas: `testes/depreciacao.php`.
 
 **Oportunidades.** Janela de 12 meses (nov/25–out/26) contra os 12 anteriores, com
-Considerar/Desconsiderar e a marca de avaliado (`negocio_item_avaliacao`). Os
-questionamentos 2025 × 2026 vêm de `dre_reduzida_12m`.
+o período escrito em cada item ("nov/25–out/26", "nov/24–out/25"). Considerar /
+Desconsiderar em TODAS as linhas — itens e meses fora do padrão —, sem o selo
+"avaliado" (2026-11-24; `negocio_item_avaliacao`). Os questionamentos 2025 × 2026
+vêm de `dre_reduzida_12m`.
 
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica
@@ -3395,12 +3397,19 @@ questionamentos 2025 × 2026 vêm de `dre_reduzida_12m`.
     com `ano`; a tela escreve "nov/25". Os LANÇAMENTOS (expansor) ainda são só os
     de jan–out do ano corrente — a nota da tela diz. Estoque e juros continuam em
     jan–out. `dre_reduzida_valor` de 2025 (carga anterior) ficou sem uso.
-  - **Considerar / Desconsiderar os itens não recorrentes** (pedido do cliente,
-    2026-11-23): cada multa, provisão, indenização, perda ou receita pontual tem os
-    botões e a marca "✓ avaliado" (quem, quando). `negocio_item_avaliacao` por
-    negócio, ano do planejamento e conta; `POST /api/projecao/avaliacao` (vazio
-    desfaz). O quadro totaliza: considerados (vão se repetir: risco a planejar),
-    desconsiderados (oportunidade) e quantos faltam avaliar. Não muda a DRE.
+  - **Considerar / Desconsiderar em todas as linhas das Oportunidades** (pedido do
+    cliente, 2026-11-23 para os itens; 2026-11-24 para os meses fora do padrão: "para
+    todas as oportunidades"). O botão marcado É a resposta — o selo "✓ avaliado / a
+    avaliar" saiu ("se foi considerado, está considerado"); quem e quando ficam no
+    título do botão. `negocio_item_avaliacao` por negócio, ano do planejamento e
+    chave (`Oportunidades::chaveAvaliacao`): o item pela conta contábil, o mês fora
+    do padrão por `LINHA:<linha da DRE>` (ex.: `LINHA:11.1`), que não colide com
+    conta contábil. `POST /api/projecao/avaliacao` (vazio desfaz; a API confere a
+    conta em `Oportunidades::CONTAS` ou a linha em `dre_conta`, nível 2). O quadro
+    totaliza considerados e desconsiderados no sinal da DRE — o item pelos 12 meses,
+    o mês fora do padrão pelo afastamento do padrão, −(oportunidade + risco) — e
+    quantas linhas faltam marcar. Na filial não há botões: a marcação é do negócio.
+    Não muda a DRE.
     (A marca de "ligado" no contêiner é `data-ligou-avaliacao`: chamá-la
     `data-avaliar` fazia o `closest` disparar em qualquer clique da seção.)
   - **Questionamentos 2025 × 2026 nas Oportunidades** (pedido do cliente,

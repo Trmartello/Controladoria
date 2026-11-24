@@ -1378,7 +1378,7 @@ const SecaoProjecao = {
       return `<tr ${item ? `data-item="${Modal.esc(l.codigo)}"` : `data-pico="${Modal.esc(l.codigo)}"`}>
         <td>${item && l.reduzida
     ? `${this.contaQlik(`${l.reduzida} ${l.reduzida_nome}`)}<div class="text-muted small">${Modal.esc(l.nome)} · conta contábil ${Modal.esc(l.codigo)}</div>`
-    : Modal.esc(l.nome)}${item ? this.comparaItem(l, q) + this.avaliacaoItem(l, podeAvaliar) : ''}</td>
+    : Modal.esc(l.nome)}${item ? this.comparaItem(l, q) : ''}${naFilial ? '' : this.avaliacaoItem(l, podeAvaliar)}</td>
         <td class="small">${Modal.esc(l.grupo || '')}${item ? '' : ' <span class="text-muted">· mês fora do padrão</span>'}</td>
         <td class="text-end small">${this.linkLinhaDre(d, l.linha_dre, item ? l.reduzida : null)}</td>
         <td class="text-end">${l.mediana === null || l.mediana === undefined ? '<span class="text-muted">—</span>' : m(l.mediana)}</td>
@@ -1411,8 +1411,8 @@ const SecaoProjecao = {
       </div>
       <div class="small text-muted">Período: os 12 meses de ${this.rotuloJanela(q.periodo, true)}${naFilial ? '' : `; cada item mostra também os
         12 meses anteriores, para comparar`}. ${naFilial ? '' : `<strong>Itens</strong> (conta contábil): provisões, perdas, indenizações, multas e
-        receitas pontuais, com o mês em que foram lançados — cada um se avalia: <strong>Considerar</strong> (vai se repetir: risco a
-        planejar) ou <strong>Desconsiderar</strong> (não se repete: oportunidade). `}<strong>Meses fora do padrão</strong>: em despesas operacionais, outros
+        receitas pontuais, com o mês em que foram lançados. Em cada linha, item ou mês fora do padrão, marque
+        <strong>Considerar</strong> (vai se repetir: tratar no planejamento) ou <strong>Desconsiderar</strong> (não se repete). `}<strong>Meses fora do padrão</strong>: em despesas operacionais, outros
         valores e resultado financeiro, o mês que se afasta da mediana dos 12 meses em mais da metade dela (e de R$ 50 mil) — uma receita de
         juros concentrada num mês, uma despesa que não se repete${naFilial ? '' : '; calculados sem os itens acima, para nada contar duas vezes'}. Se não se repetir em ${d.ano_planejamento}, despesa é <strong>oportunidade</strong> e receita ou reversão é
         <strong>risco</strong>. Meses no sinal da DRE (despesa negativa).</div>
@@ -1450,47 +1450,57 @@ const SecaoProjecao = {
     return `${semDe ? '' : 'de '}${this.rotuloMes(p.de[0], p.de[1])} a ${this.rotuloMes(p.ate[0], p.ate[1])}`;
   },
 
-  /** O item nos 12 meses e nos 12 anteriores (pedido do cliente: comparar com o ano anterior). */
+  /**
+   * O item nos 12 meses e nos 12 anteriores (pedido do cliente: comparar com o ano
+   * anterior), com o PERÍODO de cada um (pedido do cliente, 2026-11-24: "quais são os
+   * 12 meses? E quais são os 12 meses antes?") — "nov/25–out/26" e "nov/24–out/25".
+   */
   comparaItem(l, q) {
     const ant = Number(l.anterior) || 0;
     const tot = Number(l.total) || 0;
     const cor = (v) => (v < 0 ? 'text-danger' : '');
+    const p = q && q.periodo;
+    const faixa = (desloc) => (p ? `${this.rotuloMes(p.de[0] - desloc, p.de[1])}–${this.rotuloMes(p.ate[0] - desloc, p.ate[1])}` : '');
+    const atual = p ? faixa(0) : '12 meses';
+    const antes = p ? faixa(1) : '12 meses antes';
     return `<div class="small item-compara" data-item-compara="${Modal.esc(l.codigo)}">
-        12 meses: <span class="${cor(tot)}">${this.moeda(tot)}</span>
-        · 12 meses antes: <span class="${cor(ant)}">${this.moeda(ant)}</span>${
+        ${atual}: <span class="${cor(tot)}">${this.moeda(tot)}</span>
+        · ${antes}: <span class="${cor(ant)}">${this.moeda(ant)}</span>${
   !ant ? ' <span class="badge text-bg-warning">novo</span>' : ''}</div>`;
   },
 
   /**
-   * Considerar / Desconsiderar o item e a marca de AVALIADO (pedido do cliente,
-   * 2026-11-23): considerar = vai se repetir (risco a planejar); desconsiderar =
-   * não se repete (oportunidade). Grava por negócio e ano; não muda a DRE.
+   * Considerar / Desconsiderar, em TODAS as linhas do quadro (pedido do cliente,
+   * 2026-11-23; estendido aos meses fora do padrão em 2026-11-24): considerar = vai se
+   * repetir, tratar no planejamento; desconsiderar = não se repete. O botão marcado
+   * é a própria resposta — sem o selo "avaliado / a avaliar" (pedido do cliente,
+   * 2026-11-24: "se foi considerado, está considerado"). Quem marcou e quando vão
+   * no título do botão. Grava por negócio e ano (`l.chave_avaliacao`); não muda a DRE.
    */
   avaliacaoItem(l, podeAvaliar) {
     const a = l.avaliacao || null;
     const dec = a ? a.decisao : null;
     const quando = a && a.em ? new Date(String(a.em).replace(' ', 'T')).toLocaleDateString('pt-BR') : '';
-    const marca = a
-      ? `<span class="badge text-bg-success item-avaliado" title="${Modal.esc(`Avaliado${a.por ? ` por ${a.por}` : ''}${quando ? ` em ${quando}` : ''}`)}">✓ avaliado</span>`
-      : '<span class="badge text-bg-secondary item-a-avaliar">a avaliar</span>';
+    const quem = a ? `Marcado${a.por ? ` por ${a.por}` : ''}${quando ? ` em ${quando}` : ''}` : '';
+    const chave = l.chave_avaliacao || l.codigo;
     const botao = (d, rotulo, cor) => `<button type="button" class="btn btn-sm ${dec === d ? `btn-${cor}` : `btn-outline-${cor}`}"
-        data-avaliar="${Modal.esc(l.codigo)}" data-decisao="${dec === d ? '' : d}" ${podeAvaliar ? '' : 'disabled'}
-        aria-pressed="${dec === d ? 'true' : 'false'}">${rotulo}</button>`;
+        data-avaliar="${Modal.esc(chave)}" data-decisao="${dec === d ? '' : d}" ${podeAvaliar ? '' : 'disabled'}
+        ${dec === d && quem ? `title="${Modal.esc(quem)}"` : ''} aria-pressed="${dec === d ? 'true' : 'false'}">${rotulo}</button>`;
     return `<div class="d-flex flex-wrap align-items-center gap-1 mt-1 avaliacao-item" data-avaliacao="${Modal.esc(dec || '')}">
-        <div class="btn-group btn-group-sm" role="group" aria-label="Avaliação do item">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Tratar no planejamento?">
           ${botao('CONSIDERAR', 'Considerar', 'danger')}${botao('DESCONSIDERAR', 'Desconsiderar', 'success')}
-        </div>${marca}</div>`;
+        </div></div>`;
   },
 
   /** Os totais da avaliação: o que se repete (a planejar) e o que não (oportunidade). */
   totaisAvaliacao(a) {
     const m = (v) => this.moeda(v);
-    return `<tr class="table-light" data-avaliacao-total="considerar"><td colspan="5"><strong>Considerados</strong> — vão se repetir: risco a planejar
-        <span class="text-muted small">(itens nos 12 meses, sinal da DRE)</span></td>
+    return `<tr class="table-light" data-avaliacao-total="considerar"><td colspan="5"><strong>Considerados</strong> — vão se repetir: tratar no planejamento
+        <span class="text-muted small">(itens: os 12 meses; meses fora do padrão: o que se afasta do padrão; sinal da DRE)</span></td>
         <td class="text-end" colspan="2">${m(a.considerar)}</td></tr>
       <tr class="table-light" data-avaliacao-total="desconsiderar"><td colspan="5"><strong>Desconsiderados</strong> — não se repetem: oportunidade</td>
         <td class="text-end" colspan="2">${m(a.desconsiderar)}</td></tr>
-      <tr class="table-light" data-avaliacao-total="pendentes"><td colspan="5">Itens a avaliar</td>
+      <tr class="table-light" data-avaliacao-total="pendentes"><td colspan="5">Ainda sem Considerar ou Desconsiderar</td>
         <td class="text-end" colspan="2">${a.pendentes} de ${a.pendentes + a.avaliados}</td></tr>`;
   },
 
