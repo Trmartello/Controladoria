@@ -6795,6 +6795,97 @@ async function provasDiretriz2027(page, largura) {
  * "Desafio para o negócio", PIS/COFINS destacados, as oportunidades e riscos de
  * 2027, e as células de lançar em amarelo-claro.
  */
+/**
+ * O AGRUPAMENTO de negócios no Corporativo (pedido do cliente, 2026-11-24:
+ * "preciso poder selecionar e totalizar mais de um negócio, por exemplo Leite mais
+ * Postos de resfriamento de leite — coloque um checkbox"): marcar dois negócios
+ * soma só os dois (conta a conta, como o Corporativo), o nome diz quais são, a
+ * escolha sobrevive à recarga e "Todos os negócios" volta ao Corporativo.
+ */
+async function provasAgrupamento(page, largura) {
+  const l = `[${largura}] Agrupamento:`;
+  await page.evaluate(() => {
+    try { localStorage.removeItem('projecao.grupo'); } catch (e) { /* sem armazenamento */ }
+    SecaoProjecao.grupo = undefined;
+    document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+    const sel = document.querySelector('#sel-negocio');
+    sel.value = 'CORP';
+    sel.dispatchEvent(new Event('change'));
+    App.mostrarSecao('projecao');
+  });
+  const abriu = await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('.painel-agrupamento')", 60000);
+  t(`${l} o Corporativo tem o quadro "Negócios no consolidado"`, abriu);
+  if (!abriu) return;
+  const c0 = await page.evaluate(() => ({
+    caixas: document.querySelectorAll('.painel-agrupamento input[data-grupo-negocio]').length,
+    marcadas: document.querySelectorAll('.painel-agrupamento input[data-grupo-negocio]:checked').length,
+    negocios: SecaoProjecao.dados.negocios.length, grupo: SecaoProjecao.dados.grupo,
+  }));
+  t(`${l} uma caixa por negócio, todas marcadas (é o Corporativo)`,
+    c0.caixas === c0.negocios && c0.marcadas === c0.caixas && c0.grupo == null, JSON.stringify(c0));
+  // Leite + Postos de resfriamento de leite.
+  await page.evaluate(() => {
+    const quer = ['- LEITE', '- P. RESF. LEITE'];
+    document.querySelectorAll('.painel-agrupamento details, details.painel-agrupamento').forEach((d) => { d.open = true; });
+    document.querySelectorAll('.painel-agrupamento input[data-grupo-negocio]').forEach((i) => {
+      const rot = i.closest('.form-check').textContent.trim();
+      i.checked = quer.some((q) => rot.endsWith(q));
+    });
+    document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+    document.querySelector('#projecao-grupo-aplicar').click();
+  });
+  await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && (SecaoProjecao.dados.grupo || []).length === 2", 60000);
+  const g = await page.evaluate(async () => {
+    const d = SecaoProjecao.dados;
+    const val = (ls, c, k) => Number((ls.find((x) => x.codigo === c) || {})[k]) || 0;
+    let rob = 0; let rl = 0; let des = 0;
+    for (const id of d.grupo) {
+      const n = await App.api(`/api/projecao?negocio_id=${id}`);
+      rob += val(n.linhas, '1', 'realizado');
+      rl += val(n.linhas, '18', 'proposta');
+      des += Number((n.desafio && n.desafio.desafio && n.desafio.desafio.resultado) || 0);
+    }
+    return {
+      grupo: d.grupo, consolidados: d.negocios_consolidados,
+      rob: val(d.linhas, '1', 'realizado'), robSoma: rob,
+      rl: val(d.linhas, '18', 'proposta'), rlSoma: rl,
+      desafio: Number(d.desafio && d.desafio.total && d.desafio.total.desafio && d.desafio.total.desafio.resultado) || 0, desafioSoma: des,
+      nome: document.querySelector('#projecao-consolidado-nome')?.textContent.replace(/\s+/g, ' ').trim() || '',
+      opcao: document.querySelector('#projecao-negocio option[value="corp"]')?.textContent.trim(),
+    };
+  });
+  // Agrupado é SÓ LEITURA (pedido do cliente, 2026-11-24): nenhum campo de lançar, de
+  // premissa ou botão de Considerar/Desconsiderar; a edição é negócio a negócio.
+  const so = await page.evaluate(() => ({
+    pode: SecaoProjecao.dados.pode_editar,
+    campos: document.querySelectorAll('#secao-projecao .tabela-projecao input, #secao-projecao .tabela-projecao select, #secao-projecao [data-avaliar], #secao-projecao input[data-premissa]').length,
+  }));
+  t(`${l} agrupado é só leitura: sem campo de lançar, de premissa nem Considerar/Desconsiderar`, so.pode === false && so.campos === 0, JSON.stringify(so));
+  t(`${l} Leite + Postos de leite: o nome diz quais são, e a soma é a dos dois negócios (receita realizada, resultado proposto e desafio)`,
+    g.consolidados === 2 && /LEITE \+ .*P\. RESF\. LEITE/.test(g.nome) && /agrupamento/.test(g.opcao || '')
+      && Math.abs(g.rob - g.robSoma) < 1 && Math.abs(g.rl - g.rlSoma) < 1 && Math.abs(g.desafio - g.desafioSoma) < 2,
+    JSON.stringify(g));
+  // A escolha sobrevive a recarregar a seção.
+  await page.evaluate(async () => { SecaoProjecao.grupo = undefined; await SecaoProjecao.carregar(); });
+  const g2 = await page.evaluate(() => (SecaoProjecao.dados.grupo || []).length);
+  t(`${l} recarregar mantém o agrupamento`, g2 === 2, String(g2));
+  // Nenhum marcado não aplica; "Todos os negócios" volta ao Corporativo.
+  const aviso = await page.evaluate(() => {
+    document.querySelectorAll('.painel-agrupamento input[data-grupo-negocio]').forEach((i) => { i.checked = false; });
+    document.querySelector('#projecao-grupo-aplicar').click();
+    return document.querySelector('#projecao-grupo-aviso')?.textContent.trim();
+  });
+  t(`${l} sem nenhum marcado, avisa e não aplica`, /ao menos um/.test(aviso || ''), aviso);
+  await page.evaluate(() => {
+    document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+    document.querySelector('#projecao-grupo-todos').click();
+  });
+  await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && SecaoProjecao.dados.grupo == null", 60000);
+  const c1 = await page.evaluate(() => ({ grupo: SecaoProjecao.dados.grupo, n: SecaoProjecao.dados.negocios_consolidados, total: SecaoProjecao.dados.negocios.length,
+    guardado: (() => { try { return localStorage.getItem('projecao.grupo'); } catch (e) { return 'x'; } })() }));
+  t(`${l} "Todos os negócios" volta ao Corporativo`, c1.grupo == null && c1.n === c1.total && c1.guardado === 'null', JSON.stringify(c1));
+}
+
 async function provasApoioDesafio(page, largura) {
   const l = `[${largura}] Apoio ao desafio:`;
   await page.evaluate(() => App.mostrarSecao('projecao'));
@@ -6897,6 +6988,25 @@ async function provasApoioDesafio(page, largura) {
   t(`${l} clicar de novo desmarca`, !a2.marcado && a2.pendentes === a0.pendentes, JSON.stringify(a2));
   t(`${l} e há meses fora do padrão nas despesas`, n.picos > 0, String(n.picos));
   // Questionamentos 2025 × 2026 (pedido do cliente, 2026-11-23): o que parou e o que começou.
+  {
+    // Totais dos questionamentos (pedido do cliente, 2026-11-24): por grupo e o geral,
+    // nas duas janelas — iguais à soma da API.
+    const qt = await page.evaluate(() => {
+      const nn = (x) => Number(String(x || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+      const cel = (t, i) => nn(document.querySelectorAll(`.tabela-questionamentos tr[data-questionamento-total="${t}"] td`)[i]?.textContent);
+      const qs = SecaoProjecao.dados.oportunidades.questionamentos;
+      const s = (l, k) => Math.round(l.reduce((a, x) => a + (Number(x[k]) || 0), 0));
+      return {
+        parou: [cel('PAROU', 2), cel('PAROU', 3)], parouApi: [s(qs.parou, 'anterior'), s(qs.parou, 'atual')],
+        comecou: [cel('COMECOU', 2), cel('COMECOU', 3)], comecouApi: [s(qs.comecou, 'anterior'), s(qs.comecou, 'atual')],
+        total: [cel('TOTAL', 2), cel('TOTAL', 3)], n: qs.parou.length && qs.comecou.length,
+      };
+    });
+    const perto = (u, v) => u.every((x, i) => Math.abs(x - v[i]) <= 1);
+    t(`${l} questionamentos: total do que parou, do que começou e o geral, nas duas janelas`,
+      perto(qt.parou, qt.parouApi) && perto(qt.comecou, qt.comecouApi)
+        && (!qt.n || perto(qt.total, [qt.parouApi[0] + qt.comecouApi[0], qt.parouApi[1] + qt.comecouApi[1]])), JSON.stringify(qt));
+  }
   t(`${l} questionamentos: a tela lista o que parou e o que começou, igual à API, com o link para a linha da DRE`,
     n.qApi && n.qApi.ano_anterior === 2025 && n.qParou === n.qApi.parou.length && n.qComecou === n.qApi.comecou.length
       && n.qParou + n.qComecou > 0 && n.qLink, JSON.stringify([n.qParou, n.qComecou, n.qApi && n.qApi.parou.length, n.qApi && n.qApi.comecou.length]));
@@ -7378,6 +7488,10 @@ async function provasLancamentosEJuros(page, largura) {
       acima: document.querySelectorAll('#juros-recebidos tr[data-juros-lancamento]').length,
       maior: document.querySelector('#juros-recebidos tr[data-juros-lancamento]')?.textContent.replace(/\s+/g, ' ').trim() || '',
       clientes: document.querySelectorAll('#juros-recebidos tr[data-juros-cliente]').length,
+      totalJuros: document.querySelector('#juros-recebidos tr[data-juros-total="lancamentos"] td:last-child')?.textContent.trim() || '',
+      totalClientes: document.querySelector('#juros-recebidos tr[data-juros-total="clientes"] td:last-child')?.textContent.trim() || '',
+      somaClientes: [...document.querySelectorAll('#juros-recebidos tr[data-juros-cliente] td:last-child')]
+        .reduce((x, td) => x + Number(td.textContent.replace(/[^\d,-]/g, '').replace(',', '.')), 0),
       rolagem: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     };
   });
@@ -7394,6 +7508,9 @@ async function provasLancamentosEJuros(page, largura) {
   t(`${l} juros: 45 documentos acima de R$ 30 mil, risco 3.526.819, o maior é Rafael Dalmina (filial 128)`,
     a.acima === 45 && num(a.risco) === 3526819 && /128 — .*RAFAEL DALMINA/.test(a.maior), JSON.stringify([a.acima, a.risco, a.maior]));
   t(`${l} e os clientes que somam mais de R$ 30 mil no ano estão listados`, a.clientes === 49, String(a.clientes));
+  // Totalizadores das tabelas de juros (pedido do cliente, 2026-11-24).
+  t(`${l} juros: a tabela dos lançamentos acima de R$ 30 mil tem o total, igual ao risco (3.526.819); a dos clientes também totaliza`,
+    num(a.totalJuros) === 3526819 && Math.abs(num(a.totalClientes) - a.somaClientes) <= 1, JSON.stringify([a.totalJuros, a.totalClientes, a.somaClientes]));
   t(`${l} sem rolagem horizontal da página`, !a.rolagem);
 
   await escolher('- LEITE');
@@ -11574,6 +11691,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasDesafioEExpansores(page, 'desktop');
   await provasDiretriz2027(page, 'desktop');
   await provasApoioDesafio(page, 'desktop');
+  await provasAgrupamento(page, 'desktop');
   await provasTributosComoEComoFica(page, 'desktop');
   await provasFormato2027EEventos(page, 'desktop');
   await provasEstoque(page, 'desktop');
@@ -11661,6 +11779,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasDesafioEExpansores(pageM, 'celular');
   await provasDiretriz2027(pageM, 'celular');
   await provasApoioDesafio(pageM, 'celular');
+  await provasAgrupamento(pageM, 'celular');
   await provasEstoque(pageM, 'celular');
   await provasLancamentosEJuros(pageM, 'celular');
   await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', receitaPecuariaM);

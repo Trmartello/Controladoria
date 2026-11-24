@@ -92,6 +92,32 @@ prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 41,36 mi',
     abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 41359984) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 
+// ── 1b. Agrupamento no Corporativo (2026-11-24): só os negócios marcados ─────
+// "Preciso poder selecionar e totalizar mais de um negócio, por exemplo Leite mais
+// Postos de resfriamento de leite."
+$todos = array_map('intval', array_column($negs, 'id'));
+$PC = App\Controllers\ProjecaoController::class;
+prova('o pedido do agrupamento: ids válidos na ordem da lista; vazio, inválido ou todos = Corporativo (null)',
+    $PC::grupoPedido("{$ids['12']},{$ids['4']},999999", $todos) === [$ids['4'], $ids['12']]
+    && $PC::grupoPedido('', $todos) === null && $PC::grupoPedido('999999,abc', $todos) === null
+    && $PC::grupoPedido(implode(',', $todos), $todos) === null,
+    json_encode($PC::grupoPedido("{$ids['12']},{$ids['4']}", $todos)));
+$par = array_values(array_filter($negs, static fn ($n) => in_array((int)$n['id'], [$ids['4'], $ids['12']], true)));
+$cg = invocar($ctrl, 'montarCorporativo', $par, $ano, $corte);
+$soma = static function (array $cods, string $linha, string $campo) use ($ctrl, $ids, $ano, $corte): float {
+    $t = 0.0;
+    foreach ($cods as $c) {
+        $t += (float)array_column(invocar($ctrl, 'montar', $ids[$c], $ano, $corte)['linhas'], $campo, 'codigo')[$linha];
+    }
+    return $t;
+};
+$lg = array_column($cg['linhas'], null, 'codigo');
+prova('Leite + Postos de leite: 2 negócios, e cada linha é a soma dos dois (receita realizada, resultado proposto)',
+    $cg['negocios_consolidados'] === 2
+    && abs($lg['1']['realizado'] - $soma(['4', '12'], '1', 'realizado')) < 0.01
+    && abs($lg['18']['proposta'] - $soma(['4', '12'], '18', 'proposta')) < 0.01,
+    round($lg['1']['realizado']) . ' / ' . round($lg['18']['proposta']));
+
 // ── 2. De onde sai: base de 12 meses × premissas, ou o driver ───────────────
 $cresceu = [];
 foreach (['1', '6', '7', '8', '9', '11', '13'] as $cod) {
