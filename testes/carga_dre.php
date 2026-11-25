@@ -170,7 +170,10 @@ prova('carga de filiais com corte diferente do fechamento é recusada',
 // gravado — então o negócio do mesmo corte é recarregado antes de cada um
 // (setembro para as filiais que ainda não foram re-extraídas, outubro para as
 // demais). No fim o banco volta ao fechamento mais novo.
-$arquivos = glob(__DIR__ . '/../database/dre_filiais_*.php');
+// O ACERTO das filiais (2026-11-25) não é carga de filiais: são trocas sobre
+// elas, conferidas na prova 11.
+$arquivos = array_values(array_filter(glob(__DIR__ . '/../database/dre_filiais_*.php'),
+    static fn ($a) => !str_contains(basename($a), 'acerto')));
 sort($arquivos);
 prova('há carga de filiais no repositório', $arquivos !== [], count($arquivos) . ' arquivo(s)');
 // Desde a estrutura nova o negócio só existe nela (a carga velha é recusada), e
@@ -221,8 +224,10 @@ $cortes = $pdo->query("SELECT DISTINCT v.corte FROM dre_valor_filial v JOIN fili
 prova('e a Pecuária fica toda num corte só', $cortes === ['10'] || $cortes === [10], json_encode($cortes));
 
 // ── 10. O corte do fechamento ficou gravado ─────────────────────────────────
-// Depois de passar pelos cortes antigos na prova 9, volta ao mais novo.
-App\Services\CargaDre::aplicar($pdo, $base);
+// Depois de passar pelos cortes antigos na prova 9, volta ao mais novo: a
+// recarga de outubro de 25/11 (`dre_2026_fechamento_10_r2`).
+$r2 = require __DIR__ . '/../database/dre_2026_fechamento_10_r2.php';
+App\Services\CargaDre::aplicar($pdo, $r2);
 $f = $pdo->query('SELECT * FROM dre_fechamento WHERE ano = 2026')->fetch(PDO::FETCH_ASSOC);
 prova('o corte do fechamento fica no banco, não no código',
     $f && (int)$f['mes_fechado_ate'] === 10, json_encode($f));
@@ -233,6 +238,32 @@ prova('o corte do fechamento fica no banco, não no código',
 // vêm depois verem o que a produção tem.
 require_once __DIR__ . '/../app/Services/CargaNivel3.php';
 App\Services\CargaNivel3::corrigirRateioDasFiliais($pdo, 2026);
+
+// ── 11. A recarga de outubro (2026-11-25) ───────────────────────────────────
+// Só outubro mudou: jan–set e o orçamento da recarga são os de 18/11, valor a
+// valor. E o acerto das filiais leva as mesmas trocas a elas — a própria carga
+// recusa se a soma das filiais não bater com o negócio.
+$mudou = [];
+foreach ($r2['valores'] as $k => [$real, $meta]) {
+    $velho = $base['valores'][$k] ?? null;
+    $a = explode(';', $real);
+    $b = $velho ? explode(';', $velho[0]) : [];
+    if (!$velho || $meta !== $velho[1] || array_slice($a, 0, 9) !== array_slice($b, 0, 9)) {
+        $mudou[] = $k;
+    }
+}
+prova('a recarga de 25/11 só muda outubro: jan–set e orçamento iguais aos de 18/11', $mudou === [], implode(', ', array_slice($mudou, 0, 5)));
+$acerto = require __DIR__ . '/../database/dre_filiais_acerto_2026_10.php';
+$msg = null;
+try {
+    App\Services\CargaDre::aplicarAcertosFiliais($pdo, $acerto);
+} catch (Throwable $e) {
+    $msg = $e->getMessage();
+}
+prova('o acerto das filiais de outubro fecha com o negócio recarregado', $msg === null, (string)$msg);
+$agro106 = $pdo->query("SELECT COALESCE(SUM(ABS(v.realizado)), 0) FROM dre_valor_filial v JOIN filial f ON f.id = v.filial_id
+    JOIN negocio n ON n.id = f.negocio_id WHERE n.cod_negocio = '8' AND f.cod_filial = '106' AND v.ano = 2026")->fetchColumn();
+prova('a filial 106 (fábrica de Rações) fica zerada nas Agropecuárias', abs((float)$agro106) < 0.01, (string)$agro106);
 
 echo "\n" . count($bad) . " falha(s), {$ok} verde(s).\n";
 exit($bad ? 1 : 0);

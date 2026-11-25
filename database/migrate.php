@@ -933,6 +933,11 @@ foreach ([
     'dre_filiais_racoes_2026_10.php',
     'dre_filiais_cereais_2026_10.php',
     'dre_filiais_agropecuarias_2026_10.php',
+    // RECARGA de outubro (2026-11-25): o Qlik reprocessou o mês e passou
+    // lançamentos de um negócio para outro dentro da mesma filial. Depois das
+    // filiais, de propósito: elas conferem a soma contra o negócio de 18/11, e as
+    // trocas delas vêm no acerto, abaixo do nível 3.
+    'dre_2026_fechamento_10_r2.php',
 ] as $arquivo) {
     $dre = require __DIR__ . '/' . $arquivo;
     if (App\Services\CargaConteudo::jaAplicada($pdo, $dre['chave'])) {
@@ -1035,6 +1040,16 @@ foreach ([
         echo 'migrate: filial(is) sem cadastro ignorada(s) na carga de pessoas (sem DRE de filial, sem o que planejar): '
             . implode(', ', $r['filiais_ignoradas']) . ".\n";
     }
+}
+
+// ---- Acerto da DRE por filial (recarga de outubro, 2026-11-25) ----
+// Depois do nível 3, que corrige a divisão 14.3 × 16.1 das filiais: o acerto
+// soma as trocas de negócio dentro da filial e confere a soma com o negócio.
+$acerto = require __DIR__ . '/dre_filiais_acerto_2026_10.php';
+if (!App\Services\CargaConteudo::jaAplicada($pdo, $acerto['chave'])) {
+    $r = App\Services\CargaDre::aplicarAcertosFiliais($pdo, $acerto);
+    App\Services\CargaConteudo::marcar($pdo, $acerto['chave'], "Acerto de filiais: {$r['acertos']} troca(s) em {$r['negocios']} negócio(s)");
+    echo "migrate: acerto de filiais {$acerto['chave']} — {$r['acertos']} troca(s) em {$r['negocios']} negócio(s).\n";
 }
 
 // ---- Folha por negócio, para a despesa de pessoal da diretriz (2026-11-18) ----

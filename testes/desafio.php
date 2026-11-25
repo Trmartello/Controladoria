@@ -85,7 +85,8 @@ prova('o cabeçalho não traz valores: quem calcula é a Projeção', $d && !iss
 // carregava R$ 19,6 mi da projeção): 29.606.988 → −9.828.534. E o rateio corporativo negócio na
 // 14.3 (R$ 38,3 mi pelos critérios dos centros de custo, 2026-11-24): → −16.924.199. E o rateio
 // financeiro na 14.2 (R$ 95,9 mi da planilha, por negócio): → −22.786.223. E a 14.1 (Matriz/Central)
-// zerada (2026-11-25; o resíduo do rateio somava −R$ 1 na cooperativa): → −22.786.222.
+// zerada (2026-11-25; o resíduo do rateio somava −R$ 1 na cooperativa): → −22.786.222; e a recarga
+// de outubro do Qlik (25/11) → −22.786.222,86.
 $negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
 $c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];

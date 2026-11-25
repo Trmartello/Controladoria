@@ -250,6 +250,94 @@ class CargaDre
         return ['filiais' => count($dados['filiais']), 'valores' => $gravados, 'convertida' => $velha];
     }
 
+    /**
+     * As linhas que uma conta folha alimenta na estrutura NOVA da DRE, para um
+     * acerto de filial (abaixo) levar o subtotal junto. Conferido na própria
+     * filial 106 das Agropecuárias (custo de R$ 5.918 e R$ 87 de rateio): o
+     * custo desce até o líquido sem passar por Despesas Totais (17); os rateios
+     * passam por ela.
+     */
+    private const ACERTO_PROPAGA = [
+        '4.1' => ['4', '5', '10', '12', '13', '15', '18'],
+        '14.1' => ['14', '15', '17', '18'],
+        '14.3' => ['14', '15', '17', '18'],
+        '16.1' => ['16', '17', '18'],
+    ];
+
+    /**
+     * ACERTO da DRE por filial (2026-11-25): quando o Qlik reprocessa um mês e
+     * passa lançamentos de um negócio para outro DENTRO da mesma filial, a carga
+     * dos negócios muda e as filiais precisam das mesmas trocas — regravar a
+     * carga antiga das filiais não serve (ela é da estrutura velha e desfaria a
+     * divisão 14.3 × 16.1 que o nível 3 corrigiu). O acerto soma cada diferença
+     * ao realizado acumulado da filial, com os subtotais, e depois exige que a
+     * soma das filiais bata com o negócio em toda conta tocada. Tudo numa
+     * transação: se não bater, nada fica gravado.
+     *
+     * @return array{acertos:int, negocios:int}
+     */
+    public static function aplicarAcertosFiliais(PDO $pdo, array $dados): array
+    {
+        $ano = (int)($dados['ano'] ?? 0);
+        $corte = (int)($dados['corte'] ?? 0);
+        $acertos = $dados['acertos'] ?? [];
+        if ($ano < 2000 || $corte < 1 || !$acertos) {
+            throw new RuntimeException('Acerto de filiais sem ano, corte ou acertos.');
+        }
+        $contas = [];
+        foreach ($pdo->query('SELECT id, codigo FROM dre_conta')->fetchAll(PDO::FETCH_ASSOC) as $l) {
+            $contas[$l['codigo']] = (int)$l['id'];
+        }
+        $filial = $pdo->prepare('SELECT f.id, f.negocio_id FROM filial f JOIN negocio n ON n.id = f.negocio_id
+                                  WHERE n.cod_negocio = ? AND f.cod_filial = ?');
+        $soma = $pdo->prepare(
+            'INSERT INTO dre_valor_filial (filial_id, conta_id, ano, corte, realizado, projetado) VALUES (?, ?, ?, ?, ?, 0)
+             ON DUPLICATE KEY UPDATE realizado = realizado + VALUES(realizado)'
+        );
+        $tocadas = [];
+        $pdo->beginTransaction();
+        try {
+            foreach ($acertos as [$codNegocio, $codFilial, $conta, $delta]) {
+                if (!isset(self::ACERTO_PROPAGA[$conta])) {
+                    throw new RuntimeException("Acerto de filial numa conta sem regra de subtotal: {$conta}.");
+                }
+                $filial->execute([(string)$codNegocio, (string)$codFilial]);
+                $f = $filial->fetch(PDO::FETCH_ASSOC);
+                if (!$f) {
+                    throw new RuntimeException("Acerto de filial para filial fora do cadastro: {$codNegocio}/{$codFilial}.");
+                }
+                foreach (array_merge([$conta], self::ACERTO_PROPAGA[$conta]) as $c) {
+                    $soma->execute([(int)$f['id'], $contas[$c], $ano, $corte, (float)$delta]);
+                    $tocadas[(int)$f['negocio_id']][$c] = $contas[$c];
+                }
+            }
+            // A guarda: a soma das filiais é o negócio, em toda conta tocada.
+            $neg = $pdo->prepare("SELECT COALESCE(SUM(valor), 0) FROM dre_valor
+                                   WHERE negocio_id = ? AND conta_id = ? AND ano = ? AND tipo = 'REAL' AND mes <= ?");
+            $fil = $pdo->prepare('SELECT COALESCE(SUM(v.realizado), 0) FROM dre_valor_filial v JOIN filial f ON f.id = v.filial_id
+                                   WHERE f.negocio_id = ? AND v.conta_id = ? AND v.ano = ?');
+            foreach ($tocadas as $negocioId => $porConta) {
+                foreach ($porConta as $codigo => $contaId) {
+                    $neg->execute([$negocioId, $contaId, $ano, $corte]);
+                    $fil->execute([$negocioId, $contaId, $ano]);
+                    $dif = (float)$fil->fetchColumn() - (float)$neg->fetchColumn();
+                    // R$ 15: as filiais vêm ao real, e a soma de dezenas delas arredonda.
+                    if (abs($dif) > 15) {
+                        throw new RuntimeException(sprintf(
+                            'Acerto de filiais: a soma das filiais não bate com o negócio %d na conta %s (diferença R$ %.2f).',
+                            $negocioId, $codigo, $dif
+                        ));
+                    }
+                }
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+        return ['acertos' => count($acertos), 'negocios' => count($tocadas)];
+    }
+
     private static function cargaTemContas(array $porFilial, array $codigos): bool
     {
         foreach ($porFilial as $linhas) {

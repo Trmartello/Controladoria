@@ -109,17 +109,21 @@ prova('com as entradas do painel, a regra dá os números do painel nos 11 negó
 // E com os dados do BANCO (carga de 17/11), cada negócio fica a poucos reais do
 // painel — com UMA diferença conhecida: entre 15/11 e 17/11 o Qlik moveu R$ 8,6 mil
 // de resultado realizado da Fábrica de Rações (6) para as Agropecuárias (8), o que
-// dá ±R$ 1,7 mil no resultado realista de nov–dez dos dois (8,6 mil ÷ 10 × 2). O
-// total não muda, e é o que a prova seguinte fixa.
+// dá ±R$ 1,7 mil no resultado realista de nov–dez dos dois (8,6 mil ÷ 10 × 2). E a
+// recarga de outubro de 25/11 (`dre_2026_fechamento_10_r2`) moveu mais R$ 6,0 mil
+// entre os dois (custo da filial 106) — ±R$ 2,9 mil ao todo — e o resíduo da 14.1:
+// +R$ 403 em Cereais (1) e −R$ 98 nos Supermercados (9), +R$ 81 e −R$ 20 no
+// realista. O total não muda, e é o que a prova seguinte fixa.
 $divergem = [];
 foreach ($painel as $cod => [$rob, $rl]) {
     $x = $v[$ids[$cod]] ?? null;
-    $tolRl = in_array((string)$cod, ['6', '8'], true) ? 1800 : 5; // chave numérica vira int no PHP
+    // chave numérica vira int no PHP
+    $tolRl = in_array((string)$cod, ['6', '8'], true) ? 3000 : (in_array((string)$cod, ['1', '9'], true) ? 100 : 5);
     if (!$x || abs($x['1']['realista_resto'] - $rob) > 5 || abs($x['18']['realista_resto'] - $rl) > $tolRl) {
         $divergem[] = "{$cod}: " . ($x ? round($x['1']['realista_resto']) . '/' . round($x['18']['realista_resto']) : 'ausente');
     }
 }
-prova('com os dados do banco, os 11 negócios ficam no painel (R$ 5; ±R$ 1,8 mil em 6 e 8, o lançamento que mudou de negócio)',
+prova('com os dados do banco, os 11 negócios ficam no painel (R$ 5; ±R$ 3 mil em 6 e 8 e R$ 100 em 1 e 9, os lançamentos que mudaram de negócio)',
     !$divergem, implode(' | ', $divergem));
 
 $tot = (new ReflectionMethod($ctrl, 'visaoDoAnoTotal'));
