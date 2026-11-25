@@ -157,6 +157,13 @@ da DRE) gruda também, e os títulos das colunas logo abaixo dela (altura medida
 deixa de rolar de lado a partir de 992px (como a 5W2H); abaixo disso o cabeçalho não
 gruda. Na impressão nada gruda.
 
+**Resultado líquido negativo DENTRO da DRE** (2026-11-25: o aviso ficava "perdido junto com
+os apontamentos acima"): `#projecao-meta-negativa` logo acima do cabeçalho, um segundo aviso
+no fim da tabela (`#projecao-meta-negativa-fim`) e a borda da DRE em vermelho
+(`.tabela-projecao.dre-negativa`) enquanto a proposta do líquido for negativa;
+`pintarMetaNegativa` refaz os três a cada gravação. O cabeçalho das colunas é verde-claro (a cor dos
+títulos dos cartões, `#eef6f1`) e vira vermelho-claro (`#fdecea`) com a `.dre-negativa`.
+
 **Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
 campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
 `fixa(chave)` nas premissas e `diretriz.beneficios` nos benefícios; mesma regra de antes,
@@ -3311,8 +3318,8 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   margem de cada coluna é a linha ÷ a receita líquida da MESMA coluna, inclusive
   o realista, e as diferenças saem em p.p. Escolha em memória
   (`visaoConta`/`visaoPct`). No negócio, as seis linhas e as duas margens numa
-  tabela só. **Regra do realista nas linhas novas** (decisão minha, a confirmar
-  com a controladoria): receita líquida pela aderência, como a bruta; lucro
+  tabela só. **Regra do realista nas linhas novas** (confirmada pelo cliente em
+  2026-11-25: "sim, pode manter assim"): receita líquida pela aderência, como a bruta; lucro
   bruto, despesas e antes dos rateios pelo desvio médio, como o líquido — cada
   linha calculada sozinha. Prova: `visao_realista.php` e `provasVisaoDoAno`.
   **Desafio extra destacado**: as células editáveis do administrador têm o

@@ -4903,7 +4903,6 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
     position: sticky;
     top: calc(var(--topo-app) + var(--altura-barra-dre, 46px));
     z-index: 4;
-    background: #fff;
     box-shadow: 0 1px 0 var(--bs-border-color), 0 .35rem .35rem -.35rem rgba(0, 0, 0, .2);
   }
 }
@@ -4926,3 +4925,23 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .painel-premissas .faixa-diretriz #abono-total { margin-top: .4rem; }
 .painel-premissas .faixa-leituras { border: 1px solid var(--bs-border-color); background: #f8f9f8; }
 .painel-premissas .faixa-editavel .bloco-pessoas { border-top: 1px dashed #ead79a; padding-top: .5rem; }
+
+/* DRE com resultado líquido proposto NEGATIVO (pedido do cliente, 2026-11-25:
+   "toda a borda da DRE destacada em vermelho até que o líquido seja, no
+   mínimo, positivo"): a borda da tabela e os avisos encostados nela. */
+.tabela-projecao.dre-negativa { border: 3px solid var(--bs-danger, #dc3545); border-radius: .4rem; }
+#projecao-meta-negativa-box .aviso-meta-negativa { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-width: 0; }
+#projecao-meta-negativa-fim .aviso-meta-negativa { border-top-left-radius: 0; border-top-right-radius: 0; border-width: 0; }
+@media print { .tabela-projecao.dre-negativa { border: 2px solid #dc3545; } }
+
+/* O CABEÇALHO DA DRE na cor dos cartões (pedido do cliente, 2026-11-25: "uma cor
+   verde igual aos indicadores acima, para um estilo mais moderno"): verde-claro com
+   o texto verde-escuro; com o resultado líquido proposto negativo, vermelho-claro —
+   junto com a borda vermelha da tabela inteira (`.dre-negativa`). */
+#secao-projecao .tabela-projecao thead th { background: #eef6f1; color: #0f4d2a; border-bottom-color: #cfe3d6; }
+#secao-projecao .tabela-projecao thead th .text-muted { color: #4d6b5a !important; }
+#secao-projecao .tabela-projecao.dre-negativa thead th { background: #fdecea; color: #842029; border-bottom-color: #f1aeb5; }
+#secao-projecao .tabela-projecao.dre-negativa thead th .text-muted { color: #a0525a !important; }
+@media print {
+  #secao-projecao .tabela-projecao thead th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

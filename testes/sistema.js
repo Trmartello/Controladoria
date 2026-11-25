@@ -6766,6 +6766,10 @@ async function provasDiretriz2027(page, largura) {
     const depois = SecaoProjecao.dados;
     const tela = {
       alerta: !!document.querySelector('#projecao-meta-negativa'),
+      // Desde 2026-11-25 o aviso fica DENTRO da DRE (acima e no fim) e a borda dela fica vermelha.
+      dentro: !!document.querySelector('#projecao-dre-bloco #projecao-meta-negativa')
+        && !!document.querySelector('#projecao-dre-bloco #projecao-meta-negativa-fim-aviso'),
+      borda: document.querySelector('.tabela-projecao')?.classList.contains('dre-negativa'),
       linha: !!document.querySelector('.tabela-projecao tr[data-conta="18"].resultado-negativo'),
       fundo: getComputedStyle(document.querySelector('.tabela-projecao tr[data-conta="18"] td')).backgroundColor,
     };
@@ -6778,6 +6782,8 @@ async function provasDiretriz2027(page, largura) {
     sinal.modo === 'FILIAL' || (sinal.msg === 'aceita' && sinal.depois < -1e9), JSON.stringify(sinal).slice(0, 200));
   t(`${l} e a tela o destaca: alerta e a linha do resultado líquido em vermelho-claro`,
     sinal.modo === 'FILIAL' || (sinal.alerta && sinal.linha && sinal.fundo === 'rgb(253, 236, 234)'), JSON.stringify(sinal).slice(0, 200));
+  t(`${l} o aviso fica dentro da DRE (acima do cabeçalho e no fim) e a borda dela fica vermelha`,
+    sinal.modo === 'FILIAL' || (sinal.dentro && sinal.borda), JSON.stringify(sinal).slice(0, 200));
   t(`${l} apagar o lançamento devolve o resultado ao que era`,
     sinal.modo === 'FILIAL' || Math.abs(sinal.fim - sinal.antes) < 1, `${sinal.antes} → ${sinal.fim}`);
 
@@ -6787,9 +6793,14 @@ async function provasDiretriz2027(page, largura) {
     const a = await page.evaluate(() => ({
       rl: SecaoProjecao.dados.linhas.find((x) => x.codigo === '18').proposta,
       alerta: !!document.querySelector('#projecao-meta-negativa'),
+      borda: document.querySelector('.tabela-projecao')?.classList.contains('dre-negativa'),
+      cabecalho: getComputedStyle(document.querySelector('.tabela-projecao thead th')).backgroundColor,
     }));
-    t(`${l} ${nome.slice(2)}: o alerta de meta negativa aparece só quando o resultado proposto é negativo`,
-      a.alerta === (a.rl < -1), JSON.stringify(a));
+    t(`${l} ${nome.slice(2)}: o alerta e a borda vermelha aparecem só quando o resultado proposto é negativo`,
+      a.alerta === (a.rl < -1) && a.borda === (a.rl < -1), JSON.stringify(a));
+    // O cabeçalho da DRE (2026-11-25): verde-claro dos cartões; vermelho-claro com o líquido negativo.
+    t(`${l} ${nome.slice(2)}: o cabeçalho da DRE é verde-claro, ou vermelho-claro com o resultado negativo`,
+      a.cabecalho === (a.rl < -1 ? 'rgb(253, 236, 234)' : 'rgb(238, 246, 241)'), JSON.stringify(a));
   }
 }
 
