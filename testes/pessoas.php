@@ -30,6 +30,7 @@ require_once __DIR__ . '/../app/Services/DesafioDrivers.php';
 require_once __DIR__ . '/../app/Services/CargaPessoas.php';
 require_once __DIR__ . '/../app/Services/Oportunidades.php';
 require_once __DIR__ . '/../app/Services/Reforma.php';
+require_once __DIR__ . '/../app/Services/DesafioAjuste.php';
 require_once __DIR__ . '/../app/Controllers/ProjecaoController.php';
 
 use App\Core\Database;
