@@ -93,12 +93,12 @@ $negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
 $c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];
 prova('os 11 negócios entram no desafio do Corporativo', count($c['negocios']) === 11, (string)count($c['negocios']));
-prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado −R$ 1.509.710',
-    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] + 1509710) < 2,
+prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado −R$ 1.087.145',
+    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] + 1087145) < 2,
     round($t['receita_bruta']) . ' / ' . round($t['receita_liquida']) . ' / ' . round($t['resultado']));
-prova('margem líquida do desafio: −0,04%', abs($t['margem'] + 0.0425) < 0.0005, (string)round($t['margem'], 4));
-prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 72,48 mi',
-    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 72476682) < 2,
+prova('margem líquida do desafio: −0,03%', abs($t['margem'] + 0.0306) < 0.0005, (string)round($t['margem'], 4));
+prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 72,05 mi',
+    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 72054117) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 
 // ── 1b. Agrupamento no Corporativo (2026-11-24): só os negócios marcados ─────
@@ -174,8 +174,9 @@ prova('desafio com receita em queda: custo acompanha (−540), despesas ficam na
     perto($cai['4.1'], -540.0) && perto($cai['8.1'], -100.0) && perto($cai['8.11'], -50.0) && perto($cai['8.17'], 20.0),
     json_encode([$cai['4.1'], $cai['8.1'], $cai['8.11'], $cai['8.17']]));
 $pec = invocar($ctrl, 'montar', $ids['2'], $ano, $corte)['desafio']['escada']['desafio'];
-prova('Pecuária: despesas do desafio R$ 21.325.034, as mesmas de antes da regra (não encolhem com o preço do suíno)',
-    abs($pec['despesas'] + 21325034) < 2, (string)round($pec['despesas']));
+// R$ 21.332.620 desde (25/11: a base do pessoal sem a 3419, a 3398 e a 3339 projetadas para o ano); eram R$ 21.325.034.
+prova('Pecuária: despesas do desafio R$ 21.332.620, as mesmas da proposta padrão (não encolhem com o preço do suíno)',
+    abs($pec['despesas'] + 21332620) < 2, (string)round($pec['despesas']));
 $prop = array_column(Projecao::aplicar($sint, [], $cr, null, $fx), 'proposta', 'codigo');
 prova('proposta (sem lançamento): as mesmas despesas ficam na projeção (8.1 −100, 8.11 −50), o custo acompanha (−660)',
     perto($prop['8.1'], -100.0) && perto($prop['8.11'], -50.0) && perto($prop['4.1'], -660.0),
@@ -184,8 +185,9 @@ prova('proposta (sem lançamento): as mesmas despesas ficam na projeção (8.1 �
 // mudança no Corporativo (acima) ter endereço.
 $ag = invocar($ctrl, 'montar', $ids['8'], $ano, $corte);
 $esc = $ag['desafio']['escada']['desafio'];
-prova('Agropecuárias: despesas do desafio R$ 91.823.889 (eram R$ 89.585.034 sem acompanhar a receita)',
-    abs($esc['despesas'] + 91823889) < 2, (string)round($esc['despesas']));
+// R$ 91.040.235 desde (25/11: a base do pessoal sem a 3419, a 3398 e a 3339 projetadas para o ano); eram R$ 91.823.889.
+prova('Agropecuárias: despesas do desafio R$ 91.040.235 (acompanhando a receita)',
+    abs($esc['despesas'] + 91040235) < 2, (string)round($esc['despesas']));
 
 // ── 3. A carga: estrita, e sobrescreve o ano inteiro ────────────────────────
 $pdo = Database::conn();

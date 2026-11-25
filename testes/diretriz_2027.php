@@ -188,6 +188,23 @@ prova('Agropecuárias: 3227 de +R$ 1.049.311 fora da base; base de 2026 = R$ 44.
     && perto(-$pa['projecao_sem_ppr'], 44514016, 1), json_encode([$pa['ppr_acerto'] ?? null, $pa['projecao_sem_ppr'] ?? null]));
 prova('Agropecuárias: o PPR de 2026 que sai é a provisão (3419): R$ 2.710.489',
     perto($pa['ppr_provisao_2026'], 2710489, 2), (string)($pa['ppr_provisao_2026'] ?? ''));
+// Estorno direto (pedido do cliente, 2026-11-25): "estornar a provisão atual de PPR conta
+// 3419, projetar esse estorno de novembro e dezembro também; fazer a mesma questão para
+// as contas 3398 e 3339 (dividir por 10 e multiplicar por 12)". Agropecuárias, jan–out:
+// 3419 −2.710.490, 3398 −1.133.297, 3339 −2.391.217 → no ano −7.482.005; base 37.032.011.
+$est = array_column($pa['estornos'] ?? [], null, 'conta');
+prova('Agropecuárias: 3419, 3398 e 3339 de jan–out ÷ 10 × 12 saem da base: 44.514.016 − 7.482.005 = 37.032.011',
+    count($est) === 3 && perto($est['3419']['anual'], -2710490 / 10 * 12, 1) && perto($est['3398']['anual'], -1133297 / 10 * 12, 1)
+    && perto($est['3339']['anual'], -2391217 / 10 * 12, 1) && perto($pa['pecas_2026'], 7482005, 2) && perto($pa['base'], 37032011, 2)
+    && ($pa['estornos_corte'] ?? null) === 10,
+    json_encode([$pa['pecas_2026'] ?? null, $pa['base'] ?? null, $pa['estornos'] ?? null]));
+// De mão, sem banco: projeção −1.000, 3227 +20 → 1.020; 3419 −50, 3398 −20, 3339 −30 até
+// outubro → −120 no ano; base 900 × 1,055 = 949,5; + benefícios + PPR.
+$p4 = Projecao::pessoalDaDiretriz(-1000.0, $folha3, $calc, 5.5, 1.5, 1.0,
+    ['realizado' => 20.0, 'estornos' => ['3419' => -50.0, '3398' => -20.0, '3339' => -30.0], 'corte' => 10]);
+prova('de mão: base 1.020 − 120 = 900, reajustada 949,5; a parte da folha não entra',
+    perto($p4['base'], 900.0) && perto($p4['base_reajustada'], 949.5) && perto($p4['pecas_2026'], 120.0)
+    && perto($p4['proposta'], -(949.5 + $p3['beneficios'] + $p3['ppr'])), json_encode($p4));
 $l85 = array_column($ma['linhas'], null, 'codigo')['8.5'];
 prova('Agropecuárias: as filiais, cada uma sem a 3227 dela, somam o negócio (R$ 10 de folga do arredondamento)',
     $l85['distribuido'] !== null && abs($l85['distribuido'] - $pa['proposta']) < 10,

@@ -418,6 +418,31 @@ class Projecao
         $pecas26 = (float)$folha['vale_ate'] + (float)$folha['premio_ate'] + $provisao;
         $parte26 = min(1.0, max(0.0, $pecas26 / $pessoalAte));
         $base = $semPpr * (1 - $parte26);
+        // O ESTORNO DIRETO das contas reduzidas (pedido do cliente, 2026-11-25:
+        // "estornar a provisão atual de PPR conta 3419, projetar esse estorno de
+        // novembro e dezembro também; fazer a mesma questão para as contas 3398 e
+        // 3339 — dividir por 10 e multiplicar por 12"): sai da base o realizado de
+        // jan até o corte de cada uma, projetado para o ano (÷ corte × 12), em vez
+        // da parte proporcional da folha.
+        $estornos = [];
+        $corteEst = (int)($ppr26['corte'] ?? 0);
+        if ($ppr26 !== null && !empty($ppr26['estornos']) && $corteEst > 0) {
+            $soma = 0.0;
+            foreach (self::CONTAS_ESTORNO_PESSOAL as $conta => $nome) {
+                $real = (float)($ppr26['estornos'][$conta] ?? 0);
+                $anual = $real / $corteEst * 12;
+                $estornos[] = ['conta' => (string)$conta, 'nome' => $nome, 'realizado' => $real, 'anual' => $anual];
+                $soma += $anual;
+            }
+            // Sinal da DRE: despesa é negativa, e tirá-la encolhe a base.
+            if ($semPpr + $soma > 0) {
+                $base = $semPpr + $soma;
+                $pecas26 = -$soma;
+                $parte26 = $semPpr > 0 ? -$soma / $semPpr : 0.0;
+            } else {
+                $estornos = [];
+            }
+        }
         $salDesp = (float)$folha['salario_despesa'];
         $salCusto = (float)$folha['salario_custo'];
         $parteDespesa = $salDesp + $salCusto > 0 ? $salDesp / ($salDesp + $salCusto) : 1.0;
@@ -443,7 +468,11 @@ class Projecao
             'projecao_sem_ppr' => -$semPpr,
             'ppr_provisao_2026' => $provisao,
             'parte_2026' => $parte26,
-            'pecas_2026' => $semPpr * $parte26,
+            'pecas_2026' => $estornos ? $pecas26 : $semPpr * $parte26,
+            // As contas estornadas uma a uma (realizado até o corte e o ano); vazio
+            // = a conta anterior, pela parte da folha.
+            'estornos' => $estornos,
+            'estornos_corte' => $estornos ? $corteEst : null,
             'base' => $base,
             'base_reajustada' => $base * (1 + $g) * $f,
             'parte_despesa' => $parteDespesa,
@@ -502,8 +531,12 @@ class Projecao
         }
         // A 3227 realizada do negócio (filial 0) até o corte: sai da base do pessoal.
         $acertos = self::pprRealizado($ids, $anoBase);
+        $estornos = self::estornosPessoal($ids, $anoBase);
         foreach ($ids as $id) {
-            $saida[$id]['ppr26'] = isset($acertos[$id]) ? ['realizado' => $acertos[$id]['negocio']] : null;
+            $saida[$id]['ppr26'] = isset($acertos[$id]) || isset($estornos[$id])
+                ? ['realizado' => $acertos[$id]['negocio'] ?? 0.0,
+                    'estornos' => $estornos[$id]['contas'] ?? [], 'corte' => $estornos[$id]['corte'] ?? null]
+                : null;
             $efetivos = self::beneficiosEfetivos($anoPlan, $dig[$id] ?? []);
             $saida[$id]['calc'] = self::pessoas($bases[$id] ?? null, $efetivos);
             $saida[$id]['ppr_salarios'] = isset($efetivos['PPR_SALARIOS']) ? (float)$efetivos['PPR_SALARIOS'] : null;
@@ -602,6 +635,39 @@ class Projecao
             } else {
                 $saida[$n]['filiais'][(int)$r['filial_id']] = (float)$r['realizado'];
             }
+        }
+        return $saida;
+    }
+
+    /**
+     * O realizado de jan até o corte das contas de `CONTAS_ESTORNO_PESSOAL`, por
+     * negócio (`filial_id = 0`, o nível 3), no sinal da DRE, com o corte da carga.
+     *
+     * @param int[] $negocioIds
+     * @return array<int, array{corte: int, contas: array<string,float>}>
+     */
+    public static function estornosPessoal(array $negocioIds, int $ano): array
+    {
+        $negocioIds = array_values(array_unique(array_map('intval', $negocioIds)));
+        if (!$negocioIds) {
+            return [];
+        }
+        $contas = array_map('strval', array_keys(self::CONTAS_ESTORNO_PESSOAL));
+        $marcas = implode(',', array_fill(0, count($negocioIds), '?'));
+        $mc = implode(',', array_fill(0, count($contas), '?'));
+        $saida = [];
+        foreach (Database::todos(
+            "SELECT v.negocio_id, r.reduzida, v.corte, SUM(v.realizado) AS realizado
+               FROM dre_reduzida_valor v JOIN dre_reduzida r ON r.codigo = v.codigo
+              WHERE r.reduzida IN ({$mc}) AND r.linha = ? AND v.ano = ? AND v.filial_id = 0
+                AND v.negocio_id IN ({$marcas})
+              GROUP BY v.negocio_id, r.reduzida, v.corte",
+            array_merge($contas, [self::LINHA_PESSOAL, $ano], $negocioIds)
+        ) as $r) {
+            $n = (int)$r['negocio_id'];
+            $saida[$n] ??= ['corte' => (int)$r['corte'], 'contas' => []];
+            $saida[$n]['corte'] = max($saida[$n]['corte'], (int)$r['corte']);
+            $saida[$n]['contas'][(string)$r['reduzida']] = (float)$r['realizado'];
         }
         return $saida;
     }
@@ -816,6 +882,18 @@ class Projecao
      * cada filial (pedido do cliente, 2026-11-23). A provisão é a 3419.
      */
     public const CONTA_ACERTO_PPR = '3227';
+
+    /**
+     * As contas reduzidas da 8.5 ESTORNADAS da base do pessoal, projetadas para o
+     * ano (÷ meses até o corte × 12): a provisão do PPR, o prêmio por desempenho e
+     * o vale-alimentação (pedido do cliente, 2026-11-25). No lugar delas entram o
+     * PPR, os prêmios e o vale de 2027.
+     */
+    public const CONTAS_ESTORNO_PESSOAL = [
+        '3419' => 'Provisão do PPR (Participação nos Resultados)',
+        '3398' => 'Prêmio por desempenho',
+        '3339' => 'Vale-alimentação (PAT)',
+    ];
 
     /**
      * A DEPRECIAÇÃO (8.10) do ano da proposta vem da carga por negócio, filial e
