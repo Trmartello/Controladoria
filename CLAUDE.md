@@ -149,6 +149,21 @@ as 32 linhas batem. Considerar / Desconsiderar em TODAS as linhas — itens e me
 do padrão —, sem o selo "avaliado" (`negocio_item_avaliacao`); desde 25/11 pequenos
 (`.btn-avaliar`) e no INÍCIO da célula do item.
 
+**Topos fixos na Projeção** (2026-11-25): o título do cartão aberto
+(`details.expansor[open] > summary`) gruda abaixo da `.topbar` enquanto o cartão passa,
+e um clique nele fecha; a barra da DRE (`.barra-dre`: antes × depois, imprimir, Detalhe
+da DRE) gruda também, e os títulos das colunas logo abaixo dela (altura medida em
+`--altura-barra-dre` pelo `ligar`). Para a página ser o scrollport, a caixa da tabela
+deixa de rolar de lado a partir de 992px (como a 5W2H); abaixo disso o cabeçalho não
+gruda. Na impressão nada gruda.
+
+**Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
+campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
+`fixa(chave)` nas premissas e `diretriz.beneficios` nos benefícios; mesma regra de antes,
+só muda de lugar) e "O que a proposta dá hoje" (Cresc. Real, Total, % Custos). Ids e
+classes que a bateria lê (`.bloco-pessoas`, `#pessoas-quadro`, `#abono-total`,
+`[data-diretriz]`, `.aviso-leituras`) ficaram.
+
 **% de margem bruta no desafio extra** (2026-11-25): o ADMIN digita a % (sobre a
 receita líquida do desafio) ou o valor; a tela converte a % em reais e grava como
 `lucro_bruto` — o servidor não conhece a %.

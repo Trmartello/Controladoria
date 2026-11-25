@@ -470,32 +470,65 @@ const SecaoProjecao = {
     const resumoPessoas = calc
       ? ` · ${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores · benefícios ${reais(calc.anual.total)} no ano`
       : '';
+    // LAYOUT EM TRÊS FAIXAS (pedido do cliente, 2026-11-25: "todos os campos possíveis
+    // de alteração na parte superior […] bater o olho e já entender"): o que o
+    // negócio DIGITA, o que a diretriz FIXA (só leitura, numa faixa só) e o que a
+    // proposta DÁ (leituras). Antes os três se misturavam na mesma fileira.
+    const fixoBeneficio = (chave) => (diretriz && diretriz.beneficios ? diretriz.beneficios[chave] : undefined);
+    const itemFixo = (chave, rotulo, valor, dica) => `<div class="item-fixo">
+        <div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
+        <div class="fw-bold campo-diretriz" data-diretriz="${chave}" title="${Modal.esc(diretriz ? diretriz.fonte : '')}">${valor}</div>
+      </div>`;
+    const premissasDef = [
+      ['IPCA', 'IPCA', `Inflação prevista para ${ano}. Vale para o negócio e todas as filiais.`],
+      ['PIB', 'PIB', `Crescimento da economia previsto para ${ano}. Vale para o negócio e todas as filiais.`],
+      ['CRESCIMENTO', 'Crescimento desejado <span class="text-muted">(sobre o faturamento)</span>',
+        `O crescimento REAL que se deseja para o FATURAMENTO (Receita de Vendas) em ${ano}, acima da inflação e da `
+        + 'economia. O faturamento cresce IPCA + PIB + este percentual; deduções e custo das vendas acompanham na '
+        + 'mesma proporção. Vale para o negócio e todas as filiais.'],
+      ['PESSOAS', 'Cresc. despesas com pessoas',
+        `O crescimento das despesas com pessoas em ${ano}. Atua SÓ na linha Despesas com Pessoal (8.5): `
+        + 'IPCA, PIB e o crescimento desejado não tocam nela. Vale para o negócio e todas as filiais.'],
+    ];
+    const beneficiosDef = [
+      ['ALIMENTACAO', 'Vale alimentação (por mês)', 'R$',
+        'Valor por colaborador, por mês, nos 12 meses — o mesmo padrão para todos os colaboradores.', plano(padrao.ALIMENTACAO)],
+      ['ASSIDUIDADE', 'Abono assiduidade (por mês)', 'R$',
+        'Pago ao colaborador que cumpre os quesitos de assiduidade.', plano(padrao.ASSIDUIDADE)],
+      ['RESULTADO', 'Abono resultado (por mês)', 'R$',
+        'Pago só no mês em que o negócio atinge o resultado planejado.', plano(padrao.RESULTADO)],
+    ];
+    const editaveis = [];
+    const fixos = [];
+    premissasDef.forEach(([chave, rotulo, dica]) => {
+      if (fixa(chave) !== null) fixos.push(itemFixo(chave, rotulo, num(fixa(chave), 2), dica));
+      else editaveis.push(campo(chave, rotulo, dica));
+    });
+    beneficiosDef.forEach(([chave, rotulo, unidade, dica, ph]) => {
+      const f = fixoBeneficio(chave);
+      if (f !== undefined) fixos.push(itemFixo(chave, rotulo, reais(f), dica));
+      else editaveis.push(this.campoBeneficio(d, ano, chave, rotulo, unidade, dica, ph));
+    });
+    editaveis.push(this.campoBeneficio(d, ano, 'PPR_SALARIOS', 'PPR (salários no ano)', 'salários',
+      'Quantos salários de PPR provisionar no ano, em 1/12 por mês, sobre a folha do mês (despesa + custo) com o '
+      + 'reajuste. Entra na linha Despesas com Pessoal (8.5). Com diretriz, vem preenchido com ela e só pode BAIXAR; '
+      + 'apagar volta à diretriz. Sem diretriz, vazio é sem PPR.', '—'));
     return this.expansor('premissas', 'painel-premissas', `Premissas, pessoas e benefícios — ${ano}`, resumo + resumoPessoas, `
         ${seletorAno}
-        <div class="row g-3 align-items-end">
-          ${campo('IPCA', 'IPCA', `Inflação prevista para ${ano}. Vale para o negócio e todas as filiais.`)}
-          ${campo('PIB', 'PIB', `Crescimento da economia previsto para ${ano}. Vale para o negócio e todas as filiais.`)}
-          ${campo('CRESCIMENTO', 'Crescimento desejado <span class="text-muted">(sobre o faturamento)</span>',
-    `O crescimento REAL que se deseja para o FATURAMENTO (Receita de Vendas) em ${ano}, acima da inflação e da `
-    + 'economia. O faturamento cresce IPCA + PIB + este percentual; deduções e custo das vendas acompanham na '
-    + 'mesma proporção. Vale para o negócio e todas as filiais.')}
-          ${campo('PESSOAS', 'Cresc. despesas com pessoas',
-    `O crescimento das despesas com pessoas em ${ano}. Atua SÓ na linha Despesas com Pessoal (8.5): `
-    + 'IPCA, PIB e o crescimento desejado não tocam nela. Vale para o negócio e todas as filiais.')}
-          ${this.campoBeneficio(d, ano, 'ALIMENTACAO', 'Vale alimentação (por mês)', 'R$',
-    'Valor por colaborador, por mês, nos 12 meses — o mesmo padrão para todos os colaboradores.', plano(padrao.ALIMENTACAO))}
-          ${this.campoBeneficio(d, ano, 'ASSIDUIDADE', 'Abono assiduidade (por mês)', 'R$',
-    'Pago ao colaborador que cumpre os quesitos de assiduidade.', plano(padrao.ASSIDUIDADE))}
-          ${this.campoBeneficio(d, ano, 'RESULTADO', 'Abono resultado (por mês)', 'R$',
-    'Pago só no mês em que o negócio atinge o resultado planejado.', plano(padrao.RESULTADO))}
-          ${this.campoBeneficio(d, ano, 'PPR_SALARIOS', 'PPR (salários no ano)', 'salários',
-    'Quantos salários de PPR provisionar no ano, em 1/12 por mês, sobre a folha do mês (despesa + custo) com o '
-    + 'reajuste. Entra na linha Despesas com Pessoal (8.5). Com diretriz, vem preenchido com ela e só pode BAIXAR; '
-    + 'apagar volta à diretriz. Sem diretriz, vazio é sem PPR.', '—')}
-          ${abonoTotal}
-          ${leituras}
+        <div class="faixa-premissas faixa-editavel">
+          <div class="faixa-titulo"><span class="legenda-editavel"></span> ${d.filial ? `Premissas de ${ano} (vêm do negócio)` : `O que o negócio define para ${ano}`}</div>
+          <div class="row g-3 align-items-end">${editaveis.join('')}</div>
+          ${comPessoas ? this.camposPessoas(d, ano) : ''}
         </div>
-        ${comPessoas ? this.camposPessoas(d, ano) : ''}
+        ${fixos.length ? `<div class="faixa-premissas faixa-diretriz">
+          <div class="faixa-titulo"><span class="badge selo-diretriz">diretriz</span> Fixado pela diretriz — igual para todos os negócios</div>
+          <div class="d-flex flex-wrap gap-4">${fixos.join('')}</div>
+          ${abonoTotal}
+        </div>` : `<div class="faixa-premissas">${abonoTotal}</div>`}
+        <div class="faixa-premissas faixa-leituras">
+          <div class="faixa-titulo">${noAnoDaProposta ? `O que a proposta de ${ano} dá hoje` : 'Leituras da proposta'}</div>
+          <div class="row g-3 align-items-end">${leituras}</div>
+        </div>
         ${this.resultadoPremissas(d, ano, comPessoas)}
         <div class="small text-muted mt-2">${nota}</div>
         ${notaDiretriz}`);
@@ -518,7 +551,7 @@ const SecaoProjecao = {
          equivalentes (DRE, ${this.nomeMes(base.mes)}/${base.ano}${base.mes < 12 ? ' — último mês carregado' : ''}):
          quem divide o tempo entre dois negócios (30/70, 50/50) entra em cada um pela sua parte.`
       : 'Não há quadro de colaboradores carregado para este negócio.';
-    return `<div class="bloco-pessoas mt-3 pt-2 border-top">
+    return `<div class="bloco-pessoas mt-3">
         <div class="small text-muted mb-1" id="pessoas-quadro">${quadro}</div>
         <div class="row g-3 align-items-end">
           ${campo('COLABORADORES', 'Colaboradores planejados', 'pessoas',
@@ -2571,6 +2604,11 @@ const SecaoProjecao = {
         this.irParaLinhaDre(a.dataset.irConta, a.dataset.irReduzida || null);
       });
     }
+    // A barra da DRE e os títulos das colunas grudam no topo (pedido do cliente,
+    // 2026-11-25); a altura da barra é MEDIDA, para o cabeçalho grudar logo abaixo
+    // dela sem fresta (ela quebra em duas linhas em tela estreita).
+    const barra = el.querySelector('.barra-dre');
+    if (barra) el.style.setProperty('--altura-barra-dre', `${barra.offsetHeight}px`);
     const tribBotao = el.querySelector('#projecao-tributos-botao');
     if (tribBotao && virgem(tribBotao)) tribBotao.addEventListener('click', () => this.alternarTributos());
     // O seletor da visão do ano (Corporativo): delegado, porque o cartão se repinta.
@@ -2922,7 +2960,7 @@ const SecaoProjecao = {
           ${tribAberto ? '▾ Fechar antes × depois' : '⇄ Reforma tributária: antes × depois'}
         </button>`
       : '';
-    return `<div class="d-flex flex-wrap justify-content-end gap-2 mb-1 d-print-none">
+    return `<div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-1 d-print-none barra-dre">
         ${botaoTributos}
         <button type="button" id="projecao-imprimir-dre" class="btn btn-sm btn-success"
           title="Imprime (ou salva em PDF) a DRE da proposta com todas as subcontas abertas">
