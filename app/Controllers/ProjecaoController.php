@@ -407,17 +407,17 @@ class ProjecaoController
         // E o RATEIO FINANCEIRO (14.2), da carga por negócio; nas filiais, pela
         // projeção de 2026 da 14.2 de cada uma.
         $rateioFin = Projecao::rateioFinDoNegocio($negocioId, $ano + 1);
-        if ($rateioNeg || $rateioNegocio || $rateioFin) {
-            $critFilial = array_map([Projecao::class, 'criterioRateioAdm'], $porFilial);
-            $totFilial = array_sum($critFilial);
-            $finFilial = array_map(static fn ($lf) => (float)(array_column($lf, 'projecao', 'codigo')[Projecao::LINHA_RATEIO_FIN] ?? 0.0), $porFilial);
-            $totFin = array_sum($finFilial);
-            foreach ($porFilial as $fid => $lf) {
-                $porFilial[$fid] = Projecao::fixar($lf,
-                    Projecao::fixosDoRateioAdm($rateioNeg, $totFilial > 0 ? $critFilial[$fid] / $totFilial : 0.0)
-                    + Projecao::fixosDoRateioNeg($rateioNegocio, (int)$fid)
-                    + Projecao::fixosDoRateioFin($rateioFin, abs($totFin) > 0 ? $finFilial[$fid] / $totFin : 0.0));
-            }
+        // E o RATEIO MATRIZ/CENTRAL (14.1), zerado em todo negócio e filial.
+        $critFilial = array_map([Projecao::class, 'criterioRateioAdm'], $porFilial);
+        $totFilial = array_sum($critFilial);
+        $finFilial = array_map(static fn ($lf) => (float)(array_column($lf, 'projecao', 'codigo')[Projecao::LINHA_RATEIO_FIN] ?? 0.0), $porFilial);
+        $totFin = array_sum($finFilial);
+        foreach ($porFilial as $fid => $lf) {
+            $porFilial[$fid] = Projecao::fixar($lf,
+                Projecao::fixosDoRateioMatriz()
+                + Projecao::fixosDoRateioAdm($rateioNeg, $totFilial > 0 ? $critFilial[$fid] / $totFilial : 0.0)
+                + Projecao::fixosDoRateioNeg($rateioNegocio, (int)$fid)
+                + Projecao::fixosDoRateioFin($rateioFin, abs($totFin) > 0 ? $finFilial[$fid] / $totFin : 0.0));
         }
         $propostasFilial = array_map(
             static fn ($ls) => array_column($ls, 'proposta', 'codigo'),
@@ -428,7 +428,8 @@ class ProjecaoController
         // sem nenhum lançamento — o ponto de partida de onde a proposta anda. Com
         // uma diferença (2026-11-23): nele as despesas operacionais acompanham a
         // receita (`Projecao::acompanhamReceitaNoDesafio`).
-        $fixos = Projecao::fixosDaDepreciacao($depreciacao, 0, $codNegocio) + Projecao::fixosDoRateioAdm($rateioNeg)
+        $fixos = Projecao::fixosDaDepreciacao($depreciacao, 0, $codNegocio) + Projecao::fixosDoRateioMatriz()
+            + Projecao::fixosDoRateioAdm($rateioNeg)
             + Projecao::fixosDoRateioNeg($rateioNegocio) + Projecao::fixosDoRateioFin($rateioFin);
         $linhasDesafio = Projecao::aplicar($linhas, [], $cresc, $taxaPc, $fixos, Projecao::acompanhamReceitaNoDesafio());
         $linhas = $modo === 'FILIAL' && $filiais
@@ -974,6 +975,10 @@ class ProjecaoController
         $vazio = !isset($corpo['valor']) || $corpo['valor'] === '';
         // O RATEIO ADMINISTRATIVO (16.1) também não se lança (pedido do cliente,
         // 2026-11-24): é a parte do negócio no rateio corporativo administrativo.
+        if ($codigo === Projecao::LINHA_RATEIO_MATRIZ && !$vazio) {
+            Json::erro('O Rateio Matriz/Central vale zero na proposta: a conta fecha em zero na cooperativa, e o '
+                . 'resíduo que sobra em cada negócio não é meta. Não se lança.', 422);
+        }
         if ($codigo === Projecao::LINHA_RATEIO_FIN && !$vazio && Projecao::rateioFinDoNegocio($negocioId, $anoPlan) !== null) {
             Json::erro(
                 'O Rateio Financeiro vem do rateio financeiro de ' . $anoPlan . ' por negócio e não se lança.',

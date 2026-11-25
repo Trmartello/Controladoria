@@ -3808,6 +3808,34 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   ano. Prova: `testes/desafio_drivers.php`. No banco local (out/26) o total dá
   faturamento R$ 3,68 bi, resultado R$ 45,8 mi, margem 1,29% — e Cereais com
   resultado negativo (−R$ 6,8 mi).
+  **Rateio Matriz/Central (14.1) zerado no planejado** (pedido do cliente,
+  2026-11-25: "zere o valor para os negócios no planejado, e o realizado traga
+  conforme estiver no Qlik"). A conta 9999 fecha em zero na cooperativa todo mês,
+  mas o crédito na origem não fecha dentro de cada negócio e sobra resíduo
+  (Agropecuárias +770, Supermercados −643, Cereais −245… na carga de 18/11). O
+  realizado fica o do Qlik; planejado nov–dez, proposta e desafio valem **zero,
+  travados** (`Projecao::fixosDoRateioMatriz`, origem `RATEIO_MATRIZ`), em todo
+  negócio e filial, e a API recusa lançar. Prova: `testes/rateio_matriz.php`.
+  A correção de verdade é na rotina de rateio (o crédito de cada negócio igual à
+  soma do que foi cobrado das filiais dele) — da controladoria, não daqui.
+  **Recarga de outubro (25/11/2026)** (pedido do cliente: "o realizado traga
+  conforme estiver no Qlik"). O Qlik reprocessou outubro depois da carga de 18/11
+  e passou lançamentos de um negócio para outro DENTRO da mesma filial (custo de
+  R$ 5.918 da filial 106 das Agropecuárias para Rações; resíduos da 14.1 entre
+  Agropecuárias, Cereais e Supermercados). Conferido linha a linha: jan–set e
+  orçamento idênticos; só outubro mudou (42 valores). Duas cargas:
+  `dre_2026_fechamento_10_r2` (o negócio, gerada da de 18/11 trocando só o mês
+  10; entra DEPOIS das cargas de filiais, que conferem a soma contra 18/11) e
+  `dre_filiais_acerto_2026_10` (as mesmas trocas nas filiais,
+  `CargaDre::aplicarAcertosFiliais`: soma a diferença com os subtotais —
+  `ACERTO_PROPAGA` — e recusa tudo se a soma das filiais não bater com o negócio;
+  entra DEPOIS do nível 3, que corrige a divisão 14.3 × 16.1 das filiais). Não
+  regrave as cargas de filiais antigas para "atualizar": elas são da estrutura
+  velha e desfazem a correção do nível 3. `testes/carga_dre.php` reaplica a carga
+  de 18/11 para conferir os arquivos de filiais e, no fim, devolve o banco à
+  recarga + acerto (prova 11). Com a recarga, a `visao_realista.php` aceita
+  ±R$ 3 mil em Rações/Agropecuárias e R$ 100 em Cereais/Supermercados contra o
+  painel congelado de 15/11; o total segue no centavo.
   **Desafio extra dos administradores** (pedido do cliente, 2026-11-25: "os
   administradores podem fazer um desafio extra aos negócios"). No cartão
   "Desafio 2027 para o negócio", o perfil **ADMIN** (só ele — nem CONTROLADORIA)
