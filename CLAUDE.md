@@ -161,7 +161,8 @@ gruda. Na impressão nada gruda.
 os apontamentos acima"): `#projecao-meta-negativa` logo acima do cabeçalho, um segundo aviso
 no fim da tabela (`#projecao-meta-negativa-fim`) e a borda da DRE em vermelho
 (`.tabela-projecao.dre-negativa`) enquanto a proposta do líquido for negativa;
-`pintarMetaNegativa` refaz os três a cada gravação.
+`pintarMetaNegativa` refaz os três a cada gravação. O cabeçalho das colunas é verde-claro (a cor dos
+títulos dos cartões, `#eef6f1`) e vira vermelho-claro (`#fdecea`) com a `.dre-negativa`.
 
 **Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
 campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
