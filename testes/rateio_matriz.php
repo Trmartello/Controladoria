@@ -90,7 +90,8 @@ $t = $montar->invoke($ctrl, (int)$cer['id'], $ano, $corte, 0);
 $res = (float)$t['desafio']['desafio']['resultado'];
 // (−R$ 19.501.365 desde a planilha nova do rateio administrativo, 25/11: 16.1 de R$ 59,0 para 37,7 mi.)
 // (−R$ 19.646.536 desde (25/11: a base do pessoal sem a 3419, a 3398 e a 3339 projetadas para o ano).)
-prova('Cereais: o desafio fica −R$ 19.646.536 (os −R$ 245 do resíduo saem)', abs($res + 19646536) < 2, (string)round($res));
+// (−R$ 19.550.065 (25/11, 2ª planilha do rateio administrativo: R$ 37,01 mi).)
+prova('Cereais: o desafio fica −R$ 19.550.065 (os −R$ 245 do resíduo saem)', abs($res + 19550065) < 2, (string)round($res));
 
 // O Corporativo: a 14.1 da proposta é zero.
 $c = (new ReflectionMethod($ctrl, 'montarCorporativo'));

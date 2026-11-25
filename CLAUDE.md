@@ -52,10 +52,11 @@ também o quanto a proposta segura as despesas abaixo da receita.
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, −R$ 1,1 mi de resultado, margem −0,03% (a meta de 2% pediria R$ 70,97
-mi), desde a base do pessoal sem a 3419, a 3398 e a 3339 (25/11; −R$ 1,5 mi e −0,04%
+faturamento, −R$ 0,37 mi de resultado, margem −0,01% (a meta de 2% pediria R$ 70,97
+mi), desde a 2ª planilha do rateio administrativo (25/11: 16.1 de R$ 37,7 para R$ 37,0 mi;
+−R$ 1,1 mi e −0,03% desde a base do pessoal sem a 3419, a 3398 e a 3339 (25/11; −R$ 1,5 mi e −0,04%
 desde a planilha nova do rateio administrativo (25/11: 16.1 de R$ 59,0 para R$ 37,7
-mi)). Antes dela, −R$ 22,8 mi e −0,64%, com os rateios de 2027 travados: 16.1
+mi))). Antes dela, −R$ 22,8 mi e −0,64%, com os rateios de 2027 travados: 16.1
 administrativo (−R$ 9,8 mi), 14.3 negócio (−R$ 16,9 mi) e 14.2 financeiro (−R$ 22,8 mi) — abaixo. Era R$ 45,6 mi e 1,28%; R$ 45,8 mi e 1,29% com a 3227 fora da base do pessoal;
 R$ 32,4 mi com a depreciação carregada na 8.10 (ver abaixo); R$ 34,6 mi com a
 depreciação regravada sem o grupo contábil 1272; R$ 30,9 mi com as despesas
@@ -216,8 +217,10 @@ da DRE desde o fim do mesmo dia; o cartão só resume.)
 2026-11-24: "gere um critério de rateio por negócio, olhando para a coluna K 'saldo' e
 por período / mês […] numa proporção de valor orçado. Bloqueia o campo"). O total a
 ratear é o saldo planejado dos 43 centros de custo corporativos da Matriz, mês a mês
-(`database/rateio_adm_2027.php`, gerado da `Rateio Corporativo 2027.xlsm`, coluna K:
-−R$ 37.735.231,41 desde a planilha nova de 25/11 — o cliente mandou "Rateio Corporativo
+(`database/rateio_adm_2027.php`, gerado da `Rateio Corporativo 2027.xlsm`, coluna Saldo:
+**−R$ 37.014.037,33** desde a 2ª planilha de 25/11 (sem as colunas de débito e crédito; o
+gerador lê as colunas pelo nome do cabeçalho; 22 centros mudaram, Direção Geral −R$ 386 mil
+e Marketing −R$ 250 mil os maiores); antes, −R$ 37.735.231,41 desde a planilha nova de 25/11 — o cliente mandou "Rateio Corporativo
 ADM 2027.xlsm", guardada com o nome antigo; nela a 5205 CONTABILIDADE ganhou R$ 21,48 mi de
 créditos em sete meses e a 5162 MARKETING R$ 203 mil de despesa; era −R$ 59.011.744,41). A parte de cada negócio é a proporção da proposta de 2027 dele
 nas linhas de `Projecao::CRITERIO_RATEIO_ADM` (8.1 vendas, 8.2 promoções, 8.5 pessoal,
