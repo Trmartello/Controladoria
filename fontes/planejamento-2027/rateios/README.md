@@ -6,7 +6,7 @@ trabalho fica em `V:\Controladoria\003 - FP&A\5 - PLANEJAMENTO ORCAMENTARIO\PLAN
 
 | Planilha | Linha da DRE | Carga gerada | Gerador |
 |---|---|---|---|
-| `Rateio Corporativo 2027.xlsm` (coluna K, Saldo, por mês) | 16.1 Rateio Corporativo Administrativo | `database/rateio_adm_2027.php` | `scripts/gerar_rateio.py` |
+| `Rateio Corporativo 2027.xlsm` (coluna Saldo, por mês) | 16.1 Rateio Corporativo Administrativo | `database/rateio_adm_2027.php` | `scripts/gerar_rateio.py` |
 | `critério de rateios Corp Administrativo.xlsx` | 16.1: as contas do critério | `Projecao::CRITERIO_RATEIO_ADM` (no código) | — |
 | `Rateio Corporativo Negocios 2027.xlsm` + `Critérios de rateios.xlsx` | 14.3 Rateio Corporativo Negócio | `database/rateio_negocios_2027.php` | `scripts/gerar_rateio_neg.py` |
 | `Rateio_Financeiro - site planejamento.xlsx` | 14.2 Rateio Financeiro | `database/rateio_financeiro_2027.php` | `scripts/gerar_rateio_fin.py` |
@@ -28,7 +28,9 @@ cargas do repositório byte a byte. Depois de regerar, rode
 Atualizações: em 25/11/2026 o cliente mandou o `Rateio Corporativo ADM 2027.xlsm`, que
 substituiu o `Rateio Corporativo 2027.xlsm` (mesmo nome aqui, para o gerador e as provas):
 total de −R$ 59.011.744,41 para −R$ 37.735.231,41 (créditos na 5205 Contabilidade, mais
-Marketing na 5162). No mesmo dia o `Rateio Corporativo Negocios 2027.xlsm` chegou de novo,
+Marketing na 5162). Ainda em 25/11 veio uma 2ª versão, já pronta pela controladoria, sem as
+colunas de débito e crédito (o Saldo passou da coluna K para a I; o gerador lê pelo nome do
+cabeçalho): total −R$ 37.014.037,33, guardada no mesmo nome. No mesmo dia o `Rateio Corporativo Negocios 2027.xlsm` chegou de novo,
 idêntico ao guardado; o 5163 CENTRAL DE COMPRAS continua fora (decisão do cliente).
 
 A linha 14.1 (Rateio Matriz/Central) não tem planilha: vale zero no planejado

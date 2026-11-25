@@ -6,9 +6,9 @@
  * mês […] numa proporção de valor orçado. Bloqueia o campo, a célula vai em rateio
  * corporativo administrativo".
  *
- * Origem: planilha `Rateio Corporativo 2027.xlsm` (aba "Rateio Corp ADM"), coluna K
- * "Saldo" (planejado débito + crédito) somada por `periodo`: 514 linhas, 43
- * centros de custo da MATRIZ, tipo CORPORATIVO, total R$ -37735231.41 (o mesmo da linha
+ * Origem: planilha `Rateio Corporativo 2027.xlsm` (aba "Rateio Corp ADM"), coluna
+ * "Saldo" somada por `periodo`: 514 linhas, 43
+ * centros de custo da MATRIZ, tipo CORPORATIVO, total R$ -37014037.33 (o mesmo da linha
  * "Total" da planilha). Sinal da DRE: negativo é despesa. Gerado por script a partir
  * da planilha, sem redigitação.
  *
@@ -24,22 +24,22 @@
  */
 return [
     'ano' => 2027,
-    'fonte' => 'Rateio Corporativo 2027.xlsm, aba Rateio Corp ADM, coluna K (Saldo) por período',
+    'fonte' => 'Rateio Corporativo 2027.xlsm (Rateio Corporativo ADM 2027 de 25/11), aba Rateio Corp ADM, coluna Saldo por período',
     // Conferência: a soma dos meses (o carregamento recusa se não bater).
-    'total' => -37735231.41,
+    'total' => -37014037.33,
     // mês => saldo a ratear (sinal da DRE)
     'meses' => [
-        1 => -1467968.455,
-        2 => -3522521.395,
-        3 => -2088842.515,
-        4 => -1783440.555,
-        5 => -1370369.535,
-        6 => -5405907.105,
-        7 => -1293562.585,
-        8 => -3114736.215,
-        9 => -5587127.935,
-        10 => -2145099.715,
-        11 => -4487127.005,
-        12 => -5468528.395,
+        1 => -1455120.865,
+        2 => -3456853.805,
+        3 => -1772892.925,
+        4 => -1725272.965,
+        5 => -1351662.945,
+        6 => -5402857.515,
+        7 => -1291340.995,
+        8 => -3112686.625,
+        9 => -5348906.345,
+        10 => -2114395.125,
+        11 => -4481565.415,
+        12 => -5500481.805,
     ],
 ];

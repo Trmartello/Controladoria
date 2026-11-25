@@ -3,12 +3,19 @@ from decimal import Decimal
 f, saida = sys.argv[1:3]
 ws = openpyxl.load_workbook(f, read_only=True, data_only=True).worksheets[0]
 mes = collections.defaultdict(Decimal); cc = collections.defaultdict(Decimal); n = 0; total_planilha = None
+# As colunas pelo NOME do cabeçalho: a planilha de 25/11 tirou o débito e o crédito
+# e o Saldo passou da coluna K para a I.
+col = None
 for i, r in enumerate(ws.iter_rows(values_only=True)):
-    if i == 0: continue
-    if r[0] == 'Total': total_planilha = Decimal(str(r[10])); continue
-    if r[2] is None: continue
-    assert r[6] == 'CORPORATIVO' and r[9] == '2027 - 2026', r
-    v = Decimal(str(r[10])); mes[int(r[2])] += v; cc[(r[4], r[5])] += v; n += 1
+    if i == 0:
+        col = {nome: j for j, nome in enumerate(r) if nome}
+        assert {'periodo', 'codigo_centro_custo', 'descricao_centro_custo', 'tipo', 'periodo_anos', 'Saldo'} <= set(col), r
+        continue
+    if r[0] == 'Total': total_planilha = Decimal(str(r[col['Saldo']])); continue
+    if r[col['periodo']] is None: continue
+    assert r[col['tipo']] == 'CORPORATIVO' and r[col['periodo_anos']] == '2027 - 2026', r
+    v = Decimal(str(r[col['Saldo']])); mes[int(r[col['periodo']])] += v
+    cc[(r[col['codigo_centro_custo']], r[col['descricao_centro_custo']])] += v; n += 1
 tot = sum(mes.values())
 assert total_planilha is not None and abs(tot - total_planilha) < Decimal('0.01'), (tot, total_planilha)
 assert sorted(mes) == list(range(1, 13))
@@ -21,8 +28,8 @@ out = [f"""<?php
  * mês […] numa proporção de valor orçado. Bloqueia o campo, a célula vai em rateio
  * corporativo administrativo".
  *
- * Origem: planilha `Rateio Corporativo 2027.xlsm` (aba "Rateio Corp ADM"), coluna K
- * "Saldo" (planejado débito + crédito) somada por `periodo`: {n} linhas, {len(cc)}
+ * Origem: planilha `Rateio Corporativo 2027.xlsm` (aba "Rateio Corp ADM"), coluna
+ * "Saldo" somada por `periodo`: {n} linhas, {len(cc)}
  * centros de custo da MATRIZ, tipo CORPORATIVO, total R$ {q(tot)} (o mesmo da linha
  * "Total" da planilha). Sinal da DRE: negativo é despesa. Gerado por script a partir
  * da planilha, sem redigitação.
@@ -39,7 +46,7 @@ out = [f"""<?php
  */
 return [
     'ano' => 2027,
-    'fonte' => 'Rateio Corporativo 2027.xlsm, aba Rateio Corp ADM, coluna K (Saldo) por período',
+    'fonte' => 'Rateio Corporativo 2027.xlsm (Rateio Corporativo ADM 2027 de 25/11), aba Rateio Corp ADM, coluna Saldo por período',
     // Conferência: a soma dos meses (o carregamento recusa se não bater).
     'total' => {q(tot)},
     // mês => saldo a ratear (sinal da DRE)
