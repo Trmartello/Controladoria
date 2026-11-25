@@ -37,6 +37,10 @@
  */
 const SecaoProjecao = {
   negocioId: null,
+  // O número do último pedido ao servidor (carregar ou gravar): uma resposta só
+  // repinta a tela se ainda for a do último pedido. Sem isso, a resposta lenta de
+  // um negócio anterior chegava depois da nova e repintava o negócio errado.
+  pedido: 0,
   // O AGRUPAMENTO no Corporativo (pedido do cliente, 2026-11-24): os ids dos
   // negócios somados, ou null para todos. Fica no localStorage, por conveniência.
   grupo: undefined,
@@ -122,7 +126,9 @@ const SecaoProjecao = {
       : (alvo
         ? `?negocio_id=${alvo}${!dossie && this.filialId ? `&filial_id=${this.filialId}` : ''}`
         : '');
+    const pedido = ++this.pedido;
     const d = await App.api(`/api/projecao${q}`);
+    if (pedido !== this.pedido) return;
     if (corp && d.corporativo) {
       this.dados = d;
       el.innerHTML = this.htmlCorporativo(d);
@@ -224,8 +230,7 @@ const SecaoProjecao = {
         ${seletorFilial}
         ${dossie
     ? `<span class="fs-5">${Modal.esc(nomeNegocio)}</span>`
-    : `<select id="projecao-negocio" class="form-select form-select-sm" style="max-width:18rem"
-          aria-label="Negócio">${opcoes}</select>`}
+    : this.seletorNegocios(d, opcoes)}
       </div>
       <p class="text-muted mb-1">
         Realizado de <strong>jan a ${this.nomeMes(d.mes_fechado_ate)}</strong> (meses fechados) e
@@ -868,13 +873,6 @@ const SecaoProjecao = {
     return this.grupo;
   },
 
-  /** Troca o agrupamento (null = todos) e recarrega. */
-  async agrupar(ids) {
-    this.grupo = ids && ids.length ? ids : null;
-    try { localStorage.setItem('projecao.grupo', JSON.stringify(this.grupo)); } catch (e) { /* vale só nesta tela */ }
-    await this.carregar();
-  },
-
   /** O nome do que está somado: "Corporativo — todos os negócios" ou "Agrupamento: LEITE + P. RESF. LEITE". */
   nomeDoConsolidado(d) {
     if (!d.grupo) return 'Corporativo — todos os negócios';
@@ -883,29 +881,57 @@ const SecaoProjecao = {
   },
 
   /**
-   * O quadro de marcar quais negócios entram na soma (pedido do cliente,
-   * 2026-11-24: "coloque um checkbox para eu clicar em quais negócios eu quero
-   * agrupar"). Todos marcados = o Corporativo. Aplicar recarrega a tela inteira
-   * com a soma dos marcados: DRE, desafio, oportunidades, tributos e pessoas.
+   * O SELETOR DE NEGÓCIOS com caixas de marcar (pedido do cliente, 2026-11-24: "no
+   * combo box eu deveria ter uma opção de checkbox para selecionar quais itens eu
+   * quero que sejam somados; sempre que tiver mais de um selecionado, some
+   * automaticamente; e mantenha a opção do corporativo"). Corporativo = todos; um
+   * negócio marcado = a tela dele (editável); dois ou mais = a soma deles (só
+   * leitura). Aplica sozinho, sem botão. O `<select>` de antes continua, escondido:
+   * é ele que escreve no contexto do menu (`ligar`). Só para quem enxerga todos os
+   * negócios (o perfil do Corporativo); os demais ficam com o seletor simples.
+   * Itens são label com a caixa DENTRO, sem id/for (ver o filtro de projetos).
    */
-  quadroAgrupamento(d) {
-    if (App.modoDossie) return '';
-    const marcados = d.grupo || d.negocios.map((n) => Number(n.id));
-    const caixas = d.negocios.map((n) => `<div class="form-check form-check-inline me-3">
-        <input class="form-check-input" type="checkbox" id="grupo-neg-${n.id}" value="${n.id}" data-grupo-negocio
-          ${marcados.includes(Number(n.id)) ? 'checked' : ''}>
-        <label class="form-check-label small" for="grupo-neg-${n.id}">${Modal.esc(n.rotulo)}</label></div>`).join('');
-    return `<details class="card mb-3 painel-agrupamento"${d.grupo ? ' open' : ''}>
-        <summary class="card-header py-2 small fw-bold">Negócios no consolidado
-          <span class="fw-normal text-muted">— ${d.grupo ? `${d.grupo.length} de ${d.negocios.length} marcados` : 'todos'}; marque para agrupar</span></summary>
-        <div class="card-body py-2">
-          <div>${caixas}</div>
-          <div class="d-flex flex-wrap gap-2 mt-2">
-            <button type="button" class="btn btn-sm btn-primary" id="projecao-grupo-aplicar">Somar os marcados</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="projecao-grupo-todos">Todos os negócios</button>
-            <span class="small text-muted align-self-center" id="projecao-grupo-aviso"></span>
-          </div>
-        </div></details>`;
+  seletorNegocios(d, opcoes) {
+    const select = (escondido) => `<select id="projecao-negocio" class="form-select form-select-sm${escondido ? ' d-none' : ''}"
+      style="max-width:18rem" aria-label="Negócio">${opcoes}</select>`;
+    if (!d.pode_corporativo) return select(false);
+    const marcados = d.corporativo ? (d.grupo || []) : [Number(d.negocio_id)];
+    const corp = !!d.corporativo && !d.grupo;
+    const rotulo = d.corporativo ? this.nomeDoConsolidado(d)
+      : ((d.negocios.find((n) => Number(n.id) === Number(d.negocio_id)) || {}).rotulo || 'Negócio');
+    const item = (n) => `<label class="dropdown-item d-flex gap-2 align-items-center">
+        <input type="checkbox" class="form-check-input flex-shrink-0 mt-0" data-negocio-marca="${n.id}"
+          ${marcados.includes(Number(n.id)) ? 'checked' : ''}><span>${Modal.esc(n.rotulo)}</span></label>`;
+    return `${select(true)}<div class="dropdown seletor-negocios">
+        <button type="button" class="form-select form-select-sm text-start text-truncate" style="max-width:22rem;min-width:16rem"
+          data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" id="projecao-negocios-botao"
+          title="Marque um negócio para a tela dele, ou dois ou mais para somá-los" aria-label="Negócios">${Modal.esc(rotulo)}</button>
+        <div class="dropdown-menu dropdown-menu-end p-1 menu-negocios" style="max-height:70vh;overflow:auto">
+          <label class="dropdown-item d-flex gap-2 align-items-center fw-bold">
+            <input type="checkbox" class="form-check-input flex-shrink-0 mt-0" data-negocio-corporativo ${corp ? 'checked' : ''}>
+            <span>Corporativo — todos os negócios</span></label>
+          <div class="dropdown-divider"></div>
+          ${d.negocios.map(item).join('')}
+          <div class="small text-muted px-2 pt-1">Um marcado: a tela dele. Dois ou mais: a soma, só para ver.</div>
+        </div></div>`;
+  },
+
+  /**
+   * Aplica a escolha do seletor de negócios: nenhum ou todos = Corporativo; um =
+   * a tela do negócio; dois ou mais = a soma deles (o agrupamento).
+   */
+  aplicarSelecaoNegocios(ids, total) {
+    const global = document.getElementById('sel-negocio');
+    const irPara = (v) => {
+      if (!global || ![...global.options].some((o) => o.value === v)) return;
+      if (global.value === v) { this.carregar(); return; }
+      global.value = v;
+      global.dispatchEvent(new Event('change'));
+    };
+    if (ids.length === 1) { irPara(String(ids[0])); return; }
+    this.grupo = ids.length && ids.length < total ? ids : null;
+    try { localStorage.setItem('projecao.grupo', JSON.stringify(this.grupo)); } catch (e) { /* vale só nesta tela */ }
+    irPara('CORP');
   },
 
   /** As opções do seletor: o Corporativo (quando o perfil enxerga tudo) e cada negócio. */
@@ -942,8 +968,7 @@ const SecaoProjecao = {
         <h1 class="mb-0 me-auto">Projeção de Resultados — ${d.ano}</h1>
         ${dossie
     ? '<span class="fs-5">Corporativo</span>'
-    : `<select id="projecao-negocio" class="form-select form-select-sm" style="max-width:18rem"
-          aria-label="Negócio">${this.opcoesDeNegocio(d)}</select>`}
+    : this.seletorNegocios(d, this.opcoesDeNegocio(d))}
       </div>
       <p class="text-muted mb-1" id="projecao-consolidado-nome">
         <strong>${Modal.esc(d.grupo ? this.nomeDoConsolidado(d) : 'Corporativo')}:</strong> a soma ${d.grupo
@@ -959,7 +984,6 @@ const SecaoProjecao = {
     ? ` Nos outros ${sem} a coluna Proposta vale a própria projeção (crescimento zero) —
         não é meta, é a falta dela.` : ''}
       </div>
-      ${this.quadroAgrupamento(d)}
       ${this.cartaoVisaoAno(d)}
       ${this.cartaoDesafio(d)}
       ${this.cartaoOportunidades(d)}
@@ -1485,8 +1509,10 @@ const SecaoProjecao = {
   /** Grava a avaliação de um item e repinta o cartão de oportunidades. */
   async gravarAvaliacao(conta, decisao) {
     const el = document.getElementById('secao-projecao');
+    const pedido = ++this.pedido;
     try {
       const r = await App.api('/api/projecao/avaliacao', { negocio_id: this.negocioId, conta, decisao });
+      if (pedido !== this.pedido) return;
       this.dados = { ...this.dados, ...r };
       this.avisar('');
       const card = el.querySelector('.painel-oportunidades');
@@ -2202,10 +2228,29 @@ const SecaoProjecao = {
       } else if (travada) {
         const meses = Object.entries(l.proposta_meses || {})
           .map(([m, v]) => `${this.nomeMes(Number(m))} ${this.moeda(v)}`).join(' · ');
+        // O Rateio Corporativo Administrativo (16.1; pedido do cliente, 2026-11-24):
+        // a parte do negócio no rateio corporativo, pela proporção das despesas orçadas.
+        const ra = d.rateio_adm;
+        const rn = d.rateio_neg;
+        const texto = l.proposta_origem === 'RATEIO_FIN'
+          ? `Rateio financeiro de ${d.ano_planejamento}: o valor de ${d.filial ? 'esta filial (parte do negócio pela projeção de ' + d.ano + ' da linha)' : 'este negócio'} `
+            + `na planilha do rateio financeiro, mês a mês. Não se lança. Mês a mês: ${meses}.`
+          : l.proposta_origem === 'RATEIO_NEG'
+          ? `Rateio corporativo negócio de ${d.ano_planejamento}: o saldo planejado dos centros de custo dos negócios `
+            + `(R$ ${this.moeda(Math.abs(rn ? rn.total : 0))} no ano), distribuído pelos critérios de cada centro de custo `
+            + `(despesas ou faturamento orçados, só nos negócios e filiais da regra). `
+            + `${d.filial ? 'Esta filial' : 'Este negócio'}: R$ ${this.moeda(Math.abs(l.proposta))}. `
+            + `Muda quando os negócios lançam despesa ou faturamento; não se lança. Mês a mês: ${meses}.`
+          : l.proposta_origem === 'RATEIO_ADM'
+          ? `Rateio corporativo administrativo de ${d.ano_planejamento}: o saldo planejado dos centros de custo corporativos `
+            + `(R$ ${this.moeda(Math.abs(ra ? ra.total : 0))} no ano), dividido pela proporção das despesas orçadas de cada negócio `
+            + `(vendas, promoções, pessoal, serviços profissionais, serviços em geral, manutenção, materiais e viagens). `
+            + `${d.filial ? 'Esta filial' : 'Este negócio'}: ${((l.proposta_parte || 0) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% do total. `
+            + `Muda quando os negócios lançam essas despesas; não se lança. Mês a mês: ${meses}.`
+          : `Depreciação de ${d.ano_planejamento} carregada por negócio, filial e mês (conta reduzida ${l.proposta_conta}, `
+            + `bens existentes + investimentos). É o total da depreciação e não se lança. Mês a mês: ${meses}.`;
         proposta = `<span class="proposta-calculada" data-travada="${Modal.esc(l.codigo)}" title="${Modal.esc(
-          `Depreciação de ${d.ano_planejamento} carregada por negócio, filial e mês (conta reduzida ${l.proposta_conta}, `
-          + `bens existentes + investimentos). É o total da depreciação e não se lança. Mês a mês: ${meses}.`
-          + (l.lancado_ignorado ? ' Havia um lançamento anterior nesta linha: ele está guardado, mas não vale.' : '')
+          texto + (l.lancado_ignorado ? ' Havia um lançamento anterior nesta linha: ele está guardado, mas não vale.' : '')
         )}">${this.moeda(l.proposta)}</span>`;
       } else if (l.proposta === null || l.proposta === undefined) {
         proposta = `<span class="text-muted" title="${Modal.esc(
@@ -2374,22 +2419,28 @@ const SecaoProjecao = {
     }
     const imprimir = el.querySelector('#projecao-imprimir-dre');
     if (imprimir && virgem(imprimir)) imprimir.addEventListener('click', () => this.imprimirDre());
-    // O agrupamento de negócios no Corporativo.
-    const aplicar = el.querySelector('#projecao-grupo-aplicar');
-    if (aplicar && virgem(aplicar)) {
-      aplicar.addEventListener('click', () => {
-        const caixas = [...el.querySelectorAll('input[data-grupo-negocio]')];
-        const ids = caixas.filter((c) => c.checked).map((c) => Number(c.value));
-        const aviso = el.querySelector('#projecao-grupo-aviso');
-        if (!ids.length) {
-          if (aviso) aviso.textContent = 'Marque ao menos um negócio.';
-          return;
+    // O seletor de negócios com caixas: aplica sozinho, um instante depois do
+    // último clique (quem marca três negócios não recarrega a tela três vezes).
+    const menuNeg = el.querySelector('.menu-negocios');
+    if (menuNeg && virgem(menuNeg)) {
+      let espera = null;
+      menuNeg.addEventListener('change', (ev) => {
+        const caixas = [...menuNeg.querySelectorAll('input[data-negocio-marca]')];
+        const corp = menuNeg.querySelector('input[data-negocio-corporativo]');
+        if (ev.target === corp) {
+          caixas.forEach((c) => { c.checked = false; });
+          corp.checked = true;
+        } else {
+          corp.checked = !caixas.some((c) => c.checked);
         }
-        this.agrupar(ids.length === caixas.length ? null : ids);
+        const ids = caixas.filter((c) => c.checked).map((c) => Number(c.dataset.negocioMarca));
+        const botao = el.querySelector('#projecao-negocios-botao');
+        if (botao) botao.textContent = ids.length === 0 ? 'Corporativo — todos os negócios'
+          : `${ids.length} negócio${ids.length === 1 ? '' : 's'} marcado${ids.length === 1 ? '' : 's'}…`;
+        clearTimeout(espera);
+        espera = setTimeout(() => this.aplicarSelecaoNegocios(ids, caixas.length), 700);
       });
     }
-    const todos = el.querySelector('#projecao-grupo-todos');
-    if (todos && virgem(todos)) todos.addEventListener('click', () => this.agrupar(null));
     const sel = el.querySelector('#projecao-negocio');
     if (sel && virgem(sel)) {
       sel.addEventListener('change', (ev) => {
@@ -2430,10 +2481,12 @@ const SecaoProjecao = {
       if (!virgem(r)) return;
       r.addEventListener('change', async (ev) => {
         if (!ev.target.checked) return;
+        const pedido = ++this.pedido;
         try {
           const dados = await App.api('/api/projecao/modo', {
             negocio_id: this.negocioId, modo: ev.target.value, filial_id: this.filialId,
           });
+          if (pedido !== this.pedido) return;
           this.dados = { ...this.dados, ...dados };
           this.versao = dados.versao;
           this.avisar('');
@@ -2529,6 +2582,7 @@ const SecaoProjecao = {
       return;
     }
     inp.classList.add('celula-gravando');
+    const pedido = ++this.pedido;
     try {
       const r = await App.api('/api/projecao/premissa', {
         negocio_id: this.negocioId,
@@ -2539,6 +2593,7 @@ const SecaoProjecao = {
         chave: inp.dataset.chave,
         valor: limpo === '' ? null : Number(limpo),
       });
+      if (pedido !== this.pedido) return;
       this.versao = r.versao;
       this.avisoPiso = '';
       this.dados = { ...this.dados, ...r };
@@ -2577,6 +2632,7 @@ const SecaoProjecao = {
       return;
     }
     inp.classList.add('celula-gravando');
+    const pedido = ++this.pedido;
     try {
       const r = await App.api('/api/projecao/beneficio', {
         negocio_id: this.negocioId,
@@ -2584,6 +2640,7 @@ const SecaoProjecao = {
         chave: inp.dataset.chave,
         valor: limpo === '' ? null : Number(limpo),
       });
+      if (pedido !== this.pedido) return;
       if (r.versao !== undefined) this.versao = r.versao;
       this.avisoPiso = '';
       this.dados = { ...this.dados, ...r };
@@ -2903,6 +2960,7 @@ const SecaoProjecao = {
       }
     }
     inp.classList.add('celula-gravando');
+    const pedido = ++this.pedido;
     try {
       const r = await App.api('/api/projecao/valor', {
         negocio_id: this.negocioId,
@@ -2912,6 +2970,7 @@ const SecaoProjecao = {
         valor,
         versao: this.versao,
       });
+      if (pedido !== this.pedido) return;
       this.versao = r.versao;
       // A Receita abaixo do piso volta ao piso no servidor, e a resposta diz
       // por quê (`aviso_piso`): a caixa embaixo da DRE mostra até a próxima

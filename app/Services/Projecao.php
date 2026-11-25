@@ -851,21 +851,358 @@ class Projecao
      * @param array|null $dep um item de `depreciacao()`
      * @return array<string, array{valor: float, meses: array<int,float>, conta: string}>
      */
-    public static function fixosDaDepreciacao(?array $dep, int $filialId = 0): array
+    public static function fixosDaDepreciacao(?array $dep, int $filialId = 0, string $codNegocio = ''): array
     {
         if (!$dep) {
             return [];
         }
         $meses = $filialId ? ($dep['filiais'][$filialId] ?? array_fill(1, 12, 0.0)) : $dep['negocio'];
         return [self::LINHA_DEPRECIACAO => ['valor' => array_sum($meses), 'meses' => $meses,
-            'conta' => self::CONTA_DEPRECIACAO]];
+            'conta' => self::CONTA_DEPRECIACAO, 'livre' => self::depreciacaoEditavel($codNegocio)]];
+    }
+
+    /**
+     * Os negócios que EDITAM a depreciação (pedido do cliente, 2026-11-24: "somente o
+     * negócio Pecuária deve poder editar a depreciação conforme desejar; os demais
+     * negócios não"). Neles a 8.10 vem com a carga como padrão e aceita lançamento;
+     * nos outros, a carga é travada.
+     */
+    public const NEGOCIOS_DEPRECIACAO_EDITAVEL = ['2'];
+
+    public static function depreciacaoEditavel(string $codNegocio): bool
+    {
+        return in_array($codNegocio, self::NEGOCIOS_DEPRECIACAO_EDITAVEL, true);
+    }
+
+    /**
+     * O RATEIO CORPORATIVO ADMINISTRATIVO (linha 16.1) do ano da proposta, por
+     * negócio e mês (pedido do cliente, 2026-11-24). O total a ratear vem da carga
+     * (`database/rateio_adm_<ano>.php`: o saldo planejado dos centros de custo
+     * corporativos da Matriz, mês a mês); a parte de cada negócio é a proporção da
+     * proposta dele nas linhas de `CRITERIO_RATEIO_ADM` — calculada NA HORA, então
+     * muda quando um negócio lança despesa (decisão do cliente: "recalcular ao
+     * vivo"). Travada na proposta, como a depreciação. A 14.3 não muda.
+     */
+    public const LINHA_RATEIO_ADM = '16.1';
+    /**
+     * As linhas do critério (pedido do cliente, 2026-11-24): despesas com vendas,
+     * com promoções, com pessoal, serviços profissionais, serviços em geral,
+     * manutenção, materiais e viagens. As contas sem valor da planilha de critério
+     * (carga e descarga, royalties, mercadorias deterioradas, frete de
+     * transferência) são custo na DRE gerencial e já não estão nessas linhas.
+     */
+    public const CRITERIO_RATEIO_ADM = ['8.1', '8.2', '8.5', '8.7', '8.8', '8.11', '8.12', '8.14'];
+
+    /** A carga do total a ratear de um ano, conferida, ou null se não houver. */
+    public static function cargaRateioAdm(int $anoPlan): ?array
+    {
+        $arquivo = __DIR__ . '/../../database/rateio_adm_' . $anoPlan . '.php';
+        if (!is_file($arquivo)) {
+            return null;
+        }
+        $c = require $arquivo;
+        $meses = $c['meses'] ?? [];
+        if ((int)($c['ano'] ?? 0) !== $anoPlan || array_keys($meses) !== range(1, 12)
+            || abs(array_sum($meses) - (float)($c['total'] ?? 0)) > 0.005) {
+            throw new \RuntimeException("Carga do rateio administrativo de {$anoPlan} inválida: 12 meses que somem o total.");
+        }
+        return $c;
+    }
+
+    /** O critério de UMA DRE já resolvida: a despesa proposta nas linhas do critério, positiva. */
+    public static function criterioRateioAdm(array $linhas): float
+    {
+        $soma = 0.0;
+        foreach ($linhas as $l) {
+            if (in_array($l['codigo'], self::CRITERIO_RATEIO_ADM, true)) {
+                $soma += (float)($l['proposta'] ?? 0.0);
+            }
+        }
+        return max(0.0, -$soma);
+    }
+
+    /**
+     * O rateio administrativo de TODOS os negócios ativos com DRE no ano: por
+     * negócio, o critério, a parte e os 12 meses (sinal da DRE). Null sem carga.
+     *
+     * @return array{negocios: array<int, array{criterio: float, parte: float, meses: array<int,float>, valor: float}>, criterio_total: float, total: float, fonte: string}|null
+     */
+    public static function rateioAdm(int $ano, int $corte, int $anoPlan): ?array
+    {
+        return self::rateios($ano, $corte, $anoPlan)['adm'];
+    }
+
+    /**
+     * Os dois rateios travados de uma vez — 16.1 administrativo e 14.3 negócio —,
+     * da MESMA base: a proposta de 2027 de todos os negócios (e das filiais, para
+     * a 14.3) nas linhas dos critérios, calculada sem os próprios rateios.
+     *
+     * @return array{adm: ?array, neg: ?array}
+     */
+    public static function rateios(int $ano, int $corte, int $anoPlan): array
+    {
+        $cAdm = self::cargaRateioAdm($anoPlan);
+        $cNeg = self::cargaRateioNegocios($anoPlan);
+        if (!$cAdm && !$cNeg) {
+            return ['adm' => null, 'neg' => null];
+        }
+        $ids = array_map('intval', array_column(Database::todos(
+            'SELECT n.id FROM negocio n WHERE n.ativo = 1
+               AND EXISTS (SELECT 1 FROM dre_valor v WHERE v.negocio_id = n.id AND v.ano = ?)',
+            [$ano]
+        ), 'id'));
+        $base = self::resumoDosNegocios($ids, $ano, $corte, $anoPlan,
+            array_merge(['1'], self::CRITERIO_RATEIO_ADM), false, (bool)$cNeg);
+        return [
+            'adm' => $cAdm ? self::rateioAdmDe($cAdm, $base) : null,
+            'neg' => $cNeg ? self::rateioNegociosDe($cNeg, $base) : null,
+        ];
+    }
+
+    /** O valor de um critério numa proposta (do negócio ou da filial): despesa ou faturamento, positivo. */
+    private static function valorDoCriterio(array $proposta, string $tipo): float
+    {
+        if ($tipo === 'FATURAMENTO') {
+            return max(0.0, (float)($proposta['1'] ?? 0.0));
+        }
+        $s = 0.0;
+        foreach (self::CRITERIO_RATEIO_ADM as $c) {
+            $s += (float)($proposta[$c] ?? 0.0);
+        }
+        return max(0.0, -$s);
+    }
+
+    /** O rateio administrativo a partir da base dos rateios. */
+    private static function rateioAdmDe(array $carga, array $base): array
+    {
+        $criterios = [];
+        foreach ($base as $id => $r) {
+            $criterios[(int)$id] = self::valorDoCriterio($r['proposta'], 'DESPESAS');
+        }
+        $total = array_sum($criterios);
+        $saida = [];
+        foreach ($criterios as $id => $c) {
+            $parte = $total > 0 ? $c / $total : 0.0;
+            $meses = [];
+            foreach ($carga['meses'] as $m => $v) {
+                $meses[(int)$m] = (float)$v * $parte;
+            }
+            $saida[$id] = ['criterio' => $c, 'parte' => $parte, 'meses' => $meses, 'valor' => array_sum($meses)];
+        }
+        return ['negocios' => $saida, 'criterio_total' => $total, 'total' => (float)$carga['total'], 'fonte' => (string)$carga['fonte']];
+    }
+
+    /**
+     * RATEIO CORPORATIVO NEGÓCIO (linha 14.3), travado (pedido do cliente,
+     * 2026-11-24). O valor de cada centro de custo, mês a mês, vem da carga
+     * (`database/rateio_negocios_<ano>.php`); a distribuição segue a planilha de
+     * critérios: só os negócios da regra (coluna H), só as filiais listadas (coluna
+     * G; "Todas" = todas as do negócio), na proporção da proposta de 2027 no critério
+     * — despesas (as linhas de `CRITERIO_RATEIO_ADM`) ou faturamento (receita bruta).
+     * Ao vivo, como a 16.1.
+     */
+    public const LINHA_RATEIO_NEG = '14.3';
+    /** Os critérios da planilha que são FATURAMENTO (receita bruta); os demais são despesas. */
+    public const CRITERIOS_FATURAMENTO = [16, 22, 33, 37];
+
+    /** A carga do rateio negócio de um ano, conferida, ou null se não houver. */
+    public static function cargaRateioNegocios(int $anoPlan): ?array
+    {
+        $arquivo = __DIR__ . '/../../database/rateio_negocios_' . $anoPlan . '.php';
+        if (!is_file($arquivo)) {
+            return null;
+        }
+        $c = require $arquivo;
+        $soma = 0.0;
+        foreach ($c['centros'] ?? [] as $cc => $x) {
+            if (array_keys($x['meses'] ?? []) !== range(1, 12)) {
+                throw new \RuntimeException("Rateio negócio {$anoPlan}: o centro {$cc} não tem os 12 meses.");
+            }
+            $soma += array_sum($x['meses']);
+        }
+        if ((int)($c['ano'] ?? 0) !== $anoPlan || !$c['centros'] || abs($soma - (float)($c['total'] ?? 0)) > 0.005) {
+            throw new \RuntimeException("Carga do rateio negócio de {$anoPlan} inválida: os centros têm de somar o total.");
+        }
+        return $c;
+    }
+
+    /**
+     * O rateio negócio a partir da base: por negócio, os 12 meses, o valor, os 12
+     * meses de cada filial e quanto veio de cada centro de custo.
+     */
+    private static function rateioNegociosDe(array $carga, array $base): array
+    {
+        $cods = [];
+        foreach (Database::todos('SELECT id, cod_negocio FROM negocio') as $n) {
+            $cods[(int)$n['id']] = (string)$n['cod_negocio'];
+        }
+        $porCod = array_flip($cods);
+        $filialDe = [];   // [negocio_id][cod_filial] => filial_id
+        foreach (Database::todos('SELECT id, negocio_id, cod_filial FROM filial') as $f) {
+            $filialDe[(int)$f['negocio_id']][(string)$f['cod_filial']] = (int)$f['id'];
+        }
+        $zeros = array_fill(1, 12, 0.0);
+        $saida = [];
+        foreach ($carga['centros'] as $cc => $c) {
+            $tipo = in_array((int)($c['criterio'] ?? 0), self::CRITERIOS_FATURAMENTO, true) ? 'FATURAMENTO' : 'DESPESAS';
+            if (($c['negocios'][0] ?? null) === 'TODOS') {
+                $exceto = array_map('strval', $c['negocios']['exceto'] ?? []);
+                $negs = array_values(array_filter(array_keys($base), static fn ($id) => !in_array($cods[(int)$id] ?? '', $exceto, true)));
+            } else {
+                $negs = array_values(array_filter(array_map(static fn ($cod) => $porCod[(string)$cod] ?? null, $c['negocios']),
+                    static fn ($id) => $id !== null && isset($base[$id])));
+            }
+            $pesoNeg = [];
+            $pesoFil = [];
+            foreach ($negs as $n) {
+                $props = $base[$n]['filiais'] ?? [];
+                $fids = $c['filiais'] === 'TODAS'
+                    ? array_keys($props)
+                    : array_values(array_filter(array_map(static fn ($cf) => $filialDe[$n][(string)$cf] ?? null, $c['filiais'])));
+                foreach ($fids as $fid) {
+                    $pesoFil[$n][$fid] = self::valorDoCriterio($props[$fid] ?? [], $tipo);
+                }
+                // Todas as filiais: o negócio pesa pela proposta DELE; filiais listadas:
+                // pela soma delas (o centro só atende essas).
+                $pesoNeg[$n] = $c['filiais'] === 'TODAS'
+                    ? self::valorDoCriterio($base[$n]['proposta'], $tipo)
+                    : array_sum($pesoFil[$n] ?? []);
+            }
+            $total = array_sum($pesoNeg);
+            foreach ($negs as $n) {
+                // Um negócio só leva o centro inteiro; sem critério com valor, divide igual.
+                $parte = count($negs) === 1 ? 1.0 : ($total > 0 ? $pesoNeg[$n] / $total : 1.0 / count($negs));
+                if ($parte <= 0) {
+                    continue;
+                }
+                $s = &$saida[$n];
+                $s ??= ['meses' => $zeros, 'valor' => 0.0, 'filiais' => [], 'centros' => []];
+                $somaFil = array_sum($pesoFil[$n] ?? []);
+                foreach ($c['meses'] as $m => $v) {
+                    $val = (float)$v * $parte;
+                    $s['meses'][$m] += $val;
+                    if ($somaFil > 0) {
+                        foreach ($pesoFil[$n] as $fid => $w) {
+                            $s['filiais'][$fid] ??= $zeros;
+                            $s['filiais'][$fid][$m] += $val * $w / $somaFil;
+                        }
+                    }
+                }
+                $s['centros'][(int)$cc] = array_sum($c['meses']) * $parte;
+                unset($s);
+            }
+        }
+        foreach ($saida as &$s) {
+            $s['valor'] = array_sum($s['meses']);
+        }
+        unset($s);
+        return ['negocios' => $saida, 'total' => (float)$carga['total'], 'fora' => $carga['fora'] ?? [],
+            'fonte' => (string)$carga['fonte']];
+    }
+
+    /**
+     * RATEIO FINANCEIRO (linha 14.2) de 2027, por negócio e mês, travado (pedido do
+     * cliente, 2026-11-24). Carga fixa (`database/rateio_financeiro_<ano>.php`): a
+     * planilha já traz o valor de cada negócio; não há critério a calcular.
+     */
+    public const LINHA_RATEIO_FIN = '14.2';
+
+    /** A carga do rateio financeiro de um ano, conferida, ou null se não houver. */
+    public static function cargaRateioFin(int $anoPlan): ?array
+    {
+        $arquivo = __DIR__ . '/../../database/rateio_financeiro_' . $anoPlan . '.php';
+        if (!is_file($arquivo)) {
+            return null;
+        }
+        $c = require $arquivo;
+        $soma = 0.0;
+        foreach ($c['negocios'] ?? [] as $cod => $meses) {
+            if (array_keys($meses) !== range(1, 12)) {
+                throw new \RuntimeException("Rateio financeiro {$anoPlan}: o negócio {$cod} não tem os 12 meses.");
+            }
+            $soma += array_sum($meses);
+        }
+        if ((int)($c['ano'] ?? 0) !== $anoPlan || abs($soma - (float)($c['total'] ?? 0)) > 0.005) {
+            throw new \RuntimeException("Carga do rateio financeiro de {$anoPlan} inválida: os negócios têm de somar o total.");
+        }
+        return $c;
+    }
+
+    /** Os 12 meses do rateio financeiro de UM negócio (pelo id), ou null. */
+    public static function rateioFinDoNegocio(int $negocioId, int $anoPlan): ?array
+    {
+        $c = self::cargaRateioFin($anoPlan);
+        if (!$c) {
+            return null;
+        }
+        $cod = (string)(Database::um('SELECT cod_negocio FROM negocio WHERE id = ?', [$negocioId])['cod_negocio'] ?? '');
+        $meses = $c['negocios'][$cod] ?? null;
+        return $meses === null ? null : array_map('floatval', $meses);
+    }
+
+    /**
+     * A 14.2 travada de um negócio, ou de uma filial: `$parteFilial` é a parte dela
+     * (a projeção de 2026 da 14.2 da filial sobre a das filiais do negócio).
+     */
+    public static function fixosDoRateioFin(?array $meses, ?float $parteFilial = null): array
+    {
+        if ($meses === null) {
+            return [];
+        }
+        $f = $parteFilial ?? 1.0;
+        $m = array_map(static fn ($v) => (float)$v * $f, $meses);
+        return [self::LINHA_RATEIO_FIN => ['valor' => array_sum($m), 'meses' => $m, 'conta' => null, 'origem' => 'RATEIO_FIN']];
+    }
+
+    /** A 14.3 travada de um negócio, ou de uma filial (os meses dela; sem parte, zero). */
+    public static function fixosDoRateioNeg(?array $rateio, ?int $filialId = null): array
+    {
+        if (!$rateio) {
+            return [];
+        }
+        $meses = $filialId === null ? $rateio['meses'] : ($rateio['filiais'][$filialId] ?? array_fill(1, 12, 0.0));
+        return [self::LINHA_RATEIO_NEG => ['valor' => array_sum($meses), 'meses' => $meses, 'conta' => null,
+            'origem' => 'RATEIO_NEG']];
+    }
+
+    /**
+     * A 16.1 travada de um negócio (`$rateio` de `rateioAdm`, a entrada dele), ou
+     * de uma filial: `$parteFilial` é a parte dela no critério do negócio.
+     */
+    public static function fixosDoRateioAdm(?array $rateio, ?float $parteFilial = null): array
+    {
+        if (!$rateio) {
+            return [];
+        }
+        $f = $parteFilial ?? 1.0;
+        $meses = array_map(static fn ($v) => (float)$v * $f, $rateio['meses']);
+        return [self::LINHA_RATEIO_ADM => ['valor' => array_sum($meses), 'meses' => $meses, 'conta' => null,
+            'origem' => 'RATEIO_ADM', 'parte' => $rateio['parte'] * $f, 'criterio' => $rateio['criterio']]];
+    }
+
+    /**
+     * Trava linhas já resolvidas (o valor fixo por cima do que houver) e refaz os
+     * blocos — para o rateio da FILIAL, que só se conhece depois das propostas
+     * das filiais (o critério sai delas).
+     */
+    public static function fixar(array $linhas, array $fixos): array
+    {
+        foreach ($linhas as $i => $l) {
+            if (isset($fixos[$l['codigo']])) {
+                $linhas[$i] = self::travar($l, $fixos[$l['codigo']], $l['proposta_lancado'] ?? null);
+            }
+        }
+        return self::derivar($linhas);
     }
 
     /** Põe numa linha o valor fixo (travado), ignorando o que estiver lançado nela. */
     private static function travar(array $linha, array $fixo, ?array $lancado): array
     {
         $linha['proposta'] = (float)$fixo['valor'];
-        $linha['proposta_origem'] = 'DEPRECIACAO';
+        $linha['proposta_origem'] = $fixo['origem'] ?? 'DEPRECIACAO';
+        if (isset($fixo['parte'])) {
+            $linha['proposta_parte'] = $fixo['parte'];
+        }
         $linha['proposta_lancado'] = null;
         $linha['proposta_padrao'] = null;
         $linha['proposta_regra'] = null;
@@ -1188,9 +1525,19 @@ class Projecao
             $linhas[$i]['proposta_regra'] = $r['origem'] === 'PREMISSA'
                 ? ($l['codigo'] === self::LINHA_PESSOAL ? 'PESSOAL' : 'PREMISSA') : null;
             // A DEPRECIAÇÃO carregada (`fixosDaDepreciacao`): o valor é o da carga
-            // e o lançado não vale (pedido do cliente, 2026-11-23).
+            // e o lançado não vale (pedido do cliente, 2026-11-23). Na Pecuária
+            // (`depreciacaoEditavel`, 2026-11-24) a carga é só o padrão: o lançado
+            // manda, e sem lançamento a linha vale a carga, sem trava.
             if (isset($fixos[$l['codigo']])) {
-                $linhas[$i] = self::travar($linhas[$i], $fixos[$l['codigo']], $lancados[$l['codigo']] ?? null);
+                $fixo = $fixos[$l['codigo']];
+                if (!empty($fixo['livre']) && isset($lancados[$l['codigo']])) {
+                    continue;
+                }
+                $linhas[$i] = self::travar($linhas[$i], $fixo, $lancados[$l['codigo']] ?? null);
+                if (!empty($fixo['livre'])) {
+                    $linhas[$i]['proposta_travada'] = false;
+                    $linhas[$i]['lancado_ignorado'] = null;
+                }
                 continue;
             }
             // O PISO do faturamento (pedido do cliente, 2026-11-19): a Receita de
@@ -1302,7 +1649,8 @@ class Projecao
             }
             // A depreciação do negócio é a da carga, também no modo filial: o
             // resto de filial fora do cadastro aparece como resíduo a distribuir.
-            if (isset($fixos[$l['codigo']])) {
+            // Linha livre (a depreciação da Pecuária): no modo filial é a soma delas.
+            if (isset($fixos[$l['codigo']]) && empty($fixos[$l['codigo']]['livre'])) {
                 $linhas[$i] = self::travar($l, $fixos[$l['codigo']], null);
                 continue;
             }
@@ -1336,11 +1684,18 @@ class Projecao
         int $ano,
         int $corte,
         int $anoPlan,
-        array $contasAlvo = ['3', '18']
+        array $contasAlvo = ['3', '18'],
+        bool $comRateios = true,
+        bool $comFiliais = false
     ): array {
         if (!$negocioIds) {
             return [];
         }
+        // Os RATEIOS travados (16.1 administrativo e 14.3 negócio) dependem do
+        // critério de TODOS os negócios: calculados uma vez, sem eles mesmos (o
+        // critério não passa pela 14.3 nem pela 16.1).
+        $rateios = $comRateios ? self::rateios($ano, $corte, $anoPlan) : ['adm' => null, 'neg' => null];
+        $rateio = $rateios['adm'];
         $marcas = implode(',', array_fill(0, count($negocioIds), '?'));
 
         $contas = Database::todos(
@@ -1465,20 +1820,28 @@ class Projecao
             $porFilial = [];
             $modoFilial = $modo === 'FILIAL' && !empty($dreFilial[$id]);
             $acertosFilial = $acertos[$id]['filiais'] ?? [];
-            if ($modoFilial) {
-                $propostas = [];
+            $propostas = [];
+            if ($modoFilial || ($comFiliais && !empty($dreFilial[$id]))) {
                 foreach ($dreFilial[$id] as $filialId => $porConta) {
                     // A 8.5 da filial sobre a projeção dela sem a 3227 dela — a mesma conta da tela.
                     $base = $monta($porConta);
                     $cf = self::crescimentosDaFilial($cresc, $base, (float)($acertosFilial[$filialId] ?? 0.0), $minimo);
                     $lf = self::aplicar($base, $lanc[$filialId] ?? [], $cf, $taxaPc,
-                        self::fixosDaDepreciacao($deps[$id] ?? null, (int)$filialId));
+                        self::fixosDaDepreciacao($deps[$id] ?? null, (int)$filialId, $cods[$id] ?? ''));
                     $porFilial[$filialId] = $lf;
                     $propostas[$filialId] = array_column($lf, 'proposta', 'codigo');
                 }
-                $linhas = self::somarFiliais($linhas, $propostas, self::fixosDaDepreciacao($deps[$id] ?? null));
+            }
+            $fixosNeg = self::fixosDaDepreciacao($deps[$id] ?? null, 0, $cods[$id] ?? '')
+                + self::fixosDoRateioAdm($rateio['negocios'][$id] ?? null)
+                + self::fixosDoRateioNeg($rateios['neg']['negocios'][$id] ?? null)
+                + ($comRateios ? self::fixosDoRateioFin(self::rateioFinDoNegocio($id, $anoPlan)) : []);
+            if ($modoFilial) {
+                $linhas = self::somarFiliais($linhas, $propostas, $fixosNeg);
             } else {
-                $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc, $taxaPc, self::fixosDaDepreciacao($deps[$id] ?? null));
+                $linhas = self::aplicar($linhas, $lanc[0] ?? [], $cresc, $taxaPc, $fixosNeg);
+                // Fora do modo filial, as filiais só serviram ao critério: não entram no mínimo.
+                $porFilial = [];
             }
             // O mínimo das Despesas com Pessoal — a mesma conta da tela. As
             // filiais só entram no modo filial, quando são elas que formam o total.
@@ -1499,6 +1862,13 @@ class Projecao
             }
             $saida[$id] = ['projecao' => $proje, 'proposta' => $prop, 'modo' => $modo,
                 'pessoal_alertas' => self::alertasPessoal($linhas, $porFilial)];
+            if ($comFiliais) {
+                // A proposta de cada filial nas linhas pedidas (para os critérios de rateio).
+                $saida[$id]['filiais'] = array_map(
+                    static fn ($p) => array_intersect_key($p, array_flip($contasAlvo)),
+                    $propostas
+                );
+            }
         }
         return $saida;
     }

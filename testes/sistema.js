@@ -6796,11 +6796,9 @@ async function provasDiretriz2027(page, largura) {
  * 2027, e as células de lançar em amarelo-claro.
  */
 /**
- * O AGRUPAMENTO de negócios no Corporativo (pedido do cliente, 2026-11-24:
- * "preciso poder selecionar e totalizar mais de um negócio, por exemplo Leite mais
- * Postos de resfriamento de leite — coloque um checkbox"): marcar dois negócios
- * soma só os dois (conta a conta, como o Corporativo), o nome diz quais são, a
- * escolha sobrevive à recarga e "Todos os negócios" volta ao Corporativo.
+ * O AGRUPAMENTO de negócios (pedidos do cliente, 2026-11-24): caixas de marcar DENTRO
+ * do seletor de negócio — Corporativo = todos; um marcado = a tela dele (editável);
+ * dois ou mais = a soma deles, automática e só leitura. A escolha sobrevive à recarga.
  */
 async function provasAgrupamento(page, largura) {
   const l = `[${largura}] Agrupamento:`;
@@ -6813,33 +6811,40 @@ async function provasAgrupamento(page, largura) {
     sel.dispatchEvent(new Event('change'));
     App.mostrarSecao('projecao');
   });
-  const abriu = await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('.painel-agrupamento')", 60000);
-  t(`${l} o Corporativo tem o quadro "Negócios no consolidado"`, abriu);
+  const abriu = await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('#projecao-negocios-botao') && !!SecaoProjecao.dados?.corporativo", 60000);
+  t(`${l} o seletor de negócio tem as caixas de marcar`, abriu);
   if (!abriu) return;
   const c0 = await page.evaluate(() => ({
-    caixas: document.querySelectorAll('.painel-agrupamento input[data-grupo-negocio]').length,
-    marcadas: document.querySelectorAll('.painel-agrupamento input[data-grupo-negocio]:checked').length,
+    caixas: document.querySelectorAll('.menu-negocios input[data-negocio-marca]').length,
+    marcadas: document.querySelectorAll('.menu-negocios input[data-negocio-marca]:checked').length,
+    corp: !!document.querySelector('.menu-negocios input[data-negocio-corporativo]:checked'),
+    botao: document.querySelector('#projecao-negocios-botao')?.textContent.trim(),
+    quadroAntigo: !!document.querySelector('.painel-agrupamento'),
     negocios: SecaoProjecao.dados.negocios.length, grupo: SecaoProjecao.dados.grupo,
   }));
-  t(`${l} uma caixa por negócio, todas marcadas (é o Corporativo)`,
-    c0.caixas === c0.negocios && c0.marcadas === c0.caixas && c0.grupo == null, JSON.stringify(c0));
-  // Leite + Postos de resfriamento de leite.
-  await page.evaluate(() => {
-    const quer = ['- LEITE', '- P. RESF. LEITE'];
-    document.querySelectorAll('.painel-agrupamento details, details.painel-agrupamento').forEach((d) => { d.open = true; });
-    document.querySelectorAll('.painel-agrupamento input[data-grupo-negocio]').forEach((i) => {
-      const rot = i.closest('.form-check').textContent.trim();
-      i.checked = quer.some((q) => rot.endsWith(q));
-    });
+  t(`${l} no Corporativo: uma caixa por negócio, "Corporativo — todos os negócios" marcado, e sem o quadro separado`,
+    c0.caixas === c0.negocios && c0.marcadas === 0 && c0.corp && /Corporativo — todos os negócios/.test(c0.botao || '')
+      && !c0.quadroAntigo && c0.grupo == null, JSON.stringify(c0));
+  // Marca Leite e Postos de leite: soma sozinho, sem botão.
+  const marcar = (rotulos) => page.evaluate((rs) => {
     document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
-    document.querySelector('#projecao-grupo-aplicar').click();
-  });
+    document.querySelectorAll('.menu-negocios input[data-negocio-marca]').forEach((i) => {
+      const quer = rs.some((r) => i.closest('label').textContent.trim().endsWith(r));
+      if (i.checked !== quer) { i.checked = quer; i.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+  }, rotulos);
+  await marcar(['- LEITE', '- P. RESF. LEITE']);
   await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && (SecaoProjecao.dados.grupo || []).length === 2", 60000);
+  const so = await page.evaluate(() => ({
+    pode: SecaoProjecao.dados.pode_editar,
+    campos: document.querySelectorAll('#secao-projecao .tabela-projecao input, #secao-projecao .tabela-projecao select, #secao-projecao [data-avaliar], #secao-projecao input[data-premissa]').length,
+  }));
+  t(`${l} dois marcados: a soma é só leitura (sem campo de lançar, de premissa nem Considerar/Desconsiderar)`, so.pode === false && so.campos === 0, JSON.stringify(so));
   const g = await page.evaluate(async () => {
     const d = SecaoProjecao.dados;
     const val = (ls, c, k) => Number((ls.find((x) => x.codigo === c) || {})[k]) || 0;
     let rob = 0; let rl = 0; let des = 0;
-    for (const id of d.grupo) {
+    for (const id of d.grupo || []) {
       const n = await App.api(`/api/projecao?negocio_id=${id}`);
       rob += val(n.linhas, '1', 'realizado');
       rl += val(n.linhas, '18', 'proposta');
@@ -6851,39 +6856,95 @@ async function provasAgrupamento(page, largura) {
       rl: val(d.linhas, '18', 'proposta'), rlSoma: rl,
       desafio: Number(d.desafio && d.desafio.total && d.desafio.total.desafio && d.desafio.total.desafio.resultado) || 0, desafioSoma: des,
       nome: document.querySelector('#projecao-consolidado-nome')?.textContent.replace(/\s+/g, ' ').trim() || '',
-      opcao: document.querySelector('#projecao-negocio option[value="corp"]')?.textContent.trim(),
+      botao: document.querySelector('#projecao-negocios-botao')?.textContent.trim(),
+      marcadas: document.querySelectorAll('.menu-negocios input[data-negocio-marca]:checked').length,
     };
   });
-  // Agrupado é SÓ LEITURA (pedido do cliente, 2026-11-24): nenhum campo de lançar, de
-  // premissa ou botão de Considerar/Desconsiderar; a edição é negócio a negócio.
-  const so = await page.evaluate(() => ({
-    pode: SecaoProjecao.dados.pode_editar,
-    campos: document.querySelectorAll('#secao-projecao .tabela-projecao input, #secao-projecao .tabela-projecao select, #secao-projecao [data-avaliar], #secao-projecao input[data-premissa]').length,
-  }));
-  t(`${l} agrupado é só leitura: sem campo de lançar, de premissa nem Considerar/Desconsiderar`, so.pode === false && so.campos === 0, JSON.stringify(so));
-  t(`${l} Leite + Postos de leite: o nome diz quais são, e a soma é a dos dois negócios (receita realizada, resultado proposto e desafio)`,
-    g.consolidados === 2 && /LEITE \+ .*P\. RESF\. LEITE/.test(g.nome) && /agrupamento/.test(g.opcao || '')
+  t(`${l} Leite + Postos de leite: o seletor diz quais são, e a soma é a dos dois (receita realizada, resultado proposto e desafio)`,
+    g.consolidados === 2 && g.marcadas === 2 && /LEITE \+ .*P\. RESF\. LEITE/.test(g.botao || '') && /LEITE \+ .*P\. RESF\. LEITE/.test(g.nome)
       && Math.abs(g.rob - g.robSoma) < 1 && Math.abs(g.rl - g.rlSoma) < 1 && Math.abs(g.desafio - g.desafioSoma) < 2,
     JSON.stringify(g));
-  // A escolha sobrevive a recarregar a seção.
   await page.evaluate(async () => { SecaoProjecao.grupo = undefined; await SecaoProjecao.carregar(); });
   const g2 = await page.evaluate(() => (SecaoProjecao.dados.grupo || []).length);
   t(`${l} recarregar mantém o agrupamento`, g2 === 2, String(g2));
-  // Nenhum marcado não aplica; "Todos os negócios" volta ao Corporativo.
-  const aviso = await page.evaluate(() => {
-    document.querySelectorAll('.painel-agrupamento input[data-grupo-negocio]').forEach((i) => { i.checked = false; });
-    document.querySelector('#projecao-grupo-aplicar').click();
-    return document.querySelector('#projecao-grupo-aviso')?.textContent.trim();
-  });
-  t(`${l} sem nenhum marcado, avisa e não aplica`, /ao menos um/.test(aviso || ''), aviso);
+  // Um marcado só: a tela do negócio, editável.
+  await marcar(['- P. RESF. LEITE']);
+  await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!SecaoProjecao.dados && !SecaoProjecao.dados.corporativo", 60000);
+  const um = await page.evaluate(() => ({
+    rotulo: (SecaoProjecao.dados.negocios.find((n) => Number(n.id) === Number(SecaoProjecao.dados.negocio_id)) || {}).rotulo,
+    campos: document.querySelectorAll('#secao-projecao .tabela-projecao input.celula-proposta').length,
+    botao: document.querySelector('#projecao-negocios-botao')?.textContent.trim(),
+  }));
+  t(`${l} um marcado só: abre a tela do negócio, com os campos de lançar`, /P\. RESF\. LEITE$/.test(um.rotulo || '') && um.campos > 10 && /P\. RESF\. LEITE/.test(um.botao || ''),
+    JSON.stringify(um));
+  // Corporativo: volta a somar todos.
   await page.evaluate(() => {
     document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
-    document.querySelector('#projecao-grupo-todos').click();
+    const c = document.querySelector('.menu-negocios input[data-negocio-corporativo]');
+    c.checked = true;
+    c.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && SecaoProjecao.dados.grupo == null", 60000);
+  await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!SecaoProjecao.dados?.corporativo && SecaoProjecao.dados.grupo == null", 60000);
   const c1 = await page.evaluate(() => ({ grupo: SecaoProjecao.dados.grupo, n: SecaoProjecao.dados.negocios_consolidados, total: SecaoProjecao.dados.negocios.length,
     guardado: (() => { try { return localStorage.getItem('projecao.grupo'); } catch (e) { return 'x'; } })() }));
-  t(`${l} "Todos os negócios" volta ao Corporativo`, c1.grupo == null && c1.n === c1.total && c1.guardado === 'null', JSON.stringify(c1));
+  t(`${l} "Corporativo" volta a somar todos os negócios`, c1.grupo == null && c1.n === c1.total && c1.guardado === 'null', JSON.stringify(c1));
+}
+
+/**
+ * O RATEIO CORPORATIVO ADMINISTRATIVO travado na 16.1 (pedido do cliente,
+ * 2026-11-24): nas Agropecuárias, a célula da proposta é um número com cadeado,
+ * sem campo de lançar, com o critério no título, e igual ao da API.
+ */
+async function provasRateioAdm(page, largura) {
+  const l = `[${largura}] Rateio administrativo:`;
+  await page.evaluate(() => {
+    document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
+    const s = document.querySelector('#sel-negocio');
+    s.value = [...s.options].find((o) => o.textContent.trim().endsWith('- AGROPECUARIAS')).value;
+    s.dispatchEvent(new Event('change'));
+    App.mostrarSecao('projecao');
+  });
+  const abriu = await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha]) tr[data-conta=\"16.1\"]')", 40000);
+  t(`${l} a tabela tem a linha 16.1`, abriu);
+  if (!abriu) return;
+  const r = await page.evaluate(() => {
+    const tr = document.querySelector('.tabela-projecao tr[data-conta="16.1"]');
+    const span = tr.querySelector('[data-travada="16.1"]');
+    const api = SecaoProjecao.dados.linhas.find((x) => x.codigo === '16.1');
+    return {
+      travada: !!span, campo: !!tr.querySelector('input'),
+      titulo: span?.getAttribute('title') || '',
+      tela: Number((span?.textContent || '').replace(/[^\d,-]/g, '').replace(',', '.')),
+      api: Math.round(api.proposta), origem: api.proposta_origem, parte: SecaoProjecao.dados.rateio_adm?.parte,
+    };
+  });
+  t(`${l} a 16.1 das Agropecuárias é travada (sem campo), igual à API, com o critério no título`,
+    r.travada && !r.campo && r.tela === r.api && r.origem === 'RATEIO_ADM' && r.api < 0 && r.parte > 0
+      && /Rateio corporativo administrativo/.test(r.titulo) && /despesas orçadas/.test(r.titulo) && /não se lança/.test(r.titulo),
+    JSON.stringify({ ...r, titulo: r.titulo.slice(0, 120) }));
+  // E a 14.3, o rateio corporativo negócio (pelos critérios de cada centro de custo).
+  const n = await page.evaluate(() => {
+    const tr = document.querySelector('.tabela-projecao tr[data-conta="14.3"]');
+    const span = tr?.querySelector('[data-travada="14.3"]');
+    const api = SecaoProjecao.dados.linhas.find((x) => x.codigo === '14.3');
+    return {
+      travada: !!span, campo: !!tr?.querySelector('input'), titulo: span?.getAttribute('title') || '',
+      tela: Number((span?.textContent || '').replace(/[^\d,-]/g, '').replace(',', '.')),
+      api: Math.round(api.proposta), origem: api.proposta_origem, centros: Object.keys(SecaoProjecao.dados.rateio_neg?.centros || {}).length,
+    };
+  });
+  const f = await page.evaluate(() => {
+    const tr = document.querySelector('.tabela-projecao tr[data-conta="14.2"]');
+    const api = SecaoProjecao.dados.linhas.find((x) => x.codigo === '14.2');
+    return { travada: !!tr?.querySelector('[data-travada="14.2"]'), campo: !!tr?.querySelector('input'), origem: api.proposta_origem,
+      titulo: tr?.querySelector('[data-travada]')?.getAttribute('title') || '', api: Math.round(api.proposta) };
+  });
+  t(`${l} a 14.2 das Agropecuárias é o rateio financeiro da planilha (−52.598.435), travada (sem campo)`,
+    f.travada && !f.campo && f.origem === 'RATEIO_FIN' && f.api === -52598435 && /Rateio financeiro/.test(f.titulo), JSON.stringify(f));
+  t(`${l} a 14.3 das Agropecuárias é o rateio negócio, travada (sem campo), igual à API, com os centros de custo dela`,
+    n.travada && !n.campo && n.tela === n.api && n.origem === 'RATEIO_NEG' && n.api < 0 && n.centros > 5
+      && /Rateio corporativo negócio/.test(n.titulo) && /não se lança/.test(n.titulo),
+    JSON.stringify({ ...n, titulo: n.titulo.slice(0, 100) }));
 }
 
 async function provasApoioDesafio(page, largura) {
@@ -7217,11 +7278,14 @@ async function lancamentoDaProposta(page, sufixo, conta, texto) {
 async function provasPisoFaturamento(page, largura) {
   const l = `[${largura}] Piso do faturamento:`;
   const reajuste = async (texto) => {
+    // Espera a resposta da gravação (e a repintura), não um tempo fixo.
+    const resposta = page.waitForResponse((r) => r.url().includes('/api/projecao/valor'), { timeout: 20000 }).catch(() => null);
     await page.evaluate((v) => {
       const i = document.querySelector('.tabela-projecao [data-conta="1.1"] .celula-reajuste');
       i.focus(); i.value = v; i.blur();
     }, texto);
-    await new Promise((r) => setTimeout(r, 1800));
+    await resposta;
+    await new Promise((r) => setTimeout(r, 600));
   };
   const original = await lancamentoDaProposta(page, 'AGROPECUARIAS', '1.1', null);
   const reajOriginal = await page.evaluate(() =>
@@ -7843,10 +7907,14 @@ async function provasDesafioEExpansores(page, largura) {
   });
   // Desafio calculado (2026-11-23): projeção de 2026 (R$ 524.073.362) × 1,06 = R$ 555.517.764;
   // o resultado fica NEGATIVO: −R$ 6.784.849 no método, −R$ 14.953.633 com a depreciação
-  // carregada (R$ 8,76 mi na 8.10) e −R$ 16.143.501 (−3,01%) com as demais despesas
+  // carregada (R$ 8,76 mi na 8.10), −R$ 16.143.501 (−3,01%) com as demais despesas
   // acompanhando a receita (+6%).
-  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta e −R$ 16.143.501 de resultado, margem −3,01%`,
-    api.des && tela.rob === 555517764 && tela.rl === -16143501 && /3,01%/.test(tela.margem), JSON.stringify(tela));
+  // e −R$ 20.214.535 (−3,77%) com o rateio corporativo administrativo de 2027 na 16.1
+  // (13,3% de R$ 59,0 mi, no lugar dos R$ 3,77 mi da projeção; 2026-11-24); −R$ 20.837.944
+  // (−3,89%) com o rateio corporativo negócio na 14.3 (R$ 4,87 mi pelos critérios); −R$ 22.328.192
+  // (−4,17%) com o rateio financeiro da planilha na 14.2 (R$ 19,93 mi).
+  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta e −R$ 22.328.192 de resultado, margem −4,17%`,
+    api.des && tela.rob === 555517764 && tela.rl === -22328192 && /4,17%/.test(tela.margem), JSON.stringify(tela));
   // A diferença sai dos valores sem arredondar: compara com tolerância de R$ 1.
   t(`${l} a coluna Proposta é a linha 18 da proposta, e a diferença é proposta − desafio`,
     Math.round(api.rl) === tela.rlProposta && Math.abs(tela.dif - (Math.round(api.rl) - tela.rl)) <= 1, `${api.rl} | ${JSON.stringify(tela)}`);
@@ -7879,10 +7947,13 @@ async function provasDesafioEExpansores(page, largura) {
     };
   });
   // Desafio calculado sobre a projeção de 2026 (2026-11-23).
-  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.680.001.039, resultado 29.606.988, margem 0,83%)`,
-    corp.negocios === 11 && corp.robTotal === '3.680.001.039' && corp.rlTotal === '29.606.988' && corp.margem === '0,83%', JSON.stringify(corp));
-  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 41,36 mi`,
-    /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 41,36 mi/.test(corp.metaDesafio), corp.metaDesafio);
+  // Com os rateios de 2027 travados (2026-11-24): 16.1 administrativo (R$ 59,0 mi) → −9.828.534;
+  // e 14.3 negócio (R$ 38,3 mi pelos critérios dos centros de custo) → −16.924.199; e 14.2
+  // financeiro (R$ 95,9 mi da planilha) → −22.786.223.
+  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.680.001.039, resultado −22.786.223, margem −0,64%)`,
+    corp.negocios === 11 && corp.robTotal === '3.680.001.039' && /^-22\.786\.223$/.test(corp.rlTotal) && /^-0,64%$/.test(corp.margem), JSON.stringify(corp));
+  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 93,75 mi`,
+    /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 93,75 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
   t(`${l} Corporativo: visão, desafio, oportunidades, tributos e pessoas como expansores (sem premissas: nada se lança ali)`,
     corp.expansores === 'visao,desafio,oportunidades,tributos,pessoas', corp.expansores);
@@ -8743,14 +8814,19 @@ async function provasProjecao(page, largura) {
     v.rodape.includes('Qlik') && v.rodape.includes('rateio'), v.rodape.slice(0, 140));
 
   // Trocar de negócio repinta com outro número — e o seletor guarda a escolha.
-  const outro = await page.evaluate(() => {
+  const [outro, outroValor] = await page.evaluate(() => {
     const s = document.querySelector('#projecao-negocio');
     const o = [...s.options].find((x) => x.value !== s.value);
     s.value = o.value;
     s.dispatchEvent(new Event('change', { bubbles: true }));
-    return o.textContent.trim();
+    return [o.textContent.trim(), o.value];
   });
-  await new Promise((r) => setTimeout(r, 1500));
+  // Espera os DADOS do escolhido chegarem (o seletor muda na hora, a tabela não),
+  // em vez de um tempo fixo: com os rateios travados (16.1 e 14.3) a tela leva
+  // ~0,2 s a mais, e no servidor de uma requisição por vez 1,5 s deixaram de bastar.
+  await esperar(page, `!!SecaoProjecao.dados && (SecaoProjecao.dados.corporativo ? 'corp' : String(SecaoProjecao.dados.negocio_id)) === ${JSON.stringify(outroValor)}
+    && !!document.querySelector('.tabela-projecao')`, 20000);
+  await new Promise((r) => setTimeout(r, 300));
   const v2 = await ler();
   t(`${l} trocar de negócio repinta a DRE do negócio escolhido`,
     v2.rotulo.trim() === outro && v2.linhas['1']?.projecao !== v.linhas['1']?.projecao,
@@ -11692,6 +11768,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasDiretriz2027(page, 'desktop');
   await provasApoioDesafio(page, 'desktop');
   await provasAgrupamento(page, 'desktop');
+  await provasRateioAdm(page, 'desktop');
   await provasTributosComoEComoFica(page, 'desktop');
   await provasFormato2027EEventos(page, 'desktop');
   await provasEstoque(page, 'desktop');
@@ -11780,6 +11857,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasDiretriz2027(pageM, 'celular');
   await provasApoioDesafio(pageM, 'celular');
   await provasAgrupamento(pageM, 'celular');
+  await provasRateioAdm(pageM, 'celular');
   await provasEstoque(pageM, 'celular');
   await provasLancamentosEJuros(pageM, 'celular');
   await lancamentoDaProposta(pageM, '2 - PECUARIA', '1.1', receitaPecuariaM);
