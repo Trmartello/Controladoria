@@ -470,32 +470,65 @@ const SecaoProjecao = {
     const resumoPessoas = calc
       ? ` · ${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores · benefícios ${reais(calc.anual.total)} no ano`
       : '';
+    // LAYOUT EM TRÊS FAIXAS (pedido do cliente, 2026-11-25: "todos os campos possíveis
+    // de alteração na parte superior […] bater o olho e já entender"): o que o
+    // negócio DIGITA, o que a diretriz FIXA (só leitura, numa faixa só) e o que a
+    // proposta DÁ (leituras). Antes os três se misturavam na mesma fileira.
+    const fixoBeneficio = (chave) => (diretriz && diretriz.beneficios ? diretriz.beneficios[chave] : undefined);
+    const itemFixo = (chave, rotulo, valor, dica) => `<div class="item-fixo">
+        <div class="small text-muted" title="${Modal.esc(dica)}">${rotulo}</div>
+        <div class="fw-bold campo-diretriz" data-diretriz="${chave}" title="${Modal.esc(diretriz ? diretriz.fonte : '')}">${valor}</div>
+      </div>`;
+    const premissasDef = [
+      ['IPCA', 'IPCA', `Inflação prevista para ${ano}. Vale para o negócio e todas as filiais.`],
+      ['PIB', 'PIB', `Crescimento da economia previsto para ${ano}. Vale para o negócio e todas as filiais.`],
+      ['CRESCIMENTO', 'Crescimento desejado <span class="text-muted">(sobre o faturamento)</span>',
+        `O crescimento REAL que se deseja para o FATURAMENTO (Receita de Vendas) em ${ano}, acima da inflação e da `
+        + 'economia. O faturamento cresce IPCA + PIB + este percentual; deduções e custo das vendas acompanham na '
+        + 'mesma proporção. Vale para o negócio e todas as filiais.'],
+      ['PESSOAS', 'Cresc. despesas com pessoas',
+        `O crescimento das despesas com pessoas em ${ano}. Atua SÓ na linha Despesas com Pessoal (8.5): `
+        + 'IPCA, PIB e o crescimento desejado não tocam nela. Vale para o negócio e todas as filiais.'],
+    ];
+    const beneficiosDef = [
+      ['ALIMENTACAO', 'Vale alimentação (por mês)', 'R$',
+        'Valor por colaborador, por mês, nos 12 meses — o mesmo padrão para todos os colaboradores.', plano(padrao.ALIMENTACAO)],
+      ['ASSIDUIDADE', 'Abono assiduidade (por mês)', 'R$',
+        'Pago ao colaborador que cumpre os quesitos de assiduidade.', plano(padrao.ASSIDUIDADE)],
+      ['RESULTADO', 'Abono resultado (por mês)', 'R$',
+        'Pago só no mês em que o negócio atinge o resultado planejado.', plano(padrao.RESULTADO)],
+    ];
+    const editaveis = [];
+    const fixos = [];
+    premissasDef.forEach(([chave, rotulo, dica]) => {
+      if (fixa(chave) !== null) fixos.push(itemFixo(chave, rotulo, num(fixa(chave), 2), dica));
+      else editaveis.push(campo(chave, rotulo, dica));
+    });
+    beneficiosDef.forEach(([chave, rotulo, unidade, dica, ph]) => {
+      const f = fixoBeneficio(chave);
+      if (f !== undefined) fixos.push(itemFixo(chave, rotulo, reais(f), dica));
+      else editaveis.push(this.campoBeneficio(d, ano, chave, rotulo, unidade, dica, ph));
+    });
+    editaveis.push(this.campoBeneficio(d, ano, 'PPR_SALARIOS', 'PPR (salários no ano)', 'salários',
+      'Quantos salários de PPR provisionar no ano, em 1/12 por mês, sobre a folha do mês (despesa + custo) com o '
+      + 'reajuste. Entra na linha Despesas com Pessoal (8.5). Com diretriz, vem preenchido com ela e só pode BAIXAR; '
+      + 'apagar volta à diretriz. Sem diretriz, vazio é sem PPR.', '—'));
     return this.expansor('premissas', 'painel-premissas', `Premissas, pessoas e benefícios — ${ano}`, resumo + resumoPessoas, `
         ${seletorAno}
-        <div class="row g-3 align-items-end">
-          ${campo('IPCA', 'IPCA', `Inflação prevista para ${ano}. Vale para o negócio e todas as filiais.`)}
-          ${campo('PIB', 'PIB', `Crescimento da economia previsto para ${ano}. Vale para o negócio e todas as filiais.`)}
-          ${campo('CRESCIMENTO', 'Crescimento desejado <span class="text-muted">(sobre o faturamento)</span>',
-    `O crescimento REAL que se deseja para o FATURAMENTO (Receita de Vendas) em ${ano}, acima da inflação e da `
-    + 'economia. O faturamento cresce IPCA + PIB + este percentual; deduções e custo das vendas acompanham na '
-    + 'mesma proporção. Vale para o negócio e todas as filiais.')}
-          ${campo('PESSOAS', 'Cresc. despesas com pessoas',
-    `O crescimento das despesas com pessoas em ${ano}. Atua SÓ na linha Despesas com Pessoal (8.5): `
-    + 'IPCA, PIB e o crescimento desejado não tocam nela. Vale para o negócio e todas as filiais.')}
-          ${this.campoBeneficio(d, ano, 'ALIMENTACAO', 'Vale alimentação (por mês)', 'R$',
-    'Valor por colaborador, por mês, nos 12 meses — o mesmo padrão para todos os colaboradores.', plano(padrao.ALIMENTACAO))}
-          ${this.campoBeneficio(d, ano, 'ASSIDUIDADE', 'Abono assiduidade (por mês)', 'R$',
-    'Pago ao colaborador que cumpre os quesitos de assiduidade.', plano(padrao.ASSIDUIDADE))}
-          ${this.campoBeneficio(d, ano, 'RESULTADO', 'Abono resultado (por mês)', 'R$',
-    'Pago só no mês em que o negócio atinge o resultado planejado.', plano(padrao.RESULTADO))}
-          ${this.campoBeneficio(d, ano, 'PPR_SALARIOS', 'PPR (salários no ano)', 'salários',
-    'Quantos salários de PPR provisionar no ano, em 1/12 por mês, sobre a folha do mês (despesa + custo) com o '
-    + 'reajuste. Entra na linha Despesas com Pessoal (8.5). Com diretriz, vem preenchido com ela e só pode BAIXAR; '
-    + 'apagar volta à diretriz. Sem diretriz, vazio é sem PPR.', '—')}
-          ${abonoTotal}
-          ${leituras}
+        <div class="faixa-premissas faixa-editavel">
+          <div class="faixa-titulo"><span class="legenda-editavel"></span> ${d.filial ? `Premissas de ${ano} (vêm do negócio)` : `O que o negócio define para ${ano}`}</div>
+          <div class="row g-3 align-items-end">${editaveis.join('')}</div>
+          ${comPessoas ? this.camposPessoas(d, ano) : ''}
         </div>
-        ${comPessoas ? this.camposPessoas(d, ano) : ''}
+        ${fixos.length ? `<div class="faixa-premissas faixa-diretriz">
+          <div class="faixa-titulo"><span class="badge selo-diretriz">diretriz</span> Fixado pela diretriz — igual para todos os negócios</div>
+          <div class="d-flex flex-wrap gap-4">${fixos.join('')}</div>
+          ${abonoTotal}
+        </div>` : `<div class="faixa-premissas">${abonoTotal}</div>`}
+        <div class="faixa-premissas faixa-leituras">
+          <div class="faixa-titulo">${noAnoDaProposta ? `O que a proposta de ${ano} dá hoje` : 'Leituras da proposta'}</div>
+          <div class="row g-3 align-items-end">${leituras}</div>
+        </div>
         ${this.resultadoPremissas(d, ano, comPessoas)}
         <div class="small text-muted mt-2">${nota}</div>
         ${notaDiretriz}`);
@@ -518,7 +551,7 @@ const SecaoProjecao = {
          equivalentes (DRE, ${this.nomeMes(base.mes)}/${base.ano}${base.mes < 12 ? ' — último mês carregado' : ''}):
          quem divide o tempo entre dois negócios (30/70, 50/50) entra em cada um pela sua parte.`
       : 'Não há quadro de colaboradores carregado para este negócio.';
-    return `<div class="bloco-pessoas mt-3 pt-2 border-top">
+    return `<div class="bloco-pessoas mt-3">
         <div class="small text-muted mb-1" id="pessoas-quadro">${quadro}</div>
         <div class="row g-3 align-items-end">
           ${campo('COLABORADORES', 'Colaboradores planejados', 'pessoas',
@@ -1349,6 +1382,19 @@ const SecaoProjecao = {
           ${ajustado ? `<div class="small text-muted desafio-calculado">calculado ${celula(calc[k])}</div>` : ''}
         </td>`;
     };
+    const campoPctDesafio = (a) => {
+      const ajustado = Object.prototype.hasOwnProperty.call(ajustes, 'lucro_bruto');
+      const txt = a === null || a === undefined ? ''
+        : Number(a).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return `<td class="text-end celula-desafio-td">
+          <div class="input-group input-group-sm justify-content-end">
+            <input type="text" inputmode="decimal" data-sinal autocomplete="off"
+              class="form-control form-control-sm text-end celula-desafio celula-desafio-pct${ajustado ? ' desafio-ajustado' : ''}"
+              data-desafio-chave="margem_bruta" value="${txt}"
+              title="% de margem bruta sobre a receita líquida do desafio. Digite a % e a margem bruta em reais se recalcula (e vice-versa)."
+              aria-label="Desafio: % de margem bruta"><span class="input-group-text">%</span></div>
+        </td>`;
+    };
     const linha = ([k, rotulo, pct, forte]) => {
       const a = e.desafio[k];
       const b = e.proposta[k];
@@ -1358,9 +1404,13 @@ const SecaoProjecao = {
         ? `${dif > 0 ? '+' : ''}${dif.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.`
         : this.comSinal(dif));
       const cor = dif === null ? '' : (pct ? (dif >= 0 ? 'text-success' : 'text-danger') : this.corDif(dif));
+      // A % de margem bruta também se digita (pedido do cliente, 2026-11-25: "alterar o
+      // percentual e ele recalcular a margem bruta nominal, e vice-versa, como na
+      // DRE"): grava como a margem bruta em reais sobre a receita líquida do desafio.
+      const pctEditavel = k === 'margem_bruta' && ajustavel.has('lucro_bruto');
       return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}">
           <td>${rotulo}</td>
-          ${ajustavel.has(k) ? campoDesafio(k, a) : `<td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>`}
+          ${pctEditavel ? campoPctDesafio(a) : ajustavel.has(k) ? campoDesafio(k, a) : `<td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>`}
           <td class="text-end">${celula(b, pct)}</td>
           <td class="text-end ${estimado ? 'text-muted' : cor}">${estimado ? '' : textoDif}</td>
         </tr>`;
@@ -1559,9 +1609,9 @@ const SecaoProjecao = {
     const linhas = q.linhas.map((l) => {
       const item = l.tipo === 'ITEM';
       return `<tr ${item ? `data-item="${Modal.esc(l.codigo)}"` : `data-pico="${Modal.esc(l.codigo)}"`}>
-        <td>${item && l.reduzida
+        <td>${naFilial ? '' : this.avaliacaoItem(l, podeAvaliar)}${item && l.reduzida
     ? `${this.contaQlik(`${l.reduzida} ${l.reduzida_nome}`)}<div class="text-muted small">${Modal.esc(l.nome)} · conta contábil ${Modal.esc(l.codigo)}</div>`
-    : Modal.esc(l.nome)}${item ? this.comparaItem(l, q) : ''}${naFilial ? '' : this.avaliacaoItem(l, podeAvaliar)}</td>
+    : Modal.esc(l.nome)}${item ? this.comparaItem(l, q) : ''}</td>
         <td class="small">${Modal.esc(l.grupo || '')}${item ? '' : ' <span class="text-muted">· mês fora do padrão</span>'}</td>
         <td class="text-end small">${this.linkLinhaDre(d, l.linha_dre, item ? l.reduzida : null)}</td>
         <td class="text-end">${l.mediana === null || l.mediana === undefined ? '<span class="text-muted">—</span>' : m(l.mediana)}</td>
@@ -1592,9 +1642,9 @@ const SecaoProjecao = {
           </tbody>
         </table>
       </div>
-      <div class="small text-muted">Período: ${this.rotuloJanela(q.periodo, true)}${naFilial ? '' : ', comparado aos 12 meses anteriores'}.
+      <div class="small text-muted">Período: ${this.rotuloPeriodo(q.periodo)}${naFilial || !q.periodo_anterior ? '' : `, comparado a ${this.rotuloPeriodo(q.periodo_anterior)}`}.
         ${naFilial ? '' : `Marque <strong>Considerar</strong> (vai se repetir) ou <strong>Desconsiderar</strong> (não se repete). `}<strong>Mês fora
-        do padrão</strong> = mais de 50% (e R$ 50 mil) longe da mediana dos 12 meses. Se não se repetir em ${d.ano_planejamento},
+        do padrão</strong> = mais de 50% (e R$ 50 mil) longe da mediana dos meses do período. Se não se repetir em ${d.ano_planejamento},
         despesa é <strong>oportunidade</strong> e receita é <strong>risco</strong>.</div>
       <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: ajuste a linha da DRE. <strong>Lançamentos</strong>
         mostra os de R$ 10 mil ou mais (jan–${this.nomeMes(q.mes_ate)}/${String(d.ano).slice(2)}).</div>
@@ -1614,11 +1664,24 @@ const SecaoProjecao = {
       return;
     }
     const el = document.getElementById('secao-projecao');
+    let chave = inp.dataset.desafioChave;
+    let valor = limpo === '' ? null : Number(limpo);
+    // A % de margem bruta vira a margem bruta em reais: % × a receita líquida do desafio.
+    if (chave === 'margem_bruta') {
+      const rl = Number((((this.dados.desafio || {}).escada || {}).desafio || {}).receita_liquida) || 0;
+      if (valor !== null && !rl) {
+        this.avisar('Sem receita líquida no desafio: digite a margem bruta em reais.');
+        inp.value = inp.dataset.original ?? '';
+        return;
+      }
+      chave = 'lucro_bruto';
+      valor = valor === null ? null : Math.round(valor / 100 * rl * 100) / 100;
+    }
     const pedido = ++this.pedido;
     inp.classList.add('celula-gravando');
     try {
       const r = await App.api('/api/projecao/desafio', {
-        negocio_id: this.negocioId, chave: inp.dataset.desafioChave, valor: limpo === '' ? null : Number(limpo),
+        negocio_id: this.negocioId, chave, valor,
       });
       if (pedido !== this.pedido) return;
       this.dados = { ...this.dados, ...r };
@@ -1655,25 +1718,35 @@ const SecaoProjecao = {
     return ano ? `${this.nomeMes(mes)}/${String(ano).slice(2)}` : this.nomeMes(mes);
   },
 
-  /** "de nov/25 a out/26": a janela de 12 meses das oportunidades. */
+  /**
+   * O período das oportunidades: "jan–out/26" (mesmo ano) ou "nov/25–out/26".
+   * Desde 2026-11-25 é o ano corrente até o corte, comparado ao ano anterior
+   * inteiro ("jan–dez/25"); antes eram janelas de 12 meses.
+   */
+  rotuloPeriodo(p) {
+    if (!p) return '';
+    const [a1, m1] = p.de;
+    const [a2, m2] = p.ate;
+    return a1 === a2 ? `${this.nomeMes(m1)}–${this.nomeMes(m2)}/${String(a2).slice(2)}`
+      : `${this.rotuloMes(a1, m1)}–${this.rotuloMes(a2, m2)}`;
+  },
+
+  /** "de jan a out/26", para frases. */
   rotuloJanela(p, semDe = false) {
     if (!p) return '';
-    return `${semDe ? '' : 'de '}${this.rotuloMes(p.de[0], p.de[1])} a ${this.rotuloMes(p.ate[0], p.ate[1])}`;
+    return `${semDe ? '' : 'de '}${this.rotuloPeriodo(p)}`;
   },
 
   /**
-   * O item nos 12 meses e nos 12 anteriores (pedido do cliente: comparar com o ano
-   * anterior), com o PERÍODO de cada um (pedido do cliente, 2026-11-24: "quais são os
-   * 12 meses? E quais são os 12 meses antes?") — "nov/25–out/26" e "nov/24–out/25".
+   * O item no período e no de comparação, com o PERÍODO de cada um (pedido do
+   * cliente, 2026-11-24): desde 2026-11-25, "jan–out/26" e "jan–dez/25".
    */
   comparaItem(l, q) {
     const ant = Number(l.anterior) || 0;
     const tot = Number(l.total) || 0;
     const cor = (v) => (v < 0 ? 'text-danger' : '');
-    const p = q && q.periodo;
-    const faixa = (desloc) => (p ? `${this.rotuloMes(p.de[0] - desloc, p.de[1])}–${this.rotuloMes(p.ate[0] - desloc, p.ate[1])}` : '');
-    const atual = p ? faixa(0) : '12 meses';
-    const antes = p ? faixa(1) : '12 meses antes';
+    const atual = q && q.periodo ? this.rotuloPeriodo(q.periodo) : 'no período';
+    const antes = q && q.periodo_anterior ? this.rotuloPeriodo(q.periodo_anterior) : 'no ano anterior';
     return `<div class="small item-compara" data-item-compara="${Modal.esc(l.codigo)}">
         ${atual}: <span class="${cor(tot)}">${this.moeda(tot)}</span>
         · ${antes}: <span class="${cor(ant)}">${this.moeda(ant)}</span>${
@@ -1694,20 +1767,20 @@ const SecaoProjecao = {
     const quando = a && a.em ? new Date(String(a.em).replace(' ', 'T')).toLocaleDateString('pt-BR') : '';
     const quem = a ? `Marcado${a.por ? ` por ${a.por}` : ''}${quando ? ` em ${quando}` : ''}` : '';
     const chave = l.chave_avaliacao || l.codigo;
-    const botao = (d, rotulo, cor) => `<button type="button" class="btn btn-sm ${dec === d ? `btn-${cor}` : `btn-outline-${cor}`}"
+    const botao = (d, rotulo, cor) => `<button type="button" class="btn btn-avaliar ${dec === d ? `btn-${cor}` : `btn-outline-${cor}`}"
         data-avaliar="${Modal.esc(chave)}" data-decisao="${dec === d ? '' : d}" ${podeAvaliar ? '' : 'disabled'}
         ${dec === d && quem ? `title="${Modal.esc(quem)}"` : ''} aria-pressed="${dec === d ? 'true' : 'false'}">${rotulo}</button>`;
-    return `<div class="d-flex flex-wrap align-items-center gap-1 mt-1 avaliacao-item" data-avaliacao="${Modal.esc(dec || '')}">
-        <div class="btn-group btn-group-sm" role="group" aria-label="Tratar no planejamento?">
-          ${botao('CONSIDERAR', 'Considerar', 'danger')}${botao('DESCONSIDERAR', 'Desconsiderar', 'success')}
-        </div></div>`;
+    // No INÍCIO da célula e pequenos (pedido do cliente, 2026-11-25: "logo no início
+    // do item, mais discretos, sem ocupar tanto espaço na altura da linha").
+    return `<div class="btn-group avaliacao-item me-2 mb-1" role="group" aria-label="Tratar no planejamento?"
+        data-avaliacao="${Modal.esc(dec || '')}">${botao('CONSIDERAR', 'Considerar', 'danger')}${botao('DESCONSIDERAR', 'Desconsiderar', 'success')}</div>`;
   },
 
   /** Os totais da avaliação: o que se repete (a planejar) e o que não (oportunidade). */
   totaisAvaliacao(a) {
     const m = (v) => this.moeda(v);
     return `<tr class="table-light" data-avaliacao-total="considerar"><td colspan="5"><strong>Considerados</strong> — vão se repetir: tratar no planejamento
-        <span class="text-muted small">(itens: os 12 meses; meses fora do padrão: o que se afasta do padrão; sinal da DRE)</span></td>
+        <span class="text-muted small">(itens: o período; meses fora do padrão: o que se afasta do padrão; sinal da DRE)</span></td>
         <td class="text-end" colspan="2">${m(a.considerar)}</td></tr>
       <tr class="table-light" data-avaliacao-total="desconsiderar"><td colspan="5"><strong>Desconsiderados</strong> — não se repetem: oportunidade</td>
         <td class="text-end" colspan="2">${m(a.desconsiderar)}</td></tr>
@@ -1725,8 +1798,8 @@ const SecaoProjecao = {
   secaoQuestionamentos(d, qs) {
     if (!qs) return '';
     const m = (v) => this.moeda(v);
-    const ja = qs.periodo_anterior ? `${this.rotuloMes(...qs.periodo_anterior.de)}–${this.rotuloMes(...qs.periodo_anterior.ate)}` : String(qs.ano_anterior);
-    const jb = qs.periodo ? `${this.rotuloMes(...qs.periodo.de)}–${this.rotuloMes(...qs.periodo.ate)}` : String(qs.ano);
+    const ja = qs.periodo_anterior ? this.rotuloPeriodo(qs.periodo_anterior) : String(qs.ano_anterior);
+    const jb = qs.periodo ? this.rotuloPeriodo(qs.periodo) : String(qs.ano);
     const titulo = `Questionamentos: o que parou ou começou — ${ja} × ${jb}`;
     // No celular os dois anos vão embaixo do nome (as colunas ficariam fora da
     // tela); a pergunta é a do cabeçalho do grupo, sem repetir em cada linha.
@@ -2531,6 +2604,11 @@ const SecaoProjecao = {
         this.irParaLinhaDre(a.dataset.irConta, a.dataset.irReduzida || null);
       });
     }
+    // A barra da DRE e os títulos das colunas grudam no topo (pedido do cliente,
+    // 2026-11-25); a altura da barra é MEDIDA, para o cabeçalho grudar logo abaixo
+    // dela sem fresta (ela quebra em duas linhas em tela estreita).
+    const barra = el.querySelector('.barra-dre');
+    if (barra) el.style.setProperty('--altura-barra-dre', `${barra.offsetHeight}px`);
     const tribBotao = el.querySelector('#projecao-tributos-botao');
     if (tribBotao && virgem(tribBotao)) tribBotao.addEventListener('click', () => this.alternarTributos());
     // O seletor da visão do ano (Corporativo): delegado, porque o cartão se repinta.
@@ -2882,7 +2960,7 @@ const SecaoProjecao = {
           ${tribAberto ? '▾ Fechar antes × depois' : '⇄ Reforma tributária: antes × depois'}
         </button>`
       : '';
-    return `<div class="d-flex flex-wrap justify-content-end gap-2 mb-1 d-print-none">
+    return `<div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-1 d-print-none barra-dre">
         ${botaoTributos}
         <button type="button" id="projecao-imprimir-dre" class="btn btn-sm btn-success"
           title="Imprime (ou salva em PDF) a DRE da proposta com todas as subcontas abertas">

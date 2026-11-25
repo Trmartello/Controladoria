@@ -6591,6 +6591,9 @@ async function provasDiretriz2027(page, largura) {
     return {
       ipca: document.querySelector('#premissa-IPCA')?.value, pib: document.querySelector('#premissa-PIB')?.value,
       seloIpca: !!document.querySelector('[data-sugerida="IPCA"]'), pessoas: tx('[data-diretriz="PESSOAS"]'),
+      // Desde 2026-11-25 o selo da diretriz é o da FAIXA dos valores fixos, não de cada um.
+      naFaixaDiretriz: !!document.querySelector('.faixa-diretriz [data-diretriz="PESSOAS"]')
+        && /diretriz/i.test(tx('.faixa-diretriz .faixa-titulo')),
       vale: tx('[data-diretriz="ALIMENTACAO"]'), assid: tx('[data-diretriz="ASSIDUIDADE"]'), result: tx('[data-diretriz="RESULTADO"]'),
       pprInput: document.querySelector('#beneficio-PPR_SALARIOS')?.value ?? null,
       pprMax: document.querySelector('#beneficio-PPR_SALARIOS')?.dataset.maximo ?? null,
@@ -6603,7 +6606,7 @@ async function provasDiretriz2027(page, largura) {
     };
   });
   t(`${l} pessoal 5,50% fixo com o selo da diretriz; IPCA 4,5 e PIB 1,5 sugeridos, em campo editável`,
-    /5,50%.*diretriz/.test(tela.pessoas) && tela.campoIpca && tela.ipca === '4,5' && tela.pib === '1,5' && tela.seloIpca,
+    /5,50%/.test(tela.pessoas) && tela.naFaixaDiretriz && tela.campoIpca && tela.ipca === '4,5' && tela.pib === '1,5' && tela.seloIpca,
     `${tela.ipca} | ${tela.pib} | ${tela.pessoas}`);
   t(`${l} vale R$ 500, assiduidade R$ 200, metas R$ 500, também fixos`,
     /R\$ 500/.test(tela.vale) && /R\$ 200/.test(tela.assid) && /R\$ 500/.test(tela.result) && !tela.campoVale,
@@ -7014,14 +7017,14 @@ async function provasApoioDesafio(page, largura) {
     /\d/.test(n.pisCofins[1] || '') && /\d/.test(n.pisCofins[2] || '')
       && !n.degraus.includes('cbs') && !n.degraus.includes('resultado_com_cbs') && /pelo mesmo valor/.test(n.notaTrib),
     `${n.degraus.join(',')} · ${n.notaTrib.slice(0, 120)}`);
-  // Desde 2026-11-23, os 12 meses de nov/25 a out/26 (antes, jan–out/26: 17.129.168
-  // / −4.069.919): a PDD de out/26 é a mesma; nov–dez/25 entram nos totais.
-  t(`${l} quadro único (nov/25–out/26): a PDD da Agropecuária com os meses (out/26: −4.541.651), oportunidades R$ 19.097.015, riscos −4.305.536 e saldo`,
-    /out\/26: -4\.541\.651/.test(n.pdd) && /nov\/25/.test(n.pdd) && n.oport === 19097015 && /4\.305\.536/.test(n.risco || '') && /\+14\.791\.479/.test(n.saldo || ''),
+  // Desde 2026-11-25, jan–out/26 (entre 23/11 e 25/11 eram os 12 meses de nov/25 a
+  // out/26: 19.097.015 / −4.305.536): a PDD de out/26 é a mesma, e 2025 não entra.
+  t(`${l} quadro único (jan–out/26): a PDD da Agropecuária com os meses (out/26: −4.541.651), oportunidades R$ 17.129.168, riscos −4.069.919 e saldo`,
+    /out\/26: -4\.541\.651/.test(n.pdd) && !/(?<!–)(nov|dez)\/25:/.test(n.pdd) && n.oport === 17129168 && /4\.069\.919/.test(n.risco || '') && /\+13\.059\.24[89]/.test(n.saldo || ''),
     `${n.oport} / ${n.risco} / ${n.saldo} / ${n.pdd.slice(0, 160)}`);
   // Considerar / Desconsiderar (pedido do cliente, 2026-11-23) em TODAS as linhas, sem o
   // selo "avaliado / a avaliar" (2026-11-24): o botão marcado é a resposta. E o item mostra
-  // os períodos: "nov/25–out/26" e "nov/24–out/25".
+  // os períodos: "jan–out/26" e "jan–dez/25" (desde 2026-11-25).
   const pdd = '.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"]';
   const aval = async () => page.evaluate((sel) => ({
     marcado: document.querySelector(`${sel} [data-decisao][aria-pressed="true"]`)?.textContent.trim() || '',
@@ -7040,12 +7043,12 @@ async function provasApoioDesafio(page, largura) {
   await page.click(`${pdd} [aria-pressed="true"]`);
   await esperar(page, `!document.querySelector('${pdd.replace(/"/g, '\\"')} [aria-pressed="true"]')`, 10000);
   const a2 = await aval();
-  t(`${l} o item mostra os períodos e os valores: nov/25–out/26 e nov/24–out/25, e começa sem marcação`,
-    !a0.marcado && /nov\/25–out\/26: -7\.585\.709/.test(a0.compara || '') && /nov\/24–out\/25: -6\.316\.562/.test(a0.compara || ''), JSON.stringify(a0));
+  t(`${l} o item mostra os períodos e os valores: jan–out/26 e jan–dez/25, e começa sem marcação`,
+    !a0.marcado && /jan–out\/26: -7\.336\.588/.test(a0.compara || '') && /jan–dez\/25: -6\.514\.644/.test(a0.compara || ''), JSON.stringify(a0));
   t(`${l} todas as linhas (itens e meses fora do padrão) têm Considerar / Desconsiderar, e não há mais o selo "avaliado"`,
     a0.linhas > 0 && a0.comBotoes === a0.linhas && a0.picosComBotoes > 0 && !a0.selo, JSON.stringify(a0));
-  t(`${l} Considerar a PDD deixa o botão marcado e a põe nos considerados (−7.585.709)`,
-    a1.marcado === 'Considerar' && /-7\.585\.709/.test(a1.considerar || '') && a1.pendentes !== a0.pendentes, JSON.stringify(a1));
+  t(`${l} Considerar a PDD deixa o botão marcado e a põe nos considerados (−7.336.588)`,
+    a1.marcado === 'Considerar' && /-7\.336\.588/.test(a1.considerar || '') && a1.pendentes !== a0.pendentes, JSON.stringify(a1));
   t(`${l} clicar de novo desmarca`, !a2.marcado && a2.pendentes === a0.pendentes, JSON.stringify(a2));
   t(`${l} e há meses fora do padrão nas despesas`, n.picos > 0, String(n.picos));
   // Questionamentos 2025 × 2026 (pedido do cliente, 2026-11-23): o que parou e o que começou.
@@ -7442,7 +7445,8 @@ async function provasNivel3(page, largura) {
     const d = document.querySelector('details[data-expansor="oportunidades"]'); if (d) d.open = true;
     const pdd = document.querySelector('.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"]');
     return {
-      pdd: pdd?.children[0].textContent.replace(/\s+/g, ' ').trim() || '',
+      // Sem os botões Considerar / Desconsiderar, que desde 2026-11-25 abrem a célula.
+      pdd: (() => { const c = pdd?.children[0].cloneNode(true); c?.querySelector('.avaliacao-item')?.remove(); return c?.textContent.replace(/\s+/g, ' ').trim() || ''; })(),
       linhaPdd: pdd?.children[2].textContent.replace(/\s+/g, ' ').trim() || '',
       codigoInterno: [...document.querySelectorAll('.tabela-oportunidades-quadro .link-linha-dre')].some((a) => /\b\d+\.\d+\b/.test(a.textContent)),
       descontoDesp: [...document.querySelectorAll('.tabela-oportunidades-quadro .link-linha-dre')].some((a) => /Desp\.\/ROL/.test(a.textContent)),
@@ -7760,12 +7764,12 @@ async function provasFormato2027EEventos(page, largura) {
     itens: !!document.querySelector('.painel-oportunidades tr[data-item]'),
     botoes: !!document.querySelector('.painel-oportunidades .avaliacao-item'),
   }));
-  // Desde 2026-11-23 a mediana é dos 12 meses (nov/25–out/26): R$ 184.306. Acima
-  // de 184.306 + 92.153: mar, abr, mai, jun e ago (4.566.172 − 5 × 184.306 =
-  // 3.644.642 de risco); abaixo: fev, jul, set e out (+650.302 de oportunidade).
-  t(`${l} na filial, o cartão é dela, e a receita de juros concentrada aparece como risco (12 meses: −3.644.642)`,
-    /esta filial/.test(f.titulo || '') && /mar\/26: 1\.109\.220/.test(f.juros) && /mai\/26: 1\.223\.945/.test(f.juros) && /−3\.644\.642/.test(f.juros)
-      && /\+650\.302/.test(f.juros) && !f.itens && !f.botoes,
+  // Desde 2026-11-25 a mediana é a de jan–out/26: R$ 360.628. Fora do padrão
+  // (±180.314): mar, abr, mai e jun acima (−2.585.105 de risco); fev, jul, set e
+  // out abaixo (+1.355.590 de oportunidade).
+  t(`${l} na filial, o cartão é dela, e a receita de juros concentrada aparece como risco (jan–out/26: −2.585.105)`,
+    /esta filial/.test(f.titulo || '') && /mar\/26: 1\.109\.220/.test(f.juros) && /mai\/26: 1\.223\.945/.test(f.juros) && /−2\.585\.105/.test(f.juros)
+      && /\+1\.355\.590/.test(f.juros) && !f.itens && !f.botoes,
     JSON.stringify(f));
   await page.evaluate(async () => { SecaoProjecao.filialId = 0; await SecaoProjecao.carregar(); });
 }
@@ -7936,8 +7940,8 @@ async function provasDesafioEExpansores(page, largura) {
     Math.round(api.rl) === tela.rlProposta && Math.abs(tela.dif - (Math.round(api.rl) - tela.rl)) <= 1, `${api.rl} | ${JSON.stringify(tela)}`);
   // Desde 2026-11-25 o ADMIN (o usuário da bateria) desafia além do calculado: só
   // as cinco linhas de valor viram campo; o resto da escada segue de leitura.
-  t(`${l} para o administrador, só as linhas de valor do desafio são campo`,
-    tela.campos === 5 && tela.camposDesafio.join() === 'receita_bruta,lucro_bruto,despesas,rateios_negocio,rateios_adm',
+  t(`${l} para o administrador, só as linhas de valor do desafio (e a % de margem bruta) são campo`,
+    tela.campos === 6 && tela.camposDesafio.join() === 'receita_bruta,lucro_bruto,margem_bruta,despesas,rateios_negocio,rateios_adm',
     JSON.stringify(tela.camposDesafio));
   const extra = async (v) => {
     await page.fill('.celula-desafio[data-desafio-chave="rateios_adm"]', v);
@@ -7960,6 +7964,25 @@ async function provasDesafioEExpansores(page, largura) {
   const semExtra = await extra('');
   t(`${l} apagar devolve o desafio calculado`, semExtra.adm === admCalc && semExtra.rl === tela.rl && !semExtra.ajustado,
     JSON.stringify(semExtra));
+  // A % de margem bruta também se digita (2026-11-25): vira a margem bruta em reais
+  // sobre a receita líquida do desafio, e o valor volta como %.
+  const pctMb = async (v, sel) => {
+    await page.fill(sel, v);
+    const resp = page.waitForResponse((r) => r.url().includes('/api/projecao/desafio'), { timeout: 30000 });
+    await page.press(sel, 'Enter');
+    await resp;
+    await page.waitForTimeout(300);
+    return page.evaluate(() => ({
+      lb: Number(document.querySelector('.celula-desafio[data-desafio-chave="lucro_bruto"]').value.replace(/\./g, '').replace(',', '.')),
+      pct: document.querySelector('.celula-desafio-pct')?.value,
+      rl: SecaoProjecao.dados.desafio.escada.desafio.receita_liquida,
+    }));
+  };
+  const doze = await pctMb('12', '.celula-desafio-pct');
+  t(`${l} digitar 12% na margem bruta grava a margem em reais (12% da receita líquida) e a % volta 12,00`,
+    Math.abs(doze.lb - Math.round(0.12 * doze.rl)) <= 1 && doze.pct === '12,00', JSON.stringify(doze));
+  const volta = await pctMb('', '.celula-desafio[data-desafio-chave="lucro_bruto"]');
+  t(`${l} e apagar a margem bruta devolve a % calculada`, volta.pct !== '12,00', JSON.stringify(volta));
   t(`${l} a nota diz de onde saiu e lembra a meta de 2% de margem líquida`,
     /driver de volume a definir/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recalculado da base/.test(tela.nota), tela.nota.slice(0, 160));
 

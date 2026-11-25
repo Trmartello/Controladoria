@@ -4861,3 +4861,68 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-desafio .celula-desafio.desafio-ajustado { background: #fde4a8; border-color: #e0b44a; }
 .tabela-desafio .celula-desafio.celula-gravando { opacity: .55; }
 .tabela-desafio .desafio-calculado { font-weight: 400; white-space: nowrap; }
+
+/* Considerar / Desconsiderar das oportunidades (2026-11-25): no início do item,
+   pequenos — não engordam a linha. */
+.tabela-oportunidades-quadro .avaliacao-item { vertical-align: 1px; }
+.tabela-oportunidades-quadro .btn-avaliar { font-size: .7rem; line-height: 1.1; padding: .1rem .4rem; }
+.tabela-oportunidades-quadro > tbody > tr > td:first-child { min-width: 22rem; }
+@media (max-width: 767.98px) { .tabela-oportunidades-quadro > tbody > tr > td:first-child { min-width: 14rem; } }
+.tabela-desafio .celula-desafio-pct { max-width: 7rem; flex: 0 0 7rem; }
+
+/* ── Topos fixos da Projeção (pedido do cliente, 2026-11-25) ──────────────────
+   "Fixe o cabeçalho do expander no topo enquanto ele tiver dados para
+   visualizar" e "o cabeçalho da DRE também deve estar fixado, com as opções de
+   detalhamento". Três degraus, de cima para baixo, logo abaixo da .topbar:
+   • o título do cartão ABERTO (`details[open] > summary`): gruda só enquanto o
+     próprio cartão passa — `sticky` não sai do pai —, e um clique nele fecha;
+   • a barra da DRE (antes × depois, imprimir, detalhe da DRE);
+   • os títulos das colunas, logo abaixo da barra (altura MEDIDA em
+     `--altura-barra-dre` pelo `ligar`).
+   Para a página ser o scrollport, a caixa da tabela deixa de rolar na
+   horizontal a partir de 992px (a mesma decisão da tabela 5W2H); abaixo disso
+   ela rola de lado e o cabeçalho não gruda. Na impressão nada gruda. */
+#secao-projecao details.expansor[open] > summary {
+  position: sticky;
+  top: var(--topo-app);
+  z-index: 6;
+  background: #eef6f1;
+  border-bottom: 1px solid #cfe3d6;
+}
+#secao-projecao .barra-dre {
+  position: sticky;
+  top: var(--topo-app);
+  z-index: 5;
+  background: var(--bs-body-bg, #f5f6f4);
+  padding: .35rem 0;
+  box-shadow: 0 .35rem .35rem -.35rem rgba(0, 0, 0, .18);
+}
+@media (min-width: 992px) {
+  #secao-projecao .tabela-projecao { overflow: visible; }
+  #secao-projecao .tabela-projecao thead th {
+    position: sticky;
+    top: calc(var(--topo-app) + var(--altura-barra-dre, 46px));
+    z-index: 4;
+    background: #fff;
+    box-shadow: 0 1px 0 var(--bs-border-color), 0 .35rem .35rem -.35rem rgba(0, 0, 0, .2);
+  }
+}
+@media print {
+  #secao-projecao details.expansor[open] > summary,
+  #secao-projecao .barra-dre,
+  #secao-projecao .tabela-projecao thead th { position: static !important; box-shadow: none !important; }
+}
+
+/* Premissas em TRÊS FAIXAS (pedido do cliente, 2026-11-25: "bater o olho e já
+   entender"): o que se digita (fundo branco, com a legenda amarela de "onde se
+   lança"), o que a diretriz fixa (faixa verde-clara, só leitura) e o que a
+   proposta dá (leituras, cinza). Cada faixa tem um título curto. */
+.painel-premissas .faixa-premissas { border-radius: .4rem; padding: .6rem .8rem; margin-bottom: .6rem; }
+.painel-premissas .faixa-titulo { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  color: #3f5148; margin-bottom: .45rem; }
+.painel-premissas .faixa-editavel { border: 1px solid #f0dfa0; background: #fffdf5; }
+.painel-premissas .faixa-diretriz { border: 1px solid #cfe3d6; background: #f3f9f5; }
+.painel-premissas .faixa-diretriz .item-fixo .fw-bold { font-size: 1.05rem; color: #0f4d2a; }
+.painel-premissas .faixa-diretriz #abono-total { margin-top: .4rem; }
+.painel-premissas .faixa-leituras { border: 1px solid var(--bs-border-color); background: #f8f9f8; }
+.painel-premissas .faixa-editavel .bloco-pessoas { border-top: 1px dashed #ead79a; padding-top: .5rem; }
