@@ -52,9 +52,10 @@ também o quanto a proposta segura as despesas abaixo da receita.
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, −R$ 22,8 mi de resultado, margem −0,64% (a meta de 2% pediria R$ 70,97
-mi), desde os rateios de 2027 travados: 16.1 administrativo (−R$ 9,8 mi), 14.3
-negócio (−R$ 16,9 mi) e 14.2 financeiro (−R$ 22,8 mi) — abaixo. Era R$ 45,6 mi e 1,28%; R$ 45,8 mi e 1,29% com a 3227 fora da base do pessoal;
+faturamento, −R$ 1,5 mi de resultado, margem −0,04% (a meta de 2% pediria R$ 70,97
+mi), desde a planilha nova do rateio administrativo (25/11: 16.1 de R$ 59,0 para R$ 37,7
+mi). Antes dela, −R$ 22,8 mi e −0,64%, com os rateios de 2027 travados: 16.1
+administrativo (−R$ 9,8 mi), 14.3 negócio (−R$ 16,9 mi) e 14.2 financeiro (−R$ 22,8 mi) — abaixo. Era R$ 45,6 mi e 1,28%; R$ 45,8 mi e 1,29% com a 3227 fora da base do pessoal;
 R$ 32,4 mi com a depreciação carregada na 8.10 (ver abaixo); R$ 34,6 mi com a
 depreciação regravada sem o grupo contábil 1272; R$ 30,9 mi com as despesas
 operacionais acompanhando a receita no desafio; R$ 29,6 mi com elas só acompanhando
@@ -187,7 +188,9 @@ receita líquida do desafio) ou o valor; a tela converte a % em reais e grava co
 por período / mês […] numa proporção de valor orçado. Bloqueia o campo"). O total a
 ratear é o saldo planejado dos 43 centros de custo corporativos da Matriz, mês a mês
 (`database/rateio_adm_2027.php`, gerado da `Rateio Corporativo 2027.xlsm`, coluna K:
-−R$ 59.011.744,41). A parte de cada negócio é a proporção da proposta de 2027 dele
+−R$ 37.735.231,41 desde a planilha nova de 25/11 — o cliente mandou "Rateio Corporativo
+ADM 2027.xlsm", guardada com o nome antigo; nela a 5205 CONTABILIDADE ganhou R$ 21,48 mi de
+créditos em sete meses e a 5162 MARKETING R$ 203 mil de despesa; era −R$ 59.011.744,41). A parte de cada negócio é a proporção da proposta de 2027 dele
 nas linhas de `Projecao::CRITERIO_RATEIO_ADM` (8.1 vendas, 8.2 promoções, 8.5 pessoal,
 8.7 serviços profissionais, 8.8 serviços em geral, 8.11 manutenção, 8.12 materiais,
 8.14 viagens; as contas "sem valor" da planilha de critério são custo na DRE e já

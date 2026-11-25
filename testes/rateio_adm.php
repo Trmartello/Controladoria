@@ -9,7 +9,7 @@
  * critério se recalcula ao vivo.
  *
  * Os números de mão vêm da planilha `Rateio Corporativo 2027.xlsm` (coluna K
- * "Saldo"): total −R$ 59.011.744,41 (a linha "Total" dela) e janeiro −R$ 1.454.868,455.
+ * "Saldo"): total −R$ 37.735.231,41 (a linha "Total" dela) e janeiro −R$ 1.467.968,455.
  *
  *   DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
  *     php testes/rateio_adm.php
@@ -70,8 +70,8 @@ $linha = static fn (array $tela, string $c) => array_column($tela['linhas'], nul
 
 // ── 1. A carga: o saldo da planilha, mês a mês ──────────────────────────────
 $carga = Projecao::cargaRateioAdm($anoPlan);
-prova('a carga de 2027 é o saldo da planilha: −R$ 59.011.744,41 no ano, −R$ 1.454.868,455 em janeiro',
-    $carga && perto((float)$carga['total'], -59011744.41) && perto((float)$carga['meses'][1], -1454868.455, 0.0001),
+prova('a carga de 2027 é o saldo da planilha: −R$ 37.735.231,41 no ano, −R$ 1.467.968,455 em janeiro',
+    $carga && perto((float)$carga['total'], -37735231.41) && perto((float)$carga['meses'][1], -1467968.455, 0.0001),
     json_encode([$carga['total'] ?? null, $carga['meses'][1] ?? null]));
 prova('sem carga para o ano, não há rateio (a 16.1 volta a ser lançável)', Projecao::cargaRateioAdm(2099) === null);
 
@@ -84,12 +84,12 @@ prova('o critério soma só vendas, promoções, pessoal, serv. profissionais, s
 $r = Projecao::rateioAdm($ano, $corte, $anoPlan);
 $soma = array_sum(array_column($r['negocios'], 'valor'));
 $somaJan = array_sum(array_map(static fn ($x) => $x['meses'][1], $r['negocios']));
-prova('os negócios somam o total da planilha (−59.011.744,41) e, em janeiro, o janeiro dela (−1.454.868,455)',
-    perto($soma, -59011744.41) && perto($somaJan, -1454868.455), round($soma, 2) . ' / ' . round($somaJan, 3));
+prova('os negócios somam o total da planilha (−37.735.231,41) e, em janeiro, o janeiro dela (−1.467.968,455)',
+    perto($soma, -37735231.41) && perto($somaJan, -1467968.455), round($soma, 2) . ' / ' . round($somaJan, 3));
 $prop = true;
 foreach ($r['negocios'] as $x) {
     $prop = $prop && perto($x['parte'], $r['criterio_total'] > 0 ? $x['criterio'] / $r['criterio_total'] : 0.0, 1e-12)
-        && perto($x['valor'], $x['parte'] * -59011744.41, 0.01);
+        && perto($x['valor'], $x['parte'] * -37735231.41, 0.01);
 }
 prova('a parte de cada negócio é o critério dele sobre o de todos, e o valor é a parte × o total', $prop);
 prova('a Usina, sem despesa no critério, não recebe rateio', perto($r['negocios'][$ids['17']]['valor'] ?? -1, 0.0));
@@ -111,7 +111,7 @@ prova('as filiais das Agropecuárias somam o rateio do negócio (dividido pelo c
 $painel = Projecao::resumoDosNegocios(array_keys($r['negocios']), $ano, $corte, $anoPlan, ['16.1', '18']);
 prova('o Painel faz a mesma conta (16.1 de cada negócio = a da tela; soma = o total)',
     perto((float)$painel[$ids['8']]['proposta']['16.1'], $l161['proposta'])
-    && perto(array_sum(array_map(static fn ($x) => (float)$x['proposta']['16.1'], $painel)), -59011744.41));
+    && perto(array_sum(array_map(static fn ($x) => (float)$x['proposta']['16.1'], $painel)), -37735231.41));
 prova('o rateio entra no resultado: resultado líquido = resultado do negócio + rateios administrativos (16.1)',
     perto((float)$linha($agro, '18')['proposta'], (float)$linha($agro, '15')['proposta'] + (float)$linha($agro, '16')['proposta'], 1)
     && perto((float)$linha($agro, '16')['proposta'], $l161['proposta'], 1));
@@ -143,7 +143,7 @@ try {
     $l1 = $r['negocios'][$leite];
     prova('ao vivo: o Leite lança o dobro do pessoal, o critério dele sobe exatamente isso, a parte sobe e o total não muda',
         perto($l2['criterio'] - $l1['criterio'], -$p85, 1) && $l2['parte'] > $l1['parte']
-        && perto(array_sum(array_column($r2['negocios'], 'valor')), -59011744.41)
+        && perto(array_sum(array_column($r2['negocios'], 'valor')), -37735231.41)
         && $r2['negocios'][$ids['8']]['parte'] < $r['negocios'][$ids['8']]['parte'],
         round($l1['parte'] * 100, 3) . '% → ' . round($l2['parte'] * 100, 3) . '%');
 } finally {

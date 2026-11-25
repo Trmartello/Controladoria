@@ -88,7 +88,8 @@ prova('o realizado da 14.1 é o da carga do Qlik, sem mexer', $realIgual);
 $cer = Database::um("SELECT id FROM negocio WHERE cod_negocio = '1'");
 $t = $montar->invoke($ctrl, (int)$cer['id'], $ano, $corte, 0);
 $res = (float)$t['desafio']['desafio']['resultado'];
-prova('Cereais: o desafio fica −R$ 22.327.947 (os −R$ 245 do resíduo saem)', abs($res + 22327947) < 2, (string)round($res));
+// (−R$ 19.501.365 desde a planilha nova do rateio administrativo, 25/11: 16.1 de R$ 59,0 para 37,7 mi.)
+prova('Cereais: o desafio fica −R$ 19.501.365 (os −R$ 245 do resíduo saem)', abs($res + 19501365) < 2, (string)round($res));
 
 // O Corporativo: a 14.1 da proposta é zero.
 $c = (new ReflectionMethod($ctrl, 'montarCorporativo'));
