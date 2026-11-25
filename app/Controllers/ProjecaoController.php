@@ -6,6 +6,7 @@ use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Json;
 use App\Services\DesafioCota;
+use App\Services\DesafioAjuste;
 use App\Services\DesafioDrivers;
 use App\Services\Oportunidades;
 use App\Services\Projecao;
@@ -644,10 +645,27 @@ class ProjecaoController
         $desafio = self::desafioDasLinhas($linhasDesafio, $driver);
         $prop = self::resumoDaProposta($linhas);
         $trib = Oportunidades::tributos([$negocioId], $anoPlan - 1)[$negocioId] ?? null;
+        $escada = self::escadaDoDesafio($linhasDesafio, $linhas);
+        // O desafio extra dos administradores (2026-11-25): a escada ajustada vira
+        // o desafio — e é ela que o Corporativo soma. A calculada vai junto, para
+        // a tela dizer de onde partiu.
+        $ajustes = DesafioAjuste::doNegocio($negocioId, $anoPlan);
+        $escada['calculado'] = $escada['desafio'];
+        if ($ajustes) {
+            $escada['desafio'] = DesafioAjuste::aplicar($escada['desafio'], $ajustes);
+            $desafio = self::comMargem(array_merge($desafio, [
+                'receita_bruta' => $escada['desafio']['receita_bruta'],
+                'receita_liquida' => $escada['desafio']['receita_liquida'],
+                'resultado' => $escada['desafio']['resultado'],
+            ]));
+        }
+        $desafio['ajustado'] = (bool)$ajustes;
         $desafio['pis_cofins'] = self::pisCofinsSobre($desafio['receita_bruta'], $trib);
         $prop['pis_cofins'] = self::pisCofinsSobre($prop['receita_bruta'], $trib);
+        $u = Auth::usuario();
         return $d + ['desafio' => $desafio, 'proposta' => $prop, 'tributos' => $trib,
-            'escada' => self::escadaDoDesafio($linhasDesafio, $linhas)];
+            'escada' => $escada, 'ajustes' => (object)$ajustes, 'ajustaveis' => DesafioAjuste::CHAVES,
+            'pode_ajustar' => ($u['perfil'] ?? '') === 'ADMIN'];
     }
 
     /**
@@ -1363,6 +1381,50 @@ class ProjecaoController
      * (desmarca). Grava quem e quando. Não muda a DRE: a resposta, se for o caso,
      * se lança na linha.
      */
+    /**
+     * O desafio extra (pedido do cliente, 2026-11-25): só o perfil ADMIN grava,
+     * numa linha de valor do cartão do desafio de UM negócio, para o ano todo.
+     * Valor vazio apaga o ajuste e devolve o desafio calculado.
+     */
+    public function gravarDesafio(): void
+    {
+        $u = Auth::exigirLogin();
+        if ($u['perfil'] !== 'ADMIN') {
+            Json::erro('Só administradores ajustam o desafio.', 403);
+        }
+        $corpo = Json::corpo();
+        $negocioId = (int)($corpo['negocio_id'] ?? 0);
+        $chave = (string)($corpo['chave'] ?? '');
+        if (!in_array($chave, DesafioAjuste::CHAVES, true)) {
+            Json::erro('Linha do desafio que não se ajusta: ' . $chave . '.', 422);
+        }
+        if (!Database::um('SELECT id FROM negocio WHERE id = ?', [$negocioId])) {
+            Json::erro('Negócio não encontrado.', 404);
+        }
+        $bruto = $corpo['valor'] ?? null;
+        $valor = null;
+        if ($bruto !== null && $bruto !== '') {
+            if (!is_numeric($bruto)) {
+                Json::erro('Valor inválido.', 422);
+            }
+            $valor = (float)$bruto;
+        }
+        $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
+        if (!$fech) {
+            Json::erro('Nenhuma DRE carregada.', 409);
+        }
+        $ano = (int)$fech['ano'];
+        $corte = (int)$fech['mes_fechado_ate'];
+        if ($valor !== null) {
+            // O sinal da despesa sai do calculado: lê a tela sem o ajuste desta linha.
+            $tela = $this->montar($negocioId, $ano, $corte, 0);
+            $calc = $tela['desafio']['escada']['calculado'][$chave] ?? null;
+            $valor = DesafioAjuste::normalizar($chave, $valor, $calc === null ? null : (float)$calc);
+        }
+        DesafioAjuste::gravar($negocioId, $ano + 1, $chave, $valor, (int)$u['id']);
+        $this->responderComATela($negocioId, $ano, $corte, 0);
+    }
+
     public function gravarAvaliacao(): void
     {
         $u = Auth::exigirLogin();

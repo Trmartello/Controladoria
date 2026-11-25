@@ -6967,7 +6967,7 @@ async function provasApoioDesafio(page, largura) {
   await escolher('- AGROPECUARIAS');
   const n = await page.evaluate(() => {
     const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
-    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => c.textContent.trim());
+    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => (c.querySelector('input.celula-desafio')?.value ?? c.textContent).trim());
     const d = SecaoProjecao.dados;
     const linha = (c) => d.linhas.find((x) => x.codigo === c).proposta;
     const cel = document.querySelector('.tabela-projecao tr[data-conta="1.1"] .celula-proposta');
@@ -7118,9 +7118,19 @@ async function provasTributosComoEComoFica(page, largura) {
   const l = `[${largura}] Como é × como fica:`;
   await voltarAoCorporativo(page);
   await page.evaluate(() => App.mostrarSecao('projecao'));
-  const abriu = await esperar(page, "!!document.querySelector('.painel-tributos #tributos-como-fica')", 60000);
-  t(`${l} o cartão está no Corporativo, aberto`, abriu);
+  // Desde 2026-11-25 o quadro mora junto dos botões da DRE e abre por um botão
+  // ("Reforma tributária: antes × depois"), fechado de saída.
+  await page.evaluate(() => { try { localStorage.removeItem('projecao.tributos'); } catch (e) { /* */ } SecaoProjecao.tribAberto = undefined; });
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  const temBotao = await esperar(page, "!!document.querySelector('#projecao-dre-bloco #projecao-tributos-botao') && !!document.querySelector('#projecao-dre-bloco .painel-tributos.d-none')", 60000);
+  t(`${l} o botão "antes × depois" está junto dos botões da DRE, com o quadro fechado`, temBotao);
+  if (!temBotao) return;
+  await page.click('#projecao-tributos-botao');
+  const abriu = await esperar(page, "!!document.querySelector('.painel-tributos:not(.d-none) #tributos-como-fica') && document.querySelector('#projecao-tributos-botao').getAttribute('aria-pressed') === 'true'", 10000);
+  t(`${l} o botão abre o quadro no Corporativo`, abriu);
   if (!abriu) return;
+  t(`${l} e o quadro não está mais no topo da tela`,
+    await page.evaluate(() => !document.querySelector('#secao-projecao details[data-expansor="tributos"]')));
   const ler = () => page.evaluate(() => {
     const n = (x) => Number(String(x || '').replace(/[^\d,-]/g, '').replace(',', '.'));
     const cel = (tab, linha, col) => document.querySelector(`#${tab} tr[data-linha="${linha}"] td[data-col="${col}"]`);
@@ -7190,6 +7200,11 @@ async function provasTributosComoEComoFica(page, largura) {
   const volta = await digitar('');
   t(`${l} apagar o lançamento devolve a proposta`, Math.abs(volta.rlTabela - antes.rlTabela) <= 1 && Math.abs(volta.cbsProp - antes.cbsProp) <= 1,
     JSON.stringify([volta.rlTabela, antes.rlTabela]));
+  t(`${l} o quadro segue aberto depois do repinte`,
+    await page.evaluate(() => !!document.querySelector('.painel-tributos:not(.d-none)')));
+  await page.click('.painel-tributos [data-fechar-tributos]');
+  t(`${l} o × fecha o quadro e devolve o botão`, await esperar(page,
+    "!!document.querySelector('.painel-tributos.d-none') && document.querySelector('#projecao-tributos-botao').getAttribute('aria-pressed') === 'false'", 5000));
 }
 
 /**
@@ -7376,8 +7391,7 @@ async function provasNivel3(page, largura) {
   await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
   await page.evaluate(() => {
     document.querySelectorAll('#secao-projecao .tabela-projecao').forEach((el) => { el.dataset.velha = '1'; });
-    try { localStorage.setItem('projecao.nivel3', '0'); localStorage.setItem('projecao.recolhido', '0'); } catch (e) { /* */ }
-    SecaoProjecao.n3Aberto = undefined; SecaoProjecao.recolhido = undefined;
+    SecaoProjecao.nivelDre = 2;
     const s = document.querySelector('#sel-negocio');
     s.value = [...s.options].find((o) => o.textContent.trim().endsWith('- LEITE')).value;
     s.dispatchEvent(new Event('change'));
@@ -7416,11 +7430,11 @@ async function provasNivel3(page, largura) {
   a = await ler();
   t(`${l} o ▸ da linha abre só as contas dela`,
     a.linhas['8.5'].visiveis === a.linhas['8.5'].total && a.linhas['4.1'].visiveis === 0, JSON.stringify(a.linhas['8.5']));
-  await page.click('#projecao-nivel3');
+  await page.click('#projecao-nivel-3');
   await new Promise((r) => setTimeout(r, 200));
   a = await ler();
-  t(`${l} o botão de cima abre o nível 3 de todas as linhas`, contas.every((c) => a.linhas[c].visiveis === a.linhas[c].total));
-  await page.click('#projecao-nivel3');
+  t(`${l} "Reduzidas" (nível 3) abre as contas reduzidas de todas as linhas`, contas.every((c) => a.linhas[c].visiveis === a.linhas[c].total));
+  await page.click('#projecao-nivel-2');
   await page.click('.tabela-projecao [data-abre-reduzidas="8.5"]');
 
   // As oportunidades: conta reduzida e o nome da linha como no Qlik.
@@ -7493,7 +7507,7 @@ async function provasCenarioEImpressao(page, largura) {
   // Imprimir: abre as subcontas, deixa só o bloco da DRE e devolve a tela depois.
   const p = await page.evaluate(() => {
     const tab = document.querySelector('.tabela-projecao');
-    if (!tab.classList.contains('recolhida')) document.querySelector('#projecao-nivel').click();
+    document.querySelector('#projecao-nivel-1').click();
     let chamou = false;
     const original = window.print;
     window.print = () => { chamou = true; };
@@ -7507,7 +7521,7 @@ async function provasCenarioEImpressao(page, largura) {
     window.dispatchEvent(new Event('afterprint'));
     window.print = original;
     const depois = { recolhida: tab.classList.contains('recolhida'), corpo: document.body.classList.contains('imprimir-dre') };
-    document.querySelector('#projecao-nivel').click();
+    document.querySelector('#projecao-nivel-2').click();
     return { durante, depois };
   });
   t(`${l} o botão chama a impressão com a DRE aberta e o cabeçalho do negócio e da data`,
@@ -7897,11 +7911,12 @@ async function provasDesafioEExpansores(page, largura) {
   });
   const tela = await page.evaluate(() => {
     const n = (s) => Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.'));
-    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => c.textContent.trim());
+    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => (c.querySelector('input.celula-desafio')?.value ?? c.textContent).trim());
     return {
       rob: n(td('receita_bruta')[1]), rl: n(td('resultado')[1]), rlProposta: n(td('resultado')[2]),
       dif: n(td('resultado')[3]), margem: td('margem')[1],
       campos: document.querySelectorAll('.painel-desafio input, .painel-desafio select, .painel-desafio [contenteditable]').length,
+      camposDesafio: [...document.querySelectorAll('.painel-desafio input.celula-desafio')].map((i) => i.dataset.desafioChave),
       nota: document.querySelector('#desafio-nota')?.textContent || '',
     };
   });
@@ -7918,7 +7933,32 @@ async function provasDesafioEExpansores(page, largura) {
   // A diferença sai dos valores sem arredondar: compara com tolerância de R$ 1.
   t(`${l} a coluna Proposta é a linha 18 da proposta, e a diferença é proposta − desafio`,
     Math.round(api.rl) === tela.rlProposta && Math.abs(tela.dif - (Math.round(api.rl) - tela.rl)) <= 1, `${api.rl} | ${JSON.stringify(tela)}`);
-  t(`${l} o desafio é só de leitura (nenhum campo no cartão)`, tela.campos === 0);
+  // Desde 2026-11-25 o ADMIN (o usuário da bateria) desafia além do calculado: só
+  // as cinco linhas de valor viram campo; o resto da escada segue de leitura.
+  t(`${l} para o administrador, só as linhas de valor do desafio são campo`,
+    tela.campos === 5 && tela.camposDesafio.join() === 'receita_bruta,lucro_bruto,despesas,rateios_negocio,rateios_adm',
+    JSON.stringify(tela.camposDesafio));
+  const extra = async (v) => {
+    await page.fill('.celula-desafio[data-desafio-chave="rateios_adm"]', v);
+    const resp = page.waitForResponse((r) => r.url().includes('/api/projecao/desafio'), { timeout: 30000 });
+    await page.press('.celula-desafio[data-desafio-chave="rateios_adm"]', 'Enter');
+    await resp;
+    await page.waitForTimeout(300);
+    return page.evaluate(() => {
+      const n = (x) => Number(String(x).replace(/[^\d,-]/g, '').replace(',', '.'));
+      const c = (k, i) => document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)[i];
+      return { adm: n(c('rateios_adm', 1).querySelector('input').value), rl: n(c('resultado', 1).textContent),
+        ajustado: !!document.querySelector('.celula-desafio.desafio-ajustado') };
+    });
+  };
+  const admCalc = Number(String((await page.inputValue('.celula-desafio[data-desafio-chave="rateios_adm"]'))).replace(/[^\d,-]/g, ''));
+  const comExtra = await extra(String(Math.abs(admCalc) + 1000000).replace(/\B(?=(\d{3})+(?!\d))/g, '.'));
+  t(`${l} desafio extra: R$ 1 mi a mais de rateio adm (digitado sem o menos) desce R$ 1 mi no resultado líquido`,
+    comExtra.adm === admCalc - 1000000 && Math.abs(comExtra.rl - (tela.rl - 1000000)) <= 1 && comExtra.ajustado,
+    JSON.stringify([admCalc, comExtra, tela.rl]));
+  const semExtra = await extra('');
+  t(`${l} apagar devolve o desafio calculado`, semExtra.adm === admCalc && semExtra.rl === tela.rl && !semExtra.ajustado,
+    JSON.stringify(semExtra));
   t(`${l} a nota diz de onde saiu e lembra a meta de 2% de margem líquida`,
     /driver de volume a definir/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recalculado da base/.test(tela.nota), tela.nota.slice(0, 160));
 
@@ -7955,8 +7995,10 @@ async function provasDesafioEExpansores(page, largura) {
   t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 93,75 mi`,
     /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 93,75 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
-  t(`${l} Corporativo: visão, desafio, oportunidades, tributos e pessoas como expansores (sem premissas: nada se lança ali)`,
-    corp.expansores === 'visao,desafio,oportunidades,tributos,pessoas', corp.expansores);
+  // Desde 2026-11-25 os tributos (como é × como fica) não são expansor: abrem
+  // pelo botão "Reforma tributária: antes × depois", junto dos botões da DRE.
+  t(`${l} Corporativo: visão, desafio, oportunidades e pessoas como expansores (sem premissas: nada se lança ali)`,
+    corp.expansores === 'visao,desafio,oportunidades,pessoas', corp.expansores);
 
   // Devolve o estado das outras provas: tudo aberto.
   await page.evaluate(() => {
@@ -7966,16 +8008,19 @@ async function provasDesafioEExpansores(page, largura) {
 }
 
 /**
- * Recolher e mostrar as subcontas (pedido do cliente, 2026-11-18): o botão
- * deixa à vista só os blocos da DRE, para ver como os números fecham, e devolve
- * as linhas de lançamento no segundo clique. É só visualização — os números não
- * mudam —, e a escolha sobrevive à troca de negócio.
+ * Detalhe da DRE em três níveis (pedido do cliente, 2026-11-25, no lugar de
+ * "Abrir contas reduzidas" e "Recolher subcontas"): Resumo (só os blocos),
+ * Lançamento (as subcontas — o padrão, sempre) e Reduzidas (o nível 3 do Qlik).
+ * É só visualização — os números não mudam —, a escolha sobrevive à troca de
+ * negócio, e recarregar a página volta ao Lançamento.
  */
 async function provasRecolherNivel(page, largura) {
-  const l = `[${largura}] Recolher subcontas:`;
+  const l = `[${largura}] Detalhe da DRE:`;
   await page.evaluate(() => App.mostrarSecao('projecao'));
-  const abriu = await esperar(page, "!!document.querySelector('#projecao-nivel')", 20000);
-  t(`${l} a tela tem o botão`, abriu);
+  const abriu = await esperar(page, "!!document.querySelector('#projecao-nivel-2')", 20000);
+  t(`${l} a tela tem o seletor de três níveis, e os botões antigos saíram`, abriu
+    && await page.evaluate(() => document.querySelectorAll('.niveis-dre [data-nivel-dre]').length === 3
+      && !document.querySelector('#projecao-nivel, #projecao-nivel3')));
   if (!abriu) return;
   const escolher = (txt) => page.evaluate((x) => {
     const s = document.querySelector('#projecao-negocio');
@@ -7990,41 +8035,45 @@ async function provasRecolherNivel(page, largura) {
     const vis = (tr) => tr.offsetParent !== null;
     const sub = [...document.querySelectorAll('.tabela-projecao tbody tr.linha-subconta')];
     const blo = [...document.querySelectorAll('.tabela-projecao tbody tr.linha-bloco')];
+    const red = [...document.querySelectorAll('.tabela-projecao tbody tr.linha-reduzida')];
     const rob = document.querySelector('.tabela-projecao tbody tr[data-conta="1"] td:nth-child(4)')?.textContent.trim();
-    const b = document.querySelector('#projecao-nivel');
+    const ativo = [...document.querySelectorAll('[data-nivel-dre][aria-pressed="true"]')].map((b) => b.textContent.trim());
     return {
       sub: sub.length, subVisiveis: sub.filter(vis).length,
       blocos: blo.length, blocosVisiveis: blo.filter(vis).length,
-      rob, texto: b?.textContent.trim(), pressed: b?.getAttribute('aria-pressed'),
-      salvo: (() => { try { return localStorage.getItem('projecao.recolhido'); } catch (e) { return 'x'; } })(),
+      red: red.length, redVisiveis: red.filter(vis).length,
+      rob, ativo: ativo.join('|'),
     };
   });
-  const clicar = async () => { await page.click('#projecao-nivel'); await new Promise((r) => setTimeout(r, 300)); };
+  const clicar = async (n) => { await page.click(`#projecao-nivel-${n}`); await new Promise((r) => setTimeout(r, 300)); };
 
-  const a = await ler();
-  if (a.pressed === 'true') { await clicar(); }
-  const aberto = await ler();
-  t(`${l} aberto, mostra as subcontas e os blocos`,
-    aberto.sub > 20 && aberto.subVisiveis === aberto.sub && aberto.blocosVisiveis === aberto.blocos && /Recolher/.test(aberto.texto),
-    JSON.stringify(aberto));
+  const lanc = await ler();
+  t(`${l} abre no Lançamento (nível 2): subcontas e blocos à vista, reduzidas fechadas`,
+    lanc.ativo === 'Lançamento' && lanc.sub > 20 && lanc.subVisiveis === lanc.sub && lanc.blocosVisiveis === lanc.blocos
+    && lanc.redVisiveis === 0, JSON.stringify(lanc));
 
-  await clicar();
-  const fechado = await ler();
-  t(`${l} recolhido, esconde TODAS as subcontas e mantém os blocos`,
-    fechado.subVisiveis === 0 && fechado.blocosVisiveis === fechado.blocos && fechado.pressed === 'true' && /Mostrar/.test(fechado.texto),
-    JSON.stringify(fechado));
-  t(`${l} e os números não mudam (é só visualização)`, fechado.rob === aberto.rob && !!fechado.rob, `${aberto.rob} / ${fechado.rob}`);
-  t(`${l} a escolha fica guardada para quem olha`, fechado.salvo === '1', String(fechado.salvo));
+  await clicar(1);
+  const resumo = await ler();
+  t(`${l} Resumo (nível 1) esconde TODAS as subcontas e mantém os blocos`,
+    resumo.ativo === 'Resumo' && resumo.subVisiveis === 0 && resumo.blocosVisiveis === resumo.blocos, JSON.stringify(resumo));
+  t(`${l} e os números não mudam (é só visualização)`, resumo.rob === lanc.rob && !!resumo.rob, `${lanc.rob} / ${resumo.rob}`);
 
   await escolher('SUPERMERCADOS');
   await new Promise((r) => setTimeout(r, 1500));
   const outro = await ler();
-  t(`${l} trocar de negócio mantém recolhido`, outro.subVisiveis === 0 && outro.pressed === 'true', JSON.stringify(outro));
+  t(`${l} trocar de negócio mantém o nível escolhido`, outro.subVisiveis === 0 && outro.ativo === 'Resumo', JSON.stringify(outro));
 
-  await clicar();
-  const reaberto = await ler();
-  t(`${l} o segundo clique devolve as subcontas`,
-    reaberto.subVisiveis === reaberto.sub && reaberto.pressed === 'false' && reaberto.salvo === '0', JSON.stringify(reaberto));
+  await clicar(3);
+  const red = await ler();
+  t(`${l} Reduzidas (nível 3) mostra subcontas e as contas reduzidas`,
+    red.ativo === 'Reduzidas' && red.subVisiveis === red.sub && red.red > 0 && red.redVisiveis === red.red, JSON.stringify(red));
+
+  await clicar(2);
+  const volta = await ler();
+  t(`${l} Lançamento devolve o padrão`, volta.ativo === 'Lançamento' && volta.subVisiveis === volta.sub && volta.redVisiveis === 0,
+    JSON.stringify(volta));
+  t(`${l} a escolha não fica no navegador: recarregar abre sempre no Lançamento`,
+    await page.evaluate(() => { const n = SecaoProjecao.nivelDre; SecaoProjecao.nivelDre = undefined; const r = SecaoProjecao.nivelDreAtual(); SecaoProjecao.nivelDre = n; return r === 2; }));
   await escolher('PECUARIA');
   await new Promise((r) => setTimeout(r, 1200));
 }

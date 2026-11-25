@@ -3275,14 +3275,29 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   as Agropecuárias; o total não mudou. **A.V. da proposta**: coluna logo depois da
   Proposta, cada linha sobre a ROL proposta — é ela que diz se a meta preserva a
   margem (diretriz do horizonte 1). Provas: `provasVisaoDoAno`.
-  **Recolher e mostrar as subcontas** (pedido do cliente, 2026-11-18): o botão
-  `#projecao-nivel`, acima da tabela, deixa à vista só os blocos da DRE (nível 1)
-  para ver como os números fecham. É só visualização: a classe `recolhida` esconde
-  `tr.linha-subconta` por CSS, as linhas continuam no DOM (o digitado não se
-  perde) e nenhuma conta muda. A escolha é conveniência de quem olha
-  (`localStorage['projecao.recolhido']`, com try/catch) e sobrevive à troca de
-  negócio; no dossiê não há botão e o documento sai completo. Vale também no
-  Corporativo. Prova: `provasRecolherNivel`.
+  **Detalhe da DRE em três níveis** (pedido do cliente, 2026-11-25, no lugar dos
+  botões "Abrir contas reduzidas (nível 3)" e "Recolher subcontas" de 2026-11-18):
+  um grupo de três botões acima da tabela, no padrão do "Mostrar até" dos
+  Projetos — **Resumo** (nível 1, só os blocos, para ver como a DRE fecha),
+  **Lançamento** (nível 2, as subcontas onde se digita) e **Reduzidas** (nível 3,
+  as contas reduzidas do realizado em todas as linhas). `SecaoProjecao.nivelDre`
+  + `definirNivelDre(n)`; `estaRecolhido()`/`nivel3Aberto()` derivam dele.
+  **Sempre abre no Lançamento** ("por padrão sempre abra em nível 2, que é o nível
+  de lançamento"): a escolha vale enquanto a página está aberta (repintes e troca
+  de negócio), **não vai para o `localStorage`** — as chaves antigas
+  `projecao.recolhido`/`projecao.nivel3` não são mais lidas. É só visualização:
+  `recolhida` esconde `tr.linha-subconta` por CSS e `nivel3` mostra
+  `tr.linha-reduzida`; as linhas continuam no DOM e nenhuma conta muda. No dossiê
+  não há botão e o documento sai no nível 2. Prova: `provasRecolherNivel`.
+  **Reforma tributária: antes × depois** (pedido do cliente, 2026-11-25): o quadro
+  "como é × como fica" (abaixo) saiu do topo da tela e mora junto dos botões da
+  DRE, aberto pelo botão `#projecao-tributos-botao` e **fechado de saída**
+  (`localStorage['projecao.tributos']`); o × do quadro fecha. Não sai no PDF da
+  DRE; no dossiê vai sempre aberto.
+  **A faixa "Este negócio planeja no total…" saiu** (pedido do cliente,
+  2026-11-25: "parece não fazer sentido além de ocupar um espaço"). `faixaDoModo`
+  só fala no negócio que planeja POR FILIAL (onde avisa que se lança na filial) e
+  dentro da filial.
   **Valor negativo no celular: a tecla "−/+" (`sinal.js`).** O teclado numérico do
   iPhone (`inputmode="decimal"`) **não tem o sinal de menos**, e quem lançava
   despesa, variação ou resultado negativo pelo celular não podia (pedido do
@@ -3622,7 +3637,8 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
     efeito do Corporativo e o quadro "efeito abaixo da RL".
   **Tributos na DRE: como é × como fica** (pedido do cliente, 2026-11-18, com um
   slide da controladoria de modelo: "trazer a estrutura oficial, como é e como
-  fica"). Cartão `cartaoTributosDre` (expansor `tributos`, aberto por omissão) no
+  fica"). Quadro `cartaoTributosDre` (desde 2026-11-25 junto dos botões da DRE, ver
+  "Reforma tributária: antes × depois") no
   negócio, na filial e no Corporativo, com a estrutura OFICIAL nas duas versões:
   hoje (RB, Deduções, 2.1, 2.2, 2.3 = ICMS e ISS + PIS/COFINS, RL) e no formato da
   reforma — CBS como linha **informativa acima da Receita Bruta** (tributo por
@@ -3792,6 +3808,26 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   ano. Prova: `testes/desafio_drivers.php`. No banco local (out/26) o total dá
   faturamento R$ 3,68 bi, resultado R$ 45,8 mi, margem 1,29% — e Cereais com
   resultado negativo (−R$ 6,8 mi).
+  **Desafio extra dos administradores** (pedido do cliente, 2026-11-25: "os
+  administradores podem fazer um desafio extra aos negócios"). No cartão
+  "Desafio 2027 para o negócio", o perfil **ADMIN** (só ele — nem CONTROLADORIA)
+  digita na coluna Desafio as linhas de VALOR: faturamento, margem bruta,
+  despesas operacionais, rateios do negócio e rateios administrativos
+  (`DesafioAjuste::CHAVES`), **para o ano todo**. Tabela
+  `negocio_desafio_ajuste` (negócio, ano, chave, valor); rota
+  `POST /api/projecao/desafio` (valor vazio apaga e volta ao calculado).
+  **Cascata** (`DesafioAjuste::aplicar`), sobre a escada calculada, por
+  diferenças — as linhas entre a margem bruta e o resultado antes dos rateios que
+  o ajuste não toca ficam: o faturamento leva a RL na mesma proporção e, se a
+  margem bruta não foi digitada, ela também (% mantido); margem bruta e despesas
+  mudam o resultado antes dos rateios; rateio do negócio, o resultado do negócio;
+  rateio adm, só o líquido; as margens se refazem sobre a RL ajustada. Despesa
+  digitada positiva grava negativa quando a calculada é negativa (celular sem o
+  menos). **Proposta** = o que está lançado na DRE; **Diferença** = proposta −
+  desafio. O ajuste é **negócio a negócio**: o Corporativo e os grupos somam os
+  desafios já ajustados (o `desafio` de `desafioDoNegocio` é a escada ajustada;
+  `escada.calculado` leva a original), e o negócio ajustado ganha o selo
+  "ajustado" no cartão do Corporativo. Prova: `testes/desafio_ajuste.php` (21).
   **Desafio dos Postos de resfriamento pela cota Aurora** (histórico: desde o
   desafio calculado, quem aplica é `DesafioDrivers`; pedido do cliente,
   2026-11-23: "o posto recebe ~6 centavos por litro resfriado, e o valor só
@@ -3840,7 +3876,7 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
     `nivel3FormatoNovo` (PIS/COFINS das vendas sai da 2.3 e vai para a linha da
     CBS; a 1.1 ganha a linha que tira o PIS/COFINS), para o nível 3 somar o nível
     2 que a tela mostra. O ▸ da linha abre as contas dela (`reduzidasAbertas`); o
-    botão `#projecao-nivel3` abre todas (`localStorage projecao.nivel3`).
+    nível **Reduzidas** do seletor "Detalhe da DRE" abre todas.
     Diferença acima de R$ 100 entre a linha e as reduzidas vai numa linha
     própria, dita ("o Qlik foi recarregado depois da carga da DRE").
   - Oportunidades: item e lançamento mostram a conta reduzida e o nome do Qlik
@@ -4463,6 +4499,13 @@ dia, e a vermelha seria lida como regressão de outra mudança.
 
 ## Convenções de entrega
 
+- **Notas da tela: curtas e diretas** (pedido do cliente, 2026-11-25: "esses
+  comentários devem ser mais objetivos, de fácil entendimento e direto ao
+  ponto"). A nota embaixo de um quadro diz o que a pessoa precisa para agir —
+  onde lançar, o que o número significa, de onde vem — em uma ou duas frases.
+  O porquê das regras, os casos e o histórico ficam aqui no CLAUDE.md e nos
+  comentários do código, não na tela. Não repita na nota o que a tabela ou o
+  título já mostram.
 - Branch de trabalho: **`claude/acesso-planejamento-controladoria-9pe28s`** —
   desenvolver, commitar e fazer `git push -u origin` sempre nessa branch, e
   levar ao `main` por pull request (o `main` é produção — ver *Deploy*). A

@@ -243,7 +243,6 @@ const SecaoProjecao = {
       ${this.cartaoVisaoAno(d)}
       ${this.cartaoDesafio(d)}
       ${this.cartaoOportunidades(d)}
-      ${this.cartaoTributosDre(d)}
       ${this.avisoFiliaisDefasadas(d)}
       ${this.faixaDoModo(d)}
       ${this.painel(d)}
@@ -253,12 +252,11 @@ const SecaoProjecao = {
       ${this.cartaoCenario(d)}
       <div id="projecao-dre-bloco">
       ${this.cabecalhoImpressao(d, d.filial ? `Filial ${(d.filiais.find((f) => Number(f.id) === Number(d.filial.id)) || {}).nome || ''}` : '')}
-      ${this.botaoNivel()}
+      ${this.botaoNivel(d)}
+      ${this.cartaoTributosDre(d)}
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
-        A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
-        acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
-        ${d.ano}, convertido para comparar. A Receita Líquida e o que vem abaixo não mudam. O que se lança na Receita de
-        Vendas e no Imposto s/ Vendas é no formato novo (sem a CBS); a CBS da proposta acompanha a receita.</div>
+        A <strong>CBS</strong> (PIS/COFINS em ${d.ano}) é informativa, acima da Receita Bruta; Receita Bruta e Deduções
+        estão sem ela, inclusive ${d.ano}. A Receita Líquida não muda.</div>
       <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
@@ -280,15 +278,11 @@ const SecaoProjecao = {
       <div id="projecao-piso-box">${this.alertaPisoFaturamento(d)}</div>
       <div id="projecao-pessoal-box">${this.alertaPessoalMinimo(d)}</div>
       <p class="text-muted small">
-        <span class="legenda-editavel"></span> Célula em amarelo-claro é onde se lança.
-        Valores em R$. A.V. = análise vertical sobre a Receita Operacional Líquida.
-        A proposta é lançada nas <strong>subcontas</strong>; as linhas em negrito são a soma delas.
-        Célula vazia vale o padrão: a projeção, ou o que as premissas e a diretriz dão. Proposta e Reajuste são o
-        <strong>mesmo lançamento</strong> visto de dois jeitos: a que você digita manda,
-        a outra sai em cinza-itálico porque é a conta dela.
+        <span class="legenda-editavel"></span> Lance nas células amarelas (subcontas); o negrito é a soma.
+        Vazio = projeção com as premissas. Digite o valor <strong>ou</strong> o reajuste — o outro se calcula.
+        A.V. = % da Receita Líquida. Mês sem rateio ainda está aberto e não conta como realizado.
         Fonte: ${Modal.esc(d.fonte || 'Qlik')}${d.extraido_em
-  ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
-        Mês sem rateio é mês aberto e não entra como realizado.
+  ? `, ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
       </p>
       </div>
       ${this.cartaoEstoque(d)}`;
@@ -418,14 +412,9 @@ const SecaoProjecao = {
     const tres = `<strong>IPCA</strong>, <strong>PIB</strong>, <strong>Crescimento desejado</strong>,
       <strong>Cresc. despesas com pessoas</strong> e o <strong>vale e o abono</strong> de ${ano}`;
     const nota = diretriz && !d.filial
-      ? `<span class="nota-crescimento">O percentual de crescimento é <strong>sobre o faturamento</strong> (Receita de Vendas):
-          ele cresce <strong>IPCA + PIB + crescimento desejado</strong>, e o restante é <strong>proporcional</strong> —
-          deduções e custo das vendas acompanham o faturamento na mesma proporção (a margem bruta de ${d.ano} se mantém).</span>
-          As <strong>Despesas com Pessoal</strong> partem da conta da diretriz (cartão Pessoas e benefícios), que é também o
-          <strong>mínimo</strong> da linha: acima se lança livre, abaixo grava com ⚠ para validar; as demais despesas ficam na projeção. Nas outras linhas, a célula digitada sempre manda.
-          ${noAnoDaProposta
-    ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
-          são lidos da coluna Proposta.` : ''}`
+      ? `<span class="nota-crescimento">O faturamento cresce <strong>IPCA + PIB + crescimento desejado</strong>; custo e
+          deduções acompanham (margem bruta de ${d.ano} mantida).</span> Pessoal segue a diretriz (é o mínimo da linha); as
+          demais despesas ficam na projeção. O que você digita na DRE sempre manda.`
       : d.filial
       ? `${tres} vêm do negócio e valem para todas as filiais — para alterá-los, volte ao negócio.
           ${noAnoDaProposta ? 'Os três valores lidos ao lado são desta filial.' : ''}`
@@ -442,11 +431,9 @@ const SecaoProjecao = {
 
     const notaDiretriz = diretriz
       ? `<div class="small mt-2 nota-diretriz"><span class="badge selo-diretriz">diretriz</span>
-          <strong>${Modal.esc(diretriz.fonte)}</strong>: o reajuste de pessoal, o vale e os prêmios de ${ano}
-          valem para todos os negócios e não se digitam. <strong>IPCA</strong> e <strong>PIB</strong> vêm sugeridos pela
-          diretriz e, como o <strong>crescimento desejado</strong>, cada negócio pode ajustar — as filiais recebem os
-          do negócio, sem editar. Custos e deduções acompanham a receita (margem bruta de ${d.ano} mantida), as demais
-          despesas não crescem, e o resultado líquido negativo aparece destacado na tabela.</div>`
+          <strong>${Modal.esc(diretriz.fonte)}</strong>: reajuste de pessoal, vale e prêmios são fixos para todos.
+          IPCA, PIB e crescimento desejado vêm sugeridos e o negócio pode ajustar (as filiais herdam).
+          Resultado líquido negativo não é aceito.</div>`
       : '';
     const leituras = noAnoDaProposta
       ? `<div class="w-100 d-md-none"></div>
@@ -765,10 +752,9 @@ const SecaoProjecao = {
           </tbody>
         </table>
       </div>
-      <div class="small text-muted">Folha e peças de ${d.ano}: Qlik DRE Gerencial, contas 3.07.01.21* (despesa) e 4.03.01.01.01 (custo).
-        A conta reduzida 3227 (acerto do PPR) sai da base no negócio e em cada filial; a provisão (3419) sai como PPR de ${d.ano}.
-        Este total é o PADRÃO da linha 8.5 e também o seu MÍNIMO: lance acima na DRE se houver contratação ou reajuste maior;
-        abaixo dele a linha grava com ⚠ para validar. A folha e o PPR andam na proporção do quadro planejado.</div>`;
+      <div class="small text-muted">Este total é o <strong>mínimo</strong> da linha 8.5: acima, lance livre (contratação,
+        reajuste maior); abaixo, grava com ⚠ para validar.
+        Fonte: Qlik DRE Gerencial, contas 3.07.01.21* e 4.03.01.01.01, sem o acerto do PPR (3227).</div>`;
   },
 
   /** O Corporativo só totaliza: a soma dos negócios, sem campo nenhum. */
@@ -987,17 +973,15 @@ const SecaoProjecao = {
       ${this.cartaoVisaoAno(d)}
       ${this.cartaoDesafio(d)}
       ${this.cartaoOportunidades(d)}
-      ${this.cartaoTributosDre(d)}
       ${this.cartaoPessoas(d)}
       ${faltando}
       <div id="projecao-dre-bloco">
       ${this.cabecalhoImpressao(d, this.nomeDoConsolidado(d))}
-      ${this.botaoNivel()}
+      ${this.botaoNivel(d)}
+      ${this.cartaoTributosDre(d)}
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
-        A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
-        acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
-        ${d.ano}, convertido para comparar. A Receita Líquida e o que vem abaixo não mudam. O que se lança na Receita de
-        Vendas e no Imposto s/ Vendas é no formato novo (sem a CBS); a CBS da proposta acompanha a receita.</div>
+        A <strong>CBS</strong> (PIS/COFINS em ${d.ano}) é informativa, acima da Receita Bruta; Receita Bruta e Deduções
+        estão sem ela, inclusive ${d.ano}. A Receita Líquida não muda.</div>
       <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
@@ -1074,11 +1058,8 @@ const SecaoProjecao = {
 
   notaVisao(d) {
     return `<div class="small text-muted mt-1">
-        <strong>Visão realista</strong> — estimativa da Controladoria, não é número do Qlik, e só de leitura:
-        a <strong>receita bruta</strong> de ${this.nomeMes(d.mes_fechado_ate + 1)}–dez é o planejado desses meses ×
-        a aderência da receita até ${this.nomeMes(d.mes_fechado_ate)} (realizado ÷ planejado); o
-        <strong>resultado líquido</strong> é o planejado + o desvio médio mensal até ${this.nomeMes(d.mes_fechado_ate)}
-        × os meses que faltam — supõe que o negócio continue errando o plano no mesmo ritmo. Sinal positivo é favorável.
+        <strong>Visão realista</strong> (estimativa da Controladoria): o planejado de ${this.nomeMes(d.mes_fechado_ate + 1)}–dez
+        corrigido pelo desvio até ${this.nomeMes(d.mes_fechado_ate)}, supondo o mesmo ritmo. Positivo é favorável.
       </div>`;
   },
 
@@ -1202,7 +1183,14 @@ const SecaoProjecao = {
 
     const resumo = `${ano}: CBS ${m(t.colunas.proposta.como_fica.tributo)} acima da Receita Bruta, no lugar do PIS/COFINS
       · Receita Líquida ${m(t.colunas.proposta.como_fica.receita_liquida)} (não muda)`;
-    return this.expansor('tributos', 'painel-tributos', 'Tributos na DRE: como é × como fica', resumo, `
+    const aberto = this.tributosAberto();
+    return `<div class="card mb-2 painel-tributos${aberto ? '' : ' d-none'}" id="projecao-tributos">
+      <div class="card-header py-2 px-3 d-flex flex-wrap align-items-baseline gap-2">
+        <h2 class="h6 mb-0">Reforma tributária: a DRE antes × depois</h2>
+        <span class="small text-muted">${resumo}</span>
+        <button type="button" class="btn-close ms-auto small" data-fechar-tributos aria-label="Fechar o antes × depois"></button>
+      </div>
+      <div class="card-body pt-2 pb-2 px-3">
       <div class="small mb-2">O PIS/COFINS <strong>muda de linha</strong>: hoje está dentro das deduções (2.3 Imposto s/ Vendas);
         com a reforma a <strong>CBS</strong> é tributo <em>por fora</em> e vira uma linha <strong>informativa acima da Receita
         Bruta</strong>, que passa a ser o faturamento sem ela. Exemplo: hoje Receita Bruta 100, deduções 50 (ICMS 40 +
@@ -1217,11 +1205,35 @@ const SecaoProjecao = {
         <div class="col-xl-6"><div class="fw-bold small text-uppercase mb-1">Como fica <span class="fw-normal text-muted">(reforma, a partir de ${ano})</span></div>
           <div class="table-responsive">${comoFica}</div></div>
       </div>
-      <div class="small text-muted mt-2">CBS pela LC 214/2025, com o regime específico das cooperativas (art. 271), pelo qual a
-        Copérdia optou. PIS/COFINS do realizado: carga de tributos de ${d.ano}; o resto do ano pela taxa de ${d.ano} sobre a Receita
-        de Vendas; na proposta, o que a linha 2.3 carrega (a projeção na proporção da receita).${d.filial ? ' Na filial, sempre pela taxa do negócio.' : ''}</div>
+      <div class="small text-muted mt-2">CBS pela LC 214/2025 (regime das cooperativas, art. 271). PIS/COFINS: carga de
+        ${d.ano} no realizado; taxa de ${d.ano} sobre a receita no resto${d.filial ? ' (na filial, a taxa do negócio)' : ''}.</div>
       ${avisos.map((a) => `<div class="small text-warning-emphasis mt-1 aviso-tributos">${a}</div>`).join('')}
-    `);
+      </div></div>`;
+  },
+
+  /**
+   * O antes × depois da reforma mora junto dos botões da DRE (pedido do cliente,
+   * 2026-11-25), fechado de saída: é para mostrar quando se quer explicar a
+   * mudança, não para ocupar a tela de quem lança. No dossiê vai sempre aberto.
+   */
+  tributosAberto() {
+    if (App.modoDossie) return true;
+    if (this.tribAberto === undefined) {
+      try { this.tribAberto = localStorage.getItem('projecao.tributos') === '1'; } catch (e) { this.tribAberto = false; }
+    }
+    return !!this.tribAberto;
+  },
+
+  alternarTributos(abrir) {
+    this.tribAberto = abrir === undefined ? !this.tributosAberto() : !!abrir;
+    try { localStorage.setItem('projecao.tributos', this.tribAberto ? '1' : '0'); } catch (e) { /* vale só nesta tela */ }
+    const el = document.getElementById('secao-projecao');
+    el.querySelector('.painel-tributos')?.classList.toggle('d-none', !this.tribAberto);
+    const b = el.querySelector('#projecao-tributos-botao');
+    if (b) {
+      b.setAttribute('aria-pressed', this.tribAberto ? 'true' : 'false');
+      b.textContent = this.tribAberto ? '▾ Fechar antes × depois' : '⇄ Reforma tributária: antes × depois';
+    }
   },
 
   cartaoDesafio(d) {
@@ -1251,6 +1263,23 @@ const SecaoProjecao = {
       ['margem', '% margem líquida <span class="text-muted small">(sobre a receita líquida)</span>', true, true],
     ];
     const celula = (v, pct) => (v === null || v === undefined ? '—' : (pct ? this.pct(pp(v), 2) : this.moeda(v)));
+    // O desafio extra (2026-11-25): o ADMIN digita nas linhas de valor; o resto
+    // da escada sai em cascata no servidor (`DesafioAjuste`).
+    const ajustes = x.ajustes || {};
+    const calc = e.calculado || e.desafio;
+    // No dossiê a tela sai como página: sem campo, nem para o administrador.
+    const ajustavel = new Set(x.pode_ajustar && !App.modoDossie ? (x.ajustaveis || []) : []);
+    const campoDesafio = (k, a) => {
+      const ajustado = Object.prototype.hasOwnProperty.call(ajustes, k);
+      const dica = `Desafio calculado (proposta padrão): ${celula(calc[k])}. Digite para desafiar além dele; apague para voltar ao calculado.`;
+      return `<td class="text-end celula-desafio-td">
+          <input type="text" inputmode="decimal" data-sinal autocomplete="off"
+            class="form-control form-control-sm text-end celula-desafio${ajustado ? ' desafio-ajustado' : ''}"
+            data-desafio-chave="${k}" value="${a === null || a === undefined ? '' : this.moeda(a)}"
+            title="${Modal.esc(dica)}" aria-label="Desafio: ${Modal.esc(k)}">
+          ${ajustado ? `<div class="small text-muted desafio-calculado">calculado ${celula(calc[k])}</div>` : ''}
+        </td>`;
+    };
     const linha = ([k, rotulo, pct, forte]) => {
       const a = e.desafio[k];
       const b = e.proposta[k];
@@ -1262,7 +1291,7 @@ const SecaoProjecao = {
       const cor = dif === null ? '' : (pct ? (dif >= 0 ? 'text-success' : 'text-danger') : this.corDif(dif));
       return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}">
           <td>${rotulo}</td>
-          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
+          ${ajustavel.has(k) ? campoDesafio(k, a) : `<td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>`}
           <td class="text-end">${celula(b, pct)}</td>
           <td class="text-end ${estimado ? 'text-muted' : cor}">${estimado ? '' : textoDif}</td>
         </tr>`;
@@ -1286,13 +1315,12 @@ const SecaoProjecao = {
             </tbody>
           </table>
         </div>
-        <div class="small text-muted mb-1">O desafio é a <strong>proposta padrão</strong> do negócio: a projeção de ${d.ano}
-          (jan–${this.nomeMes(d.mes_fechado_ate)} realizado + ${this.rotuloResto(d)} planejado) com as premissas do painel — IPCA, PIB e % de crescimento na receita (ou o driver de volume,
-          abaixo), pessoal pela diretriz (reajuste, vale, prêmios e PPR) —, custo e deduções acompanhando a receita (margem
-          bruta preservada), as demais despesas operacionais crescendo na mesma proporção da receita (despesa sobre a receita
-          preservada; se a receita cai, elas ficam na base) e os rateios na base, sem crescimento. A coluna Proposta parte da projeção com o que o negócio lançou
-          (nela, despesa não lançada fica na base, pela diretriz), e a Diferença é o efeito dos lançamentos. Estrutura nova da DRE
-          gerencial (a que vale em ${x.ano}).</div>
+        <div class="small text-muted mb-1">Desafio = <strong>proposta padrão</strong>: projeção de ${d.ano} com as premissas e a
+          diretriz, custos e despesas acompanhando a receita, rateios travados. Proposta = o que está lançado na DRE.</div>
+        ${x.pode_ajustar && !App.modoDossie ? `<div class="small mb-1 nota-desafio-ajuste"><strong>Desafio extra:</strong> digite na coluna Desafio
+          (ano todo); resultados e margens se recalculam. Apague para voltar ao calculado.</div>` : ''}
+        ${Object.keys(ajustes).length && !x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste">O desafio deste negócio
+          tem <strong>ajuste da administração</strong> além da proposta padrão.</div>` : ''}
         ${this.notaTributos(x.tributos, x.ano)}
         <div class="small text-muted" id="desafio-nota">
           <strong>${Modal.esc(des.nota)}</strong> ${this.notaDesafio(x)}
@@ -1313,10 +1341,10 @@ const SecaoProjecao = {
   },
 
   notaDesafio(x) {
-    return `Diretriz do Horizonte 1: <strong>preservar margem</strong> — pode crescer, sem perder margem.
-      ${Modal.esc(x.metodo)} A meta da direção é <strong>${this.pct(x.meta_margem / 100, 0)} de margem líquida</strong>
-      para a cooperativa. Método decidido em ${String(x.decidido_em).split('-').reverse().join('/')}; o desafio é
-      recalculado da base e das premissas — muda se as premissas do painel ou as metas de volume mudarem.`;
+    // A nota do método (`x.metodo`) repetia o parágrafo de cima; saiu na revisão
+    // das notas (pedido do cliente, 2026-11-25: "mais objetivos, direto ao ponto").
+    return `Meta da direção: <strong>${this.pct(x.meta_margem / 100, 0)} de margem líquida</strong> para a cooperativa,
+      sem perder margem. O desafio é recalculado da base e das premissas.`;
   },
 
   cartaoDesafioCorporativo(d) {
@@ -1343,7 +1371,10 @@ const SecaoProjecao = {
         </tr>`;
     };
     const ordem = Object.keys(x.negocios).sort((a, b) => ((x.negocios[b].desafio || {}).resultado || 0) - ((x.negocios[a].desafio || {}).resultado || 0));
-    const linhas = ordem.map((id) => linha(Modal.esc(nomes[id] || id), x.negocios[id].desafio, x.negocios[id].proposta, '', `data-negocio-desafio="${id}"`)).join('');
+    // Negócio com desafio extra da administração leva a marca (2026-11-25).
+    const marca = (des) => (des && des.ajustado
+      ? ' <span class="badge text-bg-warning desafio-ajustado-marca" title="Desafio com ajuste da administração, além da proposta padrão">ajustado</span>' : '');
+    const linhas = ordem.map((id) => linha(Modal.esc(nomes[id] || id) + marca(x.negocios[id].desafio), x.negocios[id].desafio, x.negocios[id].proposta, '', `data-negocio-desafio="${id}"`)).join('');
     const t = x.total;
     const meta = (lado, rotulo) => {
       const falta = lado.falta;
@@ -1491,22 +1522,48 @@ const SecaoProjecao = {
           </tbody>
         </table>
       </div>
-      <div class="small text-muted">Período: os 12 meses de ${this.rotuloJanela(q.periodo, true)}${naFilial ? '' : `; cada item mostra também os
-        12 meses anteriores, para comparar`}. ${naFilial ? '' : `<strong>Itens</strong> (conta contábil): provisões, perdas, indenizações, multas e
-        receitas pontuais, com o mês em que foram lançados. Em cada linha, item ou mês fora do padrão, marque
-        <strong>Considerar</strong> (vai se repetir: tratar no planejamento) ou <strong>Desconsiderar</strong> (não se repete). `}<strong>Meses fora do padrão</strong>: em despesas operacionais, outros
-        valores e resultado financeiro, o mês que se afasta da mediana dos 12 meses em mais da metade dela (e de R$ 50 mil) — uma receita de
-        juros concentrada num mês, uma despesa que não se repete${naFilial ? '' : '; calculados sem os itens acima, para nada contar duas vezes'}. Se não se repetir em ${d.ano_planejamento}, despesa é <strong>oportunidade</strong> e receita ou reversão é
-        <strong>risco</strong>. Meses no sinal da DRE (despesa negativa).</div>
-      <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: se um item não vai se repetir (ou se falta algo
-        que o período não teve), lance na linha da DRE correspondente. Em cada linha, <strong>Lançamentos</strong> abre os de
-        R$ 10 mil ou mais que formam o valor: data, filial, conta, histórico e o complemento (documento e cliente) — por ora só os de
-        jan–${this.nomeMes(q.mes_ate)}/${String(d.ano).slice(2)}.</div>
+      <div class="small text-muted">Período: ${this.rotuloJanela(q.periodo, true)}${naFilial ? '' : ', comparado aos 12 meses anteriores'}.
+        ${naFilial ? '' : `Marque <strong>Considerar</strong> (vai se repetir) ou <strong>Desconsiderar</strong> (não se repete). `}<strong>Mês fora
+        do padrão</strong> = mais de 50% (e R$ 50 mil) longe da mediana dos 12 meses. Se não se repetir em ${d.ano_planejamento},
+        despesa é <strong>oportunidade</strong> e receita é <strong>risco</strong>.</div>
+      <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: ajuste a linha da DRE. <strong>Lançamentos</strong>
+        mostra os de R$ 10 mil ou mais (jan–${this.nomeMes(q.mes_ate)}/${String(d.ano).slice(2)}).</div>
       ${this.secaoQuestionamentos(d, qs)}
       ${this.secaoJuros(naFilial ? d.filial.juros : (d.oportunidades || {}).juros, naFilial)}`);
   },
 
   /** Grava a avaliação de um item e repinta o cartão de oportunidades. */
+  /** O desafio extra do administrador: grava uma linha e repinta o cartão. */
+  async gravarDesafio(inp) {
+    const bruto = inp.value.trim();
+    if (bruto === (inp.dataset.original ?? '')) return;
+    const limpo = bruto.replace(/[R$\s]/g, '').replace('−', '-').replace(/\./g, '').replace(',', '.');
+    if (limpo !== '' && !Number.isFinite(Number(limpo))) {
+      this.avisar('Valor inválido: informe um número em reais.');
+      inp.value = inp.dataset.original ?? '';
+      return;
+    }
+    const el = document.getElementById('secao-projecao');
+    const pedido = ++this.pedido;
+    inp.classList.add('celula-gravando');
+    try {
+      const r = await App.api('/api/projecao/desafio', {
+        negocio_id: this.negocioId, chave: inp.dataset.desafioChave, valor: limpo === '' ? null : Number(limpo),
+      });
+      if (pedido !== this.pedido) return;
+      this.dados = { ...this.dados, ...r };
+      this.avisar('');
+      const card = el.querySelector('.painel-desafio');
+      if (card) card.outerHTML = this.cartaoDesafio(this.dados);
+      this.ligar(el);
+    } catch (e) {
+      this.avisar(e.message);
+      inp.value = inp.dataset.original ?? '';
+    } finally {
+      inp.classList.remove('celula-gravando');
+    }
+  },
+
   async gravarAvaliacao(conta, decisao) {
     const el = document.getElementById('secao-projecao');
     const pedido = ++this.pedido;
@@ -1644,10 +1701,8 @@ const SecaoProjecao = {
     return `<div class="mt-3 secao-questionamentos">
         <div class="small fw-bold mb-1">${titulo}</div>
         ${corpo}
-        <div class="small text-muted">Conta reduzida a conta reduzida, nas duas janelas de 12 meses. <strong>Parou</strong>: R$ ${m(qs.minimo)}
-          ou mais em ${ja} e menos de 10% disso em ${jb}. <strong>Começou</strong>: o inverso. Os rateios corporativos
-          (blocos 14 e 16) ficam de fora — são divisão da administração, não um fato do negócio. A resposta vai na proposta: se algo
-          que parou deve voltar, ou se o que começou não vai continuar, lance na linha da DRE.</div>
+        <div class="small text-muted"><strong>Parou</strong>: R$ ${m(qs.minimo)} ou mais em ${ja} e menos de 10% disso em ${jb}.
+          <strong>Começou</strong>: o inverso. Rateios ficam de fora. Se algo vai voltar ou não vai continuar, ajuste a linha da DRE.</div>
       </div>`;
   },
 
@@ -1691,7 +1746,7 @@ const SecaoProjecao = {
   irParaLinhaDre(codigo, reduzida) {
     const tab = document.querySelector('#secao-projecao .tabela-projecao');
     if (!tab) return;
-    if (tab.classList.contains('recolhida')) this.alternarNivel();
+    if (tab.classList.contains('recolhida')) this.definirNivelDre(2);
     let alvo = tab.querySelector(`tr[data-conta="${CSS.escape(codigo)}"]`);
     if (reduzida) {
       const r = tab.querySelector(`tr.linha-reduzida[data-pai="${CSS.escape(codigo)}"][data-reduzida="${CSS.escape(reduzida)}"]`);
@@ -1918,12 +1973,10 @@ const SecaoProjecao = {
       <div class="card-body py-2 px-3">
         <h2 class="h6 mb-1">Oportunidades do estoque a trabalhar em ${d.ano_planejamento}${naFilial ? ' — esta filial' : ''}</h2>
         <div class="small text-muted mb-2">${entreFiliais
-    ? `Perdas e acerto de estoque de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}), mês a mês, no sinal da DRE. A régua é a
-          <strong>média entre as filiais</strong> do negócio (em reais, no ano): ${naFilial
-      ? 'o que esta filial passou dela é a oportunidade.'
-      : 'cada filial acima dela tem como oportunidade o que passou, e o negócio é a soma das filiais.'}`
-    : `Perdas e acerto de estoque de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}), mês a mês, no sinal da DRE: o que cada mês passou da
-          <strong>média mensal</strong> é a oportunidade. Em verde-claro, os meses acima dela.`}${p ? ' E o estoque parado, que é caixa a liberar.' : ''}</div>
+    ? `Perdas e acerto de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}): a oportunidade é o que ${naFilial ? 'esta filial' : 'cada filial'}
+          passou da <strong>média entre as filiais</strong>.`
+    : `Perdas e acerto de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}): a oportunidade é o que cada mês passou da
+          <strong>média mensal</strong> (em verde-claro).`}${p ? ' E o estoque parado, caixa a liberar.' : ''}</div>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-1 tabela-estoque">
             <thead><tr><th>Indicador</th>${cab}<th class="text-end">Total</th><th class="text-end">Média<br><span class="fw-normal text-muted small">${entreFiliais
@@ -1941,11 +1994,9 @@ const SecaoProjecao = {
         </div>
         ${peso}
         ${naFilial ? '' : this.estoqueDasFiliais(e)}
-        <div class="small text-muted mt-1">Fontes: Qlik DRE - Gerencial (contas 3.07.01.01.06 e 3.11.03.03.01) e Produtos Parados
-          (mais de 2 anos nas Agropecuárias, mais de 1 ano nos Supermercados). O estoque parado é <strong>caixa</strong>, não resultado:
-          vendê-lo libera capital, e o resultado depende do preço. Perdas e acerto estão no <strong>Custo das Vendas</strong> (linha 4.1),
-          que o quadro de oportunidades não varre: nada aqui está contado duas vezes. Nada daqui entra sozinho na proposta — é o tamanho
-          do desafio.</div>
+        <div class="small text-muted mt-1">Estoque parado é <strong>caixa</strong>, não resultado. Perdas e acerto estão no
+          Custo das Vendas (4.1), sem dupla contagem com as oportunidades. Nada daqui entra sozinho na proposta.
+          Fonte: Qlik DRE Gerencial (3.07.01.01.06 e 3.11.03.03.01) e Produtos Parados (+2 anos Agropecuárias, +1 ano Supermercados).</div>
       </div>
     </div>`;
   },
@@ -1968,8 +2019,7 @@ const SecaoProjecao = {
       ${resto.length ? `<details class="small"><summary>mais ${resto.length} filiais</summary>
         <div class="table-responsive"><table class="table table-sm align-middle mb-1">${cab}<tbody>${resto.map(linha).join('')}</tbody></table></div>
       </details>` : ''}
-      <div class="small text-muted">Perdas e acerto: o que cada filial passou da média entre as filiais — a soma é a oportunidade do
-        negócio. Abra a filial para ver os meses dela.</div>`;
+      <div class="small text-muted">Perdas e acerto: quanto cada filial ficou acima da média das filiais.</div>`;
   },
 
   cartaoEstoqueCorporativo(d) {
@@ -2105,7 +2155,7 @@ const SecaoProjecao = {
    * fica no `localStorage`, como o de recolher subcontas; por omissão só o
    * desafio vem aberto. No dossiê tudo sai aberto — papel não se expande.
    */
-  EXPANSORES_PADRAO: { visao: false, desafio: true, oportunidades: true, tributos: true, premissas: false, pessoas: false },
+  EXPANSORES_PADRAO: { visao: false, desafio: true, oportunidades: true, premissas: false, pessoas: false },
 
   expansorAberto(chave) {
     if (App.modoDossie) return true;
@@ -2167,12 +2217,13 @@ const SecaoProjecao = {
       + 'e não muda o total do negócio.'}
       </div>`;
     }
+    // No negócio que planeja no total a faixa não diz nada que a tela não mostre
+    // (pedido do cliente, 2026-11-25: "parece não fazer sentido além de ocupar um
+    // espaço"); só fica a do negócio por filial, que avisa onde se lança.
+    if (d.modo !== 'FILIAL') return '';
     return `<div class="alert alert-light border py-2 px-3 small mb-3">
-      ${d.modo === 'FILIAL'
-    ? 'Este negócio planeja <strong>por filial</strong>: a coluna Proposta é a soma das filiais e '
-      + 'não se digita aqui. Escolha uma filial para lançar.'
-    : 'Este negócio planeja <strong>no total</strong>. A coluna <em>A distribuir</em> mostra o que '
-      + 'falta repartir entre as filiais — distribuir não é obrigatório para salvar.'}
+      Este negócio planeja <strong>por filial</strong>: a coluna Proposta é a soma das filiais e
+      não se digita aqui. Escolha uma filial para lançar.
     </div>`;
   },
 
@@ -2381,8 +2432,9 @@ const SecaoProjecao = {
     if (caixaPiso && this.dados) caixaPiso.innerHTML = this.alertaPisoFaturamento(this.dados);
     const caixaPessoal = el.querySelector('#projecao-pessoal-box');
     if (caixaPessoal && this.dados) caixaPessoal.innerHTML = this.alertaPessoalMinimo(this.dados);
-    const nivel = el.querySelector('#projecao-nivel');
-    if (nivel && virgem(nivel)) nivel.addEventListener('click', () => this.alternarNivel());
+    el.querySelectorAll('[data-nivel-dre]').forEach((b) => {
+      if (virgem(b)) b.addEventListener('click', () => this.definirNivelDre(b.dataset.nivelDre));
+    });
     // Considerar / Desconsiderar um item das oportunidades: delegado, uma vez.
     // (A marca do contêiner NÃO pode se chamar data-avaliar: o `closest` a acharia
     // em qualquer clique da seção.)
@@ -2406,8 +2458,15 @@ const SecaoProjecao = {
         this.irParaLinhaDre(a.dataset.irConta, a.dataset.irReduzida || null);
       });
     }
-    const nivel3 = el.querySelector('#projecao-nivel3');
-    if (nivel3 && virgem(nivel3)) nivel3.addEventListener('click', () => this.alternarNivel3());
+    const tribBotao = el.querySelector('#projecao-tributos-botao');
+    if (tribBotao && virgem(tribBotao)) tribBotao.addEventListener('click', () => this.alternarTributos());
+    // O × do quadro: delegado, porque o quadro se repinta a cada gravação.
+    if (!el.dataset.ligouTributos) {
+      el.dataset.ligouTributos = '1';
+      el.addEventListener('click', (ev) => {
+        if (ev.target.closest('[data-fechar-tributos]')) this.alternarTributos(false);
+      });
+    }
     // O ▸ de cada linha: delegado na tabela, que tem o corpo repintado a cada
     // gravação (um ouvinte por botão se perderia no repinte).
     const tabela = el.querySelector('.tabela-projecao');
@@ -2516,6 +2575,15 @@ const SecaoProjecao = {
         if (ev.key === 'Escape') { inp.value = inp.dataset.original ?? inp.value; inp.blur(); }
       });
       inp.dataset.original = inp.value;
+    });
+    el.querySelectorAll('.celula-desafio').forEach((inp) => {
+      inp.dataset.original = inp.value;
+      if (!virgem(inp)) return;
+      inp.addEventListener('blur', () => this.gravarDesafio(inp));
+      inp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+        if (ev.key === 'Escape') { inp.value = inp.dataset.original ?? inp.value; inp.blur(); }
+      });
     });
     el.querySelectorAll('.celula-beneficio').forEach((inp) => {
       inp.dataset.original = inp.value;
@@ -2667,31 +2735,38 @@ const SecaoProjecao = {
    *
    * É só visualização — nenhuma conta muda, e as subcontas continuam no DOM
    * (a classe `recolhida` as esconde por CSS), então o que estiver digitado
-   * nelas não se perde. A escolha é conveniência de quem olha, por isso fica no
-   * `localStorage` (com try/catch: em janela privada ele pode não existir) e
-   * sobrevive à troca de negócio e ao recarregar. No dossiê não há botão: o
-   * documento sai sempre completo.
+   * nelas não se perde. Desde 2026-11-25 é o nível 1 do seletor abaixo.
+   *
+   * Nível de detalhe da DRE (pedido do cliente, 2026-11-25: um botão de três
+   * opções no lugar de "Abrir contas reduzidas" e "Recolher subcontas"):
+   * 1 = Resumo (só os blocos), 2 = Lançamento (as subcontas, onde se digita),
+   * 3 = Reduzidas (as contas reduzidas do realizado, como o nível 3 do Qlik).
+   * **Sempre abre no 2** ("por padrão sempre abra em nível 2, que é o nível de
+   * lançamento"): a escolha vale enquanto a página está aberta — sobrevive aos
+   * repintes e à troca de negócio — e não vai para o navegador. No dossiê não
+   * há botão e o documento sai no 2.
    */
-  /** O nível 3 aberto em todas as linhas (o botão de cima), lembrado no navegador. */
-  nivel3Aberto() {
-    if (App.modoDossie) return false;
-    if (this.n3Aberto === undefined) {
-      try { this.n3Aberto = localStorage.getItem('projecao.nivel3') === '1'; } catch (e) { this.n3Aberto = false; }
-    }
-    return !!this.n3Aberto;
+  nivelDreAtual() {
+    if (App.modoDossie) return 2;
+    return [1, 2, 3].includes(this.nivelDre) ? this.nivelDre : 2;
   },
 
-  /** Abre ou fecha as contas reduzidas de TODAS as linhas. */
-  alternarNivel3() {
-    this.n3Aberto = !this.nivel3Aberto();
-    try { localStorage.setItem('projecao.nivel3', this.n3Aberto ? '1' : '0'); } catch (e) { /* vale só nesta tela */ }
+  nivel3Aberto() { return this.nivelDreAtual() === 3; },
+
+  estaRecolhido() { return this.nivelDreAtual() === 1; },
+
+  definirNivelDre(n) {
+    this.nivelDre = [1, 2, 3].includes(Number(n)) ? Number(n) : 2;
     const el = document.getElementById('secao-projecao');
-    el.querySelector('.tabela-projecao')?.classList.toggle('nivel3', this.n3Aberto);
-    const b = el.querySelector('#projecao-nivel3');
-    if (b) {
-      b.setAttribute('aria-pressed', this.n3Aberto ? 'true' : 'false');
-      b.textContent = this.n3Aberto ? '▾ Fechar contas reduzidas' : '▸ Abrir contas reduzidas (nível 3)';
-    }
+    const tab = el?.querySelector('.tabela-projecao');
+    tab?.classList.toggle('recolhida', this.nivelDre === 1);
+    tab?.classList.toggle('nivel3', this.nivelDre === 3);
+    el?.querySelectorAll('[data-nivel-dre]').forEach((b) => {
+      const ativo = Number(b.dataset.nivelDre) === this.nivelDre;
+      b.classList.toggle('btn-verde', ativo);
+      b.classList.toggle('btn-outline-secondary', !ativo);
+      b.setAttribute('aria-pressed', ativo ? 'true' : 'false');
+    });
   },
 
   /** Abre ou fecha as contas reduzidas de UMA linha (o ▸ ao lado do nome). */
@@ -2707,32 +2782,33 @@ const SecaoProjecao = {
     }
   },
 
-  estaRecolhido() {
-    if (App.modoDossie) return false;
-    if (this.recolhido === undefined) {
-      try { this.recolhido = localStorage.getItem('projecao.recolhido') === '1'; } catch (e) { this.recolhido = false; }
-    }
-    return !!this.recolhido;
-  },
-
-  botaoNivel() {
+  botaoNivel(d) {
     if (App.modoDossie) return '';
-    const r = this.estaRecolhido();
-    return `<div class="d-flex justify-content-end gap-2 mb-1 d-print-none">
+    const nivel = this.nivelDreAtual();
+    const botao = (n, rotulo, dica) => `<button type="button" id="projecao-nivel-${n}" data-nivel-dre="${n}"
+          class="btn ${nivel === n ? 'btn-verde' : 'btn-outline-secondary'}" aria-pressed="${nivel === n}"
+          title="${dica}">${rotulo}</button>`;
+    const t = d && (d.filial ? d.filial.tributos_dre : d.tributos_dre);
+    const tribAberto = this.tributosAberto();
+    const botaoTributos = t && t.colunas && t.colunas.proposta
+      ? `<button type="button" id="projecao-tributos-botao" class="btn btn-sm btn-outline-success"
+          aria-pressed="${tribAberto ? 'true' : 'false'}" aria-controls="projecao-tributos"
+          title="Mostra a DRE como era (PIS/COFINS dentro das deduções) e como ficou com a reforma tributária (CBS acima da Receita Bruta)">
+          ${tribAberto ? '▾ Fechar antes × depois' : '⇄ Reforma tributária: antes × depois'}
+        </button>`
+      : '';
+    return `<div class="d-flex flex-wrap justify-content-end gap-2 mb-1 d-print-none">
+        ${botaoTributos}
         <button type="button" id="projecao-imprimir-dre" class="btn btn-sm btn-success"
           title="Imprime (ou salva em PDF) a DRE da proposta com todas as subcontas abertas">
           🖨 Imprimir DRE (PDF)
         </button>
-        <button type="button" id="projecao-nivel3" class="btn btn-sm btn-outline-secondary"
-          aria-pressed="${this.nivel3Aberto() ? 'true' : 'false'}"
-          title="Abre as contas reduzidas de todas as linhas, como o nível 3 do Qlik (só o realizado)">
-          ${this.nivel3Aberto() ? '▾ Fechar contas reduzidas' : '▸ Abrir contas reduzidas (nível 3)'}
-        </button>
-        <button type="button" id="projecao-nivel" class="btn btn-sm btn-outline-secondary"
-          aria-pressed="${r ? 'true' : 'false'}"
-          title="Mostrar só os blocos da DRE, para ver como os números fecham">
-          ${r ? '▸ Mostrar subcontas' : '▾ Recolher subcontas'}
-        </button>
+        <span class="small text-muted align-self-center ms-1">Detalhe da DRE</span>
+        <div class="btn-group btn-group-sm niveis-dre" role="group" aria-label="Detalhe da DRE">
+          ${botao(1, 'Resumo', 'Nível 1 — só os blocos da DRE, para ver como os números fecham')}
+          ${botao(2, 'Lançamento', 'Nível 2 — as subcontas, onde se lança a proposta (o padrão)')}
+          ${botao(3, 'Reduzidas', 'Nível 3 — abre as contas reduzidas de todas as linhas, como o nível 3 do Qlik (só o realizado)')}
+        </div>
       </div>`;
   },
 
@@ -2759,18 +2835,6 @@ const SecaoProjecao = {
     };
     window.addEventListener('afterprint', volta);
     window.print();
-  },
-
-  alternarNivel() {
-    this.recolhido = !this.estaRecolhido();
-    try { localStorage.setItem('projecao.recolhido', this.recolhido ? '1' : '0'); } catch (e) { /* sem armazenamento: vale só nesta tela */ }
-    const el = document.getElementById('secao-projecao');
-    el.querySelector('.tabela-projecao')?.classList.toggle('recolhida', this.recolhido);
-    const b = el.querySelector('#projecao-nivel');
-    if (b) {
-      b.setAttribute('aria-pressed', this.recolhido ? 'true' : 'false');
-      b.textContent = this.recolhido ? '▸ Mostrar subcontas' : '▾ Recolher subcontas';
-    }
   },
 
   /**

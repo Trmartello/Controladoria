@@ -4724,7 +4724,7 @@ body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
 .sinal-tecla[hidden] { display: none; }
 
 /* ===== Projeção: recolher as subcontas =====
-   Só os blocos ficam à vista, para ver como a DRE fecha (botão #projecao-nivel).
+   Só os blocos ficam à vista, para ver como a DRE fecha (nível 1, "Resumo", do seletor Detalhe da DRE).
    As linhas continuam no DOM — o que estiver digitado nelas não se perde. */
 .tabela-projecao.recolhida tr.linha-subconta { display: none; }
 /* Nível 3 da DRE: as contas reduzidas, como no Qlik (pedido do cliente,
@@ -4833,6 +4833,7 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 @media print {
   body.imprimir-dre #secao-projecao > :not(#projecao-dre-bloco) { display: none !important; }
   body.imprimir-dre #projecao-dre-bloco { page: dre-paisagem; }
+  body.imprimir-dre #projecao-dre-bloco .painel-tributos { display: none !important; }
   body.imprimir-dre .cabecalho-impressao-dre { display: block; margin-bottom: .4rem; border-bottom: 2px solid #1b6b3a; padding-bottom: .3rem; }
   body.imprimir-dre .tabela-projecao { overflow: visible !important; }
   body.imprimir-dre .tabela-projecao table { font-size: 8.5pt; }
@@ -4847,3 +4848,11 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
    número sem célula de digitar, com o cadeado; o título diz de onde vem. */
 .tabela-projecao .proposta-calculada { cursor: help; white-space: nowrap; }
 .tabela-projecao .proposta-calculada::before { content: "🔒"; font-size: .75em; margin-right: .3em; opacity: .6; }
+
+/* Desafio extra do administrador (2026-11-25): a coluna Desafio do cartão do
+   negócio vira campo nas linhas de valor; o ajustado ganha o amarelo da linha
+   que muda e, embaixo, o calculado de onde partiu. */
+.tabela-desafio .celula-desafio { min-width: 9.5rem; max-width: 12rem; margin-left: auto; font-weight: 700; }
+.tabela-desafio .celula-desafio.desafio-ajustado { background: #fde4a8; border-color: #e0b44a; }
+.tabela-desafio .celula-desafio.celula-gravando { opacity: .55; }
+.tabela-desafio .desafio-calculado { font-weight: 400; white-space: nowrap; }
