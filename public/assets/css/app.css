@@ -4945,3 +4945,28 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 @media print {
   #secao-projecao .tabela-projecao thead th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* O cabeçalho da DRE grudado NO CELULAR (pedido do cliente, 2026-11-25, com a foto
+   do iPhone). Abaixo de 992px a tabela rola de lado dentro da caixa, e um
+   `sticky` lá dentro gruda na caixa, não na página — por isso o cabeçalho sumia.
+   Aqui a caixa vira a área de rolagem nos DOIS sentidos, com a altura da tela que
+   sobra abaixo da topbar e da barra da DRE (que segue grudada na página): o
+   cabeçalho gruda no topo dela, e a barra fica por cima, como na foto. `dvh`
+   acompanha a barra de endereço do Safari; `vh` fica para quem não o conhece. */
+@media (max-width: 991.98px) {
+  #secao-projecao .tabela-projecao {
+    max-height: calc(100vh - var(--topo-app) - var(--altura-barra-dre, 46px));
+    max-height: calc(100dvh - var(--topo-app) - var(--altura-barra-dre, 46px));
+    overflow: auto;
+    overscroll-behavior: auto;
+  }
+  #secao-projecao .tabela-projecao thead th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    box-shadow: 0 1px 0 var(--bs-border-color), 0 .35rem .35rem -.35rem rgba(0, 0, 0, .2);
+  }
+}
+@media print {
+  #secao-projecao .tabela-projecao { max-height: none !important; overflow: visible !important; }
+}

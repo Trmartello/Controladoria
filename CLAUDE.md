@@ -155,7 +155,10 @@ e um clique nele fecha; a barra da DRE (`.barra-dre`: antes × depois, imprimir,
 da DRE) gruda também, e os títulos das colunas logo abaixo dela (altura medida em
 `--altura-barra-dre` pelo `ligar`). Para a página ser o scrollport, a caixa da tabela
 deixa de rolar de lado a partir de 992px (como a 5W2H); abaixo disso o cabeçalho não
-gruda. Na impressão nada gruda.
+gruda. **No celular** (abaixo de 992px, 2026-11-25, com a foto do iPhone): a caixa da tabela
+vira a área de rolagem nos dois sentidos, com a altura da tela que sobra abaixo da topbar e da
+barra (`100dvh − --topo-app − --altura-barra-dre`), e o cabeçalho gruda no topo DELA. Na
+impressão nada gruda.
 
 **Resultado líquido negativo DENTRO da DRE** (2026-11-25: o aviso ficava "perdido junto com
 os apontamentos acima"): `#projecao-meta-negativa` logo acima do cabeçalho, um segundo aviso
