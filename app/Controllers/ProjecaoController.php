@@ -1490,7 +1490,7 @@ class ProjecaoController
         $brutos = $this->brutosDoAno($negocioIds, $ano, $corte);
         $saida = [];
         foreach ($brutos as $id => $porConta) {
-            foreach (['1', Projecao::LINHA_RESULTADO] as $c) {
+            foreach (Projecao::LINHAS_VISAO_ANO as $c) {
                 $saida[$id][$c] = Projecao::visaoRealista(
                     $porConta[$c] ?? ['realizado' => 0, 'plan_ate' => 0, 'plan_resto' => 0],
                     $c,
@@ -1538,7 +1538,7 @@ class ProjecaoController
                     COALESCE(SUM(CASE WHEN v.tipo = 'META' AND v.mes <= ? THEN v.valor END), 0) AS plan_ate,
                     COALESCE(SUM(CASE WHEN v.tipo = 'META' AND v.mes >  ? THEN v.valor END), 0) AS plan_resto
                FROM dre_valor v JOIN dre_conta c ON c.id = v.conta_id
-              WHERE v.ano = ? AND c.codigo IN ('1', '18') AND v.negocio_id IN ($marcas)
+              WHERE v.ano = ? AND c.codigo IN ('1', '3', '5', '7', '13', '18') AND v.negocio_id IN ($marcas)
               GROUP BY v.negocio_id, c.codigo",
             array_merge([$corte, $corte, $corte, $ano], $negocioIds)
         );

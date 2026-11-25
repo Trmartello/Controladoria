@@ -8110,7 +8110,8 @@ async function provasVisaoDoAno(page, largura) {
     const d = await App.api(`/api/projecao?negocio_id=${id}`);
     const card = document.querySelector('.painel-visao-ano');
     const linhas = [...card.querySelectorAll('tbody tr')];
-    const cel = (tr, k) => tr.querySelector(`[data-realista="${k}"]`)?.textContent.trim();
+    const linhaRl = linhas.find((tr) => tr.children[0].textContent.trim() === 'Resultado líquido');
+    const cel = (tr, k) => tr?.querySelector(`[data-realista="${k}"]`)?.textContent.trim();
     const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
     // A.V. da proposta da receita bruta: proposta(1) ÷ proposta(3).
     const tr1 = document.querySelector('.tabela-projecao tbody tr[data-conta="1"]');
@@ -8120,16 +8121,23 @@ async function provasVisaoDoAno(page, largura) {
       cabecalhos: card.querySelectorAll('thead th').length,
       linhas: linhas.length,
       campos: card.querySelectorAll('input, select, textarea').length,
+      rotulos: linhas.map((tr) => tr.children[0].textContent.replace(/\s+/g, ' ').trim()),
       rob: cel(linhas[0], 'resto'), robApi: fmt(d.visao_ano['1'].realista_resto),
-      rl: cel(linhas[1], 'resto'), rlApi: fmt(d.visao_ano['18'].realista_resto),
-      rlAno: cel(linhas[1], 'ano'), rlAnoApi: fmt(d.visao_ano['18'].real_realista),
+      rl: cel(linhaRl, 'resto'), rlApi: fmt(d.visao_ano['18'].realista_resto),
+      rlAno: cel(linhaRl, 'ano'), rlAnoApi: fmt(d.visao_ano['18'].real_realista),
+      margem: cel(linhas[linhas.indexOf(linhaRl) + 1], 'ano'),
+      margemApi: (d.visao_ano['18'].real_realista / d.visao_ano['3'].real_realista * 100)
+        .toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%',
       thAv: [...document.querySelectorAll('.tabela-projecao thead th')].map((th) => th.textContent.replace(/\s+/g, ' ').trim()),
       avProposta: tr1.querySelector('.celula-av-proposta')?.textContent.trim(),
       avEsperado: (100 * p1 / p3).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%',
     };
   }, n);
-  t(`${l} no negócio, o quadro tem receita bruta e resultado líquido, com as 11 colunas do painel`,
-    r.linhas === 2 && r.cabecalhos === 11, JSON.stringify([r.linhas, r.cabecalhos]));
+  // Desde 2026-11-25: as seis linhas do seletor do Corporativo, e as margens bruta e líquida.
+  t(`${l} no negócio, o quadro tem as seis linhas (receitas, lucro bruto, despesas, antes dos rateios, líquido) e as duas margens, com as 11 colunas do painel`,
+    r.linhas === 8 && r.cabecalhos === 11 && /^Receita operacional líquida/.test(r.rotulos[1]) && /margem bruta/.test(r.rotulos[3])
+    && /margem líquida/.test(r.rotulos[7]), JSON.stringify([r.linhas, r.cabecalhos, r.rotulos]));
+  t(`${l} a margem líquida real + realista é o resultado ÷ a receita líquida do servidor`, r.margem === r.margemApi, `${r.margem} / ${r.margemApi}`);
   t(`${l} e é só leitura (nenhum campo)`, r.campos === 0, String(r.campos));
   t(`${l} a visão realista na tela é o número do servidor (receita, resultado e o ano)`,
     r.rob === r.robApi && r.rl === r.rlApi && r.rlAno === r.rlAnoApi, JSON.stringify([r.rob, r.robApi, r.rl, r.rlApi]));
@@ -8137,9 +8145,35 @@ async function provasVisaoDoAno(page, largura) {
   t(`${l} a A.V. da proposta vem logo depois da Proposta`, /A\.V\.\s*sobre a ROL proposta/.test(r.thAv[iProp + 1] || ''), r.thAv.join(' | '));
   t(`${l} e é a proposta da linha sobre a ROL proposta`, r.avProposta === r.avEsperado, `${r.avProposta} / ${r.avEsperado}`);
 
-  // Corporativo: um quadro por linha, com todos os negócios e o total.
+  // Corporativo: o SELETOR (2026-11-25) escolhe a linha; R$ ou % no lucro bruto e no líquido.
   await escolher('corp');
-  await esperar(page, "!!document.querySelector('.tabela-visao-ano[data-conta-visao=\"16\"]')", 15000);
+  await esperar(page, "!!document.querySelector('.seletor-visao-ano [data-visao-conta]')", 30000);
+  const sel = await page.evaluate(() => ({
+    botoes: [...document.querySelectorAll('.seletor-visao-ano [data-visao-conta]')].map((b) => b.textContent.trim()),
+    tabelas: document.querySelectorAll('.tabela-visao-ano').length,
+  }));
+  t(`${l} no Corporativo, o seletor tem as seis linhas e mostra um quadro por vez`,
+    sel.botoes.join('|') === 'Receita bruta|Receita líquida|Lucro bruto|Despesas operacionais|Resultado antes dos rateios|Resultado líquido'
+    && sel.tabelas === 1, JSON.stringify(sel));
+  await page.click('.seletor-visao-ano [data-visao-conta="7"]');
+  t(`${l} despesas: o quadro troca e não há botão de %`, await page.evaluate(() =>
+    document.querySelector('.tabela-visao-ano').dataset.contaVisao === '7' && !document.querySelector('[data-visao-modo-botao]')));
+  await page.click('.seletor-visao-ano [data-visao-conta="18"]');
+  await page.click('[data-visao-modo-botao="pct"]');
+  const pc = await page.evaluate(async () => {
+    const d = await App.api('/api/projecao?corporativo=1');
+    const t = d.visao_ano_total;
+    const tab = document.querySelector('.tabela-visao-ano');
+    return {
+      modo: tab.dataset.visaoModo,
+      total: tab.querySelector('tr.linha-total-visao [data-realista="ano"]').textContent.trim(),
+      esperado: (t['18'].real_realista / t['3'].real_realista * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%',
+      pp: tab.querySelector('tr.linha-total-visao [data-realista="x-plano"]').textContent.trim(),
+    };
+  });
+  t(`${l} resultado líquido em %: a margem do total é o resultado ÷ a receita líquida, e a diferença sai em p.p.`,
+    pc.modo === 'pct' && pc.total === pc.esperado && / p\.p\.$/.test(pc.pp), JSON.stringify(pc));
+  await page.click('[data-visao-modo-botao="valor"]');
   const c = await page.evaluate(async () => {
     const d = await App.api('/api/projecao?corporativo=1');
     const t16 = document.querySelector('.tabela-visao-ano[data-conta-visao="18"]');

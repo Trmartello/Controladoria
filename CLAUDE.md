@@ -3275,6 +3275,20 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   as Agropecuárias; o total não mudou. **A.V. da proposta**: coluna logo depois da
   Proposta, cada linha sobre a ROL proposta — é ela que diz se a meta preserva a
   margem (diretriz do horizonte 1). Provas: `provasVisaoDoAno`.
+  **Seletor de visão no quadro do ano** (pedido do cliente, 2026-11-25): o
+  quadro "realizado, planejado e visão realista" cobre seis linhas
+  (`Projecao::LINHAS_VISAO_ANO`: 1, 3, 5, 7, 13 e 18). No Corporativo e nos
+  grupos, um grupo de botões escolhe a linha (um quadro por vez) e outro, R$ | %,
+  troca lucro bruto e resultado líquido pela margem sobre a receita líquida — a
+  margem de cada coluna é a linha ÷ a receita líquida da MESMA coluna, inclusive
+  o realista, e as diferenças saem em p.p. Escolha em memória
+  (`visaoConta`/`visaoPct`). No negócio, as seis linhas e as duas margens numa
+  tabela só. **Regra do realista nas linhas novas** (decisão minha, a confirmar
+  com a controladoria): receita líquida pela aderência, como a bruta; lucro
+  bruto, despesas e antes dos rateios pelo desvio médio, como o líquido — cada
+  linha calculada sozinha. Prova: `visao_realista.php` e `provasVisaoDoAno`.
+  **Desafio extra destacado**: as células editáveis do administrador têm o
+  amarelo-claro de "onde se lança" (`#fff6d6`), e o ajustado, o amarelo forte.
   **Detalhe da DRE em três níveis** (pedido do cliente, 2026-11-25, no lugar dos
   botões "Abrir contas reduzidas (nível 3)" e "Recolher subcontas" de 2026-11-18):
   um grupo de três botões acima da tabela, no padrão do "Mostrar até" dos
