@@ -7959,13 +7959,16 @@ async function provasDesafioEExpansores(page, largura) {
   const api = await page.evaluate(async () => {
     const id = document.querySelector('#projecao-negocio').value;
     const d = await App.api(`/api/projecao?negocio_id=${id}`);
-    return { des: d.desafio && d.desafio.desafio, pro: d.desafio && d.desafio.proposta, rl: (d.linhas.find((x) => x.codigo === '18') || {}).proposta };
+    const l = (c) => (d.linhas.find((x) => x.codigo === c) || {}).proposta;
+    return { des: d.desafio && d.desafio.desafio, pro: d.desafio && d.desafio.proposta, rl: l('18'),
+      l1: l('1'), taxaCbs: l('CBS') / d.desafio.escada.proposta.receita_bruta };
   });
   const tela = await page.evaluate(() => {
     const n = (s) => Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.'));
     const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => (c.querySelector('input.celula-desafio')?.value ?? c.textContent).trim());
     return {
-      rob: n(td('receita_bruta')[1]), rl: n(td('resultado')[1]), rlProposta: n(td('resultado')[2]),
+      rob: n(td('receita_bruta')[1]), robProposta: n(td('receita_bruta')[2]),
+      rl: n(td('resultado')[1]), rlProposta: n(td('resultado')[2]),
       dif: n(td('resultado')[3]), margem: td('margem')[1],
       campos: document.querySelectorAll('.painel-desafio input, .painel-desafio select, .painel-desafio [contenteditable]').length,
       camposDesafio: [...document.querySelectorAll('.painel-desafio input.celula-desafio')].map((i) => i.dataset.desafioChave),
@@ -7982,8 +7985,39 @@ async function provasDesafioEExpansores(page, largura) {
   // (−4,17%) com o rateio financeiro da planilha na 14.2 (R$ 19,93 mi).
   // E −R$ 22.327.947 com a 14.1 (Matriz/Central) zerada: os −R$ 245 do resíduo saem (2026-11-25).
   // E −R$ 19.501.365 (−3,64%) com a planilha nova do rateio administrativo (25/11: 16.1 de R$ 59,0 → 37,7 mi).
-  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta e −R$ 19.501.365 de resultado, margem −3,64%`,
-    api.des && tela.rob === 555517764 && tela.rl === -19501365 && /3,64%/.test(tela.margem), JSON.stringify(tela));
+  // Desde 2026-11-25 o cartão mostra o faturamento SEM a CBS, como a DRE de 2027 (o
+  // desafio continua R$ 555.517.764 na API, no formato da carga, com o PIS/COFINS).
+  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta (no cartão, sem a CBS) e −R$ 19.501.365 de resultado, margem −3,64%`,
+    api.des && Math.round(api.des.receita_bruta) === 555517764 && Math.abs(tela.rob - Math.round(555517764 * (1 - api.taxaCbs))) <= 1
+    && tela.rob < 555517764 && tela.rl === -19501365 && /3,64%/.test(tela.margem), JSON.stringify({ ...tela, taxa: api.taxaCbs }));
+  t(`${l} o faturamento da coluna Proposta do cartão é a linha 1 da DRE (sem a CBS)`,
+    Math.abs(tela.robProposta - Math.round(api.l1)) <= 1, `${tela.robProposta} × ${api.l1}`);
+  // Em tempo real (2026-11-25: "precisa atualizar em tempo real, enquanto preenche a
+  // DRE"): lançar na DRE repinta a coluna Proposta do cartão, sem recarregar.
+  const lancarDre = async (v) => {
+    const resp = page.waitForResponse((r) => r.url().includes('/api/projecao/valor'), { timeout: 30000 });
+    await page.evaluate((x) => {
+      const i = document.querySelector('.tabela-projecao tr[data-conta="1.1"] .celula-proposta');
+      i.focus(); i.value = x; i.blur();
+    }, v);
+    await resp;
+    await page.waitForTimeout(300);
+    return page.evaluate(() => {
+      const n = (s) => Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.'));
+      const td = (k, i) => document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)[i]?.textContent;
+      const l1 = SecaoProjecao.dados.linhas.find((x) => x.codigo === '1').proposta;
+      return { rob: n(td('receita_bruta', 2)), rl: n(td('resultado', 2)), l1: Math.round(l1),
+        l18: Math.round(SecaoProjecao.dados.linhas.find((x) => x.codigo === '18').proposta) };
+    });
+  };
+  // 20%: acima do piso de crescimento da diretriz (abaixo dele a DRE volta ao piso e não grava).
+  const comLanc = await lancarDre('20%');
+  t(`${l} lançar 20% na receita da DRE muda na hora o faturamento e o resultado da coluna Proposta do cartão`,
+    comLanc.rob > tela.robProposta && Math.abs(comLanc.rob - comLanc.l1) <= 1 && Math.abs(comLanc.rl - comLanc.l18) <= 1,
+    JSON.stringify([tela.robProposta, comLanc]));
+  const semLanc = await lancarDre('');
+  t(`${l} e apagar o lançamento devolve o cartão`, Math.abs(semLanc.rob - tela.robProposta) <= 1 && semLanc.rl === tela.rlProposta,
+    JSON.stringify(semLanc));
   // A diferença sai dos valores sem arredondar: compara com tolerância de R$ 1.
   t(`${l} a coluna Proposta é a linha 18 da proposta, e a diferença é proposta − desafio`,
     Math.round(api.rl) === tela.rlProposta && Math.abs(tela.dif - (Math.round(api.rl) - tela.rl)) <= 1, `${api.rl} | ${JSON.stringify(tela)}`);

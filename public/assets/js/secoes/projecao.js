@@ -1347,13 +1347,23 @@ const SecaoProjecao = {
     if (!x || d.filial) return '';
     const des = x.desafio;
     const pro = x.proposta;
-    const e = x.escada || { desafio: {}, proposta: {}, estimados: [] };
+    const e0 = x.escada || { desafio: {}, proposta: {}, estimados: [] };
+    // O FATURAMENTO COMO NA DRE (pedido do cliente, 2026-11-25: a Proposta do cartão
+    // "deve refletir conforme o que ele for preenchendo na DRE"): o motor e o desafio
+    // têm a receita bruta COM o PIS/COFINS (formato da carga); a DRE de 2027 mostra
+    // sem ele (`Reforma::formatoNovo`). O cartão tira a mesma parte, na taxa da CBS
+    // da proposta — a Proposta fica igual à linha 1 da DRE, centavo a centavo.
+    const taxaCbs = this.taxaCbsDoCartao(d);
+    const semCbs = (v) => (taxaCbs === null || v === null || v === undefined ? v : v * (1 - taxaCbs));
+    const comFat = (o) => ({ ...(o || {}), receita_bruta: semCbs((o || {}).receita_bruta) });
+    const e = { ...e0, desafio: comFat(e0.desafio), proposta: comFat(e0.proposta),
+      calculado: e0.calculado ? comFat(e0.calculado) : undefined };
     const est = new Set(e.estimados || []);
     const pp = (v) => (v === null || v === undefined ? null : v / 100);
     // A escada da DRE (pedido do cliente, 2026-11-18). `pct` marca as linhas de
     // percentual: a diferença sai em pontos percentuais, não em reais.
     const degraus = [
-      ['receita_bruta', 'Faturamento <span class="text-muted small">(receita operacional bruta)</span>'],
+      ['receita_bruta', `Faturamento <span class="text-muted small">(receita operacional bruta${taxaCbs === null ? '' : ', sem a CBS, como na DRE'})</span>`],
       ['receita_liquida', 'Receita líquida'],
       ['lucro_bruto', 'Margem bruta <span class="text-muted small">(lucro operacional bruto)</span>'],
       ['margem_bruta', '<span class="ps-3">% margem bruta <span class="text-muted small">(sobre a receita líquida)</span></span>', true],
@@ -1430,10 +1440,15 @@ const SecaoProjecao = {
             </tr></thead>
             <tbody>
               ${degraus.map(linha).join('')}
-              <tr data-desafio="pis_cofins" class="small"><td>PIS + COFINS <span class="text-muted">(taxa de ${x.ano - 1}; em ${x.ano} vira a CBS, mesmo valor)</span></td>
+              ${taxaCbs === null
+    ? `<tr data-desafio="pis_cofins" class="small"><td>PIS + COFINS <span class="text-muted">(taxa de ${x.ano - 1}; em ${x.ano} vira a CBS, mesmo valor)</span></td>
                 <td class="text-end text-muted">${des.pis_cofins ? this.moeda(des.pis_cofins.total) : '—'}</td>
                 <td class="text-end">${pro.pis_cofins ? this.moeda(pro.pis_cofins.total) : '—'}</td>
-                <td class="text-end"></td></tr>
+                <td class="text-end"></td></tr>`
+    : `<tr data-desafio="pis_cofins" class="small"><td>CBS <span class="text-muted">(o PIS + COFINS de ${x.ano - 1}; fora do faturamento, como na DRE)</span></td>
+                <td class="text-end text-muted">${this.moeda((e0.desafio.receita_bruta || 0) * taxaCbs)}</td>
+                <td class="text-end">${this.moeda((e0.proposta.receita_bruta || 0) * taxaCbs)}</td>
+                <td class="text-end"></td></tr>`}
             </tbody>
           </table>
         </div>
@@ -1448,6 +1463,18 @@ const SecaoProjecao = {
         <div class="small text-muted" id="desafio-nota">
           <strong>${Modal.esc(des.nota)}</strong> ${this.notaDesafio(x)}
         </div>`);
+  },
+
+  /**
+   * A taxa da CBS que a DRE de 2027 tira do faturamento: a linha informativa da CBS
+   * sobre a receita bruta da proposta (no formato da carga, com o PIS/COFINS). Null
+   * quando a DRE não está no formato novo — aí o cartão fica como era.
+   */
+  taxaCbsDoCartao(d) {
+    const cbs = (d.linhas || []).find((l) => l.codigo === 'CBS');
+    const rb = Number((((d.desafio || {}).escada || {}).proposta || {}).receita_bruta) || 0;
+    if (!cbs || !rb || cbs.proposta === null || cbs.proposta === undefined) return null;
+    return Number(cbs.proposta) / rb;
   },
 
   /** O que o negócio pagou de PIS/COFINS em 2026 — o valor que a CBS herda em 2027. */
@@ -1679,6 +1706,12 @@ const SecaoProjecao = {
       }
       chave = 'lucro_bruto';
       valor = valor === null ? null : Math.round(valor / 100 * rl * 100) / 100;
+    }
+    // O faturamento se digita SEM a CBS, como aparece (e como na DRE); o servidor
+    // guarda no formato da carga, com o PIS/COFINS dentro.
+    const taxaCbs = this.taxaCbsDoCartao(this.dados);
+    if (chave === 'receita_bruta' && valor !== null && taxaCbs !== null && taxaCbs < 1) {
+      valor = Math.round(valor / (1 - taxaCbs) * 100) / 100;
     }
     const pedido = ++this.pedido;
     inp.classList.add('celula-gravando');
@@ -2797,6 +2830,10 @@ const SecaoProjecao = {
    */
   repintarProposta(el) {
     el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
+    // O cartão do desafio também (pedido do cliente, 2026-11-25: "precisa atualizar
+    // em tempo real, enquanto preenche a DRE"): a coluna Proposta dele é a DRE.
+    const desafio = el.querySelector('.painel-desafio');
+    if (desafio) desafio.outerHTML = this.cartaoDesafio(this.dados);
     const tbody = el.querySelector('.tabela-projecao tbody');
     if (tbody) tbody.innerHTML = this.corpo(this.dados);
     this.pintarMetaNegativa(el);
