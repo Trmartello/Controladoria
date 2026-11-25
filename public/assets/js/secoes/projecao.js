@@ -2367,9 +2367,17 @@ const SecaoProjecao = {
     // (pedido do cliente, 2026-11-25: "parece não fazer sentido além de ocupar um
     // espaço"); só fica a do negócio por filial, que avisa onde se lança.
     if (d.modo !== 'FILIAL') return '';
-    return `<div class="alert alert-light border py-2 px-3 small mb-3">
+    // O botão que troca o modo mora no topo, longe da DRE; aqui vai um atalho para
+    // ele (pedido do cliente, 2026-11-25: nos Postos "não está aceitando digitação" —
+    // o negócio estava em "Planejar por filial"). Trocar não apaga lançamento.
+    const atalho = d.pode_editar && !App.modoDossie
+      ? `<button type="button" class="btn btn-sm btn-verde ms-2 py-0" data-modo-atalho="NEGOCIO"
+          title="Troca para Planejar o negócio: a Proposta passa a ser digitada no total. Nenhum lançamento das filiais se apaga.">
+          Digitar no total do negócio</button>`
+      : '';
+    return `<div class="alert alert-light border py-2 px-3 small mb-3" id="aviso-modo-filial">
       Este negócio planeja <strong>por filial</strong>: a coluna Proposta é a soma das filiais e
-      não se digita aqui. Escolha uma filial para lançar.
+      não se digita aqui. Escolha uma filial para lançar, ou passe a planejar no total.${atalho}
     </div>`;
   },
 
@@ -2701,6 +2709,16 @@ const SecaoProjecao = {
         el.querySelector('#premissa-ano')?.focus();
       });
     }
+    el.querySelectorAll('[data-modo-atalho]').forEach((btn) => {
+      if (!virgem(btn)) return;
+      btn.addEventListener('click', () => {
+        const r = el.querySelector(`input[name="projecao-modo"][value="${btn.dataset.modoAtalho}"]`);
+        if (!r) return;
+        btn.disabled = true;
+        r.checked = true;
+        r.dispatchEvent(new Event('change'));
+      });
+    });
     el.querySelectorAll('input[name="projecao-modo"]').forEach((r) => {
       if (!virgem(r)) return;
       r.addEventListener('change', async (ev) => {
