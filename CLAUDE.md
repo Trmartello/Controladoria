@@ -183,6 +183,15 @@ classes que a bateria lê (`.bloco-pessoas`, `#pessoas-quadro`, `#abono-total`,
 receita líquida do desafio) ou o valor; a tela converte a % em reais e grava como
 `lucro_bruto` — o servidor não conhece a %.
 
+**Cartão do desafio = a DRE, em tempo real** (2026-11-25: a coluna Proposta "deve refletir
+conforme o que ele for preenchendo na DRE … precisa atualizar em tempo real"):
+`repintarProposta` (cada gravação de célula da DRE) repinta também o `.painel-desafio`. E o
+**faturamento do cartão sai SEM a CBS**, como a linha 1 da DRE de 2027: o motor e o desafio
+guardam a receita bruta COM o PIS/COFINS (formato da carga); a tela tira a mesma parte, na
+taxa `taxaCbsDoCartao` (linha CBS ÷ receita bruta da proposta), nas duas colunas — a Proposta
+fica igual à linha 1, e a linha de baixo vira "CBS". O ADMIN digita o faturamento do desafio
+sem a CBS; `gravarDesafio` devolve ao formato da carga (÷ (1 − taxa)) antes de gravar.
+
 **Rateio Corporativo Administrativo (16.1) CALCULADO e TRAVADO** (pedido do cliente,
 2026-11-24: "gere um critério de rateio por negócio, olhando para a coluna K 'saldo' e
 por período / mês […] numa proporção de valor orçado. Bloqueia o campo"). O total a
