@@ -134,11 +134,24 @@ da depreciação está fora da 3128 (3388/3389 variação fiscal × societária,
 rateio em 4.1/14.3/16.1, 3342 direito de uso na 8.9): confirmar se a planilha
 não soma o que já está nessas contas. Provas: `testes/depreciacao.php`.
 
-**Oportunidades.** Janela de 12 meses (nov/25–out/26) contra os 12 anteriores, com
-o período escrito em cada item ("nov/25–out/26", "nov/24–out/25"). Considerar /
-Desconsiderar em TODAS as linhas — itens e meses fora do padrão —, sem o selo
-"avaliado" (2026-11-24; `negocio_item_avaliacao`). Os questionamentos 2025 × 2026
-vêm de `dre_reduzida_12m`.
+**Oportunidades.** Desde 2026-11-25 (pedido do cliente: "considere 2025 de janeiro a
+dezembro e 2026 de janeiro até o mês que tem rateio"): o período é o **ano corrente
+até o corte** (jan–out/26) e a comparação, o **ano anterior inteiro** (jan–dez/25) —
+`Oportunidades::periodoAtual`/`periodoAnterior`; entre 23/11 e 25/11 eram janelas de
+12 meses (nov a out). Itens, meses fora do padrão (mediana dos meses do período),
+lançamentos e questionamentos seguem o mesmo par. Os questionamentos precisam de 2025
+inteiro por conta reduzida, que não tem carga própria e não precisa: ano anterior =
+nível 3 jan–corte dele (`dre_reduzida_valor`) + janela de 12 meses que termina no
+corte deste ano (`dre_reduzida_12m`) − nível 3 jan–corte deste. As chaves vêm das três
+fontes (conta que soma zero na janela não está nela: a 9.2.5 das Agropecuárias, com
+−R$ 1.230.088 em dez/25 estornado em jun/26). Conferido contra a DRE de nov–dez/2025:
+as 32 linhas batem. Considerar / Desconsiderar em TODAS as linhas — itens e meses fora
+do padrão —, sem o selo "avaliado" (`negocio_item_avaliacao`); desde 25/11 pequenos
+(`.btn-avaliar`) e no INÍCIO da célula do item.
+
+**% de margem bruta no desafio extra** (2026-11-25): o ADMIN digita a % (sobre a
+receita líquida do desafio) ou o valor; a tela converte a % em reais e grava como
+`lucro_bruto` — o servidor não conhece a %.
 
 **Rateio Corporativo Administrativo (16.1) CALCULADO e TRAVADO** (pedido do cliente,
 2026-11-24: "gere um critério de rateio por negócio, olhando para a coluna K 'saldo' e

@@ -179,27 +179,28 @@ $ql = [];
 foreach ($q['linhas'] as $l) {
     $ql[$l['tipo'] . ':' . $l['codigo']] = $l;
 }
-// Desde 2026-11-23 o quadro olha os 12 meses de nov/2025 a out/2026: a PDD do
-// Leite é jan–out/2026 (7.182.466) + nov/2025 (−40) = 7.182.426.
-prova('Leite: a PDD é ITEM com os meses da janela (out/26: −5.597.104; nov/25: +40) e efeito +7.182.426',
-    isset($ql['ITEM:3.11.03.01.01']) && abs($ql['ITEM:3.11.03.01.01']['oportunidade'] - 7182426) < 1
+// Desde 2026-11-25 o quadro olha jan–out/2026 (antes, os 12 meses de nov/2025 a
+// out/2026): a PDD do Leite é a de jan–out/2026, 7.182.466, sem o nov/2025.
+prova('Leite: a PDD é ITEM com os meses de jan–out/26 (out/26: −5.597.104; nada de 2025) e efeito +7.182.466',
+    isset($ql['ITEM:3.11.03.01.01']) && abs($ql['ITEM:3.11.03.01.01']['oportunidade'] - 7182466) < 1
     && in_array(['ano' => 2026, 'mes' => 10, 'valor' => -5597104.0], $ql['ITEM:3.11.03.01.01']['meses'], false)
-    && in_array(['ano' => 2025, 'mes' => 11, 'valor' => 40.0], $ql['ITEM:3.11.03.01.01']['meses'], false),
+    && !array_filter($ql['ITEM:3.11.03.01.01']['meses'], static fn ($m) => $m['ano'] !== 2026),
     json_encode($ql['ITEM:3.11.03.01.01']['meses'] ?? null));
 prova('e a linha 9.2 só mostra o que SOBRA em outubro sem a PDD (−1.578.000), não os −7,18 mi de novo',
     isset($ql['EVENTO:9.2']) && count($ql['EVENTO:9.2']['meses']) === 1 && abs($ql['EVENTO:9.2']['meses'][0]['valor'] + 1578000) < 1,
     json_encode($ql['EVENTO:9.2'] ?? null));
-// A mediana passa a ser dos 12 meses (R$ 1.118): o risco é 7.231.275 − 1.118.
-prova('a receita de juros de outubro (R$ 7,23 mi) é risco, contra a mediana dos 12 meses',
-    isset($ql['EVENTO:11.1']) && abs($ql['EVENTO:11.1']['risco'] + 7230157) < 1, (string)($ql['EVENTO:11.1']['risco'] ?? ''));
-prova('totais: oportunidades = soma das linhas, riscos idem, saldo = os dois (Leite +8.999.983 / −7.731.667, 12 meses)',
+// A mediana é a dos meses de jan–out/2026 (R$ 1.183): o risco é 7.231.275 − 1.183.
+prova('a receita de juros de outubro (R$ 7,23 mi) é risco, contra a mediana de jan–out',
+    isset($ql['EVENTO:11.1']) && abs($ql['EVENTO:11.1']['risco'] + 7230092) < 1, (string)($ql['EVENTO:11.1']['risco'] ?? ''));
+prova('totais: oportunidades = soma das linhas, riscos idem, saldo = os dois (Leite +9.025.328 / −7.693.715, jan–out/26)',
     abs($q['oportunidade'] - array_sum(array_column($q['linhas'], 'oportunidade'))) < 1e-6
     && abs($q['risco'] - array_sum(array_column($q['linhas'], 'risco'))) < 1e-6
-    && abs($q['oportunidade'] - 8999983) < 2 && abs($q['risco'] + 7731667) < 2 && abs($q['saldo'] - $q['oportunidade'] - $q['risco']) < 1e-6,
+    && abs($q['oportunidade'] - 9025328) < 2 && abs($q['risco'] + 7693715) < 2 && abs($q['saldo'] - $q['oportunidade'] - $q['risco']) < 1e-6,
     round($q['oportunidade']) . ' / ' . round($q['risco']));
-prova('a janela do quadro é nov/2025 a out/2026', $q['periodo'] === ['de' => [2025, 11], 'ate' => [2026, 10]], json_encode($q['periodo']));
-prova('o item traz o total dos 12 meses e o dos 12 meses antes (sinal da DRE): PDD do Leite −7.182.426 contra −110 (dez/24: 70 + abr/25: 40)',
-    abs($ql['ITEM:3.11.03.01.01']['total'] + 7182426) < 1 && abs($ql['ITEM:3.11.03.01.01']['anterior'] + 110) < 1,
+prova('o período é jan–out/2026, comparado a jan–dez/2025', $q['periodo'] === ['de' => [2026, 1], 'ate' => [2026, 10]]
+    && $q['periodo_anterior'] === ['de' => [2025, 1], 'ate' => [2025, 12]], json_encode([$q['periodo'], $q['periodo_anterior'] ?? null]));
+prova('o item traz o total do período e o de 2025 inteiro (sinal da DRE): PDD do Leite −7.182.466 contra 0 (abr/25: 40 e nov/25: −40)',
+    abs($ql['ITEM:3.11.03.01.01']['total'] + 7182466) < 1 && abs($ql['ITEM:3.11.03.01.01']['anterior']) < 1,
     json_encode([$ql['ITEM:3.11.03.01.01']['total'], $ql['ITEM:3.11.03.01.01']['anterior']]));
 // Desde 2026-11-24 TODAS as linhas se avaliam, itens e meses fora do padrão.
 prova('sem avaliação, todas as linhas (itens e meses fora do padrão) estão sem marcação', $q['avaliacao']['avaliados'] === 0
@@ -226,12 +227,12 @@ try {
     // no sinal da DRE: −(oportunidade + risco).
     prova('o mês fora do padrão também se marca, e entra nos considerados pelo afastamento do padrão',
         !$evento || (($ev2['avaliacao']['decisao'] ?? null) === 'CONSIDERAR'
-            && abs($q2['avaliacao']['considerar'] - (-7182426 - ($evento['oportunidade'] + $evento['risco']))) < 1
+            && abs($q2['avaliacao']['considerar'] - (-7182466 - ($evento['oportunidade'] + $evento['risco']))) < 1
             && $q2['avaliacao']['avaliados'] === ($outra ? 3 : 2)),
         json_encode([$q2['avaliacao'], $evento['oportunidade'] ?? null, $evento['risco'] ?? null]));
     $pdd2 = array_values(array_filter($q2['linhas'], static fn ($l) => $l['chave_avaliacao'] === '3.11.03.01.01'))[0];
-    prova('considerar a PDD a marca como considerada (−7.182.426 nos 12 meses)',
-        ($pdd2['avaliacao']['decisao'] ?? null) === 'CONSIDERAR' && abs($pdd2['total'] + 7182426) < 1, json_encode($pdd2['avaliacao']));
+    prova('considerar a PDD a marca como considerada (−7.182.466 em jan–out/26)',
+        ($pdd2['avaliacao']['decisao'] ?? null) === 'CONSIDERAR' && abs($pdd2['total'] + 7182466) < 1, json_encode($pdd2['avaliacao']));
     prova('desconsiderar outra põe o total dela em "oportunidade"', !$outra || abs($q2['avaliacao']['desconsiderar'] - $outra['total']) < 1);
     prova('a avaliação não muda os totais do quadro', abs($q2['oportunidade'] - $q['oportunidade']) < 1e-6 && abs($q2['risco'] - $q['risco']) < 1e-6);
 } finally {

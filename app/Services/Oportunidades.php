@@ -148,10 +148,11 @@ class Oportunidades
     public static function picos(int $negocioId, int $ano, int $corte, int $filialId = 0, array $ajuste = []): array
     {
         $filtro = "(c.codigo LIKE '8.%' OR c.codigo LIKE '9.%' OR c.codigo LIKE '11.%')";
-        // A JANELA DE 12 MESES (pedido do cliente, 2026-11-23): de nov do ano
-        // anterior a out do atual — `[$ano - 1, mês > corte]` + `[$ano, mês ≤ corte]`.
-        $periodo = '((v.ano = ? AND v.mes > ?) OR (v.ano = ? AND v.mes <= ?))';
-        $pp = [$ano - 1, $corte, $ano, $corte];
+        // O ANO CORRENTE, de jan até o corte (pedido do cliente, 2026-11-25: "considere
+        // 2025 de janeiro a dezembro e 2026 de janeiro até o mês que tem rateio";
+        // entre 23/11 e 25/11 era a janela de 12 meses, nov a out).
+        $periodo = '(v.ano = ? AND v.mes <= ?)';
+        $pp = [$ano, $corte];
         $linhas = $filialId
             ? Database::todos(
                 "SELECT c.codigo, c.nome, v.ano, v.mes, v.valor FROM dre_valor_filial_mes v JOIN dre_conta c ON c.id = v.conta_id
@@ -237,19 +238,19 @@ class Oportunidades
         if (!$filialId) {
             $porConta = [];
             $anterior = [];
-            // Janela de 12 meses (nov do ano anterior a out do atual) e os 12 meses
-            // ANTES dela, para comparar (pedido do cliente, 2026-11-23).
+            // O ano corrente de jan até o corte, e o ANO ANTERIOR INTEIRO para
+            // comparar (pedido do cliente, 2026-11-25; antes, janelas de 12 meses).
             foreach (Database::todos(
                 'SELECT conta, ano, mes, valor FROM negocio_nao_recorrente_mes
-                  WHERE negocio_id = ? AND ((ano = ? AND mes > ?) OR (ano = ? AND mes <= ?)) ORDER BY conta, ano, mes',
-                [$negocioId, $ano - 1, $corte, $ano, $corte]
+                  WHERE negocio_id = ? AND ano = ? AND mes <= ? ORDER BY conta, ano, mes',
+                [$negocioId, $ano, $corte]
             ) as $r) {
                 $porConta[$r['conta']][self::chaveMes((int)$r['ano'], (int)$r['mes'])] = (float)$r['valor'];
             }
             foreach (Database::todos(
                 'SELECT conta, SUM(valor) s, COUNT(*) n FROM negocio_nao_recorrente_mes
-                  WHERE negocio_id = ? AND ((ano = ? AND mes > ?) OR (ano = ? AND mes <= ?)) GROUP BY conta',
-                [$negocioId, $ano - 2, $corte, $ano - 1, $corte]
+                  WHERE negocio_id = ? AND ano = ? GROUP BY conta',
+                [$negocioId, $ano - 1]
             ) as $r) {
                 $anterior[$r['conta']] = (float)$r['s'];
             }
@@ -287,8 +288,8 @@ class Oportunidades
                         },
                         array_keys(array_filter($meses)), array_values(array_filter($meses))
                     )) : [],
-                    // No sinal da DRE (despesa negativa): o total da janela e o dos 12
-                    // meses antes dela, para comparar.
+                    // No sinal da DRE (despesa negativa): o total do ano corrente até o
+                    // corte e o do ano anterior inteiro, para comparar.
                     'total' => -$total,
                     'anterior' => isset($anterior[$conta]) ? -$anterior[$conta] : 0.0,
                     'avaliacao' => $avaliacoes[(string)$conta] ?? null,
@@ -345,7 +346,7 @@ class Oportunidades
             }
         }
         return ['mes_ate' => $corte, 'ano' => $ano,
-            'periodo' => ['de' => self::janela($ano, $corte)[0], 'ate' => [$ano, $corte]],
+            'periodo' => self::periodoAtual($ano, $corte), 'periodo_anterior' => self::periodoAnterior($ano),
             'linhas' => $linhas, 'oportunidade' => $op, 'risco' => $ri, 'saldo' => $op + $ri, 'avaliacao' => $aval];
     }
 
@@ -367,6 +368,18 @@ class Oportunidades
     public static function chaveMes(int $ano, int $mes): string
     {
         return sprintf('%04d-%02d', $ano, $mes);
+    }
+
+    /** O período das oportunidades: o ano corrente, de jan até o corte (2026-11-25). */
+    public static function periodoAtual(int $ano, int $corte): array
+    {
+        return ['de' => [$ano, 1], 'ate' => [$ano, $corte]];
+    }
+
+    /** E o de comparação: o ano anterior inteiro, jan a dez. */
+    public static function periodoAnterior(int $ano): array
+    {
+        return ['de' => [$ano - 1, 1], 'ate' => [$ano - 1, 12]];
     }
 
     /**
@@ -437,24 +450,39 @@ class Oportunidades
      */
     public static function questionamentos(int $negocioId, int $ano, int $corte, int $filialId = 0): ?array
     {
-        // As duas janelas de 12 meses (pedido do cliente, 2026-11-23: "desde
-        // novembro do ano anterior até outubro do ano atual, e compare com o ano
-        // anterior"): a que termina no corte deste ano e a que termina no corte do
-        // ano anterior.
+        // O ano corrente até o corte × o ANO ANTERIOR INTEIRO (pedido do cliente,
+        // 2026-11-25; antes, janelas de 12 meses). Não há carga por conta reduzida do
+        // ano anterior inteiro, e ela não precisa existir: os meses dele depois do
+        // corte são a janela de 12 meses que termina no corte deste ano MENOS o ano
+        // corrente até o corte. Então ano anterior = (jan–corte dele) + janela −
+        // (jan–corte deste). Conferido em 25/11 contra a DRE de nov–dez/2025: as 32
+        // linhas batem. As chaves vêm das TRÊS fontes: conta que soma zero na janela
+        // (um estorno, como a 9.2.5 das Agropecuárias) não está nela.
         $anterior = $ano - 1;
         $linhas = Database::todos(
-            "SELECT v.codigo, r.reduzida, r.nome, r.linha, r.ordem,
-                    SUM(CASE WHEN v.ano_fim = ? THEN v.realizado ELSE 0 END) AS antes,
-                    SUM(CASE WHEN v.ano_fim = ? THEN v.realizado ELSE 0 END) AS agora,
-                    MAX(v.ano_fim = ?) AS tem_antes, MAX(v.ano_fim = ?) AS tem_agora
-               FROM dre_reduzida_12m v
-               JOIN dre_reduzida r ON r.codigo = v.codigo
-              WHERE v.negocio_id = ? AND v.filial_id = ? AND v.mes_fim = ? AND v.ano_fim IN (?, ?)
-              GROUP BY v.codigo, r.reduzida, r.nome, r.linha, r.ordem",
-            [$anterior, $ano, $anterior, $ano, $negocioId, $filialId, $corte, $anterior, $ano]
+            "SELECT k.codigo, r.reduzida, r.nome, r.linha, r.ordem,
+                    COALESCE(p.v, 0) + COALESCE(w.v, 0) - COALESCE(a.v, 0) AS antes,
+                    COALESCE(a.v, 0) AS agora
+               FROM (SELECT codigo FROM dre_reduzida_valor WHERE negocio_id = ? AND filial_id = ? AND ano IN (?, ?) AND corte = ?
+                     UNION SELECT codigo FROM dre_reduzida_12m WHERE negocio_id = ? AND filial_id = ? AND ano_fim = ? AND mes_fim = ?) k
+               JOIN dre_reduzida r ON r.codigo = k.codigo
+               LEFT JOIN (SELECT codigo, SUM(realizado) v FROM dre_reduzida_valor
+                           WHERE negocio_id = ? AND filial_id = ? AND ano = ? AND corte = ? GROUP BY codigo) p ON p.codigo = k.codigo
+               LEFT JOIN (SELECT codigo, SUM(realizado) v FROM dre_reduzida_valor
+                           WHERE negocio_id = ? AND filial_id = ? AND ano = ? AND corte = ? GROUP BY codigo) a ON a.codigo = k.codigo
+               LEFT JOIN (SELECT codigo, SUM(realizado) v FROM dre_reduzida_12m
+                           WHERE negocio_id = ? AND filial_id = ? AND ano_fim = ? AND mes_fim = ? GROUP BY codigo) w ON w.codigo = k.codigo",
+            [$negocioId, $filialId, $anterior, $ano, $corte, $negocioId, $filialId, $ano, $corte,
+                $negocioId, $filialId, $anterior, $corte,
+                $negocioId, $filialId, $ano, $corte,
+                $negocioId, $filialId, $ano, $corte]
         );
-        // Sem as duas janelas carregadas não há comparação.
-        if (!$linhas || !array_filter(array_column($linhas, 'tem_antes')) || !array_filter(array_column($linhas, 'tem_agora'))) {
+        // Sem as três fontes carregadas não há comparação honesta.
+        $tem = static fn (string $sql, array $p) => (bool)Database::um($sql, $p);
+        if (!$linhas
+            || !$tem('SELECT 1 AS x FROM dre_reduzida_valor WHERE negocio_id = ? AND ano = ? AND corte = ? LIMIT 1', [$negocioId, $anterior, $corte])
+            || !$tem('SELECT 1 AS x FROM dre_reduzida_valor WHERE negocio_id = ? AND ano = ? AND corte = ? LIMIT 1', [$negocioId, $ano, $corte])
+            || !$tem('SELECT 1 AS x FROM dre_reduzida_12m WHERE negocio_id = ? AND ano_fim = ? AND mes_fim = ? LIMIT 1', [$negocioId, $ano, $corte])) {
             return null;
         }
         $parou = [];
@@ -470,18 +498,16 @@ class Oportunidades
                 'linha' => $l['linha'], 'anterior' => round($a, 2), 'atual' => round($b, 2),
             ];
             if (abs($a) >= self::QUESTIONAMENTO_MINIMO && abs($b) < self::QUESTIONAMENTO_FRACAO * abs($a)) {
-                $parou[] = $item + ['pergunta' => 'Aconteceu nos 12 meses anteriores e não nos últimos 12: deixou de acontecer — deveria continuar em ' . ($ano + 1) . '?'];
+                $parou[] = $item + ['pergunta' => "Aconteceu em {$anterior} e não em {$ano}: deixou de acontecer — deveria continuar em " . ($ano + 1) . '?'];
             } elseif (abs($b) >= self::QUESTIONAMENTO_MINIMO && abs($a) < self::QUESTIONAMENTO_FRACAO * abs($b)) {
-                $comecou[] = $item + ['pergunta' => 'Começou nos últimos 12 meses sem ter acontecido nos 12 anteriores: vai continuar em ' . ($ano + 1) . '?'];
+                $comecou[] = $item + ['pergunta' => "Começou em {$ano} sem ter acontecido em {$anterior}: vai continuar em " . ($ano + 1) . '?'];
             }
         }
         usort($parou, static fn ($x, $y) => abs($y['anterior']) <=> abs($x['anterior']));
         usort($comecou, static fn ($x, $y) => abs($y['atual']) <=> abs($x['atual']));
-        $jA = self::janela($ano, $corte);
-        $jB = self::janela($anterior, $corte);
         return ['ano' => $ano, 'ano_anterior' => $anterior, 'corte' => $corte,
-            // As janelas, para a tela dizer "nov/24–out/25 × nov/25–out/26".
-            'periodo' => ['de' => $jA[0], 'ate' => $jA[11]], 'periodo_anterior' => ['de' => $jB[0], 'ate' => $jB[11]],
+            // Os períodos, para a tela dizer "jan–dez/25 × jan–out/26".
+            'periodo' => self::periodoAtual($ano, $corte), 'periodo_anterior' => self::periodoAnterior($ano),
             'minimo' => self::QUESTIONAMENTO_MINIMO, 'parou' => $parou, 'comecou' => $comecou];
     }
 

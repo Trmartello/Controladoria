@@ -4861,3 +4861,11 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-desafio .celula-desafio.desafio-ajustado { background: #fde4a8; border-color: #e0b44a; }
 .tabela-desafio .celula-desafio.celula-gravando { opacity: .55; }
 .tabela-desafio .desafio-calculado { font-weight: 400; white-space: nowrap; }
+
+/* Considerar / Desconsiderar das oportunidades (2026-11-25): no início do item,
+   pequenos — não engordam a linha. */
+.tabela-oportunidades-quadro .avaliacao-item { vertical-align: 1px; }
+.tabela-oportunidades-quadro .btn-avaliar { font-size: .7rem; line-height: 1.1; padding: .1rem .4rem; }
+.tabela-oportunidades-quadro > tbody > tr > td:first-child { min-width: 22rem; }
+@media (max-width: 767.98px) { .tabela-oportunidades-quadro > tbody > tr > td:first-child { min-width: 14rem; } }
+.tabela-desafio .celula-desafio-pct { max-width: 7rem; flex: 0 0 7rem; }
