@@ -52,9 +52,10 @@ também o quanto a proposta segura as despesas abaixo da receita.
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, −R$ 1,5 mi de resultado, margem −0,04% (a meta de 2% pediria R$ 70,97
-mi), desde a planilha nova do rateio administrativo (25/11: 16.1 de R$ 59,0 para R$ 37,7
-mi). Antes dela, −R$ 22,8 mi e −0,64%, com os rateios de 2027 travados: 16.1
+faturamento, −R$ 1,1 mi de resultado, margem −0,03% (a meta de 2% pediria R$ 70,97
+mi), desde a base do pessoal sem a 3419, a 3398 e a 3339 (25/11; −R$ 1,5 mi e −0,04%
+desde a planilha nova do rateio administrativo (25/11: 16.1 de R$ 59,0 para R$ 37,7
+mi)). Antes dela, −R$ 22,8 mi e −0,64%, com os rateios de 2027 travados: 16.1
 administrativo (−R$ 9,8 mi), 14.3 negócio (−R$ 16,9 mi) e 14.2 financeiro (−R$ 22,8 mi) — abaixo. Era R$ 45,6 mi e 1,28%; R$ 45,8 mi e 1,29% com a 3227 fora da base do pessoal;
 R$ 32,4 mi com a depreciação carregada na 8.10 (ver abaixo); R$ 34,6 mi com a
 depreciação regravada sem o grupo contábil 1272; R$ 30,9 mi com as despesas
@@ -104,6 +105,18 @@ R$ 2,71 mi nas Agropecuárias). Cada filial cresce sobre a projeção DELA sem a
 DELA, e o mínimo da filial também. Como a conta anterior já tirava o PPR líquido
 (estorno dentro), o total do negócio quase não muda (Agropecuárias −R$ 78 mil); muda
 a distribuição entre filiais. Detalhe em "Regras de negócio", `pessoalDaDiretriz`.
+
+**E sem a 3419, a 3398 e a 3339, projetadas para o ano** (pedido do cliente,
+2026-11-25: "estornar a provisão atual de PPR conta 3419, projetar esse estorno de
+novembro e dezembro também; fazer a mesma questão para as contas 3398 e 3339 — dividir
+por 10 e multiplicar por 12"; a 3419 confirmada também por ÷10 × 12). No lugar da parte
+proporcional da folha (vale + prêmio + provisão ÷ pessoal, 15,1% nas Agropecuárias),
+sai da base o realizado de jan até o corte de cada conta ÷ corte × 12
+(`Projecao::CONTAS_ESTORNO_PESSOAL`, `estornosPessoal`, do nível 3 do negócio).
+Agropecuárias: 44.514.016 − 3.252.588 (3419) − 1.359.956 (3398) − 2.869.460 (3339) =
+**37.032.011** de base. Sem o nível 3 dessas contas vale a parte da folha. As filiais
+seguem crescendo sobre a projeção delas sem a 3227 delas, com o % do negócio. No
+desafio: Corporativo −R$ 1,09 mi (era −R$ 1,51 mi), Cereais −R$ 19,65 mi.
 
 **Depreciação (8.10): só a PECUÁRIA edita** (regra do cliente, 2026-11-24: "somente o
 negócio Pecuária deve poder editar a depreciação conforme desejar; os demais negócios
