@@ -157,6 +157,12 @@ da DRE) gruda também, e os títulos das colunas logo abaixo dela (altura medida
 deixa de rolar de lado a partir de 992px (como a 5W2H); abaixo disso o cabeçalho não
 gruda. Na impressão nada gruda.
 
+**Resultado líquido negativo DENTRO da DRE** (2026-11-25: o aviso ficava "perdido junto com
+os apontamentos acima"): `#projecao-meta-negativa` logo acima do cabeçalho, um segundo aviso
+no fim da tabela (`#projecao-meta-negativa-fim`) e a borda da DRE em vermelho
+(`.tabela-projecao.dre-negativa`) enquanto a proposta do líquido for negativa;
+`pintarMetaNegativa` refaz os três a cada gravação.
+
 **Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
 campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
 `fixa(chave)` nas premissas e `diretriz.beneficios` nos benefícios; mesma regra de antes,

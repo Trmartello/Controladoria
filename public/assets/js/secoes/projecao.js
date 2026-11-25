@@ -247,7 +247,6 @@ const SecaoProjecao = {
       ${this.faixaDoModo(d)}
       ${this.painel(d)}
       ${faltando}
-      <div id="projecao-meta-negativa-box">${this.alertaMetaNegativa(d)}</div>
       <div id="projecao-aviso" class="alert alert-danger py-2 px-3 small mb-2 d-none"></div>
       ${this.cartaoCenario(d)}
       <div id="projecao-dre-bloco">
@@ -257,7 +256,8 @@ const SecaoProjecao = {
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
         A <strong>CBS</strong> (PIS/COFINS em ${d.ano}) é informativa, acima da Receita Bruta; Receita Bruta e Deduções
         estão sem ela, inclusive ${d.ano}. A Receita Líquida não muda.</div>
-      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}">
+      <div id="projecao-meta-negativa-box">${this.alertaMetaNegativa(d)}</div>
+      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}${this.alertaMetaNegativa(d) ? ' dre-negativa' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
@@ -275,6 +275,7 @@ const SecaoProjecao = {
           <tbody>${this.corpo(d)}</tbody>
         </table>
       </div>
+      <div id="projecao-meta-negativa-fim">${this.alertaMetaNegativa(d, true)}</div>
       <div id="projecao-piso-box">${this.alertaPisoFaturamento(d)}</div>
       <div id="projecao-pessoal-box">${this.alertaPessoalMinimo(d)}</div>
       <p class="text-muted small">
@@ -1015,7 +1016,8 @@ const SecaoProjecao = {
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
         A <strong>CBS</strong> (PIS/COFINS em ${d.ano}) é informativa, acima da Receita Bruta; Receita Bruta e Deduções
         estão sem ela, inclusive ${d.ano}. A Receita Líquida não muda.</div>
-      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}">
+      <div id="projecao-meta-negativa-box">${this.alertaMetaNegativa(d)}</div>
+      <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}${this.alertaMetaNegativa(d) ? ' dre-negativa' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
             <th>Conta</th>
@@ -2572,8 +2574,7 @@ const SecaoProjecao = {
         }
       }, true);
     }
-    const caixaNeg = el.querySelector('#projecao-meta-negativa-box');
-    if (caixaNeg && this.dados) caixaNeg.innerHTML = this.alertaMetaNegativa(this.dados);
+    if (this.dados) this.pintarMetaNegativa(el);
     const caixaPiso = el.querySelector('#projecao-piso-box');
     if (caixaPiso && this.dados) caixaPiso.innerHTML = this.alertaPisoFaturamento(this.dados);
     const caixaPessoal = el.querySelector('#projecao-pessoal-box');
@@ -2779,8 +2780,7 @@ const SecaoProjecao = {
     el.querySelector('.painel-premissas').outerHTML = this.painel(this.dados);
     const tbody = el.querySelector('.tabela-projecao tbody');
     if (tbody) tbody.innerHTML = this.corpo(this.dados);
-    const negativa = el.querySelector('#projecao-meta-negativa-box');
-    if (negativa) negativa.innerHTML = this.alertaMetaNegativa(this.dados);
+    this.pintarMetaNegativa(el);
     const piso = el.querySelector('#projecao-piso-box');
     if (piso) piso.innerHTML = this.alertaPisoFaturamento(this.dados);
     const pessoal = el.querySelector('#projecao-pessoal-box');
@@ -3006,15 +3006,32 @@ const SecaoProjecao = {
    * resultado negativo; aqui se diz, enquanto ele estiver no vermelho, que a
    * proposta não pode ficar assim.
    */
-  alertaMetaNegativa(d) {
+  alertaMetaNegativa(d, fim = false) {
     if (!d || d.corporativo) return '';
     const l = (this.visao(d).linhas || []).find((x) => x.codigo === '18');
     if (!l || l.proposta === null || l.proposta >= -1) return '';
-    return `<div class="alert alert-danger py-2 px-3 small mb-2" id="projecao-meta-negativa">
+    // DENTRO da DRE (pedido do cliente, 2026-11-25: o aviso ficava "perdido junto
+    // com os apontamentos acima"): acima do cabeçalho e de novo no fim da tabela,
+    // com a borda dela em vermelho enquanto o líquido não for positivo.
+    const valor = `<strong>−R$ ${this.moeda(Math.abs(l.proposta))}</strong>`;
+    return fim
+      ? `<div class="alert alert-danger py-2 px-3 small mb-2 aviso-meta-negativa" id="projecao-meta-negativa-fim-aviso">
+          <strong>Resultado líquido negativo: ${valor}.</strong> A diretriz de ${d.ano_planejamento} não admite meta negativa — reveja a proposta.
+        </div>`
+      : `<div class="alert alert-danger py-2 px-3 small mb-2 aviso-meta-negativa" id="projecao-meta-negativa">
         <strong>Resultado líquido negativo.</strong> A proposta ${d.filial ? 'desta filial' : 'deste negócio'}
-        para ${d.ano_planejamento} está em <strong>−R$ ${this.moeda(Math.abs(l.proposta))}</strong>. A diretriz de ${d.ano_planejamento}
+        para ${d.ano_planejamento} está em ${valor}. A diretriz de ${d.ano_planejamento}
         não admite meta negativa de resultado líquido: reveja a proposta. A linha está destacada na tabela.
       </div>`;
+  },
+
+  /** Os dois avisos e a borda vermelha da DRE, depois de cada gravação. */
+  pintarMetaNegativa(el) {
+    const topo = el.querySelector('#projecao-meta-negativa-box');
+    const fim = el.querySelector('#projecao-meta-negativa-fim');
+    if (topo) topo.innerHTML = this.alertaMetaNegativa(this.dados);
+    if (fim) fim.innerHTML = this.alertaMetaNegativa(this.dados, true);
+    el.querySelector('.tabela-projecao')?.classList.toggle('dre-negativa', !!this.alertaMetaNegativa(this.dados));
   },
 
   /**
