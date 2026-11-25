@@ -140,6 +140,9 @@ $linhas = [
     ['codigo' => '8.11', 'nome' => 'Manutenção', 'nivel' => 2, 'percentual' => 0, 'realizado' => -40.0, 'projetado' => -10.0, 'projecao' => -50.0],
 ];
 $fixos = Projecao::fixosDaDepreciacao(['negocio' => array_fill(1, 12, -10.0), 'filiais' => []]);
+// Desde 2026-11-25 todos os negócios editam a 8.10 (`livre`); a TRAVA do motor fica
+// provada aqui com `livre` desligado, para o caso de a liberação ser revertida.
+$fixos['8.10']['livre'] = false;
 $lanc = ['8.10' => ['entrada' => 'VALOR', 'valor' => -500.0, 'percentual' => null],
     '8.11' => ['entrada' => 'VALOR', 'valor' => -60.0, 'percentual' => null]];
 $a = array_column(Projecao::aplicar($linhas, $lanc, [], null, $fixos), null, 'codigo');
@@ -161,13 +164,13 @@ $montar->setAccessible(true);
 $diverge = [];
 foreach ($esperado as $cod => $v) {
     $l = array_column($montar->invoke($ctrl, $ids[$cod], $ano, $corte, 0)['linhas'], null, 'codigo')['8.10'];
-    // A Pecuária (2026-11-24) e os Cereais (2026-11-25) editam a depreciação: a carga é o padrão, sem trava.
-    $travadaEsperada = !in_array((string)$cod, ['1', '2'], true);
+    // Todos os negócios editam a depreciação (2026-11-25): a carga é o padrão, sem trava.
+    $travadaEsperada = false;
     if (!perto(-$l['proposta'], $v, 0.01) || (bool)($l['proposta_travada'] ?? false) !== $travadaEsperada) {
         $diverge[] = "{$cod}: " . round(-$l['proposta'], 2) . ' travada=' . json_encode($l['proposta_travada'] ?? null);
     }
 }
-prova('na tela, a 8.10 de cada negócio é a carga; travada em todos, menos na Pecuária e nos Cereais', !$diverge, implode(' | ', $diverge));
+prova('na tela, a 8.10 de cada negócio é a carga, sem trava (todos editam desde 2026-11-25)', !$diverge, implode(' | ', $diverge));
 // A Pecuária EDITA a depreciação (pedido do cliente, 2026-11-24: "somente o negócio
 // Pecuária deve poder editar a depreciação conforme desejar; os demais não").
 $fxPec = Projecao::fixosDaDepreciacao(['negocio' => array_fill(1, 12, -10.0), 'filiais' => []], 0, '2');
@@ -180,8 +183,10 @@ $oCom = array_column(Projecao::aplicar($lin, $lanc, [], null, $fxOut), null, 'co
 prova('Pecuária: sem lançamento a 8.10 vale a carga (−120) e NÃO é travada; lançado −500, vale o lançado',
     perto($pSem['proposta'], -120.0) && empty($pSem['proposta_travada']) && perto($pCom['proposta'], -500.0) && empty($pCom['proposta_travada']),
     json_encode([$pSem['proposta'], $pSem['proposta_travada'] ?? null, $pCom['proposta']]));
-prova('os demais negócios: o lançado (−500) não vale, a 8.10 fica na carga (−120), travada',
-    perto($oCom['proposta'], -120.0) && $oCom['proposta_travada'] === true, json_encode([$oCom['proposta'], $oCom['proposta_travada']]));
+// E, desde 2026-11-25, todos os outros (pedido do cliente: "libera o campo de depreciação
+// para a fábrica de ração ou todos os negócios").
+prova('os demais negócios também: lançado −500, vale o lançado, sem trava',
+    perto($oCom['proposta'], -500.0) && empty($oCom['proposta_travada']), json_encode([$oCom['proposta'], $oCom['proposta_travada'] ?? null]));
 $mAgro = $montar->invoke($ctrl, $ids['8'], $ano, $corte, 0);
 $l = array_column($mAgro['linhas'], null, 'codigo')['8.10'];
 prova('Agropecuárias: as filiais distribuem a depreciação inteira (resíduo zero)',
@@ -193,8 +198,8 @@ $f = Database::um('SELECT f.id FROM filial f JOIN negocio_depreciacao d ON d.fil
     WHERE f.negocio_id = ? AND d.ano = ? GROUP BY f.id ORDER BY SUM(d.valor) LIMIT 1', [$ids['8'], $anoPlan]);
 $mf = $montar->invoke($ctrl, $ids['8'], $ano, $corte, (int)$f['id']);
 $lf = array_column($mf['filial']['linhas'], null, 'codigo')['8.10'];
-prova('na filial, a 8.10 é a dela, travada',
-    !empty($lf['proposta_travada']) && perto($lf['proposta'], array_sum($dep[$ids['8']]['filiais'][(int)$f['id']])));
+prova('na filial, a 8.10 padrão é a dela, sem trava',
+    empty($lf['proposta_travada']) && perto($lf['proposta'], array_sum($dep[$ids['8']]['filiais'][(int)$f['id']])));
 $painel = Projecao::resumoDosNegocios(array_values($ids), $ano, $corte, $anoPlan, ['8.10', '18']);
 $diverge = [];
 foreach ($esperado as $cod => $v) {
@@ -251,10 +256,18 @@ if ($http('GET', "{$base}/login") === '') {
     $http('POST', "{$base}/api/login", ['email' => getenv('APP_EMAIL') ?: 'admin@coperdia.com.br', 'senha' => getenv('APP_SENHA') ?: 'trocar123']);
     preg_match('/name="csrf" content="([^"]*)"/', $http('GET', "{$base}/"), $mm);
     $cab = ['X-CSRF-Token: ' . ($mm[1] ?? '')];
-    $resp = json_decode($http('POST', "{$base}/api/projecao/valor",
-        ['negocio_id' => $ids['8'], 'conta' => '8.10', 'entrada' => 'VALOR', 'valor' => -1], $cab), true);
-    prova('a API recusa lançar na Depreciação (é o total carregado)',
-        str_contains((string)($resp['erro'] ?? ''), 'não se lança'), json_encode($resp, JSON_UNESCAPED_UNICODE));
+    // Todos editam desde 2026-11-25: a API aceita também nas Agropecuárias e nas Rações.
+    $ok810 = true;
+    foreach (['8', '6'] as $cod) {
+        $resp = json_decode($http('POST', "{$base}/api/projecao/valor",
+            ['negocio_id' => $ids[$cod], 'conta' => '8.10', 'entrada' => 'VALOR', 'valor' => -111111], $cab), true);
+        $l810 = array_column($resp['dados']['linhas'] ?? [], null, 'codigo')['8.10'] ?? [];
+        $ok810 = $ok810 && !isset($resp['erro']) && perto((float)($l810['proposta'] ?? 0), -111111.0, 1);
+        if ($cod === '6') {
+            $http('POST', "{$base}/api/projecao/valor", ['negocio_id' => $ids[$cod], 'conta' => '8.10', 'entrada' => 'VALOR', 'valor' => ''], $cab);
+        }
+    }
+    prova('a API aceita lançar a Depreciação nas Agropecuárias e nas Rações (todos editam)', $ok810);
     $resp = json_decode($http('POST', "{$base}/api/projecao/valor",
         ['negocio_id' => $ids['8'], 'conta' => '8.10', 'entrada' => 'VALOR', 'valor' => ''], $cab), true);
     prova('apagar (valor vazio) continua aceito, para limpar lançamento de antes da carga', !isset($resp['erro']),

@@ -118,7 +118,12 @@ Agropecuárias: 44.514.016 − 3.252.588 (3419) − 1.359.956 (3398) − 2.869.4
 seguem crescendo sobre a projeção delas sem a 3227 delas, com o % do negócio. No
 desafio: Corporativo −R$ 1,09 mi (era −R$ 1,51 mi), Cereais −R$ 19,65 mi.
 
-**Depreciação (8.10): só a PECUÁRIA e os CEREAIS editam** (regra do cliente, 2026-11-24:
+**Depreciação (8.10): TODOS os negócios editam** desde 2026-11-25 (pedido do cliente:
+"libera o campo de depreciação para a fábrica de ração ou todos os negócios";
+`Projecao::DEPRECIACAO_EDITAVEL_EM_TODOS`): a carga é o padrão da 8.10 em todo negócio e
+filial, sem cadeado, e o lançado vale. A trava do motor continua no código (e provada em
+`testes/depreciacao.php` com `livre` desligado), para o caso de a liberação ser revertida.
+Histórico — **só a PECUÁRIA e os CEREAIS editavam** (regra do cliente, 2026-11-24:
 "somente o negócio Pecuária deve poder editar a depreciação conforme desejar; os demais
 negócios não"; e 2026-11-25: "para o negócio Cereais, também permita editar o campo de
 depreciação"). Na Pecuária (cód. 2) e nos Cereais (cód. 1),
