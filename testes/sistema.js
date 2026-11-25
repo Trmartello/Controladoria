@@ -90,7 +90,9 @@ async function percorrer(page, largura) {
     // Nenhuma seção pode terminar mostrando o alerta de falha de carga
     const falhou = await page.evaluate((id) => {
       const el = document.getElementById('secao-' + id);
-      const al = el && el.querySelector('.alert-danger');
+      // O aviso de resultado líquido negativo é do dado, não falha de carga — e o
+      // Corporativo abre com ele quando a soma das propostas está no vermelho.
+      const al = el && el.querySelector('.alert-danger:not(.aviso-meta-negativa)');
       return al ? al.textContent.trim().slice(0, 120) : null;
     }, s.id);
     t(`[${largura}] ${s.nome} sem alerta de erro`, !falhou, falhou || '');
