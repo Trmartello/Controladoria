@@ -192,9 +192,8 @@ só muda de lugar) e "O que a proposta dá hoje" (Cresc. Real, Total, % Custos).
 classes que a bateria lê (`.bloco-pessoas`, `#pessoas-quadro`, `#abono-total`,
 `[data-diretriz]`, `.aviso-leituras`) ficaram.
 
-**% de margem bruta no desafio extra** (2026-11-25): o ADMIN digita a % (sobre a
-receita líquida do desafio) ou o valor; a tela converte a % em reais e grava como
-`lucro_bruto` — o servidor não conhece a %.
+**% de margem bruta no desafio extra** (2026-11-25, substituído no mesmo dia pela coluna
+Desafio da DRE, conta a conta — ver "Desafio da administração" em Regras de negócio).
 
 **Cartão do desafio = a DRE, em tempo real** (2026-11-25: a coluna Proposta "deve refletir
 conforme o que ele for preenchendo na DRE … precisa atualizar em tempo real"):
@@ -202,8 +201,8 @@ conforme o que ele for preenchendo na DRE … precisa atualizar em tempo real"):
 **faturamento do cartão sai SEM a CBS**, como a linha 1 da DRE de 2027: o motor e o desafio
 guardam a receita bruta COM o PIS/COFINS (formato da carga); a tela tira a mesma parte, na
 taxa `taxaCbsDoCartao` (linha CBS ÷ receita bruta da proposta), nas duas colunas — a Proposta
-fica igual à linha 1, e a linha de baixo vira "CBS". O ADMIN digita o faturamento do desafio
-sem a CBS; `gravarDesafio` devolve ao formato da carga (÷ (1 − taxa)) antes de gravar.
+fica igual à linha 1, e a linha de baixo vira "CBS". (O desafio se lança na coluna Desafio
+da DRE desde o fim do mesmo dia; o cartão só resume.)
 
 **Rateio Corporativo Administrativo (16.1) CALCULADO e TRAVADO** (pedido do cliente,
 2026-11-24: "gere um critério de rateio por negócio, olhando para a coluna K 'saldo' e
@@ -3206,7 +3205,7 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   é requisito para salvar**, por decisão dele) ou **Planejar por filial** (de
   baixo para cima — lança em cada filial e o negócio passa a ser a soma,
   `Projecao::somarFiliais`, que é o `O10 = SUM(AF10, AR10, …)` da planilha).
-  No modo negócio a tela ganha a coluna **A distribuir** (proposta do negócio
+  No modo negócio a tela ganhava a coluna **A distribuir** (saiu em 2026-11-25, no lugar da coluna Desafio dos administradores; o resíduo segue na API, `distribuido`) (proposta do negócio
   menos a soma das filiais) — ela informa e não trava. No modo filial a linha
   do negócio vira somente-leitura e o servidor **recusa** lançamento nela: dois
   totais discordando na mesma tela é o que esta seção inteira evita.
@@ -3920,26 +3919,27 @@ fica longe da DRE). Trocar de modo não apaga lançamento.
   recarga + acerto (prova 11). Com a recarga, a `visao_realista.php` aceita
   ±R$ 3 mil em Rações/Agropecuárias e R$ 100 em Cereais/Supermercados contra o
   painel congelado de 15/11; o total segue no centavo.
-  **Desafio extra dos administradores** (pedido do cliente, 2026-11-25: "os
-  administradores podem fazer um desafio extra aos negócios"). No cartão
-  "Desafio 2027 para o negócio", o perfil **ADMIN** (só ele — nem CONTROLADORIA)
-  digita na coluna Desafio as linhas de VALOR: faturamento, margem bruta,
-  despesas operacionais, rateios do negócio e rateios administrativos
-  (`DesafioAjuste::CHAVES`), **para o ano todo**. Tabela
-  `negocio_desafio_ajuste` (negócio, ano, chave, valor); rota
-  `POST /api/projecao/desafio` (valor vazio apaga e volta ao calculado).
-  **Cascata** (`DesafioAjuste::aplicar`), sobre a escada calculada, por
-  diferenças — as linhas entre a margem bruta e o resultado antes dos rateios que
-  o ajuste não toca ficam: o faturamento leva a RL na mesma proporção e, se a
-  margem bruta não foi digitada, ela também (% mantido); margem bruta e despesas
-  mudam o resultado antes dos rateios; rateio do negócio, o resultado do negócio;
-  rateio adm, só o líquido; as margens se refazem sobre a RL ajustada. Despesa
-  digitada positiva grava negativa quando a calculada é negativa (celular sem o
-  menos). **Proposta** = o que está lançado na DRE; **Diferença** = proposta −
-  desafio. O ajuste é **negócio a negócio**: o Corporativo e os grupos somam os
-  desafios já ajustados (o `desafio` de `desafioDoNegocio` é a escada ajustada;
-  `escada.calculado` leva a original), e o negócio ajustado ganha o selo
-  "ajustado" no cartão do Corporativo. Prova: `testes/desafio_ajuste.php` (21).
+  **Desafio da administração, CONTA A CONTA, na coluna Desafio da DRE**
+  (pedido do cliente, 2026-11-25: "retire a coluna de a distribuir e adicione uma
+  coluna de desafio, onde apenas os administradores poderão editar, e só estará
+  visível para eles […] esse desafio irá se resumir" no cartão). Decisões do
+  cliente: **só o perfil ADMIN vê e lança** (nem CONTROLADORIA); o **cartão só
+  resume** (sem campo). A coluna **A distribuir saiu** da DRE para todos (o
+  `distribuido` continua na API). O desafio continua sendo a proposta padrão; o
+  que o ADMIN lança entra no MESMO motor (`Projecao::aplicar($linhas,
+  DesafioAjuste::lancados(...), …)`), valor ou % sobre a projeção, nas mesmas
+  subcontas que a proposta lança — blocos não, travadas (rateios, depreciação
+  carregada) não. Tabela `negocio_desafio_valor` (negócio, ano, conta, entrada,
+  valor/percentual); rota `POST /api/projecao/desafio` {negocio_id, conta,
+  entrada, valor} (vazio apaga). A resposta só traz `desafio_linhas` (formato
+  2027), `desafio_lancados` e `desafio_tributos_dre` para o ADMIN
+  (`colunaDesafio`); a tela (`temColunaDesafio`, `celulaDesafio`) mostra a coluna
+  azul-clara só no negócio (não na filial, no Corporativo nem no dossiê). Despesa
+  digitada positiva grava negativa quando a linha é negativa. O Corporativo e os
+  grupos somam os desafios; quem não é ADMIN vê no cartão que houve lançamento da
+  administração. Até 25/11 o ajuste era agregado no cartão (`negocio_desafio_ajuste`,
+  cinco linhas em cascata): a tabela ficou no banco e não é mais lida. Prova:
+  `testes/desafio_ajuste.php` (17).
   **Desafio dos Postos de resfriamento pela cota Aurora** (histórico: desde o
   desafio calculado, quem aplica é `DesafioDrivers`; pedido do cliente,
   2026-11-23: "o posto recebe ~6 centavos por litro resfriado, e o valor só

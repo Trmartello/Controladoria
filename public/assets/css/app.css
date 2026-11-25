@@ -4849,18 +4849,17 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-projecao .proposta-calculada { cursor: help; white-space: nowrap; }
 .tabela-projecao .proposta-calculada::before { content: "🔒"; font-size: .75em; margin-right: .3em; opacity: .6; }
 
-/* Desafio extra do administrador (2026-11-25): a coluna Desafio do cartão do
-   negócio vira campo nas linhas de valor; o ajustado ganha o amarelo da linha
-   que muda e, embaixo, o calculado de onde partiu. */
-.tabela-desafio .celula-desafio { min-width: 9.5rem; max-width: 12rem; margin-left: auto; font-weight: 700;
-  background: #fff6d6; border-color: #f0dfa0; }
-/* O mesmo amarelo-claro de "onde se lança" da DRE (pedido do cliente, 2026-11-25:
-   "destacar os campos que podem ser editados pelos administradores"). */
-.tabela-desafio .celula-desafio:hover { border-color: #d9c06a; }
-.tabela-desafio .celula-desafio:focus { background: #fff; }
-.tabela-desafio .celula-desafio.desafio-ajustado { background: #fde4a8; border-color: #e0b44a; }
-.tabela-desafio .celula-desafio.celula-gravando { opacity: .55; }
-.tabela-desafio .desafio-calculado { font-weight: 400; white-space: nowrap; }
+/* A coluna DESAFIO da DRE (pedido do cliente, 2026-11-25; só ADMIN): azul-claro,
+   para não se confundir com o amarelo de onde o negócio lança. O lançado pela
+   administração fica em negrito, num azul mais forte; vazio, o padrão em cinza. */
+#secao-projecao .tabela-projecao thead th.coluna-desafio-th { background: #e3ecfa; color: #1f3f73; }
+.tabela-projecao td.celula-desafio-td { background: #f3f7fd; }
+.tabela-projecao .celula-valor.celula-desafio:not(:disabled) { background: #e8f0fe; border-color: #b6c8ec; }
+.tabela-projecao .celula-valor.celula-desafio:not(:disabled):hover { border-color: #7f9fd6; }
+.tabela-projecao .celula-valor.celula-desafio:focus { background: #fff; }
+.tabela-projecao .celula-valor.celula-desafio.desafio-lancado { background: #d3e2fb; border-color: #7f9fd6; font-weight: 700; }
+.tabela-projecao .celula-valor.celula-desafio::placeholder { color: #6c7a90; }
+.legenda-editavel.legenda-desafio { background: #e8f0fe; border-color: #7f9fd6; }
 
 /* Considerar / Desconsiderar das oportunidades (2026-11-25): no início do item,
    pequenos — não engordam a linha. */

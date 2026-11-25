@@ -268,8 +268,8 @@ const SecaoProjecao = {
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
             <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL proposta</span></th>
             <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção ${d.ano}</span></th>
-            ${!d.filial && d.filiais.length && d.modo === 'NEGOCIO'
-    ? '<th class="text-end">A distribuir<br><span class="fw-normal text-muted small">entre as filiais</span></th>'
+            ${this.temColunaDesafio(d)
+    ? `<th class="text-end coluna-desafio-th" title="Só os administradores veem e lançam esta coluna">Desafio<br><span class="fw-normal text-muted small">${d.ano_planejamento} · administração</span></th>`
     : ''}
           </tr></thead>
           <tbody>${this.corpo(d)}</tbody>
@@ -833,21 +833,43 @@ const SecaoProjecao = {
   },
 
   /**
-   * O resíduo a distribuir, com o ruído do arredondamento fora.
-   *
-   * Abaixo de R$ 20 não é resíduo: é a diferença entre duas extrações que
-   * arredondam ao real em pontos diferentes (a do negócio, mensal; a das
-   * filiais, acumulada). Mostrar "—" ali evita uma coluna cheia de "-1" que
-   * ninguém sabe o que fazer com — e que faria duvidar do resto.
+   * A coluna DESAFIO da DRE (pedido do cliente, 2026-11-25: no lugar da "A
+   * distribuir", que saiu): só o ADMIN a recebe do servidor (`desafio_linhas`), só
+   * no negócio (não na filial nem no Corporativo) e não no dossiê.
    */
-  celulaDistribuir(l) {
-    if (l.proposta === null || l.distribuido === null
-        || l.distribuido === undefined || l.percentual) {
-      return '<td class="text-end small text-muted"></td>';
+  temColunaDesafio(d) {
+    return !!(d && Array.isArray(d.desafio_linhas) && d.desafio_linhas.length && !d.filial && !d.corporativo
+      && !App.modoDossie);
+  },
+
+  /**
+   * A célula da coluna Desafio: campo nas subcontas que a proposta também lança
+   * (não nas travadas — rateios e depreciação carregada); nos blocos e margens, o
+   * número do desafio. O que o ADMIN lança entra no motor do desafio, e o cartão
+   * "Desafio para o negócio" resume (`DesafioAjuste`).
+   */
+  celulaDesafio(d, l, dl, linhasDesafio, lancados, CALCULADAS) {
+    if (!dl) return '<td class="text-end small text-muted celula-desafio-td"></td>';
+    const editavel = l.nivel === 2 && !l.percentual && !l.informativa && !dl.proposta_travada
+      && dl.proposta !== null && dl.proposta !== undefined;
+    if (editavel) {
+      const lancado = lancados.has(l.codigo);
+      return `<td class="text-end celula-desafio-td"><input type="text" class="celula-valor celula-desafio${
+        lancado ? ' desafio-lancado' : ''}" inputmode="decimal" data-sinal autocomplete="off"
+          value="${lancado ? Modal.esc(this.textoLancado(dl)) : ''}" placeholder="${this.moeda(dl.proposta)}"
+          data-conta="${Modal.esc(l.codigo)}"
+          title="Desafio de ${d.ano_planejamento} (só administradores): valor ou % sobre a projeção. Vazio = proposta padrão (${this.moeda(dl.proposta)})."
+          aria-label="Desafio de ${d.ano_planejamento} para ${Modal.esc(l.nome)}"></td>`;
     }
-    const resto = l.proposta - l.distribuido;
-    if (Math.abs(resto) <= 20) return '<td class="text-end small text-muted">—</td>';
-    return `<td class="text-end small text-warning-emphasis">${this.moeda(resto)}</td>`;
+    let txt;
+    if (dl.percentual) {
+      const alvo = linhasDesafio.find((x) => x.codigo === CALCULADAS[l.codigo]);
+      const base = (linhasDesafio.find((x) => x.codigo === '3') || {}).proposta || 0;
+      txt = alvo && base ? this.pct(alvo.proposta / base) : '';
+    } else {
+      txt = dl.proposta === null || dl.proposta === undefined ? '—' : this.moeda(dl.proposta);
+    }
+    return `<td class="text-end celula-desafio-td ${l.nivel === 1 ? 'fw-bold' : 'text-muted'}" data-desafio-conta="${Modal.esc(l.codigo)}">${txt}</td>`;
   },
 
   /** A visão que está na tela: linhas e premissas do negócio ou da filial. */
@@ -1386,36 +1408,6 @@ const SecaoProjecao = {
       ['margem', '% margem líquida <span class="text-muted small">(sobre a receita líquida)</span>', true, true],
     ];
     const celula = (v, pct) => (v === null || v === undefined ? '—' : (pct ? this.pct(pp(v), 2) : this.moeda(v)));
-    // O desafio extra (2026-11-25): o ADMIN digita nas linhas de valor; o resto
-    // da escada sai em cascata no servidor (`DesafioAjuste`).
-    const ajustes = x.ajustes || {};
-    const calc = e.calculado || e.desafio;
-    // No dossiê a tela sai como página: sem campo, nem para o administrador.
-    const ajustavel = new Set(x.pode_ajustar && !App.modoDossie ? (x.ajustaveis || []) : []);
-    const campoDesafio = (k, a) => {
-      const ajustado = Object.prototype.hasOwnProperty.call(ajustes, k);
-      const dica = `Desafio calculado (proposta padrão): ${celula(calc[k])}. Digite para desafiar além dele; apague para voltar ao calculado.`;
-      return `<td class="text-end celula-desafio-td">
-          <input type="text" inputmode="decimal" data-sinal autocomplete="off"
-            class="form-control form-control-sm text-end celula-desafio${ajustado ? ' desafio-ajustado' : ''}"
-            data-desafio-chave="${k}" value="${a === null || a === undefined ? '' : this.moeda(a)}"
-            title="${Modal.esc(dica)}" aria-label="Desafio: ${Modal.esc(k)}">
-          ${ajustado ? `<div class="small text-muted desafio-calculado">calculado ${celula(calc[k])}</div>` : ''}
-        </td>`;
-    };
-    const campoPctDesafio = (a) => {
-      const ajustado = Object.prototype.hasOwnProperty.call(ajustes, 'lucro_bruto');
-      const txt = a === null || a === undefined ? ''
-        : Number(a).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      return `<td class="text-end celula-desafio-td">
-          <div class="input-group input-group-sm justify-content-end">
-            <input type="text" inputmode="decimal" data-sinal autocomplete="off"
-              class="form-control form-control-sm text-end celula-desafio celula-desafio-pct${ajustado ? ' desafio-ajustado' : ''}"
-              data-desafio-chave="margem_bruta" value="${txt}"
-              title="% de margem bruta sobre a receita líquida do desafio. Digite a % e a margem bruta em reais se recalcula (e vice-versa)."
-              aria-label="Desafio: % de margem bruta"><span class="input-group-text">%</span></div>
-        </td>`;
-    };
     const linha = ([k, rotulo, pct, forte]) => {
       const a = e.desafio[k];
       const b = e.proposta[k];
@@ -1425,13 +1417,11 @@ const SecaoProjecao = {
         ? `${dif > 0 ? '+' : ''}${dif.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.`
         : this.comSinal(dif));
       const cor = dif === null ? '' : (pct ? (dif >= 0 ? 'text-success' : 'text-danger') : this.corDif(dif));
-      // A % de margem bruta também se digita (pedido do cliente, 2026-11-25: "alterar o
-      // percentual e ele recalcular a margem bruta nominal, e vice-versa, como na
-      // DRE"): grava como a margem bruta em reais sobre a receita líquida do desafio.
-      const pctEditavel = k === 'margem_bruta' && ajustavel.has('lucro_bruto');
+      // Só leitura desde 2026-11-25: o desafio se lança na coluna Desafio da DRE
+      // (ADMIN), conta a conta, e o cartão resume.
       return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}">
           <td>${rotulo}</td>
-          ${pctEditavel ? campoPctDesafio(a) : ajustavel.has(k) ? campoDesafio(k, a) : `<td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>`}
+          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
           <td class="text-end">${celula(b, pct)}</td>
           <td class="text-end ${estimado ? 'text-muted' : cor}">${estimado ? '' : textoDif}</td>
         </tr>`;
@@ -1462,11 +1452,11 @@ const SecaoProjecao = {
         </div>
         <div class="small text-muted mb-1">Desafio = <strong>proposta padrão</strong>: projeção de ${d.ano} com as premissas e a
           diretriz, custos e despesas acompanhando a receita, rateios travados. Proposta = o que está lançado na DRE.</div>
-        ${x.pode_ajustar && !App.modoDossie ? `<div class="small mb-1 nota-desafio-ajuste"><span class="legenda-editavel"></span>
-          <strong>Desafio extra:</strong> digite nas células amarelas da coluna Desafio (ano todo); resultados e margens se
-          recalculam. Apague para voltar ao calculado.</div>` : ''}
-        ${Object.keys(ajustes).length && !x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste">O desafio deste negócio
-          tem <strong>ajuste da administração</strong> além da proposta padrão.</div>` : ''}
+        ${x.pode_ajustar && !App.modoDossie ? `<div class="small mb-1 nota-desafio-ajuste"><span class="legenda-editavel legenda-desafio"></span>
+          <strong>Desafio da administração:</strong> lance na coluna <strong>Desafio</strong> da DRE, conta a conta (só
+          administradores veem a coluna); este quadro resume. Vazio = proposta padrão.</div>` : ''}
+        ${des.ajustado && !x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste">O desafio deste negócio
+          tem <strong>lançamentos da administração</strong> além da proposta padrão.</div>` : ''}
         ${this.notaTributos(x.tributos, x.ano)}
         <div class="small text-muted" id="desafio-nota">
           <strong>${Modal.esc(des.nota)}</strong> ${this.notaDesafio(x)}
@@ -1691,48 +1681,45 @@ const SecaoProjecao = {
   },
 
   /** Grava a avaliação de um item e repinta o cartão de oportunidades. */
-  /** O desafio extra do administrador: grava uma linha e repinta o cartão. */
+  /**
+   * O desafio da administração, conta a conta, na coluna Desafio da DRE (pedido do
+   * cliente, 2026-11-25; só ADMIN). Valor em reais ou % (sobre a projeção), como a
+   * Proposta. Despesa digitada positiva vira negativa quando a linha é negativa (no
+   * celular o teclado numérico não tem o menos). Repinta a DRE e o cartão do desafio.
+   */
   async gravarDesafio(inp) {
     const bruto = inp.value.trim();
     if (bruto === (inp.dataset.original ?? '')) return;
-    const limpo = bruto.replace(/[R$\s]/g, '').replace('−', '-').replace(/\./g, '').replace(',', '.');
+    const ehPct = bruto.endsWith('%');
+    const limpo = ehPct
+      ? bruto.replace('%', '').replace(',', '.').trim()
+      : bruto.replace(/[R$\s]/g, '').replace('−', '-').replace(/\./g, '').replace(',', '.');
     if (limpo !== '' && !Number.isFinite(Number(limpo))) {
-      this.avisar('Valor inválido: informe um número em reais.');
+      this.avisar('Desafio inválido: informe um valor em reais ou um percentual terminado em %.');
       inp.value = inp.dataset.original ?? '';
       return;
     }
-    const el = document.getElementById('secao-projecao');
-    let chave = inp.dataset.desafioChave;
     let valor = limpo === '' ? null : Number(limpo);
-    // A % de margem bruta vira a margem bruta em reais: % × a receita líquida do desafio.
-    if (chave === 'margem_bruta') {
-      const rl = Number((((this.dados.desafio || {}).escada || {}).desafio || {}).receita_liquida) || 0;
-      if (valor !== null && !rl) {
-        this.avisar('Sem receita líquida no desafio: digite a margem bruta em reais.');
-        inp.value = inp.dataset.original ?? '';
-        return;
-      }
-      chave = 'lucro_bruto';
-      valor = valor === null ? null : Math.round(valor / 100 * rl * 100) / 100;
-    }
-    // O faturamento se digita SEM a CBS, como aparece (e como na DRE); o servidor
-    // guarda no formato da carga, com o PIS/COFINS dentro.
-    const taxaCbs = this.taxaCbsDoCartao(this.dados);
-    if (chave === 'receita_bruta' && valor !== null && taxaCbs !== null && taxaCbs < 1) {
-      valor = Math.round(valor / (1 - taxaCbs) * 100) / 100;
+    if (!ehPct && valor > 0) {
+      const dl = (this.dados.desafio_linhas || []).find((x) => x.codigo === inp.dataset.conta);
+      if (dl && Number(dl.projecao) < 0) valor = -valor;
     }
     const pedido = ++this.pedido;
     inp.classList.add('celula-gravando');
     try {
       const r = await App.api('/api/projecao/desafio', {
-        negocio_id: this.negocioId, chave, valor,
+        negocio_id: this.negocioId, conta: inp.dataset.conta, entrada: ehPct ? 'PERCENTUAL' : 'VALOR', valor,
       });
       if (pedido !== this.pedido) return;
+      this.versao = r.versao;
       this.dados = { ...this.dados, ...r };
       this.avisar('');
-      const card = el.querySelector('.painel-desafio');
-      if (card) card.outerHTML = this.cartaoDesafio(this.dados);
-      this.ligar(el);
+      this.repintarProposta(document.getElementById('secao-projecao'));
+      const volta = document.querySelector(`.tabela-projecao .celula-desafio[data-conta="${inp.dataset.conta}"]`);
+      if (volta) {
+        volta.classList.add('celula-salva');
+        setTimeout(() => volta.classList.remove('celula-salva'), 1200);
+      }
     } catch (e) {
       this.avisar(e.message);
       inp.value = inp.dataset.original ?? '';
@@ -2429,7 +2416,10 @@ const SecaoProjecao = {
     // Estrutura nova da DRE (2026-11-18): a margem líquida é a 19, sobre o líquido (18).
     const CALCULADAS = { 6: '5', 8: '7', 19: '18' };
     const podeLancar = this.editavelAqui(d);
-    const mostrarDistribuir = !d.filial && d.filiais.length && d.modo === 'NEGOCIO';
+    const colDesafio = this.temColunaDesafio(d);
+    const linhasDesafio = colDesafio ? d.desafio_linhas : [];
+    const desafioDe = Object.fromEntries(linhasDesafio.map((x) => [x.codigo, x]));
+    const lancadosDesafio = new Set(colDesafio ? (d.desafio_lancados || []) : []);
     // O nível 3 (conta reduzida) da visão aberta: negócio, filial ou Corporativo.
     const n3 = (d.filial ? d.filial.nivel3 : d.nivel3) || {};
     if (!this.reduzidasAbertas) this.reduzidasAbertas = new Set();
@@ -2560,8 +2550,8 @@ const SecaoProjecao = {
   abaixoMinimo ? this.avisoMinimoPessoal(l) : ''}${proposta}</td>
         <td class="text-end text-muted small celula-av-proposta">${avProp(l)}</td>
         <td class="text-end small celula-reajuste-td">${reajuste}</td>
-        ${mostrarDistribuir ? this.celulaDistribuir(l) : ''}
-      </tr>${abre ? this.linhasReduzidas(l, reduzidas, mostrarDistribuir) : ''}`;
+        ${colDesafio ? this.celulaDesafio(d, l, desafioDe[l.codigo], linhasDesafio, lancadosDesafio, CALCULADAS) : ''}
+      </tr>${abre ? this.linhasReduzidas(l, reduzidas, colDesafio) : ''}`;
     }).join('');
   },
 
@@ -2576,10 +2566,10 @@ const SecaoProjecao = {
    * depois da carga da DRE), a diferença vai numa linha própria, dita — nunca
    * escondida numa conta que não a tem.
    */
-  linhasReduzidas(l, reduzidas, mostrarDistribuir) {
+  linhasReduzidas(l, reduzidas, colunaExtra) {
     const aberta = this.reduzidasAbertas.has(l.codigo) ? ' aberta' : '';
     // Projetado, projeção, A.V., proposta, A.V. da proposta e reajuste: em branco.
-    const vazias = `<td></td><td></td><td></td><td></td><td></td><td></td>${mostrarDistribuir ? '<td></td>' : ''}`;
+    const vazias = `<td></td><td></td><td></td><td></td><td></td><td></td>${colunaExtra ? '<td></td>' : ''}`;
     const linha = (nome, v, attrs, extra = '') => `<tr class="linha-reduzida${aberta}${extra}" data-pai="${Modal.esc(l.codigo)}" ${attrs}>
         <td class="ps-5 small">${nome}</td>
         <td class="text-end small ${v < 0 ? 'text-danger' : ''}">${this.moeda(v)}</td>
@@ -2804,6 +2794,8 @@ const SecaoProjecao = {
       inp.dataset.original = inp.value;
       if (!virgem(inp)) return;
       inp.addEventListener('blur', () => this.gravarDesafio(inp));
+      inp.addEventListener('focus', () => { delete inp.dataset.pontoDigitado; });
+      inp.addEventListener('input', (ev) => this.formatarDigitando(inp, ev));
       inp.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
         if (ev.key === 'Escape') { inp.value = inp.dataset.original ?? inp.value; inp.blur(); }
