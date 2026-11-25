@@ -4926,6 +4926,14 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .painel-premissas .faixa-leituras { border: 1px solid var(--bs-border-color); background: #f8f9f8; }
 .painel-premissas .faixa-editavel .bloco-pessoas { border-top: 1px dashed #ead79a; padding-top: .5rem; }
 
+/* A DRE com a MOLDURA DOS CARTÕES (pedido do cliente, 2026-11-25: "uma borda
+   levemente verde mais escuro, exatamente igual aos indicadores acima"): faixa
+   verde de 5px à esquerda, borda verde suave e a sombra dos `details.expansor`.
+   Negativa: a mesma moldura em vermelho. */
+#secao-projecao .tabela-projecao { border: 1px solid #cfe3d6; border-left: 5px solid var(--verde-coperdia, #1b6b3a);
+  border-radius: .4rem; box-shadow: 0 1px 4px rgba(0, 0, 0, .08); background: #fff; }
+#secao-projecao .tabela-projecao thead th { border-bottom: 1px solid #b9d6c4; }
+#secao-projecao .tabela-projecao.dre-negativa { border: 3px solid var(--bs-danger, #dc3545); border-left-width: 5px; }
 /* DRE com resultado líquido proposto NEGATIVO (pedido do cliente, 2026-11-25:
    "toda a borda da DRE destacada em vermelho até que o líquido seja, no
    mínimo, positivo"): a borda da tabela e os avisos encostados nela. */

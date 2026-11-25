@@ -166,6 +166,10 @@ no fim da tabela (`#projecao-meta-negativa-fim`) e a borda da DRE em vermelho
 (`.tabela-projecao.dre-negativa`) enquanto a proposta do líquido for negativa;
 `pintarMetaNegativa` refaz os três a cada gravação. O cabeçalho das colunas é verde-claro (a cor dos
 títulos dos cartões, `#eef6f1`) e vira vermelho-claro (`#fdecea`) com a `.dre-negativa`.
+Vale **também no Corporativo e nos grupos** (2026-11-25: "mesmo quando eu selecionar todos
+os negócios"): o aviso diz "somada dos negócios (Corporativo)" ou "somada destes negócios".
+A DRE tem a **moldura dos cartões** (`details.expansor`): borda verde suave, faixa verde de
+5px à esquerda, cantos redondos e sombra; com o líquido negativo, a mesma moldura em vermelho.
 
 **Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
 campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
