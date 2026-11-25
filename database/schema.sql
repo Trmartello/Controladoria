@@ -1086,6 +1086,25 @@ CREATE TABLE IF NOT EXISTS negocio_desafio_ajuste (
   CONSTRAINT fk_nda_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- O DESAFIO lançado CONTA A CONTA, na coluna Desafio da DRE (pedido do cliente,
+-- 2026-11-25: "uma coluna de desafio, onde apenas os administradores poderão
+-- editar, e só estará visível para eles"). Substitui o ajuste agregado acima, que
+-- deixou de ser lido: o desafio é a proposta padrão com estes lançamentos, pelo
+-- mesmo motor da proposta, e o cartão do desafio só resume.
+CREATE TABLE IF NOT EXISTS negocio_desafio_valor (
+  negocio_id   INT NOT NULL,
+  ano          SMALLINT NOT NULL,
+  conta_id     INT NOT NULL,
+  entrada      ENUM('VALOR','PERCENTUAL') NOT NULL,
+  valor        DECIMAL(18,2) NULL,
+  percentual   DECIMAL(9,4) NULL,
+  ajustado_por INT NULL,
+  ajustado_em  DATETIME NOT NULL,
+  PRIMARY KEY (negocio_id, ano, conta_id),
+  CONSTRAINT fk_ndv_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ndv_conta FOREIGN KEY (conta_id) REFERENCES dre_conta(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- A DRE da filial MÊS A MÊS, só onde moram os eventos pontuais (8.x, 9.x, 11.x)
 -- e só onde algum mês passa do piso da detecção — ver
 -- database/eventos_filiais_mensal_2026_10.php. Serve às oportunidades e riscos da

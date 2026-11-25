@@ -5453,10 +5453,18 @@ async function provasProjecaoFilial(page, largura) {
         // A coluna Reajuste: campo nas subcontas, leitura nos blocos.
         reajuste: rea ? rea.value : td[7].textContent.trim(),
         editavel: !!inp,
-        distribuir: td[8] ? n(td[8].textContent) : undefined,
+        // A coluna "A distribuir" saiu da DRE (2026-11-25, pedido do cliente); o
+        // resíduo continua na API (`distribuido`), e é dele que estas provas leem.
+        distribuir: (() => {
+          const d = SecaoProjecao.dados;
+          const a = (SecaoProjecao.visao(d).linhas || []).find((x) => x.codigo === c);
+          return !d.filial && d.modo === 'NEGOCIO' && a && a.distribuido !== null && a.distribuido !== undefined
+            ? Math.round(a.proposta - a.distribuido) : undefined;
+        })(),
       };
     };
     return {
+      colunaDistribuir: [...document.querySelectorAll('.tabela-projecao thead th')].some((th) => /A distribuir/.test(th.textContent)),
       modo: document.querySelector('input[name="projecao-modo"]:checked')?.value,
       filiais: document.querySelectorAll('#projecao-filial option').length - 1,
       naTela: document.querySelector('#projecao-filial')?.value,
@@ -5497,8 +5505,8 @@ async function provasProjecaoFilial(page, largura) {
   t(`${l} as filiais com movimento aparecem (a Pecuária tem seis)`,
     v.filiais >= 5, String(v.filiais));
   t(`${l} o negócio começa planejando no total`, v.modo === 'NEGOCIO', String(v.modo));
-  t(`${l} e a coluna "A distribuir" existe nesse modo`,
-    v.rol.distribuir !== undefined, JSON.stringify(v.rol));
+  t(`${l} a coluna "A distribuir" saiu da DRE (2026-11-25), e o resíduo segue na API`,
+    !v.colunaDistribuir && v.rol.distribuir !== undefined, JSON.stringify(v.rol));
 
   // A carga das filiais fecha com a do negócio: a projeção do negócio é a soma
   // da projeção das filiais. Sem isso, cada tela estaria certa e o total errado.
@@ -5550,7 +5558,7 @@ async function provasProjecaoFilial(page, largura) {
   t(`${l} no modo filial o total do negócio passa a ser a soma`,
     modoFilial.rol.proposta > projNegocio && !modoFilial.rol.editavel,
     `${modoFilial.rol.proposta} vs ${projNegocio}`);
-  t(`${l} e a coluna "A distribuir" sai da tela (não há o que distribuir)`,
+  t(`${l} e no modo filial não há resíduo (não há o que distribuir)`,
     modoFilial.rol.distribuir === undefined, JSON.stringify(modoFilial.rol));
 
   const recusa = await page.evaluate(async (id) => {
@@ -8031,51 +8039,43 @@ async function provasDesafioEExpansores(page, largura) {
   // A diferença sai dos valores sem arredondar: compara com tolerância de R$ 1.
   t(`${l} a coluna Proposta é a linha 18 da proposta, e a diferença é proposta − desafio`,
     Math.round(api.rl) === tela.rlProposta && Math.abs(tela.dif - (Math.round(api.rl) - tela.rl)) <= 1, `${api.rl} | ${JSON.stringify(tela)}`);
-  // Desde 2026-11-25 o ADMIN (o usuário da bateria) desafia além do calculado: só
-  // as cinco linhas de valor viram campo; o resto da escada segue de leitura.
-  t(`${l} para o administrador, só as linhas de valor do desafio (e a % de margem bruta) são campo`,
-    tela.campos === 6 && tela.camposDesafio.join() === 'receita_bruta,lucro_bruto,margem_bruta,despesas,rateios_negocio,rateios_adm',
-    JSON.stringify(tela.camposDesafio));
-  const extra = async (v) => {
-    await page.fill('.celula-desafio[data-desafio-chave="rateios_adm"]', v);
-    const resp = page.waitForResponse((r) => r.url().includes('/api/projecao/desafio'), { timeout: 30000 });
-    await page.press('.celula-desafio[data-desafio-chave="rateios_adm"]', 'Enter');
-    await resp;
-    await page.waitForTimeout(300);
-    return page.evaluate(() => {
-      const n = (x) => Number(String(x).replace(/[^\d,-]/g, '').replace(',', '.'));
-      const c = (k, i) => document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)[i];
-      return { adm: n(c('rateios_adm', 1).querySelector('input').value), rl: n(c('resultado', 1).textContent),
-        ajustado: !!document.querySelector('.celula-desafio.desafio-ajustado') };
-    });
-  };
-  const admCalc = Number(String((await page.inputValue('.celula-desafio[data-desafio-chave="rateios_adm"]'))).replace(/[^\d,-]/g, ''));
-  const comExtra = await extra(String(Math.abs(admCalc) + 1000000).replace(/\B(?=(\d{3})+(?!\d))/g, '.'));
-  t(`${l} desafio extra: R$ 1 mi a mais de rateio adm (digitado sem o menos) desce R$ 1 mi no resultado líquido`,
-    comExtra.adm === admCalc - 1000000 && Math.abs(comExtra.rl - (tela.rl - 1000000)) <= 1 && comExtra.ajustado,
-    JSON.stringify([admCalc, comExtra, tela.rl]));
-  const semExtra = await extra('');
-  t(`${l} apagar devolve o desafio calculado`, semExtra.adm === admCalc && semExtra.rl === tela.rl && !semExtra.ajustado,
-    JSON.stringify(semExtra));
-  // A % de margem bruta também se digita (2026-11-25): vira a margem bruta em reais
-  // sobre a receita líquida do desafio, e o valor volta como %.
-  const pctMb = async (v, sel) => {
+  // Desde 2026-11-25 (pedido do cliente) o desafio da administração se lança na
+  // coluna Desafio da DRE, conta a conta, só para o ADMIN (o usuário da bateria); o
+  // cartão só resume — nenhum campo nele.
+  t(`${l} o cartão do desafio é só leitura (nenhum campo)`, tela.campos === 0, String(tela.campos));
+  const col = await page.evaluate(() => ({
+    th: [...document.querySelectorAll('.tabela-projecao thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
+    campos: document.querySelectorAll('.tabela-projecao .celula-desafio').length,
+    travadas: ['14.2', '14.3', '16.1'].filter((c) => document.querySelector(`.tabela-projecao .celula-desafio[data-conta="${c}"]`)).length,
+    v81: document.querySelector('.tabela-projecao .celula-desafio[data-conta="8.1"]')?.placeholder,
+  }));
+  t(`${l} para o administrador, a DRE tem a coluna Desafio (no lugar da "A distribuir"), com campo nas subcontas e não nas travadas`,
+    /^Desafio/.test(col.th[col.th.length - 1]) && !col.th.some((x) => /A distribuir/.test(x)) && col.campos >= 15 && col.travadas === 0,
+    JSON.stringify(col));
+  const desafioDre = async (v) => {
+    const sel = '.tabela-projecao .celula-desafio[data-conta="8.1"]';
     await page.fill(sel, v);
     const resp = page.waitForResponse((r) => r.url().includes('/api/projecao/desafio'), { timeout: 30000 });
     await page.press(sel, 'Enter');
     await resp;
     await page.waitForTimeout(300);
-    return page.evaluate(() => ({
-      lb: Number(document.querySelector('.celula-desafio[data-desafio-chave="lucro_bruto"]').value.replace(/\./g, '').replace(',', '.')),
-      pct: document.querySelector('.celula-desafio-pct')?.value,
-      rl: SecaoProjecao.dados.desafio.escada.desafio.receita_liquida,
-    }));
+    return page.evaluate(() => {
+      const n = (x) => Number(String(x).replace(/[^\d,-]/g, '').replace(',', '.'));
+      const c = (k, i) => document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)[i];
+      return { rl: n(c('resultado', 1).textContent), l18: n(document.querySelector('.tabela-projecao [data-desafio-conta="18"]')?.textContent),
+        campo: document.querySelector('.tabela-projecao .celula-desafio[data-conta="8.1"]').value,
+        lancado: !!document.querySelector('.tabela-projecao .celula-desafio.desafio-lancado'),
+        ajustado: SecaoProjecao.dados.desafio.desafio.ajustado };
+    });
   };
-  const doze = await pctMb('12', '.celula-desafio-pct');
-  t(`${l} digitar 12% na margem bruta grava a margem em reais (12% da receita líquida) e a % volta 12,00`,
-    Math.abs(doze.lb - Math.round(0.12 * doze.rl)) <= 1 && doze.pct === '12,00', JSON.stringify(doze));
-  const volta = await pctMb('', '.celula-desafio[data-desafio-chave="lucro_bruto"]');
-  t(`${l} e apagar a margem bruta devolve a % calculada`, volta.pct !== '12,00', JSON.stringify(volta));
+  const p81 = Number(String(col.v81 || '').replace(/[^\d,-]/g, ''));
+  const comDesafio = await desafioDre(String(Math.abs(p81) + 1000000).replace(/\B(?=(\d{3})+(?!\d))/g, '.'));
+  t(`${l} desafio na DRE: R$ 1 mi a mais de despesas com vendas (digitado sem o menos) desce R$ 1 mi no resultado do cartão e da coluna`,
+    Math.abs(comDesafio.rl - (tela.rl - 1000000)) <= 1 && Math.abs(comDesafio.l18 - comDesafio.rl) <= 1 && comDesafio.lancado && comDesafio.ajustado,
+    JSON.stringify([p81, comDesafio, tela.rl]));
+  const semDesafio = await desafioDre('');
+  t(`${l} apagar devolve a proposta padrão no desafio`, semDesafio.rl === tela.rl && !semDesafio.lancado && !semDesafio.ajustado,
+    JSON.stringify(semDesafio));
   t(`${l} a nota diz de onde saiu e lembra a meta de 2% de margem líquida`,
     /driver de volume a definir/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recalculado da base/.test(tela.nota), tela.nota.slice(0, 160));
 

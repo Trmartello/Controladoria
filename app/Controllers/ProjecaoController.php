@@ -431,7 +431,10 @@ class ProjecaoController
         $fixos = Projecao::fixosDaDepreciacao($depreciacao, 0, $codNegocio) + Projecao::fixosDoRateioMatriz()
             + Projecao::fixosDoRateioAdm($rateioNeg)
             + Projecao::fixosDoRateioNeg($rateioNegocio) + Projecao::fixosDoRateioFin($rateioFin);
-        $linhasDesafio = Projecao::aplicar($linhas, [], $cresc, $taxaPc, $fixos, Projecao::acompanhamReceitaNoDesafio());
+        // E, desde 2026-11-25, com o que o ADMIN lançou na coluna Desafio da DRE,
+        // conta a conta, pelo mesmo motor da proposta (`DesafioAjuste`).
+        $lancDesafio = DesafioAjuste::lancados($negocioId, $ano + 1);
+        $linhasDesafio = Projecao::aplicar($linhas, $lancDesafio, $cresc, $taxaPc, $fixos, Projecao::acompanhamReceitaNoDesafio());
         $linhas = $modo === 'FILIAL' && $filiais
             ? Projecao::somarFiliais($linhas, $propostasFilial, $fixos)
             : Projecao::aplicar($linhas, $this->lancados($projId), $cresc, $taxaPc, $fixos);
@@ -535,7 +538,7 @@ class ProjecaoController
             'visao_ano' => $this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null,
             // O desafio da Controladoria para o ano da proposta, ao lado do que a
             // proposta dá hoje. Só leitura.
-            'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas, $linhasDesafio, $driver),
+            'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas, $linhasDesafio, $driver, $lancDesafio),
             // De onde veio a Receita de Vendas padrão (driver de volume ou premissas).
             'driver' => $driver,
             // Como é × como fica: o PIS/COFINS sai das deduções e vira a linha da
@@ -567,6 +570,23 @@ class ProjecaoController
             'atualizado_em' => $proj['atualizado_em'] ?? null,
             'atualizado_por' => $proj['atualizado_por_nome'] ?? null,
             'linhas' => $linhas,
+        ] + $this->colunaDesafio($linhasDesafio, $lancDesafio, $tributacao, $corte);
+    }
+
+    /**
+     * A coluna Desafio da DRE (pedido do cliente, 2026-11-25): as linhas do desafio
+     * e o que o ADMIN lançou nelas — SÓ para o perfil ADMIN ("só estará visível
+     * para os administradores"). Para os demais a resposta nem as traz.
+     */
+    private function colunaDesafio(array $linhasDesafio, array $lancados, ?array $tributacao, int $corte): array
+    {
+        if ((Auth::usuario()['perfil'] ?? '') !== 'ADMIN') {
+            return [];
+        }
+        return [
+            'desafio_linhas' => $linhasDesafio,
+            'desafio_lancados' => array_keys($lancados),
+            'desafio_tributos_dre' => Reforma::comoEComoFica($linhasDesafio, $tributacao, $corte),
         ];
     }
 
@@ -637,7 +657,7 @@ class ProjecaoController
     }
 
     /** O desafio de UM negócio e a proposta dele hoje, lado a lado. */
-    private function desafioDoNegocio(int $negocioId, int $anoPlan, array $linhas, array $linhasDesafio, ?array $driver): ?array
+    private function desafioDoNegocio(int $negocioId, int $anoPlan, array $linhas, array $linhasDesafio, ?array $driver, array $lancDesafio = []): ?array
     {
         $d = $this->desafioDoAno($anoPlan);
         if (!$d) {
@@ -647,26 +667,14 @@ class ProjecaoController
         $prop = self::resumoDaProposta($linhas);
         $trib = Oportunidades::tributos([$negocioId], $anoPlan - 1)[$negocioId] ?? null;
         $escada = self::escadaDoDesafio($linhasDesafio, $linhas);
-        // O desafio extra dos administradores (2026-11-25): a escada ajustada vira
-        // o desafio — e é ela que o Corporativo soma. A calculada vai junto, para
-        // a tela dizer de onde partiu.
-        $ajustes = DesafioAjuste::doNegocio($negocioId, $anoPlan);
-        $escada['calculado'] = $escada['desafio'];
-        if ($ajustes) {
-            $escada['desafio'] = DesafioAjuste::aplicar($escada['desafio'], $ajustes);
-            $desafio = self::comMargem(array_merge($desafio, [
-                'receita_bruta' => $escada['desafio']['receita_bruta'],
-                'receita_liquida' => $escada['desafio']['receita_liquida'],
-                'resultado' => $escada['desafio']['resultado'],
-            ]));
-        }
-        $desafio['ajustado'] = (bool)$ajustes;
+        // O desafio da coluna da DRE (2026-11-25) já está nas linhas: o cartão só
+        // diz se houve lançamento da administração.
+        $desafio['ajustado'] = (bool)$lancDesafio;
         $desafio['pis_cofins'] = self::pisCofinsSobre($desafio['receita_bruta'], $trib);
         $prop['pis_cofins'] = self::pisCofinsSobre($prop['receita_bruta'], $trib);
         $u = Auth::usuario();
         return $d + ['desafio' => $desafio, 'proposta' => $prop, 'tributos' => $trib,
-            'escada' => $escada, 'ajustes' => (object)$ajustes, 'ajustaveis' => DesafioAjuste::CHAVES,
-            'pode_ajustar' => ($u['perfil'] ?? '') === 'ADMIN'];
+            'escada' => $escada, 'pode_ajustar' => ($u['perfil'] ?? '') === 'ADMIN'];
     }
 
     /**
@@ -851,6 +859,9 @@ class ProjecaoController
         if (!empty($p['linhas']) && !empty($p['tributos_dre'])) {
             $p['linhas'] = Reforma::formatoNovo($p['linhas'], $p['tributos_dre']);
             $p['nivel3'] = Projecao::nivel3FormatoNovo($p['nivel3'] ?? [], $p['tributos_dre']);
+        }
+        if (!empty($p['desafio_linhas']) && !empty($p['desafio_tributos_dre'])) {
+            $p['desafio_linhas'] = Reforma::formatoNovo($p['desafio_linhas'], $p['desafio_tributos_dre']);
         }
         if (!empty($p['filial']['linhas']) && !empty($p['filial']['tributos_dre'])) {
             $p['filial']['linhas'] = Reforma::formatoNovo($p['filial']['linhas'], $p['filial']['tributos_dre']);
@@ -1387,30 +1398,40 @@ class ProjecaoController
      * se lança na linha.
      */
     /**
-     * O desafio extra (pedido do cliente, 2026-11-25): só o perfil ADMIN grava,
-     * numa linha de valor do cartão do desafio de UM negócio, para o ano todo.
-     * Valor vazio apaga o ajuste e devolve o desafio calculado.
+     * O desafio CONTA A CONTA (pedido do cliente, 2026-11-25): só o perfil ADMIN
+     * lança na coluna Desafio da DRE de UM negócio, para o ano todo — valor, ou %
+     * sobre a projeção. Vazio apaga e devolve a proposta padrão naquela conta.
+     * As mesmas linhas da proposta: blocos não (são a soma) e as travadas
+     * (rateios, depreciação carregada) também não.
      */
     public function gravarDesafio(): void
     {
         $u = Auth::exigirLogin();
         if ($u['perfil'] !== 'ADMIN') {
-            Json::erro('Só administradores ajustam o desafio.', 403);
+            Json::erro('Só administradores lançam o desafio.', 403);
         }
         $corpo = Json::corpo();
         $negocioId = (int)($corpo['negocio_id'] ?? 0);
-        $chave = (string)($corpo['chave'] ?? '');
-        if (!in_array($chave, DesafioAjuste::CHAVES, true)) {
-            Json::erro('Linha do desafio que não se ajusta: ' . $chave . '.', 422);
-        }
+        $codigo = trim((string)($corpo['conta'] ?? ''));
         if (!Database::um('SELECT id FROM negocio WHERE id = ?', [$negocioId])) {
             Json::erro('Negócio não encontrado.', 404);
         }
+        $conta = Database::um('SELECT * FROM dre_conta WHERE codigo = ?', [$codigo]);
+        if (!$conta) {
+            Json::erro('Conta não encontrada.', 404);
+        }
+        if (!Projecao::editavel($conta)) {
+            Json::erro('Esta linha é calculada a partir das subcontas: desafie nas linhas de baixo.', 422);
+        }
+        $entrada = ($corpo['entrada'] ?? 'VALOR') === 'PERCENTUAL' ? 'PERCENTUAL' : 'VALOR';
         $bruto = $corpo['valor'] ?? null;
         $valor = null;
         if ($bruto !== null && $bruto !== '') {
             if (!is_numeric($bruto)) {
-                Json::erro('Valor inválido.', 422);
+                Json::erro('Informe um número.', 422);
+            }
+            if ($entrada === 'PERCENTUAL' && abs((float)$bruto) > 1000) {
+                Json::erro('Percentual fora de faixa: informe entre -1000% e 1000%.', 422);
             }
             $valor = (float)$bruto;
         }
@@ -1421,12 +1442,14 @@ class ProjecaoController
         $ano = (int)$fech['ano'];
         $corte = (int)$fech['mes_fechado_ate'];
         if ($valor !== null) {
-            // O sinal da despesa sai do calculado: lê a tela sem o ajuste desta linha.
+            // Rateios e depreciação carregada são travados também no desafio.
             $tela = $this->montar($negocioId, $ano, $corte, 0);
-            $calc = $tela['desafio']['escada']['calculado'][$chave] ?? null;
-            $valor = DesafioAjuste::normalizar($chave, $valor, $calc === null ? null : (float)$calc);
+            $linha = array_column($tela['desafio_linhas'] ?? [], null, 'codigo')[$codigo] ?? null;
+            if (!$linha || !empty($linha['proposta_travada'])) {
+                Json::erro('Esta linha é travada (rateio ou depreciação carregada) e não se desafia.', 422);
+            }
         }
-        DesafioAjuste::gravar($negocioId, $ano + 1, $chave, $valor, (int)$u['id']);
+        DesafioAjuste::gravar($negocioId, $ano + 1, (int)$conta['id'], $entrada, $valor, (int)$u['id']);
         $this->responderComATela($negocioId, $ano, $corte, 0);
     }
 
