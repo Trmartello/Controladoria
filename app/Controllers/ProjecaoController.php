@@ -153,8 +153,10 @@ class ProjecaoController
         $juros = [];
         $pessoalAlertas = [];
         $questionamentos = [];
+        // Os rateios travados (16.1 e 14.3) saem do critério de todos: uma vez só.
+        $rateios = Projecao::rateios($ano, $corte, $ano + 1);
         foreach ($negocios as $n) {
-            $m = $this->montar((int)$n['id'], $ano, $corte);
+            $m = $this->montar((int)$n['id'], $ano, $corte, 0, $rateios);
             $tributosDre[(int)$n['id']] = $m['tributos_dre'];
             $q = $m['oportunidades']['quadro'];
             if ($q['linhas']) {
@@ -295,7 +297,7 @@ class ProjecaoController
      * tela inteira — recalcular de outro jeito ali seria a segunda cópia da
      * regra que esta seção evita desde o começo.
      */
-    private function montar(int $negocioId, int $ano, int $corte, int $filialId = 0): array
+    private function montar(int $negocioId, int $ano, int $corte, int $filialId = 0, ?array $rateios = null): array
     {
         $linhas = $this->linhasDaDre($negocioId, $ano, $corte);
 
@@ -386,9 +388,35 @@ class ProjecaoController
                 $this->lancados($projId, (int)$f['id']),
                 Projecao::crescimentosDaFilial($cresc, $base, (float)($acertosFilial[(int)$f['id']] ?? 0.0), $minimoPessoal),
                 $taxaPc,
-                Projecao::fixosDaDepreciacao($depreciacao, (int)$f['id'])
+                Projecao::fixosDaDepreciacao($depreciacao, (int)$f['id'], $codNegocio)
             );
             $porFilial[(int)$f['id']] = $lf;
+        }
+        // O RATEIO ADMINISTRATIVO (16.1) do negócio: a parte dele no critério de
+        // todos (`Projecao::rateioAdm`), travada. Nas filiais, dividido pela parte
+        // de cada uma no critério do negócio — que só se conhece agora, com as
+        // propostas delas.
+        // E o RATEIO NEGÓCIO (14.3), pelos critérios da planilha de cada centro de
+        // custo (`Projecao::rateioNegocios`) — no negócio e em cada filial.
+        // `$rateios` vem pronto do Corporativo, que monta os 11 negócios de uma vez.
+        $rateios ??= Projecao::rateios($ano, $corte, $ano + 1);
+        $rateioAdm = $rateios['adm'];
+        $rateioNeg = $rateioAdm['negocios'][$negocioId] ?? null;
+        $rateioNegocio = $rateios['neg']['negocios'][$negocioId] ?? null;
+        // E o RATEIO FINANCEIRO (14.2), da carga por negócio; nas filiais, pela
+        // projeção de 2026 da 14.2 de cada uma.
+        $rateioFin = Projecao::rateioFinDoNegocio($negocioId, $ano + 1);
+        if ($rateioNeg || $rateioNegocio || $rateioFin) {
+            $critFilial = array_map([Projecao::class, 'criterioRateioAdm'], $porFilial);
+            $totFilial = array_sum($critFilial);
+            $finFilial = array_map(static fn ($lf) => (float)(array_column($lf, 'projecao', 'codigo')[Projecao::LINHA_RATEIO_FIN] ?? 0.0), $porFilial);
+            $totFin = array_sum($finFilial);
+            foreach ($porFilial as $fid => $lf) {
+                $porFilial[$fid] = Projecao::fixar($lf,
+                    Projecao::fixosDoRateioAdm($rateioNeg, $totFilial > 0 ? $critFilial[$fid] / $totFilial : 0.0)
+                    + Projecao::fixosDoRateioNeg($rateioNegocio, (int)$fid)
+                    + Projecao::fixosDoRateioFin($rateioFin, abs($totFin) > 0 ? $finFilial[$fid] / $totFin : 0.0));
+            }
         }
         $propostasFilial = array_map(
             static fn ($ls) => array_column($ls, 'proposta', 'codigo'),
@@ -399,7 +427,8 @@ class ProjecaoController
         // sem nenhum lançamento — o ponto de partida de onde a proposta anda. Com
         // uma diferença (2026-11-23): nele as despesas operacionais acompanham a
         // receita (`Projecao::acompanhamReceitaNoDesafio`).
-        $fixos = Projecao::fixosDaDepreciacao($depreciacao);
+        $fixos = Projecao::fixosDaDepreciacao($depreciacao, 0, $codNegocio) + Projecao::fixosDoRateioAdm($rateioNeg)
+            + Projecao::fixosDoRateioNeg($rateioNegocio) + Projecao::fixosDoRateioFin($rateioFin);
         $linhasDesafio = Projecao::aplicar($linhas, [], $cresc, $taxaPc, $fixos, Projecao::acompanhamReceitaNoDesafio());
         $linhas = $modo === 'FILIAL' && $filiais
             ? Projecao::somarFiliais($linhas, $propostasFilial, $fixos)
@@ -483,6 +512,17 @@ class ProjecaoController
             // ficou abaixo dele — negócio (filial_id 0) e filiais.
             'pessoal_minimo' => $minimoPessoal,
             'pessoal_alertas' => $alertasPessoal,
+            // O rateio administrativo travado na 16.1: a parte do negócio e o critério.
+            'rateio_adm' => $rateioNeg ? [
+                'parte' => $rateioNeg['parte'], 'criterio' => $rateioNeg['criterio'],
+                'criterio_total' => $rateioAdm['criterio_total'], 'total' => $rateioAdm['total'],
+                'valor' => $rateioNeg['valor'], 'linhas' => Projecao::CRITERIO_RATEIO_ADM,
+            ] : null,
+            // O rateio negócio travado na 14.3: quanto veio de cada centro de custo.
+            'rateio_neg' => $rateioNegocio ? [
+                'valor' => $rateioNegocio['valor'], 'centros' => $rateioNegocio['centros'],
+                'total' => $rateios['neg']['total'],
+            ] : null,
             // Pessoas e benefícios do NEGÓCIO, por ano (a filial não tem o seu: o
             // quadro e os valores são do negócio, que já traz a parte dele).
             'pessoas' => $this->pessoasDoNegocio($negocioId, $ano, $anosPremissa),
@@ -914,7 +954,30 @@ class ProjecaoController
         // é o total da depreciação, por negócio, filial e mês. Apagar (valor
         // vazio) continua aceito, para limpar um lançamento de antes da carga.
         $vazio = !isset($corpo['valor']) || $corpo['valor'] === '';
+        // O RATEIO ADMINISTRATIVO (16.1) também não se lança (pedido do cliente,
+        // 2026-11-24): é a parte do negócio no rateio corporativo administrativo.
+        if ($codigo === Projecao::LINHA_RATEIO_FIN && !$vazio && Projecao::rateioFinDoNegocio($negocioId, $anoPlan) !== null) {
+            Json::erro(
+                'O Rateio Financeiro vem do rateio financeiro de ' . $anoPlan . ' por negócio e não se lança.',
+                422
+            );
+        }
+        if ($codigo === Projecao::LINHA_RATEIO_NEG && !$vazio && Projecao::cargaRateioNegocios($anoPlan)) {
+            Json::erro(
+                'O Rateio Corporativo Negócio vem do rateio dos centros de custo de ' . $anoPlan
+                . ' pelos critérios de cada um e não se lança.',
+                422
+            );
+        }
+        if ($codigo === Projecao::LINHA_RATEIO_ADM && !$vazio && Projecao::cargaRateioAdm($anoPlan)) {
+            Json::erro(
+                'O Rateio Corporativo Administrativo vem do rateio corporativo de ' . $anoPlan
+                . ' (proporção das despesas orçadas de cada negócio) e não se lança.',
+                422
+            );
+        }
         if ($codigo === Projecao::LINHA_DEPRECIACAO && !$vazio
+            && !Projecao::depreciacaoEditavel((string)(Database::um('SELECT cod_negocio FROM negocio WHERE id = ?', [$negocioId])['cod_negocio'] ?? ''))
             && Projecao::depreciacao([$negocioId], $anoPlan)) {
             Json::erro(
                 'A Depreciação (conta ' . Projecao::CONTA_DEPRECIACAO . ') vem da carga de depreciação '

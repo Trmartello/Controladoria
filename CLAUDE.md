@@ -52,8 +52,9 @@ também o quanto a proposta segura as despesas abaixo da receita.
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, R$ 29,6 mi de resultado, margem 0,83% (a meta de 2% pediria R$ 70,97
-mi). Era R$ 45,6 mi e 1,28%; R$ 45,8 mi e 1,29% com a 3227 fora da base do pessoal;
+faturamento, −R$ 22,8 mi de resultado, margem −0,64% (a meta de 2% pediria R$ 70,97
+mi), desde os rateios de 2027 travados: 16.1 administrativo (−R$ 9,8 mi), 14.3
+negócio (−R$ 16,9 mi) e 14.2 financeiro (−R$ 22,8 mi) — abaixo. Era R$ 45,6 mi e 1,28%; R$ 45,8 mi e 1,29% com a 3227 fora da base do pessoal;
 R$ 32,4 mi com a depreciação carregada na 8.10 (ver abaixo); R$ 34,6 mi com a
 depreciação regravada sem o grupo contábil 1272; R$ 30,9 mi com as despesas
 operacionais acompanhando a receita no desafio; R$ 29,6 mi com elas só acompanhando
@@ -103,6 +104,13 @@ DELA, e o mínimo da filial também. Como a conta anterior já tirava o PPR líq
 (estorno dentro), o total do negócio quase não muda (Agropecuárias −R$ 78 mil); muda
 a distribuição entre filiais. Detalhe em "Regras de negócio", `pessoalDaDiretriz`.
 
+**Depreciação (8.10): só a PECUÁRIA edita** (regra do cliente, 2026-11-24: "somente o
+negócio Pecuária deve poder editar a depreciação conforme desejar; os demais negócios
+não"). Na Pecuária (cód. 2, `Projecao::NEGOCIOS_DEPRECIACAO_EDITAVEL`) a 8.10 vem com a
+carga como PADRÃO, sem cadeado: o que ela lançar vale, e a API aceita. Nos demais
+negócios, a carga continua travada e a API recusa. Não estenda a outro negócio sem o
+cliente.
+
 **Depreciação (8.10) CARREGADA e TRAVADA** (pedido do cliente, 2026-11-23: "Pegue
 na depreciação por negócio, por filial e por mês. Na conta número 3128. E este
 campo não deve permitir edição, pois esse já é o total da depreciação"). Fonte:
@@ -132,10 +140,65 @@ Desconsiderar em TODAS as linhas — itens e meses fora do padrão —, sem o se
 "avaliado" (2026-11-24; `negocio_item_avaliacao`). Os questionamentos 2025 × 2026
 vêm de `dre_reduzida_12m`.
 
+**Rateio Corporativo Administrativo (16.1) CALCULADO e TRAVADO** (pedido do cliente,
+2026-11-24: "gere um critério de rateio por negócio, olhando para a coluna K 'saldo' e
+por período / mês […] numa proporção de valor orçado. Bloqueia o campo"). O total a
+ratear é o saldo planejado dos 43 centros de custo corporativos da Matriz, mês a mês
+(`database/rateio_adm_2027.php`, gerado da `Rateio Corporativo 2027.xlsm`, coluna K:
+−R$ 59.011.744,41). A parte de cada negócio é a proporção da proposta de 2027 dele
+nas linhas de `Projecao::CRITERIO_RATEIO_ADM` (8.1 vendas, 8.2 promoções, 8.5 pessoal,
+8.7 serviços profissionais, 8.8 serviços em geral, 8.11 manutenção, 8.12 materiais,
+8.14 viagens; as contas "sem valor" da planilha de critério são custo na DRE e já
+estão fora). **Ao vivo** (decisão do cliente): `Projecao::rateioAdm` recalcula o
+critério de todos a cada tela (≈0,1 s), então a parte de um negócio muda quando
+outro lança despesa. Travada no negócio, no desafio, no Painel e nas filiais (estas
+pela parte de cada uma no critério do negócio); a API recusa o lançamento. **A 14.3
+continua como está, lançável** (decisão do cliente, 2026-11-24, ciente de que a
+planilha cobre quase todo o corporativo que em 2026 se dividia entre 14.3 e 16.1).
+Provas: `testes/rateio_adm.php`.
+
+**Rateio Corporativo Negócio (14.3) CALCULADO e TRAVADO** (pedido do cliente,
+2026-11-24: "distribua o valor mensalmente por negócios […] respeitar a distribuição
+somente para o Negócio que está mencionado na coluna H; quando a coluna F menciona as
+filiais, observar somente essas […]; lançar na célula rateio corporativo negócio,
+bloquear célula"). `database/rateio_negocios_2027.php`, gerado de duas planilhas:
+`Rateio Corporativo Negocios 2027.xlsm` (coluna K "Saldo" por centro de custo e mês,
+−R$ 38.463.558,85) e `Critérios de rateios.xlsx` (por centro de custo: critério,
+filiais, negócios; e as contas de cada critério). Por centro de custo, a parte de cada
+negócio é a proporção da proposta de 2027 no critério — DESPESAS (as linhas de
+`CRITERIO_RATEIO_ADM`) ou FATURAMENTO (receita bruta; critérios 16, 22, 33, 37) —, só
+nos negócios da regra e, quando ela lista filiais, só nelas (o negócio pesa pela soma
+delas); "Todas" = o negócio inteiro. Um negócio só leva o centro inteiro. Nas filiais,
+pelo critério de cada uma. Ao vivo, da MESMA base da 16.1 (`Projecao::rateios`, uma
+chamada a `resumoDosNegocios` com as filiais). Decisões (padrões aceitos pelo cliente,
+2026-11-24): o 5163 CENTRAL DE COMPRAS ("apenas planejar", sem regra) fica FORA
+(−R$ 116.424); as contas de CUSTO dos critérios 1 e 2 ficam fora (a proposta não as
+separa no Custo das Vendas); o 5191 (sem critério) vai inteiro à Agropecuária. Rateado:
+−R$ 38.347.134,85. Provas: `testes/rateio_negocios.php`.
+
+**Rateio Financeiro (14.2) CARREGADO e TRAVADO** (pedido do cliente, 2026-11-24:
+"atualize o rateio financeiro por negócio no projetado / orçado de 2027, totalizando por
+ano, ou seja na coluna proposta. E bloqueie a célula"). `database/rateio_financeiro_2027.php`,
+gerado de `Rateio_Financeiro - site planejamento.xlsx` (coluna "Rateio_fin_negocio": o
+valor de cada negócio em cada mês de nov/25 a out/26). Cada mês do calendário vai para o
+mesmo mês de 2027; o ano é a soma dos 12: −R$ 95.923.100 (Agropecuárias −52,60 mi,
+Cereais −19,93 mi, Pecuária −12,75 mi). Carga fixa, sem critério (a planilha já traz o
+valor por negócio). Nas filiais, pela projeção de 2026 da 14.2 de cada uma. Provas:
+`testes/rateio_financeiro.php`.
+
+**Só as linhas de rateio (14.2, 14.3, 16.1) e a depreciação (8.10, menos na Pecuária)
+ficam travadas** (cliente, 2026-11-24: "mantenha os campos de edição, somente bloqueie os
+campos de rateios"); a 14.1 continua lançável. A tela descarta resposta que não é do último pedido
+(`SecaoProjecao.pedido`): com os rateios as respostas ficaram ~0,2 s mais lentas, e a de
+um negócio anterior chegava depois e repintava o negócio errado.
+
 **Agrupamento no Corporativo** (pedido do cliente, 2026-11-24: "preciso poder
 selecionar e totalizar mais de um negócio, por exemplo Leite mais Postos de
-resfriamento de leite"). Na visão Corporativo, o quadro "Negócios no consolidado"
-tem uma caixa por negócio; "Somar os marcados" recarrega a tela com a soma só deles
+resfriamento de leite"; e no mesmo dia: o checkbox DENTRO do seletor de negócio, soma
+automática). O seletor da Projeção (`seletorNegocios`) tem "Corporativo — todos os
+negócios" e uma caixa por negócio: um marcado = a tela dele (editável); dois ou mais =
+a soma, sozinha, sem botão (700 ms depois do último clique); o `<select>` de antes fica
+escondido e é ele que escreve no contexto do menu. A soma recarrega a tela só com eles
 (`GET /api/projecao?corporativo=1&negocios=4,12`, `ProjecaoController::grupoPedido`:
 ids fora da lista são ignorados, e nenhum válido ou todos = o Corporativo). É a MESMA
 soma do Corporativo (`montarCorporativo` com a lista filtrada), então DRE, desafio,
