@@ -1015,7 +1015,21 @@ const SecaoProjecao = {
    * lança nada nela. No negócio, duas linhas; no Corporativo, um quadro por linha
    * com todos os negócios e o total.
    */
-  colunasVisao(d) {
+  /**
+   * As linhas do quadro (pedido do cliente, 2026-11-25): a que o seletor escolhe
+   * no Corporativo e as que o negócio mostra. `pct` = a margem sobre a receita
+   * líquida existe para a linha (o botão "%").
+   */
+  LINHAS_VISAO: [
+    { conta: '1', rotulo: 'Receita operacional bruta', curto: 'Receita bruta' },
+    { conta: '3', rotulo: 'Receita operacional líquida', curto: 'Receita líquida' },
+    { conta: '5', rotulo: 'Lucro bruto', curto: 'Lucro bruto', pct: 'Margem bruta' },
+    { conta: '7', rotulo: 'Despesas operacionais', curto: 'Despesas operacionais' },
+    { conta: '13', rotulo: 'Resultado antes dos rateios (11 - após impostos)', curto: 'Resultado antes dos rateios' },
+    { conta: '18', rotulo: 'Resultado líquido', curto: 'Resultado líquido', pct: 'Margem líquida' },
+  ],
+
+  colunasVisao(d, pct = false) {
     const ate = this.nomeMes(d.mes_fechado_ate);
     const prox = this.nomeMes(d.mes_fechado_ate + 1);
     const a = String(d.ano).slice(2);
@@ -1026,11 +1040,43 @@ const SecaoProjecao = {
         <th class="text-end">Planejado<br><span class="fw-normal text-muted small">${prox}–dez/${a}</span></th>
         <th class="text-end">Real + Plan.<br><span class="fw-normal text-muted small">${d.ano}</span></th>
         <th class="text-end">Planejado<br><span class="fw-normal text-muted small">${d.ano} (ano)</span></th>
-        <th class="text-end">Diferença<br><span class="fw-normal text-muted small">R$</span></th>
+        <th class="text-end">Diferença<br><span class="fw-normal text-muted small">${pct ? 'p.p.' : 'R$'}</span></th>
         <th class="text-end">Diferença<br><span class="fw-normal text-muted small">%</span></th>
         <th class="text-end visao-realista">Visão realista<br><span class="fw-normal small">${prox}–dez/${a}</span></th>
         <th class="text-end visao-realista">Real + Realista<br><span class="fw-normal small">${d.ano}</span></th>
-        <th class="text-end visao-realista">Realista × plano<br><span class="fw-normal small">${d.ano} · R$</span></th>
+        <th class="text-end visao-realista">Realista × plano<br><span class="fw-normal small">${d.ano} · ${pct ? 'p.p.' : 'R$'}</span></th>
+      </tr>`;
+  },
+
+  /**
+   * A linha em PERCENTUAL: a margem da linha `v` sobre a receita líquida `rol`,
+   * coluna a coluna (o realista da margem é o realista da linha ÷ o realista da
+   * receita líquida). As diferenças viram pontos percentuais.
+   */
+  linhaVisaoPct(rotulo, v, rol, classe = '') {
+    if (!v || !rol) return '';
+    const q = (a, b) => (b ? a / b : null);
+    const p = (x) => (x === null ? '—' : this.pct(x, 2));
+    const pp = (a, b) => (a === null || b === null ? null : (a - b) * 100);
+    const fpp = (x) => (x === null ? '—'
+      : `${x > 0.005 ? '+' : ''}${x.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.`);
+    const cor = (x) => (x === null || Math.abs(x) < 0.05 ? '' : (x > 0 ? 'text-success' : 'text-danger'));
+    const c = {};
+    ['realizado', 'plan_ate', 'plan_resto', 'real_plan', 'plan_ano', 'realista_resto', 'real_realista'].forEach((k) => { c[k] = q(v[k], rol[k]); });
+    const dif = pp(c.real_plan, c.plan_ano);
+    const xp = pp(c.real_realista, c.plan_ano);
+    return `<tr class="${classe} linha-visao-pct">
+        <td>${rotulo}</td>
+        <td class="text-end">${p(c.realizado)}</td>
+        <td class="text-end">${p(c.plan_ate)}</td>
+        <td class="text-end">${p(c.plan_resto)}</td>
+        <td class="text-end fw-bold">${p(c.real_plan)}</td>
+        <td class="text-end">${p(c.plan_ano)}</td>
+        <td class="text-end ${cor(dif)}">${fpp(dif)}</td>
+        <td class="text-end">—</td>
+        <td class="text-end visao-realista" data-realista="resto">${p(c.realista_resto)}</td>
+        <td class="text-end visao-realista fw-bold" data-realista="ano">${p(c.real_realista)}</td>
+        <td class="text-end visao-realista ${cor(xp)}" data-realista="x-plano">${fpp(xp)}</td>
       </tr>`;
   },
 
@@ -1059,7 +1105,8 @@ const SecaoProjecao = {
   notaVisao(d) {
     return `<div class="small text-muted mt-1">
         <strong>Visão realista</strong> (estimativa da Controladoria): o planejado de ${this.nomeMes(d.mes_fechado_ate + 1)}–dez
-        corrigido pelo desvio até ${this.nomeMes(d.mes_fechado_ate)}, supondo o mesmo ritmo. Positivo é favorável.
+        corrigido pelo desvio até ${this.nomeMes(d.mes_fechado_ate)}, supondo o mesmo ritmo — receitas pela aderência ao plano,
+        as demais linhas pelo desvio médio em reais. Positivo é favorável. % = sobre a receita líquida.
       </div>`;
   },
 
@@ -1074,37 +1121,59 @@ const SecaoProjecao = {
           <table class="table table-sm align-middle mb-0 tabela-visao-ano">
             <thead>${this.colunasVisao(d)}</thead>
             <tbody>
-              ${this.linhaVisao('Receita operacional bruta', d.visao_ano['1'], '')}
-              ${this.linhaVisao('Resultado líquido', d.visao_ano['18'], '')}
+              ${this.LINHAS_VISAO.map((x) => this.linhaVisao(x.rotulo, v[x.conta], x.conta === '18' ? 'fw-bold' : '')
+    + (x.pct ? this.linhaVisaoPct(`<span class="ps-3">% ${x.pct.toLowerCase()}</span>`, v[x.conta], v['3'], 'text-muted') : '')).join('')}
             </tbody>
           </table>
         </div>
         ${this.notaVisao(d)}`);
   },
 
+  /** A linha e o modo (R$ ou %) escolhidos no seletor do Corporativo; valem enquanto a página está aberta. */
+  visaoEscolhida() {
+    const linha = this.LINHAS_VISAO.find((x) => x.conta === this.visaoConta) || this.LINHAS_VISAO[0];
+    return { linha, pct: !!(this.visaoPct && linha.pct) };
+  },
+
   cartaoVisaoAnoCorporativo(d) {
     const negs = d.visao_ano_negocios || {};
     const nomes = Object.fromEntries((d.negocios || []).map((n) => [String(n.id), n.rotulo]));
-    const tabela = (conta, titulo) => {
+    const t = d.visao_ano_total || {};
+    const { linha, pct } = this.visaoEscolhida();
+    const conta = linha.conta;
+    const tabela = () => {
       const linhas = (d.negocios || [])
-        .filter((n) => negs[n.id] && !(negs[n.id][conta].plan_ano === 0 && negs[n.id][conta].realizado === 0))
-        .map((n) => this.linhaVisao(Modal.esc(nomes[String(n.id)]), negs[n.id][conta])).join('');
-      return `<p class="small fw-bold text-uppercase text-muted mb-1 mt-2">${titulo}</p>
+        .filter((n) => negs[n.id] && negs[n.id][conta] && !(negs[n.id][conta].plan_ano === 0 && negs[n.id][conta].realizado === 0))
+        .map((n) => (pct
+          ? this.linhaVisaoPct(Modal.esc(nomes[String(n.id)]), negs[n.id][conta], negs[n.id]['3'])
+          : this.linhaVisao(Modal.esc(nomes[String(n.id)]), negs[n.id][conta]))).join('');
+      const total = pct
+        ? this.linhaVisaoPct('Total dos negócios', t[conta], t['3'], 'fw-bold table-light linha-total-visao')
+        : this.linhaVisao('Total dos negócios', t[conta], 'fw-bold table-light linha-total-visao');
+      return `<p class="small fw-bold text-uppercase text-muted mb-1 mt-2">${pct ? `${linha.pct} (% da receita líquida)` : linha.rotulo}</p>
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0 tabela-visao-ano" data-conta-visao="${conta}">
-            <thead>${this.colunasVisao(d)}</thead>
-            <tbody>${linhas}${this.linhaVisao('Total dos negócios', (d.visao_ano_total || {})[conta], 'fw-bold table-light linha-total-visao')}</tbody>
+          <table class="table table-sm align-middle mb-0 tabela-visao-ano" data-conta-visao="${conta}" data-visao-modo="${pct ? 'pct' : 'valor'}">
+            <thead>${this.colunasVisao(d, pct)}</thead>
+            <tbody>${linhas}${total}</tbody>
           </table>
         </div>`;
     };
-    const t = d.visao_ano_total || {};
+    const botao = (x) => `<button type="button" class="btn ${x.conta === conta ? 'btn-verde' : 'btn-outline-secondary'}"
+        data-visao-conta="${x.conta}" aria-pressed="${x.conta === conta}">${x.curto}</button>`;
+    const modo = (valor, rotulo) => `<button type="button" class="btn ${(valor === 'pct') === pct ? 'btn-verde' : 'btn-outline-secondary'}"
+        data-visao-modo-botao="${valor}" aria-pressed="${(valor === 'pct') === pct}"
+        title="${valor === 'pct' ? `${linha.pct} sobre a receita líquida` : 'Em reais'}">${rotulo}</button>`;
+    const seletor = `<div class="d-flex flex-wrap align-items-center gap-2 mt-1 seletor-visao-ano">
+        <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Linha da DRE">${this.LINHAS_VISAO.map(botao).join('')}</div>
+        ${linha.pct ? `<div class="btn-group btn-group-sm" role="group" aria-label="Valor ou percentual">${modo('valor', 'R$')}${modo('pct', '%')}</div>` : ''}
+      </div>`;
     const resumo = t['1'] && t['18']
       ? `real + realista: receita ${this.mi(t['1'].real_realista)} · resultado ${this.mi(t['18'].real_realista)}
         (${this.mi(t['18'].realista_x_plano, true)} contra o plano)`
       : '';
     return this.expansor('visao', 'painel-visao-ano', `${d.ano}: realizado, planejado e visão realista, por negócio`, resumo, `
-        ${tabela('1', 'Receita operacional bruta')}
-        ${tabela('18', 'Resultado líquido')}
+        ${seletor}
+        ${tabela()}
         ${this.notaVisao(d)}`);
   },
 
@@ -1317,8 +1386,9 @@ const SecaoProjecao = {
         </div>
         <div class="small text-muted mb-1">Desafio = <strong>proposta padrão</strong>: projeção de ${d.ano} com as premissas e a
           diretriz, custos e despesas acompanhando a receita, rateios travados. Proposta = o que está lançado na DRE.</div>
-        ${x.pode_ajustar && !App.modoDossie ? `<div class="small mb-1 nota-desafio-ajuste"><strong>Desafio extra:</strong> digite na coluna Desafio
-          (ano todo); resultados e margens se recalculam. Apague para voltar ao calculado.</div>` : ''}
+        ${x.pode_ajustar && !App.modoDossie ? `<div class="small mb-1 nota-desafio-ajuste"><span class="legenda-editavel"></span>
+          <strong>Desafio extra:</strong> digite nas células amarelas da coluna Desafio (ano todo); resultados e margens se
+          recalculam. Apague para voltar ao calculado.</div>` : ''}
         ${Object.keys(ajustes).length && !x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste">O desafio deste negócio
           tem <strong>ajuste da administração</strong> além da proposta padrão.</div>` : ''}
         ${this.notaTributos(x.tributos, x.ano)}
@@ -2463,6 +2533,18 @@ const SecaoProjecao = {
     }
     const tribBotao = el.querySelector('#projecao-tributos-botao');
     if (tribBotao && virgem(tribBotao)) tribBotao.addEventListener('click', () => this.alternarTributos());
+    // O seletor da visão do ano (Corporativo): delegado, porque o cartão se repinta.
+    if (!el.dataset.ligouVisao) {
+      el.dataset.ligouVisao = '1';
+      el.addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-visao-conta], [data-visao-modo-botao]');
+        if (!b || !this.dados) return;
+        if (b.dataset.visaoConta) this.visaoConta = b.dataset.visaoConta;
+        if (b.dataset.visaoModoBotao) this.visaoPct = b.dataset.visaoModoBotao === 'pct';
+        const card = el.querySelector('.painel-visao-ano');
+        if (card) card.outerHTML = this.cartaoVisaoAno(this.dados);
+      });
+    }
     // O × do quadro: delegado, porque o quadro se repinta a cada gravação.
     if (!el.dataset.ligouTributos) {
       el.dataset.ligouTributos = '1';

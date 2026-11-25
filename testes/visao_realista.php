@@ -139,5 +139,20 @@ prova('total do painel: resultado líquido realista de nov–dez R$ 13.824.615, 
 prova('o total é a SOMA dos negócios, e não a regra aplicada ao total',
     abs($t['1']['realista_resto'] - array_sum(array_map(static fn ($x) => $x['1']['realista_resto'], $v))) < 0.01);
 
+// ── As linhas do seletor (2026-11-25) ───────────────────────────────────────
+// Receita líquida escala como a bruta (aderência); lucro bruto, despesas e
+// resultado antes dos rateios seguem o desvio médio, como o líquido. De mão, com
+// números em que as duas regras dão resultados diferentes: realizado 90, plano
+// até o corte 100, resto 40, corte 10 — aderência 40 × 0,9 = 36; desvio
+// 40 + (90 − 100)/10 × 2 = 38.
+$e = ['realizado' => 90.0, 'plan_ate' => 100.0, 'plan_resto' => 40.0];
+prova('receita líquida (3): aderência, 40 × 90/100 = 36', abs(Projecao::visaoRealista($e, '3', 10)['realista_resto'] - 36) < 1e-9);
+foreach (['5', '7', '13'] as $c) {
+    prova("linha {$c}: desvio médio, 40 + (90 − 100)/10 × 2 = 38", abs(Projecao::visaoRealista($e, $c, 10)['realista_resto'] - 38) < 1e-9);
+}
+$tem = array_map('strval', array_keys(reset($v) ?: []));
+sort($tem);
+prova('a visão do ano de cada negócio traz as seis linhas', $tem === ['1', '3', '5', '7', '13', '18'], json_encode($tem));
+
 echo "\n" . count($bad) . " falha(s), {$ok} verde(s).\n";
 exit($bad ? 1 : 0);

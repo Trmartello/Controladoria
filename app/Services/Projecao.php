@@ -187,20 +187,37 @@ class Projecao
      *    continue errando o plano no mesmo ritmo do ano — em reais, porque
      *    resultado não escala com nada (pode trocar de sinal).
      *
-     * Só essas duas linhas: estender a estimativa às demais exigiria uma regra
-     * para custos e despesas que ninguém definiu, e inventá-la seria o erro que
-     * este sistema evita.
+     * Desde 2026-11-25 (pedido do cliente: escolher a visão por receita líquida,
+     * lucro bruto, despesas, resultado antes dos rateios), as outras linhas usam
+     * a regra que já existia, por natureza: a **receita líquida** (`3`) escala
+     * como a bruta (aderência); **lucro bruto, despesas operacionais e resultado
+     * antes dos rateios** (`5`, `7`, `13`) seguem o desvio médio mensal, como o
+     * resultado. É a extensão mais curta das duas regras — e por isso o realista
+     * de cada linha é calculado sozinho: o lucro bruto realista NÃO é a receita
+     * líquida realista menos o custo realista (não há linha de custo no quadro).
+     * Se a controladoria definir outra regra para custo e despesa, é aqui.
      *
      * @param array{realizado:float, plan_ate:float, plan_resto:float} $v
      * @return array todas as colunas do quadro, em reais
      */
+    /**
+     * As linhas do quadro "realizado, planejado e visão realista" (pedido do
+     * cliente, 2026-11-25: o seletor de visão por negócio): receita bruta e
+     * líquida, lucro bruto, despesas operacionais, "11 - resultado após
+     * impostos" (antes dos rateios) e resultado líquido.
+     */
+    public const LINHAS_VISAO_ANO = ['1', '3', '5', '7', '13', '18'];
+
+    /** As linhas de RECEITA, que no realista seguem a aderência; as demais, o desvio médio. */
+    private const VISAO_POR_ADERENCIA = ['1', '3'];
+
     public static function visaoRealista(array $v, string $conta, int $corte): array
     {
         $real = (float)$v['realizado'];
         $ate = (float)$v['plan_ate'];
         $resto = (float)$v['plan_resto'];
         $faltam = 12 - $corte;
-        if ($conta === '1') {
+        if (in_array($conta, self::VISAO_POR_ADERENCIA, true)) {
             // Sem plano até o corte não há aderência: vale o planejado.
             $realista = $ate != 0.0 ? $resto * ($real / $ate) : $resto;
         } else {
