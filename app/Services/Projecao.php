@@ -195,7 +195,7 @@ class Projecao
      * resultado. É a extensão mais curta das duas regras — e por isso o realista
      * de cada linha é calculado sozinho: o lucro bruto realista NÃO é a receita
      * líquida realista menos o custo realista (não há linha de custo no quadro).
-     * Se a controladoria definir outra regra para custo e despesa, é aqui.
+     * Regra confirmada pelo cliente em 2026-11-25 ("sim, pode manter assim").
      *
      * @param array{realizado:float, plan_ate:float, plan_resto:float} $v
      * @return array todas as colunas do quadro, em reais

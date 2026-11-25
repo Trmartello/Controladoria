@@ -3317,8 +3317,8 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   margem de cada coluna é a linha ÷ a receita líquida da MESMA coluna, inclusive
   o realista, e as diferenças saem em p.p. Escolha em memória
   (`visaoConta`/`visaoPct`). No negócio, as seis linhas e as duas margens numa
-  tabela só. **Regra do realista nas linhas novas** (decisão minha, a confirmar
-  com a controladoria): receita líquida pela aderência, como a bruta; lucro
+  tabela só. **Regra do realista nas linhas novas** (confirmada pelo cliente em
+  2026-11-25: "sim, pode manter assim"): receita líquida pela aderência, como a bruta; lucro
   bruto, despesas e antes dos rateios pelo desvio médio, como o líquido — cada
   linha calculada sozinha. Prova: `visao_realista.php` e `provasVisaoDoAno`.
   **Desafio extra destacado**: as células editáveis do administrador têm o
