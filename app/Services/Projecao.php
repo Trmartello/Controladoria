@@ -960,13 +960,21 @@ class Projecao
      * Os negócios que EDITAM a depreciação (pedido do cliente, 2026-11-24: "somente o
      * negócio Pecuária deve poder editar a depreciação conforme desejar; os demais
      * negócios não"). Neles a 8.10 vem com a carga como padrão e aceita lançamento;
-     * nos outros, a carga é travada.
+     * nos outros, a carga é travada. Os CEREAIS também, desde 2026-11-25 (pedido do
+     * cliente: "para o negócio Cereais, também permita editar o campo de depreciação").
+     * E, no mesmo dia, TODOS os negócios (pedido do cliente: "libera o campo de
+     * depreciação para a fábrica de ração ou todos os negócios"): a carga é o padrão
+     * da 8.10 em todo negócio e filial, e o lançado vale. A lista fica para o caso de
+     * a liberação geral ser revertida.
      */
-    public const NEGOCIOS_DEPRECIACAO_EDITAVEL = ['2'];
+    public const NEGOCIOS_DEPRECIACAO_EDITAVEL = ['1', '2'];
+
+    /** A 8.10 é editável em todos os negócios (2026-11-25). */
+    public const DEPRECIACAO_EDITAVEL_EM_TODOS = true;
 
     public static function depreciacaoEditavel(string $codNegocio): bool
     {
-        return in_array($codNegocio, self::NEGOCIOS_DEPRECIACAO_EDITAVEL, true);
+        return self::DEPRECIACAO_EDITAVEL_EM_TODOS || in_array($codNegocio, self::NEGOCIOS_DEPRECIACAO_EDITAVEL, true);
     }
 
     /**
