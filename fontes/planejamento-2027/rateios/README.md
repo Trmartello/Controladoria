@@ -25,5 +25,11 @@ cargas do repositório byte a byte. Depois de regerar, rode
 `testes/rateio_adm.php`, `testes/rateio_negocios.php` e
 `testes/rateio_financeiro.php`, que conferem os totais contra a planilha.
 
+Atualizações: em 25/11/2026 o cliente mandou o `Rateio Corporativo ADM 2027.xlsm`, que
+substituiu o `Rateio Corporativo 2027.xlsm` (mesmo nome aqui, para o gerador e as provas):
+total de −R$ 59.011.744,41 para −R$ 37.735.231,41 (créditos na 5205 Contabilidade, mais
+Marketing na 5162). No mesmo dia o `Rateio Corporativo Negocios 2027.xlsm` chegou de novo,
+idêntico ao guardado; o 5163 CENTRAL DE COMPRAS continua fora (decisão do cliente).
+
 A linha 14.1 (Rateio Matriz/Central) não tem planilha: vale zero no planejado
 (ver o CLAUDE.md).
