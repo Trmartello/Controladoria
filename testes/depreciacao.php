@@ -161,13 +161,13 @@ $montar->setAccessible(true);
 $diverge = [];
 foreach ($esperado as $cod => $v) {
     $l = array_column($montar->invoke($ctrl, $ids[$cod], $ano, $corte, 0)['linhas'], null, 'codigo')['8.10'];
-    // A Pecuária edita a depreciação (2026-11-24): a carga é o padrão, sem trava.
-    $travadaEsperada = (string)$cod !== '2';
+    // A Pecuária (2026-11-24) e os Cereais (2026-11-25) editam a depreciação: a carga é o padrão, sem trava.
+    $travadaEsperada = !in_array((string)$cod, ['1', '2'], true);
     if (!perto(-$l['proposta'], $v, 0.01) || (bool)($l['proposta_travada'] ?? false) !== $travadaEsperada) {
         $diverge[] = "{$cod}: " . round(-$l['proposta'], 2) . ' travada=' . json_encode($l['proposta_travada'] ?? null);
     }
 }
-prova('na tela, a 8.10 de cada negócio é a carga; travada em todos, menos na Pecuária', !$diverge, implode(' | ', $diverge));
+prova('na tela, a 8.10 de cada negócio é a carga; travada em todos, menos na Pecuária e nos Cereais', !$diverge, implode(' | ', $diverge));
 // A Pecuária EDITA a depreciação (pedido do cliente, 2026-11-24: "somente o negócio
 // Pecuária deve poder editar a depreciação conforme desejar; os demais não").
 $fxPec = Projecao::fixosDaDepreciacao(['negocio' => array_fill(1, 12, -10.0), 'filiais' => []], 0, '2');
@@ -217,8 +217,11 @@ if ($criada) {
     try {
         $tela = array_column($montar->invoke($ctrl, $ids['1'], $ano, $corte, 0)['linhas'], 'proposta', 'codigo');
         $pn = Projecao::resumoDosNegocios([$ids['1']], $ano, $corte, $anoPlan, ['8.10', '18'])[$ids['1']]['proposta'];
-        prova('modo filial: a 8.10 de Cereais é a carga inteira, e o Painel = tela (8.10 e resultado)',
-            perto(-$tela['8.10'], 8759257.62) && perto($pn['8.10'], $tela['8.10']) && perto($pn['18'], $tela['18'], 1),
+        // Desde 2026-11-25 os Cereais editam a depreciação: no modo filial a 8.10 é a soma das
+        // filiais, como as demais linhas lançáveis — a carga menos os R$ 553,56 das filiais
+        // 47 e 100, que estão fora do cadastro dele.
+        prova('modo filial: a 8.10 de Cereais é a soma das filiais (carga − R$ 553,56), e o Painel = tela (8.10 e resultado)',
+            perto(-$tela['8.10'], 8759257.62 - 553.56, 0.05) && perto($pn['8.10'], $tela['8.10']) && perto($pn['18'], $tela['18'], 1),
             json_encode([$tela['8.10'], $pn['8.10'], $tela['18'], $pn['18']]));
     } finally {
         $criada
@@ -265,6 +268,15 @@ if ($http('GET', "{$base}/login") === '') {
         substr(json_encode($resp['erro'] ?? ($l810['proposta'] ?? null), JSON_UNESCAPED_UNICODE), 0, 120));
     $http('POST', "{$base}/api/projecao/valor",
         ['negocio_id' => $ids['2'], 'conta' => '8.10', 'entrada' => 'VALOR', 'valor' => ''], $cab);
+    // Os Cereais também editam (pedido do cliente, 2026-11-25).
+    $resp = json_decode($http('POST', "{$base}/api/projecao/valor",
+        ['negocio_id' => $ids['1'], 'conta' => '8.10', 'entrada' => 'VALOR', 'valor' => -654321], $cab), true);
+    $l810 = array_column($resp['dados']['linhas'] ?? [], null, 'codigo')['8.10'] ?? [];
+    prova('a API ACEITA lançar a Depreciação nos Cereais, e a linha vale o lançado',
+        !isset($resp['erro']) && perto((float)($l810['proposta'] ?? 0), -654321.0, 1) && empty($l810['proposta_travada']),
+        substr(json_encode($resp['erro'] ?? ($l810['proposta'] ?? null), JSON_UNESCAPED_UNICODE), 0, 120));
+    $http('POST', "{$base}/api/projecao/valor",
+        ['negocio_id' => $ids['1'], 'conta' => '8.10', 'entrada' => 'VALOR', 'valor' => ''], $cab);
 }
 @unlink($jar);
 

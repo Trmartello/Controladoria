@@ -960,9 +960,10 @@ class Projecao
      * Os negócios que EDITAM a depreciação (pedido do cliente, 2026-11-24: "somente o
      * negócio Pecuária deve poder editar a depreciação conforme desejar; os demais
      * negócios não"). Neles a 8.10 vem com a carga como padrão e aceita lançamento;
-     * nos outros, a carga é travada.
+     * nos outros, a carga é travada. Os CEREAIS também, desde 2026-11-25 (pedido do
+     * cliente: "para o negócio Cereais, também permita editar o campo de depreciação").
      */
-    public const NEGOCIOS_DEPRECIACAO_EDITAVEL = ['2'];
+    public const NEGOCIOS_DEPRECIACAO_EDITAVEL = ['1', '2'];
 
     public static function depreciacaoEditavel(string $codNegocio): bool
     {
