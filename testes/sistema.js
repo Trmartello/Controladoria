@@ -6794,9 +6794,13 @@ async function provasDiretriz2027(page, largura) {
       rl: SecaoProjecao.dados.linhas.find((x) => x.codigo === '18').proposta,
       alerta: !!document.querySelector('#projecao-meta-negativa'),
       borda: document.querySelector('.tabela-projecao')?.classList.contains('dre-negativa'),
+      cabecalho: getComputedStyle(document.querySelector('.tabela-projecao thead th')).backgroundColor,
     }));
     t(`${l} ${nome.slice(2)}: o alerta e a borda vermelha aparecem só quando o resultado proposto é negativo`,
       a.alerta === (a.rl < -1) && a.borda === (a.rl < -1), JSON.stringify(a));
+    // O cabeçalho da DRE (2026-11-25): verde-claro dos cartões; vermelho-claro com o líquido negativo.
+    t(`${l} ${nome.slice(2)}: o cabeçalho da DRE é verde-claro, ou vermelho-claro com o resultado negativo`,
+      a.cabecalho === (a.rl < -1 ? 'rgb(253, 236, 234)' : 'rgb(238, 246, 241)'), JSON.stringify(a));
   }
 }
 
