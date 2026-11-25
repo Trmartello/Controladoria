@@ -5564,7 +5564,20 @@ async function provasProjecaoFilial(page, largura) {
     recusa.includes('soma das filiais'), recusa.slice(0, 70));
 
   // ── Trocar de modo não apaga trabalho ───────────────────────────────────
-  await trocarModo('NEGOCIO');
+  // Pelo ATALHO do aviso acima da DRE (2026-11-25: nos Postos "não está aceitando
+  // digitação" — o botão do modo fica no topo, longe da DRE).
+  const atalho = await page.evaluate(() => {
+    const b = document.querySelector('#aviso-modo-filial [data-modo-atalho="NEGOCIO"]');
+    if (!b) return null;
+    const txt = b.textContent.trim();
+    b.click();
+    return txt;
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+  const peloAtalho = await ler();
+  t(`${l} no modo filial, o aviso acima da DRE tem o atalho "Digitar no total do negócio", que volta a planejar no total`,
+    atalho === 'Digitar no total do negócio' && peloAtalho.modo === 'NEGOCIO' && peloAtalho.receita.editavel === true,
+    JSON.stringify({ atalho, modo: peloAtalho.modo, editavel: peloAtalho.receita.editavel }));
   const aindaLa = await verFilial(alvo);
   // O `10%` lançado continua lá — agora na coluna de Reajuste, que é onde o
   // percentual mora. A Proposta ao lado mostra o VALOR que ele produziu.

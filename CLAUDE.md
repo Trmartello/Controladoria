@@ -3798,7 +3798,10 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   mostra a receita sem a CBS, daria outro número. As demais aberturas seguem
   lançáveis como sempre. Campos de lançamento "sumidos" na DRE do negócio quase
   sempre são o modo **Planejar por filial** (o negócio vira a soma das filiais e
-  se lança em cada filial) — não é regra nova.
+  se lança em cada filial) — não é regra nova. Desde 2026-11-25 (nos Postos de Combustíveis,
+"não está aceitando digitação"), o aviso acima da DRE nesse modo (`#aviso-modo-filial`) traz
+o botão **Digitar no total do negócio**, atalho para o "Planejar o negócio" do topo (que
+fica longe da DRE). Trocar de modo não apaga lançamento.
   **E vale para o que já estava lançado, em todos os negócios e filiais**
   (decisão do cliente, 2026-11-21: "já faça para as filiais também; todos os
   negócios e todas as filiais"). Em `aplicar`, lançamento da 1.1 abaixo do piso
