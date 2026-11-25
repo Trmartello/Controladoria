@@ -1071,6 +1071,21 @@ CREATE TABLE IF NOT EXISTS negocio_item_avaliacao (
   CONSTRAINT fk_nia_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Desafio extra dos administradores (pedido do cliente, 2026-11-25): o valor que
+-- o ADMIN digita na coluna Desafio do cartão do negócio, para o ano todo, numa
+-- das linhas de valor (App\Services\DesafioAjuste::CHAVES). Sem linha aqui, vale
+-- o desafio calculado (a proposta padrão).
+CREATE TABLE IF NOT EXISTS negocio_desafio_ajuste (
+  negocio_id   INT NOT NULL,
+  ano          SMALLINT NOT NULL,
+  chave        VARCHAR(32) NOT NULL,
+  valor        DECIMAL(18,2) NOT NULL,
+  ajustado_por INT NULL,
+  ajustado_em  DATETIME NOT NULL,
+  PRIMARY KEY (negocio_id, ano, chave),
+  CONSTRAINT fk_nda_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- A DRE da filial MÊS A MÊS, só onde moram os eventos pontuais (8.x, 9.x, 11.x)
 -- e só onde algum mês passa do piso da detecção — ver
 -- database/eventos_filiais_mensal_2026_10.php. Serve às oportunidades e riscos da

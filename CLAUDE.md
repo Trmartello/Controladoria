@@ -3808,6 +3808,26 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   ano. Prova: `testes/desafio_drivers.php`. No banco local (out/26) o total dá
   faturamento R$ 3,68 bi, resultado R$ 45,8 mi, margem 1,29% — e Cereais com
   resultado negativo (−R$ 6,8 mi).
+  **Desafio extra dos administradores** (pedido do cliente, 2026-11-25: "os
+  administradores podem fazer um desafio extra aos negócios"). No cartão
+  "Desafio 2027 para o negócio", o perfil **ADMIN** (só ele — nem CONTROLADORIA)
+  digita na coluna Desafio as linhas de VALOR: faturamento, margem bruta,
+  despesas operacionais, rateios do negócio e rateios administrativos
+  (`DesafioAjuste::CHAVES`), **para o ano todo**. Tabela
+  `negocio_desafio_ajuste` (negócio, ano, chave, valor); rota
+  `POST /api/projecao/desafio` (valor vazio apaga e volta ao calculado).
+  **Cascata** (`DesafioAjuste::aplicar`), sobre a escada calculada, por
+  diferenças — as linhas entre a margem bruta e o resultado antes dos rateios que
+  o ajuste não toca ficam: o faturamento leva a RL na mesma proporção e, se a
+  margem bruta não foi digitada, ela também (% mantido); margem bruta e despesas
+  mudam o resultado antes dos rateios; rateio do negócio, o resultado do negócio;
+  rateio adm, só o líquido; as margens se refazem sobre a RL ajustada. Despesa
+  digitada positiva grava negativa quando a calculada é negativa (celular sem o
+  menos). **Proposta** = o que está lançado na DRE; **Diferença** = proposta −
+  desafio. O ajuste é **negócio a negócio**: o Corporativo e os grupos somam os
+  desafios já ajustados (o `desafio` de `desafioDoNegocio` é a escada ajustada;
+  `escada.calculado` leva a original), e o negócio ajustado ganha o selo
+  "ajustado" no cartão do Corporativo. Prova: `testes/desafio_ajuste.php` (21).
   **Desafio dos Postos de resfriamento pela cota Aurora** (histórico: desde o
   desafio calculado, quem aplica é `DesafioDrivers`; pedido do cliente,
   2026-11-23: "o posto recebe ~6 centavos por litro resfriado, e o valor só

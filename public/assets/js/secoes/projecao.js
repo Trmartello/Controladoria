@@ -1283,6 +1283,22 @@ const SecaoProjecao = {
       ['margem', '% margem líquida <span class="text-muted small">(sobre a receita líquida)</span>', true, true],
     ];
     const celula = (v, pct) => (v === null || v === undefined ? '—' : (pct ? this.pct(pp(v), 2) : this.moeda(v)));
+    // O desafio extra (2026-11-25): o ADMIN digita nas linhas de valor; o resto
+    // da escada sai em cascata no servidor (`DesafioAjuste`).
+    const ajustes = x.ajustes || {};
+    const calc = e.calculado || e.desafio;
+    const ajustavel = new Set(x.pode_ajustar ? (x.ajustaveis || []) : []);
+    const campoDesafio = (k, a) => {
+      const ajustado = Object.prototype.hasOwnProperty.call(ajustes, k);
+      const dica = `Desafio calculado (proposta padrão): ${celula(calc[k])}. Digite para desafiar além dele; apague para voltar ao calculado.`;
+      return `<td class="text-end celula-desafio-td">
+          <input type="text" inputmode="decimal" data-sinal autocomplete="off"
+            class="form-control form-control-sm text-end celula-desafio${ajustado ? ' desafio-ajustado' : ''}"
+            data-desafio-chave="${k}" value="${a === null || a === undefined ? '' : this.moeda(a)}"
+            title="${Modal.esc(dica)}" aria-label="Desafio: ${Modal.esc(k)}">
+          ${ajustado ? `<div class="small text-muted desafio-calculado">calculado ${celula(calc[k])}</div>` : ''}
+        </td>`;
+    };
     const linha = ([k, rotulo, pct, forte]) => {
       const a = e.desafio[k];
       const b = e.proposta[k];
@@ -1294,7 +1310,7 @@ const SecaoProjecao = {
       const cor = dif === null ? '' : (pct ? (dif >= 0 ? 'text-success' : 'text-danger') : this.corDif(dif));
       return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}">
           <td>${rotulo}</td>
-          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
+          ${ajustavel.has(k) ? campoDesafio(k, a) : `<td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>`}
           <td class="text-end">${celula(b, pct)}</td>
           <td class="text-end ${estimado ? 'text-muted' : cor}">${estimado ? '' : textoDif}</td>
         </tr>`;
@@ -1325,6 +1341,12 @@ const SecaoProjecao = {
           preservada; se a receita cai, elas ficam na base) e os rateios na base, sem crescimento. A coluna Proposta parte da projeção com o que o negócio lançou
           (nela, despesa não lançada fica na base, pela diretriz), e a Diferença é o efeito dos lançamentos. Estrutura nova da DRE
           gerencial (a que vale em ${x.ano}).</div>
+        ${x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste"><strong>Desafio extra:</strong> como administrador, você pode
+          digitar na coluna Desafio — faturamento, margem bruta, despesas e rateios, para o ano todo. Resultados e margens
+          se recalculam; o faturamento leva a receita líquida e, se a margem bruta não for digitada, ela também (o % se mantém).
+          Apague o número para voltar ao calculado. O Corporativo soma os desafios de cada negócio.</div>` : ''}
+        ${Object.keys(ajustes).length && !x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste">O desafio deste negócio
+          tem <strong>ajuste da administração</strong> além da proposta padrão.</div>` : ''}
         ${this.notaTributos(x.tributos, x.ano)}
         <div class="small text-muted" id="desafio-nota">
           <strong>${Modal.esc(des.nota)}</strong> ${this.notaDesafio(x)}
@@ -1375,7 +1397,10 @@ const SecaoProjecao = {
         </tr>`;
     };
     const ordem = Object.keys(x.negocios).sort((a, b) => ((x.negocios[b].desafio || {}).resultado || 0) - ((x.negocios[a].desafio || {}).resultado || 0));
-    const linhas = ordem.map((id) => linha(Modal.esc(nomes[id] || id), x.negocios[id].desafio, x.negocios[id].proposta, '', `data-negocio-desafio="${id}"`)).join('');
+    // Negócio com desafio extra da administração leva a marca (2026-11-25).
+    const marca = (des) => (des && des.ajustado
+      ? ' <span class="badge text-bg-warning desafio-ajustado-marca" title="Desafio com ajuste da administração, além da proposta padrão">ajustado</span>' : '');
+    const linhas = ordem.map((id) => linha(Modal.esc(nomes[id] || id) + marca(x.negocios[id].desafio), x.negocios[id].desafio, x.negocios[id].proposta, '', `data-negocio-desafio="${id}"`)).join('');
     const t = x.total;
     const meta = (lado, rotulo) => {
       const falta = lado.falta;
@@ -1539,6 +1564,37 @@ const SecaoProjecao = {
   },
 
   /** Grava a avaliação de um item e repinta o cartão de oportunidades. */
+  /** O desafio extra do administrador: grava uma linha e repinta o cartão. */
+  async gravarDesafio(inp) {
+    const bruto = inp.value.trim();
+    if (bruto === (inp.dataset.original ?? '')) return;
+    const limpo = bruto.replace(/[R$\s]/g, '').replace('−', '-').replace(/\./g, '').replace(',', '.');
+    if (limpo !== '' && !Number.isFinite(Number(limpo))) {
+      this.avisar('Valor inválido: informe um número em reais.');
+      inp.value = inp.dataset.original ?? '';
+      return;
+    }
+    const el = document.getElementById('secao-projecao');
+    const pedido = ++this.pedido;
+    inp.classList.add('celula-gravando');
+    try {
+      const r = await App.api('/api/projecao/desafio', {
+        negocio_id: this.negocioId, chave: inp.dataset.desafioChave, valor: limpo === '' ? null : Number(limpo),
+      });
+      if (pedido !== this.pedido) return;
+      this.dados = { ...this.dados, ...r };
+      this.avisar('');
+      const card = el.querySelector('.painel-desafio');
+      if (card) card.outerHTML = this.cartaoDesafio(this.dados);
+      this.ligar(el);
+    } catch (e) {
+      this.avisar(e.message);
+      inp.value = inp.dataset.original ?? '';
+    } finally {
+      inp.classList.remove('celula-gravando');
+    }
+  },
+
   async gravarAvaliacao(conta, decisao) {
     const el = document.getElementById('secao-projecao');
     const pedido = ++this.pedido;
@@ -2557,6 +2613,15 @@ const SecaoProjecao = {
         if (ev.key === 'Escape') { inp.value = inp.dataset.original ?? inp.value; inp.blur(); }
       });
       inp.dataset.original = inp.value;
+    });
+    el.querySelectorAll('.celula-desafio').forEach((inp) => {
+      inp.dataset.original = inp.value;
+      if (!virgem(inp)) return;
+      inp.addEventListener('blur', () => this.gravarDesafio(inp));
+      inp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+        if (ev.key === 'Escape') { inp.value = inp.dataset.original ?? inp.value; inp.blur(); }
+      });
     });
     el.querySelectorAll('.celula-beneficio').forEach((inp) => {
       inp.dataset.original = inp.value;

@@ -4848,3 +4848,11 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
    número sem célula de digitar, com o cadeado; o título diz de onde vem. */
 .tabela-projecao .proposta-calculada { cursor: help; white-space: nowrap; }
 .tabela-projecao .proposta-calculada::before { content: "🔒"; font-size: .75em; margin-right: .3em; opacity: .6; }
+
+/* Desafio extra do administrador (2026-11-25): a coluna Desafio do cartão do
+   negócio vira campo nas linhas de valor; o ajustado ganha o amarelo da linha
+   que muda e, embaixo, o calculado de onde partiu. */
+.tabela-desafio .celula-desafio { min-width: 9.5rem; max-width: 12rem; margin-left: auto; font-weight: 700; }
+.tabela-desafio .celula-desafio.desafio-ajustado { background: #fde4a8; border-color: #e0b44a; }
+.tabela-desafio .celula-desafio.celula-gravando { opacity: .55; }
+.tabela-desafio .desafio-calculado { font-weight: 400; white-space: nowrap; }
