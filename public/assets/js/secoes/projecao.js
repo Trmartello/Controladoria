@@ -2283,7 +2283,10 @@ const SecaoProjecao = {
         // a parte do negócio no rateio corporativo, pela proporção das despesas orçadas.
         const ra = d.rateio_adm;
         const rn = d.rateio_neg;
-        const texto = l.proposta_origem === 'RATEIO_FIN'
+        const texto = l.proposta_origem === 'RATEIO_MATRIZ'
+          ? `Rateio Matriz/Central: zero em ${d.ano_planejamento}. A conta fecha em zero na cooperativa; o que sobra `
+            + `em cada negócio é resíduo do rateio, não meta. Não se lança.`
+          : l.proposta_origem === 'RATEIO_FIN'
           ? `Rateio financeiro de ${d.ano_planejamento}: o valor de ${d.filial ? 'esta filial (parte do negócio pela projeção de ' + d.ano + ' da linha)' : 'este negócio'} `
             + `na planilha do rateio financeiro, mês a mês. Não se lança. Mês a mês: ${meses}.`
           : l.proposta_origem === 'RATEIO_NEG'

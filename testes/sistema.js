@@ -7928,8 +7928,9 @@ async function provasDesafioEExpansores(page, largura) {
   // (13,3% de R$ 59,0 mi, no lugar dos R$ 3,77 mi da projeção; 2026-11-24); −R$ 20.837.944
   // (−3,89%) com o rateio corporativo negócio na 14.3 (R$ 4,87 mi pelos critérios); −R$ 22.328.192
   // (−4,17%) com o rateio financeiro da planilha na 14.2 (R$ 19,93 mi).
-  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta e −R$ 22.328.192 de resultado, margem −4,17%`,
-    api.des && tela.rob === 555517764 && tela.rl === -22328192 && /4,17%/.test(tela.margem), JSON.stringify(tela));
+  // E −R$ 22.327.947 com a 14.1 (Matriz/Central) zerada: os −R$ 245 do resíduo saem (2026-11-25).
+  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta e −R$ 22.327.947 de resultado, margem −4,17%`,
+    api.des && tela.rob === 555517764 && tela.rl === -22327947 && /4,17%/.test(tela.margem), JSON.stringify(tela));
   // A diferença sai dos valores sem arredondar: compara com tolerância de R$ 1.
   t(`${l} a coluna Proposta é a linha 18 da proposta, e a diferença é proposta − desafio`,
     Math.round(api.rl) === tela.rlProposta && Math.abs(tela.dif - (Math.round(api.rl) - tela.rl)) <= 1, `${api.rl} | ${JSON.stringify(tela)}`);
@@ -7989,9 +7990,9 @@ async function provasDesafioEExpansores(page, largura) {
   // Desafio calculado sobre a projeção de 2026 (2026-11-23).
   // Com os rateios de 2027 travados (2026-11-24): 16.1 administrativo (R$ 59,0 mi) → −9.828.534;
   // e 14.3 negócio (R$ 38,3 mi pelos critérios dos centros de custo) → −16.924.199; e 14.2
-  // financeiro (R$ 95,9 mi da planilha) → −22.786.223.
-  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.680.001.039, resultado −22.786.223, margem −0,64%)`,
-    corp.negocios === 11 && corp.robTotal === '3.680.001.039' && /^-22\.786\.223$/.test(corp.rlTotal) && /^-0,64%$/.test(corp.margem), JSON.stringify(corp));
+  // financeiro (R$ 95,9 mi da planilha) → −22.786.223; e a 14.1 zerada (2026-11-25) → −22.786.222.
+  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.680.001.039, resultado −22.786.222, margem −0,64%)`,
+    corp.negocios === 11 && corp.robTotal === '3.680.001.039' && /^-22\.786\.222$/.test(corp.rlTotal) && /^-0,64%$/.test(corp.margem), JSON.stringify(corp));
   t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 93,75 mi`,
     /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 93,75 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);

@@ -1107,6 +1107,24 @@ class Projecao
      */
     public const LINHA_RATEIO_FIN = '14.2';
 
+    /**
+     * RATEIO MATRIZ/CENTRAL (linha 14.1) ZERADO na proposta (pedido do cliente,
+     * 2026-11-25: "zere o valor para os negócios"). A conta 9999 fecha em zero na
+     * cooperativa todo mês, mas o crédito na origem não fecha dentro de cada
+     * negócio: sobra um resíduo (R$ 770 nas Agropecuárias, −R$ 643 nos
+     * Supermercados…) que a projeção levaria como meta. O realizado de 2026 fica
+     * como no Qlik; a proposta e o desafio de todo negócio e filial valem zero,
+     * travados.
+     */
+    public const LINHA_RATEIO_MATRIZ = '14.1';
+
+    /** A 14.1 travada em zero, todos os meses. */
+    public static function fixosDoRateioMatriz(): array
+    {
+        return [self::LINHA_RATEIO_MATRIZ => ['valor' => 0.0, 'meses' => array_fill(1, 12, 0.0), 'conta' => null,
+            'origem' => 'RATEIO_MATRIZ']];
+    }
+
     /** A carga do rateio financeiro de um ano, conferida, ou null se não houver. */
     public static function cargaRateioFin(int $anoPlan): ?array
     {
@@ -1833,6 +1851,7 @@ class Projecao
                 }
             }
             $fixosNeg = self::fixosDaDepreciacao($deps[$id] ?? null, 0, $cods[$id] ?? '')
+                + self::fixosDoRateioMatriz()
                 + self::fixosDoRateioAdm($rateio['negocios'][$id] ?? null)
                 + self::fixosDoRateioNeg($rateios['neg']['negocios'][$id] ?? null)
                 + ($comRateios ? self::fixosDoRateioFin(self::rateioFinDoNegocio($id, $anoPlan)) : []);

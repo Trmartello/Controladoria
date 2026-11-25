@@ -84,17 +84,18 @@ prova('o cabeçalho não traz valores: quem calcula é a Projeção', $d && !iss
 // Rateio corporativo administrativo de 2027 na 16.1 (R$ 59,0 mi, 2026-11-24; antes a 16.1
 // carregava R$ 19,6 mi da projeção): 29.606.988 → −9.828.534. E o rateio corporativo negócio na
 // 14.3 (R$ 38,3 mi pelos critérios dos centros de custo, 2026-11-24): → −16.924.199. E o rateio
-// financeiro na 14.2 (R$ 95,9 mi da planilha, por negócio): → −22.786.223.
+// financeiro na 14.2 (R$ 95,9 mi da planilha, por negócio): → −22.786.223. E a 14.1 (Matriz/Central)
+// zerada (2026-11-25; o resíduo do rateio somava −R$ 1 na cooperativa): → −22.786.222.
 $negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
 $c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];
 prova('os 11 negócios entram no desafio do Corporativo', count($c['negocios']) === 11, (string)count($c['negocios']));
-prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado −R$ 22.786.223',
-    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] + 22786223) < 2,
+prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado −R$ 22.786.222',
+    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] + 22786222) < 2,
     round($t['receita_bruta']) . ' / ' . round($t['receita_liquida']) . ' / ' . round($t['resultado']));
 prova('margem líquida do desafio: −0,64%', abs($t['margem'] + 0.6422) < 0.0005, (string)round($t['margem'], 4));
 prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 93,75 mi',
-    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 93753195) < 2,
+    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 93753194) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 
 // ── 1b. Agrupamento no Corporativo (2026-11-24): só os negócios marcados ─────

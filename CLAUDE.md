@@ -3808,6 +3808,16 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   ano. Prova: `testes/desafio_drivers.php`. No banco local (out/26) o total dá
   faturamento R$ 3,68 bi, resultado R$ 45,8 mi, margem 1,29% — e Cereais com
   resultado negativo (−R$ 6,8 mi).
+  **Rateio Matriz/Central (14.1) zerado no planejado** (pedido do cliente,
+  2026-11-25: "zere o valor para os negócios no planejado, e o realizado traga
+  conforme estiver no Qlik"). A conta 9999 fecha em zero na cooperativa todo mês,
+  mas o crédito na origem não fecha dentro de cada negócio e sobra resíduo
+  (Agropecuárias +770, Supermercados −643, Cereais −245… na carga de 18/11). O
+  realizado fica o do Qlik; planejado nov–dez, proposta e desafio valem **zero,
+  travados** (`Projecao::fixosDoRateioMatriz`, origem `RATEIO_MATRIZ`), em todo
+  negócio e filial, e a API recusa lançar. Prova: `testes/rateio_matriz.php`.
+  A correção de verdade é na rotina de rateio (o crédito de cada negócio igual à
+  soma do que foi cobrado das filiais dele) — da controladoria, não daqui.
   **Desafio extra dos administradores** (pedido do cliente, 2026-11-25: "os
   administradores podem fazer um desafio extra aos negócios"). No cartão
   "Desafio 2027 para o negócio", o perfil **ADMIN** (só ele — nem CONTROLADORIA)
