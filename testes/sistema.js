@@ -7995,8 +7995,10 @@ async function provasDesafioEExpansores(page, largura) {
   t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 93,75 mi`,
     /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 93,75 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
-  t(`${l} Corporativo: visão, desafio, oportunidades, tributos e pessoas como expansores (sem premissas: nada se lança ali)`,
-    corp.expansores === 'visao,desafio,oportunidades,tributos,pessoas', corp.expansores);
+  // Desde 2026-11-25 os tributos (como é × como fica) não são expansor: abrem
+  // pelo botão "Reforma tributária: antes × depois", junto dos botões da DRE.
+  t(`${l} Corporativo: visão, desafio, oportunidades e pessoas como expansores (sem premissas: nada se lança ali)`,
+    corp.expansores === 'visao,desafio,oportunidades,pessoas', corp.expansores);
 
   // Devolve o estado das outras provas: tudo aberto.
   await page.evaluate(() => {

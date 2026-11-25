@@ -1267,7 +1267,8 @@ const SecaoProjecao = {
     // da escada sai em cascata no servidor (`DesafioAjuste`).
     const ajustes = x.ajustes || {};
     const calc = e.calculado || e.desafio;
-    const ajustavel = new Set(x.pode_ajustar ? (x.ajustaveis || []) : []);
+    // No dossiê a tela sai como página: sem campo, nem para o administrador.
+    const ajustavel = new Set(x.pode_ajustar && !App.modoDossie ? (x.ajustaveis || []) : []);
     const campoDesafio = (k, a) => {
       const ajustado = Object.prototype.hasOwnProperty.call(ajustes, k);
       const dica = `Desafio calculado (proposta padrão): ${celula(calc[k])}. Digite para desafiar além dele; apague para voltar ao calculado.`;
@@ -1316,7 +1317,7 @@ const SecaoProjecao = {
         </div>
         <div class="small text-muted mb-1">Desafio = <strong>proposta padrão</strong>: projeção de ${d.ano} com as premissas e a
           diretriz, custos e despesas acompanhando a receita, rateios travados. Proposta = o que está lançado na DRE.</div>
-        ${x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste"><strong>Desafio extra:</strong> digite na coluna Desafio
+        ${x.pode_ajustar && !App.modoDossie ? `<div class="small mb-1 nota-desafio-ajuste"><strong>Desafio extra:</strong> digite na coluna Desafio
           (ano todo); resultados e margens se recalculam. Apague para voltar ao calculado.</div>` : ''}
         ${Object.keys(ajustes).length && !x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste">O desafio deste negócio
           tem <strong>ajuste da administração</strong> além da proposta padrão.</div>` : ''}
