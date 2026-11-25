@@ -1032,6 +1032,7 @@ const SecaoProjecao = {
           <tbody>${this.corpo(d)}</tbody>
         </table>
       </div>
+      <div id="projecao-meta-negativa-fim">${this.alertaMetaNegativa(d, true)}</div>
       <p class="text-muted small">
         Valores em R$. A.V. = análise vertical sobre a Receita Operacional Líquida.
         Cada conta é a soma da mesma conta nos negócios, com a proposta que cada um lançou.
@@ -3007,7 +3008,9 @@ const SecaoProjecao = {
    * proposta não pode ficar assim.
    */
   alertaMetaNegativa(d, fim = false) {
-    if (!d || d.corporativo) return '';
+    // Também no Corporativo e nos grupos (pedido do cliente, 2026-11-25: "mesmo
+    // quando eu selecionar todos os negócios"): a soma das propostas no vermelho.
+    if (!d) return '';
     const l = (this.visao(d).linhas || []).find((x) => x.codigo === '18');
     if (!l || l.proposta === null || l.proposta >= -1) return '';
     // DENTRO da DRE (pedido do cliente, 2026-11-25: o aviso ficava "perdido junto
@@ -3019,7 +3022,8 @@ const SecaoProjecao = {
           <strong>Resultado líquido negativo: ${valor}.</strong> A diretriz de ${d.ano_planejamento} não admite meta negativa — reveja a proposta.
         </div>`
       : `<div class="alert alert-danger py-2 px-3 small mb-2 aviso-meta-negativa" id="projecao-meta-negativa">
-        <strong>Resultado líquido negativo.</strong> A proposta ${d.filial ? 'desta filial' : 'deste negócio'}
+        <strong>Resultado líquido negativo.</strong> A proposta ${d.filial ? 'desta filial'
+    : d.corporativo ? ((d.grupo || []).length ? 'somada destes negócios' : 'somada dos negócios (Corporativo)') : 'deste negócio'}
         para ${d.ano_planejamento} está em ${valor}. A diretriz de ${d.ano_planejamento}
         não admite meta negativa de resultado líquido: reveja a proposta. A linha está destacada na tabela.
       </div>`;

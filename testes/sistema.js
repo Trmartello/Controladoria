@@ -6795,12 +6795,16 @@ async function provasDiretriz2027(page, largura) {
       alerta: !!document.querySelector('#projecao-meta-negativa'),
       borda: document.querySelector('.tabela-projecao')?.classList.contains('dre-negativa'),
       cabecalho: getComputedStyle(document.querySelector('.tabela-projecao thead th')).backgroundColor,
+      moldura: getComputedStyle(document.querySelector('.tabela-projecao')).borderLeftColor,
     }));
     t(`${l} ${nome.slice(2)}: o alerta e a borda vermelha aparecem só quando o resultado proposto é negativo`,
       a.alerta === (a.rl < -1) && a.borda === (a.rl < -1), JSON.stringify(a));
     // O cabeçalho da DRE (2026-11-25): verde-claro dos cartões; vermelho-claro com o líquido negativo.
     t(`${l} ${nome.slice(2)}: o cabeçalho da DRE é verde-claro, ou vermelho-claro com o resultado negativo`,
       a.cabecalho === (a.rl < -1 ? 'rgb(253, 236, 234)' : 'rgb(238, 246, 241)'), JSON.stringify(a));
+    // A moldura dos cartões (2026-11-25): faixa verde-escura à esquerda; vermelha com o negativo.
+    t(`${l} ${nome.slice(2)}: a DRE tem a moldura dos cartões, verde (ou vermelha com o resultado negativo)`,
+      a.moldura === (a.rl < -1 ? 'rgb(220, 53, 69)' : 'rgb(0, 122, 69)'), JSON.stringify(a));
   }
 }
 
@@ -6828,6 +6832,24 @@ async function provasAgrupamento(page, largura) {
   const abriu = await esperar(page, "!!document.querySelector('.tabela-projecao:not([data-velha])') && !!document.querySelector('#projecao-negocios-botao') && !!SecaoProjecao.dados?.corporativo", 60000);
   t(`${l} o seletor de negócio tem as caixas de marcar`, abriu);
   if (!abriu) return;
+  // O Corporativo também se pinta (pedido do cliente, 2026-11-25: "mesmo quando eu
+  // selecionar todos os negócios"): a soma no vermelho leva o aviso dentro da DRE,
+  // a borda vermelha e o cabeçalho vermelho-claro; no azul, a moldura verde.
+  const corp = await page.evaluate(() => ({
+    rl: SecaoProjecao.visao(SecaoProjecao.dados).linhas.find((x) => x.codigo === '18').proposta,
+    alerta: !!document.querySelector('#projecao-meta-negativa'),
+    fim: !!document.querySelector('#projecao-meta-negativa-fim .aviso-meta-negativa'),
+    texto: document.querySelector('#projecao-meta-negativa')?.textContent || '',
+    borda: document.querySelector('.tabela-projecao')?.classList.contains('dre-negativa'),
+    cabecalho: getComputedStyle(document.querySelector('.tabela-projecao thead th')).backgroundColor,
+    moldura: getComputedStyle(document.querySelector('.tabela-projecao')).borderLeftColor,
+  }));
+  const neg = corp.rl < -1;
+  t(`${l} o Corporativo com o líquido negativo tem o aviso (acima e no fim) e a borda vermelha; positivo, nenhum dos dois`,
+    corp.alerta === neg && corp.fim === neg && corp.borda === neg && (!neg || corp.texto.includes('Corporativo')), JSON.stringify(corp).slice(0, 240));
+  t(`${l} e o cabeçalho e a moldura acompanham: vermelho-claro/vermelha ou verde-claro/verde`,
+    corp.cabecalho === (neg ? 'rgb(253, 236, 234)' : 'rgb(238, 246, 241)') && corp.moldura === (neg ? 'rgb(220, 53, 69)' : 'rgb(0, 122, 69)'),
+    JSON.stringify(corp).slice(0, 240));
   const c0 = await page.evaluate(() => ({
     caixas: document.querySelectorAll('.menu-negocios input[data-negocio-marca]').length,
     marcadas: document.querySelectorAll('.menu-negocios input[data-negocio-marca]:checked').length,
