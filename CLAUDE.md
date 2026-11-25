@@ -3275,14 +3275,29 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
   as Agropecuárias; o total não mudou. **A.V. da proposta**: coluna logo depois da
   Proposta, cada linha sobre a ROL proposta — é ela que diz se a meta preserva a
   margem (diretriz do horizonte 1). Provas: `provasVisaoDoAno`.
-  **Recolher e mostrar as subcontas** (pedido do cliente, 2026-11-18): o botão
-  `#projecao-nivel`, acima da tabela, deixa à vista só os blocos da DRE (nível 1)
-  para ver como os números fecham. É só visualização: a classe `recolhida` esconde
-  `tr.linha-subconta` por CSS, as linhas continuam no DOM (o digitado não se
-  perde) e nenhuma conta muda. A escolha é conveniência de quem olha
-  (`localStorage['projecao.recolhido']`, com try/catch) e sobrevive à troca de
-  negócio; no dossiê não há botão e o documento sai completo. Vale também no
-  Corporativo. Prova: `provasRecolherNivel`.
+  **Detalhe da DRE em três níveis** (pedido do cliente, 2026-11-25, no lugar dos
+  botões "Abrir contas reduzidas (nível 3)" e "Recolher subcontas" de 2026-11-18):
+  um grupo de três botões acima da tabela, no padrão do "Mostrar até" dos
+  Projetos — **Resumo** (nível 1, só os blocos, para ver como a DRE fecha),
+  **Lançamento** (nível 2, as subcontas onde se digita) e **Reduzidas** (nível 3,
+  as contas reduzidas do realizado em todas as linhas). `SecaoProjecao.nivelDre`
+  + `definirNivelDre(n)`; `estaRecolhido()`/`nivel3Aberto()` derivam dele.
+  **Sempre abre no Lançamento** ("por padrão sempre abra em nível 2, que é o nível
+  de lançamento"): a escolha vale enquanto a página está aberta (repintes e troca
+  de negócio), **não vai para o `localStorage`** — as chaves antigas
+  `projecao.recolhido`/`projecao.nivel3` não são mais lidas. É só visualização:
+  `recolhida` esconde `tr.linha-subconta` por CSS e `nivel3` mostra
+  `tr.linha-reduzida`; as linhas continuam no DOM e nenhuma conta muda. No dossiê
+  não há botão e o documento sai no nível 2. Prova: `provasRecolherNivel`.
+  **Reforma tributária: antes × depois** (pedido do cliente, 2026-11-25): o quadro
+  "como é × como fica" (abaixo) saiu do topo da tela e mora junto dos botões da
+  DRE, aberto pelo botão `#projecao-tributos-botao` e **fechado de saída**
+  (`localStorage['projecao.tributos']`); o × do quadro fecha. Não sai no PDF da
+  DRE; no dossiê vai sempre aberto.
+  **A faixa "Este negócio planeja no total…" saiu** (pedido do cliente,
+  2026-11-25: "parece não fazer sentido além de ocupar um espaço"). `faixaDoModo`
+  só fala no negócio que planeja POR FILIAL (onde avisa que se lança na filial) e
+  dentro da filial.
   **Valor negativo no celular: a tecla "−/+" (`sinal.js`).** O teclado numérico do
   iPhone (`inputmode="decimal"`) **não tem o sinal de menos**, e quem lançava
   despesa, variação ou resultado negativo pelo celular não podia (pedido do
@@ -3622,7 +3637,8 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
     efeito do Corporativo e o quadro "efeito abaixo da RL".
   **Tributos na DRE: como é × como fica** (pedido do cliente, 2026-11-18, com um
   slide da controladoria de modelo: "trazer a estrutura oficial, como é e como
-  fica"). Cartão `cartaoTributosDre` (expansor `tributos`, aberto por omissão) no
+  fica"). Quadro `cartaoTributosDre` (desde 2026-11-25 junto dos botões da DRE, ver
+  "Reforma tributária: antes × depois") no
   negócio, na filial e no Corporativo, com a estrutura OFICIAL nas duas versões:
   hoje (RB, Deduções, 2.1, 2.2, 2.3 = ICMS e ISS + PIS/COFINS, RL) e no formato da
   reforma — CBS como linha **informativa acima da Receita Bruta** (tributo por
@@ -3840,7 +3856,7 @@ Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócio
     `nivel3FormatoNovo` (PIS/COFINS das vendas sai da 2.3 e vai para a linha da
     CBS; a 1.1 ganha a linha que tira o PIS/COFINS), para o nível 3 somar o nível
     2 que a tela mostra. O ▸ da linha abre as contas dela (`reduzidasAbertas`); o
-    botão `#projecao-nivel3` abre todas (`localStorage projecao.nivel3`).
+    nível **Reduzidas** do seletor "Detalhe da DRE" abre todas.
     Diferença acima de R$ 100 entre a linha e as reduzidas vai numa linha
     própria, dita ("o Qlik foi recarregado depois da carga da DRE").
   - Oportunidades: item e lançamento mostram a conta reduzida e o nome do Qlik

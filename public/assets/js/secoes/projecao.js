@@ -243,7 +243,6 @@ const SecaoProjecao = {
       ${this.cartaoVisaoAno(d)}
       ${this.cartaoDesafio(d)}
       ${this.cartaoOportunidades(d)}
-      ${this.cartaoTributosDre(d)}
       ${this.avisoFiliaisDefasadas(d)}
       ${this.faixaDoModo(d)}
       ${this.painel(d)}
@@ -253,7 +252,8 @@ const SecaoProjecao = {
       ${this.cartaoCenario(d)}
       <div id="projecao-dre-bloco">
       ${this.cabecalhoImpressao(d, d.filial ? `Filial ${(d.filiais.find((f) => Number(f.id) === Number(d.filial.id)) || {}).nome || ''}` : '')}
-      ${this.botaoNivel()}
+      ${this.botaoNivel(d)}
+      ${this.cartaoTributosDre(d)}
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
         A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
         acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
@@ -987,12 +987,12 @@ const SecaoProjecao = {
       ${this.cartaoVisaoAno(d)}
       ${this.cartaoDesafio(d)}
       ${this.cartaoOportunidades(d)}
-      ${this.cartaoTributosDre(d)}
       ${this.cartaoPessoas(d)}
       ${faltando}
       <div id="projecao-dre-bloco">
       ${this.cabecalhoImpressao(d, this.nomeDoConsolidado(d))}
-      ${this.botaoNivel()}
+      ${this.botaoNivel(d)}
+      ${this.cartaoTributosDre(d)}
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
         A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
         acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
@@ -1202,7 +1202,14 @@ const SecaoProjecao = {
 
     const resumo = `${ano}: CBS ${m(t.colunas.proposta.como_fica.tributo)} acima da Receita Bruta, no lugar do PIS/COFINS
       · Receita Líquida ${m(t.colunas.proposta.como_fica.receita_liquida)} (não muda)`;
-    return this.expansor('tributos', 'painel-tributos', 'Tributos na DRE: como é × como fica', resumo, `
+    const aberto = this.tributosAberto();
+    return `<div class="card mb-2 painel-tributos${aberto ? '' : ' d-none'}" id="projecao-tributos">
+      <div class="card-header py-2 px-3 d-flex flex-wrap align-items-baseline gap-2">
+        <h2 class="h6 mb-0">Reforma tributária: a DRE antes × depois</h2>
+        <span class="small text-muted">${resumo}</span>
+        <button type="button" class="btn-close ms-auto small" data-fechar-tributos aria-label="Fechar o antes × depois"></button>
+      </div>
+      <div class="card-body pt-2 pb-2 px-3">
       <div class="small mb-2">O PIS/COFINS <strong>muda de linha</strong>: hoje está dentro das deduções (2.3 Imposto s/ Vendas);
         com a reforma a <strong>CBS</strong> é tributo <em>por fora</em> e vira uma linha <strong>informativa acima da Receita
         Bruta</strong>, que passa a ser o faturamento sem ela. Exemplo: hoje Receita Bruta 100, deduções 50 (ICMS 40 +
@@ -1221,7 +1228,32 @@ const SecaoProjecao = {
         Copérdia optou. PIS/COFINS do realizado: carga de tributos de ${d.ano}; o resto do ano pela taxa de ${d.ano} sobre a Receita
         de Vendas; na proposta, o que a linha 2.3 carrega (a projeção na proporção da receita).${d.filial ? ' Na filial, sempre pela taxa do negócio.' : ''}</div>
       ${avisos.map((a) => `<div class="small text-warning-emphasis mt-1 aviso-tributos">${a}</div>`).join('')}
-    `);
+      </div></div>`;
+  },
+
+  /**
+   * O antes × depois da reforma mora junto dos botões da DRE (pedido do cliente,
+   * 2026-11-25), fechado de saída: é para mostrar quando se quer explicar a
+   * mudança, não para ocupar a tela de quem lança. No dossiê vai sempre aberto.
+   */
+  tributosAberto() {
+    if (App.modoDossie) return true;
+    if (this.tribAberto === undefined) {
+      try { this.tribAberto = localStorage.getItem('projecao.tributos') === '1'; } catch (e) { this.tribAberto = false; }
+    }
+    return !!this.tribAberto;
+  },
+
+  alternarTributos(abrir) {
+    this.tribAberto = abrir === undefined ? !this.tributosAberto() : !!abrir;
+    try { localStorage.setItem('projecao.tributos', this.tribAberto ? '1' : '0'); } catch (e) { /* vale só nesta tela */ }
+    const el = document.getElementById('secao-projecao');
+    el.querySelector('.painel-tributos')?.classList.toggle('d-none', !this.tribAberto);
+    const b = el.querySelector('#projecao-tributos-botao');
+    if (b) {
+      b.setAttribute('aria-pressed', this.tribAberto ? 'true' : 'false');
+      b.textContent = this.tribAberto ? '▾ Fechar antes × depois' : '⇄ Reforma tributária: antes × depois';
+    }
   },
 
   cartaoDesafio(d) {
@@ -1691,7 +1723,7 @@ const SecaoProjecao = {
   irParaLinhaDre(codigo, reduzida) {
     const tab = document.querySelector('#secao-projecao .tabela-projecao');
     if (!tab) return;
-    if (tab.classList.contains('recolhida')) this.alternarNivel();
+    if (tab.classList.contains('recolhida')) this.definirNivelDre(2);
     let alvo = tab.querySelector(`tr[data-conta="${CSS.escape(codigo)}"]`);
     if (reduzida) {
       const r = tab.querySelector(`tr.linha-reduzida[data-pai="${CSS.escape(codigo)}"][data-reduzida="${CSS.escape(reduzida)}"]`);
@@ -2105,7 +2137,7 @@ const SecaoProjecao = {
    * fica no `localStorage`, como o de recolher subcontas; por omissão só o
    * desafio vem aberto. No dossiê tudo sai aberto — papel não se expande.
    */
-  EXPANSORES_PADRAO: { visao: false, desafio: true, oportunidades: true, tributos: true, premissas: false, pessoas: false },
+  EXPANSORES_PADRAO: { visao: false, desafio: true, oportunidades: true, premissas: false, pessoas: false },
 
   expansorAberto(chave) {
     if (App.modoDossie) return true;
@@ -2167,12 +2199,13 @@ const SecaoProjecao = {
       + 'e não muda o total do negócio.'}
       </div>`;
     }
+    // No negócio que planeja no total a faixa não diz nada que a tela não mostre
+    // (pedido do cliente, 2026-11-25: "parece não fazer sentido além de ocupar um
+    // espaço"); só fica a do negócio por filial, que avisa onde se lança.
+    if (d.modo !== 'FILIAL') return '';
     return `<div class="alert alert-light border py-2 px-3 small mb-3">
-      ${d.modo === 'FILIAL'
-    ? 'Este negócio planeja <strong>por filial</strong>: a coluna Proposta é a soma das filiais e '
-      + 'não se digita aqui. Escolha uma filial para lançar.'
-    : 'Este negócio planeja <strong>no total</strong>. A coluna <em>A distribuir</em> mostra o que '
-      + 'falta repartir entre as filiais — distribuir não é obrigatório para salvar.'}
+      Este negócio planeja <strong>por filial</strong>: a coluna Proposta é a soma das filiais e
+      não se digita aqui. Escolha uma filial para lançar.
     </div>`;
   },
 
@@ -2381,8 +2414,9 @@ const SecaoProjecao = {
     if (caixaPiso && this.dados) caixaPiso.innerHTML = this.alertaPisoFaturamento(this.dados);
     const caixaPessoal = el.querySelector('#projecao-pessoal-box');
     if (caixaPessoal && this.dados) caixaPessoal.innerHTML = this.alertaPessoalMinimo(this.dados);
-    const nivel = el.querySelector('#projecao-nivel');
-    if (nivel && virgem(nivel)) nivel.addEventListener('click', () => this.alternarNivel());
+    el.querySelectorAll('[data-nivel-dre]').forEach((b) => {
+      if (virgem(b)) b.addEventListener('click', () => this.definirNivelDre(b.dataset.nivelDre));
+    });
     // Considerar / Desconsiderar um item das oportunidades: delegado, uma vez.
     // (A marca do contêiner NÃO pode se chamar data-avaliar: o `closest` a acharia
     // em qualquer clique da seção.)
@@ -2406,8 +2440,15 @@ const SecaoProjecao = {
         this.irParaLinhaDre(a.dataset.irConta, a.dataset.irReduzida || null);
       });
     }
-    const nivel3 = el.querySelector('#projecao-nivel3');
-    if (nivel3 && virgem(nivel3)) nivel3.addEventListener('click', () => this.alternarNivel3());
+    const tribBotao = el.querySelector('#projecao-tributos-botao');
+    if (tribBotao && virgem(tribBotao)) tribBotao.addEventListener('click', () => this.alternarTributos());
+    // O × do quadro: delegado, porque o quadro se repinta a cada gravação.
+    if (!el.dataset.ligouTributos) {
+      el.dataset.ligouTributos = '1';
+      el.addEventListener('click', (ev) => {
+        if (ev.target.closest('[data-fechar-tributos]')) this.alternarTributos(false);
+      });
+    }
     // O ▸ de cada linha: delegado na tabela, que tem o corpo repintado a cada
     // gravação (um ouvinte por botão se perderia no repinte).
     const tabela = el.querySelector('.tabela-projecao');
@@ -2667,31 +2708,38 @@ const SecaoProjecao = {
    *
    * É só visualização — nenhuma conta muda, e as subcontas continuam no DOM
    * (a classe `recolhida` as esconde por CSS), então o que estiver digitado
-   * nelas não se perde. A escolha é conveniência de quem olha, por isso fica no
-   * `localStorage` (com try/catch: em janela privada ele pode não existir) e
-   * sobrevive à troca de negócio e ao recarregar. No dossiê não há botão: o
-   * documento sai sempre completo.
+   * nelas não se perde. Desde 2026-11-25 é o nível 1 do seletor abaixo.
+   *
+   * Nível de detalhe da DRE (pedido do cliente, 2026-11-25: um botão de três
+   * opções no lugar de "Abrir contas reduzidas" e "Recolher subcontas"):
+   * 1 = Resumo (só os blocos), 2 = Lançamento (as subcontas, onde se digita),
+   * 3 = Reduzidas (as contas reduzidas do realizado, como o nível 3 do Qlik).
+   * **Sempre abre no 2** ("por padrão sempre abra em nível 2, que é o nível de
+   * lançamento"): a escolha vale enquanto a página está aberta — sobrevive aos
+   * repintes e à troca de negócio — e não vai para o navegador. No dossiê não
+   * há botão e o documento sai no 2.
    */
-  /** O nível 3 aberto em todas as linhas (o botão de cima), lembrado no navegador. */
-  nivel3Aberto() {
-    if (App.modoDossie) return false;
-    if (this.n3Aberto === undefined) {
-      try { this.n3Aberto = localStorage.getItem('projecao.nivel3') === '1'; } catch (e) { this.n3Aberto = false; }
-    }
-    return !!this.n3Aberto;
+  nivelDreAtual() {
+    if (App.modoDossie) return 2;
+    return [1, 2, 3].includes(this.nivelDre) ? this.nivelDre : 2;
   },
 
-  /** Abre ou fecha as contas reduzidas de TODAS as linhas. */
-  alternarNivel3() {
-    this.n3Aberto = !this.nivel3Aberto();
-    try { localStorage.setItem('projecao.nivel3', this.n3Aberto ? '1' : '0'); } catch (e) { /* vale só nesta tela */ }
+  nivel3Aberto() { return this.nivelDreAtual() === 3; },
+
+  estaRecolhido() { return this.nivelDreAtual() === 1; },
+
+  definirNivelDre(n) {
+    this.nivelDre = [1, 2, 3].includes(Number(n)) ? Number(n) : 2;
     const el = document.getElementById('secao-projecao');
-    el.querySelector('.tabela-projecao')?.classList.toggle('nivel3', this.n3Aberto);
-    const b = el.querySelector('#projecao-nivel3');
-    if (b) {
-      b.setAttribute('aria-pressed', this.n3Aberto ? 'true' : 'false');
-      b.textContent = this.n3Aberto ? '▾ Fechar contas reduzidas' : '▸ Abrir contas reduzidas (nível 3)';
-    }
+    const tab = el?.querySelector('.tabela-projecao');
+    tab?.classList.toggle('recolhida', this.nivelDre === 1);
+    tab?.classList.toggle('nivel3', this.nivelDre === 3);
+    el?.querySelectorAll('[data-nivel-dre]').forEach((b) => {
+      const ativo = Number(b.dataset.nivelDre) === this.nivelDre;
+      b.classList.toggle('btn-verde', ativo);
+      b.classList.toggle('btn-outline-secondary', !ativo);
+      b.setAttribute('aria-pressed', ativo ? 'true' : 'false');
+    });
   },
 
   /** Abre ou fecha as contas reduzidas de UMA linha (o ▸ ao lado do nome). */
@@ -2707,32 +2755,33 @@ const SecaoProjecao = {
     }
   },
 
-  estaRecolhido() {
-    if (App.modoDossie) return false;
-    if (this.recolhido === undefined) {
-      try { this.recolhido = localStorage.getItem('projecao.recolhido') === '1'; } catch (e) { this.recolhido = false; }
-    }
-    return !!this.recolhido;
-  },
-
-  botaoNivel() {
+  botaoNivel(d) {
     if (App.modoDossie) return '';
-    const r = this.estaRecolhido();
-    return `<div class="d-flex justify-content-end gap-2 mb-1 d-print-none">
+    const nivel = this.nivelDreAtual();
+    const botao = (n, rotulo, dica) => `<button type="button" id="projecao-nivel-${n}" data-nivel-dre="${n}"
+          class="btn ${nivel === n ? 'btn-verde' : 'btn-outline-secondary'}" aria-pressed="${nivel === n}"
+          title="${dica}">${rotulo}</button>`;
+    const t = d && (d.filial ? d.filial.tributos_dre : d.tributos_dre);
+    const tribAberto = this.tributosAberto();
+    const botaoTributos = t && t.colunas && t.colunas.proposta
+      ? `<button type="button" id="projecao-tributos-botao" class="btn btn-sm btn-outline-success"
+          aria-pressed="${tribAberto ? 'true' : 'false'}" aria-controls="projecao-tributos"
+          title="Mostra a DRE como era (PIS/COFINS dentro das deduções) e como ficou com a reforma tributária (CBS acima da Receita Bruta)">
+          ${tribAberto ? '▾ Fechar antes × depois' : '⇄ Reforma tributária: antes × depois'}
+        </button>`
+      : '';
+    return `<div class="d-flex flex-wrap justify-content-end gap-2 mb-1 d-print-none">
+        ${botaoTributos}
         <button type="button" id="projecao-imprimir-dre" class="btn btn-sm btn-success"
           title="Imprime (ou salva em PDF) a DRE da proposta com todas as subcontas abertas">
           🖨 Imprimir DRE (PDF)
         </button>
-        <button type="button" id="projecao-nivel3" class="btn btn-sm btn-outline-secondary"
-          aria-pressed="${this.nivel3Aberto() ? 'true' : 'false'}"
-          title="Abre as contas reduzidas de todas as linhas, como o nível 3 do Qlik (só o realizado)">
-          ${this.nivel3Aberto() ? '▾ Fechar contas reduzidas' : '▸ Abrir contas reduzidas (nível 3)'}
-        </button>
-        <button type="button" id="projecao-nivel" class="btn btn-sm btn-outline-secondary"
-          aria-pressed="${r ? 'true' : 'false'}"
-          title="Mostrar só os blocos da DRE, para ver como os números fecham">
-          ${r ? '▸ Mostrar subcontas' : '▾ Recolher subcontas'}
-        </button>
+        <span class="small text-muted align-self-center ms-1">Detalhe da DRE</span>
+        <div class="btn-group btn-group-sm niveis-dre" role="group" aria-label="Detalhe da DRE">
+          ${botao(1, 'Resumo', 'Nível 1 — só os blocos da DRE, para ver como os números fecham')}
+          ${botao(2, 'Lançamento', 'Nível 2 — as subcontas, onde se lança a proposta (o padrão)')}
+          ${botao(3, 'Reduzidas', 'Nível 3 — abre as contas reduzidas de todas as linhas, como o nível 3 do Qlik (só o realizado)')}
+        </div>
       </div>`;
   },
 
@@ -2759,18 +2808,6 @@ const SecaoProjecao = {
     };
     window.addEventListener('afterprint', volta);
     window.print();
-  },
-
-  alternarNivel() {
-    this.recolhido = !this.estaRecolhido();
-    try { localStorage.setItem('projecao.recolhido', this.recolhido ? '1' : '0'); } catch (e) { /* sem armazenamento: vale só nesta tela */ }
-    const el = document.getElementById('secao-projecao');
-    el.querySelector('.tabela-projecao')?.classList.toggle('recolhida', this.recolhido);
-    const b = el.querySelector('#projecao-nivel');
-    if (b) {
-      b.setAttribute('aria-pressed', this.recolhido ? 'true' : 'false');
-      b.textContent = this.recolhido ? '▸ Mostrar subcontas' : '▾ Recolher subcontas';
-    }
   },
 
   /**
