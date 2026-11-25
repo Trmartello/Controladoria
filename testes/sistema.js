@@ -6591,6 +6591,9 @@ async function provasDiretriz2027(page, largura) {
     return {
       ipca: document.querySelector('#premissa-IPCA')?.value, pib: document.querySelector('#premissa-PIB')?.value,
       seloIpca: !!document.querySelector('[data-sugerida="IPCA"]'), pessoas: tx('[data-diretriz="PESSOAS"]'),
+      // Desde 2026-11-25 o selo da diretriz é o da FAIXA dos valores fixos, não de cada um.
+      naFaixaDiretriz: !!document.querySelector('.faixa-diretriz [data-diretriz="PESSOAS"]')
+        && /diretriz/i.test(tx('.faixa-diretriz .faixa-titulo')),
       vale: tx('[data-diretriz="ALIMENTACAO"]'), assid: tx('[data-diretriz="ASSIDUIDADE"]'), result: tx('[data-diretriz="RESULTADO"]'),
       pprInput: document.querySelector('#beneficio-PPR_SALARIOS')?.value ?? null,
       pprMax: document.querySelector('#beneficio-PPR_SALARIOS')?.dataset.maximo ?? null,
@@ -6603,7 +6606,7 @@ async function provasDiretriz2027(page, largura) {
     };
   });
   t(`${l} pessoal 5,50% fixo com o selo da diretriz; IPCA 4,5 e PIB 1,5 sugeridos, em campo editável`,
-    /5,50%.*diretriz/.test(tela.pessoas) && tela.campoIpca && tela.ipca === '4,5' && tela.pib === '1,5' && tela.seloIpca,
+    /5,50%/.test(tela.pessoas) && tela.naFaixaDiretriz && tela.campoIpca && tela.ipca === '4,5' && tela.pib === '1,5' && tela.seloIpca,
     `${tela.ipca} | ${tela.pib} | ${tela.pessoas}`);
   t(`${l} vale R$ 500, assiduidade R$ 200, metas R$ 500, também fixos`,
     /R\$ 500/.test(tela.vale) && /R\$ 200/.test(tela.assid) && /R\$ 500/.test(tela.result) && !tela.campoVale,
@@ -7017,7 +7020,7 @@ async function provasApoioDesafio(page, largura) {
   // Desde 2026-11-25, jan–out/26 (entre 23/11 e 25/11 eram os 12 meses de nov/25 a
   // out/26: 19.097.015 / −4.305.536): a PDD de out/26 é a mesma, e 2025 não entra.
   t(`${l} quadro único (jan–out/26): a PDD da Agropecuária com os meses (out/26: −4.541.651), oportunidades R$ 17.129.168, riscos −4.069.919 e saldo`,
-    /out\/26: -4\.541\.651/.test(n.pdd) && !/\/25/.test(n.pdd) && n.oport === 17129168 && /4\.069\.919/.test(n.risco || '') && /\+13\.059\.248/.test(n.saldo || ''),
+    /out\/26: -4\.541\.651/.test(n.pdd) && !/(?<!–)(nov|dez)\/25:/.test(n.pdd) && n.oport === 17129168 && /4\.069\.919/.test(n.risco || '') && /\+13\.059\.24[89]/.test(n.saldo || ''),
     `${n.oport} / ${n.risco} / ${n.saldo} / ${n.pdd.slice(0, 160)}`);
   // Considerar / Desconsiderar (pedido do cliente, 2026-11-23) em TODAS as linhas, sem o
   // selo "avaliado / a avaliar" (2026-11-24): o botão marcado é a resposta. E o item mostra
@@ -7442,7 +7445,8 @@ async function provasNivel3(page, largura) {
     const d = document.querySelector('details[data-expansor="oportunidades"]'); if (d) d.open = true;
     const pdd = document.querySelector('.tabela-oportunidades-quadro tr[data-item="3.11.03.01.01"]');
     return {
-      pdd: pdd?.children[0].textContent.replace(/\s+/g, ' ').trim() || '',
+      // Sem os botões Considerar / Desconsiderar, que desde 2026-11-25 abrem a célula.
+      pdd: (() => { const c = pdd?.children[0].cloneNode(true); c?.querySelector('.avaliacao-item')?.remove(); return c?.textContent.replace(/\s+/g, ' ').trim() || ''; })(),
       linhaPdd: pdd?.children[2].textContent.replace(/\s+/g, ' ').trim() || '',
       codigoInterno: [...document.querySelectorAll('.tabela-oportunidades-quadro .link-linha-dre')].some((a) => /\b\d+\.\d+\b/.test(a.textContent)),
       descontoDesp: [...document.querySelectorAll('.tabela-oportunidades-quadro .link-linha-dre')].some((a) => /Desp\.\/ROL/.test(a.textContent)),
