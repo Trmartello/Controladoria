@@ -4499,6 +4499,13 @@ dia, e a vermelha seria lida como regressão de outra mudança.
 
 ## Convenções de entrega
 
+- **Notas da tela: curtas e diretas** (pedido do cliente, 2026-11-25: "esses
+  comentários devem ser mais objetivos, de fácil entendimento e direto ao
+  ponto"). A nota embaixo de um quadro diz o que a pessoa precisa para agir —
+  onde lançar, o que o número significa, de onde vem — em uma ou duas frases.
+  O porquê das regras, os casos e o histórico ficam aqui no CLAUDE.md e nos
+  comentários do código, não na tela. Não repita na nota o que a tabela ou o
+  título já mostram.
 - Branch de trabalho: **`claude/acesso-planejamento-controladoria-9pe28s`** —
   desenvolver, commitar e fazer `git push -u origin` sempre nessa branch, e
   levar ao `main` por pull request (o `main` é produção — ver *Deploy*). A

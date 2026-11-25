@@ -6967,7 +6967,7 @@ async function provasApoioDesafio(page, largura) {
   await escolher('- AGROPECUARIAS');
   const n = await page.evaluate(() => {
     const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
-    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => c.textContent.trim());
+    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => (c.querySelector('input.celula-desafio')?.value ?? c.textContent).trim());
     const d = SecaoProjecao.dados;
     const linha = (c) => d.linhas.find((x) => x.codigo === c).proposta;
     const cel = document.querySelector('.tabela-projecao tr[data-conta="1.1"] .celula-proposta');
@@ -7911,11 +7911,12 @@ async function provasDesafioEExpansores(page, largura) {
   });
   const tela = await page.evaluate(() => {
     const n = (s) => Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.'));
-    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => c.textContent.trim());
+    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => (c.querySelector('input.celula-desafio')?.value ?? c.textContent).trim());
     return {
       rob: n(td('receita_bruta')[1]), rl: n(td('resultado')[1]), rlProposta: n(td('resultado')[2]),
       dif: n(td('resultado')[3]), margem: td('margem')[1],
       campos: document.querySelectorAll('.painel-desafio input, .painel-desafio select, .painel-desafio [contenteditable]').length,
+      camposDesafio: [...document.querySelectorAll('.painel-desafio input.celula-desafio')].map((i) => i.dataset.desafioChave),
       nota: document.querySelector('#desafio-nota')?.textContent || '',
     };
   });
@@ -7932,7 +7933,32 @@ async function provasDesafioEExpansores(page, largura) {
   // A diferença sai dos valores sem arredondar: compara com tolerância de R$ 1.
   t(`${l} a coluna Proposta é a linha 18 da proposta, e a diferença é proposta − desafio`,
     Math.round(api.rl) === tela.rlProposta && Math.abs(tela.dif - (Math.round(api.rl) - tela.rl)) <= 1, `${api.rl} | ${JSON.stringify(tela)}`);
-  t(`${l} o desafio é só de leitura (nenhum campo no cartão)`, tela.campos === 0);
+  // Desde 2026-11-25 o ADMIN (o usuário da bateria) desafia além do calculado: só
+  // as cinco linhas de valor viram campo; o resto da escada segue de leitura.
+  t(`${l} para o administrador, só as linhas de valor do desafio são campo`,
+    tela.campos === 5 && tela.camposDesafio.join() === 'receita_bruta,lucro_bruto,despesas,rateios_negocio,rateios_adm',
+    JSON.stringify(tela.camposDesafio));
+  const extra = async (v) => {
+    await page.fill('.celula-desafio[data-desafio-chave="rateios_adm"]', v);
+    const resp = page.waitForResponse((r) => r.url().includes('/api/projecao/desafio'), { timeout: 30000 });
+    await page.press('.celula-desafio[data-desafio-chave="rateios_adm"]', 'Enter');
+    await resp;
+    await page.waitForTimeout(300);
+    return page.evaluate(() => {
+      const n = (x) => Number(String(x).replace(/[^\d,-]/g, '').replace(',', '.'));
+      const c = (k, i) => document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)[i];
+      return { adm: n(c('rateios_adm', 1).querySelector('input').value), rl: n(c('resultado', 1).textContent),
+        ajustado: !!document.querySelector('.celula-desafio.desafio-ajustado') };
+    });
+  };
+  const admCalc = Number(String((await page.inputValue('.celula-desafio[data-desafio-chave="rateios_adm"]'))).replace(/[^\d,-]/g, ''));
+  const comExtra = await extra(String(Math.abs(admCalc) + 1000000).replace(/\B(?=(\d{3})+(?!\d))/g, '.'));
+  t(`${l} desafio extra: R$ 1 mi a mais de rateio adm (digitado sem o menos) desce R$ 1 mi no resultado líquido`,
+    comExtra.adm === admCalc - 1000000 && Math.abs(comExtra.rl - (tela.rl - 1000000)) <= 1 && comExtra.ajustado,
+    JSON.stringify([admCalc, comExtra, tela.rl]));
+  const semExtra = await extra('');
+  t(`${l} apagar devolve o desafio calculado`, semExtra.adm === admCalc && semExtra.rl === tela.rl && !semExtra.ajustado,
+    JSON.stringify(semExtra));
   t(`${l} a nota diz de onde saiu e lembra a meta de 2% de margem líquida`,
     /driver de volume a definir/.test(tela.nota) && /2% de margem líquida/.test(tela.nota) && /recalculado da base/.test(tela.nota), tela.nota.slice(0, 160));
 

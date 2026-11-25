@@ -255,10 +255,8 @@ const SecaoProjecao = {
       ${this.botaoNivel(d)}
       ${this.cartaoTributosDre(d)}
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
-        A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
-        acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
-        ${d.ano}, convertido para comparar. A Receita Líquida e o que vem abaixo não mudam. O que se lança na Receita de
-        Vendas e no Imposto s/ Vendas é no formato novo (sem a CBS); a CBS da proposta acompanha a receita.</div>
+        A <strong>CBS</strong> (PIS/COFINS em ${d.ano}) é informativa, acima da Receita Bruta; Receita Bruta e Deduções
+        estão sem ela, inclusive ${d.ano}. A Receita Líquida não muda.</div>
       <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
@@ -280,15 +278,11 @@ const SecaoProjecao = {
       <div id="projecao-piso-box">${this.alertaPisoFaturamento(d)}</div>
       <div id="projecao-pessoal-box">${this.alertaPessoalMinimo(d)}</div>
       <p class="text-muted small">
-        <span class="legenda-editavel"></span> Célula em amarelo-claro é onde se lança.
-        Valores em R$. A.V. = análise vertical sobre a Receita Operacional Líquida.
-        A proposta é lançada nas <strong>subcontas</strong>; as linhas em negrito são a soma delas.
-        Célula vazia vale o padrão: a projeção, ou o que as premissas e a diretriz dão. Proposta e Reajuste são o
-        <strong>mesmo lançamento</strong> visto de dois jeitos: a que você digita manda,
-        a outra sai em cinza-itálico porque é a conta dela.
+        <span class="legenda-editavel"></span> Lance nas células amarelas (subcontas); o negrito é a soma.
+        Vazio = projeção com as premissas. Digite o valor <strong>ou</strong> o reajuste — o outro se calcula.
+        A.V. = % da Receita Líquida. Mês sem rateio ainda está aberto e não conta como realizado.
         Fonte: ${Modal.esc(d.fonte || 'Qlik')}${d.extraido_em
-  ? `, extraído em ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
-        Mês sem rateio é mês aberto e não entra como realizado.
+  ? `, ${d.extraido_em.split('-').reverse().join('/')}` : ''}.
       </p>
       </div>
       ${this.cartaoEstoque(d)}`;
@@ -418,14 +412,9 @@ const SecaoProjecao = {
     const tres = `<strong>IPCA</strong>, <strong>PIB</strong>, <strong>Crescimento desejado</strong>,
       <strong>Cresc. despesas com pessoas</strong> e o <strong>vale e o abono</strong> de ${ano}`;
     const nota = diretriz && !d.filial
-      ? `<span class="nota-crescimento">O percentual de crescimento é <strong>sobre o faturamento</strong> (Receita de Vendas):
-          ele cresce <strong>IPCA + PIB + crescimento desejado</strong>, e o restante é <strong>proporcional</strong> —
-          deduções e custo das vendas acompanham o faturamento na mesma proporção (a margem bruta de ${d.ano} se mantém).</span>
-          As <strong>Despesas com Pessoal</strong> partem da conta da diretriz (cartão Pessoas e benefícios), que é também o
-          <strong>mínimo</strong> da linha: acima se lança livre, abaixo grava com ⚠ para validar; as demais despesas ficam na projeção. Nas outras linhas, a célula digitada sempre manda.
-          ${noAnoDaProposta
-    ? `<strong>Cresc. Real</strong>, <strong>Cresc. Total</strong> e <strong>% Custos</strong>
-          são lidos da coluna Proposta.` : ''}`
+      ? `<span class="nota-crescimento">O faturamento cresce <strong>IPCA + PIB + crescimento desejado</strong>; custo e
+          deduções acompanham (margem bruta de ${d.ano} mantida).</span> Pessoal segue a diretriz (é o mínimo da linha); as
+          demais despesas ficam na projeção. O que você digita na DRE sempre manda.`
       : d.filial
       ? `${tres} vêm do negócio e valem para todas as filiais — para alterá-los, volte ao negócio.
           ${noAnoDaProposta ? 'Os três valores lidos ao lado são desta filial.' : ''}`
@@ -442,11 +431,9 @@ const SecaoProjecao = {
 
     const notaDiretriz = diretriz
       ? `<div class="small mt-2 nota-diretriz"><span class="badge selo-diretriz">diretriz</span>
-          <strong>${Modal.esc(diretriz.fonte)}</strong>: o reajuste de pessoal, o vale e os prêmios de ${ano}
-          valem para todos os negócios e não se digitam. <strong>IPCA</strong> e <strong>PIB</strong> vêm sugeridos pela
-          diretriz e, como o <strong>crescimento desejado</strong>, cada negócio pode ajustar — as filiais recebem os
-          do negócio, sem editar. Custos e deduções acompanham a receita (margem bruta de ${d.ano} mantida), as demais
-          despesas não crescem, e o resultado líquido negativo aparece destacado na tabela.</div>`
+          <strong>${Modal.esc(diretriz.fonte)}</strong>: reajuste de pessoal, vale e prêmios são fixos para todos.
+          IPCA, PIB e crescimento desejado vêm sugeridos e o negócio pode ajustar (as filiais herdam).
+          Resultado líquido negativo não é aceito.</div>`
       : '';
     const leituras = noAnoDaProposta
       ? `<div class="w-100 d-md-none"></div>
@@ -765,10 +752,9 @@ const SecaoProjecao = {
           </tbody>
         </table>
       </div>
-      <div class="small text-muted">Folha e peças de ${d.ano}: Qlik DRE Gerencial, contas 3.07.01.21* (despesa) e 4.03.01.01.01 (custo).
-        A conta reduzida 3227 (acerto do PPR) sai da base no negócio e em cada filial; a provisão (3419) sai como PPR de ${d.ano}.
-        Este total é o PADRÃO da linha 8.5 e também o seu MÍNIMO: lance acima na DRE se houver contratação ou reajuste maior;
-        abaixo dele a linha grava com ⚠ para validar. A folha e o PPR andam na proporção do quadro planejado.</div>`;
+      <div class="small text-muted">Este total é o <strong>mínimo</strong> da linha 8.5: acima, lance livre (contratação,
+        reajuste maior); abaixo, grava com ⚠ para validar.
+        Fonte: Qlik DRE Gerencial, contas 3.07.01.21* e 4.03.01.01.01, sem o acerto do PPR (3227).</div>`;
   },
 
   /** O Corporativo só totaliza: a soma dos negócios, sem campo nenhum. */
@@ -994,10 +980,8 @@ const SecaoProjecao = {
       ${this.botaoNivel(d)}
       ${this.cartaoTributosDre(d)}
       <div class="small mb-1 nota-formato-2027"><span class="linha-muda px-1">Formato de ${d.ano_planejamento}</span>
-        A DRE já está na forma da reforma tributária: a <strong>CBS</strong> (em ${d.ano}, o PIS/COFINS) é linha informativa
-        acima da Receita Bruta, e Receita Bruta, Deduções e Imposto s/ Vendas estão <strong>sem ela</strong> — inclusive o
-        ${d.ano}, convertido para comparar. A Receita Líquida e o que vem abaixo não mudam. O que se lança na Receita de
-        Vendas e no Imposto s/ Vendas é no formato novo (sem a CBS); a CBS da proposta acompanha a receita.</div>
+        A <strong>CBS</strong> (PIS/COFINS em ${d.ano}) é informativa, acima da Receita Bruta; Receita Bruta e Deduções
+        estão sem ela, inclusive ${d.ano}. A Receita Líquida não muda.</div>
       <div class="table-responsive tabela-projecao${this.estaRecolhido() ? ' recolhida' : ''}${this.nivel3Aberto() ? ' nivel3' : ''}">
         <table class="table table-sm align-middle">
           <thead><tr>
@@ -1074,11 +1058,8 @@ const SecaoProjecao = {
 
   notaVisao(d) {
     return `<div class="small text-muted mt-1">
-        <strong>Visão realista</strong> — estimativa da Controladoria, não é número do Qlik, e só de leitura:
-        a <strong>receita bruta</strong> de ${this.nomeMes(d.mes_fechado_ate + 1)}–dez é o planejado desses meses ×
-        a aderência da receita até ${this.nomeMes(d.mes_fechado_ate)} (realizado ÷ planejado); o
-        <strong>resultado líquido</strong> é o planejado + o desvio médio mensal até ${this.nomeMes(d.mes_fechado_ate)}
-        × os meses que faltam — supõe que o negócio continue errando o plano no mesmo ritmo. Sinal positivo é favorável.
+        <strong>Visão realista</strong> (estimativa da Controladoria): o planejado de ${this.nomeMes(d.mes_fechado_ate + 1)}–dez
+        corrigido pelo desvio até ${this.nomeMes(d.mes_fechado_ate)}, supondo o mesmo ritmo. Positivo é favorável.
       </div>`;
   },
 
@@ -1224,9 +1205,8 @@ const SecaoProjecao = {
         <div class="col-xl-6"><div class="fw-bold small text-uppercase mb-1">Como fica <span class="fw-normal text-muted">(reforma, a partir de ${ano})</span></div>
           <div class="table-responsive">${comoFica}</div></div>
       </div>
-      <div class="small text-muted mt-2">CBS pela LC 214/2025, com o regime específico das cooperativas (art. 271), pelo qual a
-        Copérdia optou. PIS/COFINS do realizado: carga de tributos de ${d.ano}; o resto do ano pela taxa de ${d.ano} sobre a Receita
-        de Vendas; na proposta, o que a linha 2.3 carrega (a projeção na proporção da receita).${d.filial ? ' Na filial, sempre pela taxa do negócio.' : ''}</div>
+      <div class="small text-muted mt-2">CBS pela LC 214/2025 (regime das cooperativas, art. 271). PIS/COFINS: carga de
+        ${d.ano} no realizado; taxa de ${d.ano} sobre a receita no resto${d.filial ? ' (na filial, a taxa do negócio)' : ''}.</div>
       ${avisos.map((a) => `<div class="small text-warning-emphasis mt-1 aviso-tributos">${a}</div>`).join('')}
       </div></div>`;
   },
@@ -1334,17 +1314,10 @@ const SecaoProjecao = {
             </tbody>
           </table>
         </div>
-        <div class="small text-muted mb-1">O desafio é a <strong>proposta padrão</strong> do negócio: a projeção de ${d.ano}
-          (jan–${this.nomeMes(d.mes_fechado_ate)} realizado + ${this.rotuloResto(d)} planejado) com as premissas do painel — IPCA, PIB e % de crescimento na receita (ou o driver de volume,
-          abaixo), pessoal pela diretriz (reajuste, vale, prêmios e PPR) —, custo e deduções acompanhando a receita (margem
-          bruta preservada), as demais despesas operacionais crescendo na mesma proporção da receita (despesa sobre a receita
-          preservada; se a receita cai, elas ficam na base) e os rateios na base, sem crescimento. A coluna Proposta parte da projeção com o que o negócio lançou
-          (nela, despesa não lançada fica na base, pela diretriz), e a Diferença é o efeito dos lançamentos. Estrutura nova da DRE
-          gerencial (a que vale em ${x.ano}).</div>
-        ${x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste"><strong>Desafio extra:</strong> como administrador, você pode
-          digitar na coluna Desafio — faturamento, margem bruta, despesas e rateios, para o ano todo. Resultados e margens
-          se recalculam; o faturamento leva a receita líquida e, se a margem bruta não for digitada, ela também (o % se mantém).
-          Apague o número para voltar ao calculado. O Corporativo soma os desafios de cada negócio.</div>` : ''}
+        <div class="small text-muted mb-1">Desafio = <strong>proposta padrão</strong>: projeção de ${d.ano} com as premissas e a
+          diretriz, custos e despesas acompanhando a receita, rateios travados. Proposta = o que está lançado na DRE.</div>
+        ${x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste"><strong>Desafio extra:</strong> digite na coluna Desafio
+          (ano todo); resultados e margens se recalculam. Apague para voltar ao calculado.</div>` : ''}
         ${Object.keys(ajustes).length && !x.pode_ajustar ? `<div class="small mb-1 nota-desafio-ajuste">O desafio deste negócio
           tem <strong>ajuste da administração</strong> além da proposta padrão.</div>` : ''}
         ${this.notaTributos(x.tributos, x.ano)}
@@ -1367,10 +1340,10 @@ const SecaoProjecao = {
   },
 
   notaDesafio(x) {
-    return `Diretriz do Horizonte 1: <strong>preservar margem</strong> — pode crescer, sem perder margem.
-      ${Modal.esc(x.metodo)} A meta da direção é <strong>${this.pct(x.meta_margem / 100, 0)} de margem líquida</strong>
-      para a cooperativa. Método decidido em ${String(x.decidido_em).split('-').reverse().join('/')}; o desafio é
-      recalculado da base e das premissas — muda se as premissas do painel ou as metas de volume mudarem.`;
+    // A nota do método (`x.metodo`) repetia o parágrafo de cima; saiu na revisão
+    // das notas (pedido do cliente, 2026-11-25: "mais objetivos, direto ao ponto").
+    return `Meta da direção: <strong>${this.pct(x.meta_margem / 100, 0)} de margem líquida</strong> para a cooperativa,
+      sem perder margem. O desafio é recalculado da base e das premissas.`;
   },
 
   cartaoDesafioCorporativo(d) {
@@ -1548,17 +1521,12 @@ const SecaoProjecao = {
           </tbody>
         </table>
       </div>
-      <div class="small text-muted">Período: os 12 meses de ${this.rotuloJanela(q.periodo, true)}${naFilial ? '' : `; cada item mostra também os
-        12 meses anteriores, para comparar`}. ${naFilial ? '' : `<strong>Itens</strong> (conta contábil): provisões, perdas, indenizações, multas e
-        receitas pontuais, com o mês em que foram lançados. Em cada linha, item ou mês fora do padrão, marque
-        <strong>Considerar</strong> (vai se repetir: tratar no planejamento) ou <strong>Desconsiderar</strong> (não se repete). `}<strong>Meses fora do padrão</strong>: em despesas operacionais, outros
-        valores e resultado financeiro, o mês que se afasta da mediana dos 12 meses em mais da metade dela (e de R$ 50 mil) — uma receita de
-        juros concentrada num mês, uma despesa que não se repete${naFilial ? '' : '; calculados sem os itens acima, para nada contar duas vezes'}. Se não se repetir em ${d.ano_planejamento}, despesa é <strong>oportunidade</strong> e receita ou reversão é
-        <strong>risco</strong>. Meses no sinal da DRE (despesa negativa).</div>
-      <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: se um item não vai se repetir (ou se falta algo
-        que o período não teve), lance na linha da DRE correspondente. Em cada linha, <strong>Lançamentos</strong> abre os de
-        R$ 10 mil ou mais que formam o valor: data, filial, conta, histórico e o complemento (documento e cliente) — por ora só os de
-        jan–${this.nomeMes(q.mes_ate)}/${String(d.ano).slice(2)}.</div>
+      <div class="small text-muted">Período: ${this.rotuloJanela(q.periodo, true)}${naFilial ? '' : ', comparado aos 12 meses anteriores'}.
+        ${naFilial ? '' : `Marque <strong>Considerar</strong> (vai se repetir) ou <strong>Desconsiderar</strong> (não se repete). `}<strong>Mês fora
+        do padrão</strong> = mais de 50% (e R$ 50 mil) longe da mediana dos 12 meses. Se não se repetir em ${d.ano_planejamento},
+        despesa é <strong>oportunidade</strong> e receita é <strong>risco</strong>.</div>
+      <div class="small text-muted mt-1">Nada daqui entra sozinho na proposta: ajuste a linha da DRE. <strong>Lançamentos</strong>
+        mostra os de R$ 10 mil ou mais (jan–${this.nomeMes(q.mes_ate)}/${String(d.ano).slice(2)}).</div>
       ${this.secaoQuestionamentos(d, qs)}
       ${this.secaoJuros(naFilial ? d.filial.juros : (d.oportunidades || {}).juros, naFilial)}`);
   },
@@ -1732,10 +1700,8 @@ const SecaoProjecao = {
     return `<div class="mt-3 secao-questionamentos">
         <div class="small fw-bold mb-1">${titulo}</div>
         ${corpo}
-        <div class="small text-muted">Conta reduzida a conta reduzida, nas duas janelas de 12 meses. <strong>Parou</strong>: R$ ${m(qs.minimo)}
-          ou mais em ${ja} e menos de 10% disso em ${jb}. <strong>Começou</strong>: o inverso. Os rateios corporativos
-          (blocos 14 e 16) ficam de fora — são divisão da administração, não um fato do negócio. A resposta vai na proposta: se algo
-          que parou deve voltar, ou se o que começou não vai continuar, lance na linha da DRE.</div>
+        <div class="small text-muted"><strong>Parou</strong>: R$ ${m(qs.minimo)} ou mais em ${ja} e menos de 10% disso em ${jb}.
+          <strong>Começou</strong>: o inverso. Rateios ficam de fora. Se algo vai voltar ou não vai continuar, ajuste a linha da DRE.</div>
       </div>`;
   },
 
@@ -2006,12 +1972,10 @@ const SecaoProjecao = {
       <div class="card-body py-2 px-3">
         <h2 class="h6 mb-1">Oportunidades do estoque a trabalhar em ${d.ano_planejamento}${naFilial ? ' — esta filial' : ''}</h2>
         <div class="small text-muted mb-2">${entreFiliais
-    ? `Perdas e acerto de estoque de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}), mês a mês, no sinal da DRE. A régua é a
-          <strong>média entre as filiais</strong> do negócio (em reais, no ano): ${naFilial
-      ? 'o que esta filial passou dela é a oportunidade.'
-      : 'cada filial acima dela tem como oportunidade o que passou, e o negócio é a soma das filiais.'}`
-    : `Perdas e acerto de estoque de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}), mês a mês, no sinal da DRE: o que cada mês passou da
-          <strong>média mensal</strong> é a oportunidade. Em verde-claro, os meses acima dela.`}${p ? ' E o estoque parado, que é caixa a liberar.' : ''}</div>
+    ? `Perdas e acerto de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}): a oportunidade é o que ${naFilial ? 'esta filial' : 'cada filial'}
+          passou da <strong>média entre as filiais</strong>.`
+    : `Perdas e acerto de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}): a oportunidade é o que cada mês passou da
+          <strong>média mensal</strong> (em verde-claro).`}${p ? ' E o estoque parado, caixa a liberar.' : ''}</div>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-1 tabela-estoque">
             <thead><tr><th>Indicador</th>${cab}<th class="text-end">Total</th><th class="text-end">Média<br><span class="fw-normal text-muted small">${entreFiliais
@@ -2029,11 +1993,9 @@ const SecaoProjecao = {
         </div>
         ${peso}
         ${naFilial ? '' : this.estoqueDasFiliais(e)}
-        <div class="small text-muted mt-1">Fontes: Qlik DRE - Gerencial (contas 3.07.01.01.06 e 3.11.03.03.01) e Produtos Parados
-          (mais de 2 anos nas Agropecuárias, mais de 1 ano nos Supermercados). O estoque parado é <strong>caixa</strong>, não resultado:
-          vendê-lo libera capital, e o resultado depende do preço. Perdas e acerto estão no <strong>Custo das Vendas</strong> (linha 4.1),
-          que o quadro de oportunidades não varre: nada aqui está contado duas vezes. Nada daqui entra sozinho na proposta — é o tamanho
-          do desafio.</div>
+        <div class="small text-muted mt-1">Estoque parado é <strong>caixa</strong>, não resultado. Perdas e acerto estão no
+          Custo das Vendas (4.1), sem dupla contagem com as oportunidades. Nada daqui entra sozinho na proposta.
+          Fonte: Qlik DRE Gerencial (3.07.01.01.06 e 3.11.03.03.01) e Produtos Parados (+2 anos Agropecuárias, +1 ano Supermercados).</div>
       </div>
     </div>`;
   },
@@ -2056,8 +2018,7 @@ const SecaoProjecao = {
       ${resto.length ? `<details class="small"><summary>mais ${resto.length} filiais</summary>
         <div class="table-responsive"><table class="table table-sm align-middle mb-1">${cab}<tbody>${resto.map(linha).join('')}</tbody></table></div>
       </details>` : ''}
-      <div class="small text-muted">Perdas e acerto: o que cada filial passou da média entre as filiais — a soma é a oportunidade do
-        negócio. Abra a filial para ver os meses dela.</div>`;
+      <div class="small text-muted">Perdas e acerto: quanto cada filial ficou acima da média das filiais.</div>`;
   },
 
   cartaoEstoqueCorporativo(d) {
