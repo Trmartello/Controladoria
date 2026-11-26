@@ -36,6 +36,7 @@ const App = {
 
   async iniciar() {
     this.sessao = await this.api('/api/me');
+    this.aplicarConfiguracoes();
     document.getElementById('usuario-nome').textContent = this.sessao.usuario.nome;
     document.getElementById('usuario-perfil').textContent = this.sessao.usuario.perfil;
     this.montarSeletores();
@@ -361,6 +362,21 @@ const App = {
 
   podeEditar() {
     return this.sessao.usuario.perfil !== 'LEITURA';
+  },
+
+  /**
+   * O Diagnóstico em modo SÓ LEITURA (configuração geral, só o ADMIN liga —
+   * pedido do cliente, 2026-11-26): os cartões da Situação Atual, das Tendências
+   * e da SWOT escondem editar, mover, excluir, plano de ação e novo anexo; os
+   * anexos que existem continuam abrindo.
+   */
+  leituraDiagnostico() {
+    return !!this.sessao?.configuracoes?.diagnostico_somente_leitura;
+  },
+
+  /** Marca o `<body>` com as configurações que mudam o visual (o modo apresentação do Diagnóstico). */
+  aplicarConfiguracoes() {
+    document.body.classList.toggle('diagnostico-leitura', this.leituraDiagnostico());
   },
 
   recarregarSecaoAtiva() {

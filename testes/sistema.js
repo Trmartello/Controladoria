@@ -11994,6 +11994,55 @@ async function provasSaidaDoModal(page, largura) {
     "!document.getElementById('modal-form').classList.contains('show')", 5000);
 }
 
+/**
+ * O DIAGNÓSTICO SÓ LEITURA (pedido do cliente, 2026-11-26): a configuração geral,
+ * que só o ADMIN liga, esconde nos cartões da Situação Atual, das Tendências e da
+ * SWOT o editar, mover, excluir, plano de ação e novo anexo; os anexos que existem
+ * continuam abrindo e o cartão sem anexo perde a opção; o texto fica grande e
+ * inteiro; a SWOT ganha numeração. A prova liga, confere e DESLIGA (a chave vale
+ * para todos e mudaria as outras provas).
+ */
+async function provasModoApresentacao(page) {
+  const l = 'Diagnóstico só leitura:';
+  const cfg = (v) => page.evaluate(async (x) => {
+    App.sessao.configuracoes = await App.api('/api/configuracoes', { chave: 'diagnostico_somente_leitura', valor: x });
+    App.aplicarConfiguracoes();
+    return App.sessao.configuracoes.diagnostico_somente_leitura;
+  }, v);
+  const abrir = async (secao) => {
+    await page.evaluate((s) => App.mostrarSecao(s), secao);
+    await esperar(page, `!!document.querySelector('#secao-${secao} [data-card-fator]')`, 30000);
+    await new Promise((r) => setTimeout(r, 800));
+  };
+  const contar = (secao) => page.evaluate((sec) => {
+    const q = (x) => document.querySelectorAll(`#secao-${sec} ${x}`).length;
+    const txt = document.querySelector(`#secao-${sec} .texto-fator`);
+    return { editar: q('[data-editar]'), mover: q('[data-mover]'), excluir: q('[data-excluir]'),
+      plano: q('[data-plano-acao]'), novoAnexo: q('[data-novo-anexo]'), editarAnexo: q('[data-editar-anexo]'),
+      alca: q('.alca-ordenar, [data-alca]'), numeros: q('[data-numero-swot]'),
+      expansoresVazios: [...document.querySelectorAll(`#secao-${sec} [data-anexos-resumo]`)].filter((x) => /nenhum ainda/.test(x.textContent)).length,
+      fonte: txt ? parseFloat(getComputedStyle(txt).fontSize) : 0 };
+  }, secao);
+  try {
+    t(`${l} o ADMIN liga a configuração`, (await cfg(1)) === true);
+    await abrir('cenario');
+    const c = await contar('cenario');
+    t(`${l} Situação Atual e Tendências sem editar, mover, excluir, plano de ação nem novo anexo`,
+      c.editar + c.mover + c.excluir + c.plano + c.novoAnexo + c.editarAnexo === 0, JSON.stringify(c));
+    t(`${l} cartão sem anexo não mostra a opção de anexos`, c.expansoresVazios === 0, JSON.stringify(c));
+    t(`${l} texto grande (≥ 18 px) para o público`, c.fonte >= 18, JSON.stringify(c));
+    await abrir('swot');
+    const w = await contar('swot');
+    t(`${l} SWOT sem editar, mover, excluir nem plano de ação, e numerada para o apresentador`,
+      w.editar + w.mover + w.excluir + w.plano === 0 && w.numeros > 0 && w.fonte >= 18, JSON.stringify(w));
+  } finally {
+    t(`${l} e desligar devolve tudo`, (await cfg(0)) === false);
+  }
+  await abrir('swot');
+  const volta = await contar('swot');
+  t(`${l} desligada, a SWOT volta com os botões e sem a numeração`, volta.editar > 0 && volta.numeros === 0, JSON.stringify(volta));
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -12013,6 +12062,7 @@ async function provasSaidaDoModal(page, largura) {
   await provasCartaoAcao(page, 'desktop');
   await provasSeloComentarios(page);
   await provasAnexosCenario(page, 'desktop');
+  await provasModoApresentacao(page);
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
   await provasExcluirComOrigens(page);

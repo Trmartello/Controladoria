@@ -5047,3 +5047,22 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-5w2h tr.g-frente .seta-grupo { color: var(--verde-coperdia, #007a45); }
 .tabela-5w2h .nome-grupo-alterna { cursor: pointer; }
 .tabela-5w2h .nome-grupo-alterna:hover { text-decoration: underline; text-underline-offset: .2em; }
+
+/* DIAGNÓSTICO PARA O GRANDE PÚBLICO (pedido do cliente, 2026-11-26: "melhorar a
+   apresentação ao grande público […] priorize a fonte grande"). Com a configuração
+   "Diagnóstico só leitura" ligada (`body.diagnostico-leitura`), os cartões da
+   Situação Atual, das Tendências e da SWOT mostram o texto INTEIRO e grande — sem o
+   corte em 3 linhas nem o "ver mais", que obrigariam a clicar durante a reunião. */
+body.diagnostico-leitura #secao-cenario .texto-fator,
+body.diagnostico-leitura #secao-swot .texto-fator {
+  font-size: 1.15rem;
+  line-height: 1.45;
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+body.diagnostico-leitura #secao-cenario .ver-mais,
+body.diagnostico-leitura #secao-swot .ver-mais { display: none !important; }
+body.diagnostico-leitura #secao-cenario .cabecalho-coluna h2,
+body.diagnostico-leitura #secao-swot .cabecalho-coluna h2 { font-size: 1.1rem; }
+body.diagnostico-leitura #secao-cenario .expansor-anexos summary { font-size: .95rem; }

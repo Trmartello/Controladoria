@@ -215,6 +215,7 @@ use App\Controllers\CenarioController;
 use App\Controllers\ColetaController;
 use App\Controllers\CicloController;
 use App\Controllers\ComentarioController;
+use App\Controllers\ConfiguracaoController;
 use App\Controllers\CruzamentoController;
 use App\Controllers\DriverEixoController;
 use App\Controllers\FatorController;
@@ -236,6 +237,8 @@ try {
         case $rota === 'POST /api/login':          (new AuthController())->login(); break;
         case $rota === 'POST /api/logout':         (new AuthController())->logout(); break;
         case $rota === 'GET /api/me':              (new AuthController())->me(); break;
+        case $rota === 'GET /api/configuracoes':   (new ConfiguracaoController())->listar(); break;
+        case $rota === 'POST /api/configuracoes':  (new ConfiguracaoController())->gravar(); break;
         case $rota === 'POST /api/senha':          (new UsuarioController())->trocarSenha(); break;
 
         case $rota === 'GET /api/negocios':        (new NegocioController())->listar(); break;

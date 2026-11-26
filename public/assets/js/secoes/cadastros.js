@@ -32,6 +32,7 @@ const SecaoCadastros = {
       ['eixos', 'Eixos'],
     ];
     if (administra) abas.push(['usuarios', 'Usuários']);
+    abas.push(['configuracoes', 'Configurações']);
 
     el.innerHTML = `
       <h1>Cadastros</h1>
@@ -56,8 +57,48 @@ const SecaoCadastros = {
       drivers: () => this.driversEixos('drivers', 'Driver (linha base)', administra),
       eixos: () => this.driversEixos('eixos', 'Eixo (abertura)', administra),
       usuarios: () => this.usuarios(),
+      configuracoes: () => this.configuracoes(),
     };
     await renderizadores[this.abaAtiva]();
+  },
+
+  // ---- Configurações gerais (pedido do cliente, 2026-11-26) ----
+  // Todos veem o estado; só o ADMIN liga e desliga. O servidor recusa do mesmo
+  // jeito (`ConfiguracaoController::gravar`).
+  async configuracoes() {
+    const cfg = await App.api('/api/configuracoes');
+    App.sessao.configuracoes = cfg;
+    const alvo = document.getElementById('conteudo-aba');
+    const admin = App.sessao.usuario.perfil === 'ADMIN';
+    const ligado = !!cfg.diagnostico_somente_leitura;
+    alvo.innerHTML = `
+      <div class="card mb-3"><div class="card-body">
+        <div class="form-check form-switch d-flex align-items-center gap-2">
+          <input class="form-check-input" type="checkbox" role="switch" id="cfg-diagnostico-leitura"
+            ${ligado ? 'checked' : ''} ${admin ? '' : 'disabled'}>
+          <label class="form-check-label fw-bold" for="cfg-diagnostico-leitura">
+            Diagnóstico só leitura (Situação Atual, Tendências e SWOT)</label>
+        </div>
+        <div class="small text-muted mt-1">Ligado, os cartões dessas três telas escondem <strong>editar, mover
+          (redirecionar), excluir, plano de ação e novo anexo</strong> para todos os usuários; os anexos que já
+          existem continuam abrindo, e a opção de anexos some do cartão que não tem nenhum. Útil para apresentar.
+          ${admin ? '' : '<br><em>Só administradores ligam e desligam.</em>'}</div>
+      </div></div>`;
+    if (!admin) return;
+    alvo.querySelector('#cfg-diagnostico-leitura').addEventListener('change', async (ev) => {
+      const caixa = ev.target;
+      caixa.disabled = true;
+      try {
+        App.sessao.configuracoes = await App.api('/api/configuracoes',
+          { chave: 'diagnostico_somente_leitura', valor: caixa.checked ? 1 : 0 });
+        App.aplicarConfiguracoes();
+      } catch (e) {
+        alert(e.message);
+        caixa.checked = !caixa.checked;
+      } finally {
+        caixa.disabled = false;
+      }
+    });
   },
 
   // ---- Negócios ----
