@@ -8004,11 +8004,12 @@ async function provasDesafioEExpansores(page, largura) {
   // E −R$ 19.501.365 (−3,64%) com a planilha nova do rateio administrativo (25/11: 16.1 de R$ 59,0 → 37,7 mi).
   // E −R$ 19.646.536 (−3,67%) (25/11: a base do pessoal sem a 3419, a 3398 e a 3339 projetadas para o ano).
   // E −R$ 19.550.065 (−3,65%) (25/11, 2ª planilha do rateio administrativo: R$ 37,01 mi).
+  // E −R$ 19.561.311 (−3,65%) (25/11, planilha nova do rateio corporativo negócio: R$ 37,68 mi, sem o 5112).
   // Desde 2026-11-25 o cartão mostra o faturamento SEM a CBS, como a DRE de 2027 (o
   // desafio continua R$ 555.517.764 na API, no formato da carga, com o PIS/COFINS).
-  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta (no cartão, sem a CBS) e −R$ 19.550.065 de resultado, margem −3,65%`,
+  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta (no cartão, sem a CBS) e −R$ 19.561.311 de resultado, margem −3,65%`,
     api.des && Math.round(api.des.receita_bruta) === 555517764 && Math.abs(tela.rob - Math.round(555517764 * (1 - api.taxaCbs))) <= 1
-    && tela.rob < 555517764 && tela.rl === -19550065 && /3,65%/.test(tela.margem), JSON.stringify({ ...tela, taxa: api.taxaCbs }));
+    && tela.rob < 555517764 && tela.rl === -19561311 && /3,65%/.test(tela.margem), JSON.stringify({ ...tela, taxa: api.taxaCbs }));
   t(`${l} o faturamento da coluna Proposta do cartão é a linha 1 da DRE (sem a CBS)`,
     Math.abs(tela.robProposta - Math.round(api.l1)) <= 1, `${tela.robProposta} × ${api.l1}`);
   // Em tempo real (2026-11-25: "precisa atualizar em tempo real, enquanto preenche a
@@ -8111,10 +8112,10 @@ async function provasDesafioEExpansores(page, largura) {
   // recarga de outubro do Qlik (25/11, custo da filial 106 entre Rações e Agropecuárias) tira
   // outro: −22.786.222,86, que a tela arredonda para −22.786.223. A planilha nova do rateio
   // administrativo (25/11: R$ 21,48 mi de créditos na Contabilidade) → −1.509.709,86 → −1.509.710. E −1.087.145 (25/11: a base do pessoal sem a 3419, a 3398 e a 3339 projetadas para o ano).
-  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.680.001.039, resultado −365.950, margem −0,01%)`,
-    corp.negocios === 11 && corp.robTotal === '3.680.001.039' && /^-365\.950$/.test(corp.rlTotal) && /^-0,01%$/.test(corp.margem), JSON.stringify(corp));
-  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 71,33 mi`,
-    /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 71,33 mi/.test(corp.metaDesafio), corp.metaDesafio);
+  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.680.001.039, resultado +302.475, margem +0,01%)`,
+    corp.negocios === 11 && corp.robTotal === '3.680.001.039' && /^302\.475$/.test(corp.rlTotal) && /^0,01%$/.test(corp.margem), JSON.stringify(corp));
+  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 70,66 mi`,
+    /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 70,66 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
   // Desde 2026-11-25 os tributos (como é × como fica) não são expansor: abrem
   // pelo botão "Reforma tributária: antes × depois", junto dos botões da DRE.
