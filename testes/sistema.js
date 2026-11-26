@@ -2906,8 +2906,11 @@ async function provasModosPlano(page, largura) {
     });
     const nivelar = async (n) => {
       await page.evaluate((x) => document.querySelector(`#secao-projetos [data-nivel="${x}"]`).click(), n);
-      await esperar(page, "!!document.querySelector('.tabela-5w2h')", 10000);
-      await new Promise((r) => setTimeout(r, 500));
+      // Espera o NÍVEL pedido ficar marcado, não só a tabela existir: com o servidor
+      // carregado a repintura passa de meio segundo (2026-11-26: "Projetos" lido ainda
+      // em FRENTES).
+      await esperar(page, `!!document.querySelector('.tabela-5w2h') && document.querySelector('#secao-projetos [data-nivel="${n}"]')?.getAttribute('aria-pressed') === 'true'`, 10000);
+      await new Promise((r) => setTimeout(r, 300));
       return contar();
     };
 
