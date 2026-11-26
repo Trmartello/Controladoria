@@ -4977,3 +4977,23 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 @media print {
   #secao-projecao .tabela-projecao { max-height: none !important; overflow: visible !important; }
 }
+
+/* DRE COMPACTA E ZEBRADA (pedido do cliente, 2026-11-26: "o objetivo é que toda a DRE
+   caiba na tela com baixa resolução"; prévia aprovada em 1366×768):
+   - cabeçalho mais baixo, subtítulos abreviados (% ROL, % ROL proposta, vs. projeção);
+   - no Resumo, fonte um pouco maior nos indicadores e linhas mais baixas;
+   - divisórias verdes antes da Proposta e depois da A.V. da Proposta;
+   - uma linha sim, outra não em azul-claro (`pintarZebra`, só nas visíveis), sem
+     cobrir o amarelo dos nomes do formato 2027 nem o azul da coluna Desafio;
+   - a linha sob o mouse ganha borda azul (por dentro: a tabela não pula). */
+#secao-projecao .tabela-projecao thead th { padding-top: .15rem; padding-bottom: .15rem; line-height: 1.12; font-size: .92rem; }
+#secao-projecao .tabela-projecao thead th .small { font-size: .72rem; }
+#secao-projecao .tabela-projecao.recolhida table { font-size: 1.02rem; }
+#secao-projecao .tabela-projecao.recolhida tbody td { padding-top: .08rem; padding-bottom: .08rem; line-height: 1.3; }
+#secao-projecao .tabela-projecao th:nth-child(6), #secao-projecao .tabela-projecao td:nth-child(6) { border-left: 2px solid #8fb9a2; }
+#secao-projecao .tabela-projecao th:nth-child(7), #secao-projecao .tabela-projecao td:nth-child(7) { border-right: 2px solid #8fb9a2; }
+.tabela-projecao tbody tr.linha-zebra:not(.linha-cbs):not(.resultado-negativo) > td:not(.linha-muda-nome):not(.celula-desafio-td) { background-color: #eef4fc; }
+.tabela-projecao tbody tr:hover > td { box-shadow: inset 0 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
+.tabela-projecao tbody tr:hover > td:first-child { box-shadow: inset 2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
+.tabela-projecao tbody tr:hover > td:last-child { box-shadow: inset -2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
+@media print { .tabela-projecao tbody tr:hover > td { box-shadow: none !important; } }
