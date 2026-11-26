@@ -195,6 +195,12 @@ os negócios"): o aviso diz "somada dos negócios (Corporativo)" ou "somada dest
 A DRE tem a **moldura dos cartões** (`details.expansor`): borda verde suave, faixa verde de
 5px à esquerda, cantos redondos e sombra; com o líquido negativo, a mesma moldura em vermelho.
 
+**As linhas de % da DRE trazem a Proposta** (2026-11-26: "na linha da margem líquida […]
+traga o valor na coluna da proposta. Isso para todos os negócios"): Margem Bruta (6),
+Desp./ROL (8) e Margem Líquida (19) não têm proposta própria e caíam no "—" do "sem
+proposta"; agora o `corpo` testa `percentual` antes e mostra a linha que medem (5, 7, 18)
+sobre a ROL proposta, em `[data-pct-proposta]` — negócio, filial e Corporativo.
+
 **Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
 campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
 `fixa(chave)` nas premissas e `diretriz.beneficios` nos benefícios; mesma regra de antes,

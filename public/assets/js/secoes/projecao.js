@@ -2491,15 +2491,20 @@ const SecaoProjecao = {
         proposta = `<span class="proposta-calculada" data-travada="${Modal.esc(l.codigo)}" title="${Modal.esc(
           texto + (l.lancado_ignorado ? ' Havia um lançamento anterior nesta linha: ele está guardado, mas não vale.' : '')
         )}">${this.moeda(l.proposta)}</span>`;
+      } else if (l.percentual) {
+        // As linhas de % (Margem Bruta, Desp./ROL, Margem Líquida) não têm proposta
+        // própria: saem da linha que medem sobre a ROL proposta. Vinham antes do
+        // teste de "sem proposta" e caíam no "—" (pedido do cliente, 2026-11-26:
+        // "na linha da margem líquida, traga o valor na coluna da proposta").
+        const alvo = linhas.find((x) => x.codigo === CALCULADAS[l.codigo]);
+        const baseProp = (linhas.find((x) => x.codigo === '3') || {}).proposta || 0;
+        proposta = alvo && baseProp && alvo.proposta !== null && alvo.proposta !== undefined
+          ? `<span data-pct-proposta="${Modal.esc(l.codigo)}">${this.pct(alvo.proposta / baseProp)}</span>` : '—';
       } else if (l.proposta === null || l.proposta === undefined) {
         proposta = `<span class="text-muted" title="${Modal.esc(
           'Linha que o Qlik entrega pronta e que o sistema não sabe recompor — '
           + 'enquanto a regra dela não estiver no modelo, ela não recebe proposta.'
         )}">—</span>`;
-      } else if (l.percentual) {
-        const alvo = linhas.find((x) => x.codigo === CALCULADAS[l.codigo]);
-        const baseProp = (linhas.find((x) => x.codigo === '3') || {}).proposta || 0;
-        proposta = alvo && baseProp ? this.pct(alvo.proposta / baseProp) : '—';
       } else {
         proposta = this.moeda(l.proposta);
       }
