@@ -8965,7 +8965,9 @@ async function provasProjecao(page, largura) {
   });
   t(`${l} DRE zebrada (só as linhas visíveis), no Lançamento e no Resumo`, compacta.lanc && compacta.res, JSON.stringify(compacta));
   t(`${l} o Resumo é compacto (cabe em 768 px) e o cabeçalho abreviado, com divisórias em volta da Proposta`,
-    compacta.altura <= 560 && compacta.th.includes('% ROL') && compacta.th.includes('% ROL proposta') && compacta.prop === '2px' && compacta.avp === '2px',
+    // A altura só vale no computador: no celular (390 px) os nomes quebram em duas
+    // linhas e a DRE rola dentro da caixa dela, com o cabeçalho fixo.
+    (largura !== 'desktop' || compacta.altura <= 560) && compacta.th.includes('% ROL') && compacta.th.includes('% ROL proposta') && compacta.prop === '2px' && compacta.avp === '2px',
     JSON.stringify(compacta));
 
   const ler = () => page.evaluate(() => {
