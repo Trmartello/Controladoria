@@ -80,12 +80,29 @@ class ProjecaoController
         // pode vê-lo: um consolidado dos negócios do escopo de alguém seria um
         // consolidado parcial lido como o da cooperativa.
         $podeCorporativo = Auth::veTudo($u);
+        // AGRUPAR é de todo perfil com dois ou mais negócios (cliente, 2026-11-26:
+        // "não consigo mais selecionar mais de um negócio" — o pedido de 2026-11-24
+        // nunca restringiu por perfil; a trava fora herdada do Corporativo). Quem
+        // não enxerga todos soma só os SEUS negócios ($negocios já é o escopo dele).
+        $podeAgrupar = count($negocios) >= 2;
         $comuns = [
             'extraido_em' => $fech['extraido_em'],
             'fonte' => $fech['fonte'],
             'negocios' => $negocios,
             'pode_corporativo' => $podeCorporativo,
+            'pode_agrupar' => $podeAgrupar,
         ];
+        $grupoDoEscopo = !$podeCorporativo && $podeAgrupar && !empty($_GET['corporativo'])
+            ? self::grupoDoEscopo((string)($_GET['negocios'] ?? ''), $ids)
+            : null;
+        if ($grupoDoEscopo) {
+            $somados = array_values(array_filter($negocios, static fn ($n) => in_array((int)$n['id'], $grupoDoEscopo, true)));
+            Json::ok(self::paraTela($this->montarCorporativo($somados, $ano, $corte)) + $comuns + [
+                'pode_editar' => false,
+                'grupo' => $grupoDoEscopo,
+            ]);
+            return;
+        }
         if ($podeCorporativo && !empty($_GET['corporativo'])) {
             // AGRUPAMENTO (pedido do cliente, 2026-11-24: "preciso poder selecionar e
             // totalizar mais de um negócio — Leite mais Postos de resfriamento"): a
@@ -121,6 +138,22 @@ class ProjecaoController
         $pedidos = array_map('intval', array_filter(array_map('trim', explode(',', $pedido)), 'strlen'));
         $grupo = array_values(array_filter($validos, static fn ($id) => in_array($id, $pedidos, true)));
         return $grupo && count($grupo) < count($validos) ? $grupo : null;
+    }
+
+    /**
+     * O agrupamento de quem NÃO enxerga todos os negócios: os pedidos que estão no
+     * escopo dele, no mínimo dois. "Todos os meus" vale como grupo — não é o
+     * Corporativo da cooperativa, e o nome do agrupamento diz quais são. Menos de
+     * dois válidos = null, e a tela fica no negócio.
+     *
+     * @param int[] $validos os negócios com DRE do escopo do usuário
+     * @return int[]|null
+     */
+    public static function grupoDoEscopo(string $pedido, array $validos): ?array
+    {
+        $pedidos = array_map('intval', array_filter(array_map('trim', explode(',', $pedido)), 'strlen'));
+        $grupo = array_values(array_filter($validos, static fn ($id) => in_array($id, $pedidos, true)));
+        return count($grupo) >= 2 ? $grupo : null;
     }
 
     /**

@@ -44,6 +44,8 @@ const SecaoProjecao = {
   // O AGRUPAMENTO no Corporativo (pedido do cliente, 2026-11-24): os ids dos
   // negócios somados, ou null para todos. Fica no localStorage, por conveniência.
   grupo: undefined,
+  // O negócio do menu em que um perfil SEM Corporativo pediu a soma (ver `carregar`).
+  agrupadoEm: null,
   // 0 = a visão do NEGÓCIO; qualquer outro valor, a filial aberta.
   filialId: 0,
   versao: 0,
@@ -121,15 +123,21 @@ const SecaoProjecao = {
     if (alvo !== this.negocioId) this.filialId = 0;
     // O dossiê imprime o Corporativo inteiro: o agrupamento é da tela.
     const grupo = corp && !dossie ? this.grupoGuardado() : null;
-    const q = corp
-      ? `?corporativo=1${grupo ? `&negocios=${grupo.join(',')}` : ''}`
+    // Agrupamento de quem NÃO enxerga todos os negócios (cliente, 2026-11-26): não
+    // passa pelo Corporativo do menu, que esse perfil não tem; vale enquanto o menu
+    // estiver no negócio em que a soma foi pedida.
+    const agrupado = !corp && !dossie && !!this.agrupadoEm && this.agrupadoEm === String(App.contexto.negocioId)
+      && (this.grupoGuardado() || []).length >= 2;
+    const q = corp || agrupado
+      ? `?corporativo=1${(agrupado ? this.grupoGuardado() : grupo) ? `&negocios=${(agrupado ? this.grupoGuardado() : grupo).join(',')}` : ''}`
       : (alvo
         ? `?negocio_id=${alvo}${!dossie && this.filialId ? `&filial_id=${this.filialId}` : ''}`
         : '');
     const pedido = ++this.pedido;
     const d = await App.api(`/api/projecao${q}`);
     if (pedido !== this.pedido) return;
-    if (corp && d.corporativo) {
+    if (agrupado && !d.corporativo) this.agrupadoEm = null;
+    if ((corp || agrupado) && d.corporativo) {
       this.dados = d;
       el.innerHTML = this.htmlCorporativo(d);
       this.ligar(el);
@@ -944,7 +952,9 @@ const SecaoProjecao = {
   seletorNegocios(d, opcoes) {
     const select = (escondido) => `<select id="projecao-negocio" class="form-select form-select-sm${escondido ? ' d-none' : ''}"
       style="max-width:18rem" aria-label="Negócio">${opcoes}</select>`;
-    if (!d.pode_corporativo) return select(false);
+    // As caixas são de quem pode AGRUPAR (dois ou mais negócios, qualquer perfil); o
+    // "Corporativo — todos" só de quem enxerga todos os negócios.
+    if (!d.pode_corporativo && !d.pode_agrupar) return select(false);
     const marcados = d.corporativo ? (d.grupo || []) : [Number(d.negocio_id)];
     const corp = !!d.corporativo && !d.grupo;
     const rotulo = d.corporativo ? this.nomeDoConsolidado(d)
@@ -957,10 +967,10 @@ const SecaoProjecao = {
           data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" id="projecao-negocios-botao"
           title="Marque um negócio para a tela dele, ou dois ou mais para somá-los" aria-label="Negócios">${Modal.esc(rotulo)}</button>
         <div class="dropdown-menu dropdown-menu-end p-1 menu-negocios" style="max-height:70vh;overflow:auto">
-          <label class="dropdown-item d-flex gap-2 align-items-center fw-bold">
+          ${d.pode_corporativo ? `<label class="dropdown-item d-flex gap-2 align-items-center fw-bold">
             <input type="checkbox" class="form-check-input flex-shrink-0 mt-0" data-negocio-corporativo ${corp ? 'checked' : ''}>
             <span>Corporativo — todos os negócios</span></label>
-          <div class="dropdown-divider"></div>
+          <div class="dropdown-divider"></div>` : ''}
           ${d.negocios.map(item).join('')}
           <div class="small text-muted px-2 pt-1">Um marcado: a tela dele. Dois ou mais: a soma, só para ver.</div>
         </div></div>`;
@@ -978,7 +988,18 @@ const SecaoProjecao = {
       global.value = v;
       global.dispatchEvent(new Event('change'));
     };
-    if (ids.length === 1) { irPara(String(ids[0])); return; }
+    if (ids.length === 1) { this.agrupadoEm = null; irPara(String(ids[0])); return; }
+    // Sem o Corporativo (perfil que não enxerga todos): a soma dos marcados, pedida
+    // direto — o menu continua no negócio; nenhum marcado não muda nada.
+    if (!(this.dados && this.dados.pode_corporativo)) {
+      if (ids.length < 2) return;
+      this.grupo = ids;
+      try { localStorage.setItem('projecao.grupo', JSON.stringify(this.grupo)); } catch (e) { /* vale só nesta tela */ }
+      this.agrupadoEm = String(App.contexto.negocioId);
+      this.carregar();
+      return;
+    }
+    this.agrupadoEm = null;
     this.grupo = ids.length && ids.length < total ? ids : null;
     try { localStorage.setItem('projecao.grupo', JSON.stringify(this.grupo)); } catch (e) { /* vale só nesta tela */ }
     irPara('CORP');
@@ -2696,15 +2717,15 @@ const SecaoProjecao = {
       menuNeg.addEventListener('change', (ev) => {
         const caixas = [...menuNeg.querySelectorAll('input[data-negocio-marca]')];
         const corp = menuNeg.querySelector('input[data-negocio-corporativo]');
-        if (ev.target === corp) {
+        if (corp && ev.target === corp) {
           caixas.forEach((c) => { c.checked = false; });
           corp.checked = true;
-        } else {
+        } else if (corp) {
           corp.checked = !caixas.some((c) => c.checked);
         }
         const ids = caixas.filter((c) => c.checked).map((c) => Number(c.dataset.negocioMarca));
         const botao = el.querySelector('#projecao-negocios-botao');
-        if (botao) botao.textContent = ids.length === 0 ? 'Corporativo — todos os negócios'
+        if (botao) botao.textContent = ids.length === 0 ? (corp ? 'Corporativo — todos os negócios' : 'Marque um ou mais negócios')
           : `${ids.length} negócio${ids.length === 1 ? '' : 's'} marcado${ids.length === 1 ? '' : 's'}…`;
         clearTimeout(espera);
         espera = setTimeout(() => this.aplicarSelecaoNegocios(ids, caixas.length), 700);
