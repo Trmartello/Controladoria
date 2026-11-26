@@ -8352,6 +8352,47 @@ async function provasVisaoDoAno(page, largura) {
     c.linhas === c.negocios + 1 && c.campos === 0, JSON.stringify([c.linhas, c.negocios, c.campos]));
   t(`${l} o total do resultado realista de nov–dez é o do Painel Balanço (≈ R$ 13.824.615)`,
     c.total === c.totalApi && Math.abs(c.bruto - 13824615) < 50, `${c.total} / ${c.bruto}`);
+
+  // "Comparar com: Proposta 2027" (cliente, 2026-11-26: "traga o projetado para 2027 e compare com o
+  // projetado 2026, para cada um dos indicadores"): o bloco da direita troca a visão realista pela
+  // proposta do ano seguinte e a diferença contra o "Real + Plan.". Na receita bruta, a proposta soma
+  // a CBS proposta — o quadro é da DRE carregada, com o PIS/COFINS na receita.
+  await page.click('[data-visao-bloco="proposta"]');
+  const p27 = await page.evaluate(async () => {
+    const d = await App.api('/api/projecao?corporativo=1');
+    const tab = document.querySelector('.tabela-visao-ano[data-conta-visao="18"]');
+    const tot = tab.querySelector('tr.linha-total-visao');
+    const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+    const somaNeg = Object.values(d.visao_ano_negocios).reduce((x, v) => x + (v['18'].proposta || 0), 0);
+    const t18 = d.visao_ano_total['18'];
+    // receita bruta: proposta = linha 1 + CBS da DRE de cada negócio
+    let rbDre = 0;
+    for (const id of Object.keys(d.visao_ano_negocios)) {
+      const n = await App.api(`/api/projecao?negocio_id=${id}`);
+      const L = (c) => (n.linhas.find((x) => x.codigo === c) || {}).proposta || 0;
+      rbDre += L('1') + L('CBS');
+    }
+    return {
+      th: [...tab.querySelectorAll('thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
+      realista: tab.querySelectorAll('.visao-realista').length,
+      proposta: tot.querySelector('[data-proposta="valor"]').textContent.trim(), propostaApi: fmt(t18.proposta),
+      somaOk: Math.abs(somaNeg - t18.proposta) < 1,
+      dif: tot.querySelector('[data-proposta="dif"]').textContent.trim(),
+      difApi: `${Math.round(t18.proposta - t18.real_plan) > 0 ? '+' : ''}${fmt(t18.proposta - t18.real_plan)}`,
+      rbOk: Math.abs(d.visao_ano_total['1'].proposta - rbDre) < 1, rb: d.visao_ano_total['1'].proposta, rbDre,
+    };
+  });
+  t(`${l} "Comparar com: Proposta ${'2027'}" troca a visão realista por Proposta e a diferença contra o Real + Plan.`,
+    p27.realista === 0 && p27.th.some((x) => /^Proposta\s*2027/.test(x)) && p27.th.some((x) => /^2027 × 2026\s*R\$/.test(x))
+    && p27.proposta === p27.propostaApi && p27.dif === p27.difApi && p27.somaOk, JSON.stringify(p27));
+  t(`${l} na receita bruta, a proposta inclui a CBS (mesma régua do Real + Plan.)`, p27.rbOk, JSON.stringify([p27.rb, p27.rbDre]));
+  await page.click('[data-visao-modo-botao="pct"]');
+  const p27pct = await page.evaluate(() => document.querySelector('.tabela-visao-ano tr.linha-total-visao [data-proposta="dif"]')?.textContent.trim());
+  t(`${l} em %, a diferença 2027 × 2026 sai em p.p.`, / p\.p\.$/.test(p27pct || ''), String(p27pct));
+  await page.click('[data-visao-modo-botao="valor"]');
+  await page.click('[data-visao-bloco="realista"]');
+  t(`${l} e "Visão realista" devolve o bloco de antes`, await page.evaluate(() =>
+    document.querySelectorAll('.tabela-visao-ano .visao-realista').length > 0 && !document.querySelector('.tabela-visao-ano .visao-proposta')));
   await escolher('PECUARIA');
   await new Promise((r2) => setTimeout(r2, 1000));
 }

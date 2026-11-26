@@ -180,6 +180,7 @@ class ProjecaoController
         // base (último mês) — o Corporativo não planeja, só totaliza.
         $pessoasSoma = ['por_ano' => [], 'base' => null];
         $propostas = [];
+        $propostaVisao = [];
         $desafios = [];
         $tributosDre = [];
         $oportunidades = [];
@@ -220,6 +221,7 @@ class ProjecaoController
                 ];
             }
             $propostas[(int)$n['id']] = self::resumoDaProposta($m['linhas']);
+            $propostaVisao[(int)$n['id']] = self::propostaDaVisao($m['linhas']);
             if (isset($m['desafio']['desafio'])) {
                 $desafios[(int)$n['id']] = $m['desafio']['desafio'];
             }
@@ -304,8 +306,14 @@ class ProjecaoController
             'negocios_com_proposta' => $lancaram,
             'pessoas' => $pessoasSoma,
             // A visão do ano por negócio e o total — o mesmo quadro do Painel Balanço.
-            'visao_ano_negocios' => $this->visaoDoAno(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
-            'visao_ano_total' => $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
+            'visao_ano_negocios' => self::visaoComPropostas(
+                $this->visaoDoAno(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
+                $propostaVisao
+            ),
+            'visao_ano_total' => self::comProposta(
+                $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
+                self::somaDasPropostas($propostaVisao)
+            ),
             'desafio' => $this->desafioCorporativo($ano + 1, $propostas, $desafios),
             'tributos_dre' => Reforma::somarComoEComoFica($tributosDre),
             // Por negócio, os totais do quadro único (itens + eventos pontuais).
@@ -568,7 +576,8 @@ class ProjecaoController
             'nivel3' => Projecao::nivel3([$negocioId], $ano),
             // Realizado × planejado do ano corrente e a visão realista, para a
             // receita bruta e o resultado líquido. Só leitura.
-            'visao_ano' => $this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null,
+            'visao_ano' => self::comProposta($this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null,
+                self::propostaDaVisao($linhas)),
             // O desafio da Controladoria para o ano da proposta, ao lado do que a
             // proposta dá hoje. Só leitura.
             'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas, $linhasDesafio, $driver, $lancDesafio),
@@ -1577,6 +1586,63 @@ class ProjecaoController
         }
         foreach ($tot as $c => $v) {
             $tot[$c]['dif_pct'] = $v['plan_ano'] != 0.0 ? $v['dif'] / abs($v['plan_ano']) : null;
+        }
+        return $tot;
+    }
+
+    /**
+     * A PROPOSTA do ano seguinte nas linhas do quadro "realizado, planejado e visão
+     * realista" (pedido do cliente, 2026-11-26: "traga o projetado para 2027 e compare
+     * com o projetado 2026, para cada um dos indicadores"). É a mesma coluna Proposta
+     * da DRE do negócio — nada se recalcula aqui.
+     *
+     * @return array<string,float|null> conta → proposta
+     */
+    private static function propostaDaVisao(array $linhas): array
+    {
+        $p = array_column($linhas, 'proposta', 'codigo');
+        $out = [];
+        foreach (Projecao::LINHAS_VISAO_ANO as $c) {
+            $out[$c] = isset($p[$c]) && $p[$c] !== null ? (float)$p[$c] : null;
+        }
+        // A receita bruta do quadro vem da DRE carregada, COM o PIS/COFINS; na DRE do
+        // formato 2027 ele sai da Receita Bruta e vira a linha informativa CBS. Para a
+        // proposta ficar na mesma régua do "Real + Plan.", a CBS proposta volta à soma.
+        if ($out['1'] !== null && isset($p['CBS']) && $p['CBS'] !== null) {
+            $out['1'] += (float)$p['CBS'];
+        }
+        return $out;
+    }
+
+    /** Põe `proposta` em cada conta da visão do ano (de um negócio ou do total). */
+    private static function comProposta(?array $visao, array $proposta): ?array
+    {
+        if ($visao === null) {
+            return null;
+        }
+        foreach ($visao as $c => $v) {
+            $visao[$c]['proposta'] = $proposta[$c] ?? null;
+        }
+        return $visao;
+    }
+
+    /** A visão do ano de cada negócio, com a proposta dele. */
+    private static function visaoComPropostas(array $porNegocio, array $propostas): array
+    {
+        foreach ($porNegocio as $id => $v) {
+            $porNegocio[$id] = self::comProposta($v, $propostas[$id] ?? []);
+        }
+        return $porNegocio;
+    }
+
+    /** A proposta do total: a soma das propostas dos negócios, conta a conta. */
+    private static function somaDasPropostas(array $propostas): array
+    {
+        $tot = [];
+        foreach ($propostas as $p) {
+            foreach ($p as $c => $v) {
+                $tot[$c] = ($tot[$c] ?? 0.0) + (float)$v;
+            }
         }
         return $tot;
     }

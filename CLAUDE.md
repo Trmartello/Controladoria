@@ -355,6 +355,19 @@ meus" vale — não é o Corporativo da cooperativa); menos que isso, a tela do 
 Só para ver, como o resto do agrupamento. Prova: `testes/agrupamento_escopo.php`
 (gestor de prova com três negócios; soma = soma das telas; Cereais forjado é ignorado).
 
+**Quadro "realizado, planejado e visão realista": comparar com a Proposta do ano seguinte**
+(cliente, 2026-11-26: "traga o projetado para 2027 e compare com o projetado 2026, para cada um
+dos indicadores"; prévia aprovada). Seletor "Comparar com: Visão realista | Proposta 2027" no
+quadro do Corporativo e no do negócio (`seletorBlocoVisao`, `SecaoProjecao.visaoBloco`, abre na
+visão realista): o bloco da direita mostra a visão realista OU três colunas azuis — Proposta 2027,
+2027 × 2026 em R$ e em % (em % da receita líquida, a diferença em p.p.) —, sempre contra o "Real +
+Plan." do ano. Um bloco por vez, para a tabela caber em 1366 px sem diminuir a fonte (com os dois
+eram 14 colunas). O servidor põe `proposta` em cada conta de `visao_ano`, `visao_ano_negocios` e
+`visao_ano_total` (`propostaDaVisao` = a coluna Proposta da DRE; o total é a soma). **Na receita
+bruta a proposta soma a CBS proposta**: o quadro sai da DRE carregada, em que a Receita Bruta
+INCLUI o PIS/COFINS, enquanto a DRE do formato 2027 o põe na linha informativa CBS — conferido:
+quadro(1) = DRE(1) + CBS em todos os negócios. Prova em `provasVisaoDoAno`.
+
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica
   ganha, de onde vem o volume, valorização da matéria-prima, faturamento).
