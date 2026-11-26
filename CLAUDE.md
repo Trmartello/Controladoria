@@ -230,7 +230,7 @@ ação, a alça de arrastar e o + / ✎ de anexo; o cartão sem anexo perde o ex
 sem ✎/× (`Comentarios.render({ somenteLeitura })`); "Virou ação ↗" e selos (navegação) ficam; texto
 de 18 px, inteiro (sem o corte de 3 linhas); a SWOT ganha numeração por quadrante
 (`data-numero-swot`). Os botões de incluir (+ da coluna, 🎤, + Novo item/fator) continuam — o
-cliente não pediu para escondê-los. Interruptor em Cadastros › Configurações. Provas:
+cliente confirmou em 2026-11-26 que "não é necessário" escondê-los. Interruptor em Cadastros › Configurações. Provas:
 `testes/configuracao.php` e `provasModoApresentacao` (liga, confere, DESLIGA).
 
 **Plano de ação, Tabela: clicar abre o nível de baixo; fonte de projetor** (2026-11-26, prévia
@@ -246,7 +246,8 @@ maior fonte possível"): o eixo vira faixa de 44 px com o nome na vertical; a es
 fonte de 18 px (renúncia 16 px) e ~46% da largura; indicadores ~13% e meta ~8%
 (`.col-*` em `cascata.js`, larguras com `table-layout: fixed` a partir de 992 px; abaixo,
 mínimos e a caixa rola de lado). No celular a página já rolava 21 px de lado antes disso,
-por um botão de menu no topo da Cascata — não é da tabela.
+por um botão de menu no topo da Cascata — não é da tabela. **Fica assim:** perguntado em
+2026-11-26, o cliente respondeu "não precisa ajustar para o celular".
 
 **Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
 campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
