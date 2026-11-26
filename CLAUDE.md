@@ -211,6 +211,14 @@ não em azul-claro (`pintarZebra`, só nas linhas visíveis e fora as reduzidas;
 o vermelho do resultado negativo nem o azul da coluna Desafio; a linha sob o mouse ganha
 borda azul (box-shadow por dentro — a tabela não pula).
 
+**Matriz de Execução (Cascata): a escolha em primeiro plano** (2026-11-26, prévia aprovada:
+"diminua a largura do eixo e de indicadores; priorize maior visibilidade na escolha; a
+maior fonte possível"): o eixo vira faixa de 44 px com o nome na vertical; a escolha tem
+fonte de 18 px (renúncia 16 px) e ~46% da largura; indicadores ~13% e meta ~8%
+(`.col-*` em `cascata.js`, larguras com `table-layout: fixed` a partir de 992 px; abaixo,
+mínimos e a caixa rola de lado). No celular a página já rolava 21 px de lado antes disso,
+por um botão de menu no topo da Cascata — não é da tabela.
+
 **Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
 campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
 `fixa(chave)` nas premissas e `diretriz.beneficios` nos benefícios; mesma regra de antes,

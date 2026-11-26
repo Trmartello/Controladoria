@@ -285,6 +285,39 @@ table.tabela-cadastro td { vertical-align: middle; }
   .tabela-execucao thead th { position: static; box-shadow: none; }
 }
 
+/* A ESCOLHA em primeiro plano (pedido do cliente, 2026-11-26, prévia aprovada:
+   "diminua a largura do eixo e de indicadores; priorize maior visibilidade na
+   segunda coluna, a escolha; priorize a maior fonte possível"). O eixo vira
+   uma faixa estreita com o nome na vertical; a escolha ganha fonte de 18 px e
+   ~46% da largura; indicadores e meta encolhem. As larguras valem a partir de
+   992 px (onde a tabela cabe na página e o cabeçalho gruda); abaixo, ficam os
+   mínimos de antes e a caixa rola de lado. */
+.tabela-execucao .col-eixo { min-width: 44px; }
+.tabela-execucao .col-escolha { min-width: 300px; }
+.tabela-execucao .col-indicadores { min-width: 150px; }
+.tabela-execucao .col-meta { min-width: 110px; }
+.tabela-execucao .col-iniciativas { min-width: 200px; }
+.tabela-execucao .celula-raia {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: center;
+  font-size: .78rem;
+  letter-spacing: .08em;
+  padding: .4rem .2rem;
+  white-space: nowrap;
+}
+.tabela-execucao td.celula-escolha .texto-celula { font-size: 1.12rem; line-height: 1.45; }
+.tabela-execucao td.celula-escolha .texto-celula.text-muted { font-size: 1rem; }
+.tabela-execucao td.small { font-size: .82rem; }
+@media (min-width: 992px) {
+  .tabela-execucao { table-layout: fixed; width: 100%; }
+  .tabela-execucao thead th { min-width: 0; }
+  .tabela-execucao .col-eixo { width: 44px; }
+  .tabela-execucao .col-escolha { width: 46%; }
+  .tabela-execucao .col-indicadores { width: 13%; }
+  .tabela-execucao .col-meta { width: 8%; }
+}
+
 /* ===== Matriz de Impacto por Negócio =====
    Grade fator × negócio. A coluna do fator fica PRESA à esquerda: com doze
    negócios a tabela rola de lado, e sem ela quem rola perde de vista a linha
