@@ -1132,9 +1132,13 @@ const SecaoProjecao = {
         <th class="text-end">Planejado<br><span class="fw-normal text-muted small">${d.ano} (ano)</span></th>
         <th class="text-end">Diferença<br><span class="fw-normal text-muted small">${pct ? 'p.p.' : 'R$'}</span></th>
         <th class="text-end">Diferença<br><span class="fw-normal text-muted small">%</span></th>
+        ${this.visaoBloco === 'proposta' ? `
+        <th class="text-end visao-proposta">Proposta<br><span class="fw-normal small">${d.ano + 1}</span></th>
+        <th class="text-end visao-proposta">${d.ano + 1} × ${d.ano}<br><span class="fw-normal small">${pct ? 'p.p.' : 'R$'}</span></th>
+        <th class="text-end visao-proposta">${d.ano + 1} × ${d.ano}<br><span class="fw-normal small">%</span></th>` : `
         <th class="text-end visao-realista">Visão realista<br><span class="fw-normal small">${prox}–dez/${a}</span></th>
         <th class="text-end visao-realista">Real + Realista<br><span class="fw-normal small">${d.ano}</span></th>
-        <th class="text-end visao-realista">Realista × plano<br><span class="fw-normal small">${d.ano} · ${pct ? 'p.p.' : 'R$'}</span></th>
+        <th class="text-end visao-realista">Realista × plano<br><span class="fw-normal small">${d.ano} · ${pct ? 'p.p.' : 'R$'}</span></th>`}
       </tr>`;
   },
 
@@ -1164,10 +1168,37 @@ const SecaoProjecao = {
         <td class="text-end">${p(c.plan_ano)}</td>
         <td class="text-end ${cor(dif)}">${fpp(dif)}</td>
         <td class="text-end">—</td>
+        ${this.visaoBloco === 'proposta' ? this.colunasPropostaPct(v, rol, c.real_plan, p, fpp, cor, pp) : `
         <td class="text-end visao-realista" data-realista="resto">${p(c.realista_resto)}</td>
         <td class="text-end visao-realista fw-bold" data-realista="ano">${p(c.real_realista)}</td>
-        <td class="text-end visao-realista ${cor(xp)}" data-realista="x-plano">${fpp(xp)}</td>
+        <td class="text-end visao-realista ${cor(xp)}" data-realista="x-plano">${fpp(xp)}</td>`}
       </tr>`;
+  },
+
+  /**
+   * O ano da PROPOSTA ao lado do ano corrente (pedido do cliente, 2026-11-26): a
+   * proposta (a coluna Proposta da DRE) e a diferença contra o "Real + Plan." — o
+   * projetado do ano. Em %, a margem da proposta sobre a receita líquida proposta.
+   */
+  colunasPropostaPct(v, rol, margemAno, p, fpp, cor, pp) {
+    const mp = v.proposta === null || v.proposta === undefined || !rol.proposta ? null : v.proposta / rol.proposta;
+    const dif = pp(mp, margemAno);
+    return `<td class="text-end visao-proposta fw-bold" data-proposta="valor">${p(mp)}</td>
+        <td class="text-end visao-proposta ${cor(dif)}" data-proposta="dif">${fpp(dif)}</td>
+        <td class="text-end visao-proposta">—</td>`;
+  },
+
+  colunasProposta(v) {
+    if (v.proposta === null || v.proposta === undefined) {
+      return '<td class="text-end visao-proposta">—</td><td class="text-end visao-proposta">—</td><td class="text-end visao-proposta">—</td>';
+    }
+    const m = (x) => this.moeda(x);
+    const dif = v.proposta - v.real_plan;
+    const pc = v.real_plan ? dif / Math.abs(v.real_plan) : null;
+    const cor = (x) => (Math.abs(x) < 5e4 ? '' : (x > 0 ? 'text-success' : 'text-danger'));
+    return `<td class="text-end visao-proposta fw-bold" data-proposta="valor">${m(v.proposta)}</td>
+        <td class="text-end visao-proposta ${cor(dif)}" data-proposta="dif">${Math.round(dif) > 0 ? '+' : ''}${m(dif)}</td>
+        <td class="text-end visao-proposta ${cor(dif)}" data-proposta="pct">${pc === null ? '—' : `${pc > 0 ? '+' : ''}${this.pct(pc)}`}</td>`;
   },
 
   linhaVisao(rotulo, v, classe = '') {
@@ -1186,9 +1217,10 @@ const SecaoProjecao = {
         <td class="text-end">${m(v.plan_ano)}</td>
         <td class="text-end ${cor(v.dif)}">${sinal(v.dif)}</td>
         <td class="text-end ${cor(v.dif)}">${pc}</td>
+        ${this.visaoBloco === 'proposta' ? this.colunasProposta(v) : `
         <td class="text-end visao-realista" data-realista="resto">${m(v.realista_resto)}</td>
         <td class="text-end visao-realista fw-bold" data-realista="ano">${m(v.real_realista)}</td>
-        <td class="text-end visao-realista ${cor(v.realista_x_plano)}" data-realista="x-plano">${sinal(v.realista_x_plano)}</td>
+        <td class="text-end visao-realista ${cor(v.realista_x_plano)}" data-realista="x-plano">${sinal(v.realista_x_plano)}</td>`}
       </tr>`;
   },
 
@@ -1207,6 +1239,7 @@ const SecaoProjecao = {
     const resumo = `real + realista: receita ${this.mi(v['1'].real_realista)} · resultado ${this.mi(v['18'].real_realista)}
       (${this.mi(v['18'].realista_x_plano, true)} contra o plano)`;
     return this.expansor('visao', 'painel-visao-ano', `${d.ano}: realizado, planejado e visão realista`, resumo, `
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-1 seletor-visao-ano">${this.seletorBlocoVisao(d)}</div>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0 tabela-visao-ano">
             <thead>${this.colunasVisao(d)}</thead>
@@ -1217,6 +1250,20 @@ const SecaoProjecao = {
           </table>
         </div>
         ${this.notaVisao(d)}`);
+  },
+
+  /**
+   * O bloco da direita do quadro (pedido do cliente, 2026-11-26: "traga o projetado
+   * para 2027 e compare com o projetado 2026"): a visão realista do ano OU a proposta
+   * do ano seguinte contra o "Real + Plan." — um de cada vez, para a tabela caber em
+   * 1366 px sem rolar de lado e sem diminuir a fonte. Vale enquanto a página está aberta.
+   */
+  seletorBlocoVisao(d) {
+    const b = (valor, rotulo) => `<button type="button" class="btn ${this.visaoBloco === valor || (!this.visaoBloco && valor === 'realista')
+      ? (valor === 'proposta' ? 'btn-primary' : 'btn-verde') : 'btn-outline-secondary'}" data-visao-bloco="${valor}"
+        aria-pressed="${this.visaoBloco === valor || (!this.visaoBloco && valor === 'realista')}">${rotulo}</button>`;
+    return `<span class="small text-muted ms-2">Comparar com:</span>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Bloco da direita">${b('realista', 'Visão realista')}${b('proposta', `Proposta ${d.ano + 1}`)}</div>`;
   },
 
   /** A linha e o modo (R$ ou %) escolhidos no seletor do Corporativo; valem enquanto a página está aberta. */
@@ -1256,6 +1303,7 @@ const SecaoProjecao = {
     const seletor = `<div class="d-flex flex-wrap align-items-center gap-2 mt-1 seletor-visao-ano">
         <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Linha da DRE">${this.LINHAS_VISAO.map(botao).join('')}</div>
         ${linha.pct ? `<div class="btn-group btn-group-sm" role="group" aria-label="Valor ou percentual">${modo('valor', 'R$')}${modo('pct', '%')}</div>` : ''}
+        ${this.seletorBlocoVisao(d)}
       </div>`;
     const resumo = t['1'] && t['18']
       ? `real + realista: receita ${this.mi(t['1'].real_realista)} · resultado ${this.mi(t['18'].real_realista)}
@@ -2686,9 +2734,10 @@ const SecaoProjecao = {
     if (!el.dataset.ligouVisao) {
       el.dataset.ligouVisao = '1';
       el.addEventListener('click', (ev) => {
-        const b = ev.target.closest('[data-visao-conta], [data-visao-modo-botao]');
+        const b = ev.target.closest('[data-visao-conta], [data-visao-modo-botao], [data-visao-bloco]');
         if (!b || !this.dados) return;
         if (b.dataset.visaoConta) this.visaoConta = b.dataset.visaoConta;
+        if (b.dataset.visaoBloco) this.visaoBloco = b.dataset.visaoBloco;
         if (b.dataset.visaoModoBotao) this.visaoPct = b.dataset.visaoModoBotao === 'pct';
         const card = el.querySelector('.painel-visao-ano');
         if (card) card.outerHTML = this.cartaoVisaoAno(this.dados);

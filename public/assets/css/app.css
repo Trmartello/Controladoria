@@ -4780,6 +4780,10 @@ body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
    cor a separa do que é realizado e planejado do Qlik. */
 .tabela-visao-ano th.visao-realista,
 .tabela-visao-ano td.visao-realista { background: #f6e7c6; }
+/* O ano da proposta ao lado (pedido do cliente, 2026-11-26): azul-claro, a cor do ano que vem. */
+.tabela-visao-ano th.visao-proposta,
+.tabela-visao-ano td.visao-proposta { background: #e3eefb; }
+
 .tabela-visao-ano td, .tabela-visao-ano th { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tabela-visao-ano td:first-child { white-space: normal; }
 
