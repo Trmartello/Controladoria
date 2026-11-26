@@ -2604,28 +2604,6 @@ const SecaoProjecao = {
    */
   ligar(el) {
     this.pintarZebra(el);
-    // Ctrl (ou ⌘) + clique numa linha da DRE marca/desmarca a linha com a borda
-    // do passar o mouse, para chamar a atenção para várias ao mesmo tempo; Esc
-    // limpa todas (pedido do cliente, 2026-11-26). Escuta no contêiner da seção,
-    // uma vez só: o corpo da tabela é repintado a cada gravação.
-    if (!el.dataset.marcarLinhas) {
-      el.dataset.marcarLinhas = '1';
-      if (!this.linhasMarcadas) this.linhasMarcadas = new Set();
-      el.addEventListener('click', (ev) => {
-        if (!(ev.ctrlKey || ev.metaKey)) return;
-        const tr = ev.target.closest('.tabela-projecao tbody tr[data-conta]');
-        if (!tr || ev.target.closest('input, button, a, select')) return;
-        ev.preventDefault();
-        const c = tr.dataset.conta;
-        if (this.linhasMarcadas.has(c)) this.linhasMarcadas.delete(c); else this.linhasMarcadas.add(c);
-        tr.classList.toggle('linha-marcada', this.linhasMarcadas.has(c));
-      });
-      document.addEventListener('keydown', (ev) => {
-        if (ev.key !== 'Escape' || !this.linhasMarcadas || !this.linhasMarcadas.size) return;
-        this.linhasMarcadas.clear();
-        document.querySelectorAll('.tabela-projecao tr.linha-marcada').forEach((tr) => tr.classList.remove('linha-marcada'));
-      });
-    }
     const virgem = (n) => {
       if (n.dataset.ligado) return false;
       n.dataset.ligado = '1';
@@ -3010,11 +2988,6 @@ const SecaoProjecao = {
    * troca de nível ou de reduzidas abertas.
    */
   pintarZebra(raiz = document) {
-    // As linhas MARCADAS com Ctrl + clique (pedido do cliente, 2026-11-26) voltam
-    // depois de cada repintura: a marca é da conta, não do <tr>.
-    if (!this.linhasMarcadas) this.linhasMarcadas = new Set();
-    raiz.querySelectorAll('.tabela-projecao tbody tr[data-conta]').forEach((tr) =>
-      tr.classList.toggle('linha-marcada', this.linhasMarcadas.has(tr.dataset.conta)));
     raiz.querySelectorAll('.tabela-projecao tbody').forEach((tb) => {
       let i = 0;
       // As contas reduzidas (nível 3) ficam com o cinza delas e fora da contagem:
