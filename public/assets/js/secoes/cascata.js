@@ -271,7 +271,7 @@ const SecaoCascata = {
           ? `<td rowspan="${alturaRaia}" class="align-middle celula-raia">${Modal.esc(raia.rotulo)}</td>` : '';
         primeiraDaRaia = false;
 
-        const celulaEscolha = `<td rowspan="${altura}" class="align-middle">
+        const celulaEscolha = `<td rowspan="${altura}" class="align-middle celula-escolha">
           <div class="fw-bold small text-uppercase text-muted">${Modal.esc(x.driver)}</div>
           <div class="small texto-celula">${Modal.esc(x.escolha.escolha)}</div>
           ${x.escolha.renuncia ? `<div class="small text-muted texto-celula mt-1">
@@ -332,11 +332,11 @@ const SecaoCascata = {
       <div class="table-responsive caixa-execucao">
         <table class="table table-sm table-bordered align-middle tabela-execucao">
           <thead><tr>
-            <th style="min-width:120px">Eixo</th>
-            <th style="min-width:260px">Escolha (e a renúncia)</th>
-            <th style="min-width:180px">Indicadores</th>
-            <th style="min-width:150px">Meta / Real</th>
-            <th style="min-width:200px">Iniciativas</th>
+            <th class="col-eixo">Eixo</th>
+            <th class="col-escolha">Escolha (e a renúncia)</th>
+            <th class="col-indicadores">Indicadores</th>
+            <th class="col-meta">Meta / Real</th>
+            <th class="col-iniciativas">Iniciativas</th>
           </tr></thead>
           <tbody>${corpo || `<tr><td colspan="5" class="text-muted">Nenhuma escolha preenchida
             em ${Modal.esc(h.nome)}.</td></tr>`}</tbody>

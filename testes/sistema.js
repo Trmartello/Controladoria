@@ -4258,6 +4258,19 @@ async function provasMatrizExecucao(page) {
     };
   });
   t(`${l} a tabela tem as cinco colunas`, matriz.colunas === 5, `${matriz.colunas}`);
+  // A escolha em primeiro plano (2026-11-26, prévia aprovada): eixo estreito e na
+  // vertical, escolha com a maior fonte e a maior coluna, indicadores e meta menores.
+  const larg = await page.evaluate(() => {
+    const tab = document.querySelector('.tabela-execucao');
+    const w = (c) => Math.round(tab.querySelector(`thead th.${c}`).getBoundingClientRect().width);
+    const esc = tab.querySelector('td.celula-escolha .texto-celula');
+    return { eixo: w('col-eixo'), escolha: w('col-escolha'), indicadores: w('col-indicadores'), meta: w('col-meta'),
+      fonte: esc ? parseFloat(getComputedStyle(esc).fontSize) : 0,
+      vertical: getComputedStyle(tab.querySelector('.celula-raia')).writingMode };
+  });
+  t(`${l} o eixo é estreito e na vertical, e a escolha é a coluna mais larga, com a maior fonte (≥ 17 px)`,
+    larg.eixo <= 50 && larg.vertical === 'vertical-rl' && larg.escolha > 2.5 * larg.indicadores
+    && larg.escolha > larg.meta && larg.fonte >= 17, JSON.stringify(larg));
   t(`${l} a síntese é a primeira raia`, matriz.raia1 === 'Síntese', String(matriz.raia1));
   t(`${l} mostra o indicador amarrado`, matriz.temKpi);
   t(`${l} mostra a frente que executa, com o projeto junto`, matriz.temFrente);
