@@ -211,6 +211,13 @@ não em azul-claro (`pintarZebra`, só nas linhas visíveis e fora as reduzidas;
 o vermelho do resultado negativo nem o azul da coluna Desafio; a linha sob o mouse ganha
 borda azul (box-shadow por dentro — a tabela não pula).
 
+**Linhas marcadas com Ctrl + clique** (2026-11-26, prévia aprovada: "chamar atenção para
+múltiplas linhas"): Ctrl (ou ⌘) + clique numa linha da DRE liga `.linha-marcada`, a mesma
+borda azul do passar o mouse, mas que fica — várias ao mesmo tempo; de novo desmarca, Esc
+limpa todas. A marca é da conta (`SecaoProjecao.linhasMarcadas`, um `Set`), reaplicada em
+`pintarZebra` — sobrevive à gravação e à troca de nível. Clique em campo, botão ou link não
+marca. Só na tela de quem clicou: não grava nada, some ao recarregar.
+
 **Diagnóstico só leitura — modo apresentação** (2026-11-26, prévia aprovada: "nas configurações
 crie um flag que oculta os botões de edição, redirecionamento, exclusão, plano de ação e adicionar
 anexos; mantenha só abrir os anexos que existirem […] na Situação Atual e Tendência, SWOT"; "somente

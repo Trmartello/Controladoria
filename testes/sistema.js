@@ -9010,6 +9010,33 @@ async function provasProjecao(page, largura) {
     // linhas e a DRE rola dentro da caixa dela, com o cabeçalho fixo.
     (largura !== 'desktop' || compacta.altura <= 560) && compacta.th.includes('% ROL') && compacta.th.includes('% ROL proposta') && compacta.prop === '2px' && compacta.avp === '2px',
     JSON.stringify(compacta));
+  // Ctrl + clique marca linhas da DRE (2026-11-26, prévia aprovada): a borda do passar o
+  // mouse, que FICA, em várias linhas; Ctrl + clique de novo desmarca; a marca volta depois
+  // da repintura (troca de nível); clique sem Ctrl ou dentro de um campo não marca; Esc limpa.
+  if (largura === 'desktop') {
+    const marcadas = () => page.evaluate(() => [...document.querySelectorAll('.tabela-projecao tbody tr.linha-marcada')].map((tr) => tr.dataset.conta).sort().join(','));
+    const cel = (c) => `.tabela-projecao tbody tr[data-conta="${c}"] td:first-child`;
+    await page.click(cel('3'), { modifiers: ['Control'] });
+    await page.click(cel('18'), { modifiers: ['Control'] });
+    await page.click(cel('5'), { modifiers: ['Control'] });
+    const tres = await marcadas();
+    await page.click(cel('5'), { modifiers: ['Control'] });
+    await page.click(cel('5'));
+    const duas = await marcadas();
+    const borda = await page.evaluate(() => getComputedStyle(document.querySelector('.tabela-projecao tbody tr.linha-marcada > td:nth-child(2)')).boxShadow);
+    await page.evaluate(() => { SecaoProjecao.definirNivelDre(1); });
+    const aposRepintar = await marcadas();
+    await page.evaluate(() => { SecaoProjecao.definirNivelDre(2); });
+    const campo = await page.$('.tabela-projecao tbody tr[data-conta] input');
+    if (campo) await campo.click({ modifiers: ['Control'] });
+    const comCampo = await marcadas();
+    await page.keyboard.press('Escape');
+    const limpo = await marcadas();
+    t(`${l} Ctrl + clique marca várias linhas da DRE com borda, desmarca, sobrevive à repintura e Esc limpa`,
+      tres === '18,3,5' && duas === '18,3' && /rgb\(47, 111, 208\)/.test(borda) && aposRepintar === '18,3'
+        && comCampo === '18,3' && limpo === '',
+      JSON.stringify({ tres, duas, borda, aposRepintar, comCampo, limpo }));
+  }
 
   const ler = () => page.evaluate(() => {
     const num = (s) => {
