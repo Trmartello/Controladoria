@@ -5030,3 +5030,20 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-projecao tbody tr:hover > td:first-child { box-shadow: inset 2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
 .tabela-projecao tbody tr:hover > td:last-child { box-shadow: inset -2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
 @media print { .tabela-projecao tbody tr:hover > td { box-shadow: none !important; } }
+
+/* PLANO DE AÇÃO para o projetor (pedido do cliente, 2026-11-26: "aumentar a fonte para
+   melhorar a visualização quando estiver apresentando no data show"): a tabela sobe de
+   13,8 px para 16 px, a faixa do projeto para 18,4 px e a da frente para 16,8 px.
+   E a seta ▸/▾ do projeto e da frente: clicar abre/recolhe as frentes do projeto ou
+   as ações da frente (o nome do grupo também é clicável). */
+.tabela-5w2h { font-size: 1rem; }
+.tabela-5w2h th { font-size: .8rem; }
+.tabela-5w2h tr.g-proj > td { font-size: 1.15rem; }
+.tabela-5w2h tr.g-frente > td { font-size: 1.05rem; }
+.tabela-5w2h .seta-grupo {
+  border: 0; background: transparent; color: inherit; padding: 0 .35rem 0 0;
+  font-size: 1em; line-height: 1; cursor: pointer;
+}
+.tabela-5w2h tr.g-frente .seta-grupo { color: var(--verde-coperdia, #007a45); }
+.tabela-5w2h .nome-grupo-alterna { cursor: pointer; }
+.tabela-5w2h .nome-grupo-alterna:hover { text-decoration: underline; text-underline-offset: .2em; }

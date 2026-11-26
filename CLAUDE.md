@@ -211,6 +211,13 @@ não em azul-claro (`pintarZebra`, só nas linhas visíveis e fora as reduzidas;
 o vermelho do resultado negativo nem o azul da coluna Desafio; a linha sob o mouse ganha
 borda azul (box-shadow por dentro — a tabela não pula).
 
+**Plano de ação, Tabela: clicar abre o nível de baixo; fonte de projetor** (2026-11-26, prévia
+aprovada: "ao clicar em um projeto ele abra as frentes; ao clicar em uma frente abra as ações
+específicas da frente […] aumentar a fonte para o data show"): seta ▸/▾ e nome clicável nas
+linhas de projeto (`data-alterna-proj`) e de frente (`data-alterna-ini`), no MESMO estado do
+"Mostrar até" e da Lista (`projetosFechados`, `iniciativasFechadas`); a tabela sobe de 13,8 para
+16 px, o projeto para 18,4 px e a frente para 16,8 px.
+
 **Matriz de Execução (Cascata): a escolha em primeiro plano** (2026-11-26, prévia aprovada:
 "diminua a largura do eixo e de indicadores; priorize maior visibilidade na escolha; a
 maior fonte possível"): o eixo vira faixa de 44 px com o nome na vertical; a escolha tem
