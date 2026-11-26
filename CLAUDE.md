@@ -340,7 +340,17 @@ ids fora da lista são ignorados, e nenhum válido ou todos = o Corporativo). É
 soma do Corporativo (`montarCorporativo` com a lista filtrada), então DRE, desafio,
 oportunidades, tributos e pessoas saem do agrupamento. O nome diz quais negócios
 são; a escolha fica no `localStorage` (`projecao.grupo`); o dossiê imprime sempre o
-Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócios).
+Corporativo inteiro. **Agrupar é de todo perfil com dois ou mais negócios** (cliente,
+2026-11-26: "não consigo mais selecionar mais de um negócio […] volte como estava" — o
+pedido de 2026-11-24 nunca restringiu por perfil; a trava "mesmo perfil do Corporativo"
+foi decisão minha, herdada do consolidado, e escondia as caixas de um GESTOR). Quem
+enxerga todos (ADMIN, CONTROLADORIA, DIRECAO) tem as caixas **e** o "Corporativo —
+todos"; os demais têm só as caixas dos negócios DELES (`pode_agrupar`), e a soma vai
+direto (`agrupadoEm`), sem passar pelo Corporativo do menu, que esse perfil não tem.
+No servidor, `grupoDoEscopo`: só ids do escopo do usuário, no mínimo dois ("todos os
+meus" vale — não é o Corporativo da cooperativa); menos que isso, a tela do negócio.
+Só para ver, como o resto do agrupamento. Prova: `testes/agrupamento_escopo.php`
+(gestor de prova com três negócios; soma = soma das telas; Cereais forjado é ignorado).
 
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica
