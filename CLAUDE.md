@@ -338,6 +338,13 @@ soma do Corporativo (`montarCorporativo` com a lista filtrada), então DRE, desa
 oportunidades, tributos e pessoas saem do agrupamento. O nome diz quais negócios
 são; a escolha fica no `localStorage` (`projecao.grupo`); o dossiê imprime sempre o
 Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócios).
+**"O agrupamento sumiu"** (cliente, 2026-11-26, depois do PR #152 — que não tocou na
+Projeção): conferido na tela, ele estava lá e somava. Antes de procurar regressão, descarte
+as quatro causas de "não vejo": (1) o seletor **Negócio do menu lateral** é de um só — o de
+caixas fica no **canto superior direito da Projeção**, ao lado do título; (2) com a DRE
+rolada, o topo da página (e o seletor) sai da tela — as barras fixas são as da DRE, não a do
+seletor; (3) usuário que não enxerga todos os negócios (`Auth::veTudo` falso →
+`pode_corporativo` falso) vê o `<select>` simples; (4) navegador com o JS antigo (Ctrl + F5).
 
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica
@@ -4502,6 +4509,9 @@ A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
+**Linha de base em 2026-11-26**: sistema **1854 ✓ / 0 ✗** em cerca de 25 minutos (sai
+com 1 pelos avisos 4xx de console esperados). Antes, em 2026-10-26:
+
 **Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
 2026-10-14 e 288/583 em 2026-09-04): funcional **327 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
@@ -4529,6 +4539,29 @@ Cruzamentos introduziram aparecia no **computador**: a mínima de conteúdo de u
 selo com `nowrap` sobe pela coluna e pela fila até o `<main>`, que é item de
 flex — quanto mais larga a tela, mais texto cabe numa linha e maior fica essa
 mínima. A checagem passou a rodar nas duas larguras.
+
+**Bateria que para no meio (`ERRO:` e saída 2) deixa o banco sujo.** A sistema troca a
+Receita (1.1) da Pecuária por vazio antes das provas da Projeção e só a devolve no fim
+(`lancamentoDaProposta(page, '2 - PECUARIA', '1.1', receitaPecuaria)`); se ela morre antes,
+o lançamento some. Depois de toda rodada confira `select count(*) from projecao_valor` —
+na base local é **1**: Pecuária (projeção do negócio 2), filial 0, conta 1.1, `VALOR`
+731.798.725,00. Se der 0, recoloque essa linha antes de rodar de novo, senão as provas
+seguintes partem de outra base. Confira também `negocio_desafio_valor`,
+`negocio_item_avaliacao` e fatores `(prova)` em 0 e `configuracao.diagnostico_somente_leitura`
+em `'0'`.
+
+**O "Element is not attached" com a barra da DRE no log aponta o elemento ERRADO.**
+Em 2026-11-26 a bateria parou duas vezes com o botão "Reforma tributária: antes × depois"
+no log, e o defeito não era dele: era a prova nova do Ctrl + clique, clicando um campo da
+DRE que, em 1500×700 e com a tela rolada, ficava **debaixo da barra fixa** — o Playwright
+cita quem **intercepta** o clique ("… subtree intercepts pointer events"), não o alvo. O
+caminho para achar: rodar o trecho (`_mini.js` com as provas da Projeção em sequência) e
+contar os ✓ antes do erro. Em prova de DRE, clique "de verdade" só numa linha centralizada
+(`scrollIntoView({ block: 'center' })`); os demais cliques vão ao elemento por
+`dispatchEvent(new MouseEvent('click', { ctrlKey }))`. E prova isolada que passa não
+absolve: rode na janela e na ordem da bateria (1500×700, depois das provas anteriores).
+Script de captura de tela contra o 8099 **durante** a bateria também atrapalha — use o
+`git worktree` em outra porta.
 
 Uma quarta, cobrada em 2026-10-26: **depois de `page.reload()`, esperar por
 `#nav-secoes` não espera nada**. Ele é HTML estático do `shell.php` e existe no
