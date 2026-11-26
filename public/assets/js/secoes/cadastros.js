@@ -77,11 +77,13 @@ const SecaoCadastros = {
           <input class="form-check-input" type="checkbox" role="switch" id="cfg-diagnostico-leitura"
             ${ligado ? 'checked' : ''} ${admin ? '' : 'disabled'}>
           <label class="form-check-label fw-bold" for="cfg-diagnostico-leitura">
-            Diagnóstico só leitura (Situação Atual, Tendências e SWOT)</label>
+            Diagnóstico só leitura (Situação Atual, Tendências e SWOT) e DRE sem a coluna Desafio</label>
         </div>
         <div class="small text-muted mt-1">Ligado, os cartões dessas três telas escondem <strong>editar, mover
           (redirecionar), excluir, plano de ação e novo anexo</strong> para todos os usuários; os anexos que já
-          existem continuam abrindo, e a opção de anexos some do cartão que não tem nenhum. Útil para apresentar.
+          existem continuam abrindo, e a opção de anexos some do cartão que não tem nenhum. Na Projeção de
+          Resultados, a DRE fica <strong>sem a coluna Desafio</strong> (os valores continuam gravados e voltam ao
+          desligar). Útil para apresentar.
           ${admin ? '' : '<br><em>Só administradores ligam e desligam.</em>'}</div>
       </div></div>`;
     if (!admin) return;

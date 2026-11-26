@@ -233,7 +233,10 @@ ação, a alça de arrastar e o + / ✎ de anexo; o cartão sem anexo perde o ex
 sem ✎/× (`Comentarios.render({ somenteLeitura })`); "Virou ação ↗" e selos (navegação) ficam; texto
 de 18 px, inteiro (sem o corte de 3 linhas); a SWOT ganha numeração por quadrante
 (`data-numero-swot`). Os botões de incluir (+ da coluna, 🎤, + Novo item/fator) continuam — o
-cliente não pediu para escondê-los. Interruptor em Cadastros › Configurações. Provas:
+cliente não pediu para escondê-los. **Também esconde a coluna Desafio da DRE** (cliente, 2026-11-26: "quando esta opção estiver acionada
+tbm retire / oculte a coluna de desafio da DRE"): `temColunaDesafio` devolve falso com
+`App.leituraDiagnostico()` — só a tela; os valores do desafio continuam gravados e a coluna volta ao
+desligar. Interruptor em Cadastros › Configurações. Provas:
 `testes/configuracao.php` e `provasModoApresentacao` (liga, confere, DESLIGA).
 
 **Plano de ação, Tabela: clicar abre o nível de baixo; fonte de projetor** (2026-11-26, prévia
