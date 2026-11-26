@@ -367,6 +367,15 @@ eram 14 colunas). O servidor põe `proposta` em cada conta de `visao_ano`, `visa
 bruta a proposta soma a CBS proposta**: o quadro sai da DRE carregada, em que a Receita Bruta
 INCLUI o PIS/COFINS, enquanto a DRE do formato 2027 o põe na linha informativa CBS — conferido:
 quadro(1) = DRE(1) + CBS em todos os negócios. Prova em `provasVisaoDoAno`.
+**Só do ADMIN e só com o modo apresentação desligado** (cliente, 2026-11-26: "essa tela deve ser
+apenas para os administradores […] dos negócios que estiverem selecionados; a flag deve estar
+desativada" — a do Diagnóstico só leitura): `propostaNoQuadro` passa por TODA resposta da
+Projeção (as três do `listar` e as das gravações) e, sem a permissão, tira `proposta` de
+`visao_ano`, `visao_ano_negocios` e `visao_ano_total` — a trava é do servidor; a tela só esconde
+o seletor (`pode_comparar_proposta`) e volta à visão realista. Os demais perfis continuam com o
+quadro de antes. Os negócios do quadro são os selecionados: Corporativo, o agrupamento ou o negócio.
+Provas: `testes/agrupamento_escopo.php` (gestor sem, ADMIN com, ADMIN com a flag ligada sem) e
+`provasModoApresentacao`.
 
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica

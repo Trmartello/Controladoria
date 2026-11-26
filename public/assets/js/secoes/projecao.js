@@ -1233,13 +1233,14 @@ const SecaoProjecao = {
   },
 
   cartaoVisaoAno(d) {
+    if (!d.pode_comparar_proposta) this.visaoBloco = 'realista';
     if (d.corporativo) return this.cartaoVisaoAnoCorporativo(d);
     if (!d.visao_ano || d.filial) return '';
     const v = d.visao_ano;
     const resumo = `real + realista: receita ${this.mi(v['1'].real_realista)} · resultado ${this.mi(v['18'].real_realista)}
       (${this.mi(v['18'].realista_x_plano, true)} contra o plano)`;
     return this.expansor('visao', 'painel-visao-ano', `${d.ano}: realizado, planejado e visão realista`, resumo, `
-        <div class="d-flex flex-wrap align-items-center gap-2 mt-1 seletor-visao-ano">${this.seletorBlocoVisao(d)}</div>
+        ${d.pode_comparar_proposta ? `<div class="d-flex flex-wrap align-items-center gap-2 mt-1 seletor-visao-ano">${this.seletorBlocoVisao(d)}</div>` : ''}
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0 tabela-visao-ano">
             <thead>${this.colunasVisao(d)}</thead>
@@ -1259,6 +1260,9 @@ const SecaoProjecao = {
    * 1366 px sem rolar de lado e sem diminuir a fonte. Vale enquanto a página está aberta.
    */
   seletorBlocoVisao(d) {
+    // Só o ADMIN, e só com o modo apresentação desligado (o servidor diz em
+    // `pode_comparar_proposta` e, sem ela, nem manda as propostas).
+    if (!d.pode_comparar_proposta) return '';
     const b = (valor, rotulo) => `<button type="button" class="btn ${this.visaoBloco === valor || (!this.visaoBloco && valor === 'realista')
       ? (valor === 'proposta' ? 'btn-primary' : 'btn-verde') : 'btn-outline-secondary'}" data-visao-bloco="${valor}"
         aria-pressed="${this.visaoBloco === valor || (!this.visaoBloco && valor === 'realista')}">${rotulo}</button>`;
