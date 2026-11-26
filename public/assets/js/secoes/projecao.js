@@ -846,8 +846,11 @@ const SecaoProjecao = {
    * no negócio (não na filial nem no Corporativo) e não no dossiê.
    */
   temColunaDesafio(d) {
+    // Com o modo apresentação ligado (Cadastros › Configurações) a coluna some, para
+    // a DRE ir ao telão sem o desafio da administração (cliente, 2026-11-26). Só
+    // esconde: os valores do desafio continuam gravados e voltam ao desligar.
     return !!(d && Array.isArray(d.desafio_linhas) && d.desafio_linhas.length && !d.filial && !d.corporativo
-      && !App.modoDossie);
+      && !App.modoDossie && !App.leituraDiagnostico());
   },
 
   /**

@@ -12023,8 +12023,19 @@ async function provasModoApresentacao(page) {
       expansoresVazios: [...document.querySelectorAll(`#secao-${sec} [data-anexos-resumo]`)].filter((x) => /nenhum ainda/.test(x.textContent)).length,
       fonte: txt ? parseFloat(getComputedStyle(txt).fontSize) : 0 };
   }, secao);
+  // A coluna Desafio da DRE (cliente, 2026-11-26: "quando esta opção estiver acionada
+  // tbm oculte a coluna de desafio da DRE"): com os dados REAIS de um negócio — o
+  // ADMIN recebe `desafio_linhas` —, a regra da tela decide se a coluna aparece.
+  const colunaDesafio = () => page.evaluate(async () => {
+    const neg = (App.sessao.negocios || [])[0];
+    const d = await App.api(`/api/projecao?negocio_id=${neg.id}`);
+    return { linhas: (d.desafio_linhas || []).length, coluna: SecaoProjecao.temColunaDesafio(d) };
+  });
   try {
     t(`${l} o ADMIN liga a configuração`, (await cfg(1)) === true);
+    const dLigado = await colunaDesafio();
+    t(`${l} a DRE fica sem a coluna Desafio (os valores continuam no servidor)`,
+      dLigado.linhas > 0 && dLigado.coluna === false, JSON.stringify(dLigado));
     await abrir('cenario');
     const c = await contar('cenario');
     t(`${l} Situação Atual e Tendências sem editar, mover, excluir, plano de ação nem novo anexo`,
@@ -12041,6 +12052,8 @@ async function provasModoApresentacao(page) {
   await abrir('swot');
   const volta = await contar('swot');
   t(`${l} desligada, a SWOT volta com os botões e sem a numeração`, volta.editar > 0 && volta.numeros === 0, JSON.stringify(volta));
+  const dDesligado = await colunaDesafio();
+  t(`${l} desligada, a coluna Desafio volta à DRE do ADMIN`, dDesligado.coluna === true, JSON.stringify(dDesligado));
 }
 
 (async () => {
