@@ -12070,13 +12070,16 @@ async function provasModoApresentacao(page) {
   const colunaDesafio = () => page.evaluate(async () => {
     const neg = (App.sessao.negocios || [])[0];
     const d = await App.api(`/api/projecao?negocio_id=${neg.id}`);
-    return { linhas: (d.desafio_linhas || []).length, coluna: SecaoProjecao.temColunaDesafio(d) };
+    return { linhas: (d.desafio_linhas || []).length, coluna: SecaoProjecao.temColunaDesafio(d),
+      proposta: d.pode_comparar_proposta, seletor: SecaoProjecao.seletorBlocoVisao(d) !== '' };
   });
   try {
     t(`${l} o ADMIN liga a configuração`, (await cfg(1)) === true);
     const dLigado = await colunaDesafio();
     t(`${l} a DRE fica sem a coluna Desafio (os valores continuam no servidor)`,
       dLigado.linhas > 0 && dLigado.coluna === false, JSON.stringify(dLigado));
+    t(`${l} e o quadro do ano sem o "Comparar com: Proposta" (o servidor nem manda as propostas)`,
+      dLigado.proposta === false && dLigado.seletor === false, JSON.stringify(dLigado));
     await abrir('cenario');
     const c = await contar('cenario');
     t(`${l} Situação Atual e Tendências sem editar, mover, excluir, plano de ação nem novo anexo`,
@@ -12095,6 +12098,8 @@ async function provasModoApresentacao(page) {
   t(`${l} desligada, a SWOT volta com os botões e sem a numeração`, volta.editar > 0 && volta.numeros === 0, JSON.stringify(volta));
   const dDesligado = await colunaDesafio();
   t(`${l} desligada, a coluna Desafio volta à DRE do ADMIN`, dDesligado.coluna === true, JSON.stringify(dDesligado));
+  t(`${l} desligada, o ADMIN volta a ter o "Comparar com: Proposta"`, dDesligado.proposta === true && dDesligado.seletor === true,
+    JSON.stringify(dDesligado));
 }
 
 (async () => {

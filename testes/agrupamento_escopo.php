@@ -106,6 +106,33 @@ try {
 
     $s = $ler($http('GET', '/api/projecao?corporativo=1'));
     prova('sem escolher negócios, o gestor não recebe o Corporativo', empty($s['corporativo']), json_encode(['corp' => $s['corporativo'] ?? null]));
+
+    // A comparação com a Proposta do ano seguinte no quadro do ano é só do ADMIN, e só
+    // com o modo apresentação desligado (cliente, 2026-11-26) — a trava é do servidor.
+    $semProposta = static fn (array $v) => !array_filter($v, static fn ($x) => array_key_exists('proposta', (array)$x));
+    prova('o gestor não recebe as propostas no quadro do ano (nem o seletor)',
+        ($g['pode_comparar_proposta'] ?? null) === false && $semProposta($g['visao_ano_total'] ?? [])
+        && ($d['pode_comparar_proposta'] ?? null) === false && $semProposta($d['visao_ano'] ?? []),
+        json_encode(['grupo' => $g['pode_comparar_proposta'] ?? null, 'negocio' => $d['pode_comparar_proposta'] ?? null]));
+    $adm = $sessao();
+    $cabAdm = $entrar($adm, getenv('APP_EMAIL') ?: 'admin@coperdia.com.br', getenv('APP_SENHA') ?: 'trocar123');
+    $flagAntes = Database::um("SELECT valor FROM configuracao WHERE chave = 'diagnostico_somente_leitura'")['valor'] ?? null;
+    try {
+        $adm('POST', '/api/configuracoes', ['chave' => 'diagnostico_somente_leitura', 'valor' => 0], $cabAdm);
+        $a0 = $ler($adm('GET', '/api/projecao?corporativo=1'));
+        prova('o ADMIN, com o modo apresentação desligado, recebe as propostas',
+            ($a0['pode_comparar_proposta'] ?? null) === true && array_key_exists('proposta', $a0['visao_ano_total']['18'] ?? []),
+            json_encode(['pode' => $a0['pode_comparar_proposta'] ?? null]));
+        $adm('POST', '/api/configuracoes', ['chave' => 'diagnostico_somente_leitura', 'valor' => 1], $cabAdm);
+        $a1 = $ler($adm('GET', '/api/projecao?corporativo=1'));
+        prova('com o modo apresentação ligado, nem o ADMIN recebe as propostas',
+            ($a1['pode_comparar_proposta'] ?? null) === false && $semProposta($a1['visao_ano_total'] ?? []),
+            json_encode(['pode' => $a1['pode_comparar_proposta'] ?? null]));
+    } finally {
+        $adm('POST', '/api/configuracoes', ['chave' => 'diagnostico_somente_leitura', 'valor' => (int)($flagAntes ?? 0)], $cabAdm);
+    }
+    prova('o modo apresentação voltou ao que era',
+        (Database::um("SELECT valor FROM configuracao WHERE chave = 'diagnostico_somente_leitura'")['valor'] ?? null) === ($flagAntes ?? '0'));
 } finally {
     Database::executar('DELETE FROM usuario_negocio WHERE usuario_id IN (SELECT id FROM usuario WHERE email = ?)', [$email]);
     Database::executar('DELETE FROM usuario WHERE email = ?', [$email]);

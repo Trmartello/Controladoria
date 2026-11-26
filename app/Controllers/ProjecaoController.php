@@ -97,7 +97,7 @@ class ProjecaoController
             : null;
         if ($grupoDoEscopo) {
             $somados = array_values(array_filter($negocios, static fn ($n) => in_array((int)$n['id'], $grupoDoEscopo, true)));
-            Json::ok(self::paraTela($this->montarCorporativo($somados, $ano, $corte)) + $comuns + [
+            Json::ok(self::propostaNoQuadro(self::paraTela($this->montarCorporativo($somados, $ano, $corte))) + $comuns + [
                 'pode_editar' => false,
                 'grupo' => $grupoDoEscopo,
             ]);
@@ -112,7 +112,7 @@ class ProjecaoController
             $somados = $grupo
                 ? array_values(array_filter($negocios, static fn ($n) => in_array((int)$n['id'], $grupo, true)))
                 : $negocios;
-            Json::ok(self::paraTela($this->montarCorporativo($somados, $ano, $corte)) + $comuns + [
+            Json::ok(self::propostaNoQuadro(self::paraTela($this->montarCorporativo($somados, $ano, $corte))) + $comuns + [
                 'pode_editar' => false,
                 'grupo' => $grupo,
             ]);
@@ -120,7 +120,7 @@ class ProjecaoController
         }
 
         $filialId = (int)($_GET['filial_id'] ?? 0);
-        Json::ok(self::paraTela($this->montar($negocioId, $ano, $corte, $filialId)) + $comuns + [
+        Json::ok(self::propostaNoQuadro(self::paraTela($this->montar($negocioId, $ano, $corte, $filialId))) + $comuns + [
             'pode_editar' => $u['perfil'] !== 'LEITURA',
         ]);
     }
@@ -887,7 +887,7 @@ class ProjecaoController
     /** A resposta de toda gravação: a tela inteira, recalculada. */
     private function responderComATela(int $negocioId, int $ano, int $corte, int $filialId): void
     {
-        Json::ok(self::paraTela($this->montar($negocioId, $ano, $corte, $filialId)));
+        Json::ok(self::propostaNoQuadro(self::paraTela($this->montar($negocioId, $ano, $corte, $filialId))));
     }
 
     /**
@@ -1162,7 +1162,7 @@ class ProjecaoController
                 );
             }
         }
-        Json::ok(self::paraTela($tela));
+        Json::ok(self::propostaNoQuadro(self::paraTela($tela)));
     }
 
     /**
@@ -1612,6 +1612,45 @@ class ProjecaoController
             $out['1'] += (float)$p['CBS'];
         }
         return $out;
+    }
+
+    /**
+     * A comparação com a Proposta do ano seguinte no quadro do ano é SÓ DO ADMIN e só
+     * com o modo apresentação desligado (cliente, 2026-11-26: "essa tela deve ser apenas
+     * para os administradores […] a flag deve estar desativada" — a de Cadastros ›
+     * Configurações). Fora disso, as propostas nem saem na resposta: a trava é do
+     * servidor, não só do botão. `pode_comparar_proposta` diz à tela se mostra o seletor.
+     */
+    private static function propostaNoQuadro(array $d): array
+    {
+        $u = Auth::usuario();
+        $pode = ($u['perfil'] ?? '') === 'ADMIN'
+            && !ConfiguracaoController::todas()['diagnostico_somente_leitura'];
+        $d['pode_comparar_proposta'] = $pode;
+        if ($pode) {
+            return $d;
+        }
+        $tirar = static function (?array $v): ?array {
+            if ($v === null) {
+                return null;
+            }
+            foreach ($v as $c => $x) {
+                unset($v[$c]['proposta']);
+            }
+            return $v;
+        };
+        if (isset($d['visao_ano'])) {
+            $d['visao_ano'] = $tirar($d['visao_ano']);
+        }
+        if (isset($d['visao_ano_total'])) {
+            $d['visao_ano_total'] = $tirar($d['visao_ano_total']);
+        }
+        if (isset($d['visao_ano_negocios'])) {
+            foreach ($d['visao_ano_negocios'] as $id => $v) {
+                $d['visao_ano_negocios'][$id] = $tirar($v);
+            }
+        }
+        return $d;
     }
 
     /** Põe `proposta` em cada conta da visão do ano (de um negócio ou do total). */
