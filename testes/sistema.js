@@ -9032,6 +9032,9 @@ async function provasProjecao(page, largura) {
     const comCampo = await marcadas();
     await page.keyboard.press('Escape');
     const limpo = await marcadas();
+    // Não deixa o campo da DRE com o foco: a próxima prova começa com a tela quieta.
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.waitForTimeout(800);
     t(`${l} Ctrl + clique marca várias linhas da DRE com borda, desmarca, sobrevive à repintura e Esc limpa`,
       tres === '18,3,5' && duas === '18,3' && /rgb\(47, 111, 208\)/.test(borda) && aposRepintar === '18,3'
         && comCampo === '18,3' && limpo === '',
