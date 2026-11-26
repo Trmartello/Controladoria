@@ -264,12 +264,12 @@ const SecaoProjecao = {
             <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}/${String(d.ano).slice(2)}</span></th>
             <th class="text-end">Planejado<br><span class="fw-normal text-muted small">${this.rotuloResto(d)}</span></th>
             <th class="text-end">Projeção<br><span class="fw-normal text-muted small">${d.ano}</span></th>
-            <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
+            <th class="text-end" title="Análise vertical: % da Receita Operacional Líquida">A.V.<br><span class="fw-normal text-muted small">% ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
-            <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL proposta</span></th>
-            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção ${d.ano}</span></th>
+            <th class="text-end" title="Análise vertical da proposta: % da ROL proposta">A.V.<br><span class="fw-normal text-muted small">% ROL proposta</span></th>
+            <th class="text-end" title="Reajuste sobre a projeção de ${d.ano}">Reajuste<br><span class="fw-normal text-muted small">vs. projeção ${String(d.ano).slice(2)}</span></th>
             ${this.temColunaDesafio(d)
-    ? `<th class="text-end coluna-desafio-th" title="Só os administradores veem e lançam esta coluna">Desafio<br><span class="fw-normal text-muted small">${d.ano_planejamento} · administração</span></th>`
+    ? `<th class="text-end coluna-desafio-th" title="Só os administradores veem e lançam esta coluna">Desafio<br><span class="fw-normal text-muted small">${d.ano_planejamento} · adm.</span></th>`
     : ''}
           </tr></thead>
           <tbody>${this.corpo(d)}</tbody>
@@ -1054,10 +1054,10 @@ const SecaoProjecao = {
             <th class="text-end">Realizado<br><span class="fw-normal text-muted small">jan–${this.nomeMes(d.mes_fechado_ate)}/${String(d.ano).slice(2)}</span></th>
             <th class="text-end">Planejado<br><span class="fw-normal text-muted small">${this.rotuloResto(d)}</span></th>
             <th class="text-end">Projeção<br><span class="fw-normal text-muted small">${d.ano}</span></th>
-            <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL</span></th>
+            <th class="text-end" title="Análise vertical: % da Receita Operacional Líquida">A.V.<br><span class="fw-normal text-muted small">% ROL</span></th>
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
-            <th class="text-end">A.V.<br><span class="fw-normal text-muted small">sobre a ROL proposta</span></th>
-            <th class="text-end">Reajuste<br><span class="fw-normal text-muted small">sobre a projeção ${d.ano}</span></th>
+            <th class="text-end" title="Análise vertical da proposta: % da ROL proposta">A.V.<br><span class="fw-normal text-muted small">% ROL proposta</span></th>
+            <th class="text-end" title="Reajuste sobre a projeção de ${d.ano}">Reajuste<br><span class="fw-normal text-muted small">vs. projeção ${String(d.ano).slice(2)}</span></th>
           </tr></thead>
           <tbody>${this.corpo(d)}</tbody>
         </table>
@@ -2603,6 +2603,7 @@ const SecaoProjecao = {
    * na mesma tela para nascer.
    */
   ligar(el) {
+    this.pintarZebra(el);
     const virgem = (n) => {
       if (n.dataset.ligado) return false;
       n.dataset.ligado = '1';
@@ -2979,12 +2980,32 @@ const SecaoProjecao = {
 
   estaRecolhido() { return this.nivelDreAtual() === 1; },
 
+  /**
+   * A DRE zebrada (pedido do cliente, 2026-11-26: "uma linha sim, outra não com um
+   * background azul claro"): a alternância é sobre as linhas VISÍVEIS — no Resumo e
+   * no Lançamento as subcontas e as reduzidas escondidas contam no `nth-child`, e
+   * o CSS sozinho deixaria duas listras seguidas. Refeita a cada pintura e a cada
+   * troca de nível ou de reduzidas abertas.
+   */
+  pintarZebra(raiz = document) {
+    raiz.querySelectorAll('.tabela-projecao tbody').forEach((tb) => {
+      let i = 0;
+      // As contas reduzidas (nível 3) ficam com o cinza delas e fora da contagem:
+      // abrir uma não troca a listra das linhas de baixo.
+      tb.querySelectorAll(':scope > tr:not(.linha-reduzida)').forEach((tr) => {
+        const visivel = getComputedStyle(tr).display !== 'none';
+        tr.classList.toggle('linha-zebra', visivel && i++ % 2 === 1);
+      });
+    });
+  },
+
   definirNivelDre(n) {
     this.nivelDre = [1, 2, 3].includes(Number(n)) ? Number(n) : 2;
     const el = document.getElementById('secao-projecao');
     const tab = el?.querySelector('.tabela-projecao');
     tab?.classList.toggle('recolhida', this.nivelDre === 1);
     tab?.classList.toggle('nivel3', this.nivelDre === 3);
+    if (el) this.pintarZebra(el);
     el?.querySelectorAll('[data-nivel-dre]').forEach((b) => {
       const ativo = Number(b.dataset.nivelDre) === this.nivelDre;
       b.classList.toggle('btn-verde', ativo);
@@ -3000,6 +3021,7 @@ const SecaoProjecao = {
     if (abrir) this.reduzidasAbertas.add(codigo); else this.reduzidasAbertas.delete(codigo);
     document.querySelectorAll(`.tabela-projecao tr.linha-reduzida[data-pai="${CSS.escape(codigo)}"]`)
       .forEach((tr) => tr.classList.toggle('aberta', abrir));
+    this.pintarZebra();
     if (botao) {
       botao.textContent = abrir ? '▾' : '▸';
       botao.setAttribute('aria-expanded', abrir ? 'true' : 'false');

@@ -201,6 +201,16 @@ Desp./ROL (8) e Margem Líquida (19) não têm proposta própria e caíam no "�
 proposta"; agora o `corpo` testa `percentual` antes e mostra a linha que medem (5, 7, 18)
 sobre a ROL proposta, em `[data-pct-proposta]` — negócio, filial e Corporativo.
 
+**DRE compacta e zebrada** (2026-11-26, prévia aprovada pelo cliente em 1366×768: "o
+objetivo é que toda a DRE caiba na tela com baixa resolução"): cabeçalho mais baixo com
+os subtítulos abreviados (% ROL, % ROL proposta, vs. projeção 26, 2027 · adm.); no Resumo
+fonte um pouco maior e linhas mais baixas (cabe inteiro em 768 px); divisórias verdes
+antes da Proposta e depois da A.V. dela (`th/td:nth-child(6|7)`); uma linha sim, outra
+não em azul-claro (`pintarZebra`, só nas linhas visíveis e fora as reduzidas; refeita em
+`ligar`, `definirNivelDre` e `alternarReduzidas`), sem cobrir o amarelo do formato 2027,
+o vermelho do resultado negativo nem o azul da coluna Desafio; a linha sob o mouse ganha
+borda azul (box-shadow por dentro — a tabela não pula).
+
 **Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
 campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
 `fixa(chave)` nas premissas e `diretriz.beneficios` nos benefícios; mesma regra de antes,

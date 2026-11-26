@@ -8261,7 +8261,7 @@ async function provasVisaoDoAno(page, largura) {
   t(`${l} a visão realista na tela é o número do servidor (receita, resultado e o ano)`,
     r.rob === r.robApi && r.rl === r.rlApi && r.rlAno === r.rlAnoApi, JSON.stringify([r.rob, r.robApi, r.rl, r.rlApi]));
   const iProp = r.thAv.findIndex((x) => x.startsWith('Proposta'));
-  t(`${l} a A.V. da proposta vem logo depois da Proposta`, /A\.V\.\s*sobre a ROL proposta/.test(r.thAv[iProp + 1] || ''), r.thAv.join(' | '));
+  t(`${l} a A.V. da proposta vem logo depois da Proposta`, /A\.V\.\s*% ROL proposta/.test(r.thAv[iProp + 1] || ''), r.thAv.join(' | '));
   t(`${l} e é a proposta da linha sobre a ROL proposta`, r.avProposta === r.avEsperado, `${r.avProposta} / ${r.avEsperado}`);
 
   // Corporativo: o SELETOR (2026-11-25) escolhe a linha; R$ ou % no lucro bruto e no líquido.
@@ -8945,6 +8945,30 @@ async function provasProjecao(page, largura) {
   });
   t(`${l} Margem Bruta, Desp./ROL e Margem Líquida (%) trazem o percentual na coluna Proposta`,
     ['6', '8', '19'].every((c) => pctProp.tela[c] && pctProp.tela[c] === pctProp.api[c]), JSON.stringify(pctProp));
+  // DRE compacta e zebrada (2026-11-26, prévia aprovada em 1366×768): uma linha sim,
+  // outra não, contando só as visíveis; no Resumo cabe inteira em 768 px de altura;
+  // subtítulos abreviados; divisórias em volta da Proposta e da A.V. dela.
+  const compacta = await page.evaluate(async () => {
+    const seq = () => [...document.querySelectorAll('.tabela-projecao tbody > tr:not(.linha-reduzida)')]
+      .filter((tr) => getComputedStyle(tr).display !== 'none').map((tr) => (tr.classList.contains('linha-zebra') ? 1 : 0)).join('');
+    const alterna = (x) => x.length > 4 && [...x].every((c, i) => Number(c) === i % 2);
+    const lanc = seq();
+    SecaoProjecao.definirNivelDre(1);
+    const res = seq();
+    const tab = document.querySelector('.tabela-projecao table');
+    const altura = Math.round(tab.getBoundingClientRect().height);
+    const th = [...tab.querySelectorAll('thead th .small')].map((x) => x.textContent.trim());
+    const prop = getComputedStyle(tab.querySelector('thead th:nth-child(6)')).borderLeftWidth;
+    const avp = getComputedStyle(tab.querySelector('thead th:nth-child(7)')).borderRightWidth;
+    SecaoProjecao.definirNivelDre(2);
+    return { lanc: alterna(lanc), res: alterna(res), altura, th, prop, avp };
+  });
+  t(`${l} DRE zebrada (só as linhas visíveis), no Lançamento e no Resumo`, compacta.lanc && compacta.res, JSON.stringify(compacta));
+  t(`${l} o Resumo é compacto (cabe em 768 px) e o cabeçalho abreviado, com divisórias em volta da Proposta`,
+    // A altura só vale no computador: no celular (390 px) os nomes quebram em duas
+    // linhas e a DRE rola dentro da caixa dela, com o cabeçalho fixo.
+    (largura !== 'desktop' || compacta.altura <= 560) && compacta.th.includes('% ROL') && compacta.th.includes('% ROL proposta') && compacta.prop === '2px' && compacta.avp === '2px',
+    JSON.stringify(compacta));
 
   const ler = () => page.evaluate(() => {
     const num = (s) => {
