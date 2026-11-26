@@ -120,7 +120,7 @@ const Comentarios = {
    * `rotulos` troca as palavras sem trocar o comportamento: no plano de ação o
    * bloco é "Comentários"; no cenário, "Anexos e apontamentos".
    */
-  async render(alvo, { planId, refTipo, refId, aoMudar, rotulos = {}, imagensAbertas = false, compacto = false }) {
+  async render(alvo, { planId, refTipo, refId, aoMudar, rotulos = {}, imagensAbertas = false, compacto = false, somenteLeitura = false }) {
     if (!alvo) return;
     const r = {
       titulo: 'Comentários', novo: 'Novo comentário', vazio: 'Nenhum comentário ainda.',
@@ -130,11 +130,12 @@ const Comentarios = {
       `/api/comentarios?planejamento_id=${planId}&ref_tipo=${refTipo}&ref_id=${refId}`);
     const eu = App.sessao.usuario;
     const depois = aoMudar
-      || (() => this.render(alvo, { planId, refTipo, refId, aoMudar, rotulos, imagensAbertas, compacto }));
+      || (() => this.render(alvo, { planId, refTipo, refId, aoMudar, rotulos, imagensAbertas, compacto, somenteLeitura }));
 
     const itens = lista.map((c) => {
       const inicial = (c.autor || '?').trim().charAt(0).toUpperCase();
-      const podeApagar = Number(c.autor_id) === Number(eu.id) || eu.perfil === 'ADMIN';
+      // Só leitura (o Diagnóstico com a configuração ligada): abre e mostra, sem ✎ nem ×.
+      const podeApagar = !somenteLeitura && (Number(c.autor_id) === Number(eu.id) || eu.perfil === 'ADMIN');
       // Remover o único anexo de um comentário sem texto apaga o comentário —
       // é a regra do servidor. A tela precisa saber disso ANTES de perguntar,
       // para avisar do que vai acontecer em vez de só relatar depois.
@@ -183,7 +184,7 @@ const Comentarios = {
 
     // Abrir mostra o que JÁ EXISTE (pedido do cliente): escrever é o gesto do
     // "+" ao lado do título, que abre o formulário em modal.
-    const btnNovo = App.podeEditar()
+    const btnNovo = App.podeEditar() && !somenteLeitura
       ? `<button class="btn btn-sm btn-verde px-2 py-0" data-novo-comentario
           title="${Modal.esc(r.novo)}" aria-label="${Modal.esc(r.novo)}">+</button>` : '';
 

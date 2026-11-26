@@ -211,6 +211,28 @@ não em azul-claro (`pintarZebra`, só nas linhas visíveis e fora as reduzidas;
 o vermelho do resultado negativo nem o azul da coluna Desafio; a linha sob o mouse ganha
 borda azul (box-shadow por dentro — a tabela não pula).
 
+**Diagnóstico só leitura — modo apresentação** (2026-11-26, prévia aprovada: "nas configurações
+crie um flag que oculta os botões de edição, redirecionamento, exclusão, plano de ação e adicionar
+anexos; mantenha só abrir os anexos que existirem […] na Situação Atual e Tendência, SWOT"; "somente
+o perfil ADM aciona"; "priorize a fonte grande"; "mantenha a numeração"). Tabela `configuracao`
+(chave → valor) e `ConfiguracaoController` (`GET/POST /api/configuracoes`; todos leem, só ADMIN grava;
+chave fora de `CHAVES` é recusada); a sessão (`/api/me`) traz `configuracoes`, e
+`App.leituraDiagnostico()`/`aplicarConfiguracoes()` (classe `diagnostico-leitura` no body). Ligada,
+vale para TODOS: no Cenário (Situação Atual e Tendências) e na SWOT somem ✎, ⇄, ×, → Plano de
+ação, a alça de arrastar e o + / ✎ de anexo; o cartão sem anexo perde o expansor, o com anexo abre
+sem ✎/× (`Comentarios.render({ somenteLeitura })`); "Virou ação ↗" e selos (navegação) ficam; texto
+de 18 px, inteiro (sem o corte de 3 linhas); a SWOT ganha numeração por quadrante
+(`data-numero-swot`). Os botões de incluir (+ da coluna, 🎤, + Novo item/fator) continuam — o
+cliente não pediu para escondê-los. Interruptor em Cadastros › Configurações. Provas:
+`testes/configuracao.php` e `provasModoApresentacao` (liga, confere, DESLIGA).
+
+**Plano de ação, Tabela: clicar abre o nível de baixo; fonte de projetor** (2026-11-26, prévia
+aprovada: "ao clicar em um projeto ele abra as frentes; ao clicar em uma frente abra as ações
+específicas da frente […] aumentar a fonte para o data show"): seta ▸/▾ e nome clicável nas
+linhas de projeto (`data-alterna-proj`) e de frente (`data-alterna-ini`), no MESMO estado do
+"Mostrar até" e da Lista (`projetosFechados`, `iniciativasFechadas`); a tabela sobe de 13,8 para
+16 px, o projeto para 18,4 px e a frente para 16,8 px.
+
 **Matriz de Execução (Cascata): a escolha em primeiro plano** (2026-11-26, prévia aprovada:
 "diminua a largura do eixo e de indicadores; priorize maior visibilidade na escolha; a
 maior fonte possível"): o eixo vira faixa de 44 px com o nome na vertical; a escolha tem

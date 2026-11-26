@@ -900,7 +900,7 @@ const SecaoProjetos = {
       // a partir de uma imagem, no mesmo dia). As outras duas posições já
       // tentadas, e por que esta ficou, estão em `pct-grupo`, no CSS.
       const linhaGrupo = (classe, marca, titulo, lista, chave, extra = '', acoesLinha = '',
-        recolhida = false) => {
+        recolhida = false, alterna = '', aberta = true) => {
         const media = this.mediaProgresso(lista);
         // Quantas colunas de recuo vêm ANTES do título. Sai da classe porque é
         // ela que já diz o nível — um parâmetro a mais para repetir a mesma
@@ -911,7 +911,10 @@ const SecaoProjetos = {
           data-recolhida="${recolhida ? '1' : '0'}" ${marca}>
           ${celulaRecuo.repeat(recuo)}
           <td colspan="${colunasDoConteudo + RECUOS - recuo}"><span class="grupo-celula">
-            <span class="nome-grupo">${Modal.esc(titulo)}</span>
+            ${alterna ? `<button type="button" class="seta-grupo d-print-none" ${alterna}
+              aria-expanded="${aberta}" title="${aberta ? 'Recolher' : 'Abrir'} ${classe === 'g-proj' ? 'as frentes deste projeto' : 'as ações desta frente'}"
+              >${aberta ? '▾' : '▸'}</button>` : ''}
+            <span class="nome-grupo${alterna ? ' nome-grupo-alterna' : ''}" ${alterna}>${Modal.esc(titulo)}</span>
             <span class="badge text-bg-light border">${this.contaAcoes(lista.length)}</span>
             ${this.resumoStatus(lista, ['ATRASADO'])}${extra}</span></td>
           <td class="num col-progresso"><span class="celula-progresso">
@@ -1014,8 +1017,10 @@ const SecaoProjetos = {
       const projFechado = this.projetosFechados.has(p.id);
       const frentes = (p.iniciativas || []).map((ini) => {
         const suas = ini.acoes || [];
+        const iniAberta = !this.iniciativasFechadas.has(ini.id);
         return linhaGrupo('g-frente', `data-grupo-frente="${ini.id}"`, ini.titulo, suas,
-          `FRENTE:${ini.id}`, extraFrente(ini), acoesFrente(ini), projFechado)
+          `FRENTE:${ini.id}`, extraFrente(ini), acoesFrente(ini), projFechado,
+          suas.length ? `data-alterna-ini="${ini.id}"` : '', iniAberta)
           + linhas(suas, projFechado || this.iniciativasFechadas.has(ini.id));
       }).join('');
       // Ação sem frente existe no banco (`iniciativa_id` é anulável) e sumiria
@@ -1030,7 +1035,7 @@ const SecaoProjetos = {
       const orfasFechadas = projFechado || nivel === 'FRENTES' || nivel === 'PROJETOS';
       return linhaGrupo('g-proj', `data-grupo-proj="${p.id}"`, p.titulo, acoes, `PROJETO:${p.id}`,
         p.classificacao === 'PRIORITARIO' ? '<span class="badge text-bg-warning">Prioritário</span>' : '',
-        acoesProjeto)
+        acoesProjeto, false, (p.iniciativas || []).length || acoes.length ? `data-alterna-proj="${p.id}"` : '', !projFechado)
         + frentes
         // «Sem frente de trabalho» não é uma frente: não há o que editar,
         // excluir, nem onde criar ação (a ação nasceria sem frente de novo).
@@ -2076,6 +2081,20 @@ const SecaoProjetos = {
     });
     el.querySelectorAll('[data-nivel]').forEach((b) =>
       b.addEventListener('click', () => this.aplicarNivel(b.dataset.nivel, projetos)));
+    // Na Tabela, clicar no projeto abre/recolhe as frentes dele, e clicar na frente
+    // abre/recolhe as ações dela (pedido do cliente, 2026-11-26). Mesmo estado do
+    // "Mostrar até" e da lista (`projetosFechados`, `iniciativasFechadas`).
+    el.querySelectorAll('[data-alterna-proj], [data-alterna-ini]').forEach((b) =>
+      b.addEventListener('click', () => {
+        if (b.dataset.alternaProj) {
+          const id = Number(b.dataset.alternaProj);
+          if (this.projetosFechados.has(id)) this.projetosFechados.delete(id); else this.projetosFechados.add(id);
+        } else {
+          const id = Number(b.dataset.alternaIni);
+          if (this.iniciativasFechadas.has(id)) this.iniciativasFechadas.delete(id); else this.iniciativasFechadas.add(id);
+        }
+        this.carregar();
+      }));
 
     // A pesquisa filtra o DOM a cada tecla (sem recarga, que mataria o foco) e
     // é reaplicada aqui porque a repintura acabou de redesenhar tudo visível.

@@ -1368,3 +1368,15 @@ CREATE TABLE IF NOT EXISTS negocio_desafio (
   PRIMARY KEY (negocio_id, ano),
   CONSTRAINT fk_nd_negocio FOREIGN KEY (negocio_id) REFERENCES negocio(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Configurações GERAIS do sistema (pedido do cliente, 2026-11-26), chave → valor.
+-- A primeira: `diagnostico_somente_leitura` — quando '1', os cartões da Situação
+-- Atual, das Tendências e da SWOT ficam só leitura para todos (sem editar, mover,
+-- excluir, plano de ação nem novo anexo; os anexos existentes continuam abrindo).
+-- Só o perfil ADMIN liga e desliga (`ConfiguracaoController`).
+CREATE TABLE IF NOT EXISTS configuracao (
+  chave          VARCHAR(64) NOT NULL PRIMARY KEY,
+  valor          VARCHAR(255) NOT NULL,
+  atualizado_por INT NULL,
+  atualizado_em  DATETIME NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

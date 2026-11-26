@@ -148,6 +148,9 @@ class AuthController
             // usar as mesmas palavras do celular e para a bateria de sistema
             // conferir que as duas batem — ver Quiz::CATALOGO_CATEGORIA.
             'categorias' => Quiz::CATALOGO_CATEGORIA,
+            // As configurações gerais (ex.: o Diagnóstico só leitura), lidas
+            // uma vez na entrada; quem as troca atualiza `App.sessao` na hora.
+            'configuracoes' => ConfiguracaoController::todas(),
         ];
     }
 }

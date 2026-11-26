@@ -723,12 +723,13 @@ const Diag = {
    * ação, e desfazer aqui a deixaria no plano sem nenhuma origem. O servidor
    * recusa do mesmo jeito — este é o aviso antes da recusa, não no lugar dela.
    */
-  seloPlanoAcao(f) {
+  seloPlanoAcao(f, leitura = false) {
     if (f.desdobramento_id) {
       return `<button type="button" class="badge selo-link text-bg-success" data-ir-acao="${f.desdobramento_id}"
         title="Ver a ação no plano: ${Modal.esc(f.acao_titulo || '')}">Virou ação ↗</button>`;
     }
-    if (!App.podeEditar()) return '';
+    // Só leitura: o "Virou ação ↗" (navegação) fica; encaminhar e tirar da fila, não.
+    if (!App.podeEditar() || leitura) return '';
     if (f.acao_em) {
       return `<button type="button" class="badge selo-link text-bg-secondary" data-tirar-acao="${f.id}"
         title="Aguardando alocação em Projetos — clique para tirar da fila">Aguardando ação</button>`;
@@ -1323,7 +1324,9 @@ const SecaoCenario = {
     const imagens = Number(i.imagens) || 0;
     const outros = anexos - imagens;
     const registros = Number(i.comentarios) || 0;
-    if (!registros && !App.podeEditar()) return '';
+    // Só leitura: sem registro, a opção de anexos some; com registro, abre sem ✎ nem +.
+    const ed = App.podeEditar() && !App.leituraDiagnostico();
+    if (!registros && !ed) return '';
     const partes = [
       Vinculos.quantos(imagens, 'imagem', 'imagens'),
       Vinculos.quantos(outros, 'anexo', 'anexos'),
@@ -1335,7 +1338,7 @@ const SecaoCenario = {
     // 2026-11-20): incluir não exige abrir o bloco.
     // E o ✎ ao lado (pedido do cliente, 2026-11-20): edita o registro quando
     // há um só; com vários, abre o bloco, onde cada registro tem o seu ✎.
-    const mais = App.podeEditar()
+    const mais = ed
       ? `<span class="ms-auto d-flex gap-1">${registros ? `<button type="button"
           class="btn btn-sm btn-outline-secondary px-2 py-0 btn-editar-anexo" data-editar-anexo="${i.id}"
           title="Editar anexo" aria-label="Editar anexo">✎</button>` : ''}
@@ -1359,6 +1362,7 @@ const SecaoCenario = {
       aoMudar: () => this.carregar(),
       imagensAbertas: true,
       compacto: true,
+      somenteLeitura: App.leituraDiagnostico(),
       rotulos: { titulo: 'Anexos', novo: 'Novo anexo',
         vazio: '' },
     });
@@ -1496,6 +1500,9 @@ const SecaoCenario = {
     this.itens = itens;
     this.quiz = quiz;
 
+    // Só leitura (configuração geral, 2026-11-26): sem ✎, ⇄, ×, plano de ação nem
+    // novo anexo; os anexos que existem continuam abrindo.
+    const ed = App.podeEditar() && !App.leituraDiagnostico();
     const bloco = (tipo, titulo) => {
       const lista = itens.filter((i) => i.tipo === tipo);
       // `data-card-fator` é o que permite chegar aqui vindo da Coleta;
@@ -1504,13 +1511,13 @@ const SecaoCenario = {
       const linhas = lista.map((i, idx) => `
         <div class="card mb-2 cartao-ordenavel" data-card-fator="${i.id}" data-id="${i.id}"
           data-cadeado="cenario_item:${i.id}"><div class="card-body py-2 px-3">
-          <div class="small texto-fator">${App.podeEditar()
+          <div class="small texto-fator">${ed
     ? Ordenar.alca('Arrastar para reordenar (ou Ctrl + seta para cima/baixo)') : ''
 }<strong data-ordem-visivel>${idx + 1}.</strong> ${Modal.esc(i.descricao)}</div>
-          ${Diag.selosOrigem(i) || Diag.seloPlanoAcao(i) || App.podeEditar()
+          ${Diag.selosOrigem(i) || Diag.seloPlanoAcao(i, !ed) || ed
             ? `<div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
-                ${Diag.selosOrigem(i)}${Diag.seloPlanoAcao(i)}
-                ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
+                ${Diag.selosOrigem(i)}${Diag.seloPlanoAcao(i, !ed)}
+                ${ed ? `<span class="ms-auto d-flex gap-1">
                   <button class="btn btn-sm btn-outline-secondary" data-editar="${i.id}" title="Editar" aria-label="Editar">✎</button>
                   ${SecaoCenario.botaoMover(i)}
                   ${SecaoCenario.botaoExcluir(i)}
@@ -1950,9 +1957,16 @@ const SecaoSwot = {
     ]);
     this.quiz = quiz;
 
+    // Só leitura (configuração geral, 2026-11-26): sem ✎, ⇄, ×, plano de ação nem
+    // arraste; os selos de origem, GUT e "Virou ação ↗" (navegação) ficam.
+    const ed = App.podeEditar() && !App.leituraDiagnostico();
     const quadrante = (cat, rotulo, cor) => {
       const itens = fatores.filter((f) => f.categoria === cat);
-      const cartoes = itens.map((f) => {
+      // No modo apresentação, a SWOT também ganha a numeração (pedido do cliente,
+      // 2026-11-26: "mantenha a numeração dos itens para quem estiver
+      // apresentando usar de referência"), contada dentro de cada quadrante.
+      const numerar = App.leituraDiagnostico();
+      const cartoes = itens.map((f, idx) => {
         // Selos levam à etapa de origem e à Matriz GUT, já no card correspondente
         const origem = f.origem_etapa
           ? `<button type="button" class="badge selo-link text-bg-light border" data-ir-origem="${f.promovido_de_id}"
@@ -1963,13 +1977,13 @@ const SecaoSwot = {
                title="Ver na Matriz GUT">GUT ${f.score}</button>` : '';
         // Caminho do fator até o plano de ação, nos mesmos três estados da
         // ideia da Coleta: fora da fila, na fila e já convertido em ação.
-        const acao = Diag.seloPlanoAcao(f);
+        const acao = Diag.seloPlanoAcao(f, !ed);
         return `<div class="card mb-2 cartao-ordenavel" data-card-fator="${f.id}" data-id="${f.id}"
           data-cadeado="fator:${f.id}"><div class="card-body py-2 px-3">
-          <div class="small texto-fator">${App.podeEditar() ? Ordenar.alca() : ''}${Modal.esc(f.descricao)}</div>
+          <div class="small texto-fator">${ed ? Ordenar.alca() : ''}${numerar ? `<strong data-numero-swot>${idx + 1}.</strong> ` : ''}${Modal.esc(f.descricao)}</div>
           <div class="botoes-fator d-flex gap-1 mt-1 align-items-center flex-wrap">
             ${Diag.selosOrigem(f)}${origem}${gut}${acao}
-            ${App.podeEditar() ? `<span class="ms-auto d-flex gap-1">
+            ${ed ? `<span class="ms-auto d-flex gap-1">
               <button class="btn btn-sm btn-outline-secondary" data-editar="${f.id}" title="Editar" aria-label="Editar">✎</button>
               ${Diag.botaoMoverFator(f)}
               ${Diag.botaoExcluirFator(f)}
