@@ -15,6 +15,16 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 
 ## Projeção de Resultados 2027 — o que vale hoje (resumo, 2026-11-23)
 
+> **Regra do cliente (2026-11-26): nenhuma alteração do sistema muda número
+> lançado pelos negócios — nem quando o sinal está errado.** O que foi digitado
+> (`projecao_valor` e as demais tabelas de lançamento) fica como foi digitado;
+> corrigir lançamento é do próprio negócio, na tela. Linha **calculada** (rateios
+> travados, sugestão de pessoal, totais) pode mudar com regra nova, mas só com o
+> cliente aprovando antes o que muda e quanto. Garantia automática:
+> `testes/lancamentos_intocados.php` roda o `migrate.php` (o que a Railway roda a
+> cada publicação) duas vezes sobre um custo gravado com sinal trocado e falha se
+> qualquer tabela de lançamento mudar. Rode-o em toda entrega, com as suítes PHP.
+
 Índice das decisões do cliente na aba **Projeção de Resultados**. O detalhe e o
 histórico de cada uma estão em "Regras de negócio importantes"; este bloco existe
 porque elas mudaram muito num dia só, e uma delas foi revertida horas depois. Antes
@@ -211,13 +221,6 @@ não em azul-claro (`pintarZebra`, só nas linhas visíveis e fora as reduzidas;
 o vermelho do resultado negativo nem o azul da coluna Desafio; a linha sob o mouse ganha
 borda azul (box-shadow por dentro — a tabela não pula).
 
-**Linhas marcadas com Ctrl + clique** (2026-11-26, prévia aprovada: "chamar atenção para
-múltiplas linhas"): Ctrl (ou ⌘) + clique numa linha da DRE liga `.linha-marcada`, a mesma
-borda azul do passar o mouse, mas que fica — várias ao mesmo tempo; de novo desmarca, Esc
-limpa todas. A marca é da conta (`SecaoProjecao.linhasMarcadas`, um `Set`), reaplicada em
-`pintarZebra` — sobrevive à gravação e à troca de nível. Clique em campo, botão ou link não
-marca. Só na tela de quem clicou: não grava nada, some ao recarregar.
-
 **Diagnóstico só leitura — modo apresentação** (2026-11-26, prévia aprovada: "nas configurações
 crie um flag que oculta os botões de edição, redirecionamento, exclusão, plano de ação e adicionar
 anexos; mantenha só abrir os anexos que existirem […] na Situação Atual e Tendência, SWOT"; "somente
@@ -230,7 +233,7 @@ ação, a alça de arrastar e o + / ✎ de anexo; o cartão sem anexo perde o ex
 sem ✎/× (`Comentarios.render({ somenteLeitura })`); "Virou ação ↗" e selos (navegação) ficam; texto
 de 18 px, inteiro (sem o corte de 3 linhas); a SWOT ganha numeração por quadrante
 (`data-numero-swot`). Os botões de incluir (+ da coluna, 🎤, + Novo item/fator) continuam — o
-cliente confirmou em 2026-11-26 que "não é necessário" escondê-los. Interruptor em Cadastros › Configurações. Provas:
+cliente não pediu para escondê-los. Interruptor em Cadastros › Configurações. Provas:
 `testes/configuracao.php` e `provasModoApresentacao` (liga, confere, DESLIGA).
 
 **Plano de ação, Tabela: clicar abre o nível de baixo; fonte de projetor** (2026-11-26, prévia
@@ -246,8 +249,7 @@ maior fonte possível"): o eixo vira faixa de 44 px com o nome na vertical; a es
 fonte de 18 px (renúncia 16 px) e ~46% da largura; indicadores ~13% e meta ~8%
 (`.col-*` em `cascata.js`, larguras com `table-layout: fixed` a partir de 992 px; abaixo,
 mínimos e a caixa rola de lado). No celular a página já rolava 21 px de lado antes disso,
-por um botão de menu no topo da Cascata — não é da tabela. **Fica assim:** perguntado em
-2026-11-26, o cliente respondeu "não precisa ajustar para o celular".
+por um botão de menu no topo da Cascata — não é da tabela.
 
 **Premissas em três faixas** (2026-11-25, só layout): "O que o negócio define" (todos os
 campos de digitar, com o bloco de pessoas), "Fixado pela diretriz" (só leitura:
@@ -339,13 +341,6 @@ soma do Corporativo (`montarCorporativo` com a lista filtrada), então DRE, desa
 oportunidades, tributos e pessoas saem do agrupamento. O nome diz quais negócios
 são; a escolha fica no `localStorage` (`projecao.grupo`); o dossiê imprime sempre o
 Corporativo inteiro. Mesmo perfil do Corporativo (quem enxerga todos os negócios).
-**"O agrupamento sumiu"** (cliente, 2026-11-26, depois do PR #152 — que não tocou na
-Projeção): conferido na tela, ele estava lá e somava. Antes de procurar regressão, descarte
-as quatro causas de "não vejo": (1) o seletor **Negócio do menu lateral** é de um só — o de
-caixas fica no **canto superior direito da Projeção**, ao lado do título; (2) com a DRE
-rolada, o topo da página (e o seletor) sai da tela — as barras fixas são as da DRE, não a do
-seletor; (3) usuário que não enxerga todos os negócios (`Auth::veTudo` falso →
-`pode_corporativo` falso) vê o `<select>` simples; (4) navegador com o JS antigo (Ctrl + F5).
 
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica
@@ -4510,9 +4505,6 @@ A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
-**Linha de base em 2026-11-26**: sistema **1854 ✓ / 0 ✗** em cerca de 25 minutos (sai
-com 1 pelos avisos 4xx de console esperados). Antes, em 2026-10-26:
-
 **Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
 2026-10-14 e 288/583 em 2026-09-04): funcional **327 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
@@ -4540,29 +4532,6 @@ Cruzamentos introduziram aparecia no **computador**: a mínima de conteúdo de u
 selo com `nowrap` sobe pela coluna e pela fila até o `<main>`, que é item de
 flex — quanto mais larga a tela, mais texto cabe numa linha e maior fica essa
 mínima. A checagem passou a rodar nas duas larguras.
-
-**Bateria que para no meio (`ERRO:` e saída 2) deixa o banco sujo.** A sistema troca a
-Receita (1.1) da Pecuária por vazio antes das provas da Projeção e só a devolve no fim
-(`lancamentoDaProposta(page, '2 - PECUARIA', '1.1', receitaPecuaria)`); se ela morre antes,
-o lançamento some. Depois de toda rodada confira `select count(*) from projecao_valor` —
-na base local é **1**: Pecuária (projeção do negócio 2), filial 0, conta 1.1, `VALOR`
-731.798.725,00. Se der 0, recoloque essa linha antes de rodar de novo, senão as provas
-seguintes partem de outra base. Confira também `negocio_desafio_valor`,
-`negocio_item_avaliacao` e fatores `(prova)` em 0 e `configuracao.diagnostico_somente_leitura`
-em `'0'`.
-
-**O "Element is not attached" com a barra da DRE no log aponta o elemento ERRADO.**
-Em 2026-11-26 a bateria parou duas vezes com o botão "Reforma tributária: antes × depois"
-no log, e o defeito não era dele: era a prova nova do Ctrl + clique, clicando um campo da
-DRE que, em 1500×700 e com a tela rolada, ficava **debaixo da barra fixa** — o Playwright
-cita quem **intercepta** o clique ("… subtree intercepts pointer events"), não o alvo. O
-caminho para achar: rodar o trecho (`_mini.js` com as provas da Projeção em sequência) e
-contar os ✓ antes do erro. Em prova de DRE, clique "de verdade" só numa linha centralizada
-(`scrollIntoView({ block: 'center' })`); os demais cliques vão ao elemento por
-`dispatchEvent(new MouseEvent('click', { ctrlKey }))`. E prova isolada que passa não
-absolve: rode na janela e na ordem da bateria (1500×700, depois das provas anteriores).
-Script de captura de tela contra o 8099 **durante** a bateria também atrapalha — use o
-`git worktree` em outra porta.
 
 Uma quarta, cobrada em 2026-10-26: **depois de `page.reload()`, esperar por
 `#nav-secoes` não espera nada**. Ele é HTML estático do `shell.php` e existe no
@@ -4712,6 +4681,14 @@ dia, e a vermelha seria lida como regressão de outra mudança.
 
 ## Convenções de entrega
 
+- **Número lançado pelo negócio não se toca** (regra do cliente, 2026-11-26 — ver o
+  aviso no topo de *Projeção de Resultados 2027*). Antes de mesclar, explique ao
+  cliente o impacto em número de qualquer mudança que mexa em cálculo — o que muda,
+  em quais linhas e quanto — e espere a resposta. `testes/lancamentos_intocados.php`
+  verde é condição de mescla.
+- **Reversão de 2026-11-26:** a pedido do cliente, o #153 (Ctrl + clique para marcar
+  linhas da DRE) e o #154 (anotações) foram revertidos; o código voltou ao estado de
+  depois do #152. Não reimplante a marcação de linhas sem um pedido novo.
 - **Notas da tela: curtas e diretas** (pedido do cliente, 2026-11-25: "esses
   comentários devem ser mais objetivos, de fácil entendimento e direto ao
   ponto"). A nota embaixo de um quadro diz o que a pessoa precisa para agir —
