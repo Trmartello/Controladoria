@@ -15,6 +15,16 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 
 ## Projeção de Resultados 2027 — o que vale hoje (resumo, 2026-11-23)
 
+> **Regra do cliente (2026-11-26): nenhuma alteração do sistema muda número
+> lançado pelos negócios — nem quando o sinal está errado.** O que foi digitado
+> (`projecao_valor` e as demais tabelas de lançamento) fica como foi digitado;
+> corrigir lançamento é do próprio negócio, na tela. Linha **calculada** (rateios
+> travados, sugestão de pessoal, totais) pode mudar com regra nova, mas só com o
+> cliente aprovando antes o que muda e quanto. Garantia automática:
+> `testes/lancamentos_intocados.php` roda o `migrate.php` (o que a Railway roda a
+> cada publicação) duas vezes sobre um custo gravado com sinal trocado e falha se
+> qualquer tabela de lançamento mudar. Rode-o em toda entrega, com as suítes PHP.
+
 Índice das decisões do cliente na aba **Projeção de Resultados**. O detalhe e o
 histórico de cada uma estão em "Regras de negócio importantes"; este bloco existe
 porque elas mudaram muito num dia só, e uma delas foi revertida horas depois. Antes
@@ -4671,6 +4681,14 @@ dia, e a vermelha seria lida como regressão de outra mudança.
 
 ## Convenções de entrega
 
+- **Número lançado pelo negócio não se toca** (regra do cliente, 2026-11-26 — ver o
+  aviso no topo de *Projeção de Resultados 2027*). Antes de mesclar, explique ao
+  cliente o impacto em número de qualquer mudança que mexa em cálculo — o que muda,
+  em quais linhas e quanto — e espere a resposta. `testes/lancamentos_intocados.php`
+  verde é condição de mescla.
+- **Reversão de 2026-11-26:** a pedido do cliente, o #153 (Ctrl + clique para marcar
+  linhas da DRE) e o #154 (anotações) foram revertidos; o código voltou ao estado de
+  depois do #152. Não reimplante a marcação de linhas sem um pedido novo.
 - **Notas da tela: curtas e diretas** (pedido do cliente, 2026-11-25: "esses
   comentários devem ser mais objetivos, de fácil entendimento e direto ao
   ponto"). A nota embaixo de um quadro diz o que a pessoa precisa para agir —
