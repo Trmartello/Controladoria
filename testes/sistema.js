@@ -8933,6 +8933,18 @@ async function provasProjecao(page, largura) {
     return o.value;
   });
   await esperar(page, `document.querySelector('#projecao-negocio')?.value === '${primeiro}' && !document.querySelector('#projecao-corporativo-cobertura') && !!document.querySelector('.tabela-projecao')`, 20000);
+  // As linhas de % (Margem Bruta, Desp./ROL, Margem Líquida) mostram a proposta (pedido
+  // do cliente, 2026-11-26): a linha que medem sobre a ROL proposta, como nas outras colunas.
+  const pctProp = await page.evaluate(() => {
+    const ls = SecaoProjecao.visao(SecaoProjecao.dados).linhas;
+    const p = (c) => (ls.find((x) => x.codigo === c) || {}).proposta;
+    const tela = (c) => document.querySelector(`.tabela-projecao [data-pct-proposta="${c}"]`)?.textContent.trim() || null;
+    const fmt = (v) => SecaoProjecao.pct(v);
+    return { tela: { 6: tela('6'), 8: tela('8'), 19: tela('19') },
+      api: { 6: fmt(p('5') / p('3')), 8: fmt(p('7') / p('3')), 19: fmt(p('18') / p('3')) } };
+  });
+  t(`${l} Margem Bruta, Desp./ROL e Margem Líquida (%) trazem o percentual na coluna Proposta`,
+    ['6', '8', '19'].every((c) => pctProp.tela[c] && pctProp.tela[c] === pctProp.api[c]), JSON.stringify(pctProp));
 
   const ler = () => page.evaluate(() => {
     const num = (s) => {
