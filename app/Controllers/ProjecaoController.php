@@ -186,6 +186,7 @@ class ProjecaoController
         $desafioVisao = [];
         $desafios = [];
         $escadas = [];
+        $itensPessoal = [];
         $tributosDre = [];
         $oportunidades = [];
         $estoque = [];
@@ -279,6 +280,7 @@ class ProjecaoController
             if ($m['pessoas']['base']) {
                 $pessoasSoma['base'] = $m['pessoas']['base'];
             }
+            $itensPessoal[] = self::itensPessoal($m['pessoal_diretriz'] ?? null, $m['pessoas']['por_ano'][$ano + 1] ?? null);
             foreach ($m['pessoas']['por_ano'] as $anoP => $calc) {
                 if (!$calc) {
                     continue;
@@ -317,6 +319,9 @@ class ProjecaoController
             'negocios_consolidados' => count($negocios),
             'negocios_com_proposta' => $lancaram,
             'pessoas' => $pessoasSoma,
+            // A despesa com pessoal da diretriz vigente, item a item, somada (o cartão
+            // "Diretrizes de pessoal" do ADMIN, 2026-11-27).
+            'pessoal_itens' => self::somarItens($itensPessoal),
             // A visão do ano por negócio e o total — o mesmo quadro do Painel Balanço.
             'visao_ano_negocios' => self::visaoComPropostas(
                 self::visaoComPropostas(
@@ -1850,6 +1855,8 @@ class ProjecaoController
         }
         $saida = [];
         $total = ['atual' => [], 'simulado' => []];
+        $itensAtual = [];
+        $itensSim = [];
         foreach ($negocios as $n) {
             $id = (int)$n['id'];
             // Quem DIGITOU a despesa com pessoal não muda no motor (o lançamento vale), e o
@@ -1869,7 +1876,9 @@ class ProjecaoController
                 }
                 $lancadoAMao = true;
             }
-            unset($atual[$id]['diretriz_85'], $simulado[$id]['diretriz_85']);
+            $itensAtual[] = $atual[$id]['itens'];
+            $itensSim[] = $simulado[$id]['itens'];
+            unset($atual[$id]['diretriz_85'], $simulado[$id]['diretriz_85'], $atual[$id]['itens'], $simulado[$id]['itens']);
             // `ajuste_lancado`: a parte do impacto que vem SÓ de o negócio ter digitado o pessoal —
             // a que "Aplicar" não traz (o lançamento vale); ele chega se o negócio relançar.
             $saida[] = ['id' => $id, 'rotulo' => $n['rotulo'], 'atual' => $atual[$id], 'simulado' => $simulado[$id],
@@ -1886,6 +1895,8 @@ class ProjecaoController
             'grupo' => $grupo,
             'negocios' => $saida,
             'total' => $total,
+            // A despesa com pessoal da diretriz, item a item, vigente e simulada (somada).
+            'itens' => ['atual' => self::somarItens($itensAtual), 'simulado' => self::somarItens($itensSim)],
         ]);
     }
 
@@ -1983,8 +1994,54 @@ class ProjecaoController
             // digitou a sua: é dela que sai o impacto de quem lançou à mão.
             $out[(int)$n['id']]['diretriz_85'] = isset($m['pessoal_diretriz']['proposta'])
                 ? (float)$m['pessoal_diretriz']['proposta'] : null;
+            $out[(int)$n['id']]['itens'] = self::itensPessoal($m['pessoal_diretriz'] ?? null,
+                $m['pessoas']['por_ano'][$ano + 1] ?? null);
         }
         return $out;
+    }
+
+    /**
+     * A despesa com pessoal da diretriz, item a item (cliente, 2026-11-27: unificar o
+     * simulador e o "Pessoas e benefícios" — "quanto custa cada diretriz e quanto mudaria"):
+     * a folha (base de 2026 sem PPR e benefícios, no quadro planejado), o reajuste sobre ela,
+     * o PPR e os três benefícios na parte que vai à DESPESA (o resto do salário está no custo).
+     * No sinal da DRE (despesa negativa); a soma é a 8.5 pela diretriz (`pessoalDaDiretriz`).
+     * Null quando o negócio não tem a conta (sem folha carregada).
+     */
+    private static function itensPessoal(?array $pd, ?array $calc): ?array
+    {
+        if (!$pd || !isset($pd['base'])) {
+            return null;
+        }
+        $f = (float)($pd['fator_quadro'] ?? 1.0);
+        $folha = (float)$pd['base'] * $f;
+        $parte = (float)($pd['parte_despesa'] ?? 1.0);
+        $b = static fn ($k) => $calc ? (float)($calc['anual'][$k] ?? 0) * $parte : 0.0;
+        $itens = [
+            'folha' => -$folha,
+            'reajuste' => -((float)$pd['base_reajustada'] - $folha),
+            'ppr' => -(float)$pd['ppr'],
+            'alimentacao' => -$b('alimentacao'),
+            'assiduidade' => -$b('assiduidade'),
+            'resultado' => -$b('resultado'),
+        ];
+        $itens['total'] = array_sum($itens);
+        return $itens;
+    }
+
+    /** Soma itens de pessoal (chave a chave), ignorando os nulos. */
+    private static function somarItens(array $lista): ?array
+    {
+        $soma = null;
+        foreach ($lista as $i) {
+            if (!$i) {
+                continue;
+            }
+            foreach ($i as $k => $x) {
+                $soma[$k] = ($soma[$k] ?? 0.0) + $x;
+            }
+        }
+        return $soma;
     }
 
     /** O desafio de vários negócios somado conta a conta (a coluna Desafio do Corporativo, só leitura). */

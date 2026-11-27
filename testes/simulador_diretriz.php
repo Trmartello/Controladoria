@@ -95,6 +95,19 @@ try {
     prova('PPR de 1,5 para 1: o resultado líquido sobe, igual à queda da despesa com pessoal; a receita líquida não muda',
         $imp('18') > 0 && abs($imp('18') - $imp('8.5')) < 1 && abs($imp('3')) < 0.01 && abs($soma - $imp('18')) < 1,
         json_encode(['18' => round($imp('18')), '8.5' => round($imp('8.5')), '3' => $imp('3')]));
+    // "Diretrizes de pessoal" (cliente, 2026-11-27): a despesa com pessoal da diretriz item a
+    // item. A soma do impacto é a do simulador na 8.5 (inclusive quem digitou o pessoal) e, no
+    // PPR de 1,5 para 1, só o item PPR muda; o vigente é o mesmo que o Corporativo mostra.
+    $ia = $u['itens']['atual'] ?? [];
+    $is = $u['itens']['simulado'] ?? [];
+    $mudaram = array_keys(array_filter($ia, static fn ($x, $k) => $k !== 'total' && abs(($is[$k] ?? 0) - $x) >= 1, ARRAY_FILTER_USE_BOTH));
+    $corpIt = $ler($http('GET', '/api/projecao?corporativo=1'))['pessoal_itens'] ?? [];
+    prova('diretrizes de pessoal: só o item PPR muda, e a soma do impacto dos itens é o impacto na despesa com pessoal',
+        $mudaram === ['ppr'] && abs(($is['total'] - $ia['total']) - $imp('8.5')) < 1
+        && abs(array_sum(array_diff_key($ia, ['total' => 0])) - $ia['total']) < 0.01,
+        json_encode([$mudaram, round($is['total'] - $ia['total']), round($imp('8.5'))]));
+    prova('e o vigente item a item é o mesmo que o Corporativo mostra no cartão',
+        $corpIt && abs($corpIt['total'] - $ia['total']) < 1 && abs($corpIt['ppr'] - $ia['ppr']) < 1, json_encode([$corpIt['total'] ?? null, $ia['total'] ?? null]));
     $super = array_values(array_filter($u['negocios'], static fn ($n) => str_contains($n['rotulo'], 'SUPERMERCADOS')))[0] ?? null;
     if ($criouLancamento && $super) {
         $dSuper = $super['simulado']['8.5'] - $super['atual']['8.5'];

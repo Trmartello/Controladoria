@@ -4788,7 +4788,7 @@ body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
 .campo-simulador { width: 9.5rem; }
 .campo-simulador .form-control { background: #fffbe6; }
 .campo-simulador .form-control.simulador-mudou { border: 2px solid #d39e00; }
-.tabela-simulador th.sim-col, .tabela-simulador td.sim-col { background: #fff4d6; }
+.tabela-simulador th.sim-col, .tabela-simulador td.sim-col, .tabela-diretrizes th.sim-col, .tabela-diretrizes td.sim-col { background: #fff4d6; }
 .painel-simulador { border-left-color: #d39e00 !important; }
 .tabela-visao-ano th.visao-desafio,
 .tabela-visao-ano td.visao-desafio { background: #d6e6fa; }
@@ -4924,12 +4924,29 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
    cartão do negócio tem folga na largura e vai a 1,3rem; o do Corporativo (12 colunas de
    números) e o de tributos ficam no maior tamanho que ainda cabe em 1850 px sem rolar. */
 .tabela-desafio { font-size: 1.3rem; }
-.tabela-desafio-corp, .tabela-tributos { font-size: 1.12rem; }
+.tabela-desafio-corp, .tabela-tributos { font-size: 1.2rem; color: #1b1f24; }
+/* Cabeçalhos com fundo (cliente, 2026-11-27, "apenas para nível de estética"): a faixa dos
+   blocos (Desafio | Proposta | Diferença) num azul mais forte, os títulos das colunas num mais
+   claro; o cabeçalho dos tributos no claro; as linhas de total num cinza mais escuro. */
+.tabela-desafio-corp thead tr.cabeca-bloco th { background: #c9daf2; color: #16325c; font-size: 1.25rem; }
+.tabela-desafio-corp thead tr:not(.cabeca-bloco) th, .tabela-tributos thead th { background: #e9f1fb; color: #1f3f73; }
+.tabela-desafio-corp thead th .text-muted, .tabela-tributos thead th .text-muted { color: #4a5f80 !important; }
+.tabela-desafio-corp tbody tr.linha-total > td, .tabela-tributos tbody tr[data-negocio-tributo="total"] > td { background: #d9dde2 !important; }
+.tabela-desafio-corp tbody tr:not(.linha-total) > td, .tabela-tributos tbody tr:not([data-negocio-tributo="total"]) > td { font-weight: 500; }
+.tabela-desafio-corp tbody tr.linha-total > td, .tabela-tributos tbody tr[data-negocio-tributo="total"] > td { font-weight: 700; }
+.tabela-desafio-corp .margem-sub { font-size: .85rem; color: #495057; }
 .tabela-desafio > :not(caption) > * > *, .tabela-tributos > :not(caption) > * > * { padding-top: .2rem; padding-bottom: .2rem; }
 .tabela-desafio tbody tr:nth-child(even):not(.linha-total) > td,
 .tabela-tributos tbody tr:nth-child(even):not(.linha-total) > td { background-color: #eef4fc; }
 .tabela-desafio .bloco-ini { border-left: 3px solid #9fb3cf; }
 .tabela-desafio .cabeca-bloco th { border-bottom: 0; font-size: 1.1rem; }
+/* "Diretrizes de pessoal" (2026-11-27): fonte grande, zebra e a borda do hover, como os outros. */
+.tabela-diretrizes, .tabela-simulador { font-size: 1.12rem; }
+.tabela-diretrizes > :not(caption) > * > *, .tabela-simulador > :not(caption) > * > * { padding-top: .2rem; padding-bottom: .2rem; }
+.tabela-diretrizes tbody tr:nth-child(even):not(.linha-total) > td,
+.tabela-simulador tbody tr:nth-child(even):not(.linha-total-visao) > td { background-color: #eef4fc; }
+.tabela-diretrizes .campo-simulador { max-width: 11rem; }
+.tabela-diretrizes tbody tr:hover > td, .tabela-simulador tbody tr:hover > td { box-shadow: inset 0 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
 /* Borda azul na linha sob o mouse, exatamente como na DRE (cliente, 2026-11-27). */
 .tabela-desafio tbody tr:hover > td { box-shadow: inset 0 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
 .tabela-desafio tbody tr:hover > td:first-child { box-shadow: inset 2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }

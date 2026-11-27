@@ -58,10 +58,22 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 >   "Diferença" = proposta − ela e "Var. %" = diferença ÷ |comparada| (nas linhas de %, p.p.
 >   sem a variação). Os rateios abertos em itálico.
 > - Provas: `testes/reflexo_dre.php` (só lê, pela API) e `provasReflexoDre`.
-> **Proposta ainda sem resposta (2026-11-27):** unificar, para o ADMIN no Corporativo, o
-> "Simulador de diretrizes" e o "Pessoas e benefícios" num cartão "Diretrizes de pessoal"
-> (uma linha por diretriz com o campo de simular, custo no ano vigente × simulado e impacto;
-> embaixo a tabela por negócio). Exige o simulador devolver o custo por item. PR separado.
+> **"Diretrizes de pessoal" (2026-11-27, PR #168; cliente: "SIM" à unificação, "já pode
+> implementar e mesclar").** Para o ADMIN no Corporativo/agrupamento, o simulador e o "Pessoas e
+> benefícios" viraram um cartão só (`cartaoSimulador`, expansor `simulador`; `cartaoPessoas`
+> some quando `temSimulador`): em cima, uma linha por diretriz — folha (base sem PPR e
+> benefícios, no quadro planejado), reajuste, PPR, vale, abono assiduidade e abono resultado —
+> com o vigente, o campo de simular, a despesa no ano vigente × simulada e o impacto; a soma é
+> a 8.5 da DRE (`itensPessoal`, das peças de `pessoalDaDiretriz`; os benefícios na parte que vai
+> à DESPESA, `parte_despesa`). O servidor manda `pessoal_itens` no Corporativo e `itens`
+> {atual, simulado} na simulação. No meio, o quadro de colaboradores e benefícios
+> (`#pessoas-quadro`, despesa + custo); embaixo, o impacto por negócio com o "Analisar". Os
+> demais perfis seguem com o "Pessoas e benefícios" de antes. Provas em
+> `simulador_diretriz.php` (só o item PPR muda; impacto dos itens = o da 8.5) e no bloco do
+> simulador de `provasVisaoDoAno`.
+> **Estética do Corporativo (mesmo PR):** a faixa Desafio | Proposta | Diferença com fundo azul
+> mais forte, os títulos das colunas e o cabeçalho dos tributos com fundo claro, as linhas de
+> total em cinza mais escuro, fonte 1,2rem (ainda cabe em 1850 px sem rolar).
 
 Índice das decisões do cliente na aba **Projeção de Resultados**. O detalhe e o
 histórico de cada uma estão em "Regras de negócio importantes"; este bloco existe
