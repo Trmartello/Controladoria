@@ -12250,6 +12250,34 @@ async function provasReflexoDre(page) {
   await linha.hover();
   const borda = await linha.evaluate((c) => getComputedStyle(c).boxShadow);
   t(`${l} passar o mouse circula a linha com a borda azul, como na DRE`, /47, 111, 208/.test(borda), borda);
+  // "Comparar a proposta com" (cliente, 2026-11-27): desafio, real + realista ou real + plan.,
+  // com a diferença em R$ e a variação em %; os rateios abertos em itálico.
+  const italico = await page.evaluate(() => getComputedStyle(document.querySelector('.tabela-desafio tr[data-desafio="rateio_financeiro"] td')).fontStyle);
+  t(`${l} os rateios abertos ficam em itálico`, italico === 'italic', italico);
+  const comparar = async (modo) => {
+    await page.click(`[data-desafio-comparar="${modo}"]`);
+    await page.waitForTimeout(300);
+    return page.evaluate((m) => {
+      const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+      const tr = document.querySelector('.tabela-desafio tr[data-desafio="resultado"]');
+      const base = m === 'desafio' ? tr.querySelector('.coluna-desafio-cartao') : tr.querySelector(`[data-col-2026="${m}"]`);
+      const prop = num(tr.children[4].textContent);
+      return {
+        ativo: document.querySelector('[data-desafio-comparar][aria-pressed="true"]')?.dataset.desafioComparar,
+        th: document.querySelector('[data-desafio-dif-th]')?.textContent.replace(/\s+/g, ' ').trim(),
+        destacada: base.classList.contains('coluna-comparada'),
+        dif: num(tr.querySelector('[data-desafio-dif]').textContent), difCalc: prop - num(base.textContent),
+        var: tr.querySelector('[data-desafio-var]').textContent.trim(), base: num(base.textContent),
+      };
+    }, modo);
+  };
+  for (const [modo, nome] of [['realista', 'real \\+ realista 2026'], ['real_plan', 'real \\+ plan\\. 2026'], ['desafio', 'desafio 2027']]) {
+    const r = await comparar(modo);
+    const pctEsperado = (r.difCalc / Math.abs(r.base) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    t(`${l} comparar com ${modo}: o botão ativo, a coluna em destaque, a diferença = proposta − ela e a variação em %`,
+      r.ativo === modo && new RegExp(`proposta − ${nome}`).test(r.th || '') && r.destacada && Math.abs(r.dif - r.difCalc) <= 1
+        && r.var.replace(/^\+/, '') === `${pctEsperado}%`, JSON.stringify({ ...r, pctEsperado }));
+  }
 
   await escolher('corp');
   const c = await page.evaluate(() => {
