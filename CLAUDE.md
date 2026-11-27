@@ -52,6 +52,11 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 >   tabela de tributos) e as margens antes dos rateios e do negócio. `data-col` nomeado.
 > - Zebra, borda azul no hover (igual à DRE) e fonte 1,3rem no cartão do negócio; 1,12rem no
 >   Corporativo e nos tributos (o maior que cabe em 1850 px sem rolar).
+> - **"Comparar a proposta com"** no cartão do negócio (2026-11-27, PR #167, prévia aprovada:
+>   "perfeito"): botões Desafio | Real + realista 2026 | Real + Plan. 2026
+>   (`desafioComparar`, em memória); a coluna escolhida em destaque (`coluna-comparada`),
+>   "Diferença" = proposta − ela e "Var. %" = diferença ÷ |comparada| (nas linhas de %, p.p.
+>   sem a variação). Os rateios abertos em itálico.
 > - Provas: `testes/reflexo_dre.php` (só lê, pela API) e `provasReflexoDre`.
 > **Proposta ainda sem resposta (2026-11-27):** unificar, para o ADMIN no Corporativo, o
 > "Simulador de diretrizes" e o "Pessoas e benefícios" num cartão "Diretrizes de pessoal"

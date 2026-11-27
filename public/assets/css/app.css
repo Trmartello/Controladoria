@@ -4934,7 +4934,9 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-desafio tbody tr:hover > td { box-shadow: inset 0 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
 .tabela-desafio tbody tr:hover > td:first-child { box-shadow: inset 2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
 .tabela-desafio tbody tr:hover > td:last-child { box-shadow: inset -2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
-.tabela-desafio tr.linha-parte-rateio > td { color: #495057; }
+.tabela-desafio tr.linha-parte-rateio > td { color: #495057; font-style: italic; }
+/* A coluna com que a proposta se compara (o "Comparar a proposta com"): fundo e negrito. */
+.tabela-desafio .coluna-comparada { background-color: #fff3cd !important; font-weight: 700; color: #212529 !important; }
 @media print { .tabela-desafio tbody tr:hover > td { box-shadow: none !important; } }
 .tabela-desafio .margem-sub { font-size: .8rem; font-weight: 400; color: #6c757d; line-height: 1; }
 .tabela-desafio-corp td { white-space: nowrap; }
