@@ -3521,6 +3521,14 @@ que chega quando os negócios marcados relançarem. Em "Despesas operacionais" a
   2026-11-25: "sim, pode manter assim"): receita líquida pela aderência, como a bruta; lucro
   bruto, despesas e antes dos rateios pelo desvio médio, como o líquido — cada
   linha calculada sozinha. Prova: `visao_realista.php` e `provasVisaoDoAno`.
+  **Desde 2026-11-27 a quinta linha é "Resultado do negócio (14)"** (cliente:
+  "altere a linha resultado antes dos rateios 11 após os impostos pela linha da
+  DRE 14, resultado do negócio; essa é a única mudança nessa tabela"): conta
+  interna **`15`** (a `14` é "12 - Rateios do negócio"), em `LINHAS_VISAO_ANO`,
+  na consulta de `brutosDoAno` e em `LINHAS_VISAO` da tela. Mesma regra do
+  realista (desvio médio). Conferido na base: conta 15 = 13 + 14 em todos os
+  negócios e meses de 2026. A escada do cartão Desafio (antes dos rateios,
+  rateios do negócio, resultado do negócio) não mudou.
   **Desafio extra destacado**: as células editáveis do administrador têm o
   amarelo-claro de "onde se lança" (`#fff6d6`), e o ajustado, o amarelo forte.
   **Detalhe da DRE em três níveis** (pedido do cliente, 2026-11-25, no lugar dos
