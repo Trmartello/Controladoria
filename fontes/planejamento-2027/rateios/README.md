@@ -40,6 +40,11 @@ mesmos 26 centros e as mesmas regras; mudaram seis: 5151 (−1.897.205,21 → �
 5152 (−9.097.257,26 → −9.027.257,26), 5192 (−11.631.238,71 → −11.431.135,71), 5196
 (−1.448.522,82 → −1.443.118,82), 5224 Tecnoeste (−730.675,46 → −470.001,46) e 5232
 Tecnorte (−206.255,00 → −853.255,00). Também substituiu a guardada, no mesmo nome.
+No mesmo dia (27/11) veio o `Rateio Corporativo ADM 2027.xlsm` novo, guardado como
+`Rateio Corporativo 2027.xlsm`: −R$ 36.619.882,83 (R$ 394.154,50 a menos), mesmos 43 centros e
+mesma regra; mudaram 14, os maiores 5237 Infraestrutura e Expansão (−2.399.143,00 →
+−2.117.143,00), 5160 Logística e Transporte (−1.380.405,38 → −1.491.401,74), 5209 Secretaria
+(−722.115,96 → −648.765,96) e 5207 Recursos Humanos (−1.664.024,53 → −1.615.254,53).
 
 A linha 14.1 (Rateio Matriz/Central) não tem planilha: vale zero no planejado
 (ver o CLAUDE.md).

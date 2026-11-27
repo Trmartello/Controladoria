@@ -142,8 +142,9 @@ também o quanto a proposta segura as despesas abaixo da receita.
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, +R$ 1,04 mi de resultado, margem +0,03% (a meta de 2% pediria R$ 70,97
-mi), desde a planilha de 27/11 do rateio corporativo negócio (14.3 de R$ 37,68 para R$ 36,94
+faturamento, +R$ 1,43 mi de resultado, margem +0,04% (a meta de 2% pediria R$ 70,97
+mi), desde a planilha de 27/11 do rateio administrativo (16.1 de R$ 37,01 para R$ 36,62 mi;
++R$ 1,04 mi e +0,03% desde a de 27/11 do rateio corporativo negócio, 14.3 de R$ 37,68 para R$ 36,94
 mi; +R$ 0,30 mi e +0,01% desde a de 25/11, 14.3 de R$ 38,35 para R$ 37,68
 mi; −R$ 0,37 mi e −0,01% desde a 2ª planilha do rateio administrativo (25/11: 16.1 de R$ 37,7 para R$ 37,0 mi;
 −R$ 1,1 mi e −0,03% desde a base do pessoal sem a 3419, a 3398 e a 3339 (25/11; −R$ 1,5 mi e −0,04%
@@ -385,7 +386,10 @@ da DRE desde o fim do mesmo dia; o cartão só resume.)
 por período / mês […] numa proporção de valor orçado. Bloqueia o campo"). O total a
 ratear é o saldo planejado dos 43 centros de custo corporativos da Matriz, mês a mês
 (`database/rateio_adm_2027.php`, gerado da `Rateio Corporativo 2027.xlsm`, coluna Saldo:
-**−R$ 37.014.037,33** desde a 2ª planilha de 25/11 (sem as colunas de débito e crédito; o
+**−R$ 36.619.882,83** desde a planilha de 27/11 ("Rateio Corporativo ADM 2027.xlsm",
+mesmos 43 centros e mesma regra; 14 mudaram, 5237 Infraestrutura −R$ 282 mil e 5160 Logística
++R$ 111 mil os maiores; +R$ 394.154,50 de resultado, R$ 161 mil na Agropecuária);
+antes, −R$ 37.014.037,33 desde a 2ª planilha de 25/11 (sem as colunas de débito e crédito; o
 gerador lê as colunas pelo nome do cabeçalho; 22 centros mudaram, Direção Geral −R$ 386 mil
 e Marketing −R$ 250 mil os maiores); antes, −R$ 37.735.231,41 desde a planilha nova de 25/11 — o cliente mandou "Rateio Corporativo
 ADM 2027.xlsm", guardada com o nome antigo; nela a 5205 CONTABILIDADE ganhou R$ 21,48 mi de

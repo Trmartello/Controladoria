@@ -8,8 +8,8 @@
  * no mesmo dia: o total vai INTEIRO para a 16.1 (a 14.3 continua como está) e o
  * critério se recalcula ao vivo.
  *
- * Os números de mão vêm da planilha `Rateio Corporativo 2027.xlsm` (coluna K
- * "Saldo"): total −R$ 37.014.037,33 (a linha "Total" dela) e janeiro −R$ 1.455.120,865.
+ * Os números de mão vêm da planilha `Rateio Corporativo 2027.xlsm` de 27/11 (coluna
+ * "Saldo"): total −R$ 36.619.882,83 (a linha "Total" dela) e janeiro −R$ 1.400.244,955.
  *
  *   DB_HOST=127.0.0.1 DB_PORT=33061 DB_NAME=planejamento DB_USER=app DB_PASS=app \
  *     php testes/rateio_adm.php
@@ -70,8 +70,8 @@ $linha = static fn (array $tela, string $c) => array_column($tela['linhas'], nul
 
 // ── 1. A carga: o saldo da planilha, mês a mês ──────────────────────────────
 $carga = Projecao::cargaRateioAdm($anoPlan);
-prova('a carga de 2027 é o saldo da planilha: −R$ 37.014.037,33 no ano, −R$ 1.455.120,865 em janeiro',
-    $carga && perto((float)$carga['total'], -37014037.33) && perto((float)$carga['meses'][1], -1455120.865, 0.0001),
+prova('a carga de 2027 é o saldo da planilha: −R$ 36.619.882,83 no ano, −R$ 1.400.244,955 em janeiro',
+    $carga && perto((float)$carga['total'], -36619882.83) && perto((float)$carga['meses'][1], -1400244.955, 0.0001),
     json_encode([$carga['total'] ?? null, $carga['meses'][1] ?? null]));
 prova('sem carga para o ano, não há rateio (a 16.1 volta a ser lançável)', Projecao::cargaRateioAdm(2099) === null);
 
@@ -84,12 +84,12 @@ prova('o critério soma só vendas, promoções, pessoal, serv. profissionais, s
 $r = Projecao::rateioAdm($ano, $corte, $anoPlan);
 $soma = array_sum(array_column($r['negocios'], 'valor'));
 $somaJan = array_sum(array_map(static fn ($x) => $x['meses'][1], $r['negocios']));
-prova('os negócios somam o total da planilha (−37.014.037,33) e, em janeiro, o janeiro dela (−1.455.120,865)',
-    perto($soma, -37014037.33) && perto($somaJan, -1455120.865), round($soma, 2) . ' / ' . round($somaJan, 3));
+prova('os negócios somam o total da planilha (−36.619.882,83) e, em janeiro, o janeiro dela (−1.400.244,955)',
+    perto($soma, -36619882.83) && perto($somaJan, -1400244.955), round($soma, 2) . ' / ' . round($somaJan, 3));
 $prop = true;
 foreach ($r['negocios'] as $x) {
     $prop = $prop && perto($x['parte'], $r['criterio_total'] > 0 ? $x['criterio'] / $r['criterio_total'] : 0.0, 1e-12)
-        && perto($x['valor'], $x['parte'] * -37014037.33, 0.01);
+        && perto($x['valor'], $x['parte'] * -36619882.83, 0.01);
 }
 prova('a parte de cada negócio é o critério dele sobre o de todos, e o valor é a parte × o total', $prop);
 prova('a Usina, sem despesa no critério, não recebe rateio', perto($r['negocios'][$ids['17']]['valor'] ?? -1, 0.0));
@@ -111,7 +111,7 @@ prova('as filiais das Agropecuárias somam o rateio do negócio (dividido pelo c
 $painel = Projecao::resumoDosNegocios(array_keys($r['negocios']), $ano, $corte, $anoPlan, ['16.1', '18']);
 prova('o Painel faz a mesma conta (16.1 de cada negócio = a da tela; soma = o total)',
     perto((float)$painel[$ids['8']]['proposta']['16.1'], $l161['proposta'])
-    && perto(array_sum(array_map(static fn ($x) => (float)$x['proposta']['16.1'], $painel)), -37014037.33));
+    && perto(array_sum(array_map(static fn ($x) => (float)$x['proposta']['16.1'], $painel)), -36619882.83));
 prova('o rateio entra no resultado: resultado líquido = resultado do negócio + rateios administrativos (16.1)',
     perto((float)$linha($agro, '18')['proposta'], (float)$linha($agro, '15')['proposta'] + (float)$linha($agro, '16')['proposta'], 1)
     && perto((float)$linha($agro, '16')['proposta'], $l161['proposta'], 1));
@@ -143,7 +143,7 @@ try {
     $l1 = $r['negocios'][$leite];
     prova('ao vivo: o Leite lança o dobro do pessoal, o critério dele sobe exatamente isso, a parte sobe e o total não muda',
         perto($l2['criterio'] - $l1['criterio'], -$p85, 1) && $l2['parte'] > $l1['parte']
-        && perto(array_sum(array_column($r2['negocios'], 'valor')), -37014037.33)
+        && perto(array_sum(array_column($r2['negocios'], 'valor')), -36619882.83)
         && $r2['negocios'][$ids['8']]['parte'] < $r['negocios'][$ids['8']]['parte'],
         round($l1['parte'] * 100, 3) . '% → ' . round($l2['parte'] * 100, 3) . '%');
 } finally {
