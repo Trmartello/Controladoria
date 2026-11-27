@@ -6357,7 +6357,9 @@ async function provasPessoasEBeneficios(page, largura) {
       negocios: c.pessoas.por_ano[c.ano_planejamento].negocios,
       soma,
       campos: document.querySelectorAll('.painel-pessoas .celula-beneficio').length,
-      card: !!document.querySelector('.painel-pessoas'),
+      // Para o ADMIN (a bateria) o "Pessoas e benefícios" mora no cartão "Diretrizes de pessoal"
+      // desde 2026-11-27 (o quadro `#pessoas-quadro`); para os demais, no cartão de sempre.
+      card: !!document.querySelector('.painel-pessoas, .painel-simulador #pessoas-quadro'),
       texto: document.querySelector('#pessoas-quadro')?.textContent.replace(/\s+/g, ' ').trim(),
     };
   });
@@ -8160,9 +8162,10 @@ async function provasDesafioEExpansores(page, largura) {
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
   // Desde 2026-11-25 os tributos (como é × como fica) não são expansor: abrem
   // pelo botão "Reforma tributária: antes × depois", junto dos botões da DRE.
-  // Desde 2026-11-26 o ADMIN (a bateria) tem também o simulador de diretrizes, logo depois da visão.
-  t(`${l} Corporativo: visão, simulador (ADMIN), desafio, oportunidades e pessoas como expansores (sem premissas: nada se lança ali)`,
-    corp.expansores === 'visao,simulador,desafio,oportunidades,pessoas', corp.expansores);
+  // Desde 2026-11-26 o ADMIN (a bateria) tem também o simulador de diretrizes, logo depois da visão;
+  // desde 2026-11-27 ele é o cartão "Diretrizes de pessoal", com o "Pessoas e benefícios" dentro.
+  t(`${l} Corporativo: visão, diretrizes de pessoal (ADMIN, com pessoas dentro), desafio e oportunidades como expansores (sem premissas: nada se lança ali)`,
+    corp.expansores === 'visao,simulador,desafio,oportunidades', corp.expansores);
 
   // Devolve o estado das outras provas: tudo aberto.
   await page.evaluate(() => {
@@ -8451,6 +8454,28 @@ async function provasVisaoDoAno(page, largura) {
         JSON.stringify(sim));
       t(`${l} e simular não grava a diretriz ("Aplicar" fica disponível para o administrador decidir)`,
         sim.aplicar && !sim.gravadas, JSON.stringify(sim));
+      // "Diretrizes de pessoal" (cliente, 2026-11-27): uma linha por diretriz; a soma vigente é a
+      // 8.5 da DRE do Corporativo, e o impacto do PPR na tabela de cima é o da tabela por negócio.
+      const dir = await page.evaluate(async () => {
+        const n = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+        const td = (k, i) => document.querySelector(`.tabela-diretrizes tr[data-diretriz-item="${k}"]`)?.children[i]?.textContent;
+        const c = await App.api('/api/projecao?corporativo=1');
+        const l85 = c.linhas.find((x) => x.codigo === '8.5').proposta;
+        return {
+          titulo: document.querySelector('.painel-simulador summary')?.textContent.replace(/\s+/g, ' ').trim(),
+          itens: [...document.querySelectorAll('.tabela-diretrizes tr[data-diretriz-item]')].map((r) => r.dataset.diretrizItem),
+          totVig: n(td('total', 3)), l85: Math.round(l85),
+          pprImpacto: n(td('ppr', 5)), totImpacto: n(td('total', 5)),
+          impacto85: n(document.querySelector('.tabela-simulador tr.linha-total-visao [data-sim-impacto]').textContent),
+          pessoasDentro: !!document.querySelector('.painel-simulador #pessoas-quadro') && !document.querySelector('.painel-pessoas'),
+        };
+      });
+      t(`${l} "Diretrizes de pessoal": folha, reajuste, PPR, vale e os dois abonos, somando a despesa com pessoal da DRE`,
+        /^▸?▾?\s*Diretrizes de pessoal/.test(dir.titulo || '') && dir.itens.join(',') === 'folha,reajuste,ppr,alimentacao,assiduidade,resultado,total'
+          && Math.abs(dir.totVig - dir.l85) <= 1, JSON.stringify(dir));
+      t(`${l} o impacto do PPR na tabela de cima é o da despesa com pessoal na tabela por negócio, e o pessoas mora dentro`,
+        dir.pprImpacto > 0 && Math.abs(dir.pprImpacto - dir.impacto85) <= 1 && Math.abs(dir.totImpacto - dir.impacto85) <= 1 && dir.pessoasDentro,
+        JSON.stringify(dir));
       await page.click('[data-sim-linha="7"]');
       const pes = await page.evaluate(() => ({ th: [...document.querySelectorAll('.tabela-simulador thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
         cel: document.querySelectorAll('.tabela-simulador [data-sim-pessoal]').length }));

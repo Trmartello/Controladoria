@@ -755,6 +755,9 @@ const SecaoProjecao = {
    */
   cartaoPessoas(d) {
     if (!d.pessoas) return '';
+    // Para o ADMIN com o simulador, o "Pessoas e benefícios" mora DENTRO do cartão
+    // "Diretrizes de pessoal" (cliente, 2026-11-27: unificar as duas tabelas).
+    if (d.corporativo && this.temSimulador(d)) return '';
     return d.corporativo ? this.cartaoPessoasCorporativo(d) : '';
   },
 
@@ -1361,39 +1364,103 @@ const SecaoProjecao = {
       + ` · assiduidade R$ ${n(v.assiduidade)} · resultado R$ ${n(v.resultado)}`;
   },
 
+  /** O simulador (e o cartão "Diretrizes de pessoal") aparece: Corporativo, ADMIN, análises liberadas. */
+  temSimulador(d) {
+    return !!(d && d.corporativo && d.pode_comparar_proposta && d.diretriz_simulavel && !App.modoDossie);
+  },
+
+  /**
+   * "Diretrizes de pessoal" (cliente, 2026-11-27: "quem sabe unificar as duas" — o
+   * simulador de diretrizes e o "Pessoas e benefícios"; "SIM" para a sugestão): em cima,
+   * uma linha por diretriz com o vigente, o campo de simular e quanto ela custa na despesa
+   * com pessoal no ano, vigente × simulada, e o impacto — a soma é a 8.5 da DRE; no meio,
+   * o quadro de colaboradores e benefícios; embaixo, o impacto negócio a negócio.
+   */
   cartaoSimulador(d) {
-    if (!d.corporativo || !d.pode_comparar_proposta || !d.diretriz_simulavel || App.modoDossie) return '';
+    if (!this.temSimulador(d)) return '';
     const vig = d.diretriz_simulavel;
     const val = this.simValores || { ...vig };
     const num = (v) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 4, useGrouping: false });
-    const campo = ([k, rot, un]) => `<div>
-        <label class="form-label small mb-0" for="sim-${k}">${rot}</label>
-        <div class="input-group input-group-sm campo-simulador">
-          <input type="text" inputmode="decimal" autocomplete="off" class="form-control text-end${Number(val[k]) !== Number(vig[k]) ? ' simulador-mudou' : ''}"
-            id="sim-${k}" data-sim="${k}" value="${num(val[k])}">
-          <span class="input-group-text">${un}</span>
-        </div></div>`;
+    const n2 = (v) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    const r = this.simResultado;
+    const itVig = (r && r.itens && r.itens.atual) || d.pessoal_itens || {};
+    const itSim = r && r.itens && r.itens.simulado;
+    const m = (x) => (x === null || x === undefined ? '—' : this.moeda(x));
+    const cor = (x) => (Math.abs(x) < 1 ? '' : (x > 0 ? 'text-success' : 'text-danger'));
+    const ITENS = [
+      ['folha', 'Folha de pessoal', 'base de ' + d.ano + ', sem PPR e benefícios, no quadro planejado', null, null],
+      ['reajuste', 'Reajuste de pessoal', 'sobre a folha', 'pessoas', (v) => `${n2(v)}%`],
+      ['ppr', 'PPR', 'participação nos resultados', 'ppr', (v) => `${n2(v)} salário${Number(v) === 1 ? '' : 's'}`],
+      ['alimentacao', 'Vale alimentação', 'por colaborador', 'alimentacao', (v) => `R$ ${n2(v)}/mês`],
+      ['assiduidade', 'Abono assiduidade', '× o % de atingimento previsto', 'assiduidade', (v) => `R$ ${n2(v)}/mês`],
+      ['resultado', 'Abono resultado', '× os meses com resultado previstos', 'resultado', (v) => `R$ ${n2(v)}/mês`],
+    ];
+    const UN = { pessoas: '%', ppr: 'salários', alimentacao: 'R$', assiduidade: 'R$', resultado: 'R$' };
+    const campo = (k) => `<div class="input-group input-group-sm campo-simulador ms-auto">
+        <input type="text" inputmode="decimal" autocomplete="off" class="form-control text-end${Number(val[k]) !== Number(vig[k]) ? ' simulador-mudou' : ''}"
+          id="sim-${k}" data-sim="${k}" value="${num(val[k])}" aria-label="Simular ${k}">
+        <span class="input-group-text">${UN[k]}</span></div>`;
+    const linhaItem = ([k, rot, dica, chave, fmt]) => {
+      const a = itVig[k];
+      const s = itSim ? itSim[k] : null;
+      const dif = s === null || s === undefined || a === undefined ? null : s - a;
+      return `<tr data-diretriz-item="${k}">
+          <td>${rot} <span class="text-muted small">(${dica})</span></td>
+          <td class="text-end">${chave ? fmt(vig[chave]) : ''}</td>
+          <td class="text-end">${chave ? campo(chave) : ''}</td>
+          <td class="text-end">${m(a)}</td>
+          <td class="text-end sim-col fw-bold">${itSim ? m(s) : '—'}</td>
+          <td class="text-end sim-col ${dif === null ? '' : cor(dif)}" data-item-impacto>${dif === null ? '—' : `${Math.round(dif) > 0 ? '+' : ''}${this.moeda(dif)}`}</td>
+        </tr>`;
+    };
+    const tot = itVig.total;
+    const totSim = itSim ? itSim.total : null;
+    const difTot = totSim === null || tot === undefined ? null : totSim - tot;
+    const c = (d.pessoas && d.pessoas.por_ano || {})[d.ano_planejamento];
+    const dinheiro = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+    const base = d.pessoas && d.pessoas.base;
+    const quadro = c ? `<div class="small mt-2 mb-2" id="pessoas-quadro"><strong>Pessoas:</strong>
+        <strong>${Number(c.colaboradores).toLocaleString('pt-BR')}</strong> colaboradores equivalentes em ${c.negocios} negócios
+        ${base ? `(DRE, ${this.nomeMes(base.mes)}/${base.ano})` : ''}, sem as áreas de apoio. Benefícios no ano, despesa e custo:
+        <strong data-pessoas="total">${dinheiro(c.anual.total)}</strong> (vale <span data-pessoas="alimentacao">${dinheiro(c.anual.alimentacao)}</span>,
+        assiduidade <span data-pessoas="assiduidade">${dinheiro(c.anual.assiduidade)}</span>, resultado <span data-pessoas="resultado">${dinheiro(c.anual.resultado)}</span>);
+        sem nenhum abono de resultado, <span data-pessoas="sem_resultado">${dinheiro(c.sem_resultado_anual)}</span>; teto,
+        <span data-pessoas="maximo">${dinheiro(c.maximo_anual)}</span>.</div>` : '';
     const linha = this.LINHAS_SIMULADOR.find((x) => x.conta === this.simLinha) || this.LINHAS_SIMULADOR[3];
     const botaoLinha = (x) => `<button type="button" class="btn ${x.conta === linha.conta ? 'btn-verde' : 'btn-outline-secondary'}"
         data-sim-linha="${x.conta}" aria-pressed="${x.conta === linha.conta}"${x.dica ? ` title="${Modal.esc(x.dica)}"` : ''}>${x.curto}</button>`;
-    const r = this.simResultado;
     const mudou = r && Object.keys(vig).some((k) => Math.abs(Number(r.simulada[k]) - Number(vig[k])) > 1e-9);
     const alt = d.diretriz_alterada;
     const quando = alt ? new Date(alt.em.replace(' ', 'T')).toLocaleDateString('pt-BR') : '';
     const corpo = `
-      <div class="d-flex flex-wrap align-items-end gap-3 mb-2 mt-1">
-        ${this.CAMPOS_SIMULADOR.map(campo).join('')}
-        <button type="button" class="btn btn-sm btn-verde" data-sim-acao="simular">Simular</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-sim-acao="voltar">Voltar à diretriz vigente</button>
-      </div>
-      <div class="d-flex flex-wrap align-items-center gap-2 mb-1 seletor-simulador">
-        <span class="small text-muted">Analisar:</span>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-diretrizes">
+        <thead><tr><th>Diretriz de ${d.ano_planejamento}</th>
+          <th class="text-end">Vigente</th>
+          <th class="text-end">Simular</th>
+          <th class="text-end">Despesa no ano<br><span class="fw-normal text-muted small">diretriz vigente</span></th>
+          <th class="text-end sim-col">Despesa no ano<br><span class="fw-normal small">simulada</span></th>
+          <th class="text-end sim-col">Impacto<br><span class="fw-normal small">R$</span></th></tr></thead>
+        <tbody>${ITENS.map(linhaItem).join('')}
+          <tr class="fw-bold table-light linha-total" data-diretriz-item="total"><td>Despesas com pessoal <span class="fw-normal text-muted small">(8.5 da DRE, soma dos negócios)</span></td>
+            <td></td>
+            <td class="text-end"><div class="d-flex justify-content-end gap-1">
+              <button type="button" class="btn btn-sm btn-verde" data-sim-acao="simular">Simular</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-sim-acao="voltar" title="Voltar à diretriz vigente">Voltar</button></div></td>
+            <td class="text-end">${m(tot)}</td>
+            <td class="text-end sim-col">${itSim ? m(totSim) : '—'}</td>
+            <td class="text-end sim-col ${difTot === null ? '' : cor(difTot)}" data-item-impacto>${difTot === null ? '—' : `${Math.round(difTot) > 0 ? '+' : ''}${this.moeda(difTot)}`}</td></tr>
+        </tbody></table></div>
+      <div class="small text-muted">Despesa = a parte que vai à despesa com pessoal; nos negócios com pessoal também no custo, o resto
+        está no custo dos produtos. Troque um ou mais valores e clique em <strong>Simular</strong>: nada se grava.</div>
+      ${quadro}
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-1 mt-3 seletor-simulador">
+        <strong>Impacto por negócio</strong><span class="small text-muted ms-2">Analisar:</span>
         <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Linha da DRE">${this.LINHAS_SIMULADOR.map(botaoLinha).join('')}</div>
       </div>
       <div class="resultado-simulador">${this.tabelaSimulador(linha)}</div>
       <div class="small text-muted mt-1">Mesma conta da DRE de cada negócio, só trocando a diretriz de ${d.ano_planejamento}. A receita
-        líquida não muda (PPR, vale e abonos são despesa de pessoal). Os abonos seguem o % de atingimento que cada negócio previu
-        (assiduidade e meses com resultado). O rateio administrativo se redistribui pelas despesas. % = sobre a receita líquida.</div>
+        líquida não muda. Os abonos seguem o % de atingimento que cada negócio previu. O rateio administrativo se redistribui pelas
+        despesas. % = sobre a receita líquida.</div>
       <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
         <button type="button" class="btn btn-sm btn-outline-danger" data-sim-acao="aplicar" ${mudou ? '' : 'disabled'}
           title="${mudou ? 'Grava a diretriz simulada para todos os negócios' : 'Simule uma diretriz diferente da vigente para poder aplicar'}">
@@ -1403,8 +1470,9 @@ const SecaoProjecao = {
         ${alt ? `<button type="button" class="btn btn-sm btn-link p-0" data-sim-acao="restaurar">voltar à do documento
           (${this.diretrizPorExtenso(d.diretriz_documento)})</button>` : ''}
       </div>`;
-    return this.expansor('simulador', 'painel-simulador', `Simulador de diretrizes — ${d.ano_planejamento}`,
-      'só administrador · e se a diretriz mudar? · simular não grava nada', corpo);
+    const resumo = `pessoal ${this.mi(-(tot || 0))} no ano${c ? ` · ${Number(c.colaboradores).toLocaleString('pt-BR')} colaboradores` : ''}`
+      + `${difTot !== null && Math.abs(difTot) >= 1 ? ` · simulado: ${difTot > 0 ? '+' : '−'}${this.mi(Math.abs(difTot))}` : ''}`;
+    return this.expansor('simulador', 'painel-simulador', `Diretrizes de pessoal — ${d.ano_planejamento}`, resumo, corpo);
   },
 
   tabelaSimulador(linha) {
