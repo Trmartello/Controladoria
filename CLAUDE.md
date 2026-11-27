@@ -92,9 +92,13 @@ lá Leite, Postos e Rações caem em projeção × premissas com a nota "sem a m
 
 **Diretriz 2027** (`Projecao::DIRETRIZES`):
 - IPCA 4,5% e PIB 1,5%: sugeridos, editáveis por negócio; a filial herda.
-- Pessoal 5,5%, vale R$ 500, assiduidade R$ 200 e abono de resultado R$ 500: fixos.
-- PPR: até 1,5 salário. É um TETO (`maximos`): vem preenchido, o negócio pode
-  baixar, acima é recusado.
+- Pessoal 5,5%, vale R$ 500, assiduidade R$ 200, abono de resultado R$ 500 e **PPR de
+  1,5 salário**: FIXOS, iguais para todos os negócios. O PPR foi teto (o negócio baixava)
+  de 2026-11-23 a 2026-11-26; o cliente fixou: "nenhum negócio poderia alterar o número
+  de salários de PPR; é uma decisão corporativa e impacta todos os negócios".
+- **O administrador troca a diretriz** (simulador no Corporativo → "Aplicar"): o que
+  difere do documento vai para `diretriz_valor`, e `Projecao::diretriz()` junta o código
+  com o gravado. Ver "Simulador de diretrizes".
 
 **Lançamento.** Na mesma linha valem valor (Proposta) e % (Reajuste); o último
 gravado sobrescreve o outro. A célula espelhada fica em cinza itálico e é
@@ -381,6 +385,29 @@ Provas: `testes/agrupamento_escopo.php` (gestor sem, ADMIN com, ADMIN com a flag
 receita bruta com a CBS) e Proposta × desafio (R$; p.p. no modo %). Três colunas, como os outros
 blocos, para caber em 1366 px. Mesma trava: só ADMIN, flag desligada (`propostaNoQuadro` tira
 `desafio` junto com `proposta`).
+
+**Simulador de diretrizes e diretriz editável** (cliente, 2026-11-26: "se eu, como diretor,
+quiser visualizar o impacto no resultado de todos os negócios apenas reduzindo o PPR de 1,5 para
+1, ou aumentando para 2 […]"; prévia aprovada, com "analisar em diferentes cenários: despesas
+operacionais, despesa com pessoal, resultado do negócio após rateios corporativos e financeiro, e
+resultado líquido"; e "faça as diretrizes editáveis pelo administrador, com o botão Aplicar").
+Cartão no Corporativo (e no agrupamento), só ADMIN e com o modo apresentação desligado — a mesma
+regra do "Comparar com". Campos: PPR (salários), reajuste de pessoal, vale, abono assiduidade,
+abono resultado. **Simular** (`GET /api/projecao/simulacao`) refaz a conta de cada negócio pelo
+MESMO motor com `Projecao::$diretrizSimulada` (vale só naquela requisição; nada se grava) — o
+rateio administrativo inclusive, que se distribui pelas despesas propostas — e devolve as linhas
+3, 7, 8.5, 15 e 18 com a diretriz vigente e com a simulada; a tela mostra a linha escolhida, o %
+da receita líquida e o impacto. A diretriz vigente dá impacto zero (prova). PPR 1,5 → 1 na base
+local: +R$ 2.338.000 no resultado líquido consolidado (a receita líquida não muda). **Aplicar**
+(`POST /api/projecao/diretriz`, com `confirm()` que mostra o impacto) grava em `diretriz_valor`
+só o que difere do documento (`Projecao::DIRETRIZES`, que continua no código); `{restaurar:true}`
+apaga tudo e volta ao documento. A partir daí `Projecao::diretriz()` devolve o documento com o
+gravado por cima (lido uma vez por requisição; `esquecerDiretrizesGravadas` depois de gravar) e a
+fonte diz "alterada pelo administrador em …". Muda a proposta das linhas de pessoal que o negócio
+NÃO digitou; lançamento não é tocado (`lancamentos_intocados.php`). Provas:
+`testes/simulador_diretriz.php` (zero impacto na vigente, PPR 1, só ADMIN, flag, aplicar = o
+simulado, nenhum lançamento muda, restaurar) e o bloco do simulador em `provasVisaoDoAno`. Na
+limpeza do banco depois da bateria: `diretriz_valor` = 0.
 
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica
@@ -3707,7 +3734,8 @@ blocos, para caber em 1366 px. Mesma trava: só ADMIN, flag desligada (`proposta
     de hoje (o negócio 1 mudou de estrutura): `CargaNivel3` as ignora com
     `filiais_sem_cadastro = 'ignorar'` (só no ano histórico) e elas ficam no total
     do negócio; `corrigir_rateio = false` porque 2025 não tem DRE de filial.
-  - **O número de salários do PPR é um CAMPO com TETO** (`PPR_SALARIOS` em
+  - **[HISTÓRICO — desde 2026-11-26 o PPR é diretriz FIXA, ver "Diretriz 2027"]**
+    **O número de salários do PPR é um CAMPO com TETO** (`PPR_SALARIOS` em
     `Projecao::BENEFICIOS`; pedidos do cliente de 2026-11-23: "deve ser um campo,
     assim como são os campos de diretrizes" e, em seguida, "precisa ser editável,
     caso o negócio resolva pagar menos PPR; a mais não deve permitir… já deve vir

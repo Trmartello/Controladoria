@@ -6291,11 +6291,10 @@ async function provasPessoasEBeneficios(page, largura) {
   t(`${l} vale alimentação e abono ficam no painel das premissas, fixos pela diretriz em ${ano}`,
     e.noPainel.length === 0 && e.fixosNoPainel.join() === 'ALIMENTACAO,ASSIDUIDADE,RESULTADO',
     `${e.noPainel.join()} | ${e.fixosNoPainel.join()}`);
-  // Os editáveis: os três do bloco de pessoas e o PPR (campo com teto da diretriz,
-  // no painel das premissas desde 2026-11-23).
-  t(`${l} o cartão tem colaboradores e as duas previsões, e os campos (mais o PPR) estão habilitados`,
+  // Os editáveis: os três do bloco de pessoas (o PPR é diretriz fixa desde 2026-11-26).
+  t(`${l} o cartão tem colaboradores e as duas previsões, e os campos estão habilitados`,
     e.noCartao.join() === 'COLABORADORES,PCT_ASSIDUIDADE,PCT_RESULTADO'
-      && e.campos.slice().sort().join() === 'COLABORADORES,PCT_ASSIDUIDADE,PCT_RESULTADO,PPR_SALARIOS' && e.travados === 0,
+      && e.campos.slice().sort().join() === 'COLABORADORES,PCT_ASSIDUIDADE,PCT_RESULTADO' && e.travados === 0,
     e.campos.join());
   t(`${l} o abono de 2027 é R$ 700 (R$ 200 de assiduidade + R$ 500 de resultado) e o vale R$ 500`,
     /R\$ 700/.test(e.abonoTotal) && /R\$ 200 de assiduidade/.test(e.abonoTotal) && /R\$ 500 se o negócio/.test(e.abonoTotal)
@@ -6660,8 +6659,7 @@ async function provasDiretriz2027(page, largura) {
         && /diretriz/i.test(tx('.faixa-diretriz .faixa-titulo')),
       vale: tx('[data-diretriz="ALIMENTACAO"]'), assid: tx('[data-diretriz="ASSIDUIDADE"]'), result: tx('[data-diretriz="RESULTADO"]'),
       pprInput: document.querySelector('#beneficio-PPR_SALARIOS')?.value ?? null,
-      pprMax: document.querySelector('#beneficio-PPR_SALARIOS')?.dataset.maximo ?? null,
-      pprRotulo: tx('label[for="beneficio-PPR_SALARIOS"]'),
+      pprFixo: tx('.faixa-diretriz [data-diretriz="PPR_SALARIOS"]'),
       campoIpca: !!document.querySelector('#premissa-IPCA'), campoDesejado: !!document.querySelector('#premissa-CRESCIMENTO'),
       campoVale: !!document.querySelector('#beneficio-ALIMENTACAO'), campoColab: !!document.querySelector('#beneficio-COLABORADORES'),
       ppr: n(tx('[data-pessoal="ppr"]')), total: n(tx('[data-pessoal="total"]')),
@@ -6678,10 +6676,9 @@ async function provasDiretriz2027(page, largura) {
     /R\$ 500/.test(tela.vale) && /R\$ 200/.test(tela.assid) && /R\$ 500/.test(tela.result) && !tela.campoVale,
     `${tela.vale} | ${tela.assid} | ${tela.result}`);
   t(`${l} o crescimento desejado e o quadro de colaboradores continuam do negócio`, tela.campoDesejado && tela.campoColab);
-  // O número de salários do PPR é um campo como os da diretriz (pedido do cliente, 2026-11-23).
-  t(`${l} o PPR é campo editável, já preenchido com a diretriz (1,5) e com o teto no selo`,
-    tela.pprInput === '1,5' && tela.pprMax === '1.5' && /diretriz: até 1,5/.test(tela.pprRotulo),
-    JSON.stringify([tela.pprInput, tela.pprMax, tela.pprRotulo]));
+  // O PPR é DIRETRIZ FIXA (cliente, 2026-11-26: "decisão corporativa, impacta todos os negócios").
+  t(`${l} o PPR (1,5 salário) está na faixa da diretriz, sem campo para o negócio`,
+    tela.pprInput === null && /1,5 salário/.test(tela.pprFixo), JSON.stringify([tela.pprInput, tela.pprFixo]));
   t(`${l} o cartão de pessoas mostra o PPR (1,5 salário sobre a folha) e a proposta da 8.5, iguais aos da API`,
     tela.api && tela.ppr === Math.round(tela.api.ppr) && tela.total === Math.round(-tela.api.proposta) && tela.ppr > 0,
     JSON.stringify({ ppr: tela.ppr, total: tela.total }));
@@ -6729,12 +6726,9 @@ async function provasDiretriz2027(page, largura) {
   });
   t(`${l} a API recusa mudar o que a diretriz fixa`,
     /Fixado pela diretriz de 2027/.test(recusas.pessoas) && /Fixado pela diretriz de 2027/.test(recusas.vale), JSON.stringify(recusas));
-  t(`${l} PPR de 2027 acima da diretriz (2 salários) é recusado`,
-    /não pode passar da diretriz.*até 1,5 salário/.test(recusas.ppr), recusas.ppr);
-  t(`${l} PPR de 2027 MENOR (1 salário) grava e baixa o PPR da 8.5 a 2/3; apagar volta à diretriz`,
-    recusas.pprMenos.msg === 'aceita' && Math.abs(recusas.pprMenos.depois - recusas.pprMenos.antes * 2 / 3) <= 1
-      && recusas.pprMenos.apaga === 'aceita' && Math.abs(recusas.pprMenos.volta - recusas.pprMenos.antes) <= 1,
-    JSON.stringify(recusas.pprMenos));
+  t(`${l} PPR de 2027 é recusado para cima (2) e para baixo (1): é diretriz fixa, e o PPR da 8.5 não muda`,
+    /Fixado pela diretriz de 2027.*1,5 salário de PPR/.test(recusas.ppr) && /Fixado pela diretriz de 2027/.test(recusas.pprMenos.msg)
+      && Math.abs(recusas.pprMenos.depois - recusas.pprMenos.antes) <= 1, JSON.stringify([recusas.ppr, recusas.pprMenos]));
   t(`${l} em 2028 (sem diretriz) o negócio lança o PPR, de 0 a 12 salários`,
     recusas.ppr2028 === 'aceita'
       && /0 e 12 salários/.test(recusas.pprFaixa) && recusas.pprApaga === 'aceita', JSON.stringify(recusas));
@@ -8416,6 +8410,37 @@ async function provasVisaoDoAno(page, largura) {
   t(`${l} "Comparar com: Desafio 2027": Proposta, Desafio (o da coluna Desafio da DRE) e a diferença`,
     /^Proposta\s*2027/.test(des.th[0]) && /^Desafio/.test(des.th[1]) && /^Proposta × desafio/.test(des.th[2])
     && des.total === des.totalApi && des.somaOk && des.agroOk && des.dif === des.difApi, JSON.stringify(des));
+  // SIMULADOR DE DIRETRIZES (cliente, 2026-11-26, prévia aprovada): PPR de 1,5 para 1 pela
+  // tela — o total da tela é o da API, a receita líquida não muda, a linha troca, e simular
+  // não grava nada (aplicar é provado em testes/simulador_diretriz.php, que desfaz).
+  if (largura === 'desktop') {
+    const temSim = await esperar(page, "!!document.querySelector('.painel-simulador [data-sim=\"ppr\"]')", 20000);
+    t(`${l} o Corporativo do ADMIN tem o simulador de diretrizes, com a diretriz vigente nos campos`, temSim
+      && await page.evaluate(() => document.querySelector('[data-sim="ppr"]').value === '1,5'
+        && document.querySelector('[data-sim-acao="aplicar"]').disabled));
+    if (temSim) {
+      await page.fill('.painel-simulador [data-sim="ppr"]', '1');
+      await page.click('[data-sim-acao="simular"]');
+      await esperar(page, "!!document.querySelector('.tabela-simulador')", 40000);
+      const sim = await page.evaluate(async () => {
+        const api = await App.api('/api/projecao/simulacao?ppr=1');
+        const fmt = (v) => `${Math.round(v) > 0 ? '+' : ''}${Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+        const tela = () => document.querySelector('.tabela-simulador tr.linha-total-visao [data-sim-impacto]').textContent.trim();
+        const t18 = tela();
+        document.querySelector('[data-sim-linha="8.5"]').click();
+        await new Promise((r) => setTimeout(r, 200));
+        return { t18, api18: fmt(api.total.simulado['18'] - api.total.atual['18']), conta: document.querySelector('.tabela-simulador').dataset.simConta,
+          t85: tela(), api85: fmt(api.total.simulado['8.5'] - api.total.atual['8.5']), rl: api.total.simulado['3'] - api.total.atual['3'],
+          aplicar: !document.querySelector('[data-sim-acao="aplicar"]').disabled, gravadas: (await App.api('/api/projecao?corporativo=1')).diretriz_alterada };
+      });
+      t(`${l} simular PPR 1: o impacto na tela é o da API, positivo, na linha escolhida, e a receita líquida não muda`,
+        sim.t18 === sim.api18 && /^\+/.test(sim.t18) && sim.conta === '8.5' && sim.t85 === sim.api85 && Math.abs(sim.rl) < 0.01,
+        JSON.stringify(sim));
+      t(`${l} e simular não grava a diretriz ("Aplicar" fica disponível para o administrador decidir)`,
+        sim.aplicar && !sim.gravadas, JSON.stringify(sim));
+      await page.click('[data-sim-acao="voltar"]');
+    }
+  }
   await page.click('[data-visao-bloco="realista"]');
   t(`${l} e "Visão realista" devolve o bloco de antes`, await page.evaluate(() =>
     document.querySelectorAll('.tabela-visao-ano .visao-realista').length > 0 && !document.querySelector('.tabela-visao-ano .visao-proposta')));

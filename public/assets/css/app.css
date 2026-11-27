@@ -4783,6 +4783,13 @@ body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
 /* O ano da proposta ao lado (pedido do cliente, 2026-11-26): azul-claro, a cor do ano que vem. */
 .tabela-visao-ano th.visao-proposta,
 .tabela-visao-ano td.visao-proposta { background: #e3eefb; }
+/* Simulador de diretrizes (2026-11-26): os campos em amarelo-claro de "digitar"; as colunas
+   simuladas em amarelo, como na prévia aprovada. */
+.campo-simulador { width: 9.5rem; }
+.campo-simulador .form-control { background: #fffbe6; }
+.campo-simulador .form-control.simulador-mudou { border: 2px solid #d39e00; }
+.tabela-simulador th.sim-col, .tabela-simulador td.sim-col { background: #fff4d6; }
+.painel-simulador { border-left-color: #d39e00 !important; }
 .tabela-visao-ano th.visao-desafio,
 .tabela-visao-ano td.visao-desafio { background: #d6e6fa; }
 

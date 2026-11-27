@@ -260,12 +260,12 @@ class Projecao
      *  - Vale alimentação R$ 500 por colaborador/mês, DENTRO da despesa de pessoal.
      *  - Prêmio assiduidade R$ 200 e prêmio metas R$ 500 por colaborador que
      *    cumprir os requisitos.
-     *  - PPR: 1,5 salário, provisionado mensalmente em 1/12 (`PPR_SALARIOS`, um
-     *    campo do bloco de premissas). É um TETO, não um valor fixo (pedido do
-     *    cliente, 2026-11-23: "precisa ser editável, caso o negócio resolva pagar
-     *    menos PPR; a mais não deve permitir… já deve vir preenchido"): vem
-     *    preenchido com a diretriz, o negócio pode baixar, e acima é recusado.
-     *    Nos anos sem diretriz o negócio digita (0 a 12), e vazio é sem PPR.
+     *  - PPR: 1,5 salário, provisionado mensalmente em 1/12 (`PPR_SALARIOS`). FIXO
+     *    desde 2026-11-26 ("nenhum negócio poderia alterar o número de salários de
+     *    PPR; é uma decisão corporativa"); de 2026-11-23 até ali foi um TETO que o
+     *    negócio podia baixar. Nos anos sem diretriz o negócio digita (0 a 12), e
+     *    vazio é sem PPR. O número que vale mora no `beneficios` da diretriz — e o
+     *    administrador pode trocá-lo (`diretriz_valor`, `ProjecaoController::aplicarDiretriz`).
      *
      * Um terceiro tipo de valor, então: `maximos` — o padrão é a diretriz, o
      * negócio digita MENOS, e mais é recusado (`maximoDaDiretriz`).
@@ -283,15 +283,83 @@ class Projecao
             'fonte' => 'Diretrizes para o Planejamento 2027 (16/11/2026)',
             'premissas' => ['PESSOAS' => 5.5],
             'sugeridas' => ['IPCA' => 4.5, 'PIB' => 1.5],
-            'beneficios' => ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0],
-            'maximos' => ['PPR_SALARIOS' => 1.5],
+            // PPR FIXO (cliente, 2026-11-26: "nenhum negócio poderia alterar o número de
+            // salários de PPR; é uma decisão corporativa e impacta todos os negócios") —
+            // até ali era um teto que o negócio podia baixar.
+            'beneficios' => ['ALIMENTACAO' => 500.0, 'ASSIDUIDADE' => 200.0, 'RESULTADO' => 500.0, 'PPR_SALARIOS' => 1.5],
         ],
     ];
 
     /** A diretriz de um ano, ou null. */
+    /**
+     * A diretriz SIMULADA pelo administrador (`ProjecaoController::simular`): vale só
+     * dentro daquela requisição, para o motor refazer a conta com outra diretriz —
+     * nada se grava. Null fora da simulação.
+     */
+    public static ?array $diretrizSimulada = null;
+
+    /** As chaves que o administrador pode trocar, e onde cada uma mora na diretriz. */
+    public const DIRETRIZ_EDITAVEL = [
+        'PESSOAS' => 'premissas', 'ALIMENTACAO' => 'beneficios', 'ASSIDUIDADE' => 'beneficios',
+        'RESULTADO' => 'beneficios', 'PPR_SALARIOS' => 'beneficios',
+    ];
+
+    /** O que o administrador gravou (`diretriz_valor`), por ano; lido uma vez por requisição. */
+    private static ?array $diretrizesGravadas = null;
+
+    /** Esquece o que foi lido de `diretriz_valor` (depois de gravar). */
+    public static function esquecerDiretrizesGravadas(): void
+    {
+        self::$diretrizesGravadas = null;
+    }
+
+    /** @return array<int, array{valores: array<string,float>, em: string, por: ?string}> */
+    public static function diretrizesGravadas(): array
+    {
+        if (self::$diretrizesGravadas === null) {
+            self::$diretrizesGravadas = [];
+            try {
+                foreach (Database::todos(
+                    'SELECT d.ano, d.chave, d.valor, d.atualizado_em, u.nome
+                       FROM diretriz_valor d LEFT JOIN usuario u ON u.id = d.atualizado_por
+                      ORDER BY d.atualizado_em'
+                ) as $l) {
+                    $a = (int)$l['ano'];
+                    self::$diretrizesGravadas[$a]['valores'][$l['chave']] = (float)$l['valor'];
+                    self::$diretrizesGravadas[$a]['em'] = $l['atualizado_em'];
+                    self::$diretrizesGravadas[$a]['por'] = $l['nome'];
+                }
+            } catch (\Throwable $e) {
+                // Base sem a tabela (antes do migrate): vale o documento.
+            }
+        }
+        return self::$diretrizesGravadas;
+    }
+
+    /**
+     * A diretriz que VALE no ano: a simulada (só dentro de uma simulação), ou o documento
+     * do código com o que o administrador trocou por cima (`diretriz_valor`).
+     */
     public static function diretriz(int $ano): ?array
     {
-        return self::DIRETRIZES[$ano] ?? null;
+        if (isset(self::$diretrizSimulada[$ano])) {
+            return self::$diretrizSimulada[$ano];
+        }
+        $d = self::DIRETRIZES[$ano] ?? null;
+        $g = self::diretrizesGravadas()[$ano] ?? null;
+        if ($d === null || !$g) {
+            return $d;
+        }
+        foreach ($g['valores'] as $chave => $valor) {
+            $onde = self::DIRETRIZ_EDITAVEL[$chave] ?? null;
+            if ($onde !== null) {
+                $d[$onde][$chave] = $valor;
+            }
+        }
+        $d['documento'] = $d['fonte'];
+        $d['fonte'] .= '; alterada pelo administrador em ' . date('d/m/Y', strtotime($g['em']));
+        $d['alterada'] = ['em' => $g['em'], 'por' => $g['por']];
+        return $d;
     }
 
     /**
@@ -580,7 +648,7 @@ class Projecao
                 // por cima do digitado, `dadosDePessoal`); sem ele, sem PPR.
                 array_key_exists('ppr_salarios', (array)$pessoal)
                     ? $pessoal['ppr_salarios']
-                    : self::maximoDaDiretriz($anoPlan, 'PPR_SALARIOS'),
+                    : (self::maximoDaDiretriz($anoPlan, 'PPR_SALARIOS') ?? self::fixadaPelaDiretriz($anoPlan, 'PPR_SALARIOS')),
                 $fator,
                 $pessoal['ppr26'] ?? null
             );

@@ -1642,6 +1642,12 @@ class ProjecaoController
             && !ConfiguracaoController::todas()['diagnostico_somente_leitura'];
         $d['pode_comparar_proposta'] = $pode;
         if ($pode) {
+            $anoPlan = (int)($d['ano_planejamento'] ?? 0);
+            $dir = Projecao::diretriz($anoPlan);
+            $doc = Projecao::DIRETRIZES[$anoPlan] ?? null;
+            $d['diretriz_simulavel'] = $dir ? self::diretrizSimulavel($dir) : null;
+            $d['diretriz_documento'] = $doc ? self::diretrizSimulavel($doc) : null;
+            $d['diretriz_alterada'] = $dir['alterada'] ?? null;
             return $d;
         }
         $tirar = static function (?array $v): ?array {
@@ -1665,6 +1671,195 @@ class ProjecaoController
             }
         }
         return $d;
+    }
+
+    /** As linhas que o simulador de diretrizes compara (e a receita líquida, para o %). */
+    private const LINHAS_SIMULADOR = ['3', '7', '8.5', '15', '18'];
+
+    /** Os cinco números da diretriz que o simulador deixa trocar. */
+    private static function diretrizSimulavel(array $dir): array
+    {
+        return [
+            'ppr' => (float)($dir['maximos']['PPR_SALARIOS'] ?? $dir['beneficios']['PPR_SALARIOS'] ?? 0),
+            'pessoas' => (float)($dir['premissas']['PESSOAS'] ?? 0),
+            'alimentacao' => (float)($dir['beneficios']['ALIMENTACAO'] ?? 0),
+            'assiduidade' => (float)($dir['beneficios']['ASSIDUIDADE'] ?? 0),
+            'resultado' => (float)($dir['beneficios']['RESULTADO'] ?? 0),
+        ];
+    }
+
+    /**
+     * SIMULADOR DE DIRETRIZES (cliente, 2026-11-26: "se eu, como diretor, quiser visualizar
+     * o impacto no resultado de todos os negócios apenas reduzindo o PPR de 1,5 para 1, ou
+     * aumentando para 2 […]"; prévia aprovada, com a escolha da linha: despesas
+     * operacionais, despesas com pessoal, resultado do negócio e resultado líquido).
+     *
+     * Refaz a conta de cada negócio com a diretriz pedida — o MESMO motor da DRE, inclusive
+     * o rateio administrativo, que se distribui pelas despesas propostas — e devolve, por
+     * negócio, as linhas com a diretriz de hoje e com a simulada. **Nada se grava**: a
+     * diretriz simulada vive só nesta requisição (`Projecao::$diretrizSimulada`). Pedir a
+     * diretriz vigente dá impacto zero. Lançamento digitado não muda.
+     *
+     * Só ADMIN e com o modo apresentação desligado — a mesma regra do "Comparar com".
+     */
+    public function simular(): void
+    {
+        $u = Auth::exigirLogin();
+        if (($u['perfil'] ?? '') !== 'ADMIN' || ConfiguracaoController::todas()['diagnostico_somente_leitura']) {
+            Json::erro('O simulador de diretrizes é dos administradores, com o modo apresentação desligado.', 403);
+        }
+        $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
+        if (!$fech) {
+            Json::erro('Sem DRE carregada.', 422);
+        }
+        $ano = (int)$fech['ano'];
+        $corte = (int)$fech['mes_fechado_ate'];
+        $anoPlan = $ano + 1;
+        $vig = Projecao::diretriz($anoPlan);
+        if (!$vig) {
+            Json::erro("Não há diretriz de {$anoPlan} para simular.", 422);
+        }
+        $negocios = Database::todos(
+            "SELECT n.id, CONCAT(n.cod_negocio, ' - ', n.nome) AS rotulo FROM negocio n
+              WHERE n.ativo = 1 AND EXISTS (SELECT 1 FROM dre_valor v WHERE v.negocio_id = n.id AND v.ano = ?)
+              ORDER BY CAST(n.cod_negocio AS UNSIGNED)",
+            [$ano]
+        );
+        $ids = array_map(static fn ($n) => (int)$n['id'], $negocios);
+        $grupo = self::grupoPedido((string)($_GET['negocios'] ?? ''), $ids);
+        if ($grupo) {
+            $negocios = array_values(array_filter($negocios, static fn ($n) => in_array((int)$n['id'], $grupo, true)));
+        }
+
+        $vigente = self::diretrizSimulavel($vig);
+        $pedida = self::diretrizPedida($_GET, $vigente);
+
+        $atual = $this->linhasDoSimulador($negocios, $ano, $corte);
+        $sim = $vig;
+        $sim['premissas']['PESSOAS'] = $pedida['pessoas'];
+        $sim['beneficios']['ALIMENTACAO'] = $pedida['alimentacao'];
+        $sim['beneficios']['ASSIDUIDADE'] = $pedida['assiduidade'];
+        $sim['beneficios']['RESULTADO'] = $pedida['resultado'];
+        $sim['beneficios']['PPR_SALARIOS'] = $pedida['ppr'];
+        unset($sim['maximos']['PPR_SALARIOS']);
+        Projecao::$diretrizSimulada = [$anoPlan => $sim];
+        try {
+            $simulado = $this->linhasDoSimulador($negocios, $ano, $corte);
+        } finally {
+            Projecao::$diretrizSimulada = null;
+        }
+        $saida = [];
+        $total = ['atual' => [], 'simulado' => []];
+        foreach ($negocios as $n) {
+            $id = (int)$n['id'];
+            $saida[] = ['id' => $id, 'rotulo' => $n['rotulo'], 'atual' => $atual[$id], 'simulado' => $simulado[$id]];
+            foreach (self::LINHAS_SIMULADOR as $c) {
+                $total['atual'][$c] = ($total['atual'][$c] ?? 0.0) + (float)$atual[$id][$c];
+                $total['simulado'][$c] = ($total['simulado'][$c] ?? 0.0) + (float)$simulado[$id][$c];
+            }
+        }
+        Json::ok([
+            'ano' => $anoPlan,
+            'diretriz' => $vigente,
+            'simulada' => $pedida,
+            'grupo' => $grupo,
+            'negocios' => $saida,
+            'total' => $total,
+        ]);
+    }
+
+    /** Chave do simulador → chave da diretriz. */
+    private const CHAVES_DIRETRIZ = ['ppr' => 'PPR_SALARIOS', 'pessoas' => 'PESSOAS',
+        'alimentacao' => 'ALIMENTACAO', 'assiduidade' => 'ASSIDUIDADE', 'resultado' => 'RESULTADO'];
+
+    /** Os valores pedidos (vírgula ou ponto), validados; o que não veio fica como em `$base`. */
+    private static function diretrizPedida(array $entrada, array $base): array
+    {
+        $limites = ['ppr' => [0, Projecao::PPR_SALARIOS_MAXIMO], 'pessoas' => [-50, 100],
+            'alimentacao' => [0, 100000], 'assiduidade' => [0, 100000], 'resultado' => [0, 100000]];
+        $pedida = $base;
+        foreach ($limites as $k => [$min, $max]) {
+            $bruto = trim((string)($entrada[$k] ?? ''));
+            if ($bruto === '') {
+                continue;
+            }
+            $v = str_replace(',', '.', $bruto);
+            if (!is_numeric($v) || (float)$v < $min || (float)$v > $max) {
+                Json::erro("Valor inválido em {$k}: use de {$min} a {$max}.", 422);
+            }
+            $pedida[$k] = (float)$v;
+        }
+        return $pedida;
+    }
+
+    /**
+     * APLICA a diretriz do ano da proposta para TODOS os negócios (cliente, 2026-11-26:
+     * "faça as diretrizes editáveis pelo administrador, com o botão Aplicar"). Grava em
+     * `diretriz_valor` só o que difere do documento — o que volta ao documento é apagado —,
+     * e `{restaurar: true}` volta tudo ao documento. Muda a proposta das linhas de pessoal
+     * que os negócios NÃO digitaram; lançamento digitado não é tocado. Só ADMIN, com o
+     * modo apresentação desligado.
+     */
+    public function aplicarDiretriz(): void
+    {
+        $u = Auth::exigirLogin();
+        if (($u['perfil'] ?? '') !== 'ADMIN' || ConfiguracaoController::todas()['diagnostico_somente_leitura']) {
+            Json::erro('Só os administradores alteram a diretriz, com o modo apresentação desligado.', 403);
+        }
+        $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
+        $anoPlan = $fech ? (int)$fech['ano'] + 1 : 0;
+        $doc = Projecao::DIRETRIZES[$anoPlan] ?? null;
+        if (!$doc) {
+            Json::erro("Não há diretriz de {$anoPlan} para alterar.", 422);
+        }
+        $corpo = json_decode(file_get_contents('php://input') ?: '[]', true) ?: [];
+        $documento = self::diretrizSimulavel($doc);
+        $nova = !empty($corpo['restaurar'])
+            ? $documento
+            : self::diretrizPedida($corpo, self::diretrizSimulavel(Projecao::diretriz($anoPlan)));
+        $pdo = Database::conn();
+        $pdo->beginTransaction();
+        try {
+            foreach (self::CHAVES_DIRETRIZ as $k => $chave) {
+                if (abs($nova[$k] - $documento[$k]) < 1e-9) {
+                    Database::executar('DELETE FROM diretriz_valor WHERE ano = ? AND chave = ?', [$anoPlan, $chave]);
+                } else {
+                    Database::executar(
+                        'INSERT INTO diretriz_valor (ano, chave, valor, atualizado_por, atualizado_em) VALUES (?, ?, ?, ?, NOW())
+                         ON DUPLICATE KEY UPDATE valor = VALUES(valor), atualizado_por = VALUES(atualizado_por),
+                           atualizado_em = VALUES(atualizado_em)',
+                        [$anoPlan, $chave, $nova[$k], (int)$u['id']]
+                    );
+                }
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+        Projecao::esquecerDiretrizesGravadas();
+        $dir = Projecao::diretriz($anoPlan);
+        Json::ok([
+            'ano' => $anoPlan,
+            'diretriz' => self::diretrizSimulavel($dir),
+            'documento' => $documento,
+            'alterada' => $dir['alterada'] ?? null,
+        ]);
+    }
+
+    /** A proposta das linhas do simulador, por negócio, com a diretriz que estiver valendo. */
+    private function linhasDoSimulador(array $negocios, int $ano, int $corte): array
+    {
+        $rateios = Projecao::rateios($ano, $corte, $ano + 1);
+        $out = [];
+        foreach ($negocios as $n) {
+            $m = $this->montar((int)$n['id'], $ano, $corte, 0, $rateios);
+            $p = array_column($m['linhas'], 'proposta', 'codigo');
+            foreach (self::LINHAS_SIMULADOR as $c) {
+                $out[(int)$n['id']][$c] = (float)($p[$c] ?? 0.0);
+            }
+        }
+        return $out;
     }
 
     /** Põe `proposta` em cada conta da visão do ano (de um negócio ou do total). */

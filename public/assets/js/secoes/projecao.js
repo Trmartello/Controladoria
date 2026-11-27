@@ -518,10 +518,14 @@ const SecaoProjecao = {
       if (f !== undefined) fixos.push(itemFixo(chave, rotulo, reais(f), dica));
       else editaveis.push(this.campoBeneficio(d, ano, chave, rotulo, unidade, dica, ph));
     });
-    editaveis.push(this.campoBeneficio(d, ano, 'PPR_SALARIOS', 'PPR (salários no ano)', 'salários',
-      'Quantos salários de PPR provisionar no ano, em 1/12 por mês, sobre a folha do mês (despesa + custo) com o '
-      + 'reajuste. Entra na linha Despesas com Pessoal (8.5). Com diretriz, vem preenchido com ela e só pode BAIXAR; '
-      + 'apagar volta à diretriz. Sem diretriz, vazio é sem PPR.', '—'));
+    // O PPR é DIRETRIZ FIXA desde 2026-11-26 ("decisão corporativa, impacta todos os
+    // negócios"): com diretriz no ano, vai para a faixa da diretriz; sem, é campo.
+    const dicaPpr = 'Quantos salários de PPR provisionar no ano, em 1/12 por mês, sobre a folha do mês (despesa + custo) '
+      + 'com o reajuste. Entra na linha Despesas com Pessoal (8.5).';
+    const pprFixo = fixoBeneficio('PPR_SALARIOS');
+    if (pprFixo !== undefined) fixos.push(itemFixo('PPR_SALARIOS', 'PPR (salários no ano)', this.salariosPpr(pprFixo), dicaPpr));
+    else editaveis.push(this.campoBeneficio(d, ano, 'PPR_SALARIOS', 'PPR (salários no ano)', 'salários',
+      `${dicaPpr} Sem diretriz, vazio é sem PPR.`, '—'));
     return this.expansor('premissas', 'painel-premissas', `Premissas, pessoas e benefícios — ${ano}`, resumo + resumoPessoas, `
         ${seletorAno}
         <div class="faixa-premissas faixa-editavel">
@@ -991,6 +995,7 @@ const SecaoProjecao = {
       global.value = v;
       global.dispatchEvent(new Event('change'));
     };
+    this.simResultado = null;   // a simulação era dos negócios de antes
     if (ids.length === 1) { this.agrupadoEm = null; irPara(String(ids[0])); return; }
     // Sem o Corporativo (perfil que não enxerga todos): a soma dos marcados, pedida
     // direto — o menu continua no negócio; nenhum marcado não muda nada.
@@ -1059,6 +1064,7 @@ const SecaoProjecao = {
         não é meta, é a falta dela.` : ''}
       </div>
       ${this.cartaoVisaoAno(d)}
+      ${this.cartaoSimulador(d)}
       ${this.cartaoDesafio(d)}
       ${this.cartaoOportunidades(d)}
       ${this.cartaoPessoas(d)}
@@ -1294,6 +1300,177 @@ const SecaoProjecao = {
         aria-pressed="${this.visaoBloco === valor || (!this.visaoBloco && valor === 'realista')}">${rotulo}</button>`;
     return `<span class="small text-muted ms-2">Comparar com:</span>
       <div class="btn-group btn-group-sm" role="group" aria-label="Bloco da direita">${b('realista', 'Visão realista')}${b('proposta', `Proposta ${d.ano + 1}`)}${b('desafio', `Desafio ${d.ano + 1}`)}</div>`;
+  },
+
+  /**
+   * SIMULADOR DE DIRETRIZES (cliente, 2026-11-26: "se eu, como diretor, quiser visualizar o
+   * impacto no resultado de todos os negócios apenas reduzindo o PPR de 1,5 para 1 […]";
+   * prévia aprovada, com a escolha da linha). Só no Corporativo (ou agrupamento), só ADMIN e
+   * com o modo apresentação desligado. Simular não grava nada; "Aplicar" grava a diretriz
+   * para todos os negócios (`/api/projecao/diretriz`), com confirmação.
+   */
+  LINHAS_SIMULADOR: [
+    { conta: '7', curto: 'Despesas operacionais' },
+    { conta: '8.5', curto: 'Despesas com pessoal' },
+    { conta: '15', curto: 'Resultado do negócio', dica: 'Linha 14 da DRE: depois dos rateios corporativo e financeiro' },
+    { conta: '18', curto: 'Resultado líquido' },
+  ],
+
+  CAMPOS_SIMULADOR: [
+    ['ppr', 'PPR (salários no ano)', 'salários'],
+    ['pessoas', 'Reajuste de pessoal', '%'],
+    ['alimentacao', 'Vale alimentação (mês)', 'R$'],
+    ['assiduidade', 'Abono assiduidade (mês)', 'R$'],
+    ['resultado', 'Abono resultado (mês)', 'R$'],
+  ],
+
+  /** "1,5 · 5,5% · R$ 500 · R$ 200 · R$ 500": uma diretriz por extenso, curta. */
+  diretrizPorExtenso(v) {
+    const n = (x) => Number(x).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    return `PPR ${n(v.ppr)} salário${Number(v.ppr) === 1 ? '' : 's'} · reajuste ${n(v.pessoas)}% · vale R$ ${n(v.alimentacao)}`
+      + ` · assiduidade R$ ${n(v.assiduidade)} · resultado R$ ${n(v.resultado)}`;
+  },
+
+  cartaoSimulador(d) {
+    if (!d.corporativo || !d.pode_comparar_proposta || !d.diretriz_simulavel || App.modoDossie) return '';
+    const vig = d.diretriz_simulavel;
+    const val = this.simValores || { ...vig };
+    const num = (v) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 4, useGrouping: false });
+    const campo = ([k, rot, un]) => `<div>
+        <label class="form-label small mb-0" for="sim-${k}">${rot}</label>
+        <div class="input-group input-group-sm campo-simulador">
+          <input type="text" inputmode="decimal" autocomplete="off" class="form-control text-end${Number(val[k]) !== Number(vig[k]) ? ' simulador-mudou' : ''}"
+            id="sim-${k}" data-sim="${k}" value="${num(val[k])}">
+          <span class="input-group-text">${un}</span>
+        </div></div>`;
+    const linha = this.LINHAS_SIMULADOR.find((x) => x.conta === this.simLinha) || this.LINHAS_SIMULADOR[3];
+    const botaoLinha = (x) => `<button type="button" class="btn ${x.conta === linha.conta ? 'btn-verde' : 'btn-outline-secondary'}"
+        data-sim-linha="${x.conta}" aria-pressed="${x.conta === linha.conta}"${x.dica ? ` title="${Modal.esc(x.dica)}"` : ''}>${x.curto}</button>`;
+    const r = this.simResultado;
+    const mudou = r && Object.keys(vig).some((k) => Math.abs(Number(r.simulada[k]) - Number(vig[k])) > 1e-9);
+    const alt = d.diretriz_alterada;
+    const quando = alt ? new Date(alt.em.replace(' ', 'T')).toLocaleDateString('pt-BR') : '';
+    const corpo = `
+      <div class="d-flex flex-wrap align-items-end gap-3 mb-2 mt-1">
+        ${this.CAMPOS_SIMULADOR.map(campo).join('')}
+        <button type="button" class="btn btn-sm btn-verde" data-sim-acao="simular">Simular</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-sim-acao="voltar">Voltar à diretriz vigente</button>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-1 seletor-simulador">
+        <span class="small text-muted">Analisar:</span>
+        <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Linha da DRE">${this.LINHAS_SIMULADOR.map(botaoLinha).join('')}</div>
+      </div>
+      <div class="resultado-simulador">${this.tabelaSimulador(linha)}</div>
+      <div class="small text-muted mt-1">Mesma conta da DRE de cada negócio, só trocando a diretriz de ${d.ano_planejamento}. A receita
+        líquida não muda (PPR, vale e abonos são despesa de pessoal). O que o negócio digitou à mão na despesa de pessoal continua
+        valendo. O rateio administrativo se redistribui pelas despesas. % = sobre a receita líquida.</div>
+      <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+        <button type="button" class="btn btn-sm btn-outline-danger" data-sim-acao="aplicar" ${mudou ? '' : 'disabled'}
+          title="${mudou ? 'Grava a diretriz simulada para todos os negócios' : 'Simule uma diretriz diferente da vigente para poder aplicar'}">
+          Aplicar como diretriz de ${d.ano_planejamento} para todos os negócios…</button>
+        <span class="small text-muted" data-diretriz-vigente>Vigente: ${this.diretrizPorExtenso(vig)}${alt
+    ? ` — <strong>alterada pelo administrador</strong> em ${quando}${alt.por ? ` (${Modal.esc(alt.por)})` : ''}` : ' — a do documento'}.</span>
+        ${alt ? `<button type="button" class="btn btn-sm btn-link p-0" data-sim-acao="restaurar">voltar à do documento
+          (${this.diretrizPorExtenso(d.diretriz_documento)})</button>` : ''}
+      </div>`;
+    return this.expansor('simulador', 'painel-simulador', `Simulador de diretrizes — ${d.ano_planejamento}`,
+      'só administrador · e se a diretriz mudar? · simular não grava nada', corpo);
+  },
+
+  tabelaSimulador(linha) {
+    const r = this.simResultado;
+    if (!r) {
+      return '<p class="small text-muted mb-0 mt-2" data-sim-vazio>Troque um ou mais valores e clique em <strong>Simular</strong>: '
+        + 'a tabela mostra, negócio a negócio, a linha escolhida com a diretriz de hoje e com a simulada.</p>';
+    }
+    const c = linha.conta;
+    const m = (x) => this.moeda(x);
+    const p = (x) => (x === null ? '—' : this.pct(x, 2));
+    const q = (a, b) => (b ? a / b : null);
+    const cor = (x) => (Math.abs(x) < 1 ? '' : (x > 0 ? 'text-success' : 'text-danger'));
+    const sinal = (x) => `${Math.round(x) > 0 ? '+' : ''}${m(x)}`;
+    const tr = (nome, a, s, classe = '') => {
+      const dif = s[c] - a[c];
+      return `<tr class="${classe}"><td>${nome}</td>
+        <td class="text-end">${m(a['3'])}</td>
+        <td class="text-end">${m(a[c])}</td><td class="text-end">${p(q(a[c], a['3']))}</td>
+        <td class="text-end fw-bold sim-col">${m(s[c])}</td><td class="text-end sim-col">${p(q(s[c], s['3']))}</td>
+        <td class="text-end sim-col ${cor(dif)}" data-sim-impacto>${sinal(dif)}</td></tr>`;
+    };
+    const rot = linha.curto.toLowerCase();
+    return `<div class="table-responsive"><table class="table table-sm align-middle mb-0 tabela-visao-ano tabela-simulador" data-sim-conta="${c}">
+        <thead><tr><th></th>
+          <th class="text-end">Receita líquida<br><span class="fw-normal text-muted small">proposta ${r.ano}</span></th>
+          <th class="text-end">${linha.curto}<br><span class="fw-normal text-muted small">diretriz vigente</span></th>
+          <th class="text-end">% RL<br><span class="fw-normal text-muted small">vigente</span></th>
+          <th class="text-end sim-col">${linha.curto}<br><span class="fw-normal small">simulado</span></th>
+          <th class="text-end sim-col">% RL<br><span class="fw-normal small">simulado</span></th>
+          <th class="text-end sim-col">Impacto<br><span class="fw-normal small">R$</span></th></tr></thead>
+        <tbody>${r.negocios.map((n) => tr(Modal.esc(n.rotulo), n.atual, n.simulado)).join('')}
+          ${tr('Total dos negócios', r.total.atual, r.total.simulado, 'fw-bold table-light linha-total-visao')}</tbody>
+      </table></div>
+      <div class="small text-muted mt-1" data-sim-pedido>Simulado: ${this.diretrizPorExtenso(r.simulada)} · ${rot}.</div>`;
+  },
+
+  /** Lê os campos do simulador (vírgula decimal); null se algum não for número. */
+  camposDoSimulador(el) {
+    const v = {};
+    for (const [k] of this.CAMPOS_SIMULADOR) {
+      const bruto = String(el.querySelector(`[data-sim="${k}"]`)?.value ?? '').trim().replace(/\./g, '').replace(',', '.');
+      if (bruto === '' || !Number.isFinite(Number(bruto))) return null;
+      v[k] = Number(bruto);
+    }
+    return v;
+  },
+
+  repintarSimulador(el) {
+    const card = el.querySelector('.painel-simulador');
+    if (card && this.dados) card.outerHTML = this.cartaoSimulador(this.dados);
+  },
+
+  async acaoSimulador(el, acao, botao) {
+    const d = this.dados;
+    if (acao === 'voltar') {
+      this.simValores = null;
+      this.simResultado = null;
+      this.repintarSimulador(el);
+      return;
+    }
+    if (acao === 'simular') {
+      const v = this.camposDoSimulador(el);
+      if (!v) { alert('Informe números em todos os campos (vírgula para decimais).'); return; }
+      this.simValores = v;
+      const qs = new URLSearchParams(Object.entries(v).map(([k, x]) => [k, String(x)]));
+      if (d.grupo && d.grupo.length) qs.set('negocios', d.grupo.join(','));
+      if (botao) { botao.disabled = true; botao.textContent = 'Simulando…'; }
+      try {
+        this.simResultado = await App.api(`/api/projecao/simulacao?${qs}`);
+      } catch (e) {
+        alert(e.message);
+      }
+      this.repintarSimulador(el);
+      return;
+    }
+    if (acao === 'aplicar' || acao === 'restaurar') {
+      const r = this.simResultado;
+      const alvo = acao === 'restaurar' ? d.diretriz_documento : r && r.simulada;
+      if (!alvo) return;
+      const impacto = acao === 'aplicar' && r ? r.total.simulado['18'] - r.total.atual['18'] : null;
+      const texto = `${acao === 'restaurar' ? 'Voltar a diretriz ao documento' : 'Aplicar como diretriz'} de ${d.ano_planejamento} para TODOS os negócios:\n\n`
+        + `${this.diretrizPorExtenso(alvo)}\n\n`
+        + (impacto !== null ? `Impacto no resultado líquido consolidado: ${impacto > 0 ? '+' : ''}${this.moeda(impacto)}.\n\n` : '')
+        + 'Muda a proposta das linhas de pessoal que os negócios não digitaram à mão; o que foi digitado continua valendo.';
+      if (!confirm(texto)) return;
+      try {
+        await App.api('/api/projecao/diretriz', acao === 'restaurar' ? { restaurar: true } : alvo);
+      } catch (e) {
+        alert(e.message);
+        return;
+      }
+      this.simValores = null;
+      this.simResultado = null;
+      this.carregar();
+    }
   },
 
   /** A linha e o modo (R$ ou %) escolhidos no seletor do Corporativo; valem enquanto a página está aberta. */
@@ -2431,7 +2608,7 @@ const SecaoProjecao = {
    * fica no `localStorage`, como o de recolher subcontas; por omissão só o
    * desafio vem aberto. No dossiê tudo sai aberto — papel não se expande.
    */
-  EXPANSORES_PADRAO: { visao: false, desafio: true, oportunidades: true, premissas: false, pessoas: false },
+  EXPANSORES_PADRAO: { visao: false, desafio: true, oportunidades: true, premissas: false, pessoas: false, simulador: true },
 
   expansorAberto(chave) {
     if (App.modoDossie) return true;
@@ -2761,6 +2938,27 @@ const SecaoProjecao = {
     const tribBotao = el.querySelector('#projecao-tributos-botao');
     if (tribBotao && virgem(tribBotao)) tribBotao.addEventListener('click', () => this.alternarTributos());
     // O seletor da visão do ano (Corporativo): delegado, porque o cartão se repinta.
+    if (!el.dataset.ligouSimulador) {
+      el.dataset.ligouSimulador = '1';
+      el.addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-sim-acao], [data-sim-linha]');
+        if (!b || !this.dados || !b.closest('.painel-simulador')) return;
+        if (b.dataset.simLinha) {
+          this.simLinha = b.dataset.simLinha;
+          const v = this.camposDoSimulador(el);
+          if (v) this.simValores = v;
+          this.repintarSimulador(el);
+          return;
+        }
+        this.acaoSimulador(el, b.dataset.simAcao, b);
+      });
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' && ev.target.matches && ev.target.matches('[data-sim]')) {
+          ev.preventDefault();
+          this.acaoSimulador(el, 'simular', el.querySelector('[data-sim-acao="simular"]'));
+        }
+      });
+    }
     if (!el.dataset.ligouVisao) {
       el.dataset.ligouVisao = '1';
       el.addEventListener('click', (ev) => {
