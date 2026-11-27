@@ -12408,6 +12408,23 @@ async function provasPadraoProjecao(page) {
       cab: getComputedStyle(document.querySelector('.tabela-desafio-corp thead tr:not(.cabeca-bloco) th')).backgroundColor }));
     t(`${l} cores da marca: cabeçalho verde-claro e borda verde ao passar o mouse`,
       c.cab === 'rgb(228, 244, 234)' && /0, 163, 86/.test(c.borda), JSON.stringify(c));
+    // A DRE também nas cores da marca (cliente, 2026-11-27: "ainda está no background azul
+    // clarinho"): zebra verde-clara, borda verde no passar o mouse, coluna Desafio em verde.
+    await conferir('AGROPEC');
+    const zebra = page.locator('.tabela-projecao tbody tr.linha-zebra:not(.linha-cbs):not(.resultado-negativo)').first().locator('td').nth(1);
+    await zebra.scrollIntoViewIfNeeded();
+    await zebra.hover();
+    const d = await zebra.evaluate((x) => {
+      const th = document.querySelector('#secao-projecao .tabela-projecao thead th.coluna-desafio-th');
+      const td = document.querySelector('.tabela-projecao tr:not(.linha-cbs):not(.resultado-negativo) > td.celula-desafio-td');
+      return { zebra: getComputedStyle(x).backgroundColor, borda: getComputedStyle(x).boxShadow,
+        desafioCab: th ? getComputedStyle(th).backgroundColor : null, desafioTd: td ? getComputedStyle(td).backgroundColor : null };
+    });
+    t(`${l} DRE nas cores da marca: zebra verde-clara, borda verde, coluna Desafio verde (sem o azul)`,
+      d.zebra === 'rgb(241, 248, 243)' && /0, 163, 86/.test(d.borda)
+      && d.desafioCab === 'rgb(191, 230, 207)' && d.desafioTd === 'rgb(227, 244, 234)', JSON.stringify(d));
+    // Volta ao Corporativo, onde a prova terminava antes: as seguintes dependem dele.
+    await conferir('corp');
   } finally {
     await page.setViewportSize(tamanho);
   }

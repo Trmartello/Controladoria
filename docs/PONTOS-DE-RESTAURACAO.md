@@ -39,7 +39,8 @@ confira se a carga/estrutura precisa de algum ajuste manual (nenhum dado lançad
 
 | PR | Data | O que entrou | Estado antes (restaurar para) | Mescla (reverter) | Banco (`database/`) |
 |---|---|---|---|---|---|
-| #172 | 2026-11-27 | Rateio corporativo administrativo (16.1): planilha de 27/11, −R$ 36.619.882,83 (14 centros mudaram; +R$ 394.154,50 de resultado) | `2e8c94ef5c` | (no PR seguinte) | rateio_adm_2027.php |
+| #173 | 2026-11-27 | DRE nas cores da marca: zebra verde-clara, borda verde no hover, setinhas verdes e a coluna Desafio em verde (sem o azul) | `b722f813ed` | (no PR seguinte) | — |
+| #172 | 2026-11-27 | Rateio corporativo administrativo (16.1): planilha de 27/11, −R$ 36.619.882,83 (14 centros mudaram; +R$ 394.154,50 de resultado) | `2e8c94ef5c` | `b722f813ed` | rateio_adm_2027.php |
 | #171 | 2026-11-27 | Rateio corporativo negócio (14.3): planilha de 27/11, −R$ 36.944.068,77 (seis centros mudaram; +R$ 734.641 de resultado) | `d4ef48d039` | `2e8c94ef5c` | rateio_negocios_2027.php |
 | #170 | 2026-11-27 | "Resultado 2026 × 2027": quadro do ano e cartão do desafio num só no negócio (visão sintética e detalhada); as duas colunas comparadas destacadas | `a51cdb24d4` | `d4ef48d039` | — |
 | #169 | 2026-11-27 | Padrão visual das tabelas da Projeção (cores da marca, fonte grande, zebra, borda no hover) e "Comparar a proposta com" à direita | `62dcf36f5b` | `a51cdb24d4` | — |

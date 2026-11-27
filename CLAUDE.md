@@ -77,8 +77,11 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 
 > **Padrão visual das tabelas da Projeção (2026-11-27, PR #169; cliente: "criar um padrão
 > visual para essa tela e replicar"; "gostei muito, ficou muito mais amigável").** Toda tabela
-> de números da Projeção — MENOS a DRE (`tabela-projecao`), que é a referência e fica como está —
-> leva `tabela-padrao` (listas longas: + `tabela-detalhe`): fonte 1,2rem (1,05rem nas longas),
+> de números da Projeção — MENOS a DRE (`tabela-projecao`), que é a referência e mantém a estrutura
+> própria (desde o #173 nas mesmas cores: zebra `--tp-zebra`, borda `--tp-borda` no hover,
+> setinhas verde-escuro e a coluna Desafio em verde — cabeçalho `--tp-cab-forte`, coluna
+> `--tp-proposta`, campo branco com borda verde —, sem o azul; cliente: "ainda está no background
+> azul clarinho") — leva `tabela-padrao` (listas longas: + `tabela-detalhe`): fonte 1,2rem (1,05rem nas longas),
 > números em peso 500, linha compacta (.2rem), cabeçalho verde-claro com título verde-escuro,
 > faixa de grupo (`cabeca-bloco`) verde médio, zebra verde quase branco, borda verde no hover,
 > totais em cinza, um âmbar claro só para destaque (realista, simulado, comparada, desafio). As
