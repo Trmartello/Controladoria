@@ -8154,8 +8154,9 @@ async function provasDesafioEExpansores(page, largura) {
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
   // Desde 2026-11-25 os tributos (como é × como fica) não são expansor: abrem
   // pelo botão "Reforma tributária: antes × depois", junto dos botões da DRE.
-  t(`${l} Corporativo: visão, desafio, oportunidades e pessoas como expansores (sem premissas: nada se lança ali)`,
-    corp.expansores === 'visao,desafio,oportunidades,pessoas', corp.expansores);
+  // Desde 2026-11-26 o ADMIN (a bateria) tem também o simulador de diretrizes, logo depois da visão.
+  t(`${l} Corporativo: visão, simulador (ADMIN), desafio, oportunidades e pessoas como expansores (sem premissas: nada se lança ali)`,
+    corp.expansores === 'visao,simulador,desafio,oportunidades,pessoas', corp.expansores);
 
   // Devolve o estado das outras provas: tudo aberto.
   await page.evaluate(() => {
