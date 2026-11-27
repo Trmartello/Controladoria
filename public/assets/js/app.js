@@ -374,6 +374,15 @@ const App = {
     return !!this.sessao?.configuracoes?.diagnostico_somente_leitura;
   },
 
+  /**
+   * O modo apresentação esconde as análises da administração (coluna Desafio, o
+   * "Comparar com" e o simulador), a menos que o ADMIN tenha marcado, dentro dele,
+   * "mostrar as análises" (cliente, 2026-11-27: "libera para todas as opções possíveis").
+   */
+  escondeAnalisesAdm() {
+    return this.leituraDiagnostico() && !this.sessao?.configuracoes?.apresentacao_mostra_analises;
+  },
+
   /** Marca o `<body>` com as configurações que mudam o visual (o modo apresentação do Diagnóstico). */
   aplicarConfiguracoes() {
     document.body.classList.toggle('diagnostico-leitura', this.leituraDiagnostico());

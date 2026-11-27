@@ -23,6 +23,9 @@ final class ConfiguracaoController
     /** chave => valor padrão (texto) */
     public const CHAVES = [
         'diagnostico_somente_leitura' => '0',
+        // Dentro do modo apresentação (cliente, 2026-11-27): mostrar mesmo assim, ao ADMIN, a
+        // coluna Desafio, o "Comparar com" e o simulador — "libera para todas as opções possíveis".
+        'apresentacao_mostra_analises' => '0',
     ];
 
     /** As configurações em vigor, com os padrões por baixo. */
@@ -42,7 +45,18 @@ final class ConfiguracaoController
             // Banco sem a tabela (antes do migrate): valem os padrões.
         }
         $saida['diagnostico_somente_leitura'] = $saida['diagnostico_somente_leitura'] === '1';
+        $saida['apresentacao_mostra_analises'] = $saida['apresentacao_mostra_analises'] === '1';
         return $saida;
+    }
+
+    /**
+     * As análises do ADMIN na Projeção (coluna Desafio, "Comparar com" e simulador) estão
+     * liberadas? Fora do modo apresentação, sim; dentro dele, só com a sub-opção marcada.
+     */
+    public static function analisesLiberadas(): bool
+    {
+        $c = self::todas();
+        return !$c['diagnostico_somente_leitura'] || $c['apresentacao_mostra_analises'];
     }
 
     public function listar(): void

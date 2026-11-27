@@ -12137,6 +12137,34 @@ async function provasModoApresentacao(page) {
       dLigado.linhas > 0 && dLigado.coluna === false, JSON.stringify(dLigado));
     t(`${l} e o quadro do ano sem o "Comparar com: Proposta" (o servidor nem manda as propostas)`,
       dLigado.proposta === false && dLigado.seletor === false, JSON.stringify(dLigado));
+    // A sub-opção "mostrar as análises" (cliente, 2026-11-27): com o modo ligado, o
+    // ADMIN volta a ver coluna Desafio e "Comparar com"; no Corporativo a coluna vem
+    // SOMADA e sem campo (só leitura).
+    const sub = (v) => page.evaluate(async (x) => {
+      App.sessao.configuracoes = await App.api('/api/configuracoes', { chave: 'apresentacao_mostra_analises', valor: x });
+      return App.sessao.configuracoes.apresentacao_mostra_analises;
+    }, v);
+    try {
+      t(`${l} o ADMIN marca "mostrar as análises" dentro do modo`, (await sub(1)) === true);
+      const dSub = await colunaDesafio();
+      t(`${l} com ela, a coluna Desafio e o "Comparar com" voltam ao ADMIN`,
+        dSub.coluna === true && dSub.proposta === true && dSub.seletor === true, JSON.stringify(dSub));
+      const corp = await page.evaluate(async () => {
+        const d = await App.api('/api/projecao?corporativo=1');
+        const tr = document.createElement('tbody');
+        const CALC = {};
+        tr.innerHTML = (d.desafio_linhas || []).slice(0, 60).map((dl) => {
+          const l = (d.linhas || []).find((x) => x.codigo === dl.codigo) || dl;
+          return `<tr>${SecaoProjecao.celulaDesafio(d, l, dl, d.desafio_linhas, new Set(), CALC)}</tr>`;
+        }).join('');
+        return { coluna: SecaoProjecao.temColunaDesafio(d), th: SecaoProjecao.thDesafio(d).includes('soma'),
+          linhas: (d.desafio_linhas || []).length, campos: tr.querySelectorAll('input').length };
+      });
+      t(`${l} no Corporativo a coluna Desafio é a SOMA, sem campo para editar`,
+        corp.coluna && corp.th && corp.linhas > 0 && corp.campos === 0, JSON.stringify(corp));
+    } finally {
+      await sub(0);
+    }
     await abrir('cenario');
     const c = await contar('cenario');
     t(`${l} Situação Atual e Tendências sem editar, mover, excluir, plano de ação nem novo anexo`,
@@ -12159,6 +12187,39 @@ async function provasModoApresentacao(page) {
     JSON.stringify(dDesligado));
 }
 
+/**
+ * O risquinho do Desafio (cliente, 2026-11-27): borda verde quando o desafio difere da
+ * proposta a favor do resultado líquido, vermelha quando contra; só nos campos que se
+ * editam (não na CBS informativa, nem nas linhas de %, nem nos totalizadores).
+ */
+async function provasRisquinhoDesafio(page) {
+  const l = 'Risquinho do Desafio:';
+  const r = await page.evaluate(() => {
+    const S = SecaoProjecao;
+    const d = { ano_planejamento: 2027, corporativo: false };
+    const cel = (l, dl) => { const t = document.createElement('tr'); t.innerHTML = S.celulaDesafio(d, l, dl, [], new Set(), {}); return t.querySelector('input') || t.querySelector('td'); };
+    const sub = (cod, prop, desf, extra = {}) => cel({ codigo: cod, nivel: 2, proposta: prop, ...extra }, { codigo: cod, proposta: desf });
+    const cls = (e) => (e.className.match(/desafio-(melhora|piora)/) || [''])[0];
+    return {
+      receitaMaior: cls(sub('1.1', 1000, 1100)), receitaMenor: cls(sub('1.1', 1000, 900)),
+      custoMenor: cls(sub('8.1', -1000, -900)), custoMaior: cls(sub('8.1', -1000, -1100)),
+      centavos: cls(sub('8.1', -1000, -1000.4)),
+      tituloVerde: sub('8.1', -1000, -900).title,
+      cbs: cls(sub('CBS', -50, -80, { informativa: true })),
+      total: cls(cel({ codigo: '6', nivel: 1, proposta: -1000 }, { codigo: '6', proposta: -2000 })),
+      corporativo: (() => { d.corporativo = true; const e = sub('8.1', -1000, -1100); d.corporativo = false; return e.tagName + cls(e); })(),
+    };
+  });
+  t(`${l} receita acima da proposta = verde; abaixo = vermelho`,
+    r.receitaMaior === 'desafio-melhora' && r.receitaMenor === 'desafio-piora', JSON.stringify(r));
+  t(`${l} despesa menor (menos negativa) = verde; maior = vermelho`,
+    r.custoMenor === 'desafio-melhora' && r.custoMaior === 'desafio-piora', JSON.stringify(r));
+  t(`${l} diferença abaixo de R$ 1 não marca, e a dica diz o efeito`,
+    r.centavos === '' && /melhora o resultado líquido/.test(r.tituloVerde), JSON.stringify(r));
+  t(`${l} CBS informativa, totalizadores e o Corporativo (só leitura) não levam risquinho`,
+    r.cbs === '' && r.total === '' && r.corporativo === 'TD', JSON.stringify(r));
+}
+
 (async () => {
   const { chromium } = playwright();
   const browser = await chromium.launch({ executablePath: chromiumExec() });
@@ -12179,6 +12240,7 @@ async function provasModoApresentacao(page) {
   await provasSeloComentarios(page);
   await provasAnexosCenario(page, 'desktop');
   await provasModoApresentacao(page);
+  await provasRisquinhoDesafio(page);
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
   await provasExcluirComOrigens(page);

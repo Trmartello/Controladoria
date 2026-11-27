@@ -181,6 +181,8 @@ class ProjecaoController
         $pessoasSoma = ['por_ano' => [], 'base' => null];
         $propostas = [];
         $propostaVisao = [];
+        $desafioLinhas = [];
+        $desafioTributos = [];
         $desafioVisao = [];
         $desafios = [];
         $tributosDre = [];
@@ -223,6 +225,10 @@ class ProjecaoController
             }
             $propostas[(int)$n['id']] = self::resumoDaProposta($m['linhas']);
             $propostaVisao[(int)$n['id']] = self::propostaDaVisao($m['linhas']);
+            if (!empty($m['desafio_linhas'])) {
+                $desafioLinhas[] = $m['desafio_linhas'];
+                $desafioTributos[(int)$n['id']] = $m['desafio_tributos_dre'] ?? null;
+            }
             // O desafio do ADMIN nas mesmas contas (`desafio_linhas` só vem para ele).
             $desafioVisao[(int)$n['id']] = !empty($m['desafio_linhas']) ? self::propostaDaVisao($m['desafio_linhas']) : [];
             if (isset($m['desafio']['desafio'])) {
@@ -327,6 +333,12 @@ class ProjecaoController
             ),
             'desafio' => $this->desafioCorporativo($ano + 1, $propostas, $desafios),
             'tributos_dre' => Reforma::somarComoEComoFica($tributosDre),
+            // A coluna Desafio SOMADA (cliente, 2026-11-27): no Corporativo e no agrupamento,
+            // o desafio de cada negócio somado conta a conta — só leitura. Só ADMIN (os
+            // `desafio_linhas` de cada negócio só vêm para ele).
+            'desafio_linhas' => $desafioLinhas ? self::somarLinhasDesafio($desafioLinhas) : [],
+            'desafio_lancados' => [],
+            'desafio_tributos_dre' => $desafioLinhas ? Reforma::somarComoEComoFica($desafioTributos) : null,
             // Por negócio, os totais do quadro único (itens + eventos pontuais).
             'oportunidades_negocios' => $oportunidades,
             // Por negócio, o montante do estoque (perdas, acerto, parados).
@@ -1639,7 +1651,7 @@ class ProjecaoController
     {
         $u = Auth::usuario();
         $pode = ($u['perfil'] ?? '') === 'ADMIN'
-            && !ConfiguracaoController::todas()['diagnostico_somente_leitura'];
+            && ConfiguracaoController::analisesLiberadas();
         $d['pode_comparar_proposta'] = $pode;
         if ($pode) {
             $anoPlan = (int)($d['ano_planejamento'] ?? 0);
@@ -1705,7 +1717,7 @@ class ProjecaoController
     public function simular(): void
     {
         $u = Auth::exigirLogin();
-        if (($u['perfil'] ?? '') !== 'ADMIN' || ConfiguracaoController::todas()['diagnostico_somente_leitura']) {
+        if (($u['perfil'] ?? '') !== 'ADMIN' || !ConfiguracaoController::analisesLiberadas()) {
             Json::erro('O simulador de diretrizes é dos administradores, com o modo apresentação desligado.', 403);
         }
         $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
@@ -1824,7 +1836,7 @@ class ProjecaoController
     public function aplicarDiretriz(): void
     {
         $u = Auth::exigirLogin();
-        if (($u['perfil'] ?? '') !== 'ADMIN' || ConfiguracaoController::todas()['diagnostico_somente_leitura']) {
+        if (($u['perfil'] ?? '') !== 'ADMIN' || !ConfiguracaoController::analisesLiberadas()) {
             Json::erro('Só os administradores alteram a diretriz, com o modo apresentação desligado.', 403);
         }
         $fech = Database::um('SELECT * FROM dre_fechamento ORDER BY ano DESC LIMIT 1');
@@ -1885,6 +1897,26 @@ class ProjecaoController
                 ? (float)$m['pessoal_diretriz']['proposta'] : null;
         }
         return $out;
+    }
+
+    /** O desafio de vários negócios somado conta a conta (a coluna Desafio do Corporativo, só leitura). */
+    private static function somarLinhasDesafio(array $listas): array
+    {
+        $soma = [];
+        foreach ($listas as $linhas) {
+            foreach ($linhas as $l) {
+                $c = $l['codigo'];
+                if (!isset($soma[$c])) {
+                    $soma[$c] = $l;
+                    $soma[$c]['proposta_travada'] = true;
+                    continue;
+                }
+                if ($l['proposta'] !== null && !$l['percentual']) {
+                    $soma[$c]['proposta'] = (float)($soma[$c]['proposta'] ?? 0) + (float)$l['proposta'];
+                }
+            }
+        }
+        return array_values($soma);
     }
 
     /** Põe `proposta` em cada conta da visão do ano (de um negócio ou do total). */

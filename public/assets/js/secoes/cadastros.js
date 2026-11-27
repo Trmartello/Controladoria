@@ -85,8 +85,33 @@ const SecaoCadastros = {
           Resultados, a DRE fica <strong>sem a coluna Desafio</strong> (os valores continuam gravados e voltam ao
           desligar). Útil para apresentar.
           ${admin ? '' : '<br><em>Só administradores ligam e desligam.</em>'}</div>
+        <div class="ms-4 mt-3 ps-3 border-start cfg-sub-apresentacao${ligado ? '' : ' opacity-50'}">
+          <div class="form-check form-switch d-flex align-items-center gap-2">
+            <input class="form-check-input" type="checkbox" role="switch" id="cfg-apresentacao-analises"
+              ${cfg.apresentacao_mostra_analises ? 'checked' : ''} ${admin && ligado ? '' : 'disabled'}>
+            <label class="form-check-label fw-bold" for="cfg-apresentacao-analises">
+              Mesmo assim, mostrar aos administradores a coluna Desafio, o "Comparar com" e o simulador</label>
+          </div>
+          <div class="small text-muted mt-1">Vale só com o modo acima ligado. Marcada, o administrador continua
+            vendo as análises na Projeção de Resultados: com <strong>um negócio</strong> selecionado o Desafio se
+            edita; com <strong>mais de um</strong> (Corporativo ou agrupamento) a coluna só soma, sem edição.
+            Os demais usuários não veem nada disso, com ou sem esta opção.</div>
+        </div>
       </div></div>`;
     if (!admin) return;
+    const sub = alvo.querySelector('#cfg-apresentacao-analises');
+    sub.addEventListener('change', async () => {
+      sub.disabled = true;
+      try {
+        App.sessao.configuracoes = await App.api('/api/configuracoes',
+          { chave: 'apresentacao_mostra_analises', valor: sub.checked ? 1 : 0 });
+      } catch (e) {
+        alert(e.message);
+        sub.checked = !sub.checked;
+      } finally {
+        sub.disabled = !App.sessao.configuracoes.diagnostico_somente_leitura;
+      }
+    });
     alvo.querySelector('#cfg-diagnostico-leitura').addEventListener('change', async (ev) => {
       const caixa = ev.target;
       caixa.disabled = true;
@@ -94,6 +119,8 @@ const SecaoCadastros = {
         App.sessao.configuracoes = await App.api('/api/configuracoes',
           { chave: 'diagnostico_somente_leitura', valor: caixa.checked ? 1 : 0 });
         App.aplicarConfiguracoes();
+        sub.disabled = !caixa.checked;
+        alvo.querySelector('.cfg-sub-apresentacao').classList.toggle('opacity-50', !caixa.checked);
       } catch (e) {
         alert(e.message);
         caixa.checked = !caixa.checked;

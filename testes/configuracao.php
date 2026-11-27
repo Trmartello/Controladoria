@@ -79,10 +79,37 @@ try {
     $e = json_decode($http2('POST', '/api/configuracoes', ['chave' => 'diagnostico_somente_leitura', 'valor' => 0], $cab2), true);
     prova('e não altera (403)', str_contains((string)($e['erro'] ?? ''), 'administradores'), (string)($e['erro'] ?? ''));
 
+    // A sub-opção do modo apresentação (cliente, 2026-11-27): com ela marcada o ADMIN
+    // volta a receber as análises (proposta no quadro, simulador) mesmo no modo ligado.
+    $negocio = (int)(Database::um('SELECT id FROM negocio WHERE ativo = 1 ORDER BY id LIMIT 1')['id'] ?? 0);
+    $quadro = static fn () => $ler($http('GET', '/api/projecao?negocio_id=' . $negocio));
+    $q = $quadro();
+    prova('modo ligado: o quadro do ADMIN vem sem o "Comparar com" (sub-opção desmarcada)',
+        ($q['pode_comparar_proposta'] ?? null) === false, json_encode($q['pode_comparar_proposta'] ?? null));
+    $r = $ler($http('POST', '/api/configuracoes', ['chave' => 'apresentacao_mostra_analises', 'valor' => 1], $cab));
+    prova('o ADMIN marca "mostrar as análises" dentro do modo apresentação',
+        ($r['apresentacao_mostra_analises'] ?? null) === true && ($r['diagnostico_somente_leitura'] ?? null) === true, json_encode($r));
+    $q = $quadro();
+    prova('com ela, o quadro volta a trazer a proposta e o simulador ao ADMIN',
+        ($q['pode_comparar_proposta'] ?? null) === true && !empty($q['diretriz_simulavel']),
+        json_encode([$q['pode_comparar_proposta'] ?? null, !empty($q['diretriz_simulavel'])]));
+    $corp = $ler($http('GET', '/api/projecao?corporativo=1'));
+    prova('e o Corporativo traz o desafio SOMADO dos negócios, travado (só leitura)',
+        count($corp['desafio_linhas'] ?? []) > 0
+        && !array_filter($corp['desafio_linhas'], static fn ($l) => empty($l['proposta_travada']) && empty($l['percentual']) && empty($l['informativa'])),
+        (string)count($corp['desafio_linhas'] ?? []));
+    $l2 = $ler($http2('GET', '/api/configuracoes'));
+    prova('quem não é ADMIN também lê a sub-opção', ($l2['apresentacao_mostra_analises'] ?? null) === true);
+    $e = json_decode($http2('POST', '/api/configuracoes', ['chave' => 'apresentacao_mostra_analises', 'valor' => 0], $cab2), true);
+    prova('e não a altera (403)', str_contains((string)($e['erro'] ?? ''), 'administradores'), (string)($e['erro'] ?? ''));
+    $r = $ler($http('POST', '/api/configuracoes', ['chave' => 'apresentacao_mostra_analises', 'valor' => 0], $cab));
+    prova('o ADMIN desmarca a sub-opção', ($r['apresentacao_mostra_analises'] ?? null) === false);
+
     $r = $ler($http('POST', '/api/configuracoes', ['chave' => 'diagnostico_somente_leitura', 'valor' => 0], $cab));
     prova('o ADMIN desliga', ($r['diagnostico_somente_leitura'] ?? null) === false);
 } finally {
     Database::executar('DELETE FROM usuario WHERE email = ?', [$email]);
+    Database::executar("DELETE FROM configuracao WHERE chave = 'apresentacao_mostra_analises'");
     if ($antes === null) {
         Database::executar("DELETE FROM configuracao WHERE chave = 'diagnostico_somente_leitura'");
     } else {
