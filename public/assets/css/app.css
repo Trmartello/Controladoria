@@ -4918,6 +4918,27 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-oportunidades-quadro > tbody > tr > td:first-child { min-width: 22rem; }
 @media (max-width: 767.98px) { .tabela-oportunidades-quadro > tbody > tr > td:first-child { min-width: 14rem; } }
 .tabela-desafio .celula-desafio-pct { max-width: 7rem; flex: 0 0 7rem; }
+/* Cartões do desafio e tributos (cliente, 2026-11-27): linhas zebradas, como a DRE, e
+   fonte grande aproveitando a altura da linha (menos respiro, número maior). */
+/* "A maior fonte possível, para dar maior facilidade de leitura" (cliente, 2026-11-27): o
+   cartão do negócio tem folga na largura e vai a 1,3rem; o do Corporativo (12 colunas de
+   números) e o de tributos ficam no maior tamanho que ainda cabe em 1850 px sem rolar. */
+.tabela-desafio { font-size: 1.3rem; }
+.tabela-desafio-corp, .tabela-tributos { font-size: 1.12rem; }
+.tabela-desafio > :not(caption) > * > *, .tabela-tributos > :not(caption) > * > * { padding-top: .2rem; padding-bottom: .2rem; }
+.tabela-desafio tbody tr:nth-child(even):not(.linha-total) > td,
+.tabela-tributos tbody tr:nth-child(even):not(.linha-total) > td { background-color: #eef4fc; }
+.tabela-desafio .bloco-ini { border-left: 3px solid #9fb3cf; }
+.tabela-desafio .cabeca-bloco th { border-bottom: 0; font-size: 1.1rem; }
+/* Borda azul na linha sob o mouse, exatamente como na DRE (cliente, 2026-11-27). */
+.tabela-desafio tbody tr:hover > td { box-shadow: inset 0 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
+.tabela-desafio tbody tr:hover > td:first-child { box-shadow: inset 2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
+.tabela-desafio tbody tr:hover > td:last-child { box-shadow: inset -2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
+.tabela-desafio tr.linha-parte-rateio > td { color: #495057; }
+@media print { .tabela-desafio tbody tr:hover > td { box-shadow: none !important; } }
+.tabela-desafio .margem-sub { font-size: .8rem; font-weight: 400; color: #6c757d; line-height: 1; }
+.tabela-desafio-corp td { white-space: nowrap; }
+.tabela-desafio-corp thead th { white-space: normal; line-height: 1.15; vertical-align: bottom; }
 
 /* ── Topos fixos da Projeção (pedido do cliente, 2026-11-25) ──────────────────
    "Fixe o cabeçalho do expander no topo enquanto ele tiver dados para

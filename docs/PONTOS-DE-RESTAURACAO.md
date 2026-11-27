@@ -39,7 +39,8 @@ confira se a carga/estrutura precisa de algum ajuste manual (nenhum dado lançad
 
 | PR | Data | O que entrou | Estado antes (restaurar para) | Mescla (reverter) | Banco (`database/`) |
 |---|---|---|---|---|---|
-| #165 | 2026-11-27 | Pontos de restauração sem etiqueta (o proxy recusa) e memória da sessão — só documentação | `87d26713f7` | (no PR seguinte) | — |
+| #166 | 2026-11-27 | Quadro do ano e cartões do desafio = reflexo da DRE (receita bruta sem PIS/COFINS, colunas de 2026, rateios abertos, Corporativo em blocos, fonte grande) | `e6dc74bdc7` | (no PR seguinte) | — |
+| #165 | 2026-11-27 | Pontos de restauração sem etiqueta (o proxy recusa) e memória da sessão — só documentação | `87d26713f7` | `e6dc74bdc7` | — |
 | #164 | 2026-11-27 | Quadro do ano: Resultado do negócio (14) no lugar do após impostos (11); registro dos pontos de restauração | `7395b88fca` | `87d26713f7` | — |
 | #163 | 2026-11-26 | Desafio no modo apresentação, somado no Corporativo e com risquinho de efeito | `d8d5b97a6b` | `7395b88fca` | — |
 | #162 | 2026-11-26 | Simulador: impacto também em quem digitou o pessoal, e o detalhe de pessoal | `541476513f` | `d8d5b97a6b` | — |

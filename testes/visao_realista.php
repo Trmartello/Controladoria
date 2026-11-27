@@ -79,6 +79,21 @@ $ctrl = new App\Controllers\ProjecaoController();
 $ler = new ReflectionMethod($ctrl, 'visaoDoAno');
 $ler->setAccessible(true);
 $v = $ler->invoke($ctrl, array_values(array_intersect_key($ids, $painel)), $ano, $corte);
+// O painel do cliente mostra a receita bruta COM o PIS/COFINS (a régua da carga). Desde
+// 2026-11-27 o quadro da Projeção a mostra sem ele, como a DRE ("essas duas tabelas devem
+// ser o reflexo da DRE"), e o que sai fica na pseudo-linha `CBS`. Para conferir a regra
+// contra o painel, a receita bruta volta a ter o PIS/COFINS: brutos sem + CBS, e a mesma
+// aderência por cima.
+$brutos = (new ReflectionMethod($ctrl, 'brutosDoAno'));
+$brutos->setAccessible(true);
+$b = $brutos->invoke($ctrl, array_values(array_intersect_key($ids, $painel)), $ano, $corte);
+foreach ($v as $idNeg => $porConta) {
+    $com = [];
+    foreach (['realizado', 'plan_ate', 'plan_resto'] as $k) {
+        $com[$k] = $b[$idNeg]['1'][$k] + $b[$idNeg]['CBS'][$k];
+    }
+    $comPis[$idNeg] = Projecao::visaoRealista($com, '1', $corte);
+}
 // A REGRA é a do painel: aplicada às MESMAS entradas que o painel usou (realizado
 // jan–out, planejado jan–out e nov–dez, extração de 15/11/2026), dá os MESMOS
 // números de nov–dez, negócio a negócio, ao centavo.
@@ -119,8 +134,8 @@ foreach ($painel as $cod => [$rob, $rl]) {
     $x = $v[$ids[$cod]] ?? null;
     // chave numérica vira int no PHP
     $tolRl = in_array((string)$cod, ['6', '8'], true) ? 3000 : (in_array((string)$cod, ['1', '9'], true) ? 100 : 5);
-    if (!$x || abs($x['1']['realista_resto'] - $rob) > 5 || abs($x['18']['realista_resto'] - $rl) > $tolRl) {
-        $divergem[] = "{$cod}: " . ($x ? round($x['1']['realista_resto']) . '/' . round($x['18']['realista_resto']) : 'ausente');
+    if (!$x || abs($comPis[$ids[$cod]]['realista_resto'] - $rob) > 5 || abs($x['18']['realista_resto'] - $rl) > $tolRl) {
+        $divergem[] = "{$cod}: " . ($x ? round($comPis[$ids[$cod]]['realista_resto']) . '/' . round($x['18']['realista_resto']) : 'ausente');
     }
 }
 prova('com os dados do banco, os 11 negócios ficam no painel (R$ 5; ±R$ 3 mil em 6 e 8 e R$ 100 em 1 e 9, os lançamentos que mudaram de negócio)',
@@ -129,9 +144,13 @@ prova('com os dados do banco, os 11 negócios ficam no painel (R$ 5; ±R$ 3 mil 
 $tot = (new ReflectionMethod($ctrl, 'visaoDoAnoTotal'));
 $tot->setAccessible(true);
 $t = $tot->invoke($ctrl, array_values(array_intersect_key($ids, $painel)), $ano, $corte);
-prova('total do painel: receita bruta realista de nov–dez R$ 580.915.670 e real + realista R$ 3.573.546.829',
-    abs($t['1']['realista_resto'] - 580915670) < 20 && abs($t['1']['real_realista'] - 3573546829) < 20,
-    round($t['1']['realista_resto']) . ' / ' . round($t['1']['real_realista']));
+$somaCom = static fn ($k) => array_sum(array_map(static fn ($x) => $x[$k], $comPis));
+prova('total do painel (com o PIS/COFINS, como o slide): receita bruta realista de nov–dez R$ 580.915.670 e real + realista R$ 3.573.546.829',
+    abs($somaCom('realista_resto') - 580915670) < 20 && abs($somaCom('real_realista') - 3573546829) < 20,
+    round($somaCom('realista_resto')) . ' / ' . round($somaCom('real_realista')));
+prova('no quadro da Projeção a receita bruta sai SEM o PIS/COFINS: o total fica abaixo do painel pelo PIS/COFINS do ano',
+    $t['1']['real_realista'] < $somaCom('real_realista') && $t['1']['real_realista'] > $somaCom('real_realista') * 0.98,
+    round($t['1']['real_realista']) . ' / ' . round($somaCom('real_realista')));
 prova('total do painel: resultado líquido realista de nov–dez R$ 13.824.615, real + realista R$ 38.751.812, realista × plano −R$ 37.139.090',
     abs($t['18']['realista_resto'] - 13824615) < 20 && abs($t['18']['real_realista'] - 38751812) < 20
     && abs($t['18']['realista_x_plano'] + 37139090) < 20,

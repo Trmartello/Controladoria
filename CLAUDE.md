@@ -25,22 +25,38 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 > cada publicação) duas vezes sobre um custo gravado com sinal trocado e falha se
 > qualquer tabela de lançamento mudar. Rode-o em toda entrega, com as suítes PHP.
 
-> **Em andamento (2026-11-27, plano aprovado, prévia ainda não mostrada):** "as duas
-> tabelas devem ser o reflexo da DRE". Hoje a única linha que diverge entre o quadro
-> "2026: realizado, planejado e visão realista" e o cartão "Desafio 2027 para o
-> negócio" é a **receita bruta**, pelo valor exato da CBS (o quadro soma o PIS/COFINS de
-> volta em `propostaDaVisao`; o cartão o tira por taxa na tela). Aprovado pelo cliente:
-> (1) o quadro passa a mostrar a receita bruta SEM PIS/COFINS em TODAS as colunas,
-> 2026 inclusive — realizado menos o PIS/COFINS realizado (o mesmo da linha CBS da DRE),
-> planejado jan–out, nov–dez e ano menos a taxa do negócio × Receita de Vendas (1.1)
-> planejada do período (regra de `Reforma::pisCofinsDoNegocio`), proposta e desafio =
-> linha 1 da DRE; o melhor lugar é tirar em `brutosDoAno` (por negócio, antes do realista
-> e do total); (2) o cartão lê a linha 1 da DRE (servidor), sem `taxaCbsDoCartao`;
-> (3) o cartão ganha, à esquerda, "Real + Plan. 2026" e "Real + realista 2026" para
-> todos os degraus (rateios 14 e 16 com a regra do desvio médio; por ser linear, a escada
-> fecha), ordem: Real + Plan. 2026 | Real + realista 2026 | Desafio | Proposta |
-> Diferença (proposta − desafio); o cartão do Corporativo ganha as duas colunas do
-> resultado. Fluxo: prévia (imagens) → aprovado → implementar.
+> **Quadro do ano e cartões do desafio = reflexo da DRE (2026-11-27, PR #166).** Cliente:
+> "essas duas tabelas devem ser o reflexo da DRE"; respostas: SIM (tirar o PIS/COFINS de
+> todas as colunas, 2026 inclusive), OK (colunas "Real + Plan. 2026" e "Real + realista
+> 2026"), aceitou as sugestões para o Corporativo, pediu os rateios do negócio abertos, a
+> borda azul no passar o mouse e "a maior fonte possível".
+> - **Receita bruta sem PIS/COFINS no quadro inteiro**: `semPisCofins` (em `brutosDoAno`,
+>   por negócio, antes do realista e do total) tira do realizado o PIS/COFINS da carga de
+>   tributos (no mesmo corte; senão a taxa × 1.1 realizada) e do planejado a taxa × 1.1
+>   planejada do período — a regra de `Reforma::pisCofinsDoNegocio`, que faz a linha CBS
+>   da DRE. O que sai vira a pseudo-linha `CBS` (no realista, aderência, como a receita).
+>   Conferido: realizado e Real + Plan. = linha 1 da DRE ao centavo nos 11 negócios.
+>   `propostaDaVisao` recebe o "como é × como fica" e tira a CBS da proposta/desafio.
+>   O **Painel Balanço** (slide do cliente) segue com PIS/COFINS; `visao_realista.php`
+>   confere a regra contra ele somando a CBS de volta.
+> - **Cartão do negócio**: `escadaDoDesafio` já manda a receita bruta sem a CBS (sem
+>   `taxaCbsDoCartao` na tela), `escada.cbs` (desafio, proposta, real_plan, realista) e
+>   `real_plan`/`realista` — os degraus do ano corrente, de `visaoDoAno(..., LINHAS_ESCADA_ANO)`.
+>   Os rateios do negócio (12) abrem em Matriz/Central (14.1, só com valor), financeiros (14.2)
+>   e corporativos do negócio (14.3). Na carga de 2026 linha e partes diferem por até R$ 4
+>   (arredondamento do Qlik). Colunas de 2026 marcadas `data-col-2026`.
+> - **Cartão do Corporativo**: blocos Desafio | Proposta com as MESMAS cinco colunas
+>   (receita bruta sem PIS/COFINS, receita líquida, despesas, resultado do negócio (14),
+>   resultado líquido em negrito com a margem embaixo) e a diferença do resultado líquido;
+>   `colunasComparar` + `total_comparar`. Saiu a coluna "PIS + COFINS · estimado" (está na
+>   tabela de tributos) e as margens antes dos rateios e do negócio. `data-col` nomeado.
+> - Zebra, borda azul no hover (igual à DRE) e fonte 1,3rem no cartão do negócio; 1,12rem no
+>   Corporativo e nos tributos (o maior que cabe em 1850 px sem rolar).
+> - Provas: `testes/reflexo_dre.php` (só lê, pela API) e `provasReflexoDre`.
+> **Proposta ainda sem resposta (2026-11-27):** unificar, para o ADMIN no Corporativo, o
+> "Simulador de diretrizes" e o "Pessoas e benefícios" num cartão "Diretrizes de pessoal"
+> (uma linha por diretriz com o campo de simular, custo no ano vigente × simulado e impacto;
+> embaixo a tabela por negócio). Exige o simulador devolver o custo por item. PR separado.
 
 Índice das decisões do cliente na aba **Projeção de Resultados**. O detalhe e o
 histórico de cada uma estão em "Regras de negócio importantes"; este bloco existe

@@ -185,6 +185,7 @@ class ProjecaoController
         $desafioTributos = [];
         $desafioVisao = [];
         $desafios = [];
+        $escadas = [];
         $tributosDre = [];
         $oportunidades = [];
         $estoque = [];
@@ -224,15 +225,17 @@ class ProjecaoController
                 ];
             }
             $propostas[(int)$n['id']] = self::resumoDaProposta($m['linhas']);
-            $propostaVisao[(int)$n['id']] = self::propostaDaVisao($m['linhas']);
+            $propostaVisao[(int)$n['id']] = self::propostaDaVisao($m['linhas'], $m['tributos_dre'] ?? null);
             if (!empty($m['desafio_linhas'])) {
                 $desafioLinhas[] = $m['desafio_linhas'];
                 $desafioTributos[(int)$n['id']] = $m['desafio_tributos_dre'] ?? null;
             }
             // O desafio do ADMIN nas mesmas contas (`desafio_linhas` só vem para ele).
-            $desafioVisao[(int)$n['id']] = !empty($m['desafio_linhas']) ? self::propostaDaVisao($m['desafio_linhas']) : [];
+            $desafioVisao[(int)$n['id']] = !empty($m['desafio_linhas'])
+                ? self::propostaDaVisao($m['desafio_linhas'], $m['desafio_tributos_dre'] ?? null) : [];
             if (isset($m['desafio']['desafio'])) {
                 $desafios[(int)$n['id']] = $m['desafio']['desafio'];
+                $escadas[(int)$n['id']] = $m['desafio']['escada'] ?? null;
             }
             if ($m['pessoal_alertas']) {
                 $nomesFilial = array_column($m['filiais'], 'nome', 'id');
@@ -331,7 +334,7 @@ class ProjecaoController
                 array_filter($desafioVisao) ? self::somaDasPropostas($desafioVisao) : [],
                 'desafio'
             ),
-            'desafio' => $this->desafioCorporativo($ano + 1, $propostas, $desafios),
+            'desafio' => $this->desafioCorporativo($ano + 1, $propostas, $desafios, $escadas),
             'tributos_dre' => Reforma::somarComoEComoFica($tributosDre),
             // A coluna Desafio SOMADA (cliente, 2026-11-27): no Corporativo e no agrupamento,
             // o desafio de cada negócio somado conta a conta — só leitura. Só ADMIN (os
@@ -557,6 +560,11 @@ class ProjecaoController
             ];
         }
 
+        // O "como é × como fica" da proposta e do desafio: a CBS que a DRE de 2027 tira da
+        // receita bruta — o quadro do ano e o cartão do desafio tiram a mesma (2026-11-27).
+        $tribDre = Reforma::comoEComoFica($linhas, $tributacao, $corte);
+        $tribDreDesafio = Reforma::comoEComoFica($linhasDesafio, $tributacao, $corte);
+        $visaoEscada = $this->visaoDoAno([$negocioId], $ano, $corte, Projecao::LINHAS_ESCADA_ANO)[$negocioId] ?? null;
         return [
             'ano' => $ano,
             'ano_planejamento' => $ano + 1,
@@ -600,18 +608,22 @@ class ProjecaoController
             // Realizado × planejado do ano corrente e a visão realista, para a
             // receita bruta e o resultado líquido. Só leitura.
             'visao_ano' => self::comProposta(
-                self::comProposta($this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null, self::propostaDaVisao($linhas)),
-                self::propostaDaVisao($linhasDesafio),
+                self::comProposta(
+                    $visaoEscada ? array_intersect_key($visaoEscada, array_flip(Projecao::LINHAS_VISAO_ANO)) : null,
+                    self::propostaDaVisao($linhas, $tribDre)
+                ),
+                self::propostaDaVisao($linhasDesafio, $tribDreDesafio),
                 'desafio'
             ),
             // O desafio da Controladoria para o ano da proposta, ao lado do que a
             // proposta dá hoje. Só leitura.
-            'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas, $linhasDesafio, $driver, $lancDesafio),
+            'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas, $linhasDesafio, $driver, $lancDesafio,
+                $visaoEscada, self::cbsProposta($tribDre), self::cbsProposta($tribDreDesafio)),
             // De onde veio a Receita de Vendas padrão (driver de volume ou premissas).
             'driver' => $driver,
             // Como é × como fica: o PIS/COFINS sai das deduções e vira a linha da
             // CBS acima da Receita Bruta (pedido do cliente, 2026-11-18).
-            'tributos_dre' => Reforma::comoEComoFica($linhas, $tributacao, $corte),
+            'tributos_dre' => $tribDre,
             // Oportunidades e riscos de 2027: itens não recorrentes de 2026 e meses
             // fora do padrão nas despesas. Só leitura.
             'oportunidades' => [
@@ -725,7 +737,8 @@ class ProjecaoController
     }
 
     /** O desafio de UM negócio e a proposta dele hoje, lado a lado. */
-    private function desafioDoNegocio(int $negocioId, int $anoPlan, array $linhas, array $linhasDesafio, ?array $driver, array $lancDesafio = []): ?array
+    private function desafioDoNegocio(int $negocioId, int $anoPlan, array $linhas, array $linhasDesafio, ?array $driver,
+        array $lancDesafio = [], ?array $visaoAno = null, float $cbsProp = 0.0, float $cbsDes = 0.0): ?array
     {
         $d = $this->desafioDoAno($anoPlan);
         if (!$d) {
@@ -734,7 +747,7 @@ class ProjecaoController
         $desafio = self::desafioDasLinhas($linhasDesafio, $driver);
         $prop = self::resumoDaProposta($linhas);
         $trib = Oportunidades::tributos([$negocioId], $anoPlan - 1)[$negocioId] ?? null;
-        $escada = self::escadaDoDesafio($linhasDesafio, $linhas);
+        $escada = self::escadaDoDesafio($linhasDesafio, $linhas, $visaoAno, $cbsProp, $cbsDes);
         // O desafio da coluna da DRE (2026-11-25) já está nas linhas: o cartão só
         // diz se houve lançamento da administração.
         $desafio['ajustado'] = (bool)$lancDesafio;
@@ -756,7 +769,8 @@ class ProjecaoController
      * saem da DRE dele, linha a linha — nenhum é mais estimado. `estimados` fica
      * vazio (a tela ainda sabe marcá-los, se um desafio carregado voltar).
      */
-    private static function escadaDoDesafio(array $linhasDesafio, array $linhas): array
+    private static function escadaDoDesafio(array $linhasDesafio, array $linhas, ?array $visaoAno = null,
+        float $cbsProp = 0.0, float $cbsDes = 0.0): array
     {
         $degraus = static function (array $ls): array {
             $p = array_column($ls, 'proposta', 'codigo');
@@ -770,6 +784,9 @@ class ProjecaoController
                 'resultado_antes_rateios' => $v(Projecao::LINHA_APOS_IMPOSTOS),
                 'margem_antes_rateios' => $pct($v(Projecao::LINHA_APOS_IMPOSTOS), $rol),
                 'rateios_negocio' => $v(Projecao::LINHA_RATEIOS_NEGOCIO),
+                // As partes dos rateios do negócio (cliente, 2026-11-27: "abra os rateios,
+                // rateio financeiro e rateio corporativo").
+                'rateio_matriz' => $v('14.1'), 'rateio_financeiro' => $v('14.2'), 'rateio_corporativo' => $v('14.3'),
                 'resultado_negocio' => $v(Projecao::LINHA_RESULTADO_NEGOCIO),
                 'margem_negocio' => $pct($v(Projecao::LINHA_RESULTADO_NEGOCIO), $rol),
                 'rateios_adm' => $v(Projecao::LINHA_RATEIOS_ADM),
@@ -777,7 +794,56 @@ class ProjecaoController
                 'margem' => $pct($v(Projecao::LINHA_RESULTADO), $rol),
             ];
         };
-        return ['desafio' => $degraus($linhasDesafio), 'proposta' => $degraus($linhas), 'estimados' => []];
+        // A receita bruta como na DRE de 2027, SEM o PIS/COFINS (cliente, 2026-11-27: "as duas
+        // tabelas devem ser o reflexo da DRE"): a mesma CBS que a DRE põe na linha informativa.
+        $des = $degraus($linhasDesafio);
+        $pro = $degraus($linhas);
+        if ($des['receita_bruta'] !== null) {
+            $des['receita_bruta'] -= $cbsDes;
+        }
+        if ($pro['receita_bruta'] !== null) {
+            $pro['receita_bruta'] -= $cbsProp;
+        }
+        $saida = ['desafio' => $des, 'proposta' => $pro, 'estimados' => [],
+            'cbs' => ['desafio' => $cbsDes, 'proposta' => $cbsProp]];
+        // O ano corrente ao lado (cliente, 2026-11-27): "Real + Plan." (realizado até o corte +
+        // planejado do resto) e "Real + realista" (realizado + visão realista), linha a linha
+        // do quadro do ano — já sem o PIS/COFINS. Cada linha segue a regra dela; como o
+        // desvio médio é linear, a escada fecha (13 + 14 = 15; 15 + 16 = 18).
+        if ($visaoAno) {
+            foreach (['real_plan' => 'real_plan', 'realista' => 'real_realista'] as $chave => $col) {
+                $ls = [];
+                foreach ($visaoAno as $c => $v) {
+                    $ls[] = ['codigo' => (string)$c, 'proposta' => $v[$col] ?? null];
+                }
+                $saida[$chave] = $degraus($ls);
+                $saida['cbs'][$chave] = isset($visaoAno['CBS']) ? (float)$visaoAno['CBS'][$col] : null;
+            }
+        }
+        return $saida;
+    }
+
+    /**
+     * As MESMAS colunas do desafio e da proposta, para comparar indicador a indicador
+     * (cliente, 2026-11-27: "equalizar as colunas do desafio com a proposta"): receita
+     * bruta (sem o PIS/COFINS, como na DRE), receita líquida, despesas operacionais,
+     * resultado do negócio (14) e resultado líquido, com a margem líquida.
+     */
+    private static function colunasComparar(?array $escada): ?array
+    {
+        if (!$escada) {
+            return null;
+        }
+        $saida = [];
+        foreach (['desafio', 'proposta'] as $lado) {
+            $e = $escada[$lado] ?? [];
+            $saida[$lado] = [
+                'receita_bruta' => $e['receita_bruta'] ?? null, 'receita_liquida' => $e['receita_liquida'] ?? null,
+                'despesas' => $e['despesas'] ?? null, 'resultado_negocio' => $e['resultado_negocio'] ?? null,
+                'resultado' => $e['resultado'] ?? null, 'margem' => $e['margem'] ?? null,
+            ];
+        }
+        return $saida;
     }
 
     /**
@@ -787,7 +853,7 @@ class ProjecaoController
      *
      * @param array<int,array> $propostas resumo da proposta de cada negócio consolidado
      */
-    private function desafioCorporativo(int $anoPlan, array $propostas, array $desafios): ?array
+    private function desafioCorporativo(int $anoPlan, array $propostas, array $desafios, array $escadas = []): ?array
     {
         $d = $this->desafioDoAno($anoPlan);
         if ($d) {
@@ -826,7 +892,8 @@ class ProjecaoController
                     $tribTotal[$k] += $trib[$k];
                 }
             }
-            $negocios[$id] = ['desafio' => $desafio, 'proposta' => $p, 'tributos' => $trib];
+            $negocios[$id] = ['desafio' => $desafio, 'proposta' => $p, 'tributos' => $trib,
+                'comparar' => self::colunasComparar($escadas[$id] ?? null)];
         }
         $vendas = $tribTotal['venda_socio'] + $tribTotal['venda_nao_socio'];
         $tribTotal['parte_nao_socio'] = $vendas > 0 ? $tribTotal['venda_nao_socio'] / $vendas : null;
@@ -840,8 +907,23 @@ class ProjecaoController
             'falta' => $t['receita_liquida'] * $meta / 100 - $t['resultado'],
         ];
         unset($d['por_negocio']);
+        // O total das colunas iguais de desafio e proposta (cliente, 2026-11-27).
+        $totComparar = [];
+        foreach ($negocios as $n) {
+            foreach (($n['comparar'] ?? []) as $lado => $vals) {
+                foreach ($vals as $k => $x) {
+                    if ($k !== 'margem' && $x !== null) {
+                        $totComparar[$lado][$k] = ($totComparar[$lado][$k] ?? 0.0) + $x;
+                    }
+                }
+            }
+        }
+        foreach ($totComparar as $lado => $v) {
+            $totComparar[$lado]['margem'] = !empty($v['receita_liquida']) ? ($v['resultado'] ?? 0) / $v['receita_liquida'] * 100 : null;
+        }
         return $d + [
             'negocios' => $negocios,
+            'total_comparar' => $totComparar,
             'total' => [
                 'desafio' => self::comMargem($totDesafio) + $alvo($totDesafio) + ['pis_cofins' => ['total' => $pcDesafio]],
                 'proposta' => self::comMargem($totProposta) + $alvo($totProposta) + [
@@ -1576,12 +1658,12 @@ class ProjecaoController
      * @param int[] $negocioIds
      * @return array<int,array{1:array,18:array}>
      */
-    private function visaoDoAno(array $negocioIds, int $ano, int $corte): array
+    private function visaoDoAno(array $negocioIds, int $ano, int $corte, array $contas = Projecao::LINHAS_VISAO_ANO): array
     {
         $brutos = $this->brutosDoAno($negocioIds, $ano, $corte);
         $saida = [];
         foreach ($brutos as $id => $porConta) {
-            foreach (Projecao::LINHAS_VISAO_ANO as $c) {
+            foreach ($contas as $c) {
                 $saida[$id][$c] = Projecao::visaoRealista(
                     $porConta[$c] ?? ['realizado' => 0, 'plan_ate' => 0, 'plan_resto' => 0],
                     $c,
@@ -1624,18 +1706,24 @@ class ProjecaoController
      *
      * @return array<string,float|null> conta → proposta
      */
-    private static function propostaDaVisao(array $linhas): array
+    /** A CBS da coluna Proposta do "como é × como fica" (0 quando a visão não tem tributos). */
+    private static function cbsProposta(?array $tributosDre): float
+    {
+        return (float)($tributosDre['colunas']['proposta']['como_e']['pis_cofins'] ?? 0);
+    }
+
+    private static function propostaDaVisao(array $linhas, ?array $tributosDre = null): array
     {
         $p = array_column($linhas, 'proposta', 'codigo');
         $out = [];
         foreach (Projecao::LINHAS_VISAO_ANO as $c) {
             $out[$c] = isset($p[$c]) && $p[$c] !== null ? (float)$p[$c] : null;
         }
-        // A receita bruta do quadro vem da DRE carregada, COM o PIS/COFINS; na DRE do
-        // formato 2027 ele sai da Receita Bruta e vira a linha informativa CBS. Para a
-        // proposta ficar na mesma régua do "Real + Plan.", a CBS proposta volta à soma.
-        if ($out['1'] !== null && isset($p['CBS']) && $p['CBS'] !== null) {
-            $out['1'] += (float)$p['CBS'];
+        // Desde 2026-11-27 o quadro inteiro está na régua da DRE (receita bruta SEM o
+        // PIS/COFINS, `semPisCofins`), e a proposta é a linha 1 como ela é. Quem chega
+        // aqui com as linhas no formato da carga (antes de `paraTela`) tira a CBS.
+        if ($out['1'] !== null && !isset($p['CBS'])) {
+            $out['1'] -= self::cbsProposta($tributosDre);
         }
         return $out;
     }
@@ -1965,7 +2053,8 @@ class ProjecaoController
                     COALESCE(SUM(CASE WHEN v.tipo = 'META' AND v.mes <= ? THEN v.valor END), 0) AS plan_ate,
                     COALESCE(SUM(CASE WHEN v.tipo = 'META' AND v.mes >  ? THEN v.valor END), 0) AS plan_resto
                FROM dre_valor v JOIN dre_conta c ON c.id = v.conta_id
-              WHERE v.ano = ? AND c.codigo IN ('1', '3', '5', '7', '15', '18') AND v.negocio_id IN ($marcas)
+              WHERE v.ano = ? AND c.codigo IN ('1', '1.1', '3', '5', '7', '13', '14', '14.1', '14.2', '14.3', '15', '16', '18')
+                AND v.negocio_id IN ($marcas)
               GROUP BY v.negocio_id, c.codigo",
             array_merge([$corte, $corte, $corte, $ano], $negocioIds)
         );
@@ -1977,7 +2066,41 @@ class ProjecaoController
                 'plan_resto' => (float)$l['plan_resto'],
             ];
         }
-        return $saida;
+        return self::semPisCofins($saida, $negocioIds, $ano, $corte);
+    }
+
+    /**
+     * A receita bruta do quadro do ano SEM o PIS/COFINS, como a linha 1 da DRE no formato
+     * de 2027 (cliente, 2026-11-27: "essas duas tabelas devem ser o reflexo da DRE"; "SIM"
+     * para tirar de todas as colunas, 2026 inclusive). A carga traz a receita bruta com ele.
+     *
+     * Mesma regra de `Reforma::pisCofinsDoNegocio`, que faz a linha CBS da DRE: realizado =
+     * o da carga de tributos quando ela está no mesmo corte (senão, a taxa sobre a Receita
+     * de Vendas realizada); planejado = a taxa do negócio sobre a Receita de Vendas (1.1)
+     * planejada do período. O que sai da receita bruta vira a pseudo-linha `CBS`.
+     */
+    private static function semPisCofins(array $brutos, array $negocioIds, int $ano, int $corte): array
+    {
+        $tribs = Oportunidades::tributos($negocioIds, $ano);
+        foreach ($brutos as $id => $porConta) {
+            $trib = $tribs[$id] ?? null;
+            $taxa = (float)($trib['taxa_pis_cofins'] ?? 0);
+            $vendas = $porConta['1.1'] ?? ['realizado' => 0.0, 'plan_ate' => 0.0, 'plan_resto' => 0.0];
+            $pc = [
+                'realizado' => $trib && (int)($trib['mes_ate'] ?? 0) === $corte
+                    ? (float)$trib['pis'] + (float)$trib['cofins'] : $taxa * $vendas['realizado'],
+                'plan_ate' => $taxa * $vendas['plan_ate'],
+                'plan_resto' => $taxa * $vendas['plan_resto'],
+            ];
+            if (isset($porConta['1'])) {
+                foreach ($pc as $k => $x) {
+                    $brutos[$id]['1'][$k] = $porConta['1'][$k] - $x;
+                }
+            }
+            $brutos[$id]['CBS'] = $pc;
+            unset($brutos[$id]['1.1']);
+        }
+        return $brutos;
     }
 
     /**
