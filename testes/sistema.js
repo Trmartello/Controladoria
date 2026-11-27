@@ -6,6 +6,16 @@
 //   node testes/sistema.js
 const { BASE, chromiumExec, playwright, esperar, entrar, relatar, hojeNoServidor } = require('./comum');
 
+/**
+ * Clica com o elemento no MEIO da tela. A rolagem automática do Playwright o deixa no
+ * topo, onde o cabeçalho fixo da DRE (e a barra do topo) podem cobri-lo — o que passou a
+ * acontecer quando o quadro do ano saiu da tela do negócio (2026-11-27) e a página encurtou.
+ */
+async function clicarNoCentro(page, seletor, opcoes = {}) {
+  await page.$eval(seletor, (el) => el.scrollIntoView({ block: 'center' }));
+  await page.click(seletor, opcoes);
+}
+
 const ok = [], bad = [], erros = [];
 const t = (nome, cond, extra = '') => (cond ? ok : bad).push(nome + (extra ? ` — ${extra}` : ''));
 
@@ -7533,7 +7543,7 @@ async function provasNivel3(page, largura) {
     !fora.length, fora.map((c) => `${c}: ${a.linhas[c].valor} × ${a.linhas[c].soma}`).join('; '));
   t(`${l} só o realizado: projetado, projeção e proposta ficam em branco`, contas.every((c) => a.linhas[c].vazias));
 
-  await page.click('.tabela-projecao [data-abre-reduzidas="8.5"]');
+  await clicarNoCentro(page, '.tabela-projecao [data-abre-reduzidas="8.5"]');
   await new Promise((r) => setTimeout(r, 200));
   a = await ler();
   t(`${l} o ▸ da linha abre só as contas dela`,
@@ -7543,7 +7553,7 @@ async function provasNivel3(page, largura) {
   a = await ler();
   t(`${l} "Reduzidas" (nível 3) abre as contas reduzidas de todas as linhas`, contas.every((c) => a.linhas[c].visiveis === a.linhas[c].total));
   await page.click('#projecao-nivel-2');
-  await page.click('.tabela-projecao [data-abre-reduzidas="8.5"]');
+  await clicarNoCentro(page, '.tabela-projecao [data-abre-reduzidas="8.5"]');
 
   // As oportunidades: conta reduzida e o nome da linha como no Qlik.
   const op = await page.evaluate(() => {
@@ -7570,7 +7580,7 @@ async function provasNivel3(page, largura) {
   });
   t(`${l} o link leva à conta 3141 dentro de Provisões e Perdas, aberta e destacada na DRE`,
     foi && foi.pai === '9.2' && foi.red === '3141' && foi.visivel, JSON.stringify(foi));
-  await page.click('.tabela-projecao [data-abre-reduzidas="9.2"]');
+  await clicarNoCentro(page, '.tabela-projecao [data-abre-reduzidas="9.2"]');
 }
 
 /**
