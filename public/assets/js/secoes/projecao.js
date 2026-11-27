@@ -1830,7 +1830,7 @@ const SecaoProjecao = {
           <td>${rotulo}</td>
           ${ano('real_plan')}${ano('realista')}
           <td class="text-end ${est.has(k) ? 'text-muted fst-italic' : ''} coluna-desafio-cartao${destaque('desafio')}" ${est.has(k) ? 'title="Estimado a partir da projeção do ano"' : ''}>${est.has(k) && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
-          <td class="text-end fw-bold">${celula(b, pct)}</td>
+          <td class="text-end fw-bold coluna-proposta-cartao">${celula(b, pct)}</td>
           <td class="text-end ${estimado ? 'text-muted' : cor}" data-desafio-dif>${estimado ? '' : textoDif}</td>
           <td class="text-end small ${estimado ? 'text-muted' : cor}" data-desafio-var>${estimado ? '' : textoVar}</td>
         </tr>`;
@@ -1851,7 +1851,7 @@ const SecaoProjecao = {
               ${tem2026 ? `<th class="text-end${destaque('real_plan')}">Real + Plan.<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>
               <th class="text-end${destaque('realista')}" title="Realizado até o corte + a visão realista do resto do ano (estimativa da Controladoria)">Real + realista<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>` : ''}
               <th class="text-end coluna-desafio-cartao${destaque('desafio')}">Desafio<br><span class="fw-normal text-muted small">${x.ano}</span></th>
-              <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${x.ano}</span></th>
+              <th class="text-end coluna-proposta-cartao">Proposta<br><span class="fw-normal text-muted small">${x.ano}</span></th>
               <th class="text-end" data-desafio-dif-th>Diferença<br><span class="fw-normal text-muted small">proposta − ${nomeComp}</span></th>
               <th class="text-end">Var.<br><span class="fw-normal text-muted small">%</span></th>
             </tr></thead>
@@ -1860,7 +1860,7 @@ const SecaoProjecao = {
               <tr data-desafio="pis_cofins" class="small"><td>CBS <span class="text-muted">(PIS + COFINS em ${x.ano - 1}; fora do faturamento, como na DRE)</span></td>
                 ${tem2026 ? `<td class="text-end text-muted" data-col-2026="real_plan">${this.moeda(cbs.real_plan)}</td><td class="text-end text-muted" data-col-2026="realista">${this.moeda(cbs.realista)}</td>` : ''}
                 <td class="text-end text-muted">${this.moeda(cbs.desafio)}</td>
-                <td class="text-end">${this.moeda(cbs.proposta)}</td>
+                <td class="text-end coluna-proposta-cartao">${this.moeda(cbs.proposta)}</td>
                 <td class="text-end"></td><td></td></tr>
             </tbody>
           </table>

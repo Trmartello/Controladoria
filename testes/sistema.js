@@ -12292,6 +12292,8 @@ async function provasReflexoDre(page) {
         ativo: document.querySelector('[data-desafio-comparar][aria-pressed="true"]')?.dataset.desafioComparar,
         th: document.querySelector('[data-desafio-dif-th]')?.textContent.replace(/\s+/g, ' ').trim(),
         destacada: base.classList.contains('coluna-comparada'),
+        // As DUAS colunas comparadas sempre destacadas (2026-11-27): a Proposta em verde-claro.
+        proposta: getComputedStyle(tr.children[4]).backgroundColor, comparada: getComputedStyle(base).backgroundColor,
         dif: num(tr.querySelector('[data-desafio-dif]').textContent), difCalc: prop - num(base.textContent),
         var: tr.querySelector('[data-desafio-var]').textContent.trim(), base: num(base.textContent),
       };
@@ -12302,6 +12304,7 @@ async function provasReflexoDre(page) {
     const pctEsperado = (r.difCalc / Math.abs(r.base) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     t(`${l} comparar com ${modo}: o botão ativo, a coluna em destaque, a diferença = proposta − ela e a variação em %`,
       r.ativo === modo && new RegExp(`proposta − ${nome}`).test(r.th || '') && r.destacada && Math.abs(r.dif - r.difCalc) <= 1
+        && r.proposta === 'rgb(227, 244, 234)' && r.comparada === 'rgb(255, 241, 201)'
         && r.var.replace(/^\+/, '') === `${pctEsperado}%`, JSON.stringify({ ...r, pctEsperado }));
   }
 
