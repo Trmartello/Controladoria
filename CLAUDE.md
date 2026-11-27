@@ -3521,6 +3521,14 @@ que chega quando os negócios marcados relançarem. Em "Despesas operacionais" a
   2026-11-25: "sim, pode manter assim"): receita líquida pela aderência, como a bruta; lucro
   bruto, despesas e antes dos rateios pelo desvio médio, como o líquido — cada
   linha calculada sozinha. Prova: `visao_realista.php` e `provasVisaoDoAno`.
+  **Desde 2026-11-27 a quinta linha é "Resultado do negócio (14)"** (cliente:
+  "altere a linha resultado antes dos rateios 11 após os impostos pela linha da
+  DRE 14, resultado do negócio; essa é a única mudança nessa tabela"): conta
+  interna **`15`** (a `14` é "12 - Rateios do negócio"), em `LINHAS_VISAO_ANO`,
+  na consulta de `brutosDoAno` e em `LINHAS_VISAO` da tela. Mesma regra do
+  realista (desvio médio). Conferido na base: conta 15 = 13 + 14 em todos os
+  negócios e meses de 2026. A escada do cartão Desafio (antes dos rateios,
+  rateios do negócio, resultado do negócio) não mudou.
   **Desafio extra destacado**: as células editáveis do administrador têm o
   amarelo-claro de "onde se lança" (`#fff6d6`), e o ajustado, o amarelo forte.
   **Detalhe da DRE em três níveis** (pedido do cliente, 2026-11-25, no lugar dos
@@ -4795,6 +4803,19 @@ dia, e a vermelha seria lida como regressão de outra mudança.
   cliente o impacto em número de qualquer mudança que mexa em cálculo — o que muda,
   em quais linhas e quanto — e espere a resposta. `testes/lancamentos_intocados.php`
   verde é condição de mescla.
+- **Ponto de restauração a cada PR** (pedido do cliente, 2026-11-27: "a cada PR que
+  subir, registre uma posição atual do sistema para podermos resgatar se houver a
+  necessidade"). Duas coisas, sempre:
+  1. **No próprio PR**, uma linha nova no topo da tabela de
+     `docs/PONTOS-DE-RESTAURACAO.md`: número, data, o que entra, o **estado antes**
+     (= `origin/main` no momento da mescla) e se mexe em `database/`. O SHA da mescla
+     da linha anterior se completa aqui também.
+  2. **Logo depois de mesclar**, a etiqueta `restauracao/pr-NNN` apontando para o `main`
+     de ANTES (o primeiro pai da mescla):
+     `git tag restauracao/pr-NNN <mescla>^1 && git push origin restauracao/pr-NNN`.
+  Como voltar (reverter um PR com `git revert -m 1`, ou *Redeploy* na Railway em
+  emergência) e por que o banco não volta junto estão no próprio documento. Todos os
+  PRs até o #163 ganharam etiqueta e linha retroativamente em 2026-11-27.
 - **Reversão de 2026-11-26:** a pedido do cliente, o #153 (Ctrl + clique para marcar
   linhas da DRE) e o #154 (anotações) foram revertidos; o código voltou ao estado de
   depois do #152. Não reimplante a marcação de linhas sem um pedido novo.

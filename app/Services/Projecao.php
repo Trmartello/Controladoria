@@ -203,10 +203,11 @@ class Projecao
     /**
      * As linhas do quadro "realizado, planejado e visão realista" (pedido do
      * cliente, 2026-11-25: o seletor de visão por negócio): receita bruta e
-     * líquida, lucro bruto, despesas operacionais, "11 - resultado após
-     * impostos" (antes dos rateios) e resultado líquido.
+     * líquida, lucro bruto, despesas operacionais, "14 - resultado do negócio"
+     * (conta 15, após os rateios do negócio — trocou o "11 - após impostos" a
+     * pedido do cliente em 2026-11-27) e resultado líquido.
      */
-    public const LINHAS_VISAO_ANO = ['1', '3', '5', '7', '13', '18'];
+    public const LINHAS_VISAO_ANO = ['1', '3', '5', '7', '15', '18'];
 
     /** As linhas de RECEITA, que no realista seguem a aderência; as demais, o desvio médio. */
     private const VISAO_POR_ADERENCIA = ['1', '3'];

@@ -1151,7 +1151,7 @@ const SecaoProjecao = {
     { conta: '3', rotulo: 'Receita operacional líquida', curto: 'Receita líquida' },
     { conta: '5', rotulo: 'Lucro bruto', curto: 'Lucro bruto', pct: 'Margem bruta' },
     { conta: '7', rotulo: 'Despesas operacionais', curto: 'Despesas operacionais' },
-    { conta: '13', rotulo: 'Resultado antes dos rateios (11 - após impostos)', curto: 'Resultado antes dos rateios' },
+    { conta: '15', rotulo: 'Resultado do negócio (14)', curto: 'Resultado do negócio' },
     { conta: '18', rotulo: 'Resultado líquido', curto: 'Resultado líquido', pct: 'Margem líquida' },
   ],
 

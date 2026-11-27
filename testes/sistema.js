@@ -8280,6 +8280,10 @@ async function provasVisaoDoAno(page, largura) {
       rob: cel(linhas[0], 'resto'), robApi: fmt(d.visao_ano['1'].realista_resto),
       rl: cel(linhaRl, 'resto'), rlApi: fmt(d.visao_ano['18'].realista_resto),
       rlAno: cel(linhaRl, 'ano'), rlAnoApi: fmt(d.visao_ano['18'].real_realista),
+      // Cliente, 2026-11-27: a linha do "11 - após impostos" virou a "14 - Resultado do negócio" (conta 15).
+      rn: cel(linhas.find((tr) => /^Resultado do negócio \(14\)/.test(tr.children[0].textContent.trim())), 'ano'),
+      rnApi: d.visao_ano['15'] ? fmt(d.visao_ano['15'].real_realista) : null,
+      tem13: !!d.visao_ano['13'],
       margem: cel(linhas[linhas.indexOf(linhaRl) + 1], 'ano'),
       margemApi: (d.visao_ano['18'].real_realista / d.visao_ano['3'].real_realista * 100)
         .toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%',
@@ -8289,9 +8293,11 @@ async function provasVisaoDoAno(page, largura) {
     };
   }, n);
   // Desde 2026-11-25: as seis linhas do seletor do Corporativo, e as margens bruta e líquida.
-  t(`${l} no negócio, o quadro tem as seis linhas (receitas, lucro bruto, despesas, antes dos rateios, líquido) e as duas margens, com as 11 colunas do painel`,
+  t(`${l} no negócio, o quadro tem as seis linhas (receitas, lucro bruto, despesas, resultado do negócio, líquido) e as duas margens, com as 11 colunas do painel`,
     r.linhas === 8 && r.cabecalhos === 11 && /^Receita operacional líquida/.test(r.rotulos[1]) && /margem bruta/.test(r.rotulos[3])
     && /margem líquida/.test(r.rotulos[7]), JSON.stringify([r.linhas, r.cabecalhos, r.rotulos]));
+  t(`${l} a linha "Resultado do negócio (14)" é a conta 15 do servidor (no lugar do "11 - após impostos")`,
+    !!r.rn && r.rn === r.rnApi && r.tem13 === false, JSON.stringify([r.rn, r.rnApi, r.tem13]));
   t(`${l} a margem líquida real + realista é o resultado ÷ a receita líquida do servidor`, r.margem === r.margemApi, `${r.margem} / ${r.margemApi}`);
   t(`${l} e é só leitura (nenhum campo)`, r.campos === 0, String(r.campos));
   t(`${l} a visão realista na tela é o número do servidor (receita, resultado e o ano)`,
@@ -8308,7 +8314,7 @@ async function provasVisaoDoAno(page, largura) {
     tabelas: document.querySelectorAll('.tabela-visao-ano').length,
   }));
   t(`${l} no Corporativo, o seletor tem as seis linhas e mostra um quadro por vez`,
-    sel.botoes.join('|') === 'Receita bruta|Receita líquida|Lucro bruto|Despesas operacionais|Resultado antes dos rateios|Resultado líquido'
+    sel.botoes.join('|') === 'Receita bruta|Receita líquida|Lucro bruto|Despesas operacionais|Resultado do negócio|Resultado líquido'
     && sel.tabelas === 1, JSON.stringify(sel));
   await page.click('.seletor-visao-ano [data-visao-conta="7"]');
   t(`${l} despesas: o quadro troca e não há botão de %`, await page.evaluate(() =>
