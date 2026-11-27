@@ -529,6 +529,8 @@ try {
 
         case $rota === 'GET /api/painel':           (new RelatorioController())->painel(); break;
         case $rota === 'GET /api/projecao':         (new ProjecaoController())->indice(); break;
+        case $rota === 'GET /api/projecao/simulacao': (new ProjecaoController())->simular(); break;
+        case $rota === 'POST /api/projecao/diretriz': (new ProjecaoController())->aplicarDiretriz(); break;
         case $rota === 'POST /api/projecao/valor':  (new ProjecaoController())->gravarValor(); break;
         case $rota === 'POST /api/projecao/premissa': (new ProjecaoController())->gravarPremissa(); break;
         case $rota === 'POST /api/projecao/beneficio': (new ProjecaoController())->gravarBeneficio(); break;

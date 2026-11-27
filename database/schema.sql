@@ -1380,3 +1380,18 @@ CREATE TABLE IF NOT EXISTS configuracao (
   atualizado_por INT NULL,
   atualizado_em  DATETIME NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- DIRETRIZES DO PLANEJAMENTO alteradas pelo ADMINISTRADOR (cliente, 2026-11-26: "se isso
+-- mudar, vai mudar automaticamente para todos os negócios"). O documento de cada ano mora no
+-- código (`Projecao::DIRETRIZES`); aqui fica só o que o administrador trocou, por ano e
+-- chave (PESSOAS, ALIMENTACAO, ASSIDUIDADE, RESULTADO, PPR_SALARIOS). Voltar ao documento =
+-- apagar a linha. É diretriz, não lançamento: muda a proposta das linhas de pessoal que o
+-- negócio NÃO digitou; o que foi digitado continua valendo.
+CREATE TABLE IF NOT EXISTS diretriz_valor (
+  ano            SMALLINT NOT NULL,
+  chave          VARCHAR(30) NOT NULL,
+  valor          DECIMAL(12,4) NOT NULL,
+  atualizado_por INT NULL,
+  atualizado_em  DATETIME NOT NULL,
+  PRIMARY KEY (ano, chave)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
