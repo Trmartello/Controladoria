@@ -4779,19 +4779,19 @@ body.arrastando-ficha .quadro-situacao { scroll-snap-type: none; }
    Destacada em âmbar, como no Painel Balanço: é estimativa da Controladoria, e a
    cor a separa do que é realizado e planejado do Qlik. */
 .tabela-visao-ano th.visao-realista,
-.tabela-visao-ano td.visao-realista { background: #f6e7c6; }
+.tabela-visao-ano td.visao-realista { background: var(--tp-destaque); }
 /* O ano da proposta ao lado (pedido do cliente, 2026-11-26): azul-claro, a cor do ano que vem. */
 .tabela-visao-ano th.visao-proposta,
-.tabela-visao-ano td.visao-proposta { background: #e3eefb; }
+.tabela-visao-ano td.visao-proposta { background: var(--tp-proposta); }
 /* Simulador de diretrizes (2026-11-26): os campos em amarelo-claro de "digitar"; as colunas
    simuladas em amarelo, como na prévia aprovada. */
 .campo-simulador { width: 9.5rem; }
 .campo-simulador .form-control { background: #fffbe6; }
 .campo-simulador .form-control.simulador-mudou { border: 2px solid #d39e00; }
-.tabela-simulador th.sim-col, .tabela-simulador td.sim-col, .tabela-diretrizes th.sim-col, .tabela-diretrizes td.sim-col { background: #fff4d6; }
+.tabela-simulador th.sim-col, .tabela-simulador td.sim-col, .tabela-diretrizes th.sim-col, .tabela-diretrizes td.sim-col { background: var(--tp-destaque); }
 .painel-simulador { border-left-color: #d39e00 !important; }
 .tabela-visao-ano th.visao-desafio,
-.tabela-visao-ano td.visao-desafio { background: #d6e6fa; }
+.tabela-visao-ano td.visao-desafio { background: var(--tp-desafio); }
 
 .tabela-visao-ano td, .tabela-visao-ano th { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tabela-visao-ano td:first-child { white-space: normal; }
@@ -4918,46 +4918,57 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-oportunidades-quadro > tbody > tr > td:first-child { min-width: 22rem; }
 @media (max-width: 767.98px) { .tabela-oportunidades-quadro > tbody > tr > td:first-child { min-width: 14rem; } }
 .tabela-desafio .celula-desafio-pct { max-width: 7rem; flex: 0 0 7rem; }
-/* Cartões do desafio e tributos (cliente, 2026-11-27): linhas zebradas, como a DRE, e
-   fonte grande aproveitando a altura da linha (menos respiro, número maior). */
-/* "A maior fonte possível, para dar maior facilidade de leitura" (cliente, 2026-11-27): o
-   cartão do negócio tem folga na largura e vai a 1,3rem; o do Corporativo (12 colunas de
-   números) e o de tributos ficam no maior tamanho que ainda cabe em 1850 px sem rolar. */
-.tabela-desafio { font-size: 1.3rem; }
-.tabela-desafio-corp, .tabela-tributos { font-size: 1.2rem; color: #1b1f24; }
-/* Cabeçalhos com fundo (cliente, 2026-11-27, "apenas para nível de estética"): a faixa dos
-   blocos (Desafio | Proposta | Diferença) num azul mais forte, os títulos das colunas num mais
-   claro; o cabeçalho dos tributos no claro; as linhas de total num cinza mais escuro. */
-.tabela-desafio-corp thead tr.cabeca-bloco th { background: #c9daf2; color: #16325c; font-size: 1.25rem; }
-.tabela-desafio-corp thead tr:not(.cabeca-bloco) th, .tabela-tributos thead th { background: #e9f1fb; color: #1f3f73; }
-.tabela-desafio-corp thead th .text-muted, .tabela-tributos thead th .text-muted { color: #4a5f80 !important; }
-.tabela-desafio-corp tbody tr.linha-total > td, .tabela-tributos tbody tr[data-negocio-tributo="total"] > td { background: #d9dde2 !important; }
-.tabela-desafio-corp tbody tr:not(.linha-total) > td, .tabela-tributos tbody tr:not([data-negocio-tributo="total"]) > td { font-weight: 500; }
-.tabela-desafio-corp tbody tr.linha-total > td, .tabela-tributos tbody tr[data-negocio-tributo="total"] > td { font-weight: 700; }
-.tabela-desafio-corp .margem-sub { font-size: .85rem; color: #495057; }
-.tabela-desafio > :not(caption) > * > *, .tabela-tributos > :not(caption) > * > * { padding-top: .2rem; padding-bottom: .2rem; }
-.tabela-desafio tbody tr:nth-child(even):not(.linha-total) > td,
-.tabela-tributos tbody tr:nth-child(even):not(.linha-total) > td { background-color: #eef4fc; }
-.tabela-desafio .bloco-ini { border-left: 3px solid #9fb3cf; }
-.tabela-desafio .cabeca-bloco th { border-bottom: 0; font-size: 1.1rem; }
-/* "Diretrizes de pessoal" (2026-11-27): fonte grande, zebra e a borda do hover, como os outros. */
-.tabela-diretrizes, .tabela-simulador { font-size: 1.12rem; }
-.tabela-diretrizes > :not(caption) > * > *, .tabela-simulador > :not(caption) > * > * { padding-top: .2rem; padding-bottom: .2rem; }
-.tabela-diretrizes tbody tr:nth-child(even):not(.linha-total) > td,
-.tabela-simulador tbody tr:nth-child(even):not(.linha-total-visao) > td { background-color: #eef4fc; }
-.tabela-diretrizes .campo-simulador { max-width: 11rem; }
-.tabela-diretrizes tbody tr:hover > td, .tabela-simulador tbody tr:hover > td { box-shadow: inset 0 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
-/* Borda azul na linha sob o mouse, exatamente como na DRE (cliente, 2026-11-27). */
-.tabela-desafio tbody tr:hover > td { box-shadow: inset 0 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
-.tabela-desafio tbody tr:hover > td:first-child { box-shadow: inset 2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
-.tabela-desafio tbody tr:hover > td:last-child { box-shadow: inset -2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
+
+/* ===== Padrão das tabelas da Projeção de Resultados (cliente, 2026-11-27) =====
+   "Criar um padrão visual para essa tela e replicar": a tabela do "Desafio 2027 para os
+   negócios" (números grandes e firmes, cabeçalho azul) e a DRE (bordas, zebra, linha
+   compacta) viram o padrão de TODAS as tabelas de números da Projeção, menos a própria DRE,
+   que é a referência. Respostas do cliente: cabeçalho todo azul; 1,2rem nas tabelas de
+   resumo e 1,05rem nas listas longas (`tabela-detalhe`); referência de tela 1850–1920 px (em
+   1366 px as mais largas rolam de lado). Só esta tela: as demais ficam como estão. */
+:root {
+  --tp-fonte: 1.2rem; --tp-fonte-detalhe: 1.05rem;
+  /* Cores derivadas do verde e do âmbar da marca (cliente, 2026-11-27: "trocar a cor azul
+     pelas cores que derivem do verde e amarelo da logo"): o design system da Copérdia tem o
+     verde vivo #00B560, o verde-escuro #003B2D e o âmbar do selo 44 #FFD26E (só acento). */
+  --tp-cab-forte: #bfe6cf; --tp-cab-forte-texto: #003b2d;
+  --tp-cab: #e4f4ea; --tp-cab-texto: #003b2d; --tp-sub: #4d6b5e;
+  --tp-zebra: #f1f8f3; --tp-total: #d9dedb; --tp-destaque: #fff1c9; --tp-borda: #00a356;
+  --tp-bloco: #8fc2a6; --tp-proposta: #e3f4ea; --tp-desafio: #fff1c9;
+}
+.tabela-padrao { font-size: var(--tp-fonte); color: #1b1f24; }
+.tabela-padrao.tabela-detalhe { font-size: var(--tp-fonte-detalhe); }
+.tabela-padrao > :not(caption) > * > * { padding-top: .2rem; padding-bottom: .2rem; }
+.tabela-padrao thead th { background: var(--tp-cab); color: var(--tp-cab-texto); vertical-align: bottom; line-height: 1.15; }
+.tabela-padrao thead th .text-muted, .tabela-padrao thead th .small { color: var(--tp-sub) !important; }
+.tabela-padrao thead tr.cabeca-bloco th { background: var(--tp-cab-forte); color: var(--tp-cab-forte-texto); border-bottom: 0; font-size: 1.04em; }
+.tabela-padrao tbody tr:not(.fw-bold):not(.linha-total):not(.linha-total-visao):not(.table-light) > td { font-weight: 500; }
+.tabela-padrao tbody tr:nth-child(even) > td { background-color: var(--tp-zebra); }
+.tabela-padrao tbody tr.linha-total > td, .tabela-padrao tbody tr.linha-total-visao > td,
+.tabela-padrao tbody tr.table-light > td, .tabela-padrao tbody tr[data-negocio-tributo="total"] > td {
+  background: var(--tp-total) !important; font-weight: 700; }
+.tabela-padrao tbody tr:hover > td { box-shadow: inset 0 2px 0 var(--tp-borda), inset 0 -2px 0 var(--tp-borda); }
+.tabela-padrao tbody tr:hover > td:first-child { box-shadow: inset 2px 2px 0 var(--tp-borda), inset 0 -2px 0 var(--tp-borda); }
+.tabela-padrao tbody tr:hover > td:last-child { box-shadow: inset -2px 2px 0 var(--tp-borda), inset 0 -2px 0 var(--tp-borda); }
+/* A coluna em destaque — visão realista, simulado, coluna comparada: um amarelo só. */
+.tabela-padrao th.visao-realista, .tabela-padrao td.visao-realista,
+.tabela-padrao th.sim-col, .tabela-padrao td.sim-col { background: var(--tp-destaque) !important; }
+/* As colunas do ano seguinte no quadro do ano não alternam com a zebra. */
+.tabela-padrao th.visao-proposta, .tabela-padrao td.visao-proposta { background: var(--tp-proposta) !important; }
+.tabela-padrao th.visao-desafio, .tabela-padrao td.visao-desafio { background: var(--tp-desafio) !important; }
+@media print { .tabela-padrao tbody tr:hover > td { box-shadow: none !important; } }
+@media (max-width: 767.98px) { .tabela-padrao, .tabela-padrao.tabela-detalhe { font-size: 1rem; } }
+
+/* O que é próprio de cada tabela (estrutura, não estilo). */
+.tabela-desafio .bloco-ini { border-left: 3px solid var(--tp-bloco); }
 .tabela-desafio tr.linha-parte-rateio > td { color: #495057; font-style: italic; }
 /* A coluna com que a proposta se compara (o "Comparar a proposta com"): fundo e negrito. */
-.tabela-desafio .coluna-comparada { background-color: #fff3cd !important; font-weight: 700; color: #212529 !important; }
-@media print { .tabela-desafio tbody tr:hover > td { box-shadow: none !important; } }
+.tabela-desafio .coluna-comparada { background-color: var(--tp-destaque) !important; font-weight: 700; color: #212529 !important; }
 .tabela-desafio .margem-sub { font-size: .8rem; font-weight: 400; color: #6c757d; line-height: 1; }
+.tabela-desafio-corp .margem-sub { font-size: .85rem; color: #495057; }
 .tabela-desafio-corp td { white-space: nowrap; }
-.tabela-desafio-corp thead th { white-space: normal; line-height: 1.15; vertical-align: bottom; }
+.tabela-desafio-corp thead th { white-space: normal; }
+.tabela-diretrizes .campo-simulador { max-width: 11rem; }
 
 /* ── Topos fixos da Projeção (pedido do cliente, 2026-11-25) ──────────────────
    "Fixe o cabeçalho do expander no topo enquanto ele tiver dados para

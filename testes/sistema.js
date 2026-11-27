@@ -12270,11 +12270,12 @@ async function provasReflexoDre(page) {
     n.rbPlan === n.rbQuadro && n.rlPlan === n.rlQuadro, JSON.stringify(n));
   t(`${l} os rateios do negócio abertos (financeiros e corporativos) somam a linha 12`,
     n.temFin && n.temCorp && Math.abs(n.partes - n.rateios) <= 5, `${n.partes} × ${n.rateios}`);
-  t(`${l} fonte grande no cartão (≥ 20 px)`, n.fonte >= 20, String(n.fonte));
+  // 1,2rem desde o padrão da Projeção (2026-11-27): o cartão desceu de 1,3rem para ficar igual aos outros.
+  t(`${l} fonte grande no cartão (≥ 19 px)`, n.fonte >= 19, String(n.fonte));
   const linha = page.locator('.tabela-desafio tr[data-desafio="receita_liquida"] td').nth(1);
   await linha.hover();
   const borda = await linha.evaluate((c) => getComputedStyle(c).boxShadow);
-  t(`${l} passar o mouse circula a linha com a borda azul, como na DRE`, /47, 111, 208/.test(borda), borda);
+  t(`${l} passar o mouse circula a linha com a borda verde do padrão`, /0, 163, 86/.test(borda), borda);
   // "Comparar a proposta com" (cliente, 2026-11-27): desafio, real + realista ou real + plan.,
   // com a diferença em R$ e a variação em %; os rateios abertos em itálico.
   const italico = await page.evaluate(() => getComputedStyle(document.querySelector('.tabela-desafio tr[data-desafio="rateio_financeiro"] td')).fontStyle);
@@ -12329,7 +12330,60 @@ async function provasReflexoDre(page) {
       && !c.cols.some((x) => /PIS/.test(x)), JSON.stringify(c));
   t(`${l} Corporativo: a diferença é o resultado líquido da proposta − o do desafio, com a margem embaixo do resultado`,
     Math.abs(c.dif - c.difCalc) <= 1 && c.margem, `${c.dif} × ${c.difCalc}`);
-  t(`${l} Corporativo: linhas zebradas`, c.zebra === 'rgb(238, 244, 252)' && c.liso !== c.zebra, `${c.zebra} / ${c.liso}`);
+  t(`${l} Corporativo: linhas zebradas`, c.zebra === 'rgb(241, 248, 243)' && c.liso !== c.zebra, `${c.zebra} / ${c.liso}`);
+}
+
+/**
+ * O padrão das tabelas da Projeção de Resultados (cliente, 2026-11-27: "criar um padrão visual
+ * para essa tela"; cores da marca, "ficou muito mais amigável"): toda tabela de números da
+ * tela — menos a DRE, que é a referência — tem a classe `tabela-padrao`, fonte de 1,2rem
+ * (1,05rem nas listas longas), cabeçalho verde-claro, zebra, borda verde ao passar o mouse, e
+ * cabe sem rolar de lado na tela de referência (1850 px).
+ */
+async function provasPadraoProjecao(page) {
+  const l = 'Padrão da Projeção:';
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  const tamanho = page.viewportSize();
+  await page.setViewportSize({ width: 1850, height: 1000 });
+  const conferir = async (v) => {
+    await page.evaluate((x) => {
+      const s = document.querySelector('#projecao-negocio');
+      const o = [...s.options].find((y) => (x === 'corp' ? y.value === 'corp' : y.textContent.includes(x)));
+      s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true }));
+    }, v);
+    await esperar(page, v === 'corp' ? "!!document.querySelector('.tabela-desafio-corp')" : "!!document.querySelector('.tabela-desafio [data-col-2026]') && !document.querySelector('.tabela-desafio-corp')", 40000);
+    await page.evaluate(() => document.querySelectorAll('#secao-projecao details.expansor').forEach((d) => { d.open = true; }));
+    await page.waitForTimeout(500);
+    return page.evaluate(() => {
+      const tabs = [...document.querySelectorAll('#secao-projecao table')]
+        .filter((t) => !t.closest('.tabela-projecao') && t.querySelector('tbody tr') && t.offsetParent !== null);
+      const fora = tabs.filter((t) => !t.classList.contains('tabela-padrao')).map((t) => t.className);
+      const pad = tabs.filter((t) => t.classList.contains('tabela-padrao'));
+      const pequenas = pad.filter((t) => parseFloat(getComputedStyle(t).fontSize) < (t.classList.contains('tabela-detalhe') ? 16.5 : 19)).map((t) => t.className);
+      const semFundo = pad.filter((t) => { const th = t.querySelector('thead th'); return th && getComputedStyle(th).backgroundColor === 'rgba(0, 0, 0, 0)'; }).map((t) => t.className);
+      const rolam = pad.filter((t) => { const r = t.closest('.table-responsive') || t.parentElement; return r.scrollWidth > r.clientWidth + 1; }).map((t) => t.className);
+      return { total: tabs.length, padrao: pad.length, fora, pequenas, semFundo, rolam };
+    });
+  };
+  try {
+    for (const v of ['AGROPEC', 'corp']) {
+      const r = await conferir(v);
+      const onde = v === 'corp' ? 'Corporativo' : 'negócio';
+      t(`${l} no ${onde}, toda tabela de números (menos a DRE) segue o padrão`, r.total >= 3 && !r.fora.length, JSON.stringify(r));
+      t(`${l} no ${onde}, fonte grande (1,2rem; 1,05rem nas listas longas) e cabeçalho com fundo`,
+        !r.pequenas.length && !r.semFundo.length, JSON.stringify(r));
+      t(`${l} no ${onde}, nada rola de lado em 1850 px`, !r.rolam.length, JSON.stringify(r.rolam));
+    }
+    const linha = page.locator('.tabela-desafio-corp tbody tr').nth(1).locator('td').nth(2);
+    await linha.hover();
+    const c = await linha.evaluate((x) => ({ borda: getComputedStyle(x).boxShadow,
+      cab: getComputedStyle(document.querySelector('.tabela-desafio-corp thead tr:not(.cabeca-bloco) th')).backgroundColor }));
+    t(`${l} cores da marca: cabeçalho verde-claro e borda verde ao passar o mouse`,
+      c.cab === 'rgb(228, 244, 234)' && /0, 163, 86/.test(c.borda), JSON.stringify(c));
+  } finally {
+    await page.setViewportSize(tamanho);
+  }
 }
 
 /**
@@ -12387,6 +12441,7 @@ async function provasRisquinhoDesafio(page) {
   await provasModoApresentacao(page);
   await provasRisquinhoDesafio(page);
   await provasReflexoDre(page);
+  await provasPadraoProjecao(page);
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
   await provasExcluirComOrigens(page);
