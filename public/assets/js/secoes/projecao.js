@@ -1132,10 +1132,14 @@ const SecaoProjecao = {
         <th class="text-end">Planejado<br><span class="fw-normal text-muted small">${d.ano} (ano)</span></th>
         <th class="text-end">Diferença<br><span class="fw-normal text-muted small">${pct ? 'p.p.' : 'R$'}</span></th>
         <th class="text-end">Diferença<br><span class="fw-normal text-muted small">%</span></th>
+        ${this.visaoBloco === 'desafio' ? `
+        <th class="text-end visao-proposta">Proposta<br><span class="fw-normal small">${d.ano + 1}</span></th>
+        <th class="text-end visao-desafio">Desafio<br><span class="fw-normal small">${d.ano + 1} · adm.</span></th>
+        <th class="text-end visao-desafio">Proposta × desafio<br><span class="fw-normal small">${pct ? 'p.p.' : 'R$'}</span></th>` : ''}
         ${this.visaoBloco === 'proposta' ? `
         <th class="text-end visao-proposta">Proposta<br><span class="fw-normal small">${d.ano + 1}</span></th>
         <th class="text-end visao-proposta">${d.ano + 1} × ${d.ano}<br><span class="fw-normal small">${pct ? 'p.p.' : 'R$'}</span></th>
-        <th class="text-end visao-proposta">${d.ano + 1} × ${d.ano}<br><span class="fw-normal small">%</span></th>` : `
+        <th class="text-end visao-proposta">${d.ano + 1} × ${d.ano}<br><span class="fw-normal small">%</span></th>` : this.visaoBloco === 'desafio' ? '' : `
         <th class="text-end visao-realista">Visão realista<br><span class="fw-normal small">${prox}–dez/${a}</span></th>
         <th class="text-end visao-realista">Real + Realista<br><span class="fw-normal small">${d.ano}</span></th>
         <th class="text-end visao-realista">Realista × plano<br><span class="fw-normal small">${d.ano} · ${pct ? 'p.p.' : 'R$'}</span></th>`}
@@ -1168,7 +1172,7 @@ const SecaoProjecao = {
         <td class="text-end">${p(c.plan_ano)}</td>
         <td class="text-end ${cor(dif)}">${fpp(dif)}</td>
         <td class="text-end">—</td>
-        ${this.visaoBloco === 'proposta' ? this.colunasPropostaPct(v, rol, c.real_plan, p, fpp, cor, pp) : `
+        ${this.visaoBloco === 'desafio' ? this.colunasDesafioPct(v, rol, p, fpp, cor, pp) : this.visaoBloco === 'proposta' ? this.colunasPropostaPct(v, rol, c.real_plan, p, fpp, cor, pp) : `
         <td class="text-end visao-realista" data-realista="resto">${p(c.realista_resto)}</td>
         <td class="text-end visao-realista fw-bold" data-realista="ano">${p(c.real_realista)}</td>
         <td class="text-end visao-realista ${cor(xp)}" data-realista="x-plano">${fpp(xp)}</td>`}
@@ -1201,6 +1205,28 @@ const SecaoProjecao = {
         <td class="text-end visao-proposta ${cor(dif)}" data-proposta="pct">${pc === null ? '—' : `${pc > 0 ? '+' : ''}${this.pct(pc)}`}</td>`;
   },
 
+  colunasDesafio(v) {
+    const m = (x) => this.moeda(x);
+    if (v.desafio === null || v.desafio === undefined || v.proposta === null || v.proposta === undefined) {
+      return '<td class="text-end visao-proposta">—</td><td class="text-end visao-desafio">—</td><td class="text-end visao-desafio">—</td>';
+    }
+    const dif = v.proposta - v.desafio;
+    const cor = (x) => (Math.abs(x) < 5e4 ? '' : (x > 0 ? 'text-success' : 'text-danger'));
+    return `<td class="text-end visao-proposta fw-bold">${m(v.proposta)}</td>
+        <td class="text-end visao-desafio fw-bold" data-desafio="valor">${m(v.desafio)}</td>
+        <td class="text-end visao-desafio ${cor(dif)}" data-desafio="dif">${Math.round(dif) > 0 ? '+' : ''}${m(dif)}</td>`;
+  },
+
+  colunasDesafioPct(v, rol, p, fpp, cor, pp) {
+    const q = (a, b) => (a === null || a === undefined || !b ? null : a / b);
+    const mp = q(v.proposta, rol.proposta);
+    const md = q(v.desafio, rol.desafio);
+    const dif = pp(mp, md);
+    return `<td class="text-end visao-proposta fw-bold">${p(mp)}</td>
+        <td class="text-end visao-desafio fw-bold">${p(md)}</td>
+        <td class="text-end visao-desafio ${cor(dif)}">${fpp(dif)}</td>`;
+  },
+
   linhaVisao(rotulo, v, classe = '') {
     if (!v) return '';
     const m = (x) => this.moeda(x);
@@ -1217,7 +1243,7 @@ const SecaoProjecao = {
         <td class="text-end">${m(v.plan_ano)}</td>
         <td class="text-end ${cor(v.dif)}">${sinal(v.dif)}</td>
         <td class="text-end ${cor(v.dif)}">${pc}</td>
-        ${this.visaoBloco === 'proposta' ? this.colunasProposta(v) : `
+        ${this.visaoBloco === 'desafio' ? this.colunasDesafio(v) : this.visaoBloco === 'proposta' ? this.colunasProposta(v) : `
         <td class="text-end visao-realista" data-realista="resto">${m(v.realista_resto)}</td>
         <td class="text-end visao-realista fw-bold" data-realista="ano">${m(v.real_realista)}</td>
         <td class="text-end visao-realista ${cor(v.realista_x_plano)}" data-realista="x-plano">${sinal(v.realista_x_plano)}</td>`}
@@ -1264,10 +1290,10 @@ const SecaoProjecao = {
     // `pode_comparar_proposta` e, sem ela, nem manda as propostas).
     if (!d.pode_comparar_proposta) return '';
     const b = (valor, rotulo) => `<button type="button" class="btn ${this.visaoBloco === valor || (!this.visaoBloco && valor === 'realista')
-      ? (valor === 'proposta' ? 'btn-primary' : 'btn-verde') : 'btn-outline-secondary'}" data-visao-bloco="${valor}"
+      ? (valor === 'proposta' ? 'btn-primary' : valor === 'desafio' ? 'btn-info' : 'btn-verde') : 'btn-outline-secondary'}" data-visao-bloco="${valor}"
         aria-pressed="${this.visaoBloco === valor || (!this.visaoBloco && valor === 'realista')}">${rotulo}</button>`;
     return `<span class="small text-muted ms-2">Comparar com:</span>
-      <div class="btn-group btn-group-sm" role="group" aria-label="Bloco da direita">${b('realista', 'Visão realista')}${b('proposta', `Proposta ${d.ano + 1}`)}</div>`;
+      <div class="btn-group btn-group-sm" role="group" aria-label="Bloco da direita">${b('realista', 'Visão realista')}${b('proposta', `Proposta ${d.ano + 1}`)}${b('desafio', `Desafio ${d.ano + 1}`)}</div>`;
   },
 
   /** A linha e o modo (R$ ou %) escolhidos no seletor do Corporativo; valem enquanto a página está aberta. */

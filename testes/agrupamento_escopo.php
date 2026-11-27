@@ -109,7 +109,8 @@ try {
 
     // A comparação com a Proposta do ano seguinte no quadro do ano é só do ADMIN, e só
     // com o modo apresentação desligado (cliente, 2026-11-26) — a trava é do servidor.
-    $semProposta = static fn (array $v) => !array_filter($v, static fn ($x) => array_key_exists('proposta', (array)$x));
+    $semProposta = static fn (array $v) => !array_filter($v, static fn ($x) => array_key_exists('proposta', (array)$x)
+        || array_key_exists('desafio', (array)$x));
     prova('o gestor não recebe as propostas no quadro do ano (nem o seletor)',
         ($g['pode_comparar_proposta'] ?? null) === false && $semProposta($g['visao_ano_total'] ?? [])
         && ($d['pode_comparar_proposta'] ?? null) === false && $semProposta($d['visao_ano'] ?? []),

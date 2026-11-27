@@ -181,6 +181,7 @@ class ProjecaoController
         $pessoasSoma = ['por_ano' => [], 'base' => null];
         $propostas = [];
         $propostaVisao = [];
+        $desafioVisao = [];
         $desafios = [];
         $tributosDre = [];
         $oportunidades = [];
@@ -222,6 +223,8 @@ class ProjecaoController
             }
             $propostas[(int)$n['id']] = self::resumoDaProposta($m['linhas']);
             $propostaVisao[(int)$n['id']] = self::propostaDaVisao($m['linhas']);
+            // O desafio do ADMIN nas mesmas contas (`desafio_linhas` só vem para ele).
+            $desafioVisao[(int)$n['id']] = !empty($m['desafio_linhas']) ? self::propostaDaVisao($m['desafio_linhas']) : [];
             if (isset($m['desafio']['desafio'])) {
                 $desafios[(int)$n['id']] = $m['desafio']['desafio'];
             }
@@ -307,12 +310,20 @@ class ProjecaoController
             'pessoas' => $pessoasSoma,
             // A visão do ano por negócio e o total — o mesmo quadro do Painel Balanço.
             'visao_ano_negocios' => self::visaoComPropostas(
-                $this->visaoDoAno(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
-                $propostaVisao
+                self::visaoComPropostas(
+                    $this->visaoDoAno(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
+                    $propostaVisao
+                ),
+                $desafioVisao,
+                'desafio'
             ),
             'visao_ano_total' => self::comProposta(
-                $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
-                self::somaDasPropostas($propostaVisao)
+                self::comProposta(
+                    $this->visaoDoAnoTotal(array_map(static fn ($n) => (int)$n['id'], $negocios), $ano, $corte),
+                    self::somaDasPropostas($propostaVisao)
+                ),
+                array_filter($desafioVisao) ? self::somaDasPropostas($desafioVisao) : [],
+                'desafio'
             ),
             'desafio' => $this->desafioCorporativo($ano + 1, $propostas, $desafios),
             'tributos_dre' => Reforma::somarComoEComoFica($tributosDre),
@@ -576,8 +587,11 @@ class ProjecaoController
             'nivel3' => Projecao::nivel3([$negocioId], $ano),
             // Realizado × planejado do ano corrente e a visão realista, para a
             // receita bruta e o resultado líquido. Só leitura.
-            'visao_ano' => self::comProposta($this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null,
-                self::propostaDaVisao($linhas)),
+            'visao_ano' => self::comProposta(
+                self::comProposta($this->visaoDoAno([$negocioId], $ano, $corte)[$negocioId] ?? null, self::propostaDaVisao($linhas)),
+                self::propostaDaVisao($linhasDesafio),
+                'desafio'
+            ),
             // O desafio da Controladoria para o ano da proposta, ao lado do que a
             // proposta dá hoje. Só leitura.
             'desafio' => $this->desafioDoNegocio($negocioId, $ano + 1, $linhas, $linhasDesafio, $driver, $lancDesafio),
@@ -1635,7 +1649,7 @@ class ProjecaoController
                 return null;
             }
             foreach ($v as $c => $x) {
-                unset($v[$c]['proposta']);
+                unset($v[$c]['proposta'], $v[$c]['desafio']);
             }
             return $v;
         };
@@ -1654,22 +1668,22 @@ class ProjecaoController
     }
 
     /** Põe `proposta` em cada conta da visão do ano (de um negócio ou do total). */
-    private static function comProposta(?array $visao, array $proposta): ?array
+    private static function comProposta(?array $visao, array $proposta, string $campo = 'proposta'): ?array
     {
         if ($visao === null) {
             return null;
         }
         foreach ($visao as $c => $v) {
-            $visao[$c]['proposta'] = $proposta[$c] ?? null;
+            $visao[$c][$campo] = $proposta[$c] ?? null;
         }
         return $visao;
     }
 
     /** A visão do ano de cada negócio, com a proposta dele. */
-    private static function visaoComPropostas(array $porNegocio, array $propostas): array
+    private static function visaoComPropostas(array $porNegocio, array $propostas, string $campo = 'proposta'): array
     {
         foreach ($porNegocio as $id => $v) {
-            $porNegocio[$id] = self::comProposta($v, $propostas[$id] ?? []);
+            $porNegocio[$id] = self::comProposta($v, $propostas[$id] ?? [], $campo);
         }
         return $porNegocio;
     }

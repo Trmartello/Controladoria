@@ -376,6 +376,11 @@ o seletor (`pode_comparar_proposta`) e volta à visão realista. Os demais perfi
 quadro de antes. Os negócios do quadro são os selecionados: Corporativo, o agrupamento ou o negócio.
 Provas: `testes/agrupamento_escopo.php` (gestor sem, ADMIN com, ADMIN com a flag ligada sem) e
 `provasModoApresentacao`.
+**Terceiro bloco: "Desafio 2027"** (cliente, 2026-11-26, prévia aprovada): Proposta 2027, Desafio
+2027 (a coluna Desafio da DRE do ADMIN, `desafio_linhas`, pela mesma `propostaDaVisao` — na
+receita bruta com a CBS) e Proposta × desafio (R$; p.p. no modo %). Três colunas, como os outros
+blocos, para caber em 1366 px. Mesma trava: só ADMIN, flag desligada (`propostaNoQuadro` tira
+`desafio` junto com `proposta`).
 
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica
