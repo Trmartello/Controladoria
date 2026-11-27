@@ -8390,6 +8390,32 @@ async function provasVisaoDoAno(page, largura) {
   const p27pct = await page.evaluate(() => document.querySelector('.tabela-visao-ano tr.linha-total-visao [data-proposta="dif"]')?.textContent.trim());
   t(`${l} em %, a diferença 2027 × 2026 sai em p.p.`, / p\.p\.$/.test(p27pct || ''), String(p27pct));
   await page.click('[data-visao-modo-botao="valor"]');
+
+  // "Comparar com: Desafio 2027" (cliente, 2026-11-26, prévia aprovada): Proposta, Desafio e a
+  // diferença — o desafio é o da coluna Desafio da DRE de cada negócio (só ADMIN).
+  await page.click('[data-visao-bloco="desafio"]');
+  const des = await page.evaluate(async () => {
+    const d = await App.api('/api/projecao?corporativo=1');
+    const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+    const tab = document.querySelector('.tabela-visao-ano[data-conta-visao="18"]');
+    const tot = tab.querySelector('tr.linha-total-visao');
+    const t18 = d.visao_ano_total['18'];
+    const soma = Object.values(d.visao_ano_negocios).reduce((x, v) => x + (v['18'].desafio || 0), 0);
+    const agro = Object.entries(d.visao_ano_negocios).find(([id]) => d.negocios.find((n) => String(n.id) === id && /AGROPEC/.test(n.rotulo)));
+    const nAgro = await App.api(`/api/projecao?negocio_id=${agro[0]}`);
+    const dre18 = (nAgro.desafio_linhas || []).find((l) => l.codigo === '18');
+    return {
+      th: [...tab.querySelectorAll('thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()).slice(-3),
+      total: tot.querySelector('[data-desafio="valor"]').textContent.trim(), totalApi: fmt(t18.desafio),
+      somaOk: Math.abs(soma - t18.desafio) < 1,
+      agroOk: !!dre18 && Math.abs(agro[1]['18'].desafio - dre18.proposta) < 1,
+      dif: tot.querySelector('[data-desafio="dif"]').textContent.trim(),
+      difApi: `${Math.round(t18.proposta - t18.desafio) > 0 ? '+' : ''}${fmt(t18.proposta - t18.desafio)}`,
+    };
+  });
+  t(`${l} "Comparar com: Desafio 2027": Proposta, Desafio (o da coluna Desafio da DRE) e a diferença`,
+    /^Proposta\s*2027/.test(des.th[0]) && /^Desafio/.test(des.th[1]) && /^Proposta × desafio/.test(des.th[2])
+    && des.total === des.totalApi && des.somaOk && des.agroOk && des.dif === des.difApi, JSON.stringify(des));
   await page.click('[data-visao-bloco="realista"]');
   t(`${l} e "Visão realista" devolve o bloco de antes`, await page.evaluate(() =>
     document.querySelectorAll('.tabela-visao-ano .visao-realista').length > 0 && !document.querySelector('.tabela-visao-ano .visao-proposta')));
