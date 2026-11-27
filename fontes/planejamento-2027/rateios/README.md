@@ -35,6 +35,11 @@ idêntico ao guardado; o 5163 CENTRAL DE COMPRAS continua fora (decisão do clie
 Depois veio a versão de 25/11 do `Rateio Corporativo Negocios 2027.xlsm` (−R$ 37.678.709,77):
 sem o 5163 e sem o 5112 GERÊNCIA SUINOCULTURA, com pequenos acréscimos em 15 centros. Ela
 substituiu a guardada, no mesmo nome.
+Em 27/11/2026 veio a versão seguinte (−R$ 36.944.068,77; R$ 734.641,00 a menos), com os
+mesmos 26 centros e as mesmas regras; mudaram seis: 5151 (−1.897.205,21 → −1.051.745,21),
+5152 (−9.097.257,26 → −9.027.257,26), 5192 (−11.631.238,71 → −11.431.135,71), 5196
+(−1.448.522,82 → −1.443.118,82), 5224 Tecnoeste (−730.675,46 → −470.001,46) e 5232
+Tecnorte (−206.255,00 → −853.255,00). Também substituiu a guardada, no mesmo nome.
 
 A linha 14.1 (Rateio Matriz/Central) não tem planilha: vale zero no planejado
 (ver o CLAUDE.md).

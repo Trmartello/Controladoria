@@ -8061,12 +8061,13 @@ async function provasDesafioEExpansores(page, largura) {
   // E −R$ 19.646.536 (−3,67%) (25/11: a base do pessoal sem a 3419, a 3398 e a 3339 projetadas para o ano).
   // E −R$ 19.550.065 (−3,65%) (25/11, 2ª planilha do rateio administrativo: R$ 37,01 mi).
   // E −R$ 19.561.311 (−3,65%) (25/11, planilha nova do rateio corporativo negócio: R$ 37,68 mi, sem o 5112).
+  // E −R$ 19.467.419 (−3,63%) (27/11, planilha nova do rateio corporativo negócio: R$ 36,94 mi).
   // Desde 2026-11-25 o cartão mostra o faturamento SEM a CBS, como a DRE de 2027 (o
   // desafio continua R$ 555.517.764 na API, no formato da carga, com o PIS/COFINS). Desde
   // 2026-11-27 quem tira a CBS é o servidor (`escada.cbs`), a mesma da linha CBS da DRE.
-  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta (no cartão, sem a CBS) e −R$ 19.561.311 de resultado, margem −3,65%`,
+  t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta (no cartão, sem a CBS) e −R$ 19.467.419 de resultado, margem −3,63%`,
     api.des && Math.round(api.des.receita_bruta) === 555517764 && Math.abs(tela.rob - Math.round(555517764 - api.cbsDes)) <= 1
-    && tela.rob < 555517764 && tela.rl === -19561311 && /3,65%/.test(tela.margem), JSON.stringify({ ...tela, cbs: api.cbsDes }));
+    && tela.rob < 555517764 && tela.rl === -19467419 && /3,63%/.test(tela.margem), JSON.stringify({ ...tela, cbs: api.cbsDes }));
   t(`${l} o faturamento da coluna Proposta do cartão é a linha 1 da DRE (sem a CBS)`,
     Math.abs(tela.robProposta - Math.round(api.l1)) <= 1, `${tela.robProposta} × ${api.l1}`);
   // Em tempo real (2026-11-25: "precisa atualizar em tempo real, enquanto preenche a
@@ -8174,10 +8175,10 @@ async function provasDesafioEExpansores(page, largura) {
   // administrativo (25/11: R$ 21,48 mi de créditos na Contabilidade) → −1.509.709,86 → −1.509.710. E −1.087.145 (25/11: a base do pessoal sem a 3419, a 3398 e a 3339 projetadas para o ano).
   // A receita bruta do total sai SEM o PIS/COFINS desde 2026-11-27 (= a soma da linha 1 de
   // cada DRE): 3.680.001.039 − 19.933.225 de CBS do desafio = 3.660.067.814.
-  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.660.067.814 sem o PIS/COFINS, resultado +302.475, margem +0,01%)`,
-    corp.negocios === 11 && corp.robTotal === '3.660.067.814' && /^302\.475$/.test(corp.rlTotal) && /^0,01%$/.test(corp.margem), JSON.stringify(corp));
-  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 70,66 mi`,
-    /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 70,66 mi/.test(corp.metaDesafio), corp.metaDesafio);
+  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.660.067.814 sem o PIS/COFINS, resultado +1.037.116, margem +0,03%)`,
+    corp.negocios === 11 && corp.robTotal === '3.660.067.814' && /^1\.037\.116$/.test(corp.rlTotal) && /^0,03%$/.test(corp.margem), JSON.stringify(corp));
+  t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 69,93 mi`,
+    /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 69,93 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
   // Desde 2026-11-25 os tributos (como é × como fica) não são expansor: abrem
   // pelo botão "Reforma tributária: antes × depois", junto dos botões da DRE.

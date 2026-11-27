@@ -142,8 +142,9 @@ também o quanto a proposta segura as despesas abaixo da receita.
 
 `desafio_ano` guarda só o cabeçalho (`database/desafio_2027.php`, `calculado =>
 true`). `negocio_desafio` não é mais lido. No banco local: R$ 3,68 bi de
-faturamento, +R$ 0,30 mi de resultado, margem +0,01% (a meta de 2% pediria R$ 70,97
-mi), desde a planilha de 25/11 do rateio corporativo negócio (14.3 de R$ 38,35 para R$ 37,68
+faturamento, +R$ 1,04 mi de resultado, margem +0,03% (a meta de 2% pediria R$ 70,97
+mi), desde a planilha de 27/11 do rateio corporativo negócio (14.3 de R$ 37,68 para R$ 36,94
+mi; +R$ 0,30 mi e +0,01% desde a de 25/11, 14.3 de R$ 38,35 para R$ 37,68
 mi; −R$ 0,37 mi e −0,01% desde a 2ª planilha do rateio administrativo (25/11: 16.1 de R$ 37,7 para R$ 37,0 mi;
 −R$ 1,1 mi e −0,03% desde a base do pessoal sem a 3419, a 3398 e a 3339 (25/11; −R$ 1,5 mi e −0,04%
 desde a planilha nova do rateio administrativo (25/11: 16.1 de R$ 59,0 para R$ 37,7
@@ -406,7 +407,10 @@ somente para o Negócio que está mencionado na coluna H; quando a coluna F menc
 filiais, observar somente essas […]; lançar na célula rateio corporativo negócio,
 bloquear célula"). `database/rateio_negocios_2027.php`, gerado de duas planilhas:
 `Rateio Corporativo Negocios 2027.xlsm` (coluna "Saldo" por centro de custo e mês;
-**−R$ 37.678.709,77** desde a planilha de 25/11, que já não traz o 5163 nem o 5112 GERÊNCIA
+**−R$ 36.944.068,77** desde a planilha de 27/11 (mesmos 26 centros e regras; mudaram 5151,
+5152, 5192, 5196, 5224 Tecnoeste e 5232 Tecnorte — +R$ 734.641 de resultado, R$ 521 mil na
+Agropecuária; ver o README de `fontes/planejamento-2027/rateios/`); antes, −R$ 37.678.709,77
+desde a de 25/11, que já não traz o 5163 nem o 5112 GERÊNCIA
 SUINOCULTURA — a Pecuária fica só com a parte do Tecnoeste —, com pequenos acréscimos em 15
 centros; antes, −R$ 38.463.558,85) e `Critérios de rateios.xlsx` (por centro de custo: critério,
 filiais, negócios; e as contas de cada critério). Por centro de custo, a parte de cada
@@ -419,7 +423,7 @@ chamada a `resumoDosNegocios` com as filiais). Decisões (padrões aceitos pelo 
 2026-11-24): o 5163 CENTRAL DE COMPRAS ("apenas planejar", sem regra) fica FORA
 (−R$ 116.424; na planilha de 25/11 ele não vem mais, e o cliente confirmou que fica fora); as contas de CUSTO dos critérios 1 e 2 ficam fora (a proposta não as
 separa no Custo das Vendas); o 5191 (sem critério) vai inteiro à Agropecuária. Rateado:
-−R$ 37.678.709,77 (era −R$ 38.347.134,85). O gerador lê as colunas pelo nome do cabeçalho. Provas: `testes/rateio_negocios.php`.
+−R$ 36.944.068,77 (era −R$ 37.678.709,77; antes, −R$ 38.347.134,85). O gerador lê as colunas pelo nome do cabeçalho. Provas: `testes/rateio_negocios.php`.
 
 **Rateio Financeiro (14.2) CARREGADO e TRAVADO** (pedido do cliente, 2026-11-24:
 "atualize o rateio financeiro por negócio no projetado / orçado de 2027, totalizando por
