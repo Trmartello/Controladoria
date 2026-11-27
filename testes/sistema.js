@@ -7465,7 +7465,9 @@ async function provasPisoFaturamento(page, largura) {
   // Pontos de milhar enquanto se digita (pedido do cliente, 2026-11-19), com o
   // teclado de verdade; Escape devolve o que estava, sem gravar nada.
   const sel = '.tabela-projecao [data-conta="8.1"] .celula-proposta';
-  await page.click(sel, { clickCount: 3 });
+  // Foco e seleção, não clique: com a página mais curta (o quadro do ano saiu do negócio em
+  // 2026-11-27), a rolagem automática do clique deixava o campo sob o cabeçalho fixo da DRE.
+  await page.$eval(sel, (i) => { i.scrollIntoView({ block: 'center' }); i.focus(); i.select(); });
   await page.keyboard.press('Backspace');
   await page.keyboard.type('500000');
   const milhar = await page.$eval(sel, (i) => i.value);
