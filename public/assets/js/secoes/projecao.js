@@ -628,7 +628,7 @@ const SecaoProjecao = {
     const piso = pisoPct === null ? null : proj * (1 + pisoPct / 100);
     const prop = Number(l.proposta);
     const acima = piso !== null && prop > piso + 1;
-    return `<table class="table table-sm mb-1 tabela-faturamento">
+    return `<table class="table table-sm mb-1 tabela-faturamento tabela-padrao">
         <thead><tr><th>Faturamento ${d.ano_planejamento} (Receita de Vendas)</th><th class="text-end">No ano</th></tr></thead>
         <tbody>
           <tr><td>${this.rotuloProjecao(d)} <span class="text-muted small">(jan–${this.nomeMes(d.mes_fechado_ate)} realizado + ${this.rotuloResto(d)} planejado)</span></td><td class="text-end">${r(proj)}</td></tr>
@@ -671,7 +671,7 @@ const SecaoProjecao = {
               <td class="text-end">${dinheiro(calc.mensal.total + pd.ppr_mensal)}</td>
               <td class="text-end" data-pessoas="total_ppr">${dinheiro(calc.anual.total + pd.ppr)}</td></tr>` : '';
     const beneficios = calc ? `
-        <table class="table table-sm mb-1 tabela-pessoas">
+        <table class="table table-sm mb-1 tabela-pessoas tabela-padrao">
           <thead><tr><th>Benefícios${ppr ? ' e PPR' : ''} ${ano} (${Number(calc.colaboradores).toLocaleString('pt-BR')} colaboradores)</th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
           <tbody>
             <tr><td>Alimentação (${dinheiro(calc.valores.ALIMENTACAO)} × ${Number(calc.colaboradores).toLocaleString('pt-BR')})</td>
@@ -777,7 +777,7 @@ const SecaoProjecao = {
     const pct = (v) => `${(100 * v).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
     const reaj = (((d.diretriz || {})[d.ano_planejamento] || {}).premissas || {}).PESSOAS;
     return `<div class="table-responsive mt-2">
-        <table class="table table-sm mb-1 tabela-pessoal-diretriz">
+        <table class="table table-sm mb-1 tabela-pessoal-diretriz tabela-padrao">
           <thead><tr><th>Despesas com Pessoal ${d.ano_planejamento} (linha 8.5), pela diretriz</th><th class="text-end">No ano</th></tr></thead>
           <tbody>
             <tr><td>${this.rotuloProjecao(d)} <span class="text-muted small">(jan–${this.nomeMes(d.mes_fechado_ate)} realizado + ${this.rotuloResto(d)} planejado)</span></td><td class="text-end">${r(-p.projecao)}</td></tr>
@@ -830,7 +830,7 @@ const SecaoProjecao = {
           ${base ? `(DRE, ${this.nomeMes(base.mes)}/${base.ano}).` : '.'}
           Não inclui as áreas de apoio (Apoio Operacional e Administração Matriz).
         </div>
-        <table class="table table-sm mb-1 tabela-pessoas">
+        <table class="table table-sm mb-1 tabela-pessoas tabela-padrao">
           <thead><tr><th></th><th class="text-end">Por mês</th><th class="text-end">No ano</th></tr></thead>
           <tbody>
             <tr><td>Alimentação</td><td class="text-end">${dinheiro(c.mensal.alimentacao)}</td><td class="text-end" data-pessoas="alimentacao">${dinheiro(c.anual.alimentacao)}</td></tr>
@@ -1307,7 +1307,7 @@ const SecaoProjecao = {
     return this.expansor('visao', 'painel-visao-ano', `${d.ano}: realizado, planejado e visão realista`, resumo, `
         ${d.pode_comparar_proposta ? `<div class="d-flex flex-wrap align-items-center gap-2 mt-1 seletor-visao-ano">${this.seletorBlocoVisao(d)}</div>` : ''}
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0 tabela-visao-ano">
+          <table class="table table-sm align-middle mb-0 tabela-visao-ano tabela-padrao">
             <thead>${this.colunasVisao(d)}</thead>
             <tbody>
               ${this.LINHAS_VISAO.map((x) => this.linhaVisao(x.rotulo, v[x.conta], x.conta === '18' ? 'fw-bold' : '')
@@ -1329,7 +1329,7 @@ const SecaoProjecao = {
     // `pode_comparar_proposta` e, sem ela, nem manda as propostas).
     if (!d.pode_comparar_proposta) return '';
     const b = (valor, rotulo) => `<button type="button" class="btn ${this.visaoBloco === valor || (!this.visaoBloco && valor === 'realista')
-      ? (valor === 'proposta' ? 'btn-primary' : valor === 'desafio' ? 'btn-info' : 'btn-verde') : 'btn-outline-secondary'}" data-visao-bloco="${valor}"
+      ? 'btn-verde' : 'btn-outline-secondary'}" data-visao-bloco="${valor}"
         aria-pressed="${this.visaoBloco === valor || (!this.visaoBloco && valor === 'realista')}">${rotulo}</button>`;
     return `<span class="small text-muted ms-2">Comparar com:</span>
       <div class="btn-group btn-group-sm" role="group" aria-label="Bloco da direita">${b('realista', 'Visão realista')}${b('proposta', `Proposta ${d.ano + 1}`)}${b('desafio', `Desafio ${d.ano + 1}`)}</div>`;
@@ -1433,7 +1433,7 @@ const SecaoProjecao = {
     const alt = d.diretriz_alterada;
     const quando = alt ? new Date(alt.em.replace(' ', 'T')).toLocaleDateString('pt-BR') : '';
     const corpo = `
-      <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-diretrizes">
+      <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-diretrizes tabela-padrao">
         <thead><tr><th>Diretriz de ${d.ano_planejamento}</th>
           <th class="text-end">Vigente</th>
           <th class="text-end">Simular</th>
@@ -1503,7 +1503,7 @@ const SecaoProjecao = {
     };
     const rot = linha.curto.toLowerCase();
     const algumLancado = r.negocios.some((n) => n.pessoal_lancado);
-    return `<div class="table-responsive"><table class="table table-sm align-middle mb-0 tabela-visao-ano tabela-simulador" data-sim-conta="${c}">
+    return `<div class="table-responsive"><table class="table table-sm align-middle mb-0 tabela-visao-ano tabela-simulador tabela-padrao" data-sim-conta="${c}">
         <thead><tr><th></th>
           <th class="text-end">Receita líquida<br><span class="fw-normal text-muted small">proposta ${r.ano}</span></th>
           <th class="text-end">${linha.curto}<br><span class="fw-normal text-muted small">diretriz vigente</span></th>
@@ -1611,7 +1611,7 @@ const SecaoProjecao = {
         : this.linhaVisao('Total dos negócios', t[conta], 'fw-bold table-light linha-total-visao');
       return `<p class="small fw-bold text-uppercase text-muted mb-1 mt-2">${pct ? `${linha.pct} (% da receita líquida)` : linha.rotulo}</p>
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0 tabela-visao-ano" data-conta-visao="${conta}" data-visao-modo="${pct ? 'pct' : 'valor'}">
+          <table class="table table-sm align-middle mb-0 tabela-visao-ano tabela-padrao" data-conta-visao="${conta}" data-visao-modo="${pct ? 'pct' : 'valor'}">
             <thead>${this.colunasVisao(d, pct)}</thead>
             <tbody>${linhas}${total}</tbody>
           </table>
@@ -1669,7 +1669,7 @@ const SecaoProjecao = {
     const cab = `<thead><tr><th>R$</th>${cols.map(([, r]) => `<th class="text-end">${r}</th>`).join('')}</tr></thead>`;
     // [chave, rótulo, recuo, forte, muda?] — `muda` pode ser função da coluna.
     const tabela = (lado, linhas, id) => `
-      <table class="table table-sm align-middle mb-0 tabela-tributos-dre" id="${id}">
+      <table class="table table-sm align-middle mb-0 tabela-tributos-dre tabela-padrao" id="${id}">
         ${cab}
         <tbody>${linhas.map(([k, rotulo, recuo, forte, muda]) => `
           <tr data-linha="${k}">
@@ -1836,8 +1836,8 @@ const SecaoProjecao = {
         </tr>`;
     };
     const nomeComp = { desafio: `desafio ${x.ano}`, realista: `real + realista ${x.ano - 1}`, real_plan: `real + plan. ${x.ano - 1}` }[comp];
-    const botao = (v, r) => `<button type="button" class="btn ${comp === v ? 'btn-primary' : 'btn-outline-secondary'}" data-desafio-comparar="${v}" aria-pressed="${comp === v}">${r}</button>`;
-    const seletor = tem2026 ? `<div class="d-flex align-items-center gap-2 mb-2 seletor-desafio-comparar">
+    const botao = (v, r) => `<button type="button" class="btn ${comp === v ? 'btn-verde' : 'btn-outline-secondary'}" data-desafio-comparar="${v}" aria-pressed="${comp === v}">${r}</button>`;
+    const seletor = tem2026 ? `<div class="d-flex align-items-center justify-content-end gap-2 mb-2 seletor-desafio-comparar">
         <span class="small text-muted">Comparar a proposta com:</span>
         <div class="btn-group btn-group-sm" role="group" aria-label="Comparar a proposta com">${botao('desafio', `Desafio ${x.ano}`)}${botao('realista', `Real + realista ${x.ano - 1}`)}${botao('real_plan', `Real + Plan. ${x.ano - 1}`)}</div>
       </div>` : '';
@@ -1846,7 +1846,7 @@ const SecaoProjecao = {
     return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} para o negócio`, resumo, `
         ${seletor}
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-1 tabela-desafio">
+          <table class="table table-sm align-middle mb-1 tabela-desafio tabela-padrao">
             <thead><tr><th></th>
               ${tem2026 ? `<th class="text-end${destaque('real_plan')}">Real + Plan.<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>
               <th class="text-end${destaque('realista')}" title="Realizado até o corte + a visão realista do resto do ano (estimativa da Controladoria)">Real + realista<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>` : ''}
@@ -1956,7 +1956,7 @@ const SecaoProjecao = {
       — meta de ${this.pct(x.meta_margem / 100, 0)}: ${t.desafio.falta > 0 ? `faltam ${this.mi(t.desafio.falta)}` : 'atingida'}`;
     return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} para os negócios`, resumo, `
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-1 tabela-desafio tabela-desafio-corp">
+          <table class="table table-sm align-middle mb-1 tabela-desafio tabela-desafio-corp tabela-padrao">
             <thead>
               <tr class="cabeca-bloco"><th></th>
                 <th colspan="5" class="text-center bloco-ini">Desafio ${x.ano}</th>
@@ -1999,7 +1999,7 @@ const SecaoProjecao = {
       .sort((a, b) => (x.negocios[b].tributos.pis + x.negocios[b].tributos.cofins) - (x.negocios[a].tributos.pis + x.negocios[a].tributos.cofins));
     return `<div class="small fw-bold mb-1 mt-3">Tributos sobre vendas em ${x.ano - 1} (jan–${this.nomeMes(t.mes_ate)}) — base para a regra da reforma</div>
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-1 tabela-tributos">
+        <table class="table table-sm align-middle mb-1 tabela-tributos tabela-padrao">
           <thead><tr><th></th>
             <th class="text-end">Vendas<br><span class="fw-normal text-muted small">a sócios</span></th>
             <th class="text-end">Vendas<br><span class="fw-normal text-muted small">a não sócios</span></th>
@@ -2068,7 +2068,7 @@ const SecaoProjecao = {
       <div class="small fw-bold mb-1">${naFilial ? 'Eventos pontuais desta filial' : 'Itens não recorrentes e eventos pontuais'}
         ${this.rotuloJanela(q.periodo)}</div>
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-1 tabela-oportunidades-quadro">
+        <table class="table table-sm align-middle mb-1 tabela-oportunidades-quadro tabela-padrao tabela-detalhe">
           <thead><tr><th>Item / linha</th><th>Grupo</th><th class="text-end">Linha da DRE</th>
             <th class="text-end">Padrão mensal<br><span class="fw-normal text-muted small">mediana</span></th>
             <th>Meses em que aconteceu</th>
@@ -2275,7 +2275,7 @@ const SecaoProjecao = {
     const todas = [...qs.parou, ...qs.comecou];
     const corpo = qs.parou.length || qs.comecou.length
       ? `<div class="table-responsive">
-          <table class="table table-sm align-middle mb-1 tabela-questionamentos">
+          <table class="table table-sm align-middle mb-1 tabela-questionamentos tabela-padrao tabela-detalhe">
             <thead><tr><th>Conta reduzida</th><th class="text-end">Linha da DRE</th>
               <th class="text-end d-none d-md-table-cell">${ja}</th><th class="text-end d-none d-md-table-cell">${jb}</th></tr></thead>
             <tbody>${grupo(qs.parou, 'PAROU', `Aconteceu em ${ja} e parou em ${jb} — deveria continuar em ${qs.ano + 1}?`,
@@ -2392,7 +2392,7 @@ const SecaoProjecao = {
     return `<tr class="linha-lancamentos" data-lancamentos="${chave}"><td colspan="${colunas}" class="py-0">
       <details class="small lancamentos-do-quadro">
         <summary>Lançamentos — ${x.quantos} de R$ ${m(x.minimo)} ou mais, somando ${m(x.soma)}${item ? '' : ' nos meses fora do padrão'}${cobre}</summary>
-        <div class="table-responsive"><table class="table table-sm table-borderless mb-1 tabela-lancamentos">
+        <div class="table-responsive"><table class="table table-sm table-borderless mb-1 tabela-lancamentos tabela-padrao tabela-detalhe">
           <thead><tr><th>Data</th><th>Filial</th><th>Conta</th><th>Histórico</th><th>Complemento (documento e cliente)</th>
             <th class="text-end">Valor</th><th class="text-end">Oportunidade</th><th class="text-end">Risco</th></tr></thead>
           <tbody>${linhas}${totais}</tbody></table></div>${mais}
@@ -2427,14 +2427,14 @@ const SecaoProjecao = {
         ${j.acima.length ? `<span class="text-danger">Risco: <strong data-juros="risco">${m(j.risco)}</strong> em ${j.acima.length}
         lançamento(s) acima de R$ ${lim}</span> — receita que depende de um cliente pagar com atraso; se não se repetir,
         o resultado do ano seguinte cai.` : `Nenhum lançamento acima de R$ ${lim}.`}</div>
-      ${j.acima.length ? `<div class="table-responsive"><table class="table table-sm align-middle mb-2 tabela-juros">
+      ${j.acima.length ? `<div class="table-responsive"><table class="table table-sm align-middle mb-2 tabela-juros tabela-padrao">
         <thead><tr><th>Data</th><th>Filial</th><th>Cliente</th><th>Conta</th><th class="text-end">Juros</th></tr></thead>
         <tbody>${acima}
           <tr class="fw-bold table-light" data-juros-total="lancamentos"><td colspan="4">Total (${j.acima.length} lançamento${j.acima.length === 1 ? '' : 's'} acima de R$ ${lim})</td>
             <td class="text-end text-danger text-nowrap">${m(j.acima.reduce((a, x) => a + (Number(x.valor) || 0), 0))}</td></tr>
         </tbody></table></div>` : ''}
       ${j.clientes.length ? `<details class="small"><summary>Clientes que somam mais de R$ ${lim} de juros no ano (${j.clientes.length})</summary>
-        <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-juros-clientes">
+        <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-juros-clientes tabela-padrao tabela-detalhe">
           <thead><tr><th>Cliente</th><th>Conta</th><th>Filiais</th><th class="text-end">Lançamentos</th><th class="text-end">Juros</th></tr></thead>
           <tbody>${clientes}
             <tr class="fw-bold table-light" data-juros-total="clientes"><td colspan="3">Total (${j.clientes.length} cliente${j.clientes.length === 1 ? '' : 's'})</td>
@@ -2470,7 +2470,7 @@ const SecaoProjecao = {
     return this.expansor('oportunidades', 'painel-oportunidades', `Oportunidades e riscos para ${d.ano_planejamento}, por negócio`,
       `oportunidade ${this.mi(op, true)} · risco ${this.mi(ri)}`, `
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-1 tabela-oportunidades">
+          <table class="table table-sm align-middle mb-1 tabela-oportunidades tabela-padrao">
             <thead><tr><th></th><th class="text-end">Oportunidades<br><span class="fw-normal text-muted small">se não se repetir</span></th>
               <th class="text-end">Riscos<br><span class="fw-normal text-muted small">se não se repetir</span></th>
               <th class="text-end">Líquido</th><th>Maiores itens</th></tr></thead>
@@ -2505,7 +2505,7 @@ const SecaoProjecao = {
     }).join('');
     return `<div class="mt-3" id="juros-recebidos">
       <div class="small fw-bold mb-1">Juros recebidos de clientes, por negócio</div>
-      <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-juros">
+      <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-juros tabela-padrao">
         <thead><tr><th></th><th class="text-end">Sócio</th><th class="text-end">Não sócio</th><th class="text-end">Total</th>
           <th class="text-end">Risco<br><span class="fw-normal text-muted small">lançamentos &gt; R$ 30 mil</span></th>
           <th>Maiores clientes</th></tr></thead>
@@ -2567,7 +2567,7 @@ const SecaoProjecao = {
     : `Perdas e acerto de ${d.ano} (jan–${this.nomeMes(e.mes_ate)}): a oportunidade é o que cada mês passou da
           <strong>média mensal</strong> (em verde-claro).`}${p ? ' E o estoque parado, caixa a liberar.' : ''}</div>
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-1 tabela-estoque">
+          <table class="table table-sm align-middle mb-1 tabela-estoque tabela-padrao">
             <thead><tr><th>Indicador</th>${cab}<th class="text-end">Total</th><th class="text-end">Média<br><span class="fw-normal text-muted small">${entreFiliais
     ? 'entre as filiais (ano)' : 'mensal'}</span></th>
               <th class="text-end">Oportunidade<br><span class="fw-normal text-muted small">acima da média</span></th></tr></thead>
@@ -2603,10 +2603,10 @@ const SecaoProjecao = {
       <th class="text-end">Parado</th><th class="text-end">Total</th></tr></thead>`;
     const resto = f.slice(10);
     return `<div class="small fw-bold mt-2 mb-1">Onde está, por filial</div>
-      <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-estoque-filiais">${cab}
+      <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-estoque-filiais tabela-padrao">${cab}
         <tbody>${f.slice(0, 10).map(linha).join('')}</tbody></table></div>
       ${resto.length ? `<details class="small"><summary>mais ${resto.length} filiais</summary>
-        <div class="table-responsive"><table class="table table-sm align-middle mb-1">${cab}<tbody>${resto.map(linha).join('')}</tbody></table></div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-estoque-demais tabela-padrao tabela-detalhe">${cab}<tbody>${resto.map(linha).join('')}</tbody></table></div>
       </details>` : ''}
       <div class="small text-muted">Perdas e acerto: quanto cada filial ficou acima da média das filiais.</div>`;
   },
@@ -2631,7 +2631,7 @@ const SecaoProjecao = {
       <div class="card-body py-2 px-3">
         <h2 class="h6 mb-1">Oportunidades do estoque a trabalhar em ${d.ano_planejamento}, por negócio</h2>
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-1 tabela-estoque">
+          <table class="table table-sm align-middle mb-1 tabela-estoque tabela-padrao">
             <thead><tr><th></th><th class="text-end">Perdas<br><span class="fw-normal text-muted small">acima da média</span></th>
               <th class="text-end">Acerto<br><span class="fw-normal text-muted small">acima da média</span></th>
               <th class="text-end">No resultado</th><th class="text-end">No caixa<br><span class="fw-normal text-muted small">estoque parado</span></th>
@@ -2695,7 +2695,7 @@ const SecaoProjecao = {
       <div class="small mb-2">A Receita de Vendas da proposta veio do cenário <strong>${nomes[c.cenario] || c.cenario}</strong> da
         planilha do negócio. A planilha está no <strong>formato antigo</strong>, com o PIS/COFINS dentro do faturamento; o que se
         lança é o formato novo, sem a CBS — como no cartão "Tributos na DRE: como é × como fica".</div>
-      <div class="table-responsive"><table class="table table-sm align-middle mb-2 tabela-cenario-conversao" style="max-width:40rem">
+      <div class="table-responsive"><table class="table table-sm align-middle mb-2 tabela-cenario-conversao tabela-padrao" style="max-width:40rem">
         <tbody>
           <tr><td>Faturamento da planilha (formato antigo)</td><td class="text-end" data-cenario="faturamento">${m(c.faturamento)}</td></tr>
           <tr class="linha-muda"><td>(−) CBS — o PIS/COFINS, ${(c.taxa * 100).toLocaleString('pt-BR', { maximumFractionDigits: 4 })}% do faturamento</td>
@@ -2703,7 +2703,7 @@ const SecaoProjecao = {
           <tr class="fw-bold"><td>Receita de Vendas lançada (formato novo)</td><td class="text-end" data-cenario="receita">${m(c.receita_vendas)}</td></tr>
         </tbody></table></div>
       <details class="small"><summary>Os três cenários da planilha, item a item</summary>
-        <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-cenario">
+        <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-cenario tabela-padrao">
           <thead><tr><th>Item</th><th class="text-end">Pessimista</th><th class="text-end">Realista</th><th class="text-end">Otimista</th></tr></thead>
           <tbody>${itens}
             <tr class="table-light"><td class="fw-bold">Total (formato antigo)</td>

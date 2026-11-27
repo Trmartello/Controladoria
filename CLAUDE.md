@@ -75,6 +75,21 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 > mais forte, os títulos das colunas e o cabeçalho dos tributos com fundo claro, as linhas de
 > total em cinza mais escuro, fonte 1,2rem (ainda cabe em 1850 px sem rolar).
 
+> **Padrão visual das tabelas da Projeção (2026-11-27, PR #169; cliente: "criar um padrão
+> visual para essa tela e replicar"; "gostei muito, ficou muito mais amigável").** Toda tabela
+> de números da Projeção — MENOS a DRE (`tabela-projecao`), que é a referência e fica como está —
+> leva `tabela-padrao` (listas longas: + `tabela-detalhe`): fonte 1,2rem (1,05rem nas longas),
+> números em peso 500, linha compacta (.2rem), cabeçalho verde-claro com título verde-escuro,
+> faixa de grupo (`cabeca-bloco`) verde médio, zebra verde quase branco, borda verde no hover,
+> totais em cinza, um âmbar claro só para destaque (realista, simulado, comparada, desafio). As
+> cores vêm do design system da Copérdia (verde vivo #00B560, verde-escuro #003B2D, âmbar do
+> selo 44 #FFD26E — âmbar só como acento) e ficam em variáveis `--tp-*` no `:root`; o cliente
+> trocou o azul da prévia pelas cores da marca. Sem `tabular-nums` (nesta fonte alarga e o
+> cartão do Corporativo deixava de caber). Referência: tela de 1850–1920 px (em 1366 as mais
+> largas rolam de lado, aceito). Só a Projeção: as demais telas ficam como estão. Os botões
+> ativos ("Comparar com", "Comparar a proposta com", este alinhado à direita) são `btn-verde`.
+> Prova: `provasPadraoProjecao` (negócio e Corporativo, 1850 px).
+
 Índice das decisões do cliente na aba **Projeção de Resultados**. O detalhe e o
 histórico de cada uma estão em "Regras de negócio importantes"; este bloco existe
 porque elas mudaram muito num dia só, e uma delas foi revertida horas depois. Antes

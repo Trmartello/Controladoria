@@ -39,7 +39,8 @@ confira se a carga/estrutura precisa de algum ajuste manual (nenhum dado lançad
 
 | PR | Data | O que entrou | Estado antes (restaurar para) | Mescla (reverter) | Banco (`database/`) |
 |---|---|---|---|---|---|
-| #168 | 2026-11-27 | "Diretrizes de pessoal" (simulador + pessoas e benefícios num cartão, custo por diretriz) e cabeçalhos com fundo no Corporativo | `4de0a11697` | (no PR seguinte) | — |
+| #169 | 2026-11-27 | Padrão visual das tabelas da Projeção (cores da marca, fonte grande, zebra, borda no hover) e "Comparar a proposta com" à direita | `62dcf36f5b` | (no PR seguinte) | — |
+| #168 | 2026-11-27 | "Diretrizes de pessoal" (simulador + pessoas e benefícios num cartão, custo por diretriz) e cabeçalhos com fundo no Corporativo | `4de0a11697` | `62dcf36f5b` | — |
 | #167 | 2026-11-27 | Cartão do desafio: "Comparar a proposta com" (desafio, real + realista, real + plan.), variação em %, rateios em itálico | `fbb0bd2c77` | `4de0a11697` | — |
 | #166 | 2026-11-27 | Quadro do ano e cartões do desafio = reflexo da DRE (receita bruta sem PIS/COFINS, colunas de 2026, rateios abertos, Corporativo em blocos, fonte grande) | `e6dc74bdc7` | `fbb0bd2c77` | — |
 | #165 | 2026-11-27 | Pontos de restauração sem etiqueta (o proxy recusa) e memória da sessão — só documentação | `87d26713f7` | `e6dc74bdc7` | — |
