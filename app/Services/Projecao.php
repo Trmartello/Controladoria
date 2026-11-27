@@ -209,8 +209,19 @@ class Projecao
      */
     public const LINHAS_VISAO_ANO = ['1', '3', '5', '7', '15', '18'];
 
-    /** As linhas de RECEITA, que no realista seguem a aderência; as demais, o desvio médio. */
-    private const VISAO_POR_ADERENCIA = ['1', '3'];
+    /**
+     * Os degraus do cartão do desafio no ano corrente (cliente, 2026-11-27: "Real + Plan.
+     * 2026" e "Real + realista 2026" ao lado do desafio e da proposta): as linhas do
+     * quadro mais os rateios (14 e 16) e o antes dos rateios (13), e a CBS — o PIS/COFINS
+     * que sai da receita bruta, como na DRE.
+     */
+    public const LINHAS_ESCADA_ANO = ['1', '3', '5', '7', '13', '14', '14.1', '14.2', '14.3', '15', '16', '18', 'CBS'];
+
+    /**
+     * As linhas de RECEITA, que no realista seguem a aderência; as demais, o desvio
+     * médio. A CBS acompanha a receita (é uma taxa sobre ela).
+     */
+    private const VISAO_POR_ADERENCIA = ['1', '3', 'CBS'];
 
     public static function visaoRealista(array $v, string $conta, int $corte): array
     {

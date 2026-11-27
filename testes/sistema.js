@@ -7070,7 +7070,7 @@ async function provasApoioDesafio(page, largura) {
   await escolher('- AGROPECUARIAS');
   const n = await page.evaluate(() => {
     const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
-    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => (c.querySelector('input.celula-desafio')?.value ?? c.textContent).trim());
+    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td:not([data-col-2026])`)].map((c) => (c.querySelector('input.celula-desafio')?.value ?? c.textContent).trim());
     const d = SecaoProjecao.dados;
     const linha = (c) => d.linhas.find((x) => x.codigo === c).proposta;
     const cel = document.querySelector('.tabela-projecao tr[data-conta="1.1"] .celula-proposta');
@@ -7184,8 +7184,8 @@ async function provasApoioDesafio(page, largura) {
     return {
       titulo: document.querySelector('.painel-desafio summary h2')?.textContent.trim(),
       trib: td('.tabela-tributos tr[data-negocio-tributo="total"]'),
-      rolDesafio: document.querySelector('.tabela-desafio tr[data-negocio-desafio="total"] [data-col="rol-desafio"]')?.textContent.trim(),
-      margemNegocio: document.querySelector('.tabela-desafio tr[data-negocio-desafio="total"] [data-col="margem-negocio"]')?.textContent.trim(),
+      rolDesafio: document.querySelector('.tabela-desafio tr[data-negocio-desafio="total"] [data-col="desafio-receita_liquida"]')?.textContent.trim(),
+      rnProposta: document.querySelector('.tabela-desafio tr[data-negocio-desafio="total"] [data-col="proposta-resultado_negocio"]')?.textContent.trim(),
       oportTotal: td('.tabela-oportunidades tr[data-negocio-oport="total"]'),
       oportNegocios: document.querySelectorAll('.tabela-oportunidades tr[data-negocio-oport]:not([data-negocio-oport="total"])').length,
       cabTrib: [...document.querySelectorAll('.tabela-tributos thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
@@ -7194,7 +7194,7 @@ async function provasApoioDesafio(page, largura) {
   });
   t(`${l} Corporativo: "Desafio 2027 para os negócios", com a receita líquida do desafio (R$ 3.548.348.607)`,
     /para os negócios/.test(c.titulo || '') && c.rolDesafio === '3.548.348.607', `${c.titulo} | ${c.rolDesafio}`);
-  t(`${l} e a margem do negócio (antes dos rateios) da proposta no total`, /%$/.test(c.margemNegocio || ''), c.margemNegocio);
+  t(`${l} e o resultado do negócio (14) da proposta no total`, /^-?[\d.]+$/.test(c.rnProposta || ''), c.rnProposta);
   t(`${l} PIS e COFINS de 2026 destacados: R$ 2.773.788 e R$ 12.783.362, 0,52% do faturamento`,
     c.trib[4] === '2.773.788' && c.trib[5] === '12.783.362' && c.trib[6] === '0,52%', c.trib.join(' | '));
   t(`${l} a Copérdia optou pelo regime específico, e a CBS do desafio é o PIS/COFINS sobre ele (sem "efeito" nem "sem o regime")`,
@@ -8013,11 +8013,11 @@ async function provasDesafioEExpansores(page, largura) {
     const d = await App.api(`/api/projecao?negocio_id=${id}`);
     const l = (c) => (d.linhas.find((x) => x.codigo === c) || {}).proposta;
     return { des: d.desafio && d.desafio.desafio, pro: d.desafio && d.desafio.proposta, rl: l('18'),
-      l1: l('1'), taxaCbs: l('CBS') / d.desafio.escada.proposta.receita_bruta };
+      l1: l('1'), cbsDes: d.desafio.escada.cbs.desafio };
   });
   const tela = await page.evaluate(() => {
     const n = (s) => Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.'));
-    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)].map((c) => (c.querySelector('input.celula-desafio')?.value ?? c.textContent).trim());
+    const td = (k) => [...document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td:not([data-col-2026])`)].map((c) => (c.querySelector('input.celula-desafio')?.value ?? c.textContent).trim());
     return {
       rob: n(td('receita_bruta')[1]), robProposta: n(td('receita_bruta')[2]),
       rl: n(td('resultado')[1]), rlProposta: n(td('resultado')[2]),
@@ -8041,10 +8041,11 @@ async function provasDesafioEExpansores(page, largura) {
   // E −R$ 19.550.065 (−3,65%) (25/11, 2ª planilha do rateio administrativo: R$ 37,01 mi).
   // E −R$ 19.561.311 (−3,65%) (25/11, planilha nova do rateio corporativo negócio: R$ 37,68 mi, sem o 5112).
   // Desde 2026-11-25 o cartão mostra o faturamento SEM a CBS, como a DRE de 2027 (o
-  // desafio continua R$ 555.517.764 na API, no formato da carga, com o PIS/COFINS).
+  // desafio continua R$ 555.517.764 na API, no formato da carga, com o PIS/COFINS). Desde
+  // 2026-11-27 quem tira a CBS é o servidor (`escada.cbs`), a mesma da linha CBS da DRE.
   t(`${l} Cereais: desafio de R$ 555.517.764 de receita bruta (no cartão, sem a CBS) e −R$ 19.561.311 de resultado, margem −3,65%`,
-    api.des && Math.round(api.des.receita_bruta) === 555517764 && Math.abs(tela.rob - Math.round(555517764 * (1 - api.taxaCbs))) <= 1
-    && tela.rob < 555517764 && tela.rl === -19561311 && /3,65%/.test(tela.margem), JSON.stringify({ ...tela, taxa: api.taxaCbs }));
+    api.des && Math.round(api.des.receita_bruta) === 555517764 && Math.abs(tela.rob - Math.round(555517764 - api.cbsDes)) <= 1
+    && tela.rob < 555517764 && tela.rl === -19561311 && /3,65%/.test(tela.margem), JSON.stringify({ ...tela, cbs: api.cbsDes }));
   t(`${l} o faturamento da coluna Proposta do cartão é a linha 1 da DRE (sem a CBS)`,
     Math.abs(tela.robProposta - Math.round(api.l1)) <= 1, `${tela.robProposta} × ${api.l1}`);
   // Em tempo real (2026-11-25: "precisa atualizar em tempo real, enquanto preenche a
@@ -8059,7 +8060,7 @@ async function provasDesafioEExpansores(page, largura) {
     await page.waitForTimeout(300);
     return page.evaluate(() => {
       const n = (s) => Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.'));
-      const td = (k, i) => document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)[i]?.textContent;
+      const td = (k, i) => document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td:not([data-col-2026])`)[i]?.textContent;
       const l1 = SecaoProjecao.dados.linhas.find((x) => x.codigo === '1').proposta;
       return { rob: n(td('receita_bruta', 2)), rl: n(td('resultado', 2)), l1: Math.round(l1),
         l18: Math.round(SecaoProjecao.dados.linhas.find((x) => x.codigo === '18').proposta) };
@@ -8098,7 +8099,7 @@ async function provasDesafioEExpansores(page, largura) {
     await page.waitForTimeout(300);
     return page.evaluate(() => {
       const n = (x) => Number(String(x).replace(/[^\d,-]/g, '').replace(',', '.'));
-      const c = (k, i) => document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td`)[i];
+      const c = (k, i) => document.querySelectorAll(`.tabela-desafio tr[data-desafio="${k}"] td:not([data-col-2026])`)[i];
       return { rl: n(c('resultado', 1).textContent), l18: n(document.querySelector('.tabela-projecao [data-desafio-conta="18"]')?.textContent),
         campo: document.querySelector('.tabela-projecao .celula-desafio[data-conta="8.1"]').value,
         lancado: !!document.querySelector('.tabela-projecao .celula-desafio.desafio-lancado'),
@@ -8130,11 +8131,14 @@ async function provasDesafioEExpansores(page, largura) {
   await page.evaluate(() => { const s = document.querySelector('#sel-negocio'); s.value = 'CORP'; s.dispatchEvent(new Event('change')); });
   await esperar(page, "!!document.querySelector('.tabela-desafio [data-negocio-desafio=\"total\"]')", 30000);
   const corp = await page.evaluate(() => {
-    const tot = [...document.querySelectorAll('.tabela-desafio [data-negocio-desafio="total"] td')].map((c) => c.textContent.trim());
+    // Desde 2026-11-27 as colunas têm nome (`data-col`): blocos Desafio | Proposta com as
+    // mesmas cinco, e a margem líquida embaixo do resultado líquido.
+    const col = (k) => document.querySelector(`.tabela-desafio [data-negocio-desafio="total"] [data-col="${k}"]`);
+    const res = col('desafio-resultado');
     return {
       negocios: document.querySelectorAll('.tabela-desafio tbody tr[data-negocio-desafio]:not([data-negocio-desafio="total"])').length,
-      // Colunas: receita bruta, receita líquida, PIS + COFINS, resultado, margem (do desafio).
-      robTotal: tot[1], rolTotal: tot[2], rlTotal: tot[4], margem: tot[5],
+      robTotal: col('desafio-receita_bruta')?.textContent.trim(), rolTotal: col('desafio-receita_liquida')?.textContent.trim(),
+      rlTotal: res?.firstChild?.textContent.trim(), margem: res?.querySelector('.margem-sub')?.textContent.trim(),
       metaDesafio: document.querySelector('.meta-margem [data-meta="desafio"]')?.textContent.replace(/\s+/g, ' ') || '',
       metaProposta: document.querySelector('.meta-margem [data-meta="proposta"]')?.textContent.replace(/\s+/g, ' ') || '',
       expansores: [...document.querySelectorAll('details.expansor')].map((d) => d.dataset.expansor).join(','),
@@ -8147,8 +8151,10 @@ async function provasDesafioEExpansores(page, largura) {
   // recarga de outubro do Qlik (25/11, custo da filial 106 entre Rações e Agropecuárias) tira
   // outro: −22.786.222,86, que a tela arredonda para −22.786.223. A planilha nova do rateio
   // administrativo (25/11: R$ 21,48 mi de créditos na Contabilidade) → −1.509.709,86 → −1.509.710. E −1.087.145 (25/11: a base do pessoal sem a 3419, a 3398 e a 3339 projetadas para o ano).
-  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.680.001.039, resultado +302.475, margem +0,01%)`,
-    corp.negocios === 11 && corp.robTotal === '3.680.001.039' && /^302\.475$/.test(corp.rlTotal) && /^0,01%$/.test(corp.margem), JSON.stringify(corp));
+  // A receita bruta do total sai SEM o PIS/COFINS desde 2026-11-27 (= a soma da linha 1 de
+  // cada DRE): 3.680.001.039 − 19.933.225 de CBS do desafio = 3.660.067.814.
+  t(`${l} Corporativo: os 11 negócios e o total (ROB 3.660.067.814 sem o PIS/COFINS, resultado +302.475, margem +0,01%)`,
+    corp.negocios === 11 && corp.robTotal === '3.660.067.814' && /^302\.475$/.test(corp.rlTotal) && /^0,01%$/.test(corp.margem), JSON.stringify(corp));
   t(`${l} Corporativo: a meta de 2% sobre o desafio — R$ 70,97 mi, faltam R$ 70,66 mi`,
     /2% seriam R\$ 70,97 mi/.test(corp.metaDesafio) && /faltam R\$ 70,66 mi/.test(corp.metaDesafio), corp.metaDesafio);
   t(`${l} Corporativo: e a mesma meta sobre a proposta lançada`, /ROL da proposta lançada .* 2% seriam R\$ [\d.,]+ mi/.test(corp.metaProposta), corp.metaProposta);
@@ -8356,8 +8362,8 @@ async function provasVisaoDoAno(page, largura) {
 
   // "Comparar com: Proposta 2027" (cliente, 2026-11-26: "traga o projetado para 2027 e compare com o
   // projetado 2026, para cada um dos indicadores"): o bloco da direita troca a visão realista pela
-  // proposta do ano seguinte e a diferença contra o "Real + Plan.". Na receita bruta, a proposta soma
-  // a CBS proposta — o quadro é da DRE carregada, com o PIS/COFINS na receita.
+  // proposta do ano seguinte e a diferença contra o "Real + Plan.". Na receita bruta, a proposta é a linha 1 da DRE, sem
+  // o PIS/COFINS — o quadro inteiro está na régua da DRE desde 2026-11-27.
   await page.click('[data-visao-bloco="proposta"]');
   const p27 = await page.evaluate(async () => {
     const d = await App.api('/api/projecao?corporativo=1');
@@ -8366,12 +8372,12 @@ async function provasVisaoDoAno(page, largura) {
     const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
     const somaNeg = Object.values(d.visao_ano_negocios).reduce((x, v) => x + (v['18'].proposta || 0), 0);
     const t18 = d.visao_ano_total['18'];
-    // receita bruta: proposta = linha 1 + CBS da DRE de cada negócio
+    // receita bruta: proposta = linha 1 da DRE de cada negócio (sem o PIS/COFINS, 2026-11-27)
     let rbDre = 0;
     for (const id of Object.keys(d.visao_ano_negocios)) {
       const n = await App.api(`/api/projecao?negocio_id=${id}`);
       const L = (c) => (n.linhas.find((x) => x.codigo === c) || {}).proposta || 0;
-      rbDre += L('1') + L('CBS');
+      rbDre += L('1');
     }
     return {
       th: [...tab.querySelectorAll('thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
@@ -8386,7 +8392,7 @@ async function provasVisaoDoAno(page, largura) {
   t(`${l} "Comparar com: Proposta ${'2027'}" troca a visão realista por Proposta e a diferença contra o Real + Plan.`,
     p27.realista === 0 && p27.th.some((x) => /^Proposta\s*2027/.test(x)) && p27.th.some((x) => /^2027 × 2026\s*R\$/.test(x))
     && p27.proposta === p27.propostaApi && p27.dif === p27.difApi && p27.somaOk, JSON.stringify(p27));
-  t(`${l} na receita bruta, a proposta inclui a CBS (mesma régua do Real + Plan.)`, p27.rbOk, JSON.stringify([p27.rb, p27.rbDre]));
+  t(`${l} na receita bruta, a proposta é a linha 1 da DRE, sem a CBS (e o Real + Plan. também, na mesma régua)`, p27.rbOk, JSON.stringify([p27.rb, p27.rbDre]));
   await page.click('[data-visao-modo-botao="pct"]');
   const p27pct = await page.evaluate(() => document.querySelector('.tabela-visao-ano tr.linha-total-visao [data-proposta="dif"]')?.textContent.trim());
   t(`${l} em %, a diferença 2027 × 2026 sai em p.p.`, / p\.p\.$/.test(p27pct || ''), String(p27pct));
@@ -12194,6 +12200,86 @@ async function provasModoApresentacao(page) {
 }
 
 /**
+ * "As duas tabelas devem ser o reflexo da DRE" e o Corporativo em blocos (cliente,
+ * 2026-11-27): o cartão do negócio com Real + Plan. e Real + realista 2026, os rateios do
+ * negócio abertos, a borda azul no passar o mouse e fonte grande; o do Corporativo com as
+ * MESMAS cinco colunas de desafio e proposta, zebrado, sem a coluna de PIS + COFINS.
+ */
+async function provasReflexoDre(page) {
+  const l = 'Reflexo da DRE:';
+  await page.evaluate(() => App.mostrarSecao('projecao'));
+  await esperar(page, "!!document.querySelector('#projecao-negocio')", 20000);
+  const escolher = async (v) => {
+    await page.evaluate((x) => {
+      const s = document.querySelector('#projecao-negocio');
+      const o = [...s.options].find((y) => (x === 'corp' ? y.value === 'corp' : y.textContent.includes(x)));
+      s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true }));
+    }, v);
+    await esperar(page, v === 'corp' ? "!!document.querySelector('.tabela-desafio-corp')"
+      : "!!document.querySelector('.tabela-desafio [data-col-2026]') && !document.querySelector('.tabela-desafio-corp')", 40000);
+    await page.evaluate(() => { const d = document.querySelector('details.painel-desafio'); if (d) d.open = true; });
+  };
+  await escolher('AGROPEC');
+  const n = await page.evaluate(() => {
+    const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+    const cel = (k, col) => document.querySelector(`.tabela-desafio tr[data-desafio="${k}"] td[data-col-2026="${col}"]`)?.textContent;
+    const d = SecaoProjecao.dados;
+    const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+    const partes = ['rateio_matriz', 'rateio_financeiro', 'rateio_corporativo']
+      .reduce((x, k) => x + num(cel(k, 'real_plan') || '0'), 0);
+    const tab = document.querySelector('.tabela-desafio');
+    return {
+      th: [...tab.querySelectorAll('thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
+      rbPlan: cel('receita_bruta', 'real_plan'), rbQuadro: fmt(d.visao_ano['1'].real_plan),
+      rlPlan: cel('resultado', 'real_plan'), rlQuadro: fmt(d.visao_ano['18'].real_plan),
+      rateios: num(cel('rateios_negocio', 'real_plan')), partes,
+      temFin: !!document.querySelector('.tabela-desafio tr[data-desafio="rateio_financeiro"]'),
+      temCorp: !!document.querySelector('.tabela-desafio tr[data-desafio="rateio_corporativo"]'),
+      fonte: parseFloat(getComputedStyle(tab).fontSize),
+    };
+  });
+  t(`${l} o cartão do negócio tem Real + Plan. 2026 e Real + realista 2026 antes de Desafio, Proposta e Diferença`,
+    /^Real \+ Plan\.\s*2026/.test(n.th[1] || '') && /^Real \+ realista\s*2026/.test(n.th[2] || '') && /^Desafio/.test(n.th[3] || '')
+      && /^Proposta/.test(n.th[4] || '') && /^Diferença/.test(n.th[5] || ''), n.th.join(' | '));
+  t(`${l} e essas colunas são as do quadro do ano (receita bruta sem o PIS/COFINS e resultado líquido)`,
+    n.rbPlan === n.rbQuadro && n.rlPlan === n.rlQuadro, JSON.stringify(n));
+  t(`${l} os rateios do negócio abertos (financeiros e corporativos) somam a linha 12`,
+    n.temFin && n.temCorp && Math.abs(n.partes - n.rateios) <= 5, `${n.partes} × ${n.rateios}`);
+  t(`${l} fonte grande no cartão (≥ 20 px)`, n.fonte >= 20, String(n.fonte));
+  const linha = page.locator('.tabela-desafio tr[data-desafio="receita_liquida"] td').nth(1);
+  await linha.hover();
+  const borda = await linha.evaluate((c) => getComputedStyle(c).boxShadow);
+  t(`${l} passar o mouse circula a linha com a borda azul, como na DRE`, /47, 111, 208/.test(borda), borda);
+
+  await escolher('corp');
+  const c = await page.evaluate(() => {
+    const tab = document.querySelector('.tabela-desafio-corp');
+    const ths = (sel) => [...tab.querySelectorAll(sel)].map((x) => x.textContent.replace(/\s+/g, ' ').trim());
+    const num = (s) => Number(String(s || '').replace(/[^\d,-]/g, '').replace(',', '.'));
+    const tot = (k) => tab.querySelector(`[data-negocio-desafio="total"] [data-col="${k}"]`);
+    const linhas = [...tab.querySelectorAll('tbody tr[data-negocio-desafio]:not([data-negocio-desafio="total"])')];
+    return {
+      blocos: ths('thead tr.cabeca-bloco th'),
+      cols: ths('thead tr:not(.cabeca-bloco) th'),
+      dif: num(tot('diferenca')?.textContent),
+      difCalc: num(tot('proposta-resultado')?.firstChild?.textContent) - num(tot('desafio-resultado')?.firstChild?.textContent),
+      zebra: getComputedStyle(linhas[1].children[1]).backgroundColor,
+      liso: getComputedStyle(linhas[0].children[1]).backgroundColor,
+      margem: !!tot('proposta-resultado')?.querySelector('.margem-sub'),
+      cabe: tab.closest('.table-responsive').scrollWidth <= tab.closest('.table-responsive').clientWidth + 1,
+    };
+  });
+  const cinco = ['Receita bruta', 'Receita líquida', 'Despesas operacionais', 'Resultado do negócio (14)', 'Resultado líquido'];
+  t(`${l} Corporativo: blocos "Desafio" e "Proposta" com as MESMAS cinco colunas, sem a de PIS + COFINS`,
+    /^Desafio 2027$/.test(c.blocos[1] || '') && /^Proposta 2027$/.test(c.blocos[2] || '')
+      && JSON.stringify(c.cols.slice(1, 6)) === JSON.stringify(cinco) && JSON.stringify(c.cols.slice(6, 11)) === JSON.stringify(cinco)
+      && !c.cols.some((x) => /PIS/.test(x)), JSON.stringify(c));
+  t(`${l} Corporativo: a diferença é o resultado líquido da proposta − o do desafio, com a margem embaixo do resultado`,
+    Math.abs(c.dif - c.difCalc) <= 1 && c.margem, `${c.dif} × ${c.difCalc}`);
+  t(`${l} Corporativo: linhas zebradas`, c.zebra === 'rgb(238, 244, 252)' && c.liso !== c.zebra, `${c.zebra} / ${c.liso}`);
+}
+
+/**
  * O risquinho do Desafio (cliente, 2026-11-27): borda verde quando o desafio difere da
  * proposta a favor do resultado líquido, vermelha quando contra; só nos campos que se
  * editam (não na CBS informativa, nem nas linhas de %, nem nos totalizadores).
@@ -12247,6 +12333,7 @@ async function provasRisquinhoDesafio(page) {
   await provasAnexosCenario(page, 'desktop');
   await provasModoApresentacao(page);
   await provasRisquinhoDesafio(page);
+  await provasReflexoDre(page);
   await provasResumoStatus(page, 'desktop');
   await provasFilaAcao(page, 'desktop');
   await provasExcluirComOrigens(page);

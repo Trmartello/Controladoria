@@ -1290,7 +1290,7 @@ const SecaoProjecao = {
     return `<div class="small text-muted mt-1">
         <strong>Visão realista</strong> (estimativa da Controladoria): o planejado de ${this.nomeMes(d.mes_fechado_ate + 1)}–dez
         corrigido pelo desvio até ${this.nomeMes(d.mes_fechado_ate)}, supondo o mesmo ritmo — receitas pela aderência ao plano,
-        as demais linhas pelo desvio médio em reais. Positivo é favorável. % = sobre a receita líquida.
+        as demais linhas pelo desvio médio em reais. Positivo é favorável. % = sobre a receita líquida. Receita bruta sem o PIS/COFINS, como na DRE.
       </div>`;
   },
 
@@ -1703,23 +1703,19 @@ const SecaoProjecao = {
     if (!x || d.filial) return '';
     const des = x.desafio;
     const pro = x.proposta;
-    const e0 = x.escada || { desafio: {}, proposta: {}, estimados: [] };
-    // O FATURAMENTO COMO NA DRE (pedido do cliente, 2026-11-25: a Proposta do cartão
-    // "deve refletir conforme o que ele for preenchendo na DRE"): o motor e o desafio
-    // têm a receita bruta COM o PIS/COFINS (formato da carga); a DRE de 2027 mostra
-    // sem ele (`Reforma::formatoNovo`). O cartão tira a mesma parte, na taxa da CBS
-    // da proposta — a Proposta fica igual à linha 1 da DRE, centavo a centavo.
-    const taxaCbs = this.taxaCbsDoCartao(d);
-    const semCbs = (v) => (taxaCbs === null || v === null || v === undefined ? v : v * (1 - taxaCbs));
-    const comFat = (o) => ({ ...(o || {}), receita_bruta: semCbs((o || {}).receita_bruta) });
-    const e = { ...e0, desafio: comFat(e0.desafio), proposta: comFat(e0.proposta),
-      calculado: e0.calculado ? comFat(e0.calculado) : undefined };
+    // O FATURAMENTO COMO NA DRE (cliente, 2026-11-25 e 2026-11-27: "essas duas tabelas
+    // devem ser o reflexo da DRE"): o servidor já manda a receita bruta SEM o PIS/COFINS,
+    // a mesma CBS da linha informativa da DRE (`escadaDoDesafio`) — inclusive nas duas
+    // colunas de 2026, que são as do quadro do ano.
+    const e = x.escada || { desafio: {}, proposta: {}, estimados: [] };
+    const cbs = e.cbs || {};
+    const tem2026 = !!(e.real_plan && e.realista);
     const est = new Set(e.estimados || []);
     const pp = (v) => (v === null || v === undefined ? null : v / 100);
     // A escada da DRE (pedido do cliente, 2026-11-18). `pct` marca as linhas de
     // percentual: a diferença sai em pontos percentuais, não em reais.
     const degraus = [
-      ['receita_bruta', `Faturamento <span class="text-muted small">(receita operacional bruta${taxaCbs === null ? '' : ', sem a CBS, como na DRE'})</span>`],
+      ['receita_bruta', 'Faturamento <span class="text-muted small">(receita operacional bruta, sem a CBS, como na DRE)</span>'],
       ['receita_liquida', 'Receita líquida'],
       ['lucro_bruto', 'Margem bruta <span class="text-muted small">(lucro operacional bruto)</span>'],
       ['margem_bruta', '<span class="ps-3">% margem bruta <span class="text-muted small">(sobre a receita líquida)</span></span>', true],
@@ -1727,6 +1723,11 @@ const SecaoProjecao = {
       ['resultado_antes_rateios', 'Resultado antes dos rateios <span class="text-muted small">(11 - após impostos)</span>'],
       ['margem_antes_rateios', '<span class="ps-3">% margem antes dos rateios</span>', true],
       ['rateios_negocio', 'Rateios do negócio <span class="text-muted small">(12)</span>'],
+      // As partes dos rateios do negócio (cliente, 2026-11-27). A Matriz/Central só
+      // aparece com valor em alguma coluna (em 2026 é zero em todos os negócios).
+      ['rateio_matriz', '<span class="ps-3">Rateios Matriz/Central</span>', false, false, true],
+      ['rateio_financeiro', '<span class="ps-3">Rateios financeiros</span>', false, false, true],
+      ['rateio_corporativo', '<span class="ps-3">Rateios corporativos do negócio</span>', false, false, true],
       ['resultado_negocio', 'Resultado do negócio <span class="text-muted small">(14)</span>'],
       ['margem_negocio', '<span class="ps-3">% margem do negócio</span>', true],
       ['rateios_adm', 'Rateios administrativos <span class="text-muted small">(15)</span>'],
@@ -1734,7 +1735,8 @@ const SecaoProjecao = {
       ['margem', '% margem líquida <span class="text-muted small">(sobre a receita líquida)</span>', true, true],
     ];
     const celula = (v, pct) => (v === null || v === undefined ? '—' : (pct ? this.pct(pp(v), 2) : this.moeda(v)));
-    const linha = ([k, rotulo, pct, forte]) => {
+    const linha = ([k, rotulo, pct, forte, parte]) => {
+      if (parte && ['real_plan', 'realista', 'desafio', 'proposta'].every((l) => Math.abs(Number((e[l] || {})[k]) || 0) < 1)) return '';
       const a = e.desafio[k];
       const b = e.proposta[k];
       const dif = a === null || a === undefined || b === null || b === undefined ? null : b - a;
@@ -1745,9 +1747,11 @@ const SecaoProjecao = {
       const cor = dif === null ? '' : (pct ? (dif >= 0 ? 'text-success' : 'text-danger') : this.corDif(dif));
       // Só leitura desde 2026-11-25: o desafio se lança na coluna Desafio da DRE
       // (ADMIN), conta a conta, e o cartão resume.
-      return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}">
+      const ano = (lado) => (tem2026 ? `<td class="text-end text-muted" data-col-2026="${lado}">${celula(e[lado][k], pct)}</td>` : '');
+      return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}${parte ? ' linha-parte-rateio' : ''}">
           <td>${rotulo}</td>
-          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'}" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
+          ${ano('real_plan')}${ano('realista')}
+          <td class="text-end ${estimado ? 'text-muted fst-italic' : 'fw-bold'} coluna-desafio-cartao" ${estimado ? 'title="Estimado a partir da projeção do ano"' : ''}>${estimado && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
           <td class="text-end">${celula(b, pct)}</td>
           <td class="text-end ${estimado ? 'text-muted' : cor}">${estimado ? '' : textoDif}</td>
         </tr>`;
@@ -1758,21 +1762,19 @@ const SecaoProjecao = {
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-1 tabela-desafio">
             <thead><tr><th></th>
-              <th class="text-end">Desafio<br><span class="fw-normal text-muted small">${x.ano}</span></th>
-              <th class="text-end">Proposta<br><span class="fw-normal text-muted small">lançada hoje</span></th>
+              ${tem2026 ? `<th class="text-end">Real + Plan.<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>
+              <th class="text-end" title="Realizado até o corte + a visão realista do resto do ano (estimativa da Controladoria)">Real + realista<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>` : ''}
+              <th class="text-end coluna-desafio-cartao">Desafio<br><span class="fw-normal text-muted small">${x.ano}</span></th>
+              <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${x.ano}</span></th>
               <th class="text-end">Diferença<br><span class="fw-normal text-muted small">proposta − desafio</span></th>
             </tr></thead>
             <tbody>
               ${degraus.map(linha).join('')}
-              ${taxaCbs === null
-    ? `<tr data-desafio="pis_cofins" class="small"><td>PIS + COFINS <span class="text-muted">(taxa de ${x.ano - 1}; em ${x.ano} vira a CBS, mesmo valor)</span></td>
-                <td class="text-end text-muted">${des.pis_cofins ? this.moeda(des.pis_cofins.total) : '—'}</td>
-                <td class="text-end">${pro.pis_cofins ? this.moeda(pro.pis_cofins.total) : '—'}</td>
-                <td class="text-end"></td></tr>`
-    : `<tr data-desafio="pis_cofins" class="small"><td>CBS <span class="text-muted">(o PIS + COFINS de ${x.ano - 1}; fora do faturamento, como na DRE)</span></td>
-                <td class="text-end text-muted">${this.moeda((e0.desafio.receita_bruta || 0) * taxaCbs)}</td>
-                <td class="text-end">${this.moeda((e0.proposta.receita_bruta || 0) * taxaCbs)}</td>
-                <td class="text-end"></td></tr>`}
+              <tr data-desafio="pis_cofins" class="small"><td>CBS <span class="text-muted">(PIS + COFINS em ${x.ano - 1}; fora do faturamento, como na DRE)</span></td>
+                ${tem2026 ? `<td class="text-end text-muted" data-col-2026="real_plan">${this.moeda(cbs.real_plan)}</td><td class="text-end text-muted" data-col-2026="realista">${this.moeda(cbs.realista)}</td>` : ''}
+                <td class="text-end text-muted">${this.moeda(cbs.desafio)}</td>
+                <td class="text-end">${this.moeda(cbs.proposta)}</td>
+                <td class="text-end"></td></tr>
             </tbody>
           </table>
         </div>
@@ -1826,29 +1828,33 @@ const SecaoProjecao = {
     if (!x) return '';
     const nomes = Object.fromEntries((d.negocios || []).map((n) => [String(n.id), n.rotulo]));
     const m2 = (v) => this.pct(v === null || v === undefined ? null : v / 100, 2);
-    const linha = (rotulo, des, pro, classe = '', attr = '') => {
-      const dif = des && pro.resultado !== null ? pro.resultado - des.resultado : null;
+    // As MESMAS cinco colunas no desafio e na proposta, em dois blocos com divisor
+    // (cliente, 2026-11-27: "equalizar as colunas do desafio com a proposta"; o resultado
+    // líquido em negrito, com a margem líquida embaixo, e a diferença no fim).
+    const COLS = [['receita_bruta', 'Receita bruta'], ['receita_liquida', 'Receita líquida'],
+      ['despesas', 'Despesas operacionais'], ['resultado_negocio', 'Resultado do negócio (14)'], ['resultado', 'Resultado líquido']];
+    const v = (o, k) => (o && o[k] !== null && o[k] !== undefined ? o[k] : null);
+    const bloco = (o, lado) => COLS.map(([k], i) => {
+      const x0 = v(o, k);
+      const neg = k === 'resultado' && x0 !== null && x0 < -1;
+      const conteudo = x0 === null ? '—' : this.moeda(x0);
+      return `<td class="text-end${i === 0 ? ' bloco-ini' : ''}${k === 'resultado' ? ' fw-bold' : ''}${neg ? ' text-danger meta-negativa' : ''}" data-col="${lado}-${k}">${
+        k === 'resultado' ? `${conteudo}<div class="margem-sub">${m2(v(o, 'margem'))}</div>` : conteudo}</td>`;
+    }).join('');
+    const linha = (rotulo, c, classe = '', attr = '') => {
+      const des = c && c.desafio;
+      const pro = c && c.proposta;
+      const dif = v(des, 'resultado') !== null && v(pro, 'resultado') !== null ? pro.resultado - des.resultado : null;
       return `<tr class="${classe}" ${attr}>
-          <td>${rotulo}</td>
-          <td class="text-end">${des ? this.moeda(des.receita_bruta) : '—'}</td>
-          <td class="text-end" data-col="rol-desafio">${des ? this.moeda(des.receita_liquida) : '—'}</td>
-          <td class="text-end text-muted" data-col="pis-cofins">${des && des.pis_cofins ? this.moeda(des.pis_cofins.total) : '—'}</td>
-          <td class="text-end fw-bold">${des ? this.moeda(des.resultado) : '—'}</td>
-          <td class="text-end">${des ? m2(des.margem) : '—'}</td>
-          <td class="text-end" data-col="rol-proposta">${pro.receita_liquida === null || pro.receita_liquida === undefined ? '—' : this.moeda(pro.receita_liquida)}</td>
-          <td class="text-end" data-col="margem-antes-rateios">${m2(pro.margem_antes_rateios)}</td>
-          <td class="text-end" data-col="margem-negocio">${m2(pro.margem_negocio)}</td>
-          <td class="text-end${pro.resultado !== null && pro.resultado < -1 ? ' text-danger fw-bold meta-negativa' : ''}"
-            ${pro.resultado !== null && pro.resultado < -1 ? 'title="Resultado líquido negativo"' : ''}>${pro.resultado === null ? '—' : this.moeda(pro.resultado)}</td>
-          <td class="text-end">${m2(pro.margem)}</td>
-          <td class="text-end ${this.corDif(dif)}">${dif === null ? '—' : this.comSinal(dif)}</td>
+          <td>${rotulo}</td>${bloco(des, 'desafio')}${bloco(pro, 'proposta')}
+          <td class="text-end fw-bold bloco-ini ${this.corDif(dif)}" data-col="diferenca">${dif === null ? '—' : this.comSinal(dif)}</td>
         </tr>`;
     };
     const ordem = Object.keys(x.negocios).sort((a, b) => ((x.negocios[b].desafio || {}).resultado || 0) - ((x.negocios[a].desafio || {}).resultado || 0));
     // Negócio com desafio extra da administração leva a marca (2026-11-25).
     const marca = (des) => (des && des.ajustado
       ? ' <span class="badge text-bg-warning desafio-ajustado-marca" title="Desafio com ajuste da administração, além da proposta padrão">ajustado</span>' : '');
-    const linhas = ordem.map((id) => linha(Modal.esc(nomes[id] || id) + marca(x.negocios[id].desafio), x.negocios[id].desafio, x.negocios[id].proposta, '', `data-negocio-desafio="${id}"`)).join('');
+    const linhas = ordem.map((id) => linha(Modal.esc(nomes[id] || id) + marca(x.negocios[id].desafio), x.negocios[id].comparar, '', `data-negocio-desafio="${id}"`)).join('');
     const t = x.total;
     const meta = (lado, rotulo) => {
       const falta = lado.falta;
@@ -1863,21 +1869,17 @@ const SecaoProjecao = {
       — meta de ${this.pct(x.meta_margem / 100, 0)}: ${t.desafio.falta > 0 ? `faltam ${this.mi(t.desafio.falta)}` : 'atingida'}`;
     return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} para os negócios`, resumo, `
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-1 tabela-desafio">
-            <thead><tr><th></th>
-              <th class="text-end">Receita bruta<br><span class="fw-normal text-muted small">desafio</span></th>
-              <th class="text-end">Receita líquida<br><span class="fw-normal text-muted small">desafio</span></th>
-              <th class="text-end">PIS + COFINS<br><span class="fw-normal text-muted small">desafio · estimado</span></th>
-              <th class="text-end">Resultado<br><span class="fw-normal text-muted small">desafio</span></th>
-              <th class="text-end">Margem<br><span class="fw-normal text-muted small">desafio</span></th>
-              <th class="text-end">Receita líquida<br><span class="fw-normal text-muted small">proposta</span></th>
-              <th class="text-end">Margem antes<br><span class="fw-normal text-muted small">dos rateios · proposta</span></th>
-              <th class="text-end">Margem do<br><span class="fw-normal text-muted small">negócio · proposta</span></th>
-              <th class="text-end">Resultado<br><span class="fw-normal text-muted small">proposta</span></th>
-              <th class="text-end">Margem<br><span class="fw-normal text-muted small">proposta</span></th>
-              <th class="text-end">Diferença<br><span class="fw-normal text-muted small">proposta − desafio</span></th>
-            </tr></thead>
-            <tbody>${linhas}${linha('Total dos negócios', t.desafio, t.proposta, 'fw-bold table-light', 'data-negocio-desafio="total"')}</tbody>
+          <table class="table table-sm align-middle mb-1 tabela-desafio tabela-desafio-corp">
+            <thead>
+              <tr class="cabeca-bloco"><th></th>
+                <th colspan="5" class="text-center bloco-ini">Desafio ${x.ano}</th>
+                <th colspan="5" class="text-center bloco-ini">Proposta ${x.ano}</th>
+                <th class="text-end bloco-ini">Diferença <span class="fw-normal text-muted small">proposta − desafio</span></th></tr>
+              <tr><th></th>
+                ${[0, 1].map(() => COLS.map(([k, r], i) => `<th class="text-end${i === 0 ? ' bloco-ini' : ''}">${r}</th>`).join('')).join('')}
+                <th class="text-end bloco-ini">Resultado líquido</th></tr>
+            </thead>
+            <tbody>${linhas}${linha('Total dos negócios', x.total_comparar, 'fw-bold table-light linha-total', 'data-negocio-desafio="total"')}</tbody>
           </table>
         </div>
         ${this.tabelaTributos(x, nomes)}

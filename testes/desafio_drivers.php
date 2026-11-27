@@ -88,7 +88,10 @@ $dig = Database::todos('SELECT chave, percentual FROM negocio_premissa WHERE neg
 $ef = Projecao::premissasEfetivas($anoPlan, array_column($dig, 'percentual', 'chave'));
 $cresc = ($ef['IPCA'] ?? 0) + ($ef['PIB'] ?? 0) + ($ef['CRESCIMENTO'] ?? 0);
 prova("Agropecuárias: Receita de Vendas = base × (1 + IPCA + PIB + crescimento = {$cresc}%)",
-    abs($e['receita_bruta'] - $base['1']['projecao'] * (1 + $cresc / 100)) < 2, $fmt($e['receita_bruta']));
+    // O cartão mostra a receita bruta SEM o PIS/COFINS, como a DRE (2026-11-27); o motor a
+    // calcula com ele (formato da carga), então a CBS do desafio volta à soma aqui.
+    abs($e['receita_bruta'] + $t['desafio']['escada']['cbs']['desafio'] - $base['1']['projecao'] * (1 + $cresc / 100)) < 2,
+    $fmt($e['receita_bruta']));
 prova('o desafio não tem degrau estimado: a escada sai da DRE dele', $t['desafio']['escada']['estimados'] === []);
 prova('e o desafio não é a base parada: premissas e pessoal pela diretriz mexem no resultado',
     abs($t['desafio']['desafio']['resultado'] - $base['18']['projecao']) > 1000,
