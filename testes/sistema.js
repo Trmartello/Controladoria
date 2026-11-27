@@ -12,7 +12,9 @@ const { BASE, chromiumExec, playwright, esperar, entrar, relatar, hojeNoServidor
  * acontecer quando o quadro do ano saiu da tela do negócio (2026-11-27) e a página encurtou.
  */
 async function clicarNoCentro(page, seletor, opcoes = {}) {
-  await page.$eval(seletor, (el) => el.scrollIntoView({ block: 'center' }));
+  // Sem animação: com rolagem suave a página ainda anda durante o clique e ele cai na linha vizinha.
+  await page.$eval(seletor, (el) => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await page.waitForTimeout(150);
   await page.click(seletor, opcoes);
 }
 
@@ -7580,7 +7582,9 @@ async function provasNivel3(page, largura) {
   });
   t(`${l} o link leva à conta 3141 dentro de Provisões e Perdas, aberta e destacada na DRE`,
     foi && foi.pai === '9.2' && foi.red === '3141' && foi.visivel, JSON.stringify(foi));
-  await clicarNoCentro(page, '.tabela-projecao [data-abre-reduzidas="9.2"]');
+  // Só arruma a tela (fecha as contas da 9.2): o link acabou de rolar a página com animação.
+  await page.waitForTimeout(600);
+  await page.$eval('.tabela-projecao [data-abre-reduzidas="9.2"]', (b) => b.click());
 }
 
 /**
