@@ -1859,11 +1859,13 @@ const SecaoProjecao = {
     const nomeComp = { desafio: `desafio ${x.ano}`, realista: `real + realista ${x.ano - 1}`, real_plan: `real + plan. ${x.ano - 1}` }[comp];
     const botao = (v, r) => `<button type="button" class="btn ${comp === v ? 'btn-verde' : 'btn-outline-secondary'}" data-desafio-comparar="${v}" aria-pressed="${comp === v}">${r}</button>`;
     const bVisao = (v, r) => `<button type="button" class="btn ${(detalhada ? 'detalhada' : 'sintetica') === v ? 'btn-verde' : 'btn-outline-secondary'}" data-desafio-visao="${v}">${r}</button>`;
-    const seletor = tem2026 ? `<div class="d-flex align-items-center gap-2 mb-2 seletor-desafio-comparar">
+    // `flex-wrap` nos dois níveis: no celular a barra e o grupo de botões quebram linha, em vez de
+    // alargar a página (a bateria mede a rolagem horizontal).
+    const seletor = tem2026 ? `<div class="d-flex flex-wrap align-items-center gap-2 mb-2 seletor-desafio-comparar">
         <span class="small text-muted">Visão:</span>
         <div class="btn-group btn-group-sm" role="group">${bVisao('sintetica', 'Sintética')}${bVisao('detalhada', 'Detalhada')}</div>
         <span class="small text-muted ms-auto">Comparar a proposta com:</span>
-        <div class="btn-group btn-group-sm" role="group" aria-label="Comparar a proposta com">${botao('desafio', `Desafio ${x.ano}`)}${botao('realista', `Real + realista ${x.ano - 1}`)}${botao('real_plan', `Real + Plan. ${x.ano - 1}`)}</div>
+        <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Comparar a proposta com">${botao('desafio', `Desafio ${x.ano}`)}${botao('realista', `Real + realista ${x.ano - 1}`)}${botao('real_plan', `Real + Plan. ${x.ano - 1}`)}</div>
       </div>` : '';
     const resumo = `resultado ${this.mi(des.resultado)}${des.margem === null ? '' : ` · margem ${this.pct(des.margem / 100, 2)}`}
       — a proposta dá ${this.mi(pro.resultado)}${pro.margem === null ? '' : ` (${this.pct(pro.margem / 100, 2)})`}`;
