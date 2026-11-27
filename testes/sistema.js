@@ -12423,6 +12423,8 @@ async function provasPadraoProjecao(page) {
     t(`${l} DRE nas cores da marca: zebra verde-clara, borda verde, coluna Desafio verde (sem o azul)`,
       d.zebra === 'rgb(241, 248, 243)' && /0, 163, 86/.test(d.borda)
       && d.desafioCab === 'rgb(191, 230, 207)' && d.desafioTd === 'rgb(227, 244, 234)', JSON.stringify(d));
+    // Volta ao Corporativo, onde a prova terminava antes: as seguintes dependem dele.
+    await conferir('corp');
   } finally {
     await page.setViewportSize(tamanho);
   }
