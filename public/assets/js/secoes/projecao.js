@@ -1362,8 +1362,8 @@ const SecaoProjecao = {
       </div>
       <div class="resultado-simulador">${this.tabelaSimulador(linha)}</div>
       <div class="small text-muted mt-1">Mesma conta da DRE de cada negócio, só trocando a diretriz de ${d.ano_planejamento}. A receita
-        líquida não muda (PPR, vale e abonos são despesa de pessoal). O que o negócio digitou à mão na despesa de pessoal continua
-        valendo. O rateio administrativo se redistribui pelas despesas. % = sobre a receita líquida.</div>
+        líquida não muda (PPR, vale e abonos são despesa de pessoal). Os abonos seguem o % de atingimento que cada negócio previu
+        (assiduidade e meses com resultado). O rateio administrativo se redistribui pelas despesas. % = sobre a receita líquida.</div>
       <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
         <button type="button" class="btn btn-sm btn-outline-danger" data-sim-acao="aplicar" ${mudou ? '' : 'disabled'}
           title="${mudou ? 'Grava a diretriz simulada para todos os negócios' : 'Simule uma diretriz diferente da vigente para poder aplicar'}">
@@ -1389,27 +1389,38 @@ const SecaoProjecao = {
     const q = (a, b) => (b ? a / b : null);
     const cor = (x) => (Math.abs(x) < 1 ? '' : (x > 0 ? 'text-success' : 'text-danger'));
     const sinal = (x) => `${Math.round(x) > 0 ? '+' : ''}${m(x)}`;
-    const tr = (nome, a, s, classe = '') => {
+    // Nas despesas operacionais, o detalhe de pessoal ao lado (cliente, 2026-11-27: "traga
+    // também uma coluna de despesas com pessoal, um detalhamento das 6 - despesas operacionais").
+    const comPessoal = c === '7';
+    const tr = (nome, a, s, classe = '', lancado = false) => {
       const dif = s[c] - a[c];
-      return `<tr class="${classe}"><td>${nome}</td>
+      const marca = lancado ? ' <span class="text-muted" data-sim-lancado title="Despesa com pessoal digitada à mão pelo negócio: o impacto é o da diretriz sobre o lançamento. «Aplicar» não muda lançamento — o negócio relança.">✎</span>' : '';
+      return `<tr class="${classe}"><td>${nome}${marca}</td>
         <td class="text-end">${m(a['3'])}</td>
-        <td class="text-end">${m(a[c])}</td><td class="text-end">${p(q(a[c], a['3']))}</td>
-        <td class="text-end fw-bold sim-col">${m(s[c])}</td><td class="text-end sim-col">${p(q(s[c], s['3']))}</td>
+        <td class="text-end">${m(a[c])}</td>${comPessoal ? `<td class="text-end text-muted" data-sim-pessoal="vigente">${m(a['8.5'])}</td>` : ''}
+        <td class="text-end">${p(q(a[c], a['3']))}</td>
+        <td class="text-end fw-bold sim-col">${m(s[c])}</td>${comPessoal ? `<td class="text-end sim-col" data-sim-pessoal="simulado">${m(s['8.5'])}</td>` : ''}
+        <td class="text-end sim-col">${p(q(s[c], s['3']))}</td>
         <td class="text-end sim-col ${cor(dif)}" data-sim-impacto>${sinal(dif)}</td></tr>`;
     };
     const rot = linha.curto.toLowerCase();
+    const algumLancado = r.negocios.some((n) => n.pessoal_lancado);
     return `<div class="table-responsive"><table class="table table-sm align-middle mb-0 tabela-visao-ano tabela-simulador" data-sim-conta="${c}">
         <thead><tr><th></th>
           <th class="text-end">Receita líquida<br><span class="fw-normal text-muted small">proposta ${r.ano}</span></th>
           <th class="text-end">${linha.curto}<br><span class="fw-normal text-muted small">diretriz vigente</span></th>
+          ${comPessoal ? '<th class="text-end">dos quais<br><span class="fw-normal text-muted small">pessoal</span></th>' : ''}
           <th class="text-end">% RL<br><span class="fw-normal text-muted small">vigente</span></th>
           <th class="text-end sim-col">${linha.curto}<br><span class="fw-normal small">simulado</span></th>
+          ${comPessoal ? '<th class="text-end sim-col">dos quais<br><span class="fw-normal small">pessoal</span></th>' : ''}
           <th class="text-end sim-col">% RL<br><span class="fw-normal small">simulado</span></th>
           <th class="text-end sim-col">Impacto<br><span class="fw-normal small">R$</span></th></tr></thead>
-        <tbody>${r.negocios.map((n) => tr(Modal.esc(n.rotulo), n.atual, n.simulado)).join('')}
+        <tbody>${r.negocios.map((n) => tr(Modal.esc(n.rotulo), n.atual, n.simulado, '', n.pessoal_lancado)).join('')}
           ${tr('Total dos negócios', r.total.atual, r.total.simulado, 'fw-bold table-light linha-total-visao')}</tbody>
       </table></div>
-      <div class="small text-muted mt-1" data-sim-pedido>Simulado: ${this.diretrizPorExtenso(r.simulada)} · ${rot}.</div>`;
+      <div class="small text-muted mt-1" data-sim-pedido>Simulado: ${this.diretrizPorExtenso(r.simulada)} · ${rot}.${algumLancado
+    ? ' <strong>✎</strong> = despesa com pessoal digitada à mão: o impacto é o da diretriz sobre o lançamento (PPR, reajuste, vale e abonos'
+      + ' × o % de atingimento previsto pelo negócio); «Aplicar» não muda lançamento — o negócio relança.' : ''}</div>`;
   },
 
   /** Lê os campos do simulador (vírgula decimal); null se algum não for número. */
@@ -1455,11 +1466,17 @@ const SecaoProjecao = {
       const r = this.simResultado;
       const alvo = acao === 'restaurar' ? d.diretriz_documento : r && r.simulada;
       if (!alvo) return;
+      const sinal = (x) => `${x > 0 ? '+' : ''}${this.moeda(x)}`;
       const impacto = acao === 'aplicar' && r ? r.total.simulado['18'] - r.total.atual['18'] : null;
+      // O que "Aplicar" de fato muda: sem a parte dos negócios com pessoal digitado à mão (✎).
+      const lancados = acao === 'aplicar' && r ? r.negocios.filter((n) => n.pessoal_lancado) : [];
+      const pendente = lancados.reduce((x, n) => x + (n.ajuste_lancado || 0), 0);
       const texto = `${acao === 'restaurar' ? 'Voltar a diretriz ao documento' : 'Aplicar como diretriz'} de ${d.ano_planejamento} para TODOS os negócios:\n\n`
         + `${this.diretrizPorExtenso(alvo)}\n\n`
-        + (impacto !== null ? `Impacto no resultado líquido consolidado: ${impacto > 0 ? '+' : ''}${this.moeda(impacto)}.\n\n` : '')
-        + 'Muda a proposta das linhas de pessoal que os negócios não digitaram à mão; o que foi digitado continua valendo.';
+        + (impacto !== null ? `Impacto no resultado líquido consolidado ao aplicar: ${sinal(impacto - pendente)}.\n` : '')
+        + (lancados.length ? `Mais ${sinal(pendente)} quando ${lancados.length === 1 ? 'o negócio' : `os ${lancados.length} negócios`} com pessoal `
+          + `digitado à mão (${lancados.map((n) => n.rotulo).join(', ')}) relançar${lancados.length === 1 ? '' : 'em'}.\n` : '')
+        + '\nMuda a proposta das linhas de pessoal que os negócios não digitaram à mão; o que foi digitado continua valendo.';
       if (!confirm(texto)) return;
       try {
         await App.api('/api/projecao/diretriz', acao === 'restaurar' ? { restaurar: true } : alvo);

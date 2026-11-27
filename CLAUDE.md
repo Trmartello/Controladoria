@@ -408,6 +408,15 @@ NÃO digitou; lançamento não é tocado (`lancamentos_intocados.php`). Provas:
 `testes/simulador_diretriz.php` (zero impacto na vigente, PPR 1, só ADMIN, flag, aplicar = o
 simulado, nenhum lançamento muda, restaurar) e o bloco do simulador em `provasVisaoDoAno`. Na
 limpeza do banco depois da bateria: `diretriz_valor` = 0.
+**Negócio com pessoal digitado à mão** (cliente, 2026-11-27: vários negócios davam impacto zero —
+"isso não faz sentido"): o motor respeita o lançamento da 8.5, então a diretriz simulada não chegava
+neles. O simulador agora põe sobre o lançamento a diferença que a diretriz provoca na conta de
+pessoal DELE (`pessoal_diretriz.proposta` simulado − vigente: PPR sobre a folha, reajuste, vale e
+abonos × o % de atingimento previsto — assiduidade e meses com resultado), nas linhas 8.5, 7, 15 e
+18, e marca o negócio (✎, `pessoal_lancado`; `ajuste_lancado` = essa parte). "Aplicar" NÃO muda
+lançamento: a confirmação mostra o impacto de aplicar (simulado − Σ `ajuste_lancado`) e, à parte, o
+que chega quando os negócios marcados relançarem. Em "Despesas operacionais" a tabela traz também
+"dos quais pessoal" (8.5), vigente e simulada (cliente, 2026-11-27).
 
 **Pendências com o cliente** (não implementar sem resposta):
 - Fábrica de Rações, ração de suínos: as 4 perguntas sem resposta (como a Fábrica

@@ -69,9 +69,20 @@ $bruto = static function (string $r): array {
     $j = json_decode($r, true) ?: [];
     return $j;
 };
+// Um negócio com a despesa com pessoal DIGITADA à mão (Supermercados, 8.5 = −20 mi), para
+// provar que ele também mostra o impacto da diretriz (cliente, 2026-11-27). A prova o apaga.
+$projSuper = (int)(Database::um("SELECT p.id FROM projecao p JOIN negocio n ON n.id = p.negocio_id
+    WHERE n.cod_negocio = '9' AND p.ano = 2027")['id'] ?? 0);
+$conta85 = (int)(Database::um("SELECT id FROM dre_conta WHERE codigo = '8.5'")['id'] ?? 0);
+$criouLancamento = false;
 try {
     $http('POST', '/api/configuracoes', ['chave' => 'diagnostico_somente_leitura', 'valor' => 0], $cab);
     Database::executar('DELETE FROM diretriz_valor');
+    if ($projSuper && $conta85 && !Database::um('SELECT 1 FROM projecao_valor WHERE projecao_id = ? AND filial_id = 0 AND conta_id = ?', [$projSuper, $conta85])) {
+        Database::executar("INSERT INTO projecao_valor (projecao_id, filial_id, conta_id, entrada, valor) VALUES (?, 0, ?, 'VALOR', -20000000)",
+            [$projSuper, $conta85]);
+        $criouLancamento = true;
+    }
     $lanc0 = $digital();
 
     // ── simular ──
@@ -84,6 +95,27 @@ try {
     prova('PPR de 1,5 para 1: o resultado líquido sobe, igual à queda da despesa com pessoal; a receita líquida não muda',
         $imp('18') > 0 && abs($imp('18') - $imp('8.5')) < 1 && abs($imp('3')) < 0.01 && abs($soma - $imp('18')) < 1,
         json_encode(['18' => round($imp('18')), '8.5' => round($imp('8.5')), '3' => $imp('3')]));
+    $super = array_values(array_filter($u['negocios'], static fn ($n) => str_contains($n['rotulo'], 'SUPERMERCADOS')))[0] ?? null;
+    if ($criouLancamento && $super) {
+        $dSuper = $super['simulado']['8.5'] - $super['atual']['8.5'];
+        // O líquido dele também sobe — não exatamente o mesmo: o rateio administrativo se
+        // redistribui pelas despesas dos OUTROS negócios, que o motor mudou.
+        prova('negócio com pessoal digitado à mão também mostra o impacto (marcado), e ele chega ao resultado líquido',
+            $super['pessoal_lancado'] === true && $dSuper > 1000 && abs($super['ajuste_lancado'] - $dSuper) < 1
+            && ($super['simulado']['18'] - $super['atual']['18']) > 0,
+            json_encode(['8.5' => round($dSuper), '18' => round($super['simulado']['18'] - $super['atual']['18']), 'lancado' => $super['pessoal_lancado']]));
+    }
+    // O abono de resultado segue o % de meses com resultado PREVISTO pelo negócio: o impacto de
+    // R$ 500 → R$ 300 é −40% do abono anual dele (colaboradores × % × valor × 12), na parte da despesa.
+    $leiteId = (int)(Database::um("SELECT id FROM negocio WHERE cod_negocio = '4'")['id'] ?? 0);
+    $nl = $ler($http('GET', "/api/projecao?negocio_id={$leiteId}"));
+    $anoP = (int)$nl['ano_planejamento'];
+    $esperado = 0.4 * (float)$nl['pessoas']['por_ano'][$anoP]['anual']['resultado'] * (float)($nl['pessoal_diretriz']['parte_despesa'] ?? 1);
+    $sr = $ler($http('GET', '/api/projecao/simulacao?resultado=300'));
+    $lt = array_values(array_filter($sr['negocios'], static fn ($n) => (int)$n['id'] === $leiteId))[0] ?? null;
+    prova('abono de resultado R$ 500 → R$ 300: o impacto é 40% do abono anual previsto pelo negócio (colaboradores × % dos meses × 12)',
+        $lt && $esperado > 0 && abs(($lt['simulado']['8.5'] - $lt['atual']['8.5']) - $esperado) < 1,
+        json_encode([round($lt['simulado']['8.5'] - $lt['atual']['8.5']), round($esperado)]));
     prova('as quatro linhas do seletor vêm (despesas operacionais, pessoal, resultado do negócio, líquido)',
         isset($u['total']['atual']['7'], $u['total']['atual']['8.5'], $u['total']['atual']['15'], $u['total']['atual']['18']));
     $inv = $bruto($http('GET', '/api/projecao/simulacao?ppr=13'));
@@ -117,8 +149,10 @@ try {
         ($corp1['diretriz_simulavel']['ppr'] ?? null) == 1 && !empty($corp1['diretriz_alterada']), json_encode($corp1['diretriz_simulavel'] ?? null));
     $res0 = $corp0['visao_ano_total']['18']['proposta'];
     $res1 = $corp1['visao_ano_total']['18']['proposta'];
-    prova('o resultado líquido consolidado da proposta muda exatamente o que a simulação previu',
-        abs(($res1 - $res0) - $imp('18')) < 1, json_encode([round($res1 - $res0), round($imp('18'))]));
+    // Aplicar muda o simulado MENOS a parte dos negócios com pessoal digitado (o lançamento vale).
+    $pendente = array_sum(array_map(static fn ($n) => (float)$n['ajuste_lancado'], $u['negocios']));
+    prova('aplicar muda o resultado consolidado exatamente o simulado, menos a parte dos negócios com pessoal digitado',
+        abs(($res1 - $res0) - ($imp('18') - $pendente)) < 1, json_encode([round($res1 - $res0), round($imp('18')), round($pendente)]));
     prova('nenhum lançamento dos negócios mudou', $digital() === $lanc0);
     $ppr = $bruto($http('POST', '/api/projecao/beneficio', ['negocio_id' => (int)$corp1['negocios'][0]['id'], 'ano' => (int)$a['ano'],
         'chave' => 'PPR_SALARIOS', 'valor' => 2], $cab));
@@ -133,6 +167,9 @@ try {
         (int)Database::um('SELECT COUNT(*) n FROM diretriz_valor')['n'] === 0 && empty($corp2['diretriz_alterada'])
         && abs($corp2['visao_ano_total']['18']['proposta'] - $res0) < 0.01);
 } finally {
+    if ($criouLancamento) {
+        Database::executar('DELETE FROM projecao_valor WHERE projecao_id = ? AND filial_id = 0 AND conta_id = ?', [$projSuper, $conta85]);
+    }
     Database::executar('DELETE FROM usuario WHERE email = ?', [$email]);
     Database::executar('DELETE FROM diretriz_valor');
     foreach ($diretrizAntes as $l) {

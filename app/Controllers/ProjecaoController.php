@@ -1752,7 +1752,28 @@ class ProjecaoController
         $total = ['atual' => [], 'simulado' => []];
         foreach ($negocios as $n) {
             $id = (int)$n['id'];
-            $saida[] = ['id' => $id, 'rotulo' => $n['rotulo'], 'atual' => $atual[$id], 'simulado' => $simulado[$id]];
+            // Quem DIGITOU a despesa com pessoal não muda no motor (o lançamento vale), e o
+            // impacto sairia zero — "isso não faz sentido" (cliente, 2026-11-27). O simulador
+            // põe sobre o lançamento a diferença que a diretriz provoca na conta de pessoal
+            // DELE (PPR sobre a folha, reajuste, vale e abonos × o % de atingimento previsto
+            // pelo negócio), e marca o negócio: "Aplicar" não muda lançamento.
+            $lancadoAMao = false;
+            $ajuste = 0.0;
+            $dDir = isset($simulado[$id]['diretriz_85'], $atual[$id]['diretriz_85'])
+                ? $simulado[$id]['diretriz_85'] - $atual[$id]['diretriz_85'] : null;
+            $dMotor = $simulado[$id]['8.5'] - $atual[$id]['8.5'];
+            if ($dDir !== null && abs($dDir - $dMotor) > 1.0) {
+                $ajuste = $dDir - $dMotor;
+                foreach (['8.5', '7', '15', '18'] as $c) {
+                    $simulado[$id][$c] += $ajuste;
+                }
+                $lancadoAMao = true;
+            }
+            unset($atual[$id]['diretriz_85'], $simulado[$id]['diretriz_85']);
+            // `ajuste_lancado`: a parte do impacto que vem SÓ de o negócio ter digitado o pessoal —
+            // a que "Aplicar" não traz (o lançamento vale); ele chega se o negócio relançar.
+            $saida[] = ['id' => $id, 'rotulo' => $n['rotulo'], 'atual' => $atual[$id], 'simulado' => $simulado[$id],
+                'pessoal_lancado' => $lancadoAMao, 'ajuste_lancado' => $ajuste];
             foreach (self::LINHAS_SIMULADOR as $c) {
                 $total['atual'][$c] = ($total['atual'][$c] ?? 0.0) + (float)$atual[$id][$c];
                 $total['simulado'][$c] = ($total['simulado'][$c] ?? 0.0) + (float)$simulado[$id][$c];
@@ -1858,6 +1879,10 @@ class ProjecaoController
             foreach (self::LINHAS_SIMULADOR as $c) {
                 $out[(int)$n['id']][$c] = (float)($p[$c] ?? 0.0);
             }
+            // A despesa com pessoal PELA DIRETRIZ (o padrão da 8.5), mesmo quando o negócio
+            // digitou a sua: é dela que sai o impacto de quem lançou à mão.
+            $out[(int)$n['id']]['diretriz_85'] = isset($m['pessoal_diretriz']['proposta'])
+                ? (float)$m['pessoal_diretriz']['proposta'] : null;
         }
         return $out;
     }

@@ -8439,6 +8439,11 @@ async function provasVisaoDoAno(page, largura) {
         JSON.stringify(sim));
       t(`${l} e simular não grava a diretriz ("Aplicar" fica disponível para o administrador decidir)`,
         sim.aplicar && !sim.gravadas, JSON.stringify(sim));
+      await page.click('[data-sim-linha="7"]');
+      const pes = await page.evaluate(() => ({ th: [...document.querySelectorAll('.tabela-simulador thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
+        cel: document.querySelectorAll('.tabela-simulador [data-sim-pessoal]').length }));
+      t(`${l} em "Despesas operacionais", a coluna "dos quais pessoal" na vigente e na simulada`,
+        pes.th.filter((x) => /^dos quais pessoal/.test(x)).length === 2 && pes.cel > 0, JSON.stringify(pes));
       await page.click('[data-sim-acao="voltar"]');
     }
   }
