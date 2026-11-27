@@ -8443,7 +8443,7 @@ async function provasVisaoDoAno(page, largura) {
       const pes = await page.evaluate(() => ({ th: [...document.querySelectorAll('.tabela-simulador thead th')].map((x) => x.textContent.replace(/\s+/g, ' ').trim()),
         cel: document.querySelectorAll('.tabela-simulador [data-sim-pessoal]').length }));
       t(`${l} em "Despesas operacionais", a coluna "dos quais pessoal" na vigente e na simulada`,
-        pes.th.filter((x) => /^dos quais pessoal/.test(x)).length === 2 && pes.cel > 0, JSON.stringify(pes));
+        pes.th.filter((x) => /^dos quais\s*pessoal/.test(x)).length === 2 && pes.cel > 0, JSON.stringify(pes));
       await page.click('[data-sim-acao="voltar"]');
     }
   }
