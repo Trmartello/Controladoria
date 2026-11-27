@@ -242,6 +242,28 @@ tbm retire / oculte a coluna de desafio da DRE"): `temColunaDesafio` devolve fal
 `App.leituraDiagnostico()` — só a tela; os valores do desafio continuam gravados e a coluna volta ao
 desligar. Interruptor em Cadastros › Configurações. Provas:
 `testes/configuracao.php` e `provasModoApresentacao` (liga, confere, DESLIGA).
+**Sub-opção "mostrar as análises"** (cliente, 2026-11-27: "dentro dela eu tenho que ter ainda a
+opção […] de mostrar ou não a coluna de desafio"; "libera para todas as opções possíveis"):
+chave `apresentacao_mostra_analises`, interruptor recuado abaixo do principal, só habilitado com
+ele ligado. `ConfiguracaoController::analisesLiberadas()` (= modo desligado OU sub-opção marcada)
+é a trava do servidor para o "Comparar com" (`propostaNoQuadro`), o simulador e o Aplicar da
+diretriz; na tela, `App.escondeAnalisesAdm()` substitui `leituraDiagnostico()` em
+`temColunaDesafio`. Continua tudo só do ADMIN — os demais perfis não recebem nada disso.
+**Coluna Desafio no Corporativo/agrupamento** (mesmo pedido: "se for selecionado mais de um
+negócio, ela só totaliza e não permite mais edições"; "SIM" para aparecer também fora do modo
+apresentação): `montarCorporativo` soma o `desafio_linhas` de cada negócio
+(`somarLinhasDesafio`, todas `proposta_travada`) e o `desafio_tributos_dre`; a tela mostra
+"Desafio 2027 · soma" (`thDesafio`, também no cabeçalho do consolidado) e `celulaDesafio` não
+abre campo com `d.corporativo`. **Risquinho na borda do campo** (cliente, 2026-11-27: verde se o
+desafio diferente da proposta ajuda o resultado da última linha, vermelho se prejudica; "as
+linhas totalizadoras são consequências, não precisam ser identificadas"): `marcaDesafio`, só nos
+`<input>` do Desafio — nunca na CBS informativa, nas linhas de % nem nos totalizadores. Regra:
+desafio − proposta > 0 melhora (as linhas entram no resultado pela soma com o próprio sinal;
+custo é negativo), < 0 piora, |dif| < R$ 1 não marca; a dica (`title`) dá o valor e o efeito.
+Atenção: **sem lançamento nenhum já há marcas** — o desafio padrão sai do motor (projeção com as
+diretrizes) e difere da proposta do negócio (no Supermercado, 14 despesas em vermelho na base
+local). Provas: `testes/configuracao.php` (13), `provasModoApresentacao` (sub-opção e
+Corporativo sem campo) e `provasRisquinhoDesafio`.
 
 **Plano de ação, Tabela: clicar abre o nível de baixo; fonte de projetor** (2026-11-26, prévia
 aprovada: "ao clicar em um projeto ele abra as frentes; ao clicar em uma frente abra as ações
@@ -4583,7 +4605,7 @@ depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
 **Banco limpo antes e depois de toda rodada** (base local): `usuario` = 1 (só o admin),
-`configuracao.diagnostico_somente_leitura` = '0', `projecao_valor` = 1 (a Receita 1.1 da Pecuária,
+`configuracao.diagnostico_somente_leitura` = '0' (e `apresentacao_mostra_analises` = '0' ou ausente), `projecao_valor` = 1 (a Receita 1.1 da Pecuária,
 VALOR 731.798.725,00 — a bateria a troca e só devolve no fim; se ela parar no meio, recoloque),
 `diretriz_valor` = 0, `negocio_desafio_valor` = 0, `negocio_item_avaliacao` = 0, fatores "(prova)" = 0.
 **Nunca rode uma suíte PHP com a saída cortada (`| head`)**: o `head` fecha o cano, o PHP morre com

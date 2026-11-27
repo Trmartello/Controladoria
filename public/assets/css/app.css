@@ -4905,6 +4905,10 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-projecao .celula-valor.celula-desafio:focus { background: #fff; }
 .tabela-projecao .celula-valor.celula-desafio.desafio-lancado { background: #d3e2fb; border-color: #7f9fd6; font-weight: 700; }
 .tabela-projecao .celula-valor.celula-desafio::placeholder { color: #6c7a90; }
+/* O risquinho do desafio × proposta (cliente, 2026-11-27): borda esquerda verde se ajuda
+   o resultado líquido, vermelha se prejudica. Só nos campos editáveis. */
+.tabela-projecao .celula-valor.celula-desafio.desafio-melhora { border-left: 4px solid #198754; }
+.tabela-projecao .celula-valor.celula-desafio.desafio-piora { border-left: 4px solid #dc3545; }
 .legenda-editavel.legenda-desafio { background: #e8f0fe; border-color: #7f9fd6; }
 
 /* Considerar / Desconsiderar das oportunidades (2026-11-25): no início do item,

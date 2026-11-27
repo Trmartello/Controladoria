@@ -276,9 +276,7 @@ const SecaoProjecao = {
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
             <th class="text-end" title="Análise vertical da proposta: % da ROL proposta">A.V.<br><span class="fw-normal text-muted small">% ROL proposta</span></th>
             <th class="text-end" title="Reajuste sobre a projeção de ${d.ano}">Reajuste<br><span class="fw-normal text-muted small">vs. projeção ${String(d.ano).slice(2)}</span></th>
-            ${this.temColunaDesafio(d)
-    ? `<th class="text-end coluna-desafio-th" title="Só os administradores veem e lançam esta coluna">Desafio<br><span class="fw-normal text-muted small">${d.ano_planejamento} · adm.</span></th>`
-    : ''}
+            ${this.thDesafio(d)}
           </tr></thead>
           <tbody>${this.corpo(d)}</tbody>
         </table>
@@ -846,15 +844,44 @@ const SecaoProjecao = {
 
   /**
    * A coluna DESAFIO da DRE (pedido do cliente, 2026-11-25: no lugar da "A
-   * distribuir", que saiu): só o ADMIN a recebe do servidor (`desafio_linhas`), só
-   * no negócio (não na filial nem no Corporativo) e não no dossiê.
+   * distribuir", que saiu): só o ADMIN a recebe do servidor (`desafio_linhas`), no
+   * negócio e no Corporativo/agrupamento (somada, só leitura — cliente, 2026-11-27),
+   * não na filial nem no dossiê.
    */
   temColunaDesafio(d) {
     // Com o modo apresentação ligado (Cadastros › Configurações) a coluna some, para
-    // a DRE ir ao telão sem o desafio da administração (cliente, 2026-11-26). Só
+    // a DRE ir ao telão sem o desafio da administração (cliente, 2026-11-26), salvo se
+    // a opção "mostrar as análises" estiver marcada dentro dele (2026-11-27). Só
     // esconde: os valores do desafio continuam gravados e voltam ao desligar.
-    return !!(d && Array.isArray(d.desafio_linhas) && d.desafio_linhas.length && !d.filial && !d.corporativo
-      && !App.modoDossie && !App.leituraDiagnostico());
+    return !!(d && Array.isArray(d.desafio_linhas) && d.desafio_linhas.length && !d.filial
+      && !App.modoDossie && !App.escondeAnalisesAdm());
+  },
+
+  /** O cabeçalho da coluna Desafio (vazio quando ela não aparece). */
+  thDesafio(d) {
+    if (!this.temColunaDesafio(d)) return '';
+    return `<th class="text-end coluna-desafio-th" title="${d.corporativo
+      ? 'Soma do desafio dos negócios selecionados — só leitura; lance no negócio'
+      : 'Só os administradores veem e lançam esta coluna'}">Desafio<br><span class="fw-normal text-muted small">${d.ano_planejamento} · ${d.corporativo ? 'soma' : 'adm.'}</span></th>`;
+  },
+
+  /**
+   * O risquinho na borda esquerda do campo do Desafio (cliente, 2026-11-27): verde
+   * quando o desafio difere da proposta a favor do resultado líquido, vermelho
+   * quando contra. Só nos campos editáveis — os totalizadores são consequência, a
+   * CBS informativa não entra no resultado e as linhas de % só repetem as de cima.
+   * As linhas da DRE entram no resultado pela soma com o próprio sinal (custo
+   * negativo), então desafio − proposta > 0 sempre melhora a última linha. Diferença
+   * abaixo de R$ 1 é arredondamento e não marca.
+   */
+  marcaDesafio(l, dl) {
+    const prop = Number(l.proposta), desf = Number(dl.proposta);
+    if (!Number.isFinite(prop) || !Number.isFinite(desf)) return { cls: '', dica: '' };
+    const dif = desf - prop;
+    if (Math.abs(dif) < 1) return { cls: '', dica: '' };
+    return dif > 0
+      ? { cls: ' desafio-melhora', dica: ` Desafio − proposta = +${this.moeda(dif)}: melhora o resultado líquido.` }
+      : { cls: ' desafio-piora', dica: ` Desafio − proposta = −${this.moeda(-dif)}: piora o resultado líquido.` };
   },
 
   /**
@@ -865,15 +892,17 @@ const SecaoProjecao = {
    */
   celulaDesafio(d, l, dl, linhasDesafio, lancados, CALCULADAS) {
     if (!dl) return '<td class="text-end small text-muted celula-desafio-td"></td>';
-    const editavel = l.nivel === 2 && !l.percentual && !l.informativa && !dl.proposta_travada
+    // No Corporativo/agrupamento a coluna é a soma dos negócios: só leitura.
+    const editavel = !d.corporativo && l.nivel === 2 && !l.percentual && !l.informativa && !dl.proposta_travada
       && dl.proposta !== null && dl.proposta !== undefined;
     if (editavel) {
       const lancado = lancados.has(l.codigo);
+      const marca = this.marcaDesafio(l, dl);
       return `<td class="text-end celula-desafio-td"><input type="text" class="celula-valor celula-desafio${
-        lancado ? ' desafio-lancado' : ''}" inputmode="decimal" data-sinal autocomplete="off"
+        lancado ? ' desafio-lancado' : ''}${marca.cls}" inputmode="decimal" data-sinal autocomplete="off"
           value="${lancado ? Modal.esc(this.textoLancado(dl)) : ''}" placeholder="${this.moeda(dl.proposta)}"
           data-conta="${Modal.esc(l.codigo)}"
-          title="Desafio de ${d.ano_planejamento} (só administradores): valor ou % sobre a projeção. Vazio = proposta padrão (${this.moeda(dl.proposta)})."
+          title="Desafio de ${d.ano_planejamento} (só administradores): valor ou % sobre a projeção. Vazio = proposta padrão (${this.moeda(dl.proposta)}).${marca.dica}"
           aria-label="Desafio de ${d.ano_planejamento} para ${Modal.esc(l.nome)}"></td>`;
     }
     let txt;
@@ -1088,6 +1117,7 @@ const SecaoProjecao = {
             <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${d.ano_planejamento}</span></th>
             <th class="text-end" title="Análise vertical da proposta: % da ROL proposta">A.V.<br><span class="fw-normal text-muted small">% ROL proposta</span></th>
             <th class="text-end" title="Reajuste sobre a projeção de ${d.ano}">Reajuste<br><span class="fw-normal text-muted small">vs. projeção ${String(d.ano).slice(2)}</span></th>
+            ${this.thDesafio(d)}
           </tr></thead>
           <tbody>${this.corpo(d)}</tbody>
         </table>
