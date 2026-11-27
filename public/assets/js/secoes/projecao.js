@@ -1837,7 +1837,7 @@ const SecaoProjecao = {
     };
     const nomeComp = { desafio: `desafio ${x.ano}`, realista: `real + realista ${x.ano - 1}`, real_plan: `real + plan. ${x.ano - 1}` }[comp];
     const botao = (v, r) => `<button type="button" class="btn ${comp === v ? 'btn-primary' : 'btn-outline-secondary'}" data-desafio-comparar="${v}" aria-pressed="${comp === v}">${r}</button>`;
-    const seletor = tem2026 ? `<div class="d-flex align-items-center gap-2 mb-2 seletor-desafio-comparar">
+    const seletor = tem2026 ? `<div class="d-flex align-items-center justify-content-end gap-2 mb-2 seletor-desafio-comparar">
         <span class="small text-muted">Comparar a proposta com:</span>
         <div class="btn-group btn-group-sm" role="group" aria-label="Comparar a proposta com">${botao('desafio', `Desafio ${x.ano}`)}${botao('realista', `Real + realista ${x.ano - 1}`)}${botao('real_plan', `Real + Plan. ${x.ano - 1}`)}</div>
       </div>` : '';
