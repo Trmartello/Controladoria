@@ -7991,8 +7991,10 @@ async function provasDesafioEExpansores(page, largura) {
   }])));
   let e = await estado();
   // Pessoas e benefícios moram no expansor das premissas desde 2026-11-21.
-  t(`${l} expansores no negócio: visão, desafio e premissas (com pessoas dentro, sem expansor próprio)`,
-    ['visao', 'desafio', 'premissas'].every((k) => e[k]) && !e.pessoas, Object.keys(e).join(','));
+  // Desde 2026-11-27 o quadro do ano (expansor "visao") mora no "Resultado 2026 × 2027" (expansor
+  // "desafio"), na tela do negócio.
+  t(`${l} expansores no negócio: resultado 2026 × 2027 (com o quadro do ano dentro) e premissas (com pessoas dentro)`,
+    ['desafio', 'premissas'].every((k) => e[k]) && !e.visao && !e.pessoas, Object.keys(e).join(','));
   t(`${l} por omissão só o desafio vem aberto`,
     e.desafio?.aberto && !e.visao?.aberto && !e.premissas?.aberto, JSON.stringify(e));
   t(`${l} fechado, o título resume premissas (IPCA, PIB, vale, abono) e pessoas (colaboradores, benefícios no ano)`,
