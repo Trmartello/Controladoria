@@ -2606,7 +2606,7 @@ const SecaoProjecao = {
       <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-estoque-filiais tabela-padrao">${cab}
         <tbody>${f.slice(0, 10).map(linha).join('')}</tbody></table></div>
       ${resto.length ? `<details class="small"><summary>mais ${resto.length} filiais</summary>
-        <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-estoque-filiais tabela-padrao tabela-detalhe">${cab}<tbody>${resto.map(linha).join('')}</tbody></table></div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-1 tabela-estoque-demais tabela-padrao tabela-detalhe">${cab}<tbody>${resto.map(linha).join('')}</tbody></table></div>
       </details>` : ''}
       <div class="small text-muted">Perdas e acerto: quanto cada filial ficou acima da média das filiais.</div>`;
   },
