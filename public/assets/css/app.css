@@ -4964,11 +4964,19 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-desafio tr.linha-parte-rateio > td { color: #495057; font-style: italic; }
 /* A coluna com que a proposta se compara (o "Comparar a proposta com"): fundo e negrito. */
 .tabela-desafio .coluna-comparada { background-color: var(--tp-destaque) !important; font-weight: 700; color: #212529 !important; }
+/* As DUAS colunas comparadas sempre destacadas (cliente, 2026-11-27: "sempre deixe selecionado as
+   duas colunas que estão sendo analisadas; assim as cores já identificam o que está sendo comparado
+   com o quê"): a Proposta em verde-claro, como no quadro do ano; a comparada em âmbar. */
+.tabela-desafio .coluna-proposta-cartao { background-color: var(--tp-proposta) !important; }
+.tabela-padrao.tabela-desafio .coluna-comparada, .tabela-padrao.tabela-desafio .coluna-proposta-cartao { font-weight: 700 !important; }
 .tabela-desafio .margem-sub { font-size: .8rem; font-weight: 400; color: #6c757d; line-height: 1; }
 .tabela-desafio-corp .margem-sub { font-size: .85rem; color: #495057; }
 .tabela-desafio-corp td { white-space: nowrap; }
 .tabela-desafio-corp thead th { white-space: normal; }
 .tabela-diretrizes .campo-simulador { max-width: 11rem; }
+.tabela-padrao.tabela-resultado-detalhada { font-size: 1.06rem; }
+.tabela-resultado-detalhada td { white-space: nowrap; }
+.tabela-resultado-detalhada thead th { white-space: normal; }
 
 /* ── Topos fixos da Projeção (pedido do cliente, 2026-11-25) ──────────────────
    "Fixe o cabeçalho do expander no topo enquanto ele tiver dados para

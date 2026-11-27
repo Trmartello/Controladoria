@@ -39,7 +39,8 @@ confira se a carga/estrutura precisa de algum ajuste manual (nenhum dado lançad
 
 | PR | Data | O que entrou | Estado antes (restaurar para) | Mescla (reverter) | Banco (`database/`) |
 |---|---|---|---|---|---|
-| #169 | 2026-11-27 | Padrão visual das tabelas da Projeção (cores da marca, fonte grande, zebra, borda no hover) e "Comparar a proposta com" à direita | `62dcf36f5b` | (no PR seguinte) | — |
+| #170 | 2026-11-27 | "Resultado 2026 × 2027": quadro do ano e cartão do desafio num só no negócio (visão sintética e detalhada); as duas colunas comparadas destacadas | `a51cdb24d4` | (no PR seguinte) | — |
+| #169 | 2026-11-27 | Padrão visual das tabelas da Projeção (cores da marca, fonte grande, zebra, borda no hover) e "Comparar a proposta com" à direita | `62dcf36f5b` | `a51cdb24d4` | — |
 | #168 | 2026-11-27 | "Diretrizes de pessoal" (simulador + pessoas e benefícios num cartão, custo por diretriz) e cabeçalhos com fundo no Corporativo | `4de0a11697` | `62dcf36f5b` | — |
 | #167 | 2026-11-27 | Cartão do desafio: "Comparar a proposta com" (desafio, real + realista, real + plan.), variação em %, rateios em itálico | `fbb0bd2c77` | `4de0a11697` | — |
 | #166 | 2026-11-27 | Quadro do ano e cartões do desafio = reflexo da DRE (receita bruta sem PIS/COFINS, colunas de 2026, rateios abertos, Corporativo em blocos, fonte grande) | `e6dc74bdc7` | `fbb0bd2c77` | — |

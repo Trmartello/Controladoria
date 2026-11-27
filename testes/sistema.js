@@ -6,6 +6,18 @@
 //   node testes/sistema.js
 const { BASE, chromiumExec, playwright, esperar, entrar, relatar, hojeNoServidor } = require('./comum');
 
+/**
+ * Clica com o elemento no MEIO da tela. A rolagem automática do Playwright o deixa no
+ * topo, onde o cabeçalho fixo da DRE (e a barra do topo) podem cobri-lo — o que passou a
+ * acontecer quando o quadro do ano saiu da tela do negócio (2026-11-27) e a página encurtou.
+ */
+async function clicarNoCentro(page, seletor, opcoes = {}) {
+  // Sem animação: com rolagem suave a página ainda anda durante o clique e ele cai na linha vizinha.
+  await page.$eval(seletor, (el) => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await page.waitForTimeout(150);
+  await page.click(seletor, opcoes);
+}
+
 const ok = [], bad = [], erros = [];
 const t = (nome, cond, extra = '') => (cond ? ok : bad).push(nome + (extra ? ` — ${extra}` : ''));
 
@@ -7098,7 +7110,8 @@ async function provasApoioDesafio(page, largura) {
       legenda: !!document.querySelector('.legenda-editavel'),
     };
   });
-  t(`${l} o cartão se chama "Desafio 2027 para o negócio"`, /^Desafio \d{4} para o negócio$/.test(n.titulo || ''), n.titulo);
+  // Desde 2026-11-27 o cartão do negócio é o "Resultado 2026 × 2027" (o quadro do ano mora nele).
+  t(`${l} o cartão se chama "Resultado 2026 × 2027"`, /^Resultado \d{4} × \d{4}$/.test(n.titulo || ''), n.titulo);
   t(`${l} a escada da DRE: faturamento, receita líquida, margem bruta, despesas, resultado do negócio, rateios, resultado líquido e margem líquida`,
     ['receita_bruta', 'receita_liquida', 'lucro_bruto', 'margem_bruta', 'despesas', 'resultado_antes_rateios', 'rateios_negocio',
       'resultado_negocio', 'margem_negocio', 'rateios_adm', 'resultado', 'margem', 'pis_cofins']
@@ -7464,7 +7477,9 @@ async function provasPisoFaturamento(page, largura) {
   // Pontos de milhar enquanto se digita (pedido do cliente, 2026-11-19), com o
   // teclado de verdade; Escape devolve o que estava, sem gravar nada.
   const sel = '.tabela-projecao [data-conta="8.1"] .celula-proposta';
-  await page.click(sel, { clickCount: 3 });
+  // Foco e seleção, não clique: com a página mais curta (o quadro do ano saiu do negócio em
+  // 2026-11-27), a rolagem automática do clique deixava o campo sob o cabeçalho fixo da DRE.
+  await page.$eval(sel, (i) => { i.scrollIntoView({ block: 'center' }); i.focus(); i.select(); });
   await page.keyboard.press('Backspace');
   await page.keyboard.type('500000');
   const milhar = await page.$eval(sel, (i) => i.value);
@@ -7530,7 +7545,7 @@ async function provasNivel3(page, largura) {
     !fora.length, fora.map((c) => `${c}: ${a.linhas[c].valor} × ${a.linhas[c].soma}`).join('; '));
   t(`${l} só o realizado: projetado, projeção e proposta ficam em branco`, contas.every((c) => a.linhas[c].vazias));
 
-  await page.click('.tabela-projecao [data-abre-reduzidas="8.5"]');
+  await clicarNoCentro(page, '.tabela-projecao [data-abre-reduzidas="8.5"]');
   await new Promise((r) => setTimeout(r, 200));
   a = await ler();
   t(`${l} o ▸ da linha abre só as contas dela`,
@@ -7540,7 +7555,7 @@ async function provasNivel3(page, largura) {
   a = await ler();
   t(`${l} "Reduzidas" (nível 3) abre as contas reduzidas de todas as linhas`, contas.every((c) => a.linhas[c].visiveis === a.linhas[c].total));
   await page.click('#projecao-nivel-2');
-  await page.click('.tabela-projecao [data-abre-reduzidas="8.5"]');
+  await clicarNoCentro(page, '.tabela-projecao [data-abre-reduzidas="8.5"]');
 
   // As oportunidades: conta reduzida e o nome da linha como no Qlik.
   const op = await page.evaluate(() => {
@@ -7567,7 +7582,9 @@ async function provasNivel3(page, largura) {
   });
   t(`${l} o link leva à conta 3141 dentro de Provisões e Perdas, aberta e destacada na DRE`,
     foi && foi.pai === '9.2' && foi.red === '3141' && foi.visivel, JSON.stringify(foi));
-  await page.click('.tabela-projecao [data-abre-reduzidas="9.2"]');
+  // Só arruma a tela (fecha as contas da 9.2): o link acabou de rolar a página com animação.
+  await page.waitForTimeout(600);
+  await page.$eval('.tabela-projecao [data-abre-reduzidas="9.2"]', (b) => b.click());
 }
 
 /**
@@ -7990,8 +8007,10 @@ async function provasDesafioEExpansores(page, largura) {
   }])));
   let e = await estado();
   // Pessoas e benefícios moram no expansor das premissas desde 2026-11-21.
-  t(`${l} expansores no negócio: visão, desafio e premissas (com pessoas dentro, sem expansor próprio)`,
-    ['visao', 'desafio', 'premissas'].every((k) => e[k]) && !e.pessoas, Object.keys(e).join(','));
+  // Desde 2026-11-27 o quadro do ano (expansor "visao") mora no "Resultado 2026 × 2027" (expansor
+  // "desafio"), na tela do negócio.
+  t(`${l} expansores no negócio: resultado 2026 × 2027 (com o quadro do ano dentro) e premissas (com pessoas dentro)`,
+    ['desafio', 'premissas'].every((k) => e[k]) && !e.visao && !e.pessoas, Object.keys(e).join(','));
   t(`${l} por omissão só o desafio vem aberto`,
     e.desafio?.aberto && !e.visao?.aberto && !e.premissas?.aberto, JSON.stringify(e));
   t(`${l} fechado, o título resume premissas (IPCA, PIB, vale, abono) e pessoas (colaboradores, benefícios no ano)`,
@@ -8267,33 +8286,35 @@ async function provasVisaoDoAno(page, largura) {
     return o.value;
   }, v);
   const n = await escolher('PECUARIA');
-  await esperar(page, "!!document.querySelector('.painel-visao-ano')", 15000);
+  // Desde 2026-11-27 (cliente: "transformar em uma análise só"), na tela do NEGÓCIO o quadro do
+  // ano mora no "Resultado 2026 × 2027" — a visão detalhada traz a composição de 2026 (realizado,
+  // planejado, visão realista) para TODAS as linhas da escada; a sintética é o cartão do desafio.
+  await esperar(page, "!!document.querySelector('.painel-desafio [data-desafio-visao]')", 15000);
+  await page.evaluate(() => { const d = document.querySelector('details.painel-desafio'); if (d) d.open = true; });
+  await page.click('[data-desafio-visao="detalhada"]');
   await new Promise((r) => setTimeout(r, 500));
 
   const r = await page.evaluate(async (id) => {
     const d = await App.api(`/api/projecao?negocio_id=${id}`);
-    const card = document.querySelector('.painel-visao-ano');
-    const linhas = [...card.querySelectorAll('tbody tr')];
-    const linhaRl = linhas.find((tr) => tr.children[0].textContent.trim() === 'Resultado líquido');
-    const cel = (tr, k) => tr?.querySelector(`[data-realista="${k}"]`)?.textContent.trim();
+    const card = document.querySelector('.painel-desafio');
+    const cel = (k, col) => card.querySelector(`tr[data-desafio="${k}"] [data-col-2026="${col}"]`)?.textContent.trim();
     const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
-    // A.V. da proposta da receita bruta: proposta(1) ÷ proposta(3).
     const tr1 = document.querySelector('.tabela-projecao tbody tr[data-conta="1"]');
     const p1 = d.linhas.find((x) => x.codigo === '1').proposta;
     const p3 = d.linhas.find((x) => x.codigo === '3').proposta;
     return {
-      cabecalhos: card.querySelectorAll('thead th').length,
-      linhas: linhas.length,
-      campos: card.querySelectorAll('input, select, textarea').length,
-      rotulos: linhas.map((tr) => tr.children[0].textContent.replace(/\s+/g, ' ').trim()),
-      rob: cel(linhas[0], 'resto'), robApi: fmt(d.visao_ano['1'].realista_resto),
-      rl: cel(linhaRl, 'resto'), rlApi: fmt(d.visao_ano['18'].realista_resto),
-      rlAno: cel(linhaRl, 'ano'), rlAnoApi: fmt(d.visao_ano['18'].real_realista),
-      // Cliente, 2026-11-27: a linha do "11 - após impostos" virou a "14 - Resultado do negócio" (conta 15).
-      rn: cel(linhas.find((tr) => /^Resultado do negócio \(14\)/.test(tr.children[0].textContent.trim())), 'ano'),
-      rnApi: d.visao_ano['15'] ? fmt(d.visao_ano['15'].real_realista) : null,
+      titulo: card.querySelector('summary')?.textContent.replace(/\s+/g, ' ').trim(),
+      quadroAntigo: !!document.querySelector('.painel-visao-ano'),
+      faixas: [...card.querySelectorAll('thead tr.cabeca-bloco th')].map((x) => x.textContent.trim()).filter(Boolean),
+      linhas: card.querySelectorAll('tbody tr[data-desafio]').length,
+      campos: card.querySelectorAll('table input, table select, table textarea').length,
+      rob: cel('receita_bruta', 'realista_resto'), robApi: fmt(d.visao_ano['1'].realista_resto),
+      rl: cel('resultado', 'realista_resto'), rlApi: fmt(d.visao_ano['18'].realista_resto),
+      rlAno: cel('resultado', 'realista'), rlAnoApi: fmt(d.visao_ano['18'].real_realista),
+      rlReal: cel('resultado', 'realizado'), rlRealApi: fmt(d.visao_ano['18'].realizado),
+      rn: cel('resultado_negocio', 'realista'), rnApi: d.visao_ano['15'] ? fmt(d.visao_ano['15'].real_realista) : null,
       tem13: !!d.visao_ano['13'],
-      margem: cel(linhas[linhas.indexOf(linhaRl) + 1], 'ano'),
+      margem: cel('margem', 'realista'),
       margemApi: (d.visao_ano['18'].real_realista / d.visao_ano['3'].real_realista * 100)
         .toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%',
       thAv: [...document.querySelectorAll('.tabela-projecao thead th')].map((th) => th.textContent.replace(/\s+/g, ' ').trim()),
@@ -8301,16 +8322,17 @@ async function provasVisaoDoAno(page, largura) {
       avEsperado: (100 * p1 / p3).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%',
     };
   }, n);
-  // Desde 2026-11-25: as seis linhas do seletor do Corporativo, e as margens bruta e líquida.
-  t(`${l} no negócio, o quadro tem as seis linhas (receitas, lucro bruto, despesas, resultado do negócio, líquido) e as duas margens, com as 11 colunas do painel`,
-    r.linhas === 8 && r.cabecalhos === 11 && /^Receita operacional líquida/.test(r.rotulos[1]) && /margem bruta/.test(r.rotulos[3])
-    && /margem líquida/.test(r.rotulos[7]), JSON.stringify([r.linhas, r.cabecalhos, r.rotulos]));
+  t(`${l} no negócio, o quadro do ano mora no "Resultado 2026 × 2027" (o quadro antigo sai), com as faixas jan–out, nov–dez, ano e 2027`,
+    /^▸?▾?\s*Resultado 2026 × 2027/.test(r.titulo || '') && !r.quadroAntigo && r.faixas.length === 4 && r.linhas >= 16,
+    JSON.stringify([r.titulo, r.quadroAntigo, r.faixas, r.linhas]));
   t(`${l} a linha "Resultado do negócio (14)" é a conta 15 do servidor (no lugar do "11 - após impostos")`,
     !!r.rn && r.rn === r.rnApi && r.tem13 === false, JSON.stringify([r.rn, r.rnApi, r.tem13]));
   t(`${l} a margem líquida real + realista é o resultado ÷ a receita líquida do servidor`, r.margem === r.margemApi, `${r.margem} / ${r.margemApi}`);
   t(`${l} e é só leitura (nenhum campo)`, r.campos === 0, String(r.campos));
-  t(`${l} a visão realista na tela é o número do servidor (receita, resultado e o ano)`,
-    r.rob === r.robApi && r.rl === r.rlApi && r.rlAno === r.rlAnoApi, JSON.stringify([r.rob, r.robApi, r.rl, r.rlApi]));
+  t(`${l} a visão realista na tela é o número do servidor (receita, resultado, o realizado e o ano)`,
+    r.rob === r.robApi && r.rl === r.rlApi && r.rlAno === r.rlAnoApi && r.rlReal === r.rlRealApi,
+    JSON.stringify([r.rob, r.robApi, r.rl, r.rlApi, r.rlReal, r.rlRealApi]));
+  await page.click('[data-desafio-visao="sintetica"]');
   const iProp = r.thAv.findIndex((x) => x.startsWith('Proposta'));
   t(`${l} a A.V. da proposta vem logo depois da Proposta`, /A\.V\.\s*% ROL proposta/.test(r.thAv[iProp + 1] || ''), r.thAv.join(' | '));
   t(`${l} e é a proposta da linha sobre a ROL proposta`, r.avProposta === r.avEsperado, `${r.avProposta} / ${r.avEsperado}`);
@@ -12292,6 +12314,8 @@ async function provasReflexoDre(page) {
         ativo: document.querySelector('[data-desafio-comparar][aria-pressed="true"]')?.dataset.desafioComparar,
         th: document.querySelector('[data-desafio-dif-th]')?.textContent.replace(/\s+/g, ' ').trim(),
         destacada: base.classList.contains('coluna-comparada'),
+        // As DUAS colunas comparadas sempre destacadas (2026-11-27): a Proposta em verde-claro.
+        proposta: getComputedStyle(tr.children[4]).backgroundColor, comparada: getComputedStyle(base).backgroundColor,
         dif: num(tr.querySelector('[data-desafio-dif]').textContent), difCalc: prop - num(base.textContent),
         var: tr.querySelector('[data-desafio-var]').textContent.trim(), base: num(base.textContent),
       };
@@ -12302,6 +12326,7 @@ async function provasReflexoDre(page) {
     const pctEsperado = (r.difCalc / Math.abs(r.base) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     t(`${l} comparar com ${modo}: o botão ativo, a coluna em destaque, a diferença = proposta − ela e a variação em %`,
       r.ativo === modo && new RegExp(`proposta − ${nome}`).test(r.th || '') && r.destacada && Math.abs(r.dif - r.difCalc) <= 1
+        && r.proposta === 'rgb(227, 244, 234)' && r.comparada === 'rgb(255, 241, 201)'
         && r.var.replace(/^\+/, '') === `${pctEsperado}%`, JSON.stringify({ ...r, pctEsperado }));
   }
 

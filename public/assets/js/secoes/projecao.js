@@ -1300,6 +1300,9 @@ const SecaoProjecao = {
   cartaoVisaoAno(d) {
     if (!d.pode_comparar_proposta) this.visaoBloco = 'realista';
     if (d.corporativo) return this.cartaoVisaoAnoCorporativo(d);
+    // Desde 2026-11-27 (cliente: "transformar em uma análise só"), no negócio o quadro do
+    // ano mora no "Resultado 2026 × 2027" (`cartaoDesafio`, visão detalhada).
+    if (!d.filial && d.desafio && d.desafio.escada && d.desafio.escada.realizado) return '';
     if (!d.visao_ano || d.filial) return '';
     const v = d.visao_ano;
     const resumo = `real + realista: receita ${this.mi(v['1'].real_realista)} · resultado ${this.mi(v['18'].real_realista)}
@@ -1807,6 +1810,9 @@ const SecaoProjecao = {
     // se eu quero comparar a proposta do negócio com o desafio, com uma visão realista ou com
     // o real mais planejado"). Vale enquanto a página está aberta.
     const comp = tem2026 && ['realista', 'real_plan'].includes(this.desafioComparar) ? this.desafioComparar : 'desafio';
+    // "Resultado 2026 × 2027" (cliente, 2026-11-27, prévia aprovada: "muito top"): a visão
+    // SINTÉTICA (padrão) é o antigo cartão do desafio; a DETALHADA abre a composição de 2026.
+    const detalhada = tem2026 && this.desafioVisao === 'detalhada';
     const destaque = (lado) => (lado === comp ? ' coluna-comparada' : '');
     const linha = ([k, rotulo, pct, forte, parte]) => {
       if (parte && ['real_plan', 'realista', 'desafio', 'proposta'].every((l) => Math.abs(Number((e[l] || {})[k]) || 0) < 1)) return '';
@@ -1826,41 +1832,69 @@ const SecaoProjecao = {
       // Só leitura desde 2026-11-25: o desafio se lança na coluna Desafio da DRE
       // (ADMIN), conta a conta, e o cartão resume.
       const ano = (lado) => (tem2026 ? `<td class="text-end text-muted${destaque(lado)}" data-col-2026="${lado}">${celula(e[lado][k], pct)}</td>` : '');
+      // Visão DETALHADA: jan–corte (realizado, planejado, desvio), resto do ano (planejado,
+      // visão realista) e o ano (planejado, real + plan., real + realista), antes de 2027.
+      const desvio = (() => {
+        const r = (e.realizado || {})[k]; const p = (e.plan_ate || {})[k];
+        if (r === null || r === undefined || p === null || p === undefined) return '—';
+        const dv = r - p;
+        return pct ? `${dv > 0 ? '+' : ''}${dv.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.` : this.comSinal(dv);
+      })();
+      const corDesvio = (() => { const r = (e.realizado || {})[k]; const p = (e.plan_ate || {})[k]; return r == null || p == null ? '' : this.corDif(r - p); })();
+      const cel = (lado, extra = '') => `<td class="text-end${extra}${destaque(lado)}" data-col-2026="${lado}">${celula((e[lado] || {})[k], pct)}</td>`;
+      const colunas2026 = detalhada
+        ? `${cel('realizado', ' bloco-ini')}${cel('plan_ate', ' text-muted')}<td class="text-end small ${corDesvio}" data-col-2026="desvio">${desvio}</td>`
+          + `${cel('plan_resto', ' bloco-ini text-muted')}${cel('realista_resto')}`
+          + `${cel('plan_ano', ' bloco-ini text-muted')}${cel('real_plan')}${cel('realista')}`
+        : `${ano('real_plan')}${ano('realista')}`;
       return `<tr data-desafio="${k}" class="${forte ? 'fw-bold' : ''}${parte ? ' linha-parte-rateio' : ''}">
-          <td>${rotulo}</td>
-          ${ano('real_plan')}${ano('realista')}
-          <td class="text-end ${est.has(k) ? 'text-muted fst-italic' : ''} coluna-desafio-cartao${destaque('desafio')}" ${est.has(k) ? 'title="Estimado a partir da projeção do ano"' : ''}>${est.has(k) && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
-          <td class="text-end fw-bold">${celula(b, pct)}</td>
+          <td>${detalhada ? rotulo.replace(/ <span class="text-muted small">\([^)]*\)<\/span>/, '') : rotulo}</td>
+          ${colunas2026}
+          <td class="text-end ${est.has(k) ? 'text-muted fst-italic' : ''} coluna-desafio-cartao${detalhada ? ' bloco-ini' : ''}${destaque('desafio')}" ${est.has(k) ? 'title="Estimado a partir da projeção do ano"' : ''}>${est.has(k) && a !== null && a !== undefined ? '≈ ' : ''}${celula(a, pct)}</td>
+          <td class="text-end fw-bold coluna-proposta-cartao">${celula(b, pct)}</td>
           <td class="text-end ${estimado ? 'text-muted' : cor}" data-desafio-dif>${estimado ? '' : textoDif}</td>
           <td class="text-end small ${estimado ? 'text-muted' : cor}" data-desafio-var>${estimado ? '' : textoVar}</td>
         </tr>`;
     };
     const nomeComp = { desafio: `desafio ${x.ano}`, realista: `real + realista ${x.ano - 1}`, real_plan: `real + plan. ${x.ano - 1}` }[comp];
     const botao = (v, r) => `<button type="button" class="btn ${comp === v ? 'btn-verde' : 'btn-outline-secondary'}" data-desafio-comparar="${v}" aria-pressed="${comp === v}">${r}</button>`;
-    const seletor = tem2026 ? `<div class="d-flex align-items-center justify-content-end gap-2 mb-2 seletor-desafio-comparar">
-        <span class="small text-muted">Comparar a proposta com:</span>
-        <div class="btn-group btn-group-sm" role="group" aria-label="Comparar a proposta com">${botao('desafio', `Desafio ${x.ano}`)}${botao('realista', `Real + realista ${x.ano - 1}`)}${botao('real_plan', `Real + Plan. ${x.ano - 1}`)}</div>
+    const bVisao = (v, r) => `<button type="button" class="btn ${(detalhada ? 'detalhada' : 'sintetica') === v ? 'btn-verde' : 'btn-outline-secondary'}" data-desafio-visao="${v}">${r}</button>`;
+    // `flex-wrap` nos dois níveis: no celular a barra e o grupo de botões quebram linha, em vez de
+    // alargar a página (a bateria mede a rolagem horizontal).
+    const seletor = tem2026 ? `<div class="d-flex flex-wrap align-items-center gap-2 mb-2 seletor-desafio-comparar">
+        <span class="small text-muted">Visão:</span>
+        <div class="btn-group btn-group-sm" role="group">${bVisao('sintetica', 'Sintética')}${bVisao('detalhada', 'Detalhada')}</div>
+        <span class="small text-muted ms-auto">Comparar a proposta com:</span>
+        <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Comparar a proposta com">${botao('desafio', `Desafio ${x.ano}`)}${botao('realista', `Real + realista ${x.ano - 1}`)}${botao('real_plan', `Real + Plan. ${x.ano - 1}`)}</div>
       </div>` : '';
     const resumo = `resultado ${this.mi(des.resultado)}${des.margem === null ? '' : ` · margem ${this.pct(des.margem / 100, 2)}`}
       — a proposta dá ${this.mi(pro.resultado)}${pro.margem === null ? '' : ` (${this.pct(pro.margem / 100, 2)})`}`;
-    return this.expansor('desafio', 'painel-desafio', `Desafio ${x.ano} para o negócio`, resumo, `
+    return this.expansor('desafio', 'painel-desafio', `Resultado ${x.ano - 1} × ${x.ano}`, resumo, `
         ${seletor}
         <div class="table-responsive">
-          <table class="table table-sm align-middle mb-1 tabela-desafio tabela-padrao">
-            <thead><tr><th></th>
-              ${tem2026 ? `<th class="text-end${destaque('real_plan')}">Real + Plan.<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>
-              <th class="text-end${destaque('realista')}" title="Realizado até o corte + a visão realista do resto do ano (estimativa da Controladoria)">Real + realista<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>` : ''}
-              <th class="text-end coluna-desafio-cartao${destaque('desafio')}">Desafio<br><span class="fw-normal text-muted small">${x.ano}</span></th>
-              <th class="text-end">Proposta<br><span class="fw-normal text-muted small">${x.ano}</span></th>
+          <table class="table table-sm align-middle mb-1 tabela-desafio tabela-padrao${detalhada ? ' tabela-resultado-detalhada' : ''}">
+            <thead>${detalhada ? `<tr class="cabeca-bloco"><th></th>
+                <th colspan="3" class="text-center bloco-ini">Jan–${this.nomeMes(d.mes_fechado_ate)} ${x.ano - 1}</th>
+                <th colspan="2" class="text-center bloco-ini">${this.nomeMes(d.mes_fechado_ate + 1)}–dez ${x.ano - 1}</th>
+                <th colspan="3" class="text-center bloco-ini">Ano ${x.ano - 1}</th>
+                <th colspan="4" class="text-center bloco-ini">${x.ano}</th></tr>` : ''}<tr><th></th>
+              ${detalhada ? `<th class="text-end bloco-ini">Realizado</th><th class="text-end">Planejado</th><th class="text-end">Desvio<br><span class="fw-normal small">real − plan.</span></th>
+              <th class="text-end bloco-ini">Planejado</th><th class="text-end">Visão realista</th>
+              <th class="text-end bloco-ini">Planejado</th><th class="text-end${destaque('real_plan')}">Real + Plan.</th><th class="text-end${destaque('realista')}">Real + realista</th>`
+    : (tem2026 ? `<th class="text-end${destaque('real_plan')}">Real + Plan.<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>
+              <th class="text-end${destaque('realista')}" title="Realizado até o corte + a visão realista do resto do ano (estimativa da Controladoria)">Real + realista<br><span class="fw-normal text-muted small">${x.ano - 1}</span></th>` : '')}
+              <th class="text-end coluna-desafio-cartao${detalhada ? ' bloco-ini' : ''}${destaque('desafio')}">Desafio<br><span class="fw-normal text-muted small">${x.ano}</span></th>
+              <th class="text-end coluna-proposta-cartao">Proposta<br><span class="fw-normal text-muted small">${x.ano}</span></th>
               <th class="text-end" data-desafio-dif-th>Diferença<br><span class="fw-normal text-muted small">proposta − ${nomeComp}</span></th>
               <th class="text-end">Var.<br><span class="fw-normal text-muted small">%</span></th>
             </tr></thead>
             <tbody>
               ${degraus.map(linha).join('')}
-              <tr data-desafio="pis_cofins" class="small"><td>CBS <span class="text-muted">(PIS + COFINS em ${x.ano - 1}; fora do faturamento, como na DRE)</span></td>
-                ${tem2026 ? `<td class="text-end text-muted" data-col-2026="real_plan">${this.moeda(cbs.real_plan)}</td><td class="text-end text-muted" data-col-2026="realista">${this.moeda(cbs.realista)}</td>` : ''}
+              <tr data-desafio="pis_cofins" class="small"><td>CBS <span class="text-muted">${detalhada ? '(informativa)' : `(PIS + COFINS em ${x.ano - 1}; fora do faturamento, como na DRE)`}</span></td>
+                ${detalhada ? `<td class="bloco-ini" colspan="5"></td><td class="bloco-ini"></td><td class="text-end text-muted">${this.moeda(cbs.real_plan)}</td><td class="text-end text-muted">${this.moeda(cbs.realista)}</td>`
+    : (tem2026 ? `<td class="text-end text-muted" data-col-2026="real_plan">${this.moeda(cbs.real_plan)}</td><td class="text-end text-muted" data-col-2026="realista">${this.moeda(cbs.realista)}</td>` : '')}
                 <td class="text-end text-muted">${this.moeda(cbs.desafio)}</td>
-                <td class="text-end">${this.moeda(cbs.proposta)}</td>
+                <td class="text-end coluna-proposta-cartao">${this.moeda(cbs.proposta)}</td>
                 <td class="text-end"></td><td></td></tr>
             </tbody>
           </table>
@@ -3099,9 +3133,10 @@ const SecaoProjecao = {
     if (!el.dataset.ligouDesafioComparar) {
       el.dataset.ligouDesafioComparar = '1';
       el.addEventListener('click', (ev) => {
-        const b = ev.target.closest('[data-desafio-comparar]');
+        const b = ev.target.closest('[data-desafio-comparar], [data-desafio-visao]');
         if (!b || !this.dados) return;
-        this.desafioComparar = b.dataset.desafioComparar;
+        if (b.dataset.desafioComparar) this.desafioComparar = b.dataset.desafioComparar;
+        if (b.dataset.desafioVisao) this.desafioVisao = b.dataset.desafioVisao;
         const card = el.querySelector('.painel-desafio');
         if (card) card.outerHTML = this.cartaoDesafio(this.dados);
       });
