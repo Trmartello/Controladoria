@@ -816,7 +816,10 @@ class ProjecaoController
         // do quadro do ano — já sem o PIS/COFINS. Cada linha segue a regra dela; como o
         // desvio médio é linear, a escada fecha (13 + 14 = 15; 15 + 16 = 18).
         if ($visaoAno) {
-            foreach (['real_plan' => 'real_plan', 'realista' => 'real_realista'] as $chave => $col) {
+            // As parcelas de 2026 para a visão detalhada do "Resultado 2026 × 2027" (2026-11-27).
+            foreach (['real_plan' => 'real_plan', 'realista' => 'real_realista', 'realizado' => 'realizado',
+                'plan_ate' => 'plan_ate', 'plan_resto' => 'plan_resto', 'plan_ano' => 'plan_ano',
+                'realista_resto' => 'realista_resto'] as $chave => $col) {
                 $ls = [];
                 foreach ($visaoAno as $c => $v) {
                     $ls[] = ['codigo' => (string)$c, 'proposta' => $v[$col] ?? null];

@@ -4974,6 +4974,9 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-desafio-corp td { white-space: nowrap; }
 .tabela-desafio-corp thead th { white-space: normal; }
 .tabela-diretrizes .campo-simulador { max-width: 11rem; }
+.tabela-padrao.tabela-resultado-detalhada { font-size: 1.06rem; }
+.tabela-resultado-detalhada td { white-space: nowrap; }
+.tabela-resultado-detalhada thead th { white-space: normal; }
 
 /* ── Topos fixos da Projeção (pedido do cliente, 2026-11-25) ──────────────────
    "Fixe o cabeçalho do expander no topo enquanto ele tiver dados para

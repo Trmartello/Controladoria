@@ -90,6 +90,21 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 > ativos ("Comparar com", "Comparar a proposta com", este alinhado à direita) são `btn-verde`.
 > Prova: `provasPadraoProjecao` (negócio e Corporativo, 1850 px).
 
+> **"Resultado 2026 × 2027" (2026-11-27, PR #170; cliente: "esses dois quadrantes praticamente
+> é a mesma coisa… transformar em uma análise só"; prévia aprovada: "muito top").** Na tela do
+> NEGÓCIO, o quadro "2026: realizado, planejado e visão realista" sai (`cartaoVisaoAno` devolve
+> vazio quando há `desafio.escada.realizado`) e mora no cartão do desafio, renomeado. Dois
+> botões: **Visão: Sintética | Detalhada** (`desafioVisao`, em memória; sintética = o cartão de
+> antes) e **Comparar a proposta com** (Desafio | Real + realista | Real + Plan.). A detalhada
+> abre faixas "Jan–out 2026" (realizado, planejado, desvio), "nov–dez 2026" (planejado, visão
+> realista), "Ano 2026" (planejado, real + plan., real + realista) e "2027" (desafio, proposta,
+> diferença, var. %), para TODAS as linhas da escada (o servidor manda `realizado`, `plan_ate`,
+> `plan_resto`, `plan_ano` e `realista_resto` na `escada`, de `visaoDoAno`); fonte 1,06rem, rótulos
+> sem o parêntese, CBS "(informativa)" — cabe em 1850 px. As DUAS colunas comparadas sempre
+> destacadas: a Proposta em verde-claro (`coluna-proposta-cartao`) e a comparada em âmbar, ambas
+> em negrito. Saíram do negócio a "Diferença %" de 2026 e o "Realista × plano" (o desvio e o
+> comparar cobrem). O Corporativo não muda (lá os dois quadros têm uma linha por negócio).
+
 Índice das decisões do cliente na aba **Projeção de Resultados**. O detalhe e o
 histórico de cada uma estão em "Regras de negócio importantes"; este bloco existe
 porque elas mudaram muito num dia só, e uma delas foi revertida horas depois. Antes
