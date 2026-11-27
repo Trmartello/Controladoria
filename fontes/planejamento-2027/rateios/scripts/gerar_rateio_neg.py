@@ -66,7 +66,7 @@ out = [f"""<?php
  */
 return [
     'ano' => 2027,
-    'fonte' => 'Rateio Corporativo Negocios 2027.xlsm (de 25/11, coluna Saldo) + Critérios de rateios.xlsx',
+    'fonte' => 'Rateio Corporativo Negocios 2027.xlsm (de 27/11, coluna Saldo) + Critérios de rateios.xlsx',
     // Conferência: a soma dos centros abaixo (sem os de fora).
     'total' => {q4(tot - tot_fora)},
     'total_planilha' => {q4(tot)},

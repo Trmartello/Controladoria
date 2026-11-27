@@ -70,11 +70,11 @@ $linha = static fn (array $linhas, string $c) => array_column($linhas, null, 'co
 
 // ── 1. A carga ───────────────────────────────────────────────────────────────
 $carga = Projecao::cargaRateioNegocios($anoPlan);
-// A planilha de 25/11 (pedido do cliente: "vamos atualizar o rateio corporativo da mesma
-// forma"): sem o 5163 CENTRAL DE COMPRAS (que ficava fora, "apenas planejar") e sem o 5112
-// GERÊNCIA SUINOCULTURA; todos os centros dela têm regra.
-prova('a carga é a planilha de 25/11: −R$ 37.678.709,766, inteira (sem o 5163 e o 5112, que ela não traz)',
-    $carga && perto((float)$carga['total_planilha'], -37678709.766, 0.001) && perto((float)$carga['total'], -37678709.766, 0.001)
+// A planilha de 27/11 (cliente: "vou te passar os dois arquivos de rateios"; aprovada com o
+// impacto, "Sim"): os mesmos 26 centros da de 25/11, sem o 5163 e o 5112, com seis centros
+// menores ou maiores (5151, 5152, 5192, 5196, 5224 e 5232) — R$ 734.641,00 a menos de rateio.
+prova('a carga é a planilha de 27/11: −R$ 36.944.068,766, inteira (sem o 5163 e o 5112, que ela não traz)',
+    $carga && perto((float)$carga['total_planilha'], -36944068.766, 0.001) && perto((float)$carga['total'], -36944068.766, 0.001)
     && ($carga['fora'] ?? null) === [] && !isset($carga['centros'][5163]) && !isset($carga['centros'][5112]),
     json_encode([$carga['total_planilha'] ?? null, $carga['total'] ?? null]));
 prova('as regras da planilha de critérios: 5185 (Regional 3) só Agro e Super, nas filiais listadas; 5224 (Tecnoeste) todos menos 17 e 5',
@@ -87,8 +87,8 @@ $neg = $r['negocios'];
 $soma = array_sum(array_column($neg, 'valor'));
 $jan = array_sum(array_map(static fn ($x) => $x['meses'][1], $neg));
 $janPlanilha = array_sum(array_map(static fn ($c) => $c['meses'][1], $carga['centros']));
-prova('os negócios somam o total rateado (−37.678.709,77), e janeiro soma o janeiro da planilha',
-    perto($soma, -37678709.766) && perto($jan, $janPlanilha), round($soma, 2) . ' / ' . round($jan, 2));
+prova('os negócios somam o total rateado (−36.944.068,77), e janeiro soma o janeiro da planilha',
+    perto($soma, -36944068.766) && perto($jan, $janPlanilha), round($soma, 2) . ' / ' . round($jan, 2));
 $centro = static function (int $cc) use ($neg, $cod): array {
     $out = [];
     foreach ($neg as $id => $x) {
@@ -102,17 +102,17 @@ $centro = static function (int $cc) use ($neg, $cod): array {
 prova('centro de um negócio só vai inteiro a ele: 5109 Gerência Cereais → Cereais −587.597,50; 5139 Gerência Indústrias → Rações −251.723,96',
     array_keys($centro(5109)) == ['1'] && perto($centro(5109)['1'], -587597.50)
     && array_keys($centro(5139)) == ['6'] && perto($centro(5139)['6'], -251723.96));
-prova('e soma as filiais de origem: 5151 Agropecuária Compra/Venda (Matriz + Central de Compras) → Agro −1.897.205,21; 5170 Mercado-Geral → Super −5.881.622,45',
-    perto($centro(5151)['8'] ?? 0, -1897205.21) && perto($centro(5170)['9'] ?? 0, -5881622.45));
+prova('e soma as filiais de origem: 5151 Agropecuária Compra/Venda (Matriz + Central de Compras) → Agro −1.051.745,21; 5170 Mercado-Geral → Super −5.881.622,45',
+    perto($centro(5151)['8'] ?? 0, -1051745.21) && perto($centro(5170)['9'] ?? 0, -5881622.45));
 $reg3 = $centro(5185);
 prova('5185 Gerência Regional 3: só Agro e Super, somando os −412.257,64 da planilha',
     array_keys($reg3) == ['8', '9'] || array_keys($reg3) == ['9', '8'] ? perto(array_sum($reg3), -412257.64) : false, json_encode($reg3));
 $tec = $centro(5224);
-prova('5224 Tecnoeste: todos os negócios menos a Usina (17), somando os −730.675,46',
-    !isset($tec['17']) && count($tec) >= 9 && perto(array_sum($tec), -730675.46), json_encode(array_map('round', $tec)));
+prova('5224 Tecnoeste: todos os negócios menos a Usina (17), somando os −470.001,46',
+    !isset($tec['17']) && count($tec) >= 9 && perto(array_sum($tec), -470001.46), json_encode(array_map('round', $tec)));
 $eng = $centro(5192);
 prova('5192 Engenheiros agrônomos (faturamento de Cereais e Agro): só os dois, pela proporção da receita bruta proposta',
-    count($eng) === 2 && isset($eng['1'], $eng['8']) && perto(array_sum($eng), -11631238.71), json_encode(array_map('round', $eng)));
+    count($eng) === 2 && isset($eng['1'], $eng['8']) && perto(array_sum($eng), -11431135.71), json_encode(array_map('round', $eng)));
 $filiaisOk = true;
 foreach ($neg as $x) {
     $filiaisOk = $filiaisOk && perto(array_sum(array_map('array_sum', $x['filiais'])), $x['valor'], 0.05);
@@ -136,7 +136,7 @@ prova('na filial, a 14.3 é a dela, travada', perto($linha($tf['filial']['linhas
     && $linha($tf['filial']['linhas'], '14.3')['proposta_origem'] === 'RATEIO_NEG');
 $painel = Projecao::resumoDosNegocios(array_keys($neg), $ano, $corte, $anoPlan, ['14.3']);
 prova('o Painel faz a mesma conta (soma da 14.3 = o total rateado)',
-    perto(array_sum(array_map(static fn ($x) => (float)$x['proposta']['14.3'], $painel)), -37678709.766));
+    perto(array_sum(array_map(static fn ($x) => (float)$x['proposta']['14.3'], $painel)), -36944068.766));
 prova('o bloco 12 (Rateios do negócio) soma 14.1 + 14.2 + 14.3, e o desafio carrega a 14.3 travada',
     perto((float)$linha($agro['linhas'], '14')['proposta'], (float)$linha($agro['linhas'], '14.1')['proposta']
         + (float)$linha($agro['linhas'], '14.2')['proposta'] + $l143['proposta'], 1)
@@ -163,7 +163,7 @@ try {
     $r2 = Projecao::rateios($ano, $corte, $anoPlan)['neg']['negocios'];
     prova('ao vivo: o Leite dobra o pessoal, a parte dele no Tecnoeste sobe e o total não muda',
         ($r2[$leite]['centros'][5224] ?? 0) < ($neg[$leite]['centros'][5224] ?? 0)
-        && perto(array_sum(array_column($r2, 'valor')), -37678709.766),
+        && perto(array_sum(array_column($r2, 'valor')), -36944068.766),
         round($neg[$leite]['centros'][5224] ?? 0) . ' → ' . round($r2[$leite]['centros'][5224] ?? 0));
 } finally {
     $pdo->prepare('DELETE FROM projecao_valor WHERE projecao_id = ? AND filial_id = 0 AND conta_id = ?')->execute([$proj['id'], $conta85]);
