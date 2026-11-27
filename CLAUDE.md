@@ -4582,6 +4582,16 @@ A do participante é **pulada** (não reprovada) sem `PIN_TEMPESTADE`: ela
 depende de uma rodada aberta, que nem toda instância tem, e um vermelho por
 falta de massa ensina a ignorar o vermelho.
 
+**Banco limpo antes e depois de toda rodada** (base local): `usuario` = 1 (só o admin),
+`configuracao.diagnostico_somente_leitura` = '0', `projecao_valor` = 1 (a Receita 1.1 da Pecuária,
+VALOR 731.798.725,00 — a bateria a troca e só devolve no fim; se ela parar no meio, recoloque),
+`diretriz_valor` = 0, `negocio_desafio_valor` = 0, `negocio_item_avaliacao` = 0, fatores "(prova)" = 0.
+**Nunca rode uma suíte PHP com a saída cortada (`| head`)**: o `head` fecha o cano, o PHP morre com
+SIGPIPE no próximo `echo` e o `finally` NÃO roda. Em 2026-11-27, `simulador_diretriz.php | head -8`
+deixou um usuário de prova, um lançamento de teste e o **modo apresentação ligado** — e a bateria
+seguinte parou na prova de anexos do Diagnóstico (o botão de novo anexo some no modo apresentação).
+Para ver parte da saída, grave em arquivo e leia o arquivo.
+
 **Linha de base em 2026-10-26** (depois das metas mês a mês; era 301/678 em
 2026-10-14 e 288/583 em 2026-09-04): funcional **327 ✓ / 0 ✗**
 (`BASE=http://127.0.0.1:8099 SALA_AUSENTE_SEG=6 bash testes/funcional.sh`) e
