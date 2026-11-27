@@ -93,15 +93,16 @@ $negs = Database::todos('SELECT id FROM negocio WHERE ativo = 1');
 $c = invocar($ctrl, 'montarCorporativo', $negs, $ano, $corte)['desafio'];
 $t = $c['total']['desafio'];
 prova('os 11 negócios entram no desafio do Corporativo', count($c['negocios']) === 11, (string)count($c['negocios']));
-prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado +R$ 1.037.116',
-    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 1037116) < 2,
+prova('total do desafio: ROB R$ 3.680.001.039, ROL R$ 3.548.348.607, resultado +R$ 1.431.270',
+    abs($t['receita_bruta'] - 3680001039) < 2 && abs($t['receita_liquida'] - 3548348607) < 2 && abs($t['resultado'] - 1431270) < 2,
     round($t['receita_bruta']) . ' / ' . round($t['receita_liquida']) . ' / ' . round($t['resultado']));
 // −R$ 365.950 e −0,01% (25/11, 2ª planilha do rateio administrativo: R$ 37,01 mi).
 // +R$ 302.475 e +0,01% (25/11, planilha nova do rateio corporativo negócio: R$ 37,68 mi, sem o 5112).
 // +R$ 1.037.116 e +0,03% (27/11, planilha nova do rateio corporativo negócio: R$ 36,94 mi; +734.641).
-prova('margem líquida do desafio: +0,03%', abs($t['margem'] - 0.0292) < 0.0005, (string)round($t['margem'], 4));
-prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 69,93 mi',
-    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 69929857) < 2,
+// +R$ 1.431.270 e +0,04% (27/11, planilha nova do rateio administrativo: R$ 36,62 mi; +394.154).
+prova('margem líquida do desafio: +0,04%', abs($t['margem'] - 0.0403) < 0.0005, (string)round($t['margem'], 4));
+prova('os 2% sobre a ROL do desafio são R$ 70,97 mi, e faltam R$ 69,54 mi',
+    abs($t['resultado_meta'] - 70966972) < 2 && abs($t['falta'] - 69535702) < 2,
     round($t['resultado_meta']) . ' / ' . round($t['falta']));
 
 // ── 1b. Agrupamento no Corporativo (2026-11-24): só os negócios marcados ─────

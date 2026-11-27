@@ -93,7 +93,8 @@ $res = (float)$t['desafio']['desafio']['resultado'];
 // (−R$ 19.550.065 (25/11, 2ª planilha do rateio administrativo: R$ 37,01 mi).)
 // (−R$ 19.561.311 (25/11, planilha nova do rateio corporativo negócio: R$ 37,68 mi, sem o 5112).)
 // (−R$ 19.467.419 (27/11, planilha nova do rateio corporativo negócio: R$ 36,94 mi; Cereais +93.892).)
-prova('Cereais: o desafio fica −R$ 19.467.419 (os −R$ 245 do resíduo saem)', abs($res + 19467419) < 2, (string)round($res));
+// (−R$ 19.414.695 (27/11, planilha nova do rateio administrativo: R$ 36,62 mi; Cereais +52.724).)
+prova('Cereais: o desafio fica −R$ 19.414.695 (os −R$ 245 do resíduo saem)', abs($res + 19414695) < 2, (string)round($res));
 
 // O Corporativo: a 14.1 da proposta é zero.
 $c = (new ReflectionMethod($ctrl, 'montarCorporativo'));

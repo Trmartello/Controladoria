@@ -46,7 +46,7 @@ out = [f"""<?php
  */
 return [
     'ano' => 2027,
-    'fonte' => 'Rateio Corporativo 2027.xlsm (Rateio Corporativo ADM 2027 de 25/11), aba Rateio Corp ADM, coluna Saldo por período',
+    'fonte' => 'Rateio Corporativo 2027.xlsm (Rateio Corporativo ADM 2027 de 27/11), aba Rateio Corp ADM, coluna Saldo por período',
     // Conferência: a soma dos meses (o carregamento recusa se não bater).
     'total' => {q(tot)},
     // mês => saldo a ratear (sinal da DRE)
