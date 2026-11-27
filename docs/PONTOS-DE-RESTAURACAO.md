@@ -4,10 +4,13 @@ Pedido do cliente (2026-11-27): "a cada PR que subir, registre uma posição atu
 para podermos resgatar se houver a necessidade". Cada linha abaixo é um PR mesclado no `main`
 (= produção na Railway), com o **estado do sistema logo antes dele** e o SHA da mescla.
 
-Além desta tabela, cada ponto existe como **etiqueta git** no GitHub:
-`restauracao/pr-NNN` aponta para o `main` **antes** do PR NNN entrar. A etiqueta é a fonte da
-verdade; esta tabela é o índice legível (a linha de um PR entra no próprio PR, com o
-"antes" já conhecido; o SHA da mescla é completado no PR seguinte).
+O ponto de restauração é o **SHA da coluna "Estado antes"**: um commit do `main`, que fica no
+histórico para sempre (o `main` não é reescrito). A linha de um PR entra no próprio PR, com o
+"antes" já conhecido; o SHA da mescla é completado no PR seguinte.
+
+Etiquetas git (`restauracao/pr-NNN`) seriam o atalho natural, mas o proxy das sessões do Claude
+recusa enviar etiqueta ao GitHub (HTTP 403, só a branch de trabalho passa). Se quiser tê-las,
+quem tem acesso ao repositório cria todas de uma vez com o script no fim deste documento.
 
 ## Como voltar
 
@@ -36,7 +39,8 @@ confira se a carga/estrutura precisa de algum ajuste manual (nenhum dado lançad
 
 | PR | Data | O que entrou | Estado antes (restaurar para) | Mescla (reverter) | Banco (`database/`) |
 |---|---|---|---|---|---|
-| #164 | 2026-11-27 | Quadro do ano: Resultado do negócio (14) no lugar do após impostos (11); registro dos pontos de restauração | `7395b88fca` | (no PR seguinte; etiqueta `restauracao/pr-164`) | — |
+| #165 | 2026-11-27 | Pontos de restauração sem etiqueta (o proxy recusa) e memória da sessão — só documentação | `87d26713f7` | (no PR seguinte) | — |
+| #164 | 2026-11-27 | Quadro do ano: Resultado do negócio (14) no lugar do após impostos (11); registro dos pontos de restauração | `7395b88fca` | `87d26713f7` | — |
 | #163 | 2026-11-26 | Desafio no modo apresentação, somado no Corporativo e com risquinho de efeito | `d8d5b97a6b` | `7395b88fca` | — |
 | #162 | 2026-11-26 | Simulador: impacto também em quem digitou o pessoal, e o detalhe de pessoal | `541476513f` | `d8d5b97a6b` | — |
 | #161 | 2026-11-26 | Simulador de diretrizes, PPR fixo e diretriz editável pelo administrador | `9615cfaea0` | `541476513f` | schema.sql |
@@ -196,3 +200,13 @@ confira se a carga/estrutura precisa de algum ajuste manual (nenhum dado lançad
 | #6 | 2026-09-02 | Coleta: "Tratar" puxa qualquer ideia da lista para a fila, fora da ordem | `132a1e4f54` | `7a50a29e0f` | — |
 | #5 | 2026-09-02 | Excluir um registro nascido da sala apaga a voz do quiz, em vez de devolvê-la | `69eb128fbe` | `132a1e4f54` | — |
 | #4 | 2026-09-02 | Claude/acesso planejamento controladoria 9pe28s | `9916d7e7d4` | `69eb128fbe` | migrate.php, schema.sql |
+
+## Criar as etiquetas (opcional, fora da sessão do Claude)
+
+```bash
+git fetch origin main
+git log origin/main --merges --first-parent --format='%H %P %s' |
+  sed -nE 's/^([0-9a-f]+) ([0-9a-f]+) [0-9a-f]+ Merge pull request #([0-9]+).*/\3 \2/p' |
+  while read pr antes; do git tag -f "restauracao/pr-$pr" "$antes"; done
+git push origin 'refs/tags/restauracao/*'
+```

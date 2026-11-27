@@ -25,6 +25,23 @@ vale: o 2026–2030 de lá ou o 2027–2035 daqui.
 > cada publicação) duas vezes sobre um custo gravado com sinal trocado e falha se
 > qualquer tabela de lançamento mudar. Rode-o em toda entrega, com as suítes PHP.
 
+> **Em andamento (2026-11-27, plano aprovado, prévia ainda não mostrada):** "as duas
+> tabelas devem ser o reflexo da DRE". Hoje a única linha que diverge entre o quadro
+> "2026: realizado, planejado e visão realista" e o cartão "Desafio 2027 para o
+> negócio" é a **receita bruta**, pelo valor exato da CBS (o quadro soma o PIS/COFINS de
+> volta em `propostaDaVisao`; o cartão o tira por taxa na tela). Aprovado pelo cliente:
+> (1) o quadro passa a mostrar a receita bruta SEM PIS/COFINS em TODAS as colunas,
+> 2026 inclusive — realizado menos o PIS/COFINS realizado (o mesmo da linha CBS da DRE),
+> planejado jan–out, nov–dez e ano menos a taxa do negócio × Receita de Vendas (1.1)
+> planejada do período (regra de `Reforma::pisCofinsDoNegocio`), proposta e desafio =
+> linha 1 da DRE; o melhor lugar é tirar em `brutosDoAno` (por negócio, antes do realista
+> e do total); (2) o cartão lê a linha 1 da DRE (servidor), sem `taxaCbsDoCartao`;
+> (3) o cartão ganha, à esquerda, "Real + Plan. 2026" e "Real + realista 2026" para
+> todos os degraus (rateios 14 e 16 com a regra do desvio médio; por ser linear, a escada
+> fecha), ordem: Real + Plan. 2026 | Real + realista 2026 | Desafio | Proposta |
+> Diferença (proposta − desafio); o cartão do Corporativo ganha as duas colunas do
+> resultado. Fluxo: prévia (imagens) → aprovado → implementar.
+
 Índice das decisões do cliente na aba **Projeção de Resultados**. O detalhe e o
 histórico de cada uma estão em "Regras de negócio importantes"; este bloco existe
 porque elas mudaram muito num dia só, e uma delas foi revertida horas depois. Antes
@@ -4810,12 +4827,13 @@ dia, e a vermelha seria lida como regressão de outra mudança.
      `docs/PONTOS-DE-RESTAURACAO.md`: número, data, o que entra, o **estado antes**
      (= `origin/main` no momento da mescla) e se mexe em `database/`. O SHA da mescla
      da linha anterior se completa aqui também.
-  2. **Logo depois de mesclar**, a etiqueta `restauracao/pr-NNN` apontando para o `main`
-     de ANTES (o primeiro pai da mescla):
-     `git tag restauracao/pr-NNN <mescla>^1 && git push origin restauracao/pr-NNN`.
-  Como voltar (reverter um PR com `git revert -m 1`, ou *Redeploy* na Railway em
-  emergência) e por que o banco não volta junto estão no próprio documento. Todos os
-  PRs até o #163 ganharam etiqueta e linha retroativamente em 2026-11-27.
+  2. **No PR seguinte**, completar o SHA da mescla da linha anterior.
+  O ponto é o SHA do "estado antes" (o `main` não é reescrito, então ele não some).
+  Etiquetas `restauracao/pr-NNN` NÃO são possíveis desta sessão: o proxy recusa enviar
+  tag (HTTP 403 em `git push origin refs/tags/...`, testado em 2026-11-27); o documento
+  traz o script para quem tiver acesso criá-las. Como voltar (reverter um PR com
+  `git revert -m 1`, ou *Redeploy* na Railway em emergência) e por que o banco não volta
+  junto estão no próprio documento. Todos os PRs até o #164 entraram retroativamente.
 - **Reversão de 2026-11-26:** a pedido do cliente, o #153 (Ctrl + clique para marcar
   linhas da DRE) e o #154 (anotações) foram revertidos; o código voltou ao estado de
   depois do #152. Não reimplante a marcação de linhas sem um pedido novo.
