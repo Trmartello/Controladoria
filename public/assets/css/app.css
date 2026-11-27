@@ -4895,21 +4895,24 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 .tabela-projecao .proposta-calculada { cursor: help; white-space: nowrap; }
 .tabela-projecao .proposta-calculada::before { content: "🔒"; font-size: .75em; margin-right: .3em; opacity: .6; }
 
-/* A coluna DESAFIO da DRE (pedido do cliente, 2026-11-25; só ADMIN): azul-claro,
-   para não se confundir com o amarelo de onde o negócio lança. O lançado pela
-   administração fica em negrito, num azul mais forte; vazio, o padrão em cinza. */
-#secao-projecao .tabela-projecao thead th.coluna-desafio-th { background: #e3ecfa; color: #1f3f73; }
-.tabela-projecao td.celula-desafio-td { background: #f3f7fd; }
-.tabela-projecao .celula-valor.celula-desafio:not(:disabled) { background: #e8f0fe; border-color: #b6c8ec; }
-.tabela-projecao .celula-valor.celula-desafio:not(:disabled):hover { border-color: #7f9fd6; }
+/* A coluna DESAFIO da DRE (pedido do cliente, 2026-11-25; só ADMIN): num tom próprio,
+   para não se confundir com o amarelo de onde o negócio lança. Era azul-claro; desde
+   2026-11-27 (cliente: "aplicação do padrão dos demais conteúdos desta tela, com cores
+   derivando do verde e amarelo da logomarca") é o verde da marca: cabeçalho no verde forte
+   dos blocos, coluna em verde-claro, campo em branco com borda verde; o lançado pela
+   administração fica em negrito, num verde mais forte; vazio, o padrão em cinza. */
+#secao-projecao .tabela-projecao thead th.coluna-desafio-th { background: var(--tp-cab-forte); color: var(--tp-cab-forte-texto); }
+.tabela-projecao td.celula-desafio-td { background: var(--tp-proposta); }
+.tabela-projecao .celula-valor.celula-desafio:not(:disabled) { background: #fff; border-color: var(--tp-bloco); }
+.tabela-projecao .celula-valor.celula-desafio:not(:disabled):hover { border-color: var(--tp-borda); }
 .tabela-projecao .celula-valor.celula-desafio:focus { background: #fff; }
-.tabela-projecao .celula-valor.celula-desafio.desafio-lancado { background: #d3e2fb; border-color: #7f9fd6; font-weight: 700; }
-.tabela-projecao .celula-valor.celula-desafio::placeholder { color: #6c7a90; }
+.tabela-projecao .celula-valor.celula-desafio.desafio-lancado { background: var(--tp-cab-forte); border-color: var(--tp-borda); font-weight: 700; }
+.tabela-projecao .celula-valor.celula-desafio::placeholder { color: #5f746e; }
 /* O risquinho do desafio × proposta (cliente, 2026-11-27): borda esquerda verde se ajuda
    o resultado líquido, vermelha se prejudica. Só nos campos editáveis. */
 .tabela-projecao .celula-valor.celula-desafio.desafio-melhora { border-left: 4px solid #198754; }
 .tabela-projecao .celula-valor.celula-desafio.desafio-piora { border-left: 4px solid #dc3545; }
-.legenda-editavel.legenda-desafio { background: #e8f0fe; border-color: #7f9fd6; }
+.legenda-editavel.legenda-desafio { background: #fff; border-color: var(--tp-bloco); }
 
 /* Considerar / Desconsiderar das oportunidades (2026-11-25): no início do item,
    pequenos — não engordam a linha. */
@@ -4923,7 +4926,7 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
    "Criar um padrão visual para essa tela e replicar": a tabela do "Desafio 2027 para os
    negócios" (números grandes e firmes, cabeçalho azul) e a DRE (bordas, zebra, linha
    compacta) viram o padrão de TODAS as tabelas de números da Projeção, menos a própria DRE,
-   que é a referência. Respostas do cliente: cabeçalho todo azul; 1,2rem nas tabelas de
+   que é a referência (desde 2026-11-27 a DRE usa as mesmas cores: zebra, borda e Desafio). Respostas do cliente: cabeçalho todo azul; 1,2rem nas tabelas de
    resumo e 1,05rem nas listas longas (`tabela-detalhe`); referência de tela 1850–1920 px (em
    1366 px as mais largas rolam de lado). Só esta tela: as demais ficam como estão. */
 :root {
@@ -5101,10 +5104,12 @@ tr.linha-lancamentos > td { border-top: 0; background: #fafafa; }
 #secao-projecao .tabela-projecao.recolhida tbody td { padding-top: .08rem; padding-bottom: .08rem; line-height: 1.3; }
 #secao-projecao .tabela-projecao th:nth-child(6), #secao-projecao .tabela-projecao td:nth-child(6) { border-left: 2px solid #8fb9a2; }
 #secao-projecao .tabela-projecao th:nth-child(7), #secao-projecao .tabela-projecao td:nth-child(7) { border-right: 2px solid #8fb9a2; }
-.tabela-projecao tbody tr.linha-zebra:not(.linha-cbs):not(.resultado-negativo) > td:not(.linha-muda-nome):not(.celula-desafio-td) { background-color: #eef4fc; }
-.tabela-projecao tbody tr:hover > td { box-shadow: inset 0 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
-.tabela-projecao tbody tr:hover > td:first-child { box-shadow: inset 2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
-.tabela-projecao tbody tr:hover > td:last-child { box-shadow: inset -2px 2px 0 #2f6fd0, inset 0 -2px 0 #2f6fd0; }
+.tabela-projecao tbody tr.linha-zebra:not(.linha-cbs):not(.resultado-negativo) > td:not(.linha-muda-nome):not(.celula-desafio-td) { background-color: var(--tp-zebra); }
+.tabela-projecao tbody tr:hover > td { box-shadow: inset 0 2px 0 var(--tp-borda), inset 0 -2px 0 var(--tp-borda); }
+.tabela-projecao tbody tr:hover > td:first-child { box-shadow: inset 2px 2px 0 var(--tp-borda), inset 0 -2px 0 var(--tp-borda); }
+.tabela-projecao tbody tr:hover > td:last-child { box-shadow: inset -2px 2px 0 var(--tp-borda), inset 0 -2px 0 var(--tp-borda); }
+/* As setinhas que abrem as contas, no verde-escuro da marca em vez do azul de link. */
+.tabela-projecao .abre-reduzidas, .tabela-projecao .abre-reduzidas:hover { color: #00753d; }
 @media print { .tabela-projecao tbody tr:hover > td { box-shadow: none !important; } }
 
 /* PLANO DE AÇÃO para o projetor (pedido do cliente, 2026-11-26: "aumentar a fonte para
